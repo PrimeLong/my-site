@@ -8,7 +8,7 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
 
     /* Bundler mode */
     "moduleResolution": "bundler",
