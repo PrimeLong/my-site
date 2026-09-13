@@ -487,8 +487,9 @@ function WhyModal({ reasons, onClose }) {
    по режиму экономики. Всё синтезируется через Web Audio — внешних файлов нет.
 ========================================================================================= */
 /* =========================================================================================
-   ЗВУК И МУЗЫКА: семнадцать написанных пьес с многочастной формой, живой оркестровкой
-   и переключением по режиму экономики. Всё синтезируется через Web Audio.
+   ЗВУК И МУЗЫКА: синтвейв-саундтрек — двадцать две написанные пьесы с многочастной формой
+   на аналоговых синт-тембрах (лид, бас, пады, драм-машина) и переключением по режиму
+   экономики. Всё синтезируется через Web Audio, внешних файлов нет.
 ========================================================================================= */
 const NOTE_BASE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const nn = (name) => {
@@ -522,7 +523,7 @@ const TRACKS = {};
 const tr = (id, name, subtitle, mood, cfg) => { TRACKS[id] = { id, name, subtitle, mood, ...cfg }; };
 
 /* ------------------------------- СПОКОЙСТВИЕ ------------------------------- */
-tr('dawn', 'Рассвет над министерством', 'фортепиано, струнные', 'calm', {
+tr('dawn', 'Рассвет над министерством', 'синт-лид, аналоговый пад', 'calm', {
   bpm: 72, swing: 0.12, reverb: 0.42,
   A: H('F2 C3 E3 A3 | A2 E3 G3 C4 | Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4'),
   B: H('D3 A3 C4 F4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | G2 D3 F3 Bb3'),
@@ -535,7 +536,7 @@ tr('dawn', 'Рассвет над министерством', 'фортепиа
     sec('A', 'melA', 'waltz', 'piano bass pad strings violin', 1.0),
   ],
 });
-tr('ledger', 'Тихая бухгалтерия', 'фортепиано соло', 'calm', {
+tr('ledger', 'Тихая бухгалтерия', 'синт-лид соло', 'calm', {
   bpm: 68, swing: 0.14, reverb: 0.46,
   A: H('D3 A3 C4 F4 | Bb2 F3 A3 D4 | F2 C3 E3 A3 | E2 C3 G3 C4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 A3 D4 | F2 C3 E3 A3 | G2 D3 F3 Bb3 | A2 E3 G3 C#4'),
@@ -547,7 +548,7 @@ tr('ledger', 'Тихая бухгалтерия', 'фортепиано соло
     sec('A', 'melA', 'flow', 'piano bass pad cello', 1.0),
   ],
 });
-tr('northlight', 'Северный свет', 'челеста, струнные', 'calm', {
+tr('northlight', 'Северный свет', 'ретро-колокол, аналоговый пад', 'calm', {
   bpm: 64, swing: 0, reverb: 0.62,
   A: H('Ab2 Eb3 G3 C4 | Db3 Ab3 C4 F4 | Eb3 Bb3 D4 G4 | C3 G3 Bb3 Eb4 | Ab2 Eb3 G3 C4 | F2 C3 Ab3 Eb4 | Db3 Ab3 C4 F4 | Eb3 Bb3 D4 G4'),
   B: H('F2 C3 Ab3 C4 | Db3 Ab3 C4 F4 | Bb2 F3 Ab3 D4 | Eb3 Bb3 D4 G4'),
@@ -559,7 +560,7 @@ tr('northlight', 'Северный свет', 'челеста, струнные'
     sec('A', 'melA', 'flow', 'piano bells pad strings bass', 1.0),
   ],
 });
-tr('promenade', 'Прогулка по столице', 'фортепиано, арфа', 'calm', {
+tr('promenade', 'Прогулка по столице', 'синт-лид, синт-арпеджио', 'calm', {
   bpm: 84, swing: 0.16, reverb: 0.34,
   A: H('G2 D3 G3 B3 | E2 B2 E3 G3 | C3 G3 B3 E4 | D3 A3 C4 F#4 | G2 D3 G3 B3 | E2 B2 E3 G3 | A2 E3 G3 C#4 | D3 A3 C4 F#4'),
   B: H('C3 G3 B3 E4 | B2 F#3 A3 D4 | E2 B2 E3 G3 | D3 A3 C4 F#4'),
@@ -573,7 +574,7 @@ tr('promenade', 'Прогулка по столице', 'фортепиано, �
 });
 
 /* --------------------------------- ПОДЪЁМ --------------------------------- */
-tr('ascent', 'Восхождение', 'фортепиано, ритм-секция', 'boom', {
+tr('ascent', 'Восхождение', 'синт-лид, драм-машина', 'boom', {
   bpm: 108, swing: 0, reverb: 0.26,
   A: H('A2 E3 A3 C#4 | G#2 E3 G#3 B3 | F#2 C#3 F#3 A3 | D3 A3 D4 F#4 | A2 E3 A3 C#4 | E3 B3 E4 G#4 | D3 A3 D4 F#4 | E3 B3 D4 G#4'),
   B: H('D3 A3 D4 F#4 | C#3 G#3 C#4 E4 | B2 F#3 B3 D4 | E3 B3 D4 G#4'),
@@ -586,7 +587,7 @@ tr('ascent', 'Восхождение', 'фортепиано, ритм-секц�
     sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
   ],
 });
-tr('boulevard', 'Бульвар', 'струнные, фортепиано', 'boom', {
+tr('boulevard', 'Бульвар', 'аналоговый пад, синт-лид', 'boom', {
   bpm: 116, swing: 0, reverb: 0.3,
   A: H('E2 B2 E3 G#3 | C#3 G#3 B3 E4 | A2 E3 A3 C#4 | B2 F#3 B3 D#4 | E2 B2 E3 G#3 | C#3 G#3 B3 E4 | F#2 C#3 F#3 A3 | B2 F#3 B3 D#4'),
   B: H('A2 E3 A3 C#4 | B2 F#3 B3 D#4 | G#2 D#3 G#3 B3 | C#3 G#3 B3 E4'),
@@ -598,7 +599,7 @@ tr('boulevard', 'Бульвар', 'струнные, фортепиано', 'boo
     sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
   ],
 });
-tr('overdrive', 'Перегрев', 'синкопы, ударные', 'boom', {
+tr('overdrive', 'Перегрев', 'синт-лид, драм-машина', 'boom', {
   bpm: 126, swing: 0, reverb: 0.22,
   A: H('B2 F#3 B3 D4 | A2 E3 A3 C#4 | G2 D3 G3 B3 | F#2 C#3 F#3 A3 | B2 F#3 B3 D4 | A2 E3 A3 C#4 | E3 B3 E4 G4 | F#2 C#3 F#3 A3'),
   B: H('G2 D3 G3 B3 | D3 A3 D4 F#4 | E3 B3 E4 G4 | F#2 C#3 F#3 A3'),
@@ -612,7 +613,7 @@ tr('overdrive', 'Перегрев', 'синкопы, ударные', 'boom', {
 });
 
 /* --------------------------------- СПАД --------------------------------- */
-tr('longwinter', 'Долгая зима', 'фортепиано, виолончель', 'slump', {
+tr('longwinter', 'Долгая зима', 'синт-лид, синт-бас', 'slump', {
   bpm: 56, swing: 0.08, reverb: 0.58,
   A: H('E2 B2 E3 G3 | C3 G3 B3 E4 | A2 E3 G3 C4 | B2 F#3 A3 D#4 | E2 B2 E3 G3 | C3 G3 B3 E4 | A2 E3 G3 C4 | E2 B2 E3 G3'),
   B: H('C3 G3 B3 E4 | G2 D3 G3 B3 | A2 E3 G3 C4 | B2 F#3 A3 D#4'),
@@ -624,7 +625,7 @@ tr('longwinter', 'Долгая зима', 'фортепиано, виолонч�
     sec('A', 'melA', 'waltz', 'piano bass cello pad strings', 1.0),
   ],
 });
-tr('emptyhalls', 'Пустые цеха', 'виолончель, фортепиано', 'slump', {
+tr('emptyhalls', 'Пустые цеха', 'синт-бас, синт-лид', 'slump', {
   bpm: 60, swing: 0.06, reverb: 0.55,
   A: H('A2 E3 A3 C4 | G2 E3 A3 C4 | F2 C3 F3 A3 | E2 C3 G3 C4 | D3 A3 C4 F4 | C3 A3 C4 E4 | E2 B2 E3 A3 | A2 E3 A3 C4'),
   B: H('F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 C4 F4 | E2 B2 E3 G#3'),
@@ -636,7 +637,7 @@ tr('emptyhalls', 'Пустые цеха', 'виолончель, фортепи�
     sec('B', 'melB', 'wide', 'piano bass cello pad strings', 1.0),
   ],
 });
-tr('patience', 'Терпение', 'фортепиано, струнные', 'slump', {
+tr('patience', 'Терпение', 'синт-лид, аналоговый пад', 'slump', {
   bpm: 66, swing: 0.1, reverb: 0.5,
   A: H('C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | F2 C3 F3 Ab3 | G2 D3 G3 B3'),
   B: H('Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | Ab2 Eb3 Ab3 C4 | G2 D3 G3 B3'),
@@ -650,7 +651,7 @@ tr('patience', 'Терпение', 'фортепиано, струнные', 'sl
 });
 
 /* ------------------------------ СТАГФЛЯЦИЯ ------------------------------ */
-tr('deadlock', 'Тупик', 'остинато, низкие струнные', 'stag', {
+tr('deadlock', 'Тупик', 'синт-арпеджио, низкий пад', 'stag', {
   bpm: 80, swing: 0, reverb: 0.36,
   A: H('E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | E2 B2 E3 G3 | F2 C3 F3 A3 | C3 G3 C4 E4 | B2 D#3 F#3 A3'),
   B: H('F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | B2 D#3 F#3 A3'),
@@ -662,7 +663,7 @@ tr('deadlock', 'Тупик', 'остинато, низкие струнные', 
     sec('A', 'melA', 'pulse', 'piano bass cello pad choir', 1.0, DR('x...x...x...x...', '........x.......', '..o...o...o...o.')),
   ],
 });
-tr('friction', 'Трение', 'фортепиано, хор', 'stag', {
+tr('friction', 'Трение', 'синт-лид, PWM-пад', 'stag', {
   bpm: 86, swing: 0, reverb: 0.4,
   A: H('D3 A3 D4 F4 | Eb3 Bb3 Eb4 G4 | D3 A3 D4 F4 | C3 G3 C4 Eb4 | D3 A3 D4 F4 | Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
@@ -676,7 +677,7 @@ tr('friction', 'Трение', 'фортепиано, хор', 'stag', {
 });
 
 /* -------------------------------- КРИЗИС -------------------------------- */
-tr('collapse', 'Обвал', 'бас, ударные, фортепиано', 'crisis', {
+tr('collapse', 'Обвал', 'синт-бас, драм-машина, синт-лид', 'crisis', {
   bpm: 128, swing: 0, reverb: 0.26,
   A: H('C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | F2 C3 F3 Ab3 | G2 D3 F3 B3'),
   B: H('Ab2 Eb3 Ab3 C4 | Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | G2 D3 F3 B3'),
@@ -688,7 +689,7 @@ tr('collapse', 'Обвал', 'бас, ударные, фортепиано', 'cr
     sec('A', 'melA', 'drive', 'piano bass cello choir violin', 1.0, DR('x..x..x.x.x..x..', '....x...x...x...', 'oooooooooooooooo')),
   ],
 });
-tr('panic', 'Паника', 'струнные, литавры', 'crisis', {
+tr('panic', 'Паника', 'аналоговый пад, синт-том', 'crisis', {
   bpm: 136, swing: 0, reverb: 0.3,
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
@@ -700,7 +701,7 @@ tr('panic', 'Паника', 'струнные, литавры', 'crisis', {
     sec('A', 'melA', 'drive', 'piano bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
   ],
 });
-tr('bankrun', 'Очередь у банка', 'остинато, хор', 'crisis', {
+tr('bankrun', 'Очередь у банка', 'синт-арпеджио, PWM-пад', 'crisis', {
   bpm: 118, swing: 0, reverb: 0.34,
   A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
   B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
@@ -714,7 +715,7 @@ tr('bankrun', 'Очередь у банка', 'остинато, хор', 'crisi
 });
 
 /* ------------------------------- ДЕФЛЯЦИЯ ------------------------------- */
-tr('glass', 'Стеклянный воздух', 'колокольчики, хор', 'frost', {
+tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM-пад', 'frost', {
   bpm: 52, swing: 0, reverb: 0.72,
   A: H('F2 C3 E3 A3 | C3 G3 B3 E4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | F2 C3 E3 A3 | A2 E3 G3 C4 | G2 D3 F3 Bb3 | C3 G3 C4 D4'),
   B: H('Bb2 F3 A3 D4 | C3 G3 B3 E4 | D3 A3 C4 F4 | C3 G3 C4 D4'),
@@ -726,7 +727,7 @@ tr('glass', 'Стеклянный воздух', 'колокольчики, хо
     sec('A', 'melA', 'air', 'bells harp bass pad choir strings', 1.0),
   ],
 });
-tr('stillness', 'Ничего не происходит', 'хор, низкие струнные', 'frost', {
+tr('stillness', 'Ничего не происходит', 'PWM-пад, низкий пад', 'frost', {
   bpm: 48, swing: 0, reverb: 0.75,
   A: H('Bb2 F3 A3 D4 | Eb3 Bb3 D4 G4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
   B: H('G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
@@ -741,7 +742,7 @@ tr('stillness', 'Ничего не происходит', 'хор, низкие 
 /* ------------------------------ ТОРГОВЫЙ ЗАЛ ------------------------------
    Пьесы звучат только у роли «Частный инвестор»: другая инструментовка,
    другой пульс — рынок, а не министерство.                                 */
-tr('openingbell', 'Открытие торгов', 'фортепиано, щётки, контрабас', 'calm', {
+tr('openingbell', 'Открытие торгов', 'синт-лид, хай-хэт, синт-бас', 'calm', {
   bpm: 92, swing: 0.18, reverb: 0.32,
   A: H('D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | A2 E3 G3 C#4'),
@@ -753,7 +754,7 @@ tr('openingbell', 'Открытие торгов', 'фортепиано, щёт
     sec('A', 'melA', 'roll', 'piano harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
   ],
 });
-tr('bidask', 'Бид и аск', 'фортепиано, ритм-секция', 'boom', {
+tr('bidask', 'Бид и аск', 'синт-лид, драм-машина', 'boom', {
   bpm: 118, swing: 0, reverb: 0.24,
   A: H('C3 G3 C4 E4 | A2 E3 A3 C4 | F2 C3 F3 A3 | G2 D3 G3 B3 | C3 G3 C4 E4 | E3 B3 E4 G#4 | F2 C3 F3 A3 | G2 D3 F3 B3'),
   B: H('F2 C3 F3 A3 | G2 D3 G3 B3 | A2 E3 A3 C4 | G2 D3 F3 B3'),
@@ -765,7 +766,7 @@ tr('bidask', 'Бид и аск', 'фортепиано, ритм-секция', 
     sec('A', 'melA', 'drive', 'piano bass pad violin', 1.0, DR('x..x..x...x.....', '....x.......x...', 'oooooooooooooooo')),
   ],
 });
-tr('bearmarket', 'Медвежий рынок', 'виолончель, фортепиано', 'slump', {
+tr('bearmarket', 'Медвежий рынок', 'синт-бас, синт-лид', 'slump', {
   bpm: 62, swing: 0.08, reverb: 0.56,
   A: H('A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | E2 B2 E3 G#3 | A2 E3 A3 C4 | G2 D3 G3 Bb3 | F2 C3 F3 A3 | E2 B2 E3 G#3'),
   B: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | E2 B2 E3 G#3'),
@@ -777,7 +778,7 @@ tr('bearmarket', 'Медвежий рынок', 'виолончель, форт�
     sec('A', 'melA', 'wide', 'piano bass cello pad strings', 1.0),
   ],
 });
-tr('thinvolume', 'Тонкий рынок', 'остинато, хор', 'stag', {
+tr('thinvolume', 'Тонкий рынок', 'синт-арпеджио, PWM-пад', 'stag', {
   bpm: 76, swing: 0, reverb: 0.38,
   A: H('E2 B2 E3 G3 | A2 E3 G3 C4 | E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | C3 G3 C4 E4 | B2 F#3 A3 D#4'),
   B: H('A2 E3 G3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | B2 F#3 A3 D#4'),
@@ -789,7 +790,7 @@ tr('thinvolume', 'Тонкий рынок', 'остинато, хор', 'stag', 
     sec('A', 'melA', 'pulse', 'piano bass cello choir pad', 1.0, DR('x...x...x...x...', '........x.......', 'o.o.o.o.o.o.o.o.')),
   ],
 });
-tr('marginwire', 'Маржин-колл', 'бас, литавры, струнные', 'crisis', {
+tr('marginwire', 'Маржин-колл', 'синт-бас, синт-том, аналоговый пад', 'crisis', {
   bpm: 132, swing: 0, reverb: 0.26,
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4 | D3 A3 D4 F4 | F2 C3 F3 A3 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
   B: H('G2 D3 G3 Bb3 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | A2 E3 G3 C#4'),
@@ -885,10 +886,11 @@ const Audio = (() => {
       pianoBus.connect(body); body.connect(air); air.connect(dry);
     } catch { pianoBus = dry; }
     try {
-      const conv = ctx.createConvolver(); conv.buffer = makeIR(4.0, 2.1);
-      const pre = ctx.createDelay(0.2); pre.delayTime.value = 0.024;
+      // короче и суше, чем концертный зал: маленькая комната/плата — характернее для синтвейва
+      const conv = ctx.createConvolver(); conv.buffer = makeIR(1.5, 2.6);
+      const pre = ctx.createDelay(0.2); pre.delayTime.value = 0.014;
       verbIn = ctx.createGain(); verbIn.gain.value = 1;
-      const wet = ctx.createGain(); wet.gain.value = 0.9;
+      const wet = ctx.createGain(); wet.gain.value = 0.5;
       verbIn.connect(pre); pre.connect(conv); conv.connect(wet); wet.connect(musicBus);
     } catch { verbIn = ctx.createGain(); verbIn.gain.value = 0; verbIn.connect(musicBus); }
     // хорус для струнных и хора: две модулированные линии задержки
@@ -904,10 +906,11 @@ const Audio = (() => {
       });
     } catch { chorusIn = dry; }
     try {
-      const dl = ctx.createDelay(1.0); dl.delayTime.value = 0.36;
-      const fb = ctx.createGain(); fb.gain.value = 0.26;
-      const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 2200;
-      echo = ctx.createGain(); echo.gain.value = 0.15;
+      // слэп-дилей на синт-лид/арпеджио — фирменный приём синтвейва вместо диффузного эха
+      const dl = ctx.createDelay(1.0); dl.delayTime.value = 0.16;
+      const fb = ctx.createGain(); fb.gain.value = 0.24;
+      const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 3200;
+      echo = ctx.createGain(); echo.gain.value = 0.5;
       echo.connect(dl); dl.connect(damp); damp.connect(fb); fb.connect(dl); dl.connect(musicBus);
     } catch { echo = dry; }
     const len = Math.floor(ctx.sampleRate * 1.2);
@@ -921,147 +924,181 @@ const Audio = (() => {
   };
   const sendTo = (node, bus, amt) => { const g = ctx.createGain(); g.gain.value = amt; node.connect(g); g.connect(bus); };
 
-  /* ------------------------------- ИНСТРУМЕНТЫ ------------------------------- */
-  const PART_AMP = [1, 0.58, 0.34, 0.22, 0.14, 0.09, 0.06, 0.04];
+  /* ------------------------------- ИНСТРУМЕНТЫ (синтвейв) ------------------------------- */
+  // Основной синт-лид/плак: пила+квадрат в унисон с суб-осциллятором и нисходящей
+  // фильтр-огибающей — тот самый «плак», который держит арпеджио и мелодию в синтвейве.
   const piano = (t, midi, vel, sustain, maxParts) => {
     const f = hz(midi);
     if (f > 5000 || f < 25) return;
-    const inharm = 0.00045 * Math.pow(2, (62 - midi) / 22);
-    const ring = clamp((6.8 - (midi - 33) * 0.062) * (sustain || 1), 0.7, 7.5);
-    const nPart = Math.min(maxParts || 8, midi > 81 ? 4 : midi > 66 ? 6 : 8);
-    const out = ctx.createGain(); out.gain.value = 0.085 * vel;
+    const dec = clamp(0.85 * (sustain || 1), 0.14, 3.0);
+    const out = ctx.createGain(); out.gain.value = 0.095 * vel;
     const pan = panFor(midi); out.connect(pan); pan.connect(pianoBus);
-    sendTo(out, verbIn, track.reverb);
-    for (let n = 1; n <= nPart; n++) {
-      const pf = f * n * Math.sqrt(1 + inharm * n * n);
-      if (pf > 11000) break;
-      const amp = PART_AMP[n - 1] * Math.pow(vel, 0.45 + 0.16 * (n - 1));
-      const dec = Math.max(0.12, ring / (1 + 0.52 * (n - 1)));
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, amp), t + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.00008, t + dec);
-      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = pf;
-      o.detune.value = (Math.random() - 0.5) * 2.5;
-      o.connect(g); g.connect(out); o.start(t); o.stop(t + dec + 0.05);
-    }
+    sendTo(out, verbIn, track.reverb * 0.45);
+    sendTo(out, echo, 0.22);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 3.5;
+    filt.frequency.setValueAtTime(Math.min(9500, f * 7 + 600), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.6, 300), t + dec * 0.7);
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    g.connect(filt);
+    const maxN = maxParts || 8; // сохраняем параметр ради обратной совместимости вызовов
+    [[1, 'sawtooth', 0, 0.5], [1, 'square', 7, 0.34], [0.5, 'sine', 0, Math.min(0.4, maxN / 20)]].forEach(([mul, wave, det, amp]) => {
+      const o = ctx.createOscillator(); o.type = wave; o.frequency.value = f * mul; o.detune.value = det;
+      const a = ctx.createGain(); a.gain.value = amp;
+      o.connect(a); a.connect(g); o.start(t); o.stop(t + dec + 0.05);
+    });
     const hs = ctx.createBufferSource(); hs.buffer = noiseBuf;
     const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = Math.min(7000, f * 4); hf.Q.value = 0.8;
     const hg = ctx.createGain();
     hg.gain.setValueAtTime(0.020 * vel * vel, t); hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
     hs.connect(hf); hf.connect(hg); hg.connect(out); hs.start(t); hs.stop(t + 0.06);
   };
+  // Плак для аккордовых фигур/арпеджио — короткая пила с нисходящим фильтром,
+  // подпёртая слэп-дилеем (см. echo в ensure()) вместо арфового «звона».
   const harp = (t, midi, dur, vel) => {
-    const out = ctx.createGain(); out.gain.value = 0.055 * vel;
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.08 * vel;
     const pan = panFor(midi, 0.5); out.connect(pan); pan.connect(dry);
-    sendTo(out, verbIn, track.reverb * 1.2);
-    [[1, 0.7], [2, 0.28], [3, 0.12], [4.02, 0.06]].forEach(([mul, amp]) => {
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(amp, t + 0.006);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * (mul > 2 ? 0.5 : 1));
-      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = hz(midi) * mul;
-      o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + 0.1);
-    });
-  };
-  const bell = (t, midi, dur, vel) => {
-    const out = ctx.createGain(); out.gain.value = 0.07 * (vel || 1);
-    const pan = panFor(midi, 0.45); out.connect(pan); pan.connect(dry);
-    sendTo(out, verbIn, 1.15);
-    [[1, 0.55, 1], [2.01, 0.28, 0.75], [3.01, 0.14, 0.55], [4.98, 0.07, 0.4]].forEach(([mul, amp, dm]) => {
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(amp, t + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur * dm);
-      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = hz(midi) * mul;
-      o.connect(g); g.connect(out); o.start(t); o.stop(t + dur * dm + 0.1);
-    });
-  };
-  const bowed = (t, midi, dur, vel, bright, panW) => {          // виолончель / скрипка
-    const out = ctx.createGain();
-    out.gain.setValueAtTime(0.0001, t);
-    out.gain.exponentialRampToValueAtTime(Math.max(0.0004, 0.055 * vel), t + Math.min(0.22, dur * 0.3));
-    out.gain.setValueAtTime(Math.max(0.0004, 0.055 * vel), t + dur * 0.72);
-    out.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.25);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass';
-    filt.frequency.setValueAtTime(bright * 0.6, t);
-    filt.frequency.linearRampToValueAtTime(bright, t + dur * 0.4);
-    filt.Q.value = 0.9;
+    sendTo(out, verbIn, track.reverb * 0.3); sendTo(out, echo, 0.3);
+    const d = Math.min(dur, 0.2);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 2.5;
+    filt.frequency.setValueAtTime(Math.min(8500, f * 8), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.5, 400), t + d);
     filt.connect(out);
-    const pan = panFor(midi, panW || 0.3); out.connect(pan); pan.connect(chorusIn);
-    sendTo(out, verbIn, track.reverb * 1.1);
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 5.1 + Math.random() * 0.6;
-    const lg = ctx.createGain(); lg.gain.value = 0; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(6, t + Math.min(0.5, dur * 0.5));
-    lfo.connect(lg); lfo.start(t); lfo.stop(t + dur + 0.3);
-    [[1, 'sawtooth', 0.6, -4], [1, 'triangle', 0.3, 5], [2, 'sawtooth', 0.12, 0]].forEach(([mul, wave, amp, det]) => {
-      const o = ctx.createOscillator(); o.type = wave; o.frequency.value = hz(midi) * mul; o.detune.value = det;
-      lg.connect(o.detune);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(filt);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    o.connect(g); o.start(t); o.stop(t + d + 0.05);
+  };
+  // Ретро-«колокол»: та же идея, только квадрат+пила вместо синусоидальных парциалов.
+  const bell = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.075 * (vel || 1);
+    const pan = panFor(midi, 0.45); out.connect(pan); pan.connect(chorusIn);
+    sendTo(out, verbIn, track.reverb * 0.4); sendTo(out, echo, 0.28);
+    const d = Math.min(dur, 0.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(out);
+    [[1, 'square', 0.55], [2, 'sawtooth', 0.22], [1, 'sawtooth', 0.3]].forEach(([mul, wave, amp]) => {
+      const o = ctx.createOscillator(); o.type = wave; o.frequency.value = f * mul;
       const a = ctx.createGain(); a.gain.value = amp;
-      o.connect(a); a.connect(filt); o.start(t); o.stop(t + dur + 0.3);
+      o.connect(a); a.connect(g); o.start(t); o.stop(t + d + 0.05);
     });
   };
-  const cello = (t, midi, dur, vel) => bowed(t, midi, dur, vel * 1.15, 900, 0.2);
-  const violin = (t, midi, dur, vel) => { bowed(t, midi, dur, vel * 0.9, 3000, 0.35); };
+  // Синт-бас: пила + суб-осциллятор на октаву ниже через резонансный ФНЧ с щелчком атаки.
+  const cello = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.12 * vel;
+    out.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.2);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 5;
+    filt.frequency.setValueAtTime(Math.min(2400, f * 10), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 2, 90), t + Math.min(dur, 0.2));
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.008);
+    g.gain.setValueAtTime(1, t + dur * 0.55);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(filt);
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = f / 2;
+    const a2 = ctx.createGain(); a2.gain.value = 0.7;
+    o1.connect(g); o2.connect(a2); a2.connect(g);
+    o1.start(t); o1.stop(t + dur + 0.05); o2.start(t); o2.stop(t + dur + 0.05);
+  };
+  // Второй синт-лид, ярче основного: пара расстроенных пил с вибрато — держит мелодию,
+  // когда в аранжировке заявлен «violin».
+  const violin = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.08 * vel;
+    const pan = panFor(midi, 0.4); out.connect(pan); pan.connect(chorusIn);
+    sendTo(out, verbIn, track.reverb * 0.4); sendTo(out, echo, 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + Math.min(0.04, dur * 0.2));
+    g.gain.setValueAtTime(1, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(out);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 5.6;
+    const lg = ctx.createGain(); lg.gain.value = 5;
+    lfo.connect(lg); lfo.start(t); lfo.stop(t + dur + 0.1);
+    [-6, 6].forEach((det) => {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
+      lg.connect(o.detune);
+      const a = ctx.createGain(); a.gain.value = 0.5;
+      o.connect(a); a.connect(g); o.start(t); o.stop(t + dur + 0.1);
+    });
+  };
+  // Аналоговый пад: стек расстроенных пил/квадратов под медленный ФНЧ-свип — вместо
+  // смычковых струнных несёт длинные гармонии.
   const strings = (t, notes, dur, level) => {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, level), t + dur * 0.38);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, level), t + dur * 0.3);
     g.gain.setValueAtTime(Math.max(0.0004, level), t + dur * 0.75);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     const filt = ctx.createBiquadFilter(); filt.type = 'lowpass';
-    filt.frequency.value = 900 + 900 * (1 - intensity); filt.Q.value = 0.5;
+    filt.frequency.setValueAtTime(420, t);
+    filt.frequency.linearRampToValueAtTime(1300 + 900 * intensity, t + dur * 0.5);
+    filt.Q.value = 0.6;
     filt.connect(g); g.connect(chorusIn);
-    sendTo(g, verbIn, 1.0);
+    sendTo(g, verbIn, track.reverb * 0.6);
     notes.forEach((midi, i) => {
-      [-7, 7].forEach((det) => {
-        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(midi + 12);
-        o.detune.value = det + i;
-        const a = ctx.createGain(); a.gain.value = 0.85 / notes.length;
-        const lfo = ctx.createOscillator(); lfo.frequency.value = 4.4 + i * 0.3;
-        const lg = ctx.createGain(); lg.gain.value = 3.5;
-        lfo.connect(lg); lg.connect(o.detune); lfo.start(t); lfo.stop(t + dur + 0.2);
+      [-9, 0, 9].forEach((det) => {
+        const o = ctx.createOscillator(); o.type = i % 2 ? 'square' : 'sawtooth'; o.frequency.value = hz(midi + 12);
+        o.detune.value = det;
+        const a = ctx.createGain(); a.gain.value = 0.5 / notes.length;
         o.connect(a); a.connect(filt); o.start(t); o.stop(t + dur + 0.2);
       });
     });
   };
-  const choir = (t, notes, dur, level) => {                       // формантный «хор»
+  // Яркий PWM-пад (два квадрата на голос, разведённых по detune с медленным LFO) — вместо
+  // формантного «хора» несёт верхний слой гармонии там, где заявлен «choir».
+  const choir = (t, notes, dur, level) => {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, level * 0.9), t + dur * 0.45);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, level * 0.9), t + dur * 0.35);
     g.gain.setValueAtTime(Math.max(0.0004, level * 0.9), t + dur * 0.7);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    g.connect(chorusIn); sendTo(g, verbIn, 1.25);
-    const mix = ctx.createGain(); mix.gain.value = 1;
-    [[720, 1.0, 3], [1180, 0.55, 4], [2600, 0.22, 6]].forEach(([f0, amp, q]) => {
-      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f0; bp.Q.value = q;
-      const a = ctx.createGain(); a.gain.value = amp;
-      mix.connect(bp); bp.connect(a); a.connect(g);
-    });
+    g.connect(chorusIn); sendTo(g, verbIn, track.reverb * 0.65);
     notes.forEach((midi, i) => {
-      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(midi + 12);
-      o.detune.value = (i % 2 ? 6 : -6) + (Math.random() - 0.5) * 7;
-      const a = ctx.createGain(); a.gain.value = 0.5 / notes.length;
-      const lfo = ctx.createOscillator(); lfo.frequency.value = 4.1 + i * 0.25;
-      const lg = ctx.createGain(); lg.gain.value = 4;
-      lfo.connect(lg); lg.connect(o.detune); lfo.start(t); lfo.stop(t + dur + 0.2);
-      o.connect(a); a.connect(mix); o.start(t); o.stop(t + dur + 0.2);
+      const f = hz(midi + 12);
+      const a = ctx.createGain(); a.gain.value = 0.4 / notes.length;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.3 + i * 0.05;
+      const lg = ctx.createGain(); lg.gain.value = 6;
+      lfo.start(t); lfo.stop(t + dur + 0.2);
+      [-8, 8].forEach((det) => {
+        const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.detune.value = det;
+        lg.connect(o.detune); lfo.connect(lg);
+        o.connect(a); o.start(t); o.stop(t + dur + 0.2);
+      });
+      a.connect(g);
     });
   };
+  // Синт-том вместо литавры: короткий питч-свип синусоиды.
   const timpani = (t, midi, vel) => {
     const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(hz(midi) * 1.4, t); o.frequency.exponentialRampToValueAtTime(hz(midi), t + 0.09);
-    g.gain.setValueAtTime(0.13 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
-    o.connect(g); g.connect(dry); sendTo(g, verbIn, 0.7); o.start(t); o.stop(t + 1.2);
-    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 420;
-    const ng = ctx.createGain(); ng.gain.setValueAtTime(0.05 * vel, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-    src.connect(f); f.connect(ng); ng.connect(dry); src.start(t); src.stop(t + 0.3);
+    o.type = 'sine'; o.frequency.setValueAtTime(hz(midi) * 2.2, t); o.frequency.exponentialRampToValueAtTime(hz(midi) * 0.9, t + 0.12);
+    g.gain.setValueAtTime(0.15 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g); g.connect(dry); sendTo(g, verbIn, 0.25); o.start(t); o.stop(t + 0.35);
   };
+  // «808»-бочка: синус с резким питч-дропом плюс щелчок атаки полосовым шумом.
   const kick = (t, vel) => {
     const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(125, t); o.frequency.exponentialRampToValueAtTime(44, t + 0.10);
-    g.gain.setValueAtTime(0.15 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.28);
+    o.type = 'sine'; o.frequency.setValueAtTime(155, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.09);
+    g.gain.setValueAtTime(0.22 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.36);
+    noiseHit(t, 0.012, 0.06 * vel, 'bandpass', 1800, 1.2);
   };
   const noiseHit = (t, dur, gain, type, freq, q, bus) => {
     const src = ctx.createBufferSource(); src.buffer = noiseBuf;
@@ -1069,14 +1106,16 @@ const Audio = (() => {
     const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f); f.connect(g); g.connect(bus || dry); src.start(t); src.stop(t + dur + 0.05);
   };
+  // Снейр+хлопок внахлёст, короче и жёстче прежнего — ближе к драм-машине, чем к оркестру.
   const snare = (t, vel) => {
-    noiseHit(t, 0.15, 0.05 * vel, 'bandpass', 1900, 0.9);
+    noiseHit(t, 0.13, 0.075 * vel, 'bandpass', 2200, 1.1);
+    noiseHit(t, 0.05, 0.05 * vel, 'highpass', 3800, 0.8);
     const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'triangle'; o.frequency.setValueAtTime(190, t);
-    g.gain.setValueAtTime(0.028 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
-    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.14);
+    o.type = 'triangle'; o.frequency.setValueAtTime(210, t);
+    g.gain.setValueAtTime(0.03 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.1);
   };
-  const hat = (t, open) => noiseHit(t, open ? 0.09 : 0.035, 0.02, 'highpass', 7600, 0.7);
+  const hat = (t, open) => noiseHit(t, open ? 0.14 : 0.045, open ? 0.022 : 0.026, 'highpass', 8200, 1.4);
 
   /* ------------------------------- СЕКВЕНСОР ------------------------------- */
   /* Атмосферный слой: низкий гул, «ветер» и сердцебиение под музыкой */
@@ -1145,10 +1184,20 @@ const Audio = (() => {
       if (has('strings')) strings(t, voicing.slice(1, 4), sd * 16 * 0.92, 0.042 * dyn);
       if (has('timpani') && (bar % 2 === 0)) timpani(t, voicing[0] - 12, 0.8 * dyn);
     }
-    // бас
-    if (pos === 0 || pos === 8) {
-      if (has('cello')) cello(t, voicing[0] - 12, sd * 8 * 0.95, 0.95 * dyn);
-      else if (has('bass')) piano(t + jitter(), voicing[0] - 12, 0.5 * accent(pos) * dyn, 1.1, 5);
+    // бас — постоянные восьмые с движением по тонам аккорда (root/fifth/octave/third),
+    // а не статичная педаль: главный источник «драйва» в синтвейве
+    if (pos % 2 === 0) {
+      const root = voicing[0] - 12;
+      const note = root + BASS_DEG[(pos / 2) % BASS_DEG.length];
+      const vel = (pos % 8 === 0 ? 0.95 : pos % 4 === 0 ? 0.72 : 0.56) * dyn;
+      if (has('cello')) cello(t, note, sd * 1.9, vel);
+      else if (has('bass')) piano(t + jitter(), note, 0.5 * vel, 0.45, 4);
+    }
+    // арпеджио по аккорду шестнадцатыми — накладывается на «полные» секции без
+    // собственной арпеджио-партии в аранжировке, характерный слой синтвейва
+    if (has('pad') && !has('harp')) {
+      const arpDeg = [1, 2, 3, 2][(pos / 2) % 4];
+      if (pos % 2 === 0) harp(t + jitter(), voicing[arpDeg % voicing.length] + 12, sd * 2.2, 0.3 * dyn);
     }
     // фигура левой руки
     const fig = LH[sc.lh] || LH.flow;
@@ -1197,7 +1246,8 @@ const Audio = (() => {
       }
       if (stepIdx > 0 && stepIdx % totalSteps === 0) advancePlaylist(true);   // пьеса сыграна целиком
       const sd = stepDur();
-      const swing = (stepIdx % 2 === 1) ? track.swing * sd : 0;
+      // синтвейву нужна ровная механическая сетка, а не джазовый свинг — приглушаем его
+      const swing = (stepIdx % 2 === 1) ? track.swing * sd * 0.35 : 0;
       scheduleStep(stepIdx, nextTime + swing);
       nextTime += sd; stepIdx += 1;
     }
