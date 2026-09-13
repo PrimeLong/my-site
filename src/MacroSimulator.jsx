@@ -4444,6 +4444,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
   const groups = roleDef.groups;
   const levers = LEVERS.filter((l) => groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
+  // «Ваши полномочия» разбиты на вкладки по подгруппам, а не одним длинным списком:
+  // при роли «оба ведомства» все ~22 ползунка подряд растягивали левую колонку
+  // намного выше центральной и правой, оставляя под ними пустое место на странице
+  const LEVER_TABS = [
+    groups.includes('monetary') && { id: 'monetary-core', label: 'Ставка и курс' },
+    groups.includes('monetary') && { id: 'monetary-macropru', label: 'Макропруденциальная' },
+    groups.includes('fiscal') && { id: 'fiscal-core', label: 'Расходы' },
+    groups.includes('fiscal') && { id: 'fiscal-taxes', label: 'Налоги' },
+    groups.includes('fiscal') && { id: 'fiscal-budget', label: 'Бюджет' },
+  ].filter(Boolean);
+  const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
   const snapshot = () => makeSnapshot({ setup, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
@@ -4642,7 +4653,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
             <Newspaper size={14} />Газета
           </button>
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={onRestart} title="Начать заново"><RotateCcw size={14} /></button>
+          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти в меню"
+            onClick={() => { if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); } }}>
+            <RotateCcw size={14} />
+          </button>
         </div>
       </div>
 
@@ -4735,48 +4749,65 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             </div>
             <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 10 }}>Приоритет: {goalDef.label}</div>
 
-            {groups.includes('monetary') && (
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 3, fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Денежно-кредитная политика</div>
+            {crisisActive && (
+              <div style={{ paddingBottom: 10 }}>
+                <button className="ems-btn" style={{ width: '100%', background: decisions.emergency ? COLOR.rust : COLOR.panelAlt, color: decisions.emergency ? '#fff' : COLOR.text, borderColor: COLOR.rust }}
+                  onClick={() => { Audio.play(decisions.emergency ? 'click' : 'alarm'); setLever('emergency', !decisions.emergency); }}>
+                  {decisions.emergency ? <Check size={13} style={{ verticalAlign: -2 }} /> : <ShieldAlert size={13} style={{ verticalAlign: -2 }} />} Экстренная поддержка банков
+                </button>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>Спасёт капитал банков, но ударит по доверию к ЦБ и добавит инфляции.</div>
+              </div>
+            )}
+
+            {LEVER_TABS.length > 1 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 10 }}>
+                {LEVER_TABS.map((t) => (
+                  <span key={t.id} className={`ems-tab ${levTab === t.id ? 'active' : ''}`} style={{ fontSize: 10.5, padding: '4px 8px' }}
+                    onClick={() => { Audio.play('tab'); setLevTab(t.id); }}>{t.label}</span>
+                ))}
+              </div>
+            )}
+
+            {levTab === 'monetary-core' && (
+              <div>
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
-                <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Макропруденциальная политика</div>
+              </div>
+            )}
+            {levTab === 'monetary-macropru' && (
+              <div>
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'macropru').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
-                {crisisActive && (
-                  <div style={{ padding: '10px 0' }}>
-                    <button className="ems-btn" style={{ width: '100%', background: decisions.emergency ? COLOR.rust : COLOR.panelAlt, color: decisions.emergency ? '#fff' : COLOR.text, borderColor: COLOR.rust }}
-                      onClick={() => { Audio.play(decisions.emergency ? 'click' : 'alarm'); setLever('emergency', !decisions.emergency); }}>
-                      {decisions.emergency ? <Check size={13} style={{ verticalAlign: -2 }} /> : <ShieldAlert size={13} style={{ verticalAlign: -2 }} />} Экстренная поддержка банков
-                    </button>
-                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>Спасёт капитал банков, но ударит по доверию к ЦБ и добавит инфляции.</div>
-                  </div>
-                )}
               </div>
             )}
-            {groups.includes('fiscal') && (
+            {levTab === 'fiscal-core' && (
               <div>
-                <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 3, fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Расходы</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
-                <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Налоги</div>
+              </div>
+            )}
+            {levTab === 'fiscal-taxes' && (
+              <div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'taxes').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
-                <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Статьи бюджета</div>
-                <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
+              </div>
+            )}
+            {levTab === 'fiscal-budget' && (
+              <div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
                     value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
