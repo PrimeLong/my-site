@@ -84,6 +84,11 @@ function freshRoom(opts) {
     // равно нужны трейдерам как контекст рынка — см. resolveQuarter
     lastActions: { central_bank: null, ministry_finance: null },
     chat: [],
+    // стоимость портфеля трейдера — единственное, что сервер вообще знает про
+    // портфели (сами позиции/сделки клиентские, см. onTrade в MacroSimulator.jsx):
+    // без этого числа соперник не мог сравнить себя с чужим результатом, только
+    // со статичными эталонами (индекс/облигации/депозит/инфляция)
+    portfolioValues: {},
   };
 }
 
@@ -109,6 +114,7 @@ const publicView = (room) => {
     lastActions: room.lastActions,
     goals: { central_bank: room.goalCb, ministry_finance: room.goalMof },
     chat: room.chat || [],
+    portfolioValues: room.portfolioValues || {},
   };
 };
 
@@ -239,8 +245,13 @@ async function handleRequest(req, res) {
       if (!SEATS.includes(seat)) return { error: 'Неизвестная роль', status: 400 };
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
       const decisions = sanitizeDecisions(room.decisions, body.decisions, seat);
+      // стоимость портфеля трейдера — сообщается им самим при готовности к
+      // следующему кварталу; сервер её не считает (позиции клиентские), просто
+      // хранит, чтобы соперник видел её в своём списке эталонов (см. publicView)
+      const portfolioValues = Number.isFinite(body.portfolioValue)
+        ? { ...room.portfolioValues, [seat]: clamp(body.portfolioValue, 0, 1e9) } : room.portfolioValues;
       const next = { ...room, submissions: { ...room.submissions, [seat]: { decisions, note: cleanString(body.note, 280) } },
-        version: room.version + 1 };
+        portfolioValues, version: room.version + 1 };
       const bothIn = SEATS.every((sx) => next.submissions[sx] || !next.seats[sx]);
       return bothIn ? resolveQuarter(next) : next;
     });

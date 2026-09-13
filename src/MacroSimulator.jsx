@@ -3261,7 +3261,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
   );
 }
 
-function PortfolioSummary({ book, economy, live, prevValue, goal }) {
+function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
   const parts = bookParts(book, economy, live);
   const equity = book.cash + parts.spot + parts.futPnl + parts.optVal;
   const real = equity * 100 / economy.priceLevel;
@@ -3334,6 +3334,7 @@ function PortfolioSummary({ book, economy, live, prevValue, goal }) {
           <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 4 }}>Против эталонов</div>
           {[{ id: 'me', label: 'Ваш портфель', v: equity, color: COLOR.gold }]
             .concat(BENCHMARKS.map((b) => ({ id: b.id, label: b.label, v: bench[b.id], color: b.color })))
+            .concat(opponent && Number.isFinite(opponent.value) ? [{ id: 'opponent', label: opponent.label, v: opponent.value, color: COLOR.rust }] : [])
             .sort((a, b) => b.v - a.v)
             .map((r, idx) => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, padding: '2px 0',
@@ -4123,7 +4124,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const send = async () => {
     setBusy(true); setError('');
     try {
-      const r = await submitDecisions(id, seat, token, decisions, null);
+      // стоимость портфеля сообщаем только в «рыночной» комнате — сервер не
+      // знает позиций трейдера (они клиентские), только текущую сумму, чтобы
+      // соперник видел её в своём списке эталонов (см. PortfolioSummary)
+      const portfolioValue = isTraderRoom ? (() => {
+        const p = bookParts(portfolio, room.economy, null);
+        return portfolio.cash + p.spot + p.futPnl + p.optVal;
+      })() : undefined;
+      const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue);
       setRoom(r.room); setSent(true); Audio.play('stamp');
     } catch (e) { failWithError(e); } finally { setBusy(false); }
   };
@@ -4335,7 +4343,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isTraderRoom ? (
             <PortfolioSummary book={portfolio} economy={economy} live={null} goal="max_wealth"
-              prevValue={portfolio.history && portfolio.history.length > 1 ? portfolio.history[portfolio.history.length - 2] : null} />
+              prevValue={portfolio.history && portfolio.history.length > 1 ? portfolio.history[portfolio.history.length - 2] : null}
+              opponent={{ label: room.names[otherSeat] || otherRole.short, value: (room.portfolioValues || {})[otherSeat] }} />
           ) : (
             <>
               <div className="ems-panel" style={{ padding: 14 }}>
