@@ -2240,13 +2240,46 @@ function parseSave(text) {
   return data;
 }
 
+/* Три локальных слота на партию — быстрое сохранение прямо в браузере, без
+   скачивания файла. Хранит полный снимок (как и файл), просто в localStorage. */
+const SOLO_SLOTS_KEY = 'ems-solo-slots';
+const SOLO_SLOT_COUNT = 3;
+const loadSoloSlots = () => {
+  let arr;
+  try { arr = JSON.parse(localStorage.getItem(SOLO_SLOTS_KEY) || '[]'); } catch { arr = []; }
+  if (!Array.isArray(arr)) arr = [];
+  const slots = arr.slice(0, SOLO_SLOT_COUNT).map((s) => ((s && s.snapshot) ? s : null));
+  while (slots.length < SOLO_SLOT_COUNT) slots.push(null);
+  return slots;
+};
+const writeSoloSlots = (slots) => {
+  try { localStorage.setItem(SOLO_SLOTS_KEY, JSON.stringify(slots)); return true; }
+  catch { return false; /* приватный режим или не хватило места в хранилище */ }
+};
+
 function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [tab, setTab] = useState(mode || 'save');
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [slots, setSlots] = useState(loadSoloSlots);
   const payload = useMemo(() => (snapshot ? serializeSave(snapshot) : ''), [snapshot]);
   const sizeKb = (payload.length / 1024).toFixed(1);
+
+  const slotLabel = (snap) => {
+    const roleTitle = (ROLES.find((r) => r.id === snap.setup.role) || {}).short || snap.setup.role;
+    return `${roleTitle} · ${quarterLabel(Math.max(1, (snap.quarterIndex || 1) - 1))}`;
+  };
+  const saveToSlot = (idx) => {
+    if (!snapshot) return;
+    if (slots[idx] && !window.confirm(`Перезаписать слот ${idx + 1}?`)) return;
+    const next = [...slots];
+    next[idx] = { savedAt: new Date().toISOString(), snapshot };
+    if (writeSoloSlots(next)) { setSlots(next); setError(''); Audio.play('stamp'); }
+    else setError('Не удалось сохранить в браузере — возможно, не хватает места. Скачайте файл вручную.');
+  };
+  const loadFromSlot = (idx) => { const slot = slots[idx]; if (slot) { Audio.play('stamp'); onLoad(slot.snapshot); } };
+  const deleteSlot = (idx) => { const next = [...slots]; next[idx] = null; writeSoloSlots(next); setSlots(next); };
 
   const download = () => {
     try {
@@ -2290,6 +2323,36 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
             <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
           ))}
         </div>
+
+        <div className="ems-panel" style={{ padding: 11, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>Быстрые слоты — хранятся в этом браузере, без файла</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {slots.map((slot, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px',
+                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 11.5 }}>
+                <span style={{ flex: 1, color: slot ? COLOR.text : COLOR.faint }}>
+                  Слот {idx + 1}: {slot ? slotLabel(slot.snapshot) : 'пусто'}
+                </span>
+                {tab === 'save' && snapshot && (
+                  <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} onClick={() => saveToSlot(idx)}>
+                    {slot ? 'Перезаписать' : 'Сохранить'}
+                  </button>
+                )}
+                {tab === 'load' && slot && (
+                  <>
+                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} onClick={() => loadFromSlot(idx)}>Загрузить</button>
+                    <button onClick={() => deleteSlot(idx)} aria-label={`Удалить слот ${idx + 1}`}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                      <X size={12} />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 10 }}>{error}</div>}
+
         {tab === 'save' ? (
           <>
             <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
@@ -2315,7 +2378,6 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
             <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Вставьте сюда содержимое файла сохранения…"
               className="ems-mono ems-scroll"
               style={{ width: '100%', height: 170, background: COLOR.bg, color: COLOR.text, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 9.5, padding: 9, resize: 'vertical' }} />
-            {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 7, marginTop: 10, alignItems: 'center' }}>
               <label className="ems-btn" style={{ flex: 1, padding: '9px 0', textAlign: 'center', cursor: 'pointer' }}>
                 <Upload size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Выбрать файл
