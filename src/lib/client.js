@@ -11,19 +11,25 @@ export const joinRoom = (id, seat, name) => post({ action: 'join', id, seat, nam
 export const submitDecisions = (id, seat, token, decisions, note) =>
   post({ action: 'submit', id, seat, token, decisions, note });
 export const cancelSubmission = (id, seat, token) => post({ action: 'unsubmit', id, seat, token });
-export async function fetchRoom(id, since) {
-  const r = await fetch(`${API}?id=${encodeURIComponent(id)}${since ? `&since=${since}` : ''}`);
+export const leaveRoom = (id, seat, token) => post({ action: 'leave', id, seat, token });
+export async function fetchRoom(id, since, seat, token) {
+  const params = new URLSearchParams({ id });
+  if (since) params.set('since', since);
+  // seat/token тут только для presence-хартбита (см. api/room.js): сервер отмечает,
+  // что это место ещё «на связи», чтобы партнёр видел уход по факту, а не по статусу навечно
+  if (seat && token) { params.set('seat', seat); params.set('token', token); }
+  const r = await fetch(`${API}?${params.toString()}`);
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Комната недоступна');
   return data;
 }
 /* Опрос сервера: вызывает onRoom при каждом изменении версии */
-export function watchRoom(id, onRoom, onError, intervalMs = 2500) {
+export function watchRoom(id, onRoom, onError, intervalMs = 2500, seat, token) {
   let version = 0; let stop = false;
   const tick = async () => {
     if (stop) return;
     try {
-      const data = await fetchRoom(id, version);
+      const data = await fetchRoom(id, version, seat, token);
       if (data.room) { version = data.room.version; onRoom(data.room); }
     } catch (e) { if (onError) onError(e); }
     if (!stop) setTimeout(tick, intervalMs);

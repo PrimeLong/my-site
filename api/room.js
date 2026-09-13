@@ -13,6 +13,9 @@ const FX_REGIME_IDS = new Set(FX_REGIMES.map((r) => r.id));
 const code = () => randomBytes(4).toString('hex').toUpperCase().slice(0, 5);
 const token = () => randomUUID();
 const cleanString = (v, maxLen) => (typeof v === 'string' ? v.slice(0, maxLen) : null);
+// партнёр опрашивает раз в ~2.5с; если дольше 12с не было ни одного запроса с его
+// токеном — считаем, что вкладка закрыта/сеть легла, и показываем это второму игроку
+const PRESENCE_TIMEOUT_MS = 12000;
 
 /* Решения приходят от клиента как есть: обрезаем каждый рычаг до его
    допустимого диапазона и отбрасываем всё незнакомое, чтобы NaN/Infinity
@@ -39,6 +42,7 @@ function freshRoom(opts) {
     goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
     seats: { central_bank: null, ministry_finance: null },
     names: { central_bank: null, ministry_finance: null },
+    lastSeen: { central_bank: null, ministry_finance: null },
     economy, quarterIndex: 1,
     decisions: defaultDecisions(economy),
     pendingImpulses: [], eventCooldowns: {}, stories: [],
@@ -50,17 +54,22 @@ function freshRoom(opts) {
 }
 
 /* публичный вид комнаты: без токенов игроков */
-const publicView = (room) => ({
-  id: room.id, version: room.version, difficulty: room.difficulty,
-  quarterIndex: room.quarterIndex, quarterLabel: quarterLabel(room.quarterIndex),
-  economy: room.economy, history: room.history, news: room.news.slice(0, 120),
-  report: room.report, reasons: room.reasons, stories: room.stories,
-  names: room.names,
-  ready: { central_bank: !!room.submissions.central_bank, ministry_finance: !!room.submissions.ministry_finance },
-  occupied: { central_bank: !!room.seats.central_bank, ministry_finance: !!room.seats.ministry_finance },
-  lastActions: room.lastActions,
-  goals: { central_bank: room.goalCb, ministry_finance: room.goalMof },
-});
+const publicView = (room) => {
+  const lastSeen = room.lastSeen || { central_bank: null, ministry_finance: null };
+  const isConnected = (seat) => !!room.seats[seat] && !!lastSeen[seat] && (Date.now() - lastSeen[seat]) < PRESENCE_TIMEOUT_MS;
+  return {
+    id: room.id, version: room.version, difficulty: room.difficulty,
+    quarterIndex: room.quarterIndex, quarterLabel: quarterLabel(room.quarterIndex),
+    economy: room.economy, history: room.history, news: room.news.slice(0, 120),
+    report: room.report, reasons: room.reasons, stories: room.stories,
+    names: room.names,
+    ready: { central_bank: !!room.submissions.central_bank, ministry_finance: !!room.submissions.ministry_finance },
+    occupied: { central_bank: !!room.seats.central_bank, ministry_finance: !!room.seats.ministry_finance },
+    connected: { central_bank: isConnected('central_bank'), ministry_finance: isConnected('ministry_finance') },
+    lastActions: room.lastActions,
+    goals: { central_bank: room.goalCb, ministry_finance: room.goalMof },
+  };
+};
 
 function resolveQuarter(room) {
   const subs = room.submissions;
@@ -100,10 +109,21 @@ function resolveQuarter(room) {
 
 async function handleRequest(req, res) {
   if (req.method === 'GET') {
-    const { id, since } = req.query;
+    const { id, since, seat, token: seatToken } = req.query;
     const room = await getRoom(String(id || '').toUpperCase());
     if (!room) return res.status(404).json({ error: 'Комната не найдена' });
-    if (since && Number(since) === room.version) return res.status(200).json({ unchanged: true, version: room.version });
+    // хартбит присутствия: не версия комнаты, поэтому не должен будить второго
+    // игрока полным обновлением — пишем без bump-а version
+    if (SEATS.includes(seat) && room.seats[seat] && room.seats[seat] === seatToken) {
+      room.lastSeen = { ...room.lastSeen, [seat]: Date.now() };
+      await setRoom(room.id, room);
+    }
+    // «не изменилось» — валидная экономия трафика только пока оба присутствующих
+    // игрока ещё в пределах таймаута: иначе партнёр никогда не узнает об отключении,
+    // ведь version сам по себе от ухода со связи не меняется
+    const lastSeen = room.lastSeen || { central_bank: null, ministry_finance: null };
+    const anyStale = SEATS.some((sx) => room.seats[sx] && (!lastSeen[sx] || (Date.now() - lastSeen[sx]) >= PRESENCE_TIMEOUT_MS));
+    if (!anyStale && since && Number(since) === room.version) return res.status(200).json({ unchanged: true, version: room.version });
     return res.status(200).json({ room: publicView(room) });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Только GET и POST' });
@@ -160,6 +180,20 @@ async function handleRequest(req, res) {
     const id = String(body.id || '').toUpperCase();
     const out = await withRoom(id, (room) => ({ ...room,
       submissions: { ...room.submissions, [body.seat]: null }, version: room.version + 1 }));
+    if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    return res.status(200).json({ room: publicView(out.room) });
+  }
+
+  if (action === 'leave') {
+    const id = String(body.id || '').toUpperCase();
+    const seat = body.seat;
+    if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    const out = await withRoom(id, (room) => {
+      if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
+      return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
+        submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
+        version: room.version + 1 };
+    });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
     return res.status(200).json({ room: publicView(out.room) });
   }
