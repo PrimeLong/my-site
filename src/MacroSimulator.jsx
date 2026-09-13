@@ -76,27 +76,73 @@ const GlobalStyle = () => (
     .ems-root :focus-visible { outline: 2px solid ${COLOR.goldSoft}; outline-offset: 2px; }
     .ems-serif { font-family:${FONT.serif}; }
     .ems-mono { font-family:${FONT.mono}; font-variant-numeric: tabular-nums; }
-    .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:4px; }
-    .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:4px; }
+    .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px -10px rgba(0,0,0,0.4); }
+    .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.14), 0 14px 30px -12px rgba(0,0,0,0.55); }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
-    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:3px; font-size:13px; transition:background .15s, border-color .15s, transform .1s; }
-    .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; }
+    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; }
+    .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; box-shadow: 0 3px 10px -4px rgba(0,0,0,0.35); }
     .ems-btn:active { transform: scale(0.98); }
-    .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; }
-    .ems-btn.primary:hover { background:${COLOR.goldSoft}; border-color:${COLOR.goldSoft}; }
-    .ems-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+    .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 12px -3px ${COLOR.goldDim}; }
+    .ems-btn.primary:hover { background:${COLOR.goldSoft}; border-color:${COLOR.goldSoft}; box-shadow: 0 4px 18px -3px ${COLOR.goldDim}; }
+    .ems-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }
     .ems-slider { -webkit-appearance:none; width:100%; height:4px; background:${COLOR.border}; outline:none; border-radius:2px; }
     .ems-slider::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-slider::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-scroll::-webkit-scrollbar { width:6px; height:6px; }
     .ems-scroll::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:3px; }
-    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:3px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; transition:background .15s, color .15s; }
+    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
-    .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; }
+    .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
     .ems-tab.active:hover { background:${COLOR.goldSoft}; color:${COLOR.ink}; }
     .ems-fade-in { animation: emsFade .35s ease; }
     @keyframes emsFade { from { opacity:0; transform:translateY(4px);} to { opacity:1; transform:translateY(0);} }
     @media (prefers-reduced-motion: reduce) { .ems-fade-in { animation:none; } .ems-btn, .ems-tab { transition:none; } }
+
+    /* --- «Витринные» приёмы: крупный заголовок экрана, интерактивные карточки,
+       атмосферный фон — используются на входных экранах (меню, новая партия,
+       обучение, сеть), а не в плотном игровом дашборде. --- */
+    .ems-hero-bg { position: relative; z-index: 0; }
+    .ems-hero-bg::before {
+      content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(760px 460px at 12% -12%, ${COLOR.goldDim} 0%, transparent 62%),
+        radial-gradient(640px 420px at 105% 8%, ${COLOR.tealDim} 0%, transparent 58%);
+      opacity: 0.8;
+    }
+    .ems-hero-eyebrow { font-family: ${FONT.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${COLOR.gold}; }
+    .ems-hero-title { font-family: ${FONT.serif}; font-size: 40px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.14; margin: 12px 0 0;
+      color: ${COLOR.text}; background: linear-gradient(180deg, ${COLOR.text} 0%, ${COLOR.muted} 145%);
+      background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .ems-hero-title.small { font-size: 27px; }
+    @media (max-width: 480px) { .ems-hero-title { font-size: 30px; } .ems-hero-title.small { font-size: 22px; } }
+    .ems-hero-rule { width: 88px; height: 3px; margin: 18px auto 0; border-radius: 2px;
+      background: linear-gradient(90deg, transparent, ${COLOR.gold}, transparent); }
+    .ems-hero-badge { display: inline-flex; align-items: center; gap: 7px; font-family: ${FONT.mono}; font-size: 11px; color: ${COLOR.muted};
+      padding: 6px 13px; border: 1px solid ${COLOR.border}; border-radius: 999px; background: ${COLOR.panelAlt}; margin-top: 18px; }
+    .ems-hero-lede { color: ${COLOR.muted}; font-size: 14px; margin: 16px auto 0; max-width: 560px; line-height: 1.65; }
+    .ems-card-btn { position: relative; display: flex; align-items: center; gap: 15px; cursor: pointer;
+      border-radius: 13px; border: 1px solid ${COLOR.border}; background: ${COLOR.panel};
+      box-shadow: 0 1px 2px rgba(0,0,0,0.14), 0 12px 28px -16px rgba(0,0,0,0.55);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
+    .ems-card-btn:hover, .ems-card-btn:focus-visible { transform: translateY(-2px); border-color: ${COLOR.gold};
+      background: ${COLOR.panelRaised}; box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 18px 36px -16px rgba(0,0,0,0.65); }
+    .ems-card-btn:active { transform: translateY(0); }
+    .ems-card-icon { width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(150deg, ${COLOR.goldDim}, transparent); border: 1px solid ${COLOR.goldDim};
+      transition: transform .18s ease, border-color .18s ease; }
+    .ems-card-btn:hover .ems-card-icon { transform: scale(1.07) rotate(-2deg); border-color: ${COLOR.gold}; }
+    .ems-card-chevron { transition: transform .18s ease; }
+    .ems-card-btn:hover .ems-card-chevron { transform: translateX(3px) rotate(-90deg); }
+    .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; }
+    .ems-row-hover:hover { background: ${COLOR.panelRaised} !important; border-color: ${COLOR.borderStrong} !important; }
+    .ems-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 10.5px;
+      cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+    .ems-theme-chip:hover { transform: translateY(-1px); }
+    .ems-theme-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
+    @media (prefers-reduced-motion: reduce) {
+      .ems-card-btn, .ems-card-icon, .ems-card-chevron, .ems-theme-chip { transition: none !important; }
+      .ems-card-btn:hover, .ems-card-btn:hover .ems-card-icon, .ems-card-btn:hover .ems-card-chevron { transform: none !important; }
+    }
     .ems-grid { display:grid; grid-template-columns: 300px minmax(0,1fr) 300px; gap:14px; align-items:start; }
     @media (max-width: 1240px) { .ems-grid { grid-template-columns: 280px minmax(0,1fr); } }
     @media (max-width: 860px) { .ems-grid { grid-template-columns: minmax(0,1fr); padding: 12px !important; gap: 10px; } }
@@ -4465,9 +4511,11 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
           <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, marginBottom: 8 }}>Тема оформления</div>
           {Object.values(THEMES).map((t) => (
             <button key={t.id} className="ems-btn" style={{ width: '100%', textAlign: 'left', padding: '6px 9px', fontSize: 11.5, marginBottom: 4,
+              display: 'flex', alignItems: 'center', gap: 7,
               background: theme === t.id ? COLOR.gold : COLOR.panelAlt, color: theme === t.id ? COLOR.ink : COLOR.text,
               borderColor: theme === t.id ? COLOR.gold : COLOR.border }}
               onClick={() => { Audio.play('tab'); setTheme(t.id); }}>
+              <span className="ems-theme-dot" style={{ background: t.colors.gold }} />
               {t.name}{t.id === 'contrast' ? ' · доступность' : ''}
             </button>
           ))}
@@ -4812,8 +4860,8 @@ function NetworkLobby({ onEnter }) {
               const rd = slot && seatRole(slot.seat);
               const SlotIcon = rd && ROLE_ICON[rd.icon];
               return (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
-                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                   {slot ? (
                     <>
                       {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
@@ -4947,14 +4995,21 @@ function NetworkLobby({ onEnter }) {
 
 function NetworkEntryScreen({ onEnter, onBack }) {
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <div style={{ maxWidth: 640, width: '100%' }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); onBack(); }}>
           ← Назад в меню
         </button>
-        <NetworkLobby onEnter={onEnter} />
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div className="ems-hero-eyebrow">Мультиплеер</div>
+          <div className="ems-hero-title small">Партия на двоих</div>
+          <div className="ems-hero-rule" />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <NetworkLobby onEnter={onEnter} />
+        </div>
       </div>
     </div>
   );
@@ -5600,59 +5655,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 // Первый экран после запуска: выбор направления (новая партия / сеть /
 // продолжить / достижения), а не сразу детальная анкета — её показывает
 // SetupScreen отдельным шагом, только для новой одиночной партии.
-// Стили только для главного меню — не трогают общие .ems-* классы, которыми
-// пользуются остальные экраны. Пилот редизайна: если приживётся, эти же приёмы
-// (мягкая тень на панелях, скруглённые карточки, градиентный заголовок) можно
-// будет вынести в GlobalStyle и распространить на всё приложение.
-const MenuStyle = () => (
-  <style>{`
-    .ems-menu-shell { position: relative; z-index: 0; }
-    .ems-menu-shell::before {
-      content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-      background:
-        radial-gradient(760px 460px at 12% -12%, ${COLOR.goldDim} 0%, transparent 62%),
-        radial-gradient(640px 420px at 105% 8%, ${COLOR.tealDim} 0%, transparent 58%);
-      opacity: 0.8;
-    }
-    .ems-menu-eyebrow { font-family: ${FONT.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${COLOR.gold}; }
-    .ems-menu-title { font-family: ${FONT.serif}; font-size: 42px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.12; margin: 12px 0 0;
-      color: ${COLOR.text}; background: linear-gradient(180deg, ${COLOR.text} 0%, ${COLOR.muted} 145%);
-      background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .ems-menu-rule { width: 88px; height: 3px; margin: 18px auto 0; border-radius: 2px;
-      background: linear-gradient(90deg, transparent, ${COLOR.gold}, transparent); }
-    .ems-menu-badge { display: inline-flex; align-items: center; gap: 7px; font-family: ${FONT.mono}; font-size: 11px; color: ${COLOR.muted};
-      padding: 6px 13px; border: 1px solid ${COLOR.border}; border-radius: 999px; background: ${COLOR.panelAlt}; margin-top: 18px; }
-    .ems-menu-lede { color: ${COLOR.muted}; font-size: 14px; margin: 16px auto 0; max-width: 520px; line-height: 1.65; }
-    .ems-menu-card { position: relative; display: flex; align-items: center; gap: 15px; padding: 17px 20px; cursor: pointer;
-      border-radius: 13px; border: 1px solid ${COLOR.border}; background: ${COLOR.panel};
-      box-shadow: 0 1px 2px rgba(0,0,0,0.14), 0 12px 28px -16px rgba(0,0,0,0.55);
-      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
-    .ems-menu-card:hover, .ems-menu-card:focus-visible { transform: translateY(-2px); border-color: ${COLOR.gold};
-      background: ${COLOR.panelRaised}; box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 18px 36px -16px rgba(0,0,0,0.65); }
-    .ems-menu-card:active { transform: translateY(0); }
-    .ems-menu-icon { width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-      background: linear-gradient(150deg, ${COLOR.goldDim}, transparent); border: 1px solid ${COLOR.goldDim};
-      transition: transform .18s ease, border-color .18s ease; }
-    .ems-menu-card:hover .ems-menu-icon { transform: scale(1.07) rotate(-2deg); border-color: ${COLOR.gold}; }
-    .ems-menu-chevron { transition: transform .18s ease; }
-    .ems-menu-card:hover .ems-menu-chevron { transform: translateX(3px) rotate(-90deg); }
-    .ems-menu-panel { border-radius: 13px !important; box-shadow: 0 1px 2px rgba(0,0,0,0.12), 0 8px 20px -14px rgba(0,0,0,0.5); }
-    .ems-menu-save-row { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; }
-    .ems-menu-save-row:hover { background: ${COLOR.panelRaised} !important; border-color: ${COLOR.borderStrong} !important; }
-    .ems-menu-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 10.5px;
-      cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
-    .ems-menu-theme-chip:hover { transform: translateY(-1px); }
-    .ems-menu-theme-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
-    @media (prefers-reduced-motion: reduce) {
-      .ems-menu-card, .ems-menu-icon, .ems-menu-chevron, .ems-menu-theme-chip { transition: none !important; }
-      .ems-menu-card:hover, .ems-menu-card:hover .ems-menu-icon, .ems-menu-card:hover .ems-menu-chevron { transform: none !important; }
-    }
-    @media (max-width: 480px) {
-      .ems-menu-title { font-size: 31px; }
-    }
-  `}</style>
-);
-
+// Витринные классы (.ems-hero-*, .ems-card-btn, .ems-theme-*) определены в
+// GlobalStyle и переиспользуются на всех входных экранах (меню, новая партия,
+// обучение, сеть) — не только здесь.
 function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad }) {
   const playerId = useMemo(getPlayerId, []);
   const [soloSlots, setSoloSlots] = useState(null);
@@ -5689,24 +5694,23 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   ];
 
   return (
-    <div className="ems-root ems-menu-shell" style={{ display: 'flex', justifyContent: 'center', padding: '56px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '56px 16px' }}>
       <GlobalStyle />
-      <MenuStyle />
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <div style={{ maxWidth: 640, width: '100%' }}>
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 40 }}>
-          <div className="ems-menu-eyebrow">Симулятор макроэкономической политики</div>
-          <div className="ems-menu-title">Экономическая панель государства</div>
-          <div className="ems-menu-rule" />
-          <span className="ems-menu-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</span>
-          <div className="ems-menu-lede">
+          <div className="ems-hero-eyebrow">Симулятор макроэкономической политики</div>
+          <div className="ems-hero-title">Экономическая панель государства</div>
+          <div className="ems-hero-rule" />
+          <span className="ems-hero-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</span>
+          <div className="ems-hero-lede">
             Ставка → кредит → спрос → выпуск → занятость → цены → ожидания. Управляйте центральным банком, Минфином
             или обоими сразу — соло против ботов со своим характером или вдвоём по сети.
           </div>
         </div>
 
         {storageMode === 'memory' && (
-          <div className="ems-panel ems-menu-panel ems-fade-in" style={{ padding: 13, marginBottom: 16, borderColor: COLOR.rust, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div className="ems-panel ems-fade-in" style={{ padding: 13, marginBottom: 16, borderColor: COLOR.rust, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
               Сервер не подключён к общему хранилищу (Redis) — сохранения живут только в памяти одного случайного
@@ -5718,7 +5722,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
         )}
 
         {hasSaves && (
-          <div className="ems-panel ems-menu-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
+          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
               <Clock size={13} color={COLOR.teal} />
               <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
@@ -5730,7 +5734,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
                 if (!slot) return null;
                 const roleTitle = (ROLES.find((r) => r.id === slot.role) || {}).short || slot.role;
                 return (
-                  <div key={idx} className="ems-menu-save-row" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                  <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
                     background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                     <span style={{ flex: 1, color: COLOR.text }}>{roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}</span>
                     <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
@@ -5751,17 +5755,17 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
           {MENU_ITEMS.map((item, i) => {
             const Icon = item.icon;
             return (
-              <div key={item.id} onClick={item.action} className="ems-menu-card ems-fade-in"
-                style={{ animationDelay: `${80 + i * 55}ms` }}
+              <div key={item.id} onClick={item.action} className="ems-card-btn ems-fade-in"
+                style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms` }}
                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') item.action(); }}>
-                <div className="ems-menu-icon">
+                <div className="ems-card-icon">
                   <Icon size={19} color={COLOR.gold} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{item.title}</div>
                   <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{item.desc}</div>
                 </div>
-                <ChevronDown className="ems-menu-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
+                <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
               </div>
             );
           })}
@@ -5770,11 +5774,11 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10.5, color: COLOR.faint, marginRight: 2 }}>Оформление:</span>
           {Object.values(THEMES).map((t) => (
-            <button key={t.id} className="ems-menu-theme-chip" style={{
+            <button key={t.id} className="ems-theme-chip" style={{
               background: theme === t.id ? COLOR.gold : COLOR.panelAlt, color: theme === t.id ? COLOR.ink : COLOR.muted,
               border: `1px solid ${theme === t.id ? COLOR.gold : COLOR.border}` }}
               onClick={() => { Audio.play('tab'); setTheme(t.id); }}>
-              <span className="ems-menu-theme-dot" style={{ background: t.colors.gold }} />
+              <span className="ems-theme-dot" style={{ background: t.colors.gold }} />
               {t.name}
             </button>
           ))}
@@ -5894,7 +5898,7 @@ function TutorialScreen({ onFinish }) {
   };
 
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <AchievementToast toast={achToast} />
       <div style={{ maxWidth: 640, width: '100%' }}>
@@ -5903,9 +5907,9 @@ function TutorialScreen({ onFinish }) {
           ← Прервать обучение
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+        <div key={step} className="ems-fade-in" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
           <span className="ems-serif" style={{ fontSize: 22, fontWeight: 600 }}>{cur.title}</span>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>шаг {step + 1} из {TUTORIAL_STEPS.length}</span>
+          <span className="ems-hero-badge" style={{ marginTop: 0 }}>шаг {step + 1} из {TUTORIAL_STEPS.length}</span>
         </div>
         <div className="ems-hr" style={{ marginBottom: 18 }} />
 
@@ -5979,17 +5983,19 @@ function SetupScreen({ onStart, onBack }) {
   const personas = personaBlocks.length ? personaBlocks : null;
 
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <div style={{ maxWidth: 800, width: '100%' }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); onBack(); }}>
           ← Назад в меню
         </button>
-        <div style={{ textAlign: 'center', marginBottom: 34 }}>
-          <div className="ems-serif" style={{ fontSize: 27, fontWeight: 600, letterSpacing: '-0.01em' }}>Новая партия</div>
-          <div className="ems-mono" style={{ color: COLOR.faint, fontSize: 11, marginTop: 9 }}>{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</div>
-          <div style={{ color: COLOR.muted, fontSize: 13.5, marginTop: 14, maxWidth: 600, margin: '14px auto 0', lineHeight: 1.55 }}>
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 34 }}>
+          <div className="ems-hero-eyebrow">Новая партия</div>
+          <div className="ems-hero-title small">Вступление в должность</div>
+          <div className="ems-hero-rule" />
+          <span className="ems-hero-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear}</span>
+          <div className="ems-hero-lede">
             Экономика работает как цепочка причин: ставка → рыночные ставки → кредит → спрос → выпуск → занятость → зарплаты → цены → ожидания. Второй ветвью власти управляет бот со своим характером — и у него будут к вам требования.
           </div>
         </div>
@@ -6002,11 +6008,15 @@ function SetupScreen({ onStart, onBack }) {
           {ROLES.map((r) => {
             const Icon = ROLE_ICON[r.icon]; const active = role === r.id;
             return (
-              <div key={r.id} onClick={() => { Audio.prime(); Audio.play('click'); setRole(r.id); }} className="ems-panel"
-                style={{ padding: 16, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+              <div key={r.id} onClick={() => { Audio.prime(); Audio.play('click'); setRole(r.id); }} className="ems-card-btn"
+                style={{ padding: 16, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                  borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setRole(r.id); }}>
                 {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 14, right: 14 }} />}
-                <Icon size={20} color={active ? COLOR.gold : COLOR.muted} />
-                <div className="ems-serif" style={{ fontSize: 14.5, margin: '9px 0 5px', color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
+                <div className="ems-card-icon" style={{ width: 36, height: 36, marginBottom: 10 }}>
+                  <Icon size={17} color={COLOR.gold} />
+                </div>
+                <div className="ems-serif" style={{ fontSize: 14.5, marginBottom: 5, color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
                 <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>{r.desc}</div>
               </div>
             );
@@ -6028,8 +6038,10 @@ function SetupScreen({ onStart, onBack }) {
               {blk.list.map((p) => {
                 const active = blk.value === p.id;
                 return (
-                  <div key={p.id} onClick={() => { Audio.play('click'); blk.set(p.id); }} className="ems-panel"
-                    style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+                  <div key={p.id} onClick={() => { Audio.play('click'); blk.set(p.id); }} className="ems-card-btn"
+                    style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                      borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                    role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') blk.set(p.id); }}>
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Bot size={14} color={active ? COLOR.gold : COLOR.muted} />
@@ -6043,8 +6055,10 @@ function SetupScreen({ onStart, onBack }) {
               {(() => {
                 const active = blk.value === 'random';
                 return (
-                  <div onClick={() => { Audio.play('click'); blk.set('random'); }} className="ems-panel"
-                    style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+                  <div onClick={() => { Audio.play('click'); blk.set('random'); }} className="ems-card-btn"
+                    style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                      borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                    role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') blk.set('random'); }}>
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
@@ -6947,6 +6961,11 @@ export default function MacroSimulator() {
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
+  // переключение между меню/анкетой/сетью/игрой не перезагружает страницу,
+  // поэтому без явного сброса скролл оставался там, где был на предыдущем
+  // экране — короткий новый экран открывался уже наполовину прокрученным
+  const screenKey = network ? 'network-game' : setup ? 'game' : view;
+  React.useEffect(() => { window.scrollTo(0, 0); }, [screenKey]);
 
   if (network) {
     return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />;
