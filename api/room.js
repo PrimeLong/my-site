@@ -17,19 +17,31 @@ const cleanString = (v, maxLen) => (typeof v === 'string' ? v.slice(0, maxLen) :
 // токеном — считаем, что вкладка закрыта/сеть легла, и показываем это второму игроку
 const PRESENCE_TIMEOUT_MS = 12000;
 
+// какой группой рычагов распоряжается каждое место — используется и при приёме
+// решений, и при их слиянии, чтобы игроки не затирали рычаги друг друга
+const SEAT_GROUP = { central_bank: 'monetary', ministry_finance: 'fiscal' };
+const LEVER_IDS_BY_GROUP = { monetary: LEVERS.filter((l) => l.group === 'monetary').map((l) => l.id),
+  fiscal: LEVERS.filter((l) => l.group === 'fiscal').map((l) => l.id) };
+const pickFields = (obj, ids) => { const out = {}; for (const id of ids) if (id in obj) out[id] = obj[id]; return out; };
+
 /* Решения приходят от клиента как есть: обрезаем каждый рычаг до его
    допустимого диапазона и отбрасываем всё незнакомое, чтобы NaN/Infinity
    или произвольные поля не попали в модель и не сломали комнату сразу
-   для обоих игроков. */
-function sanitizeDecisions(base, submitted) {
+   для обоих игроков. Меняем только рычаги СВОЕЙ группы — иначе решение
+   второго игрока для его же рычагов теряется при слиянии (см. resolveQuarter). */
+function sanitizeDecisions(base, submitted, seat) {
   const out = { ...base };
   if (!submitted || typeof submitted !== 'object') return out;
+  const group = SEAT_GROUP[seat];
   for (const lever of LEVERS) {
+    if (lever.group !== group) continue;
     const v = submitted[lever.id];
     if (typeof v === 'number' && Number.isFinite(v)) out[lever.id] = clamp(v, lever.min, lever.max);
   }
-  if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
-  if (typeof submitted.emergency === 'boolean') out.emergency = submitted.emergency;
+  if (group === 'monetary') {
+    if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
+    if (typeof submitted.emergency === 'boolean') out.emergency = submitted.emergency;
+  }
   return out;
 }
 
@@ -76,10 +88,18 @@ function resolveQuarter(room) {
   // пустое место занимает бот с характером по умолчанию
   const cbAct = subs.central_bank ? null : botCentralBank(room.economy, 'pragmatic', room.difficulty);
   const mofAct = subs.ministry_finance ? null : botFinanceMinistry(room.economy, 'technocrat', room.difficulty);
+  const cbDecisions = cbAct ? cbAct.decisions : subs.central_bank.decisions;
+  const mofDecisions = mofAct ? mofAct.decisions : subs.ministry_finance.decisions;
+  // рычаги берём именно по группе, а не полным объектом: иначе нетронутые
+  // (но всё равно присутствующие в decisions) поля одного игрока при слиянии
+  // затирают реальные изменения другого — это и было причиной, что применялось
+  // решение только одного из игроков
   const eff = {
     ...room.decisions,
-    ...(cbAct ? cbAct.decisions : subs.central_bank.decisions),
-    ...(mofAct ? mofAct.decisions : subs.ministry_finance.decisions),
+    ...pickFields(cbDecisions, LEVER_IDS_BY_GROUP.monetary),
+    fxRegime: 'fxRegime' in cbDecisions ? cbDecisions.fxRegime : room.decisions.fxRegime,
+    emergency: 'emergency' in cbDecisions ? cbDecisions.emergency : room.decisions.emergency,
+    ...pickFields(mofDecisions, LEVER_IDS_BY_GROUP.fiscal),
   };
   const cbStance = clamp((eff.keyRate - room.economy.inflationExpectations - room.economy.rStar) / 3, -1, 1);
   const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6, -1, 1);
@@ -166,7 +186,7 @@ async function handleRequest(req, res) {
       const seat = body.seat;
       if (!SEATS.includes(seat)) return { error: 'Неизвестная роль', status: 400 };
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
-      const decisions = sanitizeDecisions(room.decisions, body.decisions);
+      const decisions = sanitizeDecisions(room.decisions, body.decisions, seat);
       const next = { ...room, submissions: { ...room.submissions, [seat]: { decisions, note: cleanString(body.note, 280) } },
         version: room.version + 1 };
       const bothIn = SEATS.every((sx) => next.submissions[sx] || !next.seats[sx]);
