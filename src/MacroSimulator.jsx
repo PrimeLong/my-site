@@ -98,7 +98,7 @@ const GlobalStyle = () => (
     @media (prefers-reduced-motion: reduce) { .ems-fade-in { animation:none; } .ems-btn, .ems-tab { transition:none; } }
     .ems-grid { display:grid; grid-template-columns: 300px minmax(0,1fr) 300px; gap:14px; align-items:start; }
     @media (max-width: 1240px) { .ems-grid { grid-template-columns: 280px minmax(0,1fr); } }
-    @media (max-width: 860px) { .ems-grid { grid-template-columns: 1fr; padding: 12px !important; gap: 10px; } }
+    @media (max-width: 860px) { .ems-grid { grid-template-columns: minmax(0,1fr); padding: 12px !important; gap: 10px; } }
     @media (max-width: 860px) { .ems-hide-narrow { display: none !important; } }
     @media (max-width: 640px) { .ems-pad { padding-left: 10px !important; padding-right: 10px !important; } }
     .ems-col-hidden { display: none !important; }
@@ -116,8 +116,9 @@ const GlobalStyle = () => (
     .ems-breathe { animation: emsBreathe 4.2s ease-in-out infinite; }
     .ems-sweep { animation: emsSweep 3.2s linear infinite; }
     .ems-terminal { display:grid; grid-template-columns: minmax(230px, 0.85fr) minmax(300px, 1.15fr); }
-    @media (max-width: 900px) { .ems-terminal { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .ems-terminal { grid-template-columns: minmax(0,1fr); } }
     .ems-market-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap:12px; }
+    @media (max-width: 420px) { .ems-market-grid { grid-template-columns: minmax(0,1fr); } }
     @keyframes emsPulse { 0%,100% { opacity: var(--p, 0.2); } 50% { opacity: calc(var(--p, 0.2) * 2.1); } }
     .ems-pulse { animation: emsPulse 3.4s ease-in-out infinite; }
     .ems-paper-cols { column-count: 2; }
@@ -392,9 +393,9 @@ function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHidde
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${COLOR.border}`, marginBottom: 10 }}>
+      <div className="ems-scroll" style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${COLOR.border}`, marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {CHART_GROUPS.map((g) => (
-          <span key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</span>
+          <span key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} style={{ flexShrink: 0 }} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</span>
         ))}
       </div>
 
@@ -3792,6 +3793,16 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [error, setError] = useState('');
   const [showWhy, setShowWhy] = useState(false);
   const [showPaper, setShowPaper] = useState(false);
+  const [mobileCol, setMobileCol] = useState('center');
+  const [narrow, setNarrow] = useState(false);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(max-width: 860px)');
+    const upd = () => setNarrow(mq.matches);
+    upd();
+    if (mq.addEventListener) { mq.addEventListener('change', upd); return () => mq.removeEventListener('change', upd); }
+    mq.addListener(upd); return () => mq.removeListener(upd);
+  }, []);
   const prevQuarter = React.useRef(room.quarterIndex);
 
   React.useEffect(() => watchRoom(id, (r) => {
@@ -3897,7 +3908,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', rowGap: 10 }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
             <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{room.quarterLabel}</div>
@@ -3980,8 +3991,19 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <RegimeBanner economy={economy} />
       </div>
 
+      {narrow && (
+        <div style={{ display: 'flex', gap: 4, padding: '10px 18px 0' }}>
+          {[['left', 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
+            <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 11.5,
+              background: mobileCol === id ? COLOR.gold : COLOR.panelAlt, color: mobileCol === id ? COLOR.ink : COLOR.text,
+              borderColor: mobileCol === id ? COLOR.gold : COLOR.border }}
+              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
+          ))}
+        </div>
+      )}
+
       <div className="ems-grid" style={{ padding: 18 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
               <RoleIcon size={14} />Ваши полномочия
@@ -4018,7 +4040,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
           <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
             hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
@@ -4041,7 +4063,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className={narrow && mobileCol !== 'right' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
@@ -4776,7 +4798,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', rowGap: 10 }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
             <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{quarterLabel(quarterIndex)}</div>
