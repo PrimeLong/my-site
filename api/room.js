@@ -16,6 +16,12 @@ const cleanString = (v, maxLen) => (typeof v === 'string' ? v.slice(0, maxLen) :
 // партнёр опрашивает раз в ~2.5с; если дольше 12с не было ни одного запроса с его
 // токеном — считаем, что вкладка закрыта/сеть легла, и показываем это второму игроку
 const PRESENCE_TIMEOUT_MS = 12000;
+// если партнёр занял место, но не отправляет решение (ушёл, закрыл вкладку, не
+// вернулся) — без этого квартал стоит вечно: ни бот его не подхватывает (место же
+// занято), ни второй игрок ничего не может сделать. Через 5 минут после начала
+// квартала бот один раз решает за него, но МЕСТО остаётся его — он может вернуться
+// и продолжить со следующего квартала
+const QUARTER_TIMEOUT_MS = 5 * 60 * 1000;
 
 // какой группой рычагов распоряжается каждое место — используется и при приёме
 // решений, и при их слиянии, чтобы игроки не затирали рычаги друг друга
@@ -55,7 +61,7 @@ function freshRoom(opts) {
     seats: { central_bank: null, ministry_finance: null },
     names: { central_bank: null, ministry_finance: null },
     lastSeen: { central_bank: null, ministry_finance: null },
-    economy, quarterIndex: 1,
+    economy, quarterIndex: 1, quarterStartedAt: Date.now(),
     decisions: defaultDecisions(economy),
     pendingImpulses: [], eventCooldowns: {}, stories: [],
     history: [{ q: 0, label: `${quarterLabel(1)} (старт)`, ...economy }],
@@ -74,7 +80,7 @@ const publicView = (room) => {
   const isConnected = (seat) => !!room.seats[seat] && !!lastSeen[seat] && (Date.now() - lastSeen[seat]) < PRESENCE_TIMEOUT_MS;
   return {
     id: room.id, version: room.version, difficulty: room.difficulty,
-    quarterIndex: room.quarterIndex, quarterLabel: quarterLabel(room.quarterIndex),
+    quarterIndex: room.quarterIndex, quarterLabel: quarterLabel(room.quarterIndex), quarterStartedAt: room.quarterStartedAt,
     economy: room.economy, history: room.history, news: room.news.slice(0, 120),
     report: room.report, reasons: room.reasons, stories: room.stories,
     names: room.names,
@@ -122,20 +128,37 @@ function resolveQuarter(room) {
     pendingImpulses: res.pendingImpulses, eventCooldowns: res.eventCooldowns, stories: res.stories,
     decisions: defaultDecisions(res.economy, eff),
     quarterIndex: room.quarterIndex + 1,
+    quarterStartedAt: Date.now(),
     submissions: { central_bank: null, ministry_finance: null },
     lastActions: {
-      central_bank: cbAct ? { bot: true, note: cbAct.note, quote: cbAct.quote } : { bot: false, note: subs.central_bank.note || null },
-      ministry_finance: mofAct ? { bot: true, note: mofAct.note, quote: mofAct.quote } : { bot: false, note: subs.ministry_finance.note || null },
+      // timedOut: место было занято человеком, но за него в итоге решал бот
+      // (не отправил решение вовремя) — отличаем от «место просто пустует»,
+      // чтобы при возвращении показать именно «пока вас не было» и что можно
+      // продолжать, а не путать с обычным заполнением пустого места ботом
+      central_bank: cbAct ? { bot: true, timedOut: !!room.seats.central_bank, note: cbAct.note, quote: cbAct.quote } : { bot: false, note: subs.central_bank.note || null },
+      ministry_finance: mofAct ? { bot: true, timedOut: !!room.seats.ministry_finance, note: mofAct.note, quote: mofAct.quote } : { bot: false, note: subs.ministry_finance.note || null },
     },
     version: room.version + 1,
   };
 }
 
+/* если квартал открыт дольше QUARTER_TIMEOUT_MS и кто-то из занявших место так и не
+   отправил решение — резолвим квартал за него ботом один раз, не трогая само место */
+function maybeForceResolve(room) {
+  const bothIn = SEATS.every((sx) => room.submissions[sx] || !room.seats[sx]);
+  if (bothIn) return room;
+  const startedAt = room.quarterStartedAt || room.created || 0;
+  if (Date.now() - startedAt < QUARTER_TIMEOUT_MS) return room;
+  return resolveQuarter(room);
+}
+
 async function handleRequest(req, res) {
   if (req.method === 'GET') {
     const { id, since, seat, token: seatToken } = req.query;
-    const room = await getRoom(String(id || '').toUpperCase());
+    let room = await getRoom(String(id || '').toUpperCase());
     if (!room) return res.status(404).json({ error: 'Комната не найдена' });
+    const forceResolved = maybeForceResolve(room);
+    if (forceResolved !== room) { room = forceResolved; await setRoom(room.id, room); }
     // хартбит присутствия: не версия комнаты, поэтому не должен будить второго
     // игрока полным обновлением — пишем без bump-а version
     if (SEATS.includes(seat) && room.seats[seat] && room.seats[seat] === seatToken) {
