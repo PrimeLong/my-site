@@ -3482,19 +3482,39 @@ const seatRole = (seat) => ROLES.find((r) => r.id === seat);
 
 /* Место и токен — единственное, что нужно, чтобы вернуться в свою партию после
    обновления страницы: комната и так живёт на сервере (Redis/память, TTL 3 суток),
-   не хватало только клиентской памяти о том, что вы уже вошли. */
-const NETWORK_SESSION_KEY = 'ems-network-session';
-const saveNetworkSession = (net) => {
-  try { localStorage.setItem(NETWORK_SESSION_KEY, JSON.stringify({ id: net.id, seat: net.seat, token: net.token })); }
+   не хватало только клиентской памяти о том, что вы уже вошли. Слотов три — можно
+   одновременно вести до трёх сетевых партий (например, за разные ведомства в разных
+   комнатах) и не терять доступ ни к одной из них. */
+const NETWORK_SLOTS_KEY = 'ems-network-slots';
+const NETWORK_SLOT_COUNT = 3;
+const loadNetworkSlots = () => {
+  let arr;
+  try { arr = JSON.parse(localStorage.getItem(NETWORK_SLOTS_KEY) || '[]'); } catch { arr = []; }
+  if (!Array.isArray(arr)) arr = [];
+  const slots = arr.slice(0, NETWORK_SLOT_COUNT).map((s) => ((s && s.id && s.seat && s.token) ? s : null));
+  while (slots.length < NETWORK_SLOT_COUNT) slots.push(null);
+  return slots;
+};
+const writeNetworkSlots = (slots) => {
+  try { localStorage.setItem(NETWORK_SLOTS_KEY, JSON.stringify(slots)); }
   catch { /* приватный режим/квота — не критично, просто не восстановимся после обновления */ }
 };
-const clearNetworkSession = () => { try { localStorage.removeItem(NETWORK_SESSION_KEY); } catch { /* ignore */ } };
-const loadNetworkSession = () => {
-  try {
-    const data = JSON.parse(localStorage.getItem(NETWORK_SESSION_KEY) || 'null');
-    return (data && data.id && data.seat && data.token) ? data : null;
-  } catch { return null; }
+// сохраняем/обновляем сессию в слотах: та же комната+место обновляет свой слот,
+// иначе — в первый свободный, а если все заняты — вытесняем самый старый (LRU)
+const saveNetworkSlot = (net) => {
+  const slots = loadNetworkSlots();
+  const entry = { id: net.id, seat: net.seat, token: net.token, savedAt: Date.now() };
+  let idx = slots.findIndex((s) => s && s.id === net.id && s.seat === net.seat);
+  if (idx === -1) idx = slots.findIndex((s) => !s);
+  if (idx === -1) {
+    idx = 0;
+    slots.forEach((s, i) => { if ((s ? s.savedAt : -Infinity) < (slots[idx] ? slots[idx].savedAt : -Infinity)) idx = i; });
+  }
+  slots[idx] = entry;
+  writeNetworkSlots(slots);
 };
+const clearNetworkSlotAt = (idx) => { const slots = loadNetworkSlots(); slots[idx] = null; writeNetworkSlots(slots); };
+const clearNetworkSlotFor = (id, seat) => writeNetworkSlots(loadNetworkSlots().map((s) => ((s && s.id === id && s.seat === seat) ? null : s)));
 
 const roomCodeFromUrl = () => {
   if (typeof window === 'undefined') return '';
@@ -3512,6 +3532,23 @@ function NetworkLobby({ onEnter }) {
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [slots, setSlots] = useState(loadNetworkSlots);
+  const [slotBusy, setSlotBusy] = useState(null);
+
+  const enterSlot = async (idx) => {
+    const slot = slots[idx];
+    if (!slot) return;
+    setSlotBusy(idx); setError('');
+    try {
+      const data = await fetchRoom(slot.id, undefined, slot.seat, slot.token);
+      if (!data.room) throw new Error('Комната недоступна');
+      onEnter({ id: slot.id, seat: slot.seat, token: slot.token, room: data.room });
+    } catch (e) {
+      setError(e.message);
+      clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
+    } finally { setSlotBusy(null); }
+  };
+  const removeSlot = (idx) => { clearNetworkSlotAt(idx); setSlots(loadNetworkSlots()); };
 
   const shareLink = (id) => `${window.location.origin}${window.location.pathname}?room=${id}`;
   const copyLink = (id) => {
@@ -3534,7 +3571,7 @@ function NetworkLobby({ onEnter }) {
       const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
       Audio.play('stamp'); Audio.prime();
       const net = { id: code.trim().toUpperCase(), seat, token: r.token, room: r.room };
-      saveNetworkSession(net);
+      saveNetworkSlot(net);
       // убираем ?room= из адресной строки, чтобы обновление страницы не пыталось
       // «войти по ссылке» повторно поверх уже сохранённой сессии
       if (typeof window !== 'undefined' && window.history && window.location.search) {
@@ -3546,6 +3583,37 @@ function NetworkLobby({ onEnter }) {
 
   return (
     <div style={{ maxWidth: 640, width: '100%' }}>
+      {slots.some(Boolean) && (
+        <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }}>
+          <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>Ваши партии ({slots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {slots.map((slot, idx) => {
+              const rd = slot && seatRole(slot.seat);
+              const SlotIcon = rd && ROLE_ICON[rd.icon];
+              return (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                  {slot ? (
+                    <>
+                      {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
+                      <span style={{ flex: 1, color: COLOR.text }}>Комната <b className="ems-mono">{slot.id}</b> · {rd.short}</span>
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Входим…' : 'Войти'}</button>
+                      <button onClick={() => removeSlot(idx)} aria-label="Забыть эту партию"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                        <X size={12} />
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ color: COLOR.faint }}>слот {idx + 1}: пусто</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
         {[['create', 'Создать комнату'], ['join', 'Войти по коду']].map(([id, label]) => (
           <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
@@ -3573,19 +3641,6 @@ function NetworkLobby({ onEnter }) {
           <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doCreate}>
             {busy ? 'Создаём…' : 'Создать комнату'}
           </button>
-          {created && (
-            <div style={{ marginTop: 14, fontSize: 13, color: COLOR.teal, borderLeft: `2px solid ${COLOR.teal}`, paddingLeft: 10 }}>
-              <div>Комната создана: <b className="ems-mono">{created}</b>. Отправьте партнёру код или ссылку ниже — по ней комната и роль откроются автоматически.</div>
-              <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 8 }}>
-                <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
-                  style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
-                <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
-                  {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
-                  {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -3597,6 +3652,19 @@ function NetworkLobby({ onEnter }) {
             <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="например, DA9X6"
               className="ems-mono" style={{ width: '100%', padding: '9px 11px', fontSize: 14, letterSpacing: '0.08em',
                 background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+            {created && created === code.trim().toUpperCase() && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: COLOR.teal }}>
+                <div>Комната ваша — отправьте партнёру код выше или ссылку ниже, по ней комната откроется автоматически.</div>
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6 }}>
+                  <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
+                    style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
+                  <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
+                    {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
+                    {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Ваше имя</div>
@@ -3687,13 +3755,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
 
-  // сохраняем сессию и на случай восстановления после обновления страницы (см.
-  // MacroSimulator), и как подстраховку, если сюда попали в обход NetworkLobby
-  React.useEffect(() => { saveNetworkSession({ id, seat, token }); }, [id, seat, token]);
+  // держим слот в актуальном состоянии (перекладывает savedAt наверх LRU) и на
+  // случай, если сюда попали в обход NetworkLobby (например, через ?room=)
+  React.useEffect(() => { saveNetworkSlot({ id, seat, token }); }, [id, seat, token]);
   const failWithError = (e) => {
     setError(e.message);
     // токен отозван или комната истекла — восстанавливать в ней больше нечего
-    if (/неверный токен|не найдена/i.test(e.message || '')) clearNetworkSession();
+    if (/неверный токен|не найдена/i.test(e.message || '')) clearNetworkSlotFor(id, seat);
   };
   const send = async () => {
     setBusy(true); setError('');
@@ -3711,7 +3779,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
-  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); clearNetworkSession(); onExit(); };
+  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); clearNetworkSlotFor(id, seat); onExit(); };
 
   return (
     <div className="ems-root">
@@ -4803,33 +4871,10 @@ export default function MacroSimulator() {
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
-  // если в localStorage есть незавершённая сетевая партия — сначала пробуем в нёе
-  // вернуться (комната всё ещё жива на сервере), и только потом показываем меню
-  const [restoringNetwork, setRestoringNetwork] = useState(() => !!loadNetworkSession());
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
 
-  React.useEffect(() => {
-    const saved = loadNetworkSession();
-    if (!saved) return;
-    fetchRoom(saved.id, undefined, saved.seat, saved.token)
-      .then((data) => {
-        if (data && data.room) setNetwork({ id: saved.id, seat: saved.seat, token: saved.token, room: data.room });
-        else clearNetworkSession();
-      })
-      .catch(() => clearNetworkSession())
-      .finally(() => setRestoringNetwork(false));
-  }, []);
-
-  if (restoringNetwork) {
-    return (
-      <div className="ems-root" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <GlobalStyle />
-        <div style={{ color: COLOR.muted, fontSize: 13 }}>Восстанавливаем сетевую партию…</div>
-      </div>
-    );
-  }
   if (network) {
     return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => setNetwork(null)} />;
   }
