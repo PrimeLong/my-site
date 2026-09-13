@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.4",
     "lucide-react": "^0.441.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
