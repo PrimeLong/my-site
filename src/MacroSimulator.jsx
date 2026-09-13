@@ -1370,8 +1370,47 @@ const Audio = (() => {
   };
 })();
 
-function AudioControls() {
+/* Общая логика для выпадающих панелей в шапке (звук, вид): не даёт двум
+   открыться одновременно и накрыть друг друга, и считает позицию от кнопки
+   через getBoundingClientRect + fixed — на телефоне, где шапка переносится
+   на новую строку, обычный position:absolute+right:0 может унести панель
+   за край экрана, потому что «правый край» отсчитывается не от кнопки. */
+let dropdownActiveId = 0;
+let dropdownSeq = 0;
+const dropdownListeners = new Set();
+function useExclusiveDropdown(width) {
+  const idRef = React.useRef(0);
+  if (!idRef.current) idRef.current = ++dropdownSeq;
+  const btnRef = React.useRef(null);
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  React.useEffect(() => {
+    const onOther = () => { if (dropdownActiveId !== idRef.current) setOpen(false); };
+    dropdownListeners.add(onOther);
+    return () => dropdownListeners.delete(onOther);
+  }, []);
+  const toggle = () => {
+    setOpen((o) => {
+      const next = !o;
+      if (next) {
+        dropdownActiveId = idRef.current;
+        dropdownListeners.forEach((fn) => fn());
+        const r = btnRef.current && btnRef.current.getBoundingClientRect();
+        if (r) {
+          const vw = window.innerWidth;
+          const left = Math.max(8, Math.min(r.right - width, vw - width - 8));
+          setPos({ top: r.bottom + 6, left });
+        }
+      }
+      return next;
+    });
+  };
+  return { open, setOpen, toggle, btnRef, pos };
+}
+
+function AudioControls() {
+  const DD_WIDTH = 268;
+  const { open, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   const [music, setMusic] = useState(Audio.opts.music);
   const [sfx, setSfx] = useState(Audio.opts.sfx);
   const [vol, setVol] = useState(Audio.opts.volume);
@@ -1384,12 +1423,12 @@ function AudioControls() {
     ['slump', MOOD_LABEL.slump], ['stag', MOOD_LABEL.stag], ['crisis', MOOD_LABEL.crisis], ['frost', MOOD_LABEL.frost]];
   return (
     <div style={{ position: 'relative' }}>
-      <button className="ems-btn" style={{ padding: '7px 9px' }} title={`Музыка: ${np.name}`}
-        onClick={() => { Audio.prime(); Audio.play('click'); setOpen((o) => !o); }}>
+      <button ref={btnRef} className="ems-btn" style={{ padding: '7px 9px' }} title={`Музыка: ${np.name}`}
+        onClick={() => { Audio.prime(); Audio.play('click'); toggle(); }}>
         {anyOn ? <Volume2 size={14} /> : <VolumeX size={14} color={COLOR.faint} />}
       </button>
       {open && (
-        <div className="ems-panel-raised ems-fade-in" style={{ position: 'absolute', right: 0, top: 38, width: 268, padding: 13, zIndex: 40 }}>
+        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
             <Music size={13} color={COLOR.gold} />
             <span className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft }}>Саундтрек</span>
@@ -1512,6 +1551,11 @@ function NewsTerminal({ items, onOpenPaper }) {
   const [filter, setFilter] = useState('all');
   const present = NEWS_CATEGORIES.filter((c) => items.some((i) => i.cat === c.id));
   const list = (filter === 'all' ? items : items.filter((i) => i.cat === filter)).slice(0, 60);
+  // лента растёт вставкой новых записей В НАЧАЛО массива, но скролл-позиция
+  // блока сама не сбрасывается — если читали и проскроллили вниз, свежая
+  // новость наверху оказывается выше видимой области и выглядит пропавшей
+  const scrollRef = React.useRef(null);
+  React.useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [items[0] && items[0].id]);
   return (
     <div className="ems-panel" style={{ padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 9 }}>
@@ -1531,7 +1575,7 @@ function NewsTerminal({ items, onOpenPaper }) {
           ))}
         </div>
       )}
-      <div className="ems-scroll" style={{ maxHeight: 430, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 13 }}>
+      <div ref={scrollRef} className="ems-scroll" style={{ maxHeight: 430, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 13 }}>
         {list.length === 0 && <div style={{ fontSize: 12, color: COLOR.muted }}>Лента пуста — завершите первый квартал, и экономика начнёт рассказывать о себе сама.</div>}
         {list.map((n) => (<NewsItem key={n.id} item={n} showQuarter />))}
       </div>
@@ -2131,6 +2175,17 @@ function RegimeBanner({ economy }) {
   const info = REGIME_INFO[economy.regime] || REGIME_INFO.normal;
   const c = info.color === 'teal' ? COLOR.teal : info.color === 'gold' ? COLOR.gold : info.color === 'blue' ? COLOR.blue : COLOR.rust;
   const dim = info.color === 'teal' ? COLOR.tealDim : info.color === 'gold' ? COLOR.goldDim : info.color === 'blue' ? COLOR.blueDim : COLOR.rustDim;
+  // баннер не должен висеть на экране постоянно: в нормальном режиме показываем
+  // его недолго (только что зашли / кризис только закончился), а не бессрочно;
+  // сам кризис — другое дело, его показываем, пока он активен
+  const [visible, setVisible] = useState(true);
+  React.useEffect(() => {
+    setVisible(true);
+    if (economy.regime !== 'normal') return undefined;
+    const t = setTimeout(() => setVisible(false), 45000);
+    return () => clearTimeout(t);
+  }, [economy.regime]);
+  if (!visible) return null;
   return (
     <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: dim, border: `1px solid ${c}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
       <Activity size={15} color={c} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -3351,15 +3406,16 @@ const DASHBOARD_PRESETS = [
 const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern); } catch { /* не поддерживается */ } };
 
 function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash }) {
-  const [open, setOpen] = useState(false);
+  const DD_WIDTH = 250;
+  const { open, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
     <div style={{ position: 'relative' }}>
-      <button className="ems-btn" style={{ padding: '7px 9px' }} title="Вид, тема и доступность" aria-label="Настройки вида"
-        onClick={() => { Audio.play('click'); setOpen((o) => !o); }}>
+      <button ref={btnRef} className="ems-btn" style={{ padding: '7px 9px' }} title="Вид, тема и доступность" aria-label="Настройки вида"
+        onClick={() => { Audio.play('click'); toggle(); }}>
         <Sliders size={14} />
       </button>
       {open && (
-        <div className="ems-panel-raised ems-fade-in" style={{ position: 'absolute', right: 0, top: 38, width: 250, padding: 13, zIndex: 40 }}>
+        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto' }}>
           <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, marginBottom: 8 }}>Тема оформления</div>
           {Object.values(THEMES).map((t) => (
             <button key={t.id} className="ems-btn" style={{ width: '100%', textAlign: 'left', padding: '6px 9px', fontSize: 11.5, marginBottom: 4,
@@ -3578,18 +3634,23 @@ function NetworkLobby({ onEnter }) {
   const [storageMode, setStorageMode] = useState(null);
 
   // подглядываем занятость мест ДО входа, чтобы не отправлять игрока на
-  // «место уже занято» после того, как он уже заполнил форму
+  // «место уже занято» после того, как он уже заполнил форму. Опрашиваем
+  // не один раз при вводе кода, а периодически, пока экран открыт: партнёр
+  // мог занять место уже ПОСЛЕ того, как код был напечатан, — иначе кнопка
+  // остаётся разблокированной до первой неудачной попытки входа
   React.useEffect(() => {
     const trimmed = code.trim().toUpperCase();
     if (trimmed.length < 4) { setRoomPreview(null); return undefined; }
     let cancelled = false;
-    const t = setTimeout(async () => {
+    const fetchPreview = async () => {
       try {
         const data = await fetchRoom(trimmed);
         if (!cancelled) { setRoomPreview(data.room); setStorageMode(data.storage || null); }
       } catch { if (!cancelled) setRoomPreview(null); }
-    }, 400);
-    return () => { cancelled = true; clearTimeout(t); };
+    };
+    const t = setTimeout(fetchPreview, 400);
+    const iv = setInterval(fetchPreview, 3000);
+    return () => { cancelled = true; clearTimeout(t); clearInterval(iv); };
   }, [code]);
   React.useEffect(() => {
     if (!roomPreview || !roomPreview.occupied) return;
@@ -3892,6 +3953,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
+  const myLastAction = room.lastActions ? room.lastActions[seat] : null;
+  const [welcomeBackDismissed, setWelcomeBackDismissed] = useState(false);
+  React.useEffect(() => { setWelcomeBackDismissed(false); }, [room.quarterIndex]);
   // выход в меню — это не уход из комнаты: место и сохранённая сессия остаются,
   // партия появится в лобби («Ваши партии») и в неё можно вернуться позже;
   // насовсем комнату покидают через «Забыть эту партию» в лобби
@@ -4003,11 +4067,22 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       </div>
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {myLastAction && myLastAction.timedOut && !welcomeBackDismissed && (
+          <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
+            <AlertTriangle size={15} color={COLOR.gold} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div style={{ flex: 1 }}><b style={{ color: COLOR.gold }}>С возвращением.</b> <span style={{ color: COLOR.muted }}>
+              Пока вас не было, прошлый квартал за вас решал бот — вы не отправили решение вовремя. Место осталось вашим, продолжайте с этого квартала.</span></div>
+            <button onClick={() => setWelcomeBackDismissed(true)} aria-label="Закрыть"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0, flexShrink: 0 }}>
+              <X size={13} />
+            </button>
+          </div>
+        )}
         {otherDisconnected && (
           <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
             <div><b style={{ color: COLOR.rust }}>{room.names[otherSeat] || 'Партнёр'} не на связи.</b> <span style={{ color: COLOR.muted }}>
-              Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. Если он не вернётся, за это ведомство продолжит решать бот.</span></div>
+              Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. Если решение не придёт в течение 5 минут с начала квартала, за это ведомство один раз решит бот, а место останется за партнёром.</span></div>
           </div>
         )}
         <RegimeBanner economy={economy} />
@@ -4612,6 +4687,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const botRole = roleDef.botRole;
   const isTrader = setup.role === 'trader';
   const botPersona = null;
+  const [difficulty, setDifficulty] = useState(setup.difficulty);
 
   const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
   const [economy, setEconomy] = useState(initEconomy);
@@ -4680,7 +4756,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   ].filter(Boolean);
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
-  const snapshot = () => makeSnapshot({ setup, economy, history, decisions, pendingImpulses, eventCooldowns,
+  const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash });
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
@@ -4709,8 +4785,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const finishQuarter = useCallback(() => {
     setBusy(true);
     let eff = { ...decisions };
-    const cbAction = (botRole === 'central_bank' || isTrader) ? botCentralBank(economy, cbPersonaId, setup.difficulty) : null;
-    const mofAction = (botRole === 'ministry_finance' || isTrader) ? botFinanceMinistry(economy, mofPersonaId, setup.difficulty) : null;
+    const cbAction = (botRole === 'central_bank' || isTrader) ? botCentralBank(economy, cbPersonaId, difficulty) : null;
+    const mofAction = (botRole === 'ministry_finance' || isTrader) ? botFinanceMinistry(economy, mofPersonaId, difficulty) : null;
     if (cbAction) eff = { ...eff, ...cbAction.decisions };
     if (mofAction) eff = { ...eff, ...mofAction.decisions };
     let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
@@ -4736,7 +4812,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       economy: { ...economy, cbStance, mofStance,
         policyCoordination: clamp(economy.policyCoordination + (reqResult ? reqResult.coordination : 0), 0, 100) },
       decisions: eff, pendingImpulses, eventCooldowns,
-      difficulty: setup.difficulty, quarterIndex, stories, botAction: action,
+      difficulty, quarterIndex, stories, botAction: action,
       botActions: isTrader ? [mofAction] : [], publicMode: isTrader,
     });
     if (reqResult) {
@@ -4824,7 +4900,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     <div className={`ems-root${shake ? ' ems-shake' : ''}${dense ? ' ems-dense' : ''}`} lang="ru">
       <GlobalStyle />
       {irf && <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value} baseValue={irf.base}
-        difficulty={setup.difficulty} onClose={() => setIrf(null)} />}
+        difficulty={difficulty} onClose={() => setIrf(null)} />}
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && <WhyModal reasons={lastReasons} onClose={() => setShowWhy(false)} />}
@@ -4840,7 +4916,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <div>
             <div className="ems-serif" style={{ fontSize: 18 }}>Страна — экономическая панель</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-              {roleDef.title} · сложность: {(DIFFICULTIES.find((x) => x.id === setup.difficulty) || {}).title}
+              {roleDef.title} · сложность: {(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title}
               {activeBotPersona ? ` · вторая ветвь: ${activeBotPersona.name} (бот)` : setup.role === 'trader' ? '' : ' · без ботов'}
             </div>
           </div>
@@ -4878,6 +4954,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
+          <div style={{ position: 'relative' }}>
+            <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
+              title="Сложность партии" className="ems-btn"
+              style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}>
+              {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
+            </select>
+            <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          </div>
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
           <AudioControls />
@@ -5009,7 +5093,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
               </div>
@@ -5019,7 +5103,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'macropru').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
               </div>
             )}
@@ -5028,7 +5112,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
               </div>
             )}
@@ -5037,7 +5121,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'taxes').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
               </div>
             )}
@@ -5046,7 +5130,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
-                    value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
+                    value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
               </div>
             )}
