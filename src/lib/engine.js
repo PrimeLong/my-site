@@ -654,6 +654,72 @@ function processRequest(reqId, economy, botKind, personaId, decisions) {
 }
 
 /* =========================================================================================
+   ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ (роль «глава государства»): у неё, в отличие от ЦБ и
+   Минфина, нет бота-оппонента со своими требованиями — конкретные, измеримые
+   обещания на срок до выборов замещают то давление, которое остальным ролям
+   создаёт партнёр по власти. target/baseline считаются один раз в момент
+   начала срока (pickPromises) и хранятся как обычные числа — не функции —
+   чтобы объект без проблем переживал JSON (сохранения, снапшоты).
+========================================================================================= */
+const round1 = (v) => Math.round(v * 10) / 10;
+const PROMISE_POOL = [
+  { id: 'inflation_tame', label: 'Обуздать инфляцию',
+    target: (s) => round1(s.inflationTarget + 1),
+    metric: (e) => e.inflation, direction: 'below',
+    describe: (t) => `Инфляция не выше ${fmt1(t)}% к выборам` },
+  { id: 'jobs_for_all', label: 'Работа для всех',
+    target: (s) => round1(s.nairu + 1),
+    metric: (e) => e.unemployment, direction: 'below',
+    describe: (t) => `Безработица не выше ${fmt1(t)}% к выборам` },
+  { id: 'debt_discipline', label: 'Не наращивать долг',
+    target: (s) => round1(s.debtToGdp),
+    metric: (e) => e.debtToGdp, direction: 'below',
+    describe: (t) => `Госдолг не выше ${fmt1(t)}% ВВП — уровня на начало срока` },
+  { id: 'growth_promise', label: 'Обеспечить рост',
+    target: () => 4, baseline: (s) => s.gdp,
+    metric: (e, base) => (e.gdp / base - 1) * 100, direction: 'above',
+    describe: (t) => `Реальный ВВП вырастет минимум на ${fmt1(t)}% за срок` },
+  { id: 'strong_currency', label: 'Крепкая валюта',
+    target: () => 15, baseline: (s) => s.exchangeRate,
+    metric: (e, base) => (e.exchangeRate / base - 1) * 100, direction: 'below',
+    describe: (t) => `Курс не ослабнет больше чем на ${fmt1(t)}% за срок` },
+  { id: 'budget_control', label: 'Бюджет под контролем',
+    target: () => 3,
+    metric: (e) => -e.budgetBalancePctGdp, direction: 'below',
+    describe: (t) => `Дефицит бюджета не больше ${fmt1(t)}% ВВП к выборам` },
+  { id: 'living_standards_promise', label: 'Повысить уровень жизни',
+    target: (s) => round1(s.scoreWelfare),
+    metric: (e) => e.scoreWelfare, direction: 'above',
+    describe: (t) => `Индекс благосостояния населения не ниже ${fmt1(t)} — уровня на начало срока` },
+  { id: 'reserves_promise', label: 'Сохранить резервы',
+    target: (s) => Math.round(s.reserves * 0.8),
+    metric: (e) => e.reserves, direction: 'above',
+    describe: (t) => `Резервы не ниже ${fmtMoney(t)} — не менее 80% уровня на начало срока` },
+];
+// три случайных обещания на новый срок; startEconomy — состояние на момент вступления в должность
+function pickPromises(startEconomy, count = 3) {
+  const pool = [...PROMISE_POOL];
+  const picked = [];
+  while (picked.length < count && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(i, 1)[0]);
+  }
+  return picked.map((p) => {
+    const target = p.target(startEconomy);
+    return { id: p.id, label: p.label, target, baseline: p.baseline ? p.baseline(startEconomy) : null, text: p.describe(target) };
+  });
+}
+// met — выполняется ли обещание СЕЙЧАС (для живого статуса); итог подводится этой же
+// функцией в момент выборов, когда quartersToElection обнуляется
+function evaluatePromise(promise, economy) {
+  const def = PROMISE_POOL.find((p) => p.id === promise.id);
+  if (!def) return { met: true, value: null };
+  const value = def.metric(economy, promise.baseline);
+  const met = def.direction === 'below' ? value <= promise.target : value >= promise.target;
+  return { met, value };
+}
+
+/* =========================================================================================
    СОБЫТИЯ. kind: demand | supply | financial | external | structural
 ========================================================================================= */
 const EVENTS = [
@@ -2531,6 +2597,7 @@ export {
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   describeHumanCbAction, describeHumanMofAction,
+  PROMISE_POOL, pickPromises, evaluatePromise,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
   simulateQuarter,

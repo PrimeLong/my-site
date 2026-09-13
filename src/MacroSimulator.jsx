@@ -13,7 +13,7 @@ import {
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
-  simulateQuarter, makeInitialEconomy, leverPreview,
+  simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -2273,6 +2273,51 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
   );
 }
 
+// формат текущего/целевого значения под конкретное обещание — target/value это
+// голые числа (см. pickPromises/evaluatePromise в engine.js), единицы тут же рядом с текстом
+const PROMISE_FMT = {
+  inflation_tame: (v) => `${fmt1(v)}%`, jobs_for_all: (v) => `${fmt1(v)}%`,
+  debt_discipline: (v) => `${fmt1(v)}%`, growth_promise: (v) => `${fmtSigned1(v)}%`,
+  strong_currency: (v) => `${fmtSigned1(v)}%`, budget_control: (v) => `${fmt1(v)}%`,
+  living_standards_promise: (v) => fmt1(v), reserves_promise: (v) => fmtMoney(v),
+};
+/* У главы государства нет бота-оппонента с требованиями — три случайных
+   обещания на срок до выборов создают то же ощутимое давление, что остальным
+   ролям даёт партнёр по власти. met/value считаются на лету от текущей
+   экономики (evaluatePromise), а не хранятся — иначе они бы не обновлялись
+   при откате/загрузке сохранения. */
+function PromisesPanel({ promises, economy }) {
+  if (!promises || !promises.length) return null;
+  return (
+    <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
+        <Flag size={14} color={COLOR.blue} />
+        <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>Предвыборные обещания</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>до выборов {economy.quartersToElection} кв.</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        {promises.map((p) => {
+          const { met, value } = evaluatePromise(p, economy);
+          const fmtFn = PROMISE_FMT[p.id] || fmt1;
+          const color = met ? COLOR.teal : COLOR.rust;
+          return (
+            <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              {met ? <Check size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} /> : <AlertTriangle size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: met ? COLOR.text : COLOR.muted }}>{p.label}</span>
+                  <span className="ems-mono" style={{ fontSize: 10.5, color, flexShrink: 0 }}>{fmtFn(value)} / {fmtFn(p.target)}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint }}>{p.text}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Segmented({ options, value, onChange, label, hint }) {
   const cur = options.find((o) => o.id === value);
   return (
@@ -2345,6 +2390,7 @@ const ACHIEVEMENTS = [
   { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
   { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
   { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди курс обучения целиком — все пять модулей.' },
+  { id: 'promises_kept', icon: '🤝', title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (глава государства).' },
 ];
 const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -2543,7 +2589,7 @@ function ruPlural(n, one, few, many) {
   return many;
 }
 const countUnlockedAchievements = () => { const u = loadUnlockedAchievements(); return ACHIEVEMENTS.filter((a) => u[a.id]).length; };
-function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat }) {
+function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat, promises }) {
   const roleLabel = (ROLES.find((r) => r.id === role) || {}).short || role;
   const isTrader = role === 'trader';
   const stats = [];
@@ -2560,7 +2606,12 @@ function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio,
     stats.push(['ВВП с начала партии', gdpChange != null ? `${gdpChange >= 0 ? '+' : ''}${gdpChange.toFixed(0)}%` : '—']);
     stats.push(['Инфляция', `${fmt1(economy.inflation)}%`]);
     stats.push(['Безработица', `${fmt1(economy.unemployment)}%`]);
-    stats.push(['Долг к ВВП', `${fmt1(economy.debtToGdp)}%`]);
+    if (role === 'full_control' && promises && promises.length) {
+      const keptCount = promises.filter((p) => evaluatePromise(p, economy).met).length;
+      stats.push(['Обещания сдержаны', `${keptCount} из ${promises.length}`]);
+    } else {
+      stats.push(['Долг к ВВП', `${fmt1(economy.debtToGdp)}%`]);
+    }
   }
   return {
     roleLabel, emoji: RESULT_CARD_EMOJI[role] || '🏛️',
@@ -6442,6 +6493,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [portfolio, setPortfolio] = useState(initial && initial.portfolio ? initial.portfolio : emptyBook());
   const [cbPersonaId, setCbPersonaId] = useState(initial && initial.cbPersonaId ? initial.cbPersonaId : setup.cbPersona);
   const [mofPersonaId, setMofPersonaId] = useState(initial && initial.mofPersonaId ? initial.mofPersonaId : setup.mofPersona);
+  // предвыборные обещания — только у «главы государства»: там нет бота-оппонента
+  // с требованиями, и это единственная роль без внешнего давления
+  const [promises, setPromises] = useState(() => (setup.role !== 'full_control' ? null
+    : initial && initial.promises ? initial.promises : pickPromises(initEconomy)));
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
   const [lastReport, setLastReport] = useState(initial ? initial.lastReport || '' : '');
@@ -6481,7 +6536,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
-    portfolio, lastResponse, dense, dashboards, activeDash, defeat });
+    portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises });
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -6605,6 +6660,18 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         }
       }
     }
+    // предвыборные обещания подводятся в тот же квартал, когда выборы наступили
+    // (quartersToElection обнулился и сформировал electionResult) — не раньше:
+    // формально срок ещё не закончился, пока не наступил сам день голосования
+    if (promises && er) {
+      const kept = promises.map((p) => evaluatePromise(p, result.economy).met);
+      const keptCount = kept.filter(Boolean).length;
+      result.newsEntries.unshift({ id: `promises${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+        headline: `ОБЕЩАНИЯ У УРНЫ: СДЕРЖАНО ${keptCount} ИЗ ${promises.length}`,
+        text: promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ') + '.' });
+      if (keptCount === promises.length) pushAch(unlockAchievements(['promises_kept']));
+      if (er === 'incumbent') setPromises(pickPromises(result.economy));
+    }
     const newCrisis = (result.economy.activeCrises || []).some((c) => !(economy.activeCrises || []).includes(c));
     if (newCrisis) { setFlashKey(quarterIndex); setShake(true); haptic([45, 70, 45, 70, 90]); setTimeout(() => setShake(false), 950); }
     else if (result.economy.regime !== economy.regime) { setFlashKey(quarterIndex); haptic([28, 60, 28]); }
@@ -6617,7 +6684,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setDecisions(defaultDecisions(result.economy, decisions));
     setQuarterIndex((q) => q + 1);
     setBusy(false);
-  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId, pendingRequest, portfolio, isTrader, history, pushAch, defeat]);
+  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId, pendingRequest, portfolio, isTrader, history, pushAch, defeat, promises]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -6653,7 +6720,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
-        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat,
+        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -6900,8 +6967,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           {groups.includes('fiscal') && <FiscalMath economy={economy} decisions={decisions} />}
           {isTrader ? (
             <InstitutionsPanel economy={economy} cbAction={botAction} mofAction={botAction2} />
-          ) : (
+          ) : botRole ? (
             <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} economy={economy} coordination={economy.policyCoordination} />
+          ) : (
+            <PromisesPanel promises={promises} economy={economy} />
           )}
         </div>
 

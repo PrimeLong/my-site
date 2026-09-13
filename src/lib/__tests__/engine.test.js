@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   makeInitialEconomy, defaultDecisions, simulateQuarter,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
-  clamp, LEVERS, FX_REGIMES,
+  clamp, LEVERS, FX_REGIMES, PROMISE_POOL, pickPromises, evaluatePromise,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -119,6 +119,45 @@ describe('redescribeCbAction (новость после межведомстве
     const redescribed = redescribeCbAction(s, 'pragmatic', result.decisions);
     expect(redescribed.note).toContain(result.decisions.keyRate.toFixed(2));
     expect(redescribed.note).not.toContain(cbAction.decisions.keyRate.toFixed(2));
+  });
+});
+
+describe('предвыборные обещания (роль «глава государства»)', () => {
+  it('picks the requested number of distinct promises with baked-in numeric targets', () => {
+    const economy = makeInitialEconomy();
+    const promises = pickPromises(economy, 3);
+    expect(promises).toHaveLength(3);
+    const ids = new Set(promises.map((p) => p.id));
+    expect(ids.size).toBe(3); // без повторов
+    for (const p of promises) {
+      expect(typeof p.target).toBe('number');
+      expect(Number.isFinite(p.target)).toBe(true);
+      expect(typeof p.text).toBe('string');
+      expect(p.text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('starts already met for every "don\'t make it worse" ceiling/floor promise', () => {
+    // цели для этих обещаний считаются от стартовой экономики, поэтому в момент
+    // вступления в должность они обязаны выполняться сами собой — иначе игрок
+    // начинал бы уже проигравшим. growth_promise — исключение: это обещание
+    // «добиться роста к выборам», а не «не ухудшить», и на старте закономерно не выполнено.
+    const economy = makeInitialEconomy();
+    for (const def of PROMISE_POOL) {
+      const target = def.target(economy);
+      const baseline = def.baseline ? def.baseline(economy) : null;
+      const promise = { id: def.id, target, baseline };
+      const { met } = evaluatePromise(promise, economy);
+      expect(met, `${def.id} at term start`).toBe(def.id !== 'growth_promise');
+    }
+  });
+
+  it('flags a promise as broken once the economy drifts past its target', () => {
+    const economy = makeInitialEconomy();
+    const promise = pickPromises(economy, 1).find((p) => p.id === 'debt_discipline')
+      || { id: 'debt_discipline', target: PROMISE_POOL.find((p) => p.id === 'debt_discipline').target(economy), baseline: null };
+    const worse = { ...economy, debtToGdp: promise.target + 20 };
+    expect(evaluatePromise(promise, worse).met).toBe(false);
   });
 });
 
