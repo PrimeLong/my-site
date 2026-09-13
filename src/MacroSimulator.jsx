@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty,
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage,
   fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
@@ -3787,7 +3787,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const { id, seat, token } = network;
   const [room, setRoom] = useState(network.room);
   const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
-  const [note, setNote] = useState('');
+  const [chatText, setChatText] = useState('');
+  const [chatBusy, setChatBusy] = useState(false);
+  const chatEndRef = React.useRef(null);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -3840,6 +3842,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     if (i < 0 || j < 0 || j >= ps.length) return ps;
     const next = [...ps]; next[i] = ps[j]; next[j] = ps[i]; return next;
   });
+  const [dragPin, setDragPin] = useState(null);
+  const reorderPin = (from, to) => setPinned((ps) => {
+    if (from === to) return ps;
+    const fromIdx = ps.indexOf(from); const toIdx = ps.indexOf(to);
+    if (fromIdx === -1 || toIdx === -1) return ps;
+    const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
+  });
   const applyDash = (did) => { const d = dashboards.find((x) => x.id === did); if (d) { setPinned(d.pins); setActiveDash(did); } };
   const saveDash = () => {
     const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
@@ -3862,7 +3871,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const send = async () => {
     setBusy(true); setError('');
     try {
-      const r = await submitDecisions(id, seat, token, decisions, note.trim() || null);
+      const r = await submitDecisions(id, seat, token, decisions, null);
       setRoom(r.room); setSent(true); Audio.play('stamp');
     } catch (e) { failWithError(e); } finally { setBusy(false); }
   };
@@ -3871,6 +3880,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     try { const r = await cancelSubmission(id, seat, token); setRoom(r.room); setSent(false); Audio.play('click'); }
     catch (e) { failWithError(e); } finally { setBusy(false); }
   };
+  const sendChat = async () => {
+    const text = chatText.trim();
+    if (!text) return;
+    setChatBusy(true); setError('');
+    try { const r = await sendChatMessage(id, seat, token, text); setRoom(r.room); setChatText(''); Audio.play('click'); }
+    catch (e) { failWithError(e); } finally { setChatBusy(false); }
+  };
+  React.useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }); }, [room.chat?.length]);
 
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
@@ -3948,7 +3965,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             if (!m) return null;
             const val = economy[key];
             return (
-              <div key={key} style={{ position: 'relative' }}>
+              <div key={key} draggable
+                onDragStart={(e) => { setDragPin(key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', key); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
+                onDragEnd={() => setDragPin(null)}
+                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
                 <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
@@ -4024,14 +4046,32 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
 
           <div className="ems-panel" style={{ padding: 13 }}>
-            <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Сообщение партнёру</div>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="необязательно — придёт вместе с вашим решением"
-              style={{ width: '100%', minHeight: 56, padding: 8, fontSize: 12, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text, resize: 'vertical' }} />
-            {otherAction && otherAction.note && (
-              <div style={{ marginTop: 8, fontSize: 11.5, borderLeft: `2px solid ${COLOR.blue}`, paddingLeft: 8, color: COLOR.muted }}>
-                <span style={{ color: COLOR.blue }}>{room.names[otherSeat] || 'партнёр'}: </span>«{otherAction.note}»
-              </div>
-            )}
+            <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
+            <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {(!room.chat || room.chat.length === 0) && (
+                <div style={{ fontSize: 11.5, color: COLOR.faint }}>Пока тишина — напишите первым.</div>
+              )}
+              {(room.chat || []).map((m, i) => {
+                const mine = m.seat === seat;
+                const nm = mine ? 'вы' : (room.names[m.seat] || seatRole(m.seat).short);
+                return (
+                  <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%', textAlign: mine ? 'right' : 'left' }}>
+                    <div style={{ fontSize: 9.5, color: mine ? COLOR.gold : COLOR.blue, marginBottom: 2 }}>{nm}</div>
+                    <div style={{ fontSize: 12, color: COLOR.text, background: COLOR.panelAlt, padding: '6px 10px', borderRadius: 3, display: 'inline-block', wordBreak: 'break-word' }}>{m.text}</div>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input value={chatText} onChange={(e) => setChatText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                placeholder="написать партнёру…"
+                style={{ flex: 1, minWidth: 0, padding: '7px 9px', fontSize: 12, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+              <button className="ems-btn" disabled={chatBusy || !chatText.trim()} onClick={sendChat} style={{ padding: '7px 12px', fontSize: 12, flexShrink: 0 }}>
+                {chatBusy ? '…' : 'Отпр.'}
+              </button>
+            </div>
             {otherAction && otherAction.quote && (
               <div style={{ marginTop: 8, fontSize: 11.5, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 8, color: COLOR.muted }}>
                 <span style={{ color: COLOR.faint }}>{otherRole.short} (бот): </span>«{otherAction.quote}»
@@ -4649,6 +4689,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (i < 0 || j < 0 || j >= ps.length) return ps;
     const next = [...ps]; next[i] = ps[j]; next[j] = ps[i]; return next;
   });
+  const [dragPin, setDragPin] = useState(null);
+  const reorderPin = (from, to) => setPinned((ps) => {
+    if (from === to) return ps;
+    const fromIdx = ps.indexOf(from); const toIdx = ps.indexOf(to);
+    if (fromIdx === -1 || toIdx === -1) return ps;
+    const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
+  });
   const applyDash = (id) => { const d = dashboards.find((x) => x.id === id); if (d) { setPinned(d.pins); setActiveDash(id); } };
   const saveDash = () => {
     const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
@@ -4853,7 +4900,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             if (!m) return null;
             const val = economy[key];
             return (
-              <div key={key} style={{ position: 'relative' }}>
+              <div key={key} draggable
+                onDragStart={(e) => { setDragPin(key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', key); }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
+                onDragEnd={() => setDragPin(null)}
+                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
                 <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"

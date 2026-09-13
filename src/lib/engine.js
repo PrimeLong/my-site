@@ -663,6 +663,24 @@ const EVENTS = [
     spread: [0.5, 0.3, 0.2],
     build: () => ([['consumption', -6], ['investment', -6], ['unemployment', 1.6], ['potentialShock', -1.2],
       ['consumerConfidence', -16], ['worldGdpGrowth', -1.4], ['inflationSupply', 0.8], ['stockShock', -15], ['secConsumer', -10], ['secReit', -6]]) },
+  { id: 'war', kind: 'external', title: 'Начало войны', weight: 0.6, cooldown: 28,
+    spread: [0.4, 0.3, 0.2, 0.1],
+    build: (s) => {
+      const defShare = s.budgetShares ? s.budgetShares.defense : CONFIG.initial.budgetShares.defense;
+      // базовая доля обороны в бюджете — CONFIG.initial.budgetShares.defense; каждый процент сверх нее
+      // гасит часть военного шока — расходы, сделанные ДО войны, а не в панике после
+      const mult = clamp(1 - Math.max(0, defShare - CONFIG.initial.budgetShares.defense) * 0.025, 0.35, 1);
+      const news = mult < 0.7
+        ? 'Началась война. Заранее высокие расходы на оборону смягчили удар по экономике — армия и логистика были готовы.'
+        : 'Началась война. Низкие расходы на оборону обернулись более тяжёлым ударом — тыл оказался не готов.';
+      return { news, list: [
+        ['exportsGrowth', -8 * mult], ['importsGrowth', -6 * mult], ['investment', -7 * mult],
+        ['businessConfidence', -18 * mult], ['consumerConfidence', -12 * mult], ['inflationSupply', 1.6 * mult],
+        ['capitalFlow', -30 * mult], ['fdi', -22 * mult], ['riskPremium', 1.4 * mult], ['potentialShock', -1.0 * mult],
+        ['worldDemandIndex', -6 * mult], ['stockShock', -20 * mult], ['secIndustry', -8 * mult],
+        ['secConsumer', -10 * mult], ['secReit', -9 * mult],
+      ] };
+    } },
   { id: 'geopolitical', kind: 'external', title: 'Геополитический кризис', weight: 2, cooldown: 10,
     news: 'Геополитическая напряжённость встревожила инвесторов и подняла издержки.',
     spread: [0.5, 0.5],
@@ -868,10 +886,12 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const newStories = [];
   const KIND_CAT = { demand: 'households', supply: 'business', financial: 'markets', external: 'world', structural: 'business' };
   let pandemicTriggered = false;
+  let warTriggered = false;
   if (Math.random() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
+      if (evt.id === 'war') warTriggered = true;
       const built = buildEventImpulses(evt, s, difficulty);
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
@@ -1382,6 +1402,9 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   // на несколько кварталов эффектом; без счётчика она не попадала в activeCrises
   // и никак не отображалась как кризис, хотя бьёт по спросу и предложению сразу
   const pandemicQuartersLeft = pandemicTriggered ? 3 : Math.max(0, (s.pandemicQuartersLeft || 0) - 1);
+  // война, как и пандемия, — не пороговое состояние, а отдельное событие с растянутым
+  // эффектом; длится дольше пандемии (её экономический урон гасится 4 квартала)
+  const warQuartersLeft = warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
   const activeCrises = [];
   if (bankingRisk >= CONFIG.thresholds.bankingRisk || bankCapitalAdequacy < 8) activeCrises.push('banking');
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
@@ -1391,15 +1414,17 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   if (outputGap >= CONFIG.thresholds.overheatGap && inflation > infTarget + 1) activeCrises.push('overheating');
   if (inflation < CONFIG.thresholds.deflation && outputGap < -1) activeCrises.push('deflation');
   if (pandemicQuartersLeft > 0) activeCrises.push('pandemic');
+  if (warQuartersLeft > 0) activeCrises.push('war');
 
   const regime = activeCrises.includes('currency') ? 'currency'
     : activeCrises.includes('banking') ? 'banking'
       : activeCrises.includes('debt') ? 'debt'
-        : activeCrises.includes('pandemic') ? 'pandemic'
-          : activeCrises.includes('stagflation') ? 'stagflation'
-            : activeCrises.includes('deflation') ? 'deflation'
-              : activeCrises.includes('overheating') ? 'overheating'
-                : activeCrises.includes('recession') ? 'recession' : 'normal';
+        : activeCrises.includes('war') ? 'war'
+          : activeCrises.includes('pandemic') ? 'pandemic'
+            : activeCrises.includes('stagflation') ? 'stagflation'
+              : activeCrises.includes('deflation') ? 'deflation'
+                : activeCrises.includes('overheating') ? 'overheating'
+                  : activeCrises.includes('recession') ? 'recession' : 'normal';
 
   const prevCrises = s.activeCrises || [];
   activeCrises.filter((c) => !prevCrises.includes(c)).forEach((c) => {
@@ -1428,6 +1453,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
       news.push(mkNews('crisis', 'ДЕФЛЯЦИОННАЯ УГРОЗА', 'Цены почти не растут при слабом спросе: реальная ставка высока даже при нулевой ключевой. Обычных инструментов может не хватить.', { priority: 9 }));
     } else if (c === 'pandemic') {
       news.push(mkNews('crisis', 'ПАНДЕМИЯ: РЕЖИМ ЧРЕЗВЫЧАЙНОЙ СИТУАЦИИ', 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям — эффект растянут на несколько кварталов.', { priority: 9 }));
+    } else if (c === 'war') {
+      news.push(mkNews('crisis', 'ВОЙНА: ЭКОНОМИКА В ЧРЕЗВЫЧАЙНОМ РЕЖИМЕ', 'Торговля, инвестиции и доверие сжимаются одновременно. Расходы на оборону, сделанные ещё до войны, определили, насколько тяжёлым будет удар.', { priority: 10 }));
     }
   });
 
@@ -1490,7 +1517,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     marketCap, marketCapPctGdp, sectorBanks, sectorIndustry, sectorConsumer, sectorResources,
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
-    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft,
+    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
@@ -1608,6 +1635,17 @@ const STORY_TEMPLATES = {
       'Домохозяйства сокращают расходы и наращивают сбережения. Трансферты сейчас работают сильнее обычного: склонность тратить у людей без дохода максимальна.', { priority: 7 }) },
     { gap: 2, make: (s) => mkNews('gov', `СЧЁТ ЗА КРИЗИС: ДОЛГ ${rf1(s.debtToGdp)}% ВВП`,
       `Поддержка экономики оплачена займами. Обслуживание долга забирает ${rf1(s.interestToRevenue)}% доходов бюджета — это уже структурное ограничение на будущую политику.`, { priority: 6 }) },
+  ] },
+  war: { id: 'war', title: 'Война', steps: [
+    { make: (s) => mkNews('crisis', 'НАЧАЛАСЬ ВОЙНА: ЭКОНОМИКА ПЕРЕХОДИТ НА ВОЕННЫЕ РЕЛЬСЫ',
+      'Торговля и инвестиции сжимаются, инвесторы уходят в защитные активы. Насколько тяжёлым будет удар — во многом решили расходы на оборону, сделанные ещё до войны.', { priority: 10,
+        chain: ['Война', 'Торговля ↓ и инвестиции ↓', 'Доверие ↓', 'Издержки ↑', 'Отток капитала'] }) },
+    { gap: 1, make: (s) => mkNews('world', `ОБОРОННЫЕ РАСХОДЫ — ${rf1(s.budgetShares.defense)}% БЮДЖЕТА`,
+      s.budgetShares.defense >= 20
+        ? 'Заранее укреплённая оборона и логистика смягчили удар по экономике — тыл оказался готов.'
+        : 'Война застала экономику с низкими расходами на оборону: адаптация обходится дороже и медленнее.', { priority: 7 }) },
+    { gap: 2, make: (s) => mkNews('gov', `ЦЕНА ВОЙНЫ: ДОЛГ ${rf1(s.debtToGdp)}% ВВП`,
+      'Военные расходы и потери выпуска ложатся на бюджет. Обслуживание долга и оборона теперь конкурируют за каждый бюджетный процент.', { priority: 6 }) },
   ] },
   tech_breakthrough: { id: 'tech_breakthrough', title: 'Технологический скачок', steps: [
     { make: (s) => mkNews('business', `ТЕХНОЛОГИЧЕСКИЙ ПРОРЫВ: ПРОИЗВОДИТЕЛЬНОСТЬ ${rf1(s.productivity)}`,
@@ -2183,7 +2221,7 @@ function makeInitialEconomy() {
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
-    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0,
+    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);
@@ -2234,6 +2272,7 @@ const REGIME_INFO = {
   currency: { label: 'Валютный кризис', color: 'rust', text: 'Курс переносится в цены. Защита резервами конечна, свободный курс — импорт инфляции.' },
   deflation: { label: 'Дефляционная ловушка', color: 'blue', text: 'Реальная ставка высока даже при нулевой ключевой. Обычная денежная политика теряет силу — нужен бюджет.' },
   pandemic: { label: 'Пандемия', color: 'rust', text: 'Вспышка заболевания одновременно сократила спрос и производственные возможности. Эффект растянут на несколько кварталов и постепенно сходит на нет.' },
+  war: { label: 'Война', color: 'rust', text: 'Экономика в состоянии войны: торговля и инвестиции сжались, издержки растут, капитал уходит в защитные активы. Расходы на оборону, сделанные ещё до войны, смягчают удар.' },
 };
 const CRISIS_INFO = {
   banking: { label: 'Банковский кризис', text: 'Просрочка съедает капитал, капитал ограничивает кредит, сжатие кредита повышает просрочку.' },
@@ -2244,6 +2283,7 @@ const CRISIS_INFO = {
   recession: { label: 'Рецессия', text: 'Выпуск ниже потенциала уже несколько кварталов.' },
   deflation: { label: 'Дефляция', text: 'Слабый спрос и почти нулевой рост цен.' },
   pandemic: { label: 'Пандемия', text: 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям.' },
+  war: { label: 'Война', text: 'Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери.' },
 };
 
 function buildReport({ prev, next, quarterIndex, reasons }) {
