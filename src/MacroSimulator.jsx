@@ -2606,6 +2606,61 @@ function AchievementsModal({ onClose }) {
   );
 }
 
+/* Условия поражения. Без них достижения «Ветеран»/«Долгожитель» ничего не
+   значат — партию нельзя не пройти, значит нечем гордиться, продержавшись.
+   Гиперинфляция касается любой роли (страна одна на всех); поражение на
+   выборах — только тех, кто реально отвечает перед избирателем; банкротство —
+   только трейдера, который вне политики. Порог ЦБ (только при landslide) и
+   Минфина (при любом исходе) намеренно разный: так же асимметрично уже
+   работает смена персон бота после выборов в finishQuarter — независимость
+   центробанка переживает обычное поражение партии власти, а министерский
+   портфель нет. */
+function checkDefeat({ role, economy, history, bookVal }) {
+  if (history && history.length >= 4) {
+    const last4 = history.slice(-4);
+    if (last4.every((h) => h.inflation != null && h.inflation >= 40)) {
+      return { id: 'hyperinflation', title: 'Гиперинфляционный коллапс',
+        text: `Инфляция держится выше 40% четыре квартала подряд (сейчас ${fmt1(economy.inflation)}%). Деньги теряют смысл быстрее, чем правительство успевает отреагировать — экономика срывается в неуправляемую спираль, а вместе с ней и ваш мандат.` };
+    }
+  }
+  const er = economy.electionResult;
+  if (er && er !== 'incumbent' && (role === 'full_control' || role === 'ministry_finance' || (role === 'central_bank' && er === 'landslide'))) {
+    return { id: 'election_defeat', title: er === 'landslide' ? 'Сокрушительное поражение на выборах' : 'Поражение на выборах',
+      text: `Рейтинг власти упал до ${Math.round(economy.approval)} из 100. ${er === 'landslide' ? 'Оппозиция побеждает с разгромным перевесом — вместе с прежним курсом уходите и вы.' : 'Избиратели выбрали другой курс, и вместе с ним приходит другое руководство.'}` };
+  }
+  // settleQuarter сам не даёт капиталу уйти ниже 0.05 (сбрасывает счёт на этот
+  // минимум) — поэтому банкротство проверяем по <=, а не по <: иначе порог
+  // никогда не сработает, ведь bookVal после расчёта всегда достанет до пола
+  if (role === 'trader' && bookVal != null && bookVal <= 0.05) {
+    return { id: 'bankruptcy', title: 'Банкротство', text: 'Капитал исчерпан, обеспечения для новых позиций больше нет — играть не на что.' };
+  }
+  return null;
+}
+function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, restartLabel = 'Начать заново' }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 460, width: '100%', padding: 26, textAlign: 'center', borderColor: COLOR.rust }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontSize: 32, marginBottom: 8 }}>🏛️</div>
+        <div className="ems-serif" style={{ fontSize: 19, color: COLOR.rust, marginBottom: 10 }}>{defeat.title}</div>
+        <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6 }}>{defeat.text}</div>
+        <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12 }}>Партия окончена на {quarterLabel(quarterIndex)} — {quarterIndex} кв. у руля.</div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20 }}>
+          <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
+          <button className="ems-btn primary" onClick={onRestart}>{restartLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+const GameOverBar = ({ defeat, onReopen, onRestart, restartLabel = 'Начать заново' }) => (
+  <div style={{ borderTop: `1px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
+    display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+    <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600 }}>Партия окончена: {defeat.title}</span>
+    <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5 }} onClick={onReopen}>Подробнее</button>
+    <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onRestart}>{restartLabel}</button>
+  </div>
+);
+
 function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [tab, setTab] = useState(mode || 'save');
   const [error, setError] = useState('');
@@ -4749,6 +4804,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   React.useEffect(() => { saveNetworkPortfolio(id, seat, portfolio); }, [id, seat, portfolio]);
   const { toast: achToast, push: pushAch } = useAchievementToasts();
   const [showAch, setShowAch] = useState(false);
+  const [defeat, setDefeat] = useState(null);
+  const [showGameOver, setShowGameOver] = useState(false);
   const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
     const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes, room.quarterIndex);
     const instr = INSTR_BY_ID[instrId];
@@ -4813,6 +4870,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
         rolesPlayed: recordRolePlayed(seat), networkPlayed: true,
       })));
+      const roleForDefeat = seatRole(seat).id;
       // расчёт по портфелю (переоценка, экспирация опционов, маржин-колл) —
       // тем же способом, что и в соло-игре трейдера, только экономику берём
       // из ответа сервера, а не считаем сами
@@ -4823,8 +4881,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           const nb = settleQuarter(withBench, r.economy, r.quarterIndex);
           const marginCalled = (nb.lastEvents || []).some((ev) => ev.kind === 'call');
           if (marginCalled) { Audio.play('alarm'); haptic([60, 80, 60]); pushAch(unlockAchievements(['margin_call'])); }
+          const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: bookValue(nb, r.economy, null) });
+          if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
           return nb;
         });
+      } else {
+        const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: null });
+        if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
       }
     }
     Audio.setMood(r.economy);
@@ -4976,6 +5039,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} onClose={() => setShowPaper(false)} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} />
+      {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
+        onRestart={exit} onOpenAch={() => setShowAch(true)} restartLabel="В меню" />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -5323,30 +5388,34 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
       </div>
 
-      <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
-        display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
-        {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
-        {!error && (
-          <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-            {isTraderRoom
-              ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
-              : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
-            {quarterPending && timeLeftLabel && (
-              <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
-                <Clock size={11} />{timeLeftLabel}
-              </span>
-            )}
-          </span>
-        )}
-        {waitingForOther ? (
-          <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
-        ) : (
-          <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
-            {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу' : 'Отправить решения квартала'}
-          </button>
-        )}
-      </div>
+      {defeat ? (
+        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню" />
+      ) : (
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+          {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
+          {!error && (
+            <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+              {isTraderRoom
+                ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
+                : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
+              {quarterPending && timeLeftLabel && (
+                <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
+                  <Clock size={11} />{timeLeftLabel}
+                </span>
+              )}
+            </span>
+          )}
+          {waitingForOther ? (
+            <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
+          ) : (
+            <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
+              {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу' : 'Отправить решения квартала'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -5807,6 +5876,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [saveModal, setSaveModal] = useState(null);
   const [showAch, setShowAch] = useState(false);
   const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
+  const [showGameOver, setShowGameOver] = useState(false);
   const [view, setView] = useState(setup.role === 'trader' ? 'market' : 'dash');
   // на вкладке «Казино» музыка временно переключается на лаунж-плейлист
   // независимо от режима экономики, а при выходе возвращается к тому, что
@@ -5880,7 +5951,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
-    portfolio, lastResponse, dense, dashboards, activeDash });
+    portfolio, lastResponse, dense, dashboards, activeDash, defeat });
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -5905,6 +5976,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
 
   const finishQuarter = useCallback(() => {
+    if (defeat) return;
     setBusy(true);
     let eff = { ...decisions };
     const cbAction = (botRole === 'central_bank' || isTrader) ? botCentralBank(economy, cbPersonaId, difficulty) : null;
@@ -5946,6 +6018,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       setPendingRequest(null);
     }
     let traderEvents = [];
+    let bookVal = null;
     if (isTrader) {
       const withBench = portfolio.benchStart ? portfolio : { ...portfolio, benchStart: { stockIndex: economy.stockIndex, bondIndex: economy.bondIndex,
         depositIndex: economy.depositIndex, priceLevel: economy.priceLevel } };
@@ -5959,6 +6032,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           text: ev.text });
       });
       setPortfolio(nb);
+      bookVal = bookValue(nb, result.economy, null);
     }
     setEconomy(result.economy);
     const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
@@ -5967,6 +6041,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       quarterIndex, economy: result.economy, history: newHistory, lastEvents: traderEvents,
       rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(),
     })));
+    const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal });
+    if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
     setPendingImpulses(result.pendingImpulses);
     setEventCooldowns(result.eventCooldowns);
     setLastReasons(result.reasons);
@@ -6011,7 +6087,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setDecisions(defaultDecisions(result.economy, decisions));
     setQuarterIndex((q) => q + 1);
     setBusy(false);
-  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId, pendingRequest, portfolio, isTrader, history, pushAch]);
+  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId, pendingRequest, portfolio, isTrader, history, pushAch, defeat]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -6036,6 +6112,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} />
+      {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
+        onRestart={onRestart} onOpenAch={() => setShowAch(true)} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -6359,17 +6437,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         </div>
       </div>
 
-      <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
-        <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
-          {botRole === 'both' ? 'Центральный банк и Минфин примут решения без вашего участия'
-            : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
-              : 'Обе ветви политики под вашим контролем'}
-        </span>
-        <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={finishQuarter}
-          aria-label="Завершить квартал и применить решения">
-          {busy ? 'Обработка…' : 'Завершить квартал'}
-        </button>
-      </div>
+      {defeat ? (
+        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart} />
+      ) : (
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+          <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
+            {botRole === 'both' ? 'Центральный банк и Минфин примут решения без вашего участия'
+              : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
+                : 'Обе ветви политики под вашим контролем'}
+          </span>
+          <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={finishQuarter}
+            aria-label="Завершить квартал и применить решения">
+            {busy ? 'Обработка…' : 'Завершить квартал'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
