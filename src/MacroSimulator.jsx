@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom,
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty,
   fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
@@ -7,7 +7,7 @@ import {
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
-  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders,
+  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
@@ -3563,6 +3563,30 @@ function NetworkLobby({ onEnter }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [slots, setSlots] = useState(loadNetworkSlots);
   const [slotBusy, setSlotBusy] = useState(null);
+  const [roomPreview, setRoomPreview] = useState(null);
+
+  // подглядываем занятость мест ДО входа, чтобы не отправлять игрока на
+  // «место уже занято» после того, как он уже заполнил форму
+  React.useEffect(() => {
+    const trimmed = code.trim().toUpperCase();
+    if (trimmed.length < 4) { setRoomPreview(null); return undefined; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const data = await fetchRoom(trimmed);
+        if (!cancelled) setRoomPreview(data.room);
+      } catch { if (!cancelled) setRoomPreview(null); }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [code]);
+  React.useEffect(() => {
+    if (!roomPreview || !roomPreview.occupied) return;
+    if (roomPreview.occupied[seat]) {
+      const free = NETWORK_SEATS.find((sx) => !roomPreview.occupied[sx]);
+      if (free) setSeat(free);
+    }
+  }, [roomPreview]);
+  const bothSeatsTaken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied.central_bank && roomPreview.occupied.ministry_finance);
 
   const enterSlot = async (idx) => {
     const slot = slots[idx];
@@ -3706,19 +3730,22 @@ function NetworkLobby({ onEnter }) {
             <div style={{ display: 'flex', gap: 8 }}>
               {NETWORK_SEATS.map((sx) => {
                 const rd = seatRole(sx); const RoleIcon = ROLE_ICON[rd.icon];
+                const taken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied[sx]);
                 return (
-                  <button key={sx} className="ems-btn" style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                    background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
-                    borderColor: seat === sx ? COLOR.gold : COLOR.border }}
-                    onClick={() => { Audio.play('click'); setSeat(sx); }}>
+                  <button key={sx} className="ems-btn" disabled={taken}
+                    style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                      background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
+                      borderColor: seat === sx ? COLOR.gold : COLOR.border, opacity: taken ? 0.4 : 1, cursor: taken ? 'not-allowed' : 'pointer' }}
+                    onClick={() => { if (taken) return; Audio.play('click'); setSeat(sx); }}>
                     <RoleIcon size={15} />{rd.short}
+                    {taken && <span style={{ fontSize: 9, letterSpacing: '0.03em' }}>занято</span>}
                   </button>
                 );
               })}
             </div>
           </div>
-          <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
-            {busy ? 'Входим…' : 'Войти в партию'}
+          <button className="ems-btn primary" disabled={busy || bothSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
+            {busy ? 'Входим…' : bothSeatsTaken ? 'Оба места заняты' : 'Войти в партию'}
           </button>
         </div>
       )}
@@ -3736,6 +3763,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showWhy, setShowWhy] = useState(false);
+  const [showPaper, setShowPaper] = useState(false);
   const prevQuarter = React.useRef(room.quarterIndex);
 
   React.useEffect(() => watchRoom(id, (r) => {
@@ -3809,6 +3837,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
   const exit = () => { leaveRoom(id, seat, token).catch(() => {}); clearNetworkSlotFor(id, seat); onExit(); };
+  const [difficultyBusy, setDifficultyBusy] = useState(false);
+  const changeDifficulty = async (next) => {
+    if (next === room.difficulty) return;
+    setDifficultyBusy(true); setError('');
+    try { const r = await setRoomDifficulty(id, seat, token, next); setRoom(r.room); }
+    catch (e) { failWithError(e); } finally { setDifficultyBusy(false); }
+  };
 
   return (
     <div className="ems-root">
@@ -3816,6 +3851,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <Atmosphere regime={economy.regime}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
+      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} onClose={() => setShowPaper(false)} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -3840,9 +3876,21 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
             <Gauge value={economy.wellbeing} size={68} />
           </div>
+          <div style={{ position: 'relative' }}>
+            <select value={room.difficulty} disabled={difficultyBusy} onChange={(e) => changeDifficulty(e.target.value)}
+              title="Сложность партии" className="ems-btn"
+              style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
+              {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
+            </select>
+            <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          </div>
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
           <AudioControls />
+          <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
+            <Newspaper size={14} />Газета
+          </button>
           <button className="ems-btn" style={{ padding: '7px 9px' }} title="Покинуть комнату" onClick={() => { Audio.play('click'); exit(); }}>
             <RotateCcw size={14} />
           </button>
@@ -3940,7 +3988,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <NewsTerminal items={room.news} onOpenPaper={() => {}} />
+          <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
           <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
             hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           <div className="ems-panel" style={{ padding: 14 }}>
@@ -4175,6 +4223,21 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
                   </div>
                 );
               })}
+              {(() => {
+                const active = blk.value === 'random';
+                return (
+                  <div onClick={() => { Audio.play('click'); blk.set('random'); }} className="ems-panel"
+                    style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+                    {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
+                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>Характер определится в момент вступления в должность — не будете знать заранее, с кем имеете дело.</div>
+                  </div>
+                );
+              })()}
             </div>
           </React.Fragment>
         ))}
@@ -4210,7 +4273,14 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
         </div>
 
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
-          onClick={() => { if (!role) return; Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart({ role, difficulty, goal, cbPersona, mofPersona }); }}>
+          onClick={() => {
+            if (!role) return;
+            Audio.prime(); Audio.play('stamp'); Audio.startMusic();
+            const pick = (list) => list[Math.floor(Math.random() * list.length)].id;
+            const finalCb = cbPersona === 'random' ? pick(CB_PERSONAS) : cbPersona;
+            const finalMof = mofPersona === 'random' ? pick(MOF_PERSONAS) : mofPersona;
+            onStart({ role, difficulty, goal, cbPersona: finalCb, mofPersona: finalMof });
+          }}>
           Принять полномочия
         </button>
         </>

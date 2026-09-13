@@ -12,6 +12,7 @@ export const submitDecisions = (id, seat, token, decisions, note) =>
   post({ action: 'submit', id, seat, token, decisions, note });
 export const cancelSubmission = (id, seat, token) => post({ action: 'unsubmit', id, seat, token });
 export const leaveRoom = (id, seat, token) => post({ action: 'leave', id, seat, token });
+export const setRoomDifficulty = (id, seat, token, difficulty) => post({ action: 'set_difficulty', id, seat, token, difficulty });
 export async function fetchRoom(id, since, seat, token) {
   const params = new URLSearchParams({ id });
   if (since) params.set('since', since);
