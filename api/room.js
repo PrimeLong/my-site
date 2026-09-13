@@ -62,8 +62,11 @@ function freshRoom(opts) {
     news: [], report: '', reasons: null,
     submissions: { central_bank: null, ministry_finance: null },
     lastActions: { central_bank: null, ministry_finance: null },
+    chat: [],
   };
 }
+
+const CHAT_LOG_CAP = 60;
 
 /* публичный вид комнаты: без токенов игроков */
 const publicView = (room) => {
@@ -80,6 +83,7 @@ const publicView = (room) => {
     connected: { central_bank: isConnected('central_bank'), ministry_finance: isConnected('ministry_finance') },
     lastActions: room.lastActions,
     goals: { central_bank: room.goalCb, ministry_finance: room.goalMof },
+    chat: room.chat || [],
   };
 };
 
@@ -191,6 +195,22 @@ async function handleRequest(req, res) {
         version: room.version + 1 };
       const bothIn = SEATS.every((sx) => next.submissions[sx] || !next.seats[sx]);
       return bothIn ? resolveQuarter(next) : next;
+    });
+    if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    return res.status(200).json({ room: publicView(out.room) });
+  }
+
+  if (action === 'chat') {
+    const id = String(body.id || '').toUpperCase();
+    const seat = body.seat;
+    if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    const text = cleanString(body.text, 500);
+    if (!text || !text.trim()) return res.status(400).json({ error: 'Пустое сообщение' });
+    const out = await withRoom(id, (room) => {
+      if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
+      const entry = { seat, text: text.trim(), at: Date.now() };
+      const chat = [...(room.chat || []), entry].slice(-CHAT_LOG_CAP);
+      return { ...room, chat, version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
     return res.status(200).json({ room: publicView(out.room) });
