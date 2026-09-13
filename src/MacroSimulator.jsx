@@ -4944,6 +4944,21 @@ function NetworkLobby({ onEnter }) {
   );
 }
 
+function NetworkEntryScreen({ onEnter, onBack }) {
+  return (
+    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: 640, width: '100%' }}>
+        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+          onClick={() => { Audio.play('click'); onBack(); }}>
+          ← Назад в меню
+        </button>
+        <NetworkLobby onEnter={onEnter} />
+      </div>
+    </div>
+  );
+}
+
 const QUARTER_TIMEOUT_MS = 5 * 60 * 1000; // держим в синхроне с QUARTER_TIMEOUT_MS в api/room.js
 
 function NetworkGameScreen({ network, theme, setTheme, onExit }) {
@@ -5580,72 +5595,57 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   );
 }
 
-/* ============================ ЭКРАН ВЫБОРА ============================ */
-function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
-  const [mode, setMode] = useState(() => (roomCodeFromUrl() ? 'network' : 'single'));
+/* ============================ ГЛАВНОЕ МЕНЮ ============================ */
+// Первый экран после запуска: выбор направления (новая партия / сеть /
+// продолжить / достижения), а не сразу детальная анкета — её показывает
+// SetupScreen отдельным шагом, только для новой одиночной партии.
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
   const playerId = useMemo(getPlayerId, []);
   const [soloSlots, setSoloSlots] = useState(null);
   const [slotBusy, setSlotBusy] = useState(null);
   const [slotError, setSlotError] = useState('');
   const [storageMode, setStorageMode] = useState(null);
+  const [showAch, setShowAch] = useState(false);
   React.useEffect(() => {
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(3).fill(null)));
   }, [playerId]);
   const enterSlot = async (idx) => {
     setSlotBusy(idx); setSlotError('');
-    try { const snap = await fetchSoloSlot(playerId, idx); onLoad(snap); }
-    catch (e) { setSlotError(e.message); setSlotBusy(null); }
+    try {
+      const snap = await fetchSoloSlot(playerId, idx);
+      Audio.prime(); Audio.play('stamp'); Audio.startMusic();
+      onLoad(snap);
+    } catch (e) { setSlotError(e.message); setSlotBusy(null); }
   };
   const removeSlot = async (idx) => {
     try { setSoloSlots(await deleteSoloSlot(playerId, idx)); } catch (e) { setSlotError(e.message); }
   };
-  const [role, setRole] = useState(null);
-  const [difficulty, setDifficulty] = useState('medium');
-  const [goal, setGoalRaw] = useState('living_standards');
-  const setGoal = (g) => setGoalRaw(g);
-  React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : 'living_standards'); }, [role]);
-  const [cbPersona, setCbPersona] = useState('pragmatic');
-  const [mofPersona, setMofPersona] = useState('technocrat');
-  const roleDef = ROLES.find((r) => r.id === role);
-  const botRole = roleDef ? roleDef.botRole : null;
-  const personaBlocks = botRole === 'central_bank' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' }]
-    : botRole === 'ministry_finance' ? [{ list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }]
-      : botRole === 'both' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' },
-        { list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }] : [];
-  const personas = personaBlocks.length ? personaBlocks : null;
-  const [showAch, setShowAch] = useState(false);
+  const hasSaves = !!(soloSlots && soloSlots.some(Boolean));
+
+  const MENU_ITEMS = [
+    { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
+      action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
+    { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
+      action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
+    { id: 'achievements', icon: Trophy, title: 'Достижения', desc: 'Коллекция наград, открытых за все ваши партии на этом устройстве.',
+      action: () => { Audio.play('click'); setShowAch(true); } },
+  ];
 
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '48px 16px' }}>
       <GlobalStyle />
-      <button className="ems-btn" style={{ position: 'fixed', top: 16, right: 16, padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, zIndex: 20 }}
-        onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
-        <Trophy size={13} color={COLOR.gold} />Коллекция
-      </button>
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      <div style={{ maxWidth: 800, width: '100%' }}>
-        <div style={{ textAlign: 'center', marginBottom: 34 }}>
-          <div className="ems-serif" style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.01em' }}>Экономическая панель государства</div>
-          <div className="ems-mono" style={{ color: COLOR.faint, fontSize: 11, marginTop: 9 }}>{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</div>
-          <div style={{ color: COLOR.muted, fontSize: 13.5, marginTop: 14, maxWidth: 600, margin: '14px auto 0', lineHeight: 1.55 }}>
-            Экономика работает как цепочка причин: ставка → рыночные ставки → кредит → спрос → выпуск → занятость → зарплаты → цены → ожидания. Второй ветвью власти управляет бот со своим характером — и у него будут к вам требования.
+      <div style={{ maxWidth: 640, width: '100%' }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div className="ems-serif" style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.01em' }}>Экономическая панель государства</div>
+          <div className="ems-mono" style={{ color: COLOR.faint, fontSize: 11, marginTop: 10 }}>{romanQ(1)} кв. {CONFIG.startYear} · симулятор макроэкономической политики</div>
+          <div style={{ color: COLOR.muted, fontSize: 13.5, marginTop: 16, maxWidth: 520, margin: '16px auto 0', lineHeight: 1.6 }}>
+            Ставка → кредит → спрос → выпуск → занятость → цены → ожидания. Управляйте центральным банком, Минфином
+            или обоими сразу — соло против ботов со своим характером или вдвоём по сети.
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 4, marginBottom: 26, justifyContent: 'center' }}>
-          {[['single', 'Одиночная игра'], ['network', 'Игра по сети — вдвоём']].map(([id, label]) => (
-            <span key={id} className={`ems-tab ${mode === id ? 'active' : ''}`} style={{ padding: '7px 16px', fontSize: 12.5 }}
-              onClick={() => { Audio.prime(); Audio.play('tab'); setMode(id); }}>{label}</span>
-          ))}
-        </div>
-
-        {mode === 'network' ? (
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <NetworkLobby onEnter={onEnterNetwork} />
-          </div>
-        ) : (
-        <>
         {storageMode === 'memory' && (
           <div className="ems-panel" style={{ padding: 12, marginBottom: 16, borderColor: COLOR.rust }}>
             <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
@@ -5656,10 +5656,11 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
             </div>
           </div>
         )}
-        {soloSlots && soloSlots.some(Boolean) && (
+
+        {hasSaves && (
           <div className="ems-panel" style={{ padding: 14, marginBottom: 20 }}>
             <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>
-              Ваши партии ({soloSlots.filter(Boolean).length}/3)
+              Продолжить ({soloSlots.filter(Boolean).length}/3)
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {soloSlots.map((slot, idx) => {
@@ -5682,6 +5683,74 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
             {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
           </div>
         )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+          {MENU_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.id} onClick={item.action} className="ems-panel"
+                style={{ padding: '15px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: COLOR.goldDim, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={17} color={COLOR.gold} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="ems-serif" style={{ fontSize: 15, color: COLOR.text }}>{item.title}</div>
+                  <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{item.desc}</div>
+                </div>
+                <ChevronDown size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10.5, color: COLOR.faint, marginRight: 2 }}>Оформление:</span>
+          {Object.values(THEMES).map((t) => (
+            <button key={t.id} className="ems-btn" style={{ padding: '5px 10px', fontSize: 10.5,
+              background: theme === t.id ? COLOR.gold : COLOR.panelAlt, color: theme === t.id ? COLOR.ink : COLOR.muted,
+              borderColor: theme === t.id ? COLOR.gold : COLOR.border }}
+              onClick={() => { Audio.play('tab'); setTheme(t.id); }}>{t.name}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================ ЭКРАН ВЫБОРА ============================ */
+function SetupScreen({ onStart, onBack }) {
+  const [role, setRole] = useState(null);
+  const [difficulty, setDifficulty] = useState('medium');
+  const [goal, setGoalRaw] = useState('living_standards');
+  const setGoal = (g) => setGoalRaw(g);
+  React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : 'living_standards'); }, [role]);
+  const [cbPersona, setCbPersona] = useState('pragmatic');
+  const [mofPersona, setMofPersona] = useState('technocrat');
+  const roleDef = ROLES.find((r) => r.id === role);
+  const botRole = roleDef ? roleDef.botRole : null;
+  const personaBlocks = botRole === 'central_bank' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' }]
+    : botRole === 'ministry_finance' ? [{ list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }]
+      : botRole === 'both' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' },
+        { list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }] : [];
+  const personas = personaBlocks.length ? personaBlocks : null;
+
+  return (
+    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: 800, width: '100%' }}>
+        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+          onClick={() => { Audio.play('click'); onBack(); }}>
+          ← Назад в меню
+        </button>
+        <div style={{ textAlign: 'center', marginBottom: 34 }}>
+          <div className="ems-serif" style={{ fontSize: 27, fontWeight: 600, letterSpacing: '-0.01em' }}>Новая партия</div>
+          <div className="ems-mono" style={{ color: COLOR.faint, fontSize: 11, marginTop: 9 }}>{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</div>
+          <div style={{ color: COLOR.muted, fontSize: 13.5, marginTop: 14, maxWidth: 600, margin: '14px auto 0', lineHeight: 1.55 }}>
+            Экономика работает как цепочка причин: ставка → рыночные ставки → кредит → спрос → выпуск → занятость → зарплаты → цены → ожидания. Второй ветвью власти управляет бот со своим характером — и у него будут к вам требования.
+          </div>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>1</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваш пост</span>
@@ -5793,8 +5862,6 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
           }}>
           Принять полномочия
         </button>
-        </>
-        )}
       </div>
     </div>
   );
@@ -6629,25 +6696,41 @@ export default function MacroSimulator() {
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
+  // 'menu' — главная страница; 'setup' — анкета новой одиночной партии;
+  // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
+  // ведёт сразу в лобби, минуя меню.
+  const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
+  const goMenu = () => setView('menu');
 
   if (network) {
-    return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => setNetwork(null)} />;
+    return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />;
   }
   if (!setup) {
+    if (view === 'setup') {
+      return (
+        <SetupScreen key={theme}
+          onStart={(x) => { setLoaded(null); setSetup(x); }}
+          onBack={goMenu}
+        />
+      );
+    }
+    if (view === 'network') {
+      return <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />;
+    }
     return (
-      <SetupScreen key={theme}
-        onStart={(x) => { setLoaded(null); setSetup(x); }}
+      <MainMenu key={theme} theme={theme} setTheme={setTheme}
+        onNewGame={() => setView('setup')}
+        onNetwork={() => setView('network')}
         onLoad={startLoaded}
-        onEnterNetwork={(net) => setNetwork(net)}
       />
     );
   }
   return (
     <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
       theme={theme} setTheme={setTheme}
-      onRestart={() => { setLoaded(null); setSetup(null); }} onLoadState={startLoaded} />
+      onRestart={() => { setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
   );
 }
