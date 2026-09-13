@@ -124,7 +124,7 @@ async function handleRequest(req, res) {
     const lastSeen = room.lastSeen || { central_bank: null, ministry_finance: null };
     const anyStale = SEATS.some((sx) => room.seats[sx] && (!lastSeen[sx] || (Date.now() - lastSeen[sx]) >= PRESENCE_TIMEOUT_MS));
     if (!anyStale && since && Number(since) === room.version) return res.status(200).json({ unchanged: true, version: room.version });
-    return res.status(200).json({ room: publicView(room) });
+    return res.status(200).json({ storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Только GET и POST' });
 
@@ -157,7 +157,7 @@ async function handleRequest(req, res) {
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
     const t = out.room.__token; delete out.room.__token;
     await setRoom(id, out.room);
-    return res.status(200).json({ token: t, seat, room: publicView(out.room) });
+    return res.status(200).json({ token: t, seat, storage: hasKv() ? 'kv' : 'memory', room: publicView(out.room) });
   }
 
   if (action === 'submit') {
