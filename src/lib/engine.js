@@ -511,6 +511,35 @@ function redescribeMofAction(s, personaId, finalDecisions) {
   });
 }
 
+/* Та же новость/цитата/спрос, что и у бота, но для решения живого игрока в
+   сетевой партии — раньше новости о действиях второй ветви власти строились
+   только из botAction/botActions, поэтому решения человека-партнёра никогда
+   не попадали в ленту. buildCbResult/buildMofResult используют persona только
+   для имени и (у Минфина) калибровки таргета дефицита — берём нейтральный
+   персонаж по умолчанию и подставляем вместо имени ник игрока. */
+function describeHumanCbAction(s, playerName, finalDecisions) {
+  const P = { ...getCbPersona('pragmatic'), name: playerName || 'игрок' };
+  return buildCbResult(s, P, {
+    keyRate: finalDecisions.keyRate, reserveReq: finalDecisions.reserveReq,
+    capitalRequirement: finalDecisions.capitalRequirement, moneySupplyOp: finalDecisions.moneySupplyOp,
+    fxIntervention: finalDecisions.fxIntervention, liquidity: finalDecisions.liquidity,
+    fxRegime: finalDecisions.fxRegime, emergency: finalDecisions.emergency,
+    cbTarget: finalDecisions.inflationTarget, fxTargetCur: finalDecisions.fxTarget,
+  });
+}
+function describeHumanMofAction(s, playerName, finalDecisions) {
+  const P = { ...getMofPersona('technocrat'), name: playerName || 'игрок' };
+  const debtStress = clamp((s.debtToGdp - P.debtLimit) / 20, 0, 2);
+  const targetDeficit = P.anchor - P.cyclical * Math.max(0, -s.outputGap) * 1.1 + debtStress * 2.2;
+  return buildMofResult(s, P, targetDeficit, {
+    incomeTaxRate: finalDecisions.incomeTaxRate, profitTaxRate: finalDecisions.profitTaxRate,
+    vatRate: finalDecisions.vatRate, exciseRate: finalDecisions.exciseRate,
+    capitalTaxRate: finalDecisions.capitalTaxRate, socialContribRate: finalDecisions.socialContribRate,
+    govSpending: finalDecisions.govSpending, transfers: finalDecisions.transfers, govInvestment: finalDecisions.govInvestment,
+    shareHealth: finalDecisions.shareHealth, shareEducation: finalDecisions.shareEducation,
+    shareScience: finalDecisions.shareScience, shareDefense: finalDecisions.shareDefense, shareAdmin: finalDecisions.shareAdmin,
+  });
+}
 
 /* =========================================================================================
    МЕЖВЕДОМСТВЕННЫЕ ЗАПРОСЫ: официальное обращение одного ведомства к другому
@@ -2504,6 +2533,7 @@ export {
   ru, rf1, rf2, rfs,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
+  describeHumanCbAction, describeHumanMofAction,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
   simulateQuarter,

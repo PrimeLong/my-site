@@ -4,9 +4,16 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getRoom, setRoom, withRoom, hasKv } from './_lib/store.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
+  describeHumanCbAction, describeHumanMofAction,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS } from './_lib/engine.js';
 
-const SEATS = ['central_bank', 'ministry_finance'];
+// «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
+// режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
+// валидации (место, не принадлежащее текущему режиму комнаты, просто всегда
+// пустует и нигде не читается — см. seatsFor)
+const SEATS_BY_MODE = { policy: ['central_bank', 'ministry_finance'], trader: ['trader1', 'trader2'] };
+const SEATS = [...SEATS_BY_MODE.policy, ...SEATS_BY_MODE.trader];
+const seatsFor = (room) => SEATS_BY_MODE[room.mode === 'trader' ? 'trader' : 'policy'];
 const DIFFICULTY_IDS = new Set(DIFFICULTIES.map((d) => d.id));
 const GOAL_IDS = new Set(GOALS.map((g) => g.id));
 const FX_REGIME_IDS = new Set(FX_REGIMES.map((r) => r.id));
@@ -53,22 +60,28 @@ function sanitizeDecisions(base, submitted, seat) {
 
 function freshRoom(opts) {
   const economy = makeInitialEconomy();
+  const mode = opts.mode === 'trader' ? 'trader' : 'policy';
+  const seats = SEATS_BY_MODE[mode];
+  const zip = (v) => ({ [seats[0]]: v, [seats[1]]: v });
   return {
-    id: opts.id, created: Date.now(), version: 1,
+    id: opts.id, created: Date.now(), version: 1, mode,
     ownerToken: token(), // владелец лобби — тот, кто нажал «Создать комнату»; не привязан к месту,
     // потому что место выбирается отдельным шагом уже ПОСЛЕ создания
     difficulty: DIFFICULTY_IDS.has(opts.difficulty) ? opts.difficulty : 'medium',
     goalCb: GOAL_IDS.has(opts.goalCb) ? opts.goalCb : 'min_inflation',
     goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
-    seats: { central_bank: null, ministry_finance: null },
-    names: { central_bank: null, ministry_finance: null },
-    lastSeen: { central_bank: null, ministry_finance: null },
+    seats: zip(null),
+    names: zip(null),
+    lastSeen: zip(null),
     economy, quarterIndex: 1, quarterStartedAt: Date.now(),
     decisions: defaultDecisions(economy),
     pendingImpulses: [], eventCooldowns: {}, stories: [],
     history: [{ q: 0, label: `${quarterLabel(1)} (старт)`, ...economy }],
     news: [], report: '', reasons: null,
-    submissions: { central_bank: null, ministry_finance: null },
+    submissions: zip(null),
+    // lastActions описывает институты (ЦБ/Минфин), а не места: в режиме
+    // «рынок» обоими всегда управляют боты, но новости об их решениях всё
+    // равно нужны трейдерам как контекст рынка — см. resolveQuarter
     lastActions: { central_bank: null, ministry_finance: null },
     chat: [],
   };
@@ -76,19 +89,23 @@ function freshRoom(opts) {
 
 const CHAT_LOG_CAP = 60;
 
-/* публичный вид комнаты: без токенов игроков */
+/* публичный вид комнаты: без токенов игроков. ready/occupied/connected несут
+   ключи для ОБЕИХ пар мест (политика и рынок), а не только текущего режима
+   комнаты — так клиент читает свою пару единообразно, а неиспользуемая просто
+   всегда пустая */
 const publicView = (room) => {
-  const lastSeen = room.lastSeen || { central_bank: null, ministry_finance: null };
+  const lastSeen = room.lastSeen || {};
   const isConnected = (seat) => !!room.seats[seat] && !!lastSeen[seat] && (Date.now() - lastSeen[seat]) < PRESENCE_TIMEOUT_MS;
+  const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
   return {
-    id: room.id, version: room.version, difficulty: room.difficulty,
+    id: room.id, version: room.version, difficulty: room.difficulty, mode: room.mode === 'trader' ? 'trader' : 'policy',
     quarterIndex: room.quarterIndex, quarterLabel: quarterLabel(room.quarterIndex), quarterStartedAt: room.quarterStartedAt,
     economy: room.economy, history: room.history, news: room.news.slice(0, 120),
     report: room.report, reasons: room.reasons, stories: room.stories,
     names: room.names,
-    ready: { central_bank: !!room.submissions.central_bank, ministry_finance: !!room.submissions.ministry_finance },
-    occupied: { central_bank: !!room.seats.central_bank, ministry_finance: !!room.seats.ministry_finance },
-    connected: { central_bank: isConnected('central_bank'), ministry_finance: isConnected('ministry_finance') },
+    ready: perSeat((sx) => !!room.submissions[sx]),
+    occupied: perSeat((sx) => !!room.seats[sx]),
+    connected: perSeat(isConnected),
     lastActions: room.lastActions,
     goals: { central_bank: room.goalCb, ministry_finance: room.goalMof },
     chat: room.chat || [],
@@ -102,6 +119,11 @@ function resolveQuarter(room) {
   const mofAct = subs.ministry_finance ? null : botFinanceMinistry(room.economy, 'technocrat', room.difficulty);
   const cbDecisions = cbAct ? cbAct.decisions : subs.central_bank.decisions;
   const mofDecisions = mofAct ? mofAct.decisions : subs.ministry_finance.decisions;
+  // новость/цитата о решении живого игрока — тем же способом, что у бота,
+  // иначе действия партнёра-человека никогда не попадали в ленту новостей
+  // (generateNews строит эти новости только из botAction/botActions)
+  const cbNewsAct = cbAct || describeHumanCbAction(room.economy, room.names.central_bank, cbDecisions);
+  const mofNewsAct = mofAct || describeHumanMofAction(room.economy, room.names.ministry_finance, mofDecisions);
   // рычаги берём именно по группе, а не полным объектом: иначе нетронутые
   // (но всё равно присутствующие в decisions) поля одного игрока при слиянии
   // затирают реальные изменения другого — это и было причиной, что применялось
@@ -119,7 +141,7 @@ function resolveQuarter(room) {
     economy: { ...room.economy, cbStance, mofStance },
     decisions: eff, pendingImpulses: room.pendingImpulses, eventCooldowns: room.eventCooldowns,
     difficulty: room.difficulty, quarterIndex: room.quarterIndex, stories: room.stories,
-    botAction: cbAct || null, botActions: mofAct ? [mofAct] : [],
+    botAction: cbNewsAct, botActions: [mofNewsAct],
   });
   return {
     ...room,
@@ -131,7 +153,7 @@ function resolveQuarter(room) {
     decisions: defaultDecisions(res.economy, eff),
     quarterIndex: room.quarterIndex + 1,
     quarterStartedAt: Date.now(),
-    submissions: { central_bank: null, ministry_finance: null },
+    submissions: { ...room.submissions, [seatsFor(room)[0]]: null, [seatsFor(room)[1]]: null },
     lastActions: {
       // timedOut: место было занято человеком, но за него в итоге решал бот
       // (не отправил решение вовремя) — отличаем от «место просто пустует»,
@@ -188,7 +210,7 @@ async function handleRequest(req, res) {
 
   if (action === 'create') {
     const id = code();
-    const room = freshRoom({ id, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof });
+    const room = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof });
     await setRoom(id, room);
     return res.status(200).json({ id, ownerToken: room.ownerToken, storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
   }
@@ -198,6 +220,7 @@ async function handleRequest(req, res) {
     const seat = body.seat;
     if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
     const out = await withRoom(id, (room) => {
+      if (!seatsFor(room).includes(seat)) return { error: 'Эта роль недоступна в этом режиме партии', status: 400 };
       if (room.seats[seat]) return { error: 'Место уже занято', status: 409 };
       const t = token();
       return { ...room, seats: { ...room.seats, [seat]: t }, names: { ...room.names, [seat]: cleanString(body.name, 40) || 'игрок' },
