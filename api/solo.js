@@ -25,7 +25,7 @@ function summarize(slot) {
 
 function trimSnapshot(snap) {
   const history = Array.isArray(snap.history)
-    ? snap.history.slice(-HISTORY_CAP).map((h) => { const { revenueParts, ...rest } = h; return rest; })
+    ? snap.history.slice(-HISTORY_CAP).map((h) => { const { revenueParts: _revenueParts, ...rest } = h; return rest; })
     : [];
   const newsFeed = Array.isArray(snap.newsFeed) ? snap.newsFeed.slice(0, NEWS_CAP) : [];
   return { ...snap, history, newsFeed };

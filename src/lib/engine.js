@@ -273,7 +273,7 @@ const getMofPersona = (id) => MOF_PERSONAS.find((p) => p.id === id) || MOF_PERSO
 
 // Бот-ЦБ: правило Тейлора вокруг нейтральной ставки + макропруденциальная и кризисная реакция
 const roundTo = (v, step) => Math.round(v / step) * step;
-function botCentralBank(s, personaId, difficulty) {
+function botCentralBank(s, personaId, _difficulty) {
   const P = getCbPersona(personaId);
   const cbTarget = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
   const inflGap = s.inflation - cbTarget;
@@ -285,14 +285,13 @@ function botCentralBank(s, personaId, difficulty) {
   const deepSlump = s.outputGap < -2 && s.inflation < cbTarget + 0.5;
   const smoothing = deepSlump ? Math.min(P.smooth, 0.55) : P.smooth;
   const smoothed = smoothing * s.keyRate + (1 - smoothing) * taylor;
-  const rawMove = clamp(smoothed - s.keyRate, -P.maxMove, P.maxMove);
   // ЦБ ходит шагами по 0,25 п.п. и не двигает ставку ради десятых долей
   const maxStep = deepSlump ? P.maxMove * 1.6 : P.maxMove;
   const rawMove2 = clamp(smoothed - s.keyRate, -maxStep, maxStep);
   const move = Math.abs(rawMove2) < 0.25 ? 0 : roundTo(rawMove2, 0.25);
   let keyRate = clamp(roundTo(s.keyRate + move, 0.25), 0, 25);
 
-  const fxRegimeCur = s.fxRegime; const fxTargetCur = s.fxTarget;
+  const fxTargetCur = s.fxTarget;
   const crisis = s.bankingRisk >= CONFIG.thresholds.bankingRisk || s.bankCapitalAdequacy < 9;
   const emergency = crisis;
   let liquidity = 0;
@@ -399,7 +398,7 @@ function redescribeCbAction(s, personaId, finalDecisions) {
 }
 
 // Бот-Минфин: бюджетное правило + контрциклическая реакция + собственные приоритеты расходов
-function botFinanceMinistry(s, personaId, difficulty) {
+function botFinanceMinistry(s, personaId, _difficulty) {
   const P = getMofPersona(personaId);
   const debtStress = clamp((s.debtToGdp - P.debtLimit) / 20, 0, 2);
   const targetDeficit = P.anchor - P.cyclical * Math.max(0, -s.outputGap) * 1.1 + debtStress * 2.2;
@@ -809,7 +808,7 @@ function pickEvent(state, eventCooldowns) {
   for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) return pool[i]; }
   return pool[pool.length - 1];
 }
-function buildEventImpulses(evt, state, difficulty) {
+function buildEventImpulses(evt, state) {
   const resolved = evt.build(state);
   const list = Array.isArray(resolved) ? resolved : resolved.list;
   const news = Array.isArray(resolved) ? evt.news : resolved.news;
@@ -948,7 +947,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
       if (evt.id === 'war') warTriggered = true;
-      const built = buildEventImpulses(evt, s, difficulty);
+      const built = buildEventImpulses(evt, s);
       if (evt.id === 'war') warTypeRolled = built.warType || null;
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
@@ -1614,7 +1613,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     gdpGrowth: byHeadline('gdpGrowth'), inflation: byHeadline('inflation'), exchangeRate: byHeadline('exchangeRate'),
     budget: byHeadline('budget'), unemployment: byHeadline('unemployment'), banking: byHeadline('banking'), potential: byHeadline('potential'),
   };
-  const report = buildReport({ prev: s, next: newEconomy, quarterIndex, reasons });
+  const report = buildReport({ prev: s, next: newEconomy, reasons });
 
   // сюжеты: запуск новых цепочек и продвижение уже идущих
   const activeStories = [...(stories || []), ...newStories];
@@ -1702,7 +1701,7 @@ const STORY_TEMPLATES = {
       'Слабая экономика возвращается в банки неплатежами, неплатежи съедают капитал, капитал ограничивает кредит. Разорвать круг можно только извне — рекапитализацией или смягчением политики.', { priority: 8 }) },
   ] },
   sanctions: { id: 'sanctions', title: 'Внешние ограничения', steps: [
-    { make: (s) => mkNews('world', 'ВВЕДЕНЫ ВНЕШНИЕ ОГРАНИЧЕНИЯ НА ТОРГОВЛЮ И ФИНАНСЫ',
+    { make: (_s) => mkNews('world', 'ВВЕДЕНЫ ВНЕШНИЕ ОГРАНИЧЕНИЯ НА ТОРГОВЛЮ И ФИНАНСЫ',
       'Часть торговых и финансовых каналов закрыта. Экономика теряет не только спрос, но и производственные возможности: это шок предложения.', { priority: 9,
         chain: ['Ограничения', 'Экспорт и импорт ↓', 'Отток капитала', 'Курс ↓', 'Инфляция ↑', 'Потенциал ↓'] }) },
     { gap: 1, make: (s) => mkNews('markets', `КУРС ПОД ДАВЛЕНИЕМ, ПРЕМИЯ ЗА РИСК ${rf1(s.riskPremium)} П.П.`,
@@ -1711,7 +1710,7 @@ const STORY_TEMPLATES = {
       'Разорванные цепочки поставок — это не временная просадка спроса, а утраченные мощности. Стимулировать такую экономику деньгами значит получить инфляцию без выпуска.', { priority: 7 }) },
   ] },
   pandemic: { id: 'pandemic', title: 'Пандемия', steps: [
-    { make: (s) => mkNews('crisis', 'ВСПЫШКА ЗАБОЛЕВАНИЯ: ОГРАНИЧЕНИЯ ЭКОНОМИЧЕСКОЙ АКТИВНОСТИ',
+    { make: (_s) => mkNews('crisis', 'ВСПЫШКА ЗАБОЛЕВАНИЯ: ОГРАНИЧЕНИЯ ЭКОНОМИЧЕСКОЙ АКТИВНОСТИ',
       'Одновременно падают и спрос, и предложение. Редкий случай, когда бюджетная поддержка нужна быстрее денежной.', { priority: 9,
         chain: ['Ограничения', 'Спрос ↓ и мощности ↓', 'Безработица ↑', 'Расходы бюджета ↑', 'Долг ↑'] }) },
     { gap: 1, make: (s) => mkNews('households', `БЕЗРАБОТИЦА ${rf1(s.unemployment)}%, ДОВЕРИЕ НАСЕЛЕНИЯ ${Math.round(s.consumerConfidence)}`,
@@ -1746,7 +1745,7 @@ const STORY_TEMPLATES = {
       `Рост производительности позволяет платить больше без инфляции: удельные издержки труда ${rf1(s.unitLaborCostGrowth)}%. Потенциальный рост ВВП ${rf1(s.potentialGrowth)}%.`, { priority: 5 }) },
   ] },
   supply_chain: { id: 'supply_chain', title: 'Шок предложения', steps: [
-    { make: (s) => mkNews('world', 'НАРУШЕНЫ ЦЕПОЧКИ ПОСТАВОК',
+    { make: (_s) => mkNews('world', 'НАРУШЕНЫ ЦЕПОЧКИ ПОСТАВОК',
       'Логистика встала: часть производственных мощностей физически не может работать. Это не падение спроса — это падение того, сколько экономика вообще способна произвести.', { priority: 8 }) },
     { make: (s) => mkNews('business', 'СБОИ ПОСТАВОК: ИЗДЕРЖКИ РАСТУТ, ПОТЕНЦИАЛ СНИЖАЕТСЯ',
       `Производство встало без комплектующих: выпуск падает, разрыв ${rfs(s.outputGap)}%, рост потенциала снизился до ${rf1(s.potentialGrowth)}%. Падает и то, что экономика производит, и то, что она в принципе способна произвести — но цены при этом растут.`, { priority: 8,
@@ -1755,14 +1754,14 @@ const STORY_TEMPLATES = {
       `Ожидания ${rf1(s.inflationExpectations)}%. Подавлять инфляцию — углублять спад. Терпеть — рисковать срывом ожиданий, после которого возврат к цели обойдётся дороже.`, { priority: 8 }) },
   ] },
   demographic: { id: 'demographic', title: 'Демографический сдвиг', steps: [
-    { make: (s) => mkNews('households', 'СТАРЕНИЕ НАСЕЛЕНИЯ СЖИМАЕТ РАБОЧУЮ СИЛУ',
+    { make: (_s) => mkNews('households', 'СТАРЕНИЕ НАСЕЛЕНИЯ СЖИМАЕТ РАБОЧУЮ СИЛУ',
       'Предложение труда сокращается. В краткосрочной перспективе это разгон зарплат, в долгосрочной — более низкий потенциальный рост и более низкая нейтральная ставка.', { priority: 6,
         chain: ['Рабочая сила ↓', 'Зарплаты ↑', 'Потенциал ↓', 'Нагрузка на бюджет ↑'] }) },
     { gap: 2, make: (s) => mkNews('gov', `СОЦИАЛЬНЫЕ ОБЯЗАТЕЛЬСТВА ДАВЯТ НА БЮДЖЕТ: БАЛАНС ${rfs(s.budgetBalancePctGdp)}% ВВП`,
       `Меньше работников — меньше налоговая база, больше получателей выплат. Нейтральная ставка r* опустилась до ${rf1(s.rStar)}%: это меняет всю шкалу того, что считать жёсткой политикой.`, { priority: 6 }) },
   ] },
   consumer_boom: { id: 'consumer_boom', title: 'Потребительский бум', steps: [
-    { make: (s) => mkNews('households', 'ДОМОХОЗЯЙСТВА НАРАЩИВАЮТ РАСХОДЫ И СПРОС НА КРЕДИТ',
+    { make: (_s) => mkNews('households', 'ДОМОХОЗЯЙСТВА НАРАЩИВАЮТ РАСХОДЫ И СПРОС НА КРЕДИТ',
       'Потребительский оптимизм разгоняет спрос. Пока есть свободные мощности, это рост; когда они закончатся — инфляция.', { priority: 6,
         chain: ['Спрос ↑', 'Разрыв выпуска ↑', 'Инфляция ↑', 'Реакция ЦБ'] }) },
     { gap: 2, make: (s) => (s.outputGap > 1.5
@@ -1876,7 +1875,6 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   // одна и та же тема не повторяется каждый квартал
   const once = (key, gap) => { if ((cd[`news:${key}`] || 0) > 0) return false; cd[`news:${key}`] = gap; return true; };
   const tgt = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
-  const T = CONFIG.target;
 
   /* 🏦 ЦЕНТРАЛЬНЫЙ БАНК */
   const dRate = s.keyRate - prev.keyRate;
@@ -2388,7 +2386,7 @@ const CRISIS_INFO = {
   war: { label: 'Война', text: (e) => `Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери. ${e.warType === 'offensive' ? 'Наступательный характер войны привёл к санкциям.' : e.warType === 'defensive' ? 'Оборонительный характер войны приносит иностранную помощь.' : ''}`.trim() },
 };
 
-function buildReport({ prev, next, quarterIndex, reasons }) {
+function buildReport({ prev, next, reasons }) {
   const p = [];
   p.push(`ВВП ${next.gdpGrowth >= 0 ? 'вырос' : 'сократился'} на ${fmt1(Math.abs(next.gdpGrowth))}% в годовом выражении при потенциальном росте ${fmt1(next.potentialGrowth)}%; разрыв выпуска ${fmtSigned1(next.outputGap)}%.`);
   p.push(`Инфляция ${next.inflation >= prev.inflation ? 'ускорилась' : 'замедлилась'} до ${fmt1(next.inflation)}% при ожиданиях ${fmt1(next.inflationExpectations)}%, безработица ${fmt1(next.unemployment)}% против естественного уровня ${fmt1(next.nairu)}%.`);
@@ -2413,7 +2411,6 @@ function leverPreview(id, newVal, s, difficulty) {
   const uncertainty = UNCERTAINTY[id] || 'средняя';
   const lag = difficulty === 'easy' ? 'эффект в основном в следующем квартале' : difficulty === 'medium' ? 'эффект распределён на 2 квартала' : 'эффект распределён на 3 квартала';
   const add2 = (label, text) => items.push({ label, text });
-  const nomGdp = Math.max(1, s.nominalGdp);
   switch (id) {
     case 'keyRate': {
       const dv = newVal - s.keyRate;

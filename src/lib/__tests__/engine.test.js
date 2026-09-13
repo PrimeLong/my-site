@@ -122,6 +122,27 @@ describe('redescribeCbAction (новость после межведомстве
   });
 });
 
+describe('noEvents (используется режимом «Обучение»)', () => {
+  it('suppresses random crisis events even on hard difficulty over many quarters', () => {
+    let economy = makeInitialEconomy();
+    let decisions = defaultDecisions(economy);
+    let pendingImpulses = [];
+    let eventCooldowns = {};
+    for (let q = 1; q <= 30; q++) {
+      const res = simulateQuarter({
+        economy, decisions, pendingImpulses, eventCooldowns,
+        difficulty: 'hard', quarterIndex: q, stories: [], noEvents: true,
+      });
+      economy = res.economy;
+      pendingImpulses = res.pendingImpulses;
+      eventCooldowns = res.eventCooldowns;
+      decisions = defaultDecisions(economy, decisions);
+      expect(economy.activeCrises).toEqual([]);
+    }
+    expect(economy.regime).toBe('normal');
+  });
+});
+
 describe('pandemic crisis tracking', () => {
   it('shows up in activeCrises/regime for a few quarters, then clears', () => {
     // pandemicQuartersLeft: 3 здесь эквивалентно "квартал сразу после срабатывания

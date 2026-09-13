@@ -58,12 +58,11 @@ const THEMES = {
     blue: '#7FC2FF', blueDim: 'rgba(127,194,255,0.20)' } },
 };
 const COLOR = { ...THEMES.ink.colors };
-let CURRENT_THEME = 'ink';
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.ink;
   Object.assign(COLOR, t.colors);
-  CURRENT_THEME = t.id;
-}const FONT = {
+}
+const FONT = {
   serif: "'Iowan Old Style','Palatino Linotype',Georgia,'Times New Roman',serif",
   sans: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
   mono: "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace",
@@ -1054,7 +1053,7 @@ const Audio = (() => {
     // хорус для струнных и хора: две модулированные линии задержки
     try {
       chorusIn = ctx.createGain(); chorusIn.gain.value = 1; chorusIn.connect(dry);
-      [[0.014, 0.31], [0.021, 0.23]].forEach(([base, rate], i) => {
+      [[0.014, 0.31], [0.021, 0.23]].forEach(([base, rate]) => {
         const dl = ctx.createDelay(0.1); dl.delayTime.value = base;
         const lfo = ctx.createOscillator(); lfo.frequency.value = rate;
         const amt = ctx.createGain(); amt.gain.value = 0.0035;
@@ -1949,8 +1948,6 @@ const ATMOSPHERE = {
   currency: { tint: 'rgba(165,60,25,0.042)', vig: 0.30, accent: '#C2531F', breathe: 0.20, grain: 0.035, label: 'валютный кризис', urgent: true },
   deflation: { tint: 'rgba(120,150,175,0.024)', vig: 0.22, accent: '#7FA3B8', breathe: 0, grain: 0, label: 'дефляция', urgent: false },
 };
-const isCrisisRegime = (r) => ['banking', 'debt', 'currency', 'stagflation'].indexOf(r) >= 0;
-
 function Atmosphere({ regime, intensity, flashKey }) {
   const a = ATMOSPHERE[regime] || ATMOSPHERE.normal;
   const k = clamp(intensity, 0, 1);
@@ -2411,9 +2408,9 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
   return (
     <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
-        <Bot size={14} color={COLOR.blue} />
+        <Icon size={14} color={COLOR.blue} />
         <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>{isCb ? 'Центральный банк' : 'Министерство финансов'}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>бот</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={11} />бот</span>
       </div>
       <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>
         <b style={{ color: COLOR.text }}>{persona.name}</b> · {persona.title}
@@ -2479,7 +2476,7 @@ function Segmented({ options, value, onChange, label, hint }) {
 const SAVE_VERSION = 3;
 function makeSnapshot(state) {
   // в истории не храним разложение налоговой базы — оно пересчитывается и раздувает файл
-  const slim = (state.history || []).map((h) => { const { revenueParts, ...rest } = h; return rest; });
+  const slim = (state.history || []).map((h) => { const { revenueParts: _revenueParts, ...rest } = h; return rest; });
   return { app: 'economic-panel', v: SAVE_VERSION, savedAt: new Date().toISOString(), ...state, history: slim };
 }
 function validateSnapshot(data) {
@@ -2702,9 +2699,12 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, on
   );
 }
 const GameOverBar = ({ defeat, onReopen, onRestart, restartLabel = 'Начать заново' }) => (
-  <div style={{ borderTop: `1px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
-    display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
-    <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600 }}>Партия окончена: {defeat.title}</span>
+  <div style={{ borderTop: `2px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
+    display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)' }}>
+    <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
+      <AlertTriangle size={14} />Партия окончена: {defeat.title}
+    </span>
     <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5 }} onClick={onReopen}>Подробнее</button>
     <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onRestart}>{restartLabel}</button>
   </div>
@@ -3146,7 +3146,7 @@ const marginLevel = (book, economy, live) => {
 };
 
 /* amountMln — деньги для спота и опционов, гарантийное обеспечение для фьючерса */
-function tradeBook(book, instrId, amountMln, side, economy, live, quarterIndex) {
+function tradeBook(book, instrId, amountMln, side, economy, live) {
   const instr = INSTR_BY_ID[instrId];
   if (!instr || !(amountMln > 0.0001)) return book;
   const price = priceOf(instr, economy, live);
@@ -3239,7 +3239,7 @@ function tradeBook(book, instrId, amountMln, side, economy, live, quarterIndex) 
 }
 
 /* Закрытие квартала: экспирация опционов, плата за шорт и плечо, маржин-колл */
-function settleQuarter(book, economy, quarterIndex) {
+function settleQuarter(book, economy) {
   const events = [];
   let b = { ...book, pos: { ...book.pos }, avg: { ...book.avg }, opts: [...(book.opts || [])] };
   // опционы: экспирация и списание временной стоимости
@@ -3375,7 +3375,7 @@ function PriceCell({ value, size = 12, bold }) {
 }
 
 /* Разбор механики инструмента живыми цифрами: фьючерс и облигация — самые непонятные */
-function InstrumentPrimer({ instr, economy, prev, price, amt }) {
+function InstrumentPrimer({ instr, economy, prev, amt }) {
   const Row = ({ k, v, tone }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '1.5px 0' }}>
       <span style={{ color: COLOR.muted }}>{k}</span>
@@ -3614,7 +3614,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                 </div>
               ))}
           </div>
-          <InstrumentPrimer instr={instr} economy={economy} prev={prev} price={price} amt={amt} />
+          <InstrumentPrimer instr={instr} economy={economy} prev={prev} amt={amt} />
 
           {instr.kind === 'opt' && lots.length > 0 && (
             <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.5 }}>
@@ -3731,12 +3731,6 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
   const start = book.startValue || 10;
   const totalRet = (equity / start - 1) * 100;
   const bench = benchValues(book, economy);
-  const rows = INSTRUMENTS.map((i) => {
-    const q = book.pos[i.id] || 0;
-    const pr = priceOf(i, economy, live);
-    const v = i.kind === 'fut' ? Math.abs(q) * pr / 1000 : q * pr / 1000;
-    return { i, v, short: q < 0 };
-  }).filter((r) => Math.abs(r.v) > 0.005);
   const optVal = parts.optVal;
   const alloc = useMemo(() => {
     const map = {};
@@ -5032,7 +5026,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [defeat, setDefeat] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
   const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
-    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes, room.quarterIndex);
+    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
     const instr = INSTR_BY_ID[instrId];
     return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
   });
@@ -5103,7 +5097,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         setPortfolio((b) => {
           const withBench = b.benchStart ? b : { ...b, benchStart: { stockIndex: r.economy.stockIndex, bondIndex: r.economy.bondIndex,
             depositIndex: r.economy.depositIndex, priceLevel: r.economy.priceLevel } };
-          const nb = settleQuarter(withBench, r.economy, r.quarterIndex);
+          const nb = settleQuarter(withBench, r.economy);
           const marginCalled = (nb.lastEvents || []).some((ev) => ev.kind === 'call');
           if (marginCalled) { Audio.play('alarm'); haptic([60, 80, 60]); pushAch(unlockAchievements(['margin_call'])); }
           const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: bookValue(nb, r.economy, null) });
@@ -5274,7 +5268,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 4, background: COLOR.goldDim, border: `1px solid ${COLOR.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
           <div>
@@ -5624,7 +5618,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню" />
       ) : (
         <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
-          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
             <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -6699,7 +6694,6 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const goalDef = GOALS.find((g) => g.id === setup.goal);
   const botRole = roleDef.botRole;
   const isTrader = setup.role === 'trader';
-  const botPersona = null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
 
   const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
@@ -6765,7 +6759,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
   const activeBotPersona = botRole === 'central_bank' ? getCbPersona(cbPersonaId) : botRole === 'ministry_finance' ? getMofPersona(mofPersonaId) : null;
   const onTrade = (id, amt, side, live) => setPortfolio((b) => {
-    const nb = tradeBook(b, id, amt, side, economy, live, quarterIndex);
+    const nb = tradeBook(b, id, amt, side, economy, live);
     const instr = INSTR_BY_ID[id];
     return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
   });
@@ -6862,7 +6856,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (isTrader) {
       const withBench = portfolio.benchStart ? portfolio : { ...portfolio, benchStart: { stockIndex: economy.stockIndex, bondIndex: economy.bondIndex,
         depositIndex: economy.depositIndex, priceLevel: economy.priceLevel } };
-      const nb = settleQuarter(withBench, result.economy, quarterIndex);
+      const nb = settleQuarter(withBench, result.economy);
       traderEvents = nb.lastEvents || [];
       traderEvents.forEach((ev, i) => {
         if (ev.kind === 'call') { Audio.play('alarm'); haptic([60, 80, 60]); }
@@ -6960,7 +6954,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 4, background: COLOR.goldDim, border: `1px solid ${COLOR.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
           <div>
@@ -7286,7 +7280,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart} />
       ) : (
-        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
           <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
             {botRole === 'both' ? 'Центральный банк и Минфин примут решения без вашего участия'
               : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
