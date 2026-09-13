@@ -3040,6 +3040,69 @@ tr('stillness', 'Ничего не происходит', 'хор, низкие 
     sec('A', 'melA', 'air', 'bells harp bass pad choir strings', 0.95),
   ],
 });
+/* ------------------------------ ТОРГОВЫЙ ЗАЛ ------------------------------
+   Пьесы звучат только у роли «Частный инвестор»: другая инструментовка,
+   другой пульс — рынок, а не министерство.                                 */
+tr('openingbell', 'Открытие торгов', 'фортепиано, щётки, контрабас', 'calm', {
+  bpm: 92, swing: 0.18, reverb: 0.32,
+  A: H('D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | A2 E3 G3 C#4'),
+  B: H('Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | A2 E3 G3 C#4'),
+  melA: MEL('0:A4:4 4:D5:4 8:F5:8 16:Bb4:4 20:D5:4 24:G5:8 32:E5:4 36:G5:4 40:Bb5:8 48:A5:4 52:F5:4 56:C5:8 64:D5:4 68:F5:4 72:A5:8 80:C#5:4 84:E5:4 88:A5:8 96:F5:4 100:D5:4 104:A4:8 112:C#5:4 116:E5:4 120:D5:8'),
+  melB: MEL('0:D5:4 4:F5:4 8:Bb5:8 16:E5:4 20:G5:4 24:C6:8 32:A5:4 36:F5:4 40:C5:8 48:E5:4 52:C#5:4 56:A4:8'),
+  sections: [
+    sec('A', 'melA', 'flow', 'piano bass', 0.7, DR('x.......x.......', '................', '..o...o...o...o.')),
+    sec('B', 'melB', 'wide', 'piano bass pad', 0.9, DR('x.......x.......', '....x.......x...', '..o...o...o...o.')),
+    sec('A', 'melA', 'roll', 'piano harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+  ],
+});
+tr('bidask', 'Бид и аск', 'фортепиано, ритм-секция', 'boom', {
+  bpm: 118, swing: 0, reverb: 0.24,
+  A: H('C3 G3 C4 E4 | A2 E3 A3 C4 | F2 C3 F3 A3 | G2 D3 G3 B3 | C3 G3 C4 E4 | E3 B3 E4 G#4 | F2 C3 F3 A3 | G2 D3 F3 B3'),
+  B: H('F2 C3 F3 A3 | G2 D3 G3 B3 | A2 E3 A3 C4 | G2 D3 F3 B3'),
+  melA: MEL('0:G4:2 2:C5:2 4:E5:4 8:G5:8 16:E5:4 20:A5:4 24:C6:8 32:A5:4 36:F5:4 40:C5:8 48:B4:4 52:D5:4 56:G5:8 64:G4:2 66:C5:2 68:E5:4 72:C5:8 80:G#5:4 84:E5:4 88:B4:8 96:A5:4 100:F5:4 104:C5:8 112:B4:4 116:D5:4 120:G4:8'),
+  melB: MEL('0:A5:4 4:F5:4 8:C5:8 16:B5:4 20:G5:4 24:D5:8 32:C6:4 36:A5:4 40:E5:8 48:B4:4 52:F5:4 56:G5:8'),
+  sections: [
+    sec('A', 'melA', 'drive', 'piano bass', 0.8, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'roll', 'piano harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'piano bass pad violin', 1.0, DR('x..x..x...x.....', '....x.......x...', 'oooooooooooooooo')),
+  ],
+});
+tr('bearmarket', 'Медвежий рынок', 'виолончель, фортепиано', 'slump', {
+  bpm: 62, swing: 0.08, reverb: 0.56,
+  A: H('A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | E2 B2 E3 G#3 | A2 E3 A3 C4 | G2 D3 G3 Bb3 | F2 C3 F3 A3 | E2 B2 E3 G#3'),
+  B: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | E2 B2 E3 G#3'),
+  melA: MEL('0:E5:8 8:C5:8 16:A4:12 32:D5:8 40:F5:8 48:E5:14 64:C5:8 72:A4:8 80:Bb4:12 96:A4:8 104:F4:8 112:G#4:14'),
+  melB: MEL('0:F5:8 8:D5:8 16:Bb4:12 32:E5:8 40:C5:8 48:G#4:12'),
+  sections: [
+    sec('A', 'melA', 'air', 'piano bass cello', 0.64),
+    sec('B', 'melB', 'sustain', 'piano bass cello pad', 0.84),
+    sec('A', 'melA', 'wide', 'piano bass cello pad strings', 1.0),
+  ],
+});
+tr('thinvolume', 'Тонкий рынок', 'остинато, хор', 'stag', {
+  bpm: 76, swing: 0, reverb: 0.38,
+  A: H('E2 B2 E3 G3 | A2 E3 G3 C4 | E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | C3 G3 C4 E4 | B2 F#3 A3 D#4'),
+  B: H('A2 E3 G3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | B2 F#3 A3 D#4'),
+  melA: MEL('0:B4:8 8:A4:4 12:B4:4 16:G4:12 32:A4:8 40:C5:8 48:B4:14 64:E5:8 72:D5:8 80:C5:12 96:B4:8 104:G4:8 112:D#5:8 120:E4:8'),
+  melB: MEL('0:C5:8 8:A4:8 16:F4:12 32:D5:8 40:A4:8 48:D#5:12'),
+  sections: [
+    sec('A', 'melA', 'pulse', 'piano bass choir', 0.74, DR('x.......x.......', '................', '....o.......o...')),
+    sec('B', 'melB', 'pulse', 'piano bass cello choir pad', 0.92, DR('x.......x.......', '........x.......', '..o...o...o...o.')),
+    sec('A', 'melA', 'pulse', 'piano bass cello choir pad', 1.0, DR('x...x...x...x...', '........x.......', 'o.o.o.o.o.o.o.o.')),
+  ],
+});
+tr('marginwire', 'Маржин-колл', 'бас, литавры, струнные', 'crisis', {
+  bpm: 132, swing: 0, reverb: 0.26,
+  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4 | D3 A3 D4 F4 | F2 C3 F3 A3 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
+  B: H('G2 D3 G3 Bb3 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | A2 E3 G3 C#4'),
+  melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:G4:4 36:Bb4:4 40:D5:8 48:C#5:4 52:E5:4 56:A4:8 64:A4:2 66:D5:2 68:F5:4 72:D5:8 80:C5:4 84:A4:4 88:F4:8 96:Bb4:4 100:D5:4 104:F5:8 112:E5:4 116:C#5:4 120:A4:8'),
+  melB: MEL('0:Bb4:4 4:D5:4 8:G5:8 16:F5:4 20:D5:4 24:Bb4:8 32:C5:4 36:E5:4 40:G5:8 48:E5:4 52:C#5:4 56:A4:8'),
+  sections: [
+    sec('A', 'melA', 'drive', 'piano bass cello', 0.88, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'drive', 'piano bass strings timpani', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'piano bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
+  ],
+});
 
 const MOOD_PLAYLISTS = {
   calm: ['dawn', 'ledger', 'northlight', 'promenade'],
@@ -3052,6 +3115,17 @@ const MOOD_PLAYLISTS = {
 const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция' };
 const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
   banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost' };
+/* Плейлисты, привязанные к роли: у инвестора свой репертуар */
+const ROLE_PLAYLISTS = {
+  trader: {
+    calm: ['openingbell', 'ledger'],
+    boom: ['bidask', 'ascent'],
+    slump: ['bearmarket', 'patience'],
+    stag: ['thinvolume', 'friction'],
+    crisis: ['marginwire', 'panic'],
+    frost: ['thinvolume', 'glass'],
+  },
+};
 
 const Audio = (() => {
   let ctx = null; let master = null; let comp = null; let musicBus = null; let sfxBus = null; let noiseBuf = null;
@@ -3059,6 +3133,11 @@ const Audio = (() => {
   const opts = { music: true, sfx: true, volume: 0.6 };
   let lastTick = 0; const listeners = [];
   let track = TRACKS.dawn; let mood = 'calm'; let lockedMood = null; let playlistIdx = 0;
+  let roleId = null;
+  const listOf = (m) => (
+    (roleId && ROLE_PLAYLISTS[roleId] && ROLE_PLAYLISTS[roleId][m])
+    || MOOD_PLAYLISTS[m] || MOOD_PLAYLISTS.calm
+  );
   let pending = null; let tempoMod = 1; let intensity = 0.3;
   let timer = null; let nextTime = 0; let stepIdx = 0; let running = false;
 
@@ -3341,7 +3420,7 @@ const Audio = (() => {
     stepIdx = 0; notify();
   };
   const advancePlaylist = (forward) => {
-    const list = MOOD_PLAYLISTS[lockedMood || mood] || MOOD_PLAYLISTS.calm;
+    const list = listOf(lockedMood || mood);
     playlistIdx = (playlistIdx + (forward === false ? -1 : 1) + list.length) % list.length;
     pending = list[playlistIdx];
   };
@@ -3459,10 +3538,16 @@ const Audio = (() => {
     trackName: () => track.name,
     nowPlaying: () => ({ id: track.id, name: track.name, subtitle: track.subtitle, mood: track.mood,
       moodLabel: MOOD_LABEL[track.mood], bpm: Math.round(track.bpm * tempoMod), locked: lockedMood }),
-    playlist: () => (MOOD_PLAYLISTS[lockedMood || mood] || []).map((id) => ({ id, name: TRACKS[id].name, current: id === track.id })),
+    playlist: () => listOf(lockedMood || mood).map((id) => ({ id, name: TRACKS[id].name, current: id === track.id })),
+    setRole(id) {
+      if (roleId === id) return;
+      roleId = id || null;
+      playlistIdx = 0;
+      if (!lockedMood) { pending = listOf(mood)[0]; notify(); }
+    },
     onChange: (fn) => { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; },
     skip(forward) { if (!ensure()) return; resume(); advancePlaylist(forward); if (!running) this.startMusic(); },
-    playTrack(id) { if (!ensure()) return; resume(); pending = id; const list = MOOD_PLAYLISTS[lockedMood || mood] || []; const i = list.indexOf(id); if (i >= 0) playlistIdx = i; if (!running) this.startMusic(); },
+    playTrack(id) { if (!ensure()) return; resume(); pending = id; const list = listOf(lockedMood || mood); const i = list.indexOf(id); if (i >= 0) playlistIdx = i; if (!running) this.startMusic(); },
     setPlaylist(moodId) {
       lockedMood = moodId || null;
       const list = MOOD_PLAYLISTS[lockedMood || mood] || MOOD_PLAYLISTS.calm;
@@ -3518,7 +3603,7 @@ const Audio = (() => {
       this.setAmbience(e.regime, intensity);
       if (m !== mood) {
         mood = m; playlistIdx = 0;
-        if (!lockedMood) { pending = (MOOD_PLAYLISTS[m] || ['dawn'])[0]; notify(); }
+        if (!lockedMood) { pending = listOf(m)[0]; notify(); }
       }
     },
     quarterSequence({ wellbeingDelta, newCrisis, bigNews }) {
@@ -4605,9 +4690,9 @@ const INSTRUMENTS = [
   { id: 'reit', name: 'Фонды недвижимости', ticker: 'RET', group: 'Акции', color: '#C08A6B', key: 'reitIndex', fee: 0.0025, kind: 'spot',
     note: 'Недвижимость переоценивается вслед за ставкой по кредитам и реальными доходами. Самый процентно-чувствительный актив.' },
   { id: 'bond_gov', name: 'Гособлигации 10 лет', ticker: 'GOV', group: 'Облигации', color: COLOR.blue, key: 'bondIndex', fee: 0.001, kind: 'spot',
-    note: 'Купон плюс переоценка. Дюрация 7,4: рост доходности на 1 п.п. отнимает около 7% цены.' },
+    note: 'Индекс полной доходности: купон уже внутри цены и реинвестируется, отдельной выплаты нет, бумага не гасится. Дюрация 7,4: доходность +1 п.п. отнимает около 7% цены.' },
   { id: 'bond_corp', name: 'Корпоративные облигации', ticker: 'CRP', group: 'Облигации', color: COLOR.teal, key: 'corpBondIndex', fee: 0.0015, kind: 'spot',
-    note: 'Доходность выше на величину спреда, но в кризис спред расширяется, а эмитенты перестают платить.' },
+    note: 'То же самое, но с кредитным спредом: доходность выше, а в кризис спред расширяется и цена падает сильнее государственной. Дюрация 4,1.' },
   { id: 'dep', name: 'Банковский депозит', ticker: 'DEP', group: 'Деньги', color: COLOR.teal, key: 'depositIndex', fee: 0, kind: 'spot',
     note: 'Ставка по депозитам. Безопасно ровно до тех пор, пока реальная ставка не уйдёт в минус.' },
   { id: 'fx', name: 'Иностранная валюта', ticker: 'FX', group: 'Деньги', color: COLOR.rust, key: 'fxIndex', fee: 0.003, kind: 'spot',
@@ -4615,11 +4700,11 @@ const INSTRUMENTS = [
   { id: 'gold', name: 'Сырьевой контракт', ticker: 'CMD', group: 'Товары', color: '#C08A6B', key: 'goldIndex', fee: 0.0025, kind: 'spot',
     note: 'Мировая цена сырья в местной валюте: защищает и от инфляции, и от слабого курса.' },
   { id: 'fut_idx', name: 'Фьючерс на индекс', ticker: 'F-IDX', group: 'Производные', color: COLOR.gold, key: 'stockIndex', fee: 0.0008, kind: 'fut', lev: 5,
-    note: 'Плечо 5:1. Вносится только гарантийное обеспечение, прибыль и убыток начисляются на всю позицию.' },
+    note: 'Плечо 5:1. Вы вносите только ГО; прибыль и убыток начисляются на всю позицию и попадают на счёт при закрытии.' },
   { id: 'fut_fx', name: 'Фьючерс на валюту', ticker: 'F-FX', group: 'Производные', color: COLOR.rust, key: 'fxIndex', fee: 0.0008, kind: 'fut', lev: 8,
-    note: 'Плечо 8:1. Самый быстрый способ заработать или потерять на девальвации.' },
+    note: 'Плечо 8:1. Вы вносите только ГО; движение курса на 1% меняет ваши деньги на 8%.' },
   { id: 'fut_bond', name: 'Фьючерс на облигации', ticker: 'F-GOV', group: 'Производные', color: COLOR.blue, key: 'bondIndex', fee: 0.0006, kind: 'fut', lev: 10,
-    note: 'Плечо 10:1. Ставка на разворот денежной политики: длинные бумаги растут, когда рынок ждёт снижения ставки.' },
+    note: 'Плечо 10:1. Ставка на разворот денежной политики. Движение цены на 1% — это 10% вашего ГО.' },
   { id: 'opt_call', name: 'Опцион call на индекс', ticker: 'CALL', group: 'Опционы', color: COLOR.teal, key: 'stockIndex', fee: 0.004, kind: 'opt', optType: 'call', life: 2,
     note: 'Право купить индекс по текущей цене через 2 квартала. Убыток ограничен премией, прибыль — нет.' },
   { id: 'opt_put', name: 'Опцион put на индекс', ticker: 'PUT', group: 'Опционы', color: COLOR.rust, key: 'stockIndex', fee: 0.004, kind: 'opt', optType: 'put', life: 2,
@@ -4851,6 +4936,37 @@ const BENCHMARKS = [
   { id: 'dep', label: 'Депозит', key: 'depositIndex', color: COLOR.teal },
   { id: 'infl', label: 'Инфляция (сохранение покупательной способности)', key: 'priceLevel', color: COLOR.rust },
 ];
+/* Отраслевая принадлежность позиций — для круговой диаграммы портфеля */
+const SECTOR_OF = {
+  eq_broad: 'Рынок целиком', eq_banks: 'Банки', eq_industry: 'Промышленность',
+  eq_consumer: 'Потребительский сектор', eq_resources: 'Сырьевой сектор', reit: 'Недвижимость',
+  bond_gov: 'Госдолг', bond_corp: 'Корпоративный долг',
+  dep: 'Депозит', fx: 'Валюта', gold: 'Товары',
+  fut_idx: 'Плечо: индекс', fut_fx: 'Плечо: валюта', fut_bond: 'Плечо: долг',
+};
+
+function AllocationDonut({ rows, size = 124, thickness = 16 }) {
+  const total = rows.reduce((a, r) => a + r.value, 0);
+  if (!(total > 0)) return null;
+  const c = size / 2; const rad = c - thickness / 2; const CIRC = 2 * Math.PI * rad;
+  let acc = 0;
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} style={{ width: size, height: size, flexShrink: 0 }}>
+      <circle cx={c} cy={c} r={rad} fill="none" stroke={COLOR.hairline} strokeWidth={thickness} />
+      {rows.map((row) => {
+        const frac = row.value / total; const off = acc; acc += frac;
+        return (
+          <circle key={row.label} cx={c} cy={c} r={rad} fill="none" stroke={row.color}
+            strokeWidth={thickness} strokeLinecap="butt" opacity={row.short ? 0.5 : 1}
+            strokeDasharray={`${Math.max(0.5, frac * CIRC - 1.5)} ${CIRC}`}
+            strokeDashoffset={-off * CIRC} transform={`rotate(-90 ${c} ${c})`} />
+        );
+      })}
+      <text x={c} y={c - 3} textAnchor="middle" fontSize={9} fill={COLOR.muted}>ЭКСПОЗИЦИЯ</text>
+      <text x={c} y={c + 12} textAnchor="middle" fontSize={14} fill={COLOR.text}>{total.toFixed(2)}</text>
+    </svg>
+  );
+}
 function benchValues(book, economy) {
   if (!book.benchStart) return null;
   const out = {};
@@ -4874,6 +4990,65 @@ function PriceCell({ value, size = 12, bold }) {
       {Number.isFinite(value) ? value.toFixed(2) : '—'}
     </span>
   );
+}
+
+/* Разбор механики инструмента живыми цифрами: фьючерс и облигация — самые непонятные */
+function InstrumentPrimer({ instr, economy, prev, price, amt }) {
+  const Row = ({ k, v, tone }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '1.5px 0' }}>
+      <span style={{ color: COLOR.muted }}>{k}</span>
+      <span className="ems-mono" style={{ color: tone || COLOR.text, textAlign: 'right' }}>{v}</span>
+    </div>
+  );
+  const box = { fontSize: 10.5, lineHeight: 1.5, background: COLOR.panelAlt,
+    border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '8px 10px' };
+
+  if (instr.kind === 'fut') {
+    const m = Math.max(0.01, amt);
+    const notional = m * instr.lev;
+    const perPct = notional * 0.01;
+    return (
+      <div style={box}>
+        <div style={{ color: COLOR.goldSoft, marginBottom: 5 }}>Как считается фьючерс</div>
+        <Row k="Вы вносите (гарантийное обеспечение)" v={`${m.toFixed(2)} млн`} />
+        <Row k={`Работает позиция размером (×${instr.lev})`} v={`${notional.toFixed(2)} млн`} />
+        <Row k="Движение цены на 1%" v={`± ${perPct.toFixed(2)} млн = ${instr.lev}% вашего ГО`}
+          tone={COLOR.gold} />
+        <Row k="Убыток съедает ГО полностью при" v={`падении на ${(100 / instr.lev).toFixed(1)}%`} tone={COLOR.rust} />
+        <div style={{ color: COLOR.faint, marginTop: 6 }}>
+          Прибыль и убыток считаются от всей позиции, а не от внесённых денег, и живут в строке
+          «Прибыль» — на счёт они попадают только когда вы нажмёте «Закрыть». Продажа при нулевой
+          позиции открывает шорт: заработок на падении.
+        </div>
+      </div>
+    );
+  }
+
+  if (instr.id === 'bond_gov' || instr.id === 'bond_corp') {
+    const corp = instr.id === 'bond_corp';
+    const y = corp ? economy.corpYield : economy.yield10y;
+    const yPrev = prev ? (corp ? prev.corpYield : prev.yield10y) : y;
+    const dur = corp ? 4.1 : 7.4;
+    const coupon = y / 4;
+    const reval = -dur * (y - yPrev);
+    const total = Number.isFinite(corp ? economy.corpReturn : economy.bondReturn)
+      ? (corp ? economy.corpReturn : economy.bondReturn) : coupon + reval;
+    return (
+      <div style={box}>
+        <div style={{ color: COLOR.goldSoft, marginBottom: 5 }}>Откуда берётся результат</div>
+        <Row k={`Купон за квартал (доходность ${fmt2(y)}% ÷ 4)`} v={`+${fmt2(coupon)}%`} tone={COLOR.teal} />
+        <Row k={`Переоценка (дюрация ${dur} × изменение доходности)`} v={`${fmtSigned1(reval)}%`}
+          tone={reval >= 0 ? COLOR.teal : COLOR.rust} />
+        <Row k="Итого за прошлый квартал" v={`${fmtSigned1(total)}%`} tone={total >= 0 ? COLOR.teal : COLOR.rust} />
+        <div style={{ color: COLOR.faint, marginTop: 6 }}>
+          Это индекс постоянной дюрации, а не одна бумага: он <b style={{ color: COLOR.muted }}>не гасится</b>,
+          и купон <b style={{ color: COLOR.muted }}>не приходит отдельной выплатой</b> — он уже внутри цены
+          и сразу реинвестируется. Позиция закрывается только вашей продажей. Доходность вверх — цена вниз.
+        </div>
+      </div>
+    );
+  }
+  return null;
 }
 
 function TradingTerminal({ economy, prev, book, onTrade, history }) {
@@ -4909,8 +5084,11 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
   const series = useMemo(() => hist28.map((h) => h[instr.key]), [hist28, instr.key]);
   const marks = useMemo(() => {
     const firstQ = hist28.length ? hist28[0].q : 0;
+    const last = hist28.length - 1;
     return (book.trades || []).filter((t) => t.id === sel)
-      .map((t) => ({ idx: t.q - firstQ, side: t.side })).filter((m) => m.idx >= 0 && m.idx < hist28.length);
+      // сделки текущего, ещё не закрытого квартала прижимаем к последней точке графика
+      .map((t) => ({ idx: Math.min(t.q - firstQ, last), side: t.side }))
+      .filter((m) => m.idx >= 0 && m.idx <= last);
   }, [hist28, book.trades, sel]);
   const premium = instr.kind === 'opt' ? optionValue(instr.optType, price, price, vol, instr.life) : 0;
   const qty = instr.kind === 'opt' ? (premium > 0 ? amt * 1000 / (premium * (1 + instr.fee)) : 0)
@@ -5042,6 +5220,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                 </div>
               ))}
           </div>
+          <InstrumentPrimer instr={instr} economy={economy} prev={prev} price={price} amt={amt} />
 
           {instr.kind === 'opt' && lots.length > 0 && (
             <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.5 }}>
@@ -5060,7 +5239,28 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                 onClick={() => { Audio.play('tick'); setSide(id); setAmount(1); }}>{label}</button>
             ))}
           </div>
-
+          {(book.trades || []).length > 0 && (
+            <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, fontSize: 10.5 }}>
+              <div style={{ color: COLOR.blue, marginBottom: 3 }}>Исполнено</div>
+              {(book.trades || []).slice(-5).reverse().map((t, k) => {
+                const ins = INSTR_BY_ID[t.id];
+                return (
+                  <div key={`${t.q}-${k}`} style={{ display: 'flex', gap: 8, padding: '1.5px 0', color: COLOR.muted }}>
+                    <span className="ems-mono" style={{ color: t.side === 'buy' ? COLOR.teal : COLOR.rust, width: 62 }}>
+                      {t.side === 'buy' ? 'покупка' : 'продажа'}
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ins ? ins.name : t.id}
+                    </span>
+                    <span className="ems-mono">{t.amt.toFixed(2)} млн</span>
+                    <span className="ems-mono" style={{ color: COLOR.faint, width: 54, textAlign: 'right' }}>
+                      по {t.price.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
               <span style={{ fontSize: 11, color: COLOR.muted }}>
@@ -5144,6 +5344,29 @@ function PortfolioSummary({ book, economy, live, prevValue, goal }) {
     return { i, v, short: q < 0 };
   }).filter((r) => Math.abs(r.v) > 0.005);
   const optVal = parts.optVal;
+  const alloc = useMemo(() => {
+    const map = {};
+    const put = (label, color, v, short) => {
+      if (!map[label]) map[label] = { label, color, value: 0, net: 0, short: false };
+      map[label].value += Math.abs(v); map[label].net += v;
+      if (short) map[label].short = true;
+    };
+    INSTRUMENTS.forEach((i) => {
+      const q = book.pos[i.id] || 0;
+      if (!q) return;
+      const pr = priceOf(i, economy, live);
+      put(SECTOR_OF[i.id] || i.group, i.color, q * pr / 1000, q < 0);
+    });
+    (book.opts || []).forEach((lot) => {
+      const ins = INSTR_BY_ID[lot.instr];
+      if (!ins) return;
+      const S = priceOf(ins, economy, live);
+      put('Опционы', COLOR.teal, optionValue(lot.type, S, lot.strike, impliedVol(economy), lot.left) * lot.qty / 1000, false);
+    });
+    if (book.cash > 0.005) put('Свободные деньги', COLOR.faint, book.cash, false);
+    return Object.values(map).filter((r) => r.value > 0.005).sort((a, b) => b.value - a.value);
+  }, [book, economy, live]);
+  const allocTotal = alloc.reduce((a, r) => a + r.value, 0);
   const goalDef = GOALS.find((g) => g.id === goal);
   const goalLine = () => {
     if (!bench) return null;
@@ -5194,20 +5417,29 @@ function PortfolioSummary({ book, economy, live, prevValue, goal }) {
             ))}
         </div>
       )}
-      {rows.length > 0 && (
+      {alloc.length > 0 && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
-          <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 4 }}>Позиции</div>
-          {rows.map((r) => (
-            <div key={r.i.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '2px 0' }}>
-              <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 7, height: 7, background: r.i.color, borderRadius: 1 }} />{r.i.name}{r.short ? ' (шорт)' : ''}
-              </span>
-              <span className="ems-mono" style={{ color: r.short ? COLOR.rust : COLOR.text }}>{r.v.toFixed(2)} млн</span>
+          <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 6 }}>Портфель по отраслям</div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <AllocationDonut rows={alloc} />
+            <div style={{ flex: 1, minWidth: 165 }}>
+              {alloc.map((r) => (
+                <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '1.5px 0' }}>
+                  <span style={{ width: 8, height: 8, background: r.color, borderRadius: 1, flexShrink: 0, opacity: r.short ? 0.5 : 1 }} />
+                  <span style={{ flex: 1, minWidth: 0, color: COLOR.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.label}{r.short ? ' · шорт' : ''}
+                  </span>
+                  <span className="ems-mono" style={{ color: r.net < 0 ? COLOR.rust : COLOR.text }}>{r.value.toFixed(2)}</span>
+                  <span className="ems-mono" style={{ width: 38, textAlign: 'right', color: COLOR.faint }}>
+                    {Math.round(r.value / Math.max(0.0001, allocTotal) * 100)}%
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
           {Math.abs(optVal) > 0.005 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '2px 0' }}>
-              <span style={{ color: COLOR.muted }}>Опционы</span><span className="ems-mono">{optVal.toFixed(2)} млн</span>
+            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5 }}>
+              Опционы учтены по текущей оценке, фьючерсы — по номиналу позиции, шорты — по модулю: диаграмма показывает риск, а не вложенные деньги.
             </div>
           )}
         </div>
@@ -6376,6 +6608,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   // музыка следует за режимом экономики и уровнем рисков
   React.useEffect(() => { Audio.setMood(economy); },
     [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.debtRisk, economy.recessionRisk, economy.gdpGrowth]);
+  React.useEffect(() => { Audio.setRole(setup.role === 'trader' ? 'trader' : null); }, [setup.role]);
   React.useEffect(() => () => Audio.stopMusic(), []);
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const shareKey = (id) => (id === 'shareHealth' ? 'health' : id === 'shareEducation' ? 'education' : id === 'shareScience' ? 'science' : id === 'shareDefense' ? 'defense' : 'admin');
