@@ -317,6 +317,17 @@ function botCentralBank(s, personaId, difficulty) {
   if (s.creditGap > 7 && s.reserveReq < 12) reserveReq = clamp(s.reserveReq + 1, 0, 20);
   else if ((s.creditCrunch || s.bankLiquidity < 50) && s.reserveReq > 3) reserveReq = clamp(s.reserveReq - 1, 0, 20);
 
+  return buildCbResult(s, P, { keyRate, reserveReq, capitalRequirement, moneySupplyOp, fxIntervention, liquidity,
+    fxRegime, emergency, cbTarget, fxTargetCur });
+}
+
+/* Собирает текст решения ЦБ (новости, цитата, детали) по итоговым значениям.
+   Вынесено отдельно от botCentralBank, чтобы после того как запрос Минфина
+   меняет часть параметров (см. redescribeCbAction), новость описывала то, что
+   реально произошло, а не изначальное намерение ЦБ до вмешательства. */
+function buildCbResult(s, P, vals) {
+  const { keyRate, reserveReq, capitalRequirement, moneySupplyOp, fxIntervention, liquidity, fxRegime,
+    emergency, cbTarget, fxTargetCur } = vals;
   const parts = [];
   if (Math.abs(keyRate - s.keyRate) > 0.05) parts.push(`${keyRate > s.keyRate ? 'повысил' : 'снизил'} ключевую ставку до ${keyRate.toFixed(2)}%`);
   else parts.push(`сохранил ключевую ставку на уровне ${keyRate.toFixed(2)}%`);
@@ -373,6 +384,20 @@ function botCentralBank(s, personaId, difficulty) {
   };
 }
 
+/* Пересобрать новость/цитату решения ЦБ по итоговым decisions — после того как
+   запрос Минфина (rate_cut/rate_hold/liquidity_help/capreq_ease/fx_support)
+   изменил часть параметров поверх изначального решения ЦБ. */
+function redescribeCbAction(s, personaId, finalDecisions) {
+  const P = getCbPersona(personaId);
+  return buildCbResult(s, P, {
+    keyRate: finalDecisions.keyRate, reserveReq: finalDecisions.reserveReq,
+    capitalRequirement: finalDecisions.capitalRequirement, moneySupplyOp: finalDecisions.moneySupplyOp,
+    fxIntervention: finalDecisions.fxIntervention, liquidity: finalDecisions.liquidity,
+    fxRegime: finalDecisions.fxRegime, emergency: finalDecisions.emergency,
+    cbTarget: finalDecisions.inflationTarget, fxTargetCur: finalDecisions.fxTarget,
+  });
+}
+
 // Бот-Минфин: бюджетное правило + контрциклическая реакция + собственные приоритеты расходов
 function botFinanceMinistry(s, personaId, difficulty) {
   const P = getMofPersona(personaId);
@@ -414,6 +439,18 @@ function botFinanceMinistry(s, personaId, difficulty) {
   const shareDefense = drift(s.budgetShares.defense, P.shares.defense);
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
+  return buildMofResult(s, P, targetDeficit, { incomeTaxRate, profitTaxRate, vatRate, exciseRate, capitalTaxRate,
+    socialContribRate, govSpending, transfers, govInvestment, shareHealth, shareEducation, shareScience,
+    shareDefense, shareAdmin });
+}
+
+/* Аналог buildCbResult для Минфина: собирает текст решения по итоговым
+   значениям, отдельно от botFinanceMinistry — используется и там, и в
+   redescribeMofAction после того как запрос ЦБ меняет часть параметров. */
+function buildMofResult(s, P, targetDeficit, vals) {
+  const { incomeTaxRate, profitTaxRate, vatRate, exciseRate, capitalTaxRate, socialContribRate,
+    govSpending, transfers, govInvestment, shareHealth, shareEducation, shareScience, shareDefense, shareAdmin } = vals;
+  const consolidationNeed = targetDeficit - s.budgetBalancePctGdp; // >0 => надо ужесточать
   const parts = [];
   if (Math.abs(govSpending) > 0.15) parts.push(`${govSpending > 0 ? 'нарастил' : 'сократил'} госзакупки (${fmtSigned1(govSpending)}%)`);
   if (Math.abs(transfers) > 0.15) parts.push(`${transfers > 0 ? 'повысил' : 'урезал'} социальные выплаты (${fmtSigned1(transfers)}%)`);
@@ -455,6 +492,23 @@ function botFinanceMinistry(s, personaId, difficulty) {
     publicHeadline: `БЮДЖЕТ: НДС ${ru(vatRate.toFixed(1))}%, НАЛОГ НА ПРИБЫЛЬ ${ru(profitTaxRate.toFixed(1))}%`,
     publicNote: `Госзакупки ${fmtSigned1(govSpending)}% к тренду, выплаты ${fmtSigned1(transfers)}%, инвестиции ${fmtSigned1(govInvestment)}%. Баланс бюджета ${fmtSigned1(s.budgetBalancePctGdp)}% ВВП, долг ${fmt1(s.debtToGdp)}% ВВП.`,
   };
+}
+
+/* Пересобрать новость/цитату решения Минфина по итоговым decisions — после
+   того как запрос ЦБ (infra_up/deficit_cut/transfers_freeze/tax_relief_business)
+   изменил часть параметров поверх изначального решения Минфина. */
+function redescribeMofAction(s, personaId, finalDecisions) {
+  const P = getMofPersona(personaId);
+  const debtStress = clamp((s.debtToGdp - P.debtLimit) / 20, 0, 2);
+  const targetDeficit = P.anchor - P.cyclical * Math.max(0, -s.outputGap) * 1.1 + debtStress * 2.2;
+  return buildMofResult(s, P, targetDeficit, {
+    incomeTaxRate: finalDecisions.incomeTaxRate, profitTaxRate: finalDecisions.profitTaxRate,
+    vatRate: finalDecisions.vatRate, exciseRate: finalDecisions.exciseRate,
+    capitalTaxRate: finalDecisions.capitalTaxRate, socialContribRate: finalDecisions.socialContribRate,
+    govSpending: finalDecisions.govSpending, transfers: finalDecisions.transfers, govInvestment: finalDecisions.govInvestment,
+    shareHealth: finalDecisions.shareHealth, shareEducation: finalDecisions.shareEducation,
+    shareScience: finalDecisions.shareScience, shareDefense: finalDecisions.shareDefense, shareAdmin: finalDecisions.shareAdmin,
+  });
 }
 
 
@@ -506,7 +560,12 @@ const REQUESTS = [
     ask: 'Просим воздержаться от повышения ставки: бюджет и без того несёт растущие процентные расходы.',
     fit: (s) => (s.inflation < s.inflationTarget + 2 ? 0.9 : -1.5) + (s.interestToRevenue > 14 ? 0.8 : 0),
     bias: { dove: 0.8, pragmatic: 0.1, hawk: -1.0 },
-    apply: (d, k) => ({ keyRate: d.keyRate }),
+    // «не повышать» должно реально гасить запланированное повышение, а не быть
+    // самоприсваиванием d.keyRate — иначе ЦБ повышает ставку, будто просьбы не было
+    apply: (d, k, economy) => {
+      const hike = d.keyRate - economy.keyRate;
+      return hike <= 0 ? { keyRate: d.keyRate } : { keyRate: roundTo(economy.keyRate + hike * (1 - k), 0.25) };
+    },
     yes: 'Центральный банк берёт паузу в ужесточении.',
     partial: 'Центральный банк обещает действовать осторожнее, но связывать себе руки не готов.',
     no: 'Центральный банк отвечает, что независимость политики не обсуждается.' },
@@ -545,7 +604,7 @@ function processRequest(reqId, economy, botKind, personaId, decisions) {
   const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
   return {
     req, status, score,
-    decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k) } : decisions,
+    decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k, economy) } : decisions,
     text: status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no,
     coordination: status === 'accepted' ? 9 : status === 'partial' ? 4 : -7,
   };
@@ -808,9 +867,11 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   let queue = [...pendingImpulses];
   const newStories = [];
   const KIND_CAT = { demand: 'households', supply: 'business', financial: 'markets', external: 'world', structural: 'business' };
+  let pandemicTriggered = false;
   if (Math.random() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
+      if (evt.id === 'pandemic') pandemicTriggered = true;
       const built = buildEventImpulses(evt, s, difficulty);
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
@@ -1317,6 +1378,10 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const recessionStreak = outputGap < CONFIG.thresholds.recessionGap ? (s.recessionStreak || 0) + 1 : 0;
   const regimeStreakPrev = s.regimeStreak || 0;
   const fxMovePct = Math.abs(fxDeprAnnual);
+  // пандемия — не пороговое состояние экономики, а отдельное событие с растянутым
+  // на несколько кварталов эффектом; без счётчика она не попадала в activeCrises
+  // и никак не отображалась как кризис, хотя бьёт по спросу и предложению сразу
+  const pandemicQuartersLeft = pandemicTriggered ? 3 : Math.max(0, (s.pandemicQuartersLeft || 0) - 1);
   const activeCrises = [];
   if (bankingRisk >= CONFIG.thresholds.bankingRisk || bankCapitalAdequacy < 8) activeCrises.push('banking');
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
@@ -1325,14 +1390,16 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   else if (recessionStreak >= CONFIG.thresholds.recessionGapQuarters) activeCrises.push('recession');
   if (outputGap >= CONFIG.thresholds.overheatGap && inflation > infTarget + 1) activeCrises.push('overheating');
   if (inflation < CONFIG.thresholds.deflation && outputGap < -1) activeCrises.push('deflation');
+  if (pandemicQuartersLeft > 0) activeCrises.push('pandemic');
 
   const regime = activeCrises.includes('currency') ? 'currency'
     : activeCrises.includes('banking') ? 'banking'
       : activeCrises.includes('debt') ? 'debt'
-        : activeCrises.includes('stagflation') ? 'stagflation'
-          : activeCrises.includes('deflation') ? 'deflation'
-            : activeCrises.includes('overheating') ? 'overheating'
-              : activeCrises.includes('recession') ? 'recession' : 'normal';
+        : activeCrises.includes('pandemic') ? 'pandemic'
+          : activeCrises.includes('stagflation') ? 'stagflation'
+            : activeCrises.includes('deflation') ? 'deflation'
+              : activeCrises.includes('overheating') ? 'overheating'
+                : activeCrises.includes('recession') ? 'recession' : 'normal';
 
   const prevCrises = s.activeCrises || [];
   activeCrises.filter((c) => !prevCrises.includes(c)).forEach((c) => {
@@ -1359,6 +1426,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
       news.push(mkNews('crisis', 'РЕЦЕССИЯ: ВЫПУСК НИЖЕ ПОТЕНЦИАЛА', 'Второй квартал подряд. Затяжная безработица поднимает и сам естественный уровень — часть потерь станет необратимой.', { priority: 9 }));
     } else if (c === 'deflation') {
       news.push(mkNews('crisis', 'ДЕФЛЯЦИОННАЯ УГРОЗА', 'Цены почти не растут при слабом спросе: реальная ставка высока даже при нулевой ключевой. Обычных инструментов может не хватить.', { priority: 9 }));
+    } else if (c === 'pandemic') {
+      news.push(mkNews('crisis', 'ПАНДЕМИЯ: РЕЖИМ ЧРЕЗВЫЧАЙНОЙ СИТУАЦИИ', 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям — эффект растянут на несколько кварталов.', { priority: 9 }));
     }
   });
 
@@ -1421,7 +1490,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     marketCap, marketCapPctGdp, sectorBanks, sectorIndustry, sectorConsumer, sectorResources,
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
-    activeCrises, regime, recessionStreak, demands,
+    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
@@ -2114,7 +2183,7 @@ function makeInitialEconomy() {
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
-    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [],
+    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);
@@ -2164,6 +2233,7 @@ const REGIME_INFO = {
   debt: { label: 'Долговой кризис', color: 'rust', text: 'Премия за риск растёт быстрее, чем экономика. Каждый новый выпуск долга дороже предыдущего.' },
   currency: { label: 'Валютный кризис', color: 'rust', text: 'Курс переносится в цены. Защита резервами конечна, свободный курс — импорт инфляции.' },
   deflation: { label: 'Дефляционная ловушка', color: 'blue', text: 'Реальная ставка высока даже при нулевой ключевой. Обычная денежная политика теряет силу — нужен бюджет.' },
+  pandemic: { label: 'Пандемия', color: 'rust', text: 'Вспышка заболевания одновременно сократила спрос и производственные возможности. Эффект растянут на несколько кварталов и постепенно сходит на нет.' },
 };
 const CRISIS_INFO = {
   banking: { label: 'Банковский кризис', text: 'Просрочка съедает капитал, капитал ограничивает кредит, сжатие кредита повышает просрочку.' },
@@ -2173,6 +2243,7 @@ const CRISIS_INFO = {
   overheating: { label: 'Перегрев', text: 'Разрыв выпуска положительный — спрос упирается в мощности.' },
   recession: { label: 'Рецессия', text: 'Выпуск ниже потенциала уже несколько кварталов.' },
   deflation: { label: 'Дефляция', text: 'Слабый спрос и почти нулевой рост цен.' },
+  pandemic: { label: 'Пандемия', text: 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям.' },
 };
 
 function buildReport({ prev, next, quarterIndex, reasons }) {
@@ -2319,7 +2390,7 @@ export {
   fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
   ru, rf1, rf2, rfs,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
-  botCentralBank, botFinanceMinistry, processRequest,
+  botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
   simulateQuarter,

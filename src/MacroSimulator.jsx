@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom } from './lib/client.js';
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
 } from 'recharts';
@@ -13,7 +13,8 @@ import {
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
-  botCentralBank, botFinanceMinistry, processRequest, simulateQuarter, makeInitialEconomy, leverPreview,
+  botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
+  simulateQuarter, makeInitialEconomy, leverPreview,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -227,7 +228,7 @@ function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF })
             </button>
             {onIRF && (
               <button className="ems-btn" style={{ padding: '3px 8px', fontSize: 10.5, borderColor: COLOR.blue, color: COLOR.blue }}
-                onClick={() => { Audio.play('click'); onIRF(lever, value); }}>
+                onClick={() => { Audio.play('click'); onIRF(lever, value, lever.type === 'level' ? currentDisplay : 0); }}>
                 <Activity size={11} style={{ verticalAlign: -1, marginRight: 3 }} />Реакция экономики
               </button>
             )}
@@ -3323,7 +3324,7 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
 }
 
 /* ============================ РЕАКЦИЯ ЭКОНОМИКИ НА РЕШЕНИЕ ============================ */
-function computeIRF(economy, decisions, leverId, newValue, difficulty, horizon) {
+function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
   const H = horizon || 12;
   const noiseSave = CONFIG.noiseMult[difficulty];
   const evSave = CONFIG.eventProbability[difficulty];
@@ -3342,7 +3343,7 @@ function computeIRF(economy, decisions, leverId, newValue, difficulty, horizon) 
   };
   let res = [];
   try {
-    const base = run(decisions[leverId]);
+    const base = run(baseValue);
     const alt = run(newValue);
     res = base.map((b, i) => ({
       q: i + 1,
@@ -3366,8 +3367,9 @@ const IRF_SERIES = [
   { key: 'debtToGdp', label: 'Долг к ВВП', color: COLOR.teal, unit: ' п.п.' },
   { key: 'stockIndex', label: 'Индекс акций', color: '#8E7CC3', unit: '%' },
 ];
-function IRFModal({ economy, decisions, lever, value, difficulty, onClose }) {
-  const data = useMemo(() => computeIRF(economy, decisions, lever.id, value, difficulty, 12), [lever.id, value]);
+function IRFModal({ economy, decisions, lever, value, baseValue, difficulty, onClose }) {
+  const data = useMemo(() => computeIRF(economy, decisions, lever.id, baseValue, value, difficulty, 12),
+    [lever.id, baseValue, value]);
   const peak = (key) => data.reduce((a, d) => (Math.abs(d[key]) > Math.abs(a.v) ? { v: d[key], q: d.q } : a), { v: 0, q: 0 });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
@@ -3553,7 +3555,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
     }
     Audio.setMood(r.economy);
-  }, (e) => setError(e.message)), [id]);
+  }, (e) => setError(e.message), 2500, seat, token), [id, seat, token]);
 
   const roleDef = seatRole(seat);
   const RoleIcon = ROLE_ICON[roleDef.icon];
@@ -3585,6 +3587,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
+  const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
+  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); onExit(); };
 
   return (
     <div className="ems-root">
@@ -3617,7 +3621,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <Gauge value={economy.wellbeing} size={68} />
           </div>
           <AudioControls />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти из комнаты" onClick={() => { Audio.play('click'); onExit(); }}>
+          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Покинуть комнату" onClick={() => { Audio.play('click'); exit(); }}>
             <RotateCcw size={14} />
           </button>
         </div>
@@ -3634,6 +3638,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       </div>
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {otherDisconnected && (
+          <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
+            <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div><b style={{ color: COLOR.rust }}>{room.names[otherSeat] || 'Партнёр'} не на связи.</b> <span style={{ color: COLOR.muted }}>
+              Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. Если он не вернётся, за это ведомство продолжит решать бот.</span></div>
+          </div>
+        )}
         <RegimeBanner economy={economy} />
       </div>
 
@@ -4035,7 +4046,7 @@ const INDICATOR_TABS = [
 /* Реестр показателей: всё, что можно закрепить в верхнюю полосу */
 const METRIC_INVERT = new Set(['inflation', 'coreInflation', 'inflationExpectations', 'importPriceInflation',
   'unitLaborCostGrowth', 'sovereignSpread', 'corporateSpread', 'volatilityIndex', 'equityRiskPremium', 'discountRate',
-  'taxWedgeValue', 'depositRate', 'effectiveDebtRate', 'unemployment', 'debtToGdp', 'bankNPL', 'bankingRisk',
+  'taxWedgeValue', 'keyRate', 'depositRate', 'effectiveDebtRate', 'unemployment', 'debtToGdp', 'bankNPL', 'bankingRisk',
   'inflationRisk', 'debtRisk', 'recessionRisk', 'currencyRisk', 'shadowShare', 'interestToRevenue', 'effectiveDebtRate',
   'riskPremium', 'exchangeRate', 'importPriceInflation', 'lendingRate', 'nairu', 'creditGap', 'rateGap', 'quartersToElection']);
 const ALL_METRICS = (() => {
@@ -4210,12 +4221,19 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const mofAction = (botRole === 'ministry_finance' || isTrader) ? botFinanceMinistry(economy, mofPersonaId, setup.difficulty) : null;
     if (cbAction) eff = { ...eff, ...cbAction.decisions };
     if (mofAction) eff = { ...eff, ...mofAction.decisions };
-    const action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
+    let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
     // официальный запрос второму ведомству
     let reqResult = null;
     if (pendingRequest && botRole && botRole !== 'both') {
       reqResult = processRequest(pendingRequest, economy, botRole, botRole === 'central_bank' ? cbPersonaId : mofPersonaId, eff);
-      if (reqResult) eff = reqResult.decisions;
+      if (reqResult) {
+        eff = reqResult.decisions;
+        // новость должна описывать то, что реально произошло после запроса,
+        // а не изначальное намерение бота до вмешательства (иначе текст
+        // расходится с тем, что реально применяется к экономике)
+        action = botRole === 'central_bank' ? redescribeCbAction(economy, cbPersonaId, eff)
+          : redescribeMofAction(economy, mofPersonaId, eff);
+      }
     }
 
     const cbStance = clamp((eff.keyRate - economy.inflationExpectations - economy.rStar) / 3, -1, 1);
@@ -4313,7 +4331,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   return (
     <div className={`ems-root${shake ? ' ems-shake' : ''}${dense ? ' ems-dense' : ''}`} lang="ru">
       <GlobalStyle />
-      {irf && <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value}
+      {irf && <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value} baseValue={irf.base}
         difficulty={setup.difficulty} onClose={() => setIrf(null)} />}
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
@@ -4472,14 +4490,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 3, fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Денежно-кредитная политика</div>
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
-                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val) => setIrf({ lever: lv, value: val })}
+                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
                 <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Макропруденциальная политика</div>
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'macropru').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
-                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val) => setIrf({ lever: lv, value: val })}
+                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
                 {crisisActive && (
@@ -4498,13 +4516,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 3, fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Расходы</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
-                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val) => setIrf({ lever: lv, value: val })}
+                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
                 <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Налоги</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'taxes').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
-                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val) => setIrf({ lever: lv, value: val })}
+                    onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
                 <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Статьи бюджета</div>

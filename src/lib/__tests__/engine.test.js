@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   makeInitialEconomy, defaultDecisions, simulateQuarter,
-  botCentralBank, botFinanceMinistry, clamp, LEVERS, FX_REGIMES,
+  botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
+  clamp, LEVERS, FX_REGIMES,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -76,5 +77,67 @@ describe('simulateQuarter', () => {
       });
       assertFiniteEconomy(res.economy, `fxRegime=${regime.id}`);
     }
+  });
+});
+
+describe('rate_hold request (Минфин просит ЦБ не повышать ставку)', () => {
+  it('actually caps the hike instead of no-op-ing back to the bot\'s own proposal', () => {
+    const s = { ...makeInitialEconomy(), keyRate: 5, outputGap: 2.0, inflation: 5.0,
+      inflationExpectations: 5.0, inflationTarget: 4, interestToRevenue: 16 };
+    const cbAction = botCentralBank(s, 'dove', 'medium');
+    expect(cbAction.decisions.keyRate).toBeGreaterThan(s.keyRate); // ЦБ сам хотел повысить
+    const decisions = defaultDecisions(s);
+    const eff = { ...decisions, ...cbAction.decisions };
+    const result = processRequest('rate_hold', s, 'central_bank', 'dove', eff);
+    expect(result.status).toBe('accepted');
+    // ставка не должна вырасти выше того, что было до решения ЦБ
+    expect(result.decisions.keyRate).toBeLessThanOrEqual(s.keyRate);
+  });
+
+  it('leaves a cut alone (hold only blocks hikes, not cuts)', () => {
+    const s = { ...makeInitialEconomy(), keyRate: 5, outputGap: -2.0, inflation: 3.0,
+      inflationExpectations: 3.0, inflationTarget: 4, interestToRevenue: 5 };
+    const cbAction = botCentralBank(s, 'dove', 'medium');
+    expect(cbAction.decisions.keyRate).toBeLessThan(s.keyRate); // ЦБ сам режет ставку
+    const decisions = defaultDecisions(s);
+    const eff = { ...decisions, ...cbAction.decisions };
+    const result = processRequest('rate_hold', s, 'central_bank', 'dove', eff);
+    if (result.status !== 'rejected') expect(result.decisions.keyRate).toBe(cbAction.decisions.keyRate);
+  });
+});
+
+describe('redescribeCbAction (новость после межведомственного запроса)', () => {
+  it('describes the final rate, not the one the bot originally proposed', () => {
+    const s = { ...makeInitialEconomy(), keyRate: 5, outputGap: -1.5, inflation: 3.5,
+      inflationExpectations: 3.5, inflationTarget: 4, unemployment: 6 };
+    const cbAction = botCentralBank(s, 'pragmatic', 'medium');
+    const decisions = defaultDecisions(s);
+    const eff = { ...decisions, ...cbAction.decisions };
+    const result = processRequest('rate_cut', s, 'central_bank', 'pragmatic', eff);
+    expect(result.status).toBe('accepted');
+    expect(result.decisions.keyRate).not.toBe(cbAction.decisions.keyRate); // запрос реально что-то изменил
+    const redescribed = redescribeCbAction(s, 'pragmatic', result.decisions);
+    expect(redescribed.note).toContain(result.decisions.keyRate.toFixed(2));
+    expect(redescribed.note).not.toContain(cbAction.decisions.keyRate.toFixed(2));
+  });
+});
+
+describe('pandemic crisis tracking', () => {
+  it('shows up in activeCrises/regime for a few quarters, then clears', () => {
+    // pandemicQuartersLeft: 3 здесь эквивалентно "квартал сразу после срабатывания
+    // события" (на самом триггере счётчик становится 3 без декремента) — отсюда
+    // ещё 2 активных квартала до истечения, всего 3 квартала кризиса от триггера
+    let economy = { ...makeInitialEconomy(), pandemicQuartersLeft: 3 };
+    let decisions = defaultDecisions(economy);
+    const seen = [];
+    for (let q = 1; q <= 5; q++) {
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: q, stories: [] });
+      economy = r.economy;
+      decisions = defaultDecisions(economy, decisions);
+      seen.push(economy.activeCrises.includes('pandemic'));
+    }
+    expect(seen).toEqual([true, true, false, false, false]);
+    expect(economy.regime).not.toBe('pandemic');
   });
 });
