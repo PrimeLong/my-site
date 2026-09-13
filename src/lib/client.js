@@ -1,7 +1,7 @@
 /* Клиент комнаты: создать, присоединиться, отправить решения, следить за версией. */
 const API = '/api/room';
-const post = async (payload) => {
-  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+const post = async (payload, url = API) => {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Ошибка сервера');
   return data;
@@ -12,6 +12,7 @@ export const submitDecisions = (id, seat, token, decisions, note) =>
   post({ action: 'submit', id, seat, token, decisions, note });
 export const cancelSubmission = (id, seat, token) => post({ action: 'unsubmit', id, seat, token });
 export const leaveRoom = (id, seat, token) => post({ action: 'leave', id, seat, token });
+export const setRoomDifficulty = (id, seat, token, difficulty) => post({ action: 'set_difficulty', id, seat, token, difficulty });
 export async function fetchRoom(id, since, seat, token) {
   const params = new URLSearchParams({ id });
   if (since) params.set('since', since);
@@ -37,3 +38,23 @@ export function watchRoom(id, onRoom, onError, intervalMs = 2500, seat, token) {
   tick();
   return () => { stop = true; };
 }
+
+/* Соло-сохранения: три слота на игрока, целиком на сервере (см. api/solo.js) —
+   playerId лишь адресует их, в нём самом нет данных партии. */
+const SOLO_API = '/api/solo';
+export async function fetchSoloSlots(playerId) {
+  const r = await fetch(`${SOLO_API}?${new URLSearchParams({ playerId })}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Хранилище недоступно');
+  return data.slots;
+}
+export async function fetchSoloSlot(playerId, slot) {
+  const r = await fetch(`${SOLO_API}?${new URLSearchParams({ playerId, slot })}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Не удалось загрузить сохранение');
+  return data.snapshot;
+}
+export const saveSoloSlot = (playerId, slot, snapshot) =>
+  post({ action: 'save', playerId, slot, snapshot }, SOLO_API).then((d) => d.slots);
+export const deleteSoloSlot = (playerId, slot) =>
+  post({ action: 'delete', playerId, slot }, SOLO_API).then((d) => d.slots);

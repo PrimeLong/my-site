@@ -1,12 +1,13 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom } from './lib/client.js';
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty,
+  fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
 } from 'recharts';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
-  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Download, Upload, Copy, Star, Flag, Megaphone, Sliders,
+  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
@@ -2231,55 +2232,68 @@ function makeSnapshot(state) {
   const slim = (state.history || []).map((h) => { const { revenueParts, ...rest } = h; return rest; });
   return { app: 'economic-panel', v: SAVE_VERSION, savedAt: new Date().toISOString(), ...state, history: slim };
 }
-function serializeSave(snap) { return JSON.stringify(snap); }
-function parseSave(text) {
-  const data = JSON.parse(text);
-  if (!data || data.app !== 'economic-panel') throw new Error('Это не файл сохранения «Экономической панели».');
-  if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Файл повреждён: не хватает состояния экономики.');
+function validateSnapshot(data) {
+  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение «Экономической панели».');
+  if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Сохранение повреждено: не хватает состояния экономики.');
   if (data.v > SAVE_VERSION) throw new Error('Сохранение сделано в более новой версии симулятора.');
   return data;
 }
 
+/* Player ID — единственное, что остаётся на клиенте: без него некому
+   адресовать слоты на сервере (аккаунтов в игре нет). Сама партия — экономика,
+   история, декэижны — целиком лежит на сервере, как и сетевые комнаты. */
+const PLAYER_ID_KEY = 'ems-player-id';
+const getPlayerId = () => {
+  const fresh = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `p${Date.now()}${Math.random().toString(36).slice(2)}`;
+  try {
+    let id = localStorage.getItem(PLAYER_ID_KEY);
+    if (!id) { id = fresh(); localStorage.setItem(PLAYER_ID_KEY, id); }
+    return id;
+  } catch { return fresh(); /* приватный режим — слоты проработают только эту вкладку */ }
+};
+
 function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [tab, setTab] = useState(mode || 'save');
-  const [text, setText] = useState('');
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const payload = useMemo(() => (snapshot ? serializeSave(snapshot) : ''), [snapshot]);
-  const sizeKb = (payload.length / 1024).toFixed(1);
+  const [slots, setSlots] = useState(null); // null = ещё загружаются
+  const [busyIdx, setBusyIdx] = useState(null);
+  const playerId = useMemo(getPlayerId, []);
 
-  const download = () => {
-    try {
-      const blob = new Blob([payload], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const q = snapshot && snapshot.quarterIndex ? snapshot.quarterIndex - 1 : 0;
-      a.href = url; a.download = `economic-panel-q${q}.json`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch { setError('Скачивание недоступно в этом окружении — скопируйте текст вручную.'); }
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchSoloSlots(playerId).then((s) => { if (!cancelled) setSlots(s); })
+      .catch((e) => { if (!cancelled) { setSlots(Array(3).fill(null)); setError(e.message); } });
+    return () => { cancelled = true; };
+  }, [playerId]);
+
+  const slotLabel = (s) => {
+    const roleTitle = (ROLES.find((r) => r.id === s.role) || {}).short || s.role;
+    return `${roleTitle} · ${quarterLabel(Math.max(1, (s.quarterIndex || 1) - 1))}`;
   };
-  const copy = () => {
-    try {
-      if (navigator.clipboard) navigator.clipboard.writeText(payload);
-      else { const ta = document.createElement('textarea'); ta.value = payload; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
-      setCopied(true); setTimeout(() => setCopied(false), 1800);
-    } catch { setError('Не удалось скопировать автоматически — выделите текст вручную.'); }
+  const saveToSlot = async (idx) => {
+    if (!snapshot) return;
+    if (slots[idx] && !window.confirm(`Перезаписать слот ${idx + 1}?`)) return;
+    setBusyIdx(idx); setError('');
+    try { validateSnapshot(snapshot); setSlots(await saveSoloSlot(playerId, idx, snapshot)); Audio.play('stamp'); }
+    catch (e) { setError(e.message); }
+    finally { setBusyIdx(null); }
   };
-  const readFile = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => setText(String(r.result || ''));
-    r.readAsText(f);
+  const loadFromSlot = async (idx) => {
+    if (!slots[idx]) return;
+    setBusyIdx(idx); setError('');
+    try { const snap = validateSnapshot(await fetchSoloSlot(playerId, idx)); Audio.play('stamp'); onLoad(snap); }
+    catch (e) { setError(e.message); setBusyIdx(null); }
   };
-  const doLoad = () => {
-    try { const data = parseSave(text); setError(''); onLoad(data); } catch (err) { setError(err.message || 'Не удалось прочитать сохранение.'); }
+  const deleteSlot = async (idx) => {
+    setBusyIdx(idx); setError('');
+    try { setSlots(await deleteSoloSlot(playerId, idx)); }
+    catch (e) { setError(e.message); }
+    finally { setBusyIdx(null); }
   };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 660, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
+      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 480, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <Save size={15} color={COLOR.gold} />
           <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Сохранения</span>
@@ -2290,43 +2304,43 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
             <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
           ))}
         </div>
-        {tab === 'save' ? (
-          <>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
-              Весь ход партии — экономика, история, лента новостей и сюжеты — умещается в один текстовый файл ({sizeKb} КБ). Скачайте его или скопируйте текст: вставив его во вкладке «Загрузить», вы вернётесь ровно в этот момент.
-            </div>
-            <textarea readOnly value={payload} className="ems-mono ems-scroll"
-              style={{ width: '100%', height: 190, background: COLOR.bg, color: COLOR.muted, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 9.5, padding: 9, resize: 'vertical' }} />
-            <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
-              <button className="ems-btn primary" style={{ flex: 1, padding: '9px 0' }} onClick={() => { Audio.play('stamp'); download(); }}>
-                <Download size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Скачать файл
-              </button>
-              <button className="ems-btn" style={{ flex: 1, padding: '9px 0' }} onClick={() => { Audio.play('click'); copy(); }}>
-                {copied ? <Check size={13} style={{ verticalAlign: -2, marginRight: 6 }} /> : <Copy size={13} style={{ verticalAlign: -2, marginRight: 6 }} />}
-                {copied ? 'Скопировано' : 'Скопировать текст'}
-              </button>
-            </div>
-          </>
+        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.5 }}>
+          {tab === 'save'
+            ? 'Партия хранится на сервере — как и сетевые комнаты. 3 слота на это устройство.'
+            : 'Выберите слот, чтобы вернуться в сохранённую партию. Текущая партия будет заменена.'}
+        </div>
+
+        {slots === null ? (
+          <div style={{ fontSize: 12, color: COLOR.muted }}>Загружаем слоты…</div>
         ) : (
-          <>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
-              Вставьте текст сохранения или выберите файл. Текущая партия будет заменена — сохраните её заранее, если она вам ещё нужна.
-            </div>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Вставьте сюда содержимое файла сохранения…"
-              className="ems-mono ems-scroll"
-              style={{ width: '100%', height: 170, background: COLOR.bg, color: COLOR.text, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 9.5, padding: 9, resize: 'vertical' }} />
-            {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{error}</div>}
-            <div style={{ display: 'flex', gap: 7, marginTop: 10, alignItems: 'center' }}>
-              <label className="ems-btn" style={{ flex: 1, padding: '9px 0', textAlign: 'center', cursor: 'pointer' }}>
-                <Upload size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Выбрать файл
-                <input type="file" accept="application/json,.json,text/plain" style={{ display: 'none' }} onChange={readFile} />
-              </label>
-              <button className="ems-btn primary" style={{ flex: 1, padding: '9px 0' }} disabled={!text.trim()} onClick={() => { Audio.play('stamp'); doLoad(); }}>
-                Загрузить партию
-              </button>
-            </div>
-          </>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {slots.map((slot, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                <span style={{ flex: 1, color: slot ? COLOR.text : COLOR.faint }}>
+                  Слот {idx + 1}: {slot ? slotLabel(slot) : 'пусто'}
+                </span>
+                {tab === 'save' && snapshot && (
+                  <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} disabled={busyIdx === idx} onClick={() => saveToSlot(idx)}>
+                    {busyIdx === idx ? 'Сохраняем…' : (slot ? 'Перезаписать' : 'Сохранить')}
+                  </button>
+                )}
+                {tab === 'load' && slot && (
+                  <>
+                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} disabled={busyIdx === idx} onClick={() => loadFromSlot(idx)}>
+                      {busyIdx === idx ? 'Загружаем…' : 'Загрузить'}
+                    </button>
+                    <button onClick={() => deleteSlot(idx)} aria-label={`Удалить слот ${idx + 1}`}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                      <X size={12} />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
         )}
+        {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 10 }}>{error}</div>}
       </div>
     </div>
   );
@@ -3482,19 +3496,54 @@ const seatRole = (seat) => ROLES.find((r) => r.id === seat);
 
 /* Место и токен — единственное, что нужно, чтобы вернуться в свою партию после
    обновления страницы: комната и так живёт на сервере (Redis/память, TTL 3 суток),
-   не хватало только клиентской памяти о том, что вы уже вошли. */
-const NETWORK_SESSION_KEY = 'ems-network-session';
-const saveNetworkSession = (net) => {
-  try { localStorage.setItem(NETWORK_SESSION_KEY, JSON.stringify({ id: net.id, seat: net.seat, token: net.token })); }
+   не хватало только клиентской памяти о том, что вы уже вошли. Слотов три — можно
+   одновременно вести до трёх сетевых партий (например, за разные ведомства в разных
+   комнатах) и не терять доступ ни к одной из них. */
+const NETWORK_SLOTS_KEY = 'ems-network-slots';
+const NETWORK_SESSION_KEY_LEGACY = 'ems-network-session'; // старый формат до введения слотов
+const NETWORK_SLOT_COUNT = 3;
+const loadNetworkSlots = () => {
+  let arr;
+  try { arr = JSON.parse(localStorage.getItem(NETWORK_SLOTS_KEY) || '[]'); } catch { arr = []; }
+  if (!Array.isArray(arr)) arr = [];
+  const slots = arr.slice(0, NETWORK_SLOT_COUNT).map((s) => ((s && s.id && s.seat && s.token) ? s : null));
+  while (slots.length < NETWORK_SLOT_COUNT) slots.push(null);
+  // разовая миграция: у тех, кто заходил до появления слотов, партия лежала под
+  // одним старым ключом — переносим её в первый слот, чтобы не потерять доступ
+  try {
+    const legacy = JSON.parse(localStorage.getItem(NETWORK_SESSION_KEY_LEGACY) || 'null');
+    if (legacy && legacy.id && legacy.seat && legacy.token) {
+      const dup = slots.some((s) => s && s.id === legacy.id && s.seat === legacy.seat);
+      if (!dup) {
+        const idx = slots.findIndex((s) => !s);
+        slots[idx === -1 ? 0 : idx] = { id: legacy.id, seat: legacy.seat, token: legacy.token, savedAt: Date.now() };
+      }
+      localStorage.removeItem(NETWORK_SESSION_KEY_LEGACY);
+      writeNetworkSlots(slots);
+    }
+  } catch { /* ignore */ }
+  return slots;
+};
+const writeNetworkSlots = (slots) => {
+  try { localStorage.setItem(NETWORK_SLOTS_KEY, JSON.stringify(slots)); }
   catch { /* приватный режим/квота — не критично, просто не восстановимся после обновления */ }
 };
-const clearNetworkSession = () => { try { localStorage.removeItem(NETWORK_SESSION_KEY); } catch { /* ignore */ } };
-const loadNetworkSession = () => {
-  try {
-    const data = JSON.parse(localStorage.getItem(NETWORK_SESSION_KEY) || 'null');
-    return (data && data.id && data.seat && data.token) ? data : null;
-  } catch { return null; }
+// сохраняем/обновляем сессию в слотах: та же комната+место обновляет свой слот,
+// иначе — в первый свободный, а если все заняты — вытесняем самый старый (LRU)
+const saveNetworkSlot = (net) => {
+  const slots = loadNetworkSlots();
+  const entry = { id: net.id, seat: net.seat, token: net.token, savedAt: Date.now() };
+  let idx = slots.findIndex((s) => s && s.id === net.id && s.seat === net.seat);
+  if (idx === -1) idx = slots.findIndex((s) => !s);
+  if (idx === -1) {
+    idx = 0;
+    slots.forEach((s, i) => { if ((s ? s.savedAt : -Infinity) < (slots[idx] ? slots[idx].savedAt : -Infinity)) idx = i; });
+  }
+  slots[idx] = entry;
+  writeNetworkSlots(slots);
 };
+const clearNetworkSlotAt = (idx) => { const slots = loadNetworkSlots(); slots[idx] = null; writeNetworkSlots(slots); };
+const clearNetworkSlotFor = (id, seat) => writeNetworkSlots(loadNetworkSlots().map((s) => ((s && s.id === id && s.seat === seat) ? null : s)));
 
 const roomCodeFromUrl = () => {
   if (typeof window === 'undefined') return '';
@@ -3512,6 +3561,52 @@ function NetworkLobby({ onEnter }) {
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [slots, setSlots] = useState(loadNetworkSlots);
+  const [slotBusy, setSlotBusy] = useState(null);
+  const [roomPreview, setRoomPreview] = useState(null);
+
+  // подглядываем занятость мест ДО входа, чтобы не отправлять игрока на
+  // «место уже занято» после того, как он уже заполнил форму
+  React.useEffect(() => {
+    const trimmed = code.trim().toUpperCase();
+    if (trimmed.length < 4) { setRoomPreview(null); return undefined; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const data = await fetchRoom(trimmed);
+        if (!cancelled) setRoomPreview(data.room);
+      } catch { if (!cancelled) setRoomPreview(null); }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [code]);
+  React.useEffect(() => {
+    if (!roomPreview || !roomPreview.occupied) return;
+    if (roomPreview.occupied[seat]) {
+      const free = NETWORK_SEATS.find((sx) => !roomPreview.occupied[sx]);
+      if (free) setSeat(free);
+    }
+  }, [roomPreview]);
+  const bothSeatsTaken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied.central_bank && roomPreview.occupied.ministry_finance);
+
+  const enterSlot = async (idx) => {
+    const slot = slots[idx];
+    if (!slot) return;
+    setSlotBusy(idx); setError('');
+    try {
+      const data = await fetchRoom(slot.id, undefined, slot.seat, slot.token);
+      if (!data.room) throw new Error('Комната недоступна');
+      onEnter({ id: slot.id, seat: slot.seat, token: slot.token, room: data.room });
+    } catch (e) {
+      setError(e.message);
+      clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
+    } finally { setSlotBusy(null); }
+  };
+  const removeSlot = (idx) => {
+    const slot = slots[idx];
+    if (slot && !window.confirm('Забыть эту партию? Ваше место освободится — партнёру вместо вас будет играть бот.')) return;
+    if (slot) leaveRoom(slot.id, slot.seat, slot.token).catch(() => {}); // освобождаем место партнёру, раз партия забыта насовсем
+    clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
+  };
 
   const shareLink = (id) => `${window.location.origin}${window.location.pathname}?room=${id}`;
   const copyLink = (id) => {
@@ -3534,7 +3629,7 @@ function NetworkLobby({ onEnter }) {
       const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
       Audio.play('stamp'); Audio.prime();
       const net = { id: code.trim().toUpperCase(), seat, token: r.token, room: r.room };
-      saveNetworkSession(net);
+      saveNetworkSlot(net);
       // убираем ?room= из адресной строки, чтобы обновление страницы не пыталось
       // «войти по ссылке» повторно поверх уже сохранённой сессии
       if (typeof window !== 'undefined' && window.history && window.location.search) {
@@ -3546,6 +3641,37 @@ function NetworkLobby({ onEnter }) {
 
   return (
     <div style={{ maxWidth: 640, width: '100%' }}>
+      {slots.some(Boolean) && (
+        <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }}>
+          <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>Ваши партии ({slots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {slots.map((slot, idx) => {
+              const rd = slot && seatRole(slot.seat);
+              const SlotIcon = rd && ROLE_ICON[rd.icon];
+              return (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                  {slot ? (
+                    <>
+                      {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
+                      <span style={{ flex: 1, color: COLOR.text }}>Комната <b className="ems-mono">{slot.id}</b> · {rd.short}</span>
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Входим…' : 'Войти'}</button>
+                      <button onClick={() => removeSlot(idx)} aria-label="Забыть эту партию"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                        <X size={12} />
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ color: COLOR.faint }}>слот {idx + 1}: пусто</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
         {[['create', 'Создать комнату'], ['join', 'Войти по коду']].map(([id, label]) => (
           <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
@@ -3573,19 +3699,6 @@ function NetworkLobby({ onEnter }) {
           <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doCreate}>
             {busy ? 'Создаём…' : 'Создать комнату'}
           </button>
-          {created && (
-            <div style={{ marginTop: 14, fontSize: 13, color: COLOR.teal, borderLeft: `2px solid ${COLOR.teal}`, paddingLeft: 10 }}>
-              <div>Комната создана: <b className="ems-mono">{created}</b>. Отправьте партнёру код или ссылку ниже — по ней комната и роль откроются автоматически.</div>
-              <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 8 }}>
-                <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
-                  style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
-                <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
-                  {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
-                  {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -3597,6 +3710,19 @@ function NetworkLobby({ onEnter }) {
             <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="например, DA9X6"
               className="ems-mono" style={{ width: '100%', padding: '9px 11px', fontSize: 14, letterSpacing: '0.08em',
                 background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+            {created && created === code.trim().toUpperCase() && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: COLOR.teal }}>
+                <div>Комната ваша — отправьте партнёру код выше или ссылку ниже, по ней комната откроется автоматически.</div>
+                <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6 }}>
+                  <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
+                    style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
+                  <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
+                    {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
+                    {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Ваше имя</div>
@@ -3609,19 +3735,22 @@ function NetworkLobby({ onEnter }) {
             <div style={{ display: 'flex', gap: 8 }}>
               {NETWORK_SEATS.map((sx) => {
                 const rd = seatRole(sx); const RoleIcon = ROLE_ICON[rd.icon];
+                const taken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied[sx]);
                 return (
-                  <button key={sx} className="ems-btn" style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                    background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
-                    borderColor: seat === sx ? COLOR.gold : COLOR.border }}
-                    onClick={() => { Audio.play('click'); setSeat(sx); }}>
+                  <button key={sx} className="ems-btn" disabled={taken}
+                    style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                      background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
+                      borderColor: seat === sx ? COLOR.gold : COLOR.border, opacity: taken ? 0.4 : 1, cursor: taken ? 'not-allowed' : 'pointer' }}
+                    onClick={() => { if (taken) return; Audio.play('click'); setSeat(sx); }}>
                     <RoleIcon size={15} />{rd.short}
+                    {taken && <span style={{ fontSize: 9, letterSpacing: '0.03em' }}>занято</span>}
                   </button>
                 );
               })}
             </div>
           </div>
-          <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
-            {busy ? 'Входим…' : 'Войти в партию'}
+          <button className="ems-btn primary" disabled={busy || bothSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
+            {busy ? 'Входим…' : bothSeatsTaken ? 'Оба места заняты' : 'Войти в партию'}
           </button>
         </div>
       )}
@@ -3639,6 +3768,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showWhy, setShowWhy] = useState(false);
+  const [showPaper, setShowPaper] = useState(false);
   const prevQuarter = React.useRef(room.quarterIndex);
 
   React.useEffect(() => watchRoom(id, (r) => {
@@ -3666,14 +3796,34 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [hiddenSeries, setHiddenSeries] = useState([]);
   const [period, setPeriod] = useState('5y');
   const [activeTab, setActiveTab] = useState('economy');
+  const [dense, setDense] = useState(false);
+  const [dashboards, setDashboards] = useState(DASHBOARD_PRESETS);
+  const [activeDash, setActiveDash] = useState('overview');
+  const [pinned, setPinned] = useState(DEFAULT_PINS);
+  const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
+  const movePin = (key, dir) => setPinned((ps) => {
+    const i = ps.indexOf(key); const j = i + dir;
+    if (i < 0 || j < 0 || j >= ps.length) return ps;
+    const next = [...ps]; next[i] = ps[j]; next[j] = ps[i]; return next;
+  });
+  const applyDash = (did) => { const d = dashboards.find((x) => x.id === did); if (d) { setPinned(d.pins); setActiveDash(did); } };
+  const saveDash = () => {
+    const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
+    const did = `custom${Date.now()}`;
+    setDashboards((ds) => [...ds, { id: did, name, pins: [...pinned], custom: true }]);
+    setActiveDash(did);
+  };
+  const deleteDash = (did) => setDashboards((ds) => ds.filter((d) => d.id !== did));
+  const kpiDelta = (key) => economy[key] - prevEcon[key];
+  const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
 
-  // сохраняем сессию и на случай восстановления после обновления страницы (см.
-  // MacroSimulator), и как подстраховку, если сюда попали в обход NetworkLobby
-  React.useEffect(() => { saveNetworkSession({ id, seat, token }); }, [id, seat, token]);
+  // держим слот в актуальном состоянии (перекладывает savedAt наверх LRU) и на
+  // случай, если сюда попали в обход NetworkLobby (например, через ?room=)
+  React.useEffect(() => { saveNetworkSlot({ id, seat, token }); }, [id, seat, token]);
   const failWithError = (e) => {
     setError(e.message);
     // токен отозван или комната истекла — восстанавливать в ней больше нечего
-    if (/неверный токен|не найдена/i.test(e.message || '')) clearNetworkSession();
+    if (/неверный токен|не найдена/i.test(e.message || '')) clearNetworkSlotFor(id, seat);
   };
   const send = async () => {
     setBusy(true); setError('');
@@ -3691,7 +3841,17 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
-  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); clearNetworkSession(); onExit(); };
+  // выход в меню — это не уход из комнаты: место и сохранённая сессия остаются,
+  // партия появится в лобби («Ваши партии») и в неё можно вернуться позже;
+  // насовсем комнату покидают через «Забыть эту партию» в лобби
+  const exit = () => onExit();
+  const [difficultyBusy, setDifficultyBusy] = useState(false);
+  const changeDifficulty = async (next) => {
+    if (next === room.difficulty) return;
+    setDifficultyBusy(true); setError('');
+    try { const r = await setRoomDifficulty(id, seat, token, next); setRoom(r.room); }
+    catch (e) { failWithError(e); } finally { setDifficultyBusy(false); }
+  };
 
   return (
     <div className="ems-root">
@@ -3699,6 +3859,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <Atmosphere regime={economy.regime}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
+      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} onClose={() => setShowPaper(false)} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -3723,20 +3884,65 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
             <Gauge value={economy.wellbeing} size={68} />
           </div>
+          <div style={{ position: 'relative' }}>
+            <select value={room.difficulty} disabled={difficultyBusy} onChange={(e) => changeDifficulty(e.target.value)}
+              title="Сложность партии" className="ems-btn"
+              style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
+              {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
+            </select>
+            <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          </div>
+          <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
+            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
           <AudioControls />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Покинуть комнату" onClick={() => { Audio.play('click'); exit(); }}>
+          <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+            onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
+            <Newspaper size={14} />Газета
+          </button>
+          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти в меню" onClick={() => { Audio.play('click'); exit(); }}>
             <RotateCcw size={14} />
           </button>
         </div>
       </div>
 
+      <CrisisBar economy={economy} botAction={otherAction} />
+
       <div style={{ padding: '14px 18px 4px' }}>
         <div className="ems-kpi-strip">
-          <KpiTile label="ВВП" value={fmtMoney(economy.gdp)} delta={economy.gdp - prevEcon.gdp} icon={TrendingUp} />
-          <KpiTile label="Разрыв выпуска" value={fmtSignedPct(economy.outputGap)} delta={economy.outputGap - prevEcon.outputGap} icon={Activity} />
-          <KpiTile label="Инфляция" value={pctFmt(economy.inflation)} delta={economy.inflation - prevEcon.inflation} invert icon={Coins} />
-          <KpiTile label="Безработица" value={pctFmt(economy.unemployment)} delta={economy.unemployment - prevEcon.unemployment} invert icon={Users} />
-          <KpiTile label="Госдолг / ВВП" value={pctFmt(economy.debtToGdp)} delta={economy.debtToGdp - prevEcon.debtToGdp} invert icon={Landmark} />
+          {pinned.map((key) => {
+            const m = ALL_METRICS[key];
+            if (!m) return null;
+            const val = economy[key];
+            return (
+              <div key={key} style={{ position: 'relative' }}>
+                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} />
+                <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
+                  <button onClick={() => { Audio.play('tick'); movePin(key, 1); }} aria-label="Правее"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>▶</button>
+                  <button onClick={() => { Audio.play('tick'); togglePin(key); }} aria-label={`Убрать ${m.label} с полосы`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0 }}>
+                    <X size={10} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {pinned.length < MAX_PINS && (
+            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed' }}>
+              <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
+                <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="ems-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 10, padding: '9px 13px' }}>
+          <RiskBadge label="Инфляционный" value={economy.inflationRisk} />
+          <RiskBadge label="Банковский" value={economy.bankingRisk} />
+          <RiskBadge label="Долговой" value={economy.debtRisk} />
+          <RiskBadge label="Рецессии" value={economy.recessionRisk} />
+          <RiskBadge label="Валютный" value={economy.currencyRisk} />
         </div>
       </div>
 
@@ -3790,7 +3996,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <NewsTerminal items={room.news} onOpenPaper={() => {}} />
+          <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
           <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
             hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           <div className="ems-panel" style={{ padding: 14 }}>
@@ -3813,6 +4019,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <Users size={13} color={COLOR.blue} />
@@ -3849,13 +4056,23 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               const val = row.get ? row.get(economy) : economy[row.key];
               const prevVal = row.get ? row.get(prevEcon) : prevEcon[row.key];
               const delta = Number.isFinite(prevVal) && Number.isFinite(val) ? val - prevVal : 0;
-              if (row.text) return null;
+              if (row.text) {
+                return (
+                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
+                    <span style={{ color: COLOR.muted }}>{row.label}</span>
+                    <span className="ems-mono">{(row.map && row.map[val]) || String(val || '—')}</span>
+                  </div>
+                );
+              }
               return (
-                <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                  <span style={{ color: COLOR.muted }}>{row.label}</span>
+                <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
+                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
+                    {row.label}
+                  </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
-                    <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />
+                    {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
                   </span>
                 </div>
               );
@@ -3887,7 +4104,21 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 /* ============================ ЭКРАН ВЫБОРА ============================ */
 function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
   const [mode, setMode] = useState(() => (roomCodeFromUrl() ? 'network' : 'single'));
-  const [showLoad, setShowLoad] = useState(false);
+  const playerId = useMemo(getPlayerId, []);
+  const [soloSlots, setSoloSlots] = useState(null);
+  const [slotBusy, setSlotBusy] = useState(null);
+  const [slotError, setSlotError] = useState('');
+  React.useEffect(() => {
+    fetchSoloSlots(playerId).then(setSoloSlots).catch(() => setSoloSlots(Array(3).fill(null)));
+  }, [playerId]);
+  const enterSlot = async (idx) => {
+    setSlotBusy(idx); setSlotError('');
+    try { const snap = await fetchSoloSlot(playerId, idx); onLoad(snap); }
+    catch (e) { setSlotError(e.message); setSlotBusy(null); }
+  };
+  const removeSlot = async (idx) => {
+    try { setSoloSlots(await deleteSoloSlot(playerId, idx)); } catch (e) { setSlotError(e.message); }
+  };
   const [role, setRole] = useState(null);
   const [difficulty, setDifficulty] = useState('medium');
   const [goal, setGoalRaw] = useState('living_standards');
@@ -3906,7 +4137,6 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
   return (
     <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
-      {showLoad && <SaveLoadModal mode="load" snapshot={null} onClose={() => setShowLoad(false)} onLoad={(d) => { setShowLoad(false); onLoad(d); }} />}
       <div style={{ maxWidth: 800, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: 34 }}>
           <div className="ems-serif" style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.01em' }}>Экономическая панель государства</div>
@@ -3929,6 +4159,32 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
           </div>
         ) : (
         <>
+        {soloSlots && soloSlots.some(Boolean) && (
+          <div className="ems-panel" style={{ padding: 14, marginBottom: 20 }}>
+            <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>
+              Ваши партии ({soloSlots.filter(Boolean).length}/3)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {soloSlots.map((slot, idx) => {
+                if (!slot) return null;
+                const roleTitle = (ROLES.find((r) => r.id === slot.role) || {}).short || slot.role;
+                return (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                    <span style={{ flex: 1, color: COLOR.text }}>{roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}</span>
+                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                      onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                    <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>1</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваш пост</span>
@@ -3975,6 +4231,21 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
                   </div>
                 );
               })}
+              {(() => {
+                const active = blk.value === 'random';
+                return (
+                  <div onClick={() => { Audio.play('click'); blk.set('random'); }} className="ems-panel"
+                    style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+                    {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
+                      <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
+                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>Характер определится в момент вступления в должность — не будете знать заранее, с кем имеете дело.</div>
+                  </div>
+                );
+              })()}
             </div>
           </React.Fragment>
         ))}
@@ -4010,12 +4281,15 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
         </div>
 
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
-          onClick={() => { if (!role) return; Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart({ role, difficulty, goal, cbPersona, mofPersona }); }}>
+          onClick={() => {
+            if (!role) return;
+            Audio.prime(); Audio.play('stamp'); Audio.startMusic();
+            const pick = (list) => list[Math.floor(Math.random() * list.length)].id;
+            const finalCb = cbPersona === 'random' ? pick(CB_PERSONAS) : cbPersona;
+            const finalMof = mofPersona === 'random' ? pick(MOF_PERSONAS) : mofPersona;
+            onStart({ role, difficulty, goal, cbPersona: finalCb, mofPersona: finalMof });
+          }}>
           Принять полномочия
-        </button>
-        <button className="ems-btn" style={{ width: '100%', padding: '10px 0', fontSize: 12.5, marginTop: 9 }}
-          onClick={() => { Audio.prime(); Audio.play('paper'); setShowLoad(true); }}>
-          <Upload size={13} style={{ verticalAlign: -2, marginRight: 7 }} />Продолжить сохранённую партию
         </button>
         </>
         )}
@@ -4297,6 +4571,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
   const groups = roleDef.groups;
   const levers = LEVERS.filter((l) => groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
+  // «Ваши полномочия» разбиты на вкладки по подгруппам, а не одним длинным списком:
+  // при роли «оба ведомства» все ~22 ползунка подряд растягивали левую колонку
+  // намного выше центральной и правой, оставляя под ними пустое место на странице
+  const LEVER_TABS = [
+    groups.includes('monetary') && { id: 'monetary-core', label: 'Ставка и курс' },
+    groups.includes('monetary') && { id: 'monetary-macropru', label: 'Макропруденциальная' },
+    groups.includes('fiscal') && { id: 'fiscal-core', label: 'Расходы' },
+    groups.includes('fiscal') && { id: 'fiscal-taxes', label: 'Налоги' },
+    groups.includes('fiscal') && { id: 'fiscal-budget', label: 'Бюджет' },
+  ].filter(Boolean);
+  const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
   const snapshot = () => makeSnapshot({ setup, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
@@ -4495,7 +4780,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
             <Newspaper size={14} />Газета
           </button>
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={onRestart} title="Начать заново"><RotateCcw size={14} /></button>
+          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти в меню"
+            onClick={() => { if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); } }}>
+            <RotateCcw size={14} />
+          </button>
         </div>
       </div>
 
@@ -4588,48 +4876,65 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             </div>
             <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 10 }}>Приоритет: {goalDef.label}</div>
 
-            {groups.includes('monetary') && (
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 3, fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Денежно-кредитная политика</div>
+            {crisisActive && (
+              <div style={{ paddingBottom: 10 }}>
+                <button className="ems-btn" style={{ width: '100%', background: decisions.emergency ? COLOR.rust : COLOR.panelAlt, color: decisions.emergency ? '#fff' : COLOR.text, borderColor: COLOR.rust }}
+                  onClick={() => { Audio.play(decisions.emergency ? 'click' : 'alarm'); setLever('emergency', !decisions.emergency); }}>
+                  {decisions.emergency ? <Check size={13} style={{ verticalAlign: -2 }} /> : <ShieldAlert size={13} style={{ verticalAlign: -2 }} />} Экстренная поддержка банков
+                </button>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>Спасёт капитал банков, но ударит по доверию к ЦБ и добавит инфляции.</div>
+              </div>
+            )}
+
+            {LEVER_TABS.length > 1 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 10 }}>
+                {LEVER_TABS.map((t) => (
+                  <span key={t.id} className={`ems-tab ${levTab === t.id ? 'active' : ''}`} style={{ fontSize: 10.5, padding: '4px 8px' }}
+                    onClick={() => { Audio.play('tab'); setLevTab(t.id); }}>{t.label}</span>
+                ))}
+              </div>
+            )}
+
+            {levTab === 'monetary-core' && (
+              <div>
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
-                <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Макропруденциальная политика</div>
+              </div>
+            )}
+            {levTab === 'monetary-macropru' && (
+              <div>
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'macropru').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
-                {crisisActive && (
-                  <div style={{ padding: '10px 0' }}>
-                    <button className="ems-btn" style={{ width: '100%', background: decisions.emergency ? COLOR.rust : COLOR.panelAlt, color: decisions.emergency ? '#fff' : COLOR.text, borderColor: COLOR.rust }}
-                      onClick={() => { Audio.play(decisions.emergency ? 'click' : 'alarm'); setLever('emergency', !decisions.emergency); }}>
-                      {decisions.emergency ? <Check size={13} style={{ verticalAlign: -2 }} /> : <ShieldAlert size={13} style={{ verticalAlign: -2 }} />} Экстренная поддержка банков
-                    </button>
-                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>Спасёт капитал банков, но ударит по доверию к ЦБ и добавит инфляции.</div>
-                  </div>
-                )}
               </div>
             )}
-            {groups.includes('fiscal') && (
+            {levTab === 'fiscal-core' && (
               <div>
-                <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 3, fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Расходы</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
-                <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Налоги</div>
+              </div>
+            )}
+            {levTab === 'fiscal-taxes' && (
+              <div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'taxes').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
                 ))}
-                <div style={{ fontSize: 11, color: COLOR.blue, margin: '12px 0 3px', fontWeight: 600, borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 5 }}>Статьи бюджета</div>
-                <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
+              </div>
+            )}
+            {levTab === 'fiscal-budget' && (
+              <div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
                     value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, setup.difficulty)} />
@@ -4739,33 +5044,10 @@ export default function MacroSimulator() {
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
-  // если в localStorage есть незавершённая сетевая партия — сначала пробуем в нёе
-  // вернуться (комната всё ещё жива на сервере), и только потом показываем меню
-  const [restoringNetwork, setRestoringNetwork] = useState(() => !!loadNetworkSession());
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
 
-  React.useEffect(() => {
-    const saved = loadNetworkSession();
-    if (!saved) return;
-    fetchRoom(saved.id, undefined, saved.seat, saved.token)
-      .then((data) => {
-        if (data && data.room) setNetwork({ id: saved.id, seat: saved.seat, token: saved.token, room: data.room });
-        else clearNetworkSession();
-      })
-      .catch(() => clearNetworkSession())
-      .finally(() => setRestoringNetwork(false));
-  }, []);
-
-  if (restoringNetwork) {
-    return (
-      <div className="ems-root" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <GlobalStyle />
-        <div style={{ color: COLOR.muted, fontSize: 13 }}>Восстанавливаем сетевую партию…</div>
-      </div>
-    );
-  }
   if (network) {
     return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => setNetwork(null)} />;
   }

@@ -12,15 +12,16 @@ try {
 
 const mem = new Map();
 const TTL = 60 * 60 * 24 * 3;   // комната живёт трое суток
+const SOLO_TTL = 60 * 60 * 24 * 180;   // соло-сохранение — не сессия, живёт полгода
 
 export const hasKv = () => !!redis;
 export async function getRoom(id) {
   if (redis) return (await redis.get(`room:${id}`)) || null;
-  return mem.get(id) || null;
+  return mem.get(`room:${id}`) || null;
 }
 export async function setRoom(id, room) {
   if (redis) return redis.set(`room:${id}`, room, { ex: TTL });
-  mem.set(id, room);
+  mem.set(`room:${id}`, room);
   return true;
 }
 export async function withRoom(id, fn) {
@@ -30,4 +31,14 @@ export async function withRoom(id, fn) {
   if (next && next.error) return next;
   await setRoom(id, next || room);
   return { room: next || room };
+}
+
+export async function getSoloSlots(playerId) {
+  if (redis) return (await redis.get(`solo:${playerId}`)) || null;
+  return mem.get(`solo:${playerId}`) || null;
+}
+export async function setSoloSlots(playerId, slots) {
+  if (redis) return redis.set(`solo:${playerId}`, slots, { ex: SOLO_TTL });
+  mem.set(`solo:${playerId}`, slots);
+  return true;
 }

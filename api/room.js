@@ -184,6 +184,19 @@ async function handleRequest(req, res) {
     return res.status(200).json({ room: publicView(out.room) });
   }
 
+  if (action === 'set_difficulty') {
+    const id = String(body.id || '').toUpperCase();
+    const seat = body.seat;
+    if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    if (!DIFFICULTY_IDS.has(body.difficulty)) return res.status(400).json({ error: 'Неизвестная сложность' });
+    const out = await withRoom(id, (room) => {
+      if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
+      return { ...room, difficulty: body.difficulty, version: room.version + 1 };
+    });
+    if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    return res.status(200).json({ room: publicView(out.room) });
+  }
+
   if (action === 'leave') {
     const id = String(body.id || '').toUpperCase();
     const seat = body.seat;
