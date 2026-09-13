@@ -2974,6 +2974,7 @@ function InstrumentPrimer({ instr, economy, prev, price, amt }) {
 function TradingTerminal({ economy, prev, book, onTrade, history }) {
   const live = useLiveQuotes(economy);
   const [sel, setSel] = useState('eq_broad');
+  const [activeGroup, setActiveGroup] = useState('all');
   const [side, setSide] = useState('buy');
   const [amount, setAmount] = useState(1);
   const [useMargin, setUseMargin] = useState(false);
@@ -3059,7 +3060,15 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
 
       <div className="ems-terminal">
         <div className="ems-scroll" style={{ maxHeight: 460, overflowY: 'auto', borderRight: `1px solid ${COLOR.border}` }}>
-          {[...new Set(INSTRUMENTS.map((i) => i.group))].map((g) => (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, padding: '8px 12px 4px' }}>
+            <span className={`ems-tab ${activeGroup === 'all' ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
+              onClick={() => { Audio.play('tab'); setActiveGroup('all'); }}>Все</span>
+            {[...new Set(INSTRUMENTS.map((i) => i.group))].map((g) => (
+              <span key={g} className={`ems-tab ${activeGroup === g ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
+                onClick={() => { Audio.play('tab'); setActiveGroup(g); }}>{g}</span>
+            ))}
+          </div>
+          {[...new Set(INSTRUMENTS.map((i) => i.group))].filter((g) => activeGroup === 'all' || activeGroup === g).map((g) => (
             <div key={g}>
               <div style={{ padding: '7px 12px 3px', fontSize: 9.5, color: COLOR.blue, letterSpacing: '0.08em' }}>{g.toUpperCase()}</div>
               {INSTRUMENTS.filter((i) => i.group === g).map((i) => {
@@ -3654,7 +3663,19 @@ function IRFModal({ economy, decisions, lever, value, baseValue, difficulty, onC
    отображение состояния комнаты и отправка своих решений.
 ========================================================================================= */
 const NETWORK_SEATS = ['central_bank', 'ministry_finance'];
-const seatRole = (seat) => ROLES.find((r) => r.id === seat);
+const TRADER_SEATS = ['trader1', 'trader2'];
+const seatsForMode = (mode) => (mode === 'trader' ? TRADER_SEATS : NETWORK_SEATS);
+// оба трейдерских места делят одну и ту же роль из ROLES (id 'trader') — нумеруем
+// их отдельно только в подписи, чтобы «Трейдер 1» и «Трейдер 2» не выглядели одним
+// и тем же местом в UI
+const seatRole = (seat) => {
+  if (seat === 'trader1' || seat === 'trader2') {
+    const base = ROLES.find((r) => r.id === 'trader');
+    const n = seat.slice(-1);
+    return { ...base, short: `Трейдер ${n}`, title: `${base.title} ${n}` };
+  }
+  return ROLES.find((r) => r.id === seat);
+};
 
 /* Место и токен — единственное, что нужно, чтобы вернуться в свою партию после
    обновления страницы: комната и так живёт на сервере (Redis/память, TTL 3 суток),
@@ -3707,6 +3728,24 @@ const saveNetworkSlot = (net) => {
 const clearNetworkSlotAt = (idx) => { const slots = loadNetworkSlots(); slots[idx] = null; writeNetworkSlots(slots); };
 const clearNetworkSlotFor = (id, seat) => writeNetworkSlots(loadNetworkSlots().map((s) => ((s && s.id === id && s.seat === seat) ? null : s)));
 
+// портфель трейдера в сетевой «рыночной» комнате — целиком на клиенте: сделки
+// одного трейдера никак не задевают другого (независимые позиции на одной и той
+// же экономике), поэтому синхронизировать их через сервер незачем — только
+// экономика (котировки/квартал) общая и приходит через room. Ключ на комнату+
+// место, чтобы каждое место партии имело свой портфель и он пережил обновление
+// страницы.
+const netPortfolioKey = (id, seat) => `ems-net-portfolio:${id}:${seat}`;
+const loadNetworkPortfolio = (id, seat) => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(netPortfolioKey(id, seat)) || 'null');
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch { return null; }
+};
+const saveNetworkPortfolio = (id, seat, book) => {
+  try { localStorage.setItem(netPortfolioKey(id, seat), JSON.stringify(book)); }
+  catch { /* приватный режим/квота — не критично, портфель просто не переживёт обновление */ }
+};
+
 const roomCodeFromUrl = () => {
   if (typeof window === 'undefined') return '';
   return (new URLSearchParams(window.location.search).get('room') || '').toUpperCase();
@@ -3719,6 +3758,7 @@ function NetworkLobby({ onEnter }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
+  const [mode, setMode] = useState('policy');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
@@ -3753,13 +3793,19 @@ function NetworkLobby({ onEnter }) {
     return () => { cancelled = true; clearTimeout(t); clearInterval(iv); };
   }, [code]);
   React.useEffect(() => {
-    if (!roomPreview || !roomPreview.occupied) return;
-    if (roomPreview.occupied[seat]) {
-      const free = NETWORK_SEATS.find((sx) => !roomPreview.occupied[sx]);
-      if (free) setSeat(free);
+    if (!roomPreview) return;
+    // переключаем выбранное место, если оно занято ИЛИ вообще не существует в
+    // режиме этой комнаты (например, код привёл в «рыночную» комнату, а по
+    // умолчанию выбран ЦБ — место из другого режима)
+    const validSeats = seatsForMode(roomPreview.mode);
+    const occ = roomPreview.occupied || {};
+    if (!validSeats.includes(seat) || occ[seat]) {
+      const free = validSeats.find((sx) => !occ[sx]) || validSeats[0];
+      setSeat(free);
     }
   }, [roomPreview]);
-  const bothSeatsTaken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied.central_bank && roomPreview.occupied.ministry_finance);
+  const bothSeatsTaken = !!(roomPreview && roomPreview.occupied
+    && seatsForMode(roomPreview.mode).every((sx) => roomPreview.occupied[sx]));
 
   const enterSlot = async (idx) => {
     const slot = slots[idx];
@@ -3791,8 +3837,9 @@ function NetworkLobby({ onEnter }) {
   const doCreate = async () => {
     setBusy(true); setError('');
     try {
-      const r = await createRoom({ difficulty });
+      const r = await createRoom({ difficulty, mode });
       setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
+      setSeat(seatsForMode(mode)[0]);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const doJoin = async () => {
@@ -3870,9 +3917,21 @@ function NetworkLobby({ onEnter }) {
       {tab === 'create' && (
         <div className="ems-panel" style={{ padding: 18 }}>
           <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая партия на двоих</div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Режим партии</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['policy', 'Политика', 'ЦБ и Минфин делят экономику'], ['trader', 'Рынок', 'два трейдера на одной экономике']].map(([id, title]) => (
+                <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
+                  background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
+                  borderColor: mode === id ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('click'); setMode(id); }}>{title}</button>
+              ))}
+            </div>
+          </div>
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
-            Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике.
-            Квартал наступает, когда решения пришлют оба; если партнёр ещё не подключился, его место временно ведёт бот.
+            {mode === 'trader'
+              ? 'Оба игрока — частные инвесторы на одной и той же экономике: ставку ведёт бот-ЦБ, бюджет — бот-Минфин, а вы независимо друг от друга распределяете капитал между активами. Квартал наступает, когда готовы оба.'
+              : 'Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике. Квартал наступает, когда решения пришлют оба; если партнёр ещё не подключился, его место временно ведёт бот.'}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Сложность партии</div>
@@ -3922,7 +3981,7 @@ function NetworkLobby({ onEnter }) {
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Ваша роль</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {NETWORK_SEATS.map((sx) => {
+              {seatsForMode(roomPreview ? roomPreview.mode : mode).map((sx) => {
                 const rd = seatRole(sx); const RoleIcon = ROLE_ICON[rd.icon];
                 const taken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied[sx]);
                 return (
@@ -3956,6 +4015,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [kickBusy, setKickBusy] = useState(null);
   const [room, setRoom] = useState(network.room);
   const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
+  const [portfolio, setPortfolio] = useState(() => loadNetworkPortfolio(id, seat) || emptyBook());
+  React.useEffect(() => { saveNetworkPortfolio(id, seat, portfolio); }, [id, seat, portfolio]);
+  const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
+    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes, room.quarterIndex);
+    const instr = INSTR_BY_ID[instrId];
+    return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
+  });
   const [chatText, setChatText] = useState('');
   const [nowTick, setNowTick] = useState(() => Date.now());
   React.useEffect(() => { const iv = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(iv); }, []);
@@ -3985,14 +4051,29 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       setSent(false);
       setDecisions((d) => defaultDecisions(r.economy, d));
       Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
+      // расчёт по портфелю (переоценка, экспирация опционов, маржин-колл) —
+      // тем же способом, что и в соло-игре трейдера, только экономику берём
+      // из ответа сервера, а не считаем сами
+      if (r.mode === 'trader') {
+        setPortfolio((b) => {
+          const withBench = b.benchStart ? b : { ...b, benchStart: { stockIndex: r.economy.stockIndex, bondIndex: r.economy.bondIndex,
+            depositIndex: r.economy.depositIndex, priceLevel: r.economy.priceLevel } };
+          const nb = settleQuarter(withBench, r.economy, r.quarterIndex);
+          if ((nb.lastEvents || []).some((ev) => ev.kind === 'call')) { Audio.play('alarm'); haptic([60, 80, 60]); }
+          return nb;
+        });
+      }
     }
     Audio.setMood(r.economy);
   }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
 
+  const isTraderRoom = room.mode === 'trader';
   const roleDef = seatRole(seat);
   const RoleIcon = ROLE_ICON[roleDef.icon];
-  const otherSeat = seat === 'central_bank' ? 'ministry_finance' : 'central_bank';
+  const roomSeats = seatsForMode(room.mode);
+  const otherSeat = roomSeats[0] === seat ? roomSeats[1] : roomSeats[0];
   const otherRole = seatRole(otherSeat);
+  const OtherRoleIcon = ROLE_ICON[otherRole.icon];
   const levers = LEVERS.filter((l) => roleDef.groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
   const economy = room.economy;
   const prevEcon = room.history.length >= 2 ? room.history[room.history.length - 2] : economy;
@@ -4067,6 +4148,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const timeLeftMs = room.quarterStartedAt ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - nowTick) : null;
   const timeLeftLabel = timeLeftMs === null ? null
     : `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
+  // таймер общий на квартал, а не «мой» — он должен быть виден, пока ХОТЬ ОДНО
+  // занятое место не отправило решение, а не только пока не ответил партнёр:
+  // раньше условие держалось на room.ready[otherSeat], и как только партнёр
+  // отправлял решение раньше меня, мой собственный (всё ещё тикающий) таймер
+  // необъяснимо пропадал с моего же экрана
+  const quarterPending = roomSeats.some((sx) => room.occupied[sx] && !room.ready[sx]);
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
   const myLastAction = room.lastActions ? room.lastActions[seat] : null;
@@ -4128,7 +4215,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           <div>
             <div className="ems-serif" style={{ fontSize: 18 }}>Сетевая партия · комната {room.id}</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-              вы — {roleDef.title} · партнёр — {room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'} за {otherRole.short}
+              вы — {roleDef.title} · партнёр — {room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : (isTraderRoom ? 'место свободно' : 'бот')} за {otherRole.short}
             </div>
           </div>
         </div>
@@ -4225,7 +4312,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
             <div><b style={{ color: COLOR.rust }}>{room.names[otherSeat] || 'Партнёр'} не на связи.</b> <span style={{ color: COLOR.muted }}>
-              Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. Если решение не придёт в течение 5 минут с начала квартала, за это ведомство один раз решит бот, а место останется за партнёром.</span></div>
+              Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. {isTraderRoom
+                ? 'Если решение не придёт в течение 5 минут с начала квартала, квартал наступит без него — место останется за партнёром.'
+                : 'Если решение не придёт в течение 5 минут с начала квартала, за это ведомство один раз решит бот, а место останется за партнёром.'}</span></div>
           </div>
         )}
         <RegimeBanner economy={economy} />
@@ -4233,7 +4322,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
       {narrow && (
         <div style={{ display: 'flex', gap: 4, padding: '10px 18px 0' }}>
-          {[['left', 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
+          {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
             <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 11.5,
               background: mobileCol === id ? COLOR.gold : COLOR.panelAlt, color: mobileCol === id ? COLOR.ink : COLOR.text,
               borderColor: mobileCol === id ? COLOR.gold : COLOR.border }}
@@ -4244,38 +4333,84 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
       <div className="ems-grid" style={{ padding: 18 }}>
         <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="ems-panel" style={{ padding: 14 }}>
-            <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
-              <RoleIcon size={14} />Ваши полномочия
-            </div>
-            {['monetary', 'fiscal'].filter((g) => roleDef.groups.includes(g)).map((g) => (
-              <React.Fragment key={g}>
-                {['core', 'macropru', 'taxes', 'budget'].map((sub) => {
-                  const set = levers.filter((l) => l.group === g && l.subgroup === sub);
-                  if (!set.length) return null;
-                  return set.map((l) => (
-                    <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
-                      onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
-                  ));
-                })}
-                {g === 'monetary' && <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />}
-              </React.Fragment>
-            ))}
-          </div>
+          {isTraderRoom ? (
+            <PortfolioSummary book={portfolio} economy={economy} live={null} goal="max_wealth"
+              prevValue={portfolio.history && portfolio.history.length > 1 ? portfolio.history[portfolio.history.length - 2] : null} />
+          ) : (
+            <>
+              <div className="ems-panel" style={{ padding: 14 }}>
+                <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <RoleIcon size={14} />Ваши полномочия
+                </div>
+                {['monetary', 'fiscal'].filter((g) => roleDef.groups.includes(g)).map((g) => (
+                  <React.Fragment key={g}>
+                    {['core', 'macropru', 'taxes', 'budget'].map((sub) => {
+                      const set = levers.filter((l) => l.group === g && l.subgroup === sub);
+                      if (!set.length) return null;
+                      return set.map((l) => (
+                        <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
+                          onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
+                      ));
+                    })}
+                    {g === 'monetary' && <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />}
+                  </React.Fragment>
+                ))}
+              </div>
+
+              {/* без этой панели игрок видел только собственные рычаги — о том, что
+                  сейчас установлено у партнёра (ставка ЦБ, налоги/бюджет Минфина),
+                  приходилось либо спрашивать в чате, либо искать по всем вкладкам
+                  «Показателей экономики»; ниже — сводка его последних решённых
+                  значений, как в соло-игре у бота-оппонента */}
+              <div className="ems-panel" style={{ padding: 13 }}>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.blue, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <OtherRoleIcon size={13} />{otherRole.title}
+                  <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {(otherSeat === 'central_bank' ? [
+                    ['Ключевая ставка', pctFmt(economy.keyRate)],
+                    ['Норма резервирования', pctFmt(economy.reserveReq)],
+                    ['Режим курса', (FX_REGIMES.find((r) => r.id === economy.fxRegime) || {}).label || economy.fxRegime],
+                  ] : [
+                    ['Баланс бюджета', fmtSignedPct(economy.budgetBalancePctGdp)],
+                    ['Долг', pctFmt(economy.debtToGdp)],
+                    ['НДС', pctFmt(economy.vatRate)],
+                    ['Налог на прибыль', pctFmt(economy.profitTaxRate)],
+                  ]).map(([l, v]) => (
+                    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                      <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {otherAction && otherAction.note && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: COLOR.faint, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, lineHeight: 1.4 }}>{otherAction.note}</div>
+                )}
+              </div>
+            </>
+          )}
 
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
-            <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
               {(!room.chat || room.chat.length === 0) && (
                 <div style={{ fontSize: 11.5, color: COLOR.faint }}>Пока тишина — напишите первым.</div>
               )}
               {(room.chat || []).map((m, i) => {
                 const mine = m.seat === seat;
                 const nm = mine ? 'вы' : (room.names[m.seat] || seatRole(m.seat).short);
+                // подряд отправленные сообщения одного собеседника сливаются в одну
+                // группу: заголовок с именем и увеличенный отступ — только перед новым
+                // отправителем, а не перед каждым сообщением
+                const grouped = i > 0 && room.chat[i - 1].seat === m.seat;
+                const time = m.at ? new Date(m.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
                 return (
-                  <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%', textAlign: mine ? 'right' : 'left' }}>
-                    <div style={{ fontSize: 9.5, color: mine ? COLOR.gold : COLOR.blue, marginBottom: 2 }}>{nm}</div>
-                    <div style={{ fontSize: 12, color: COLOR.text, background: COLOR.panelAlt, padding: '6px 10px', borderRadius: 3, display: 'inline-block', wordBreak: 'break-word' }}>{m.text}</div>
+                  <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%', textAlign: mine ? 'right' : 'left', marginTop: i === 0 ? 0 : grouped ? 2 : 10 }}>
+                    {!grouped && <div style={{ fontSize: 9.5, color: mine ? COLOR.gold : COLOR.blue, marginBottom: 2 }}>{nm}</div>}
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexDirection: mine ? 'row-reverse' : 'row' }}>
+                      <div style={{ fontSize: 12, color: COLOR.text, background: COLOR.panelAlt, padding: '6px 10px', borderRadius: 3, display: 'inline-block', wordBreak: 'break-word' }}>{m.text}</div>
+                      {time && <span className="ems-mono" style={{ fontSize: 9, color: COLOR.faint, flexShrink: 0 }}>{time}</span>}
+                    </div>
                   </div>
                 );
               })}
@@ -4299,6 +4434,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
 
         <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+          {isTraderRoom && (
+            <TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} />
+          )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
           <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
             hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
@@ -4320,21 +4458,24 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               {room.report ? (
                 <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }}>{room.report}</div>
               ) : (
-                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.</div>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>
+                  {isTraderRoom ? 'Совершайте сделки слева и нажмите «готов» — квартал наступит, когда готовы оба трейдера.'
+                    : 'Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.'}
+                </div>
               )}
             </div>
           </div>
         </div>
 
         <div className={narrow && mobileCol !== 'right' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
+          {!isTraderRoom && <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />}
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <Users size={13} color={COLOR.blue} />
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.blue }}>Статус партии</span>
               {isOwner && <span title="Вы создали эту комнату" className="ems-mono" style={{ marginLeft: 'auto', fontSize: 9.5, color: COLOR.faint, letterSpacing: '0.04em' }}>ВЛАДЕЛЕЦ</span>}
             </div>
-            {NETWORK_SEATS.map((sx) => {
+            {roomSeats.map((sx) => {
               const rd = seatRole(sx); const Icon = ROLE_ICON[rd.icon];
               const isMe = sx === seat;
               const canKick = isOwner && !isMe && room.occupied[sx];
@@ -4342,7 +4483,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 <div key={sx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
                   <Icon size={13} color={isMe ? COLOR.gold : COLOR.muted} />
                   <span style={{ flex: 1, color: isMe ? COLOR.text : COLOR.muted }}>
-                    {rd.short}{isMe ? ' (вы)' : ''} — {room.occupied[sx] ? (room.names[sx] || 'игрок') : 'бот'}
+                    {rd.short}{isMe ? ' (вы)' : ''} — {room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'свободно' : 'бот')}
                   </span>
                   <span className="ems-mono" style={{ fontSize: 10.5, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
                     {room.ready[sx] ? 'готово' : 'думает'}
@@ -4402,9 +4543,11 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
         {!error && (
           <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-            {waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.'}
-            {!room.ready[otherSeat] && room.occupied[otherSeat] && timeLeftLabel && (
-              <span className="ems-mono" title="Если решение не придёт вовремя, за отсутствующего один раз решит бот"
+            {isTraderRoom
+              ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
+              : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
+            {quarterPending && timeLeftLabel && (
+              <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
                 style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
                 <Clock size={11} />{timeLeftLabel}
               </span>
@@ -4412,10 +4555,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </span>
         )}
         {waitingForOther ? (
-          <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>Отозвать решения</button>
+          <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
         ) : (
           <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
-            {busy ? 'Отправка…' : 'Отправить решения квартала'}
+            {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу' : 'Отправить решения квартала'}
           </button>
         )}
       </div>
