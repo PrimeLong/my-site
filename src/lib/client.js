@@ -46,7 +46,7 @@ export async function fetchSoloSlots(playerId) {
   const r = await fetch(`${SOLO_API}?${new URLSearchParams({ playerId })}`);
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || 'Хранилище недоступно');
-  return data.slots;
+  return data; // { slots, storage } — storage сообщает, подключён ли Redis (см. api/_lib/store.js)
 }
 export async function fetchSoloSlot(playerId, slot) {
   const r = await fetch(`${SOLO_API}?${new URLSearchParams({ playerId, slot })}`);

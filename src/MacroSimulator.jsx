@@ -2257,11 +2257,12 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [error, setError] = useState('');
   const [slots, setSlots] = useState(null); // null = ещё загружаются
   const [busyIdx, setBusyIdx] = useState(null);
+  const [storageMode, setStorageMode] = useState(null);
   const playerId = useMemo(getPlayerId, []);
 
   React.useEffect(() => {
     let cancelled = false;
-    fetchSoloSlots(playerId).then((s) => { if (!cancelled) setSlots(s); })
+    fetchSoloSlots(playerId).then((d) => { if (!cancelled) { setSlots(d.slots); setStorageMode(d.storage || null); } })
       .catch((e) => { if (!cancelled) { setSlots(Array(3).fill(null)); setError(e.message); } });
     return () => { cancelled = true; };
   }, [playerId]);
@@ -2309,6 +2310,11 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
             ? 'Партия хранится на сервере — как и сетевые комнаты. 3 слота на это устройство.'
             : 'Выберите слот, чтобы вернуться в сохранённую партию. Текущая партия будет заменена.'}
         </div>
+        {storageMode === 'memory' && (
+          <div style={{ fontSize: 11, color: COLOR.rust, marginBottom: 10, lineHeight: 1.4 }}>
+            Сервер не подключён к общему хранилищу — сохранение может пропасть между запросами.
+          </div>
+        )}
 
         {slots === null ? (
           <div style={{ fontSize: 12, color: COLOR.muted }}>Загружаем слоты…</div>
@@ -3564,6 +3570,11 @@ function NetworkLobby({ onEnter }) {
   const [slots, setSlots] = useState(loadNetworkSlots);
   const [slotBusy, setSlotBusy] = useState(null);
   const [roomPreview, setRoomPreview] = useState(null);
+  // если сервер не подключён к Redis (нет KV_REST_API_URL/KV_REST_API_TOKEN),
+  // комната живёт только в памяти одного serverless-вызова — партнёр или сам
+  // игрок при следующем запросе почти наверняка получит «комната не найдена».
+  // Ловим это здесь, чтобы не гадать по симптому, а сказать прямо.
+  const [storageMode, setStorageMode] = useState(null);
 
   // подглядываем занятость мест ДО входа, чтобы не отправлять игрока на
   // «место уже занято» после того, как он уже заполнил форму
@@ -3574,7 +3585,7 @@ function NetworkLobby({ onEnter }) {
     const t = setTimeout(async () => {
       try {
         const data = await fetchRoom(trimmed);
-        if (!cancelled) setRoomPreview(data.room);
+        if (!cancelled) { setRoomPreview(data.room); setStorageMode(data.storage || null); }
       } catch { if (!cancelled) setRoomPreview(null); }
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
@@ -3619,7 +3630,7 @@ function NetworkLobby({ onEnter }) {
     setBusy(true); setError('');
     try {
       const r = await createRoom({ difficulty });
-      setCreated(r.id); setCode(r.id); setTab('join');
+      setCreated(r.id); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const doJoin = async () => {
@@ -3627,6 +3638,7 @@ function NetworkLobby({ onEnter }) {
     setBusy(true); setError('');
     try {
       const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
+      setStorageMode(r.storage || null);
       Audio.play('stamp'); Audio.prime();
       const net = { id: code.trim().toUpperCase(), seat, token: r.token, room: r.room };
       saveNetworkSlot(net);
@@ -3668,6 +3680,17 @@ function NetworkLobby({ onEnter }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {storageMode === 'memory' && (
+        <div className="ems-panel" style={{ padding: 12, marginBottom: 16, borderColor: COLOR.rust }}>
+          <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
+            Сервер не подключён к общему хранилищу (Redis) — комната живёт только в памяти одного случайного запроса
+            и может пропасть при следующем же обращении с ошибкой «комната не найдена». Это настройка развёртывания
+            (нужны переменные окружения <b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b> —
+            подключаются через Upstash в Vercel Marketplace), а не баг в самой партии.
           </div>
         </div>
       )}
@@ -4108,8 +4131,10 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
   const [soloSlots, setSoloSlots] = useState(null);
   const [slotBusy, setSlotBusy] = useState(null);
   const [slotError, setSlotError] = useState('');
+  const [storageMode, setStorageMode] = useState(null);
   React.useEffect(() => {
-    fetchSoloSlots(playerId).then(setSoloSlots).catch(() => setSoloSlots(Array(3).fill(null)));
+    fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
+      .catch(() => setSoloSlots(Array(3).fill(null)));
   }, [playerId]);
   const enterSlot = async (idx) => {
     setSlotBusy(idx); setSlotError('');
@@ -4159,6 +4184,16 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
           </div>
         ) : (
         <>
+        {storageMode === 'memory' && (
+          <div className="ems-panel" style={{ padding: 12, marginBottom: 16, borderColor: COLOR.rust }}>
+            <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
+              Сервер не подключён к общему хранилищу (Redis) — сохранения живут только в памяти одного случайного
+              запроса и могут пропасть между обращениями. Это настройка развёртывания
+              (переменные окружения <b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>),
+              не баг в самой партии.
+            </div>
+          </div>
+        )}
         {soloSlots && soloSlots.some(Boolean) && (
           <div className="ems-panel" style={{ padding: 14, marginBottom: 20 }}>
             <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>
