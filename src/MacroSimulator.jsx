@@ -1,9 +1,6 @@
-﻿import React, { useState, useMemo, useCallback } from 'react';
+﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
   reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
-} from 'recharts';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
@@ -57,7 +54,7 @@ const THEMES = {
     rust: '#FF6B52', rustDim: 'rgba(255,107,82,0.20)',
     blue: '#7FC2FF', blueDim: 'rgba(127,194,255,0.20)' } },
 };
-const COLOR = { ...THEMES.ink.colors };
+export const COLOR = { ...THEMES.ink.colors };
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.ink;
   Object.assign(COLOR, t.colors);
@@ -343,201 +340,19 @@ function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF })
 const ROLE_ICON = { landmark: Landmark, coins: Coins, globe: Globe2, chart: TrendingUp };
 
 /* ============================ ГРАФИКИ ============================ */
-const CHART_GROUPS = [
-  { id: 'output', label: 'Выпуск', series: [
-    { id: 'gdp', label: 'ВВП', axis: 'left', color: COLOR.gold, fmt: 'money' },
-    { id: 'potentialGdp', label: 'Потенциальный ВВП', axis: 'left', color: COLOR.blue, fmt: 'money' },
-    { id: 'outputGap', label: 'Разрыв выпуска', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-  ] },
-  { id: 'growth', label: 'Рост', series: [
-    { id: 'gdpGrowth', label: 'Рост ВВП', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'potentialGrowth', label: 'Рост потенциала', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'consumptionGrowth', label: 'Потребление', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-    { id: 'investmentGrowth', label: 'Инвестиции', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'wageGrowth', label: 'Зарплаты', axis: 'left', color: '#8E7CC3', fmt: 'pct' },
-  ] },
-  { id: 'prices', label: 'Цены', series: [
-    { id: 'inflation', label: 'Инфляция', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'coreInflation', label: 'Базовая инфляция', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'inflationExpectations', label: 'Ожидания', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-    { id: 'cbCredibility', label: 'Доверие к ЦБ', axis: 'right', color: COLOR.rust, fmt: 'idx' },
-  ] },
-  { id: 'money', label: 'Ставки', series: [
-    { id: 'keyRate', label: 'Ключевая ставка', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'lendingRate', label: 'Ставка по кредитам', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'realLendingRate', label: 'Реальная ставка', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'rStar', label: 'Нейтральная ставка r*', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-  ] },
-  { id: 'labor', label: 'Труд', series: [
-    { id: 'unemployment', label: 'Безработица', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'nairu', label: 'Естественный уровень', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'wageGrowth', label: 'Рост зарплат', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-    { id: 'unitLaborCostGrowth', label: 'Удельные издержки труда', axis: 'right', color: COLOR.gold, fmt: 'pct' },
-  ] },
-  { id: 'banking', label: 'Банки', series: [
-    { id: 'bankNPL', label: 'Просрочка', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'bankCapitalAdequacy', label: 'Достаточность капитала', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-    { id: 'creditGrowth', label: 'Рост кредита', axis: 'right', color: COLOR.gold, fmt: 'pct' },
-    { id: 'creditGap', label: 'Кредитный разрыв', axis: 'right', color: COLOR.blue, fmt: 'pct' },
-  ] },
-  { id: 'government', label: 'Бюджет', series: [
-    { id: 'debtToGdp', label: 'Госдолг к ВВП', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'deficitPctGdp', label: 'Дефицит бюджета', axis: 'right', color: COLOR.rust, fmt: 'pct' },
-    { id: 'interestPctGdp', label: 'Процентные расходы', axis: 'right', color: COLOR.blue, fmt: 'pct' },
-    { id: 'shadowShare', label: 'Теневая экономика', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-  ] },
-  { id: 'external', label: 'Внешний сектор', series: [
-    { id: 'exchangeRate', label: 'Курс (индекс)', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'realExchangeRate', label: 'Реальный курс', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'currentAccount', label: 'Текущий счёт', axis: 'right', color: COLOR.teal, fmt: 'money' },
-    { id: 'netCapitalFlow', label: 'Приток капитала', axis: 'right', color: COLOR.rust, fmt: 'money' },
-  ] },
-  { id: 'potential', label: 'Потенциал', series: [
-    { id: 'productivity', label: 'Производительность', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'humanCapitalIndex', label: 'Человеческий капитал', axis: 'left', color: COLOR.teal, fmt: 'idx' },
-    { id: 'infrastructureIndex', label: 'Инфраструктура', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'potentialGrowth', label: 'Рост потенциала', axis: 'right', color: COLOR.rust, fmt: 'pct' },
-  ] },
-  { id: 'markets', label: 'Рынок', series: [
-    { id: 'stockIndex', label: 'Индекс акций', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'bondIndex', label: 'Индекс облигаций', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'yield10y', label: 'Доходность 10 лет', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-    { id: 'yield3m', label: 'Доходность 3 месяца', axis: 'right', color: '#8E7CC3', fmt: 'pct' },
-    { id: 'volatilityIndex', label: 'Индекс страха', axis: 'right', color: COLOR.rust, fmt: 'idx' },
-  ] },
-  { id: 'scores', label: 'Оценки', series: [
-    { id: 'scoreStability', label: 'Стабильность', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'scoreWelfare', label: 'Благосостояние', axis: 'left', color: COLOR.teal, fmt: 'idx' },
-    { id: 'scoreFinancial', label: 'Финансы', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'scoreFiscal', label: 'Бюджет', axis: 'left', color: COLOR.rust, fmt: 'idx' },
-    { id: 'scorePotential', label: 'Потенциал', axis: 'left', color: '#8E7CC3', fmt: 'idx' },
-  ] },
-];
-const PERIODS = [{ id: '1y', label: '1 год', q: 4 }, { id: '5y', label: '5 лет', q: 20 }, { id: '10y', label: '10 лет', q: 40 }, { id: 'all', label: 'Всё время', q: 1e9 }];
-const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v) : (v) => `${Math.round(v)}%`);
-const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v) : (v) => `${fmt1(v)}%`);
-
-const FORECAST_ANCHORS = {
-  inflation: (e) => e.inflationTarget, coreInflation: (e) => e.inflationTarget,
-  inflationExpectations: (e) => e.inflationTarget, gdpGrowth: (e) => e.potentialGrowth,
-  potentialGrowth: (e) => e.potentialGrowth, unemployment: (e) => e.nairu, outputGap: () => 0,
-  keyRate: (e) => e.rStar + e.inflationTarget, lendingRate: (e) => e.rStar + e.inflationTarget + 2,
-  wageGrowth: (e) => e.inflationTarget + e.potentialGrowth, creditGrowth: (e) => e.potentialGrowth + e.inflationTarget,
-};
-const FORECAST_SIGMA = { inflation: 0.9, inflationExpectations: 0.5, gdpGrowth: 1.1, outputGap: 0.9,
-  unemployment: 0.4, keyRate: 0.8, lendingRate: 0.9, wageGrowth: 1.0, stockIndex: 55, exchangeRate: 4 };
-
-function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod }) {
-  const group = CHART_GROUPS.find((g) => g.id === chartGroup);
-  const [forecast, setForecast] = useState(false);
-  const panelCls = 'ems-panel ems-visual';
-  const data = useMemo(() => {
-    const p = PERIODS.find((x) => x.id === period);
-    const hist = history.slice(-p.q).map((h) => ({
-      ...h,
-      deficitPctGdp: -h.budgetBalancePctGdp,
-      interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
-    }));
-    if (!forecast || !hist.length) return hist;
-    // веер неопределённости: инерционный прогноз к якорю с расширяющимися границами
-    const last = hist[hist.length - 1];
-    const vis = group.series.filter((x) => !hiddenSeries.includes(x.id));
-    const lead = vis[0];
-    const out = hist.map((h) => ({ ...h, fanBand: null }));
-    if (!lead) return out;
-    const anchorFn = FORECAST_ANCHORS[lead.id];
-    const anchor = anchorFn ? anchorFn(last) : last[lead.id];
-    const sigma = FORECAST_SIGMA[lead.id] || Math.max(0.4, Math.abs(last[lead.id] || 1) * 0.06);
-    let v = last[lead.id];
-    for (let i = 1; i <= 8; i++) {
-      v += (anchor - v) * 0.28;
-      const sd = sigma * Math.sqrt(i) * 0.9;
-      out.push({ label: `+${i} кв.`, forecastPoint: true,
-        [`${lead.id}__f`]: v, fanBand: [v - 1.96 * sd, v + 1.96 * sd], fanInner: [v - sd, v + sd] });
-    }
-    out[hist.length - 1] = { ...out[hist.length - 1], [`${lead.id}__f`]: last[lead.id],
-      fanBand: [last[lead.id], last[lead.id]], fanInner: [last[lead.id], last[lead.id]] };
-    return out;
-  }, [history, period, forecast, chartGroup, hiddenSeries]);
-
-  const toggleSeries = (id) => setHiddenSeries((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  const visible = group.series.filter((s) => !hiddenSeries.includes(s.id));
-  const leftDef = visible.find((s) => s.axis === 'left');
-  const rightDef = visible.find((s) => s.axis === 'right');
-  const seriesById = Object.fromEntries(group.series.map((s) => [s.id, s]));
-
-  return (
-    <div className={panelCls} style={{ padding: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>График экономики</span>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: forecast ? COLOR.gold : COLOR.panelAlt,
-            color: forecast ? COLOR.ink : COLOR.text, borderColor: forecast ? COLOR.gold : COLOR.border }}
-            onClick={() => { Audio.play('tab'); setForecast((f) => !f); }} title="Веер неопределённости на 8 кварталов вперёд">
-            прогноз
-          </button>
-          {PERIODS.map((p) => (
-            <button key={p.id} onClick={() => { Audio.play('tab'); setPeriod(p.id); }} className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: period === p.id ? COLOR.gold : COLOR.panelAlt, color: period === p.id ? COLOR.ink : COLOR.text, borderColor: period === p.id ? COLOR.gold : COLOR.border }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="ems-scroll" style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${COLOR.border}`, marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {CHART_GROUPS.map((g) => (
-          <span key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} style={{ flexShrink: 0 }} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</span>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        {group.series.map((s) => {
-          const active = !hiddenSeries.includes(s.id);
-          return (
-            <button key={s.id} onClick={() => { Audio.play('tick'); toggleSeries(s.id); }} className="ems-btn"
-              style={{ padding: '4px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: active ? COLOR.panelAlt : 'transparent', borderColor: active ? s.color : COLOR.border, color: active ? COLOR.text : COLOR.muted, opacity: active ? 1 : 0.5 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />{s.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="ems-visual" style={{ width: '100%', height: 250 }}>
-        <ResponsiveContainer>
-          <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
-            <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR.muted }} interval="preserveStartEnd" />
-            <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')} />
-            {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)} />}
-            <Tooltip contentStyle={{ background: COLOR.panel, border: `1px solid ${COLOR.border}`, fontSize: 12 }} labelStyle={{ color: COLOR.goldSoft }}
-              formatter={(value, name, props) => { const def = seriesById[props.dataKey]; return [def ? tooltipVal(def.fmt)(value) : value, name]; }} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {forecast && visible[0] && (
-              <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanBand" name="95% интервал"
-                stroke="none" fill={visible[0].color} fillOpacity={0.10} isAnimationActive={false} legendType="none" />
-            )}
-            {forecast && visible[0] && (
-              <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanInner" name="68% интервал"
-                stroke="none" fill={visible[0].color} fillOpacity={0.18} isAnimationActive={false} legendType="none" />
-            )}
-            {forecast && visible[0] && (
-              <Line yAxisId={visible[0].axis} type="monotone" dataKey={`${visible[0].id}__f`} name="прогноз"
-                stroke={visible[0].color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
-            )}
-            {visible.map((s) => (
-              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={s.label} stroke={s.color} strokeWidth={2} dot={false} />
-            ))}
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-      <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4 }}>
-        {forecast
-          ? `Веер построен для показателя «${(visible[0] || group.series[0]).label}»: пунктир — инерционная траектория к якорю (цель ЦБ, потенциал, естественная безработица), заливка — интервалы 68% и 95%. Чем дальше горизонт, тем шире неопределённость.`
-          : 'Темпы роста и ставки показаны в годовом выражении; траектория рассчитывается по кварталам. Нажмите на показатель выше, чтобы скрыть или показать его линию.'}
-      </div>
-    </div>
-  );
-}
+/* ChartPanel/MemoChart/IRFModal живут в отдельном чанке (src/charts.jsx) вместе
+   с recharts (~104 KB gzip) — эта библиотека нужна только внутри уже запущенной
+   партии, а не в меню/анкете/обучении, поэтому не должна грузиться заранее.
+   React.lazy() подгружает файл по требованию; ChartFallback — что видно, пока
+   он грузится (обычно доли секунды, но экран не должен оставаться пустым). */
+const ChartFallback = ({ height = 250 }) => (
+  <div className="ems-panel" style={{ padding: 14, height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLOR.faint, fontSize: 12 }}>
+    Загрузка графика…
+  </div>
+);
+const ChartPanel = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.ChartPanel })));
+const MemoChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.MemoChart })));
+const IRFModal = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.IRFModal })));
 
 function WhyModal({ reasons, onClose }) {
   const [tab, setTab] = useState('gdpGrowth');
@@ -983,7 +798,7 @@ const ROLE_PLAYLISTS = {
   },
 };
 
-const Audio = (() => {
+export const Audio = (() => {
   let ctx = null; let master = null; let comp = null; let musicBus = null; let sfxBus = null; let noiseBuf = null;
   let dry = null; let verbIn = null; let echo = null; let pianoBus = null; let chorusIn = null;
   const opts = { music: true, sfx: true, volume: 0.6 };
@@ -2076,8 +1891,6 @@ function useLiveQuotes(economy) {
   return live;
 }
 
-const MemoChart = React.memo(MiniChart);
-
 /* Бегущая строка держит живые котировки внутри себя, чтобы не перерисовывать экран целиком */
 function LiveTicker({ economy, prev }) {
   const live = useLiveQuotes(economy);
@@ -2156,7 +1969,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             </div>
           </div>
           <div style={{ margin: '6px 0 4px' }}>
-            <MemoChart data={ser('stockIndex')} color={COLOR.gold} height={64} label="Индекс акций" fmt={(v) => v.toFixed(1)} />
+            <Suspense fallback={<ChartFallback height={64} />}>
+              <MemoChart data={ser('stockIndex')} color={COLOR.gold} height={64} label="Индекс акций" fmt={(v) => v.toFixed(1)} />
+            </Suspense>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 12px', marginTop: 8 }}>
             {[['Банки', 'sectorBanks', COLOR.blue], ['Промышленность', 'sectorIndustry', COLOR.teal],
@@ -2205,7 +2020,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             <Quote label="Ставка нового долга" value={fmt2(economy.effectiveDebtRate)} unit="%" />
           </div>
           <div style={{ margin: '6px 0' }}>
-            <MemoChart data={ser('bondIndex')} color={COLOR.blue} height={54} label="Индекс облигаций" fmt={(v) => v.toFixed(1)} />
+            <Suspense fallback={<ChartFallback height={54} />}>
+              <MemoChart data={ser('bondIndex')} color={COLOR.blue} height={54} label="Индекс облигаций" fmt={(v) => v.toFixed(1)} />
+            </Suspense>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[['Суверенный спред', economy.sovereignSpread, 800], ['Корпоративный спред', economy.corporateSpread, 1200],
@@ -2228,7 +2045,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             <Quote label="Цена к капиталу" value={fmt2(economy.bankPB)} />
             <Quote label="Рентабельность" value={fmt1(economy.bankROE)} unit="%" color={economy.bankROE < 0 ? COLOR.rust : COLOR.text} />
           </div>
-          <MemoChart data={ser('sectorBanks')} color={COLOR.blue} height={48} label="Индекс банков" fmt={(v) => v.toFixed(0)} />
+          <Suspense fallback={<ChartFallback height={48} />}>
+            <MemoChart data={ser('sectorBanks')} color={COLOR.blue} height={48} label="Индекс банков" fmt={(v) => v.toFixed(0)} />
+          </Suspense>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 14px', marginTop: 9, fontSize: 11 }}>
             {[['Процентная маржа', `${fmt2(economy.netInterestMargin)} п.п.`], ['Просрочка', pctFmt(economy.bankNPL)],
               ['Достаточность капитала', pctFmt(economy.bankCapitalAdequacy)], ['Норматив', pctFmt(economy.capitalRequirement)],
@@ -2251,7 +2070,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             <Quote label="Реальный курс" value={fmt1(economy.realExchangeRate)} />
           </div>
           <div style={{ margin: '6px 0' }}>
-            <MemoChart data={ser('exchangeRate')} color={COLOR.rust} height={54} label="Курс" fmt={(v) => v.toFixed(2)} />
+            <Suspense fallback={<ChartFallback height={54} />}>
+              <MemoChart data={ser('exchangeRate')} color={COLOR.rust} height={54} label="Курс" fmt={(v) => v.toFixed(2)} />
+            </Suspense>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 14px', fontSize: 11 }}>
             {[['Режим', economy.fxRegime === 'free' ? 'плавающий' : economy.fxRegime === 'managed' ? 'управляемый' : 'фиксированный'],
@@ -3591,7 +3412,9 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
 
           {series.length > 2 && (
             <>
-              <MemoChart data={series} color={instr.color} height={70} label={instr.name} marks={marks} fmt={fmt2} />
+              <Suspense fallback={<ChartFallback height={70} />}>
+                <MemoChart data={series} color={instr.color} height={70} label={instr.name} marks={marks} fmt={fmt2} />
+              </Suspense>
               {marks.length > 0 && (
                 <div style={{ fontSize: 10, color: COLOR.faint, marginTop: -4 }}>
                   <span style={{ color: COLOR.teal }}>B</span> — ваши покупки, <span style={{ color: COLOR.rust }}>S</span> — продажи
@@ -3783,7 +3606,9 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
         </div>
       </div>
       {book.history && book.history.length > 2 && (
-        <MemoChart data={book.history} color={COLOR.gold} height={54} label="Капитал" fmt={fmt2} />
+        <Suspense fallback={<ChartFallback height={54} />}>
+          <MemoChart data={book.history} color={COLOR.gold} height={54} label="Капитал" fmt={fmt2} />
+        </Suspense>
       )}
       {bench && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
@@ -4378,38 +4203,6 @@ function CasinoScreen({ book, onCasino }) {
   );
 }
 
-/* Интерактивный мини-график: подсказка по наведению и отметки сделок */
-function MiniChart({ data, color, height = 46, label, fmt, marks }) {
-  const rows = (data || []).map((v, i) => ({ i, v: Number.isFinite(v) ? v : null }));
-  if (rows.filter((r) => r.v !== null).length < 2) return <div style={{ height }} />;
-  const markSet = {};
-  (marks || []).forEach((m) => { if (m.idx >= 0) markSet[m.idx] = m; });
-  const dot = (props) => {
-    const m = markSet[props.payload.i];
-    if (!m) return null;
-    return (
-      <g key={`m${props.payload.i}`}>
-        <circle cx={props.cx} cy={props.cy} r={4.2} fill={m.side === 'buy' ? COLOR.teal : COLOR.rust} stroke={COLOR.bg} strokeWidth={1} />
-        <text x={props.cx} y={props.cy - 7} textAnchor="middle" fontSize={8} fill={m.side === 'buy' ? COLOR.teal : COLOR.rust}>
-          {m.side === 'buy' ? 'B' : 'S'}
-        </text>
-      </g>
-    );
-  };
-  return (
-    <div className="ems-visual" style={{ width: '100%', height }}>
-      <ResponsiveContainer>
-        <LineChart data={rows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
-          <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11, padding: '4px 8px' }}
-            labelFormatter={(i) => `${(marks && marks.label) || ''}${rows.length - 1 - i === 0 ? 'сейчас' : `${rows.length - 1 - i} кв. назад`}`}
-            formatter={(v) => [fmt ? fmt(v) : fmt1(v), label || 'значение']} />
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.6} dot={marks && marks.length ? dot : false} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 /* Панель ведомств для инвестора: только наблюдаемые факты и публичные заявления */
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
   const row = (l, v) => (
@@ -4538,105 +4331,6 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
     </div>
   );
 }
-
-/* ============================ РЕАКЦИЯ ЭКОНОМИКИ НА РЕШЕНИЕ ============================ */
-function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
-  const H = horizon || 12;
-  const noiseSave = CONFIG.noiseMult[difficulty];
-  const evSave = CONFIG.eventProbability[difficulty];
-  CONFIG.noiseMult[difficulty] = 0; CONFIG.eventProbability[difficulty] = 0;
-  const run = (val) => {
-    let e = economy; let d = { ...decisions, [leverId]: val };
-    let pend = []; let cds = {}; let st = []; const out = [];
-    for (let q = 1; q <= H; q++) {
-      const r = simulateQuarter({ economy: e, decisions: d, pendingImpulses: pend, eventCooldowns: cds,
-        difficulty, quarterIndex: q, stories: st });
-      e = r.economy; pend = r.pendingImpulses; cds = r.eventCooldowns; st = r.stories;
-      d = { ...defaultDecisions(e, d), [leverId]: val };
-      out.push(e);
-    }
-    return out;
-  };
-  let res = [];
-  try {
-    const base = run(baseValue);
-    const alt = run(newValue);
-    res = base.map((b, i) => ({
-      q: i + 1,
-      gdpGrowth: alt[i].gdpGrowth - b.gdpGrowth,
-      inflation: alt[i].inflation - b.inflation,
-      unemployment: alt[i].unemployment - b.unemployment,
-      outputGap: alt[i].outputGap - b.outputGap,
-      debtToGdp: alt[i].debtToGdp - b.debtToGdp,
-      stockIndex: (alt[i].stockIndex / b.stockIndex - 1) * 100,
-      baseGdp: b.gdpGrowth, altGdp: alt[i].gdpGrowth,
-      baseInfl: b.inflation, altInfl: alt[i].inflation,
-    }));
-  } catch { res = []; }
-  CONFIG.noiseMult[difficulty] = noiseSave; CONFIG.eventProbability[difficulty] = evSave;
-  return res;
-}
-const IRF_SERIES = [
-  { key: 'gdpGrowth', label: 'Рост ВВП', color: COLOR.gold, unit: ' п.п.' },
-  { key: 'inflation', label: 'Инфляция', color: COLOR.rust, unit: ' п.п.' },
-  { key: 'unemployment', label: 'Безработица', color: COLOR.blue, unit: ' п.п.' },
-  { key: 'debtToGdp', label: 'Долг к ВВП', color: COLOR.teal, unit: ' п.п.' },
-  { key: 'stockIndex', label: 'Индекс акций', color: '#8E7CC3', unit: '%' },
-];
-function IRFModal({ economy, decisions, lever, value, baseValue, difficulty, onClose }) {
-  const data = useMemo(() => computeIRF(economy, decisions, lever.id, baseValue, value, difficulty, 12),
-    [lever.id, baseValue, value]);
-  const peak = (key) => data.reduce((a, d) => (Math.abs(d[key]) > Math.abs(a.v) ? { v: d[key], q: d.q } : a), { v: 0, q: 0 });
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 720, width: '100%', padding: 18, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <Activity size={15} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Реакция экономики: {lever.label}</span>
-          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose} aria-label="Закрыть"><X size={13} /></button>
-        </div>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.5 }}>
-          Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(decisions[lever.id])}{lever.suffix})
-          и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий. На графике — разница между этими двумя мирами,
-          то есть чистый эффект именно вашего решения.
-        </div>
-        <div className="ems-visual" style={{ height: 230 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
-              <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border}
-                label={{ value: 'кварталов после решения', fill: COLOR.faint, fontSize: 10, position: 'insideBottom', offset: -2 }} />
-              <YAxis tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border} />
-              <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11 }}
-                labelFormatter={(v) => `${v}-й квартал`} formatter={(v, n) => [fmtSigned1(v), n]} />
-              <Legend wrapperStyle={{ fontSize: 10.5 }} />
-              {IRF_SERIES.map((sr) => (
-                <Line key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stroke={sr.color} strokeWidth={1.6} dot={false} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginTop: 12 }}>
-          {IRF_SERIES.map((sr) => {
-            const pk = peak(sr.key);
-            return (
-              <div key={sr.key} className="ems-panel" style={{ padding: 9 }}>
-                <div style={{ fontSize: 10.5, color: COLOR.muted }}>{sr.label}</div>
-                <div className="ems-mono" style={{ fontSize: 15, color: sr.color }}>{fmtSigned1(pk.v)}{sr.unit}</div>
-                <div style={{ fontSize: 10, color: COLOR.faint }}>{pk.q ? `пик через ${pk.q} кв.` : 'без заметного эффекта'}</div>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12, lineHeight: 1.5 }}>
-          Это контрфактический расчёт: «что было бы, если бы». Реальная траектория будет отличаться — в ней будут шоки,
-          решения второго ведомства и накопленные ожидания. Но знак, форма и задержка эффекта останутся теми же.
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 /* =========================================================================================
    СЕТЕВАЯ ИГРА: лобби (создать/войти) и экран партии, синхронизированный с сервером.
@@ -5514,8 +5208,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </>
           )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
-          <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
-            hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          <Suspense fallback={<ChartFallback />}>
+            <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
+              hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          </Suspense>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
@@ -6936,8 +6632,16 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   return (
     <div className={`ems-root${shake ? ' ems-shake' : ''}${dense ? ' ems-dense' : ''}`} lang="ru">
       <GlobalStyle />
-      {irf && <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value} baseValue={irf.base}
-        difficulty={difficulty} onClose={() => setIrf(null)} />}
+      {irf && (
+        <Suspense fallback={(
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="ems-panel-raised" style={{ padding: 18, color: COLOR.faint, fontSize: 12 }}>Загрузка графика…</div>
+          </div>
+        )}>
+          <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value} baseValue={irf.base}
+            difficulty={difficulty} onClose={() => setIrf(null)} />
+        </Suspense>
+      )}
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && <WhyModal reasons={lastReasons} onClose={() => setShowWhy(false)} />}
@@ -7204,7 +6908,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         {/* ЦЕНТР */}
         <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} />
-          <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          <Suspense fallback={<ChartFallback />}>
+            <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          </Suspense>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
