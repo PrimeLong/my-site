@@ -8,7 +8,7 @@ import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
   X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
-  Trophy, Lock,
+  Trophy, Lock, Share2, Download,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
@@ -2636,7 +2636,7 @@ function checkDefeat({ role, economy, history, bookVal }) {
   }
   return null;
 }
-function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, restartLabel = 'Начать заново' }) {
+function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, restartLabel = 'Начать заново' }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 460, width: '100%', padding: 26, textAlign: 'center', borderColor: COLOR.rust }} onClick={(e) => e.stopPropagation()}>
@@ -2644,7 +2644,8 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, re
         <div className="ems-serif" style={{ fontSize: 19, color: COLOR.rust, marginBottom: 10 }}>{defeat.title}</div>
         <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6 }}>{defeat.text}</div>
         <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12 }}>Партия окончена на {quarterLabel(quarterIndex)} — {quarterIndex} кв. у руля.</div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20 }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
+          <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Поделиться</button>
           <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
           <button className="ems-btn primary" onClick={onRestart}>{restartLabel}</button>
         </div>
@@ -2660,6 +2661,157 @@ const GameOverBar = ({ defeat, onReopen, onRestart, restartLabel = 'Начать
     <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onRestart}>{restartLabel}</button>
   </div>
 );
+
+/* Карточка результата: не только на конце партии (поражение), но и в любой
+   момент по кнопке в шапке — так шансов поделиться и позвать друга в сеть
+   больше, чем ждать финала. Рисуется на canvas и скачивается/копируется как
+   текст: ни бэкенда, ни аккаунтов для «шаринга» этой игре не требуется. */
+const RESULT_CARD_EMOJI = { central_bank: '🏛️', ministry_finance: '💰', full_control: '👑', trader: '📈' };
+function ruPlural(n, one, few, many) {
+  const n10 = n % 10; const n100 = n % 100;
+  if (n10 === 1 && n100 !== 11) return one;
+  if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) return few;
+  return many;
+}
+const countUnlockedAchievements = () => { const u = loadUnlockedAchievements(); return ACHIEVEMENTS.filter((a) => u[a.id]).length; };
+function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat }) {
+  const roleLabel = (ROLES.find((r) => r.id === role) || {}).short || role;
+  const isTrader = role === 'trader';
+  const stats = [];
+  if (isTrader && portfolio) {
+    const val = bookValue(portfolio, economy, null);
+    const start = portfolio.startValue || 10;
+    const ret = ((val / start) - 1) * 100;
+    stats.push(['Капитал', `${val.toFixed(2)} млн`]);
+    stats.push(['Доходность', `${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%`]);
+    stats.push(['Сделок на рынке', String((portfolio.trades || []).length)]);
+    stats.push(['Итог казино', `${(portfolio.casinoNet || 0) >= 0 ? '+' : ''}${(portfolio.casinoNet || 0).toFixed(2)} млн`]);
+  } else {
+    const gdpChange = startEconomy && startEconomy.gdp > 0 ? ((economy.gdp / startEconomy.gdp) - 1) * 100 : null;
+    stats.push(['ВВП с начала партии', gdpChange != null ? `${gdpChange >= 0 ? '+' : ''}${gdpChange.toFixed(0)}%` : '—']);
+    stats.push(['Инфляция', `${fmt1(economy.inflation)}%`]);
+    stats.push(['Безработица', `${fmt1(economy.unemployment)}%`]);
+    stats.push(['Долг к ВВП', `${fmt1(economy.debtToGdp)}%`]);
+  }
+  return {
+    roleLabel, emoji: RESULT_CARD_EMOJI[role] || '🏛️',
+    quarterIndex, quarterWord: ruPlural(quarterIndex, 'квартал', 'квартала', 'кварталов'),
+    years: (quarterIndex / 4).toFixed(1),
+    outcome: defeat ? defeat.title : 'Партия продолжается',
+    isDefeat: !!defeat, stats, unlockedCount: countUnlockedAchievements(),
+  };
+}
+function canvasRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function drawResultCard(canvas, data) {
+  const W = 1000; const H = 625; const DPR = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  // размер на экране задаёт CSS (width:100%, height:auto на самом <canvas>) —
+  // если продублировать его тут через canvas.style, эффект перетрёт инлайн-стиль
+  // React и картинка перестанет вписываться в модалку при её ширине < 1000px
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+  ctx.fillStyle = COLOR.bg; ctx.fillRect(0, 0, W, H);
+  const grad = ctx.createRadialGradient(W / 2, -60, 40, W / 2, -60, 700);
+  grad.addColorStop(0, COLOR.bgVignette); grad.addColorStop(1, COLOR.bg);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = COLOR.gold; ctx.fillRect(0, 0, W, 4);
+  ctx.strokeStyle = COLOR.border; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLOR.goldSoft;
+  ctx.font = `600 14px ${FONT.sans}`;
+  ctx.fillText('С Т Р А Н А   —   Э К О Н О М И Ч Е С К А Я   П А Н Е Л Ь', W / 2, 46);
+
+  ctx.fillStyle = COLOR.text;
+  ctx.font = `700 38px ${FONT.serif}`;
+  ctx.fillText(`${data.emoji}  ${data.roleLabel}`, W / 2, 106);
+
+  ctx.fillStyle = COLOR.gold;
+  ctx.font = `800 112px ${FONT.serif}`;
+  ctx.fillText(String(data.quarterIndex), W / 2, 246);
+  ctx.fillStyle = COLOR.muted;
+  ctx.font = `500 17px ${FONT.sans}`;
+  ctx.fillText(`${data.quarterWord} у руля  ·  ${data.years} лет`, W / 2, 278);
+
+  ctx.font = `700 18px ${FONT.sans}`;
+  const outcomeW = Math.min(820, ctx.measureText(data.outcome).width + 56);
+  ctx.fillStyle = data.isDefeat ? COLOR.rustDim : COLOR.tealDim;
+  canvasRoundRect(ctx, W / 2 - outcomeW / 2, 304, outcomeW, 44, 9); ctx.fill();
+  ctx.fillStyle = data.isDefeat ? COLOR.rust : COLOR.teal;
+  ctx.fillText(data.outcome, W / 2, 332);
+
+  const cellW = 440; const cellH = 80; const gapX = 20; const gridTop = 384;
+  const startX = W / 2 - cellW - gapX / 2;
+  ctx.textAlign = 'left';
+  data.stats.forEach((s, i) => {
+    const col = i % 2; const row = Math.floor(i / 2);
+    const x = startX + col * (cellW + gapX); const y = gridTop + row * (cellH + 14);
+    ctx.fillStyle = COLOR.panelAlt; canvasRoundRect(ctx, x, y, cellW, cellH, 8); ctx.fill();
+    ctx.strokeStyle = COLOR.border; canvasRoundRect(ctx, x, y, cellW, cellH, 8); ctx.stroke();
+    ctx.fillStyle = COLOR.muted; ctx.font = `500 14px ${FONT.sans}`;
+    ctx.fillText(s[0], x + 22, y + 30);
+    ctx.fillStyle = COLOR.text; ctx.font = `700 25px ${FONT.mono}`;
+    ctx.fillText(s[1], x + 22, y + 62);
+  });
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLOR.faint;
+  ctx.font = `500 14px ${FONT.sans}`;
+  ctx.fillText(`🏆 Открыто ${data.unlockedCount} из ${ACHIEVEMENTS.length} достижений`, W / 2, H - 30);
+}
+function ResultCardModal({ data, onClose }) {
+  const canvasRef = React.useRef(null);
+  const [copied, setCopied] = useState(false);
+  React.useEffect(() => { if (canvasRef.current) drawResultCard(canvasRef.current, data); }, [data]);
+  const download = () => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = `ekonomicheskaya-panel-${data.quarterIndex}kv.png`;
+    a.click();
+    Audio.play('click');
+  };
+  const copyText = async () => {
+    const lines = [
+      'Экономическая панель государства',
+      `Роль: ${data.roleLabel}`,
+      `Отыграно: ${data.quarterIndex} ${data.quarterWord} (${data.years} лет)`,
+      `Итог: ${data.outcome}`,
+      ...data.stats.map(([k, v]) => `${k}: ${v}`),
+      `Достижений: ${data.unlockedCount} из ${ACHIEVEMENTS.length}`,
+    ];
+    try { await navigator.clipboard.writeText(lines.join('\n')); setCopied(true); Audio.play('click'); setTimeout(() => setCopied(false), 1800); }
+    catch { /* буфер обмена недоступен — нет разрешения или не https */ }
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 620, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <Share2 size={15} color={COLOR.gold} />
+          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Карточка результата</span>
+          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
+        </div>
+        <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6, border: `1px solid ${COLOR.border}` }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button className="ems-btn" style={{ flex: 1, padding: '9px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={copyText}>
+            <Copy size={13} />{copied ? 'Скопировано' : 'Скопировать текст'}
+          </button>
+          <button className="ems-btn primary" style={{ flex: 1, padding: '9px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={download}>
+            <Download size={13} />Скачать картинку
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [tab, setTab] = useState(mode || 'save');
@@ -4804,6 +4956,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   React.useEffect(() => { saveNetworkPortfolio(id, seat, portfolio); }, [id, seat, portfolio]);
   const { toast: achToast, push: pushAch } = useAchievementToasts();
   const [showAch, setShowAch] = useState(false);
+  const [showCard, setShowCard] = useState(false);
   const [defeat, setDefeat] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
   const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
@@ -5040,7 +5193,11 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={exit} onOpenAch={() => setShowAch(true)} restartLabel="В меню" />}
+        onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню" />}
+      {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
+        role: seatRole(seat).id, quarterIndex: room.quarterIndex, economy: room.economy,
+        startEconomy: room.history && room.history[0], portfolio, defeat,
+      })} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -5076,6 +5233,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
           <AudioControls />
+          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
+            <Share2 size={14} color={COLOR.gold} />
+          </button>
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
             <Trophy size={14} color={COLOR.gold} />
           </button>
@@ -5875,6 +6035,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [showPaper, setShowPaper] = useState(false);
   const [saveModal, setSaveModal] = useState(null);
   const [showAch, setShowAch] = useState(false);
+  const [showCard, setShowCard] = useState(false);
   const { toast: achToast, push: pushAch } = useAchievementToasts();
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -6113,7 +6274,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={onRestart} onOpenAch={() => setShowAch(true)} />}
+        onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
+      {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
+        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat,
+      })} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -6172,6 +6336,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
           <AudioControls />
+          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
+            <Share2 size={14} color={COLOR.gold} />
+          </button>
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
             <Trophy size={14} color={COLOR.gold} />
           </button>
