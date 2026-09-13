@@ -1,9 +1,9 @@
 /* Vercel Serverless Function: одна точка входа на все действия комнаты.
    POST /api/room  { action, ... }
    Модель считается ТОЛЬКО здесь: иначе у игроков разойдутся случайные шоки. */
-import { getRoom, setRoom, withRoom, hasKv } from '../lib/store.js';
+import { getRoom, setRoom, withRoom, hasKv } from './_lib/store.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
-  quarterLabel, clamp } from '../lib/engine.js';
+  quarterLabel, clamp } from './_lib/engine.js';
 
 const SEATS = ['central_bank', 'ministry_finance'];
 const code = () => Math.random().toString(36).slice(2, 7).toUpperCase();
