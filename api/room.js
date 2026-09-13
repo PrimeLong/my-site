@@ -1,20 +1,42 @@
 /* Vercel Serverless Function: одна точка входа на все действия комнаты.
    POST /api/room  { action, ... }
    Модель считается ТОЛЬКО здесь: иначе у игроков разойдутся случайные шоки. */
+import { randomUUID, randomBytes } from 'node:crypto';
 import { getRoom, setRoom, withRoom, hasKv } from './_lib/store.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
-  quarterLabel, clamp } from './_lib/engine.js';
+  quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS } from './_lib/engine.js';
 
 const SEATS = ['central_bank', 'ministry_finance'];
-const code = () => Math.random().toString(36).slice(2, 7).toUpperCase();
-const token = () => Math.random().toString(36).slice(2, 14);
+const DIFFICULTY_IDS = new Set(DIFFICULTIES.map((d) => d.id));
+const GOAL_IDS = new Set(GOALS.map((g) => g.id));
+const FX_REGIME_IDS = new Set(FX_REGIMES.map((r) => r.id));
+const code = () => randomBytes(4).toString('hex').toUpperCase().slice(0, 5);
+const token = () => randomUUID();
+const cleanString = (v, maxLen) => (typeof v === 'string' ? v.slice(0, maxLen) : null);
+
+/* Решения приходят от клиента как есть: обрезаем каждый рычаг до его
+   допустимого диапазона и отбрасываем всё незнакомое, чтобы NaN/Infinity
+   или произвольные поля не попали в модель и не сломали комнату сразу
+   для обоих игроков. */
+function sanitizeDecisions(base, submitted) {
+  const out = { ...base };
+  if (!submitted || typeof submitted !== 'object') return out;
+  for (const lever of LEVERS) {
+    const v = submitted[lever.id];
+    if (typeof v === 'number' && Number.isFinite(v)) out[lever.id] = clamp(v, lever.min, lever.max);
+  }
+  if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
+  if (typeof submitted.emergency === 'boolean') out.emergency = submitted.emergency;
+  return out;
+}
 
 function freshRoom(opts) {
   const economy = makeInitialEconomy();
   return {
     id: opts.id, created: Date.now(), version: 1,
-    difficulty: opts.difficulty || 'medium',
-    goalCb: opts.goalCb || 'min_inflation', goalMof: opts.goalMof || 'living_standards',
+    difficulty: DIFFICULTY_IDS.has(opts.difficulty) ? opts.difficulty : 'medium',
+    goalCb: GOAL_IDS.has(opts.goalCb) ? opts.goalCb : 'min_inflation',
+    goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
     seats: { central_bank: null, ministry_finance: null },
     names: { central_bank: null, ministry_finance: null },
     economy, quarterIndex: 1,
@@ -76,7 +98,7 @@ function resolveQuarter(room) {
   };
 }
 
-export default async function handler(req, res) {
+async function handleRequest(req, res) {
   if (req.method === 'GET') {
     const { id, since } = req.query;
     const room = await getRoom(String(id || '').toUpperCase());
@@ -85,7 +107,14 @@ export default async function handler(req, res) {
     return res.status(200).json({ room: publicView(room) });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Только GET и POST' });
-  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+
+  let body;
+  try {
+    body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+  } catch {
+    return res.status(400).json({ error: 'Некорректный JSON' });
+  }
+  if (!body || typeof body !== 'object') return res.status(400).json({ error: 'Некорректное тело запроса' });
   const { action } = body;
 
   if (action === 'create') {
@@ -102,7 +131,7 @@ export default async function handler(req, res) {
     const out = await withRoom(id, (room) => {
       if (room.seats[seat]) return { error: 'Место уже занято', status: 409 };
       const t = token();
-      return { ...room, seats: { ...room.seats, [seat]: t }, names: { ...room.names, [seat]: body.name || 'игрок' },
+      return { ...room, seats: { ...room.seats, [seat]: t }, names: { ...room.names, [seat]: cleanString(body.name, 40) || 'игрок' },
         version: room.version + 1, __token: t };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
@@ -117,7 +146,8 @@ export default async function handler(req, res) {
       const seat = body.seat;
       if (!SEATS.includes(seat)) return { error: 'Неизвестная роль', status: 400 };
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
-      const next = { ...room, submissions: { ...room.submissions, [seat]: { decisions: body.decisions, note: body.note || null } },
+      const decisions = sanitizeDecisions(room.decisions, body.decisions);
+      const next = { ...room, submissions: { ...room.submissions, [seat]: { decisions, note: cleanString(body.note, 280) } },
         version: room.version + 1 };
       const bothIn = SEATS.every((sx) => next.submissions[sx] || !next.seats[sx]);
       return bothIn ? resolveQuarter(next) : next;
@@ -135,4 +165,13 @@ export default async function handler(req, res) {
   }
 
   return res.status(400).json({ error: 'Неизвестное действие' });
+}
+
+export default async function handler(req, res) {
+  try {
+    return await handleRequest(req, res);
+  } catch (err) {
+    console.error('room handler error:', err);
+    return res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
 }

@@ -1,32 +1,47 @@
-# React + TypeScript + Vite
+# Экономическая панель государства
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Симулятор макроэкономической политики: вы управляете центральным банком или
+министерством финансов (или обоими сразу), принимаете решения по ставке,
+налогам и бюджету каждый квартал и смотрите, как модель считает инфляцию,
+безработицу, курс, долг и остальные показатели. Есть соло-режим против ботов
+и мультиплеер на двоих (ЦБ и Минфин — разные игроки).
 
-Currently, two official plugins are available:
+## Стек
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19 + Vite, JSX без строгой типизации (см. «Известные ограничения» ниже)
+- `recharts` для графиков, `lucide-react` для иконок
+- Мультиплеер — serverless-функция на Vercel (`api/room.js`) с состоянием
+  комнаты в Upstash Redis (переменные окружения `KV_REST_API_URL` и
+  `KV_REST_API_TOKEN`, подключаются через Vercel Marketplace); без них
+  комната живёт в памяти процесса и не работает между разными запросами.
 
-## React Compiler
+## Разработка
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev       # клиент на Vite; api/room.js локально не поднимается —
+                   # для проверки мультиплеера нужен `vercel dev` или деплой
+npm run build      # tsc -b && vite build
+npm run lint       # oxlint
+npm run test       # vitest — тесты на инварианты модели (src/lib/engine.js)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Структура
+
+- `src/lib/engine.js` — ядро экономической модели (чистые функции, без React).
+  Это единственный источник истины: его же переиспользует сервер через
+  `api/_lib/engine.js` (тонкий реэкспорт), чтобы соло-игра и мультиплеер
+  считали кварталы одинаково. **Не копировать эту логику в другое место.**
+- `src/MacroSimulator.jsx` — вся презентационная часть (UI, графики, звук).
+- `src/components/MultiplayerPanel.jsx`, `src/lib/client.js` — клиент комнаты.
+- `api/room.js`, `api/_lib/store.js` — serverless-эндпоинт комнаты и хранилище.
+
+## Известные ограничения
+
+- Несмотря на название пакета в прошлом («typescript-starter»), основной код
+  написан на `.js/.jsx` без проверки типов (`checkJs: false`). Полная миграция
+  на TypeScript для модели такого размера — отдельная задача, требующая
+  аккуратной типизации состояния экономики.
+- Обновление комнаты в мультиплеере идёт поллингом (`watchRoom`, раз в 2.5с),
+  а не через WebSocket/SSE — проще в связке с Vercel serverless, но даёт
+  задержку до нескольких секунд.

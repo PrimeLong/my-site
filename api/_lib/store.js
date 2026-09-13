@@ -8,7 +8,7 @@ let redis = null;
 try {
   const { Redis } = await import('@upstash/redis');
   if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) redis = Redis.fromEnv();
-} catch (e) { redis = null; }
+} catch { redis = null; }
 
 const mem = new Map();
 const TTL = 60 * 60 * 24 * 3;   // комната живёт трое суток
