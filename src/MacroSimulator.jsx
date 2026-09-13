@@ -2525,7 +2525,8 @@ const ACHIEVEMENTS = [
   { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 3 млн в одной игре казино.' },
   { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 5 млн суммарно за партию.' },
   { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
-  { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди обучение — три квартала в тренировочном кабинете.' },
+  { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
+  { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди курс обучения целиком — все пять модулей.' },
 ];
 const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -5685,7 +5686,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   const MENU_ITEMS = [
     { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
-    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Три квартала в тренировочном кабинете: как ставка и расходы меняют экономику.',
+    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Курс из пяти модулей — от ставки и бюджета до кризисных инструментов.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
     { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
       action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
@@ -5788,75 +5789,329 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   );
 }
 
-/* ============================ ОБУЧЕНИЕ ============================ */
-// Отдельный, сильно упрощённый режим: своя мини-экономика (без бота-оппонента,
-// кризисов и оценки партии), четыре квартала со сценарием и один открываемый
-// рычаг за шаг. Использует настоящий движок (simulateQuarter), поэтому цифры
-// в уроке — не постановочные, а результат тех же формул, что и в игре.
-const TUTORIAL_PINS = ['gdp', 'inflation', 'unemployment', 'debtToGdp'];
-const TUTORIAL_STEPS = [
+/* ============================ ОБУЧЕНИЕ: КУРС ИЗ МОДУЛЕЙ ============================ */
+// Курс из последовательных модулей вместо одного урока: каждый — своя
+// мини-экономика (без бота-оппонента, кризисов и оценки партии) на настоящем
+// движке (simulateQuarter), со сценарием и открываемыми по одному рычагами.
+// Модули идут от поверхностного понимания к углублённому и разблокируются по
+// порядку — прогресс хранится на устройстве (localStorage), как и достижения.
+const COURSE_PROGRESS_KEY = 'ems-course-progress';
+const loadCourseProgress = () => { try { return JSON.parse(localStorage.getItem(COURSE_PROGRESS_KEY) || '{}'); } catch { return {}; } };
+const markModuleDone = (id) => {
+  const p = loadCourseProgress(); p[id] = true;
+  try { localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(p)); } catch { /* приватный режим */ }
+  return p;
+};
+
+const TUTORIAL_MODULES = [
   {
-    title: 'Добро пожаловать',
-    lever: null, runsQuarter: true,
-    body: ({ economy }) => (
-      <>
-        <p>Это тренировочный кабинет: три квартала на калькуляторе, без бота-оппонента, кризисов и оценки партии в конце. Настоящая игра сложнее — там второй ветвью власти управляет бот со своим характером, случаются кризисы, а итог партии сравнивается с выбранной целью.</p>
-        <p>Экономика считается кварталами, и решение сегодня отражается на показателях с лагом в один-два квартала — эффект не мгновенный. Это главное, что стоит запомнить прямо сейчас.</p>
-        <p>Сейчас инфляция {pctFmt(economy.inflation)} при цели {pctFmt(economy.inflationTarget)}, рост в норме. Нажмите «Далее», чтобы посмотреть на квартал без вашего вмешательства.</p>
-      </>
-    ),
+    id: 'basics', depth: 'surface', icon: Zap,
+    title: 'Основы: ставка и расходы',
+    summary: 'Как ключевая ставка и госрасходы двигают экономику — и почему не сразу.',
+    pins: ['gdp', 'inflation', 'unemployment', 'debtToGdp'],
+    steps: [
+      {
+        title: 'Добро пожаловать',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Это тренировочный кабинет: мини-экономика без бота-оппонента, кризисов и оценки партии в конце. Настоящая игра сложнее — там второй ветвью власти управляет бот со своим характером, случаются кризисы, а итог партии сравнивается с выбранной целью.</p>
+            <p>Экономика считается кварталами, и решение сегодня отражается на показателях с лагом в один-два квартала — эффект не мгновенный. Это главное, что стоит запомнить прямо сейчас.</p>
+            <p>Сейчас инфляция {pctFmt(economy.inflation)} при цели {pctFmt(economy.inflationTarget)}, рост в норме. Нажмите «Далее», чтобы посмотреть на квартал без вашего вмешательства.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Ключевая ставка',
+        lever: 'keyRate', minDelta: 1, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Вот единственный рычаг этого шага — ключевая ставка Центрального банка. Выше ставка → дороже кредит → меньше спроса → ниже инфляция, но и медленнее рост. Ниже ставка — наоборот.</p>
+            <p>Сейчас ставка {pctFmt(economy.keyRate)}, инфляция {pctFmt(economy.inflation)}.</p>
+            <p>Поднимите ставку минимум на 1 п.п. и нажмите «Далее» — квартал завершится с этим решением.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Лаг и бюджетный рычаг',
+        lever: 'govSpending', minDelta: 2, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Инфляция сейчас {pctFmt(economy.inflation)} — почти как и была. Это ожидаемо: решение по ставке действует не мгновенно, а с лагом в один-два квартала — эффект будет виден чуть позже.</p>
+            <p>А вот и второй канал — расходы государства. В отличие от ставки, это решение «по накопительной»: заданный темп роста расходов сохраняется, пока вы его не измените, — не нужно повторять его каждый квартал.</p>
+            <p>Поднимите темп роста госрасходов минимум на 2 п.п. и нажмите «Далее».</p>
+          </>
+        ),
+      },
+      {
+        title: 'Вот и эффект',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] ? history[1].inflation : economy.inflation;
+          const now = economy.inflation;
+          return (
+            <>
+              <p>Сравните: сразу после первого квартала инфляция была {pctFmt(before)}. Сейчас, когда ставка и расходы успели подействовать, — {pctFmt(now)}. {now < before
+                ? 'Повышение ставки перевесило стимул от расходов — инфляция снижается.'
+                : 'Стимул от расходов оказался сильнее охлаждающего эффекта ставки — инфляция подросла.'}</p>
+              <p>Это и есть главный урок первого модуля: эффект решений накапливается и проявляется с задержкой.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Вы прошли первую цепочку: <b>ставка/расходы → кредит и спрос → выпуск → занятость → цены</b>. Дальше — вторая половина государства: бюджет, налоги и то, откуда вообще берётся госдолг.</p>
+          </>
+        ),
+      },
+    ],
   },
   {
-    title: 'Ключевая ставка',
-    lever: 'keyRate', minDelta: 1, runsQuarter: true,
-    body: ({ economy }) => (
-      <>
-        <p>Вот единственный рычаг этого шага — ключевая ставка Центрального банка. Выше ставка → дороже кредит → меньше спроса → ниже инфляция, но и медленнее рост. Ниже ставка — наоборот.</p>
-        <p>Сейчас ставка {pctFmt(economy.keyRate)}, инфляция {pctFmt(economy.inflation)}.</p>
-        <p>Поднимите ставку минимум на 1 п.п. и нажмите «Далее» — квартал завершится с этим решением.</p>
-      </>
-    ),
+    id: 'budget', depth: 'surface', icon: Coins,
+    title: 'Бюджет: налоги и дефицит',
+    summary: 'Откуда берутся деньги государства и почему долг — это не просто цифра.',
+    pins: ['revenuePctGdp', 'budgetBalancePctGdp', 'debtToGdp', 'interestToRevenue'],
+    steps: [
+      {
+        title: 'Доходы, расходы, долг',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Бюджет — это доходы (в основном налоги) минус расходы. Разница — дефицит (если отрицательная) или профицит. Накопленные из года в год дефициты и есть государственный долг.</p>
+            <p>Долг принято мерить не в абсолютных деньгах, а в % ВВП — так можно сравнивать разные по размеру экономики и разные периоды одной и той же.</p>
+            <p>Сейчас доходы бюджета {pctFmt(economy.revenuePctGdp)} ВВП, долг {pctFmt(economy.debtToGdp)} ВВП. Нажмите «Далее», чтобы увидеть спокойный квартал.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Налоги',
+        lever: 'vatRate', minDelta: 3, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Поднимите НДС минимум на 3 п.п. Казалось бы, доходы бюджета должны вырасти пропорционально ставке — но так работает только в теории.</p>
+            <p>Сейчас НДС {pctFmt(economy.vatRate)}, теневая экономика {pctFmt(economy.shadowShare)} ВВП. Чем выше ставка сверх разумного, тем больше активности уходит «в тень» — часть возможных сборов модель теряет именно так.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Расходы вместо доходов',
+        lever: 'transfers', minDelta: 3, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Второй способ повлиять на бюджет — расходы. Поднимите темп роста социальных выплат минимум на 3 п.п.</p>
+            <p>В отличие от разовой операции, это тоже «накопительное» решение (как госрасходы в первом модуле): подняли один раз — растёт каждый квартал, пока не измените. Сейчас баланс бюджета {fmtSignedPct(economy.budgetBalancePctGdp)} ВВП.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Цена долга',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] ? history[1] : economy;
+          return (
+            <>
+              <p>Доходы бюджета выросли не так сильно, как ставка НДС — часть эффекта съела тень. А рост социальных выплат потянул баланс бюджета вниз: с {fmtSignedPct(before.budgetBalancePctGdp)} до {fmtSignedPct(economy.budgetBalancePctGdp)} ВВП.</p>
+              <p>Долг к ВВП сдвинулся с {pctFmt(before.debtToGdp)} до {pctFmt(economy.debtToGdp)}. Обслуживание долга ({pctFmt(economy.interestToRevenue)} от доходов) — это проценты, которые бюджет платит каждый квартал, отъедая от денег на всё остальное.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Налоги не масштабируются линейно, а расходы, увеличенные один раз, продолжают давить на баланс каждый квартал. Долг — это не разовая проблема, а нарастающая стоимость обслуживания. Дальше — то, что происходит на границе: валютный курс.</p>
+          </>
+        ),
+      },
+    ],
   },
   {
-    title: 'Лаг и бюджетный рычаг',
-    lever: 'govSpending', minDelta: 2, runsQuarter: true,
-    body: ({ economy }) => (
-      <>
-        <p>Инфляция сейчас {pctFmt(economy.inflation)} — почти как и была. Это ожидаемо: решение по ставке действует не мгновенно, а с лагом в один-два квартала — эффект будет виден чуть позже.</p>
-        <p>А вот и второй канал — расходы государства. В отличие от ставки, это решение «по накопительной»: заданный темп роста расходов сохраняется, пока вы его не измените, — не нужно повторять его каждый квартал.</p>
-        <p>Поднимите темп роста госрасходов минимум на 2 п.п. и нажмите «Далее».</p>
-      </>
-    ),
+    id: 'fx', depth: 'surface', icon: Globe2,
+    title: 'Валютный курс и резервы',
+    summary: 'Что двигает курс и почему ставка и интервенции тянут его в разные стороны.',
+    pins: ['exchangeRate', 'reserves', 'currentAccount', 'inflation'],
+    steps: [
+      {
+        title: 'Курс и резервы',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Курс в этой модели устроен так: чем выше число — тем слабее национальная валюта. Резервы — валютная «подушка», которой ЦБ может защищать курс интервенциями, но она не бесконечна.</p>
+            <p>Сейчас курс {fmt1(economy.exchangeRate)}, резервы {fmtMoney(economy.reserves)}. Нажмите «Далее», чтобы увидеть спокойный квартал.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Валютные интервенции',
+        lever: 'fxIntervention', minDelta: 5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Увеличьте валютные интервенции минимум на 5 млрд. Положительное значение — ЦБ покупает иностранную валюту, тем самым ослабляя национальную (например, чтобы поддержать экспортёров, которым выгоден слабый курс).</p>
+            <p>Курс сейчас {fmt1(economy.exchangeRate)}.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Ставка как противовес',
+        lever: 'keyRate', minDelta: 1.5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>У ставки, помимо влияния на инфляцию (модуль 1), есть и валютный эффект: чем она выше, тем привлекательнее актив в национальной валюте для иностранного капитала — курс укрепляется.</p>
+            <p>Курс после прошлого шага — {fmt1(economy.exchangeRate)}. Поднимите ключевую ставку минимум на 1.5 п.п. — это противоположно направленная сила.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Кто перевесил',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] ? history[1].exchangeRate : economy.exchangeRate;
+          const now = economy.exchangeRate;
+          return (
+            <>
+              <p>Курс изменился с {fmt1(before)} до {fmt1(now)}. Вы одновременно ослабляли его интервенциями и укрепляли ставкой — {now > before ? 'интервенции оказались сильнее' : 'ставка перевесила'}.</p>
+              <p>В реальной партии эти рычаги обычно в руках разных институтов (ЦБ отвечает за оба, но приоритеты у него не всегда однозначны) — управлять курсом в одиночку сложнее, чем кажется.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Курс — не отдельный рычаг, а равнодействующая нескольких решений сразу, и резервы, которыми его защищают, конечны. Дальше — тема более тонкая: как рынки верят (или не верят) обещаниям ЦБ.</p>
+          </>
+        ),
+      },
+    ],
   },
   {
-    title: 'Вот и эффект',
-    lever: null, runsQuarter: false,
-    body: ({ economy, history }) => {
-      const before = history[1] ? history[1].inflation : economy.inflation;
-      const now = economy.inflation;
-      return (
-        <>
-          <p>Сравните: сразу после первого квартала инфляция была {pctFmt(before)}. Сейчас, когда ставка и расходы успели подействовать, — {pctFmt(now)}. {now < before
-            ? 'Повышение ставки перевесило стимул от расходов — инфляция снижается.'
-            : 'Стимул от расходов оказался сильнее охлаждающего эффекта ставки — инфляция подросла.'}</p>
-          <p>Это и есть главный урок: эффект решений накапливается и проявляется с задержкой. В настоящей партии придётся действовать на несколько кварталов вперёд, а не подстраиваться под сиюминутную цифру.</p>
-        </>
-      );
-    },
+    id: 'expectations', depth: 'deep', icon: Target,
+    title: 'Ожидания и доверие к ЦБ',
+    summary: 'Почему инфляционные ожидания важнее сиюминутной инфляции.',
+    pins: ['inflation', 'inflationExpectations', 'cbCredibility', 'keyRate'],
+    steps: [
+      {
+        title: 'Ожидания важнее цифры',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Инфляционные ожидания — это не прогноз, а то, что закладывают в цены и зарплаты уже сейчас: если все верят, что инфляция будет высокой, продавцы и работники требуют больше — и она правда становится высокой. Это самосбывающийся механизм.</p>
+            <p>Доверие к ЦБ измеряет, насколько рынок верит объявленной цели по инфляции. Сейчас ожидания {pctFmt(economy.inflationExpectations)}, доверие {Math.round(economy.cbCredibility)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Соблазн простого решения',
+        lever: 'inflationTarget', minDelta: 1, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Есть простой на бумаге способ «побороть» высокую инфляцию — объявить цель повыше, и формально она у цели. Поднимите цель по инфляции минимум на 1 п.п. и посмотрите, что происходит на самом деле.</p>
+            <p>Сейчас цель {pctFmt(economy.inflationTarget)}, доверие {Math.round(economy.cbCredibility)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Доверие не восстанавливается по щелчку',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] || economy;
+          return (
+            <>
+              <p>Доверие к ЦБ сдвинулось с {Math.round(before.cbCredibility)} до {Math.round(economy.cbCredibility)}, а ожидания — с {pctFmt(before.inflationExpectations)} до {pctFmt(economy.inflationExpectations)}. Смена цели не прошла бесплатно: рынок теперь меньше верит следующим объявлениям ЦБ.</p>
+              <p>Доверие теряется быстро, а восстанавливается медленно — и только делами, а не заявлениями.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Восстановление доверия',
+        lever: 'keyRate', minDelta: 2, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Единственный способ вернуть доверие — решительно и последовательно действовать в объявленную сторону. Поднимите ключевую ставку минимум на 2 п.п.</p>
+            <p>Сейчас ставка {pctFmt(economy.keyRate)}, доверие {Math.round(economy.cbCredibility)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Компромисс между гибкостью и доверием — сквозная тема настоящей игры: недаром у ботов-глав ЦБ разный характер (Ястреб держит цель жёстко, Голубь готов ею жертвовать). Дальше — последний, самый прикладной модуль: как готовиться к кризису заранее.</p>
+          </>
+        ),
+      },
+    ],
   },
   {
-    title: 'Занятие окончено', isFinal: true, lever: null, runsQuarter: false,
-    body: () => (
-      <>
-        <p>Вы прошли всю цепочку: <b>ставка/расходы → кредит и спрос → выпуск → занятость → цены → ожидания</b>. В настоящей партии добавятся: бот на второй ветви власти со своим характером и требованиями, случайные кризисы, выборы и оценка партии по выбранной цели.</p>
-        <p>Готовы попробовать по-настоящему?</p>
-      </>
-    ),
+    id: 'crisis', depth: 'deep', icon: ShieldAlert,
+    title: 'Риски и подготовка к кризису',
+    summary: 'Макропруденциальные инструменты: не тушить пожар, а не дать ему начаться.',
+    pins: ['bankingRisk', 'bankCapitalAdequacy', 'bankNPL', 'financialStability'],
+    steps: [
+      {
+        title: 'Пять индикаторов риска',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>В настоящей игре есть панель из пяти рисков: инфляционный, банковский, долговой, рецессии и валютный — заранее показывают, где копится опасность, до того как она стала кризисом. В этом модуле — банковский.</p>
+            <p>Достаточность капитала банков {pctFmt(economy.bankCapitalAdequacy)}, просроченные кредиты {pctFmt(economy.bankNPL)}. Это буфер и его нагрузка: чем толще буфер и меньше просрочка, тем спокойнее банковская система переживёт шок.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Норматив достаточности капитала',
+        lever: 'capitalRequirement', minDelta: 1.5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Это требование к банкам держать больше капитала на случай убытков — амортизатор кризиса, который ставится заранее, а не во время паники. Поднимите норматив минимум на 1.5 п.п.</p>
+            <p>Плата за это реальна: банки выдают меньше кредитов — рост чуть замедляется. Сейчас норматив {pctFmt(economy.capitalRequirement)}.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Быстрая помощь ликвидностью',
+        lever: 'liquidity', minDelta: 5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Другой инструмент — прямая инъекция ликвidности банкам. В отличие от норматива капитала, это разовая скорая помощь, а не структурное решение. Увеличьте вливание ликвидности минимум на 5 млрд.</p>
+            <p>Сейчас банковский риск {Math.round(economy.bankingRisk)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Что изменилось',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] || economy;
+          return (
+            <>
+              <p>Достаточность капитала выросла с {pctFmt(before.bankCapitalAdequacy)} до {pctFmt(economy.bankCapitalAdequacy)}, банковский риск изменился с {Math.round(before.bankingRisk)} до {Math.round(economy.bankingRisk)}.</p>
+              <p>Норматив капитала — это профилактика на годы вперёд, ликвидность — заплатка на квартал. В реальной партии оба инструмента понадобятся, но по-разному: один заранее, другой — когда индикаторы риска уже красные.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Курс пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Это был последний модуль. Вы прошли всю цепочку курса: ставка и расходы → бюджет и долг → валютный курс → ожидания и доверие → риски и подготовка к кризису. В настоящей партии всё это работает одновременно, плюс бот на второй ветви власти со своим характером, случайные кризисы, выборы и оценка партии по выбранной цели.</p>
+            <p>Готовы попробовать по-настоящему?</p>
+          </>
+        ),
+      },
+    ],
   },
 ];
 
-function TutorialScreen({ onFinish }) {
-  const initEconomy = useMemo(() => makeInitialEconomy(), []);
+function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame }) {
+  const initEconomy = useMemo(() => makeInitialEconomy(), [module.id]);
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState([{ q: 0, label: `${quarterLabel(1)} (старт)`, ...initEconomy }]);
   const [decisions, setDecisions] = useState(() => defaultDecisions(initEconomy));
@@ -5864,11 +6119,10 @@ function TutorialScreen({ onFinish }) {
   const [eventCooldowns, setEventCooldowns] = useState({});
   const [quarterIndex, setQuarterIndex] = useState(1);
   const [step, setStep] = useState(0);
-  const [leverBaseline, setLeverBaseline] = useState(initEconomy.keyRate);
-  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const [leverBaseline, setLeverBaseline] = useState(0);
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
 
-  const cur = TUTORIAL_STEPS[step];
+  const cur = module.steps[step];
   const lever = cur.lever ? LEVERS.find((l) => l.id === cur.lever) : null;
   const delta = lever ? decisions[cur.lever] - leverBaseline : 0;
   const canAdvance = !lever || delta >= cur.minDelta - 1e-9;
@@ -5889,32 +6143,34 @@ function TutorialScreen({ onFinish }) {
       setEventCooldowns(result.eventCooldowns);
       setQuarterIndex((q) => q + 1);
       setDecisions(newDecisions);
-      const nextStep = TUTORIAL_STEPS[step + 1];
+      const nextStep = module.steps[step + 1];
       if (nextStep && nextStep.lever) setLeverBaseline(newDecisions[nextStep.lever]);
     }
-    const isLast = step + 1 >= TUTORIAL_STEPS.length - 1;
-    if (isLast) pushAch(unlockAchievements(['tutorial_done']));
+    const willReachFinal = step + 1 >= module.steps.length - 1;
+    if (willReachFinal) onComplete();
     setStep((s) => s + 1);
   };
 
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
-      <AchievementToast toast={achToast} />
       <div style={{ maxWidth: 640, width: '100%' }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
-          onClick={() => { Audio.play('click'); onFinish('menu'); }}>
-          ← Прервать обучение
+          onClick={() => { Audio.play('click'); onExit(); }}>
+          ← К программе курса
         </button>
 
-        <div key={step} className="ems-fade-in" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span className="ems-serif" style={{ fontSize: 22, fontWeight: 600 }}>{cur.title}</span>
-          <span className="ems-hero-badge" style={{ marginTop: 0 }}>шаг {step + 1} из {TUTORIAL_STEPS.length}</span>
+        <div key={step} className="ems-fade-in">
+          <div className="ems-hero-eyebrow">{module.title}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 6 }}>
+            <span className="ems-serif" style={{ fontSize: 22, fontWeight: 600 }}>{cur.title}</span>
+            <span className="ems-hero-badge" style={{ marginTop: 0 }}>шаг {step + 1} из {module.steps.length}</span>
+          </div>
         </div>
         <div className="ems-hr" style={{ marginBottom: 18 }} />
 
         <div className="ems-kpi-strip" style={{ marginBottom: 18 }}>
-          {TUTORIAL_PINS.map((key) => {
+          {module.pins.map((key) => {
             const m = ALL_METRICS[key];
             const val = economy[key];
             return (
@@ -5944,14 +6200,20 @@ function TutorialScreen({ onFinish }) {
         )}
 
         {cur.isFinal ? (
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="ems-btn primary" style={{ flex: 1, padding: '13px 0', fontSize: 14 }}
-              onClick={() => { Audio.prime(); onFinish('setup'); }}>
-              Начать настоящую партию
-            </button>
-            <button className="ems-btn" style={{ padding: '13px 20px', fontSize: 13 }}
-              onClick={() => onFinish('menu')}>
-              В меню
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {isLastModule ? (
+              <button className="ems-btn primary" style={{ flex: 1, minWidth: 220, padding: '13px 0', fontSize: 14 }}
+                onClick={() => { Audio.prime(); onStartRealGame(); }}>
+                Начать настоящую партию
+              </button>
+            ) : (
+              <button className="ems-btn primary" style={{ flex: 1, minWidth: 220, padding: '13px 0', fontSize: 14 }}
+                onClick={() => { Audio.prime(); Audio.play('tab'); onGoNext(); }}>
+                Следующий модуль →
+              </button>
+            )}
+            <button className="ems-btn" style={{ padding: '13px 20px', fontSize: 13 }} onClick={() => { Audio.play('click'); onGoHub(); }}>
+              К программе курса
             </button>
           </div>
         ) : (
@@ -5960,6 +6222,99 @@ function TutorialScreen({ onFinish }) {
             Далее
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function TutorialHub({ onBack, onStartRealGame }) {
+  const [progress, setProgress] = useState(loadCourseProgress);
+  const [activeId, setActiveId] = useState(null);
+  const { toast: achToast, push: pushAch } = useAchievementToasts();
+
+  const isUnlocked = (i) => i === 0 || !!progress[TUTORIAL_MODULES[i - 1].id];
+  const doneCount = TUTORIAL_MODULES.filter((m) => progress[m.id]).length;
+
+  const completeModule = (mod, idx) => {
+    const next = markModuleDone(mod.id);
+    setProgress(next);
+    const achIds = ['tutorial_done'];
+    if (idx === TUTORIAL_MODULES.length - 1) achIds.push('tutorial_course_done');
+    pushAch(unlockAchievements(achIds));
+  };
+
+  if (activeId) {
+    const idx = TUTORIAL_MODULES.findIndex((m) => m.id === activeId);
+    const mod = TUTORIAL_MODULES[idx];
+    const next = TUTORIAL_MODULES[idx + 1];
+    return (
+      <>
+        <AchievementToast toast={achToast} />
+        <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === TUTORIAL_MODULES.length - 1}
+          onExit={() => setActiveId(null)}
+          onComplete={() => completeModule(mod, idx)}
+          onGoNext={next ? () => setActiveId(next.id) : null}
+          onGoHub={() => setActiveId(null)}
+          onStartRealGame={onStartRealGame}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+      <GlobalStyle />
+      <AchievementToast toast={achToast} />
+      <div style={{ maxWidth: 640, width: '100%' }}>
+        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+          onClick={() => { Audio.play('click'); onBack(); }}>
+          ← Назад в меню
+        </button>
+
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 30 }}>
+          <div className="ems-hero-eyebrow">Курс обучения</div>
+          <div className="ems-hero-title small">Как устроена экономика</div>
+          <div className="ems-hero-rule" />
+          <span className="ems-hero-badge"><GraduationCap size={11} color={COLOR.gold} />Пройдено {doneCount} из {TUTORIAL_MODULES.length}</span>
+          <div className="ems-hero-lede">
+            Пять модулей от поверхностного понимания к углублённому: каждый открывает следующий. Можно проходить заново — прогресс не сбрасывается.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+          {TUTORIAL_MODULES.map((mod, i) => {
+            const unlocked = isUnlocked(i);
+            const done = !!progress[mod.id];
+            const Icon = mod.icon;
+            const depthColor = mod.depth === 'deep' ? COLOR.rust : COLOR.teal;
+            const depthDim = mod.depth === 'deep' ? COLOR.rustDim : COLOR.tealDim;
+            return (
+              <div key={mod.id} onClick={() => { if (unlocked) { Audio.prime(); Audio.play('stamp'); setActiveId(mod.id); } }}
+                className="ems-card-btn ems-fade-in"
+                style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms`,
+                  opacity: unlocked ? 1 : 0.55, cursor: unlocked ? 'pointer' : 'not-allowed' }}
+                role="button" tabIndex={unlocked ? 0 : -1}
+                onKeyDown={(e) => { if (unlocked && (e.key === 'Enter' || e.key === ' ')) setActiveId(mod.id); }}>
+                <div className="ems-card-icon">
+                  {done ? <Check size={19} color={COLOR.teal} /> : unlocked ? <Icon size={19} color={COLOR.gold} /> : <Lock size={17} color={COLOR.faint} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{mod.title}</span>
+                    <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999,
+                      color: depthColor, border: `1px solid ${depthDim}`, background: depthDim }}>
+                      {mod.depth === 'deep' ? 'углублённо' : 'поверхностно'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
+                    {unlocked ? mod.summary : `Сначала пройдите «${TUTORIAL_MODULES[i - 1].title}»`}
+                  </div>
+                </div>
+                {unlocked && <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -6984,8 +7339,9 @@ export default function MacroSimulator() {
     }
     if (view === 'tutorial') {
       return (
-        <TutorialScreen key={theme}
-          onFinish={(next) => setView(next === 'setup' ? 'setup' : 'menu')}
+        <TutorialHub key={theme}
+          onBack={goMenu}
+          onStartRealGame={() => setView('setup')}
         />
       );
     }
