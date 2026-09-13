@@ -119,6 +119,7 @@ const GlobalStyle = () => (
     @media (max-width: 900px) { .ems-terminal { grid-template-columns: minmax(0,1fr); } }
     .ems-market-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap:12px; }
     @media (max-width: 420px) { .ems-market-grid { grid-template-columns: minmax(0,1fr); } }
+    @media (max-width: 560px) { .ems-casino-grid { grid-template-columns: minmax(0,1fr) !important; } }
     @keyframes emsPulse { 0%,100% { opacity: var(--p, 0.2); } 50% { opacity: calc(var(--p, 0.2) * 2.1); } }
     .ems-pulse { animation: emsPulse 3.4s ease-in-out infinite; }
     .ems-paper-cols { column-count: 2; }
@@ -3407,6 +3408,426 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
   );
 }
 
+/* =========================================================================================
+   КАЗИНО: отдельная вкладка для частного инвестора — рулетка, слоты, кости,
+   блэкджек и бинарные опционы. Играет на тот же капитал портфеля (book.cash),
+   выигрыш/проигрыш — через onResult(net), тем же путём, что и обычная сделка,
+   поэтому сразу видны в общей стоимости портфеля и в сравнении с соперником.
+========================================================================================= */
+const CASINO_GAMES = [
+  { id: 'roulette', label: 'Рулетка', icon: '🎡' },
+  { id: 'slots', label: 'Слоты', icon: '🎰' },
+  { id: 'dice', label: 'Кости', icon: '🎲' },
+  { id: 'blackjack', label: 'Блэкджек', icon: '🃏' },
+  { id: 'binary', label: 'Бинарные опционы', icon: '📉' },
+];
+
+const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+const rouletteColor = (n) => (n === 0 ? 'green' : ROULETTE_RED.has(n) ? 'red' : 'black');
+const ROULETTE_BETS = [
+  { id: 'red', label: 'Красное', mult: 2 }, { id: 'black', label: 'Чёрное', mult: 2 },
+  { id: 'even', label: 'Чёт', mult: 2 }, { id: 'odd', label: 'Нечет', mult: 2 },
+  { id: 'low', label: '1–18', mult: 2 }, { id: 'high', label: '19–36', mult: 2 },
+  { id: 'straight', label: 'Число', mult: 36 },
+];
+
+// Мелкая ставка = процент от свободных денег, крупная = абсолютная сумма —
+// общий контрол для всех игр казино, чтобы не плодить одну и ту же вёрстку пять раз
+function CasinoBet({ amount, setAmount, cash }) {
+  const setPct = (p) => setAmount(Math.max(0.01, Math.round(cash * p * 100) / 100));
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>
+        <span>Ставка</span><span className="ems-mono">{amount.toFixed(2)} млн</span>
+      </div>
+      <input type="range" min={0.01} max={Math.max(0.01, cash)} step={0.01} value={Math.min(amount, Math.max(0.01, cash))}
+        onChange={(e) => setAmount(parseFloat(e.target.value))} style={{ width: '100%' }} />
+      <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
+        {[0.1, 0.25, 0.5, 1].map((p) => (
+          <button key={p} className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 10.5 }} onClick={() => setPct(p)}>
+            {p === 1 ? 'макс.' : `${p * 100}%`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+const CasinoResult = ({ net }) => (net === null ? null : (
+  <div className="ems-mono" style={{ marginTop: 9, fontSize: 15, fontWeight: 700, color: net > 0 ? COLOR.teal : net < 0 ? COLOR.rust : COLOR.muted }}>
+    {net > 0 ? `+${net.toFixed(2)}` : net.toFixed(2)} млн
+  </div>
+));
+
+function RouletteGame({ cash, onResult }) {
+  const [betType, setBetType] = useState('red');
+  const [number, setNumber] = useState(7);
+  const [amount, setAmount] = useState(Math.min(1, cash));
+  const [spinning, setSpinning] = useState(false);
+  const [spin, setSpin] = useState(null);
+  const play = () => {
+    const bet = clamp(amount, 0.01, cash);
+    if (bet <= 0 || spinning) return;
+    setSpinning(true); Audio.play('tick');
+    setTimeout(() => {
+      const n = Math.floor(Math.random() * 37);
+      const color = rouletteColor(n);
+      const b = ROULETTE_BETS.find((x) => x.id === betType);
+      let win = false;
+      if (betType === 'straight') win = n === number;
+      else if (betType === 'red' || betType === 'black') win = color === betType;
+      else if (betType === 'even') win = n !== 0 && n % 2 === 0;
+      else if (betType === 'odd') win = n % 2 === 1;
+      else if (betType === 'low') win = n >= 1 && n <= 18;
+      else if (betType === 'high') win = n >= 19 && n <= 36;
+      const net = win ? bet * (b.mult - 1) : -bet;
+      onResult(net);
+      Audio.play(win ? 'coin' : 'click');
+      setSpin({ n, color, win, net });
+      setSpinning(false);
+    }, 900);
+  };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 18 }} className="ems-casino-grid">
+      <div>
+        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Тип ставки</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+          {ROULETTE_BETS.map((b) => (
+            <span key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} style={{ padding: '4px 9px', fontSize: 11 }}
+              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></span>
+          ))}
+        </div>
+        {betType === 'straight' && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>Число (0–36)</div>
+            <input type="number" min={0} max={36} value={number} onChange={(e) => setNumber(clamp(parseInt(e.target.value, 10) || 0, 0, 36))}
+              style={{ width: '100%', padding: '7px 9px', fontSize: 13, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+          </div>
+        )}
+        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
+        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={spinning || cash <= 0} onClick={play}>
+          {spinning ? 'Крутится…' : 'Крутить'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div className="ems-mono" style={{ fontSize: 48, fontWeight: 700, width: 90, height: 90, borderRadius: '50%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: !spin ? COLOR.panelAlt : spin.color === 'red' ? COLOR.rustDim : spin.color === 'black' ? COLOR.panelRaised : COLOR.tealDim,
+          border: `2px solid ${!spin ? COLOR.border : spin.color === 'red' ? COLOR.rust : spin.color === 'black' ? COLOR.borderStrong : COLOR.teal}`,
+          color: !spin ? COLOR.faint : spin.color === 'red' ? COLOR.rust : spin.color === 'black' ? COLOR.text : COLOR.teal }}>
+          {spinning ? '?' : spin ? spin.n : '—'}
+        </div>
+        {spin && !spinning && (
+          <div style={{ marginTop: 8, fontSize: 12, color: COLOR.muted }}>
+            Выпало {spin.n} ({spin.color === 'red' ? 'красное' : spin.color === 'black' ? 'чёрное' : 'зеро'}) — {spin.win ? 'выигрыш' : 'проигрыш'}
+          </div>
+        )}
+        <CasinoResult net={spin && !spinning ? spin.net : null} />
+      </div>
+    </div>
+  );
+}
+
+const SLOT_SYMBOLS = [
+  { id: 'cherry', icon: '🍒', weight: 40, pay3: 4, pay2: 1.5 },
+  { id: 'lemon', icon: '🍋', weight: 28, pay3: 6 },
+  { id: 'bell', icon: '🔔', weight: 16, pay3: 12 },
+  { id: 'gem', icon: '💎', weight: 8, pay3: 25 },
+  { id: 'seven', icon: '7️⃣', weight: 3, pay3: 60 },
+];
+const SLOT_WEIGHT_TOTAL = SLOT_SYMBOLS.reduce((a, s) => a + s.weight, 0);
+const pickSlotSymbol = () => {
+  let r = Math.random() * SLOT_WEIGHT_TOTAL;
+  for (const s of SLOT_SYMBOLS) { r -= s.weight; if (r <= 0) return s; }
+  return SLOT_SYMBOLS[0];
+};
+function SlotsGame({ cash, onResult }) {
+  const [amount, setAmount] = useState(Math.min(1, cash));
+  const [reels, setReels] = useState(null);
+  const [spinning, setSpinning] = useState(false);
+  const [net, setNet] = useState(null);
+  const play = () => {
+    const bet = clamp(amount, 0.01, cash);
+    if (bet <= 0 || spinning) return;
+    setSpinning(true); Audio.play('tick');
+    setTimeout(() => {
+      const r = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
+      let mult = 0;
+      if (r[0].id === r[1].id && r[1].id === r[2].id) mult = r[0].pay3;
+      else if (r.filter((s) => s.id === 'cherry').length >= 2) mult = SLOT_SYMBOLS[0].pay2;
+      const win = mult > 0;
+      const n = win ? bet * mult : -bet;
+      onResult(n);
+      Audio.play(win ? 'coin' : 'click');
+      setReels(r); setNet(n);
+      setSpinning(false);
+    }, 700);
+  };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 18 }} className="ems-casino-grid">
+      <div>
+        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
+        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={spinning || cash <= 0} onClick={play}>
+          {spinning ? 'Крутится…' : 'Крутить'}
+        </button>
+        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.5 }}>
+          {SLOT_SYMBOLS.map((s) => (<div key={s.id}>{s.icon}{s.icon}{s.icon} × {s.pay3}</div>))}
+          <div>🍒🍒 × {SLOT_SYMBOLS[0].pay2}</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, fontSize: 44 }}>
+          {(reels || [null, null, null]).map((s, i) => (
+            <div key={i} style={{ width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 4 }}>
+              {spinning ? '🎰' : s ? s.icon : '—'}
+            </div>
+          ))}
+        </div>
+        <CasinoResult net={spinning ? null : net} />
+      </div>
+    </div>
+  );
+}
+
+const DICE_BETS = [
+  { id: 'under', label: 'Меньше 7', mult: 2 }, { id: 'over', label: 'Больше 7', mult: 2 }, { id: 'seven', label: 'Ровно 7', mult: 5 },
+];
+function DiceGame({ cash, onResult }) {
+  const [betType, setBetType] = useState('over');
+  const [amount, setAmount] = useState(Math.min(1, cash));
+  const [dice, setDice] = useState(null);
+  const [rolling, setRolling] = useState(false);
+  const [net, setNet] = useState(null);
+  const play = () => {
+    const bet = clamp(amount, 0.01, cash);
+    if (bet <= 0 || rolling) return;
+    setRolling(true); Audio.play('tick');
+    setTimeout(() => {
+      const d1 = 1 + Math.floor(Math.random() * 6); const d2 = 1 + Math.floor(Math.random() * 6);
+      const sum = d1 + d2;
+      const b = DICE_BETS.find((x) => x.id === betType);
+      let win = false;
+      if (betType === 'under') win = sum < 7;
+      else if (betType === 'over') win = sum > 7;
+      else win = sum === 7;
+      const n = win ? bet * (b.mult - 1) : -bet;
+      onResult(n);
+      Audio.play(win ? 'coin' : 'click');
+      setDice([d1, d2, sum]); setNet(n);
+      setRolling(false);
+    }, 550);
+  };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 18 }} className="ems-casino-grid">
+      <div>
+        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Ставка на сумму двух костей</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+          {DICE_BETS.map((b) => (
+            <span key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} style={{ padding: '4px 9px', fontSize: 11 }}
+              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></span>
+          ))}
+        </div>
+        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
+        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={rolling || cash <= 0} onClick={play}>
+          {rolling ? 'Бросок…' : 'Бросить'}
+        </button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, fontSize: 40 }}>
+          <div style={{ width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 8 }}>{rolling ? '🎲' : dice ? dice[0] : '—'}</div>
+          <div style={{ width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 8 }}>{rolling ? '🎲' : dice ? dice[1] : '—'}</div>
+        </div>
+        {dice && !rolling && <div style={{ marginTop: 8, fontSize: 12, color: COLOR.muted }}>Сумма: {dice[2]}</div>}
+        <CasinoResult net={rolling ? null : net} />
+      </div>
+    </div>
+  );
+}
+
+const CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+const drawCard = () => CARD_RANKS[Math.floor(Math.random() * 13)];
+const cardValue = (c) => (c === 'A' ? 11 : (c === 'J' || c === 'Q' || c === 'K') ? 10 : parseInt(c, 10));
+function handValue(cards) {
+  let sum = cards.reduce((a, c) => a + cardValue(c), 0);
+  let aces = cards.filter((c) => c === 'A').length;
+  while (sum > 21 && aces > 0) { sum -= 10; aces--; }
+  return sum;
+}
+const Card = ({ c, hidden }) => (
+  <div className="ems-mono" style={{ width: 40, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: hidden ? COLOR.panelRaised : COLOR.text, color: hidden ? COLOR.faint : COLOR.ink, borderRadius: 4, fontSize: 15, fontWeight: 700,
+    border: `1px solid ${COLOR.border}` }}>{hidden ? '🂠' : c}</div>
+);
+function BlackjackGame({ cash, onResult }) {
+  const [amount, setAmount] = useState(Math.min(1, cash));
+  const [phase, setPhase] = useState('bet'); // bet | player | done
+  const [player, setPlayer] = useState([]);
+  const [dealer, setDealer] = useState([]);
+  const [bet, setBet] = useState(0);
+  const [outcome, setOutcome] = useState(null);
+  const resolve = (p, d, b) => {
+    const pv = handValue(p); const dv = handValue(d);
+    const pBJ = pv === 21 && p.length === 2; const dBJ = dv === 21 && d.length === 2;
+    let net; let text;
+    if (pv > 21) { net = -b; text = 'Перебор — вы проиграли.'; }
+    else if (pBJ && !dBJ) { net = b * 1.5; text = 'Блэкджек! Выплата 3:2.'; }
+    else if (dBJ && !pBJ) { net = -b; text = 'Блэкджек у дилера.'; }
+    else if (dv > 21) { net = b; text = 'Дилер перебрал — вы выиграли.'; }
+    else if (pv > dv) { net = b; text = 'Вы выиграли.'; }
+    else if (pv < dv) { net = -b; text = 'Дилер выиграл.'; }
+    else { net = 0; text = 'Ничья — ставка возвращена.'; }
+    onResult(net);
+    Audio.play(net > 0 ? 'coin' : net < 0 ? 'click' : 'tick');
+    setDealer(d); setOutcome({ text, net }); setPhase('done');
+  };
+  const deal = () => {
+    const b = clamp(amount, 0.01, cash);
+    if (b <= 0) return;
+    const p = [drawCard(), drawCard()]; const d = [drawCard(), drawCard()];
+    setPlayer(p); setDealer(d); setBet(b); setOutcome(null);
+    Audio.play('tick');
+    if (handValue(p) === 21 || handValue(d) === 21) resolve(p, d, b);
+    else setPhase('player');
+  };
+  const hit = () => {
+    const p = [...player, drawCard()];
+    setPlayer(p); Audio.play('tick');
+    if (handValue(p) > 21) resolve(p, dealer, bet);
+  };
+  const stand = () => {
+    let d = [...dealer];
+    while (handValue(d) < 17) d = [...d, drawCard()];
+    resolve(player, d, bet);
+  };
+  const again = () => { setPhase('bet'); setPlayer([]); setDealer([]); setOutcome(null); };
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 18 }} className="ems-casino-grid">
+      <div>
+        {phase === 'bet' ? (
+          <>
+            <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
+            <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={cash <= 0} onClick={deal}>Сдать карты</button>
+          </>
+        ) : phase === 'player' ? (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="ems-btn" style={{ flex: 1, padding: '10px 0' }} onClick={hit}>Ещё карту</button>
+            <button className="ems-btn primary" style={{ flex: 1, padding: '10px 0' }} onClick={stand}>Хватит</button>
+          </div>
+        ) : (
+          <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} onClick={again}>Ещё раз</button>
+        )}
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Дилер {phase !== 'bet' && phase !== 'player' && `— ${handValue(dealer)}`}</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+          {dealer.map((c, i) => (<Card key={i} c={c} hidden={phase === 'player' && i === 1} />))}
+        </div>
+        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Вы {player.length > 0 && `— ${handValue(player)}`}</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {player.map((c, i) => (<Card key={i} c={c} />))}
+        </div>
+        {outcome && (
+          <div style={{ marginTop: 10, fontSize: 12, color: COLOR.muted }}>{outcome.text}</div>
+        )}
+        <CasinoResult net={outcome ? outcome.net : null} />
+      </div>
+    </div>
+  );
+}
+
+function BinaryOptionGame({ cash, onResult }) {
+  const [instrId, setInstrId] = useState('eq_broad');
+  const [dir, setDir] = useState('up');
+  const [amount, setAmount] = useState(Math.min(1, cash));
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+  const play = () => {
+    const bet = clamp(amount, 0.01, cash);
+    if (bet <= 0 || busy) return;
+    setBusy(true); Audio.play('tick');
+    setTimeout(() => {
+      const up = Math.random() < 0.5;
+      const win = (dir === 'up' && up) || (dir === 'down' && !up);
+      const net = win ? bet * 0.85 : -bet;
+      onResult(net);
+      Audio.play(win ? 'coin' : 'click');
+      setRes({ up, win, net });
+      setBusy(false);
+    }, 1100);
+  };
+  const instr = INSTR_BY_ID[instrId];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 18 }} className="ems-casino-grid">
+      <div>
+        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Инструмент</div>
+        <select value={instrId} onChange={(e) => setInstrId(e.target.value)}
+          style={{ width: '100%', padding: '7px 9px', fontSize: 12, marginBottom: 10, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }}>
+          {INSTRUMENTS.filter((i) => i.kind === 'spot').map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
+        </select>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <button className="ems-btn" style={{ flex: 1, padding: '9px 0', background: dir === 'up' ? COLOR.tealDim : COLOR.panelAlt, borderColor: dir === 'up' ? COLOR.teal : COLOR.border, color: dir === 'up' ? COLOR.teal : COLOR.text }}
+            onClick={() => setDir('up')}><ArrowUpRight size={13} style={{ verticalAlign: -2 }} /> Вверх</button>
+          <button className="ems-btn" style={{ flex: 1, padding: '9px 0', background: dir === 'down' ? COLOR.rustDim : COLOR.panelAlt, borderColor: dir === 'down' ? COLOR.rust : COLOR.border, color: dir === 'down' ? COLOR.rust : COLOR.text }}
+            onClick={() => setDir('down')}><ArrowDownRight size={13} style={{ verticalAlign: -2 }} /> Вниз</button>
+        </div>
+        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
+        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={busy || cash <= 0} onClick={play}>
+          {busy ? 'Идёт торг…' : 'Заключить пари'}
+        </button>
+        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9 }}>Выплата 1.85× ставки при угадывании направления {instr ? instr.name.toLowerCase() : ''} — без плеча, без комиссии, чистое пари на монетку.</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <div style={{ fontSize: 40 }}>{busy ? '🎲' : res ? (res.up ? '📈' : '📉') : '📊'}</div>
+        {res && !busy && (
+          <div style={{ marginTop: 8, fontSize: 12, color: COLOR.muted }}>
+            Рынок пошёл {res.up ? 'вверх' : 'вниз'} — {res.win ? 'вы угадали' : 'вы не угадали'}
+          </div>
+        )}
+        <CasinoResult net={busy ? null : res ? res.net : null} />
+      </div>
+    </div>
+  );
+}
+
+function CasinoScreen({ book, onCasino }) {
+  const [game, setGame] = useState('roulette');
+  const cash = Math.max(0, book.cash);
+  return (
+      <div className="ems-panel" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', alignItems: 'center', padding: '9px 13px',
+          borderBottom: `1px solid ${COLOR.border}`, background: COLOR.panelAlt }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Dices size={13} color={COLOR.gold} />
+            <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Казино</span>
+          </span>
+          <span style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'baseline' }}>
+            <span style={{ color: COLOR.muted }}>Свободные деньги</span><span className="ems-mono" style={{ color: cash < 0.01 ? COLOR.rust : COLOR.text }}>{cash.toFixed(2)} млн</span>
+          </span>
+          <span style={{ fontSize: 10.5, color: COLOR.faint, marginLeft: 'auto' }}>
+            Матожидание отрицательное — это развлечение, а не стратегия
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '9px 13px', borderBottom: `1px solid ${COLOR.border}` }}>
+          {CASINO_GAMES.map((g) => (
+            <span key={g.id} className={`ems-tab ${game === g.id ? 'active' : ''}`} style={{ padding: '5px 10px', fontSize: 11.5 }}
+              onClick={() => { Audio.play('tab'); setGame(g.id); }}>{g.icon} {g.label}</span>
+          ))}
+        </div>
+        <div style={{ padding: 16 }}>
+          {cash <= 0 && (
+            <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 12 }}>Свободных денег нет — освободите средства из позиций на «Рынке», чтобы сделать ставку.</div>
+          )}
+          {game === 'roulette' && <RouletteGame cash={cash} onResult={onCasino} />}
+          {game === 'slots' && <SlotsGame cash={cash} onResult={onCasino} />}
+          {game === 'dice' && <DiceGame cash={cash} onResult={onCasino} />}
+          {game === 'blackjack' && <BlackjackGame cash={cash} onResult={onCasino} />}
+          {game === 'binary' && <BinaryOptionGame cash={cash} onResult={onCasino} />}
+        </div>
+      </div>
+  );
+}
 
 /* Интерактивный мини-график: подсказка по наведению и отметки сделок */
 function MiniChart({ data, color, height = 46, label, fmt, marks }) {
@@ -4031,6 +4452,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     const instr = INSTR_BY_ID[instrId];
     return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
   });
+  const onCasino = (net) => setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net }));
+  const [marketTab, setMarketTab] = useState('market');
   // соперник должен видеть стоимость портфеля не только в момент «готов», а
   // вскоре после каждой сделки — иначе до конца квартала список эталонов
   // выглядит так, будто ничего не пишется, хотя сделка уже прошла
@@ -4462,7 +4885,17 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
         <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           {isTraderRoom && (
-            <TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} />
+            <>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[['market', 'Рынок', TrendingUp], ['casino', 'Казино', Dices]].map(([tid, label, Icon]) => (
+                  <span key={tid} className={`ems-tab ${marketTab === tid ? 'active' : ''}`} style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                    onClick={() => { Audio.play('tab'); setMarketTab(tid); }}><Icon size={13} />{label}</span>
+                ))}
+              </div>
+              {marketTab === 'market'
+                ? <TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} />
+                : <CasinoScreen book={portfolio} onCasino={onCasino} />}
+            </>
           )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
           <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
@@ -5082,6 +5515,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const instr = INSTR_BY_ID[id];
     return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
   });
+  const onCasino = (net) => setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net }));
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
   const groups = roleDef.groups;
   const levers = LEVERS.filter((l) => groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
@@ -5283,7 +5717,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <Gauge value={economy.wellbeing} size={74} />
           </div>
           <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
-            {[['dash', 'Панель', GaugeIcon], ['market', 'Рынок', TrendingUp]].map(([id, label, Icon]) => (
+            {[['dash', 'Панель', GaugeIcon], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
               <button key={id} className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
                 background: view === id ? COLOR.gold : COLOR.panelAlt, color: view === id ? COLOR.ink : COLOR.text, borderColor: view === id ? COLOR.gold : COLOR.border }}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
@@ -5376,6 +5810,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {view === 'market' && (
         <MarketScreen economy={economy} prev={prevEcon} history={history}
           book={isTrader ? portfolio : null} onTrade={onTrade} />
+      )}
+
+      {view === 'casino' && isTrader && (
+        <div style={{ padding: '0 18px 18px' }}>
+          <CasinoScreen book={portfolio} onCasino={onCasino} />
+        </div>
       )}
 
       {narrow && view === 'dash' && (
