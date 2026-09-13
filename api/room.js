@@ -259,6 +259,25 @@ async function handleRequest(req, res) {
     return res.status(200).json({ room: publicView(out.room) });
   }
 
+  if (action === 'report_portfolio') {
+    // трейдер сообщает текущую стоимость портфеля не только при готовности к
+    // следующему кварталу, а после каждой сделки (см. клиент) — иначе соперник
+    // видел бы только значение на момент ПРОШЛОГО «готов», и половину квартала
+    // список эталонов выглядел бы так, будто ничего не пишется
+    const id = String(body.id || '').toUpperCase();
+    const seat = body.seat;
+    if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    if (!Number.isFinite(body.value)) return res.status(400).json({ error: 'Некорректное значение' });
+    const out = await withRoom(id, (room) => {
+      if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
+      // не версия партии и не будит партнёра полным обновлением по сути дела —
+      // но клиент опрашивает по version, поэтому бампаем, иначе партнёр не увидит
+      return { ...room, portfolioValues: { ...room.portfolioValues, [seat]: clamp(body.value, 0, 1e9) }, version: room.version + 1 };
+    });
+    if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    return res.status(200).json({ room: publicView(out.room) });
+  }
+
   if (action === 'chat') {
     const id = String(body.id || '').toUpperCase();
     const seat = body.seat;

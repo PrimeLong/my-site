@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
 import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
-  fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
+  reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
 } from 'recharts';
@@ -2888,9 +2888,14 @@ function AllocationDonut({ rows, size = 124, thickness = 16 }) {
   );
 }
 function benchValues(book, economy) {
-  if (!book.benchStart) return null;
+  // benchStart обычно проставляется в settleQuarter при первом переходе
+  // квартала — но до этого момента (весь первый квартал партии) книга его
+  // ещё не имеет, а не «нет данных»: значит, отсчёт эталонов = сейчас, и
+  // все они совпадают со стартовым капиталом, а не пропадают из интерфейса
+  const start = book.benchStart || { stockIndex: economy.stockIndex, bondIndex: economy.bondIndex,
+    depositIndex: economy.depositIndex, priceLevel: economy.priceLevel };
   const out = {};
-  BENCHMARKS.forEach((b) => { out[b.id] = (book.startValue || 10) * economy[b.key] / book.benchStart[b.key]; });
+  BENCHMARKS.forEach((b) => { out[b.id] = (book.startValue || 10) * economy[b.key] / start[b.key]; });
   return out;
 }
 
@@ -3348,6 +3353,9 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
                 </span>
               </div>
             ))}
+          {opponent && !Number.isFinite(opponent.value) && (
+            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3 }}>{opponent.label} ещё не выходил на рынок в этой партии.</div>
+          )}
         </div>
       )}
       {alloc.length > 0 && (
@@ -4023,6 +4031,17 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     const instr = INSTR_BY_ID[instrId];
     return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
   });
+  // соперник должен видеть стоимость портфеля не только в момент «готов», а
+  // вскоре после каждой сделки — иначе до конца квартала список эталонов
+  // выглядит так, будто ничего не пишется, хотя сделка уже прошла
+  React.useEffect(() => {
+    if (room.mode !== 'trader') return undefined;
+    const value = bookValue(portfolio, room.economy, null);
+    const t = setTimeout(() => {
+      reportPortfolioValue(id, seat, token, value).then((r) => setRoom(r.room)).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [portfolio, room.mode]);
   const [chatText, setChatText] = useState('');
   const [nowTick, setNowTick] = useState(() => Date.now());
   React.useEffect(() => { const iv = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(iv); }, []);
@@ -4126,11 +4145,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     try {
       // стоимость портфеля сообщаем только в «рыночной» комнате — сервер не
       // знает позиций трейдера (они клиентские), только текущую сумму, чтобы
-      // соперник видел её в своём списке эталонов (см. PortfolioSummary)
-      const portfolioValue = isTraderRoom ? (() => {
-        const p = bookParts(portfolio, room.economy, null);
-        return portfolio.cash + p.spot + p.futPnl + p.optVal;
-      })() : undefined;
+      // соперник видел её в своём списке эталонов (см. PortfolioSummary);
+      // основной канал — report_portfolio после каждой сделки (см. выше), это
+      // просто подстраховка на случай, если тот эффект ещё не успел отправиться
+      const portfolioValue = isTraderRoom ? bookValue(portfolio, room.economy, null) : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue);
       setRoom(r.room); setSent(true); Audio.play('stamp');
     } catch (e) { failWithError(e); } finally { setBusy(false); }
