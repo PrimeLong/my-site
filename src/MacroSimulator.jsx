@@ -742,26 +742,32 @@ tr('bankrun', 'Очередь у банка', 'синт-арпеджио, PWM-п
 });
 
 /* --------------------------------- ВОЙНА --------------------------------- */
-tr('warmarch', 'Марш', 'тяжёлые литавры, маршевый бас', 'war', {
-  bpm: 108, swing: 0, reverb: 0.24,
+// Настоящий марш: пунктирный «длинный-короткий» ритм (3+1 шестнадцатых — то же
+// «та-та́» дудочки и барабана, что в строевых маршах), духовые стабы на каждую
+// четверть и малый барабан с форшлагами-дробью перед каждой сильной долей —
+// вместо синтвейв-пэда и мелодии, унаследованной от «паники».
+tr('warmarch', 'Марш', 'духовые стабы, дробь малого барабана, маршевый бас', 'war', {
+  bpm: 112, swing: 0, reverb: 0.2,
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
-  melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:A4:2 34:C5:2 36:A4:4 40:F4:8 48:E5:4 52:C5:4 56:G4:8 64:A4:2 66:Bb4:2 68:A4:2 70:G4:2 72:F4:8 80:D5:4 84:F5:4 88:Bb4:8 96:G4:4 100:Bb4:4 104:D5:8 112:C#5:4 116:E5:4 120:A4:8'),
-  melB: MEL('0:F5:4 4:D5:4 8:Bb4:8 16:E5:4 20:C5:4 24:G4:8 32:A5:4 36:F5:4 40:D5:8 48:E5:4 52:C#5:4 56:A4:8'),
+  melA: MEL('0:D4:3 3:F4:1 4:A4:3 7:D5:1 8:D5:4 12:C5:2 14:Bb4:2 16:C5:3 19:A4:1 20:F4:3 23:C5:1 24:Bb4:4 28:A4:2 30:G4:2 32:F4:3 35:A4:1 36:C5:3 39:F5:1 40:F5:4 44:E5:2 46:D5:2 48:E5:3 51:C5:1 52:G4:3 55:C5:1 56:C5:4 60:B4:2 62:A4:2 64:D4:3 67:F4:1 68:A4:3 71:D5:1 72:D5:4 76:C5:2 78:Bb4:2 80:C5:3 83:A4:1 84:F4:3 87:C5:1 88:Bb4:4 92:A4:2 94:G4:2 96:G4:3 99:Bb4:1 100:D5:3 103:G5:1 104:G5:4 108:F5:2 110:Eb5:2 112:E5:3 115:C#5:1 116:A4:3 119:E5:1 120:A4:4 124:D5:4'),
+  melB: MEL('0:F4:3 3:Bb4:1 4:D5:3 7:F5:1 8:F5:4 12:D5:2 14:Bb4:2 16:E4:3 19:G4:1 20:C5:3 23:E5:1 24:E5:4 28:C5:2 30:G4:2 32:F4:3 35:A4:1 36:D5:3 39:F5:1 40:F5:4 44:D5:2 46:A4:2 48:C#5:3 51:E5:1 52:A4:3 55:C#5:1 56:A4:6 62:D5:2'),
   sections: [
-    sec('A', 'melA', 'drive', 'piano bass strings timpani', 0.85, DR('x.x.x.x.x.x.x.x.', '....x.......x...', 'o...o...o...o...')),
-    sec('B', 'melB', 'drive', 'piano bass strings timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '..x...x...x...x.', 'o.o.o.o.o.o.o.o.')),
-    sec('A', 'melA', 'drive', 'piano bass strings cello timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'piano bass brass timpani', 0.85, DR('x.......x.......', '....x.......x...', 'o...o...o...o...')),
+    sec('B', 'melB', 'drive', 'piano bass brass timpani', 1.0, DR('x.......x.......', '....x.......xxx.', 'o.o.o.o.o.o.o.o.')),
+    sec('A', 'melA', 'drive', 'piano bass brass strings cello timpani', 1.0, DR('x...x...x...x...', '....x.x.....xxx.', 'oooooooooooooooo')),
   ],
 });
-tr('trenches', 'Окопы', 'литавры, низкая виолончель', 'war', {
-  bpm: 92, swing: 0, reverb: 0.34,
+// Окопы: не марш, а гнетущая, замедленная поступь — редкая, тянущаяся мелодия
+// в низком регистре без дроби и стабов, чтобы отчётливо звучать иначе, чем марш.
+tr('trenches', 'Окопы', 'литавры, низкая виолончель, редкая поступь', 'war', {
+  bpm: 90, swing: 0, reverb: 0.36,
   A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
   B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
-  melA: MEL('0:D5:4 4:Eb5:4 8:D5:8 16:Bb4:4 20:G5:4 24:Eb5:8 32:C5:4 36:A4:4 40:F4:8 48:F#4:4 52:A4:4 56:D5:8 64:D5:4 68:Eb5:4 72:F5:8 80:G5:4 84:Eb5:4 88:Bb4:8 96:C5:4 100:Eb5:4 104:G5:8 112:F#5:4 116:A5:4 120:D5:8'),
-  melB: MEL('0:G5:4 4:Bb5:4 8:Eb5:8 16:C5:4 20:F5:4 24:A4:8 32:Bb4:4 36:D5:4 40:G5:8 48:A5:4 52:F#5:4 56:D5:8'),
+  melA: MEL('0:Bb4:6 8:G4:4 12:D4:4 16:Eb5:6 24:Bb4:4 28:G4:4 32:A4:6 40:F4:4 44:C4:4 48:F#4:6 56:D4:4 60:A3:4 64:Bb4:6 72:G4:4 76:D4:4 80:Eb5:6 88:Bb4:4 92:G4:4 96:Eb4:6 104:C4:4 108:G3:4 112:F#4:6 120:A4:6'),
+  melB: MEL('0:G4:4 4:Bb4:4 8:Eb5:8 16:F4:4 20:A4:4 24:C5:8 32:Bb4:4 36:D5:4 40:G5:8 48:F#4:4 52:A4:4 56:D5:8'),
   sections: [
-    sec('A', 'melA', 'sustain', 'piano bass cello timpani', 0.8, DR('x.......x.......', '....x.......x...', 'o.......o.......')),
+    sec('A', 'melA', 'sustain', 'piano bass cello timpani', 0.8, DR('x.......x.......', '....x...........', 'o.......o.......')),
     sec('B', 'melB', 'drive', 'piano bass cello timpani', 0.95, DR('x...x...x...x...', '....x.......x...', 'o...o...o...o...')),
     sec('A', 'melA', 'drive', 'piano bass cello strings timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
   ],
@@ -1048,6 +1054,29 @@ const Audio = (() => {
       o.connect(a); a.connect(g); o.start(t); o.stop(t + d + 0.05);
     });
   };
+  // Синт-медь: три пилы в унисон через ФНЧ с восходящей атакой фильтра («открывающийся»
+  // тембр classic synth-brass) — духовые стабы для военной/маршевой темы, единственный
+  // голос в движке с настоящим фанфарным характером.
+  const brass = (t, notes, dur, vel) => {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, vel), t + 0.045);
+    g.gain.setValueAtTime(Math.max(0.0004, vel), t + Math.max(dur - 0.09, 0.05));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 4;
+    filt.frequency.setValueAtTime(480, t);
+    filt.frequency.exponentialRampToValueAtTime(3600, t + 0.07);
+    filt.frequency.exponentialRampToValueAtTime(1500, t + dur);
+    filt.connect(g); g.connect(dry);
+    sendTo(g, verbIn, track.reverb * 0.3); sendTo(g, echo, 0.12);
+    notes.forEach((midi) => {
+      [-6, 0, 6].forEach((det) => {
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(midi); o.detune.value = det;
+        const a = ctx.createGain(); a.gain.value = 0.38 / notes.length;
+        o.connect(a); a.connect(filt); o.start(t); o.stop(t + dur + 0.05);
+      });
+    });
+  };
   // Синт-бас: пила + суб-осциллятор на октаву ниже через резонансный ФНЧ с щелчком атаки.
   const cello = (t, midi, dur, vel) => {
     const f = hz(midi);
@@ -1238,6 +1267,8 @@ const Audio = (() => {
       if (has('strings')) strings(t, voicing.slice(1, 4), sd * 16 * 0.92, 0.042 * dyn);
       if (has('timpani') && (bar % 2 === 0)) timpani(t, voicing[0] - 12, 0.8 * dyn);
     }
+    // духовые стабы на каждую четверть — маршевое «ум-па», а не длинная педаль
+    if (has('brass') && pos % 4 === 0) brass(t, voicing.slice(0, 3), sd * 3.4, 0.1 * dyn);
     // бас — постоянные восьмые с движением по тонам аккорда (root/fifth/octave/third),
     // а не статичная педаль: главный источник «драйва» в синтвейве
     if (pos % 2 === 0) {
@@ -4280,16 +4311,16 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 </button>
               )}
             </div>
-            {/* тот же газетный язык, что и в «Газете» (двойная линейка, бумага) — квартальный
-                отчёт и есть передовица, не отдельный от неё жанр текста */}
-            <div style={{ background: COLOR.paper, color: COLOR.paperText, padding: '16px 18px',
-              borderTop: `3px double ${COLOR.paperRule}`, borderLeft: `1px solid ${COLOR.paperRule}`,
-              borderRight: `1px solid ${COLOR.paperRule}`, borderBottom: `1px solid ${COLOR.paperRule}` }}>
-              <div className="ems-mono" style={{ fontSize: 9, color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>Бюллетень квартала</div>
+            {/* официальный бюллетень, но в палитре кабинета, а не полноцветной «Газеты»:
+                двойная линейка сохраняет жанр, фон и текст остаются тёмными */}
+            <div style={{ background: COLOR.panelRaised, color: COLOR.text, padding: '16px 18px',
+              borderTop: `3px double ${COLOR.gold}`, borderLeft: `1px solid ${COLOR.border}`,
+              borderRight: `1px solid ${COLOR.border}`, borderBottom: `1px solid ${COLOR.border}` }}>
+              <div className="ems-mono" style={{ fontSize: 9, color: COLOR.gold, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>Бюллетень квартала</div>
               {room.report ? (
                 <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }}>{room.report}</div>
               ) : (
-                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.</div>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.</div>
               )}
             </div>
           </div>
@@ -5294,21 +5325,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
               {lastReport && <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => { Audio.play('click'); setShowWhy(true); }}><Info size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Почему это произошло?</button>}
             </div>
-            {/* тот же газетный язык, что и в «Газете» (двойная линейка, бумага) — квартальный
-                отчёт и есть передовица, не отдельный от неё жанр текста */}
-            <div style={{ background: COLOR.paper, color: COLOR.paperText, padding: '16px 18px',
-              borderTop: `3px double ${COLOR.paperRule}`, borderLeft: `1px solid ${COLOR.paperRule}`,
-              borderRight: `1px solid ${COLOR.paperRule}`, borderBottom: `1px solid ${COLOR.paperRule}` }}>
+            {/* официальный бюллетень, но в палитре кабинета, а не полноцветной «Газеты»:
+                двойная линейка сохраняет жанр, фон и текст остаются тёмными */}
+            <div style={{ background: COLOR.panelRaised, color: COLOR.text, padding: '16px 18px',
+              borderTop: `3px double ${COLOR.gold}`, borderLeft: `1px solid ${COLOR.border}`,
+              borderRight: `1px solid ${COLOR.border}`, borderBottom: `1px solid ${COLOR.border}` }}>
               {lastReport ? (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${COLOR.paperRule}`, paddingBottom: 8, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${COLOR.border}`, paddingBottom: 8, marginBottom: 10 }}>
                     <span className="ems-serif" style={{ fontSize: 14, fontWeight: 700 }}>{history[history.length - 1].label}</span>
-                    <span className="ems-mono" style={{ fontSize: 9, color: COLOR.paperMuted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>бюллетень · {roleDef.short}</span>
+                    <span className="ems-mono" style={{ fontSize: 9, color: COLOR.gold, letterSpacing: '0.08em', textTransform: 'uppercase' }}>бюллетень · {roleDef.short}</span>
                   </div>
                   <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }} role="status" aria-live="polite">{lastReport}</div>
                 </>
               ) : (
-                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Настройте политику слева и завершите первый квартал. Помните: между решением и результатом стоит цепочка — ставка меняет стоимость кредита, кредит меняет спрос, спрос меняет цены.</div>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>Настройте политику слева и завершите первый квартал. Помните: между решением и результатом стоит цепочка — ставка меняет стоимость кредита, кредит меняет спрос, спрос меняет цены.</div>
               )}
             </div>
           </div>
