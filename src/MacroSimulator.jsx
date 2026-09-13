@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
+﻿import React, { useState, useMemo, useCallback } from 'react';
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
 } from 'recharts';
@@ -5489,8 +5490,360 @@ function IRFModal({ economy, decisions, lever, value, difficulty, onClose }) {
   );
 }
 
+
+/* =========================================================================================
+   СЕТЕВАЯ ИГРА: лобби (создать/войти) и экран партии, синхронизированный с сервером.
+   Сервер (api/room.js) считает квартал, когда решения прислали оба места; здесь — только
+   отображение состояния комнаты и отправка своих решений.
+========================================================================================= */
+const NETWORK_SEATS = ['central_bank', 'ministry_finance'];
+const seatRole = (seat) => ROLES.find((r) => r.id === seat);
+
+function NetworkLobby({ onEnter }) {
+  const [tab, setTab] = useState('create');
+  const [seat, setSeat] = useState('central_bank');
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [difficulty, setDifficulty] = useState('medium');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [created, setCreated] = useState(null);
+
+  const doCreate = async () => {
+    setBusy(true); setError('');
+    try {
+      const r = await createRoom({ difficulty });
+      setCreated(r.id); setCode(r.id); setTab('join');
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const doJoin = async () => {
+    if (!code.trim()) { setError('Введите код комнаты.'); return; }
+    setBusy(true); setError('');
+    try {
+      const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
+      Audio.play('stamp'); Audio.prime();
+      onEnter({ id: code.trim().toUpperCase(), seat, token: r.token, room: r.room });
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ maxWidth: 640, width: '100%' }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
+        {[['create', 'Создать комнату'], ['join', 'Войти по коду']].map(([id, label]) => (
+          <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
+        ))}
+      </div>
+
+      {tab === 'create' && (
+        <div className="ems-panel" style={{ padding: 18 }}>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая партия на двоих</div>
+          <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
+            Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике.
+            Квартал наступает, когда решения пришлют оба; если партнёр ещё не подключился, его место временно ведёт бот.
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Сложность партии</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {DIFFICULTIES.map((d) => (
+                <button key={d.id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
+                  background: difficulty === d.id ? COLOR.gold : COLOR.panelAlt, color: difficulty === d.id ? COLOR.ink : COLOR.text,
+                  borderColor: difficulty === d.id ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('click'); setDifficulty(d.id); }}>{d.title}</button>
+              ))}
+            </div>
+          </div>
+          <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doCreate}>
+            {busy ? 'Создаём…' : 'Создать комнату'}
+          </button>
+          {created && (
+            <div style={{ marginTop: 14, fontSize: 13, color: COLOR.teal, borderLeft: `2px solid ${COLOR.teal}`, paddingLeft: 10 }}>
+              Комната создана: <b className="ems-mono">{created}</b>. Отправьте этот код второму игроку и заполните форму справа, чтобы войти в неё самому.
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'join' && (
+        <div className="ems-panel" style={{ padding: 18 }}>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Войти в комнату</div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Код комнаты</div>
+            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="например, DA9X6"
+              className="ems-mono" style={{ width: '100%', padding: '9px 11px', fontSize: 14, letterSpacing: '0.08em',
+                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Ваше имя</div>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="как вас видит партнёр"
+              style={{ width: '100%', padding: '9px 11px', fontSize: 13,
+                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Ваша роль</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {NETWORK_SEATS.map((sx) => {
+                const rd = seatRole(sx); const RoleIcon = ROLE_ICON[rd.icon];
+                return (
+                  <button key={sx} className="ems-btn" style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                    background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
+                    borderColor: seat === sx ? COLOR.gold : COLOR.border }}
+                    onClick={() => { Audio.play('click'); setSeat(sx); }}>
+                    <RoleIcon size={15} />{rd.short}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
+            {busy ? 'Входим…' : 'Войти в партию'}
+          </button>
+        </div>
+      )}
+      {error && <div style={{ marginTop: 10, fontSize: 12.5, color: COLOR.rust }}>{error}</div>}
+    </div>
+  );
+}
+
+function NetworkGameScreen({ network, theme, setTheme, onExit }) {
+  const { id, seat, token } = network;
+  const [room, setRoom] = useState(network.room);
+  const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
+  const [note, setNote] = useState('');
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [showWhy, setShowWhy] = useState(false);
+  const prevQuarter = React.useRef(room.quarterIndex);
+
+  React.useEffect(() => watchRoom(id, (r) => {
+    setRoom(r);
+    if (r.quarterIndex !== prevQuarter.current) {
+      prevQuarter.current = r.quarterIndex;
+      setSent(false);
+      setDecisions((d) => defaultDecisions(r.economy, d));
+      Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
+    }
+    Audio.setMood(r.economy);
+  }, (e) => setError(e.message)), [id]);
+
+  const roleDef = seatRole(seat);
+  const RoleIcon = ROLE_ICON[roleDef.icon];
+  const otherSeat = seat === 'central_bank' ? 'ministry_finance' : 'central_bank';
+  const otherRole = seatRole(otherSeat);
+  const levers = LEVERS.filter((l) => roleDef.groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
+  const economy = room.economy;
+  const prevEcon = room.history.length >= 2 ? room.history[room.history.length - 2] : economy;
+  const setLever = (id2, v) => setDecisions((d) => ({ ...d, [id2]: v }));
+  const shareKey = (lid) => (lid === 'shareHealth' ? 'health' : lid === 'shareEducation' ? 'education' : lid === 'shareScience' ? 'science' : lid === 'shareDefense' ? 'defense' : 'admin');
+  const leverDisplay = (l) => (l.subgroup === 'budget' ? economy.budgetShares[shareKey(l.id)] : economy[l.id]);
+  const [chartGroup, setChartGroup] = useState('output');
+  const [hiddenSeries, setHiddenSeries] = useState([]);
+  const [period, setPeriod] = useState('5y');
+  const [activeTab, setActiveTab] = useState('economy');
+
+  const send = async () => {
+    setBusy(true); setError('');
+    try {
+      const r = await submitDecisions(id, seat, token, decisions, note.trim() || null);
+      setRoom(r.room); setSent(true); Audio.play('stamp');
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  const retract = async () => {
+    setBusy(true); setError('');
+    try { const r = await cancelSubmission(id, seat, token); setRoom(r.room); setSent(false); Audio.play('click'); }
+    catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+
+  const waitingForOther = sent && !room.ready[otherSeat];
+  const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
+
+  return (
+    <div className="ems-root">
+      <GlobalStyle />
+      <Atmosphere regime={economy.regime}
+        intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
+      {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
+
+      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
+        padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 4, background: COLOR.goldDim, border: `1px solid ${COLOR.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <RoleIcon size={18} color={COLOR.gold} />
+          </div>
+          <div>
+            <div className="ems-serif" style={{ fontSize: 18 }}>Сетевая партия · комната {room.id}</div>
+            <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
+              вы — {roleDef.title} · партнёр — {room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'} за {otherRole.short}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
+            <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{room.quarterLabel}</div>
+          </div>
+          <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
+            <Gauge value={economy.wellbeing} size={68} />
+          </div>
+          <AudioControls />
+          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти из комнаты" onClick={() => { Audio.play('click'); onExit(); }}>
+            <RotateCcw size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ padding: '14px 18px 4px' }}>
+        <div className="ems-kpi-strip">
+          <KpiTile label="ВВП" value={fmtMoney(economy.gdp)} delta={economy.gdp - prevEcon.gdp} icon={TrendingUp} />
+          <KpiTile label="Разрыв выпуска" value={fmtSignedPct(economy.outputGap)} delta={economy.outputGap - prevEcon.outputGap} icon={Activity} />
+          <KpiTile label="Инфляция" value={pctFmt(economy.inflation)} delta={economy.inflation - prevEcon.inflation} invert icon={Coins} />
+          <KpiTile label="Безработица" value={pctFmt(economy.unemployment)} delta={economy.unemployment - prevEcon.unemployment} invert icon={Users} />
+          <KpiTile label="Госдолг / ВВП" value={pctFmt(economy.debtToGdp)} delta={economy.debtToGdp - prevEcon.debtToGdp} invert icon={Landmark} />
+        </div>
+      </div>
+
+      <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <RegimeBanner economy={economy} />
+      </div>
+
+      <div className="ems-grid" style={{ padding: 18 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="ems-panel" style={{ padding: 14 }}>
+            <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <RoleIcon size={14} />Ваши полномочия
+            </div>
+            {['monetary', 'fiscal'].filter((g) => roleDef.groups.includes(g)).map((g) => (
+              <React.Fragment key={g}>
+                {['core', 'macropru', 'taxes', 'budget'].map((sub) => {
+                  const set = levers.filter((l) => l.group === g && l.subgroup === sub);
+                  if (!set.length) return null;
+                  return set.map((l) => (
+                    <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
+                      onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
+                  ));
+                })}
+                {g === 'monetary' && <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />}
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="ems-panel" style={{ padding: 13 }}>
+            <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Сообщение партнёру</div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="необязательно — придёт вместе с вашим решением"
+              style={{ width: '100%', minHeight: 56, padding: 8, fontSize: 12, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text, resize: 'vertical' }} />
+            {otherAction && otherAction.note && (
+              <div style={{ marginTop: 8, fontSize: 11.5, borderLeft: `2px solid ${COLOR.blue}`, paddingLeft: 8, color: COLOR.muted }}>
+                <span style={{ color: COLOR.blue }}>{room.names[otherSeat] || 'партнёр'}: </span>«{otherAction.note}»
+              </div>
+            )}
+            {otherAction && otherAction.quote && (
+              <div style={{ marginTop: 8, fontSize: 11.5, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 8, color: COLOR.muted }}>
+                <span style={{ color: COLOR.faint }}>{otherRole.short} (бот): </span>«{otherAction.quote}»
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <NewsTerminal items={room.news} onOpenPaper={() => {}} />
+          <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
+            hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          <div className="ems-panel" style={{ padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
+              {room.report && room.reasons && (
+                <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => setShowWhy(true)}>
+                  <Info size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Почему это произошло?
+                </button>
+              )}
+            </div>
+            <div style={{ background: COLOR.panelAlt, color: COLOR.text, padding: '15px 17px', borderRadius: 2, border: `1px solid ${COLOR.border}`, borderLeft: `2px solid ${COLOR.gold}` }}>
+              {room.report ? (
+                <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65 }}>{room.report}</div>
+              ) : (
+                <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.muted }}>Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
+              <Users size={13} color={COLOR.blue} />
+              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.blue }}>Статус партии</span>
+            </div>
+            {NETWORK_SEATS.map((sx) => {
+              const rd = seatRole(sx); const Icon = ROLE_ICON[rd.icon];
+              const isMe = sx === seat;
+              return (
+                <div key={sx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
+                  <Icon size={13} color={isMe ? COLOR.gold : COLOR.muted} />
+                  <span style={{ flex: 1, color: isMe ? COLOR.text : COLOR.muted }}>
+                    {rd.short}{isMe ? ' (вы)' : ''} — {room.occupied[sx] ? (room.names[sx] || 'игрок') : 'бот'}
+                  </span>
+                  <span className="ems-mono" style={{ fontSize: 10.5, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
+                    {room.ready[sx] ? 'готово' : 'думает'}
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.4 }}>
+              Код комнаты для второго игрока: <b className="ems-mono" style={{ color: COLOR.text }}>{room.id}</b>
+            </div>
+          </div>
+          <div className="ems-panel" style={{ padding: 14 }}>
+            <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Показатели экономики</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 11 }} className="ems-scroll">
+              {INDICATOR_TABS.map((t) => {
+                const TabIcon = t.icon;
+                return (<span key={t.id} className={`ems-tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setActiveTab(t.id); }}>{TabIcon && <TabIcon size={12} />}{t.label}</span>);
+              })}
+            </div>
+            {(INDICATOR_TABS.find((t) => t.id === activeTab) || INDICATOR_TABS[0]).rows.map((row, i, arr) => {
+              const val = row.get ? row.get(economy) : economy[row.key];
+              const prevVal = row.get ? row.get(prevEcon) : prevEcon[row.key];
+              const delta = Number.isFinite(prevVal) && Number.isFinite(val) ? val - prevVal : 0;
+              if (row.text) return null;
+              return (
+                <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
+                  <span style={{ color: COLOR.muted }}>{row.label}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
+                    <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
+        display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+        {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
+        {!error && (
+          <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
+            {waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.'}
+          </span>
+        )}
+        {waitingForOther ? (
+          <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>Отозвать решения</button>
+        ) : (
+          <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
+            {busy ? 'Отправка…' : 'Отправить решения квартала'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ============================ ЭКРАН ВЫБОРА ============================ */
-function SetupScreen({ onStart, onLoad }) {
+function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
+  const [mode, setMode] = useState('single');
   const [showLoad, setShowLoad] = useState(false);
   const [role, setRole] = useState(null);
   const [difficulty, setDifficulty] = useState('medium');
@@ -5520,6 +5873,19 @@ function SetupScreen({ onStart, onLoad }) {
           </div>
         </div>
 
+        <div style={{ display: 'flex', gap: 4, marginBottom: 26, justifyContent: 'center' }}>
+          {[['single', 'Одиночная игра'], ['network', 'Игра по сети — вдвоём']].map(([id, label]) => (
+            <span key={id} className={`ems-tab ${mode === id ? 'active' : ''}`} style={{ padding: '7px 16px', fontSize: 12.5 }}
+              onClick={() => { Audio.prime(); Audio.play('tab'); setMode(id); }}>{label}</span>
+          ))}
+        </div>
+
+        {mode === 'network' ? (
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <NetworkLobby onEnter={onEnterNetwork} />
+          </div>
+        ) : (
+        <>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>1</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваш пост</span>
@@ -5608,6 +5974,8 @@ function SetupScreen({ onStart, onLoad }) {
           onClick={() => { Audio.prime(); Audio.play('paper'); setShowLoad(true); }}>
           <Upload size={13} style={{ verticalAlign: -2, marginRight: 7 }} />Продолжить сохранённую партию
         </button>
+        </>
+        )}
       </div>
     </div>
   );
@@ -6319,10 +6687,22 @@ export default function MacroSimulator() {
   const [loaded, setLoaded] = useState(null);
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
+  const [network, setNetwork] = useState(null);
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
-  if (!setup) return <SetupScreen key={theme} onStart={(x) => { setLoaded(null); setSetup(x); }} onLoad={startLoaded} />;
+  if (network) {
+    return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => setNetwork(null)} />;
+  }
+  if (!setup) {
+    return (
+      <SetupScreen key={theme}
+        onStart={(x) => { setLoaded(null); setSetup(x); }}
+        onLoad={startLoaded}
+        onEnterNetwork={(net) => setNetwork(net)}
+      />
+    );
+  }
   return (
     <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
       theme={theme} setTheme={setTheme}
