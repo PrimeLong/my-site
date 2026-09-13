@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
-  CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL,
+  CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
@@ -2285,7 +2285,7 @@ function RegimeBanner({ economy }) {
       border: `1px solid ${c}`, borderLeft: `${isCrisis ? 4 : 1}px solid ${c}`, borderRadius: 3,
       padding: isCrisis ? '11px 14px' : '9px 12px', fontSize: 12 }}>
       <Activity size={isCrisis ? 17 : 15} color={c} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div><b style={{ color: c, fontSize: isCrisis ? 12.5 : 12 }}>Режим экономики: {info.label}.</b> <span style={{ color: COLOR.muted }}>{info.text}</span></div>
+      <div><b style={{ color: c, fontSize: isCrisis ? 12.5 : 12 }}>Режим экономики: {info.label}.</b> <span style={{ color: COLOR.muted }}>{regimeInfoText(info, economy)}</span></div>
     </div>
   );
 }
@@ -4403,7 +4403,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         {!error && (
           <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
             {waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.'}
-            {!room.ready[otherSeat] && timeLeftLabel && (
+            {!room.ready[otherSeat] && room.occupied[otherSeat] && timeLeftLabel && (
               <span className="ems-mono" title="Если решение не придёт вовремя, за отсутствующего один раз решит бот"
                 style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
                 <Clock size={11} />{timeLeftLabel}
@@ -5198,7 +5198,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>{CRISIS_INFO[c] ? CRISIS_INFO[c].label : c}.</b> <span style={{ color: COLOR.muted }}>{CRISIS_INFO[c] ? CRISIS_INFO[c].text : ''}</span></span>
+            <span><b style={{ color: COLOR.rust }}>{CRISIS_INFO[c] ? CRISIS_INFO[c].label : c}.</b> <span style={{ color: COLOR.muted }}>{CRISIS_INFO[c] ? regimeInfoText(CRISIS_INFO[c], economy) : ''}</span></span>
           </div>
         ))}
       </div>
