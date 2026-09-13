@@ -8,7 +8,7 @@ import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
   X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
-  Trophy, Lock, Share2, Download,
+  Trophy, Lock, Share2, Download, GraduationCap,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
@@ -2479,6 +2479,7 @@ const ACHIEVEMENTS = [
   { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 3 млн в одной игре казино.' },
   { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 5 млн суммарно за партию.' },
   { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
+  { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди обучение — три квартала в тренировочном кабинете.' },
 ];
 const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -5599,7 +5600,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 // Первый экран после запуска: выбор направления (новая партия / сеть /
 // продолжить / достижения), а не сразу детальная анкета — её показывает
 // SetupScreen отдельным шагом, только для новой одиночной партии.
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad }) {
   const playerId = useMemo(getPlayerId, []);
   const [soloSlots, setSoloSlots] = useState(null);
   const [slotBusy, setSlotBusy] = useState(null);
@@ -5626,6 +5627,8 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
   const MENU_ITEMS = [
     { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
+    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Три квартала в тренировочном кабинете: как ставка и расходы меняют экономику.',
+      action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
     { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
       action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
     { id: 'achievements', icon: Trophy, title: 'Достижения', desc: 'Коллекция наград, открытых за все ваши партии на этом устройстве.',
@@ -5713,6 +5716,183 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
               onClick={() => { Audio.play('tab'); setTheme(t.id); }}>{t.name}</button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================ ОБУЧЕНИЕ ============================ */
+// Отдельный, сильно упрощённый режим: своя мини-экономика (без бота-оппонента,
+// кризисов и оценки партии), четыре квартала со сценарием и один открываемый
+// рычаг за шаг. Использует настоящий движок (simulateQuarter), поэтому цифры
+// в уроке — не постановочные, а результат тех же формул, что и в игре.
+const TUTORIAL_PINS = ['gdp', 'inflation', 'unemployment', 'debtToGdp'];
+const TUTORIAL_STEPS = [
+  {
+    title: 'Добро пожаловать',
+    lever: null, runsQuarter: true,
+    body: ({ economy }) => (
+      <>
+        <p>Это тренировочный кабинет: три квартала на калькуляторе, без бота-оппонента, кризисов и оценки партии в конце. Настоящая игра сложнее — там второй ветвью власти управляет бот со своим характером, случаются кризисы, а итог партии сравнивается с выбранной целью.</p>
+        <p>Экономика считается кварталами, и решение сегодня отражается на показателях с лагом в один-два квартала — эффект не мгновенный. Это главное, что стоит запомнить прямо сейчас.</p>
+        <p>Сейчас инфляция {pctFmt(economy.inflation)} при цели {pctFmt(economy.inflationTarget)}, рост в норме. Нажмите «Далее», чтобы посмотреть на квартал без вашего вмешательства.</p>
+      </>
+    ),
+  },
+  {
+    title: 'Ключевая ставка',
+    lever: 'keyRate', minDelta: 1, runsQuarter: true,
+    body: ({ economy }) => (
+      <>
+        <p>Вот единственный рычаг этого шага — ключевая ставка Центрального банка. Выше ставка → дороже кредит → меньше спроса → ниже инфляция, но и медленнее рост. Ниже ставка — наоборот.</p>
+        <p>Сейчас ставка {pctFmt(economy.keyRate)}, инфляция {pctFmt(economy.inflation)}.</p>
+        <p>Поднимите ставку минимум на 1 п.п. и нажмите «Далее» — квартал завершится с этим решением.</p>
+      </>
+    ),
+  },
+  {
+    title: 'Лаг и бюджетный рычаг',
+    lever: 'govSpending', minDelta: 2, runsQuarter: true,
+    body: ({ economy }) => (
+      <>
+        <p>Инфляция сейчас {pctFmt(economy.inflation)} — почти как и была. Это ожидаемо: решение по ставке действует не мгновенно, а с лагом в один-два квартала — эффект будет виден чуть позже.</p>
+        <p>А вот и второй канал — расходы государства. В отличие от ставки, это решение «по накопительной»: заданный темп роста расходов сохраняется, пока вы его не измените, — не нужно повторять его каждый квартал.</p>
+        <p>Поднимите темп роста госрасходов минимум на 2 п.п. и нажмите «Далее».</p>
+      </>
+    ),
+  },
+  {
+    title: 'Вот и эффект',
+    lever: null, runsQuarter: false,
+    body: ({ economy, history }) => {
+      const before = history[1] ? history[1].inflation : economy.inflation;
+      const now = economy.inflation;
+      return (
+        <>
+          <p>Сравните: сразу после первого квартала инфляция была {pctFmt(before)}. Сейчас, когда ставка и расходы успели подействовать, — {pctFmt(now)}. {now < before
+            ? 'Повышение ставки перевесило стимул от расходов — инфляция снижается.'
+            : 'Стимул от расходов оказался сильнее охлаждающего эффекта ставки — инфляция подросла.'}</p>
+          <p>Это и есть главный урок: эффект решений накапливается и проявляется с задержкой. В настоящей партии придётся действовать на несколько кварталов вперёд, а не подстраиваться под сиюминутную цифру.</p>
+        </>
+      );
+    },
+  },
+  {
+    title: 'Занятие окончено', isFinal: true, lever: null, runsQuarter: false,
+    body: () => (
+      <>
+        <p>Вы прошли всю цепочку: <b>ставка/расходы → кредит и спрос → выпуск → занятость → цены → ожидания</b>. В настоящей партии добавятся: бот на второй ветви власти со своим характером и требованиями, случайные кризисы, выборы и оценка партии по выбранной цели.</p>
+        <p>Готовы попробовать по-настоящему?</p>
+      </>
+    ),
+  },
+];
+
+function TutorialScreen({ onFinish }) {
+  const initEconomy = useMemo(() => makeInitialEconomy(), []);
+  const [economy, setEconomy] = useState(initEconomy);
+  const [history, setHistory] = useState([{ q: 0, label: `${quarterLabel(1)} (старт)`, ...initEconomy }]);
+  const [decisions, setDecisions] = useState(() => defaultDecisions(initEconomy));
+  const [pendingImpulses, setPendingImpulses] = useState([]);
+  const [eventCooldowns, setEventCooldowns] = useState({});
+  const [quarterIndex, setQuarterIndex] = useState(1);
+  const [step, setStep] = useState(0);
+  const [leverBaseline, setLeverBaseline] = useState(initEconomy.keyRate);
+  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
+
+  const cur = TUTORIAL_STEPS[step];
+  const lever = cur.lever ? LEVERS.find((l) => l.id === cur.lever) : null;
+  const delta = lever ? decisions[cur.lever] - leverBaseline : 0;
+  const canAdvance = !lever || delta >= cur.minDelta - 1e-9;
+
+  const advance = () => {
+    Audio.play('stamp');
+    if (cur.runsQuarter) {
+      const result = simulateQuarter({
+        economy, decisions, pendingImpulses, eventCooldowns,
+        difficulty: 'easy', quarterIndex, stories: [],
+        botAction: null, botActions: [], noEvents: true,
+      });
+      const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
+      const newDecisions = defaultDecisions(result.economy, decisions);
+      setEconomy(result.economy);
+      setHistory(newHistory);
+      setPendingImpulses(result.pendingImpulses);
+      setEventCooldowns(result.eventCooldowns);
+      setQuarterIndex((q) => q + 1);
+      setDecisions(newDecisions);
+      const nextStep = TUTORIAL_STEPS[step + 1];
+      if (nextStep && nextStep.lever) setLeverBaseline(newDecisions[nextStep.lever]);
+    }
+    const isLast = step + 1 >= TUTORIAL_STEPS.length - 1;
+    if (isLast) pushAch(unlockAchievements(['tutorial_done']));
+    setStep((s) => s + 1);
+  };
+
+  return (
+    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+      <GlobalStyle />
+      <AchievementToast toast={achToast} />
+      <div style={{ maxWidth: 640, width: '100%' }}>
+        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+          onClick={() => { Audio.play('click'); onFinish('menu'); }}>
+          ← Прервать обучение
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span className="ems-serif" style={{ fontSize: 22, fontWeight: 600 }}>{cur.title}</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>шаг {step + 1} из {TUTORIAL_STEPS.length}</span>
+        </div>
+        <div className="ems-hr" style={{ marginBottom: 18 }} />
+
+        <div className="ems-kpi-strip" style={{ marginBottom: 18 }}>
+          {TUTORIAL_PINS.map((key) => {
+            const m = ALL_METRICS[key];
+            const val = economy[key];
+            return (
+              <KpiTile key={key} label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'}
+                delta={economy[key] - prevEcon[key]} invert={m.invert}
+                series={history.slice(-6).map((h) => h[key]).filter(Number.isFinite)} />
+            );
+          })}
+        </div>
+
+        <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
+          {cur.body({ economy, history, decisions })}
+        </div>
+
+        {lever && (
+          <div className="ems-panel" style={{ padding: 16, marginBottom: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 9 }}>
+              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{lever.label}</span>
+              <span className="ems-mono" style={{ fontSize: 13 }}>{decisions[cur.lever].toFixed(2)}{lever.suffix}</span>
+            </div>
+            <input type="range" className="ems-slider" min={lever.min} max={lever.max} step={lever.step} value={decisions[cur.lever]}
+              onChange={(e) => { Audio.play('tick'); setDecisions((d) => ({ ...d, [cur.lever]: Number(e.target.value) })); }} />
+            <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint, marginTop: 8 }}>
+              Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
+            </div>
+          </div>
+        )}
+
+        {cur.isFinal ? (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="ems-btn primary" style={{ flex: 1, padding: '13px 0', fontSize: 14 }}
+              onClick={() => { Audio.prime(); onFinish('setup'); }}>
+              Начать настоящую партию
+            </button>
+            <button className="ems-btn" style={{ padding: '13px 20px', fontSize: 13 }}
+              onClick={() => onFinish('menu')}>
+              В меню
+            </button>
+          </div>
+        ) : (
+          <button disabled={!canAdvance} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
+            onClick={advance}>
+            Далее
+          </button>
+        )}
       </div>
     </div>
   );
@@ -6720,10 +6900,18 @@ export default function MacroSimulator() {
     if (view === 'network') {
       return <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />;
     }
+    if (view === 'tutorial') {
+      return (
+        <TutorialScreen key={theme}
+          onFinish={(next) => setView(next === 'setup' ? 'setup' : 'menu')}
+        />
+      );
+    }
     return (
       <MainMenu key={theme} theme={theme} setTheme={setTheme}
         onNewGame={() => setView('setup')}
         onNetwork={() => setView('network')}
+        onTutorial={() => setView('tutorial')}
         onLoad={startLoaded}
       />
     );

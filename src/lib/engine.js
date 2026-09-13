@@ -921,7 +921,7 @@ function computeScores(x) {
 /* =========================================================================================
    ГЛАВНАЯ ФУНКЦИЯ КВАРТАЛА
 ========================================================================================= */
-function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode }) {
+function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode, noEvents }) {
   const s = economy;
   const C = CONFIG.coef;
   const T = CONFIG.target;
@@ -943,7 +943,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   let pandemicTriggered = false;
   let warTriggered = false;
   let warTypeRolled = null;
-  if (Math.random() < CONFIG.eventProbability[difficulty]) {
+  if (!noEvents && Math.random() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
