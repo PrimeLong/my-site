@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage,
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
   fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
@@ -7,7 +7,7 @@ import {
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
-  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices,
+  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
@@ -716,6 +716,32 @@ tr('bankrun', 'Очередь у банка', 'синт-арпеджио, PWM-п
   ],
 });
 
+/* --------------------------------- ВОЙНА --------------------------------- */
+tr('warmarch', 'Марш', 'тяжёлые литавры, маршевый бас', 'war', {
+  bpm: 108, swing: 0, reverb: 0.24,
+  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
+  melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:A4:2 34:C5:2 36:A4:4 40:F4:8 48:E5:4 52:C5:4 56:G4:8 64:A4:2 66:Bb4:2 68:A4:2 70:G4:2 72:F4:8 80:D5:4 84:F5:4 88:Bb4:8 96:G4:4 100:Bb4:4 104:D5:8 112:C#5:4 116:E5:4 120:A4:8'),
+  melB: MEL('0:F5:4 4:D5:4 8:Bb4:8 16:E5:4 20:C5:4 24:G4:8 32:A5:4 36:F5:4 40:D5:8 48:E5:4 52:C#5:4 56:A4:8'),
+  sections: [
+    sec('A', 'melA', 'drive', 'piano bass strings timpani', 0.85, DR('x.x.x.x.x.x.x.x.', '....x.......x...', 'o...o...o...o...')),
+    sec('B', 'melB', 'drive', 'piano bass strings timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '..x...x...x...x.', 'o.o.o.o.o.o.o.o.')),
+    sec('A', 'melA', 'drive', 'piano bass strings cello timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
+  ],
+});
+tr('trenches', 'Окопы', 'литавры, низкая виолончель', 'war', {
+  bpm: 92, swing: 0, reverb: 0.34,
+  A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
+  B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
+  melA: MEL('0:D5:4 4:Eb5:4 8:D5:8 16:Bb4:4 20:G5:4 24:Eb5:8 32:C5:4 36:A4:4 40:F4:8 48:F#4:4 52:A4:4 56:D5:8 64:D5:4 68:Eb5:4 72:F5:8 80:G5:4 84:Eb5:4 88:Bb4:8 96:C5:4 100:Eb5:4 104:G5:8 112:F#5:4 116:A5:4 120:D5:8'),
+  melB: MEL('0:G5:4 4:Bb5:4 8:Eb5:8 16:C5:4 20:F5:4 24:A4:8 32:Bb4:4 36:D5:4 40:G5:8 48:A5:4 52:F#5:4 56:D5:8'),
+  sections: [
+    sec('A', 'melA', 'sustain', 'piano bass cello timpani', 0.8, DR('x.......x.......', '....x.......x...', 'o.......o.......')),
+    sec('B', 'melB', 'drive', 'piano bass cello timpani', 0.95, DR('x...x...x...x...', '....x.......x...', 'o...o...o...o...')),
+    sec('A', 'melA', 'drive', 'piano bass cello strings timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
+  ],
+});
+
 /* ------------------------------- ДЕФЛЯЦИЯ ------------------------------- */
 tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM-пад', 'frost', {
   bpm: 52, swing: 0, reverb: 0.72,
@@ -812,10 +838,11 @@ const MOOD_PLAYLISTS = {
   stag: ['deadlock', 'friction'],
   crisis: ['collapse', 'panic', 'bankrun'],
   frost: ['glass', 'stillness'],
+  war: ['warmarch', 'trenches'],
 };
-const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция' };
+const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война' };
 const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
-  banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost' };
+  banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
 /* Плейлисты, привязанные к роли: у инвестора свой репертуар */
 const ROLE_PLAYLISTS = {
   trader: {
@@ -1420,7 +1447,7 @@ function AudioControls() {
   const np = Audio.nowPlaying();
   const list = Audio.playlist();
   const moods = [['auto', 'По режиму экономики'], ['calm', MOOD_LABEL.calm], ['boom', MOOD_LABEL.boom],
-    ['slump', MOOD_LABEL.slump], ['stag', MOOD_LABEL.stag], ['crisis', MOOD_LABEL.crisis], ['frost', MOOD_LABEL.frost]];
+    ['slump', MOOD_LABEL.slump], ['stag', MOOD_LABEL.stag], ['crisis', MOOD_LABEL.crisis], ['frost', MOOD_LABEL.frost], ['war', MOOD_LABEL.war]];
   return (
     <div style={{ position: 'relative' }}>
       <button ref={btnRef} className="ems-btn" style={{ padding: '7px 9px' }} title={`Музыка: ${np.name}`}
@@ -1555,7 +1582,15 @@ function NewsTerminal({ items, onOpenPaper }) {
   // блока сама не сбрасывается — если читали и проскроллили вниз, свежая
   // новость наверху оказывается выше видимой области и выглядит пропавшей
   const scrollRef = React.useRef(null);
-  React.useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [items[0] && items[0].id]);
+  React.useEffect(() => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = 0;
+    // сброс scrollTop не помогает, если сама панель уехала за пределы видимой
+    // области страницы (на телефоне «Завершить квартал» — внизу длинной
+    // страницы, и после клика страница остаётся там же) — довозим панель
+    // в поле зрения, но мягко: 'nearest' ничего не делает, если она и так видна
+    scrollRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [items[0] && items[0].id]);
   return (
     <div className="ems-panel" style={{ padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 9 }}>
@@ -3595,7 +3630,7 @@ const writeNetworkSlots = (slots) => {
 // иначе — в первый свободный, а если все заняты — вытесняем самый старый (LRU)
 const saveNetworkSlot = (net) => {
   const slots = loadNetworkSlots();
-  const entry = { id: net.id, seat: net.seat, token: net.token, savedAt: Date.now() };
+  const entry = { id: net.id, seat: net.seat, token: net.token, ownerToken: net.ownerToken || null, savedAt: Date.now() };
   let idx = slots.findIndex((s) => s && s.id === net.id && s.seat === net.seat);
   if (idx === -1) idx = slots.findIndex((s) => !s);
   if (idx === -1) {
@@ -3623,6 +3658,7 @@ function NetworkLobby({ onEnter }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
+  const [createdOwnerToken, setCreatedOwnerToken] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [slots, setSlots] = useState(loadNetworkSlots);
   const [slotBusy, setSlotBusy] = useState(null);
@@ -3668,7 +3704,7 @@ function NetworkLobby({ onEnter }) {
     try {
       const data = await fetchRoom(slot.id, undefined, slot.seat, slot.token);
       if (!data.room) throw new Error('Комната недоступна');
-      onEnter({ id: slot.id, seat: slot.seat, token: slot.token, room: data.room });
+      onEnter({ id: slot.id, seat: slot.seat, token: slot.token, ownerToken: slot.ownerToken || null, room: data.room });
     } catch (e) {
       setError(e.message);
       clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
@@ -3692,7 +3728,7 @@ function NetworkLobby({ onEnter }) {
     setBusy(true); setError('');
     try {
       const r = await createRoom({ difficulty });
-      setCreated(r.id); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
+      setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   const doJoin = async () => {
@@ -3702,7 +3738,11 @@ function NetworkLobby({ onEnter }) {
       const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
       setStorageMode(r.storage || null);
       Audio.play('stamp'); Audio.prime();
-      const net = { id: code.trim().toUpperCase(), seat, token: r.token, room: r.room };
+      const trimmedCode = code.trim().toUpperCase();
+      // ownerToken есть только у того, кто сам только что создал ЭТУ комнату в этой
+      // же сессии лобби — у всех остальных, кто просто вошёл по коду/ссылке, его нет
+      const ownerToken = trimmedCode === created ? createdOwnerToken : null;
+      const net = { id: trimmedCode, seat, token: r.token, ownerToken, room: r.room };
       saveNetworkSlot(net);
       // убираем ?room= из адресной строки, чтобы обновление страницы не пыталось
       // «войти по ссылке» повторно поверх уже сохранённой сессии
@@ -3844,11 +3884,17 @@ function NetworkLobby({ onEnter }) {
   );
 }
 
+const QUARTER_TIMEOUT_MS = 5 * 60 * 1000; // держим в синхроне с QUARTER_TIMEOUT_MS в api/room.js
+
 function NetworkGameScreen({ network, theme, setTheme, onExit }) {
-  const { id, seat, token } = network;
+  const { id, seat, token, ownerToken } = network;
+  const isOwner = !!ownerToken;
+  const [kickBusy, setKickBusy] = useState(null);
   const [room, setRoom] = useState(network.room);
   const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
   const [chatText, setChatText] = useState('');
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  React.useEffect(() => { const iv = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(iv); }, []);
   const [chatBusy, setChatBusy] = useState(false);
   const chatEndRef = React.useRef(null);
   const [sent, setSent] = useState(false);
@@ -3951,6 +3997,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   React.useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }); }, [room.chat?.length]);
 
   const waitingForOther = sent && !room.ready[otherSeat];
+  // сколько времени осталось до того, как сервер решит за отсутствующего игрока
+  // ботом (см. QUARTER_TIMEOUT_MS/maybeForceResolve в api/room.js) — держим в поле
+  // зрения, чтобы «квартал стоит» не выглядело так, будто ничего не произойдёт
+  const timeLeftMs = room.quarterStartedAt ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - nowTick) : null;
+  const timeLeftLabel = timeLeftMs === null ? null
+    : `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
   const myLastAction = room.lastActions ? room.lastActions[seat] : null;
@@ -3967,6 +4019,33 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     try { const r = await setRoomDifficulty(id, seat, token, next); setRoom(r.room); }
     catch (e) { failWithError(e); } finally { setDifficultyBusy(false); }
   };
+  const kickSeat = async (targetSeat) => {
+    if (!window.confirm(`Убрать ${seatRole(targetSeat).short} из комнаты? Место освободится, партнёр сможет войти заново.`)) return;
+    setKickBusy(targetSeat); setError('');
+    try { const r = await kickFromRoom(id, ownerToken, targetSeat); setRoom(r.room); Audio.play('click'); }
+    catch (e) { setError(e.message); } finally { setKickBusy(null); }
+  };
+  // владелец кикнул вас самого (или ваше место освободили как-то иначе, пока вы
+  // были в комнате) — своё же место внезапно снова «пустое» означает именно это
+  const [kickedOut, setKickedOut] = useState(false);
+  React.useEffect(() => { if (!room.occupied[seat]) setKickedOut(true); }, [room.occupied, seat]);
+
+  if (kickedOut) {
+    return (
+      <div className="ems-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24 }}>
+        <GlobalStyle />
+        <div className="ems-panel" style={{ maxWidth: 420, padding: 24, textAlign: 'center' }}>
+          <AlertTriangle size={28} color={COLOR.rust} style={{ marginBottom: 10 }} />
+          <div className="ems-serif" style={{ fontSize: 16, color: COLOR.rust, marginBottom: 8 }}>Вас убрали из комнаты</div>
+          <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 18, lineHeight: 1.5 }}>
+            Владелец лобби освободил ваше место. Вернуться в эту партию так же нельзя — при желании войдите заново по коду.
+          </div>
+          <button className="ems-btn primary" style={{ padding: '10px 20px' }}
+            onClick={() => { clearNetworkSlotFor(id, seat); onExit(); }}>В меню</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ems-root">
@@ -4184,10 +4263,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <Users size={13} color={COLOR.blue} />
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.blue }}>Статус партии</span>
+              {isOwner && <span title="Вы создали эту комнату" className="ems-mono" style={{ marginLeft: 'auto', fontSize: 9.5, color: COLOR.faint, letterSpacing: '0.04em' }}>ВЛАДЕЛЕЦ</span>}
             </div>
             {NETWORK_SEATS.map((sx) => {
               const rd = seatRole(sx); const Icon = ROLE_ICON[rd.icon];
               const isMe = sx === seat;
+              const canKick = isOwner && !isMe && room.occupied[sx];
               return (
                 <div key={sx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
                   <Icon size={13} color={isMe ? COLOR.gold : COLOR.muted} />
@@ -4197,6 +4278,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                   <span className="ems-mono" style={{ fontSize: 10.5, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
                     {room.ready[sx] ? 'готово' : 'думает'}
                   </span>
+                  {canKick && (
+                    <button onClick={() => kickSeat(sx)} disabled={kickBusy === sx} title="Убрать из комнаты"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -4245,8 +4332,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
         {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
         {!error && (
-          <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
+          <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
             {waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.'}
+            {!room.ready[otherSeat] && timeLeftLabel && (
+              <span className="ems-mono" title="Если решение не придёт вовремя, за отсутствующего один раз решит бот"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
+                <Clock size={11} />{timeLeftLabel}
+              </span>
+            )}
           </span>
         )}
         {waitingForOther ? (
@@ -5022,7 +5115,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       </div>
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <DemandStrip botAction={botAction} botRole={botRole} economy={economy} />
+        {!isTrader && <DemandStrip botAction={botAction} botRole={botRole} economy={economy} />}
         <RegimeBanner economy={economy} />
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
@@ -5214,13 +5307,15 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               })}
             </div>
           </div>
-          <DemandsPanel demands={economy.demands} />
+          {!isTrader && <DemandsPanel demands={economy.demands} />}
         </div>
       </div>
 
       <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
         <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
-          {botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами` : 'Обе ветви политики под вашим контролем'}
+          {botRole === 'both' ? 'Центральный банк и Минфин примут решения без вашего участия'
+            : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
+              : 'Обе ветви политики под вашим контролем'}
         </span>
         <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={finishQuarter}
           aria-label="Завершить квартал и применить решения">
