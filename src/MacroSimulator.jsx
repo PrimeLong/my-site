@@ -3601,7 +3601,12 @@ function NetworkLobby({ onEnter }) {
       clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
     } finally { setSlotBusy(null); }
   };
-  const removeSlot = (idx) => { clearNetworkSlotAt(idx); setSlots(loadNetworkSlots()); };
+  const removeSlot = (idx) => {
+    const slot = slots[idx];
+    if (slot && !window.confirm('Забыть эту партию? Ваше место освободится — партнёру вместо вас будет играть бот.')) return;
+    if (slot) leaveRoom(slot.id, slot.seat, slot.token).catch(() => {}); // освобождаем место партнёру, раз партия забыта насовсем
+    clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
+  };
 
   const shareLink = (id) => `${window.location.origin}${window.location.pathname}?room=${id}`;
   const copyLink = (id) => {
@@ -3836,7 +3841,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
-  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); clearNetworkSlotFor(id, seat); onExit(); };
+  // выход в меню — это не уход из комнаты: место и сохранённая сессия остаются,
+  // партия появится в лобби («Ваши партии») и в неё можно вернуться позже;
+  // насовсем комнату покидают через «Забыть эту партию» в лобби
+  const exit = () => onExit();
   const [difficultyBusy, setDifficultyBusy] = useState(false);
   const changeDifficulty = async (next) => {
     if (next === room.difficulty) return;
@@ -3891,7 +3899,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
             <Newspaper size={14} />Газета
           </button>
-          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Покинуть комнату" onClick={() => { Audio.play('click'); exit(); }}>
+          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти в меню" onClick={() => { Audio.play('click'); exit(); }}>
             <RotateCcw size={14} />
           </button>
         </div>
