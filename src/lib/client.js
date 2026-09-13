@@ -10,6 +10,11 @@ export const createRoom = (opts) => post({ action: 'create', ...opts });
 export const joinRoom = (id, seat, name) => post({ action: 'join', id, seat, name });
 export const submitDecisions = (id, seat, token, decisions, note, portfolioValue) =>
   post({ action: 'submit', id, seat, token, decisions, note, portfolioValue });
+// сообщает стоимость портфеля трейдера отдельно от submit — вызывается после
+// каждой сделки, а не только при готовности к следующему кварталу, иначе
+// соперник полквартала видел бы устаревшее (или вовсе никакое) значение
+export const reportPortfolioValue = (id, seat, token, value) =>
+  post({ action: 'report_portfolio', id, seat, token, value });
 export const cancelSubmission = (id, seat, token) => post({ action: 'unsubmit', id, seat, token });
 export const leaveRoom = (id, seat, token) => post({ action: 'leave', id, seat, token });
 export const setRoomDifficulty = (id, seat, token, difficulty) => post({ action: 'set_difficulty', id, seat, token, difficulty });
