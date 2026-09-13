@@ -3666,6 +3666,26 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [hiddenSeries, setHiddenSeries] = useState([]);
   const [period, setPeriod] = useState('5y');
   const [activeTab, setActiveTab] = useState('economy');
+  const [dense, setDense] = useState(false);
+  const [dashboards, setDashboards] = useState(DASHBOARD_PRESETS);
+  const [activeDash, setActiveDash] = useState('overview');
+  const [pinned, setPinned] = useState(DEFAULT_PINS);
+  const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
+  const movePin = (key, dir) => setPinned((ps) => {
+    const i = ps.indexOf(key); const j = i + dir;
+    if (i < 0 || j < 0 || j >= ps.length) return ps;
+    const next = [...ps]; next[i] = ps[j]; next[j] = ps[i]; return next;
+  });
+  const applyDash = (did) => { const d = dashboards.find((x) => x.id === did); if (d) { setPinned(d.pins); setActiveDash(did); } };
+  const saveDash = () => {
+    const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
+    const did = `custom${Date.now()}`;
+    setDashboards((ds) => [...ds, { id: did, name, pins: [...pinned], custom: true }]);
+    setActiveDash(did);
+  };
+  const deleteDash = (did) => setDashboards((ds) => ds.filter((d) => d.id !== did));
+  const kpiDelta = (key) => economy[key] - prevEcon[key];
+  const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
 
   // сохраняем сессию и на случай восстановления после обновления страницы (см.
   // MacroSimulator), и как подстраховку, если сюда попали в обход NetworkLobby
@@ -3723,6 +3743,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
             <Gauge value={economy.wellbeing} size={68} />
           </div>
+          <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
+            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} title="Покинуть комнату" onClick={() => { Audio.play('click'); exit(); }}>
             <RotateCcw size={14} />
@@ -3730,13 +3752,44 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
       </div>
 
+      <CrisisBar economy={economy} botAction={otherAction} />
+
       <div style={{ padding: '14px 18px 4px' }}>
         <div className="ems-kpi-strip">
-          <KpiTile label="ВВП" value={fmtMoney(economy.gdp)} delta={economy.gdp - prevEcon.gdp} icon={TrendingUp} />
-          <KpiTile label="Разрыв выпуска" value={fmtSignedPct(economy.outputGap)} delta={economy.outputGap - prevEcon.outputGap} icon={Activity} />
-          <KpiTile label="Инфляция" value={pctFmt(economy.inflation)} delta={economy.inflation - prevEcon.inflation} invert icon={Coins} />
-          <KpiTile label="Безработица" value={pctFmt(economy.unemployment)} delta={economy.unemployment - prevEcon.unemployment} invert icon={Users} />
-          <KpiTile label="Госдолг / ВВП" value={pctFmt(economy.debtToGdp)} delta={economy.debtToGdp - prevEcon.debtToGdp} invert icon={Landmark} />
+          {pinned.map((key) => {
+            const m = ALL_METRICS[key];
+            if (!m) return null;
+            const val = economy[key];
+            return (
+              <div key={key} style={{ position: 'relative' }}>
+                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} />
+                <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
+                  <button onClick={() => { Audio.play('tick'); movePin(key, 1); }} aria-label="Правее"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>▶</button>
+                  <button onClick={() => { Audio.play('tick'); togglePin(key); }} aria-label={`Убрать ${m.label} с полосы`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0 }}>
+                    <X size={10} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {pinned.length < MAX_PINS && (
+            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed' }}>
+              <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
+                <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="ems-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 10, padding: '9px 13px' }}>
+          <RiskBadge label="Инфляционный" value={economy.inflationRisk} />
+          <RiskBadge label="Банковский" value={economy.bankingRisk} />
+          <RiskBadge label="Долговой" value={economy.debtRisk} />
+          <RiskBadge label="Рецессии" value={economy.recessionRisk} />
+          <RiskBadge label="Валютный" value={economy.currencyRisk} />
         </div>
       </div>
 
@@ -3813,6 +3866,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <Users size={13} color={COLOR.blue} />
@@ -3849,13 +3903,23 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               const val = row.get ? row.get(economy) : economy[row.key];
               const prevVal = row.get ? row.get(prevEcon) : prevEcon[row.key];
               const delta = Number.isFinite(prevVal) && Number.isFinite(val) ? val - prevVal : 0;
-              if (row.text) return null;
+              if (row.text) {
+                return (
+                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
+                    <span style={{ color: COLOR.muted }}>{row.label}</span>
+                    <span className="ems-mono">{(row.map && row.map[val]) || String(val || '—')}</span>
+                  </div>
+                );
+              }
               return (
-                <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                  <span style={{ color: COLOR.muted }}>{row.label}</span>
+                <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
+                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
+                    {row.label}
+                  </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
-                    <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />
+                    {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
                   </span>
                 </div>
               );
