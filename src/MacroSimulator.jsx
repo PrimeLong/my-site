@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom } from './lib/client.js';
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
 } from 'recharts';
@@ -3480,16 +3480,46 @@ function IRFModal({ economy, decisions, lever, value, baseValue, difficulty, onC
 const NETWORK_SEATS = ['central_bank', 'ministry_finance'];
 const seatRole = (seat) => ROLES.find((r) => r.id === seat);
 
+/* Место и токен — единственное, что нужно, чтобы вернуться в свою партию после
+   обновления страницы: комната и так живёт на сервере (Redis/память, TTL 3 суток),
+   не хватало только клиентской памяти о том, что вы уже вошли. */
+const NETWORK_SESSION_KEY = 'ems-network-session';
+const saveNetworkSession = (net) => {
+  try { localStorage.setItem(NETWORK_SESSION_KEY, JSON.stringify({ id: net.id, seat: net.seat, token: net.token })); }
+  catch { /* приватный режим/квота — не критично, просто не восстановимся после обновления */ }
+};
+const clearNetworkSession = () => { try { localStorage.removeItem(NETWORK_SESSION_KEY); } catch { /* ignore */ } };
+const loadNetworkSession = () => {
+  try {
+    const data = JSON.parse(localStorage.getItem(NETWORK_SESSION_KEY) || 'null');
+    return (data && data.id && data.seat && data.token) ? data : null;
+  } catch { return null; }
+};
+
+const roomCodeFromUrl = () => {
+  if (typeof window === 'undefined') return '';
+  return (new URLSearchParams(window.location.search).get('room') || '').toUpperCase();
+};
+
 function NetworkLobby({ onEnter }) {
-  const [tab, setTab] = useState('create');
+  const linkedCode = useMemo(roomCodeFromUrl, []);
+  const [tab, setTab] = useState(linkedCode ? 'join' : 'create');
   const [seat, setSeat] = useState('central_bank');
   const [name, setName] = useState('');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
+  const shareLink = (id) => `${window.location.origin}${window.location.pathname}?room=${id}`;
+  const copyLink = (id) => {
+    try {
+      navigator.clipboard.writeText(shareLink(id));
+      setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1800);
+    } catch { /* буфер обмена недоступен — код всё равно виден рядом */ }
+  };
   const doCreate = async () => {
     setBusy(true); setError('');
     try {
@@ -3503,7 +3533,14 @@ function NetworkLobby({ onEnter }) {
     try {
       const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
       Audio.play('stamp'); Audio.prime();
-      onEnter({ id: code.trim().toUpperCase(), seat, token: r.token, room: r.room });
+      const net = { id: code.trim().toUpperCase(), seat, token: r.token, room: r.room };
+      saveNetworkSession(net);
+      // убираем ?room= из адресной строки, чтобы обновление страницы не пыталось
+      // «войти по ссылке» повторно поверх уже сохранённой сессии
+      if (typeof window !== 'undefined' && window.history && window.location.search) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      onEnter(net);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -3538,7 +3575,15 @@ function NetworkLobby({ onEnter }) {
           </button>
           {created && (
             <div style={{ marginTop: 14, fontSize: 13, color: COLOR.teal, borderLeft: `2px solid ${COLOR.teal}`, paddingLeft: 10 }}>
-              Комната создана: <b className="ems-mono">{created}</b>. Отправьте этот код второму игроку и заполните форму справа, чтобы войти в неё самому.
+              <div>Комната создана: <b className="ems-mono">{created}</b>. Отправьте партнёру код или ссылку ниже — по ней комната и роль откроются автоматически.</div>
+              <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 8 }}>
+                <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
+                  style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
+                <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
+                  {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
+                  {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -3605,7 +3650,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
     }
     Audio.setMood(r.economy);
-  }, (e) => setError(e.message), 2500, seat, token), [id, seat, token]);
+  }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
 
   const roleDef = seatRole(seat);
   const RoleIcon = ROLE_ICON[roleDef.icon];
@@ -3622,23 +3667,31 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [period, setPeriod] = useState('5y');
   const [activeTab, setActiveTab] = useState('economy');
 
+  // сохраняем сессию и на случай восстановления после обновления страницы (см.
+  // MacroSimulator), и как подстраховку, если сюда попали в обход NetworkLobby
+  React.useEffect(() => { saveNetworkSession({ id, seat, token }); }, [id, seat, token]);
+  const failWithError = (e) => {
+    setError(e.message);
+    // токен отозван или комната истекла — восстанавливать в ней больше нечего
+    if (/неверный токен|не найдена/i.test(e.message || '')) clearNetworkSession();
+  };
   const send = async () => {
     setBusy(true); setError('');
     try {
       const r = await submitDecisions(id, seat, token, decisions, note.trim() || null);
       setRoom(r.room); setSent(true); Audio.play('stamp');
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) { failWithError(e); } finally { setBusy(false); }
   };
   const retract = async () => {
     setBusy(true); setError('');
     try { const r = await cancelSubmission(id, seat, token); setRoom(r.room); setSent(false); Audio.play('click'); }
-    catch (e) { setError(e.message); } finally { setBusy(false); }
+    catch (e) { failWithError(e); } finally { setBusy(false); }
   };
 
   const waitingForOther = sent && !room.ready[otherSeat];
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
-  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); onExit(); };
+  const exit = () => { leaveRoom(id, seat, token).catch(() => {}); clearNetworkSession(); onExit(); };
 
   return (
     <div className="ems-root">
@@ -3833,7 +3886,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
 /* ============================ ЭКРАН ВЫБОРА ============================ */
 function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
-  const [mode, setMode] = useState('single');
+  const [mode, setMode] = useState(() => (roomCodeFromUrl() ? 'network' : 'single'));
   const [showLoad, setShowLoad] = useState(false);
   const [role, setRole] = useState(null);
   const [difficulty, setDifficulty] = useState('medium');
@@ -4686,9 +4739,33 @@ export default function MacroSimulator() {
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
+  // если в localStorage есть незавершённая сетевая партия — сначала пробуем в нёе
+  // вернуться (комната всё ещё жива на сервере), и только потом показываем меню
+  const [restoringNetwork, setRestoringNetwork] = useState(() => !!loadNetworkSession());
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
+
+  React.useEffect(() => {
+    const saved = loadNetworkSession();
+    if (!saved) return;
+    fetchRoom(saved.id, undefined, saved.seat, saved.token)
+      .then((data) => {
+        if (data && data.room) setNetwork({ id: saved.id, seat: saved.seat, token: saved.token, room: data.room });
+        else clearNetworkSession();
+      })
+      .catch(() => clearNetworkSession())
+      .finally(() => setRestoringNetwork(false));
+  }, []);
+
+  if (restoringNetwork) {
+    return (
+      <div className="ems-root" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <GlobalStyle />
+        <div style={{ color: COLOR.muted, fontSize: 13 }}>Восстанавливаем сетевую партию…</div>
+      </div>
+    );
+  }
   if (network) {
     return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => setNetwork(null)} />;
   }
