@@ -3486,6 +3486,7 @@ const seatRole = (seat) => ROLES.find((r) => r.id === seat);
    одновременно вести до трёх сетевых партий (например, за разные ведомства в разных
    комнатах) и не терять доступ ни к одной из них. */
 const NETWORK_SLOTS_KEY = 'ems-network-slots';
+const NETWORK_SESSION_KEY_LEGACY = 'ems-network-session'; // старый формат до введения слотов
 const NETWORK_SLOT_COUNT = 3;
 const loadNetworkSlots = () => {
   let arr;
@@ -3493,6 +3494,20 @@ const loadNetworkSlots = () => {
   if (!Array.isArray(arr)) arr = [];
   const slots = arr.slice(0, NETWORK_SLOT_COUNT).map((s) => ((s && s.id && s.seat && s.token) ? s : null));
   while (slots.length < NETWORK_SLOT_COUNT) slots.push(null);
+  // разовая миграция: у тех, кто заходил до появления слотов, партия лежала под
+  // одним старым ключом — переносим её в первый слот, чтобы не потерять доступ
+  try {
+    const legacy = JSON.parse(localStorage.getItem(NETWORK_SESSION_KEY_LEGACY) || 'null');
+    if (legacy && legacy.id && legacy.seat && legacy.token) {
+      const dup = slots.some((s) => s && s.id === legacy.id && s.seat === legacy.seat);
+      if (!dup) {
+        const idx = slots.findIndex((s) => !s);
+        slots[idx === -1 ? 0 : idx] = { id: legacy.id, seat: legacy.seat, token: legacy.token, savedAt: Date.now() };
+      }
+      localStorage.removeItem(NETWORK_SESSION_KEY_LEGACY);
+      writeNetworkSlots(slots);
+    }
+  } catch { /* ignore */ }
   return slots;
 };
 const writeNetworkSlots = (slots) => {
