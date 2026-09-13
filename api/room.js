@@ -55,6 +55,8 @@ function freshRoom(opts) {
   const economy = makeInitialEconomy();
   return {
     id: opts.id, created: Date.now(), version: 1,
+    ownerToken: token(), // владелец лобби — тот, кто нажал «Создать комнату»; не привязан к месту,
+    // потому что место выбирается отдельным шагом уже ПОСЛЕ создания
     difficulty: DIFFICULTY_IDS.has(opts.difficulty) ? opts.difficulty : 'medium',
     goalCb: GOAL_IDS.has(opts.goalCb) ? opts.goalCb : 'min_inflation',
     goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
@@ -188,7 +190,7 @@ async function handleRequest(req, res) {
     const id = code();
     const room = freshRoom({ id, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof });
     await setRoom(id, room);
-    return res.status(200).json({ id, storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
+    return res.status(200).json({ id, ownerToken: room.ownerToken, storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
   }
 
   if (action === 'join') {
@@ -266,6 +268,21 @@ async function handleRequest(req, res) {
     if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
     const out = await withRoom(id, (room) => {
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
+      return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
+        submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
+        version: room.version + 1 };
+    });
+    if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    return res.status(200).json({ room: publicView(out.room) });
+  }
+
+  if (action === 'kick') {
+    const id = String(body.id || '').toUpperCase();
+    const seat = body.seat;
+    if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    const out = await withRoom(id, (room) => {
+      if (room.ownerToken !== body.ownerToken) return { error: 'Только владелец лобби может кикать', status: 403 };
+      // владелец может «кикнуть» и собственное место — считаем это уходом, не ошибкой
       return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
         submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
         version: room.version + 1 };
