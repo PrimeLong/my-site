@@ -1,12 +1,13 @@
 ﻿import React, { useState, useMemo, useCallback } from 'react';
-import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom } from './lib/client.js';
+import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom,
+  fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
 } from 'recharts';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
-  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Download, Upload, Copy, Star, Flag, Megaphone, Sliders,
+  X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
@@ -2231,88 +2232,68 @@ function makeSnapshot(state) {
   const slim = (state.history || []).map((h) => { const { revenueParts, ...rest } = h; return rest; });
   return { app: 'economic-panel', v: SAVE_VERSION, savedAt: new Date().toISOString(), ...state, history: slim };
 }
-function serializeSave(snap) { return JSON.stringify(snap); }
-function parseSave(text) {
-  const data = JSON.parse(text);
-  if (!data || data.app !== 'economic-panel') throw new Error('Это не файл сохранения «Экономической панели».');
-  if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Файл повреждён: не хватает состояния экономики.');
+function validateSnapshot(data) {
+  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение «Экономической панели».');
+  if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Сохранение повреждено: не хватает состояния экономики.');
   if (data.v > SAVE_VERSION) throw new Error('Сохранение сделано в более новой версии симулятора.');
   return data;
 }
 
-/* Три локальных слота на партию — быстрое сохранение прямо в браузере, без
-   скачивания файла. Хранит полный снимок (как и файл), просто в localStorage. */
-const SOLO_SLOTS_KEY = 'ems-solo-slots';
-const SOLO_SLOT_COUNT = 3;
-const loadSoloSlots = () => {
-  let arr;
-  try { arr = JSON.parse(localStorage.getItem(SOLO_SLOTS_KEY) || '[]'); } catch { arr = []; }
-  if (!Array.isArray(arr)) arr = [];
-  const slots = arr.slice(0, SOLO_SLOT_COUNT).map((s) => ((s && s.snapshot) ? s : null));
-  while (slots.length < SOLO_SLOT_COUNT) slots.push(null);
-  return slots;
-};
-const writeSoloSlots = (slots) => {
-  try { localStorage.setItem(SOLO_SLOTS_KEY, JSON.stringify(slots)); return true; }
-  catch { return false; /* приватный режим или не хватило места в хранилище */ }
+/* Player ID — единственное, что остаётся на клиенте: без него некому
+   адресовать слоты на сервере (аккаунтов в игре нет). Сама партия — экономика,
+   история, декэижны — целиком лежит на сервере, как и сетевые комнаты. */
+const PLAYER_ID_KEY = 'ems-player-id';
+const getPlayerId = () => {
+  const fresh = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `p${Date.now()}${Math.random().toString(36).slice(2)}`;
+  try {
+    let id = localStorage.getItem(PLAYER_ID_KEY);
+    if (!id) { id = fresh(); localStorage.setItem(PLAYER_ID_KEY, id); }
+    return id;
+  } catch { return fresh(); /* приватный режим — слоты проработают только эту вкладку */ }
 };
 
 function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [tab, setTab] = useState(mode || 'save');
-  const [text, setText] = useState('');
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [slots, setSlots] = useState(loadSoloSlots);
-  const payload = useMemo(() => (snapshot ? serializeSave(snapshot) : ''), [snapshot]);
-  const sizeKb = (payload.length / 1024).toFixed(1);
+  const [slots, setSlots] = useState(null); // null = ещё загружаются
+  const [busyIdx, setBusyIdx] = useState(null);
+  const playerId = useMemo(getPlayerId, []);
 
-  const slotLabel = (snap) => {
-    const roleTitle = (ROLES.find((r) => r.id === snap.setup.role) || {}).short || snap.setup.role;
-    return `${roleTitle} · ${quarterLabel(Math.max(1, (snap.quarterIndex || 1) - 1))}`;
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchSoloSlots(playerId).then((s) => { if (!cancelled) setSlots(s); })
+      .catch((e) => { if (!cancelled) { setSlots(Array(3).fill(null)); setError(e.message); } });
+    return () => { cancelled = true; };
+  }, [playerId]);
+
+  const slotLabel = (s) => {
+    const roleTitle = (ROLES.find((r) => r.id === s.role) || {}).short || s.role;
+    return `${roleTitle} · ${quarterLabel(Math.max(1, (s.quarterIndex || 1) - 1))}`;
   };
-  const saveToSlot = (idx) => {
+  const saveToSlot = async (idx) => {
     if (!snapshot) return;
     if (slots[idx] && !window.confirm(`Перезаписать слот ${idx + 1}?`)) return;
-    const next = [...slots];
-    next[idx] = { savedAt: new Date().toISOString(), snapshot };
-    if (writeSoloSlots(next)) { setSlots(next); setError(''); Audio.play('stamp'); }
-    else setError('Не удалось сохранить в браузере — возможно, не хватает места. Скачайте файл вручную.');
+    setBusyIdx(idx); setError('');
+    try { validateSnapshot(snapshot); setSlots(await saveSoloSlot(playerId, idx, snapshot)); Audio.play('stamp'); }
+    catch (e) { setError(e.message); }
+    finally { setBusyIdx(null); }
   };
-  const loadFromSlot = (idx) => { const slot = slots[idx]; if (slot) { Audio.play('stamp'); onLoad(slot.snapshot); } };
-  const deleteSlot = (idx) => { const next = [...slots]; next[idx] = null; writeSoloSlots(next); setSlots(next); };
-
-  const download = () => {
-    try {
-      const blob = new Blob([payload], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const q = snapshot && snapshot.quarterIndex ? snapshot.quarterIndex - 1 : 0;
-      a.href = url; a.download = `economic-panel-q${q}.json`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch { setError('Скачивание недоступно в этом окружении — скопируйте текст вручную.'); }
+  const loadFromSlot = async (idx) => {
+    if (!slots[idx]) return;
+    setBusyIdx(idx); setError('');
+    try { const snap = validateSnapshot(await fetchSoloSlot(playerId, idx)); Audio.play('stamp'); onLoad(snap); }
+    catch (e) { setError(e.message); setBusyIdx(null); }
   };
-  const copy = () => {
-    try {
-      if (navigator.clipboard) navigator.clipboard.writeText(payload);
-      else { const ta = document.createElement('textarea'); ta.value = payload; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
-      setCopied(true); setTimeout(() => setCopied(false), 1800);
-    } catch { setError('Не удалось скопировать автоматически — выделите текст вручную.'); }
-  };
-  const readFile = (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => setText(String(r.result || ''));
-    r.readAsText(f);
-  };
-  const doLoad = () => {
-    try { const data = parseSave(text); setError(''); onLoad(data); } catch (err) { setError(err.message || 'Не удалось прочитать сохранение.'); }
+  const deleteSlot = async (idx) => {
+    setBusyIdx(idx); setError('');
+    try { setSlots(await deleteSoloSlot(playerId, idx)); }
+    catch (e) { setError(e.message); }
+    finally { setBusyIdx(null); }
   };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 660, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
+      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 480, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <Save size={15} color={COLOR.gold} />
           <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Сохранения</span>
@@ -2323,24 +2304,32 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
             <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
           ))}
         </div>
+        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.5 }}>
+          {tab === 'save'
+            ? 'Партия хранится на сервере — как и сетевые комнаты. 3 слота на это устройство.'
+            : 'Выберите слот, чтобы вернуться в сохранённую партию. Текущая партия будет заменена.'}
+        </div>
 
-        <div className="ems-panel" style={{ padding: 11, marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>Быстрые слоты — хранятся в этом браузере, без файла</div>
+        {slots === null ? (
+          <div style={{ fontSize: 12, color: COLOR.muted }}>Загружаем слоты…</div>
+        ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {slots.map((slot, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px',
-                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 11.5 }}>
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
                 <span style={{ flex: 1, color: slot ? COLOR.text : COLOR.faint }}>
-                  Слот {idx + 1}: {slot ? slotLabel(slot.snapshot) : 'пусто'}
+                  Слот {idx + 1}: {slot ? slotLabel(slot) : 'пусто'}
                 </span>
                 {tab === 'save' && snapshot && (
-                  <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} onClick={() => saveToSlot(idx)}>
-                    {slot ? 'Перезаписать' : 'Сохранить'}
+                  <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} disabled={busyIdx === idx} onClick={() => saveToSlot(idx)}>
+                    {busyIdx === idx ? 'Сохраняем…' : (slot ? 'Перезаписать' : 'Сохранить')}
                   </button>
                 )}
                 {tab === 'load' && slot && (
                   <>
-                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} onClick={() => loadFromSlot(idx)}>Загрузить</button>
+                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} disabled={busyIdx === idx} onClick={() => loadFromSlot(idx)}>
+                      {busyIdx === idx ? 'Загружаем…' : 'Загрузить'}
+                    </button>
                     <button onClick={() => deleteSlot(idx)} aria-label={`Удалить слот ${idx + 1}`}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
                       <X size={12} />
@@ -2350,45 +2339,8 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
               </div>
             ))}
           </div>
-        </div>
-        {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 10 }}>{error}</div>}
-
-        {tab === 'save' ? (
-          <>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
-              Весь ход партии — экономика, история, лента новостей и сюжеты — умещается в один текстовый файл ({sizeKb} КБ). Скачайте его или скопируйте текст: вставив его во вкладке «Загрузить», вы вернётесь ровно в этот момент.
-            </div>
-            <textarea readOnly value={payload} className="ems-mono ems-scroll"
-              style={{ width: '100%', height: 190, background: COLOR.bg, color: COLOR.muted, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 9.5, padding: 9, resize: 'vertical' }} />
-            <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
-              <button className="ems-btn primary" style={{ flex: 1, padding: '9px 0' }} onClick={() => { Audio.play('stamp'); download(); }}>
-                <Download size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Скачать файл
-              </button>
-              <button className="ems-btn" style={{ flex: 1, padding: '9px 0' }} onClick={() => { Audio.play('click'); copy(); }}>
-                {copied ? <Check size={13} style={{ verticalAlign: -2, marginRight: 6 }} /> : <Copy size={13} style={{ verticalAlign: -2, marginRight: 6 }} />}
-                {copied ? 'Скопировано' : 'Скопировать текст'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
-              Вставьте текст сохранения или выберите файл. Текущая партия будет заменена — сохраните её заранее, если она вам ещё нужна.
-            </div>
-            <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Вставьте сюда содержимое файла сохранения…"
-              className="ems-mono ems-scroll"
-              style={{ width: '100%', height: 170, background: COLOR.bg, color: COLOR.text, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 9.5, padding: 9, resize: 'vertical' }} />
-            <div style={{ display: 'flex', gap: 7, marginTop: 10, alignItems: 'center' }}>
-              <label className="ems-btn" style={{ flex: 1, padding: '9px 0', textAlign: 'center', cursor: 'pointer' }}>
-                <Upload size={13} style={{ verticalAlign: -2, marginRight: 6 }} />Выбрать файл
-                <input type="file" accept="application/json,.json,text/plain" style={{ display: 'none' }} onChange={readFile} />
-              </label>
-              <button className="ems-btn primary" style={{ flex: 1, padding: '9px 0' }} disabled={!text.trim()} onClick={() => { Audio.play('stamp'); doLoad(); }}>
-                Загрузить партию
-              </button>
-            </div>
-          </>
         )}
+        {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 10 }}>{error}</div>}
       </div>
     </div>
   );
@@ -4096,7 +4048,21 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 /* ============================ ЭКРАН ВЫБОРА ============================ */
 function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
   const [mode, setMode] = useState(() => (roomCodeFromUrl() ? 'network' : 'single'));
-  const [showLoad, setShowLoad] = useState(false);
+  const playerId = useMemo(getPlayerId, []);
+  const [soloSlots, setSoloSlots] = useState(null);
+  const [slotBusy, setSlotBusy] = useState(null);
+  const [slotError, setSlotError] = useState('');
+  React.useEffect(() => {
+    fetchSoloSlots(playerId).then(setSoloSlots).catch(() => setSoloSlots(Array(3).fill(null)));
+  }, [playerId]);
+  const enterSlot = async (idx) => {
+    setSlotBusy(idx); setSlotError('');
+    try { const snap = await fetchSoloSlot(playerId, idx); onLoad(snap); }
+    catch (e) { setSlotError(e.message); setSlotBusy(null); }
+  };
+  const removeSlot = async (idx) => {
+    try { setSoloSlots(await deleteSoloSlot(playerId, idx)); } catch (e) { setSlotError(e.message); }
+  };
   const [role, setRole] = useState(null);
   const [difficulty, setDifficulty] = useState('medium');
   const [goal, setGoalRaw] = useState('living_standards');
@@ -4115,7 +4081,6 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
   return (
     <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
-      {showLoad && <SaveLoadModal mode="load" snapshot={null} onClose={() => setShowLoad(false)} onLoad={(d) => { setShowLoad(false); onLoad(d); }} />}
       <div style={{ maxWidth: 800, width: '100%' }}>
         <div style={{ textAlign: 'center', marginBottom: 34 }}>
           <div className="ems-serif" style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.01em' }}>Экономическая панель государства</div>
@@ -4138,6 +4103,32 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
           </div>
         ) : (
         <>
+        {soloSlots && soloSlots.some(Boolean) && (
+          <div className="ems-panel" style={{ padding: 14, marginBottom: 20 }}>
+            <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>
+              Ваши партии ({soloSlots.filter(Boolean).length}/3)
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {soloSlots.map((slot, idx) => {
+                if (!slot) return null;
+                const roleTitle = (ROLES.find((r) => r.id === slot.role) || {}).short || slot.role;
+                return (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
+                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                    <span style={{ flex: 1, color: COLOR.text }}>{roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}</span>
+                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                      onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                    <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
+          </div>
+        )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>1</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваш пост</span>
@@ -4221,10 +4212,6 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
           onClick={() => { if (!role) return; Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart({ role, difficulty, goal, cbPersona, mofPersona }); }}>
           Принять полномочия
-        </button>
-        <button className="ems-btn" style={{ width: '100%', padding: '10px 0', fontSize: 12.5, marginTop: 9 }}
-          onClick={() => { Audio.prime(); Audio.play('paper'); setShowLoad(true); }}>
-          <Upload size={13} style={{ verticalAlign: -2, marginRight: 7 }} />Продолжить сохранённую партию
         </button>
         </>
         )}
