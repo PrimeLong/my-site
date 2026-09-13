@@ -175,7 +175,27 @@ function Gauge({ value, size = 110 }) {
   );
 }
 
-function KpiTile({ label, value, delta, invert, icon: Icon }) {
+// мини-график последних значений прямо в плитке: число говорит «сколько сейчас»,
+// а один взгляд на форму линии — «а раньше как было», без похода к графику ниже
+function Sparkline({ series, color, height = 16 }) {
+  if (!series || series.length < 2) return null;
+  const w = 100; // виртуальные единицы viewBox — реальную ширину задаёт CSS (width:100%),
+  // поэтому плитке неважно, узкая она или широкая: переполнения по горизонтали не будет
+  const min = Math.min(...series); const max = Math.max(...series);
+  const span = max - min || 1;
+  const pts = series.map((v, i) => {
+    const x = (i / (series.length - 1)) * w;
+    const y = height - ((v - min) / span) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function KpiTile({ label, value, delta, invert, icon: Icon, series }) {
   const good = Number.isFinite(delta) && Math.abs(delta) >= 0.05 ? (invert ? delta < 0 : delta > 0) : null;
   const barColor = good === null ? COLOR.border : good ? COLOR.teal : COLOR.rust;
   return (
@@ -184,10 +204,15 @@ function KpiTile({ label, value, delta, invert, icon: Icon }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: COLOR.muted, fontSize: 11, marginBottom: 7 }}>
         {Icon && <Icon size={12} />}<span>{label}</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
         <span className="ems-mono ems-serif" style={{ fontSize: 21, fontWeight: 600, letterSpacing: '-0.02em' }}>{value}</span>
         <DeltaTag value={delta} invert={invert} />
       </div>
+      {/* спарклайн — под цифрой, во всю ширину плитки: так его не приходится
+          втискивать в один ряд с числом на узких мобильных плитках (2 в ряд) */}
+      {series && series.length >= 2 && (
+        <div style={{ marginTop: 6 }}><Sparkline series={series} color={barColor === COLOR.border ? COLOR.faint : barColor} /></div>
+      )}
     </div>
   );
 }
@@ -2221,10 +2246,15 @@ function RegimeBanner({ economy }) {
     return () => clearTimeout(t);
   }, [economy.regime]);
   if (!visible) return null;
+  // кризисный режим должен ощутимо «весить» тяжелее нормального — иначе баннер
+  // «всё спокойно» и баннер «валютный кризис» выглядят одинаково важными
+  const isCrisis = economy.regime !== 'normal';
   return (
-    <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: dim, border: `1px solid ${c}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
-      <Activity size={15} color={c} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div><b style={{ color: c }}>Режим экономики: {info.label}.</b> <span style={{ color: COLOR.muted }}>{info.text}</span></div>
+    <div className="ems-fade-in" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: dim,
+      border: `1px solid ${c}`, borderLeft: `${isCrisis ? 4 : 1}px solid ${c}`, borderRadius: 3,
+      padding: isCrisis ? '11px 14px' : '9px 12px', fontSize: 12 }}>
+      <Activity size={isCrisis ? 17 : 15} color={c} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div><b style={{ color: c, fontSize: isCrisis ? 12.5 : 12 }}>Режим экономики: {info.label}.</b> <span style={{ color: COLOR.muted }}>{info.text}</span></div>
     </div>
   );
 }
@@ -3040,7 +3070,10 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
           ))}
         </div>
 
-        <div style={{ padding: 13, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* карточка выбранного инструмента — единственное место, где реально
+            происходит действие (сделка); отделяем её от списка цветом инструмента,
+            а не просто нейтральной панелью того же веса, что и список слева */}
+        <div style={{ padding: 13, display: 'flex', flexDirection: 'column', gap: 10, background: COLOR.panelRaised, borderTop: `2px solid ${instr.color}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
             <div>
               <div style={{ fontSize: 13, color: COLOR.text }}>
@@ -4114,7 +4147,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
                 style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
-                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} />
+                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
@@ -4247,11 +4280,16 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 </button>
               )}
             </div>
-            <div style={{ background: COLOR.panelAlt, color: COLOR.text, padding: '15px 17px', borderRadius: 2, border: `1px solid ${COLOR.border}`, borderLeft: `2px solid ${COLOR.gold}` }}>
+            {/* тот же газетный язык, что и в «Газете» (двойная линейка, бумага) — квартальный
+                отчёт и есть передовица, не отдельный от неё жанр текста */}
+            <div style={{ background: COLOR.paper, color: COLOR.paperText, padding: '16px 18px',
+              borderTop: `3px double ${COLOR.paperRule}`, borderLeft: `1px solid ${COLOR.paperRule}`,
+              borderRight: `1px solid ${COLOR.paperRule}`, borderBottom: `1px solid ${COLOR.paperRule}` }}>
+              <div className="ems-mono" style={{ fontSize: 9, color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>Бюллетень квартала</div>
               {room.report ? (
-                <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65 }}>{room.report}</div>
+                <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }}>{room.report}</div>
               ) : (
-                <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.muted }}>Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.</div>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.</div>
               )}
             </div>
           </div>
@@ -4515,34 +4553,39 @@ function SetupScreen({ onStart, onLoad, onEnterNetwork }) {
           </React.Fragment>
         ))}
 
+        {/* сложность и приоритет — это быстрые настройки, а не решения того же веса,
+            что роль: сводим в одну компактную секцию вместо двух полноразмерных
+            сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{personas ? 3 : 2}</span>
-          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Уровень сложности</span>
+          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 10, marginBottom: 26 }}>
-          {DIFFICULTIES.map((dd) => {
-            const active = difficulty === dd.id;
-            return (
-              <div key={dd.id} onClick={() => { Audio.play('click'); setDifficulty(dd.id); }} className="ems-panel"
-                style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
-                {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
-                <div style={{ fontSize: 13.5, color: active ? COLOR.goldSoft : COLOR.text, fontWeight: 600 }}>{dd.title}</div>
-                <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 4, lineHeight: 1.45 }}>{dd.desc}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{personas ? 4 : 3}</span>
-          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Приоритетная оценка</span>
-        </div>
-        <div style={{ position: 'relative', marginBottom: 30 }}>
-          <select value={goal} onChange={(e) => setGoal(e.target.value)} className="ems-btn"
-            style={{ width: '100%', padding: '10px 36px 10px 12px', fontSize: 13, appearance: 'none', WebkitAppearance: 'none' }}>
-            {GOALS.filter((g) => (role === 'trader' ? g.trader : !g.trader)).map((g) => (<option key={g.id} value={g.id}>{g.label}</option>))}
-          </select>
-          <ChevronDown size={14} color={COLOR.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
+          <div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {DIFFICULTIES.map((dd) => {
+                const active = difficulty === dd.id;
+                return (
+                  <span key={dd.id} className={`ems-tab ${active ? 'active' : ''}`}
+                    style={{ flex: 1, textAlign: 'center', padding: '9px 0', fontSize: 12.5 }}
+                    onClick={() => { Audio.play('click'); setDifficulty(dd.id); }}>{dd.title}</span>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>
+              {(DIFFICULTIES.find((dd) => dd.id === difficulty) || {}).desc}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 8 }}>По какой оценке подводить итог партии</div>
+            <div style={{ position: 'relative' }}>
+              <select value={goal} onChange={(e) => setGoal(e.target.value)} className="ems-btn"
+                style={{ width: '100%', padding: '10px 36px 10px 12px', fontSize: 13, appearance: 'none', WebkitAppearance: 'none' }}>
+                {GOALS.filter((g) => (role === 'trader' ? g.trader : !g.trader)).map((g) => (<option key={g.id} value={g.id}>{g.label}</option>))}
+              </select>
+              <ChevronDown size={14} color={COLOR.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            </div>
+          </div>
         </div>
 
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
@@ -4742,8 +4785,12 @@ function RiskBadge({ label, value }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11 }}>
       <span style={{ color: COLOR.muted, whiteSpace: 'nowrap' }}>{label}</span>
-      <span style={{ width: 46, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden', flexShrink: 0 }}>
-        <span style={{ display: 'block', width: `${v}%`, height: '100%', background: color, borderRadius: 2 }} />
+      {/* дорожка размечена самими зонами (спокойно/тревожно/опасно), а не только
+          закрашена до текущего значения — так видно не просто «24», а «24 — это
+          насколько близко к жёлтой зоне», без сверки с легендой в голове */}
+      <span style={{ position: 'relative', width: 46, height: 4, borderRadius: 2, flexShrink: 0,
+        background: `linear-gradient(90deg, ${COLOR.tealDim} 0%, ${COLOR.tealDim} 35%, ${COLOR.goldDim} 35%, ${COLOR.goldDim} 65%, ${COLOR.rustDim} 65%, ${COLOR.rustDim} 100%)` }}>
+        <span style={{ position: 'absolute', left: `calc(${v}% - 1.5px)`, top: -2, width: 3, height: 8, borderRadius: 1, background: color }} />
       </span>
       <span className="ems-mono" style={{ color, fontWeight: 600, width: 18 }}>{Math.round(v)}</span>
     </div>
@@ -5083,7 +5130,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
                 style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
-                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} />
+                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
@@ -5247,18 +5294,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
               {lastReport && <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => { Audio.play('click'); setShowWhy(true); }}><Info size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Почему это произошло?</button>}
             </div>
-            <div style={{ background: COLOR.panelAlt, color: COLOR.text, padding: '15px 17px', borderRadius: 2,
-              border: `1px solid ${COLOR.border}`, borderLeft: `2px solid ${COLOR.gold}` }}>
+            {/* тот же газетный язык, что и в «Газете» (двойная линейка, бумага) — квартальный
+                отчёт и есть передовица, не отдельный от неё жанр текста */}
+            <div style={{ background: COLOR.paper, color: COLOR.paperText, padding: '16px 18px',
+              borderTop: `3px double ${COLOR.paperRule}`, borderLeft: `1px solid ${COLOR.paperRule}`,
+              borderRight: `1px solid ${COLOR.paperRule}`, borderBottom: `1px solid ${COLOR.paperRule}` }}>
               {lastReport ? (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${COLOR.hairline}`, paddingBottom: 8, marginBottom: 10 }}>
-                    <span className="ems-serif" style={{ fontSize: 14, fontWeight: 700, color: COLOR.goldSoft }}>{history[history.length - 1].label}</span>
-                    <span className="ems-mono" style={{ fontSize: 10, color: COLOR.faint }}>бюллетень · {roleDef.short}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: `1px solid ${COLOR.paperRule}`, paddingBottom: 8, marginBottom: 10 }}>
+                    <span className="ems-serif" style={{ fontSize: 14, fontWeight: 700 }}>{history[history.length - 1].label}</span>
+                    <span className="ems-mono" style={{ fontSize: 9, color: COLOR.paperMuted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>бюллетень · {roleDef.short}</span>
                   </div>
-                  <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65, color: COLOR.text }} role="status" aria-live="polite">{lastReport}</div>
+                  <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }} role="status" aria-live="polite">{lastReport}</div>
                 </>
               ) : (
-                <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.muted }}>Настройте политику слева и завершите первый квартал. Помните: между решением и результатом стоит цепочка — ставка меняет стоимость кредита, кредит меняет спрос, спрос меняет цены.</div>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Настройте политику слева и завершите первый квартал. Помните: между решением и результатом стоит цепочка — ставка меняет стоимость кредита, кредит меняет спрос, спрос меняет цены.</div>
               )}
             </div>
           </div>
