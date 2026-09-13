@@ -685,15 +685,25 @@ const EVENTS = [
       // базовая доля обороны в бюджете — CONFIG.initial.budgetShares.defense; каждый процент сверх нее
       // гасит часть военного шока — расходы, сделанные ДО войны, а не в панике после
       const mult = clamp(1 - Math.max(0, defShare - CONFIG.initial.budgetShares.defense) * 0.025, 0.35, 1);
-      const news = mult < 0.7
-        ? 'Началась война. Заранее высокие расходы на оборону смягчили удар по экономике — армия и логистика были готовы.'
-        : 'Началась война. Низкие расходы на оборону обернулись более тяжёлым ударом — тыл оказался не готов.';
-      return { news, list: [
+      const prepNews = mult < 0.7
+        ? 'Заранее высокие расходы на оборону смягчили удар по экономике — армия и логистика были готовы.'
+        : 'Низкие расходы на оборону обернулись более тяжёлым ударом — тыл оказался не готов.';
+      // тип войны решает дипломатический исход: обороняющаяся сторона получает
+      // сочувствие и помощь союзников, наступающая — санкции и изоляцию
+      const warType = Math.random() < 0.5 ? 'defensive' : 'offensive';
+      const diploNews = warType === 'defensive'
+        ? 'Война носит оборонительный характер: союзники открывают кредитные линии и наращивают закупки — приходит иностранная помощь.'
+        : 'Война носит наступательный характер: партнёры вводят санкции и сворачивают инвестиции — страна оказывается в изоляции.';
+      const diplomacy = warType === 'defensive'
+        ? [['capitalFlow', 14], ['fdi', 9], ['exportsGrowth', 2.5], ['riskPremium', -0.5], ['worldDemandIndex', 2]]
+        : [['exportsGrowth', -5], ['importsGrowth', -4], ['capitalFlow', -16], ['fdi', -11], ['riskPremium', 0.9]];
+      return { news: `Началась война. ${prepNews} ${diploNews}`, warType, list: [
         ['exportsGrowth', -8 * mult], ['importsGrowth', -6 * mult], ['investment', -7 * mult],
         ['businessConfidence', -18 * mult], ['consumerConfidence', -12 * mult], ['inflationSupply', 1.6 * mult],
         ['capitalFlow', -30 * mult], ['fdi', -22 * mult], ['riskPremium', 1.4 * mult], ['potentialShock', -1.0 * mult],
         ['worldDemandIndex', -6 * mult], ['stockShock', -20 * mult], ['secIndustry', -8 * mult],
         ['secConsumer', -10 * mult], ['secReit', -9 * mult],
+        ...diplomacy,
       ] };
     } },
   { id: 'geopolitical', kind: 'external', title: 'Геополитический кризис', weight: 2, cooldown: 10,
@@ -774,11 +784,12 @@ function buildEventImpulses(evt, state, difficulty) {
   const resolved = evt.build(state);
   const list = Array.isArray(resolved) ? resolved : resolved.list;
   const news = Array.isArray(resolved) ? evt.news : resolved.news;
+  const warType = Array.isArray(resolved) ? null : resolved.warType || null;
   const impulses = list.map(([channel, amount]) => ({
     id: uid(), channel, reasonText: `Событие: ${evt.title}`, headline: headlineFor(channel),
     values: evt.spread.map((f) => amount * f), idx: 0,
   }));
-  return { impulses, news };
+  return { impulses, news, warType };
 }
 function tickImpulses(queue) {
   const deltas = {}; const contributions = []; const nextQueue = [];
@@ -902,12 +913,14 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const KIND_CAT = { demand: 'households', supply: 'business', financial: 'markets', external: 'world', structural: 'business' };
   let pandemicTriggered = false;
   let warTriggered = false;
+  let warTypeRolled = null;
   if (Math.random() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
       if (evt.id === 'war') warTriggered = true;
       const built = buildEventImpulses(evt, s, difficulty);
+      if (evt.id === 'war') warTypeRolled = built.warType || null;
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
       const busy = (stories || []).some((x) => x.tplId === evt.id);
@@ -1420,6 +1433,9 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   // война, как и пандемия, — не пороговое состояние, а отдельное событие с растянутым
   // эффектом; длится дольше пандемии (её экономический урон гасится 4 квартала)
   const warQuartersLeft = warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
+  // тип войны (оборонительная/наступательная) решает исход дипломатически — помощь
+  // союзников или санкции — и держится неизменным, пока идёт одна и та же война
+  const warType = warTriggered ? warTypeRolled : (warQuartersLeft > 0 ? (s.warType || null) : null);
   const activeCrises = [];
   if (bankingRisk >= CONFIG.thresholds.bankingRisk || bankCapitalAdequacy < 8) activeCrises.push('banking');
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
@@ -1469,7 +1485,12 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     } else if (c === 'pandemic') {
       news.push(mkNews('crisis', 'ПАНДЕМИЯ: РЕЖИМ ЧРЕЗВЫЧАЙНОЙ СИТУАЦИИ', 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям — эффект растянут на несколько кварталов.', { priority: 9 }));
     } else if (c === 'war') {
-      news.push(mkNews('crisis', 'ВОЙНА: ЭКОНОМИКА В ЧРЕЗВЫЧАЙНОМ РЕЖИМЕ', 'Торговля, инвестиции и доверие сжимаются одновременно. Расходы на оборону, сделанные ещё до войны, определили, насколько тяжёлым будет удар.', { priority: 10 }));
+      const typeNote = warType === 'offensive'
+        ? ' Война носит наступательный характер: партнёры вводят санкции, торговые и финансовые каналы сжимаются сильнее, чем от одного военного шока.'
+        : warType === 'defensive'
+          ? ' Война носит оборонительный характер: союзники открывают кредитные линии и наращивают закупки — часть удара смягчает иностранная помощь.'
+          : '';
+      news.push(mkNews('crisis', 'ВОЙНА: ЭКОНОМИКА В ЧРЕЗВЫЧАЙНОМ РЕЖИМЕ', `Торговля, инвестиции и доверие сжимаются одновременно. Расходы на оборону, сделанные ещё до войны, определили, насколько тяжёлым будет удар.${typeNote}`, { priority: 10 }));
     }
   });
   // окончание войны/пандемии тоже должно попасть в новости — раньше они молча
@@ -1480,7 +1501,12 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   // мигать не могут
   prevCrises.filter((c) => !activeCrises.includes(c)).forEach((c) => {
     if (c === 'war') {
-      news.push(mkNews('crisis', 'ВОЙНА ОКОНЧЕНА', 'Боевые действия прекратились. Торговля, инвестиции и доверие начинают восстанавливаться — но быстро зарубцевавшихся последствий войны не бывает.', { priority: 8 }));
+      const endNote = s.warType === 'offensive'
+        ? ' Санкции обычно снимаются медленнее, чем вводились — торговые ограничения ещё долго будут сдерживать восстановление.'
+        : s.warType === 'defensive'
+          ? ' Иностранная помощь сворачивается вместе с чрезвычайным положением — экономике предстоит учиться стоять без неё.'
+          : '';
+      news.push(mkNews('crisis', 'ВОЙНА ОКОНЧЕНА', `Боевые действия прекратились. Торговля, инвестиции и доверие начинают восстанавливаться — но быстро зарубцевавшихся последствий войны не бывает.${endNote}`, { priority: 8 }));
     } else if (c === 'pandemic') {
       news.push(mkNews('crisis', 'ПАНДЕМИЯ ОТСТУПИЛА', 'Ограничения сняты, спрос и производственные возможности возвращаются к норме.', { priority: 7 }));
     }
@@ -1545,7 +1571,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     marketCap, marketCapPctGdp, sectorBanks, sectorIndustry, sectorConsumer, sectorResources,
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
-    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft,
+    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
@@ -1666,14 +1692,22 @@ const STORY_TEMPLATES = {
   ] },
   war: { id: 'war', title: 'Война', steps: [
     { make: (s) => mkNews('crisis', 'НАЧАЛАСЬ ВОЙНА: ЭКОНОМИКА ПЕРЕХОДИТ НА ВОЕННЫЕ РЕЛЬСЫ',
-      'Торговля и инвестиции сжимаются, инвесторы уходят в защитные активы. Насколько тяжёлым будет удар — во многом решили расходы на оборону, сделанные ещё до войны.', { priority: 10,
+      `Торговля и инвестиции сжимаются, инвесторы уходят в защитные активы. ${s.warType === 'offensive'
+        ? 'Война носит наступательный характер: партнёры вводят санкции, торговые и финансовые каналы сворачиваются быстрее, чем от одного военного шока.'
+        : s.warType === 'defensive'
+          ? 'Война носит оборонительный характер: союзники открывают кредитные линии и наращивают закупки — часть удара компенсирует иностранная помощь.'
+          : 'Насколько тяжёлым будет удар — во многом решили расходы на оборону, сделанные ещё до войны.'}`, { priority: 10,
         chain: ['Война', 'Торговля ↓ и инвестиции ↓', 'Доверие ↓', 'Издержки ↑', 'Отток капитала'] }) },
     { gap: 1, make: (s) => mkNews('world', `ОБОРОННЫЕ РАСХОДЫ — ${rf1(s.budgetShares.defense)}% БЮДЖЕТА`,
       s.budgetShares.defense >= 20
         ? 'Заранее укреплённая оборона и логистика смягчили удар по экономике — тыл оказался готов.'
         : 'Война застала экономику с низкими расходами на оборону: адаптация обходится дороже и медленнее.', { priority: 7 }) },
     { gap: 2, make: (s) => mkNews('gov', `ЦЕНА ВОЙНЫ: ДОЛГ ${rf1(s.debtToGdp)}% ВВП`,
-      'Военные расходы и потери выпуска ложатся на бюджет. Обслуживание долга и оборона теперь конкурируют за каждый бюджетный процент.', { priority: 6 }) },
+      `Военные расходы и потери выпуска ложатся на бюджет. ${s.warType === 'offensive'
+        ? 'Санкции отрезали часть внешнего финансирования — дефицит приходится закрывать более дорогим внутренним долгом.'
+        : s.warType === 'defensive'
+          ? 'Иностранная помощь и льготные кредиты союзников частично разгружают бюджет, но обслуживание долга и оборона всё равно конкурируют за каждый процент.'
+          : 'Обслуживание долга и оборона теперь конкурируют за каждый бюджетный процент.'}`, { priority: 6 }) },
   ] },
   tech_breakthrough: { id: 'tech_breakthrough', title: 'Технологический скачок', steps: [
     { make: (s) => mkNews('business', `ТЕХНОЛОГИЧЕСКИЙ ПРОРЫВ: ПРОИЗВОДИТЕЛЬНОСТЬ ${rf1(s.productivity)}`,
@@ -1955,7 +1989,7 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   /* ⚠️ КРИЗИС / РЕЖИМ */
   if (s.regime !== prev.regime && REGIME_INFO[s.regime]) {
     const info = REGIME_INFO[s.regime];
-    push('crisis', `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${info.label.toUpperCase()}`, info.text, s.regime === 'normal' ? 6 : 10);
+    push('crisis', `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${info.label.toUpperCase()}`, regimeInfoText(info, s), s.regime === 'normal' ? 6 : 10);
   }
 
   /* 📊 РЫНОК */
@@ -2025,6 +2059,14 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
       q: '«Рынок торгует не вашей статистикой, а доверием к ней»',
       who: 'Дмитрий, управляющий портфелем',
       t: () => `Премия за риск ${rf1(s.riskPremium)} п.п., курс ${rfs(s.fxDeprAnnual)}% годовых. Резервы ${fmtMoney(s.reserves)} — цифра, которую считают все, кто решает, оставаться ли в стране.` },
+    { id: 'foreign_aid', p: 9, when: () => (s.warQuartersLeft || 0) > 0 && s.warType === 'defensive',
+      q: '«Кредитная линия союзников пришла быстрее, чем собственный бюджетный перевод»',
+      who: 'Представитель профильного ведомства',
+      t: () => `Оборонительная война вызывает сочувствие союзников: чистый приток капитала ${fmtMoney(s.netCapitalFlow)}, резервы ${fmtMoney(s.reserves)}. Опираться на чужую щедрость долго нельзя — но пока она держит платёжный баланс.` },
+    { id: 'sanctions_exporter', p: 9, when: () => (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive',
+      q: '«Полгода назад у нас были контракты на три года вперёд, теперь — ни одного»',
+      who: 'Экспортёр промышленного оборудования',
+      t: () => `Наступательная война обернулась санкциями: торговый баланс ${fmtMoney(s.tradeBalance)}, премия за риск ${rf1(s.riskPremium)} п.п. Рынки закрываются быстрее, чем открываются новые.` },
     { id: 'econ_hawk', p: 7, when: () => s.inflationExpectations > tgt + 2,
       q: '«Проблема уже не в ценах, а в том, что в цель никто не верит»',
       who: 'Ольга Р., экономист, колонка в деловом еженедельнике',
@@ -2249,7 +2291,7 @@ function makeInitialEconomy() {
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
-    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0,
+    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);
@@ -2300,8 +2342,11 @@ const REGIME_INFO = {
   currency: { label: 'Валютный кризис', color: 'rust', text: 'Курс переносится в цены. Защита резервами конечна, свободный курс — импорт инфляции.' },
   deflation: { label: 'Дефляционная ловушка', color: 'blue', text: 'Реальная ставка высока даже при нулевой ключевой. Обычная денежная политика теряет силу — нужен бюджет.' },
   pandemic: { label: 'Пандемия', color: 'rust', text: 'Вспышка заболевания одновременно сократила спрос и производственные возможности. Эффект растянут на несколько кварталов и постепенно сходит на нет.' },
-  war: { label: 'Война', color: 'rust', text: 'Экономика в состоянии войны: торговля и инвестиции сжались, издержки растут, капитал уходит в защитные активы. Расходы на оборону, сделанные ещё до войны, смягчают удар.' },
+  war: { label: 'Война', color: 'rust', text: (e) => `Экономика в состоянии ${e.warType === 'offensive' ? 'наступательной войны: под санкциями сжались торговля и инвестиции, капитал уходит в защитные активы' : e.warType === 'defensive' ? 'оборонительной войны: удар смягчает иностранная помощь союзников, но торговля и инвестиции всё равно сжались' : 'войны: торговля и инвестиции сжались, издержки растут, капитал уходит в защитные активы'}. Расходы на оборону, сделанные ещё до войны, смягчают удар.` },
 };
+/* text может быть строкой или функцией (economy) => строка — второе нужно там,
+   где формулировка зависит от состояния (например, тип войны) */
+const regimeInfoText = (info, economy) => (typeof info.text === 'function' ? info.text(economy) : info.text);
 const CRISIS_INFO = {
   banking: { label: 'Банковский кризис', text: 'Просрочка съедает капитал, капитал ограничивает кредит, сжатие кредита повышает просрочку.' },
   debt: { label: 'Долговой кризис', text: 'Инвесторы требуют премию за риск; стоимость обслуживания растёт быстрее доходов.' },
@@ -2311,7 +2356,7 @@ const CRISIS_INFO = {
   recession: { label: 'Рецессия', text: 'Выпуск ниже потенциала уже несколько кварталов.' },
   deflation: { label: 'Дефляция', text: 'Слабый спрос и почти нулевой рост цен.' },
   pandemic: { label: 'Пандемия', text: 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям.' },
-  war: { label: 'Война', text: 'Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери.' },
+  war: { label: 'Война', text: (e) => `Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери. ${e.warType === 'offensive' ? 'Наступательный характер войны привёл к санкциям.' : e.warType === 'defensive' ? 'Оборонительный характер войны приносит иностранную помощь.' : ''}`.trim() },
 };
 
 function buildReport({ prev, next, quarterIndex, reasons }) {
@@ -2326,7 +2371,7 @@ function buildReport({ prev, next, quarterIndex, reasons }) {
   }
   const top = reasons.gdpGrowth[0];
   if (top) p.push(`Главный фактор динамики выпуска: ${top.reasonText.charAt(0).toLowerCase()}${top.reasonText.slice(1)}.`);
-  if (next.regime !== 'normal' && REGIME_INFO[next.regime]) p.push(`Режим экономики — ${REGIME_INFO[next.regime].label.toLowerCase()}. ${REGIME_INFO[next.regime].text}`);
+  if (next.regime !== 'normal' && REGIME_INFO[next.regime]) p.push(`Режим экономики — ${REGIME_INFO[next.regime].label.toLowerCase()}. ${regimeInfoText(REGIME_INFO[next.regime], next)}`);
   return p.join(' ');
 }
 
@@ -2451,7 +2496,7 @@ function leverPreview(id, newVal, s, difficulty) {
 export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
-  STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL,
+  STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
