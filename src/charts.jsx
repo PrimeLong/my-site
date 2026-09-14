@@ -9,7 +9,7 @@
    (экспортирован оттуда), а не копия: смена темы и звук работают как раньше. */
 import React, { useState, useMemo } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine,
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
 import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
@@ -86,7 +86,10 @@ const CHART_GROUPS = [
   ] },
 ];
 const PERIODS = [{ id: '1y', label: '1 год', q: 4 }, { id: '5y', label: '5 лет', q: 20 }, { id: '10y', label: '10 лет', q: 40 }, { id: 'all', label: 'Всё время', q: 1e9 }];
-const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v) : (v) => `${Math.round(v)}%`);
+/* На узком диапазоне (например разрыв выпуска от -1.2 до 0) округление до целых
+   даёт подряд «0% 0% -1% -1%» — десятая доля появляется только когда она нужна. */
+const pctTick = (v) => `${Math.abs(v) < 10 ? Number(v.toFixed(1)) : Math.round(v)}%`;
+const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v) : pctTick);
 const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v) : (v) => `${fmt1(v)}%`);
 
 const FORECAST_ANCHORS = {
@@ -132,6 +135,11 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     return out;
   }, [history, period, forecast, chartGroup, hiddenSeries]);
 
+  // граница факта и прогноза: последняя точка реальной истории
+  const nowLabel = useMemo(() => {
+    const factual = data.filter((r) => !r.forecastPoint);
+    return factual.length ? factual[factual.length - 1].label : null;
+  }, [data]);
   const toggleSeries = (id) => setHiddenSeries((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const visible = group.series.filter((s) => !hiddenSeries.includes(s.id));
   const leftDef = visible.find((s) => s.axis === 'left');
@@ -145,8 +153,9 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: forecast ? COLOR.gold : COLOR.panelAlt,
             color: forecast ? COLOR.ink : COLOR.text, borderColor: forecast ? COLOR.gold : COLOR.border }}
-            onClick={() => { Audio.play('tab'); setForecast((f) => !f); }} title="Веер неопределённости на 8 кварталов вперёд">
-            прогноз
+            onClick={() => { Audio.play('tab'); setForecast((f) => !f); }}
+            title="Дорисовать к графику 8 кварталов вперёд: пунктир — куда показатель придёт сам собой, если ничего не менять, заливка — насколько эта оценка неточна">
+            {forecast ? 'скрыть прогноз' : 'прогноз на 8 кв.'}
           </button>
           {PERIODS.map((p) => (
             <button key={p.id} onClick={() => { Audio.play('tab'); setPeriod(p.id); }} className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: period === p.id ? COLOR.gold : COLOR.panelAlt, color: period === p.id ? COLOR.ink : COLOR.text, borderColor: period === p.id ? COLOR.gold : COLOR.border }}>
@@ -184,6 +193,10 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
             <Tooltip contentStyle={{ background: COLOR.panel, border: `1px solid ${COLOR.border}`, fontSize: 12 }} labelStyle={{ color: COLOR.goldSoft }}
               formatter={(value, name, props) => { const def = seriesById[props.dataKey]; return [def ? tooltipVal(def.fmt)(value) : value, name]; }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
+            {forecast && nowLabel && (
+              <ReferenceLine yAxisId="left" x={nowLabel} stroke={COLOR.faint} strokeDasharray="3 3"
+                label={{ value: 'сейчас', position: 'insideTop', fontSize: 9.5, fill: COLOR.muted }} />
+            )}
             {forecast && visible[0] && (
               <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanBand" name="95% интервал"
                 stroke="none" fill={visible[0].color} fillOpacity={0.10} isAnimationActive={false} legendType="none" />
@@ -202,10 +215,15 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4 }}>
+      <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
-          ? `Веер построен для показателя «${(visible[0] || group.series[0]).label}»: пунктир — инерционная траектория к якорю (цель ЦБ, потенциал, естественная безработица), заливка — интервалы 68% и 95%. Чем дальше горизонт, тем шире неопределённость.`
-          : 'Темпы роста и ставки показаны в годовом выражении; траектория рассчитывается по кварталам. Нажмите на показатель выше, чтобы скрыть или показать его линию.'}
+          ? <>Прогноз для показателя <b style={{ color: COLOR.text }}>«{(visible[0] || group.series[0]).label}»</b> — первого включённого в списке выше.
+            Пунктир справа от отметки «сейчас» — куда показатель придёт <b style={{ color: COLOR.text }}>сам собой</b>, если вы больше ничего не меняете:
+            он затухает к своему якорю (цель ЦБ по инфляции, потенциальный рост, естественная безработица) примерно на четверть расстояния за квартал.
+            Заливка — насколько этой оценке можно верить: тёмная полоса это 68%, светлая 95%. Это не предсказание модели, а линейка неопределённости:
+            чем дальше горизонт, тем она шире.</>
+          : <>Темпы роста и ставки показаны в годовом выражении; траектория рассчитывается по кварталам. Нажмите на показатель выше, чтобы скрыть или показать его линию.
+            Кнопка <b style={{ color: COLOR.text }}>«прогноз на 8 кв.»</b> дорисовывает справа, куда первый включённый показатель уйдёт сам, если ничего не менять — с веером неопределённости.</>}
       </div>
     </div>
   );
@@ -242,6 +260,54 @@ function MiniChart({ data, color, height = 46, label, fmt, marks }) {
   );
 }
 export const MemoChart = React.memo(MiniChart);
+
+/* График инструмента в терминале: цена, ваша средняя, отметки сделок и — по
+   желанию — эталон, приведённый к той же стартовой точке. Приведение и есть
+   смысл сравнения: видно не «что выросло сильнее в пунктах», а обогнали вы
+   рынок или отстали, если бы вложились в начале показанного отрезка. */
+function InstrumentChartBase({ rows, color, avg, marks, benchLabel, benchColor, height = 190 }) {
+  const markSet = {};
+  (marks || []).forEach((m) => { if (m.idx >= 0) markSet[m.idx] = m; });
+  const dot = (props) => {
+    const m = markSet[props.payload.i];
+    if (!m) return null;
+    return (
+      <g key={`m${props.payload.i}`}>
+        <circle cx={props.cx} cy={props.cy} r={4.6} fill={m.side === 'buy' ? COLOR.teal : COLOR.rust} stroke={COLOR.bg} strokeWidth={1.2} />
+        <text x={props.cx} y={props.cy - 8} textAnchor="middle" fontSize={8.5} fill={m.side === 'buy' ? COLOR.teal : COLOR.rust}>
+          {m.side === 'buy' ? 'B' : 'S'}
+        </text>
+      </g>
+    );
+  };
+  if (!rows || rows.length < 2) return <div style={{ height }} />;
+  return (
+    <div className="ems-visual" style={{ width: '100%', height }}>
+      <ResponsiveContainer>
+        <LineChart data={rows} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}>
+          <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 9.5, fill: COLOR.faint }} interval="preserveStartEnd" minTickGap={22} />
+          <YAxis tick={{ fontSize: 9.5, fill: COLOR.muted }} width={52} domain={['auto', 'auto']}
+            tickFormatter={(v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru-RU') : fmt1(v))} />
+          <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11.5, padding: '5px 9px' }}
+            labelStyle={{ color: COLOR.goldSoft }}
+            formatter={(v, name) => [fmt1(v), name]} />
+          {Number.isFinite(avg) && avg > 0 && (
+            <ReferenceLine y={avg} stroke={COLOR.goldSoft} strokeDasharray="4 4" strokeWidth={1.2}
+              label={{ value: `ваша средняя ${fmt1(avg)}`, position: 'insideTopRight', fontSize: 9.5, fill: COLOR.goldSoft }} />
+          )}
+          {benchLabel && (
+            <Line type="monotone" dataKey="bench" name={benchLabel} stroke={benchColor || COLOR.faint}
+              strokeWidth={1.3} strokeDasharray="5 3" dot={false} isAnimationActive={false} />
+          )}
+          <Line type="monotone" dataKey="price" name="цена" stroke={color} strokeWidth={2}
+            dot={marks && marks.length ? dot : false} isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+export const InstrumentChart = React.memo(InstrumentChartBase);
 
 function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
   const H = horizon || 12;

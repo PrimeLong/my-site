@@ -11,7 +11,7 @@ import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
   POLITICAL_REGIME_INFO,
-  clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
+  clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, mlnScale, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
@@ -359,6 +359,7 @@ const ChartFallback = ({ height = 250 }) => (
 const ChartPanel = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.ChartPanel })));
 const MemoChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.MemoChart })));
 const IRFModal = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.IRFModal })));
+const InstrumentChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.InstrumentChart })));
 
 function WhyModal({ reasons, onClose }) {
   const [tab, setTab] = useState('gdpGrowth');
@@ -1551,21 +1552,21 @@ function useExclusiveDropdown(width) {
     dropdownListeners.add(onOther);
     return () => dropdownListeners.delete(onOther);
   }, []);
+  /* Закрытие соседей нельзя делать внутри апдейтера setState: он выполняется в фазе
+     рендера, и React ругается на setState в чужом компоненте. Считаем next заранее. */
   const toggle = () => {
-    setOpen((o) => {
-      const next = !o;
-      if (next) {
-        dropdownActiveId = idRef.current;
-        dropdownListeners.forEach((fn) => fn());
-        const r = btnRef.current && btnRef.current.getBoundingClientRect();
-        if (r) {
-          const vw = window.innerWidth;
-          const left = Math.max(8, Math.min(r.right - width, vw - width - 8));
-          setPos({ top: r.bottom + 6, left });
-        }
+    const next = !open;
+    if (next) {
+      dropdownActiveId = idRef.current;
+      dropdownListeners.forEach((fn) => fn());
+      const r = btnRef.current && btnRef.current.getBoundingClientRect();
+      if (r) {
+        const vw = window.innerWidth;
+        const left = Math.max(8, Math.min(r.right - width, vw - width - 8));
+        setPos({ top: r.bottom + 6, left });
       }
-      return next;
-    });
+    }
+    setOpen(next);
   };
   return { open, setOpen, toggle, btnRef, pos };
 }
@@ -2070,7 +2071,8 @@ function Quote({ label, value, change, unit, color, big }) {
 function useLiveQuotes(economy) {
   const keys = ['stockIndex', 'bondIndex', 'sectorBanks', 'sectorIndustry', 'sectorConsumer', 'sectorResources',
     'exchangeRate', 'yield10y', 'yield2y', 'sovereignSpread', 'corporateSpread', 'marketCap',
-    'corpBondIndex', 'fxIndex', 'goldIndex', 'depositIndex'];
+    'corpBondIndex', 'fxIndex', 'goldIndex', 'depositIndex', 'reitIndex',
+    'bondShortIndex', 'linkerIndex', 'moneyMarketIndex', 'worldEquityIndex'];
   const base = {};
   keys.forEach((k) => { base[k] = economy[k]; });
   const [live, setLive] = useState(base);
@@ -2846,10 +2848,10 @@ function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio,
     const val = bookValue(portfolio, economy, null);
     const start = portfolio.startValue || 10;
     const ret = ((val / start) - 1) * 100;
-    stats.push(['Капитал', `${val.toFixed(2)} млн`]);
+    stats.push(['Капитал', fmtMln(val)]);
     stats.push(['Доходность', `${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%`]);
     stats.push(['Сделок на рынке', String((portfolio.trades || []).length)]);
-    stats.push(['Итог казино', `${(portfolio.casinoNet || 0) >= 0 ? '+' : ''}${(portfolio.casinoNet || 0).toFixed(2)} млн`]);
+    stats.push(['Итог казино', fmtMlnSigned(portfolio.casinoNet || 0)]);
   } else {
     const gdpChange = startEconomy && startEconomy.gdp > 0 ? ((economy.gdp / startEconomy.gdp) - 1) * 100 : null;
     stats.push(['ВВП с начала партии', gdpChange != null ? `${gdpChange >= 0 ? '+' : ''}${gdpChange.toFixed(0)}%` : '—']);
@@ -3187,12 +3189,20 @@ const INSTRUMENTS = [
     note: 'Выигрывает от дорогого сырья и слабой валюты.' },
   { id: 'reit', name: 'Фонды недвижимости', ticker: 'RET', group: 'Акции', color: '#C08A6B', key: 'reitIndex', fee: 0.0025, kind: 'spot',
     note: 'Недвижимость переоценивается вслед за ставкой по кредитам и реальными доходами. Самый процентно-чувствительный актив.' },
+  { id: 'eq_world', name: 'Мировые акции (ETF)', ticker: 'WLD', group: 'Акции', color: '#6BA9C0', key: 'worldEquityIndex', fee: 0.0025, kind: 'spot',
+    note: 'Чужой экономический цикл, пересчитанный в местную валюту. Единственная позиция, которой всё равно на вашу ставку и ваш бюджет: растёт на мировом спросе и на девальвации.' },
   { id: 'bond_gov', name: 'Гособлигации 10 лет', ticker: 'GOV', group: 'Облигации', color: COLOR.blue, key: 'bondIndex', fee: 0.001, kind: 'spot',
     note: 'Индекс полной доходности: купон уже внутри цены и реинвестируется, отдельной выплаты нет, бумага не гасится. Дюрация 7,4: доходность +1 п.п. отнимает около 7% цены.' },
+  { id: 'bond_short', name: 'Короткие ОФЗ 2 года', ticker: 'GOV2', group: 'Облигации', color: '#7FA3B8', key: 'bondShortIndex', fee: 0.0008, kind: 'spot',
+    note: 'Тот же госдолг, но дюрация 1,9 вместо 7,4: разворот ставки почти не двигает цену. Место, где пережидают неопределённость, не выходя из бумаг.' },
+  { id: 'bond_linker', name: 'Инфляционные линкеры', ticker: 'LNK', group: 'Облигации', color: '#C2A15A', key: 'linkerIndex', fee: 0.0012, kind: 'spot',
+    note: 'Номинал индексируется на фактическую инфляцию, сверху — реальная доходность. Единственная бумага, которой скачок цен помогает, а не вредит.' },
   { id: 'bond_corp', name: 'Корпоративные облигации', ticker: 'CRP', group: 'Облигации', color: COLOR.teal, key: 'corpBondIndex', fee: 0.0015, kind: 'spot',
     note: 'То же самое, но с кредитным спредом: доходность выше, а в кризис спред расширяется и цена падает сильнее государственной. Дюрация 4,1.' },
   { id: 'dep', name: 'Банковский депозит', ticker: 'DEP', group: 'Деньги', color: COLOR.teal, key: 'depositIndex', fee: 0, kind: 'spot',
     note: 'Ставка по депозитам. Безопасно ровно до тех пор, пока реальная ставка не уйдёт в минус.' },
+  { id: 'mm', name: 'Денежный рынок (РЕПО)', ticker: 'MMF', group: 'Деньги', color: '#9AA79B', key: 'moneyMarketIndex', fee: 0.0002, kind: 'spot',
+    note: 'Овернайт по ключевой ставке. Номинально безрисковый и ровно настолько же беззащитный перед инфляцией: при отрицательной реальной ставке теряет медленно, но неизбежно.' },
   { id: 'fx', name: 'Иностранная валюта', ticker: 'FX', group: 'Деньги', color: COLOR.rust, key: 'fxIndex', fee: 0.003, kind: 'spot',
     note: 'Курс плюс мировая ставка. Страховка от девальвации и от собственного правительства.' },
   { id: 'gold', name: 'Сырьевой контракт', ticker: 'CMD', group: 'Товары', color: '#C08A6B', key: 'goldIndex', fee: 0.0025, kind: 'spot',
@@ -3203,6 +3213,8 @@ const INSTRUMENTS = [
     note: 'Плечо 8:1. Вы вносите только ГО; движение курса на 1% меняет ваши деньги на 8%.' },
   { id: 'fut_bond', name: 'Фьючерс на облигации', ticker: 'F-GOV', group: 'Производные', color: COLOR.blue, key: 'bondIndex', fee: 0.0006, kind: 'fut', lev: 10,
     note: 'Плечо 10:1. Ставка на разворот денежной политики. Движение цены на 1% — это 10% вашего ГО.' },
+  { id: 'fut_cmd', name: 'Фьючерс на сырьё', ticker: 'F-CMD', group: 'Производные', color: '#C08A6B', key: 'goldIndex', fee: 0.0009, kind: 'fut', lev: 6,
+    note: 'Плечо 6:1 на мировую цену сырья в местной валюте. Двойная ставка сразу: и на сырьевой цикл, и на курс.' },
   { id: 'opt_call', name: 'Опцион call на индекс', ticker: 'CALL', group: 'Опционы', color: COLOR.teal, key: 'stockIndex', fee: 0.004, kind: 'opt', optType: 'call', life: 2,
     note: 'Право купить индекс по текущей цене через 2 квартала. Убыток ограничен премией, прибыль — нет.' },
   { id: 'opt_put', name: 'Опцион put на индекс', ticker: 'PUT', group: 'Опционы', color: COLOR.rust, key: 'stockIndex', fee: 0.004, kind: 'opt', optType: 'put', life: 2,
@@ -3373,7 +3385,7 @@ function settleQuarter(book, economy) {
       b.cash += payoff;
       b.realized += payoff - lot.premium * lot.qty / 1000;
       events.push({ kind: payoff > lot.premium * lot.qty / 1000 ? 'ok' : 'loss',
-        text: `Опцион ${lot.type === 'call' ? 'call' : 'put'} со страйком ${lot.strike.toFixed(0)} исполнен: выплата ${payoff.toFixed(2)} млн при уплаченной премии ${(lot.premium * lot.qty / 1000).toFixed(2)} млн.` });
+        text: `Опцион ${lot.type === 'call' ? 'call' : 'put'} со страйком ${lot.strike.toFixed(0)} исполнен: выплата ${fmtMln(payoff)} при уплаченной премии ${fmtMln(lot.premium * lot.qty / 1000)}.` });
     } else keep.push({ ...lot, left: lot.left - 1 });
   });
   b.opts = keep;
@@ -3386,7 +3398,7 @@ function settleQuarter(book, economy) {
   const margin = b.cash < 0 ? -b.cash : 0;
   const interest = margin * economy.lendingRate / 400;
   b.cash -= borrow + interest;
-  if (borrow > 0.005) events.push({ kind: 'info', text: `Плата за короткие позиции: ${borrow.toFixed(3)} млн за квартал.` });
+  if (borrow > 0.005) events.push({ kind: 'info', text: `Плата за короткие позиции: ${fmtMln(borrow)} за квартал.` });
   // маржин-колл
   let lvl = marginLevel(b, economy, null);
   if (lvl < MAINTENANCE) {
@@ -3413,7 +3425,7 @@ function settleQuarter(book, economy) {
     });
     b.opts = b.opts.map((l) => ({ ...l, qty: l.qty * (1 - cut) }));
     b.marginCalls = (b.marginCalls || 0) + 1;
-    events.push({ kind: 'call', text: `Маржин-колл: уровень обеспечения упал до ${(lvl * 100).toFixed(0)}% при минимуме ${MAINTENANCE * 100}%. Брокер принудительно закрыл ${(cut * 100).toFixed(0)}% позиций (${closedValue.toFixed(2)} млн) по рынку со штрафом 0,5%.` });
+    events.push({ kind: 'call', text: `Маржин-колл: уровень обеспечения упал до ${(lvl * 100).toFixed(0)}% при минимуме ${MAINTENANCE * 100}%. Брокер принудительно закрыл ${(cut * 100).toFixed(0)}% позиций (${fmtMln(closedValue)}) по рынку со штрафом 0,5%.` });
     lvl = marginLevel(b, economy, null);
   }
   const val = bookValue(b, economy, null);
@@ -3438,9 +3450,10 @@ const BENCHMARKS = [
 const SECTOR_OF = {
   eq_broad: 'Рынок целиком', eq_banks: 'Банки', eq_industry: 'Промышленность',
   eq_consumer: 'Потребительский сектор', eq_resources: 'Сырьевой сектор', reit: 'Недвижимость',
-  bond_gov: 'Госдолг', bond_corp: 'Корпоративный долг',
-  dep: 'Депозит', fx: 'Валюта', gold: 'Товары',
-  fut_idx: 'Плечо: индекс', fut_fx: 'Плечо: валюта', fut_bond: 'Плечо: долг',
+  eq_world: 'Мировые акции',
+  bond_gov: 'Госдолг', bond_short: 'Госдолг', bond_linker: 'Линкеры', bond_corp: 'Корпоративный долг',
+  dep: 'Депозит', mm: 'Денежный рынок', fx: 'Валюта', gold: 'Товары',
+  fut_idx: 'Плечо: индекс', fut_fx: 'Плечо: валюта', fut_bond: 'Плечо: долг', fut_cmd: 'Плечо: сырьё',
 };
 
 function AllocationDonut({ rows, size = 124, thickness = 16 }) {
@@ -3461,7 +3474,7 @@ function AllocationDonut({ rows, size = 124, thickness = 16 }) {
         );
       })}
       <text x={c} y={c - 3} textAnchor="middle" fontSize={9} fill={COLOR.muted}>ЭКСПОЗИЦИЯ</text>
-      <text x={c} y={c + 12} textAnchor="middle" fontSize={14} fill={COLOR.text}>{total.toFixed(2)}</text>
+      <text x={c} y={c + 12} textAnchor="middle" fontSize={13} fill={COLOR.text}>{fmtMln(total)}</text>
     </svg>
   );
 }
@@ -3513,9 +3526,9 @@ function InstrumentPrimer({ instr, economy, prev, amt }) {
     return (
       <div style={box}>
         <div style={{ color: COLOR.goldSoft, marginBottom: 5 }}>Как считается фьючерс</div>
-        <Row k="Вы вносите (гарантийное обеспечение)" v={`${m.toFixed(2)} млн`} />
-        <Row k={`Работает позиция размером (×${instr.lev})`} v={`${notional.toFixed(2)} млн`} />
-        <Row k="Движение цены на 1%" v={`± ${perPct.toFixed(2)} млн = ${instr.lev}% вашего ГО`}
+        <Row k="Вы вносите (гарантийное обеспечение)" v={fmtMln(m)} />
+        <Row k={`Работает позиция размером (×${instr.lev})`} v={fmtMln(notional)} />
+        <Row k="Движение цены на 1%" v={`± ${fmtMln(perPct)} = ${instr.lev}% вашего ГО`}
           tone={COLOR.gold} />
         <Row k="Убыток съедает ГО полностью при" v={`падении на ${(100 / instr.lev).toFixed(1)}%`} tone={COLOR.rust} />
         <div style={{ color: COLOR.faint, marginTop: 6 }}>
@@ -3561,6 +3574,11 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
   const [side, setSide] = useState('buy');
   const [amount, setAmount] = useState(1);
   const [useMargin, setUseMargin] = useState(false);
+  const [query, setQuery] = useState('');
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [sortBy, setSortBy] = useState('group');
+  const [chartRange, setChartRange] = useState(20);
+  const [showBench, setShowBench] = useState(false);
   const parts = bookParts(book, economy, live);
   const equity = book.cash + parts.spot + parts.futPnl + parts.optVal;
   const lvl = parts.gross > 0.01 ? equity / parts.gross : 9;
@@ -3584,16 +3602,61 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
   const maxAmount = side === 'buy' ? maxBuy : maxSell;
   const amt = clamp(amount, 0, maxAmount);
   const chg = prev && prev[instr.key] ? (economy[instr.key] / prev[instr.key] - 1) * 100 : 0;
-  const hist28 = useMemo(() => (history || []).slice(-28), [history]);
-  const series = useMemo(() => hist28.map((h) => h[instr.key]), [hist28, instr.key]);
+  const histWin = useMemo(() => (history || []).slice(-chartRange), [history, chartRange]);
+  // Эталон приводим к стартовой точке самого инструмента: сравнение имеет смысл
+  // только как «обогнали рынок или отстали», а не как разница абсолютных пунктов
+  const chartRows = useMemo(() => {
+    const first = histWin.find((h) => Number.isFinite(h[instr.key]));
+    const benchFirst = histWin.find((h) => Number.isFinite(h.stockIndex));
+    const k = first && benchFirst && benchFirst.stockIndex ? first[instr.key] / benchFirst.stockIndex : 1;
+    return histWin.map((h, idx) => ({
+      i: idx,
+      label: h.label || h.q || '',
+      price: Number.isFinite(h[instr.key]) ? h[instr.key] : null,
+      bench: showBench && Number.isFinite(h.stockIndex) ? h.stockIndex * k : null,
+    }));
+  }, [histWin, instr.key, showBench]);
   const marks = useMemo(() => {
-    const firstQ = hist28.length ? hist28[0].q : 0;
-    const last = hist28.length - 1;
+    const firstQ = histWin.length ? histWin[0].q : 0;
+    const last = histWin.length - 1;
     return (book.trades || []).filter((t) => t.id === sel)
       // сделки текущего, ещё не закрытого квартала прижимаем к последней точке графика
       .map((t) => ({ idx: Math.min(t.q - firstQ, last), side: t.side }))
       .filter((m) => m.idx >= 0 && m.idx <= last);
-  }, [hist28, book.trades, sel]);
+  }, [histWin, book.trades, sel]);
+  // одна таблица «как на бирже»: цена, изменение, позиция и результат по каждой
+  // строке считаются в одном месте — и для сортировки, и для отрисовки
+  const rows = useMemo(() => INSTRUMENTS.map((i) => {
+    const pr = priceOf(i, economy, live);
+    const q = book.pos[i.id] || 0;
+    const myLots = (book.opts || []).filter((l) => l.instr === i.id);
+    const value = i.kind === 'opt'
+      ? myLots.reduce((a, l) => a + optionValue(l.type, pr, l.strike, vol, l.left) * l.qty / 1000, 0)
+      : i.kind === 'fut' ? Math.abs(q) * pr / 1000 : q * pr / 1000;
+    const avgP = book.avg[i.id];
+    const pnl = i.kind === 'opt'
+      ? value - myLots.reduce((a, l) => a + l.premium * l.qty / 1000, 0)
+      : (q !== 0 && avgP) ? q * (pr - avgP) / 1000 : 0;
+    const chgQ = prev && prev[i.key] ? (economy[i.key] / prev[i.key] - 1) * 100 : 0;
+    return { i, pr, q, myLots, value, pnl, chgQ, has: Math.abs(q) > 0.001 || myLots.length > 0 };
+  }), [economy, live, book, prev, vol]);
+  const visibleRows = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    const out = rows.filter((r) => (activeGroup === 'all' || r.i.group === activeGroup)
+      && (!onlyMine || r.has)
+      && (!term || r.i.name.toLowerCase().includes(term) || r.i.ticker.toLowerCase().includes(term)));
+    if (sortBy === 'chg') return [...out].sort((a, b) => b.chgQ - a.chgQ);
+    if (sortBy === 'pnl') return [...out].sort((a, b) => b.pnl - a.pnl);
+    return out;
+  }, [rows, activeGroup, onlyMine, query, sortBy]);
+  const openCount = rows.filter((r) => r.has).length;
+  // «Движение квартала»: три лидера и три аутсайдера среди спот-инструментов —
+  // производные повторяют базовый актив и в этой строке были бы дублями
+  const movers = useMemo(() => {
+    const spot = rows.filter((r) => r.i.kind === 'spot' && Math.abs(r.chgQ) > 0.05).sort((a, b) => b.chgQ - a.chgQ);
+    if (spot.length < 2) return [];
+    return [...spot.slice(0, 3), ...spot.slice(-3).filter((r) => !spot.slice(0, 3).includes(r)).reverse()];
+  }, [rows]);
   const premium = instr.kind === 'opt' ? optionValue(instr.optType, price, price, vol, instr.life) : 0;
   const qty = instr.kind === 'opt' ? (premium > 0 ? amt * 1000 / (premium * (1 + instr.fee)) : 0)
     : amt * (instr.lev || 1) * 1000 / price;
@@ -3613,10 +3676,10 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
           <TrendingUp size={13} color={COLOR.gold} />
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Терминал</span>
         </span>
-        {[['Капитал', `${equity.toFixed(2)} млн`, COLOR.text],
-          ['Деньги', `${book.cash.toFixed(2)}`, book.cash < 0 ? COLOR.rust : COLOR.text],
-          ['Экспозиция', `${parts.gross.toFixed(2)}`, COLOR.text],
-          ['Зафиксировано', `${fmtSigned1(book.realized)} млн`, book.realized >= 0 ? COLOR.teal : COLOR.rust]].map(([l, v, c]) => (
+        {[['Капитал', fmtMln(equity), COLOR.text],
+          ['Деньги', fmtMln(book.cash), book.cash < 0 ? COLOR.rust : COLOR.text],
+          ['Экспозиция', fmtMln(parts.gross), COLOR.text],
+          ['Зафиксировано', fmtMlnSigned(book.realized), book.realized >= 0 ? COLOR.teal : COLOR.rust]].map(([l, v, c]) => (
             <span key={l} style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'baseline' }}>
               <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono" style={{ color: c }}>{v}</span>
             </span>
@@ -3640,57 +3703,96 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
             : `Обеспечение ${Math.round(lvl * 100)}% — запас до маржин-колла невелик. Падение рынка на ${Math.round((lvl - MAINTENANCE) / Math.max(0.01, lvl) * 100)}% приведёт к принудительному закрытию.`}
         </div>
       )}
+      {movers.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 13px', flexWrap: 'wrap',
+          borderBottom: `1px solid ${COLOR.border}`, background: COLOR.panel }}>
+          <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.blue, letterSpacing: '0.08em' }}>ДВИЖЕНИЕ КВАРТАЛА</span>
+          {movers.map((r) => (
+            <span key={r.i.id} onClick={() => { Audio.play('tick'); setSel(r.i.id); setAmount(1); setSide('buy'); }}
+              title={r.i.name}
+              style={{ display: 'flex', gap: 5, alignItems: 'baseline', cursor: 'pointer', fontSize: 11 }}>
+              <span className="ems-mono" style={{ color: r.i.color }}>{r.i.ticker}</span>
+              <span className="ems-mono" style={{ color: r.chgQ >= 0 ? COLOR.teal : COLOR.rust }}>{fmtSigned1(r.chgQ)}%</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="ems-terminal">
-        <div className="ems-scroll" style={{ maxHeight: 460, overflowY: 'auto', borderRight: `1px solid ${COLOR.border}` }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, padding: '8px 12px 4px' }}>
-            <span className={`ems-tab ${activeGroup === 'all' ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
-              onClick={() => { Audio.play('tab'); setActiveGroup('all'); }}>Все</span>
-            {[...new Set(INSTRUMENTS.map((i) => i.group))].map((g) => (
-              <span key={g} className={`ems-tab ${activeGroup === g ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
-                onClick={() => { Audio.play('tab'); setActiveGroup(g); }}>{g}</span>
-            ))}
-          </div>
-          {[...new Set(INSTRUMENTS.map((i) => i.group))].filter((g) => activeGroup === 'all' || activeGroup === g).map((g) => (
-            <div key={g}>
-              <div style={{ padding: '7px 12px 3px', fontSize: 9.5, color: COLOR.blue, letterSpacing: '0.08em' }}>{g.toUpperCase()}</div>
-              {INSTRUMENTS.filter((i) => i.group === g).map((i) => {
-                const pr = priceOf(i, economy, live);
-                const q = book.pos[i.id] || 0;
-                const myLots = (book.opts || []).filter((l) => l.instr === i.id);
-                const val = i.kind === 'opt'
-                  ? myLots.reduce((a, l) => a + optionValue(l.type, pr, l.strike, vol, l.left) * l.qty / 1000, 0)
-                  : i.kind === 'fut' ? q * (pr - (book.avg[i.id] || pr)) / 1000 : q * pr / 1000;
-                const dq = prev && prev[i.key] ? (economy[i.key] / prev[i.key] - 1) * 100 : 0;
-                const active = sel === i.id;
-                const has = Math.abs(q) > 0.001 || myLots.length > 0;
-                return (
-                  <div key={i.id} onClick={() => { Audio.play('tick'); setSel(i.id); setAmount(1); setSide('buy'); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', cursor: 'pointer',
-                      background: active ? COLOR.goldDim : 'transparent',
-                      borderLeft: `2px solid ${active ? COLOR.gold : has ? i.color : 'transparent'}` }}>
-                    <span className="ems-mono" style={{ fontSize: 10, color: i.color, width: 40 }}>{i.ticker}</span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11.5, color: active ? COLOR.text : COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
-                      {has && (
-                        <div style={{ fontSize: 10, color: q < 0 ? COLOR.rust : COLOR.faint }}>
-                          {i.kind === 'opt' ? `${myLots.length} серии · ${val.toFixed(2)} млн`
-                            : `${q < 0 ? 'шорт' : 'лонг'} ${i.kind === 'fut' ? `${(Math.abs(q) * pr / 1000).toFixed(1)} млн номинала` : `${val.toFixed(2)} млн`}`}
-                        </div>
-                      )}
-                      {i.kind === 'fut' && !has && <div style={{ fontSize: 10, color: COLOR.faint }}>плечо {i.lev}:1</div>}
-                    </span>
-                    <span style={{ textAlign: 'right' }}>
-                      <div><PriceCell value={pr} size={11.5} /></div>
-                      <div className="ems-mono" style={{ fontSize: 10, color: dq > 0.01 ? COLOR.teal : dq < -0.01 ? COLOR.rust : COLOR.faint }}>
-                        {dq > 0.01 ? '▲' : dq < -0.01 ? '▼' : '·'} {fmtSigned1(dq)}%
-                      </div>
-                    </span>
-                  </div>
-                );
-              })}
+        <div className="ems-scroll" style={{ maxHeight: 560, overflowY: 'auto', borderRight: `1px solid ${COLOR.border}` }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 2, background: COLOR.panel, borderBottom: `1px solid ${COLOR.border}`, padding: '8px 12px 6px' }}>
+            <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск: тикер или название" aria-label="Поиск инструмента"
+                style={{ flex: 1, minWidth: 0, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 4,
+                  color: COLOR.text, fontSize: 11, padding: '5px 8px', outline: 'none', fontFamily: 'inherit' }} />
+              <button className="ems-btn" title="Показать только инструменты, где у вас есть позиция"
+                style={{ padding: '3px 9px', fontSize: 10.5, whiteSpace: 'nowrap',
+                  background: onlyMine ? COLOR.gold : COLOR.panelAlt, color: onlyMine ? COLOR.ink : COLOR.muted,
+                  borderColor: onlyMine ? COLOR.gold : COLOR.border }}
+                onClick={() => { Audio.play('tick'); setOnlyMine((v) => !v); }}>мои {openCount > 0 ? `· ${openCount}` : ''}</button>
             </div>
-          ))}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              <span className={`ems-tab ${activeGroup === 'all' ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
+                onClick={() => { Audio.play('tab'); setActiveGroup('all'); }}>Все</span>
+              {[...new Set(INSTRUMENTS.map((i) => i.group))].map((g) => (
+                <span key={g} className={`ems-tab ${activeGroup === g ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
+                  onClick={() => { Audio.play('tab'); setActiveGroup(g); }}>{g}</span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <span style={{ fontSize: 9.5, color: COLOR.faint, letterSpacing: '0.06em' }}>СОРТИРОВКА</span>
+              {[['group', 'по группам'], ['chg', 'по движению'], ['pnl', 'по результату']].map(([id, label]) => (
+                <span key={id} className={`ems-tab ${sortBy === id ? 'active' : ''}`} style={{ padding: '2px 7px', fontSize: 10 }}
+                  onClick={() => { Audio.play('tab'); setSortBy(id); }}>{label}</span>
+              ))}
+            </div>
+          </div>
+          {visibleRows.length === 0 && (
+            <div style={{ padding: '14px 12px', fontSize: 11.5, color: COLOR.faint }}>
+              {onlyMine ? 'Открытых позиций нет — снимите фильтр «мои», чтобы увидеть весь список.' : 'Ничего не найдено по этому запросу.'}
+            </div>
+          )}
+          {visibleRows.map((r, idx) => {
+            const { i, pr, q, myLots, value, pnl, chgQ, has } = r;
+            const active = sel === i.id;
+            const groupHeader = sortBy === 'group' && (idx === 0 || visibleRows[idx - 1].i.group !== i.group);
+            return (
+              <React.Fragment key={i.id}>
+                {groupHeader && (
+                  <div style={{ padding: '7px 12px 3px', fontSize: 9.5, color: COLOR.blue, letterSpacing: '0.08em' }}>{i.group.toUpperCase()}</div>
+                )}
+                <div onClick={() => { Audio.play('tick'); setSel(i.id); setAmount(1); setSide('buy'); }}
+                  className="ems-row-hover"
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', cursor: 'pointer',
+                    background: active ? COLOR.goldDim : 'transparent',
+                    borderLeft: `2px solid ${active ? COLOR.gold : has ? i.color : 'transparent'}` }}>
+                  <span className="ems-mono" style={{ fontSize: 10, color: i.color, width: 44, flexShrink: 0 }}>{i.ticker}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11.5, color: active ? COLOR.text : COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
+                    {has && (
+                      <div style={{ fontSize: 10, color: q < 0 ? COLOR.rust : COLOR.faint }}>
+                        {i.kind === 'opt' ? `${myLots.length} серии · ${fmtMln(value)}`
+                          : `${q < 0 ? 'шорт' : 'лонг'} ${fmtMln(Math.abs(value))}${i.kind === 'fut' ? ' номинала' : ''}`}
+                      </div>
+                    )}
+                    {i.kind === 'fut' && !has && <div style={{ fontSize: 10, color: COLOR.faint }}>плечо {i.lev}:1</div>}
+                  </span>
+                  <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div><PriceCell value={pr} size={11.5} /></div>
+                    <div className="ems-mono" style={{ fontSize: 10, color: chgQ > 0.01 ? COLOR.teal : chgQ < -0.01 ? COLOR.rust : COLOR.faint }}>
+                      {chgQ > 0.01 ? '▲' : chgQ < -0.01 ? '▼' : '·'} {fmtSigned1(chgQ)}%
+                    </div>
+                  </span>
+                  {has && (
+                    <span className="ems-mono" style={{ fontSize: 10.5, width: 62, textAlign: 'right', flexShrink: 0,
+                      color: pnl > 0.0005 ? COLOR.teal : pnl < -0.0005 ? COLOR.rust : COLOR.faint }}>
+                      {Math.abs(pnl) > 0.0005 ? fmtMlnSigned(pnl) : '—'}
+                    </span>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          })}
         </div>
 
         {/* карточка выбранного инструмента — единственное место, где реально
@@ -3710,17 +3812,30 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
             </div>
           </div>
 
-          {series.length > 2 && (
-            <>
-              <Suspense fallback={<ChartFallback height={70} />}>
-                <MemoChart data={series} color={instr.color} height={70} label={instr.name} marks={marks} fmt={fmt2} />
+          {chartRows.length > 2 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+                {[[8, '2 года'], [20, '5 лет'], [1000, 'всё время']].map(([q, label]) => (
+                  <span key={label} className={`ems-tab ${chartRange === q ? 'active' : ''}`} style={{ padding: '2px 8px', fontSize: 10 }}
+                    onClick={() => { Audio.play('tab'); setChartRange(q); }}>{label}</span>
+                ))}
+                <span className={`ems-tab ${showBench ? 'active' : ''}`} style={{ padding: '2px 8px', fontSize: 10, marginLeft: 'auto' }}
+                  title="Наложить сводный индекс, приведённый к той же стартовой точке: видно, обгоняет инструмент рынок или отстаёт"
+                  onClick={() => { Audio.play('tab'); setShowBench((v) => !v); }}>
+                  {showBench ? 'скрыть индекс' : 'сравнить с индексом'}
+                </span>
+              </div>
+              <Suspense fallback={<ChartFallback height={190} />}>
+                <InstrumentChart rows={chartRows} color={instr.color} avg={instr.kind === 'opt' ? null : avg}
+                  marks={marks} benchLabel={showBench && instr.key !== 'stockIndex' ? 'сводный индекс' : null}
+                  benchColor={COLOR.faint} height={190} />
               </Suspense>
-              {marks.length > 0 && (
-                <div style={{ fontSize: 10, color: COLOR.faint, marginTop: -4 }}>
-                  <span style={{ color: COLOR.teal }}>B</span> — ваши покупки, <span style={{ color: COLOR.rust }}>S</span> — продажи
-                </div>
-              )}
-            </>
+              <div style={{ fontSize: 10, color: COLOR.faint, marginTop: -2, lineHeight: 1.4 }}>
+                {marks.length > 0 && <><span style={{ color: COLOR.teal }}>B</span> — ваши покупки, <span style={{ color: COLOR.rust }}>S</span> — продажи. </>}
+                {showBench && instr.key !== 'stockIndex' && 'Индекс приведён к стартовой цене инструмента: расхождение линий — это опережение или отставание от рынка. '}
+                {Number.isFinite(avg) && instr.kind !== 'opt' && 'Золотой пунктир — ваша средняя цена входа.'}
+              </div>
+            </div>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, background: COLOR.panelAlt,
@@ -3728,9 +3843,9 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
             {[['Позиция', posLabel(instr, held)],
               [instr.kind === 'opt' ? 'Страйк' : 'Средняя', instr.kind === 'opt' ? (lots[0] ? lots[0].strike.toFixed(0) : '—') : (avg ? avg.toFixed(2) : '—')],
               [instr.kind === 'fut' ? 'Номинал' : 'Стоимость',
-                instr.kind === 'opt' ? (lotsValue > 0 ? `${lotsValue.toFixed(2)} млн` : '—')
-                  : Math.abs(held) > 0.001 ? `${Math.abs(heldValue).toFixed(2)} млн` : '—'],
-              ['Прибыль', Math.abs(unreal) > 0.0005 ? `${fmtSigned1(unreal)} млн` : '—']].map(([l, v], idx) => (
+                instr.kind === 'opt' ? (lotsValue > 0 ? fmtMln(lotsValue) : '—')
+                  : Math.abs(held) > 0.001 ? fmtMln(Math.abs(heldValue)) : '—'],
+              ['Прибыль', Math.abs(unreal) > 0.0005 ? fmtMlnSigned(unreal) : '—']].map(([l, v], idx) => (
                 <div key={l}>
                   <div style={{ fontSize: 10, color: COLOR.muted }}>{l}</div>
                   <div className="ems-mono" style={{ fontSize: 12, color: idx === 3 && Math.abs(unreal) > 0.0005 ? (unreal >= 0 ? COLOR.teal : COLOR.rust) : COLOR.text }}>{v}</div>
@@ -3742,7 +3857,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
           {instr.kind === 'opt' && lots.length > 0 && (
             <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.5 }}>
               {lots.map((l, i) => (
-                <div key={l.id}>серия {i + 1}: страйк {l.strike.toFixed(0)}, до экспирации {l.left} кв., премия {(l.premium * l.qty / 1000).toFixed(2)} млн, сейчас {(optionValue(l.type, price, l.strike, vol, l.left) * l.qty / 1000).toFixed(2)} млн</div>
+                <div key={l.id}>серия {i + 1}: страйк {l.strike.toFixed(0)}, до экспирации {l.left} кв., премия {fmtMln(l.premium * l.qty / 1000)}, сейчас {fmtMln(optionValue(l.type, price, l.strike, vol, l.left) * l.qty / 1000)}</div>
               ))}
             </div>
           )}
@@ -3769,7 +3884,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ins ? ins.name : t.id}
                     </span>
-                    <span className="ems-mono">{t.amt.toFixed(2)} млн</span>
+                    <span className="ems-mono">{fmtMln(t.amt)}</span>
                     <span className="ems-mono" style={{ color: COLOR.faint, width: 54, textAlign: 'right' }}>
                       по {t.price.toFixed(2)}
                     </span>
@@ -3783,7 +3898,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
               <span style={{ fontSize: 11, color: COLOR.muted }}>
                 {instr.kind === 'fut' ? 'Гарантийное обеспечение' : instr.kind === 'opt' ? 'Премия' : 'Сумма сделки'}
               </span>
-              <span className="ems-mono" style={{ fontSize: 14 }}>{amt.toFixed(2)} <span style={{ fontSize: 10, color: COLOR.faint }}>млн</span></span>
+              <span className="ems-mono" style={{ fontSize: 14 }}>{mlnScale(amt).v} <span style={{ fontSize: 10, color: COLOR.faint }}>{mlnScale(amt).unit}</span></span>
             </div>
             <input type="range" className="ems-slider" min={0} max={Math.max(0.1, Math.round(maxAmount * 100) / 100)} step={0.05}
               aria-label="Сумма сделки" value={amt} onChange={(e) => { Audio.play('tick'); setAmount(parseFloat(e.target.value)); }} />
@@ -3801,8 +3916,8 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                   {useMargin ? 'кредитное плечо включено' : 'торговать в кредит'}
                 </button>
                 <span style={{ fontSize: 10, color: COLOR.faint, flex: 1, lineHeight: 1.35 }}>
-                  {useMargin ? `Доступно ${maxBuy.toFixed(2)} млн, из них ${Math.max(0, maxBuy - Math.max(0, book.cash)).toFixed(2)} заёмных под ${fmt1(economy.lendingRate)}% годовых.`
-                    : `Сделки только на свои: доступно ${Math.max(0, book.cash).toFixed(2)} млн.`}
+                  {useMargin ? `Доступно ${fmtMln(maxBuy)}, из них ${fmtMln(Math.max(0, maxBuy - Math.max(0, book.cash)))} заёмных под ${fmt1(economy.lendingRate)}% годовых.`
+                    : `Сделки только на свои: доступно ${fmtMln(Math.max(0, book.cash))}.`}
                 </span>
               </div>
             )}
@@ -3812,14 +3927,14 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
             {amt <= 0.001 ? 'Выберите сумму сделки.' : instr.kind === 'opt' ? (
               side === 'buy'
                 ? <>Покупка <b className="ems-mono" style={{ color: COLOR.text }}>{qty.toFixed(1)}</b> контрактов со страйком {price.toFixed(0)} и экспирацией через {instr.life} кв.
-                  Премия {amt.toFixed(2)} млн — это максимум, который можно потерять. Волатильность в цене опциона: {(vol * 100).toFixed(0)}%.</>
-                : <>Закрытие позиций по опционам на {amt.toFixed(2)} млн по текущей оценке.</>
+                  Премия {fmtMln(amt)} — это максимум, который можно потерять. Волатильность в цене опциона: {(vol * 100).toFixed(0)}%.</>
+                : <>Закрытие позиций по опционам на {fmtMln(amt)} по текущей оценке.</>
             ) : (
               <>
                 {side === 'buy' ? 'Покупка' : willShort ? 'Продажа в шорт' : 'Продажа'} <b className="ems-mono" style={{ color: COLOR.text }}>{qty.toFixed(1)}</b> ед.
                 по <b className="ems-mono" style={{ color: COLOR.text }}>{price.toFixed(2)}</b>
-                {instr.kind === 'fut' && <> · номинал <b className="ems-mono" style={{ color: COLOR.text }}>{(amt * instr.lev).toFixed(2)} млн</b> при плече {instr.lev}:1</>}
-                , комиссия {(amt * instr.fee * (instr.lev || 1) * 100 / 100).toFixed(3)} млн.
+                {instr.kind === 'fut' && <> · номинал <b className="ems-mono" style={{ color: COLOR.text }}>{fmtMln(amt * instr.lev)}</b> при плече {instr.lev}:1</>}
+                , комиссия {fmtMln(amt * instr.fee * (instr.lev || 1))}.
                 {willShort && <span style={{ color: COLOR.rust }}> Шорт: прибыль при падении цены, плата за заём {(BORROW_FEE * 100).toFixed(1)}% годовых, убыток теоретически не ограничен.</span>}
                 {instr.kind === 'spot' && side === 'buy' && book.cash - amt < 0 && <span style={{ color: COLOR.rust }}> Сделка в плечо под {fmt1(economy.lendingRate)}% годовых.</span>}
               </>
@@ -3831,7 +3946,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
               style={{ flex: 1, padding: '10px 0', fontSize: 13, background: side === 'buy' ? COLOR.tealDim : COLOR.rustDim,
                 borderColor: side === 'buy' ? COLOR.teal : COLOR.rust, color: side === 'buy' ? COLOR.teal : COLOR.rust, fontWeight: 600 }}
               onClick={() => { Audio.play(side === 'buy' ? 'coin' : 'click'); onTrade(sel, amt, side, live); setAmount(1); }}>
-              {side === 'buy' ? 'Купить' : willShort ? 'Открыть шорт' : 'Продать'} на {amt.toFixed(2)} млн
+              {side === 'buy' ? 'Купить' : willShort ? 'Открыть шорт' : 'Продать'} на {fmtMln(amt)}
             </button>
             {(Math.abs(held) > 0.001 || lots.length > 0) && (
               <button className="ems-btn" style={{ padding: '10px 14px', fontSize: 12 }}
@@ -3881,8 +3996,8 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
   const goalDef = GOALS.find((g) => g.id === goal);
   const goalLine = () => {
     if (!bench) return null;
-    if (goal === 'beat_index') return `Индекс: ${bench.stock.toFixed(2)} млн против вашего ${equity.toFixed(2)} — вы ${equity >= bench.stock ? 'впереди' : 'позади'} на ${Math.abs(equity - bench.stock).toFixed(2)} млн.`;
-    if (goal === 'beat_inflation') return `Сохранение покупательной способности требует ${bench.infl.toFixed(2)} млн — у вас ${equity.toFixed(2)}.`;
+    if (goal === 'beat_index') return `Индекс: ${fmtMln(bench.stock)} против вашего ${fmtMln(equity)} — вы ${equity >= bench.stock ? 'впереди' : 'позади'} на ${fmtMln(Math.abs(equity - bench.stock))}.`;
+    if (goal === 'beat_inflation') return `Сохранение покупательной способности требует ${fmtMln(bench.infl)} — у вас ${fmtMln(equity)}.`;
     if (goal === 'survive') return `Маржин-коллов: ${book.marginCalls || 0}. Цель — пройти цикл без принудительных закрытий.`;
     return `Капитал вырос на ${fmtSigned1(totalRet)}% с начала игры.`;
   };
@@ -3894,11 +4009,11 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: 9, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 10.5, color: COLOR.muted }}>Стоимость</div>
-          <div className="ems-mono" style={{ fontSize: 22 }}>{equity.toFixed(2)}<span style={{ fontSize: 11, color: COLOR.faint }}> млн</span></div>
+          <div className="ems-mono" style={{ fontSize: 22 }}>{mlnScale(equity).v}<span style={{ fontSize: 11, color: COLOR.faint }}> {mlnScale(equity).unit}</span></div>
         </div>
         <div>
           <div style={{ fontSize: 10.5, color: COLOR.muted }}>В ценах старта</div>
-          <div className="ems-mono" style={{ fontSize: 15, color: real >= start ? COLOR.teal : COLOR.rust }}>{real.toFixed(2)}</div>
+          <div className="ems-mono" style={{ fontSize: 15, color: real >= start ? COLOR.teal : COLOR.rust }}>{mlnScale(real).v}</div>
         </div>
         <div>
           <div style={{ fontSize: 10.5, color: COLOR.muted }}>За квартал</div>
@@ -3923,7 +4038,7 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
                 <span className="ems-mono" style={{ width: 14, color: COLOR.faint }}>{idx + 1}</span>
                 <span style={{ width: 8, height: 8, background: r.color, borderRadius: 1, flexShrink: 0 }} />
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
-                <span className="ems-mono">{r.v.toFixed(2)}</span>
+                <span className="ems-mono">{fmtMln(r.v)}</span>
                 <span className="ems-mono" style={{ width: 52, textAlign: 'right', color: (r.v / start - 1) >= 0 ? COLOR.teal : COLOR.rust }}>
                   {fmtSigned1((r.v / start - 1) * 100)}%
                 </span>
@@ -3946,7 +4061,7 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
                   <span style={{ flex: 1, minWidth: 0, color: COLOR.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {r.label}{r.short ? ' · шорт' : ''}
                   </span>
-                  <span className="ems-mono" style={{ color: r.net < 0 ? COLOR.rust : COLOR.text }}>{r.value.toFixed(2)}</span>
+                  <span className="ems-mono" style={{ color: r.net < 0 ? COLOR.rust : COLOR.text }}>{fmtMln(r.value)}</span>
                   <span className="ems-mono" style={{ width: 38, textAlign: 'right', color: COLOR.faint }}>
                     {Math.round(r.value / Math.max(0.0001, allocTotal) * 100)}%
                   </span>
@@ -3963,7 +4078,7 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '4px 0 0', color: COLOR.muted }}>
         <span>Свободные деньги</span>
-        <span className="ems-mono" style={{ color: book.cash < 0 ? COLOR.rust : COLOR.text }}>{book.cash.toFixed(2)} млн</span>
+        <span className="ems-mono" style={{ color: book.cash < 0 ? COLOR.rust : COLOR.text }}>{fmtMln(book.cash)}</span>
       </div>
       <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
         <b style={{ color: COLOR.goldSoft }}>Ваша цель: {goalDef ? goalDef.label.toLowerCase() : 'приумножить капитал'}.</b> {goalLine()}
@@ -4025,7 +4140,7 @@ function CasinoBet({ amount, setAmount, cash }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>
-        <span>Ставка</span><span className="ems-mono">{amount.toFixed(2)} млн</span>
+        <span>Ставка</span><span className="ems-mono">{fmtMln(amount)}</span>
       </div>
       <input type="range" min={0.01} max={Math.max(0.01, cash)} step={0.01} value={Math.min(amount, Math.max(0.01, cash))}
         onChange={(e) => setAmount(parseFloat(e.target.value))} style={{ width: '100%' }} />
@@ -4041,7 +4156,7 @@ function CasinoBet({ amount, setAmount, cash }) {
 }
 const CasinoResult = ({ net }) => (net === null ? null : (
   <div className="ems-mono" style={{ marginTop: 12, fontSize: 19, fontWeight: 700, color: net > 0 ? COLOR.teal : net < 0 ? COLOR.rust : COLOR.muted }}>
-    {net > 0 ? `+${net.toFixed(2)}` : net.toFixed(2)} млн
+    {fmtMlnSigned(net)}
   </div>
 ));
 
@@ -4473,7 +4588,7 @@ function CasinoScreen({ book, onCasino }) {
             <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Казино</span>
           </span>
           <span style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'baseline' }}>
-            <span style={{ color: COLOR.muted }}>Свободные деньги</span><span className="ems-mono" style={{ color: cash < 0.01 ? COLOR.rust : COLOR.text }}>{cash.toFixed(2)} млн</span>
+            <span style={{ color: COLOR.muted }}>Свободные деньги</span><span className="ems-mono" style={{ color: cash < 0.01 ? COLOR.rust : COLOR.text }}>{fmtMln(cash)}</span>
           </span>
           <span style={{ fontSize: 10.5, color: COLOR.faint, marginLeft: 'auto' }}>
             Матожидание отрицательное — это развлечение, а не стратегия
@@ -4587,12 +4702,31 @@ const DASHBOARD_PRESETS = [
    только внутри конкретного сохранения — «Сохранить текущий набор» должен пережить
    и «Начать заново», и переход в другую партию. */
 const CUSTOM_DASHBOARDS_KEY = 'ems-custom-dashboards';
+const HIDDEN_PRESETS_KEY = 'ems-hidden-dashboards';
 const loadCustomDashboards = () => {
   try { const arr = JSON.parse(localStorage.getItem(CUSTOM_DASHBOARDS_KEY) || '[]'); return Array.isArray(arr) ? arr : []; }
   catch { return []; }
 };
 const persistCustomDashboards = (list) => {
   try { localStorage.setItem(CUSTOM_DASHBOARDS_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+};
+/* Встроенные наборы («Обзор», «Цены и ставки»…) удалить насовсем нельзя — иначе
+   их было бы не вернуть; вместо этого запоминаем, какие из них скрыты, и «Сбросить»
+   возвращает список к заводскому виду. */
+const PRESET_NAMES_KEY = 'ems-dashboard-names';
+const loadHiddenPresets = () => {
+  try { const arr = JSON.parse(localStorage.getItem(HIDDEN_PRESETS_KEY) || '[]'); return Array.isArray(arr) ? arr : []; }
+  catch { return []; }
+};
+const persistHiddenPresets = (list) => {
+  try { localStorage.setItem(HIDDEN_PRESETS_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+};
+const loadPresetNames = () => {
+  try { const o = JSON.parse(localStorage.getItem(PRESET_NAMES_KEY) || '{}'); return (o && typeof o === 'object') ? o : {}; }
+  catch { return {}; }
+};
+const persistPresetNames = (map) => {
+  try { localStorage.setItem(PRESET_NAMES_KEY, JSON.stringify(map)); } catch { /* приватный режим */ }
 };
 // Сохранение может нести свои собственные наборы (например, сделанные до появления
 // этой возможности) — подмешиваем их к общеустройственным и заодно закрепляем там же.
@@ -4601,11 +4735,53 @@ function initDashboards(savedDashboards) {
   const extra = (savedDashboards || []).filter((d) => d && d.custom && !stored.some((s) => s.id === d.id));
   const merged = [...stored, ...extra];
   if (extra.length) persistCustomDashboards(merged);
-  return [...DASHBOARD_PRESETS, ...merged];
+  const hidden = loadHiddenPresets();
+  const names = loadPresetNames();
+  const presets = DASHBOARD_PRESETS.filter((d) => !hidden.includes(d.id))
+    .map((d) => (names[d.id] ? { ...d, name: names[d.id] } : d));
+  return [...presets, ...merged];
+}
+// «Сбросить» имеет смысл показывать, только если со встроенными наборами что-то
+// сделали: убрали из списка или переименовали. Свои наборы кнопка не трогает.
+const presetsAreDefault = (list) => DASHBOARD_PRESETS.every((p) => list.some((d) => d.id === p.id && d.name === p.name));
+/* Действия над наборами одинаковы в соло- и сетевом экране, а правила хранения
+   нетривиальны (свои наборы лежат целиком, у встроенных хранятся только отличия) —
+   поэтому логика одна на оба экрана, а не две расходящиеся копии. */
+function makeDashboardActions(setDashboards) {
+  const syncCustom = (next) => { persistCustomDashboards(next.filter((d) => d.custom)); return next; };
+  return {
+    saveDash: (pins, setActive) => {
+      const id = `custom${Date.now()}`;
+      setDashboards((ds) => {
+        const name = `Мой набор ${ds.filter((d) => d.custom).length + 1}`;
+        return syncCustom([...ds, { id, name, pins: [...pins], custom: true }]);
+      });
+      setActive(id);
+    },
+    deleteDash: (id) => setDashboards((ds) => {
+      const target = ds.find((d) => d.id === id);
+      if (target && !target.custom) persistHiddenPresets([...loadHiddenPresets().filter((x) => x !== id), id]);
+      return syncCustom(ds.filter((d) => d.id !== id));
+    }),
+    renameDash: (id) => setDashboards((ds) => {
+      const target = ds.find((d) => d.id === id);
+      if (!target) return ds;
+      const raw = window.prompt('Новое название набора', target.name);
+      if (raw === null) return ds;
+      const name = raw.trim().slice(0, 28);
+      if (!name || name === target.name) return ds;
+      if (!target.custom) persistPresetNames({ ...loadPresetNames(), [id]: name });
+      return syncCustom(ds.map((d) => (d.id === id ? { ...d, name } : d)));
+    }),
+    resetDash: () => setDashboards((ds) => {
+      persistHiddenPresets([]); persistPresetNames({});
+      return [...DASHBOARD_PRESETS, ...ds.filter((d) => d.custom)];
+    }),
+  };
 }
 const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern); } catch { /* не поддерживается */ } };
 
-function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash }) {
+function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash }) {
   const DD_WIDTH = 250;
   const { open, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
@@ -4636,18 +4812,37 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
             Скрывает графики, шкалы и декоративные слои — остаются только таблицы и текст.
           </div>
           <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, marginBottom: 6 }}>Дашборды</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 7 }}>
             {dashboards.map((d) => (
-              <span key={d.id} className={`ems-tab ${activeDash === d.id ? 'active' : ''}`} style={{ fontSize: 10.5, padding: '3px 8px' }}
-                onClick={() => { Audio.play('tab'); applyDash(d.id); }}>
-                {d.name}{d.custom && <span style={{ color: COLOR.faint }} onClick={(e) => { e.stopPropagation(); deleteDash(d.id); }}> ×</span>}
-              </span>
+              <div key={d.id} className="ems-row-hover"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 4px 3px 7px', borderRadius: 4,
+                  background: activeDash === d.id ? COLOR.goldDim : 'transparent',
+                  borderLeft: `2px solid ${activeDash === d.id ? COLOR.gold : 'transparent'}` }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 11, cursor: 'pointer', color: activeDash === d.id ? COLOR.text : COLOR.muted,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  onClick={() => { Audio.play('tab'); applyDash(d.id); }}>{d.name}</span>
+                <button className="ems-btn" title="Переименовать набор" aria-label={`Переименовать ${d.name}`}
+                  style={{ padding: '1px 5px', fontSize: 9.5, lineHeight: 1.5, color: COLOR.faint }}
+                  onClick={() => { Audio.play('tick'); renameDash(d.id); }}>✎</button>
+                <button className="ems-btn" title={d.custom ? 'Удалить набор' : 'Убрать встроенный набор из списка'}
+                  aria-label={`Убрать ${d.name}`}
+                  style={{ padding: '1px 5px', fontSize: 9.5, lineHeight: 1.5, color: COLOR.faint }}
+                  onClick={() => { Audio.play('tick'); deleteDash(d.id); }}>×</button>
+              </div>
             ))}
+            {dashboards.length === 0 && (
+              <div style={{ fontSize: 10.5, color: COLOR.faint, padding: '4px 0' }}>Все наборы убраны — сохраните свой или сбросьте список.</div>
+            )}
           </div>
           <button className="ems-btn" style={{ width: '100%', padding: '5px 0', fontSize: 10.5 }}
             onClick={() => { Audio.play('stamp'); saveDash(); }}>Сохранить текущий набор</button>
+          {!presetsAreDefault(dashboards) && (
+            <button className="ems-btn" style={{ width: '100%', padding: '5px 0', fontSize: 10.5, marginTop: 4, color: COLOR.rust, borderColor: COLOR.rust }}
+              onClick={() => { Audio.play('click'); resetDash(); }}>Вернуть встроенные наборы</button>
+          )}
           <div style={{ fontSize: 9.5, color: COLOR.faint, lineHeight: 1.4, marginTop: 6 }}>
             Свои наборы хранятся на этом устройстве и доступны во всех партиях, а не только в текущей.
+            Встроенные наборы можно убрать из списка и переименовать — «Сбросить» вернёт их обратно.
           </div>
         </div>
       )}
@@ -5164,21 +5359,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
   });
   const applyDash = (did) => { const d = dashboards.find((x) => x.id === did); if (d) { setPinned(d.pins); setActiveDash(did); } };
-  const saveDash = () => {
-    const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
-    const did = `custom${Date.now()}`;
-    setDashboards((ds) => {
-      const next = [...ds, { id: did, name, pins: [...pinned], custom: true }];
-      persistCustomDashboards(next.filter((d) => d.custom));
-      return next;
-    });
-    setActiveDash(did);
-  };
-  const deleteDash = (did) => setDashboards((ds) => {
-    const next = ds.filter((d) => d.id !== did);
-    persistCustomDashboards(next.filter((d) => d.custom));
-    return next;
-  });
+  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
+  const saveDash = () => dashActions.saveDash(pinned, setActiveDash);
+  const { deleteDash, renameDash, resetDash } = dashActions;
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
 
@@ -5322,7 +5505,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           </div>
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
-            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
+            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
+            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
             <Share2 size={14} color={COLOR.gold} />
@@ -6902,21 +7086,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
   });
   const applyDash = (id) => { const d = dashboards.find((x) => x.id === id); if (d) { setPinned(d.pins); setActiveDash(id); } };
-  const saveDash = () => {
-    const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
-    const id = `custom${Date.now()}`;
-    setDashboards((ds) => {
-      const next = [...ds, { id, name, pins: [...pinned], custom: true }];
-      persistCustomDashboards(next.filter((d) => d.custom));
-      return next;
-    });
-    setActiveDash(id);
-  };
-  const deleteDash = (id) => setDashboards((ds) => {
-    const next = ds.filter((d) => d.id !== id);
-    persistCustomDashboards(next.filter((d) => d.custom));
-    return next;
-  });
+  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
+  const saveDash = () => dashActions.saveDash(pinned, setActiveDash);
+  const { deleteDash, renameDash, resetDash } = dashActions;
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
   const debtCrisisActive = (economy.activeCrises || []).includes('debt') && !(economy.marketLockoutQuartersLeft > 0);
 
@@ -7138,7 +7310,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           </div>
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
-            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash} deleteDash={deleteDash} />
+            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
+            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
             <Share2 size={14} color={COLOR.gold} />

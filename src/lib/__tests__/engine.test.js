@@ -3,7 +3,7 @@ import {
   makeInitialEconomy, defaultDecisions, simulateQuarter,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   clamp, LEVERS, FX_REGIMES, PROMISE_POOL, pickPromises, evaluatePromise,
-  POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview,
+  POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview, fmtMln, fmtMlnSigned, mlnScale,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -429,6 +429,72 @@ describe('дефолт по государственному долгу (реш�
       difficulty: 'medium', quarterIndex: 2, stories: [] });
     expect(r2.economy.justDefaulted).toBe(false);
     expect(r2.economy.govDebt).toBeGreaterThan(economy.govDebt * 0.9);
+  });
+});
+
+describe('деньги инвестора в миллионах (fmtMln)', () => {
+  it('scales the unit with the amount instead of printing "6118.42 млн"', () => {
+    expect(fmtMln(6.5)).toBe('6.50 млн');
+    expect(fmtMln(6118.42)).toBe('6.12 млрд');
+    expect(fmtMln(2_500_000)).toBe('2.50 трлн');
+    expect(fmtMln(-6118.42)).toBe('-6.12 млрд');
+    expect(fmtMln(NaN)).toBe('—');
+  });
+
+  it('keeps the sign explicit for results and splits value from unit for styled output', () => {
+    expect(fmtMlnSigned(3.2)).toBe('+3.20 млн');
+    expect(fmtMlnSigned(-1200)).toBe('-1.20 млрд');
+    expect(mlnScale(1500)).toEqual({ v: '1.50', unit: 'млрд' });
+  });
+});
+
+describe('новые торговые инструменты рынка', () => {
+  const SERIES = ['bondShortIndex', 'linkerIndex', 'moneyMarketIndex', 'worldEquityIndex'];
+
+  it('starts every new market series at a finite base and keeps it finite over a long run', () => {
+    const initial = makeInitialEconomy();
+    for (const key of SERIES) expect(Number.isFinite(initial[key]), key).toBe(true);
+    const final = runQuarters(40, 'medium');
+    for (const key of SERIES) {
+      expect(Number.isFinite(final[key]), key).toBe(true);
+      expect(final[key], key).toBeGreaterThan(0);
+    }
+  });
+
+  it('prices short bonds off the two-year yield with a duration near 1.9', () => {
+    const economy = makeInitialEconomy();
+    const decisions = { ...defaultDecisions(economy), keyRate: economy.keyRate + 4 };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    const dY2 = r.economy.yield2y - economy.yield2y;
+    expect(Math.abs(dY2)).toBeGreaterThan(0.5); // шок ставки действительно двинул короткий конец
+    const carry = economy.yield2y / 4;
+    const pct = (r.economy.bondShortIndex / economy.bondShortIndex - 1) * 100;
+    expect((carry - pct) / dY2).toBeCloseTo(1.9, 1);
+  });
+
+  it('moves the short bond more than the ten-year on a policy-rate shock, because the long end is anchored', () => {
+    // Не опечатка и не баг: yieldAt() тянет длинный конец к нейтральной ставке, и
+    // на ключевую ставку он почти не реагирует. Короткая бумага дешевле по дюрации,
+    // но именно она принимает на себя разворот политики — от неё прячутся в
+    // денежный рынок, а не наоборот.
+    const economy = makeInitialEconomy();
+    const decisions = { ...defaultDecisions(economy), keyRate: economy.keyRate + 4 };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    expect(Math.abs(r.economy.yield2y - economy.yield2y)).toBeGreaterThan(Math.abs(r.economy.yield10y - economy.yield10y));
+    expect(Math.abs(r.economy.bondShortIndex / economy.bondShortIndex - 1))
+      .toBeGreaterThan(Math.abs(r.economy.bondIndex / economy.bondIndex - 1));
+  });
+
+  it('lets inflation-linked bonds gain from a price shock that hurts the plain ten-year', () => {
+    const calm = { ...makeInitialEconomy() };
+    const hot = { ...makeInitialEconomy(), inflation: 18, inflationExpectations: 16 };
+    const run = (e) => simulateQuarter({ economy: e, decisions: defaultDecisions(e), pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true }).economy;
+    const linkerCalm = run(calm).linkerIndex / calm.linkerIndex;
+    const linkerHot = run(hot).linkerIndex / hot.linkerIndex;
+    expect(linkerHot).toBeGreaterThan(linkerCalm);
   });
 });
 

@@ -131,6 +131,18 @@ const fmtMoney = (bn) => {
   return `${bn.toFixed(0)} млрд`;
 };
 const fmtMoneySigned = (bn) => (bn >= 0 ? '+' : '') + fmtMoney(bn);
+/* Деньги трейдера считаются в миллионах — но показывать «6118.42 млн» вместо
+   «6.12 млрд» нельзя: единица должна расти вместе с капиталом. mlnScale отдаёт
+   число и единицу по отдельности для мест, где единица набрана своим стилем. */
+const mlnScale = (mln) => {
+  if (!Number.isFinite(mln)) return { v: '—', unit: '' };
+  const abs = Math.abs(mln);
+  if (abs >= 1e6) return { v: (mln / 1e6).toFixed(2), unit: 'трлн' };
+  if (abs >= 1000) return { v: (mln / 1000).toFixed(2), unit: 'млрд' };
+  return { v: mln.toFixed(2), unit: 'млн' };
+};
+const fmtMln = (mln) => { const s = mlnScale(mln); return s.unit ? `${s.v} ${s.unit}` : s.v; };
+const fmtMlnSigned = (mln) => ((Number.isFinite(mln) && mln >= 0 ? '+' : '') + fmtMln(mln));
 const romanQ = (n) => ['I', 'II', 'III', 'IV'][n - 1] || String(n);
 const quarterLabel = (qIndex) => {
   const year = CONFIG.startYear + Math.floor((qIndex - 1) / 4);
@@ -1489,6 +1501,24 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const corpReturn = prevCorpYield / QUARTERS_PER_YEAR - 4.1 * (corpYield - prevCorpYield) - Math.max(0, bankNPL - 3) * 0.12;
   const corpBondIndex = Math.max(5, (Number.isFinite(s.corpBondIndex) ? s.corpBondIndex : 1000) * (1 + corpReturn / 100));
   const goldIndex = Math.max(5, commodityIndex * exchangeRate / 100);
+  // Короткие облигации: та же кривая, но дюрация 1.9 вместо 7.4 — от разворота
+  // ставки они почти не страдают, зато и не выстреливают на снижении.
+  const prevY2 = Number.isFinite(s.yield2y) ? s.yield2y : yield2y;
+  const shortBondReturn = (prevY2 / QUARTERS_PER_YEAR) - 1.9 * (yield2y - prevY2);
+  const bondShortIndex = Math.max(5, (Number.isFinite(s.bondShortIndex) ? s.bondShortIndex : 1000) * (1 + shortBondReturn / 100));
+  // Инфляционные линкеры: номинал индексируется на фактическую инфляцию, сверху —
+  // реальная доходность. Единственная бумага, которой всплеск цен не вредит.
+  const linkerReal = clamp(yield5y - inflationExpectations, -3, 12);
+  const linkerIndex = Math.max(5, (Number.isFinite(s.linkerIndex) ? s.linkerIndex : 1000)
+    * (1 + (inflation + linkerReal) / QUARTERS_PER_YEAR / 100));
+  // Денежный рынок: овернайт по ключевой ставке — номинально безрисковый и ровно
+  // настолько же беззащитный перед инфляцией.
+  const moneyMarketIndex = Math.max(1, (Number.isFinite(s.moneyMarketIndex) ? s.moneyMarketIndex : 1000) * (1 + decisions.keyRate / 400));
+  // Мировые акции в местной валюте: чужой цикл плюс курс — единственная
+  // диверсификация от собственной экономики, доступная инвестору.
+  const worldEquityReturn = clamp((worldGdpGrowth - 1.2) * 1.6 + (worldDemandIndex - s.worldDemandIndex) * 0.35
+    + fxDeprAnnual / QUARTERS_PER_YEAR + gauss(2.2 * nMult), -18, 18);
+  const worldEquityIndex = Math.max(20, (Number.isFinite(s.worldEquityIndex) ? s.worldEquityIndex : 1000) * (1 + worldEquityReturn / 100));
   const fxVolatility = clamp(ema(Number.isFinite(s.fxVolatility) ? s.fxVolatility : 6, Math.abs(fxDeprAnnual) * 1.6 + 3, 0.3), 1, 60);
   const volatilityIndex = clamp(ema(Number.isFinite(s.volatilityIndex) ? s.volatilityIndex : 16,
     11 + 2.6 * Math.abs(stockReturn) + 0.5 * fxVolatility + 0.16 * bankingRisk + (activeCrisesPre.length ? 16 : 0), 0.38), 5, 100);
@@ -1819,6 +1849,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     marketCap, marketCapPctGdp, sectorBanks, sectorIndustry, sectorConsumer, sectorResources,
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
+    bondShortIndex, linkerIndex, moneyMarketIndex, worldEquityIndex,
     activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
@@ -2576,6 +2607,7 @@ function makeInitialEconomy() {
   base.depositIndex = 100; base.fxIndex = I.exchangeRate; base.fxCarry = 1;
   base.corpBondIndex = 1000; base.corpYield = base.yield5y + 1.9; base.corpReturn = 2.0;
   base.goldIndex = I.commodityIndex * I.exchangeRate / 100;
+  base.bondShortIndex = 1000; base.linkerIndex = 1000; base.moneyMarketIndex = 1000; base.worldEquityIndex = 1000;
   Object.assign(base, computeScores({ ...base, capitalRequirement: base.capitalRequirement }));
   return base;
 }
@@ -2803,7 +2835,7 @@ export {
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
-  fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
+  fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, mlnScale, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   ru, rf1, rf2, rfs,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
