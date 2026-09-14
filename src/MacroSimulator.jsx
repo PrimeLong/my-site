@@ -17,7 +17,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse,
-  PRESIDENT_PERSONAS, botPresident, directiveSatisfied,
+  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -2855,6 +2855,15 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
       <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>
         <b style={{ color: COLOR.text }}>{P.name}</b> · {P.title}
       </div>
+      {/* его капитал виден и вам: и требование, и указ, и реформа стоят денег,
+          а без счётчика казалось, что президент тратит из воздуха */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5, color: COLOR.muted, marginBottom: 6 }}>
+        <span>Политический капитал</span>
+        <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+          <span style={{ display: 'block', width: `${clamp(economy.politicalCapital || 0, 0, 100)}%`, height: '100%', background: COLOR.gold }} />
+        </span>
+        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.round(economy.politicalCapital || 0)}</span>
+      </div>
       {/* у трейдера президента не за что увольнять — «отношение к вам» там не про что */}
       {branch && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5, color: COLOR.muted, marginBottom: 8 }}>
@@ -2945,18 +2954,60 @@ function CapitalBar({ value, reserved, gain }) {
   );
 }
 
+/* Лестница режимов: где вы сейчас и что нужно, чтобы шагнуть выше или вернуться
+   вниз. Без этой строки путь к авторитаризму и тем более к тоталитаризму был
+   чистой догадкой — пороги живут в движке, а игрок видел только результат. */
+function RegimeLadder({ economy }) {
+  const regime = economy.politicalRegime || 'democracy';
+  const tension = Math.round(economy.politicalTension || 0);
+  const info = POLITICAL_REGIME_INFO[regime] || {};
+  const next = regime === 'democracy'
+    ? { label: 'конфликт ветвей власти', need: 'напряжённость ≥ 62', at: 62 }
+    : regime === 'crisis'
+      ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
+      : regime === 'authoritarian'
+        ? { label: 'тоталитарный режим', need: 'напряжённость ≥ 80 и удержать её', at: 80 }
+        : null;
+  const bar = clamp(tension, 0, 100);
+  return (
+    <div style={{ marginTop: 10, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 10.5, marginBottom: 5 }}>
+        <span style={{ color: COLOR.muted }}>Режим</span>
+        <span style={{ color: COLOR.text }}>{info.label || regime}</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', color: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }}>
+          напряжённость {tension}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+        <span style={{ display: 'block', width: `${bar}%`, height: '100%',
+          background: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }} />
+        {next && <span style={{ position: 'absolute', left: `${next.at}%`, top: -2, width: 2, height: 8, background: COLOR.goldSoft }} />}
+      </div>
+      <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 5, lineHeight: 1.45 }}>
+        {next
+          ? <>Следующая ступень — <b style={{ color: COLOR.muted }}>{next.label}</b>: {next.need}. Напряжённость растёт от низкого
+            рейтинга, кризисов, безработицы и инфляции; подавление протеста и непопулярные реформы добавляют её напрямую.</>
+          : 'Выше этой ступени лестницы нет. Вниз режим сходит сам только при напряжённости ниже 92 — либо решением вернуть парламент.'}
+      </div>
+    </div>
+  );
+}
+
 function PresActionCard({ action, economy, cooldowns, selected, affordable, onToggle }) {
+  // у выбранного решения его цена уже вычтена из свободного капитала — проверять
+  // «хватает ли» по остатку без него значит объявлять нехватку на ровном месте
+  const canAfford = selected || affordable;
   const cdLeft = cooldowns[`pres:${action.id}`] || 0;
   const done = action.once && (economy.reforms || {})[action.id] !== undefined;
   const blockedByReq = !!(action.requires && !action.requires(economy));
-  const disabled = done || cdLeft > 0 || blockedByReq || (!selected && !affordable);
+  const disabled = done || cdLeft > 0 || blockedByReq || !canAfford;
   const share = done ? reformShare(economy.reforms, action.id) : 0;
   const why = done ? (REFORM_RAMP[action.id]
     ? `Проведена · внедрена на ${Math.round(share * 100)}%`
     : 'Уже проведена')
     : cdLeft > 0 ? `Повторно через ${cdLeft} кв.`
       : blockedByReq ? (action.reqText || 'Сейчас недоступно')
-        : !affordable ? 'Не хватает капитала' : null;
+        : !canAfford ? 'Не хватает капитала' : null;
   return (
     <div className="ems-card-btn" role="button" tabIndex={disabled ? -1 : 0}
       onClick={() => { if (!disabled) { Audio.play('tick'); onToggle(); } }}
@@ -2981,7 +3032,8 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
 }
 
 function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId, mofPersonaId,
-  appointCb, setAppointCb, appointMof, setAppointMof, directive, setDirective, lastDirective }) {
+  appointCb, setAppointCb, appointMof, setAppointMof, directive, setDirective, lastDirective,
+  directiveStrength, setDirectiveStrength }) {
   const [tab, setTab] = useState('public');
   const capital = Number.isFinite(economy.politicalCapital) ? economy.politicalCapital : 55;
   const reserved = selected.reduce((sum, id) => sum + ((PRES_BY_ID[id] || {}).cost || 0), 0)
@@ -3048,6 +3100,7 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
         <Crown size={14} />Политический капитал
       </div>
       <CapitalBar value={capital} reserved={reserved} gain={economy.politicalCapitalGain || 0} />
+      <RegimeLadder economy={economy} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, margin: '12px 0 10px' }}>
         {PRES_TABS.map((t) => (
@@ -3126,6 +3179,25 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
                       <span style={{ fontSize: 12, color: isSel ? COLOR.goldSoft : COLOR.text }}>{r.label}</span>
                     </div>
                     {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{r.ask}»</div>}
+                    {/* «снизить ставку» без указания насколько — это не указание:
+                        один пункт для ставки очень много, и просить можно меньше */}
+                    {isSel && r.scale && (
+                      <div style={{ marginTop: 7 }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 3 }}>
+                          <span style={{ color: COLOR.muted }}>Насколько</span>
+                          <span className="ems-mono" style={{ color: COLOR.goldSoft }}>
+                            {fmt2(r.scale.base * (directiveStrength || 1))}{r.scale.unit}
+                          </span>
+                        </div>
+                        <input type="range" className="ems-slider"
+                          min={r.scale.min / r.scale.base} max={r.scale.max / r.scale.base}
+                          step={r.scale.step / r.scale.base} value={directiveStrength || 1}
+                          onChange={(e) => { Audio.play('tick'); setDirectiveStrength(Number(e.target.value)); }} />
+                        <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 3, lineHeight: 1.4 }}>
+                          Чем больше просите, тем охотнее ведомство откажет.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -3165,6 +3237,9 @@ function PromisesPanel({ promises, economy }) {
         <Flag size={14} color={COLOR.blue} />
         <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>Предвыборные обещания</span>
         <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>до выборов {economy.quartersToElection} кв.</span>
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 8 }}>
+        Каждое сдержанное обещание добавляет около 2 п.п. голосов на выборах, каждое проваленное — столько же отнимает.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         {promises.map((p) => {
@@ -3850,7 +3925,9 @@ function FiscalMath({ economy, decisions }) {
 /* Сводка по ведомству, которым управляет бот */
 const SUMMARY_TABS = {
   central_bank: { id: 'summary', label: 'Сводка ЦБ', icon: Landmark, rows: [
-    { key: 'keyRate', label: 'Ключевая ставка', fmt: pctFmt },
+    // ставка ходит шагом 0.25 п.п., а pctFmt округлял до десятых: 5.25% и 5.5%
+    // выглядели как «5.3%» и «5.5%», то есть разный шаг казался одинаковым
+    { key: 'keyRate', label: 'Ключевая ставка', fmt: (v) => `${fmt2(v)}%` },
     { key: 'inflationTarget', label: 'Цель ЦБ по инфляции', fmt: pctFmt },
     { key: 'inflation', label: 'Инфляция', fmt: pctFmt },
     { key: 'inflationExpectations', label: 'Ожидания', fmt: pctFmt },
@@ -6662,7 +6739,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
               <Clock size={13} color={COLOR.teal} />
               <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
-                Продолжить ({soloSlots.filter(Boolean).length}/3)
+                Продолжить ({soloSlots.filter(Boolean).length} из {SOLO_SLOT_COUNT})
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -6672,7 +6749,14 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
                 return (
                   <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
                     background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                    <span style={{ flex: 1, color: COLOR.text }}>{roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}</span>
+                    <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
+                      {slot.name && (
+                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>
+                      )}
+                      <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
+                        {roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}
+                      </span>
+                    </span>
                     <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
                       onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
                     <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение"
@@ -6756,9 +6840,9 @@ const hashStr = (str) => {
   return h >>> 0;
 };
 // возвращает порядок показа: order[позиция на экране] = индекс в исходном массиве
-const shuffleOrder = (question) => {
+const shuffleOrder = (question, salt) => {
   const order = question.options.map((_, i) => i);
-  let seed = hashStr(question.q) || 1;
+  let seed = (hashStr(question.q) ^ (salt || 0)) >>> 0 || 1;
   for (let i = order.length - 1; i > 0; i--) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     const j = seed % (i + 1);
@@ -6770,7 +6854,11 @@ const shuffleOrder = (question) => {
 function QuizStep({ questions, onPass, passed }) {
   const [answers, setAnswers] = useState({});
   const [checked, setChecked] = useState(false);
-  const orders = useMemo(() => questions.map(shuffleOrder), [questions]);
+  /* Соль перемешивания живёт на время захода в модуль: внутри одной попытки
+     варианты не прыгают, а при следующем заходе порядок другой — иначе тест
+     запоминается позициями, а не смыслом. */
+  const salt = React.useRef(Math.floor(Math.random() * 1e9));
+  const orders = useMemo(() => questions.map((q) => shuffleOrder(q, salt.current)), [questions]);
   const allAnswered = questions.every((_, i) => answers[i] !== undefined);
   const isRight = (i) => answers[i] !== undefined && orders[i][answers[i]] === questions[i].answer;
   const wrongCount = questions.filter((_, i) => !isRight(i)).length;
@@ -7312,16 +7400,19 @@ const MODULE_CHECKS = {
     },
     practice: {
       kind: 'practice', title: 'Практика: свести бюджет',
-      goalLabel: 'Дефицит не глубже 3.0% ВВП',
+      goalLabel: 'Дефицит не глубже 3.5% ВВП',
       body: () => (
         <>
-          <p>Вам достался бюджет с дырой почти в 7% ВВП: предшественник опустил НДС и налог на прибыль намного ниже разумного уровня, а расходы оставил как были. Задача — довести дефицит до 3% ВВП или лучше за шесть кварталов.</p>
+          <p>Вам достался бюджет с дырой под 7% ВВП: предшественник опустил НДС и налог на прибыль намного ниже разумного уровня, а расходы оставил как были. Задача — довести дефицит до 3.5% ВВП или лучше за шесть кварталов.</p>
           <p>Рычагов четыре: два налога и два темпа расходов. Все работают по-разному, и у каждого своя цена — в том числе та, о которой был весь модуль: выше ставка не значит больше сборов.</p>
         </>
       ),
-      setup: { vatRate: 10, profitTaxRate: 13 },
+      // баланс в setup задаётся явно: он производный и пересчитается в первом же
+      // квартале, но без него шапка показывала прежние -3.6% и спорила с условием
+      setup: { vatRate: 10, profitTaxRate: 13, budgetBalancePctGdp: -6.6 },
+      pins: ['budgetBalancePctGdp', 'revenuePctGdp', 'debtToGdp', 'shadowShare'],
       levers: ['vatRate', 'profitTaxRate', 'govSpending', 'transfers'], maxQuarters: 6,
-      goal: ({ economy }) => economy.budgetBalancePctGdp >= -3,
+      goal: ({ economy }) => economy.budgetBalancePctGdp >= -3.5,
       goalText: ({ economy }) => `Сейчас баланс ${fmtSignedPct(economy.budgetBalancePctGdp)} ВВП, долг ${pctFmt(economy.debtToGdp)}, обслуживание ${pctFmt(economy.interestToRevenue)} доходов.`,
       hint: 'Начните с налогов: они здесь заниженные, и возврат к нормальным ставкам закрывает бо́льшую часть дыры за один квартал. Но не увлекайтесь — выше определённого уровня ставка начинает кормить тень, а не бюджет, и сборы падают. Расходы — это темпы роста: чтобы они реально сокращались, темп должен уйти в минус, а не просто до нуля.',
     },
@@ -7460,6 +7551,7 @@ const MODULE_CHECKS = {
     practice: {
       kind: 'practice', title: 'Практика: удержать власть',
       goalLabel: 'Рейтинг ≥ 47 и напряжение ≤ 25',
+      pins: ['approval', 'politicalTension', 'inflation', 'unemployment'],
       body: () => (
         <>
           <p>Рейтинг рухнул, безработица высокая, инфляция двузначная, напряжение растёт. До выборов ещё есть время, но если ничего не менять, страна дойдёт до них с конфликтом ветвей власти.</p>
@@ -7499,15 +7591,25 @@ const TRADER_MODULES = [
         ),
       },
       {
-        title: 'Позиция, средняя цена и прибыль',
-        lever: null, runsQuarter: true,
+        kind: 'practice', title: 'Позиция, средняя цена и прибыль',
+        goalLabel: 'Открыть любую позицию и завершить квартал',
         body: () => (
           <>
             <p>Купить инструмент — значит открыть <b>позицию</b>. Пока она открыта, её результат называют нереализованным: он меняется каждый квартал вместе с ценой и превращается в деньги только при закрытии.</p>
-            <p>Средняя цена входа — та, по которой вы в среднем набрали позицию. Всё, что выше неё, — прибыль; всё, что ниже, — убыток. На графике инструмента она отмечена золотым пунктиром, и по расстоянию до текущей цены сразу видно, где вы стоите.</p>
+            <p>Средняя цена входа — та, по которой вы в среднем набрали позицию. Всё, что выше неё, — прибыль; всё, что ниже, — убыток.</p>
+            <p>Про это проще один раз увидеть, чем прочитать: выберите любой инструмент в терминале ниже, нажмите «Купить / лонг» и завершите квартал. На графике инструмента появится <b>золотой пунктир</b> — ваша средняя цена входа; по расстоянию до линии цены сразу видно, где вы стоите.</p>
             <p>Есть и обратная сторона: <b>шорт</b>. Это ставка на падение — вы продаёте то, чего у вас нет, и зарабатываете, если цена упадёт. Убыток в шорте, в отличие от покупки, ничем сверху не ограничен.</p>
           </>
         ),
+        levers: [], maxQuarters: 4,
+        goal: (c) => Object.values((c.book && c.book.pos) || {}).some((q) => Math.abs(q) > 1e-9),
+        goalText: (c) => {
+          const open = Object.entries((c.book && c.book.pos) || {}).filter(([, q]) => Math.abs(q) > 1e-9);
+          return open.length
+            ? `Открыто позиций: ${open.length}. Золотой пунктир средней цены уже на графике выбранного инструмента.`
+            : 'Открытых позиций пока нет — купите что-нибудь в терминале ниже.';
+        },
+        hint: 'Любой инструмент подойдёт: кнопка «Купить / лонг» под карточкой, сумма сделки задаётся ползунком ниже. После покупки посмотрите на график — золотой пунктир и есть ваша средняя цена входа.',
       },
     ],
   },
@@ -8132,7 +8234,8 @@ const TUTORIAL_COURSES = [
    политического капитала с двумя ботами). Общее у них одно — «Завершить квартал»
    двигает одну и ту же модель, поэтому практика в обучении считается ровно тем же
    кодом, что и настоящая партия, а не отдельной облегчённой имитацией. */
-function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame }) {
+function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame,
+  saved, onSaveProgress }) {
   const sandbox = module.sandbox || 'policy';
   const initEconomy = useMemo(() => makeInitialEconomy(), [module.id]);
   const [economy, setEconomy] = useState(initEconomy);
@@ -8141,9 +8244,17 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
   const [pendingImpulses, setPendingImpulses] = useState([]);
   const [eventCooldowns, setEventCooldowns] = useState({});
   const [quarterIndex, setQuarterIndex] = useState(1);
-  const [step, setStep] = useState(0);
+  /* Шаг и пройденные проверки хранятся снаружи: раньше выход «к программе курса»
+     на четвёртом шаге из пяти означал проходить модуль заново. Отдельно от step
+     живёт maxStep — докуда дошли: назад можно вернуться перечитать теорию, но
+     кварталы при этом заново не проигрываются. */
+  const [step, setStep] = useState(() => (saved && saved.step) || 0);
+  const [maxStep, setMaxStep] = useState(() => (saved && saved.step) || 0);
   const [leverBaseline, setLeverBaseline] = useState(0);
-  const [passed, setPassed] = useState({});
+  const [passed, setPassed] = useState(() => (saved && saved.passed) || {});
+  const [lastNews, setLastNews] = useState([]);
+  const [showToc, setShowToc] = useState(false);
+  React.useEffect(() => { onSaveProgress(module.id, { step, passed }); }, [module.id, step, passed, onSaveProgress]);
   const [practice, setPractice] = useState(null);
   const [book, setBook] = useState(() => emptyBook());
   const [cbPersonaId, setCbPersonaId] = useState('pragmatic');
@@ -8241,6 +8352,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     setEventCooldowns(result.eventCooldowns);
     setQuarterIndex((q) => q + 1);
     setDecisions(newDecisions);
+    // без ленты новостей в песочнице непонятно, что вообще произошло за квартал —
+    // согласился ли ЦБ, сработал ли указ, что случилось с ценами
+    setLastNews((result.newsEntries || []).slice(0, 5));
     return { economy: result.economy, history: newHistory, decisions: newDecisions, book: newBook };
   };
 
@@ -8267,6 +8381,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
 
   const advance = () => {
     Audio.play('stamp');
+    // если вернулись перечитать теорию, «далее» просто листает вперёд по уже
+    // пройденному: кварталы второй раз не играются
+    if (step < maxStep) { setStep((v) => v + 1); return; }
     if (cur.runsQuarter) {
       const out = runQuarter();
       const nextStep = module.steps[step + 1];
@@ -8274,8 +8391,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     }
     const willReachFinal = step + 1 >= module.steps.length - 1;
     if (willReachFinal) onComplete();
-    setStep((s) => s + 1);
+    setStep((v) => v + 1); setMaxStep((v) => Math.max(v, step + 1));
   };
+  const goStep = (i) => { if (i <= maxStep) { Audio.play('tab'); setStep(i); setShowToc(false); } };
 
   const onTrade = (id, amt, side, live) => setBook((b) => {
     const nb = tradeBook(b, id, amt, side, economy, live);
@@ -8307,14 +8425,42 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               {kind === 'quiz' && <span className="ems-hero-badge" style={{ marginTop: 0 }}>теория</span>}
               {kind === 'practice' && <span className="ems-hero-badge" style={{ marginTop: 0 }}>практика</span>}
-              <span className="ems-hero-badge" style={{ marginTop: 0 }}>шаг {step + 1} из {module.steps.length}</span>
+              <button className="ems-btn" style={{ padding: '4px 10px', fontSize: 11 }}
+                title="Содержание модуля: можно вернуться и перечитать пройденное"
+                onClick={() => { Audio.play('tab'); setShowToc((v) => !v); }}>
+                шаг {step + 1} из {module.steps.length} <ChevronDown size={11} style={{ verticalAlign: -1 }} />
+              </button>
             </span>
           </div>
         </div>
+        {/* Содержание модуля. Без него нельзя было вернуться и перечитать теорию —
+            особенно неудобно в тесте, где вопрос как раз про прочитанное. */}
+        {showToc && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 10, marginBottom: 12 }}>
+            {module.steps.map((st, i) => {
+              const reached = i <= maxStep;
+              const k = st.kind || 'read';
+              return (
+                <div key={st.title} role="button" tabIndex={reached ? 0 : -1}
+                  onClick={() => goStep(i)} onKeyDown={(e) => { if (e.key === 'Enter') goStep(i); }}
+                  className={reached ? 'ems-row-hover' : ''}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, fontSize: 11.5,
+                    cursor: reached ? 'pointer' : 'default', opacity: reached ? 1 : 0.45,
+                    background: i === step ? COLOR.goldDim : 'transparent' }}>
+                  <span className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, width: 16 }}>{i + 1}</span>
+                  <span style={{ flex: 1, color: i === step ? COLOR.goldSoft : COLOR.text }}>{st.title}</span>
+                  {k !== 'read' && <span style={{ fontSize: 9.5, color: COLOR.faint }}>{k === 'quiz' ? 'тест' : 'практика'}</span>}
+                  {passed[i] && <Check size={11} color={COLOR.teal} />}
+                  {!reached && <Lock size={10} color={COLOR.faint} />}
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="ems-hr" style={{ marginBottom: 18 }} />
 
         <div className="ems-kpi-strip" style={{ marginBottom: 18 }}>
-          {module.pins.map((key) => {
+          {(cur.pins || module.pins).map((key) => {
             const m = ALL_METRICS[key];
             const val = economy[key];
             return (
@@ -8345,6 +8491,21 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                 <TradingTerminal economy={economy} prev={prevEcon} history={history} book={book} onTrade={onTrade} />
               </div>
             )}
+            {lastNews.length > 0 && (
+              <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
+                  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 7 }}>
+                  <Newspaper size={11} />Что произошло за квартал
+                </div>
+                {lastNews.map((n) => (
+                  <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
+                    borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
+                    <div style={{ color: COLOR.text }}>{n.headline}</div>
+                    <div style={{ color: COLOR.muted }}>{n.text}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             {sandbox === 'president' && (
               <div style={{ marginBottom: 14 }}>
                 <PresidentPanel economy={economy} cooldowns={eventCooldowns}
@@ -8352,7 +8513,8 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                   cbPersonaId={cbPersonaId} mofPersonaId={mofPersonaId}
                   appointCb={presAppointCb} setAppointCb={setPresAppointCb}
                   appointMof={presAppointMof} setAppointMof={setPresAppointMof}
-                  directive={presDirective} setDirective={setPresDirective} lastDirective={null} />
+                  directive={presDirective} setDirective={setPresDirective} lastDirective={null}
+                  directiveStrength={1} setDirectiveStrength={() => {}} />
               </div>
             )}
           </>
@@ -8413,10 +8575,14 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
           </div>
         ) : (
           <>
-            <button disabled={!canAdvance} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
-              onClick={advance}>
-              Далее
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="ems-btn" disabled={step === 0} style={{ padding: '13px 18px', fontSize: 13 }}
+                onClick={() => goStep(step - 1)}>← Назад</button>
+              <button disabled={!canAdvance} className="ems-btn primary" style={{ flex: 1, padding: '13px 0', fontSize: 14 }}
+                onClick={advance}>
+                {step < maxStep ? 'Далее →' : 'Далее'}
+              </button>
+            </div>
             {!canAdvance && (kind === 'quiz' || kind === 'practice') && (
               <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 7, textAlign: 'center' }}>
                 {kind === 'quiz' ? 'Следующий шаг откроется после верных ответов на все вопросы.'
@@ -8430,8 +8596,20 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
   );
 }
 
+const MODULE_STATE_KEY = 'ems-module-progress';
+const loadModuleState = () => { try { return JSON.parse(localStorage.getItem(MODULE_STATE_KEY) || '{}'); } catch { return {}; } };
 function TutorialHub({ onBack, onStartRealGame }) {
   const [progress, setProgress] = useState(loadCourseProgress);
+  // незаконченные модули: на каком шаге остановились и что уже сдали
+  const [moduleState, setModuleState] = useState(loadModuleState);
+  const saveModuleProgress = useCallback((id, st) => {
+    setModuleState((prev) => {
+      if (prev[id] && prev[id].step === st.step && Object.keys(prev[id].passed || {}).length === Object.keys(st.passed).length) return prev;
+      const next = { ...prev, [id]: st };
+      try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
+      return next;
+    });
+  }, []);
   /* Своя музыка курса: спокойные пьесы под чтение и разбор задач. Роль ставится
      на весь хаб, поэтому переходы между модулями её не сбрасывают. */
   React.useEffect(() => {
@@ -8448,6 +8626,13 @@ function TutorialHub({ onBack, onStartRealGame }) {
   const completeModule = (mod) => {
     const next = markModuleDone(mod.id);
     setProgress(next);
+    // пройденный модуль перестаёт быть «начатым»: перепройти его можно с начала
+    setModuleState((prev) => {
+      if (!prev[mod.id]) return prev;
+      const cleaned = { ...prev }; delete cleaned[mod.id];
+      try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(cleaned)); } catch { /* приватный режим */ }
+      return cleaned;
+    });
     const achIds = ['tutorial_done'];
     // «Экономист» — за базовый курс целиком, включая экзамен; отдельные значки
     // за прикладные курсы, чтобы у каждого была своя цель, а не общий счётчик
@@ -8467,6 +8652,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
       <>
         <AchievementToast toast={achToast} leaving={achLeaving} />
         <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === course.modules.length - 1}
+          saved={moduleState[mod.id]} onSaveProgress={saveModuleProgress}
           onExit={() => setActiveId(null)}
           onComplete={() => completeModule(mod)}
           onGoNext={next ? () => setActiveId(next.id) : null}
@@ -8578,6 +8764,11 @@ function TutorialHub({ onBack, onStartRealGame }) {
                     <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
                       {unlocked ? mod.summary : `Сначала пройдите «${course.modules[i - 1].title}»`}
                     </div>
+                    {unlocked && !done && moduleState[mod.id] && moduleState[mod.id].step > 0 && (
+                      <div style={{ fontSize: 10.5, color: COLOR.goldSoft, marginTop: 3 }}>
+                        Начат — продолжить с шага {moduleState[mod.id].step + 1} из {mod.steps.length}
+                      </div>
+                    )}
                   </div>
                   {unlocked && <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />}
                 </div>
@@ -9174,6 +9365,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
+  const [presDirStrength, setPresDirStrength] = useState(1);
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -9255,7 +9447,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (isPresident) {
       eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof };
       if (presDirective) {
-        dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff);
+        dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff, presDirStrength);
       }
       if (dirResult) {
         eff = { ...dirResult.decisions, presidentExtraSpend: PRES_DIRECTIVE_COST };
@@ -9287,8 +9479,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       }
       const dir = presidentPlan.directive;
       if (dir && dir.toPlayer) {
-        directiveMet = directiveSatisfied(dir.reqId, decisionsBaseline, decisions);
-        eff = { ...eff, presidentDirectiveMet: directiveMet };
+        directiveMet = directiveProgress(dir.reqId, decisionsBaseline, decisions, economy);
+        // требование стоит президенту капитала — иначе давить можно бесконечно
+        eff = { ...eff, presidentDirectiveMet: directiveMet, presidentExtraSpend: PRES_DIRECTIVE_COST };
       } else if (dir) {
         presDirResult = processPresidentialDirective(dir.reqId, economy, cbPersonaId, mofPersonaId, eff);
         if (presDirResult) {
@@ -9326,6 +9519,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6
       - (eff.vatRate - economy.vatRate + eff.incomeTaxRate - economy.incomeTaxRate) * 0.3, -1, 1);
 
+    // обещания считает движок в момент голосования: от них зависит доля голосов,
+    // а не только строчка в новостях постфактум
+    if (promises) eff = { ...eff, promises };
     const result = simulateQuarter({
       economy: { ...economy, cbStance, mofStance,
         policyCoordination: clamp(economy.policyCoordination + (reqResult ? reqResult.coordination : 0), 0, 100) },
@@ -9385,15 +9581,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (presEnabled && presidentPlan) {
       const dir = presidentPlan.directive;
       if (dir && dir.toPlayer) {
+        const verdict = directiveVerdict(directiveMet);
+        const pct = Number.isFinite(directiveMet) ? Math.round(directiveMet * 100) : null;
+        const word = verdict === 'met' ? 'ВЫПОЛНЕНО' : verdict === 'partial' ? 'ВЫПОЛНЕНО ЧАСТИЧНО'
+          : verdict === 'ignored' ? 'ПРОИГНОРИРОВАНО' : 'БЕЗ ОТВЕТА';
         result.newsEntries.unshift({ id: `presdir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
           headline: `${presDirMemo.lastReqId === dir.reqId
             ? `ПРЕЗИДЕНТ ВНОВЬ ТРЕБУЕТ ОТ ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИНА'}`
-            : `ПРЕЗИДЕНТ → ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИН'}`}: ${dir.req.label.toUpperCase()} — ${directiveMet === true ? 'ВЫПОЛНЕНО' : directiveMet === false ? 'ПРОИГНОРИРОВАНО' : 'БЕЗ ОТВЕТА'}`,
-          text: `«${dir.req.ask}» ${directiveMet === true
+            : `ПРЕЗИДЕНТ → ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИН'}`}: ${dir.req.label.toUpperCase()} — ${word}`,
+          text: `«${dir.req.ask}» ${verdict === 'met'
             ? 'Ведомство пошло навстречу — администрация это отметила.'
-            : directiveMet === false
-              ? 'Ведомство поступило по-своему. В администрации президента это запомнят.'
-              : 'Требование осталось без внятного ответа.'}` });
+            : verdict === 'partial'
+              ? `Ведомство сделало примерно ${pct}% запрошенного. В администрации это считают полумерой.`
+              : verdict === 'ignored'
+                ? 'Ведомство поступило по-своему. В администрации президента это запомнят.'
+                : 'Требование осталось без внятного ответа.'}` });
       } else if (presDirResult) {
         result.newsEntries.unshift({ id: `presdir${quarterIndex}`, cat: 'gov', priority: 8, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
           headline: `ПРЕЗИДЕНТ → ${presDirResult.toCb ? 'ЦБ' : 'МИНФИН'}: ${presDirResult.req.label.toUpperCase()} — ${presDirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : presDirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
@@ -9431,7 +9633,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       // «Своими руками» — именно вернуть парламент, распущенный указом, а не тот,
       // который распустил кризис: decreeRule до квартала как раз это и означает
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
-      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null);
+      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
@@ -9464,10 +9666,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     // формально срок ещё не закончился, пока не наступил сам день голосования
     if (promises && er) {
       const kept = promises.map((p) => evaluatePromise(p, result.economy).met);
-      const keptCount = kept.filter(Boolean).length;
+      const keptCount = Number.isFinite(result.economy.promisesKept) ? result.economy.promisesKept : kept.filter(Boolean).length;
+      const broken = promises.length - keptCount;
       result.newsEntries.unshift({ id: `promises${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `ОБЕЩАНИЯ У УРНЫ: СДЕРЖАНО ${keptCount} ИЗ ${promises.length}`,
-        text: promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ') + '.' });
+        text: `${promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ')}. ${
+          keptCount > broken ? `Это добавило власти примерно ${fmt1((keptCount - broken) * 2.2)} п.п. голосов.`
+            : keptCount < broken ? `Это стоило власти примерно ${fmt1((broken - keptCount) * 2.2)} п.п. голосов.`
+              : 'На итог голосования обещания в сумме не повлияли.'}` });
       if (keptCount === promises.length) pushAch(unlockAchievements(['promises_kept']));
       if (er === 'incumbent') setPromises(pickPromises(result.economy));
     }
@@ -9485,7 +9691,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setBusy(false);
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
-    presActions, presAppointCb, presAppointMof, presDirective,
+    presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
@@ -9703,7 +9909,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 cbPersonaId={cbPersonaId} mofPersonaId={mofPersonaId}
                 appointCb={presAppointCb} setAppointCb={setPresAppointCb}
                 appointMof={presAppointMof} setAppointMof={setPresAppointMof}
-                directive={presDirective} setDirective={setPresDirective} lastDirective={lastDirective} />
+                directive={presDirective} setDirective={setPresDirective} lastDirective={lastDirective}
+                directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
               <div className="ems-panel" style={{ padding: 12, fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>
                 Приоритет: <b style={{ color: COLOR.text }}>{goalDef.label}</b>. Ставку ведёт бот-ЦБ, бюджет — бот-Минфин;
                 их решения и заявления ниже. Вы влияете на экономику только через людей, которых назначаете, указания,

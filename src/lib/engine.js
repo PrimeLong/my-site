@@ -570,6 +570,7 @@ function describeHumanMofAction(s, playerName, finalDecisions) {
 ========================================================================================= */
 const REQUESTS = [
   { id: 'infra_up', from: 'central_bank', label: 'Нарастить госинвестиции',
+    scale: { base: 1.5, min: 0.5, max: 3, step: 0.5, unit: '% ВВП' },
     ask: 'Просим увеличить расходы на инфраструктуру на 1,5% ВВП для поддержки совокупного спроса.',
     fit: (s) => (s.outputGap < -1 ? 1.5 : s.outputGap > 1.5 ? -1.6 : 0.1) + (s.debtToGdp > 85 ? -0.9 : 0.2),
     bias: { technocrat: 0.7, populist: 0.5, austerity: -0.7 },
@@ -578,6 +579,7 @@ const REQUESTS = [
     partial: 'Минфин готов на половину запрошенного — бюджетное правило не позволяет больше.',
     no: 'Минфин отказывает: наращивать расходы при нынешнем состоянии бюджета он не намерен.' },
   { id: 'deficit_cut', from: 'central_bank', label: 'Сократить дефицит бюджета',
+    scale: { base: 1, min: 0.5, max: 2.5, step: 0.5, unit: '×' },
     ask: 'Требуем сокращения бюджетного импульса: он вынуждает нас держать ставку выше, чем требовалось бы.',
     fit: (s) => (s.budgetBalancePctGdp < -4 ? 1.4 : 0.2) + (s.outputGap > 1 ? 0.8 : -0.3) + (s.inflation > 6 ? 0.6 : 0),
     bias: { technocrat: 0.6, austerity: 1.0, populist: -0.9 },
@@ -586,6 +588,7 @@ const REQUESTS = [
     partial: 'Минфин идёт на частичное сокращение, защитив социальные статьи.',
     no: 'Минфин отвечает, что сокращать расходы в текущей ситуации политически невозможно.' },
   { id: 'transfers_freeze', from: 'central_bank', label: 'Заморозить рост социальных выплат',
+    scale: { base: 1, min: 0.5, max: 2, step: 0.5, unit: '×' },
     ask: 'Просим приостановить индексацию выплат: их рост напрямую транслируется в потребительский спрос и цены.',
     fit: (s) => (s.inflation > 6 ? 1.3 : -0.4) + (s.unemployment > 7 ? -1.0 : 0.3),
     bias: { austerity: 1.0, technocrat: 0.3, populist: -1.4 },
@@ -594,6 +597,7 @@ const REQUESTS = [
     partial: 'Минфин ограничивает рост выплат, но полной заморозки не допускает.',
     no: 'Минфин отвечает, что заморозка выплат при текущем положении людей исключена.' },
   { id: 'tax_relief_business', from: 'central_bank', label: 'Снизить налог на прибыль',
+    scale: { base: 2, min: 0.5, max: 4, step: 0.5, unit: ' п.п.' },
     ask: 'Предлагаем снизить налог на прибыль: инвестиции сдерживаются и стоимостью денег, и налоговой нагрузкой сразу.',
     fit: (s) => (s.investmentGrowth < 0 ? 1.2 : 0) + (s.budgetBalancePctGdp > -3 ? 0.5 : -0.9),
     bias: { technocrat: 0.4, austerity: 0.2, populist: -0.8 },
@@ -602,6 +606,7 @@ const REQUESTS = [
     partial: 'Минфин идёт на символическое снижение ставки.',
     no: 'Минфин отказывается: выпадающие доходы нечем закрыть.' },
   { id: 'fiscal_hold', from: 'central_bank', label: 'Не наращивать бюджетный импульс',
+    hold: [{ key: 'govSpending', dir: 1 }, { key: 'transfers', dir: 1 }, { key: 'govInvestment', dir: 1 }],
     ask: 'Просим не расширять бюджетный импульс дальше: дополнительное стимулирование сейчас разгонит инфляцию и вынудит нас держать ставку выше.',
     fit: (s) => (s.inflation > s.inflationTarget + 1.5 ? 1.2 : -0.4) + (s.outputGap > 1 ? 0.8 : -0.2) + (s.debtToGdp > 80 ? 0.3 : 0),
     bias: { technocrat: 0.5, austerity: 0.9, populist: -1.0 },
@@ -617,6 +622,7 @@ const REQUESTS = [
     partial: 'Минфин частично сдерживает рост расходов, но не отказывается от него полностью.',
     no: 'Минфин отвечает, что взятые бюджетные обязательства снижать не намерен.' },
   { id: 'rate_cut', from: 'ministry_finance', label: 'Снизить ключевую ставку',
+    scale: { base: 1, min: 0.25, max: 2.5, step: 0.25, unit: ' п.п.' },
     ask: 'Просим снизить ключевую ставку на 1 п.п.: стоимость кредита душит инвестиции и обслуживание долга.',
     fit: (s) => (s.outputGap < -1 ? 1.3 : -0.6) + (s.inflation < s.inflationTarget + 1 ? 0.9 : -1.4) + (s.unemployment > 7 ? 0.6 : 0),
     bias: { dove: 0.9, pragmatic: 0.2, hawk: -0.9 },
@@ -628,6 +634,7 @@ const REQUESTS = [
      Минфину жёсткость нужна редко. Президенту, который сам ставку не задаёт,
      нужен и обратный рычаг, иначе при голубином ЦБ инфляцию нечем давить. */
   { id: 'rate_hike', from: 'ministry_finance', label: 'Решительно подавить инфляцию',
+    scale: { base: 2, min: 0.5, max: 4, step: 0.5, unit: ' п.п.' },
     ask: 'Требуем решительного повышения ключевой ставки: рост цен обесценивает доходы и расходы быстрее, чем их успевают индексировать.',
     fit: (s) => (s.inflation > s.inflationTarget + 2 ? 1.4 : -1.0) + (s.inflationExpectations > s.inflationTarget + 1.5 ? 0.7 : -0.3)
       + (s.outputGap < -2 ? -0.8 : 0.2),
@@ -637,6 +644,7 @@ const REQUESTS = [
     partial: 'Центральный банк добавляет к своему решению половину запрошенного шага.',
     no: 'Центральный банк отказывает: он считает, что уже сделал достаточно, а переужесточение обойдётся выпуском.' },
   { id: 'rate_hold', from: 'ministry_finance', label: 'Не повышать ставку',
+    hold: [{ key: 'keyRate', dir: 1 }],
     ask: 'Просим воздержаться от повышения ставки: бюджет и без того несёт растущие процентные расходы.',
     fit: (s) => (s.inflation < s.inflationTarget + 2 ? 0.9 : -1.5) + (s.interestToRevenue > 14 ? 0.8 : 0),
     bias: { dove: 0.8, pragmatic: 0.1, hawk: -1.0 },
@@ -650,6 +658,7 @@ const REQUESTS = [
     partial: 'Центральный банк обещает действовать осторожнее, но связывать себе руки не готов.',
     no: 'Центральный банк отвечает, что независимость политики не обсуждается.' },
   { id: 'liquidity_help', from: 'ministry_finance', label: 'Поддержать ликвидность банков',
+    scale: { base: 1, min: 0.5, max: 2.5, step: 0.5, unit: '×' },
     ask: 'Просим предоставить банковской системе ликвидность: кредитование останавливается, страдают предприятия.',
     fit: (s) => (s.bankLiquidity < 60 ? 1.4 : -0.3) + (s.creditCrunch ? 1.0 : 0) + (s.inflation > 8 ? -0.7 : 0.2),
     bias: { dove: 0.6, pragmatic: 0.5, hawk: 0.1 },
@@ -658,6 +667,7 @@ const REQUESTS = [
     partial: 'Центральный банк предоставляет ограниченный объём ликвидности.',
     no: 'Центральный банк считает поддержку преждевременной.' },
   { id: 'capreq_ease', from: 'ministry_finance', label: 'Смягчить норматив капитала',
+    scale: { base: 1, min: 0.5, max: 2, step: 0.5, unit: '×' },
     ask: 'Просим временно смягчить требование к капиталу банков, чтобы разблокировать кредитование экономики.',
     fit: (s) => (s.creditCrunch ? 1.5 : -0.5) + (s.creditGap > 5 ? -1.2 : 0.3) + (s.bankNPL > 8 ? -0.8 : 0),
     bias: { dove: 0.5, pragmatic: 0.1, hawk: -0.8 },
@@ -666,6 +676,7 @@ const REQUESTS = [
     partial: 'Центральный банк идёт на минимальное послабление.',
     no: 'Центральный банк отказывает: ослабление норматива в такой момент готовит следующий кризис.' },
   { id: 'fx_support', from: 'ministry_finance', label: 'Поддержать курс интервенциями',
+    scale: { base: 1, min: 0.5, max: 2.5, step: 0.5, unit: '×' },
     ask: 'Просим выйти на валютный рынок: ослабление курса разгоняет цены и стоимость импорта для бюджета.',
     fit: (s) => (s.fxDeprAnnual > 6 ? 1.3 : -0.6) + (s.reserves > 200 ? 0.5 : -1.0),
     bias: { hawk: 0.5, pragmatic: 0.3, dove: 0.0 },
@@ -977,9 +988,11 @@ function applyPresidentActions(s, ids, cooldowns, difficulty) {
    меньше в стране институтов, тем меньше у ведомства возможности отказать.
    Согласие ЦБ стоит доверия к нему — это и есть цена управляемого центробанка. */
 const PRES_DIRECTIVE_COST = 12;
-function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId, decisions) {
+function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId, decisions, strength) {
   const req = REQUESTS.find((r) => r.id === reqId);
   if (!req) return null;
+  // чем больше просят сверх обычного, тем охотнее ведомство отказывает
+  const str = clamp(Number.isFinite(strength) ? strength : 1, 0.2, 4);
   // from: 'ministry_finance' — просьбы к ЦБ, from: 'central_bank' — к Минфину
   const toCb = req.from === 'ministry_finance';
   const persona = toCb ? getCbPersona(cbPersonaId) : getMofPersona(mofPersonaId);
@@ -987,15 +1000,16 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   const authority = regime === 'totalitarian' ? 4.0 : regime === 'authoritarian' ? 1.8
     : regime === 'crisis' ? 0.15 : 0.55;
   const score = req.fit(economy) + (req.bias[persona.id] || 0) + authority
-    + clamp((economy.approval - 50) / 55, -0.9, 0.9);
+    + clamp((economy.approval - 50) / 55, -0.9, 0.9)
+    - (str - 1) * 0.8;
   const status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
   const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
   // независимость ЦБ — не декларация, а то, насколько заметно он выполняет
   // политические указания; рынок это видит и переоценивает якорь ожиданий
   const credibilityHit = toCb ? -7 * k : 0;
   return {
-    req, status, score, toCb, persona,
-    decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k, economy) } : decisions,
+    req, status, score, toCb, persona, strength: str,
+    decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions,
     text: status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no,
     credibilityHit,
     tension: status === 'rejected' ? 5 : 0,
@@ -1068,26 +1082,51 @@ const PRES_REQ_LEAN = {
   tax_relief_business: { pop: -0.2, ref: 0.6 }, fiscal_hold: { pop: -0.6, ref: 0.4 },
 };
 
-/* Выполнено ли требование. Направление берём из самой просьбы: применяем её к
-   решениям на начало квартала и смотрим, сдвинул ли игрок те же параметры хотя бы
-   на сорок процентов пути. Так не приходится писать отдельный предикат под каждую
-   просьбу — и новая просьба сразу работает с этой проверкой. */
-function directiveSatisfied(reqId, baseDecisions, finalDecisions) {
+/* Насколько выполнено требование — доля от 0 до 1, а не «да/нет». Раньше снижение
+   ставки на 0.5 п.п. вместо запрошенного 1 п.п. считалось полным выполнением
+   (хватало сорока процентов пути), и это читалось как поблажка: половина просьбы —
+   это половина просьбы. Направление берём из самой просьбы: применяем её к решениям
+   на начало квартала и смотрим, куда и насколько сдвинулся игрок.
+
+   Отдельный случай — просьбы «не делать» (req.hold): их выполняют бездействием, и
+   старая проверка возвращала по ним null («без ответа») даже когда игрок честно
+   ничего не трогал. Теперь такая просьба выполнена ровно тогда, когда запрещённое
+   движение не сделано. */
+function directiveProgress(reqId, baseDecisions, finalDecisions, economy, strength) {
   const req = REQUESTS.find((r) => r.id === reqId);
   if (!req || !baseDecisions || !finalDecisions) return null;
-  const want = req.apply(baseDecisions, 1, baseDecisions);
-  let total = 0; let moved = 0;
+  if (req.hold) {
+    const ref = economy || baseDecisions;
+    let worst = 1;
+    req.hold.forEach(({ key, dir }) => {
+      const before = Number.isFinite(ref[key]) ? ref[key] : baseDecisions[key];
+      const after = finalDecisions[key];
+      if (![before, after].every(Number.isFinite)) return;
+      const step = (after - before) * dir;
+      if (step <= 1e-6) return;               // в запретную сторону не пошли
+      // чем дальше шагнули в запретную сторону, тем меньше выполнено
+      worst = Math.min(worst, clamp(1 - step / Math.max(0.5, Math.abs(before) * 0.2 + 1), 0, 1));
+    });
+    return worst;
+  }
+  const want = req.apply(baseDecisions, strength || 1, economy || baseDecisions);
+  let total = 0; let sum = 0;
   Object.keys(want).forEach((k) => {
     const target = want[k]; const before = baseDecisions[k]; const after = finalDecisions[k];
     if (![target, before, after].every(Number.isFinite)) return;
     const need = target - before;
     if (Math.abs(need) < 1e-6) return;
     total += 1;
-    if ((after - before) / need >= 0.4) moved += 1;
+    sum += clamp((after - before) / need, 0, 1);
   });
   if (!total) return null; // просить было нечего — не в чем и отказывать
-  return moved / total >= 0.5;
+  return sum / total;
 }
+// словами: полностью, наполовину или никак
+const DIRECTIVE_FULL = 0.75;
+const DIRECTIVE_PART = 0.35;
+const directiveVerdict = (p) => (p === null || p === undefined ? null
+  : p >= DIRECTIVE_FULL ? 'met' : p >= DIRECTIVE_PART ? 'partial' : 'ignored');
 
 /* Решения президента-бота на ближайший квартал: что он потребует, что сделает сам
    и не пора ли ему поменять руководителя ведомства, которым игрок не управляет.
@@ -1166,7 +1205,9 @@ function botPresident(s, personaId, difficulty, ctx) {
   // квартал и довольство рушится быстрее, чем игрок успевает что-то показать
   const threshold = 1.5 - P.pressure * 1.2 + (sat > 70 ? 0.4 : 0)
     + (dirAgo <= 1 ? 0.8 : 0);
-  const directive = best && best.sc >= threshold
+  // требование стоит политического капитала: на нуле давить не на что
+  const canPressure = capital >= PRES_DIRECTIVE_COST + 4;
+  const directive = canPressure && best && best.sc >= threshold
     ? { reqId: best.req.id, branch: wantBranch, toPlayer: wantBranch === playerBranch, req: best.req }
     : null;
 
@@ -1206,8 +1247,13 @@ function botPresident(s, personaId, difficulty, ctx) {
    проигнорировано — заметный минус; сверх того он смотрит на рейтинг и рост, потому
    что политику в конечном счёте оценивают не по послушанию. */
 function presidentSatisfactionNext(prev, x) {
-  const met = x.directiveMet;
-  const base = met === true ? 9 : met === false ? -13 * clamp(1.6 - x.patience * 0.6, 0.6, 1.3) : 1.8;
+  // met может быть булевым (старые сохранения) или долей выполнения 0..1
+  const raw = x.directiveMet;
+  const p = raw === true ? 1 : raw === false ? 0 : Number.isFinite(raw) ? clamp(raw, 0, 1) : null;
+  const harsh = clamp(1.6 - x.patience * 0.6, 0.6, 1.3);
+  // половина просьбы — половина результата: выполнил полностью +9, частично около
+  // нуля, проигнорировал — полный минус
+  const base = p === null ? 1.8 : p >= DIRECTIVE_FULL ? 9 : p >= DIRECTIVE_PART ? 1 : -13 * harsh * (1 - p / DIRECTIVE_PART * 0.4);
   return clamp(prev + base
     + clamp((x.approval - 50) / 12, -2.5, 2.5)
     + clamp((x.gdpGrowth - x.potentialGrowth) * 0.6, -1.5, 1.5)
@@ -1558,8 +1604,25 @@ function computeScores(x) {
 /* =========================================================================================
    ГЛАВНАЯ ФУНКЦИЯ КВАРТАЛА
 ========================================================================================= */
-function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode, noEvents }) {
+function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode, noEvents }) {
   const s = economy;
+  /* Один потолок на всех. Решения приходят из трёх мест — от игрока, от бота
+     соседнего ведомства и от указаний президента, — и только у игрока они были
+     ограничены диапазоном ползунка. Отсюда и возникало «бот наращивает
+     госинвестиции до бесконечности»: у него тех же ограничений не было.
+     Приводим любые решения к тому, что физически может задать человек. */
+  const decisions = (() => {
+    let changed = false; const out = { ...rawDecisions };
+    LEVERS.forEach((l) => {
+      const v = out[l.id];
+      if (!Number.isFinite(v)) return;
+      const lo = l.scale === 'gdp' ? -Infinity : l.min;
+      const hi = l.scale === 'gdp' ? Infinity : l.max;
+      const c = clamp(v, lo, hi);
+      if (c !== v) { out[l.id] = c; changed = true; }
+    });
+    return changed ? out : rawDecisions;
+  })();
   const C = CONFIG.coef;
   const T = CONFIG.target;
   const nMult = CONFIG.noiseMult[difficulty];
@@ -2152,16 +2215,37 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   // может не признать результат и захватить контроль вместо того, чтобы уйти —
   // иначе рейтинг, рухнувший в ноль, всегда тихо заканчивал партию поражением на
   // выборах, а до авторитаризма/тоталитаризма дело попросту не успевало дойти.
+  /* Итог выборов считается не по рейтингу напрямую. Рейтинг 50 — это половина
+     страны за вас, а не поражение: раньше при 49.6 партия заканчивалась с текстом
+     «рейтинг упал до 50», что читалось как издевательство. Теперь из рейтинга
+     считается доля голосов — с преимуществом действующей власти, со сдержанностью
+     (край рейтинга не переносится в край результата) и с неопределённостью дня
+     голосования. Сюда же попадают сдержанные и проваленные обещания: раньше они
+     были чистой декорацией. */
+  let promiseScore = 0; let promisesKept = 0; let promisesTotal = 0;
+  if (quartersToElection <= 0 && Array.isArray(decisions.promises) && decisions.promises.length) {
+    promisesTotal = decisions.promises.length;
+    /* Обещания сверяются со свежими величинами этого квартала. Единственное
+       исключение — благополучие: сводные оценки считаются ниже по файлу, поэтому
+       для него берётся значение на конец прошлого квартала. */
+    const atVote = { ...s, inflation, unemployment, debtToGdp, gdp, exchangeRate, reserves, budgetBalancePctGdp };
+    decisions.promises.forEach((pr) => { if (evaluatePromise(pr, atVote).met) promisesKept += 1; });
+    promiseScore = (promisesKept - (promisesTotal - promisesKept)) * 2.2;
+  }
+  const incumbencyBonus = 2.5;
+  const voteShare = quartersToElection <= 0
+    ? clamp(50 + (approval - 50) * 0.85 + incumbencyBonus + promiseScore + gauss(2.2 * nMult), 0, 100)
+    : null;
   let coup = false;
   if (quartersToElection <= 0) {
-    const margin = approval - 50;
+    const margin = voteShare - 50;
     if (!riggedElection && margin < 0) {
       const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
       const priorTension = clamp(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, 0, 100);
       const coupChance = clamp(Math.pow(severity, 1.6) * 0.6 + (priorTension / 100) * 0.25, 0, 0.75);
       coup = Math.random() < coupChance;
     }
-    electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition'));
+    electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (voteShare < 42 ? 'landslide' : 'opposition'));
     quartersToElection = CONFIG.election.cycle; term += 1;
     if (electionResult === 'incumbent') {
       nextQueue.push(makeImpulse('businessConfidence', 4, 'Преемственность политики после выборов', 'default', difficulty, 'other'));
@@ -2172,8 +2256,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
           ? mkNews('gov', 'ПЕРЕВОРОТ: ВЛАСТЬ НЕ ПРИЗНАЛА ПОРАЖЕНИЕ НА ВЫБОРАХ',
             `Рейтинг ${Math.round(approval)} из 100 не оставлял шансов на честную победу. Вместо передачи власти объявлено чрезвычайное положение: результаты аннулированы, парламент распущен, оппозиция объявлена вне закона.`,
             { priority: 10, chain: ['Разгромное поражение', 'Отказ признать результат', 'Чрезвычайное положение', 'Авторитарный поворот'] })
-          : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
-            `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
+          : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: ${fmt1(voteShare)}% ГОЛОСОВ`,
+            `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%.${promisesTotal ? ` Сдержано обещаний: ${promisesKept} из ${promisesTotal}.` : ''} Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
     } else {
       mandate = (unemployment - nairu > 1.2) ? 'jobs' : (inflation > infTarget + 2) ? 'prices' : (debtToGdp > 85) ? 'budget' : 'growth';
       governmentLine = mandate === 'jobs' ? 'populist' : mandate === 'budget' ? 'austerity' : 'technocrat';
@@ -2184,7 +2268,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
       nextQueue.push(makeImpulse('capitalFlow', -14 * shock, 'Отток капитала после смены власти', 'default', difficulty));
       const MAND = { jobs: 'занятость любой ценой', prices: 'обуздать цены', budget: 'привести бюджет в порядок', growth: 'вернуть рост' };
       news.push(mkNews('gov', electionResult === 'landslide' ? 'СОКРУШИТЕЛЬНОЕ ПОРАЖЕНИЕ ВЛАСТИ НА ВЫБОРАХ' : 'ОППОЗИЦИЯ ПОБЕЖДАЕТ НА ВЫБОРАХ',
-        `Рейтинг ${Math.round(approval)} из 100 не оставил шансов. Новое правительство приходит с мандатом: ${MAND[mandate]}. Экономический курс будет переписан, а пока он переписывается, инвестиции и капитал ждут в стороне.`,
+        `За власть ${fmt1(voteShare)}% голосов при рейтинге ${Math.round(approval)} из 100.${promisesTotal ? ` Сдержано обещаний: ${promisesKept} из ${promisesTotal} — избиратель это посчитал.` : ''} Новое правительство приходит с мандатом: ${MAND[mandate]}. Экономический курс будет переписан, а пока он переписывается, инвестиции и капитал ждут в стороне.`,
         { priority: 10, chain: ['Низкий рейтинг', 'Смена власти', 'Неопределённость ↑', 'Инвестиции ↓', 'Премия за риск ↑', 'Новый курс'] }));
     }
   }
@@ -2477,6 +2561,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
+    electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
@@ -3481,7 +3566,8 @@ export {
   PROMISE_POOL, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
   presActionAvailable, applyPresidentActions, politicalCapitalRegen,
-  PRESIDENT_PERSONAS, getPresPersona, botPresident, directiveSatisfied, presidentSatisfactionNext,
+  PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext,
+  directiveProgress, directiveVerdict, DIRECTIVE_FULL, DIRECTIVE_PART,
   processPresidentialDirective, PRES_DIRECTIVE_COST, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,

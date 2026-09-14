@@ -6,7 +6,7 @@ import {
   POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview, fmtMln, fmtMlnSigned, mlnScale,
   ROLES, PRESIDENT_ACTIONS, PRES_BY_ID, reformShare, politicalCapitalRegen,
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
-  PRESIDENT_PERSONAS, botPresident, directiveSatisfied, presidentSatisfactionNext, PROMISE_POOL as _POOL,
+  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -295,11 +295,13 @@ describe('политический режим и пропаганда', () => {
   it('still lets a mild election loss end in an ordinary defeat when the coup roll does not land', () => {
     const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999); // худший случай для переворота — он не проходит
     try {
-      const economy = { ...makeInitialEconomy(), politicalRegime: 'democracy', quartersToElection: 1, approval: 45, politicalTension: 10 };
+      // рейтинг 30 — проигрыш, но не катастрофа: переворота не случается,
+      // партия заканчивается обычным поражением на выборах
+      const economy = { ...makeInitialEconomy(), politicalRegime: 'democracy', quartersToElection: 1, approval: 30, politicalTension: 10 };
       const decisions = defaultDecisions(economy);
       const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
         difficulty: 'medium', quarterIndex: 1, stories: [] });
-      expect(r.economy.electionResult).toBe('opposition');
+      expect(r.economy.electionResult).not.toBe('incumbent');
       expect(r.economy.politicalRegime).toBe('democracy');
     } finally {
       spy.mockRestore();
@@ -787,16 +789,44 @@ describe('президент как третье лицо у ЦБ и Минфи�
     expect(later.directive).toBeTruthy();
   });
 
-  it('выполнение требования определяется по ползункам игрока, а не по итогу в экономике', () => {
+  it('выполнение требования меряется долей, а не «да/нет»', () => {
     const e = makeInitialEconomy();
     const base = defaultDecisions(e);
+    const p = (d) => directiveProgress('rate_cut', base, { ...base, keyRate: base.keyRate + d }, e);
     // rate_cut просит снизить ставку на 1 п.п.
-    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate - 1 })).toBe(true);
-    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate - 0.5 })).toBe(true);
-    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate - 0.25 })).toBe(false);
-    expect(directiveSatisfied('rate_cut', base, base)).toBe(false);
-    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate + 1 })).toBe(false);
-    expect(directiveSatisfied('нет такого', base, base)).toBe(null);
+    expect(directiveVerdict(p(-1))).toBe('met');
+    expect(directiveVerdict(p(-0.75))).toBe('met');
+    // половина просьбы — это половина просьбы, а не поблажка
+    expect(directiveVerdict(p(-0.5))).toBe('partial');
+    expect(directiveVerdict(p(-0.25))).toBe('ignored');
+    expect(directiveVerdict(p(0))).toBe('ignored');
+    expect(directiveVerdict(p(1))).toBe('ignored');
+    expect(directiveProgress('нет такого', base, base, e)).toBe(null);
+  });
+
+  it('просьбу «не повышать» выполняют бездействием, а не движением ползунка', () => {
+    const e = makeInitialEconomy();
+    const base = defaultDecisions(e);
+    const p = (d) => directiveProgress('rate_hold', base, { ...base, keyRate: base.keyRate + d }, e);
+    expect(directiveVerdict(p(0))).toBe('met');      // не трогал — выполнил
+    expect(directiveVerdict(p(-1))).toBe('met');     // снизил — тем более выполнил
+    expect(directiveVerdict(p(1.5))).toBe('ignored'); // повысил — нарушил
+    // то же для просьбы не наращивать бюджетный импульс
+    expect(directiveVerdict(directiveProgress('fiscal_hold', base, base, e))).toBe('met');
+    expect(directiveVerdict(directiveProgress('fiscal_hold', base,
+      { ...base, govSpending: base.govSpending + 3 }, e))).toBe('ignored');
+  });
+
+  it('сила указания меняет и запрошенный объём, и шанс отказа', () => {
+    const e = { ...makeInitialEconomy(), outputGap: -2.5, unemployment: 8, politicalRegime: 'authoritarian' };
+    const cb = botCentralBank(e, 'pragmatic', 'medium');
+    const dec = { ...defaultDecisions(e), ...cb.decisions };
+    const soft = processPresidentialDirective('rate_cut', e, 'pragmatic', 'technocrat', dec, 0.5);
+    const hard = processPresidentialDirective('rate_cut', e, 'pragmatic', 'technocrat', dec, 2.5);
+    expect(hard.score).toBeLessThan(soft.score);
+    if (soft.status !== 'rejected' && hard.status === 'accepted') {
+      expect(hard.decisions.keyRate).toBeLessThan(soft.decisions.keyRate);
+    }
   });
 
   it('довольство президента растёт за выполнение и падает за игнор', () => {
@@ -843,5 +873,54 @@ describe('обещание про уровень жизни', () => {
     const promise = _POOL.find((p) => p.id === 'living_standards_promise');
     expect(promise.metric(e)).toBe(e.wellbeing);
     expect(promise.describe(promise.target(e))).toContain('Благополучие');
+  });
+});
+
+describe('выборы считаются голосами, а не рейтингом', () => {
+  const vote = (approval, extra) => {
+    const economy = { ...makeInitialEconomy(), quartersToElection: 1, approval, ...extra };
+    return simulateQuarter({ economy, decisions: { ...defaultDecisions(economy), ...(extra && extra.dec) },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true }).economy;
+  };
+
+  it('рейтинг около половины страны — это не поражение', () => {
+    // раньше всё, что ниже 50.0, заканчивало партию: 49.6 округлялось в новости
+    // до «рейтинг упал до 50», и игрок читал это как издевательство
+    let incumbent = 0;
+    for (let i = 0; i < 40; i++) if (vote(52).electionResult === 'incumbent') incumbent += 1;
+    expect(incumbent).toBeGreaterThan(34);
+  });
+
+  it('доля голосов публикуется и отличается от рейтинга', () => {
+    const e = vote(60);
+    expect(Number.isFinite(e.electionVoteShare)).toBe(true);
+    expect(e.electionVoteShare).not.toBe(e.approval);
+  });
+
+  it('низкий рейтинг всё ещё проигрывает голоса', () => {
+    // именно голоса: сохранить власть при рейтинге 22 можно, но только переворотом,
+    // а не победой на выборах — это отдельная ветка модели
+    for (let i = 0; i < 40; i++) {
+      const e = vote(24);
+      expect(e.electionVoteShare).toBeLessThan(50);
+      if (e.electionResult === 'incumbent') expect(e.politicalRegime).toBe('authoritarian');
+    }
+  });
+
+  it('сдержанные обещания добавляют голосов, проваленные — отнимают', () => {
+    const mk = (met) => [{ id: 'debt_discipline', label: 'Не наращивать долг',
+      target: met ? 999 : 1, baseline: null }];
+    const win = (promises) => {
+      let n = 0;
+      for (let i = 0; i < 30; i++) {
+        const economy = { ...makeInitialEconomy(), quartersToElection: 1, approval: 47 };
+        const r = simulateQuarter({ economy, decisions: { ...defaultDecisions(economy), promises },
+          pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+        if (r.economy.electionResult === 'incumbent') n += 1;
+        expect(r.economy.promisesTotal).toBe(promises.length);
+      }
+      return n;
+    };
+    expect(win([...mk(true), ...mk(true), ...mk(true)])).toBeGreaterThan(win([...mk(false), ...mk(false), ...mk(false)]));
   });
 });
