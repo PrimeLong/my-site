@@ -665,6 +665,23 @@ describe('указания президента ведомствам', () => {
     expect(toMof.credibilityHit).toBe(0);
   });
 
+  it('у президента есть и жёсткое указание ЦБ, а не только смягчающие', () => {
+    const hot = { ...makeInitialEconomy(), inflation: 11, coreInflation: 10, inflationExpectations: 8 };
+    const cb = botCentralBank(hot, 'dove', 'medium');
+    const decisions = { ...defaultDecisions(hot), ...cb.decisions };
+    const hike = processPresidentialDirective('rate_hike', { ...hot, politicalRegime: 'authoritarian' },
+      'dove', 'technocrat', decisions);
+    expect(hike.toCb).toBe(true);
+    expect(hike.status).not.toBe('rejected');
+    expect(hike.decisions.keyRate).toBeGreaterThan(decisions.keyRate);
+    // при низкой инфляции то же указание ведомство отклоняет
+    const calm = makeInitialEconomy();
+    const calmCb = botCentralBank(calm, 'dove', 'medium');
+    const no = processPresidentialDirective('rate_hike', calm, 'dove', 'technocrat',
+      { ...defaultDecisions(calm), ...calmCb.decisions });
+    expect(no.status).toBe('rejected');
+  });
+
   it('стоимость указания списывается через presidentExtraSpend', () => {
     const withDirective = runPresident({ 0: { presidentExtraSpend: PRES_DIRECTIVE_COST } }, 1)[0];
     expect(55 - (withDirective.politicalCapital - withDirective.politicalCapitalGain)).toBeCloseTo(PRES_DIRECTIVE_COST, 6);
