@@ -4,8 +4,11 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getRoom, setRoom, withRoom, hasKv } from './_lib/store.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
-  describeHumanCbAction, describeHumanMofAction,
-  quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS } from './_lib/engine.js';
+  describeHumanCbAction, describeHumanMofAction, redescribeCbAction, redescribeMofAction,
+  botPresident, getPresPersona, processPresidentialDirective, directiveProgress, directiveVerdict,
+  makeImpulse, PRES_DIRECTIVE_COST, PRES_BY_ID,
+  quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS,
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -17,6 +20,14 @@ const seatsFor = (room) => SEATS_BY_MODE[room.mode === 'trader' ? 'trader' : 'po
 const DIFFICULTY_IDS = new Set(DIFFICULTIES.map((d) => d.id));
 const GOAL_IDS = new Set(GOALS.map((g) => g.id));
 const FX_REGIME_IDS = new Set(FX_REGIMES.map((r) => r.id));
+const CB_PERSONA_IDS = new Set(CB_PERSONAS.map((p) => p.id));
+const MOF_PERSONA_IDS = new Set(MOF_PERSONAS.map((p) => p.id));
+const PRES_PERSONA_IDS = new Set(PRESIDENT_PERSONAS.map((p) => p.id));
+const randomOf = (list) => list[Math.floor(Math.random() * list.length)].id;
+/* «Классика» в лобби — это ровно то же, что и в одиночной игре: характеры ведомств
+   бросаются случайно, президент включён. Поэтому «не указано» здесь значит «бросить
+   кубик», а не «взять значение по умолчанию». */
+const pickPersona = (v, ids, list) => (ids.has(v) ? v : randomOf(list));
 const code = () => randomBytes(4).toString('hex').toUpperCase().slice(0, 5);
 const token = () => randomUUID();
 const cleanString = (v, maxLen) => (typeof v === 'string' ? v.slice(0, maxLen) : null);
@@ -70,6 +81,21 @@ function freshRoom(opts) {
     difficulty: DIFFICULTY_IDS.has(opts.difficulty) ? opts.difficulty : 'medium',
     goalCb: GOAL_IDS.has(opts.goalCb) ? opts.goalCb : 'min_inflation',
     goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
+    /* Характеры ведомств — не только для пустых мест: в «рыночной» комнате ими
+       управляют боты всегда, и трейдерам важно, кто именно ведёт ставку и бюджет.
+       Раньше здесь были захардкоженные 'pragmatic'/'technocrat' — одна и та же
+       партия в каждой комнате. */
+    cbPersona: pickPersona(opts.cbPersona, CB_PERSONA_IDS, CB_PERSONAS),
+    mofPersona: pickPersona(opts.mofPersona, MOF_PERSONA_IDS, MOF_PERSONAS),
+    /* Президент в сетевой партии — тот же бот, что и в одиночной: требует от
+       ведомств, назначает руководителей тех из них, за которыми никто не сидит,
+       и тратит политический капитал на реформы и указы. Выключается при создании
+       комнаты. */
+    president: opts.president === null ? null
+      : { persona: pickPersona(opts.president && opts.president.persona, PRES_PERSONA_IDS, PRESIDENT_PERSONAS) },
+    presidentPlan: null,
+    presidentLast: null,
+    presMemo: { lastReqId: null, ago: 99 },
     seats: zip(null),
     names: zip(null),
     lastSeen: zip(null),
@@ -90,6 +116,34 @@ function freshRoom(opts) {
     // со статичными эталонами (индекс/облигации/депозит/инфляция)
     portfolioValues: {},
   };
+}
+
+/* Слепок решений президента на ближайший квартал — только то, что переживает JSON:
+   сами объекты просьб содержат функции (fit/apply/ask) и в хранилище попасть не
+   должны, а разбирать указание умеют processPresidentialDirective/directiveProgress
+   по одному только reqId. */
+const slimPlan = (plan) => (!plan ? null : {
+  persona: plan.persona.id, personaName: plan.persona.name, personaTitle: plan.persona.title,
+  actions: plan.actions, mood: plan.mood, quote: plan.quote, satisfaction: plan.satisfaction,
+  appointBot: plan.appointBot,
+  directive: plan.directive ? { reqId: plan.directive.reqId, branch: plan.directive.branch,
+    label: plan.directive.req.label, ask: plan.directive.ask } : null,
+});
+
+/* Кому президент адресует требование, зависит от того, где сидит живой человек:
+   давить на бота неинтересно. Если заняты оба места (или оба пусты — «рыночная»
+   комната), предпочтения нет и требование идёт туда, где оно уместнее по ситуации. */
+function planPresident(room, economy, cooldowns) {
+  if (!room.president) return null;
+  const humanCb = !!room.seats.central_bank;
+  const humanMof = !!room.seats.ministry_finance;
+  const playerBranch = humanCb && !humanMof ? 'monetary' : humanMof && !humanCb ? 'fiscal' : null;
+  const memo = room.presMemo || { lastReqId: null, ago: 99 };
+  return slimPlan(botPresident(economy, room.president.persona, room.difficulty, {
+    playerBranch, cooldowns: cooldowns || room.eventCooldowns || {},
+    cbPersonaId: room.cbPersona, mofPersonaId: room.mofPersona,
+    lastReqId: memo.lastReqId, lastDirectiveAgo: memo.ago,
+  }));
 }
 
 const CHAT_LOG_CAP = 60;
@@ -113,6 +167,8 @@ const publicView = (room) => {
     connected: perSeat(isConnected),
     lastActions: room.lastActions,
     goals: { central_bank: room.goalCb, ministry_finance: room.goalMof },
+    personas: { central_bank: room.cbPersona || 'pragmatic', ministry_finance: room.mofPersona || 'technocrat' },
+    president: room.president ? { ...room.president, plan: room.presidentPlan || null, last: room.presidentLast || null } : null,
     chat: room.chat || [],
     portfolioValues: room.portfolioValues || {},
   };
@@ -120,11 +176,13 @@ const publicView = (room) => {
 
 function resolveQuarter(room) {
   const subs = room.submissions;
-  // пустое место занимает бот с характером по умолчанию
-  const cbAct = subs.central_bank ? null : botCentralBank(room.economy, 'pragmatic', room.difficulty);
-  const mofAct = subs.ministry_finance ? null : botFinanceMinistry(room.economy, 'technocrat', room.difficulty);
-  const cbDecisions = cbAct ? cbAct.decisions : subs.central_bank.decisions;
-  const mofDecisions = mofAct ? mofAct.decisions : subs.ministry_finance.decisions;
+  const cbPersona = room.cbPersona || 'pragmatic';
+  const mofPersona = room.mofPersona || 'technocrat';
+  // пустое место занимает бот с характером комнаты
+  let cbAct = subs.central_bank ? null : botCentralBank(room.economy, cbPersona, room.difficulty);
+  let mofAct = subs.ministry_finance ? null : botFinanceMinistry(room.economy, mofPersona, room.difficulty);
+  let cbDecisions = cbAct ? cbAct.decisions : subs.central_bank.decisions;
+  let mofDecisions = mofAct ? mofAct.decisions : subs.ministry_finance.decisions;
   // новость/цитата о решении живого игрока — тем же способом, что у бота,
   // иначе действия партнёра-человека никогда не попадали в ленту новостей
   // (generateNews строит эти новости только из botAction/botActions)
@@ -134,23 +192,92 @@ function resolveQuarter(room) {
   // (но всё равно присутствующие в decisions) поля одного игрока при слиянии
   // затирают реальные изменения другого — это и было причиной, что применялось
   // решение только одного из игроков
-  const eff = {
+  let eff = {
     ...room.decisions,
     ...pickFields(cbDecisions, LEVER_IDS_BY_GROUP.monetary),
     fxRegime: 'fxRegime' in cbDecisions ? cbDecisions.fxRegime : room.decisions.fxRegime,
     emergency: 'emergency' in cbDecisions ? cbDecisions.emergency : room.decisions.emergency,
     ...pickFields(mofDecisions, LEVER_IDS_BY_GROUP.fiscal),
   };
+  /* Решения президента разбираются здесь — им нужны уже посчитанные решения обоих
+     ведомств. Требование к живому игроку проверяется по тому, куда он сдвинул свои
+     рычаги (directiveProgress), требование к боту — по тому, согласился ли тот его
+     исполнить (processPresidentialDirective). Всё остальное — указы, реформы,
+     назначения — считает движок теми же полями решений, что и в одиночной игре. */
+  const plan = room.president ? room.presidentPlan : null;
+  const extraImpulses = [...(room.pendingImpulses || [])];
+  let presDirResult = null;
+  let directiveMet = null;
+  if (plan) {
+    const persona = getPresPersona(room.president.persona);
+    eff = { ...eff, presidentActive: true, presidentActions: plan.actions, presidentPatience: persona.patience };
+    if (plan.appointBot) eff[plan.appointBot.kind === 'central_bank' ? 'appointCb' : 'appointMof'] = plan.appointBot.persona;
+    const dir = plan.directive;
+    if (dir) {
+      const seat = dir.branch === 'monetary' ? 'central_bank' : 'ministry_finance';
+      const live = !!subs[seat];
+      if (live) {
+        directiveMet = directiveProgress(dir.reqId, room.decisions,
+          seat === 'central_bank' ? cbDecisions : mofDecisions, room.economy);
+        eff = { ...eff, presidentDirectiveMet: directiveMet, presidentExtraSpend: PRES_DIRECTIVE_COST };
+      } else {
+        presDirResult = processPresidentialDirective(dir.reqId, room.economy, cbPersona, mofPersona, eff);
+        if (presDirResult) {
+          eff = { ...presDirResult.decisions, presidentExtraSpend: PRES_DIRECTIVE_COST };
+          if (presDirResult.toCb) {
+            cbDecisions = { ...cbDecisions, ...pickFields(eff, LEVER_IDS_BY_GROUP.monetary) };
+            cbAct = redescribeCbAction(room.economy, cbPersona, eff);
+          } else {
+            mofDecisions = { ...mofDecisions, ...pickFields(eff, LEVER_IDS_BY_GROUP.fiscal) };
+            mofAct = redescribeMofAction(room.economy, mofPersona, eff);
+          }
+          if (presDirResult.credibilityHit) {
+            extraImpulses.push(makeImpulse('cbCredibilityPush', presDirResult.credibilityHit,
+              'Центральный банк исполнил указание президента', 'fast', room.difficulty, 'other'));
+          }
+        }
+      }
+    }
+  }
   const cbStance = clamp((eff.keyRate - room.economy.inflationExpectations - room.economy.rStar) / 3, -1, 1);
   const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6, -1, 1);
   const res = simulateQuarter({
     economy: { ...room.economy, cbStance, mofStance },
-    decisions: eff, pendingImpulses: room.pendingImpulses, eventCooldowns: room.eventCooldowns,
+    decisions: eff, pendingImpulses: extraImpulses, eventCooldowns: room.eventCooldowns,
     difficulty: room.difficulty, quarterIndex: room.quarterIndex, stories: room.stories,
-    botAction: cbNewsAct, botActions: [mofNewsAct],
+    botAction: cbAct || cbNewsAct, botActions: [mofAct || mofNewsAct],
   });
+  if (plan && plan.directive) {
+    const dir = plan.directive;
+    const to = dir.branch === 'monetary' ? 'ЦБ' : 'МИНФИН';
+    if (presDirResult) {
+      res.newsEntries.unshift({ id: `presdir${room.quarterIndex}`, cat: 'gov', priority: 8,
+        q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+        headline: `ПРЕЗИДЕНТ → ${to}: ${dir.label.toUpperCase()} — ${presDirResult.status === 'accepted' ? 'ИСПОЛНЕНО'
+          : presDirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
+        text: `«${presDirResult.ask}» ${presDirResult.text}` });
+    } else {
+      const verdict = directiveVerdict(directiveMet);
+      const pct = Number.isFinite(directiveMet) ? Math.round(directiveMet * 100) : null;
+      const word = verdict === 'met' ? 'ВЫПОЛНЕНО' : verdict === 'partial' ? 'ВЫПОЛНЕНО ЧАСТИЧНО'
+        : verdict === 'ignored' ? 'ПРОИГНОРИРОВАНО' : 'БЕЗ ОТВЕТА';
+      res.newsEntries.unshift({ id: `presdir${room.quarterIndex}`, cat: 'gov', priority: 9,
+        q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+        headline: `ПРЕЗИДЕНТ → ${to}: ${dir.label.toUpperCase()} — ${word}`,
+        text: `«${dir.ask}» ${verdict === 'met' ? 'Ведомство пошло навстречу — администрация это отметила.'
+          : verdict === 'partial' ? `Ведомство сделало примерно ${pct}% запрошенного. В администрации это считают полумерой.`
+            : verdict === 'ignored' ? 'Ведомство поступило по-своему. В администрации президента это запомнят.'
+              : 'Требование осталось без внятного ответа.'}` });
+    }
+  }
+  const nextCbPersona = plan && plan.appointBot && plan.appointBot.kind === 'central_bank' ? plan.appointBot.persona : cbPersona;
+  const nextMofPersona = plan && plan.appointBot && plan.appointBot.kind === 'ministry_finance' ? plan.appointBot.persona : mofPersona;
+  const presMemo = plan && plan.directive ? { lastReqId: plan.directive.reqId, ago: 0 }
+    : { lastReqId: (room.presMemo || {}).lastReqId || null, ago: Math.min(99, ((room.presMemo || {}).ago ?? 99) + 1) };
+  const afterPresident = { ...room, cbPersona: nextCbPersona, mofPersona: nextMofPersona,
+    presMemo, eventCooldowns: res.eventCooldowns };
   return {
-    ...room,
+    ...afterPresident,
     economy: res.economy,
     history: [...room.history, { q: room.quarterIndex, label: quarterLabel(room.quarterIndex), ...res.economy }].slice(-160),
     news: [...res.newsEntries, ...room.news].slice(0, 240),
@@ -159,6 +286,13 @@ function resolveQuarter(room) {
     decisions: defaultDecisions(res.economy, eff),
     quarterIndex: room.quarterIndex + 1,
     quarterStartedAt: Date.now(),
+    presidentPlan: planPresident(afterPresident, res.economy, res.eventCooldowns),
+    presidentLast: plan && (plan.directive || plan.actions.length)
+      ? { label: plan.directive ? plan.directive.label : null,
+        branch: plan.directive ? plan.directive.branch : null,
+        directiveMet, status: presDirResult ? presDirResult.status : null,
+        actions: plan.actions.map((idx) => (PRES_BY_ID[idx] || {}).label).filter(Boolean) }
+      : room.presidentLast || null,
     submissions: { ...room.submissions, [seatsFor(room)[0]]: null, [seatsFor(room)[1]]: null },
     lastActions: {
       // timedOut: место было занято человеком, но за него в итоге решал бот
@@ -216,7 +350,13 @@ async function handleRequest(req, res) {
 
   if (action === 'create') {
     const id = code();
-    const room = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof });
+    // president: null — «выключить»; объект или отсутствие — включён (в «классике»
+    // характер бросается случайно, ровно как в одиночной игре)
+    const president = body.president === null || (body.president && body.president.enabled === false)
+      ? null : (body.president || {});
+    const base = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof,
+      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president });
+    const room = { ...base, presidentPlan: planPresident(base, base.economy, {}) };
     await setRoom(id, room);
     return res.status(200).json({ id, ownerToken: room.ownerToken, storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
   }
@@ -229,8 +369,12 @@ async function handleRequest(req, res) {
       if (!seatsFor(room).includes(seat)) return { error: 'Эта роль недоступна в этом режиме партии', status: 400 };
       if (room.seats[seat]) return { error: 'Место уже занято', status: 409 };
       const t = token();
-      return { ...room, seats: { ...room.seats, [seat]: t }, names: { ...room.names, [seat]: cleanString(body.name, 40) || 'игрок' },
+      const next = { ...room, seats: { ...room.seats, [seat]: t },
+        names: { ...room.names, [seat]: cleanString(body.name, 40) || 'игрок' },
         version: room.version + 1, __token: t };
+      // требование президента адресуется живому игроку — пересчитываем план, как
+      // только становится известно, кто вообще сидит за пультом
+      return { ...next, presidentPlan: planPresident(next, next.economy, next.eventCooldowns) };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
     const t = out.room.__token; delete out.room.__token;

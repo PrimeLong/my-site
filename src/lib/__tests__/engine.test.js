@@ -7,6 +7,7 @@ import {
   ROLES, PRESIDENT_ACTIONS, PRES_BY_ID, reformShare, politicalCapitalRegen,
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
+  askText, REQUESTS,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -922,5 +923,117 @@ describe('выборы считаются голосами, а не рейтин
       return n;
     };
     expect(win([...mk(true), ...mk(true), ...mk(true)])).toBeGreaterThan(win([...mk(false), ...mk(false), ...mk(false)]));
+  });
+});
+
+describe('указание с указанной силой', () => {
+  const eco = () => makeInitialEconomy();
+
+  it('текст просьбы называет ту величину, которую действительно просят', () => {
+    const cut = REQUESTS.find((r) => r.id === 'rate_cut');
+    expect(askText(cut, 1)).toContain('на 1 п.п.');
+    expect(askText(cut, 0.25)).toContain('на 0,25 п.п.');
+    expect(askText(cut, 2)).toContain('на 2 п.п.');
+    const infra = REQUESTS.find((r) => r.id === 'infra_up');
+    expect(askText(infra, 1)).toContain('1,5% ВВП');
+    expect(askText(infra, 2)).toContain('3% ВВП');
+  });
+
+  it('частичное согласие на маленькую просьбу всё равно двигает ставку', () => {
+    const s = eco();
+    const d = defaultDecisions(s);
+    // проходим по всем характерам ЦБ: где ответ «частично», ставка обязана измениться
+    let sawPartial = false;
+    ['dove', 'pragmatic', 'hawk'].forEach((pid) => {
+      [0.25, 0.5, 1].forEach((strength) => {
+        const r = processPresidentialDirective('rate_cut', s, pid, 'technocrat', d, strength);
+        if (!r || r.status === 'rejected') return;
+        if (r.status === 'partial') sawPartial = true;
+        expect(r.decisions.keyRate, `${pid}/${strength}`).toBeLessThan(d.keyRate);
+      });
+    });
+    expect(sawPartial).toBe(true);
+  });
+
+  it('просьба, выполненная ровно, засчитывается полностью', () => {
+    const s = eco();
+    const d = defaultDecisions(s);
+    const done = { ...d, keyRate: d.keyRate - 0.25 };
+    expect(directiveVerdict(directiveProgress('rate_cut', d, done, s, 0.25))).toBe('met');
+    // и наоборот: ставку не тронули — это не «частично»
+    expect(directiveVerdict(directiveProgress('rate_cut', d, d, s, 0.25))).toBe('ignored');
+  });
+
+  it('шаг ставки в новостях печатается до сотых', () => {
+    const s = makeInitialEconomy();
+    const out = simulateQuarter({ economy: s, decisions: { ...defaultDecisions(s), keyRate: s.keyRate + 0.25 },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    const news = out.newsEntries.find((n) => /КЛЮЧЕВУЮ СТАВКУ/.test(n.headline));
+    expect(news).toBeTruthy();
+    expect(news.text).toContain('+0,25 п.п.');
+  });
+});
+
+describe('лестница режимов: тоталитаризм как решение', () => {
+  it('указ о полном контроле доступен только из авторитарного режима', () => {
+    const act = PRES_BY_ID.seize_control;
+    expect(act).toBeTruthy();
+    expect(act.requires({ politicalRegime: 'democracy', parliamentDissolved: false })).toBe(false);
+    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: false })).toBe(false);
+    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: true })).toBe(true);
+  });
+
+  it('указ переводит страну в тоталитарный режим и стоит капитала', () => {
+    const s = { ...makeInitialEconomy(), politicalRegime: 'authoritarian', parliamentDissolved: true,
+      decreeRule: true, politicalCapital: 90, politicalTension: 40 };
+    const out = simulateQuarter({ economy: s,
+      decisions: { ...defaultDecisions(s), presidentActive: true, presidentActions: ['seize_control'] },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
+    expect(out.economy.politicalRegime).toBe('totalitarian');
+    expect(out.economy.politicalCapital).toBeLessThan(s.politicalCapital);
+    assertFiniteEconomy(out.economy, 'после указа о полном контроле');
+  });
+
+  it('без капитала указ не проходит', () => {
+    const s = { ...makeInitialEconomy(), politicalRegime: 'authoritarian', parliamentDissolved: true,
+      decreeRule: true, politicalCapital: 10, politicalTension: 30 };
+    const out = simulateQuarter({ economy: s,
+      decisions: { ...defaultDecisions(s), presidentActive: true, presidentActions: ['seize_control'] },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
+    expect(out.economy.politicalRegime).not.toBe('totalitarian');
+  });
+});
+
+describe('президент разговаривает с обоими ведомствами', () => {
+  it('требования уходят не только ведомству игрока', () => {
+    const base = makeInitialEconomy();
+    const states = [
+      { outputGap: 2.5, inflation: 8, unemployment: 4.5, budgetBalancePctGdp: -5 },
+      { outputGap: -3, inflation: 2, unemployment: 9, investmentGrowth: -2 },
+      { debtToGdp: 95, budgetBalancePctGdp: -6, interestToRevenue: 18, inflation: 5 },
+      {},
+    ];
+    const seen = new Set();
+    states.forEach((patch) => {
+      PRESIDENT_PERSONAS.forEach((P) => {
+        for (let i = 0; i < 40; i++) {
+          const plan = botPresident({ ...base, ...patch, politicalCapital: 80 }, P.id, 'medium',
+            { playerBranch: 'monetary', cooldowns: {}, cbPersonaId: 'pragmatic', mofPersonaId: 'technocrat', lastDirectiveAgo: 9 });
+          if (plan.directive) seen.add(plan.directive.branch);
+        }
+      });
+    });
+    expect(seen.has('monetary')).toBe(true);
+    expect(seen.has('fiscal')).toBe(true);
+  });
+
+  it('требование к соседнему ведомству помечено как не игроку', () => {
+    const base = { ...makeInitialEconomy(), debtToGdp: 95, budgetBalancePctGdp: -6, politicalCapital: 80 };
+    const plan = botPresident(base, 'technocrat', 'medium',
+      { playerBranch: 'monetary', cooldowns: {}, cbPersonaId: 'pragmatic', mofPersonaId: 'technocrat', lastDirectiveAgo: 9 });
+    if (plan.directive && plan.directive.branch === 'fiscal') {
+      expect(plan.directive.toPlayer).toBe(false);
+      expect(typeof plan.directive.ask).toBe('string');
+    }
   });
 });

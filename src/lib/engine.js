@@ -568,10 +568,22 @@ function describeHumanMofAction(s, playerName, finalDecisions) {
 /* =========================================================================================
    МЕЖВЕДОМСТВЕННЫЕ ЗАПРОСЫ: официальное обращение одного ведомства к другому
 ========================================================================================= */
+/* Число в тексте просьбы — «1», «1,5», «0,25»: без хвостовых нулей и с запятой,
+   как это читается вслух, а не как в отчёте. */
+const askNum = (n) => String(Number(Number(n).toFixed(2))).replace('.', ',');
+/* Сколько именно просят: сила указания — множитель к базовой величине просьбы. */
+const reqAmount = (req, strength) => (req && req.scale ? req.scale.base : 1)
+  * (Number.isFinite(strength) ? strength : 1);
+/* Текст просьбы. «Снизить ставку на 1 п.п.» и «на 0,25 п.п.» — разные просьбы, и в
+   новостях обязана стоять та, которую действительно выдвинули: раньше в кавычках
+   всегда висела базовая формулировка, сколько бы ни просили на самом деле. */
+const askText = (req, strength) => (!req ? ''
+  : typeof req.ask === 'function' ? req.ask(reqAmount(req, strength)) : req.ask);
+
 const REQUESTS = [
   { id: 'infra_up', from: 'central_bank', label: 'Нарастить госинвестиции',
     scale: { base: 1.5, min: 0.5, max: 3, step: 0.5, unit: '% ВВП' },
-    ask: 'Просим увеличить расходы на инфраструктуру на 1,5% ВВП для поддержки совокупного спроса.',
+    ask: (n) => `Просим увеличить расходы на инфраструктуру на ${askNum(n)}% ВВП для поддержки совокупного спроса.`,
     fit: (s) => (s.outputGap < -1 ? 1.5 : s.outputGap > 1.5 ? -1.6 : 0.1) + (s.debtToGdp > 85 ? -0.9 : 0.2),
     bias: { technocrat: 0.7, populist: 0.5, austerity: -0.7 },
     apply: (d, k) => ({ govInvestment: clamp(d.govInvestment + 3 * k, -15, 15) }),
@@ -623,10 +635,14 @@ const REQUESTS = [
     no: 'Минфин отвечает, что взятые бюджетные обязательства снижать не намерен.' },
   { id: 'rate_cut', from: 'ministry_finance', label: 'Снизить ключевую ставку',
     scale: { base: 1, min: 0.25, max: 2.5, step: 0.25, unit: ' п.п.' },
-    ask: 'Просим снизить ключевую ставку на 1 п.п.: стоимость кредита душит инвестиции и обслуживание долга.',
+    ask: (n) => `Просим снизить ключевую ставку на ${askNum(n)} п.п.: стоимость кредита душит инвестиции и обслуживание долга.`,
     fit: (s) => (s.outputGap < -1 ? 1.3 : -0.6) + (s.inflation < s.inflationTarget + 1 ? 0.9 : -1.4) + (s.unemployment > 7 ? 0.6 : 0),
     bias: { dove: 0.9, pragmatic: 0.2, hawk: -0.9 },
-    apply: (d, k) => ({ keyRate: clamp(Math.round((d.keyRate - 1 * k) / 0.25) * 0.25, 0, 25) }),
+    // округление к сетке 0,25 не должно съедать частичное согласие целиком: просьба
+    // снизить на 0,25 при ответе «наполовину» давала −0,125 → та же ставка, и новость
+    // «исполнено частично» выходила при неизменившейся ставке. Согласился — двигай.
+    apply: (d, k) => ({ keyRate: k <= 0 ? d.keyRate
+      : clamp(Math.min(roundTo(d.keyRate - 1 * k, 0.25), roundTo(d.keyRate, 0.25) - 0.25), 0, 25) }),
     yes: 'Центральный банк соглашается и снижает ставку — инфляционная картина это позволяет.',
     partial: 'Центральный банк снижает ставку вдвое меньше запрошенного.',
     no: 'Центральный банк отказывает: снижение ставки при текущей инфляции стоило бы доверия к цели.' },
@@ -639,7 +655,8 @@ const REQUESTS = [
     fit: (s) => (s.inflation > s.inflationTarget + 2 ? 1.4 : -1.0) + (s.inflationExpectations > s.inflationTarget + 1.5 ? 0.7 : -0.3)
       + (s.outputGap < -2 ? -0.8 : 0.2),
     bias: { hawk: 0.9, pragmatic: 0.2, dove: -0.9 },
-    apply: (d, k) => ({ keyRate: clamp(roundTo(d.keyRate + 2 * k, 0.25), 0, 25) }),
+    apply: (d, k) => ({ keyRate: k <= 0 ? d.keyRate
+      : clamp(Math.max(roundTo(d.keyRate + 2 * k, 0.25), roundTo(d.keyRate, 0.25) + 0.25), 0, 25) }),
     yes: 'Центральный банк соглашается и повышает ставку решительнее, чем планировал.',
     partial: 'Центральный банк добавляет к своему решению половину запрошенного шага.',
     no: 'Центральный банк отказывает: он считает, что уже сделал достаточно, а переужесточение обойдётся выпуском.' },
@@ -694,7 +711,7 @@ function processRequest(reqId, economy, botKind, personaId, decisions) {
   const status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
   const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
   return {
-    req, status, score,
+    req, status, score, ask: askText(req, 1),
     decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k, economy) } : decisions,
     text: status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no,
     coordination: status === 'accepted' ? 9 : status === 'partial' ? 4 : -7,
@@ -835,6 +852,32 @@ const PRESIDENT_ACTIONS = [
         text: 'Указ отменён тем же, кто его подписал. Оппозиция называет это вынужденным шагом, рынки — первым за долгое время сигналом, что правила ещё что-то значат.',
         priority: 9, chain: ['Указ отменён', 'Парламент работает', 'Напряжение ↓', 'Премия за риск ↓'] },
     }) },
+  /* Верхняя ступень лестницы режимов. Раньше тоталитаризм существовал только как
+     несчастный случай: из авторитарного режима туда вела единственная дорога —
+     напряжённость 80+ и бросок кубика, то есть страна должна была сама дойти до
+     ручки. Президенту, который строит вертикаль сознательно, нужен был собственный
+     ход — дорогой и с честной ценой: экономика платит инвестициями, капиталом и
+     производительностью, а власть получает управляемость и политический капитал,
+     который копится почти сам. Обратно ведёт та же дорога, что и из авторитаризма, —
+     указ «Вернуть парламент», и стоит он ровно столько же, сколько стоил всегда. */
+  { id: 'seize_control', group: 'power', label: 'Полный контроль над институтами', cost: 50, cooldown: 24,
+    requires: (s) => s.politicalRegime === 'authoritarian' && !!s.parliamentDissolved,
+    reqText: 'Доступно при авторитарном режиме и распущенном парламенте',
+    desc: 'Суды, пресса и остатки самостоятельных ведомств переходят под прямое управление. Ведомства почти перестают отказывать, политический капитал копится сам — но инвестиции, производительность и капитал уходят из страны и обратно не возвращаются.',
+    build: (s, difficulty) => ({
+      patch: { totalize: true },
+      impulses: [
+        makeImpulse('tensionPush', 14, 'Установление полного контроля', 'fast', difficulty, 'other'),
+        makeImpulse('businessConfidence', -16, 'Институты подчинены', 'default', difficulty, 'other'),
+        makeImpulse('investment', -3.2, 'Инвесторы уходят из страны', 'default', difficulty),
+        makeImpulse('capitalFlow', -20, 'Бегство капитала', 'default', difficulty),
+        makeImpulse('riskPremium', 0.8, 'Полный контроль над институтами', 'default', difficulty),
+        sustainedImpulse('productivity', -0.1, 10, 'Отбор по лояльности вместо отбора по результату'),
+        makeImpulse('govTrust', -6, 'Независимых источников информации не осталось', 'default', difficulty, 'other'),
+      ],
+      news: { cat: 'gov', headline: 'УКАЗ ПРЕЗИДЕНТА: ИНСТИТУТЫ ПЕРЕХОДЯТ ПОД ПРЯМОЕ УПРАВЛЕНИЕ',
+        text: 'Суды, надзорные органы и оставшиеся независимые медиа подчинены администрации. Отказать теперь почти невозможно — и почти некому: цену такой управляемости страна платит инвестициями и людьми, которые умеют считать.',
+        priority: 10, chain: ['Указ президента', 'Институты подчинены', 'Тоталитарный режим', 'Бегство капитала', 'Производительность ↓'] } }) },
   { id: 'snap_election', group: 'power', label: 'Назначить досрочные выборы', cost: 28, cooldown: 16,
     requires: (s) => (s.quartersToElection || 0) > 4,
     reqText: 'Доступно, если до плановых выборов больше 4 кв.',
@@ -1008,7 +1051,7 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   // политические указания; рынок это видит и переоценивает якорь ожиданий
   const credibilityHit = toCb ? -7 * k : 0;
   return {
-    req, status, score, toCb, persona, strength: str,
+    req, status, score, toCb, persona, strength: str, ask: askText(req, str),
     decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions,
     text: status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no,
     credibilityHit,
@@ -1145,6 +1188,7 @@ function botPresident(s, personaId, difficulty, ctx) {
   const wish = [];
   if (tension >= 50 && P.power > 0.5) wish.push('crackdown');
   if (tension >= 62 && P.power >= 0.9 && !s.parliamentDissolved) wish.push('dissolve');
+  if (P.power >= 0.9 && s.politicalRegime === 'authoritarian' && s.parliamentDissolved) wish.push('seize_control');
   if (s.parliamentDissolved && P.power < 0 && tension < 35) wish.push('restore_parliament');
   if (s.approval < 45) wish.push('address');
   if (tension >= 40 && P.power <= 0.5) wish.push('elite_deal');
@@ -1179,11 +1223,15 @@ function botPresident(s, personaId, difficulty, ctx) {
      требовать снижения ставки при инфляции в десять процентов. */
   const scoreReq = (req) => {
     const lean = PRES_REQ_LEAN[req.id] || { pop: 0, ref: 0 };
-    return req.fit(s) + lean.pop * P.populism * 1.8 + lean.ref * P.reform * 1.3;
+    return req.fit(s) + lean.pop * P.populism * 1.8 + lean.ref * P.reform * 1.3
+      // ведомство игрока президенту интереснее — но не настолько, чтобы соседнее
+      // ведомство вообще никогда не получало указаний: президент, который двадцать
+      // кварталов подряд разговаривает только с одним из двух, выглядит не главой
+      // государства, а надзирателем за игроком. Разница в 0,6 — это «при прочих
+      // равных к игроку», а не «к игроку всегда»
+      + (playerBranch && branchOf(req) === playerBranch ? 0.6 : 0);
   };
-  // требовать интереснее от того, кем игрок управляет сам: бот и так послушен
-  const wantBranch = playerBranch || (Math.random() < 0.5 ? 'monetary' : 'fiscal');
-  const pool = REQUESTS.filter((r) => branchOf(r) === wantBranch);
+  const pool = REQUESTS;
   /* Выбираем не строго лучшее, а случайное из близких по смыслу: президент, который
      двенадцать кварталов подряд требует одно и то же слово в слово, читается как
      сломанный, а не как упрямый. Прошлое требование при прочих равных пропускаем. */
@@ -1208,7 +1256,8 @@ function botPresident(s, personaId, difficulty, ctx) {
   // требование стоит политического капитала: на нуле давить не на что
   const canPressure = capital >= PRES_DIRECTIVE_COST + 4;
   const directive = canPressure && best && best.sc >= threshold
-    ? { reqId: best.req.id, branch: wantBranch, toPlayer: wantBranch === playerBranch, req: best.req }
+    ? { reqId: best.req.id, branch: branchOf(best.req), toPlayer: branchOf(best.req) === playerBranch,
+      req: best.req, ask: askText(best.req, 1) }
     : null;
 
   /* --- 3. смена руководителя ведомства, которым игрок не управляет --- */
@@ -1238,8 +1287,10 @@ function botPresident(s, personaId, difficulty, ctx) {
   return {
     persona: P, actions, directive, appointBot, mood, quote,
     satisfaction: sat,
-    newsHeadline: `ПРЕЗИДЕНТ ${directive ? 'ТРЕБУЕТ: ' + directive.req.label.toUpperCase() : 'О ПОЛОЖЕНИИ ДЕЛ'}`,
-    demand: directive ? `Президент (${P.name}): ${directive.req.ask}` : null,
+    newsHeadline: `ПРЕЗИДЕНТ ${directive
+      ? `→ ${directive.branch === 'monetary' ? 'ЦБ' : 'МИНФИН'}: ${directive.req.label.toUpperCase()}`
+      : 'О ПОЛОЖЕНИИ ДЕЛ'}`,
+    demand: directive ? `Президент (${P.name}): ${askText(directive.req, 1)}` : null,
   };
 }
 
@@ -2419,6 +2470,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     if (politicalRegime === 'authoritarian' || politicalRegime === 'totalitarian') politicalRegime = 'crisis';
     cooldowns['political:transition'] = 3;
   }
+  // указ о полном контроле — прямой ход на верхнюю ступень, без броска кубика:
+  // тоталитаризм должен быть решением, а не стечением обстоятельств
+  if (pres.patch.totalize && politicalRegime === 'authoritarian') {
+    politicalRegime = 'totalitarian'; parliamentDissolved = true; decreeRule = true;
+    cooldowns['political:transition'] = 6;
+  }
   const politicalCooldown = coup ? 4 : (cooldowns['political:transition'] || 0);
   if (politicalCooldown <= 0) {
     if (politicalRegime === 'democracy' && politicalTension >= 62) {
@@ -2616,6 +2673,8 @@ const ru = (v) => String(v).replace('.', ',');
 const rf1 = (v) => ru(fmt1(v));
 const rf2 = (v) => ru(fmt2(v));
 const rfs = (v) => ru(fmtSigned1(v));
+// шаг ставки ходит по сетке 0,25 — округление до десятых превращало его в «+0,3»
+const rfs2 = (v) => ru(Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(2) : '—');
 let __newsId = 1;
 function mkNews(cat, headline, text, opts) {
   const o = opts || {};
@@ -2856,7 +2915,7 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   const dRate = s.keyRate - prev.keyRate;
   if (Math.abs(dRate) > 0.01 && Math.abs(dRate) < 0.75) {
     push('cb', `${dRate > 0 ? 'ЦБ ПОВЫШАЕТ' : 'ЦБ СНИЖАЕТ'} КЛЮЧЕВУЮ СТАВКУ ДО ${rf2(s.keyRate)}%`,
-      `Шаг ${rfs(dRate)} п.п. при инфляции ${rf1(s.inflation)}% и цели ${rf1(tgt)}%. Реальная ставка ${rfs(s.realPolicyRate)}% против нейтральной ${rf1(s.rStar)}% — условия ${s.rateGap > 0.3 ? 'жёстче нейтральных' : s.rateGap < -0.3 ? 'мягче нейтральных' : 'близки к нейтральным'}.`, 6);
+      `Шаг ${rfs2(dRate)} п.п. при инфляции ${rf1(s.inflation)}% и цели ${rf1(tgt)}%. Реальная ставка ${rfs(s.realPolicyRate)}% против нейтральной ${rf1(s.rStar)}% — условия ${s.rateGap > 0.3 ? 'жёстче нейтральных' : s.rateGap < -0.3 ? 'мягче нейтральных' : 'близки к нейтральным'}.`, 6);
   } else if (Math.abs(dRate) < 0.01 && Math.abs(s.inflation - tgt) > 2 && once('hold', 4)) {
     push('cb', `ЦБ СОХРАНЯЕТ СТАВКУ ${rf2(s.keyRate)}% ПРИ ИНФЛЯЦИИ ${rf1(s.inflation)}%`,
       `Бездействие — тоже решение. Ожидания ${rf1(s.inflationExpectations)}%, доверие к ЦБ ${Math.round(s.cbCredibility)} из 100.`, 5);
@@ -3568,7 +3627,7 @@ export {
   presActionAvailable, applyPresidentActions, politicalCapitalRegen,
   PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext,
   directiveProgress, directiveVerdict, DIRECTIVE_FULL, DIRECTIVE_PART,
-  processPresidentialDirective, PRES_DIRECTIVE_COST, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
+  processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
   simulateQuarter,

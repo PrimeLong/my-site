@@ -16,7 +16,7 @@ import {
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
-  processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse,
+  processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict,
 } from './lib/engine.js';
 
@@ -976,6 +976,22 @@ tr('croupier', 'Крупье', 'вибрафон, фортепиано, конт
   ],
 });
 
+/* -------------------------------- ЗАГЛАВНАЯ -------------------------------- */
+/* Тема главного меню: рояль ведёт мелодию, струнные держат зал, барабаны почти
+   не слышны — это ещё не партия, это дверь в кабинет. */
+tr('anthem', 'Герб на двери', 'рояль, струнные, контрабас — заглавная тема', 'calm', {
+  bpm: 88, swing: 0.08, reverb: 0.44, bassLine: 'half',
+  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  melA: MEL('0:D5:4 4:F5:4 8:A5:6 16:G5:4 20:F5:4 24:D5:8 32:F5:4 36:A5:4 40:C6:6 48:Bb5:4 52:A5:4 56:F5:8 64:A5:4 68:G5:4 72:F5:6 80:E5:4 84:D5:4 88:C5:8 96:Bb4:4 100:D5:4 104:G5:6 112:F5:4 116:E5:4 120:D5:10'),
+  melB: MEL('0:F5:4 4:Bb5:4 8:D6:8 16:C6:4 20:A5:4 24:F5:8 32:Bb5:4 36:D6:4 40:F6:6 48:E6:4 52:C#6:4 56:A5:10'),
+  sections: [
+    sec('A', 'melA', 'air', 'piano bass', 0.6, DR('x.......x.......', '................', 'r...r...r...r...')),
+    sec('B', 'melB', 'flow', 'piano bass strings', 0.85, DR('x.....x.x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
+    sec('A', 'melA', 'flow', 'piano bass strings cello', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
+  ],
+});
+
 const MOOD_PLAYLISTS = {
   calm: ['cabinet', 'dawn', 'sixstring', 'ledger', 'northlight', 'promenade', 'meadow'],
   boom: ['fullhouse', 'ascent', 'boulevard', 'overdrive'],
@@ -992,6 +1008,16 @@ const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', s
   banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
 /* Плейлисты, привязанные к роли: у инвестора свой репертуар, у обучения — свой */
 const ROLE_PLAYLISTS = {
+  /* В меню нет экономики, а значит нет и настроения: один и тот же спокойный
+     репертуар во всех ветках — заглавная тема и то, что к ней прилегает. */
+  menu: {
+    calm: ['anthem', 'cabinet', 'dawn', 'northlight', 'promenade'],
+    boom: ['anthem', 'cabinet', 'dawn'],
+    slump: ['anthem', 'dawn', 'northlight'],
+    stag: ['anthem', 'cabinet', 'meadow'],
+    crisis: ['anthem', 'dawn', 'northlight'],
+    frost: ['anthem', 'meadow', 'dawn'],
+  },
   tutorial: {
     calm: ['firstlesson', 'chalkboard', 'cabinet'],
     boom: ['graduation', 'sixstring'],
@@ -1817,6 +1843,9 @@ export const Audio = (() => {
       if (!running && opts.music) this.startMusic();
     },
     prime() { const c = ensure(); if (c) resume(); return !!c; },
+    // «контекст уже создан и играет» — без создания нового: до первого действия
+    // человека браузер всё равно держал бы его выключенным
+    primed: () => !!ctx && ctx.state === 'running',
     play(name) {
       if (!opts.sfx) return;
       if (name === 'tick') { const t = Date.now(); if (t - lastTick < 70) return; lastTick = t; }
@@ -2838,6 +2867,20 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
    насколько администрация вами довольна. Последнее — не косметика: из нуля
    довольства вырастает отставка, и полоса должна быть видна заранее, а не
    объявляться постфактум вместе с увольнением. */
+/* Чем кончилось прошлое требование, одним словом. Доля выполнения может прийти
+   и булевой (старые сохранения), и дробной, и вовсе отсутствовать; у указания
+   боту вместо неё — ответ ведомства. */
+const lastDirectiveWord = (last) => {
+  if (last.status) {
+    return last.status === 'accepted' ? 'исполнено' : last.status === 'partial' ? 'исполнено частично' : 'отклонено';
+  }
+  const raw = last.directiveMet;
+  const p = raw === true ? 1 : raw === false ? 0 : Number.isFinite(raw) ? raw : null;
+  const verdict = directiveVerdict(p);
+  return verdict === 'met' ? 'выполнено' : verdict === 'partial' ? 'выполнено частично'
+    : verdict === 'ignored' ? 'проигнорировано' : 'передано ведомству';
+};
+
 function PresidentWatchPanel({ economy, plan, last, branch }) {
   if (!plan) return null;
   const P = plan.persona;
@@ -2879,7 +2922,7 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
           <span style={{ color: mine ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
             {mine ? 'Требование к вам: ' : `Указание ${dir.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
           </span>
-          {dir.req.ask}
+          {dir.ask || askText(dir.req, 1)}
           {mine && (
             <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
               Выполнить — значит сдвинуть свои ползунки в эту сторону в этом квартале. Отказ никто не запрещает,
@@ -2895,8 +2938,7 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
       {last && !!(last.label || (last.actions || []).length) && (
         <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.45 }}>
           В прошлый раз: {last.label
-            ? `${last.toPlayer ? 'требование' : 'указание'} «${last.label}» — ${last.directiveMet === true ? 'выполнено'
-              : last.directiveMet === false ? 'проигнорировано' : 'передано ведомству'}`
+            ? `${last.toPlayer ? 'требование' : 'указание'} «${last.label}» — ${lastDirectiveWord(last)}`
             : 'без требований'}
           {last.actions && last.actions.length ? `; сам занялся: ${last.actions.join(', ').toLowerCase()}` : ''}.
         </div>
@@ -2966,7 +3008,7 @@ function RegimeLadder({ economy }) {
     : regime === 'crisis'
       ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
       : regime === 'authoritarian'
-        ? { label: 'тоталитарный режим', need: 'напряжённость ≥ 80 и удержать её', at: 80 }
+        ? { label: 'тоталитарный режим', need: 'указ «Полный контроль над институтами» (50 ПК) — или напряжённость ≥ 80 и удержать её', at: 80 }
         : null;
   const bar = clamp(tension, 0, 100);
   return (
@@ -3178,7 +3220,7 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
                       {isSel && <Check size={11} color={COLOR.gold} />}
                       <span style={{ fontSize: 12, color: isSel ? COLOR.goldSoft : COLOR.text }}>{r.label}</span>
                     </div>
-                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{r.ask}»</div>}
+                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{askText(r, r.scale ? (directiveStrength || 1) : 1)}»</div>}
                     {/* «снизить ставку» без указания насколько — это не указание:
                         один пункт для ставки очень много, и просить можно меньше */}
                     {isSel && r.scale && (
@@ -5479,7 +5521,7 @@ function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
       </div>
       {cur && (
         <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.gold}`, paddingLeft: 9 }}>
-          «{cur.ask}»
+          «{askText(cur, 1)}»
           <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>Запрос уйдёт вместе с вашими решениями. Ответ зависит от характера ведомства и от того, насколько просьба соответствует ситуации.</div>
         </div>
       )}
@@ -5758,6 +5800,15 @@ function NetworkLobby({ onEnter }) {
   const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
   const [mode, setMode] = useState('policy');
+  /* Те же две настройки, что и в одиночной игре: «классика» бросает характеры
+     ведомств случайно и включает президента, «настраиваемая» открывает всё это
+     руками. До этого сетевая комната всегда собиралась с одними и теми же
+     ботами и вообще без президента. */
+  const [setupMode, setSetupMode] = useState('classic');
+  const [cbPersona, setCbPersona] = useState('random');
+  const [mofPersona, setMofPersona] = useState('random');
+  const [presEnabled, setPresEnabled] = useState(true);
+  const [presPersona, setPresPersona] = useState('random');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
@@ -5836,7 +5887,12 @@ function NetworkLobby({ onEnter }) {
   const doCreate = async () => {
     setBusy(true); setError('');
     try {
-      const r = await createRoom({ difficulty, mode });
+      const custom = setupMode === 'custom';
+      const asId = (v) => (v === 'random' ? undefined : v);
+      const r = await createRoom({ difficulty, mode,
+        cbPersona: custom ? asId(cbPersona) : undefined,
+        mofPersona: custom ? asId(mofPersona) : undefined,
+        president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined } });
       setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
       setSeat(seatsForMode(mode)[0]);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -5943,6 +5999,69 @@ function NetworkLobby({ onEnter }) {
               ))}
             </div>
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Как настраивать партию</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['classic', 'Классика'], ['custom', 'Настраиваемая']].map(([id, title]) => (
+                <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
+                  background: setupMode === id ? COLOR.gold : COLOR.panelAlt, color: setupMode === id ? COLOR.ink : COLOR.text,
+                  borderColor: setupMode === id ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('click'); setSetupMode(id); }}>{title}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
+              {setupMode === 'classic'
+                ? 'Характеры ведомств бросаются случайно, президент включён — как в одиночной классике.'
+                : 'Выбрать характер каждого ведомства и президента — или обойтись без президента.'}
+            </div>
+          </div>
+
+          {setupMode === 'custom' && (
+            <div style={{ marginBottom: 14 }}>
+              {[['Характер Центрального банка', CB_PERSONAS, cbPersona, setCbPersona,
+                mode === 'trader' ? 'Ставку ведёт бот — от его характера зависит весь рынок.' : 'Действует, пока место ЦБ пустует или игрок не успел с решением.'],
+              ['Характер Минфина', MOF_PERSONAS, mofPersona, setMofPersona,
+                mode === 'trader' ? 'Бюджет тоже ведёт бот: его щедрость — ваш долговой рынок.' : 'Действует, пока место Минфина пустует или игрок не успел с решением.']]
+                .map(([title, list, value, set, note]) => (
+                  <div key={title} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>{title}</div>
+                    <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>{note}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[...list, { id: 'random', name: 'Случайный' }].map((pp) => (
+                        <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
+                          background: value === pp.id ? COLOR.gold : COLOR.panelAlt, color: value === pp.id ? COLOR.ink : COLOR.text,
+                          borderColor: value === pp.id ? COLOR.gold : COLOR.border }}
+                          onClick={() => { Audio.play('click'); set(pp.id); }}>{pp.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 12 }}>Президент</span>
+                <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11,
+                  background: presEnabled ? COLOR.gold : COLOR.panelAlt, color: presEnabled ? COLOR.ink : COLOR.muted,
+                  borderColor: presEnabled ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('tick'); setPresEnabled((v) => !v); }}>
+                  {presEnabled ? 'включён' : 'выключен'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>
+                Над обоими ведомствами стоит президент: он требует своего от каждого из вас, меняет руководителя
+                ведомства, за которым никто не сидит, и тратит политический капитал на реформы и указы.
+              </div>
+              {presEnabled && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[...PRESIDENT_PERSONAS, { id: 'random', name: 'Случайный' }].map((pp) => (
+                    <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
+                      background: presPersona === pp.id ? COLOR.gold : COLOR.panelAlt, color: presPersona === pp.id ? COLOR.ink : COLOR.text,
+                      borderColor: presPersona === pp.id ? COLOR.gold : COLOR.border }}
+                      onClick={() => { Audio.play('click'); setPresPersona(pp.id); }}>{pp.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doCreate}>
             {busy ? 'Создаём…' : 'Создать комнату'}
           </button>
@@ -6213,12 +6332,25 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const timeLeftMs = room.quarterStartedAt ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - nowTick) : null;
   const timeLeftLabel = timeLeftMs === null ? null
     : `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
-  // таймер общий на квартал, а не «мой» — он должен быть виден, пока ХОТЬ ОДНО
-  // занятое место не отправило решение, а не только пока не ответил партнёр:
-  // раньше условие держалось на room.ready[otherSeat], и как только партнёр
-  // отправлял решение раньше меня, мой собственный (всё ещё тикающий) таймер
-  // необъяснимо пропадал с моего же экрана
-  const quarterPending = roomSeats.some((sx) => room.occupied[sx] && !room.ready[sx]);
+  /* Таймер отсчитывает не «время на ход», а срок, после которого сервер решит за
+     МОЛЧАЩЕГО ПАРТНЁРА ботом. Пока второе место пустует, подгонять некого: квартал
+     считается ровно в тот момент, когда я нажму «готов», — и часы над пустой
+     комнатой только создавали ощущение, что кто-то торопит. Своего собственного
+     «ещё не отправил» таймер тоже не касается. */
+  const quarterPending = !!room.occupied[otherSeat] && !room.ready[otherSeat];
+  /* Президент комнаты приходит с сервера «плоским» (в хранилище нельзя класть
+     объекты просьб с функциями) — собираем из него то, что ждёт панель. Чьё
+     требование «ко мне», зависит от места, за которым сижу я. */
+  const myBranch = seat === 'central_bank' ? 'monetary' : seat === 'ministry_finance' ? 'fiscal' : null;
+  const presState = room.president || null;
+  const presPlan = presState && presState.plan ? {
+    ...presState.plan,
+    persona: { name: presState.plan.personaName, title: presState.plan.personaTitle },
+    directive: presState.plan.directive
+      ? { ...presState.plan.directive, toPlayer: presState.plan.directive.branch === myBranch } : null,
+  } : null;
+  const presLast = presState && presState.last
+    ? { ...presState.last, toPlayer: presState.last.branch === myBranch } : null;
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
   const myLastAction = room.lastActions ? room.lastActions[seat] : null;
@@ -6471,6 +6603,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </>
           )}
 
+          {presPlan && <PresidentWatchPanel economy={economy} plan={presPlan} last={presLast} branch={myBranch} />}
+
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
             <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
@@ -6640,9 +6774,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
             <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-              {isTraderRoom
-                ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
-                : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
+              {!room.occupied[otherSeat]
+                ? (isTraderRoom
+                  ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
+                  : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
+                : isTraderRoom
+                  ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
+                  : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
               {quarterPending && timeLeftLabel && (
                 <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
@@ -6682,6 +6820,23 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(3).fill(null)));
   }, [playerId]);
+  /* Меню — тоже часть игры, и тишины в нём быть не должно. Автозапуск звука
+     браузер не разрешает до первого действия человека, поэтому заводим музыку
+     либо сразу (если звук уже разбужен в этой сессии — например, игрок вернулся
+     из обучения), либо по первому же клику или нажатию клавиши.
+     Роль при выходе не сбрасываем: следом идёт экран новой партии, и обрывать
+     музыку между двумя экранами меню было бы хуже, чем дать ей доиграть. */
+  React.useEffect(() => {
+    Audio.setRole('menu');
+    const kick = () => { if (Audio.prime() && Audio.opts.music) Audio.startMusic(); };
+    if (Audio.primed()) kick();
+    window.addEventListener('pointerdown', kick, { once: true });
+    window.addEventListener('keydown', kick, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', kick);
+      window.removeEventListener('keydown', kick);
+    };
+  }, []);
   const enterSlot = async (idx) => {
     setSlotBusy(idx); setSlotError('');
     try {
@@ -6789,6 +6944,10 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
               </div>
             );
           })}
+        </div>
+
+        <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
+          <AudioControls />
         </div>
 
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap' }}>
@@ -8235,7 +8394,7 @@ const TUTORIAL_COURSES = [
    двигает одну и ту же модель, поэтому практика в обучении считается ровно тем же
    кодом, что и настоящая партия, а не отдельной облегчённой имитацией. */
 function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame,
-  saved, onSaveProgress }) {
+  saved, onSaveProgress, completed }) {
   const sandbox = module.sandbox || 'policy';
   const initEconomy = useMemo(() => makeInitialEconomy(), [module.id]);
   const [economy, setEconomy] = useState(initEconomy);
@@ -8248,13 +8407,20 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
      на четвёртом шаге из пяти означал проходить модуль заново. Отдельно от step
      живёт maxStep — докуда дошли: назад можно вернуться перечитать теорию, но
      кварталы при этом заново не проигрываются. */
-  const [step, setStep] = useState(() => (saved && saved.step) || 0);
-  const [maxStep, setMaxStep] = useState(() => (saved && saved.step) || 0);
+  /* Докуда дошли (maxStep) и где стоим сейчас (step) — это разные величины, и
+     наружу надо отдавать обе. Раньше сохранялся только step: стоило на пройденном
+     модуле вернуться по содержанию с седьмого шага на четвёртый и выйти — и шаги
+     5–7 снова оказывались закрыты. Пройденный модуль открыт целиком независимо от
+     того, что лежит в сохранении. */
+  const [step, setStep] = useState(() => (saved && (saved.at ?? saved.step)) || 0);
+  const [maxStep, setMaxStep] = useState(() => (completed ? module.steps.length - 1
+    : Math.max((saved && saved.step) || 0, (saved && saved.at) || 0)));
   const [leverBaseline, setLeverBaseline] = useState(0);
   const [passed, setPassed] = useState(() => (saved && saved.passed) || {});
   const [lastNews, setLastNews] = useState([]);
   const [showToc, setShowToc] = useState(false);
-  React.useEffect(() => { onSaveProgress(module.id, { step, passed }); }, [module.id, step, passed, onSaveProgress]);
+  React.useEffect(() => { onSaveProgress(module.id, { step: maxStep, at: step, passed }); },
+    [module.id, step, maxStep, passed, onSaveProgress]);
   const [practice, setPractice] = useState(null);
   const [book, setBook] = useState(() => emptyBook());
   const [cbPersonaId, setCbPersonaId] = useState('pragmatic');
@@ -8604,7 +8770,8 @@ function TutorialHub({ onBack, onStartRealGame }) {
   const [moduleState, setModuleState] = useState(loadModuleState);
   const saveModuleProgress = useCallback((id, st) => {
     setModuleState((prev) => {
-      if (prev[id] && prev[id].step === st.step && Object.keys(prev[id].passed || {}).length === Object.keys(st.passed).length) return prev;
+      if (prev[id] && prev[id].step === st.step && prev[id].at === st.at
+        && Object.keys(prev[id].passed || {}).length === Object.keys(st.passed).length) return prev;
       const next = { ...prev, [id]: st };
       try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
       return next;
@@ -8626,12 +8793,15 @@ function TutorialHub({ onBack, onStartRealGame }) {
   const completeModule = (mod) => {
     const next = markModuleDone(mod.id);
     setProgress(next);
-    // пройденный модуль перестаёт быть «начатым»: перепройти его можно с начала
+    /* Пройденный модуль остаётся открытым целиком: его шаги не «сбрасываются», а
+       фиксируются пройденными — вернуться по содержанию к четвёртому шагу из семи
+       и выйти теперь не значит закрыть себе пятый, шестой и седьмой. */
     setModuleState((prev) => {
-      if (!prev[mod.id]) return prev;
-      const cleaned = { ...prev }; delete cleaned[mod.id];
-      try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(cleaned)); } catch { /* приватный режим */ }
-      return cleaned;
+      const cur = prev[mod.id] || { passed: {} };
+      const full = { ...cur, step: mod.steps.length - 1, at: cur.at ?? (mod.steps.length - 1) };
+      const nextState = { ...prev, [mod.id]: full };
+      try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(nextState)); } catch { /* приватный режим */ }
+      return nextState;
     });
     const achIds = ['tutorial_done'];
     // «Экономист» — за базовый курс целиком, включая экзамен; отдельные значки
@@ -8652,7 +8822,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
       <>
         <AchievementToast toast={achToast} leaving={achLeaving} />
         <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === course.modules.length - 1}
-          saved={moduleState[mod.id]} onSaveProgress={saveModuleProgress}
+          saved={moduleState[mod.id]} onSaveProgress={saveModuleProgress} completed={!!progress[mod.id]}
           onExit={() => setActiveId(null)}
           onComplete={() => completeModule(mod)}
           onGoNext={next ? () => setActiveId(next.id) : null}
@@ -8766,7 +8936,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
                     </div>
                     {unlocked && !done && moduleState[mod.id] && moduleState[mod.id].step > 0 && (
                       <div style={{ fontSize: 10.5, color: COLOR.goldSoft, marginTop: 3 }}>
-                        Начат — продолжить с шага {moduleState[mod.id].step + 1} из {mod.steps.length}
+                        Начат — продолжить с шага {(moduleState[mod.id].at ?? moduleState[mod.id].step) + 1} из {mod.steps.length}
                       </div>
                     )}
                   </div>
@@ -9212,7 +9382,7 @@ function PinButton({ active, onClick }) {
 /* Полоса требований: то, чего от вас прямо сейчас хотят */
 function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   const items = [];
-  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.req.ask, color: COLOR.gold });
+  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1), color: COLOR.gold });
   if (economy.mandate) items.push({ who: 'Мандат власти', text: `Новое правительство пришло с задачей: ${MANDATE_LABEL[economy.mandate] || economy.mandate}.`, color: COLOR.gold });
   if (botAction && botAction.demand) items.push({ who: botRole === 'central_bank' ? 'Центральный банк' : 'Минфин', text: botAction.demand, color: COLOR.blue });
   // у президента оба ведомства — боты, и требования к нему идут с обеих сторон
@@ -9534,7 +9704,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       const who = dirResult.toCb ? 'ПРЕЗИДЕНТ → ЦБ' : 'ПРЕЗИДЕНТ → МИНФИН';
       result.newsEntries.unshift({ id: `dir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${dirResult.req.label.toUpperCase()} — ${dirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : dirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
-        text: `«${dirResult.req.ask}» ${dirResult.text}${dirResult.credibilityHit
+        text: `«${dirResult.ask}» ${dirResult.text}${dirResult.credibilityHit
           ? ' Исполненное политическое указание ЦБ рынок читает как потерю независимости — доверие к денежной политике снижается.'
           : dirResult.status === 'rejected' ? ' Публичный отказ ведомства добавляет напряжения в отношения ветвей власти.' : ''}` });
       setLastDirective({ status: dirResult.status, text: dirResult.text });
@@ -9543,7 +9713,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       const who = botRole === 'central_bank' ? 'ЦБ → МИНФИН' : 'МИНФИН → ЦБ';
       result.newsEntries.unshift({ id: `req${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${reqResult.req.label.toUpperCase()} — ${reqResult.status === 'accepted' ? 'СОГЛАСОВАНО' : reqResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
-        text: `«${reqResult.req.ask}» ${reqResult.text} Согласованность политики ${reqResult.coordination > 0 ? 'выросла' : 'снизилась'} на ${Math.abs(reqResult.coordination)} пункта.` });
+        text: `«${reqResult.ask}» ${reqResult.text} Согласованность политики ${reqResult.coordination > 0 ? 'выросла' : 'снизилась'} на ${Math.abs(reqResult.coordination)} пункта.` });
       setLastResponse({ status: reqResult.status, text: reqResult.text });
       setPendingRequest(null);
     }
@@ -9589,7 +9759,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           headline: `${presDirMemo.lastReqId === dir.reqId
             ? `ПРЕЗИДЕНТ ВНОВЬ ТРЕБУЕТ ОТ ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИНА'}`
             : `ПРЕЗИДЕНТ → ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИН'}`}: ${dir.req.label.toUpperCase()} — ${word}`,
-          text: `«${dir.req.ask}» ${verdict === 'met'
+          text: `«${dir.ask || askText(dir.req, 1)}» ${verdict === 'met'
             ? 'Ведомство пошло навстречу — администрация это отметила.'
             : verdict === 'partial'
               ? `Ведомство сделало примерно ${pct}% запрошенного. В администрации это считают полумерой.`
@@ -9599,7 +9769,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       } else if (presDirResult) {
         result.newsEntries.unshift({ id: `presdir${quarterIndex}`, cat: 'gov', priority: 8, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
           headline: `ПРЕЗИДЕНТ → ${presDirResult.toCb ? 'ЦБ' : 'МИНФИН'}: ${presDirResult.req.label.toUpperCase()} — ${presDirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : presDirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
-          text: `«${presDirResult.req.ask}» ${presDirResult.text}` });
+          text: `«${presDirResult.ask}» ${presDirResult.text}` });
       }
       if (presidentPlan.appointBot) {
         const ap = presidentPlan.appointBot;
@@ -9610,6 +9780,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       if (presidentPlan.directive || presidentPlan.actions.length) {
         setPresidentLast({ directiveMet, label: presidentPlan.directive ? presidentPlan.directive.req.label : null,
           toPlayer: !!(presidentPlan.directive && presidentPlan.directive.toPlayer),
+          // указание соседнему ведомству тоже имеет исход — ответ бота, а не «передано»
+          status: presDirResult ? presDirResult.status : null,
           actions: presidentPlan.actions.map((id) => (PRES_BY_ID[id] || {}).label).filter(Boolean) });
       }
       const nextCb = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'central_bank' ? presidentPlan.appointBot.persona : cbPersonaId;
