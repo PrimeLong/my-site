@@ -41,6 +41,7 @@ const CONFIG = {
     reserves: 300, fdi: 40,
     consumerConfidence: 55, businessConfidence: 55, financialStability: 70, govTrust: 55,
     approval: 55, quartersToElection: 16, term: 1, mandate: null, governmentLine: 'centrist',
+    politicalRegime: 'democracy', politicalTension: 8, parliamentDissolved: false, unrestQuartersLeft: 0,
     worldGdpGrowth: 2.5, worldInflation: 3.0, worldRate: 3.0, commodityIndex: 100, worldDemandIndex: 100,
     policyCoordination: 70,
   },
@@ -218,7 +219,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, fxRegime: state.fxRegime, emergency: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -273,7 +274,7 @@ const getMofPersona = (id) => MOF_PERSONAS.find((p) => p.id === id) || MOF_PERSO
 
 // Бот-ЦБ: правило Тейлора вокруг нейтральной ставки + макропруденциальная и кризисная реакция
 const roundTo = (v, step) => Math.round(v / step) * step;
-function botCentralBank(s, personaId, difficulty) {
+function botCentralBank(s, personaId, _difficulty) {
   const P = getCbPersona(personaId);
   const cbTarget = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
   const inflGap = s.inflation - cbTarget;
@@ -285,14 +286,13 @@ function botCentralBank(s, personaId, difficulty) {
   const deepSlump = s.outputGap < -2 && s.inflation < cbTarget + 0.5;
   const smoothing = deepSlump ? Math.min(P.smooth, 0.55) : P.smooth;
   const smoothed = smoothing * s.keyRate + (1 - smoothing) * taylor;
-  const rawMove = clamp(smoothed - s.keyRate, -P.maxMove, P.maxMove);
   // ЦБ ходит шагами по 0,25 п.п. и не двигает ставку ради десятых долей
   const maxStep = deepSlump ? P.maxMove * 1.6 : P.maxMove;
   const rawMove2 = clamp(smoothed - s.keyRate, -maxStep, maxStep);
   const move = Math.abs(rawMove2) < 0.25 ? 0 : roundTo(rawMove2, 0.25);
   let keyRate = clamp(roundTo(s.keyRate + move, 0.25), 0, 25);
 
-  const fxRegimeCur = s.fxRegime; const fxTargetCur = s.fxTarget;
+  const fxTargetCur = s.fxTarget;
   const crisis = s.bankingRisk >= CONFIG.thresholds.bankingRisk || s.bankCapitalAdequacy < 9;
   const emergency = crisis;
   let liquidity = 0;
@@ -399,7 +399,7 @@ function redescribeCbAction(s, personaId, finalDecisions) {
 }
 
 // Бот-Минфин: бюджетное правило + контрциклическая реакция + собственные приоритеты расходов
-function botFinanceMinistry(s, personaId, difficulty) {
+function botFinanceMinistry(s, personaId, _difficulty) {
   const P = getMofPersona(personaId);
   const debtStress = clamp((s.debtToGdp - P.debtLimit) / 20, 0, 2);
   const targetDeficit = P.anchor - P.cyclical * Math.max(0, -s.outputGap) * 1.1 + debtStress * 2.2;
@@ -655,6 +655,72 @@ function processRequest(reqId, economy, botKind, personaId, decisions) {
 }
 
 /* =========================================================================================
+   ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ (роль «глава государства»): у неё, в отличие от ЦБ и
+   Минфина, нет бота-оппонента со своими требованиями — конкретные, измеримые
+   обещания на срок до выборов замещают то давление, которое остальным ролям
+   создаёт партнёр по власти. target/baseline считаются один раз в момент
+   начала срока (pickPromises) и хранятся как обычные числа — не функции —
+   чтобы объект без проблем переживал JSON (сохранения, снапшоты).
+========================================================================================= */
+const round1 = (v) => Math.round(v * 10) / 10;
+const PROMISE_POOL = [
+  { id: 'inflation_tame', label: 'Обуздать инфляцию',
+    target: (s) => round1(s.inflationTarget + 1),
+    metric: (e) => e.inflation, direction: 'below',
+    describe: (t) => `Инфляция не выше ${fmt1(t)}% к выборам` },
+  { id: 'jobs_for_all', label: 'Работа для всех',
+    target: (s) => round1(s.nairu + 1),
+    metric: (e) => e.unemployment, direction: 'below',
+    describe: (t) => `Безработица не выше ${fmt1(t)}% к выборам` },
+  { id: 'debt_discipline', label: 'Не наращивать долг',
+    target: (s) => round1(s.debtToGdp),
+    metric: (e) => e.debtToGdp, direction: 'below',
+    describe: (t) => `Госдолг не выше ${fmt1(t)}% ВВП — уровня на начало срока` },
+  { id: 'growth_promise', label: 'Обеспечить рост',
+    target: () => 4, baseline: (s) => s.gdp,
+    metric: (e, base) => (e.gdp / base - 1) * 100, direction: 'above',
+    describe: (t) => `Реальный ВВП вырастет минимум на ${fmt1(t)}% за срок` },
+  { id: 'strong_currency', label: 'Крепкая валюта',
+    target: () => 15, baseline: (s) => s.exchangeRate,
+    metric: (e, base) => (e.exchangeRate / base - 1) * 100, direction: 'below',
+    describe: (t) => `Курс не ослабнет больше чем на ${fmt1(t)}% за срок` },
+  { id: 'budget_control', label: 'Бюджет под контролем',
+    target: () => 3,
+    metric: (e) => -e.budgetBalancePctGdp, direction: 'below',
+    describe: (t) => `Дефицит бюджета не больше ${fmt1(t)}% ВВП к выборам` },
+  { id: 'living_standards_promise', label: 'Повысить уровень жизни',
+    target: (s) => round1(s.scoreWelfare),
+    metric: (e) => e.scoreWelfare, direction: 'above',
+    describe: (t) => `Индекс благосостояния населения не ниже ${fmt1(t)} — уровня на начало срока` },
+  { id: 'reserves_promise', label: 'Сохранить резервы',
+    target: (s) => Math.round(s.reserves * 0.8),
+    metric: (e) => e.reserves, direction: 'above',
+    describe: (t) => `Резервы не ниже ${fmtMoney(t)} — не менее 80% уровня на начало срока` },
+];
+// три случайных обещания на новый срок; startEconomy — состояние на момент вступления в должность
+function pickPromises(startEconomy, count = 3) {
+  const pool = [...PROMISE_POOL];
+  const picked = [];
+  while (picked.length < count && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(i, 1)[0]);
+  }
+  return picked.map((p) => {
+    const target = p.target(startEconomy);
+    return { id: p.id, label: p.label, target, baseline: p.baseline ? p.baseline(startEconomy) : null, text: p.describe(target) };
+  });
+}
+// met — выполняется ли обещание СЕЙЧАС (для живого статуса); итог подводится этой же
+// функцией в момент выборов, когда quartersToElection обнуляется
+function evaluatePromise(promise, economy) {
+  const def = PROMISE_POOL.find((p) => p.id === promise.id);
+  if (!def) return { met: true, value: null };
+  const value = def.metric(economy, promise.baseline);
+  const met = def.direction === 'below' ? value <= promise.target : value >= promise.target;
+  return { met, value };
+}
+
+/* =========================================================================================
    СОБЫТИЯ. kind: demand | supply | financial | external | structural
 ========================================================================================= */
 const EVENTS = [
@@ -809,7 +875,7 @@ function pickEvent(state, eventCooldowns) {
   for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) return pool[i]; }
   return pool[pool.length - 1];
 }
-function buildEventImpulses(evt, state, difficulty) {
+function buildEventImpulses(evt, state) {
   const resolved = evt.build(state);
   const list = Array.isArray(resolved) ? resolved : resolved.list;
   const news = Array.isArray(resolved) ? evt.news : resolved.news;
@@ -921,7 +987,7 @@ function computeScores(x) {
 /* =========================================================================================
    ГЛАВНАЯ ФУНКЦИЯ КВАРТАЛА
 ========================================================================================= */
-function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode }) {
+function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode, noEvents }) {
   const s = economy;
   const C = CONFIG.coef;
   const T = CONFIG.target;
@@ -943,12 +1009,12 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   let pandemicTriggered = false;
   let warTriggered = false;
   let warTypeRolled = null;
-  if (Math.random() < CONFIG.eventProbability[difficulty]) {
+  if (!noEvents && Math.random() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
       if (evt.id === 'war') warTriggered = true;
-      const built = buildEventImpulses(evt, s, difficulty);
+      const built = buildEventImpulses(evt, s);
       if (evt.id === 'war') warTypeRolled = built.warType || null;
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
@@ -970,6 +1036,26 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const commodityIndex = clamp(s.commodityIndex + 0.06 * (100 - s.commodityIndex) + (d.commodityIndex || 0) + gauss(NB.commodityIndex * nMult), 20, 400);
   const worldDemandIndex = clamp(s.worldDemandIndex + 0.08 * (100 - s.worldDemandIndex) + (d.worldDemandIndex || 0) + gauss(NB.worldDemandIndex * nMult), 40, 220);
 
+  /* --- 2а. ДЕФОЛТ ПО ГОСДОЛГУ --- */
+  // Секвестр (§7) молча режет расходы, когда рынок не даёт занять достаточно — но это
+  // не то же самое, что дефолт: секвестр экономит через боль внутри страны, дефолт —
+  // это прямой отказ платить кредиторам. Это осознанное разовое решение Минфина
+  // (decisions.sovereignDefault), а не автоматический порог: провести его вне
+  // реального долгового кризиса он не может — рынок и так не в панике.
+  const prevLockout = Math.max(0, (s.marketLockoutQuartersLeft || 0) - 1);
+  const sovereignDefault = !!decisions.sovereignDefault && prevLockout === 0 && (s.activeCrises || []).includes('debt');
+  const marketLockoutQuartersLeft = sovereignDefault ? 7 : prevLockout;
+  const lockedOutOfMarkets = marketLockoutQuartersLeft > 0;
+  const defaultedEver = sovereignDefault || !!s.defaultedEver;
+  if (sovereignDefault) {
+    news.push(mkNews('crisis', 'ДЕФОЛТ: ПРАВИТЕЛЬСТВО ОБЪЯВЛЯЕТ РЕСТРУКТУРИЗАЦИЮ ДОЛГА',
+      'Вместо очередного секвестра — прямой отказ платить по графику. Часть долга списывается принудительно, а доступ к новым заимствованиям закрыт на несколько кварталов: расходы придётся финансировать только из того, что удаётся собрать прямо сейчас.',
+      { priority: 10, chain: ['Долговой кризис', 'Дефолт', 'Долг списан', 'Рынок закрыт', 'Премия за риск ↑↑'] }));
+    nextQueue.push(makeImpulse('govTrust', -18, 'Дефолт по государственному долгу', 'fast', difficulty));
+    nextQueue.push(makeImpulse('businessConfidence', -16, 'Дефолт: инвесторы уходят', 'default', difficulty, 'other'));
+    nextQueue.push(makeImpulse('capitalFlow', -35, 'Бегство капитала после дефолта', 'default', difficulty));
+  }
+
   /* --- 3. статьи бюджета --- */
   const rawShares = { health: decisions.shareHealth, education: decisions.shareEducation, science: decisions.shareScience, defense: decisions.shareDefense, admin: decisions.shareAdmin };
   const sum5 = rawShares.health + rawShares.education + rawShares.science + rawShares.defense + rawShares.admin;
@@ -984,7 +1070,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
 
   const riskPremiumTarget = 0.8 + C.debtLevelPremium * Math.max(0, s.debtToGdp - 55) + 0.045 * Math.max(0, s.bankingRisk - 45)
     + 0.035 * Math.max(0, 55 - s.govTrust) + 0.03 * Math.max(0, 60 - s.cbCredibility) + 0.02 * Math.max(0, 55 - s.policyCoordination)
-    - 0.02 * Math.max(0, -(Number.isFinite(s.netDebtToGdp) ? s.netDebtToGdp : s.debtToGdp)) + (s.regime === 'currency' || s.regime === 'debt' ? 1.5 : 0);
+    - 0.02 * Math.max(0, -(Number.isFinite(s.netDebtToGdp) ? s.netDebtToGdp : s.debtToGdp)) + (s.regime === 'currency' || s.regime === 'debt' ? 1.5 : 0)
+    + (lockedOutOfMarkets ? 3.5 : 0) + (defaultedEver ? 0.3 : 0); // рынок не забывает дефолт — даже после локаута премия не возвращается к нулю
   const riskPremium = clamp(ema(s.riskPremium, riskPremiumTarget, 0.22) + (d.riskPremium || 0), 0.2, 14);
 
   const bankSpread = C.bankSpreadBase + 0.35 * clamp(s.bankNPL - 3, 0, 10) + 0.25 * clamp(12 - s.bankCapitalAdequacy, 0, 8)
@@ -1047,7 +1134,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   // дефицит, который вообще можно профинансировать. Остальное — секвестр.
   const projRevenue = s.govRevenue * (1 + (s.potentialGrowth + s.inflation) / 400);
   const projInterest = s.govDebt * s.effectiveDebtRate / 100;
-  const maxDeficitPct = clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0.5, 11);
+  const maxDeficitPct = lockedOutOfMarkets ? clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0, 0.8)
+    : clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0.5, 11);
   const allowedPrimary = projRevenue + maxDeficitPct / 100 * s.nominalGdp - projInterest;
   const plannedPrimary = (plannedPurchases + plannedTransfers + plannedGovInv) * s.priceLevel / 100;
   const sequesterFactor = (plannedPrimary > allowedPrimary && allowedPrimary > 0)
@@ -1250,9 +1338,14 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     const excess = (bankCapitalAdequacy - decisions.capitalRequirement - 4.5) / 100 * rwa;
     bankCapital -= excess * 0.3; bankCapitalAdequacy = bankCapital / rwa * 100;
   }
+  // decisions.liquidity — рычаг в «млрд» с диапазоном, растущим вместе с ВВП (см.
+  // scaleLever в UI), поэтому в индексный (0-100) эффект он идёт как доля ВВП, а не
+  // сырым числом — иначе на разросшейся экономике один и тот же шаг ползунка давал
+  // бы всё больший и больший скачок ликвидности, как для fxIntervention/курса выше.
+  const liquidityInjectionPctGdp = (decisions.liquidity || 0) / Math.max(1, s.nominalGdp) * 100;
   const bankLiquidity = clamp(s.bankLiquidity + 0.09 * (75 - s.bankLiquidity) - Math.max(0, bankNPL - 6) * 1.1
-    - Math.max(0, -creditGrowth) * 0.25 + (decisions.liquidity || 0) * 0.9 + (d.bankLiquidity || 0)
-    - (decisions.reserveReq - s.reserveReq) * 1.2 + gauss(0.9 * nMult), 0, 100);
+    - Math.max(0, -creditGrowth) * 0.25 + liquidityInjectionPctGdp * 18 + (d.bankLiquidity || 0)
+    - (decisions.reserveReq - s.reserveReq) * 1.2 + (decisions.emergency ? 22 : 0) + gauss(0.9 * nMult), 0, 100);
   const bankingRisk = clamp(ema(s.bankingRisk, clamp(0.5 * clamp(bankNPL * 4.5, 0, 100)
     + 0.28 * clamp(100 - bankLiquidity, 0, 100)
     + 0.22 * clamp((decisions.capitalRequirement + 3 - bankCapitalAdequacy) * 9, 0, 100), 0, 100), 0.4), 0, 100);
@@ -1261,7 +1354,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
 
   const financialStability = clamp(s.financialStability + 0.10 * (T.neutralStability - s.financialStability)
     - Math.max(0, bankingRisk - 50) * 0.10 - Math.max(0, s.debtToGdp - 90) * 0.04 - Math.max(0, creditGap - 8) * 0.25
-    + (decisions.emergency ? 14 : 0) + (decisions.liquidity || 0) * 0.25 + (d.financialStability || 0) + gauss(NB.financialStability * nMult), 0, 100);
+    + (decisions.emergency ? 14 : 0) + liquidityInjectionPctGdp * 5 + (d.financialStability || 0) + gauss(NB.financialStability * nMult), 0, 100);
 
   /* --- 13. НАЛОГИ, РАСХОДЫ, ДОЛГ --- */
   const fundIncome = (s.sovereignFund || 0) * (worldRate + 1) / 100 / QUARTERS_PER_YEAR;
@@ -1286,7 +1379,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const primaryBalance = budgetBalance + interestPayment;
   // профицит сначала гасит долг, остальное уходит в суверенный фонд; дефицит сначала
   // финансируется из фонда и только потом новым долгом
-  let govDebt = s.govDebt;
+  let govDebt = sovereignDefault ? s.govDebt * 0.55 : s.govDebt; // реструктуризация списывает часть долга разом
   let sovereignFund = s.sovereignFund || 0;
   const flow = budgetBalance / QUARTERS_PER_YEAR;
   if (flow >= 0) {
@@ -1329,7 +1422,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     - 0.25 * Math.max(0, inflation - 6) - 0.3 * Math.max(0, unemployment - 7) - ignoredDemands * 0.5)
     + (d.govTrust || 0) + gauss(0.5 * nMult), 0, 100);
   const moneySupply = clamp(applyAnnualGrowth(s.moneySupply, potentialGrowth + inflation) * (1 + (decisions.moneySupplyOp || 0) / 100)
-    + (decisions.liquidity || 0) * 0.02 + (decisions.emergency ? 3 : 0), 20, 4000);
+    + liquidityInjectionPctGdp * 0.4 + (decisions.emergency ? 3 : 0), 20, 4000);
 
   /* --- 14а. ФИНАНСОВЫЙ РЫНОК: кривая доходности, облигации, акции, риск-премии --- */
   const neutralNominal = rStar + inflationExpectations;
@@ -1411,23 +1504,49 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   let electionResult = null;
   let mandate = s.mandate || null;
   let governmentLine = s.governmentLine || 'centrist';
+  // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса,
+  // а значит там нет и настоящей предвыборной гонки с её неопределённостью для рынков
+  const riggedElection = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
   const campaign = quartersToElection <= CONFIG.election.campaign && quartersToElection > 0;
   if (campaign && !s.campaignActive) {
-    nextQueue.push(makeImpulse('businessConfidence', -6, 'Предвыборная неопределённость: бизнес откладывает решения', 'default', difficulty, 'other'));
-    nextQueue.push(makeImpulse('investment', -1.6, 'Предвыборная неопределённость', 'default', difficulty));
-    nextQueue.push(makeImpulse('riskPremium', 0.25, 'Политическая неопределённость перед выборами', 'default', difficulty));
-    news.push(mkNews('gov', `НАЧАЛАСЬ ПРЕДВЫБОРНАЯ КАМПАНИЯ: ДО ГОЛОСОВАНИЯ ${quartersToElection} КВ.`,
-      `Рейтинг власти ${Math.round(approval)} из 100 при безработице ${fmt1(unemployment)}% и инфляции ${fmt1(inflation)}%. Инвесторы берут паузу до результата, а правительство — наоборот, тратит: политический цикл всегда заканчивается счётом, который оплачивают уже после выборов.`,
-      { priority: 8, chain: ['Кампания', 'Неопределённость ↑', 'Инвестиции ↓', 'Расходы бюджета ↑', 'Счёт после выборов'] }));
+    if (riggedElection) {
+      news.push(mkNews('gov', 'НАЗНАЧЕНА ДАТА ГОЛОСОВАНИЯ',
+        `До официальной даты ${quartersToElection} кв. Исход не обсуждается — обсуждается только явка.`, { priority: 5 }));
+    } else {
+      nextQueue.push(makeImpulse('businessConfidence', -6, 'Предвыборная неопределённость: бизнес откладывает решения', 'default', difficulty, 'other'));
+      nextQueue.push(makeImpulse('investment', -1.6, 'Предвыборная неопределённость', 'default', difficulty));
+      nextQueue.push(makeImpulse('riskPremium', 0.25, 'Политическая неопределённость перед выборами', 'default', difficulty));
+      news.push(mkNews('gov', `НАЧАЛАСЬ ПРЕДВЫБОРНАЯ КАМПАНИЯ: ДО ГОЛОСОВАНИЯ ${quartersToElection} КВ.`,
+        `Рейтинг власти ${Math.round(approval)} из 100 при безработице ${fmt1(unemployment)}% и инфляции ${fmt1(inflation)}%. Инвесторы берут паузу до результата, а правительство — наоборот, тратит: политический цикл всегда заканчивается счётом, который оплачивают уже после выборов.`,
+        { priority: 8, chain: ['Кампания', 'Неопределённость ↑', 'Инвестиции ↓', 'Расходы бюджета ↑', 'Счёт после выборов'] }));
+    }
   }
+  // Отчаянный шаг: при разгромном поражении и уже накопленном напряжении власть
+  // может не признать результат и захватить контроль вместо того, чтобы уйти —
+  // иначе рейтинг, рухнувший в ноль, всегда тихо заканчивал партию поражением на
+  // выборах, а до авторитаризма/тоталитаризма дело попросту не успевало дойти.
+  let coup = false;
   if (quartersToElection <= 0) {
     const margin = approval - 50;
-    electionResult = margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition');
+    if (!riggedElection && margin < 0) {
+      const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
+      const priorTension = clamp(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, 0, 100);
+      const coupChance = clamp(Math.pow(severity, 1.6) * 0.6 + (priorTension / 100) * 0.25, 0, 0.75);
+      coup = Math.random() < coupChance;
+    }
+    electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition'));
     quartersToElection = CONFIG.election.cycle; term += 1;
     if (electionResult === 'incumbent') {
       nextQueue.push(makeImpulse('businessConfidence', 4, 'Преемственность политики после выборов', 'default', difficulty, 'other'));
-      news.push(mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
-        `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
+      news.push(riggedElection
+        ? mkNews('gov', 'ВЫБОРЫ БЕЗ НЕОЖИДАННОСТЕЙ: РЕЗУЛЬТАТ БЛИЗОК К ЕДИНОГЛАСНОМУ',
+          'Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, альтернативных кандидатов не зарегистрировано.', { priority: 9 })
+        : coup
+          ? mkNews('gov', 'ПЕРЕВОРОТ: ВЛАСТЬ НЕ ПРИЗНАЛА ПОРАЖЕНИЕ НА ВЫБОРАХ',
+            `Рейтинг ${Math.round(approval)} из 100 не оставлял шансов на честную победу. Вместо передачи власти объявлено чрезвычайное положение: результаты аннулированы, парламент распущен, оппозиция объявлена вне закона.`,
+            { priority: 10, chain: ['Разгромное поражение', 'Отказ признать результат', 'Чрезвычайное положение', 'Авторитарный поворот'] })
+          : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
+            `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
     } else {
       mandate = (unemployment - nairu > 1.2) ? 'jobs' : (inflation > infTarget + 2) ? 'prices' : (debtToGdp > 85) ? 'budget' : 'growth';
       governmentLine = mandate === 'jobs' ? 'populist' : mandate === 'budget' ? 'austerity' : 'technocrat';
@@ -1541,6 +1660,104 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     }
   });
 
+  /* --- 15а. ПОЛИТИЧЕСКИЙ РЕЖИМ: демократия → конфликт ветвей власти → авторитаризм →
+     тоталитаризм, плюс отдельный слой беспорядков поверх любого режима. Подавление копит
+     напряжение, а не гасит его — поэтому у авторитарных и тоталитарных режимов есть
+     собственная «подпитка» напряжённости даже без видимых потрясений. */
+  const prevPoliticalRegime = s.politicalRegime || 'democracy';
+  const repression = prevPoliticalRegime === 'totalitarian' ? 1 : prevPoliticalRegime === 'authoritarian' ? 0.55 : prevPoliticalRegime === 'crisis' ? 0.15 : 0;
+  // Коэффициент при рейтинге раньше давал не больше 37.8 п.п. даже при approval=0 —
+  // порог кризиса (62) физически не мог быть взят одним лишь провалом рейтинга, как
+  // бы катастрофично он ни упал: нужен был ещё и одновременный шок по безработице/
+  // инфляции/долгу. Теперь обвал рейтинга в ноль сам по себе почти доводит до кризиса,
+  // а любой активный кризис экономики (в т.ч. банковский с нулевой ликвидностью)
+  // добавляет прямое давление, а не действует только через посредников.
+  const tensionTarget = clamp(
+    Math.max(0, 55 - approval) * 1.3
+    + (warQuartersLeft > 0 ? 12 : 0)
+    + activeCrises.length * 6
+    + Math.max(0, unemployment - 7.5) * 2.2
+    + Math.max(0, inflation - 8) * 1.6
+    + Math.max(0, debtToGdp - 90) * 0.15
+    + repression * 14
+    - Math.max(0, approval - 55) * 0.6,
+    0, 100);
+  let politicalTension = clamp(ema(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, tensionTarget, 0.3), 0, 100);
+  // переворот из блока выборов выше замыкает переход на авторитаризм напрямую,
+  // минуя обычную пороговую цепочку демократия→кризис→авторитаризм — он уже
+  // случился в этом квартале, а не подкрадывался несколько кварталов подряд
+  let politicalRegime = coup ? 'authoritarian' : prevPoliticalRegime;
+  let parliamentDissolved = coup ? true : !!s.parliamentDissolved;
+  const politicalCooldown = coup ? 4 : (cooldowns['political:transition'] || 0);
+  if (politicalCooldown <= 0) {
+    if (politicalRegime === 'democracy' && politicalTension >= 62) {
+      politicalRegime = 'crisis';
+      cooldowns['political:transition'] = 3;
+      news.push(mkNews('gov', 'ПАРЛАМЕНТ И ПРЕЗИДЕНТ: ОТКРЫТЫЙ КОНФЛИКТ',
+        `Взаимные вето и угроза импичмента парализуют принятие решений. Рейтинг власти ${Math.round(approval)} из 100 — почвы для компромисса всё меньше.`,
+        { priority: 9, chain: ['Низкий рейтинг', 'Паралич власти', 'Конфликт ветвей власти'] }));
+    } else if (politicalRegime === 'crisis') {
+      if (politicalTension >= 70 && Math.random() < 0.4) {
+        politicalRegime = 'authoritarian'; parliamentDissolved = true;
+        cooldowns['political:transition'] = 4;
+        nextQueue.push(makeImpulse('businessConfidence', -10, 'Роспуск парламента: институты слабеют', 'default', difficulty, 'other'));
+        nextQueue.push(makeImpulse('riskPremium', 0.6, 'Политический режим меняется', 'default', difficulty));
+        news.push(mkNews('gov', 'ПАРЛАМЕНТ РАСПУЩЕН: ВЛАСТЬ СОСРЕДОТОЧЕНА В ОДНИХ РУКАХ',
+          'Указ объявлен временной мерой «ради стабильности». Оппозиция называет это концом парламентской республики.',
+          { priority: 10, chain: ['Конфликт ветвей власти', 'Роспуск парламента', 'Авторитарный поворот'] }));
+      } else if (politicalTension <= 30) {
+        politicalRegime = 'democracy';
+        cooldowns['political:transition'] = 2;
+        news.push(mkNews('gov', 'ПОЛИТИЧЕСКИЙ КРИЗИС ИСЧЕРПАН', 'Стороны нашли компромисс, парламент возвращается к обычной работе.', { priority: 7 }));
+      }
+    } else if (politicalRegime === 'authoritarian') {
+      if (politicalTension >= 80 && Math.random() < 0.38) {
+        politicalRegime = 'totalitarian';
+        cooldowns['political:transition'] = 6;
+        nextQueue.push(makeImpulse('businessConfidence', -14, 'Установление тоталитарного контроля', 'default', difficulty, 'other'));
+        nextQueue.push(makeImpulse('investment', -3, 'Инвесторы уходят из страны', 'default', difficulty));
+        nextQueue.push(makeImpulse('capitalFlow', -18, 'Бегство капитала', 'default', difficulty));
+        news.push(mkNews('gov', 'ВЛАСТЬ УСТАНАВЛИВАЕТ ПОЛНЫЙ КОНТРОЛЬ',
+          'Оставшиеся независимые институты и медиа переходят под прямое управление. Несогласие приравнено к угрозе государству.',
+          { priority: 10, chain: ['Авторитарный поворот', 'Подавление институтов', 'Тоталитарный режим'] }));
+      } else if (politicalTension <= 25 && Math.random() < 0.25) {
+        politicalRegime = 'democracy'; parliamentDissolved = false;
+        cooldowns['political:transition'] = 3;
+        news.push(mkNews('gov', 'ПАРЛАМЕНТ ВОССТАНОВЛЕН', 'Под давлением улицы и элит объявлены новые свободные выборы.', { priority: 8 }));
+      }
+    } else if (politicalRegime === 'totalitarian') {
+      if (politicalTension >= 92 && Math.random() < 0.12) {
+        politicalRegime = 'crisis'; parliamentDissolved = false;
+        cooldowns['political:transition'] = 5;
+        nextQueue.push(makeImpulse('businessConfidence', 6, 'Режим пал: осторожный оптимизм', 'default', difficulty, 'other'));
+        news.push(mkNews('gov', 'РЕЖИМ ПАЛ', 'Массовые протесты и раскол в элитах вынудили власть отступить. Страна входит в переходный период с неясным исходом.',
+          { priority: 10, chain: ['Массовые протесты', 'Раскол элит', 'Падение режима', 'Переходный период'] }));
+      }
+    }
+  } else {
+    cooldowns['political:transition'] = politicalCooldown - 1;
+  }
+
+  const unrestCooldown = cooldowns['political:unrest'] || 0;
+  let unrestTriggered = false;
+  if (unrestCooldown <= 0 && politicalTension >= 55) {
+    const chance = 0.05 + politicalTension / 400 + (warQuartersLeft > 0 ? 0.08 : 0) + repression * 0.06;
+    if (Math.random() < chance) {
+      unrestTriggered = true;
+      cooldowns['political:unrest'] = 2;
+      nextQueue.push(makeImpulse('consumption', -1.2, 'Беспорядки: перебои в повседневной жизни', 'default', difficulty));
+      nextQueue.push(makeImpulse('businessConfidence', -6, 'Беспорядки в стране', 'default', difficulty, 'other'));
+      nextQueue.push(makeImpulse('investment', -1.4, 'Беспорядки отпугивают инвестиции', 'default', difficulty));
+      news.push(repression > 0.4
+        ? mkNews('crisis', 'БЕСПОРЯДКИ ПОДАВЛЕНЫ СИЛОЙ', 'Силовые структуры разогнали демонстрантов. Официально — «попытка дестабилизации», пресечённая в интересах порядка.', { priority: 9 })
+        : mkNews('crisis', 'МАССОВЫЕ ПРОТЕСТЫ В СТОЛИЦЕ', 'Люди вышли на улицы требовать перемен. Власть пытается балансировать между уступками и силовым сценарием.', { priority: 9 }));
+    }
+  } else if (unrestCooldown > 0) {
+    cooldowns['political:unrest'] = unrestCooldown - 1;
+  }
+  const unrestQuartersLeft = unrestTriggered ? 2 : Math.max(0, (s.unrestQuartersLeft || 0) - 1);
+  const unrestActive = unrestQuartersLeft > 0;
+
   /* --- 16. ПОЛИТИЧЕСКОЕ ДАВЛЕНИЕ --- */
   const demandCandidates = [];
   if (decisions.incomeTaxRate > 28 || decisions.vatRate > 23) demandCandidates.push({ id: 'tax_cut', actor: 'Население', text: 'Налоговая нагрузка невыносима — требуют снижения налогов.' });
@@ -1591,8 +1808,10 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     govPurchasesNominal, transfersNominal, govInvestmentNominal, govSpendingTotal, interestPayment, interestToRevenue,
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
     govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
+    marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
+    politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
     yield3m, yield1y, yield2y, yield5y, yield10y, curveSlope, curveInverted, bondIndex, bondReturn,
@@ -1614,7 +1833,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     gdpGrowth: byHeadline('gdpGrowth'), inflation: byHeadline('inflation'), exchangeRate: byHeadline('exchangeRate'),
     budget: byHeadline('budget'), unemployment: byHeadline('unemployment'), banking: byHeadline('banking'), potential: byHeadline('potential'),
   };
-  const report = buildReport({ prev: s, next: newEconomy, quarterIndex, reasons });
+  const report = buildReport({ prev: s, next: newEconomy, reasons });
 
   // сюжеты: запуск новых цепочек и продвижение уже идущих
   const activeStories = [...(stories || []), ...newStories];
@@ -1624,7 +1843,10 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   });
   const advanced = advanceStories(activeStories, newEconomy, quarterIndex);
   const generated = generateNews(s, newEconomy, decisions, quarterIndex, botAction, cooldowns, botActions, publicMode);
-  const editorial = mkNews('editorial', `ИТОГИ ${quarterLabel(quarterIndex).toUpperCase()}`, report, { priority: 2 });
+  const propaganda = propagandaEditorial(newEconomy);
+  const editorial = propaganda
+    ? mkNews('editorial', propaganda.headline, propaganda.text, { priority: 2 })
+    : mkNews('editorial', `ИТОГИ ${quarterLabel(quarterIndex).toUpperCase()}`, report, { priority: 2 });
   const allNews = [...news, ...advanced.news, ...generated, editorial]
     .map((n) => ({ ...n, q: quarterIndex, qLabel: quarterLabel(quarterIndex) }))
     .sort((a, b) => b.priority - a.priority);
@@ -1702,7 +1924,7 @@ const STORY_TEMPLATES = {
       'Слабая экономика возвращается в банки неплатежами, неплатежи съедают капитал, капитал ограничивает кредит. Разорвать круг можно только извне — рекапитализацией или смягчением политики.', { priority: 8 }) },
   ] },
   sanctions: { id: 'sanctions', title: 'Внешние ограничения', steps: [
-    { make: (s) => mkNews('world', 'ВВЕДЕНЫ ВНЕШНИЕ ОГРАНИЧЕНИЯ НА ТОРГОВЛЮ И ФИНАНСЫ',
+    { make: (_s) => mkNews('world', 'ВВЕДЕНЫ ВНЕШНИЕ ОГРАНИЧЕНИЯ НА ТОРГОВЛЮ И ФИНАНСЫ',
       'Часть торговых и финансовых каналов закрыта. Экономика теряет не только спрос, но и производственные возможности: это шок предложения.', { priority: 9,
         chain: ['Ограничения', 'Экспорт и импорт ↓', 'Отток капитала', 'Курс ↓', 'Инфляция ↑', 'Потенциал ↓'] }) },
     { gap: 1, make: (s) => mkNews('markets', `КУРС ПОД ДАВЛЕНИЕМ, ПРЕМИЯ ЗА РИСК ${rf1(s.riskPremium)} П.П.`,
@@ -1711,7 +1933,7 @@ const STORY_TEMPLATES = {
       'Разорванные цепочки поставок — это не временная просадка спроса, а утраченные мощности. Стимулировать такую экономику деньгами значит получить инфляцию без выпуска.', { priority: 7 }) },
   ] },
   pandemic: { id: 'pandemic', title: 'Пандемия', steps: [
-    { make: (s) => mkNews('crisis', 'ВСПЫШКА ЗАБОЛЕВАНИЯ: ОГРАНИЧЕНИЯ ЭКОНОМИЧЕСКОЙ АКТИВНОСТИ',
+    { make: (_s) => mkNews('crisis', 'ВСПЫШКА ЗАБОЛЕВАНИЯ: ОГРАНИЧЕНИЯ ЭКОНОМИЧЕСКОЙ АКТИВНОСТИ',
       'Одновременно падают и спрос, и предложение. Редкий случай, когда бюджетная поддержка нужна быстрее денежной.', { priority: 9,
         chain: ['Ограничения', 'Спрос ↓ и мощности ↓', 'Безработица ↑', 'Расходы бюджета ↑', 'Долг ↑'] }) },
     { gap: 1, make: (s) => mkNews('households', `БЕЗРАБОТИЦА ${rf1(s.unemployment)}%, ДОВЕРИЕ НАСЕЛЕНИЯ ${Math.round(s.consumerConfidence)}`,
@@ -1746,7 +1968,7 @@ const STORY_TEMPLATES = {
       `Рост производительности позволяет платить больше без инфляции: удельные издержки труда ${rf1(s.unitLaborCostGrowth)}%. Потенциальный рост ВВП ${rf1(s.potentialGrowth)}%.`, { priority: 5 }) },
   ] },
   supply_chain: { id: 'supply_chain', title: 'Шок предложения', steps: [
-    { make: (s) => mkNews('world', 'НАРУШЕНЫ ЦЕПОЧКИ ПОСТАВОК',
+    { make: (_s) => mkNews('world', 'НАРУШЕНЫ ЦЕПОЧКИ ПОСТАВОК',
       'Логистика встала: часть производственных мощностей физически не может работать. Это не падение спроса — это падение того, сколько экономика вообще способна произвести.', { priority: 8 }) },
     { make: (s) => mkNews('business', 'СБОИ ПОСТАВОК: ИЗДЕРЖКИ РАСТУТ, ПОТЕНЦИАЛ СНИЖАЕТСЯ',
       `Производство встало без комплектующих: выпуск падает, разрыв ${rfs(s.outputGap)}%, рост потенциала снизился до ${rf1(s.potentialGrowth)}%. Падает и то, что экономика производит, и то, что она в принципе способна произвести — но цены при этом растут.`, { priority: 8,
@@ -1755,14 +1977,14 @@ const STORY_TEMPLATES = {
       `Ожидания ${rf1(s.inflationExpectations)}%. Подавлять инфляцию — углублять спад. Терпеть — рисковать срывом ожиданий, после которого возврат к цели обойдётся дороже.`, { priority: 8 }) },
   ] },
   demographic: { id: 'demographic', title: 'Демографический сдвиг', steps: [
-    { make: (s) => mkNews('households', 'СТАРЕНИЕ НАСЕЛЕНИЯ СЖИМАЕТ РАБОЧУЮ СИЛУ',
+    { make: (_s) => mkNews('households', 'СТАРЕНИЕ НАСЕЛЕНИЯ СЖИМАЕТ РАБОЧУЮ СИЛУ',
       'Предложение труда сокращается. В краткосрочной перспективе это разгон зарплат, в долгосрочной — более низкий потенциальный рост и более низкая нейтральная ставка.', { priority: 6,
         chain: ['Рабочая сила ↓', 'Зарплаты ↑', 'Потенциал ↓', 'Нагрузка на бюджет ↑'] }) },
     { gap: 2, make: (s) => mkNews('gov', `СОЦИАЛЬНЫЕ ОБЯЗАТЕЛЬСТВА ДАВЯТ НА БЮДЖЕТ: БАЛАНС ${rfs(s.budgetBalancePctGdp)}% ВВП`,
       `Меньше работников — меньше налоговая база, больше получателей выплат. Нейтральная ставка r* опустилась до ${rf1(s.rStar)}%: это меняет всю шкалу того, что считать жёсткой политикой.`, { priority: 6 }) },
   ] },
   consumer_boom: { id: 'consumer_boom', title: 'Потребительский бум', steps: [
-    { make: (s) => mkNews('households', 'ДОМОХОЗЯЙСТВА НАРАЩИВАЮТ РАСХОДЫ И СПРОС НА КРЕДИТ',
+    { make: (_s) => mkNews('households', 'ДОМОХОЗЯЙСТВА НАРАЩИВАЮТ РАСХОДЫ И СПРОС НА КРЕДИТ',
       'Потребительский оптимизм разгоняет спрос. Пока есть свободные мощности, это рост; когда они закончатся — инфляция.', { priority: 6,
         chain: ['Спрос ↑', 'Разрыв выпуска ↑', 'Инфляция ↑', 'Реакция ЦБ'] }) },
     { gap: 2, make: (s) => (s.outputGap > 1.5
@@ -1876,7 +2098,6 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   // одна и та же тема не повторяется каждый квартал
   const once = (key, gap) => { if ((cd[`news:${key}`] || 0) > 0) return false; cd[`news:${key}`] = gap; return true; };
   const tgt = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
-  const T = CONFIG.target;
 
   /* 🏦 ЦЕНТРАЛЬНЫЙ БАНК */
   const dRate = s.keyRate - prev.keyRate;
@@ -2321,6 +2542,7 @@ function makeInitialEconomy() {
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null,
+    unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);
@@ -2388,7 +2610,54 @@ const CRISIS_INFO = {
   war: { label: 'Война', text: (e) => `Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери. ${e.warType === 'offensive' ? 'Наступательный характер войны привёл к санкциям.' : e.warType === 'defensive' ? 'Оборонительный характер войны приносит иностранную помощь.' : ''}`.trim() },
 };
 
-function buildReport({ prev, next, quarterIndex, reasons }) {
+/* =========================================================================================
+   ПОЛИТИЧЕСКИЙ РЕЖИМ: демократия / конфликт ветвей власти / авторитаризм / тоталитаризм —
+   см. блок «15а» в simulateQuarter. Здесь только описание для интерфейса и подмена «От
+   редакции» пропагандой там, где режим подчинил себе прессу.
+========================================================================================= */
+const POLITICAL_REGIME_INFO = {
+  democracy: { label: 'Демократия', color: 'teal', text: 'Парламент работает, выборы решают исход, пресса независима.' },
+  crisis: { label: 'Конфликт парламента и президента', color: 'gold', text: 'Взаимные вето и угроза импичмента парализуют принятие решений — институты ещё держатся, но компромисса всё меньше.' },
+  authoritarian: { label: 'Авторитарный режим', color: 'rust', text: 'Парламент распущен или обессилен, выборы формальны, независимые голоса вытесняются.' },
+  totalitarian: { label: 'Тоталитарный режим', color: 'rust', text: 'Полный государственный контроль над институтами и прессой; несогласие приравнено к угрозе государству.' },
+};
+
+/* «От редакции» под властью, которая контролирует прессу: не искажаем цифры, которые видит
+   игрок (report остаётся точным и используется отдельно), а полностью пересобираем тон
+   газетной колонки из тех же показателей — эвфемизмы вместо признаний, победные реляции
+   вместо анализа. Во время войны пропаганда при тоталитаризме усиливается ещё сильнее. */
+function propagandaEditorial(e) {
+  const regime = e.politicalRegime;
+  if (regime !== 'authoritarian' && regime !== 'totalitarian') return null;
+  const war = (e.warQuartersLeft || 0) > 0;
+  const totalitarian = regime === 'totalitarian';
+  const growthLine = e.gdpGrowth >= 0
+    ? `Рост экономики составил ${fmt1(e.gdpGrowth)}% — государство подтверждает верность выбранного курса.`
+    : `Плановая перестройка экономики (формально ${fmt1(e.gdpGrowth)}%) — необходимый и временный этап на пути к устойчивому подъёму.`;
+  const jobsLine = e.unemployment <= e.nairu + 1
+    ? 'Занятость держится на исторически комфортном уровне.'
+    : 'Трудовые резервы проходят оптимизацию в интересах государства — временные неудобства окупятся сторицей.';
+  const pricesLine = e.inflation <= e.inflationTarget + 2
+    ? 'Цены — под полным контролем компетентных ведомств.'
+    : 'Отдельные колебания цен носят исключительно технический характер и не должны беспокоить граждан: обеспечение всем необходимым остаётся приоритетом номер один.';
+  const debtLine = totalitarian
+    ? (e.debtToGdp > 80 ? ' Финансовая система работает с полной отдачей, мобилизуя все доступные резервы.' : '')
+    : '';
+  const warLine = war
+    ? (totalitarian
+      ? ' Все трудности — достойная цена, которую нация с гордостью платит за неизбежную победу над врагом. Тот, кто сомневается в успехе, действует на руку противнику.'
+      : ' Особые меры военного времени объясняют часть текущих трудностей и постепенно снимаются по мере стабилизации обстановки.')
+    : '';
+  const closing = totalitarian
+    ? ' Инакомыслие в такой момент — не мнение, а угроза единству нации; редакция напоминает читателям о бдительности.'
+    : ' Правительство призывает сохранять спокойствие и доверие к принимаемым мерам.';
+  const headline = totalitarian
+    ? (war ? 'ЕДИНСТВО ПЕРЕД ЛИЦОМ ВРАГА: ЭКОНОМИКА РАБОТАЕТ НА ПОБЕДУ' : 'СТРАНА УВЕРЕННО ИДЁТ ВПЕРЁД')
+    : 'ВЛАСТЬ ДЕРЖИТ КУРС: СТАБИЛЬНОСТЬ ПРЕВЫШЕ ВСЕГО';
+  return { headline, text: `${growthLine} ${jobsLine} ${pricesLine}${debtLine}${warLine}${closing}` };
+}
+
+function buildReport({ prev, next, reasons }) {
   const p = [];
   p.push(`ВВП ${next.gdpGrowth >= 0 ? 'вырос' : 'сократился'} на ${fmt1(Math.abs(next.gdpGrowth))}% в годовом выражении при потенциальном росте ${fmt1(next.potentialGrowth)}%; разрыв выпуска ${fmtSigned1(next.outputGap)}%.`);
   p.push(`Инфляция ${next.inflation >= prev.inflation ? 'ускорилась' : 'замедлилась'} до ${fmt1(next.inflation)}% при ожиданиях ${fmt1(next.inflationExpectations)}%, безработица ${fmt1(next.unemployment)}% против естественного уровня ${fmt1(next.nairu)}%.`);
@@ -2413,7 +2682,6 @@ function leverPreview(id, newVal, s, difficulty) {
   const uncertainty = UNCERTAINTY[id] || 'средняя';
   const lag = difficulty === 'easy' ? 'эффект в основном в следующем квартале' : difficulty === 'medium' ? 'эффект распределён на 2 квартала' : 'эффект распределён на 3 квартала';
   const add2 = (label, text) => items.push({ label, text });
-  const nomGdp = Math.max(1, s.nominalGdp);
   switch (id) {
     case 'keyRate': {
       const dv = newVal - s.keyRate;
@@ -2457,15 +2725,20 @@ function leverPreview(id, newVal, s, difficulty) {
       break;
     }
     case 'fxIntervention': {
+      // newVal — «млрд», диапазон растёт вместе с ВВП (см. scaleLever), поэтому в
+      // курс это должно идти как доля ВВП — та же нормировка, что и в реальном расчёте.
       add2('Резервы', `${fmtMoneySigned(newVal)} за квартал (сейчас ${fmtMoney(s.reserves)})`);
-      add2('Курс', `${fmtSigned1(newVal * 0.05)}% к темпу изменения`);
+      add2('Курс', `${fmtSigned1(newVal / Math.max(1, s.nominalGdp) * 100 * 2.5)}% к темпу изменения`);
       pros = newVal < 0 ? ['поддержка курса и подавление импортной инфляции'] : ['накопление резервов и слабая валюта помогает экспорту'];
       cons = newVal < 0 ? ['резервы конечны — при исчерпании режим срывается'] : ['импорт дорожает, инфляция растёт'];
       break;
     }
     case 'liquidity': {
-      add2('Ликвидность банков', `${fmtSigned1(newVal * 0.9)} пункта`);
-      add2('Финансовая стабильность', `${fmtSigned1(newVal * 0.25)} пункта`);
+      // та же нормировка по ВВП, что и в реальном расчёте bankLiquidity/financialStability —
+      // иначе на разросшейся экономике превью показывало бы в разы больше, чем происходит на деле.
+      const pctGdp = newVal / Math.max(1, s.nominalGdp) * 100;
+      add2('Ликвидность банков', `${fmtSigned1(pctGdp * 18)} пункта`);
+      add2('Финансовая стабильность', `${fmtSigned1(pctGdp * 5)} пункта`);
       pros = ['снижение риска банковской паники', 'поддержка кредитования'];
       cons = ['рост денежной массы', 'банки привыкают к поддержке'];
       break;
@@ -2526,6 +2799,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
+  POLITICAL_REGIME_INFO, propagandaEditorial,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
@@ -2534,6 +2808,7 @@ export {
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   describeHumanCbAction, describeHumanMofAction,
+  PROMISE_POOL, pickPromises, evaluatePromise,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
   simulateQuarter,

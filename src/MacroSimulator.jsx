@@ -1,22 +1,20 @@
-﻿import React, { useState, useMemo, useCallback } from 'react';
+﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
   reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area,
-} from 'recharts';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
   X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
-  Trophy, Lock, Share2, Download,
+  Trophy, Lock, Share2, Download, GraduationCap,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
+  POLITICAL_REGIME_INFO,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
-  simulateQuarter, makeInitialEconomy, leverPreview,
+  simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -57,13 +55,12 @@ const THEMES = {
     rust: '#FF6B52', rustDim: 'rgba(255,107,82,0.20)',
     blue: '#7FC2FF', blueDim: 'rgba(127,194,255,0.20)' } },
 };
-const COLOR = { ...THEMES.ink.colors };
-let CURRENT_THEME = 'ink';
+export const COLOR = { ...THEMES.ink.colors };
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.ink;
   Object.assign(COLOR, t.colors);
-  CURRENT_THEME = t.id;
-}const FONT = {
+}
+const FONT = {
   serif: "'Iowan Old Style','Palatino Linotype',Georgia,'Times New Roman',serif",
   sans: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
   mono: "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace",
@@ -76,27 +73,78 @@ const GlobalStyle = () => (
     .ems-root :focus-visible { outline: 2px solid ${COLOR.goldSoft}; outline-offset: 2px; }
     .ems-serif { font-family:${FONT.serif}; }
     .ems-mono { font-family:${FONT.mono}; font-variant-numeric: tabular-nums; }
-    .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:4px; }
-    .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:4px; }
+    .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px -10px rgba(0,0,0,0.4); }
+    .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.14), 0 14px 30px -12px rgba(0,0,0,0.55); }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
-    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:3px; font-size:13px; transition:background .15s, border-color .15s, transform .1s; }
-    .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; }
+    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; }
+    .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; box-shadow: 0 3px 10px -4px rgba(0,0,0,0.35); }
     .ems-btn:active { transform: scale(0.98); }
-    .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; }
-    .ems-btn.primary:hover { background:${COLOR.goldSoft}; border-color:${COLOR.goldSoft}; }
-    .ems-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+    .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 12px -3px ${COLOR.goldDim}; }
+    .ems-btn.primary:hover { background:${COLOR.goldSoft}; border-color:${COLOR.goldSoft}; box-shadow: 0 4px 18px -3px ${COLOR.goldDim}; }
+    .ems-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }
     .ems-slider { -webkit-appearance:none; width:100%; height:4px; background:${COLOR.border}; outline:none; border-radius:2px; }
     .ems-slider::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-slider::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-scroll::-webkit-scrollbar { width:6px; height:6px; }
     .ems-scroll::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:3px; }
-    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:3px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; transition:background .15s, color .15s; }
+    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
-    .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; }
+    .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
     .ems-tab.active:hover { background:${COLOR.goldSoft}; color:${COLOR.ink}; }
     .ems-fade-in { animation: emsFade .35s ease; }
     @keyframes emsFade { from { opacity:0; transform:translateY(4px);} to { opacity:1; transform:translateY(0);} }
-    @media (prefers-reduced-motion: reduce) { .ems-fade-in { animation:none; } .ems-btn, .ems-tab { transition:none; } }
+    .ems-toast-out { animation: emsToastOut .45s ease forwards; }
+    @keyframes emsToastOut { from { opacity:1; transform:translateY(0) scale(1);} to { opacity:0; transform:translateY(10px) scale(0.96);} }
+    .ems-confetti-piece { border-radius:1px; opacity:1; animation: emsConfettiBurst .85s cubic-bezier(.2,.7,.3,1) forwards; }
+    @keyframes emsConfettiBurst { 0% { transform:translate(-50%,-50%) rotate(0deg); opacity:1; }
+      100% { transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); opacity:0; } }
+    @media (prefers-reduced-motion: reduce) { .ems-fade-in, .ems-toast-out { animation:none; } .ems-confetti-piece { animation:none; display:none; } .ems-btn, .ems-tab { transition:none; } }
+
+    /* --- «Витринные» приёмы: крупный заголовок экрана, интерактивные карточки,
+       атмосферный фон — используются на входных экранах (меню, новая партия,
+       обучение, сеть), а не в плотном игровом дашборде. --- */
+    .ems-hero-bg { position: relative; z-index: 0; }
+    .ems-hero-bg::before {
+      content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(760px 460px at 12% -12%, ${COLOR.goldDim} 0%, transparent 62%),
+        radial-gradient(640px 420px at 105% 8%, ${COLOR.tealDim} 0%, transparent 58%);
+      opacity: 0.8;
+    }
+    .ems-hero-eyebrow { font-family: ${FONT.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${COLOR.gold}; }
+    .ems-hero-title { font-family: ${FONT.serif}; font-size: 40px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.14; margin: 12px 0 0;
+      color: ${COLOR.text}; background: linear-gradient(180deg, ${COLOR.text} 0%, ${COLOR.muted} 145%);
+      background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .ems-hero-title.small { font-size: 27px; }
+    @media (max-width: 480px) { .ems-hero-title { font-size: 30px; } .ems-hero-title.small { font-size: 22px; } }
+    .ems-hero-rule { width: 88px; height: 3px; margin: 18px auto 0; border-radius: 2px;
+      background: linear-gradient(90deg, transparent, ${COLOR.gold}, transparent); }
+    .ems-hero-badge { display: inline-flex; align-items: center; gap: 7px; font-family: ${FONT.mono}; font-size: 11px; color: ${COLOR.muted};
+      padding: 6px 13px; border: 1px solid ${COLOR.border}; border-radius: 999px; background: ${COLOR.panelAlt}; margin-top: 18px; }
+    .ems-hero-lede { color: ${COLOR.muted}; font-size: 14px; margin: 16px auto 0; max-width: 560px; line-height: 1.65; }
+    .ems-card-btn { position: relative; display: flex; align-items: center; gap: 15px; cursor: pointer;
+      border-radius: 13px; border: 1px solid ${COLOR.border}; background: ${COLOR.panel};
+      box-shadow: 0 1px 2px rgba(0,0,0,0.14), 0 12px 28px -16px rgba(0,0,0,0.55);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
+    .ems-card-btn:hover, .ems-card-btn:focus-visible { transform: translateY(-2px); border-color: ${COLOR.gold};
+      background: ${COLOR.panelRaised}; box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 18px 36px -16px rgba(0,0,0,0.65); }
+    .ems-card-btn:active { transform: translateY(0); }
+    .ems-card-icon { width: 44px; height: 44px; border-radius: 13px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(150deg, ${COLOR.goldDim}, transparent); border: 1px solid ${COLOR.goldDim};
+      transition: transform .18s ease, border-color .18s ease; }
+    .ems-card-btn:hover .ems-card-icon { transform: scale(1.07) rotate(-2deg); border-color: ${COLOR.gold}; }
+    .ems-card-chevron { transition: transform .18s ease; }
+    .ems-card-btn:hover .ems-card-chevron { transform: translateX(3px) rotate(-90deg); }
+    .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; }
+    .ems-row-hover:hover { background: ${COLOR.panelRaised} !important; border-color: ${COLOR.borderStrong} !important; }
+    .ems-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 10.5px;
+      cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+    .ems-theme-chip:hover { transform: translateY(-1px); }
+    .ems-theme-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
+    @media (prefers-reduced-motion: reduce) {
+      .ems-card-btn, .ems-card-icon, .ems-card-chevron, .ems-theme-chip { transition: none !important; }
+      .ems-card-btn:hover, .ems-card-btn:hover .ems-card-icon, .ems-card-btn:hover .ems-card-chevron { transform: none !important; }
+    }
     .ems-grid { display:grid; grid-template-columns: 300px minmax(0,1fr) 300px; gap:14px; align-items:start; }
     @media (max-width: 1240px) { .ems-grid { grid-template-columns: 280px minmax(0,1fr); } }
     @media (max-width: 860px) { .ems-grid { grid-template-columns: minmax(0,1fr); padding: 12px !important; gap: 10px; } }
@@ -298,201 +346,19 @@ function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF })
 const ROLE_ICON = { landmark: Landmark, coins: Coins, globe: Globe2, chart: TrendingUp };
 
 /* ============================ ГРАФИКИ ============================ */
-const CHART_GROUPS = [
-  { id: 'output', label: 'Выпуск', series: [
-    { id: 'gdp', label: 'ВВП', axis: 'left', color: COLOR.gold, fmt: 'money' },
-    { id: 'potentialGdp', label: 'Потенциальный ВВП', axis: 'left', color: COLOR.blue, fmt: 'money' },
-    { id: 'outputGap', label: 'Разрыв выпуска', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-  ] },
-  { id: 'growth', label: 'Рост', series: [
-    { id: 'gdpGrowth', label: 'Рост ВВП', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'potentialGrowth', label: 'Рост потенциала', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'consumptionGrowth', label: 'Потребление', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-    { id: 'investmentGrowth', label: 'Инвестиции', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'wageGrowth', label: 'Зарплаты', axis: 'left', color: '#8E7CC3', fmt: 'pct' },
-  ] },
-  { id: 'prices', label: 'Цены', series: [
-    { id: 'inflation', label: 'Инфляция', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'coreInflation', label: 'Базовая инфляция', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'inflationExpectations', label: 'Ожидания', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-    { id: 'cbCredibility', label: 'Доверие к ЦБ', axis: 'right', color: COLOR.rust, fmt: 'idx' },
-  ] },
-  { id: 'money', label: 'Ставки', series: [
-    { id: 'keyRate', label: 'Ключевая ставка', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'lendingRate', label: 'Ставка по кредитам', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'realLendingRate', label: 'Реальная ставка', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'rStar', label: 'Нейтральная ставка r*', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-  ] },
-  { id: 'labor', label: 'Труд', series: [
-    { id: 'unemployment', label: 'Безработица', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'nairu', label: 'Естественный уровень', axis: 'left', color: COLOR.blue, fmt: 'pct' },
-    { id: 'wageGrowth', label: 'Рост зарплат', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-    { id: 'unitLaborCostGrowth', label: 'Удельные издержки труда', axis: 'right', color: COLOR.gold, fmt: 'pct' },
-  ] },
-  { id: 'banking', label: 'Банки', series: [
-    { id: 'bankNPL', label: 'Просрочка', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'bankCapitalAdequacy', label: 'Достаточность капитала', axis: 'left', color: COLOR.teal, fmt: 'pct' },
-    { id: 'creditGrowth', label: 'Рост кредита', axis: 'right', color: COLOR.gold, fmt: 'pct' },
-    { id: 'creditGap', label: 'Кредитный разрыв', axis: 'right', color: COLOR.blue, fmt: 'pct' },
-  ] },
-  { id: 'government', label: 'Бюджет', series: [
-    { id: 'debtToGdp', label: 'Госдолг к ВВП', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'deficitPctGdp', label: 'Дефицит бюджета', axis: 'right', color: COLOR.rust, fmt: 'pct' },
-    { id: 'interestPctGdp', label: 'Процентные расходы', axis: 'right', color: COLOR.blue, fmt: 'pct' },
-    { id: 'shadowShare', label: 'Теневая экономика', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-  ] },
-  { id: 'external', label: 'Внешний сектор', series: [
-    { id: 'exchangeRate', label: 'Курс (индекс)', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'realExchangeRate', label: 'Реальный курс', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'currentAccount', label: 'Текущий счёт', axis: 'right', color: COLOR.teal, fmt: 'money' },
-    { id: 'netCapitalFlow', label: 'Приток капитала', axis: 'right', color: COLOR.rust, fmt: 'money' },
-  ] },
-  { id: 'potential', label: 'Потенциал', series: [
-    { id: 'productivity', label: 'Производительность', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'humanCapitalIndex', label: 'Человеческий капитал', axis: 'left', color: COLOR.teal, fmt: 'idx' },
-    { id: 'infrastructureIndex', label: 'Инфраструктура', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'potentialGrowth', label: 'Рост потенциала', axis: 'right', color: COLOR.rust, fmt: 'pct' },
-  ] },
-  { id: 'markets', label: 'Рынок', series: [
-    { id: 'stockIndex', label: 'Индекс акций', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'bondIndex', label: 'Индекс облигаций', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'yield10y', label: 'Доходность 10 лет', axis: 'right', color: COLOR.teal, fmt: 'pct' },
-    { id: 'yield3m', label: 'Доходность 3 месяца', axis: 'right', color: '#8E7CC3', fmt: 'pct' },
-    { id: 'volatilityIndex', label: 'Индекс страха', axis: 'right', color: COLOR.rust, fmt: 'idx' },
-  ] },
-  { id: 'scores', label: 'Оценки', series: [
-    { id: 'scoreStability', label: 'Стабильность', axis: 'left', color: COLOR.gold, fmt: 'idx' },
-    { id: 'scoreWelfare', label: 'Благосостояние', axis: 'left', color: COLOR.teal, fmt: 'idx' },
-    { id: 'scoreFinancial', label: 'Финансы', axis: 'left', color: COLOR.blue, fmt: 'idx' },
-    { id: 'scoreFiscal', label: 'Бюджет', axis: 'left', color: COLOR.rust, fmt: 'idx' },
-    { id: 'scorePotential', label: 'Потенциал', axis: 'left', color: '#8E7CC3', fmt: 'idx' },
-  ] },
-];
-const PERIODS = [{ id: '1y', label: '1 год', q: 4 }, { id: '5y', label: '5 лет', q: 20 }, { id: '10y', label: '10 лет', q: 40 }, { id: 'all', label: 'Всё время', q: 1e9 }];
-const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v) : (v) => `${Math.round(v)}%`);
-const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v) : (v) => `${fmt1(v)}%`);
-
-const FORECAST_ANCHORS = {
-  inflation: (e) => e.inflationTarget, coreInflation: (e) => e.inflationTarget,
-  inflationExpectations: (e) => e.inflationTarget, gdpGrowth: (e) => e.potentialGrowth,
-  potentialGrowth: (e) => e.potentialGrowth, unemployment: (e) => e.nairu, outputGap: () => 0,
-  keyRate: (e) => e.rStar + e.inflationTarget, lendingRate: (e) => e.rStar + e.inflationTarget + 2,
-  wageGrowth: (e) => e.inflationTarget + e.potentialGrowth, creditGrowth: (e) => e.potentialGrowth + e.inflationTarget,
-};
-const FORECAST_SIGMA = { inflation: 0.9, inflationExpectations: 0.5, gdpGrowth: 1.1, outputGap: 0.9,
-  unemployment: 0.4, keyRate: 0.8, lendingRate: 0.9, wageGrowth: 1.0, stockIndex: 55, exchangeRate: 4 };
-
-function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod }) {
-  const group = CHART_GROUPS.find((g) => g.id === chartGroup);
-  const [forecast, setForecast] = useState(false);
-  const panelCls = 'ems-panel ems-visual';
-  const data = useMemo(() => {
-    const p = PERIODS.find((x) => x.id === period);
-    const hist = history.slice(-p.q).map((h) => ({
-      ...h,
-      deficitPctGdp: -h.budgetBalancePctGdp,
-      interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
-    }));
-    if (!forecast || !hist.length) return hist;
-    // веер неопределённости: инерционный прогноз к якорю с расширяющимися границами
-    const last = hist[hist.length - 1];
-    const vis = group.series.filter((x) => !hiddenSeries.includes(x.id));
-    const lead = vis[0];
-    const out = hist.map((h) => ({ ...h, fanBand: null }));
-    if (!lead) return out;
-    const anchorFn = FORECAST_ANCHORS[lead.id];
-    const anchor = anchorFn ? anchorFn(last) : last[lead.id];
-    const sigma = FORECAST_SIGMA[lead.id] || Math.max(0.4, Math.abs(last[lead.id] || 1) * 0.06);
-    let v = last[lead.id];
-    for (let i = 1; i <= 8; i++) {
-      v += (anchor - v) * 0.28;
-      const sd = sigma * Math.sqrt(i) * 0.9;
-      out.push({ label: `+${i} кв.`, forecastPoint: true,
-        [`${lead.id}__f`]: v, fanBand: [v - 1.96 * sd, v + 1.96 * sd], fanInner: [v - sd, v + sd] });
-    }
-    out[hist.length - 1] = { ...out[hist.length - 1], [`${lead.id}__f`]: last[lead.id],
-      fanBand: [last[lead.id], last[lead.id]], fanInner: [last[lead.id], last[lead.id]] };
-    return out;
-  }, [history, period, forecast, chartGroup, hiddenSeries]);
-
-  const toggleSeries = (id) => setHiddenSeries((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  const visible = group.series.filter((s) => !hiddenSeries.includes(s.id));
-  const leftDef = visible.find((s) => s.axis === 'left');
-  const rightDef = visible.find((s) => s.axis === 'right');
-  const seriesById = Object.fromEntries(group.series.map((s) => [s.id, s]));
-
-  return (
-    <div className={panelCls} style={{ padding: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>График экономики</span>
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: forecast ? COLOR.gold : COLOR.panelAlt,
-            color: forecast ? COLOR.ink : COLOR.text, borderColor: forecast ? COLOR.gold : COLOR.border }}
-            onClick={() => { Audio.play('tab'); setForecast((f) => !f); }} title="Веер неопределённости на 8 кварталов вперёд">
-            прогноз
-          </button>
-          {PERIODS.map((p) => (
-            <button key={p.id} onClick={() => { Audio.play('tab'); setPeriod(p.id); }} className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: period === p.id ? COLOR.gold : COLOR.panelAlt, color: period === p.id ? COLOR.ink : COLOR.text, borderColor: period === p.id ? COLOR.gold : COLOR.border }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="ems-scroll" style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${COLOR.border}`, marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {CHART_GROUPS.map((g) => (
-          <span key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} style={{ flexShrink: 0 }} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</span>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        {group.series.map((s) => {
-          const active = !hiddenSeries.includes(s.id);
-          return (
-            <button key={s.id} onClick={() => { Audio.play('tick'); toggleSeries(s.id); }} className="ems-btn"
-              style={{ padding: '4px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: active ? COLOR.panelAlt : 'transparent', borderColor: active ? s.color : COLOR.border, color: active ? COLOR.text : COLOR.muted, opacity: active ? 1 : 0.5 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />{s.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="ems-visual" style={{ width: '100%', height: 250 }}>
-        <ResponsiveContainer>
-          <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
-            <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR.muted }} interval="preserveStartEnd" />
-            <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')} />
-            {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)} />}
-            <Tooltip contentStyle={{ background: COLOR.panel, border: `1px solid ${COLOR.border}`, fontSize: 12 }} labelStyle={{ color: COLOR.goldSoft }}
-              formatter={(value, name, props) => { const def = seriesById[props.dataKey]; return [def ? tooltipVal(def.fmt)(value) : value, name]; }} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {forecast && visible[0] && (
-              <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanBand" name="95% интервал"
-                stroke="none" fill={visible[0].color} fillOpacity={0.10} isAnimationActive={false} legendType="none" />
-            )}
-            {forecast && visible[0] && (
-              <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanInner" name="68% интервал"
-                stroke="none" fill={visible[0].color} fillOpacity={0.18} isAnimationActive={false} legendType="none" />
-            )}
-            {forecast && visible[0] && (
-              <Line yAxisId={visible[0].axis} type="monotone" dataKey={`${visible[0].id}__f`} name="прогноз"
-                stroke={visible[0].color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
-            )}
-            {visible.map((s) => (
-              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={s.label} stroke={s.color} strokeWidth={2} dot={false} />
-            ))}
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-      <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4 }}>
-        {forecast
-          ? `Веер построен для показателя «${(visible[0] || group.series[0]).label}»: пунктир — инерционная траектория к якорю (цель ЦБ, потенциал, естественная безработица), заливка — интервалы 68% и 95%. Чем дальше горизонт, тем шире неопределённость.`
-          : 'Темпы роста и ставки показаны в годовом выражении; траектория рассчитывается по кварталам. Нажмите на показатель выше, чтобы скрыть или показать его линию.'}
-      </div>
-    </div>
-  );
-}
+/* ChartPanel/MemoChart/IRFModal живут в отдельном чанке (src/charts.jsx) вместе
+   с recharts (~104 KB gzip) — эта библиотека нужна только внутри уже запущенной
+   партии, а не в меню/анкете/обучении, поэтому не должна грузиться заранее.
+   React.lazy() подгружает файл по требованию; ChartFallback — что видно, пока
+   он грузится (обычно доли секунды, но экран не должен оставаться пустым). */
+const ChartFallback = ({ height = 250 }) => (
+  <div className="ems-panel" style={{ padding: 14, height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLOR.faint, fontSize: 12 }}>
+    Загрузка графика…
+  </div>
+);
+const ChartPanel = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.ChartPanel })));
+const MemoChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.MemoChart })));
+const IRFModal = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.IRFModal })));
 
 function WhyModal({ reasons, onClose }) {
   const [tab, setTab] = useState('gdpGrowth');
@@ -618,6 +484,20 @@ tr('promenade', 'Прогулка по столице', 'синт-лид, син
     sec('A', 'melA', 'flow', 'piano bass', 0.72),
     sec('A', 'melA', 'roll', 'piano harp bass pad', 0.92),
     sec('B', 'melB', 'flow', 'piano harp bass pad strings', 1.0),
+  ],
+});
+// Единственная полностью акустическая пьеса саундтрека: ни синт-пэдов, ни дисторшна —
+// только нейлоновая гитара и синт-бас (cello), другой жанр, а не ещё один синтвейв-трек.
+tr('meadow', 'Загородная тишина', 'нейлоновая гитара — единственная акустическая пьеса саундтрека', 'calm', {
+  bpm: 88, swing: 0.1, reverb: 0.3,
+  A: H('G3 D4 G4 B4 | D3 A3 D4 F#4 | E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4 | C3 G3 C4 E4 | D3 A3 D4 F#4'),
+  B: H('E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4'),
+  melA: MEL('0:B4:4 4:D5:4 8:G5:4 12:D5:4 16:E5:8 24:D5:4 28:B4:4 32:C5:4 36:E5:4 40:G5:4 44:E5:4 48:D5:8 56:B4:4 60:A4:4 64:B4:4 68:D5:4 72:G5:4 76:D5:4 80:E5:8 88:D5:4 92:B4:4 96:C5:4 100:E5:4 104:G5:4 108:E5:4 112:F#5:8 120:D5:8'),
+  melB: MEL('0:E5:4 4:G5:4 8:B5:8 16:D5:4 20:C5:4 24:E5:8 32:B4:4 36:D5:4 40:G5:8 48:F#5:4 52:D5:4 56:B4:8'),
+  sections: [
+    sec('A', 'melA', 'flow', 'nylon cello', 0.68),
+    sec('A', 'melA', 'roll', 'nylon cello', 0.88),
+    sec('B', 'melB', 'flow', 'nylon cello', 1.0),
   ],
 });
 
@@ -794,6 +674,37 @@ tr('trenches', 'Окопы', 'литавры, низкая виолончель,
   ],
 });
 
+/* ----------------------------- ТОТАЛИТАРНЫЙ РЕЖИМ ----------------------------- */
+// Обе пьесы этого настроения нарочно построены только на новых голосах (guitar, growl) и
+// драм-машине — ни один другой трек саундтрека не пользуется дисторшном, так что звучание
+// тоталитарного режима не может быть спутано ни с чем прежним.
+tr('ironmarch', 'Железный марш', 'дисторшн-гитара, тяжёлый бас, драм-машина', 'totalitarian', {
+  bpm: 104, swing: 0, reverb: 0.22,
+  A: H('D3 A3 D4 F4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | D3 A3 D4 F4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
+  melA: MEL('0:D4:3 3:F4:1 8:D4:3 11:F4:1 16:Bb3:3 19:D4:1 24:A3:3 27:C#4:1 32:D4:3 35:F4:1 40:D4:3 43:F4:1 48:G3:3 51:Bb3:1 56:A3:3 59:C#4:1'),
+  melB: MEL('0:Bb3:3 3:D4:1 8:G3:3 11:Bb3:1 16:D4:3 19:F4:1 24:A3:3 27:C#4:1'),
+  sections: [
+    sec('A', 'melA', 'flow', 'guitar growl', 0.85, DR('x.......x.......', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
+    sec('B', 'melB', 'flow', 'guitar growl', 1.0, DR('x...x...x...x...', '....x.......xxx.', 'xxxxxxxxxxxxxxxx')),
+    sec('A', 'melA', 'flow', 'guitar growl', 1.0, DR('x...x...x...x...', '....x...x...x...', 'oooooooooooooooo')),
+  ],
+});
+// Комендантский час: не марш, а гнетущая пустота улиц — редкие гитарные вспышки над
+// тяжёлым басовым дроном, шаги патруля вместо строевого шага.
+tr('curfew', 'Комендантский час', 'бас-дрон, редкие гитарные вспышки', 'totalitarian', {
+  bpm: 72, swing: 0, reverb: 0.42,
+  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
+  melA: MEL('0:D4:8 16:F4:4 24:D4:4 32:Bb3:8 48:D4:4 56:Bb3:4'),
+  melB: MEL('0:Bb3:8 16:D4:4 24:A3:4 32:A3:8 48:C#4:4 56:A3:4'),
+  sections: [
+    sec('A', 'melA', 'sustain', 'guitar growl', 0.7, DR('x...............', '................', '.......o........')),
+    sec('B', 'melB', 'sustain', 'guitar growl', 0.85, DR('x.......x.......', '................', '.......o.......o')),
+    sec('A', 'melA', 'sustain', 'guitar growl', 1.0, DR('x.......x.......', '....x...........', 'o.......o.......')),
+  ],
+});
+
 /* ------------------------------- ДЕФЛЯЦИЯ ------------------------------- */
 tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM-пад', 'frost', {
   bpm: 52, swing: 0, reverb: 0.72,
@@ -900,30 +811,31 @@ tr('chips', 'Фишки и блеск', 'свинг-пианино, ксилоф
     sec('A', 'melA', 'drive', 'piano bass cello harp bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'xxxxxxxxxxxxxxxx')),
   ],
 });
-tr('croupier', 'Крупье', 'ночной джаз-бар, виолончель', 'casino', {
+tr('croupier', 'Крупье', 'вибрафон, виолончель — настоящий джаз-лаунж', 'casino', {
   bpm: 96, swing: 0.28, reverb: 0.4,
   A: H('D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4'),
   B: H('F2 E3 F3 A3 | E3 D4 E4 G4 | A2 G3 A3 C4 | A2 G3 A3 C#4'),
   melA: MEL('0:D4:6 8:A4:4 12:F4:4 16:G4:6 24:B4:4 28:G4:4 32:C5:6 40:E5:4 44:C5:4 48:C#5:6 56:A4:4 60:E4:4 64:D4:6 72:A4:4 76:F4:4 80:G4:6 88:B4:4 92:G4:4 96:C5:6 104:E5:4 108:C5:4 112:C#5:6 120:D5:8'),
   melB: MEL('0:A4:6 8:F4:4 12:E4:4 16:G4:6 24:E4:4 28:D4:4 32:A4:6 40:C5:4 44:A4:4 48:C#5:6 56:A4:8'),
   sections: [
-    sec('A', 'melA', 'sustain', 'piano bass cello timpani', 0.78, DR('x.......x.......', '....x.......x...', 'x...x...x...x...')),
-    sec('B', 'melB', 'sustain', 'piano bass cello strings timpani', 0.92, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('A', 'melA', 'sustain', 'piano bass cello strings bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
+    sec('A', 'melA', 'sustain', 'marimba bass cello timpani', 0.78, DR('x.......x.......', '....x.......x...', 'x...x...x...x...')),
+    sec('B', 'melB', 'sustain', 'marimba bass cello strings timpani', 0.92, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
+    sec('A', 'melA', 'sustain', 'marimba bass cello strings bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
   ],
 });
 
 const MOOD_PLAYLISTS = {
-  calm: ['dawn', 'ledger', 'northlight', 'promenade'],
+  calm: ['dawn', 'ledger', 'northlight', 'promenade', 'meadow'],
   boom: ['ascent', 'boulevard', 'overdrive'],
   slump: ['longwinter', 'emptyhalls', 'patience'],
   stag: ['deadlock', 'friction'],
   crisis: ['collapse', 'panic', 'bankrun'],
   frost: ['glass', 'stillness'],
   war: ['warmarch', 'trenches'],
+  totalitarian: ['ironmarch', 'curfew'],
   casino: ['chips', 'croupier'],
 };
-const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война', casino: 'Казино' };
+const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война', totalitarian: 'Тоталитаризм', casino: 'Казино' };
 const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
   banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
 /* Плейлисты, привязанные к роли: у инвестора свой репертуар */
@@ -938,7 +850,7 @@ const ROLE_PLAYLISTS = {
   },
 };
 
-const Audio = (() => {
+export const Audio = (() => {
   let ctx = null; let master = null; let comp = null; let musicBus = null; let sfxBus = null; let noiseBuf = null;
   let dry = null; let verbIn = null; let echo = null; let pianoBus = null; let chorusIn = null;
   const opts = { music: true, sfx: true, volume: 0.6 };
@@ -1008,7 +920,7 @@ const Audio = (() => {
     // хорус для струнных и хора: две модулированные линии задержки
     try {
       chorusIn = ctx.createGain(); chorusIn.gain.value = 1; chorusIn.connect(dry);
-      [[0.014, 0.31], [0.021, 0.23]].forEach(([base, rate], i) => {
+      [[0.014, 0.31], [0.021, 0.23]].forEach(([base, rate]) => {
         const dl = ctx.createDelay(0.1); dl.delayTime.value = base;
         const lfo = ctx.createOscillator(); lfo.frequency.value = rate;
         const amt = ctx.createGain(); amt.gain.value = 0.0035;
@@ -1252,6 +1164,110 @@ const Audio = (() => {
   };
   const hat = (t, open) => noiseHit(t, open ? 0.14 : 0.045, open ? 0.022 : 0.026, 'highpass', 8200, 1.4);
 
+  /* Мягкий клиппинг для гитары и нового баса тоталитарного режима — ни один другой
+     голос в движке им не пользуется, поэтому у этих двух треков не может быть звучания,
+     похожего на остальной саундтрек. */
+  const distCurve = (() => {
+    const n = 1024; const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(x * 3.2); }
+    return curve;
+  })();
+  // Дисторшн-гитара: пила через waveshaper с кабинетным ФНЧ и серединным пиком.
+  // power=true — режущий «пауэр-аккорд» (терция + квинта), false — сольная линия.
+  const guitar = (t, midi, dur, vel, power) => {
+    const notes = power ? [midi, midi + 7] : [midi];
+    const out = ctx.createGain(); out.gain.value = 0.10 * vel;
+    const pan = panFor(midi, 0.3); out.connect(pan); pan.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.25); sendTo(out, echo, 0.18);
+    const cab = ctx.createBiquadFilter(); cab.type = 'lowpass'; cab.frequency.value = 3200; cab.Q.value = 0.7;
+    const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 900; mid.Q.value = 1.1; mid.gain.value = 4;
+    cab.connect(mid); mid.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.006);
+    g.gain.setValueAtTime(1, t + Math.max(0.01, dur * 0.6));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(cab);
+    notes.forEach((m) => {
+      const shaper = ctx.createWaveShaper(); shaper.curve = distCurve; shaper.oversample = '2x';
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(m);
+      const pre = ctx.createGain(); pre.gain.value = 2.6;
+      o.connect(pre); pre.connect(shaper); shaper.connect(g);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+  };
+  // Новый бас, отдельный от cello/piano-баса: суб-синус на октаву ниже плюс расстроенная
+  // пила через тот же дисторшн, что и guitar — тяжёлый, давящий низ без «щелчка» атаки.
+  const growl = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.16 * vel;
+    out.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.15);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 2;
+    filt.frequency.setValueAtTime(Math.min(900, f * 5), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.4, 70), t + Math.min(dur, 0.25));
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.01);
+    g.gain.setValueAtTime(1, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(filt);
+    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = f / 2;
+    sub.connect(g);
+    const shaper = ctx.createWaveShaper(); shaper.curve = distCurve; shaper.oversample = '2x';
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const pre = ctx.createGain(); pre.gain.value = 1.8;
+    const distAmt = ctx.createGain(); distAmt.gain.value = 0.6;
+    o.connect(pre); pre.connect(shaper); shaper.connect(distAmt); distAmt.connect(g);
+    sub.start(t); sub.stop(t + dur + 0.05); o.start(t); o.stop(t + dur + 0.05);
+  };
+  // Маримба: синус с треугольным «стуком» атаки и очень быстрым затуханием — тёплый
+  // деревянный щелчок, совсем другой характер, чем звонкие bell()/harp(); настоящий
+  // мэллет-тембр для джазовых и лаунж-пьес вместо синтвейвового пэда.
+  const marimba = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.11 * vel;
+    const pan = panFor(midi, 0.4); out.connect(pan); pan.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.35);
+    const d = Math.min(dur, 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(out);
+    const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 4;
+    const a2 = ctx.createGain();
+    a2.gain.setValueAtTime(0.35 * vel, t); a2.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o1.connect(g); o2.connect(a2); a2.connect(out);
+    o1.start(t); o1.stop(t + d + 0.05); o2.start(t); o2.stop(t + 0.08);
+  };
+  // Нейлоновая гитара: щипок без дисторшна — треугольник с расстроенной пилой под
+  // быстро закрывающимся ФНЧ. Единственный «акустический», чистый щипковый голос
+  // движка — фолковый/акустический характер вместо синтвейвовых пэдов и арпеджио.
+  const nylon = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.10 * vel;
+    const pan = panFor(midi, 0.35); out.connect(pan); pan.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.3); sendTo(out, echo, 0.1);
+    const d = Math.min(dur, 0.9);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 1.2;
+    filt.frequency.setValueAtTime(Math.min(5200, f * 6), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.2, 300), t + d * 0.6);
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(filt);
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = f; o2.detune.value = 4;
+    const a2 = ctx.createGain(); a2.gain.value = 0.3;
+    o.connect(g); o2.connect(a2); a2.connect(g);
+    o.start(t); o.stop(t + d + 0.05); o2.start(t); o2.stop(t + d + 0.05);
+  };
+
   /* ------------------------------- СЕКВЕНСОР ------------------------------- */
   /* Атмосферный слой: низкий гул, «ветер» и сердцебиение под музыкой */
   let amb = null; let heartTimer = null;
@@ -1321,13 +1337,17 @@ const Audio = (() => {
     }
     // духовые стабы на каждую четверть — маршевое «ум-па», а не длинная педаль
     if (has('brass') && pos % 4 === 0) brass(t, voicing.slice(0, 3), sd * 3.4, 0.1 * dyn);
+    // гитарный «чуг» на каждую четверть — тот же маршевый приём, что и духовые стабы,
+    // но режущий и жёсткий: собственный узнаваемый ритм тоталитарного саундтрека
+    if (has('guitar') && pos % 4 === 0) guitar(t, voicing[0], sd * 3.4, 0.11 * dyn, true);
     // бас — постоянные восьмые с движением по тонам аккорда (root/fifth/octave/third),
     // а не статичная педаль: главный источник «драйва» в синтвейве
     if (pos % 2 === 0) {
       const root = voicing[0] - 12;
       const note = root + BASS_DEG[(pos / 2) % BASS_DEG.length];
       const vel = (pos % 8 === 0 ? 0.95 : pos % 4 === 0 ? 0.72 : 0.56) * dyn;
-      if (has('cello')) cello(t, note, sd * 1.9, vel);
+      if (has('growl')) growl(t, note, sd * 1.9, vel);
+      else if (has('cello')) cello(t, note, sd * 1.9, vel);
       else if (has('bass')) piano(t + jitter(), note, 0.5 * vel, 0.45, 4);
     }
     // арпеджио по аккорду шестнадцатыми — накладывается на «полные» секции без
@@ -1344,6 +1364,8 @@ const Audio = (() => {
       const note = voicing[deg % voicing.length];
       if (has('harp')) harp(t + jitter(), note + 12, sd * 6, vel);
       if (has('piano')) piano(t + jitter(), note, vel, track.bpm > 100 ? 0.55 : sc.lh === 'sustain' ? 1.0 : 0.85, sc.lh === 'sustain' ? 4 : 5);
+      else if (has('nylon')) nylon(t + jitter(), note + 12, sd * 4.5, vel);
+      else if (has('marimba')) marimba(t + jitter(), note + 12, sd * 3, vel * 0.9);
       else if (has('bells') && !has('harp') && (st % 4 === 0)) bell(t, note + 12, sd * 6, 0.6 * vel);
     });
     // мелодия
@@ -1352,7 +1374,10 @@ const Audio = (() => {
       const vel = (0.78 + 0.20 * accent(pos)) * dyn;
       if (has('violin')) violin(t, midi, sd * dur * 1.05, vel);
       if (has('bells')) bell(t, midi, sd * dur * 1.7, vel * 0.9);
-      if (!has('violin') && !has('bells')) {
+      if (has('guitar') && !has('violin') && !has('bells')) guitar(t + jitter(), midi, sd * dur * 0.9, vel * 0.7, false);
+      if (has('marimba') && !has('violin') && !has('bells') && !has('guitar')) marimba(t + jitter(), midi, sd * dur * 0.8, vel * 0.85);
+      if (has('nylon') && !has('violin') && !has('bells') && !has('guitar') && !has('marimba')) nylon(t + jitter(), midi, sd * dur * 0.9, vel * 0.8);
+      if (!has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('nylon')) {
         piano(t + jitter(), midi, Math.min(1, vel), 1);
         if (dur >= 8 && track.mood !== 'crisis') piano(t + jitter(), midi - 12, vel * 0.32, 0.8);
       } else if (has('piano') && has('violin')) {
@@ -1482,7 +1507,9 @@ const Audio = (() => {
       } else if (heartTimer) { clearInterval(heartTimer); heartTimer = null; }
     },
     setMood(e) {
-      const m = REGIME_MOOD[e.regime] || 'calm';
+      // тоталитарный режим переопределяет настроение саундтрека независимо от того,
+      // что творится с экономикой — власть куда навязчивее любого экономического цикла
+      const m = e.politicalRegime === 'totalitarian' ? 'totalitarian' : (REGIME_MOOD[e.regime] || 'calm');
       intensity = clamp((e.inflationRisk * 0.3 + e.bankingRisk * 0.3 + e.debtRisk * 0.2 + e.recessionRisk * 0.2) / 100, 0, 1);
       tempoMod = clamp(0.95 + (e.gdpGrowth - 2.0) * 0.012 + intensity * 0.05, 0.9, 1.1);
       this.setAmbience(e.regime, intensity);
@@ -1610,7 +1637,7 @@ function AudioControls() {
               onChange={(e) => { const v = parseFloat(e.target.value); setVol(v); Audio.setVolume(v); }} />
           </div>
           <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
-            Семнадцать пьес в шести настроениях. Каждая состоит из нескольких частей с разной оркестровкой и доигрывается до конца, прежде чем уступить место следующей.
+            {Object.keys(TRACKS).length} пьес в {new Set(Object.values(TRACKS).map((t) => t.mood)).size} настроениях. Каждая состоит из нескольких частей с разной оркестровкой и доигрывается до конца, прежде чем уступить место следующей.
           </div>
         </div>
       )}
@@ -1726,8 +1753,37 @@ function NewsTerminal({ items, onOpenPaper }) {
   );
 }
 
+/* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
+   бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */
+const mixHex = (a, b, t) => {
+  const c = (h, i) => parseInt(h.slice(i, i + 2), 16);
+  const m = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, '0');
+  return `#${m(1)}${m(3)}${m(5)}`;
+};
+const POLITICAL_PAPER_TARGET = {
+  crisis: { paper: '#E2D9BE', paperText: '#241C12', paperMuted: '#6B5A3E', paperRule: '#8C6B3E' },
+  authoritarian: { paper: '#CFC9B8', paperText: '#26251E', paperMuted: '#5E5B4E', paperRule: '#8B8570' },
+  totalitarian: { paper: '#22252A', paperText: '#B7B7AC', paperMuted: '#6B6D66', paperRule: '#48493F' },
+};
+function politicalPaperPalette(base, economy) {
+  const regime = economy && economy.politicalRegime;
+  const target = POLITICAL_PAPER_TARGET[regime];
+  if (!target) return base;
+  const tension = clamp((economy.politicalTension || 0) / 100, 0, 1);
+  const war = (economy.warQuartersLeft || 0) > 0;
+  const k = regime === 'totalitarian' ? clamp(0.6 + tension * 0.3 + (war ? 0.1 : 0), 0.6, 1)
+    : regime === 'authoritarian' ? clamp(0.35 + tension * 0.35, 0.35, 0.75)
+      : clamp(0.18 + tension * 0.3, 0.18, 0.5); // crisis: тревожно, но ещё не мрачно
+  return {
+    paper: mixHex(base.paper, target.paper, k),
+    paperText: mixHex(base.paperText, target.paperText, k),
+    paperMuted: mixHex(base.paperMuted, target.paperMuted, k),
+    paperRule: mixHex(base.paperRule, target.paperRule, k),
+  };
+}
+
 /* Газета: выпуск квартала, хроника страны и сюжетные линии */
-function NewspaperModal({ news, history, quarterIndex, onClose }) {
+function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   const [tab, setTab] = useState('issue');
   const quarters = useMemo(() => {
     const map = new Map();
@@ -1752,37 +1808,45 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
     return [...map.values()].reverse();
   }, [news]);
 
+  const pp = politicalPaperPalette(COLOR, economy || {});
+  const regimeId = economy && economy.politicalRegime;
+  const regimeInfo = regimeId && POLITICAL_REGIME_INFO[regimeId];
   const PaperBox = ({ children, style }) => (
-    <div style={{ background: COLOR.paper, color: COLOR.paperText, border: `1px solid ${COLOR.paperRule}`, padding: '18px 20px', ...style }}>{children}</div>
+    <div style={{ background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`, padding: '18px 20px', transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>{children}</div>
   );
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 14px', overflowY: 'auto' }} onClick={onClose}>
       <div className="ems-fade-in" style={{ maxWidth: 940, width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <PaperBox>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${COLOR.paperRule}`, paddingBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${pp.paperRule}`, paddingBottom: 10 }}>
             <div>
               <div className="ems-serif" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1 }}>ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
-              <div className="ems-mono" style={{ fontSize: 10, color: COLOR.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
+              <div className="ems-mono" style={{ fontSize: 10, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
                 ЕЖЕКВАРТАЛЬНОЕ ИЗДАНИЕ · {latest ? latest[1][0].qLabel : quarterLabel(quarterIndex)} · ВЫПУСК № {latest ? latest[0] : 0}
               </div>
+              {regimeInfo && regimeId !== 'democracy' && (
+                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: regimeId === 'crisis' ? '#8C6B3E' : '#B0503A', fontWeight: 700 }}>
+                  {regimeId === 'totalitarian' ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · ' : ''}{regimeInfo.label.toUpperCase()}
+                </div>
+              )}
             </div>
-            <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: COLOR.paperText, borderColor: COLOR.paperRule }} onClick={onClose}><X size={14} /></button>
+            <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
           </div>
 
-          <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${COLOR.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
+          <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
             {[['issue', 'Выпуск'], ['chronicle', 'Хроника страны'], ['stories', 'Сюжетные линии']].map(([id, label]) => (
               <span key={id} onClick={() => { Audio.play('paper'); setTab(id); }} style={{ cursor: 'pointer', fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase',
-                fontWeight: tab === id ? 700 : 400, color: tab === id ? COLOR.paperText : COLOR.paperMuted, borderBottom: tab === id ? `2px solid ${COLOR.paperText}` : '2px solid transparent', paddingBottom: 3 }}>{label}</span>
+                fontWeight: tab === id ? 700 : 400, color: tab === id ? pp.paperText : pp.paperMuted, borderBottom: tab === id ? `2px solid ${pp.paperText}` : '2px solid transparent', paddingBottom: 3 }}>{label}</span>
             ))}
           </div>
 
           {tab === 'issue' && (
             <div>
-              {!lead && <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
+              {!lead && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
               {lead && (
-                <div style={{ borderBottom: `1px solid ${COLOR.paperRule}`, paddingBottom: 14, marginBottom: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
+                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
                     {catOf(lead.cat).icon} {catOf(lead.cat).label.toUpperCase()} · ГЛАВНАЯ ТЕМА
                   </div>
                   <div className="ems-serif" style={{ fontSize: 25, fontWeight: 700, lineHeight: 1.12, marginBottom: 8 }}>{lead.headline}</div>
@@ -1791,8 +1855,8 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 10 }}>
                       {lead.chain.map((st, i) => (
                         <React.Fragment key={i}>
-                          <span style={{ fontSize: 10.5, padding: '2px 7px', border: `1px solid ${COLOR.paperRule}`, color: COLOR.paperText }}>{st}</span>
-                          {i < lead.chain.length - 1 && <span style={{ color: COLOR.paperMuted }}>→</span>}
+                          <span style={{ fontSize: 10.5, padding: '2px 7px', border: `1px solid ${pp.paperRule}`, color: pp.paperText }}>{st}</span>
+                          {i < lead.chain.length - 1 && <span style={{ color: pp.paperMuted }}>→</span>}
                         </React.Fragment>
                       ))}
                     </div>
@@ -1801,28 +1865,28 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
               )}
 
               {snapshot && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', border: `1px solid ${COLOR.paperRule}`, padding: '9px 12px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', border: `1px solid ${pp.paperRule}`, padding: '9px 12px', marginBottom: 14 }}>
                   {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
                     ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
-                      <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: COLOR.paperMuted }}>{k}: <b style={{ color: COLOR.paperText }}>{v}</b></span>
+                      <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
                     ))}
                 </div>
               )}
 
-              <div style={{ columnCount: 2, columnGap: 22, columnRule: `1px solid ${COLOR.paperRule}` }} className="ems-paper-cols">
+              <div style={{ columnCount: 2, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
                 {rest.map((n) => (
                   <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
-                    <div className="ems-mono" style={{ fontSize: 9, color: COLOR.paperMuted, letterSpacing: '0.08em' }}>{catOf(n.cat).icon} {catOf(n.cat).label.toUpperCase()}</div>
+                    <div className="ems-mono" style={{ fontSize: 9, color: pp.paperMuted, letterSpacing: '0.08em' }}>{catOf(n.cat).icon} {catOf(n.cat).label.toUpperCase()}</div>
                     <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, margin: '3px 0 4px' }}>{n.headline}</div>
                     <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
-                    {n.storyTitle && <div style={{ fontSize: 10, color: COLOR.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
+                    {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
                   </div>
                 ))}
               </div>
 
               {editorial && (
-                <div style={{ borderTop: `3px double ${COLOR.paperRule}`, marginTop: 6, paddingTop: 12 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
+                <div style={{ borderTop: `3px double ${pp.paperRule}`, marginTop: 6, paddingTop: 12 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
                   <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65 }}>{editorial.text}</div>
                 </div>
               )}
@@ -1831,16 +1895,16 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
 
           {tab === 'chronicle' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
+              {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
               {quarters.map(([q, list]) => {
                 const snap = history.find((h) => h.q === q);
                 const top = list.filter((n) => n.cat !== 'editorial').slice(0, 3);
                 return (
-                  <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${COLOR.paperRule}`, padding: '11px 0' }}>
+                  <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
                     <div style={{ width: 92, flexShrink: 0 }}>
                       <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
                       {snap && (
-                        <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
+                        <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
                           ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
                         </div>
                       )}
@@ -1850,7 +1914,7 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
                         <div key={n.id}>
                           <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
                           <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
-                          <div className="ems-serif" style={{ fontSize: 11.5, color: COLOR.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
+                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
                         </div>
                       ))}
                     </div>
@@ -1862,22 +1926,22 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
 
           {tab === 'stories' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
+              {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
               {stories.map((st) => (
-                <div key={st.id} style={{ borderLeft: `2px solid ${COLOR.paperRule}`, paddingLeft: 14 }}>
+                <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
                   <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, marginBottom: 8 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
                     {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {st.steps.length} из {st.steps[0].steps} частей
                   </div>
                   {st.steps.map((n, i) => (
                     <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
                       <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
-                        <div style={{ fontSize: 9.5, color: COLOR.paperMuted }}>{n.qLabel}</div>
-                        <div style={{ fontSize: 9, color: COLOR.paperMuted }}>часть {i + 1}</div>
+                        <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
+                        <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                        <div className="ems-serif" style={{ fontSize: 11.5, color: COLOR.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
+                        <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
                       </div>
                     </div>
                   ))}
@@ -1903,8 +1967,6 @@ const ATMOSPHERE = {
   currency: { tint: 'rgba(165,60,25,0.042)', vig: 0.30, accent: '#C2531F', breathe: 0.20, grain: 0.035, label: 'валютный кризис', urgent: true },
   deflation: { tint: 'rgba(120,150,175,0.024)', vig: 0.22, accent: '#7FA3B8', breathe: 0, grain: 0, label: 'дефляция', urgent: false },
 };
-const isCrisisRegime = (r) => ['banking', 'debt', 'currency', 'stagflation'].indexOf(r) >= 0;
-
 function Atmosphere({ regime, intensity, flashKey }) {
   const a = ATMOSPHERE[regime] || ATMOSPHERE.normal;
   const k = clamp(intensity, 0, 1);
@@ -2033,8 +2095,6 @@ function useLiveQuotes(economy) {
   return live;
 }
 
-const MemoChart = React.memo(MiniChart);
-
 /* Бегущая строка держит живые котировки внутри себя, чтобы не перерисовывать экран целиком */
 function LiveTicker({ economy, prev }) {
   const live = useLiveQuotes(economy);
@@ -2113,7 +2173,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             </div>
           </div>
           <div style={{ margin: '6px 0 4px' }}>
-            <MemoChart data={ser('stockIndex')} color={COLOR.gold} height={64} label="Индекс акций" fmt={(v) => v.toFixed(1)} />
+            <Suspense fallback={<ChartFallback height={64} />}>
+              <MemoChart data={ser('stockIndex')} color={COLOR.gold} height={64} label="Индекс акций" fmt={(v) => v.toFixed(1)} />
+            </Suspense>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 12px', marginTop: 8 }}>
             {[['Банки', 'sectorBanks', COLOR.blue], ['Промышленность', 'sectorIndustry', COLOR.teal],
@@ -2162,7 +2224,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             <Quote label="Ставка нового долга" value={fmt2(economy.effectiveDebtRate)} unit="%" />
           </div>
           <div style={{ margin: '6px 0' }}>
-            <MemoChart data={ser('bondIndex')} color={COLOR.blue} height={54} label="Индекс облигаций" fmt={(v) => v.toFixed(1)} />
+            <Suspense fallback={<ChartFallback height={54} />}>
+              <MemoChart data={ser('bondIndex')} color={COLOR.blue} height={54} label="Индекс облигаций" fmt={(v) => v.toFixed(1)} />
+            </Suspense>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[['Суверенный спред', economy.sovereignSpread, 800], ['Корпоративный спред', economy.corporateSpread, 1200],
@@ -2185,7 +2249,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             <Quote label="Цена к капиталу" value={fmt2(economy.bankPB)} />
             <Quote label="Рентабельность" value={fmt1(economy.bankROE)} unit="%" color={economy.bankROE < 0 ? COLOR.rust : COLOR.text} />
           </div>
-          <MemoChart data={ser('sectorBanks')} color={COLOR.blue} height={48} label="Индекс банков" fmt={(v) => v.toFixed(0)} />
+          <Suspense fallback={<ChartFallback height={48} />}>
+            <MemoChart data={ser('sectorBanks')} color={COLOR.blue} height={48} label="Индекс банков" fmt={(v) => v.toFixed(0)} />
+          </Suspense>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 14px', marginTop: 9, fontSize: 11 }}>
             {[['Процентная маржа', `${fmt2(economy.netInterestMargin)} п.п.`], ['Просрочка', pctFmt(economy.bankNPL)],
               ['Достаточность капитала', pctFmt(economy.bankCapitalAdequacy)], ['Норматив', pctFmt(economy.capitalRequirement)],
@@ -2208,7 +2274,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             <Quote label="Реальный курс" value={fmt1(economy.realExchangeRate)} />
           </div>
           <div style={{ margin: '6px 0' }}>
-            <MemoChart data={ser('exchangeRate')} color={COLOR.rust} height={54} label="Курс" fmt={(v) => v.toFixed(2)} />
+            <Suspense fallback={<ChartFallback height={54} />}>
+              <MemoChart data={ser('exchangeRate')} color={COLOR.rust} height={54} label="Курс" fmt={(v) => v.toFixed(2)} />
+            </Suspense>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 14px', fontSize: 11 }}>
             {[['Режим', economy.fxRegime === 'free' ? 'плавающий' : economy.fxRegime === 'managed' ? 'управляемый' : 'фиксированный'],
@@ -2365,9 +2433,9 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
   return (
     <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
-        <Bot size={14} color={COLOR.blue} />
+        <Icon size={14} color={COLOR.blue} />
         <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>{isCb ? 'Центральный банк' : 'Министерство финансов'}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>бот</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={11} />бот</span>
       </div>
       <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>
         <b style={{ color: COLOR.text }}>{persona.name}</b> · {persona.title}
@@ -2409,6 +2477,51 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
   );
 }
 
+// формат текущего/целевого значения под конкретное обещание — target/value это
+// голые числа (см. pickPromises/evaluatePromise в engine.js), единицы тут же рядом с текстом
+const PROMISE_FMT = {
+  inflation_tame: (v) => `${fmt1(v)}%`, jobs_for_all: (v) => `${fmt1(v)}%`,
+  debt_discipline: (v) => `${fmt1(v)}%`, growth_promise: (v) => `${fmtSigned1(v)}%`,
+  strong_currency: (v) => `${fmtSigned1(v)}%`, budget_control: (v) => `${fmt1(v)}%`,
+  living_standards_promise: (v) => fmt1(v), reserves_promise: (v) => fmtMoney(v),
+};
+/* У главы государства нет бота-оппонента с требованиями — три случайных
+   обещания на срок до выборов создают то же ощутимое давление, что остальным
+   ролям даёт партнёр по власти. met/value считаются на лету от текущей
+   экономики (evaluatePromise), а не хранятся — иначе они бы не обновлялись
+   при откате/загрузке сохранения. */
+function PromisesPanel({ promises, economy }) {
+  if (!promises || !promises.length) return null;
+  return (
+    <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
+        <Flag size={14} color={COLOR.blue} />
+        <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>Предвыборные обещания</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>до выборов {economy.quartersToElection} кв.</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        {promises.map((p) => {
+          const { met, value } = evaluatePromise(p, economy);
+          const fmtFn = PROMISE_FMT[p.id] || fmt1;
+          const color = met ? COLOR.teal : COLOR.rust;
+          return (
+            <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              {met ? <Check size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} /> : <AlertTriangle size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: met ? COLOR.text : COLOR.muted }}>{p.label}</span>
+                  <span className="ems-mono" style={{ fontSize: 10.5, color, flexShrink: 0 }}>{fmtFn(value)} / {fmtFn(p.target)}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint }}>{p.text}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Segmented({ options, value, onChange, label, hint }) {
   const cur = options.find((o) => o.id === value);
   return (
@@ -2433,7 +2546,7 @@ function Segmented({ options, value, onChange, label, hint }) {
 const SAVE_VERSION = 3;
 function makeSnapshot(state) {
   // в истории не храним разложение налоговой базы — оно пересчитывается и раздувает файл
-  const slim = (state.history || []).map((h) => { const { revenueParts, ...rest } = h; return rest; });
+  const slim = (state.history || []).map((h) => { const { revenueParts: _revenueParts, ...rest } = h; return rest; });
   return { app: 'economic-panel', v: SAVE_VERSION, savedAt: new Date().toISOString(), ...state, history: slim };
 }
 function validateSnapshot(data) {
@@ -2467,18 +2580,21 @@ const ACHIEVEMENTS = [
   { id: 'first_quarter', icon: '🎬', title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
   { id: 'survivor_20', icon: '🗓️', title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
   { id: 'survivor_40', icon: '📜', title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
-  { id: 'inflation_target', icon: '🎯', title: 'В яблочко', desc: 'Удержи инфляцию рядом с целью 4 квартала подряд.' },
+  { id: 'inflation_target', icon: '🎯', title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
   { id: 'gdp_double', icon: '📈', title: 'Удвоение', desc: 'Удвой реальный ВВП от старта партии.' },
   { id: 'low_unemployment', icon: '🧑‍🏭', title: 'Полная занятость', desc: 'Опусти безработицу ниже 4%.' },
-  { id: 'debt_control', icon: '🏦', title: 'Долговая дисциплина', desc: 'Снизь госдолг ниже 40% ВВП.' },
+  { id: 'debt_control', icon: '🏦', title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизь госдолг ниже 35% ВВП.' },
   { id: 'survived_crisis', icon: '⛈️', title: 'Пережили бурю', desc: 'Выведи страну из кризисного режима обратно к норме.' },
   { id: 'won_election', icon: '🗳️', title: 'Мандат доверия', desc: 'Останься у власти на выборах.' },
   { id: 'all_roles', icon: '🎭', title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, главу государства и трейдера.' },
   { id: 'network_played', icon: '🌐', title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
   { id: 'casino_win', icon: '🎲', title: 'Дебют в казино', desc: 'Выиграй свою первую ставку в казино.' },
-  { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 3 млн в одной игре казино.' },
-  { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 5 млн суммарно за партию.' },
+  { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 30 млн в одной игре казино.' },
+  { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 50 млн суммарно за партию.' },
   { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
+  { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
+  { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди курс обучения целиком — все шесть модулей.' },
+  { id: 'promises_kept', icon: '🤝', title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (глава государства).' },
 ];
 const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -2519,15 +2635,15 @@ function survivedCrisis(history) {
   if ((last.activeCrises || []).length > 0) return false;
   return history.slice(0, -1).some((h) => (h.activeCrises || []).length > 0);
 }
-function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents }) {
+function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role }) {
   const ids = [];
   if (quarterIndex >= 1) ids.push('first_quarter');
   if (quarterIndex >= 20) ids.push('survivor_20');
   if (quarterIndex >= 40) ids.push('survivor_40');
-  if (inflationOnTargetStreak(history) >= 4) ids.push('inflation_target');
+  if (role === 'central_bank' && inflationOnTargetStreak(history) >= 8) ids.push('inflation_target');
   if (history && history.length > 1 && history[0].gdp > 0 && economy.gdp >= history[0].gdp * 2) ids.push('gdp_double');
   if (economy.unemployment < 4) ids.push('low_unemployment');
-  if (economy.debtToGdp < 40) ids.push('debt_control');
+  if (role === 'ministry_finance' && economy.debtToGdp < 35) ids.push('debt_control');
   if (survivedCrisis(history)) ids.push('survived_crisis');
   if (economy.electionResult === 'incumbent') ids.push('won_election');
   if (rolesPlayed && ALL_ROLE_IDS.every((r) => rolesPlayed.includes(r))) ids.push('all_roles');
@@ -2538,40 +2654,83 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
 function casinoAchievementIds({ net, casinoNet }) {
   const ids = [];
   if (net > 0) ids.push('casino_win');
-  if (net >= 3) ids.push('casino_jackpot');
-  if (casinoNet >= 5) ids.push('casino_ahead');
+  if (net >= 30) ids.push('casino_jackpot');
+  if (casinoNet >= 50) ids.push('casino_ahead');
   return ids;
 }
 // очередь тостов «достижение открыто» — общая для соло- и сетевого экрана
 function useAchievementToasts() {
   const [toast, setToast] = useState(null);
+  const [leaving, setLeaving] = useState(false);
   const queueRef = React.useRef([]);
   const showingRef = React.useRef(false);
-  const timerRef = React.useRef(null);
+  const showTimerRef = React.useRef(null);
+  const leaveTimerRef = React.useRef(null);
   const advance = React.useCallback(() => {
     const next = queueRef.current.shift();
-    showingRef.current = !!next;
-    setToast(next || null);
-    if (next) { Audio.play('coin'); timerRef.current = setTimeout(advance, 4200); }
+    if (next) {
+      showingRef.current = true;
+      setToast(next); setLeaving(false);
+      Audio.play('coin');
+      showTimerRef.current = setTimeout(() => {
+        setLeaving(true);
+        leaveTimerRef.current = setTimeout(advance, 450); // время на анимацию исчезновения
+      }, 3800);
+    } else {
+      showingRef.current = false;
+      setToast(null); setLeaving(false);
+    }
   }, []);
-  React.useEffect(() => () => clearTimeout(timerRef.current), []);
+  React.useEffect(() => () => { clearTimeout(showTimerRef.current); clearTimeout(leaveTimerRef.current); }, []);
   const push = React.useCallback((list) => {
     if (!list || !list.length) return;
     queueRef.current.push(...list);
     if (!showingRef.current) advance();
   }, [advance]);
-  return { toast, push };
+  return { toast, leaving, push };
 }
-const AchievementToast = ({ toast }) => (!toast ? null : (
-  <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 90, maxWidth: 300,
-    padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)' }}>
-    <span style={{ fontSize: 26, lineHeight: 1 }}>{toast.icon}</span>
-    <div>
-      <div style={{ fontSize: 10, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
-      <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginTop: 1 }}>{toast.title}</div>
+// Конфетти — фиксированный набор мелких прямоугольников с разлётом наружу через
+// CSS-переменные; пересоздаётся только когда меняется само достижение (по toast.id),
+// а не на каждый ре-рендер, иначе разлёт «дёргался» бы при любом обновлении родителя.
+const CONFETTI_COLORS = ['#C9A227', '#E8C766', '#4E9A82', '#B0503A', '#5B7FA6', '#EDE7D6'];
+function useConfettiPieces(seed, count = 16) {
+  return React.useMemo(() => Array.from({ length: count }, (_, i) => {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
+    const dist = 34 + Math.random() * 46;
+    return {
+      key: i,
+      dx: `${(Math.cos(angle) * dist).toFixed(1)}px`,
+      dy: `${(Math.sin(angle) * dist - 14 - Math.random() * 18).toFixed(1)}px`,
+      rot: `${Math.round((Math.random() - 0.5) * 520)}deg`,
+      delay: `${(Math.random() * 0.12).toFixed(2)}s`,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      w: 4 + Math.round(Math.random() * 3),
+      h: 7 + Math.round(Math.random() * 5),
+    };
+  }), [seed, count]);
+}
+const AchievementToast = ({ toast, leaving }) => {
+  const pieces = useConfettiPieces(toast ? toast.id : null);
+  if (!toast) return null;
+  return (
+    <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 90, maxWidth: 300,
+      padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
+      <span style={{ position: 'relative', fontSize: 26, lineHeight: 1 }}>
+        {toast.icon}
+        {!leaving && pieces.map((p) => (
+          <span key={p.key} className="ems-confetti-piece" style={{
+            position: 'absolute', top: '50%', left: '50%', width: p.w, height: p.h, background: p.color,
+            '--dx': p.dx, '--dy': p.dy, '--rot': p.rot, animationDelay: p.delay,
+          }} />
+        ))}
+      </span>
+      <div>
+        <div style={{ fontSize: 10, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
+        <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginTop: 1 }}>{toast.title}</div>
+      </div>
     </div>
-  </div>
-));
+  );
+};
 function AchievementsModal({ onClose }) {
   const unlocked = loadUnlockedAchievements();
   const count = ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
@@ -2616,7 +2775,9 @@ function AchievementsModal({ onClose }) {
    центробанка переживает обычное поражение партии власти, а министерский
    портфель нет. */
 function checkDefeat({ role, economy, history, bookVal }) {
-  if (history && history.length >= 4) {
+  // гиперинфляция — провал денежной/бюджетной политики; трейдер её не проводит и
+  // повлиять на неё не может, так что и мандата за неё лишаться ему не за что
+  if (role !== 'trader' && history && history.length >= 4) {
     const last4 = history.slice(-4);
     if (last4.every((h) => h.inflation != null && h.inflation >= 40)) {
       return { id: 'hyperinflation', title: 'Гиперинфляционный коллапс',
@@ -2654,9 +2815,12 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, on
   );
 }
 const GameOverBar = ({ defeat, onReopen, onRestart, restartLabel = 'Начать заново' }) => (
-  <div style={{ borderTop: `1px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
-    display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
-    <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600 }}>Партия окончена: {defeat.title}</span>
+  <div style={{ borderTop: `2px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
+    display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)' }}>
+    <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
+      <AlertTriangle size={14} />Партия окончена: {defeat.title}
+    </span>
     <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5 }} onClick={onReopen}>Подробнее</button>
     <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onRestart}>{restartLabel}</button>
   </div>
@@ -2674,7 +2838,7 @@ function ruPlural(n, one, few, many) {
   return many;
 }
 const countUnlockedAchievements = () => { const u = loadUnlockedAchievements(); return ACHIEVEMENTS.filter((a) => u[a.id]).length; };
-function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat }) {
+function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat, promises }) {
   const roleLabel = (ROLES.find((r) => r.id === role) || {}).short || role;
   const isTrader = role === 'trader';
   const stats = [];
@@ -2691,7 +2855,12 @@ function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio,
     stats.push(['ВВП с начала партии', gdpChange != null ? `${gdpChange >= 0 ? '+' : ''}${gdpChange.toFixed(0)}%` : '—']);
     stats.push(['Инфляция', `${fmt1(economy.inflation)}%`]);
     stats.push(['Безработица', `${fmt1(economy.unemployment)}%`]);
-    stats.push(['Долг к ВВП', `${fmt1(economy.debtToGdp)}%`]);
+    if (role === 'full_control' && promises && promises.length) {
+      const keptCount = promises.filter((p) => evaluatePromise(p, economy).met).length;
+      stats.push(['Обещания сдержаны', `${keptCount} из ${promises.length}`]);
+    } else {
+      stats.push(['Долг к ВВП', `${fmt1(economy.debtToGdp)}%`]);
+    }
   }
   return {
     roleLabel, emoji: RESULT_CARD_EMOJI[role] || '🏛️',
@@ -3098,7 +3267,7 @@ const marginLevel = (book, economy, live) => {
 };
 
 /* amountMln — деньги для спота и опционов, гарантийное обеспечение для фьючерса */
-function tradeBook(book, instrId, amountMln, side, economy, live, quarterIndex) {
+function tradeBook(book, instrId, amountMln, side, economy, live) {
   const instr = INSTR_BY_ID[instrId];
   if (!instr || !(amountMln > 0.0001)) return book;
   const price = priceOf(instr, economy, live);
@@ -3191,7 +3360,7 @@ function tradeBook(book, instrId, amountMln, side, economy, live, quarterIndex) 
 }
 
 /* Закрытие квартала: экспирация опционов, плата за шорт и плечо, маржин-колл */
-function settleQuarter(book, economy, quarterIndex) {
+function settleQuarter(book, economy) {
   const events = [];
   let b = { ...book, pos: { ...book.pos }, avg: { ...book.avg }, opts: [...(book.opts || [])] };
   // опционы: экспирация и списание временной стоимости
@@ -3327,7 +3496,7 @@ function PriceCell({ value, size = 12, bold }) {
 }
 
 /* Разбор механики инструмента живыми цифрами: фьючерс и облигация — самые непонятные */
-function InstrumentPrimer({ instr, economy, prev, price, amt }) {
+function InstrumentPrimer({ instr, economy, prev, amt }) {
   const Row = ({ k, v, tone }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '1.5px 0' }}>
       <span style={{ color: COLOR.muted }}>{k}</span>
@@ -3543,7 +3712,9 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
 
           {series.length > 2 && (
             <>
-              <MemoChart data={series} color={instr.color} height={70} label={instr.name} marks={marks} fmt={fmt2} />
+              <Suspense fallback={<ChartFallback height={70} />}>
+                <MemoChart data={series} color={instr.color} height={70} label={instr.name} marks={marks} fmt={fmt2} />
+              </Suspense>
               {marks.length > 0 && (
                 <div style={{ fontSize: 10, color: COLOR.faint, marginTop: -4 }}>
                   <span style={{ color: COLOR.teal }}>B</span> — ваши покупки, <span style={{ color: COLOR.rust }}>S</span> — продажи
@@ -3566,7 +3737,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                 </div>
               ))}
           </div>
-          <InstrumentPrimer instr={instr} economy={economy} prev={prev} price={price} amt={amt} />
+          <InstrumentPrimer instr={instr} economy={economy} prev={prev} amt={amt} />
 
           {instr.kind === 'opt' && lots.length > 0 && (
             <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.5 }}>
@@ -3683,12 +3854,6 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
   const start = book.startValue || 10;
   const totalRet = (equity / start - 1) * 100;
   const bench = benchValues(book, economy);
-  const rows = INSTRUMENTS.map((i) => {
-    const q = book.pos[i.id] || 0;
-    const pr = priceOf(i, economy, live);
-    const v = i.kind === 'fut' ? Math.abs(q) * pr / 1000 : q * pr / 1000;
-    return { i, v, short: q < 0 };
-  }).filter((r) => Math.abs(r.v) > 0.005);
   const optVal = parts.optVal;
   const alloc = useMemo(() => {
     const map = {};
@@ -3741,7 +3906,9 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
         </div>
       </div>
       {book.history && book.history.length > 2 && (
-        <MemoChart data={book.history} color={COLOR.gold} height={54} label="Капитал" fmt={fmt2} />
+        <Suspense fallback={<ChartFallback height={54} />}>
+          <MemoChart data={book.history} color={COLOR.gold} height={54} label="Капитал" fmt={fmt2} />
+        </Suspense>
       )}
       {bench && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
@@ -4336,38 +4503,6 @@ function CasinoScreen({ book, onCasino }) {
   );
 }
 
-/* Интерактивный мини-график: подсказка по наведению и отметки сделок */
-function MiniChart({ data, color, height = 46, label, fmt, marks }) {
-  const rows = (data || []).map((v, i) => ({ i, v: Number.isFinite(v) ? v : null }));
-  if (rows.filter((r) => r.v !== null).length < 2) return <div style={{ height }} />;
-  const markSet = {};
-  (marks || []).forEach((m) => { if (m.idx >= 0) markSet[m.idx] = m; });
-  const dot = (props) => {
-    const m = markSet[props.payload.i];
-    if (!m) return null;
-    return (
-      <g key={`m${props.payload.i}`}>
-        <circle cx={props.cx} cy={props.cy} r={4.2} fill={m.side === 'buy' ? COLOR.teal : COLOR.rust} stroke={COLOR.bg} strokeWidth={1} />
-        <text x={props.cx} y={props.cy - 7} textAnchor="middle" fontSize={8} fill={m.side === 'buy' ? COLOR.teal : COLOR.rust}>
-          {m.side === 'buy' ? 'B' : 'S'}
-        </text>
-      </g>
-    );
-  };
-  return (
-    <div className="ems-visual" style={{ width: '100%', height }}>
-      <ResponsiveContainer>
-        <LineChart data={rows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
-          <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11, padding: '4px 8px' }}
-            labelFormatter={(i) => `${(marks && marks.label) || ''}${rows.length - 1 - i === 0 ? 'сейчас' : `${rows.length - 1 - i} кв. назад`}`}
-            formatter={(v) => [fmt ? fmt(v) : fmt1(v), label || 'значение']} />
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.6} dot={marks && marks.length ? dot : false} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 /* Панель ведомств для инвестора: только наблюдаемые факты и публичные заявления */
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
   const row = (l, v) => (
@@ -4448,6 +4583,26 @@ const DASHBOARD_PRESETS = [
   { id: 'market', name: 'Рынок', pins: ['stockIndex', 'bondIndex', 'yield10y', 'curveSlope', 'sovereignSpread', 'volatilityIndex'] },
   { id: 'crisis', name: 'Кризис', pins: ['bankNPL', 'bankCapitalAdequacy', 'bankingRisk', 'reserves', 'exchangeRate', 'unemployment'] },
 ];
+/* Пользовательские наборы дашборда хранятся на устройстве (как достижения), а не
+   только внутри конкретного сохранения — «Сохранить текущий набор» должен пережить
+   и «Начать заново», и переход в другую партию. */
+const CUSTOM_DASHBOARDS_KEY = 'ems-custom-dashboards';
+const loadCustomDashboards = () => {
+  try { const arr = JSON.parse(localStorage.getItem(CUSTOM_DASHBOARDS_KEY) || '[]'); return Array.isArray(arr) ? arr : []; }
+  catch { return []; }
+};
+const persistCustomDashboards = (list) => {
+  try { localStorage.setItem(CUSTOM_DASHBOARDS_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+};
+// Сохранение может нести свои собственные наборы (например, сделанные до появления
+// этой возможности) — подмешиваем их к общеустройственным и заодно закрепляем там же.
+function initDashboards(savedDashboards) {
+  const stored = loadCustomDashboards();
+  const extra = (savedDashboards || []).filter((d) => d && d.custom && !stored.some((s) => s.id === d.id));
+  const merged = [...stored, ...extra];
+  if (extra.length) persistCustomDashboards(merged);
+  return [...DASHBOARD_PRESETS, ...merged];
+}
 const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern); } catch { /* не поддерживается */ } };
 
 function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash }) {
@@ -4464,9 +4619,11 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
           <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, marginBottom: 8 }}>Тема оформления</div>
           {Object.values(THEMES).map((t) => (
             <button key={t.id} className="ems-btn" style={{ width: '100%', textAlign: 'left', padding: '6px 9px', fontSize: 11.5, marginBottom: 4,
+              display: 'flex', alignItems: 'center', gap: 7,
               background: theme === t.id ? COLOR.gold : COLOR.panelAlt, color: theme === t.id ? COLOR.ink : COLOR.text,
               borderColor: theme === t.id ? COLOR.gold : COLOR.border }}
               onClick={() => { Audio.play('tab'); setTheme(t.id); }}>
+              <span className="ems-theme-dot" style={{ background: t.colors.gold }} />
               {t.name}{t.id === 'contrast' ? ' · доступность' : ''}
             </button>
           ))}
@@ -4489,110 +4646,14 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
           </div>
           <button className="ems-btn" style={{ width: '100%', padding: '5px 0', fontSize: 10.5 }}
             onClick={() => { Audio.play('stamp'); saveDash(); }}>Сохранить текущий набор</button>
+          <div style={{ fontSize: 9.5, color: COLOR.faint, lineHeight: 1.4, marginTop: 6 }}>
+            Свои наборы хранятся на этом устройстве и доступны во всех партиях, а не только в текущей.
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-/* ============================ РЕАКЦИЯ ЭКОНОМИКИ НА РЕШЕНИЕ ============================ */
-function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
-  const H = horizon || 12;
-  const noiseSave = CONFIG.noiseMult[difficulty];
-  const evSave = CONFIG.eventProbability[difficulty];
-  CONFIG.noiseMult[difficulty] = 0; CONFIG.eventProbability[difficulty] = 0;
-  const run = (val) => {
-    let e = economy; let d = { ...decisions, [leverId]: val };
-    let pend = []; let cds = {}; let st = []; const out = [];
-    for (let q = 1; q <= H; q++) {
-      const r = simulateQuarter({ economy: e, decisions: d, pendingImpulses: pend, eventCooldowns: cds,
-        difficulty, quarterIndex: q, stories: st });
-      e = r.economy; pend = r.pendingImpulses; cds = r.eventCooldowns; st = r.stories;
-      d = { ...defaultDecisions(e, d), [leverId]: val };
-      out.push(e);
-    }
-    return out;
-  };
-  let res = [];
-  try {
-    const base = run(baseValue);
-    const alt = run(newValue);
-    res = base.map((b, i) => ({
-      q: i + 1,
-      gdpGrowth: alt[i].gdpGrowth - b.gdpGrowth,
-      inflation: alt[i].inflation - b.inflation,
-      unemployment: alt[i].unemployment - b.unemployment,
-      outputGap: alt[i].outputGap - b.outputGap,
-      debtToGdp: alt[i].debtToGdp - b.debtToGdp,
-      stockIndex: (alt[i].stockIndex / b.stockIndex - 1) * 100,
-      baseGdp: b.gdpGrowth, altGdp: alt[i].gdpGrowth,
-      baseInfl: b.inflation, altInfl: alt[i].inflation,
-    }));
-  } catch { res = []; }
-  CONFIG.noiseMult[difficulty] = noiseSave; CONFIG.eventProbability[difficulty] = evSave;
-  return res;
-}
-const IRF_SERIES = [
-  { key: 'gdpGrowth', label: 'Рост ВВП', color: COLOR.gold, unit: ' п.п.' },
-  { key: 'inflation', label: 'Инфляция', color: COLOR.rust, unit: ' п.п.' },
-  { key: 'unemployment', label: 'Безработица', color: COLOR.blue, unit: ' п.п.' },
-  { key: 'debtToGdp', label: 'Долг к ВВП', color: COLOR.teal, unit: ' п.п.' },
-  { key: 'stockIndex', label: 'Индекс акций', color: '#8E7CC3', unit: '%' },
-];
-function IRFModal({ economy, decisions, lever, value, baseValue, difficulty, onClose }) {
-  const data = useMemo(() => computeIRF(economy, decisions, lever.id, baseValue, value, difficulty, 12),
-    [lever.id, baseValue, value]);
-  const peak = (key) => data.reduce((a, d) => (Math.abs(d[key]) > Math.abs(a.v) ? { v: d[key], q: d.q } : a), { v: 0, q: 0 });
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 720, width: '100%', padding: 18, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <Activity size={15} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Реакция экономики: {lever.label}</span>
-          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose} aria-label="Закрыть"><X size={13} /></button>
-        </div>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.5 }}>
-          Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(decisions[lever.id])}{lever.suffix})
-          и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий. На графике — разница между этими двумя мирами,
-          то есть чистый эффект именно вашего решения.
-        </div>
-        <div className="ems-visual" style={{ height: 230 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
-              <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
-              <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border}
-                label={{ value: 'кварталов после решения', fill: COLOR.faint, fontSize: 10, position: 'insideBottom', offset: -2 }} />
-              <YAxis tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border} />
-              <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11 }}
-                labelFormatter={(v) => `${v}-й квартал`} formatter={(v, n) => [fmtSigned1(v), n]} />
-              <Legend wrapperStyle={{ fontSize: 10.5 }} />
-              {IRF_SERIES.map((sr) => (
-                <Line key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stroke={sr.color} strokeWidth={1.6} dot={false} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginTop: 12 }}>
-          {IRF_SERIES.map((sr) => {
-            const pk = peak(sr.key);
-            return (
-              <div key={sr.key} className="ems-panel" style={{ padding: 9 }}>
-                <div style={{ fontSize: 10.5, color: COLOR.muted }}>{sr.label}</div>
-                <div className="ems-mono" style={{ fontSize: 15, color: sr.color }}>{fmtSigned1(pk.v)}{sr.unit}</div>
-                <div style={{ fontSize: 10, color: COLOR.faint }}>{pk.q ? `пик через ${pk.q} кв.` : 'без заметного эффекта'}</div>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12, lineHeight: 1.5 }}>
-          Это контрфактический расчёт: «что было бы, если бы». Реальная траектория будет отличаться — в ней будут шоки,
-          решения второго ведомства и накопленные ожидания. Но знак, форма и задержка эффекта останутся теми же.
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 /* =========================================================================================
    СЕТЕВАЯ ИГРА: лобби (создать/войти) и экран партии, синхронизированный с сервером.
@@ -4811,8 +4872,8 @@ function NetworkLobby({ onEnter }) {
               const rd = slot && seatRole(slot.seat);
               const SlotIcon = rd && ROLE_ICON[rd.icon];
               return (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
-                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                   {slot ? (
                     <>
                       {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
@@ -4946,14 +5007,21 @@ function NetworkLobby({ onEnter }) {
 
 function NetworkEntryScreen({ onEnter, onBack }) {
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <div style={{ maxWidth: 640, width: '100%' }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); onBack(); }}>
           ← Назад в меню
         </button>
-        <NetworkLobby onEnter={onEnter} />
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div className="ems-hero-eyebrow">Мультиплеер</div>
+          <div className="ems-hero-title small">Партия на двоих</div>
+          <div className="ems-hero-rule" />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <NetworkLobby onEnter={onEnter} />
+        </div>
       </div>
     </div>
   );
@@ -4969,13 +5037,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
   const [portfolio, setPortfolio] = useState(() => loadNetworkPortfolio(id, seat) || emptyBook());
   React.useEffect(() => { saveNetworkPortfolio(id, seat, portfolio); }, [id, seat, portfolio]);
-  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const [defeat, setDefeat] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
   const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
-    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes, room.quarterIndex);
+    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
     const instr = INSTR_BY_ID[instrId];
     return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
   });
@@ -5036,7 +5104,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       markNetworkPlayed();
       pushAch(unlockAchievements(questProgressAchievementIds({
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
-        rolesPlayed: recordRolePlayed(seat), networkPlayed: true,
+        rolesPlayed: recordRolePlayed(seat), networkPlayed: true, role: seatRole(seat).id,
       })));
       const roleForDefeat = seatRole(seat).id;
       // расчёт по портфелю (переоценка, экспирация опционов, маржин-колл) —
@@ -5046,7 +5114,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         setPortfolio((b) => {
           const withBench = b.benchStart ? b : { ...b, benchStart: { stockIndex: r.economy.stockIndex, bondIndex: r.economy.bondIndex,
             depositIndex: r.economy.depositIndex, priceLevel: r.economy.priceLevel } };
-          const nb = settleQuarter(withBench, r.economy, r.quarterIndex);
+          const nb = settleQuarter(withBench, r.economy);
           const marginCalled = (nb.lastEvents || []).some((ev) => ev.kind === 'call');
           if (marginCalled) { Audio.play('alarm'); haptic([60, 80, 60]); pushAch(unlockAchievements(['margin_call'])); }
           const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: bookValue(nb, r.economy, null) });
@@ -5079,7 +5147,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [period, setPeriod] = useState('5y');
   const [activeTab, setActiveTab] = useState('economy');
   const [dense, setDense] = useState(false);
-  const [dashboards, setDashboards] = useState(DASHBOARD_PRESETS);
+  const [dashboards, setDashboards] = useState(() => initDashboards());
   const [activeDash, setActiveDash] = useState('overview');
   const [pinned, setPinned] = useState(DEFAULT_PINS);
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
@@ -5099,10 +5167,18 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const saveDash = () => {
     const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
     const did = `custom${Date.now()}`;
-    setDashboards((ds) => [...ds, { id: did, name, pins: [...pinned], custom: true }]);
+    setDashboards((ds) => {
+      const next = [...ds, { id: did, name, pins: [...pinned], custom: true }];
+      persistCustomDashboards(next.filter((d) => d.custom));
+      return next;
+    });
     setActiveDash(did);
   };
-  const deleteDash = (did) => setDashboards((ds) => ds.filter((d) => d.id !== did));
+  const deleteDash = (did) => setDashboards((ds) => {
+    const next = ds.filter((d) => d.id !== did);
+    persistCustomDashboards(next.filter((d) => d.custom));
+    return next;
+  });
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
 
@@ -5204,9 +5280,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <Atmosphere regime={economy.regime}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} onClose={() => setShowPaper(false)} />}
+      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      <AchievementToast toast={achToast} />
+      <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню" />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
@@ -5217,7 +5293,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 4, background: COLOR.goldDim, border: `1px solid ${COLOR.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
           <div>
@@ -5463,8 +5539,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </>
           )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
-          <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
-            hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          <Suspense fallback={<ChartFallback />}>
+            <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
+              hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          </Suspense>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
@@ -5567,7 +5645,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню" />
       ) : (
         <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
-          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
             <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -5599,7 +5678,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 // Первый экран после запуска: выбор направления (новая партия / сеть /
 // продолжить / достижения), а не сразу детальная анкета — её показывает
 // SetupScreen отдельным шагом, только для новой одиночной партии.
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
+// Витринные классы (.ems-hero-*, .ems-card-btn, .ems-theme-*) определены в
+// GlobalStyle и переиспользуются на всех входных экранах (меню, новая партия,
+// обучение, сеть) — не только здесь.
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad }) {
   const playerId = useMemo(getPlayerId, []);
   const [soloSlots, setSoloSlots] = useState(null);
   const [slotBusy, setSlotBusy] = useState(null);
@@ -5626,6 +5708,8 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
   const MENU_ITEMS = [
     { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
+    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Курс из пяти модулей — от ставки и бюджета до кризисных инструментов.',
+      action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
     { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
       action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
     { id: 'achievements', icon: Trophy, title: 'Достижения', desc: 'Коллекция наград, открытых за все ваши партии на этом устройстве.',
@@ -5633,21 +5717,24 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
   ];
 
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '48px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '56px 16px' }}>
       <GlobalStyle />
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <div style={{ maxWidth: 640, width: '100%' }}>
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div className="ems-serif" style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.01em' }}>Экономическая панель государства</div>
-          <div className="ems-mono" style={{ color: COLOR.faint, fontSize: 11, marginTop: 10 }}>{romanQ(1)} кв. {CONFIG.startYear} · симулятор макроэкономической политики</div>
-          <div style={{ color: COLOR.muted, fontSize: 13.5, marginTop: 16, maxWidth: 520, margin: '16px auto 0', lineHeight: 1.6 }}>
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 40 }}>
+          <div className="ems-hero-eyebrow">Симулятор макроэкономической политики</div>
+          <div className="ems-hero-title">Экономическая панель государства</div>
+          <div className="ems-hero-rule" />
+          <span className="ems-hero-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</span>
+          <div className="ems-hero-lede">
             Ставка → кредит → спрос → выпуск → занятость → цены → ожидания. Управляйте центральным банком, Минфином
             или обоими сразу — соло против ботов со своим характером или вдвоём по сети.
           </div>
         </div>
 
         {storageMode === 'memory' && (
-          <div className="ems-panel" style={{ padding: 12, marginBottom: 16, borderColor: COLOR.rust }}>
+          <div className="ems-panel ems-fade-in" style={{ padding: 13, marginBottom: 16, borderColor: COLOR.rust, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
               Сервер не подключён к общему хранилищу (Redis) — сохранения живут только в памяти одного случайного
               запроса и могут пропасть между обращениями. Это настройка развёртывания
@@ -5658,17 +5745,20 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
         )}
 
         {hasSaves && (
-          <div className="ems-panel" style={{ padding: 14, marginBottom: 20 }}>
-            <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>
-              Продолжить ({soloSlots.filter(Boolean).length}/3)
+          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+              <Clock size={13} color={COLOR.teal} />
+              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
+                Продолжить ({soloSlots.filter(Boolean).length}/3)
+              </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {soloSlots.map((slot, idx) => {
                 if (!slot) return null;
                 const roleTitle = (ROLES.find((r) => r.id === slot.role) || {}).short || slot.role;
                 return (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
-                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+                  <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                     <span style={{ flex: 1, color: COLOR.text }}>{roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}</span>
                     <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
                       onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
@@ -5684,34 +5774,634 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onLoad }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
-          {MENU_ITEMS.map((item) => {
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginBottom: 30 }}>
+          {MENU_ITEMS.map((item, i) => {
             const Icon = item.icon;
             return (
-              <div key={item.id} onClick={item.action} className="ems-panel"
-                style={{ padding: '15px 18px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 38, height: 38, borderRadius: '50%', background: COLOR.goldDim, display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon size={17} color={COLOR.gold} />
+              <div key={item.id} onClick={item.action} className="ems-card-btn ems-fade-in"
+                style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms` }}
+                role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') item.action(); }}>
+                <div className="ems-card-icon">
+                  <Icon size={19} color={COLOR.gold} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="ems-serif" style={{ fontSize: 15, color: COLOR.text }}>{item.title}</div>
+                  <div className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{item.title}</div>
                   <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{item.desc}</div>
                 </div>
-                <ChevronDown size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
+                <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
               </div>
             );
           })}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10.5, color: COLOR.faint, marginRight: 2 }}>Оформление:</span>
           {Object.values(THEMES).map((t) => (
-            <button key={t.id} className="ems-btn" style={{ padding: '5px 10px', fontSize: 10.5,
+            <button key={t.id} className="ems-theme-chip" style={{
               background: theme === t.id ? COLOR.gold : COLOR.panelAlt, color: theme === t.id ? COLOR.ink : COLOR.muted,
-              borderColor: theme === t.id ? COLOR.gold : COLOR.border }}
-              onClick={() => { Audio.play('tab'); setTheme(t.id); }}>{t.name}</button>
+              border: `1px solid ${theme === t.id ? COLOR.gold : COLOR.border}` }}
+              onClick={() => { Audio.play('tab'); setTheme(t.id); }}>
+              <span className="ems-theme-dot" style={{ background: t.colors.gold }} />
+              {t.name}
+            </button>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================ ОБУЧЕНИЕ: КУРС ИЗ МОДУЛЕЙ ============================ */
+// Курс из последовательных модулей вместо одного урока: каждый — своя
+// мини-экономика (без бота-оппонента, кризисов и оценки партии) на настоящем
+// движке (simulateQuarter), со сценарием и открываемыми по одному рычагами.
+// Модули идут от поверхностного понимания к углублённому и разблокируются по
+// порядку — прогресс хранится на устройстве (localStorage), как и достижения.
+const COURSE_PROGRESS_KEY = 'ems-course-progress';
+const loadCourseProgress = () => { try { return JSON.parse(localStorage.getItem(COURSE_PROGRESS_KEY) || '{}'); } catch { return {}; } };
+const markModuleDone = (id) => {
+  const p = loadCourseProgress(); p[id] = true;
+  try { localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(p)); } catch { /* приватный режим */ }
+  return p;
+};
+
+const TUTORIAL_MODULES = [
+  {
+    id: 'basics', depth: 'surface', icon: Zap,
+    title: 'Основы: ставка и расходы',
+    summary: 'Как ключевая ставка и госрасходы двигают экономику — и почему не сразу.',
+    pins: ['gdp', 'inflation', 'unemployment', 'debtToGdp'],
+    steps: [
+      {
+        title: 'Добро пожаловать',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Это тренировочный кабинет: мини-экономика без бота-оппонента, кризисов и оценки партии в конце. Настоящая игра сложнее — там второй ветвью власти управляет бот со своим характером, случаются кризисы, а итог партии сравнивается с выбранной целью.</p>
+            <p>Экономика считается кварталами, и решение сегодня отражается на показателях с лагом в один-два квартала — эффект не мгновенный. Это главное, что стоит запомнить прямо сейчас.</p>
+            <p>Сейчас инфляция {pctFmt(economy.inflation)} при цели {pctFmt(economy.inflationTarget)}, рост в норме. Нажмите «Далее», чтобы посмотреть на квартал без вашего вмешательства.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Ключевая ставка',
+        lever: 'keyRate', minDelta: 1, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Вот единственный рычаг этого шага — ключевая ставка Центрального банка. Выше ставка → дороже кредит → меньше спроса → ниже инфляция, но и медленнее рост. Ниже ставка — наоборот.</p>
+            <p>Сейчас ставка {pctFmt(economy.keyRate)}, инфляция {pctFmt(economy.inflation)}.</p>
+            <p>Поднимите ставку минимум на 1 п.п. и нажмите «Далее» — квартал завершится с этим решением.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Лаг и бюджетный рычаг',
+        lever: 'govSpending', minDelta: 2, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Инфляция сейчас {pctFmt(economy.inflation)} — почти как и была. Это ожидаемо: решение по ставке действует не мгновенно, а с лагом в один-два квартала — эффект будет виден чуть позже.</p>
+            <p>А вот и второй канал — расходы государства. В отличие от ставки, это решение «по накопительной»: заданный темп роста расходов сохраняется, пока вы его не измените, — не нужно повторять его каждый квартал.</p>
+            <p>Поднимите темп роста госрасходов минимум на 2 п.п. и нажмите «Далее».</p>
+          </>
+        ),
+      },
+      {
+        title: 'Вот и эффект',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] ? history[1].inflation : economy.inflation;
+          const now = economy.inflation;
+          return (
+            <>
+              <p>Сравните: сразу после первого квартала инфляция была {pctFmt(before)}. Сейчас, когда ставка и расходы успели подействовать, — {pctFmt(now)}. {now < before
+                ? 'Повышение ставки перевесило стимул от расходов — инфляция снижается.'
+                : 'Стимул от расходов оказался сильнее охлаждающего эффекта ставки — инфляция подросла.'}</p>
+              <p>Это и есть главный урок первого модуля: эффект решений накапливается и проявляется с задержкой.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Вы прошли первую цепочку: <b>ставка/расходы → кредит и спрос → выпуск → занятость → цены</b>. Дальше — вторая половина государства: бюджет, налоги и то, откуда вообще берётся госдолг.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'budget', depth: 'surface', icon: Coins,
+    title: 'Бюджет: налоги и дефицит',
+    summary: 'Откуда берутся деньги государства и почему долг — это не просто цифра.',
+    pins: ['revenuePctGdp', 'budgetBalancePctGdp', 'debtToGdp', 'interestToRevenue'],
+    steps: [
+      {
+        title: 'Доходы, расходы, долг',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Бюджет — это доходы (в основном налоги) минус расходы. Разница — дефицит (если отрицательная) или профицит. Накопленные из года в год дефициты и есть государственный долг.</p>
+            <p>Долг принято мерить не в абсолютных деньгах, а в % ВВП — так можно сравнивать разные по размеру экономики и разные периоды одной и той же.</p>
+            <p>Сейчас доходы бюджета {pctFmt(economy.revenuePctGdp)} ВВП, долг {pctFmt(economy.debtToGdp)} ВВП. Нажмите «Далее», чтобы увидеть спокойный квартал.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Налоги',
+        lever: 'vatRate', minDelta: 3, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Поднимите НДС минимум на 3 п.п. Казалось бы, доходы бюджета должны вырасти пропорционально ставке — но так работает только в теории.</p>
+            <p>Сейчас НДС {pctFmt(economy.vatRate)}, теневая экономика {pctFmt(economy.shadowShare)} ВВП. Чем выше ставка сверх разумного, тем больше активности уходит «в тень» — часть возможных сборов модель теряет именно так.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Расходы вместо доходов',
+        lever: 'transfers', minDelta: 3, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Второй способ повлиять на бюджет — расходы. Поднимите темп роста социальных выплат минимум на 3 п.п.</p>
+            <p>В отличие от разовой операции, это тоже «накопительное» решение (как госрасходы в первом модуле): подняли один раз — растёт каждый квартал, пока не измените. Сейчас баланс бюджета {fmtSignedPct(economy.budgetBalancePctGdp)} ВВП.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Цена долга',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] ? history[1] : economy;
+          return (
+            <>
+              <p>Доходы бюджета выросли не так сильно, как ставка НДС — часть эффекта съела тень. А рост социальных выплат потянул баланс бюджета вниз: с {fmtSignedPct(before.budgetBalancePctGdp)} до {fmtSignedPct(economy.budgetBalancePctGdp)} ВВП.</p>
+              <p>Долг к ВВП сдвинулся с {pctFmt(before.debtToGdp)} до {pctFmt(economy.debtToGdp)}. Обслуживание долга ({pctFmt(economy.interestToRevenue)} от доходов) — это проценты, которые бюджет платит каждый квартал, отъедая от денег на всё остальное.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Налоги не масштабируются линейно, а расходы, увеличенные один раз, продолжают давить на баланс каждый квартал. Долг — это не разовая проблема, а нарастающая стоимость обслуживания. Дальше — то, что происходит на границе: валютный курс.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'fx', depth: 'surface', icon: Globe2,
+    title: 'Валютный курс и резервы',
+    summary: 'Что двигает курс и почему ставка и интервенции тянут его в разные стороны.',
+    pins: ['exchangeRate', 'reserves', 'currentAccount', 'inflation'],
+    steps: [
+      {
+        title: 'Курс и резервы',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Курс в этой модели устроен так: чем выше число — тем слабее национальная валюта. Резервы — валютная «подушка», которой ЦБ может защищать курс интервенциями, но она не бесконечна.</p>
+            <p>Сейчас курс {fmt1(economy.exchangeRate)}, резервы {fmtMoney(economy.reserves)}. Нажмите «Далее», чтобы увидеть спокойный квартал.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Валютные интервенции',
+        lever: 'fxIntervention', minDelta: 5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Увеличьте валютные интервенции минимум на 5 млрд. Положительное значение — ЦБ покупает иностранную валюту, тем самым ослабляя национальную (например, чтобы поддержать экспортёров, которым выгоден слабый курс).</p>
+            <p>Курс сейчас {fmt1(economy.exchangeRate)}.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Ставка как противовес',
+        lever: 'keyRate', minDelta: 1.5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>У ставки, помимо влияния на инфляцию (модуль 1), есть и валютный эффект: чем она выше, тем привлекательнее актив в национальной валюте для иностранного капитала — курс укрепляется.</p>
+            <p>Курс после прошлого шага — {fmt1(economy.exchangeRate)}. Поднимите ключевую ставку минимум на 1.5 п.п. — это противоположно направленная сила.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Кто перевесил',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] ? history[1].exchangeRate : economy.exchangeRate;
+          const now = economy.exchangeRate;
+          return (
+            <>
+              <p>Курс изменился с {fmt1(before)} до {fmt1(now)}. Вы одновременно ослабляли его интервенциями и укрепляли ставкой — {now > before ? 'интервенции оказались сильнее' : 'ставка перевесила'}.</p>
+              <p>В реальной партии эти рычаги обычно в руках разных институтов (ЦБ отвечает за оба, но приоритеты у него не всегда однозначны) — управлять курсом в одиночку сложнее, чем кажется.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Курс — не отдельный рычаг, а равнодействующая нескольких решений сразу, и резервы, которыми его защищают, конечны. Дальше — тема более тонкая: как рынки верят (или не верят) обещаниям ЦБ.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'expectations', depth: 'deep', icon: Target,
+    title: 'Ожидания и доверие к ЦБ',
+    summary: 'Почему инфляционные ожидания важнее сиюминутной инфляции.',
+    pins: ['inflation', 'inflationExpectations', 'cbCredibility', 'keyRate'],
+    steps: [
+      {
+        title: 'Ожидания важнее цифры',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Инфляционные ожидания — это не прогноз, а то, что закладывают в цены и зарплаты уже сейчас: если все верят, что инфляция будет высокой, продавцы и работники требуют больше — и она правда становится высокой. Это самосбывающийся механизм.</p>
+            <p>Доверие к ЦБ измеряет, насколько рынок верит объявленной цели по инфляции. Сейчас ожидания {pctFmt(economy.inflationExpectations)}, доверие {Math.round(economy.cbCredibility)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Соблазн простого решения',
+        lever: 'inflationTarget', minDelta: 1, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Есть простой на бумаге способ «побороть» высокую инфляцию — объявить цель повыше, и формально она у цели. Поднимите цель по инфляции минимум на 1 п.п. и посмотрите, что происходит на самом деле.</p>
+            <p>Сейчас цель {pctFmt(economy.inflationTarget)}, доверие {Math.round(economy.cbCredibility)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Доверие не восстанавливается по щелчку',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] || economy;
+          return (
+            <>
+              <p>Доверие к ЦБ сдвинулось с {Math.round(before.cbCredibility)} до {Math.round(economy.cbCredibility)}, а ожидания — с {pctFmt(before.inflationExpectations)} до {pctFmt(economy.inflationExpectations)}. Смена цели не прошла бесплатно: рынок теперь меньше верит следующим объявлениям ЦБ.</p>
+              <p>Доверие теряется быстро, а восстанавливается медленно — и только делами, а не заявлениями.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Восстановление доверия',
+        lever: 'keyRate', minDelta: 2, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Единственный способ вернуть доверие — решительно и последовательно действовать в объявленную сторону. Поднимите ключевую ставку минимум на 2 п.п.</p>
+            <p>Сейчас ставка {pctFmt(economy.keyRate)}, доверие {Math.round(economy.cbCredibility)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Компромисс между гибкостью и доверием — сквозная тема настоящей игры: недаром у ботов-глав ЦБ разный характер (Ястреб держит цель жёстко, Голубь готов ею жертвовать). Дальше — последний, самый прикладной модуль: как готовиться к кризису заранее.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'crisis', depth: 'deep', icon: ShieldAlert,
+    title: 'Риски и подготовка к кризису',
+    summary: 'Макропруденциальные инструменты: не тушить пожар, а не дать ему начаться.',
+    pins: ['bankingRisk', 'bankCapitalAdequacy', 'bankNPL', 'financialStability'],
+    steps: [
+      {
+        title: 'Пять индикаторов риска',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>В настоящей игре есть панель из пяти рисков: инфляционный, банковский, долговой, рецессии и валютный — заранее показывают, где копится опасность, до того как она стала кризисом. В этом модуле — банковский.</p>
+            <p>Достаточность капитала банков {pctFmt(economy.bankCapitalAdequacy)}, просроченные кредиты {pctFmt(economy.bankNPL)}. Это буфер и его нагрузка: чем толще буфер и меньше просрочка, тем спокойнее банковская система переживёт шок.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Норматив достаточности капитала',
+        lever: 'capitalRequirement', minDelta: 1.5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Это требование к банкам держать больше капитала на случай убытков — амортизатор кризиса, который ставится заранее, а не во время паники. Поднимите норматив минимум на 1.5 п.п.</p>
+            <p>Плата за это реальна: банки выдают меньше кредитов — рост чуть замедляется. Сейчас норматив {pctFmt(economy.capitalRequirement)}.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Быстрая помощь ликвидностью',
+        lever: 'liquidity', minDelta: 5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Другой инструмент — прямая инъекция ликвidности банкам. В отличие от норматива капитала, это разовая скорая помощь, а не структурное решение. Увеличьте вливание ликвидности минимум на 5 млрд.</p>
+            <p>Сейчас банковский риск {Math.round(economy.bankingRisk)} из 100.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Что изменилось',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history[1] || economy;
+          return (
+            <>
+              <p>Достаточность капитала выросла с {pctFmt(before.bankCapitalAdequacy)} до {pctFmt(economy.bankCapitalAdequacy)}, банковский риск изменился с {Math.round(before.bankingRisk)} до {Math.round(economy.bankingRisk)}.</p>
+              <p>Норматив капитала — это профилактика на годы вперёд, ликвидность — заплатка на квартал. В реальной партии оба инструмента понадобятся, но по-разному: один заранее, другой — когда индикаторы риска уже красные.</p>
+            </>
+          );
+        },
+      },
+      {
+        title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Вы прошли пять модулей: ставка и расходы → бюджет и долг → валютный курс → ожидания и доверие → риски и подготовка к кризису. Экономика в этих модулях жила своей жизнью — но не жила политика. Последний модуль курса — как раз про неё: что бывает, когда всё перечисленное идёт плохо слишком долго.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'politics', depth: 'deep', icon: Flag,
+    title: 'Политический режим: от рейтинга до переворота',
+    summary: 'Как провальная политика может стоить не только выборов, но и самой демократии.',
+    pins: ['approval', 'politicalTension', 'govTrust', 'quartersToElection'],
+    steps: [
+      {
+        title: 'Рейтинг власти и выборы',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Рейтинг власти — не просто цифра для галочки. Раз в {CONFIG.election.cycle} кварталов проходят выборы, и их итог решает, продолжаете ли вы партию. Для «главы государства» и «главы Минфина» почти любое поражение заканчивает игру; для Центробанка — только разгромное, ниже 35 из 100.</p>
+            <p>Сейчас рейтинг {Math.round(economy.approval)} из 100, до выборов {economy.quartersToElection} кв. Рейтинг реагирует на всё сразу: рост, безработицу, инфляцию, доверие — и реагирует медленно, с задержкой в несколько кварталов, а не мгновенно.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Цена непопулярных решений',
+        lever: 'incomeTaxRate', minDelta: 5, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Поднимите подоходный налог минимум на 5 п.п. — способ профинансировать что угодно, который никогда не проходит бесследно для доверия. Сейчас ставка {pctFmt(economy.incomeTaxRate)}, доверие к правительству {Math.round(economy.govTrust)} из 100.</p>
+            <p>Один квартал почти не изменит рейтинг — эффект слабый и с лагом. Но представьте это решение, повторённое из квартала в квартал: именно так рейтинг доходит до по-настоящему опасных значений, а не одним резким обвалом.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Политическое напряжение',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Помимо рейтинга, в настоящей партии копится ещё один, менее заметный счётчик — политическое напряжение. Оно растёт от провального рейтинга, войны и от любого активного кризиса экономики (банковского, долгового, валютного — какого угодно): страна в кризисе — это прямое политическое давление, а не только статистика.</p>
+            <p>Сейчас напряжение {Math.round(economy.politicalTension)} из 100, режим — «{(POLITICAL_REGIME_INFO[economy.politicalRegime] || {}).label}». Когда оно переваливает за порог, демократия сменяется конфликтом парламента и президента, затем — при неудачном стечении обстоятельств — авторитаризмом и тоталитаризмом. Причём подавление само подпитывает напряжение: авторитарный режим копит недовольство даже в тихие кварталы, просто медленнее.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Переворот вместо капитуляции',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Разгромное поражение на выборах не всегда означает мирный уход. Если рейтинг рухнул катастрофически и напряжение уже накопилось, действующая власть может не признать результат: выборы объявляются недействительными, парламент распущен, режим одним скачком становится авторитарным — вместо обычного экрана поражения.</p>
+            <p>Небольшое поражение почти всегда заканчивается обычным проигрышем — переворот остаётся исходом именно катастрофы, а не любой неудачи на выборах.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Пропаганда и подконтрольная пресса',
+        lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Режим меняет не только цифры, но и то, как о них рассказывают. Авторитарные и особенно тоталитарные власти переписывают редакционную колонку газеты в пропаганду: провалы становятся эвфемизмами, а обычные цифры — поводом для победных реляций. Во время войны тон становится ещё жёстче — на первый план выходят враг и бдительность.</p>
+            <p>Сама газета при этом визуально темнеет и остывает: чем дальше от демократии и чем выше напряжение, тем мрачнее бумага — это заметно раньше, чем прочитан хоть один заголовок. Ваша собственная панель управления при этом остаётся честной: искажается только то, что видит страна, а не то, что видите вы.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Курс пройден', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Это был последний модуль. Вы прошли всю цепочку курса: ставка и расходы → бюджет и долг → валютный курс → ожидания и доверие → риски и подготовка к кризису → политический режим. В настоящей партии всё это работает одновременно, плюс бот на второй ветви власти со своим характером, случайные кризисы, выборы и оценка партии по выбранной цели.</p>
+            <p>Готовы попробовать по-настоящему?</p>
+          </>
+        ),
+      },
+    ],
+  },
+];
+
+function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame }) {
+  const initEconomy = useMemo(() => makeInitialEconomy(), [module.id]);
+  const [economy, setEconomy] = useState(initEconomy);
+  const [history, setHistory] = useState([{ q: 0, label: `${quarterLabel(1)} (старт)`, ...initEconomy }]);
+  const [decisions, setDecisions] = useState(() => defaultDecisions(initEconomy));
+  const [pendingImpulses, setPendingImpulses] = useState([]);
+  const [eventCooldowns, setEventCooldowns] = useState({});
+  const [quarterIndex, setQuarterIndex] = useState(1);
+  const [step, setStep] = useState(0);
+  const [leverBaseline, setLeverBaseline] = useState(0);
+  const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
+
+  const cur = module.steps[step];
+  const lever = cur.lever ? LEVERS.find((l) => l.id === cur.lever) : null;
+  const delta = lever ? decisions[cur.lever] - leverBaseline : 0;
+  const canAdvance = !lever || delta >= cur.minDelta - 1e-9;
+
+  const advance = () => {
+    Audio.play('stamp');
+    if (cur.runsQuarter) {
+      const result = simulateQuarter({
+        economy, decisions, pendingImpulses, eventCooldowns,
+        difficulty: 'easy', quarterIndex, stories: [],
+        botAction: null, botActions: [], noEvents: true,
+      });
+      const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
+      const newDecisions = defaultDecisions(result.economy, decisions);
+      setEconomy(result.economy);
+      setHistory(newHistory);
+      setPendingImpulses(result.pendingImpulses);
+      setEventCooldowns(result.eventCooldowns);
+      setQuarterIndex((q) => q + 1);
+      setDecisions(newDecisions);
+      const nextStep = module.steps[step + 1];
+      if (nextStep && nextStep.lever) setLeverBaseline(newDecisions[nextStep.lever]);
+    }
+    const willReachFinal = step + 1 >= module.steps.length - 1;
+    if (willReachFinal) onComplete();
+    setStep((s) => s + 1);
+  };
+
+  return (
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+      <GlobalStyle />
+      <div style={{ maxWidth: 640, width: '100%' }}>
+        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+          onClick={() => { Audio.play('click'); onExit(); }}>
+          ← К программе курса
+        </button>
+
+        <div key={step} className="ems-fade-in">
+          <div className="ems-hero-eyebrow">{module.title}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 6 }}>
+            <span className="ems-serif" style={{ fontSize: 22, fontWeight: 600 }}>{cur.title}</span>
+            <span className="ems-hero-badge" style={{ marginTop: 0 }}>шаг {step + 1} из {module.steps.length}</span>
+          </div>
+        </div>
+        <div className="ems-hr" style={{ marginBottom: 18 }} />
+
+        <div className="ems-kpi-strip" style={{ marginBottom: 18 }}>
+          {module.pins.map((key) => {
+            const m = ALL_METRICS[key];
+            const val = economy[key];
+            return (
+              <KpiTile key={key} label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'}
+                delta={economy[key] - prevEcon[key]} invert={m.invert}
+                series={history.slice(-6).map((h) => h[key]).filter(Number.isFinite)} />
+            );
+          })}
+        </div>
+
+        <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
+          {cur.body({ economy, history, decisions })}
+        </div>
+
+        {lever && (
+          <div className="ems-panel" style={{ padding: 16, marginBottom: 22 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 9 }}>
+              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{lever.label}</span>
+              <span className="ems-mono" style={{ fontSize: 13 }}>{decisions[cur.lever].toFixed(2)}{lever.suffix}</span>
+            </div>
+            <input type="range" className="ems-slider" min={lever.min} max={lever.max} step={lever.step} value={decisions[cur.lever]}
+              onChange={(e) => { Audio.play('tick'); setDecisions((d) => ({ ...d, [cur.lever]: Number(e.target.value) })); }} />
+            <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint, marginTop: 8 }}>
+              Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
+            </div>
+          </div>
+        )}
+
+        {cur.isFinal ? (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {isLastModule ? (
+              <button className="ems-btn primary" style={{ flex: 1, minWidth: 220, padding: '13px 0', fontSize: 14 }}
+                onClick={() => { Audio.prime(); onStartRealGame(); }}>
+                Начать настоящую партию
+              </button>
+            ) : (
+              <button className="ems-btn primary" style={{ flex: 1, minWidth: 220, padding: '13px 0', fontSize: 14 }}
+                onClick={() => { Audio.prime(); Audio.play('tab'); onGoNext(); }}>
+                Следующий модуль →
+              </button>
+            )}
+            <button className="ems-btn" style={{ padding: '13px 20px', fontSize: 13 }} onClick={() => { Audio.play('click'); onGoHub(); }}>
+              К программе курса
+            </button>
+          </div>
+        ) : (
+          <button disabled={!canAdvance} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
+            onClick={advance}>
+            Далее
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TutorialHub({ onBack, onStartRealGame }) {
+  const [progress, setProgress] = useState(loadCourseProgress);
+  const [activeId, setActiveId] = useState(null);
+  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
+
+  const isUnlocked = (i) => i === 0 || !!progress[TUTORIAL_MODULES[i - 1].id];
+  const doneCount = TUTORIAL_MODULES.filter((m) => progress[m.id]).length;
+
+  const completeModule = (mod, idx) => {
+    const next = markModuleDone(mod.id);
+    setProgress(next);
+    const achIds = ['tutorial_done'];
+    if (idx === TUTORIAL_MODULES.length - 1) achIds.push('tutorial_course_done');
+    pushAch(unlockAchievements(achIds));
+  };
+
+  if (activeId) {
+    const idx = TUTORIAL_MODULES.findIndex((m) => m.id === activeId);
+    const mod = TUTORIAL_MODULES[idx];
+    const next = TUTORIAL_MODULES[idx + 1];
+    return (
+      <>
+        <AchievementToast toast={achToast} leaving={achLeaving} />
+        <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === TUTORIAL_MODULES.length - 1}
+          onExit={() => setActiveId(null)}
+          onComplete={() => completeModule(mod, idx)}
+          onGoNext={next ? () => setActiveId(next.id) : null}
+          onGoHub={() => setActiveId(null)}
+          onStartRealGame={onStartRealGame}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+      <GlobalStyle />
+      <AchievementToast toast={achToast} leaving={achLeaving} />
+      <div style={{ maxWidth: 640, width: '100%' }}>
+        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+          onClick={() => { Audio.play('click'); onBack(); }}>
+          ← Назад в меню
+        </button>
+
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 30 }}>
+          <div className="ems-hero-eyebrow">Курс обучения</div>
+          <div className="ems-hero-title small">Как устроена экономика</div>
+          <div className="ems-hero-rule" />
+          <span className="ems-hero-badge"><GraduationCap size={11} color={COLOR.gold} />Пройдено {doneCount} из {TUTORIAL_MODULES.length}</span>
+          <div className="ems-hero-lede">
+            Шесть модулей от поверхностного понимания к углублённому: каждый открывает следующий. Можно проходить заново — прогресс не сбрасывается.
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+          {TUTORIAL_MODULES.map((mod, i) => {
+            const unlocked = isUnlocked(i);
+            const done = !!progress[mod.id];
+            const Icon = mod.icon;
+            const depthColor = mod.depth === 'deep' ? COLOR.rust : COLOR.teal;
+            const depthDim = mod.depth === 'deep' ? COLOR.rustDim : COLOR.tealDim;
+            return (
+              <div key={mod.id} onClick={() => { if (unlocked) { Audio.prime(); Audio.play('stamp'); setActiveId(mod.id); } }}
+                className="ems-card-btn ems-fade-in"
+                style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms`,
+                  opacity: unlocked ? 1 : 0.55, cursor: unlocked ? 'pointer' : 'not-allowed' }}
+                role="button" tabIndex={unlocked ? 0 : -1}
+                onKeyDown={(e) => { if (unlocked && (e.key === 'Enter' || e.key === ' ')) setActiveId(mod.id); }}>
+                <div className="ems-card-icon">
+                  {done ? <Check size={19} color={COLOR.teal} /> : unlocked ? <Icon size={19} color={COLOR.gold} /> : <Lock size={17} color={COLOR.faint} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{mod.title}</span>
+                    <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999,
+                      color: depthColor, border: `1px solid ${depthDim}`, background: depthDim }}>
+                      {mod.depth === 'deep' ? 'углублённо' : 'поверхностно'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
+                    {unlocked ? mod.summary : `Сначала пройдите «${TUTORIAL_MODULES[i - 1].title}»`}
+                  </div>
+                </div>
+                {unlocked && <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -5736,17 +6426,19 @@ function SetupScreen({ onStart, onBack }) {
   const personas = personaBlocks.length ? personaBlocks : null;
 
   return (
-    <div className="ems-root" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <div style={{ maxWidth: 800, width: '100%' }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); onBack(); }}>
           ← Назад в меню
         </button>
-        <div style={{ textAlign: 'center', marginBottom: 34 }}>
-          <div className="ems-serif" style={{ fontSize: 27, fontWeight: 600, letterSpacing: '-0.01em' }}>Новая партия</div>
-          <div className="ems-mono" style={{ color: COLOR.faint, fontSize: 11, marginTop: 9 }}>{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</div>
-          <div style={{ color: COLOR.muted, fontSize: 13.5, marginTop: 14, maxWidth: 600, margin: '14px auto 0', lineHeight: 1.55 }}>
+        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 34 }}>
+          <div className="ems-hero-eyebrow">Новая партия</div>
+          <div className="ems-hero-title small">Вступление в должность</div>
+          <div className="ems-hero-rule" />
+          <span className="ems-hero-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear}</span>
+          <div className="ems-hero-lede">
             Экономика работает как цепочка причин: ставка → рыночные ставки → кредит → спрос → выпуск → занятость → зарплаты → цены → ожидания. Второй ветвью власти управляет бот со своим характером — и у него будут к вам требования.
           </div>
         </div>
@@ -5759,11 +6451,15 @@ function SetupScreen({ onStart, onBack }) {
           {ROLES.map((r) => {
             const Icon = ROLE_ICON[r.icon]; const active = role === r.id;
             return (
-              <div key={r.id} onClick={() => { Audio.prime(); Audio.play('click'); setRole(r.id); }} className="ems-panel"
-                style={{ padding: 16, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+              <div key={r.id} onClick={() => { Audio.prime(); Audio.play('click'); setRole(r.id); }} className="ems-card-btn"
+                style={{ padding: 16, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                  borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setRole(r.id); }}>
                 {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 14, right: 14 }} />}
-                <Icon size={20} color={active ? COLOR.gold : COLOR.muted} />
-                <div className="ems-serif" style={{ fontSize: 14.5, margin: '9px 0 5px', color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
+                <div className="ems-card-icon" style={{ width: 36, height: 36, marginBottom: 10 }}>
+                  <Icon size={17} color={COLOR.gold} />
+                </div>
+                <div className="ems-serif" style={{ fontSize: 14.5, marginBottom: 5, color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
                 <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>{r.desc}</div>
               </div>
             );
@@ -5785,8 +6481,10 @@ function SetupScreen({ onStart, onBack }) {
               {blk.list.map((p) => {
                 const active = blk.value === p.id;
                 return (
-                  <div key={p.id} onClick={() => { Audio.play('click'); blk.set(p.id); }} className="ems-panel"
-                    style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+                  <div key={p.id} onClick={() => { Audio.play('click'); blk.set(p.id); }} className="ems-card-btn"
+                    style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                      borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                    role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') blk.set(p.id); }}>
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Bot size={14} color={active ? COLOR.gold : COLOR.muted} />
@@ -5800,8 +6498,10 @@ function SetupScreen({ onStart, onBack }) {
               {(() => {
                 const active = blk.value === 'random';
                 return (
-                  <div onClick={() => { Audio.play('click'); blk.set('random'); }} className="ems-panel"
-                    style={{ padding: 14, cursor: 'pointer', position: 'relative', borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}>
+                  <div onClick={() => { Audio.play('click'); blk.set('random'); }} className="ems-card-btn"
+                    style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                      borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                    role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') blk.set('random'); }}>
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
@@ -5975,6 +6675,10 @@ const INDICATOR_TABS = [
     { key: 'policyCoordination', label: 'Согласованность политики', fmt: (v) => v.toFixed(0) },
     { label: 'Мандат власти', get: (e) => e.mandate, text: true, map: MANDATE_LABEL },
     { label: 'Линия правительства', get: (e) => e.governmentLine, text: true, map: { centrist: 'центристская', populist: 'популистская', austerity: 'консервативная', technocrat: 'технократическая' } },
+    { label: 'Политический режим', get: (e) => e.politicalRegime, text: true,
+      map: Object.fromEntries(Object.entries(POLITICAL_REGIME_INFO).map(([id, info]) => [id, info.label])) },
+    { key: 'politicalTension', label: 'Политическое напряжение', fmt: (v) => v.toFixed(0) },
+    { label: 'Беспорядки в стране', get: (e) => !!e.unrestActive, text: true, map: { true: 'да', false: 'нет' } },
   ] },
   { id: 'risks', label: 'Риски', icon: AlertTriangle, rows: [
     { key: 'inflationRisk', label: 'Инфляционный риск', fmt: idx0 },
@@ -5994,7 +6698,8 @@ const METRIC_INVERT = new Set(['inflation', 'coreInflation', 'inflationExpectati
   'unitLaborCostGrowth', 'sovereignSpread', 'corporateSpread', 'volatilityIndex', 'equityRiskPremium', 'discountRate',
   'taxWedgeValue', 'keyRate', 'depositRate', 'effectiveDebtRate', 'unemployment', 'debtToGdp', 'bankNPL', 'bankingRisk',
   'inflationRisk', 'debtRisk', 'recessionRisk', 'currencyRisk', 'shadowShare', 'interestToRevenue', 'effectiveDebtRate',
-  'riskPremium', 'exchangeRate', 'importPriceInflation', 'lendingRate', 'nairu', 'creditGap', 'rateGap', 'quartersToElection']);
+  'riskPremium', 'exchangeRate', 'importPriceInflation', 'lendingRate', 'nairu', 'creditGap', 'rateGap', 'quartersToElection',
+  'politicalTension']);
 const ALL_METRICS = (() => {
   const m = {};
   INDICATOR_TABS.forEach((t) => t.rows.forEach((r) => {
@@ -6087,7 +6792,6 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const goalDef = GOALS.find((g) => g.id === setup.goal);
   const botRole = roleDef.botRole;
   const isTrader = setup.role === 'trader';
-  const botPersona = null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
 
   const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
@@ -6103,7 +6807,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [saveModal, setSaveModal] = useState(null);
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
-  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
   const [view, setView] = useState(setup.role === 'trader' ? 'market' : 'dash');
@@ -6123,7 +6827,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [irf, setIrf] = useState(null);
   const [mobileCol, setMobileCol] = useState('center');
   const [narrow, setNarrow] = useState(false);
-  const [dashboards, setDashboards] = useState(initial && initial.dashboards ? initial.dashboards : DASHBOARD_PRESETS);
+  const [dashboards, setDashboards] = useState(() => initDashboards(initial && initial.dashboards));
   const [activeDash, setActiveDash] = useState(initial ? initial.activeDash || 'overview' : 'overview');
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
@@ -6140,6 +6844,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [portfolio, setPortfolio] = useState(initial && initial.portfolio ? initial.portfolio : emptyBook());
   const [cbPersonaId, setCbPersonaId] = useState(initial && initial.cbPersonaId ? initial.cbPersonaId : setup.cbPersona);
   const [mofPersonaId, setMofPersonaId] = useState(initial && initial.mofPersonaId ? initial.mofPersonaId : setup.mofPersona);
+  // предвыборные обещания — только у «главы государства»: там нет бота-оппонента
+  // с требованиями, и это единственная роль без внешнего давления
+  const [promises, setPromises] = useState(() => (setup.role !== 'full_control' ? null
+    : initial && initial.promises ? initial.promises : pickPromises(initEconomy)));
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
   const [lastReport, setLastReport] = useState(initial ? initial.lastReport || '' : '');
@@ -6153,7 +6861,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
   const activeBotPersona = botRole === 'central_bank' ? getCbPersona(cbPersonaId) : botRole === 'ministry_finance' ? getMofPersona(mofPersonaId) : null;
   const onTrade = (id, amt, side, live) => setPortfolio((b) => {
-    const nb = tradeBook(b, id, amt, side, economy, live, quarterIndex);
+    const nb = tradeBook(b, id, amt, side, economy, live);
     const instr = INSTR_BY_ID[id];
     return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
   });
@@ -6179,7 +6887,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
-    portfolio, lastResponse, dense, dashboards, activeDash, defeat });
+    portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises });
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -6197,11 +6905,20 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const saveDash = () => {
     const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
     const id = `custom${Date.now()}`;
-    setDashboards((ds) => [...ds, { id, name, pins: [...pinned], custom: true }]);
+    setDashboards((ds) => {
+      const next = [...ds, { id, name, pins: [...pinned], custom: true }];
+      persistCustomDashboards(next.filter((d) => d.custom));
+      return next;
+    });
     setActiveDash(id);
   };
-  const deleteDash = (id) => setDashboards((ds) => ds.filter((d) => d.id !== id));
+  const deleteDash = (id) => setDashboards((ds) => {
+    const next = ds.filter((d) => d.id !== id);
+    persistCustomDashboards(next.filter((d) => d.custom));
+    return next;
+  });
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
+  const debtCrisisActive = (economy.activeCrises || []).includes('debt') && !(economy.marketLockoutQuartersLeft > 0);
 
   const finishQuarter = useCallback(() => {
     if (defeat) return;
@@ -6250,7 +6967,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (isTrader) {
       const withBench = portfolio.benchStart ? portfolio : { ...portfolio, benchStart: { stockIndex: economy.stockIndex, bondIndex: economy.bondIndex,
         depositIndex: economy.depositIndex, priceLevel: economy.priceLevel } };
-      const nb = settleQuarter(withBench, result.economy, quarterIndex);
+      const nb = settleQuarter(withBench, result.economy);
       traderEvents = nb.lastEvents || [];
       traderEvents.forEach((ev, i) => {
         if (ev.kind === 'call') { Audio.play('alarm'); haptic([60, 80, 60]); }
@@ -6267,7 +6984,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setHistory(newHistory);
     pushAch(unlockAchievements(questProgressAchievementIds({
       quarterIndex, economy: result.economy, history: newHistory, lastEvents: traderEvents,
-      rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(),
+      rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(), role: setup.role,
     })));
     const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal });
     if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
@@ -6303,6 +7020,18 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         }
       }
     }
+    // предвыборные обещания подводятся в тот же квартал, когда выборы наступили
+    // (quartersToElection обнулился и сформировал electionResult) — не раньше:
+    // формально срок ещё не закончился, пока не наступил сам день голосования
+    if (promises && er) {
+      const kept = promises.map((p) => evaluatePromise(p, result.economy).met);
+      const keptCount = kept.filter(Boolean).length;
+      result.newsEntries.unshift({ id: `promises${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+        headline: `ОБЕЩАНИЯ У УРНЫ: СДЕРЖАНО ${keptCount} ИЗ ${promises.length}`,
+        text: promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ') + '.' });
+      if (keptCount === promises.length) pushAch(unlockAchievements(['promises_kept']));
+      if (er === 'incumbent') setPromises(pickPromises(result.economy));
+    }
     const newCrisis = (result.economy.activeCrises || []).some((c) => !(economy.activeCrises || []).includes(c));
     if (newCrisis) { setFlashKey(quarterIndex); setShake(true); haptic([45, 70, 45, 70, 90]); setTimeout(() => setShake(false), 950); }
     else if (result.economy.regime !== economy.regime) { setFlashKey(quarterIndex); haptic([28, 60, 28]); }
@@ -6315,7 +7044,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setDecisions(defaultDecisions(result.economy, decisions));
     setQuarterIndex((q) => q + 1);
     setBusy(false);
-  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId, pendingRequest, portfolio, isTrader, history, pushAch, defeat]);
+  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId, pendingRequest, portfolio, isTrader, history, pushAch, defeat, promises]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -6330,25 +7059,33 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   return (
     <div className={`ems-root${shake ? ' ems-shake' : ''}${dense ? ' ems-dense' : ''}`} lang="ru">
       <GlobalStyle />
-      {irf && <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value} baseValue={irf.base}
-        difficulty={difficulty} onClose={() => setIrf(null)} />}
+      {irf && (
+        <Suspense fallback={(
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="ems-panel-raised" style={{ padding: 18, color: COLOR.faint, fontSize: 12 }}>Загрузка графика…</div>
+          </div>
+        )}>
+          <IRFModal economy={economy} decisions={decisions} lever={irf.lever} value={irf.value} baseValue={irf.base}
+            difficulty={difficulty} onClose={() => setIrf(null)} />
+        </Suspense>
+      )}
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && <WhyModal reasons={lastReasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} onClose={() => setShowPaper(false)} />}
+      {showPaper && <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} economy={economy} onClose={() => setShowPaper(false)} />}
       {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      <AchievementToast toast={achToast} />
+      <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
-        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat,
+        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 4, background: COLOR.goldDim, border: `1px solid ${COLOR.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
           <div>
@@ -6529,6 +7266,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               </div>
             )}
 
+            {groups.includes('fiscal') && debtCrisisActive && (
+              <div style={{ paddingBottom: 10 }}>
+                <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
+                  onClick={() => {
+                    if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
+                    Audio.play('alarm'); setLever('sovereignDefault', true);
+                  }}>
+                  <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                </button>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                  Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                </div>
+              </div>
+            )}
+
             {LEVER_TABS.length > 1 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 10 }}>
                 {LEVER_TABS.map((t) => (
@@ -6559,6 +7311,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             )}
             {levTab === 'fiscal-core' && (
               <div>
+                {economy.sequesterFactor < 0.995 && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 4, padding: '8px 10px', marginBottom: 10 }}>
+                    <AlertTriangle size={14} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                      <b>Секвестр действует.</b> Рынок не финансирует дефицит сверх {fmt1(economy.maxDeficitPct)}% ВВП — реальные расходы урезаны на {fmt1((1 - economy.sequesterFactor) * 100)}% от плана независимо от того, что задано ползунками ниже.
+                    </div>
+                  </div>
+                )}
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
@@ -6590,15 +7350,19 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           {groups.includes('fiscal') && <FiscalMath economy={economy} decisions={decisions} />}
           {isTrader ? (
             <InstitutionsPanel economy={economy} cbAction={botAction} mofAction={botAction2} />
-          ) : (
+          ) : botRole ? (
             <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} economy={economy} coordination={economy.policyCoordination} />
+          ) : (
+            <PromisesPanel promises={promises} economy={economy} />
           )}
         </div>
 
         {/* ЦЕНТР */}
         <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} />
-          <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          <Suspense fallback={<ChartFallback />}>
+            <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+          </Suspense>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
@@ -6674,7 +7438,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart} />
       ) : (
-        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0 }}>
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
           <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
             {botRole === 'both' ? 'Центральный банк и Минфин примут решения без вашего участия'
               : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
@@ -6704,6 +7469,11 @@ export default function MacroSimulator() {
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
+  // переключение между меню/анкетой/сетью/игрой не перезагружает страницу,
+  // поэтому без явного сброса скролл оставался там, где был на предыдущем
+  // экране — короткий новый экран открывался уже наполовину прокрученным
+  const screenKey = network ? 'network-game' : setup ? 'game' : view;
+  React.useEffect(() => { window.scrollTo(0, 0); }, [screenKey]);
 
   if (network) {
     return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />;
@@ -6720,10 +7490,19 @@ export default function MacroSimulator() {
     if (view === 'network') {
       return <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />;
     }
+    if (view === 'tutorial') {
+      return (
+        <TutorialHub key={theme}
+          onBack={goMenu}
+          onStartRealGame={() => setView('setup')}
+        />
+      );
+    }
     return (
       <MainMenu key={theme} theme={theme} setTheme={setTheme}
         onNewGame={() => setView('setup')}
         onNetwork={() => setView('network')}
+        onTutorial={() => setView('tutorial')}
         onLoad={startLoaded}
       />
     );
