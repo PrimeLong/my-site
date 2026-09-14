@@ -248,6 +248,38 @@ describe('политический режим и пропаганда', () => {
       spy.mockRestore();
     }
   });
+
+  it('lets a catastrophic approval collapse trigger a coup instead of a quiet election defeat', () => {
+    // раньше рухнувший в ноль рейтинг всегда тихо заканчивал партию поражением на
+    // выборах — до авторитаризма/тоталитаризма дело попросту не успевало дойти
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0); // худший случай — переворот наверняка проходит
+    try {
+      const economy = { ...makeInitialEconomy(), politicalRegime: 'democracy', quartersToElection: 1, approval: 0, politicalTension: 80 };
+      const decisions = defaultDecisions(economy);
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [] });
+      expect(r.economy.electionResult).toBe('incumbent');
+      expect(r.economy.politicalRegime).toBe('authoritarian');
+      expect(r.economy.parliamentDissolved).toBe(true);
+      expect(r.newsEntries.some((n) => n.headline.includes('ПЕРЕВОРОТ'))).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('still lets a mild election loss end in an ordinary defeat when the coup roll does not land', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999); // худший случай для переворота — он не проходит
+    try {
+      const economy = { ...makeInitialEconomy(), politicalRegime: 'democracy', quartersToElection: 1, approval: 45, politicalTension: 10 };
+      const decisions = defaultDecisions(economy);
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [] });
+      expect(r.economy.electionResult).toBe('opposition');
+      expect(r.economy.politicalRegime).toBe('democracy');
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe('pandemic crisis tracking', () => {

@@ -1488,17 +1488,32 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   }
   // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса
   const riggedElection = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+  // Отчаянный шаг: при разгромном поражении и уже накопленном напряжении власть
+  // может не признать результат и захватить контроль вместо того, чтобы уйти —
+  // иначе рейтинг, рухнувший в ноль, всегда тихо заканчивал партию поражением на
+  // выборах, а до авторитаризма/тоталитаризма дело попросту не успевало дойти.
+  let coup = false;
   if (quartersToElection <= 0) {
     const margin = approval - 50;
-    electionResult = riggedElection ? 'incumbent' : (margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition'));
+    if (!riggedElection && margin < 0) {
+      const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
+      const priorTension = clamp(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, 0, 100);
+      const coupChance = clamp(Math.pow(severity, 1.6) * 0.6 + (priorTension / 100) * 0.25, 0, 0.75);
+      coup = Math.random() < coupChance;
+    }
+    electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition'));
     quartersToElection = CONFIG.election.cycle; term += 1;
     if (electionResult === 'incumbent') {
       nextQueue.push(makeImpulse('businessConfidence', 4, 'Преемственность политики после выборов', 'default', difficulty, 'other'));
       news.push(riggedElection
         ? mkNews('gov', 'ВЫБОРЫ БЕЗ НЕОЖИДАННОСТЕЙ: РЕЗУЛЬТАТ БЛИЗОК К ЕДИНОГЛАСНОМУ',
           `Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, а реальный рейтинг власти — ${Math.round(approval)} из 100 — к результату отношения уже не имеет.`, { priority: 9 })
-        : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
-          `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
+        : coup
+          ? mkNews('gov', 'ПЕРЕВОРОТ: ВЛАСТЬ НЕ ПРИЗНАЛА ПОРАЖЕНИЕ НА ВЫБОРАХ',
+            `Рейтинг ${Math.round(approval)} из 100 не оставлял шансов на честную победу. Вместо передачи власти объявлено чрезвычайное положение: результаты аннулированы, парламент распущен, оппозиция объявлена вне закона.`,
+            { priority: 10, chain: ['Разгромное поражение', 'Отказ признать результат', 'Чрезвычайное положение', 'Авторитарный поворот'] })
+          : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
+            `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
     } else {
       mandate = (unemployment - nairu > 1.2) ? 'jobs' : (inflation > infTarget + 2) ? 'prices' : (debtToGdp > 85) ? 'budget' : 'growth';
       governmentLine = mandate === 'jobs' ? 'populist' : mandate === 'budget' ? 'austerity' : 'technocrat';
@@ -1628,9 +1643,12 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     - Math.max(0, approval - 55) * 0.5,
     0, 100);
   let politicalTension = clamp(ema(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, tensionTarget, 0.25), 0, 100);
-  let politicalRegime = prevPoliticalRegime;
-  let parliamentDissolved = !!s.parliamentDissolved;
-  const politicalCooldown = cooldowns['political:transition'] || 0;
+  // переворот из блока выборов выше замыкает переход на авторитаризм напрямую,
+  // минуя обычную пороговую цепочку демократия→кризис→авторитаризм — он уже
+  // случился в этом квартале, а не подкрадывался несколько кварталов подряд
+  let politicalRegime = coup ? 'authoritarian' : prevPoliticalRegime;
+  let parliamentDissolved = coup ? true : !!s.parliamentDissolved;
+  const politicalCooldown = coup ? 4 : (cooldowns['political:transition'] || 0);
   if (politicalCooldown <= 0) {
     if (politicalRegime === 'democracy' && politicalTension >= 62) {
       politicalRegime = 'crisis';
