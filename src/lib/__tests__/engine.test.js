@@ -3,7 +3,7 @@ import {
   makeInitialEconomy, defaultDecisions, simulateQuarter,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   clamp, LEVERS, FX_REGIMES, PROMISE_POOL, pickPromises, evaluatePromise,
-  POLITICAL_REGIME_INFO, propagandaEditorial,
+  POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -249,6 +249,28 @@ describe('политический режим и пропаганда', () => {
     }
   });
 
+  it('lets a persistent banking crisis (liquidity crushed, capital never recovering) drag the country out of democracy on its own', () => {
+    // ровно сценарий из жалобы: банковский кризис с ликвидностью около нуля — раньше
+    // активный кризис экономики не давал напряжённости никакого прямого вклада (только
+    // косвенно, через безработицу), так что даже затяжной банковский кризис почти не
+    // двигал стрелку к авторитаризму. Здесь форсируется только устойчиво низкий капитал
+    // банков (чтобы кризис не рассосался сам собой за пару кварталов) — падение
+    // рейтинга, рецессия и долговой стресс дальше нарастают уже сами, без подсказок.
+    let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0 };
+    let decisions = defaultDecisions(economy);
+    let pendingImpulses = []; let eventCooldowns = {};
+    for (let q = 1; q <= 25; q++) {
+      const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
+        difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
+      economy = { ...r.economy, bankCapital: 4 }; // не даём банковскому кризису рассосаться самому
+      pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
+      decisions = defaultDecisions(economy, decisions);
+    }
+    expect(economy.activeCrises).toContain('banking');
+    expect(economy.politicalTension).toBeGreaterThan(60);
+    expect(economy.politicalRegime).not.toBe('democracy');
+  });
+
   it('lets a catastrophic approval collapse trigger a coup instead of a quiet election defeat', () => {
     // раньше рухнувший в ноль рейтинг всегда тихо заканчивал партию поражением на
     // выборах — до авторитаризма/тоталитаризма дело попросту не успевало дойти
@@ -279,6 +301,65 @@ describe('политический режим и пропаганда', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('банковская ликвидность и экстренная поддержка', () => {
+  it('scales the liquidity lever\'s effect by its share of GDP, not by its raw slider value', () => {
+    // рычаг «liquidity» — в млрд, а диапазон слайдера растёт вместе с ВВП (scaleLever
+    // в UI); раньше эффект на bankLiquidity считался от сырого значения слайдера, и
+    // на разросшейся экономике один и тот же (в относительных терминах) шаг давал в
+    // разы больший скачок индекса 0-100, чем в начале партии
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5); // обнуляет весь шум формулы (gauss(sigma)=0 при 0.5)
+    try {
+      const small = makeInitialEconomy(); // nominalGdp ~2000
+      const bigGdp = { ...makeInitialEconomy(), nominalGdp: small.nominalGdp * 100 };
+      const runLiquidity = (economy, liquidityValue) => {
+        const decisions = { ...defaultDecisions(economy), liquidity: liquidityValue };
+        const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+          difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+        return r.economy.bankLiquidity;
+      };
+      const smallEffect = runLiquidity(small, 10) - runLiquidity(small, 0);
+      const bigEffect = runLiquidity(bigGdp, 1000) - runLiquidity(bigGdp, 0); // тот же % ВВП, что и 10 при исходном
+      expect(bigEffect).toBeCloseTo(smallEffect, 1);
+      expect(Math.abs(bigEffect)).toBeLessThan(20); // раньше здесь получались сотни пунктов
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('lets leverPreview show a liquidity-lever effect consistent with the real simulateQuarter result', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      const economy = makeInitialEconomy();
+      const preview = leverPreview('liquidity', 10, economy, 'medium');
+      const liqLine = preview.items.find((i) => i.label === 'Ликвидность банков').text;
+      const previewedDelta = parseFloat(liqLine.replace(',', '.'));
+      const decisions = { ...defaultDecisions(economy), liquidity: 10 };
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+      const actualDelta = r.economy.bankLiquidity - economy.bankLiquidity;
+      // превью не знает о вкладе просрочки/кредитного сжатия того же квартала —
+      // сверяем с небольшим запасом на эти второстепенные слагаемые
+      expect(Math.abs(previewedDelta - actualDelta)).toBeLessThan(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('actually restores bank liquidity when emergency support is used, not just capital and trust', () => {
+    // раньше "Экстренная поддержка банков" поднимала капитал/стабильность/денежную
+    // массу, но никак не ликвидность — при её обвале до 0 сообщение "ликвидность
+    // восстановлена до X" не было правдой ни на йоту
+    const economy = { ...makeInitialEconomy(), bankLiquidity: 0 };
+    const withoutHelp = defaultDecisions(economy);
+    const withHelp = { ...withoutHelp, emergency: true };
+    const rWithout = simulateQuarter({ economy, decisions: withoutHelp, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    const rWith = simulateQuarter({ economy, decisions: withHelp, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    expect(rWith.economy.bankLiquidity).toBeGreaterThan(rWithout.economy.bankLiquidity + 15);
   });
 });
 

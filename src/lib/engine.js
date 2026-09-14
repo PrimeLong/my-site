@@ -1316,9 +1316,14 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     const excess = (bankCapitalAdequacy - decisions.capitalRequirement - 4.5) / 100 * rwa;
     bankCapital -= excess * 0.3; bankCapitalAdequacy = bankCapital / rwa * 100;
   }
+  // decisions.liquidity — рычаг в «млрд» с диапазоном, растущим вместе с ВВП (см.
+  // scaleLever в UI), поэтому в индексный (0-100) эффект он идёт как доля ВВП, а не
+  // сырым числом — иначе на разросшейся экономике один и тот же шаг ползунка давал
+  // бы всё больший и больший скачок ликвидности, как для fxIntervention/курса выше.
+  const liquidityInjectionPctGdp = (decisions.liquidity || 0) / Math.max(1, s.nominalGdp) * 100;
   const bankLiquidity = clamp(s.bankLiquidity + 0.09 * (75 - s.bankLiquidity) - Math.max(0, bankNPL - 6) * 1.1
-    - Math.max(0, -creditGrowth) * 0.25 + (decisions.liquidity || 0) * 0.9 + (d.bankLiquidity || 0)
-    - (decisions.reserveReq - s.reserveReq) * 1.2 + gauss(0.9 * nMult), 0, 100);
+    - Math.max(0, -creditGrowth) * 0.25 + liquidityInjectionPctGdp * 18 + (d.bankLiquidity || 0)
+    - (decisions.reserveReq - s.reserveReq) * 1.2 + (decisions.emergency ? 22 : 0) + gauss(0.9 * nMult), 0, 100);
   const bankingRisk = clamp(ema(s.bankingRisk, clamp(0.5 * clamp(bankNPL * 4.5, 0, 100)
     + 0.28 * clamp(100 - bankLiquidity, 0, 100)
     + 0.22 * clamp((decisions.capitalRequirement + 3 - bankCapitalAdequacy) * 9, 0, 100), 0, 100), 0.4), 0, 100);
@@ -1327,7 +1332,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
 
   const financialStability = clamp(s.financialStability + 0.10 * (T.neutralStability - s.financialStability)
     - Math.max(0, bankingRisk - 50) * 0.10 - Math.max(0, s.debtToGdp - 90) * 0.04 - Math.max(0, creditGap - 8) * 0.25
-    + (decisions.emergency ? 14 : 0) + (decisions.liquidity || 0) * 0.25 + (d.financialStability || 0) + gauss(NB.financialStability * nMult), 0, 100);
+    + (decisions.emergency ? 14 : 0) + liquidityInjectionPctGdp * 5 + (d.financialStability || 0) + gauss(NB.financialStability * nMult), 0, 100);
 
   /* --- 13. НАЛОГИ, РАСХОДЫ, ДОЛГ --- */
   const fundIncome = (s.sovereignFund || 0) * (worldRate + 1) / 100 / QUARTERS_PER_YEAR;
@@ -1395,7 +1400,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     - 0.25 * Math.max(0, inflation - 6) - 0.3 * Math.max(0, unemployment - 7) - ignoredDemands * 0.5)
     + (d.govTrust || 0) + gauss(0.5 * nMult), 0, 100);
   const moneySupply = clamp(applyAnnualGrowth(s.moneySupply, potentialGrowth + inflation) * (1 + (decisions.moneySupplyOp || 0) / 100)
-    + (decisions.liquidity || 0) * 0.02 + (decisions.emergency ? 3 : 0), 20, 4000);
+    + liquidityInjectionPctGdp * 0.4 + (decisions.emergency ? 3 : 0), 20, 4000);
 
   /* --- 14а. ФИНАНСОВЫЙ РЫНОК: кривая доходности, облигации, акции, риск-премии --- */
   const neutralNominal = rStar + inflationExpectations;
@@ -1633,16 +1638,23 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
      собственная «подпитка» напряжённости даже без видимых потрясений. */
   const prevPoliticalRegime = s.politicalRegime || 'democracy';
   const repression = prevPoliticalRegime === 'totalitarian' ? 1 : prevPoliticalRegime === 'authoritarian' ? 0.55 : prevPoliticalRegime === 'crisis' ? 0.15 : 0;
+  // Коэффициент при рейтинге раньше давал не больше 37.8 п.п. даже при approval=0 —
+  // порог кризиса (62) физически не мог быть взят одним лишь провалом рейтинга, как
+  // бы катастрофично он ни упал: нужен был ещё и одновременный шок по безработице/
+  // инфляции/долгу. Теперь обвал рейтинга в ноль сам по себе почти доводит до кризиса,
+  // а любой активный кризис экономики (в т.ч. банковский с нулевой ликвидностью)
+  // добавляет прямое давление, а не действует только через посредников.
   const tensionTarget = clamp(
-    Math.max(0, 42 - approval) * 0.9
-    + (warQuartersLeft > 0 ? 10 : 0)
+    Math.max(0, 55 - approval) * 1.3
+    + (warQuartersLeft > 0 ? 12 : 0)
+    + activeCrises.length * 6
     + Math.max(0, unemployment - 7.5) * 2.2
     + Math.max(0, inflation - 8) * 1.6
     + Math.max(0, debtToGdp - 90) * 0.15
     + repression * 14
-    - Math.max(0, approval - 55) * 0.5,
+    - Math.max(0, approval - 55) * 0.6,
     0, 100);
-  let politicalTension = clamp(ema(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, tensionTarget, 0.25), 0, 100);
+  let politicalTension = clamp(ema(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, tensionTarget, 0.3), 0, 100);
   // переворот из блока выборов выше замыкает переход на авторитаризм напрямую,
   // минуя обычную пороговую цепочку демократия→кризис→авторитаризм — он уже
   // случился в этом квартале, а не подкрадывался несколько кварталов подряд
@@ -1657,7 +1669,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
         `Взаимные вето и угроза импичмента парализуют принятие решений. Рейтинг власти ${Math.round(approval)} из 100 — почвы для компромисса всё меньше.`,
         { priority: 9, chain: ['Низкий рейтинг', 'Паралич власти', 'Конфликт ветвей власти'] }));
     } else if (politicalRegime === 'crisis') {
-      if (politicalTension >= 70 && Math.random() < 0.35) {
+      if (politicalTension >= 70 && Math.random() < 0.4) {
         politicalRegime = 'authoritarian'; parliamentDissolved = true;
         cooldowns['political:transition'] = 4;
         nextQueue.push(makeImpulse('businessConfidence', -10, 'Роспуск парламента: институты слабеют', 'default', difficulty, 'other'));
@@ -1671,7 +1683,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
         news.push(mkNews('gov', 'ПОЛИТИЧЕСКИЙ КРИЗИС ИСЧЕРПАН', 'Стороны нашли компромисс, парламент возвращается к обычной работе.', { priority: 7 }));
       }
     } else if (politicalRegime === 'authoritarian') {
-      if (politicalTension >= 80 && Math.random() < 0.3) {
+      if (politicalTension >= 80 && Math.random() < 0.38) {
         politicalRegime = 'totalitarian';
         cooldowns['political:transition'] = 6;
         nextQueue.push(makeImpulse('businessConfidence', -14, 'Установление тоталитарного контроля', 'default', difficulty, 'other'));
@@ -2684,15 +2696,20 @@ function leverPreview(id, newVal, s, difficulty) {
       break;
     }
     case 'fxIntervention': {
+      // newVal — «млрд», диапазон растёт вместе с ВВП (см. scaleLever), поэтому в
+      // курс это должно идти как доля ВВП — та же нормировка, что и в реальном расчёте.
       add2('Резервы', `${fmtMoneySigned(newVal)} за квартал (сейчас ${fmtMoney(s.reserves)})`);
-      add2('Курс', `${fmtSigned1(newVal * 0.05)}% к темпу изменения`);
+      add2('Курс', `${fmtSigned1(newVal / Math.max(1, s.nominalGdp) * 100 * 2.5)}% к темпу изменения`);
       pros = newVal < 0 ? ['поддержка курса и подавление импортной инфляции'] : ['накопление резервов и слабая валюта помогает экспорту'];
       cons = newVal < 0 ? ['резервы конечны — при исчерпании режим срывается'] : ['импорт дорожает, инфляция растёт'];
       break;
     }
     case 'liquidity': {
-      add2('Ликвидность банков', `${fmtSigned1(newVal * 0.9)} пункта`);
-      add2('Финансовая стабильность', `${fmtSigned1(newVal * 0.25)} пункта`);
+      // та же нормировка по ВВП, что и в реальном расчёте bankLiquidity/financialStability —
+      // иначе на разросшейся экономике превью показывало бы в разы больше, чем происходит на деле.
+      const pctGdp = newVal / Math.max(1, s.nominalGdp) * 100;
+      add2('Ликвидность банков', `${fmtSigned1(pctGdp * 18)} пункта`);
+      add2('Финансовая стабильность', `${fmtSigned1(pctGdp * 5)} пункта`);
       pros = ['снижение риска банковской паники', 'поддержка кредитования'];
       cons = ['рост денежной массы', 'банки привыкают к поддержке'];
       break;
