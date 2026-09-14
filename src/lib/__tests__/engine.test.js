@@ -6,6 +6,7 @@ import {
   POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview, fmtMln, fmtMlnSigned, mlnScale,
   ROLES, PRESIDENT_ACTIONS, PRES_BY_ID, reformShare, politicalCapitalRegen,
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
+  PRESIDENT_PERSONAS, botPresident, directiveSatisfied, presidentSatisfactionNext, PROMISE_POOL as _POOL,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -722,3 +723,125 @@ describe('политический капитал', () => {
   });
 });
 const PRES_GROUPS = ['public', 'reform', 'power'];
+
+describe('президент как третье лицо у ЦБ и Минфина', () => {
+  it('характеры описаны полностью и различаются', () => {
+    expect(PRESIDENT_PERSONAS.length).toBeGreaterThanOrEqual(4);
+    const ids = PRESIDENT_PERSONAS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    PRESIDENT_PERSONAS.forEach((p) => {
+      expect(p.name.length).toBeGreaterThan(0);
+      expect(p.desc.length).toBeGreaterThan(30);
+      ['pressure', 'populism', 'reform', 'power', 'patience'].forEach((k) => expect(Number.isFinite(p[k])).toBe(true));
+    });
+    // популист и реформатор должны тянуть в разные стороны, иначе выбор ничего не значит
+    const pop = PRESIDENT_PERSONAS.find((p) => p.id === 'populist');
+    const ref = PRESIDENT_PERSONAS.find((p) => p.id === 'reformer');
+    expect(pop.populism).toBeGreaterThan(ref.populism);
+    expect(ref.reform).toBeGreaterThan(pop.reform);
+  });
+
+  it('требует от ветви игрока, а не от послушного бота', () => {
+    const e = { ...makeInitialEconomy(), outputGap: -2.5, unemployment: 8 };
+    const plan = botPresident(e, 'populist', 'medium', { playerBranch: 'monetary', cooldowns: {} });
+    expect(plan.persona.id).toBe('populist');
+    if (plan.directive) {
+      expect(plan.directive.branch).toBe('monetary');
+      expect(plan.directive.toPlayer).toBe(true);
+    }
+  });
+
+  it('характер решает, чего президент хочет, когда ситуация допускает варианты', () => {
+    // цены разгоняются: дисциплинированные требуют ужесточения, популист — чего угодно,
+    // только не повышения ставки
+    const hot = { ...makeInitialEconomy(), inflation: 6.6, inflationExpectations: 5.6, coreInflation: 6.2, outputGap: 0.8 };
+    const ask = (id, e) => {
+      const seen = new Set();
+      for (let i = 0; i < 120; i++) {
+        const p = botPresident(e, id, 'medium', { playerBranch: 'monetary', cooldowns: {} });
+        if (p.directive) seen.add(p.directive.reqId);
+      }
+      return seen;
+    };
+    expect(ask('technocrat', hot).has('rate_hike')).toBe(true);
+    expect(ask('reformer', hot).has('rate_hike')).toBe(true);
+    expect(ask('populist', hot).has('rate_hike')).toBe(false);
+    // а в явном спаде смягчения хотят все — характер не спорит с очевидным
+    const slump = { ...makeInitialEconomy(), outputGap: -1.6, unemployment: 7.2 };
+    ['populist', 'reformer', 'technocrat', 'strongman'].forEach((id) => {
+      expect(ask(id, slump).has('rate_cut')).toBe(true);
+    });
+  });
+
+  it('не повторяет требование сразу же, но возвращается к нему позже', () => {
+    const e = { ...makeInitialEconomy(), outputGap: -2.5, unemployment: 8 };
+    const ctx = { playerBranch: 'fiscal', cooldowns: {} };
+    const first = botPresident(e, 'populist', 'medium', ctx);
+    expect(first.directive).toBeTruthy();
+    const rightAfter = botPresident(e, 'populist', 'medium',
+      { ...ctx, lastReqId: first.directive.reqId, lastDirectiveAgo: 0 });
+    if (rightAfter.directive) expect(rightAfter.directive.reqId).not.toBe(first.directive.reqId);
+    // через несколько кварталов молчания то же требование снова допустимо
+    const later = botPresident(e, 'populist', 'medium',
+      { ...ctx, lastReqId: first.directive.reqId, lastDirectiveAgo: 5 });
+    expect(later.directive).toBeTruthy();
+  });
+
+  it('выполнение требования определяется по ползункам игрока, а не по итогу в экономике', () => {
+    const e = makeInitialEconomy();
+    const base = defaultDecisions(e);
+    // rate_cut просит снизить ставку на 1 п.п.
+    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate - 1 })).toBe(true);
+    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate - 0.5 })).toBe(true);
+    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate - 0.25 })).toBe(false);
+    expect(directiveSatisfied('rate_cut', base, base)).toBe(false);
+    expect(directiveSatisfied('rate_cut', base, { ...base, keyRate: base.keyRate + 1 })).toBe(false);
+    expect(directiveSatisfied('нет такого', base, base)).toBe(null);
+  });
+
+  it('довольство президента растёт за выполнение и падает за игнор', () => {
+    const x = { approval: 55, gdpGrowth: 2.3, potentialGrowth: 2.3, activeCrises: [], patience: 1 };
+    const met = presidentSatisfactionNext(50, { ...x, directiveMet: true });
+    const ignored = presidentSatisfactionNext(50, { ...x, directiveMet: false });
+    const quiet = presidentSatisfactionNext(50, { ...x, directiveMet: null });
+    expect(met).toBeGreaterThan(quiet);
+    expect(quiet).toBeGreaterThan(ignored);
+    expect(ignored).toBeLessThan(50);
+    // терпеливый президент наказывает мягче нетерпеливого
+    const patient = presidentSatisfactionNext(50, { ...x, directiveMet: false, patience: 1.35 });
+    const impatient = presidentSatisfactionNext(50, { ...x, directiveMet: false, patience: 0.55 });
+    expect(patient).toBeGreaterThan(impatient);
+  });
+
+  it('довольство считается только когда президент в партии есть', () => {
+    const e = { ...makeInitialEconomy(), presidentSatisfaction: 60 };
+    const run = (extra) => simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), ...extra },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true }).economy;
+    expect(run({}).presidentSatisfaction).toBe(60);
+    expect(run({ presidentActive: true, presidentDirectiveMet: false }).presidentSatisfaction).toBeLessThan(60);
+  });
+});
+
+describe('новости ведомств', () => {
+  it('в ленту идёт текст без характера бота в скобках', () => {
+    const e = makeInitialEconomy();
+    const cb = botCentralBank(e, 'dove', 'medium');
+    const mof = botFinanceMinistry(e, 'populist', 'medium');
+    // характер бота полезен в панели ведомства и неуместен в новостной ленте
+    expect(cb.note).toContain('(Голубь)');
+    expect(cb.newsNote).not.toContain('Голубь');
+    expect(cb.newsNote.startsWith('Центральный банк ')).toBe(true);
+    expect(mof.note).toContain('(Популист)');
+    expect(mof.newsNote).not.toContain('Популист');
+    expect(mof.newsNote.startsWith('Минфин ')).toBe(true);
+  });
+});
+
+describe('обещание про уровень жизни', () => {
+  it('меряет тот же показатель, что виден в шапке', () => {
+    const e = makeInitialEconomy();
+    const promise = _POOL.find((p) => p.id === 'living_standards_promise');
+    expect(promise.metric(e)).toBe(e.wellbeing);
+    expect(promise.describe(promise.target(e))).toContain('Благополучие');
+  });
+});

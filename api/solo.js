@@ -1,11 +1,12 @@
-/* Serverless-хранилище соло-сохранений: 3 слота на playerId (случайный id,
+/* Serverless-хранилище соло-сохранений: четыре слота на playerId (случайный id,
    который клиент генерирует один раз и держит в localStorage — единственное,
    что остаётся локальным, потому что войти без аккаунта иначе некому).
    Сама партия — экономика, история, декэижны — целиком лежит на сервере,
    как и у сетевых комнат (тот же _lib/store.js). */
 import { getSoloSlots, setSoloSlots, hasKv } from './_lib/store.js';
 
-const SLOT_COUNT = 3;
+const SLOT_COUNT = 4;
+const MAX_NAME_LEN = 40;
 const MAX_PLAYER_ID_LEN = 64;
 // история/новости обрезаются перед сохранением: полный снимок после многих
 // десятилетий игры может весить больше мегабайта (каждая запись истории —
@@ -14,12 +15,25 @@ const MAX_PLAYER_ID_LEN = 64;
 const HISTORY_CAP = 40;
 const NEWS_CAP = 40;
 
-const emptySlots = () => Array(SLOT_COUNT).fill(null);
+const emptySlots = () => Array.from({ length: SLOT_COUNT }, () => null);
+/* Слотов стало четыре: у игроков, сохранявшихся раньше, в хранилище лежит массив
+   из трёх — дополняем его, а не считаем сохранения битыми. */
+const normalizeSlots = (slots) => {
+  const out = emptySlots();
+  if (Array.isArray(slots)) slots.slice(0, SLOT_COUNT).forEach((s, i) => { out[i] = s || null; });
+  return out;
+};
+const cleanName = (v) => {
+  if (typeof v !== 'string') return null;
+  const t = v.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LEN);
+  return t.length ? t : null;
+};
 
 function summarize(slot) {
   if (!slot) return null;
   const snap = slot.snapshot || {};
-  return { savedAt: slot.savedAt, role: snap.setup && snap.setup.role, difficulty: snap.setup && snap.setup.difficulty,
+  return { savedAt: slot.savedAt, name: slot.name || null,
+    role: snap.setup && snap.setup.role, difficulty: snap.setup && snap.setup.difficulty,
     quarterIndex: snap.quarterIndex };
 }
 
@@ -40,7 +54,7 @@ async function handleRequest(req, res) {
   if (req.method === 'GET') {
     const { playerId, slot } = req.query;
     if (!validPlayerId(playerId)) return res.status(400).json({ error: 'Некорректный идентификатор' });
-    const slots = (await getSoloSlots(playerId)) || emptySlots();
+    const slots = normalizeSlots(await getSoloSlots(playerId));
     if (slot !== undefined) {
       const idx = validSlotIndex(slot);
       if (idx === null) return res.status(400).json({ error: 'Некорректный слот' });
@@ -61,11 +75,20 @@ async function handleRequest(req, res) {
   if (!validPlayerId(playerId)) return res.status(400).json({ error: 'Некорректный идентификатор' });
   const idx = validSlotIndex(body.slot);
   if (idx === null) return res.status(400).json({ error: 'Некорректный слот' });
-  const slots = (await getSoloSlots(playerId)) || emptySlots();
+  const slots = normalizeSlots(await getSoloSlots(playerId));
 
   if (action === 'save') {
     if (!validSnapshot(body.snapshot)) return res.status(400).json({ error: 'Некорректное сохранение' });
-    slots[idx] = { savedAt: new Date().toISOString(), snapshot: trimSnapshot(body.snapshot) };
+    // имя сохранения переживает перезапись: игрок назвал слот «перед выборами» —
+    // значит и после дозаписи в него это по-прежнему тот же слот
+    const name = cleanName(body.name) || (slots[idx] && slots[idx].name) || null;
+    slots[idx] = { savedAt: new Date().toISOString(), name, snapshot: trimSnapshot(body.snapshot) };
+    await setSoloSlots(playerId, slots);
+    return res.status(200).json({ slots: slots.map(summarize) });
+  }
+  if (action === 'rename') {
+    if (!slots[idx]) return res.status(404).json({ error: 'Слот пуст' });
+    slots[idx] = { ...slots[idx], name: cleanName(body.name) };
     await setSoloSlots(playerId, slots);
     return res.status(200).json({ slots: slots.map(summarize) });
   }

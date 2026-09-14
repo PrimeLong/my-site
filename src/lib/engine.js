@@ -42,7 +42,7 @@ const CONFIG = {
     consumerConfidence: 55, businessConfidence: 55, financialStability: 70, govTrust: 55,
     approval: 55, quartersToElection: 16, term: 1, mandate: null, governmentLine: 'centrist',
     politicalRegime: 'democracy', politicalTension: 8, parliamentDissolved: false, unrestQuartersLeft: 0,
-    politicalCapital: 55, cbTenure: 0, mofTenure: 0,
+    politicalCapital: 55, cbTenure: 0, mofTenure: 0, presidentSatisfaction: 60,
     worldGdpGrowth: 2.5, worldInflation: 3.0, worldRate: 3.0, commodityIndex: 100, worldDemandIndex: 100,
     policyCoordination: 70,
   },
@@ -395,7 +395,11 @@ function buildCbResult(s, P, vals) {
       `норма резервирования ${reserveReq.toFixed(1)}%, норматив капитала ${capitalRequirement.toFixed(1)}%`,
       `ликвидность банкам ${liquidity ? `+${liquidity} млрд` : 'не предоставлялась'}, режим курса ${fxRegime === 'free' ? 'плавающий' : fxRegime === 'managed' ? 'управляемый' : 'фиксированный'}`,
     ],
-    note: `Центральный банк (${P.name}) ${parts.join(', ')}.`, demand, stance, institution: 'cb',
+    // note идёт в панель ведомства, где характер бота — полезная информация;
+    // newsNote — в ленту новостей, где «Центральный банк (Голубь)» выглядит так,
+    // как не выглядит ни одна настоящая новость
+    note: `Центральный банк (${P.name}) ${parts.join(', ')}.`,
+    newsNote: `Центральный банк ${parts.join(', ')}.`, demand, stance, institution: 'cb',
     headline: keyRate > s.keyRate + 0.05 ? 'ужесточение' : keyRate < s.keyRate - 0.05 ? 'смягчение' : 'без изменений',
     newsHeadline: `ЦБ ${keyRate > s.keyRate + 0.05 ? 'УЖЕСТОЧАЕТ ПОЛИТИКУ' : keyRate < s.keyRate - 0.05 ? 'СМЯГЧАЕТ ПОЛИТИКУ' : 'СОХРАНЯЕТ КУРС'}: СТАВКА ${ru(keyRate.toFixed(2))}%`,
     publicHeadline: `РЕШЕНИЕ ЦБ: КЛЮЧЕВАЯ СТАВКА ${ru(keyRate.toFixed(2))}%`,
@@ -499,7 +503,8 @@ function buildMofResult(s, P, targetDeficit, vals) {
       govSpending, transfers, govInvestment,
       shareHealth, shareEducation, shareScience, shareDefense, shareAdmin,
     },
-    note: `Минфин (${P.name}) ${parts.join(', ')}.`, demand, stance, institution: 'gov',
+    note: `Минфин (${P.name}) ${parts.join(', ')}.`,
+    newsNote: `Минфин ${parts.join(', ')}.`, demand, stance, institution: 'gov',
     detail: [
       `госзакупки ${fmtSigned1(govSpending)}% к тренду, выплаты ${fmtSigned1(transfers)}%, инвестиции ${fmtSigned1(govInvestment)}%`,
       `НДС ${vatRate.toFixed(1)}%, прибыль ${profitTaxRate.toFixed(1)}%, подоходный ${incomeTaxRate.toFixed(1)}%`,
@@ -1028,6 +1033,187 @@ function appointmentEffects(kind, s, difficulty, personaName) {
   return { impulses, news, cost: APPOINT_COST[kind] };
 }
 
+/* ============================ ПРЕЗИДЕНТ КАК ТРЕТЬЕ ЛИЦО ============================
+   За ЦБ и Минфин игрок и раньше имел дело с ботом соседнего ведомства. Президент —
+   другой уровень: он ничего не считает сам, но может требовать, назначать и тратить
+   политический капитал на то, до чего у ведомств руки не доходят. Работает он тем же
+   кодом, что и роль президента (PRESIDENT_ACTIONS, processPresidentialDirective) —
+   отличается только тем, что решения принимает характер, а не человек.
+
+   Главное следствие для игрока: у требований президента есть последствия. Он не
+   может отменить решение ЦБ, но может перестать терпеть его главу. */
+const PRESIDENT_PERSONAS = [
+  { id: 'technocrat', name: 'Технократ', title: 'Не мешает ведомствам работать',
+    pressure: 0.30, populism: -0.5, reform: 0.9, power: 0.05, patience: 1.35,
+    desc: 'Вмешивается редко и по делу, вкладывается в структурные реформы, требований почти не выдвигает. Работать с ним спокойно — но и помощи ждать не стоит.' },
+  { id: 'populist', name: 'Популист', title: 'Рейтинг важнее цифр',
+    pressure: 0.85, populism: 1.0, reform: -0.35, power: 0.35, patience: 0.7,
+    desc: 'Требует дешёвых денег и щедрого бюджета, реформы считает вредными для рейтинга. Отказ читает как личную нелояльность.' },
+  { id: 'strongman', name: 'Силовик', title: 'Власть должна быть вертикальной',
+    pressure: 0.90, populism: 0.25, reform: 0.15, power: 1.0, patience: 0.55,
+    desc: 'Указания не обсуждаются. Легко идёт на роспуск парламента и разгон протеста — вместе с ними приходят премия за риск и отток капитала.' },
+  { id: 'reformer', name: 'Реформатор', title: 'Считает на два срока вперёд',
+    pressure: 0.40, populism: -0.4, reform: 1.0, power: -0.2, patience: 1.1,
+    desc: 'Тратит капитал на реформы, даже когда они стоят рейтинга. Требовать будет дисциплины, а не щедрости.' },
+];
+const getPresPersona = (id) => PRESIDENT_PERSONAS.find((p) => p.id === id) || PRESIDENT_PERSONAS[0];
+
+/* Наклон каждой просьбы: насколько она «популистская» и насколько «реформаторская».
+   Вместе с req.fit(state) это и даёт выбор президента — что именно он потребует
+   в текущей ситуации, исходя из своего характера, а не из списка по порядку. */
+const PRES_REQ_LEAN = {
+  rate_cut: { pop: 1.0, ref: -0.3 }, rate_hike: { pop: -1.0, ref: 0.5 }, rate_hold: { pop: 0.5, ref: -0.1 },
+  liquidity_help: { pop: 0.3, ref: 0.1 }, capreq_ease: { pop: 0.4, ref: -0.2 }, fx_support: { pop: 0.5, ref: -0.1 },
+  infra_up: { pop: 0.6, ref: 0.6 }, deficit_cut: { pop: -1.0, ref: 0.6 }, transfers_freeze: { pop: -1.0, ref: 0.4 },
+  tax_relief_business: { pop: -0.2, ref: 0.6 }, fiscal_hold: { pop: -0.6, ref: 0.4 },
+};
+
+/* Выполнено ли требование. Направление берём из самой просьбы: применяем её к
+   решениям на начало квартала и смотрим, сдвинул ли игрок те же параметры хотя бы
+   на сорок процентов пути. Так не приходится писать отдельный предикат под каждую
+   просьбу — и новая просьба сразу работает с этой проверкой. */
+function directiveSatisfied(reqId, baseDecisions, finalDecisions) {
+  const req = REQUESTS.find((r) => r.id === reqId);
+  if (!req || !baseDecisions || !finalDecisions) return null;
+  const want = req.apply(baseDecisions, 1, baseDecisions);
+  let total = 0; let moved = 0;
+  Object.keys(want).forEach((k) => {
+    const target = want[k]; const before = baseDecisions[k]; const after = finalDecisions[k];
+    if (![target, before, after].every(Number.isFinite)) return;
+    const need = target - before;
+    if (Math.abs(need) < 1e-6) return;
+    total += 1;
+    if ((after - before) / need >= 0.4) moved += 1;
+  });
+  if (!total) return null; // просить было нечего — не в чем и отказывать
+  return moved / total >= 0.5;
+}
+
+/* Решения президента-бота на ближайший квартал: что он потребует, что сделает сам
+   и не пора ли ему поменять руководителя ведомства, которым игрок не управляет.
+   Считается ДО квартала — требование должно быть видно игроку прежде, чем он
+   примет решения, иначе это не требование, а претензия задним числом. */
+function botPresident(s, personaId, difficulty, ctx) {
+  const P = getPresPersona(personaId);
+  const opts = ctx || {};
+  const playerBranch = opts.playerBranch || null; // 'monetary' | 'fiscal' | null
+  const capital = Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55;
+  const sat = Number.isFinite(s.presidentSatisfaction) ? s.presidentSatisfaction : 60;
+  const crises = (s.activeCrises || []).length;
+  const tension = s.politicalTension || 0;
+
+  /* --- 1. что президент делает сам --- */
+  const wish = [];
+  if (tension >= 50 && P.power > 0.5) wish.push('crackdown');
+  if (tension >= 62 && P.power >= 0.9 && !s.parliamentDissolved) wish.push('dissolve');
+  if (s.parliamentDissolved && P.power < 0 && tension < 35) wish.push('restore_parliament');
+  if (s.approval < 45) wish.push('address');
+  if (tension >= 40 && P.power <= 0.5) wish.push('elite_deal');
+  if (s.approval < 48) wish.push('address');
+  if (P.reform >= 0.8) {
+    // реформатор занимается реформами не «когда припрёт», а постоянно: доступность
+    // и цена их и так ограничивают — presActionAvailable отсеет уже проведённые
+    if (s.unemployment > s.nairu + 1) wish.push('labor');
+    wish.push('courts', 'deregulation', 'education');
+    if (s.debtToGdp > 90) wish.push('pension');
+  }
+  if (P.populism < 0 && s.debtToGdp > 88) wish.push('pension');
+  // на дне списка — то, чем можно заняться всегда: кулдаун в 16 кварталов и цена
+  // сами не дадут президенту подписывать нацпроекты каждый год
+  wish.push('infra_program');
+  // берём по одному решению за квартал и только если капитала заметно больше цены:
+  // бот, спускающий капитал в ноль, перестаёт быть силой, с которой считаются
+  const actions = [];
+  for (const id of wish) {
+    const a = PRES_BY_ID[id];
+    if (!a || actions.length) continue;
+    if (a.cost > capital - 12) continue;
+    if (!presActionAvailable(a, s, opts.cooldowns || {})) continue;
+    actions.push(id);
+  }
+
+  /* --- 2. кому и что он требует --- */
+  const branchOf = (req) => (req.from === 'ministry_finance' ? 'monetary' : 'fiscal');
+  /* Вес характера намеренно больше единицы: с весом 1 оценка ситуации (req.fit)
+     перекрывала характер почти везде, и все четыре президента требовали одного и
+     того же. Теперь характер решает спорные случаи — но не заставляет популиста
+     требовать снижения ставки при инфляции в десять процентов. */
+  const scoreReq = (req) => {
+    const lean = PRES_REQ_LEAN[req.id] || { pop: 0, ref: 0 };
+    return req.fit(s) + lean.pop * P.populism * 1.8 + lean.ref * P.reform * 1.3;
+  };
+  // требовать интереснее от того, кем игрок управляет сам: бот и так послушен
+  const wantBranch = playerBranch || (Math.random() < 0.5 ? 'monetary' : 'fiscal');
+  const pool = REQUESTS.filter((r) => branchOf(r) === wantBranch);
+  /* Выбираем не строго лучшее, а случайное из близких по смыслу: президент, который
+     двенадцать кварталов подряд требует одно и то же слово в слово, читается как
+     сломанный, а не как упрямый. Прошлое требование при прочих равных пропускаем. */
+  const scored = pool.map((r) => ({ req: r, sc: scoreReq(r) })).sort((a, b) => b.sc - a.sc);
+  const band = (lim) => scored.filter((x) => x.sc >= scored[0].sc - lim);
+  /* Сразу после требования то же самое не повторяем: ищем замену сначала в узкой
+     полосе, потом в широкой, а если равноценной альтернативы нет — президент просто
+     молчит этот квартал. Через пару кварталов он к своему требованию вернётся —
+     и вот тогда повтор читается как настойчивость, а не как заевшая пластинка.
+     Это же и спасает довольство: требование каждый квартал обнуляло бы его за
+     четыре хода, сколько бы игрок ни старался в остальном. */
+  // ноль — валидное «требовал в прошлом квартале», поэтому не `|| 99`
+  const dirAgo = Number.isFinite(opts.lastDirectiveAgo) ? opts.lastDirectiveAgo : 99;
+  const avoidLast = dirAgo <= 2;
+  const notLast = (list) => (avoidLast ? list.filter((x) => x.req.id !== opts.lastReqId) : list);
+  const shortlist = notLast(band(0.5)).length ? notLast(band(0.5)) : notLast(band(1.2));
+  const best = shortlist.length ? shortlist[Math.floor(Math.random() * shortlist.length)] : null;
+  // после только что выданного требования планка выше: иначе давление идёт каждый
+  // квартал и довольство рушится быстрее, чем игрок успевает что-то показать
+  const threshold = 1.5 - P.pressure * 1.2 + (sat > 70 ? 0.4 : 0)
+    + (dirAgo <= 1 ? 0.8 : 0);
+  const directive = best && best.sc >= threshold
+    ? { reqId: best.req.id, branch: wantBranch, toPlayer: wantBranch === playerBranch, req: best.req }
+    : null;
+
+  /* --- 3. смена руководителя ведомства, которым игрок не управляет --- */
+  let appointBot = null;
+  const botBranch = playerBranch === 'monetary' ? 'fiscal' : playerBranch === 'fiscal' ? 'monetary' : null;
+  const tenure = botBranch === 'monetary' ? (s.cbTenure || 0) : (s.mofTenure || 0);
+  if (botBranch && tenure >= 8 && capital > 40) {
+    if (botBranch === 'monetary') {
+      const want = P.populism > 0.5 ? 'dove' : P.populism < -0.2 ? 'hawk' : 'pragmatic';
+      if (want !== opts.cbPersonaId && (s.inflation > s.inflationTarget + 3 || s.unemployment > s.nairu + 2)) appointBot = { kind: 'central_bank', persona: want };
+    } else {
+      const want = P.populism > 0.5 ? 'populist' : P.reform > 0.7 ? 'technocrat' : 'austerity';
+      if (want !== opts.mofPersonaId && (s.debtToGdp > 90 || s.unemployment > s.nairu + 2)) appointBot = { kind: 'ministry_finance', persona: want };
+    }
+  }
+
+  /* --- 4. как это выглядит со стороны --- */
+  const mood = sat >= 70 ? 'доволен' : sat >= 40 ? 'сдержан' : sat >= 20 ? 'недоволен' : 'на грани';
+  const quote = (() => {
+    if (sat < 20) return 'Я назначаю людей не для того, чтобы они объясняли мне, почему ничего нельзя сделать. Терпение администрации не бесконечно.';
+    if (crises > 0) return `В стране ${crises === 1 ? 'кризис' : 'сразу несколько кризисов'}, и объяснения меня интересуют меньше, чем результат. Работайте.`;
+    if (P.id === 'populist') return `Люди не едят проценты по ставке и не носят домой бюджетное правило. Рейтинг власти ${Math.round(s.approval)} — вот единственная отчётность, которая имеет значение.`;
+    if (P.id === 'strongman') return 'Государство — это вертикаль. Ведомства исполняют, а не обсуждают; обсуждать будем после того, как исполнено.';
+    if (P.id === 'reformer') return 'Всё, что мы сделаем за этот срок, начнёт работать при следующем. Это не повод не делать — это единственная причина делать сейчас.';
+    return 'У ведомств есть свои мандаты, и я в них не вмешиваюсь без нужды. Нужда определяется цифрами, а не настроением.';
+  })();
+  return {
+    persona: P, actions, directive, appointBot, mood, quote,
+    satisfaction: sat,
+    newsHeadline: `ПРЕЗИДЕНТ ${directive ? 'ТРЕБУЕТ: ' + directive.req.label.toUpperCase() : 'О ПОЛОЖЕНИИ ДЕЛ'}`,
+    demand: directive ? `Президент (${P.name}): ${directive.req.ask}` : null,
+  };
+}
+
+/* Насколько президент доволен ведомством игрока. Требование выполнено — плюс,
+   проигнорировано — заметный минус; сверх того он смотрит на рейтинг и рост, потому
+   что политику в конечном счёте оценивают не по послушанию. */
+function presidentSatisfactionNext(prev, x) {
+  const met = x.directiveMet;
+  const base = met === true ? 9 : met === false ? -13 * clamp(1.6 - x.patience * 0.6, 0.6, 1.3) : 1.8;
+  return clamp(prev + base
+    + clamp((x.approval - 50) / 12, -2.5, 2.5)
+    + clamp((x.gdpGrowth - x.potentialGrowth) * 0.6, -1.5, 1.5)
+    - (x.activeCrises || []).length * 1.2, 0, 100);
+}
+
 /* =========================================================================================
    ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ (роли «премьер-министр» и «президент»): у них, в отличие от
    ЦБ и Минфина, нет бота-оппонента со своими требованиями — конкретные, измеримые
@@ -1063,9 +1249,11 @@ const PROMISE_POOL = [
     metric: (e) => -e.budgetBalancePctGdp, direction: 'below',
     describe: (t) => `Дефицит бюджета не больше ${fmt1(t)}% ВВП к выборам` },
   { id: 'living_standards_promise', label: 'Повысить уровень жизни',
-    target: (s) => round1(s.scoreWelfare),
-    metric: (e) => e.scoreWelfare, direction: 'above',
-    describe: (t) => `Индекс благосостояния населения не ниже ${fmt1(t)} — уровня на начало срока` },
+    // раньше мерялась оценка «Люди», а в тексте стояло «благосостояние населения» —
+    // игрок сверял обещание с «Благополучием» в шапке и видел разные числа
+    target: (s) => round1(s.wellbeing),
+    metric: (e) => e.wellbeing, direction: 'above',
+    describe: (t) => `Благополучие не ниже ${fmt1(t)} — уровня на начало срока (показатель в шапке)` },
   { id: 'reserves_promise', label: 'Сохранить резервы',
     target: (s) => Math.round(s.reserves * 0.8),
     metric: (e) => e.reserves, direction: 'above',
@@ -2224,6 +2412,13 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
 
   /* Политический капитал президента: копится рейтингом и ростом, тает кризисами.
      Считается после режима и беспорядков — они на него и влияют. */
+  /* Довольство президента считаем только когда он в партии вообще есть: иначе
+     показатель молча дрейфовал бы у ролей, где президента не существует. */
+  const presidentSatisfaction = decisions.presidentActive
+    ? presidentSatisfactionNext(Number.isFinite(s.presidentSatisfaction) ? s.presidentSatisfaction : 60,
+      { directiveMet: decisions.presidentDirectiveMet, patience: decisions.presidentPatience || 1,
+        approval, gdpGrowth, potentialGrowth, activeCrises })
+    : (Number.isFinite(s.presidentSatisfaction) ? s.presidentSatisfaction : 60);
   const capitalAfterSpend = clamp(startCapital - presSpent, 0, 100);
   const politicalCapitalGain = politicalCapitalRegen({ approval, gdpGrowth, potentialGrowth, activeCrises,
     unrestActive, politicalRegime, politicalCapital: capitalAfterSpend });
@@ -2283,7 +2478,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive,
-    politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule,
+    politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
     yield3m, yield1y, yield2y, yield5y, yield10y, curveSlope, curveInverted, bondIndex, bondReturn,
@@ -2943,7 +3138,7 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
           `${act.publicNote || ''}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}`, 7);
       } else {
         push(isCb ? 'cb' : 'gov', act.newsHeadline,
-          `${act.note}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}${act.demand ? ` ${act.demand}` : ''}`,
+          `${act.newsNote || act.note}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}${act.demand ? ` ${act.demand}` : ''}`,
           changedCourse || newDemand ? 8 : 5);
       }
     }
@@ -3286,6 +3481,7 @@ export {
   PROMISE_POOL, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
   presActionAvailable, applyPresidentActions, politicalCapitalRegen,
+  PRESIDENT_PERSONAS, getPresPersona, botPresident, directiveSatisfied, presidentSatisfactionNext,
   processPresidentialDirective, PRES_DIRECTIVE_COST, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,

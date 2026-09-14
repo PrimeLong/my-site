@@ -46,7 +46,7 @@ export function watchRoom(id, onRoom, onError, intervalMs = 2500, seat, token) {
   return () => { stop = true; };
 }
 
-/* Соло-сохранения: три слота на игрока, целиком на сервере (см. api/solo.js) —
+/* Соло-сохранения: четыре слота на игрока, целиком на сервере (см. api/solo.js) —
    playerId лишь адресует их, в нём самом нет данных партии. */
 const SOLO_API = '/api/solo';
 export async function fetchSoloSlots(playerId) {
@@ -61,7 +61,9 @@ export async function fetchSoloSlot(playerId, slot) {
   if (!r.ok) throw new Error(data.error || 'Не удалось загрузить сохранение');
   return data.snapshot;
 }
-export const saveSoloSlot = (playerId, slot, snapshot) =>
-  post({ action: 'save', playerId, slot, snapshot }, SOLO_API).then((d) => d.slots);
+export const saveSoloSlot = (playerId, slot, snapshot, name) =>
+  post({ action: 'save', playerId, slot, snapshot, name }, SOLO_API).then((d) => d.slots);
+export const renameSoloSlot = (playerId, slot, name) =>
+  post({ action: 'rename', playerId, slot, name }, SOLO_API).then((d) => d.slots);
 export const deleteSoloSlot = (playerId, slot) =>
   post({ action: 'delete', playerId, slot }, SOLO_API).then((d) => d.slots);
