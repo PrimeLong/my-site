@@ -6669,10 +6669,6 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
       {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      {showLink && (
-        <DeviceLinkModal playerId={playerId} onClose={() => setShowLink(false)}
-          onLinked={(id) => { setPlayerIdState(id); setSoloSlots(null); setSlotError(''); }} />
-      )}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню" />}
@@ -10178,10 +10174,6 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      {showLink && (
-        <DeviceLinkModal playerId={playerId} onClose={() => setShowLink(false)}
-          onLinked={(id) => { setPlayerIdState(id); setSoloSlots(null); setSlotError(''); }} />
-      )}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
@@ -10589,6 +10581,57 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   );
 }
 
+/* Экран не должен пропадать целиком. Любая ошибка при отрисовке в React
+   размонтирует всё дерево — и вместо игры остаётся белая страница, по которой
+   нельзя понять ни что сломалось, ни как вернуться. Граница ошибок ловит такой
+   сбой на уровне экрана: показывает, что именно случилось, и оставляет дорогу
+   обратно в меню. Сохранения при этом целы — они на сервере. */
+function CrashScreen({ error, onMenu }) {
+  return (
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '44px 16px', minHeight: '100vh' }}>
+      <GlobalStyle />
+      <div className="ems-panel-raised" style={{ maxWidth: 520, width: '100%', padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+          <AlertTriangle size={16} color={COLOR.rust} />
+          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.rust }}>Экран не открылся</span>
+        </div>
+        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 12 }}>
+          Произошла ошибка при отрисовке. Партии это не касается: сохранения лежат на сервере и никуда не делись —
+          можно вернуться в меню и загрузить их заново.
+        </div>
+        <div className="ems-mono" style={{ fontSize: 11, color: COLOR.faint, background: COLOR.panelAlt,
+          border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '9px 10px', marginBottom: 14,
+          maxHeight: 120, overflow: 'auto', wordBreak: 'break-word' }}>
+          {String((error && error.message) || error || 'неизвестная ошибка')}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="ems-btn primary" style={{ flex: 1, minWidth: 160, padding: '11px 0' }} onClick={onMenu}>
+            Вернуться в меню
+          </button>
+          <button className="ems-btn" style={{ flex: 1, minWidth: 160, padding: '11px 0' }}
+            onClick={() => window.location.reload()}>
+            Перезагрузить страницу
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+class ScreenErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error('Экран упал:', error, info); }
+  componentDidUpdate(prev) {
+    // сменили экран — пробуем снова: ошибка была у того, который уже закрыт
+    if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
+  }
+  render() {
+    if (this.state.error) return <CrashScreen error={this.state.error} onMenu={this.props.onMenu} />;
+    return this.props.children;
+  }
+}
+
 export default function MacroSimulator() {
   const [setup, setSetup] = useState(null);
   const [loaded, setLoaded] = useState(null);
@@ -10609,41 +10652,45 @@ export default function MacroSimulator() {
   const screenKey = network ? 'network-game' : setup ? 'game' : view;
   React.useEffect(() => { window.scrollTo(0, 0); }, [screenKey]);
 
-  if (network) {
-    return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />;
-  }
-  if (!setup) {
-    if (view === 'setup') {
-      return (
-        <SetupScreen key={theme}
-          onStart={(x) => { setLoaded(null); setSetup(x); }}
-          onBack={goMenu}
-        />
-      );
+  const backToMenu = () => { setNetwork(null); setLoaded(null); setSetup(null); goMenu(); };
+  const screen = (() => {
+    if (network) {
+      return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />;
     }
-    if (view === 'network') {
-      return <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />;
-    }
-    if (view === 'tutorial') {
+    if (!setup) {
+      if (view === 'setup') {
+        return (
+          <SetupScreen key={theme}
+            onStart={(x) => { setLoaded(null); setSetup(x); }}
+            onBack={goMenu}
+          />
+        );
+      }
+      if (view === 'network') {
+        return <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />;
+      }
+      if (view === 'tutorial') {
+        return (
+          <TutorialHub key={theme}
+            onBack={goMenu}
+            onStartRealGame={() => setView('setup')}
+          />
+        );
+      }
       return (
-        <TutorialHub key={theme}
-          onBack={goMenu}
-          onStartRealGame={() => setView('setup')}
+        <MainMenu key={theme} theme={theme} setTheme={setTheme}
+          onNewGame={() => setView('setup')}
+          onNetwork={() => setView('network')}
+          onTutorial={() => setView('tutorial')}
+          onLoad={startLoaded}
         />
       );
     }
     return (
-      <MainMenu key={theme} theme={theme} setTheme={setTheme}
-        onNewGame={() => setView('setup')}
-        onNetwork={() => setView('network')}
-        onTutorial={() => setView('tutorial')}
-        onLoad={startLoaded}
-      />
+      <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
+        theme={theme} setTheme={setTheme}
+        onRestart={() => { setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
     );
-  }
-  return (
-    <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
-      theme={theme} setTheme={setTheme}
-      onRestart={() => { setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
-  );
+  })();
+  return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{screen}</ScreenErrorBoundary>;
 }
