@@ -10,6 +10,7 @@ import {
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
+  POLITICAL_REGIME_INFO,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
@@ -654,6 +655,37 @@ tr('trenches', 'Окопы', 'литавры, низкая виолончель,
   ],
 });
 
+/* ----------------------------- ТОТАЛИТАРНЫЙ РЕЖИМ ----------------------------- */
+// Обе пьесы этого настроения нарочно построены только на новых голосах (guitar, growl) и
+// драм-машине — ни один другой трек саундтрека не пользуется дисторшном, так что звучание
+// тоталитарного режима не может быть спутано ни с чем прежним.
+tr('ironmarch', 'Железный марш', 'дисторшн-гитара, тяжёлый бас, драм-машина', 'totalitarian', {
+  bpm: 104, swing: 0, reverb: 0.22,
+  A: H('D3 A3 D4 F4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | D3 A3 D4 F4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
+  melA: MEL('0:D4:3 3:F4:1 8:D4:3 11:F4:1 16:Bb3:3 19:D4:1 24:A3:3 27:C#4:1 32:D4:3 35:F4:1 40:D4:3 43:F4:1 48:G3:3 51:Bb3:1 56:A3:3 59:C#4:1'),
+  melB: MEL('0:Bb3:3 3:D4:1 8:G3:3 11:Bb3:1 16:D4:3 19:F4:1 24:A3:3 27:C#4:1'),
+  sections: [
+    sec('A', 'melA', 'flow', 'guitar growl', 0.85, DR('x.......x.......', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
+    sec('B', 'melB', 'flow', 'guitar growl', 1.0, DR('x...x...x...x...', '....x.......xxx.', 'xxxxxxxxxxxxxxxx')),
+    sec('A', 'melA', 'flow', 'guitar growl', 1.0, DR('x...x...x...x...', '....x...x...x...', 'oooooooooooooooo')),
+  ],
+});
+// Комендантский час: не марш, а гнетущая пустота улиц — редкие гитарные вспышки над
+// тяжёлым басовым дроном, шаги патруля вместо строевого шага.
+tr('curfew', 'Комендантский час', 'бас-дрон, редкие гитарные вспышки', 'totalitarian', {
+  bpm: 72, swing: 0, reverb: 0.42,
+  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
+  melA: MEL('0:D4:8 16:F4:4 24:D4:4 32:Bb3:8 48:D4:4 56:Bb3:4'),
+  melB: MEL('0:Bb3:8 16:D4:4 24:A3:4 32:A3:8 48:C#4:4 56:A3:4'),
+  sections: [
+    sec('A', 'melA', 'sustain', 'guitar growl', 0.7, DR('x...............', '................', '.......o........')),
+    sec('B', 'melB', 'sustain', 'guitar growl', 0.85, DR('x.......x.......', '................', '.......o.......o')),
+    sec('A', 'melA', 'sustain', 'guitar growl', 1.0, DR('x.......x.......', '....x...........', 'o.......o.......')),
+  ],
+});
+
 /* ------------------------------- ДЕФЛЯЦИЯ ------------------------------- */
 tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM-пад', 'frost', {
   bpm: 52, swing: 0, reverb: 0.72,
@@ -781,9 +813,10 @@ const MOOD_PLAYLISTS = {
   crisis: ['collapse', 'panic', 'bankrun'],
   frost: ['glass', 'stillness'],
   war: ['warmarch', 'trenches'],
+  totalitarian: ['ironmarch', 'curfew'],
   casino: ['chips', 'croupier'],
 };
-const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война', casino: 'Казино' };
+const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война', totalitarian: 'Тоталитаризм', casino: 'Казино' };
 const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
   banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
 /* Плейлисты, привязанные к роли: у инвестора свой репертуар */
@@ -1112,6 +1145,65 @@ export const Audio = (() => {
   };
   const hat = (t, open) => noiseHit(t, open ? 0.14 : 0.045, open ? 0.022 : 0.026, 'highpass', 8200, 1.4);
 
+  /* Мягкий клиппинг для гитары и нового баса тоталитарного режима — ни один другой
+     голос в движке им не пользуется, поэтому у этих двух треков не может быть звучания,
+     похожего на остальной саундтрек. */
+  const distCurve = (() => {
+    const n = 1024; const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(x * 3.2); }
+    return curve;
+  })();
+  // Дисторшн-гитара: пила через waveshaper с кабинетным ФНЧ и серединным пиком.
+  // power=true — режущий «пауэр-аккорд» (терция + квинта), false — сольная линия.
+  const guitar = (t, midi, dur, vel, power) => {
+    const notes = power ? [midi, midi + 7] : [midi];
+    const out = ctx.createGain(); out.gain.value = 0.10 * vel;
+    const pan = panFor(midi, 0.3); out.connect(pan); pan.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.25); sendTo(out, echo, 0.18);
+    const cab = ctx.createBiquadFilter(); cab.type = 'lowpass'; cab.frequency.value = 3200; cab.Q.value = 0.7;
+    const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 900; mid.Q.value = 1.1; mid.gain.value = 4;
+    cab.connect(mid); mid.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.006);
+    g.gain.setValueAtTime(1, t + Math.max(0.01, dur * 0.6));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(cab);
+    notes.forEach((m) => {
+      const shaper = ctx.createWaveShaper(); shaper.curve = distCurve; shaper.oversample = '2x';
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(m);
+      const pre = ctx.createGain(); pre.gain.value = 2.6;
+      o.connect(pre); pre.connect(shaper); shaper.connect(g);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+  };
+  // Новый бас, отдельный от cello/piano-баса: суб-синус на октаву ниже плюс расстроенная
+  // пила через тот же дисторшн, что и guitar — тяжёлый, давящий низ без «щелчка» атаки.
+  const growl = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.16 * vel;
+    out.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.15);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 2;
+    filt.frequency.setValueAtTime(Math.min(900, f * 5), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.4, 70), t + Math.min(dur, 0.25));
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.01);
+    g.gain.setValueAtTime(1, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.connect(filt);
+    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = f / 2;
+    sub.connect(g);
+    const shaper = ctx.createWaveShaper(); shaper.curve = distCurve; shaper.oversample = '2x';
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+    const pre = ctx.createGain(); pre.gain.value = 1.8;
+    const distAmt = ctx.createGain(); distAmt.gain.value = 0.6;
+    o.connect(pre); pre.connect(shaper); shaper.connect(distAmt); distAmt.connect(g);
+    sub.start(t); sub.stop(t + dur + 0.05); o.start(t); o.stop(t + dur + 0.05);
+  };
+
   /* ------------------------------- СЕКВЕНСОР ------------------------------- */
   /* Атмосферный слой: низкий гул, «ветер» и сердцебиение под музыкой */
   let amb = null; let heartTimer = null;
@@ -1181,13 +1273,17 @@ export const Audio = (() => {
     }
     // духовые стабы на каждую четверть — маршевое «ум-па», а не длинная педаль
     if (has('brass') && pos % 4 === 0) brass(t, voicing.slice(0, 3), sd * 3.4, 0.1 * dyn);
+    // гитарный «чуг» на каждую четверть — тот же маршевый приём, что и духовые стабы,
+    // но режущий и жёсткий: собственный узнаваемый ритм тоталитарного саундтрека
+    if (has('guitar') && pos % 4 === 0) guitar(t, voicing[0], sd * 3.4, 0.11 * dyn, true);
     // бас — постоянные восьмые с движением по тонам аккорда (root/fifth/octave/third),
     // а не статичная педаль: главный источник «драйва» в синтвейве
     if (pos % 2 === 0) {
       const root = voicing[0] - 12;
       const note = root + BASS_DEG[(pos / 2) % BASS_DEG.length];
       const vel = (pos % 8 === 0 ? 0.95 : pos % 4 === 0 ? 0.72 : 0.56) * dyn;
-      if (has('cello')) cello(t, note, sd * 1.9, vel);
+      if (has('growl')) growl(t, note, sd * 1.9, vel);
+      else if (has('cello')) cello(t, note, sd * 1.9, vel);
       else if (has('bass')) piano(t + jitter(), note, 0.5 * vel, 0.45, 4);
     }
     // арпеджио по аккорду шестнадцатыми — накладывается на «полные» секции без
@@ -1212,7 +1308,8 @@ export const Audio = (() => {
       const vel = (0.78 + 0.20 * accent(pos)) * dyn;
       if (has('violin')) violin(t, midi, sd * dur * 1.05, vel);
       if (has('bells')) bell(t, midi, sd * dur * 1.7, vel * 0.9);
-      if (!has('violin') && !has('bells')) {
+      if (has('guitar') && !has('violin') && !has('bells')) guitar(t + jitter(), midi, sd * dur * 0.9, vel * 0.7, false);
+      if (!has('violin') && !has('bells') && !has('guitar')) {
         piano(t + jitter(), midi, Math.min(1, vel), 1);
         if (dur >= 8 && track.mood !== 'crisis') piano(t + jitter(), midi - 12, vel * 0.32, 0.8);
       } else if (has('piano') && has('violin')) {
@@ -1342,7 +1439,9 @@ export const Audio = (() => {
       } else if (heartTimer) { clearInterval(heartTimer); heartTimer = null; }
     },
     setMood(e) {
-      const m = REGIME_MOOD[e.regime] || 'calm';
+      // тоталитарный режим переопределяет настроение саундтрека независимо от того,
+      // что творится с экономикой — власть куда навязчивее любого экономического цикла
+      const m = e.politicalRegime === 'totalitarian' ? 'totalitarian' : (REGIME_MOOD[e.regime] || 'calm');
       intensity = clamp((e.inflationRisk * 0.3 + e.bankingRisk * 0.3 + e.debtRisk * 0.2 + e.recessionRisk * 0.2) / 100, 0, 1);
       tempoMod = clamp(0.95 + (e.gdpGrowth - 2.0) * 0.012 + intensity * 0.05, 0.9, 1.1);
       this.setAmbience(e.regime, intensity);
@@ -1470,7 +1569,7 @@ function AudioControls() {
               onChange={(e) => { const v = parseFloat(e.target.value); setVol(v); Audio.setVolume(v); }} />
           </div>
           <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
-            Семнадцать пьес в шести настроениях. Каждая состоит из нескольких частей с разной оркестровкой и доигрывается до конца, прежде чем уступить место следующей.
+            {Object.keys(TRACKS).length} пьес в {new Set(Object.values(TRACKS).map((t) => t.mood)).size} настроениях. Каждая состоит из нескольких частей с разной оркестровкой и доигрывается до конца, прежде чем уступить место следующей.
           </div>
         </div>
       )}
@@ -1586,8 +1685,37 @@ function NewsTerminal({ items, onOpenPaper }) {
   );
 }
 
+/* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
+   бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */
+const mixHex = (a, b, t) => {
+  const c = (h, i) => parseInt(h.slice(i, i + 2), 16);
+  const m = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, '0');
+  return `#${m(1)}${m(3)}${m(5)}`;
+};
+const POLITICAL_PAPER_TARGET = {
+  crisis: { paper: '#E2D9BE', paperText: '#241C12', paperMuted: '#6B5A3E', paperRule: '#8C6B3E' },
+  authoritarian: { paper: '#CFC9B8', paperText: '#26251E', paperMuted: '#5E5B4E', paperRule: '#8B8570' },
+  totalitarian: { paper: '#22252A', paperText: '#B7B7AC', paperMuted: '#6B6D66', paperRule: '#48493F' },
+};
+function politicalPaperPalette(base, economy) {
+  const regime = economy && economy.politicalRegime;
+  const target = POLITICAL_PAPER_TARGET[regime];
+  if (!target) return base;
+  const tension = clamp((economy.politicalTension || 0) / 100, 0, 1);
+  const war = (economy.warQuartersLeft || 0) > 0;
+  const k = regime === 'totalitarian' ? clamp(0.6 + tension * 0.3 + (war ? 0.1 : 0), 0.6, 1)
+    : regime === 'authoritarian' ? clamp(0.35 + tension * 0.35, 0.35, 0.75)
+      : clamp(0.18 + tension * 0.3, 0.18, 0.5); // crisis: тревожно, но ещё не мрачно
+  return {
+    paper: mixHex(base.paper, target.paper, k),
+    paperText: mixHex(base.paperText, target.paperText, k),
+    paperMuted: mixHex(base.paperMuted, target.paperMuted, k),
+    paperRule: mixHex(base.paperRule, target.paperRule, k),
+  };
+}
+
 /* Газета: выпуск квартала, хроника страны и сюжетные линии */
-function NewspaperModal({ news, history, quarterIndex, onClose }) {
+function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   const [tab, setTab] = useState('issue');
   const quarters = useMemo(() => {
     const map = new Map();
@@ -1612,37 +1740,45 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
     return [...map.values()].reverse();
   }, [news]);
 
+  const pp = politicalPaperPalette(COLOR, economy || {});
+  const regimeId = economy && economy.politicalRegime;
+  const regimeInfo = regimeId && POLITICAL_REGIME_INFO[regimeId];
   const PaperBox = ({ children, style }) => (
-    <div style={{ background: COLOR.paper, color: COLOR.paperText, border: `1px solid ${COLOR.paperRule}`, padding: '18px 20px', ...style }}>{children}</div>
+    <div style={{ background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`, padding: '18px 20px', transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>{children}</div>
   );
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 14px', overflowY: 'auto' }} onClick={onClose}>
       <div className="ems-fade-in" style={{ maxWidth: 940, width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <PaperBox>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${COLOR.paperRule}`, paddingBottom: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${pp.paperRule}`, paddingBottom: 10 }}>
             <div>
               <div className="ems-serif" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1 }}>ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
-              <div className="ems-mono" style={{ fontSize: 10, color: COLOR.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
+              <div className="ems-mono" style={{ fontSize: 10, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
                 ЕЖЕКВАРТАЛЬНОЕ ИЗДАНИЕ · {latest ? latest[1][0].qLabel : quarterLabel(quarterIndex)} · ВЫПУСК № {latest ? latest[0] : 0}
               </div>
+              {regimeInfo && regimeId !== 'democracy' && (
+                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: regimeId === 'crisis' ? '#8C6B3E' : '#B0503A', fontWeight: 700 }}>
+                  {regimeId === 'totalitarian' ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · ' : ''}{regimeInfo.label.toUpperCase()}
+                </div>
+              )}
             </div>
-            <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: COLOR.paperText, borderColor: COLOR.paperRule }} onClick={onClose}><X size={14} /></button>
+            <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
           </div>
 
-          <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${COLOR.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
+          <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
             {[['issue', 'Выпуск'], ['chronicle', 'Хроника страны'], ['stories', 'Сюжетные линии']].map(([id, label]) => (
               <span key={id} onClick={() => { Audio.play('paper'); setTab(id); }} style={{ cursor: 'pointer', fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase',
-                fontWeight: tab === id ? 700 : 400, color: tab === id ? COLOR.paperText : COLOR.paperMuted, borderBottom: tab === id ? `2px solid ${COLOR.paperText}` : '2px solid transparent', paddingBottom: 3 }}>{label}</span>
+                fontWeight: tab === id ? 700 : 400, color: tab === id ? pp.paperText : pp.paperMuted, borderBottom: tab === id ? `2px solid ${pp.paperText}` : '2px solid transparent', paddingBottom: 3 }}>{label}</span>
             ))}
           </div>
 
           {tab === 'issue' && (
             <div>
-              {!lead && <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
+              {!lead && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
               {lead && (
-                <div style={{ borderBottom: `1px solid ${COLOR.paperRule}`, paddingBottom: 14, marginBottom: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
+                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
                     {catOf(lead.cat).icon} {catOf(lead.cat).label.toUpperCase()} · ГЛАВНАЯ ТЕМА
                   </div>
                   <div className="ems-serif" style={{ fontSize: 25, fontWeight: 700, lineHeight: 1.12, marginBottom: 8 }}>{lead.headline}</div>
@@ -1651,8 +1787,8 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 10 }}>
                       {lead.chain.map((st, i) => (
                         <React.Fragment key={i}>
-                          <span style={{ fontSize: 10.5, padding: '2px 7px', border: `1px solid ${COLOR.paperRule}`, color: COLOR.paperText }}>{st}</span>
-                          {i < lead.chain.length - 1 && <span style={{ color: COLOR.paperMuted }}>→</span>}
+                          <span style={{ fontSize: 10.5, padding: '2px 7px', border: `1px solid ${pp.paperRule}`, color: pp.paperText }}>{st}</span>
+                          {i < lead.chain.length - 1 && <span style={{ color: pp.paperMuted }}>→</span>}
                         </React.Fragment>
                       ))}
                     </div>
@@ -1661,28 +1797,28 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
               )}
 
               {snapshot && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', border: `1px solid ${COLOR.paperRule}`, padding: '9px 12px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', border: `1px solid ${pp.paperRule}`, padding: '9px 12px', marginBottom: 14 }}>
                   {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
                     ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
-                      <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: COLOR.paperMuted }}>{k}: <b style={{ color: COLOR.paperText }}>{v}</b></span>
+                      <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
                     ))}
                 </div>
               )}
 
-              <div style={{ columnCount: 2, columnGap: 22, columnRule: `1px solid ${COLOR.paperRule}` }} className="ems-paper-cols">
+              <div style={{ columnCount: 2, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
                 {rest.map((n) => (
                   <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
-                    <div className="ems-mono" style={{ fontSize: 9, color: COLOR.paperMuted, letterSpacing: '0.08em' }}>{catOf(n.cat).icon} {catOf(n.cat).label.toUpperCase()}</div>
+                    <div className="ems-mono" style={{ fontSize: 9, color: pp.paperMuted, letterSpacing: '0.08em' }}>{catOf(n.cat).icon} {catOf(n.cat).label.toUpperCase()}</div>
                     <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, margin: '3px 0 4px' }}>{n.headline}</div>
                     <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
-                    {n.storyTitle && <div style={{ fontSize: 10, color: COLOR.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
+                    {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
                   </div>
                 ))}
               </div>
 
               {editorial && (
-                <div style={{ borderTop: `3px double ${COLOR.paperRule}`, marginTop: 6, paddingTop: 12 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
+                <div style={{ borderTop: `3px double ${pp.paperRule}`, marginTop: 6, paddingTop: 12 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
                   <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65 }}>{editorial.text}</div>
                 </div>
               )}
@@ -1691,16 +1827,16 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
 
           {tab === 'chronicle' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
+              {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
               {quarters.map(([q, list]) => {
                 const snap = history.find((h) => h.q === q);
                 const top = list.filter((n) => n.cat !== 'editorial').slice(0, 3);
                 return (
-                  <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${COLOR.paperRule}`, padding: '11px 0' }}>
+                  <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
                     <div style={{ width: 92, flexShrink: 0 }}>
                       <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
                       {snap && (
-                        <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
+                        <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
                           ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
                         </div>
                       )}
@@ -1710,7 +1846,7 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
                         <div key={n.id}>
                           <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
                           <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
-                          <div className="ems-serif" style={{ fontSize: 11.5, color: COLOR.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
+                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
                         </div>
                       ))}
                     </div>
@@ -1722,22 +1858,22 @@ function NewspaperModal({ news, history, quarterIndex, onClose }) {
 
           {tab === 'stories' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: COLOR.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
+              {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
               {stories.map((st) => (
-                <div key={st.id} style={{ borderLeft: `2px solid ${COLOR.paperRule}`, paddingLeft: 14 }}>
+                <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
                   <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.paperMuted, marginBottom: 8 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
                     {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {st.steps.length} из {st.steps[0].steps} частей
                   </div>
                   {st.steps.map((n, i) => (
                     <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
                       <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
-                        <div style={{ fontSize: 9.5, color: COLOR.paperMuted }}>{n.qLabel}</div>
-                        <div style={{ fontSize: 9, color: COLOR.paperMuted }}>часть {i + 1}</div>
+                        <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
+                        <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
                       </div>
                       <div style={{ flex: 1 }}>
                         <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                        <div className="ems-serif" style={{ fontSize: 11.5, color: COLOR.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
+                        <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
                       </div>
                     </div>
                   ))}
@@ -5000,7 +5136,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <Atmosphere regime={economy.regime}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} onClose={() => setShowPaper(false)} />}
+      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
@@ -6712,7 +6848,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && <WhyModal reasons={lastReasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} onClose={() => setShowPaper(false)} />}
+      {showPaper && <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} economy={economy} onClose={() => setShowPaper(false)} />}
       {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}

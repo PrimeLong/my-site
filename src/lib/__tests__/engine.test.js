@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   makeInitialEconomy, defaultDecisions, simulateQuarter,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   clamp, LEVERS, FX_REGIMES, PROMISE_POOL, pickPromises, evaluatePromise,
+  POLITICAL_REGIME_INFO, propagandaEditorial,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -179,6 +180,73 @@ describe('noEvents (используется режимом «Обучение»
       expect(economy.activeCrises).toEqual([]);
     }
     expect(economy.regime).toBe('normal');
+  });
+});
+
+describe('политический режим и пропаганда', () => {
+  it('registers a label for every regime', () => {
+    for (const id of ['democracy', 'crisis', 'authoritarian', 'totalitarian']) {
+      expect(POLITICAL_REGIME_INFO[id].label).toEqual(expect.any(String));
+    }
+  });
+
+  it('starts a fresh game in a democratic regime with no propaganda in the editorial', () => {
+    const economy = makeInitialEconomy();
+    expect(economy.politicalRegime).toBe('democracy');
+    expect(propagandaEditorial(economy)).toBeNull();
+  });
+
+  it('leaves the editorial untouched under a parliament-president conflict, but rewrites it once the regime turns authoritarian or totalitarian', () => {
+    const base = { ...makeInitialEconomy(), warQuartersLeft: 0 };
+    expect(propagandaEditorial({ ...base, politicalRegime: 'crisis' })).toBeNull();
+    const auth = propagandaEditorial({ ...base, politicalRegime: 'authoritarian' });
+    const tot = propagandaEditorial({ ...base, politicalRegime: 'totalitarian' });
+    expect(auth.text.length).toBeGreaterThan(0);
+    expect(tot.text).not.toEqual(auth.text);
+  });
+
+  it('sharpens totalitarian propaganda further once the country is at war', () => {
+    const base = { ...makeInitialEconomy(), politicalRegime: 'totalitarian' };
+    const peace = propagandaEditorial({ ...base, warQuartersLeft: 0 });
+    const war = propagandaEditorial({ ...base, warQuartersLeft: 3 });
+    expect(war.text).not.toEqual(peace.text);
+    expect(war.text.toLowerCase()).toContain('враг');
+  });
+
+  it('rigs the election in favour of the incumbent once the regime has turned authoritarian or totalitarian', () => {
+    for (const regime of ['authoritarian', 'totalitarian']) {
+      const economy = { ...makeInitialEconomy(), politicalRegime: regime, quartersToElection: 1, approval: 8 };
+      const decisions = defaultDecisions(economy);
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [] });
+      expect(r.economy.electionResult).toBe('incumbent');
+    }
+  });
+
+  it('escalates democracy -> crisis -> authoritarian -> totalitarian once tension and the odds line up', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0); // всегда проходит по «эскалационной» ветке
+    try {
+      const stress = { approval: 5, unemployment: 14, inflation: 16, warQuartersLeft: 4 };
+      let economy = { ...makeInitialEconomy(), ...stress };
+      let decisions = defaultDecisions(economy);
+      let pendingImpulses = []; let eventCooldowns = {};
+      const seen = new Set([economy.politicalRegime]);
+      let q = 0;
+      while (economy.politicalRegime !== 'totalitarian' && q < 40) {
+        q += 1;
+        const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
+          difficulty: 'hard', quarterIndex: q, stories: [] });
+        economy = { ...r.economy, ...stress }; // держим давление постоянным, чтобы не зависеть от остальной динамики модели
+        pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
+        decisions = defaultDecisions(economy, decisions);
+        seen.add(economy.politicalRegime);
+      }
+      expect(economy.politicalRegime).toBe('totalitarian');
+      expect(seen.has('crisis')).toBe(true);
+      expect(seen.has('authoritarian')).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

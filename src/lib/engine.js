@@ -41,6 +41,7 @@ const CONFIG = {
     reserves: 300, fdi: 40,
     consumerConfidence: 55, businessConfidence: 55, financialStability: 70, govTrust: 55,
     approval: 55, quartersToElection: 16, term: 1, mandate: null, governmentLine: 'centrist',
+    politicalRegime: 'democracy', politicalTension: 8, parliamentDissolved: false, unrestQuartersLeft: 0,
     worldGdpGrowth: 2.5, worldInflation: 3.0, worldRate: 3.0, commodityIndex: 100, worldDemandIndex: 100,
     policyCoordination: 70,
   },
@@ -1485,14 +1486,19 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
       `Рейтинг власти ${Math.round(approval)} из 100 при безработице ${fmt1(unemployment)}% и инфляции ${fmt1(inflation)}%. Инвесторы берут паузу до результата, а правительство — наоборот, тратит: политический цикл всегда заканчивается счётом, который оплачивают уже после выборов.`,
       { priority: 8, chain: ['Кампания', 'Неопределённость ↑', 'Инвестиции ↓', 'Расходы бюджета ↑', 'Счёт после выборов'] }));
   }
+  // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса
+  const riggedElection = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
   if (quartersToElection <= 0) {
     const margin = approval - 50;
-    electionResult = margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition');
+    electionResult = riggedElection ? 'incumbent' : (margin >= 0 ? 'incumbent' : (approval < 35 ? 'landslide' : 'opposition'));
     quartersToElection = CONFIG.election.cycle; term += 1;
     if (electionResult === 'incumbent') {
       nextQueue.push(makeImpulse('businessConfidence', 4, 'Преемственность политики после выборов', 'default', difficulty, 'other'));
-      news.push(mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
-        `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
+      news.push(riggedElection
+        ? mkNews('gov', 'ВЫБОРЫ БЕЗ НЕОЖИДАННОСТЕЙ: РЕЗУЛЬТАТ БЛИЗОК К ЕДИНОГЛАСНОМУ',
+          `Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, а реальный рейтинг власти — ${Math.round(approval)} из 100 — к результату отношения уже не имеет.`, { priority: 9 })
+        : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: РЕЙТИНГ ${Math.round(approval)}`,
+          `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%. Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
     } else {
       mandate = (unemployment - nairu > 1.2) ? 'jobs' : (inflation > infTarget + 2) ? 'prices' : (debtToGdp > 85) ? 'budget' : 'growth';
       governmentLine = mandate === 'jobs' ? 'populist' : mandate === 'budget' ? 'austerity' : 'technocrat';
@@ -1606,6 +1612,94 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     }
   });
 
+  /* --- 15а. ПОЛИТИЧЕСКИЙ РЕЖИМ: демократия → конфликт ветвей власти → авторитаризм →
+     тоталитаризм, плюс отдельный слой беспорядков поверх любого режима. Подавление копит
+     напряжение, а не гасит его — поэтому у авторитарных и тоталитарных режимов есть
+     собственная «подпитка» напряжённости даже без видимых потрясений. */
+  const prevPoliticalRegime = s.politicalRegime || 'democracy';
+  const repression = prevPoliticalRegime === 'totalitarian' ? 1 : prevPoliticalRegime === 'authoritarian' ? 0.55 : prevPoliticalRegime === 'crisis' ? 0.15 : 0;
+  const tensionTarget = clamp(
+    Math.max(0, 42 - approval) * 0.9
+    + (warQuartersLeft > 0 ? 10 : 0)
+    + Math.max(0, unemployment - 7.5) * 2.2
+    + Math.max(0, inflation - 8) * 1.6
+    + Math.max(0, debtToGdp - 90) * 0.15
+    + repression * 14
+    - Math.max(0, approval - 55) * 0.5,
+    0, 100);
+  let politicalTension = clamp(ema(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, tensionTarget, 0.25), 0, 100);
+  let politicalRegime = prevPoliticalRegime;
+  let parliamentDissolved = !!s.parliamentDissolved;
+  const politicalCooldown = cooldowns['political:transition'] || 0;
+  if (politicalCooldown <= 0) {
+    if (politicalRegime === 'democracy' && politicalTension >= 62) {
+      politicalRegime = 'crisis';
+      cooldowns['political:transition'] = 3;
+      news.push(mkNews('gov', 'ПАРЛАМЕНТ И ПРЕЗИДЕНТ: ОТКРЫТЫЙ КОНФЛИКТ',
+        `Взаимные вето и угроза импичмента парализуют принятие решений. Рейтинг власти ${Math.round(approval)} из 100 — почвы для компромисса всё меньше.`,
+        { priority: 9, chain: ['Низкий рейтинг', 'Паралич власти', 'Конфликт ветвей власти'] }));
+    } else if (politicalRegime === 'crisis') {
+      if (politicalTension >= 70 && Math.random() < 0.35) {
+        politicalRegime = 'authoritarian'; parliamentDissolved = true;
+        cooldowns['political:transition'] = 4;
+        nextQueue.push(makeImpulse('businessConfidence', -10, 'Роспуск парламента: институты слабеют', 'default', difficulty, 'other'));
+        nextQueue.push(makeImpulse('riskPremium', 0.6, 'Политический режим меняется', 'default', difficulty));
+        news.push(mkNews('gov', 'ПАРЛАМЕНТ РАСПУЩЕН: ВЛАСТЬ СОСРЕДОТОЧЕНА В ОДНИХ РУКАХ',
+          'Указ объявлен временной мерой «ради стабильности». Оппозиция называет это концом парламентской республики.',
+          { priority: 10, chain: ['Конфликт ветвей власти', 'Роспуск парламента', 'Авторитарный поворот'] }));
+      } else if (politicalTension <= 30) {
+        politicalRegime = 'democracy';
+        cooldowns['political:transition'] = 2;
+        news.push(mkNews('gov', 'ПОЛИТИЧЕСКИЙ КРИЗИС ИСЧЕРПАН', 'Стороны нашли компромисс, парламент возвращается к обычной работе.', { priority: 7 }));
+      }
+    } else if (politicalRegime === 'authoritarian') {
+      if (politicalTension >= 80 && Math.random() < 0.3) {
+        politicalRegime = 'totalitarian';
+        cooldowns['political:transition'] = 6;
+        nextQueue.push(makeImpulse('businessConfidence', -14, 'Установление тоталитарного контроля', 'default', difficulty, 'other'));
+        nextQueue.push(makeImpulse('investment', -3, 'Инвесторы уходят из страны', 'default', difficulty));
+        nextQueue.push(makeImpulse('capitalFlow', -18, 'Бегство капитала', 'default', difficulty));
+        news.push(mkNews('gov', 'ВЛАСТЬ УСТАНАВЛИВАЕТ ПОЛНЫЙ КОНТРОЛЬ',
+          'Оставшиеся независимые институты и медиа переходят под прямое управление. Несогласие приравнено к угрозе государству.',
+          { priority: 10, chain: ['Авторитарный поворот', 'Подавление институтов', 'Тоталитарный режим'] }));
+      } else if (politicalTension <= 25 && Math.random() < 0.25) {
+        politicalRegime = 'democracy'; parliamentDissolved = false;
+        cooldowns['political:transition'] = 3;
+        news.push(mkNews('gov', 'ПАРЛАМЕНТ ВОССТАНОВЛЕН', 'Под давлением улицы и элит объявлены новые свободные выборы.', { priority: 8 }));
+      }
+    } else if (politicalRegime === 'totalitarian') {
+      if (politicalTension >= 92 && Math.random() < 0.12) {
+        politicalRegime = 'crisis'; parliamentDissolved = false;
+        cooldowns['political:transition'] = 5;
+        nextQueue.push(makeImpulse('businessConfidence', 6, 'Режим пал: осторожный оптимизм', 'default', difficulty, 'other'));
+        news.push(mkNews('gov', 'РЕЖИМ ПАЛ', 'Массовые протесты и раскол в элитах вынудили власть отступить. Страна входит в переходный период с неясным исходом.',
+          { priority: 10, chain: ['Массовые протесты', 'Раскол элит', 'Падение режима', 'Переходный период'] }));
+      }
+    }
+  } else {
+    cooldowns['political:transition'] = politicalCooldown - 1;
+  }
+
+  const unrestCooldown = cooldowns['political:unrest'] || 0;
+  let unrestTriggered = false;
+  if (unrestCooldown <= 0 && politicalTension >= 55) {
+    const chance = 0.05 + politicalTension / 400 + (warQuartersLeft > 0 ? 0.08 : 0) + repression * 0.06;
+    if (Math.random() < chance) {
+      unrestTriggered = true;
+      cooldowns['political:unrest'] = 2;
+      nextQueue.push(makeImpulse('consumption', -1.2, 'Беспорядки: перебои в повседневной жизни', 'default', difficulty));
+      nextQueue.push(makeImpulse('businessConfidence', -6, 'Беспорядки в стране', 'default', difficulty, 'other'));
+      nextQueue.push(makeImpulse('investment', -1.4, 'Беспорядки отпугивают инвестиции', 'default', difficulty));
+      news.push(repression > 0.4
+        ? mkNews('crisis', 'БЕСПОРЯДКИ ПОДАВЛЕНЫ СИЛОЙ', 'Силовые структуры разогнали демонстрантов. Официально — «попытка дестабилизации», пресечённая в интересах порядка.', { priority: 9 })
+        : mkNews('crisis', 'МАССОВЫЕ ПРОТЕСТЫ В СТОЛИЦЕ', 'Люди вышли на улицы требовать перемен. Власть пытается балансировать между уступками и силовым сценарием.', { priority: 9 }));
+    }
+  } else if (unrestCooldown > 0) {
+    cooldowns['political:unrest'] = unrestCooldown - 1;
+  }
+  const unrestQuartersLeft = unrestTriggered ? 2 : Math.max(0, (s.unrestQuartersLeft || 0) - 1);
+  const unrestActive = unrestQuartersLeft > 0;
+
   /* --- 16. ПОЛИТИЧЕСКОЕ ДАВЛЕНИЕ --- */
   const demandCandidates = [];
   if (decisions.incomeTaxRate > 28 || decisions.vatRate > 23) demandCandidates.push({ id: 'tax_cut', actor: 'Население', text: 'Налоговая нагрузка невыносима — требуют снижения налогов.' });
@@ -1658,6 +1752,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
+    politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
     yield3m, yield1y, yield2y, yield5y, yield10y, curveSlope, curveInverted, bondIndex, bondReturn,
@@ -1689,7 +1784,10 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   });
   const advanced = advanceStories(activeStories, newEconomy, quarterIndex);
   const generated = generateNews(s, newEconomy, decisions, quarterIndex, botAction, cooldowns, botActions, publicMode);
-  const editorial = mkNews('editorial', `ИТОГИ ${quarterLabel(quarterIndex).toUpperCase()}`, report, { priority: 2 });
+  const propaganda = propagandaEditorial(newEconomy);
+  const editorial = propaganda
+    ? mkNews('editorial', propaganda.headline, propaganda.text, { priority: 2 })
+    : mkNews('editorial', `ИТОГИ ${quarterLabel(quarterIndex).toUpperCase()}`, report, { priority: 2 });
   const allNews = [...news, ...advanced.news, ...generated, editorial]
     .map((n) => ({ ...n, q: quarterIndex, qLabel: quarterLabel(quarterIndex) }))
     .sort((a, b) => b.priority - a.priority);
@@ -2385,6 +2483,7 @@ function makeInitialEconomy() {
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null,
+    unrestActive: false,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);
@@ -2451,6 +2550,53 @@ const CRISIS_INFO = {
   pandemic: { label: 'Пандемия', text: 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям.' },
   war: { label: 'Война', text: (e) => `Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери. ${e.warType === 'offensive' ? 'Наступательный характер войны привёл к санкциям.' : e.warType === 'defensive' ? 'Оборонительный характер войны приносит иностранную помощь.' : ''}`.trim() },
 };
+
+/* =========================================================================================
+   ПОЛИТИЧЕСКИЙ РЕЖИМ: демократия / конфликт ветвей власти / авторитаризм / тоталитаризм —
+   см. блок «15а» в simulateQuarter. Здесь только описание для интерфейса и подмена «От
+   редакции» пропагандой там, где режим подчинил себе прессу.
+========================================================================================= */
+const POLITICAL_REGIME_INFO = {
+  democracy: { label: 'Демократия', color: 'teal', text: 'Парламент работает, выборы решают исход, пресса независима.' },
+  crisis: { label: 'Конфликт парламента и президента', color: 'gold', text: 'Взаимные вето и угроза импичмента парализуют принятие решений — институты ещё держатся, но компромисса всё меньше.' },
+  authoritarian: { label: 'Авторитарный режим', color: 'rust', text: 'Парламент распущен или обессилен, выборы формальны, независимые голоса вытесняются.' },
+  totalitarian: { label: 'Тоталитарный режим', color: 'rust', text: 'Полный государственный контроль над институтами и прессой; несогласие приравнено к угрозе государству.' },
+};
+
+/* «От редакции» под властью, которая контролирует прессу: не искажаем цифры, которые видит
+   игрок (report остаётся точным и используется отдельно), а полностью пересобираем тон
+   газетной колонки из тех же показателей — эвфемизмы вместо признаний, победные реляции
+   вместо анализа. Во время войны пропаганда при тоталитаризме усиливается ещё сильнее. */
+function propagandaEditorial(e) {
+  const regime = e.politicalRegime;
+  if (regime !== 'authoritarian' && regime !== 'totalitarian') return null;
+  const war = (e.warQuartersLeft || 0) > 0;
+  const totalitarian = regime === 'totalitarian';
+  const growthLine = e.gdpGrowth >= 0
+    ? `Рост экономики составил ${fmt1(e.gdpGrowth)}% — государство подтверждает верность выбранного курса.`
+    : `Плановая перестройка экономики (формально ${fmt1(e.gdpGrowth)}%) — необходимый и временный этап на пути к устойчивому подъёму.`;
+  const jobsLine = e.unemployment <= e.nairu + 1
+    ? 'Занятость держится на исторически комфортном уровне.'
+    : 'Трудовые резервы проходят оптимизацию в интересах государства — временные неудобства окупятся сторицей.';
+  const pricesLine = e.inflation <= e.inflationTarget + 2
+    ? 'Цены — под полным контролем компетентных ведомств.'
+    : 'Отдельные колебания цен носят исключительно технический характер и не должны беспокоить граждан: обеспечение всем необходимым остаётся приоритетом номер один.';
+  const debtLine = totalitarian
+    ? (e.debtToGdp > 80 ? ' Финансовая система работает с полной отдачей, мобилизуя все доступные резервы.' : '')
+    : '';
+  const warLine = war
+    ? (totalitarian
+      ? ' Все трудности — достойная цена, которую нация с гордостью платит за неизбежную победу над врагом. Тот, кто сомневается в успехе, действует на руку противнику.'
+      : ' Особые меры военного времени объясняют часть текущих трудностей и постепенно снимаются по мере стабилизации обстановки.')
+    : '';
+  const closing = totalitarian
+    ? ' Инакомыслие в такой момент — не мнение, а угроза единству нации; редакция напоминает читателям о бдительности.'
+    : ' Правительство призывает сохранять спокойствие и доверие к принимаемым мерам.';
+  const headline = totalitarian
+    ? (war ? 'ЕДИНСТВО ПЕРЕД ЛИЦОМ ВРАГА: ЭКОНОМИКА РАБОТАЕТ НА ПОБЕДУ' : 'СТРАНА УВЕРЕННО ИДЁТ ВПЕРЁД')
+    : 'ВЛАСТЬ ДЕРЖИТ КУРС: СТАБИЛЬНОСТЬ ПРЕВЫШЕ ВСЕГО';
+  return { headline, text: `${growthLine} ${jobsLine} ${pricesLine}${debtLine}${warLine}${closing}` };
+}
 
 function buildReport({ prev, next, reasons }) {
   const p = [];
@@ -2589,6 +2735,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
+  POLITICAL_REGIME_INFO, propagandaEditorial,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
