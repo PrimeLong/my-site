@@ -33,6 +33,42 @@ export async function withRoom(id, fn) {
   return { room: next || room };
 }
 
+/* Код связывания устройств живёт десять минут и одноразовый: он не даёт доступа
+   сам по себе — он ОБМЕНИВАЕТСЯ на идентификатор профиля, после чего исчезает.
+   TTL держим и внутри значения тоже: в памяти (локальная разработка) redis-ного
+   ex нет, а протухший код не должен работать вечно. */
+const LINK_TTL = 60 * 10;
+export async function getLink(code) {
+  const raw = redis ? await redis.get(`link:${code}`) : mem.get(`link:${code}`);
+  if (!raw) return null;
+  if (raw.expiresAt && Date.now() > raw.expiresAt) { await delLink(code); return null; }
+  return raw;
+}
+export async function setLink(code, data, ttlSeconds = LINK_TTL) {
+  const value = { ...data, expiresAt: Date.now() + ttlSeconds * 1000 };
+  if (redis) await redis.set(`link:${code}`, value, { ex: ttlSeconds });
+  else mem.set(`link:${code}`, value);
+  return value;
+}
+export async function delLink(code) {
+  if (redis) return redis.del(`link:${code}`);
+  mem.delete(`link:${code}`);
+  return true;
+}
+
+/* Профиль игрока — достижения, пройденные роли и курсы. Всё это раньше жило
+   только в localStorage и, значит, только на одном устройстве; связывание без
+   него переносило бы партии, но не то, что игрок уже успел открыть. */
+export async function getProfile(playerId) {
+  if (redis) return (await redis.get(`profile:${playerId}`)) || null;
+  return mem.get(`profile:${playerId}`) || null;
+}
+export async function setProfile(playerId, profile) {
+  if (redis) return redis.set(`profile:${playerId}`, profile, { ex: SOLO_TTL });
+  mem.set(`profile:${playerId}`, profile);
+  return true;
+}
+
 export async function getSoloSlots(playerId) {
   if (redis) return (await redis.get(`solo:${playerId}`)) || null;
   return mem.get(`solo:${playerId}`) || null;
