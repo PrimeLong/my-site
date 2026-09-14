@@ -302,6 +302,36 @@ describe('политический режим и пропаганда', () => {
       spy.mockRestore();
     }
   });
+
+  it('does not announce a real campaign under an authoritarian/totalitarian regime — there is no real race to cover', () => {
+    for (const regime of ['authoritarian', 'totalitarian']) {
+      const economy = { ...makeInitialEconomy(), politicalRegime: regime, quartersToElection: 3, campaignActive: false };
+      const decisions = defaultDecisions(economy);
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [] });
+      expect(r.newsEntries.some((n) => n.headline.includes('ПРЕДВЫБОРНАЯ КАМПАНИЯ'))).toBe(false);
+    }
+  });
+
+  it('still announces an ordinary campaign under democracy or a parliament-president conflict', () => {
+    for (const regime of ['democracy', 'crisis']) {
+      const economy = { ...makeInitialEconomy(), politicalRegime: regime, quartersToElection: 3, campaignActive: false };
+      const decisions = defaultDecisions(economy);
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [] });
+      expect(r.newsEntries.some((n) => n.headline.includes('ПРЕДВЫБОРНАЯ КАМПАНИЯ'))).toBe(true);
+    }
+  });
+
+  it('does not leak the real approval number in the rigged "unanimous" election result — state media would not print that', () => {
+    const economy = { ...makeInitialEconomy(), politicalRegime: 'totalitarian', quartersToElection: 1, approval: 31 };
+    const decisions = defaultDecisions(economy);
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    const win = r.newsEntries.find((n) => n.headline.includes('БЕЗ НЕОЖИДАННОСТЕЙ'));
+    expect(win).toBeTruthy();
+    expect(win.text).not.toContain('31');
+  });
 });
 
 describe('банковская ликвидность и экстренная поддержка', () => {
@@ -360,6 +390,45 @@ describe('банковская ликвидность и экстренная п
     const rWith = simulateQuarter({ economy, decisions: withHelp, pendingImpulses: [], eventCooldowns: {},
       difficulty: 'medium', quarterIndex: 1, stories: [] });
     expect(rWith.economy.bankLiquidity).toBeGreaterThan(rWithout.economy.bankLiquidity + 15);
+  });
+});
+
+describe('дефолт по государственному долгу (решение Минфина)', () => {
+  it('lets Минфин declare a default during an actual debt crisis, wiping part of the debt and locking out new borrowing', () => {
+    const economy = { ...makeInitialEconomy(), activeCrises: ['debt'], debtToGdp: 120, govDebt: 3000 };
+    const decisions = { ...defaultDecisions(economy), sovereignDefault: true };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    expect(r.economy.justDefaulted).toBe(true);
+    expect(r.economy.govDebt).toBeLessThan(economy.govDebt * 0.6);
+    expect(r.economy.marketLockoutQuartersLeft).toBeGreaterThan(0);
+    expect(r.economy.defaultedEver).toBe(true);
+    expect(r.economy.maxDeficitPct).toBeLessThanOrEqual(0.8);
+    expect(r.newsEntries.some((n) => n.headline.includes('ДЕФОЛТ'))).toBe(true);
+  });
+
+  it('refuses to declare a default outside an actual debt crisis', () => {
+    const economy = makeInitialEconomy(); // activeCrises: [], здоровый долг
+    const decisions = { ...defaultDecisions(economy), sovereignDefault: true };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    expect(r.economy.justDefaulted).toBe(false);
+    expect(r.economy.defaultedEver).toBe(false);
+    expect(r.economy.govDebt).toBeGreaterThan(economy.govDebt * 0.9);
+  });
+
+  it('does not let a second default fire while still locked out from the first one', () => {
+    let economy = { ...makeInitialEconomy(), activeCrises: ['debt'], debtToGdp: 120, govDebt: 3000 };
+    let decisions = { ...defaultDecisions(economy), sovereignDefault: true };
+    const r1 = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    expect(r1.economy.justDefaulted).toBe(true);
+    economy = { ...r1.economy, activeCrises: ['debt'] }; // долговой кризис продолжается
+    decisions = { ...defaultDecisions(economy, decisions), sovereignDefault: true };
+    const r2 = simulateQuarter({ economy, decisions, pendingImpulses: r1.pendingImpulses, eventCooldowns: r1.eventCooldowns,
+      difficulty: 'medium', quarterIndex: 2, stories: [] });
+    expect(r2.economy.justDefaulted).toBe(false);
+    expect(r2.economy.govDebt).toBeGreaterThan(economy.govDebt * 0.9);
   });
 });
 

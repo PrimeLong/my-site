@@ -486,6 +486,20 @@ tr('promenade', 'Прогулка по столице', 'синт-лид, син
     sec('B', 'melB', 'flow', 'piano harp bass pad strings', 1.0),
   ],
 });
+// Единственная полностью акустическая пьеса саундтрека: ни синт-пэдов, ни дисторшна —
+// только нейлоновая гитара и синт-бас (cello), другой жанр, а не ещё один синтвейв-трек.
+tr('meadow', 'Загородная тишина', 'нейлоновая гитара — единственная акустическая пьеса саундтрека', 'calm', {
+  bpm: 88, swing: 0.1, reverb: 0.3,
+  A: H('G3 D4 G4 B4 | D3 A3 D4 F#4 | E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4 | C3 G3 C4 E4 | D3 A3 D4 F#4'),
+  B: H('E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4'),
+  melA: MEL('0:B4:4 4:D5:4 8:G5:4 12:D5:4 16:E5:8 24:D5:4 28:B4:4 32:C5:4 36:E5:4 40:G5:4 44:E5:4 48:D5:8 56:B4:4 60:A4:4 64:B4:4 68:D5:4 72:G5:4 76:D5:4 80:E5:8 88:D5:4 92:B4:4 96:C5:4 100:E5:4 104:G5:4 108:E5:4 112:F#5:8 120:D5:8'),
+  melB: MEL('0:E5:4 4:G5:4 8:B5:8 16:D5:4 20:C5:4 24:E5:8 32:B4:4 36:D5:4 40:G5:8 48:F#5:4 52:D5:4 56:B4:8'),
+  sections: [
+    sec('A', 'melA', 'flow', 'nylon cello', 0.68),
+    sec('A', 'melA', 'roll', 'nylon cello', 0.88),
+    sec('B', 'melB', 'flow', 'nylon cello', 1.0),
+  ],
+});
 
 /* --------------------------------- ПОДЪЁМ --------------------------------- */
 tr('ascent', 'Восхождение', 'синт-лид, драм-машина', 'boom', {
@@ -797,21 +811,21 @@ tr('chips', 'Фишки и блеск', 'свинг-пианино, ксилоф
     sec('A', 'melA', 'drive', 'piano bass cello harp bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'xxxxxxxxxxxxxxxx')),
   ],
 });
-tr('croupier', 'Крупье', 'ночной джаз-бар, виолончель', 'casino', {
+tr('croupier', 'Крупье', 'вибрафон, виолончель — настоящий джаз-лаунж', 'casino', {
   bpm: 96, swing: 0.28, reverb: 0.4,
   A: H('D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4'),
   B: H('F2 E3 F3 A3 | E3 D4 E4 G4 | A2 G3 A3 C4 | A2 G3 A3 C#4'),
   melA: MEL('0:D4:6 8:A4:4 12:F4:4 16:G4:6 24:B4:4 28:G4:4 32:C5:6 40:E5:4 44:C5:4 48:C#5:6 56:A4:4 60:E4:4 64:D4:6 72:A4:4 76:F4:4 80:G4:6 88:B4:4 92:G4:4 96:C5:6 104:E5:4 108:C5:4 112:C#5:6 120:D5:8'),
   melB: MEL('0:A4:6 8:F4:4 12:E4:4 16:G4:6 24:E4:4 28:D4:4 32:A4:6 40:C5:4 44:A4:4 48:C#5:6 56:A4:8'),
   sections: [
-    sec('A', 'melA', 'sustain', 'piano bass cello timpani', 0.78, DR('x.......x.......', '....x.......x...', 'x...x...x...x...')),
-    sec('B', 'melB', 'sustain', 'piano bass cello strings timpani', 0.92, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('A', 'melA', 'sustain', 'piano bass cello strings bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
+    sec('A', 'melA', 'sustain', 'marimba bass cello timpani', 0.78, DR('x.......x.......', '....x.......x...', 'x...x...x...x...')),
+    sec('B', 'melB', 'sustain', 'marimba bass cello strings timpani', 0.92, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
+    sec('A', 'melA', 'sustain', 'marimba bass cello strings bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
   ],
 });
 
 const MOOD_PLAYLISTS = {
-  calm: ['dawn', 'ledger', 'northlight', 'promenade'],
+  calm: ['dawn', 'ledger', 'northlight', 'promenade', 'meadow'],
   boom: ['ascent', 'boulevard', 'overdrive'],
   slump: ['longwinter', 'emptyhalls', 'patience'],
   stag: ['deadlock', 'friction'],
@@ -1208,6 +1222,51 @@ export const Audio = (() => {
     o.connect(pre); pre.connect(shaper); shaper.connect(distAmt); distAmt.connect(g);
     sub.start(t); sub.stop(t + dur + 0.05); o.start(t); o.stop(t + dur + 0.05);
   };
+  // Маримба: синус с треугольным «стуком» атаки и очень быстрым затуханием — тёплый
+  // деревянный щелчок, совсем другой характер, чем звонкие bell()/harp(); настоящий
+  // мэллет-тембр для джазовых и лаунж-пьес вместо синтвейвового пэда.
+  const marimba = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.11 * vel;
+    const pan = panFor(midi, 0.4); out.connect(pan); pan.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.35);
+    const d = Math.min(dur, 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(out);
+    const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 4;
+    const a2 = ctx.createGain();
+    a2.gain.setValueAtTime(0.35 * vel, t); a2.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o1.connect(g); o2.connect(a2); a2.connect(out);
+    o1.start(t); o1.stop(t + d + 0.05); o2.start(t); o2.stop(t + 0.08);
+  };
+  // Нейлоновая гитара: щипок без дисторшна — треугольник с расстроенной пилой под
+  // быстро закрывающимся ФНЧ. Единственный «акустический», чистый щипковый голос
+  // движка — фолковый/акустический характер вместо синтвейвовых пэдов и арпеджио.
+  const nylon = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    const out = ctx.createGain(); out.gain.value = 0.10 * vel;
+    const pan = panFor(midi, 0.35); out.connect(pan); pan.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.3); sendTo(out, echo, 0.1);
+    const d = Math.min(dur, 0.9);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 1.2;
+    filt.frequency.setValueAtTime(Math.min(5200, f * 6), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.2, 300), t + d * 0.6);
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(filt);
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = f; o2.detune.value = 4;
+    const a2 = ctx.createGain(); a2.gain.value = 0.3;
+    o.connect(g); o2.connect(a2); a2.connect(g);
+    o.start(t); o.stop(t + d + 0.05); o2.start(t); o2.stop(t + d + 0.05);
+  };
 
   /* ------------------------------- СЕКВЕНСОР ------------------------------- */
   /* Атмосферный слой: низкий гул, «ветер» и сердцебиение под музыкой */
@@ -1305,6 +1364,8 @@ export const Audio = (() => {
       const note = voicing[deg % voicing.length];
       if (has('harp')) harp(t + jitter(), note + 12, sd * 6, vel);
       if (has('piano')) piano(t + jitter(), note, vel, track.bpm > 100 ? 0.55 : sc.lh === 'sustain' ? 1.0 : 0.85, sc.lh === 'sustain' ? 4 : 5);
+      else if (has('nylon')) nylon(t + jitter(), note + 12, sd * 4.5, vel);
+      else if (has('marimba')) marimba(t + jitter(), note + 12, sd * 3, vel * 0.9);
       else if (has('bells') && !has('harp') && (st % 4 === 0)) bell(t, note + 12, sd * 6, 0.6 * vel);
     });
     // мелодия
@@ -1314,7 +1375,9 @@ export const Audio = (() => {
       if (has('violin')) violin(t, midi, sd * dur * 1.05, vel);
       if (has('bells')) bell(t, midi, sd * dur * 1.7, vel * 0.9);
       if (has('guitar') && !has('violin') && !has('bells')) guitar(t + jitter(), midi, sd * dur * 0.9, vel * 0.7, false);
-      if (!has('violin') && !has('bells') && !has('guitar')) {
+      if (has('marimba') && !has('violin') && !has('bells') && !has('guitar')) marimba(t + jitter(), midi, sd * dur * 0.8, vel * 0.85);
+      if (has('nylon') && !has('violin') && !has('bells') && !has('guitar') && !has('marimba')) nylon(t + jitter(), midi, sd * dur * 0.9, vel * 0.8);
+      if (!has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('nylon')) {
         piano(t + jitter(), midi, Math.min(1, vel), 1);
         if (dur >= 8 && track.mood !== 'crisis') piano(t + jitter(), midi - 12, vel * 0.32, 0.8);
       } else if (has('piano') && has('violin')) {
@@ -2712,7 +2775,9 @@ function AchievementsModal({ onClose }) {
    центробанка переживает обычное поражение партии власти, а министерский
    портфель нет. */
 function checkDefeat({ role, economy, history, bookVal }) {
-  if (history && history.length >= 4) {
+  // гиперинфляция — провал денежной/бюджетной политики; трейдер её не проводит и
+  // повлиять на неё не может, так что и мандата за неё лишаться ему не за что
+  if (role !== 'trader' && history && history.length >= 4) {
     const last4 = history.slice(-4);
     if (last4.every((h) => h.inflation != null && h.inflation >= 40)) {
       return { id: 'hyperinflation', title: 'Гиперинфляционный коллапс',
@@ -6853,6 +6918,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     return next;
   });
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
+  const debtCrisisActive = (economy.activeCrises || []).includes('debt') && !(economy.marketLockoutQuartersLeft > 0);
 
   const finishQuarter = useCallback(() => {
     if (defeat) return;
@@ -7200,6 +7266,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               </div>
             )}
 
+            {groups.includes('fiscal') && debtCrisisActive && (
+              <div style={{ paddingBottom: 10 }}>
+                <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
+                  onClick={() => {
+                    if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
+                    Audio.play('alarm'); setLever('sovereignDefault', true);
+                  }}>
+                  <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                </button>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                  Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                </div>
+              </div>
+            )}
+
             {LEVER_TABS.length > 1 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 10 }}>
                 {LEVER_TABS.map((t) => (
@@ -7230,6 +7311,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             )}
             {levTab === 'fiscal-core' && (
               <div>
+                {economy.sequesterFactor < 0.995 && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 4, padding: '8px 10px', marginBottom: 10 }}>
+                    <AlertTriangle size={14} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                      <b>Секвестр действует.</b> Рынок не финансирует дефицит сверх {fmt1(economy.maxDeficitPct)}% ВВП — реальные расходы урезаны на {fmt1((1 - economy.sequesterFactor) * 100)}% от плана независимо от того, что задано ползунками ниже.
+                    </div>
+                  </div>
+                )}
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}

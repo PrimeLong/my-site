@@ -219,7 +219,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, fxRegime: state.fxRegime, emergency: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -1036,6 +1036,26 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const commodityIndex = clamp(s.commodityIndex + 0.06 * (100 - s.commodityIndex) + (d.commodityIndex || 0) + gauss(NB.commodityIndex * nMult), 20, 400);
   const worldDemandIndex = clamp(s.worldDemandIndex + 0.08 * (100 - s.worldDemandIndex) + (d.worldDemandIndex || 0) + gauss(NB.worldDemandIndex * nMult), 40, 220);
 
+  /* --- 2а. ДЕФОЛТ ПО ГОСДОЛГУ --- */
+  // Секвестр (§7) молча режет расходы, когда рынок не даёт занять достаточно — но это
+  // не то же самое, что дефолт: секвестр экономит через боль внутри страны, дефолт —
+  // это прямой отказ платить кредиторам. Это осознанное разовое решение Минфина
+  // (decisions.sovereignDefault), а не автоматический порог: провести его вне
+  // реального долгового кризиса он не может — рынок и так не в панике.
+  const prevLockout = Math.max(0, (s.marketLockoutQuartersLeft || 0) - 1);
+  const sovereignDefault = !!decisions.sovereignDefault && prevLockout === 0 && (s.activeCrises || []).includes('debt');
+  const marketLockoutQuartersLeft = sovereignDefault ? 7 : prevLockout;
+  const lockedOutOfMarkets = marketLockoutQuartersLeft > 0;
+  const defaultedEver = sovereignDefault || !!s.defaultedEver;
+  if (sovereignDefault) {
+    news.push(mkNews('crisis', 'ДЕФОЛТ: ПРАВИТЕЛЬСТВО ОБЪЯВЛЯЕТ РЕСТРУКТУРИЗАЦИЮ ДОЛГА',
+      'Вместо очередного секвестра — прямой отказ платить по графику. Часть долга списывается принудительно, а доступ к новым заимствованиям закрыт на несколько кварталов: расходы придётся финансировать только из того, что удаётся собрать прямо сейчас.',
+      { priority: 10, chain: ['Долговой кризис', 'Дефолт', 'Долг списан', 'Рынок закрыт', 'Премия за риск ↑↑'] }));
+    nextQueue.push(makeImpulse('govTrust', -18, 'Дефолт по государственному долгу', 'fast', difficulty));
+    nextQueue.push(makeImpulse('businessConfidence', -16, 'Дефолт: инвесторы уходят', 'default', difficulty, 'other'));
+    nextQueue.push(makeImpulse('capitalFlow', -35, 'Бегство капитала после дефолта', 'default', difficulty));
+  }
+
   /* --- 3. статьи бюджета --- */
   const rawShares = { health: decisions.shareHealth, education: decisions.shareEducation, science: decisions.shareScience, defense: decisions.shareDefense, admin: decisions.shareAdmin };
   const sum5 = rawShares.health + rawShares.education + rawShares.science + rawShares.defense + rawShares.admin;
@@ -1050,7 +1070,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
 
   const riskPremiumTarget = 0.8 + C.debtLevelPremium * Math.max(0, s.debtToGdp - 55) + 0.045 * Math.max(0, s.bankingRisk - 45)
     + 0.035 * Math.max(0, 55 - s.govTrust) + 0.03 * Math.max(0, 60 - s.cbCredibility) + 0.02 * Math.max(0, 55 - s.policyCoordination)
-    - 0.02 * Math.max(0, -(Number.isFinite(s.netDebtToGdp) ? s.netDebtToGdp : s.debtToGdp)) + (s.regime === 'currency' || s.regime === 'debt' ? 1.5 : 0);
+    - 0.02 * Math.max(0, -(Number.isFinite(s.netDebtToGdp) ? s.netDebtToGdp : s.debtToGdp)) + (s.regime === 'currency' || s.regime === 'debt' ? 1.5 : 0)
+    + (lockedOutOfMarkets ? 3.5 : 0) + (defaultedEver ? 0.3 : 0); // рынок не забывает дефолт — даже после локаута премия не возвращается к нулю
   const riskPremium = clamp(ema(s.riskPremium, riskPremiumTarget, 0.22) + (d.riskPremium || 0), 0.2, 14);
 
   const bankSpread = C.bankSpreadBase + 0.35 * clamp(s.bankNPL - 3, 0, 10) + 0.25 * clamp(12 - s.bankCapitalAdequacy, 0, 8)
@@ -1113,7 +1134,8 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   // дефицит, который вообще можно профинансировать. Остальное — секвестр.
   const projRevenue = s.govRevenue * (1 + (s.potentialGrowth + s.inflation) / 400);
   const projInterest = s.govDebt * s.effectiveDebtRate / 100;
-  const maxDeficitPct = clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0.5, 11);
+  const maxDeficitPct = lockedOutOfMarkets ? clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0, 0.8)
+    : clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0.5, 11);
   const allowedPrimary = projRevenue + maxDeficitPct / 100 * s.nominalGdp - projInterest;
   const plannedPrimary = (plannedPurchases + plannedTransfers + plannedGovInv) * s.priceLevel / 100;
   const sequesterFactor = (plannedPrimary > allowedPrimary && allowedPrimary > 0)
@@ -1357,7 +1379,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   const primaryBalance = budgetBalance + interestPayment;
   // профицит сначала гасит долг, остальное уходит в суверенный фонд; дефицит сначала
   // финансируется из фонда и только потом новым долгом
-  let govDebt = s.govDebt;
+  let govDebt = sovereignDefault ? s.govDebt * 0.55 : s.govDebt; // реструктуризация списывает часть долга разом
   let sovereignFund = s.sovereignFund || 0;
   const flow = budgetBalance / QUARTERS_PER_YEAR;
   if (flow >= 0) {
@@ -1482,17 +1504,23 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
   let electionResult = null;
   let mandate = s.mandate || null;
   let governmentLine = s.governmentLine || 'centrist';
+  // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса,
+  // а значит там нет и настоящей предвыборной гонки с её неопределённостью для рынков
+  const riggedElection = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
   const campaign = quartersToElection <= CONFIG.election.campaign && quartersToElection > 0;
   if (campaign && !s.campaignActive) {
-    nextQueue.push(makeImpulse('businessConfidence', -6, 'Предвыборная неопределённость: бизнес откладывает решения', 'default', difficulty, 'other'));
-    nextQueue.push(makeImpulse('investment', -1.6, 'Предвыборная неопределённость', 'default', difficulty));
-    nextQueue.push(makeImpulse('riskPremium', 0.25, 'Политическая неопределённость перед выборами', 'default', difficulty));
-    news.push(mkNews('gov', `НАЧАЛАСЬ ПРЕДВЫБОРНАЯ КАМПАНИЯ: ДО ГОЛОСОВАНИЯ ${quartersToElection} КВ.`,
-      `Рейтинг власти ${Math.round(approval)} из 100 при безработице ${fmt1(unemployment)}% и инфляции ${fmt1(inflation)}%. Инвесторы берут паузу до результата, а правительство — наоборот, тратит: политический цикл всегда заканчивается счётом, который оплачивают уже после выборов.`,
-      { priority: 8, chain: ['Кампания', 'Неопределённость ↑', 'Инвестиции ↓', 'Расходы бюджета ↑', 'Счёт после выборов'] }));
+    if (riggedElection) {
+      news.push(mkNews('gov', 'НАЗНАЧЕНА ДАТА ГОЛОСОВАНИЯ',
+        `До официальной даты ${quartersToElection} кв. Исход не обсуждается — обсуждается только явка.`, { priority: 5 }));
+    } else {
+      nextQueue.push(makeImpulse('businessConfidence', -6, 'Предвыборная неопределённость: бизнес откладывает решения', 'default', difficulty, 'other'));
+      nextQueue.push(makeImpulse('investment', -1.6, 'Предвыборная неопределённость', 'default', difficulty));
+      nextQueue.push(makeImpulse('riskPremium', 0.25, 'Политическая неопределённость перед выборами', 'default', difficulty));
+      news.push(mkNews('gov', `НАЧАЛАСЬ ПРЕДВЫБОРНАЯ КАМПАНИЯ: ДО ГОЛОСОВАНИЯ ${quartersToElection} КВ.`,
+        `Рейтинг власти ${Math.round(approval)} из 100 при безработице ${fmt1(unemployment)}% и инфляции ${fmt1(inflation)}%. Инвесторы берут паузу до результата, а правительство — наоборот, тратит: политический цикл всегда заканчивается счётом, который оплачивают уже после выборов.`,
+        { priority: 8, chain: ['Кампания', 'Неопределённость ↑', 'Инвестиции ↓', 'Расходы бюджета ↑', 'Счёт после выборов'] }));
+    }
   }
-  // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса
-  const riggedElection = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
   // Отчаянный шаг: при разгромном поражении и уже накопленном напряжении власть
   // может не признать результат и захватить контроль вместо того, чтобы уйти —
   // иначе рейтинг, рухнувший в ноль, всегда тихо заканчивал партию поражением на
@@ -1512,7 +1540,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
       nextQueue.push(makeImpulse('businessConfidence', 4, 'Преемственность политики после выборов', 'default', difficulty, 'other'));
       news.push(riggedElection
         ? mkNews('gov', 'ВЫБОРЫ БЕЗ НЕОЖИДАННОСТЕЙ: РЕЗУЛЬТАТ БЛИЗОК К ЕДИНОГЛАСНОМУ',
-          `Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, а реальный рейтинг власти — ${Math.round(approval)} из 100 — к результату отношения уже не имеет.`, { priority: 9 })
+          'Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, альтернативных кандидатов не зарегистрировано.', { priority: 9 })
         : coup
           ? mkNews('gov', 'ПЕРЕВОРОТ: ВЛАСТЬ НЕ ПРИЗНАЛА ПОРАЖЕНИЕ НА ВЫБОРАХ',
             `Рейтинг ${Math.round(approval)} из 100 не оставлял шансов на честную победу. Вместо передачи власти объявлено чрезвычайное положение: результаты аннулированы, парламент распущен, оппозиция объявлена вне закона.`,
@@ -1780,6 +1808,7 @@ function simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns, 
     govPurchasesNominal, transfersNominal, govInvestmentNominal, govSpendingTotal, interestPayment, interestToRevenue,
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
     govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
+    marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive,
@@ -2513,7 +2542,7 @@ function makeInitialEconomy() {
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null,
-    unrestActive: false,
+    unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);
