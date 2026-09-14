@@ -3,7 +3,9 @@ import {
   makeInitialEconomy, defaultDecisions, simulateQuarter,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   clamp, LEVERS, FX_REGIMES, PROMISE_POOL, pickPromises, evaluatePromise,
-  POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview,
+  POLITICAL_REGIME_INFO, propagandaEditorial, leverPreview, fmtMln, fmtMlnSigned, mlnScale,
+  ROLES, PRESIDENT_ACTIONS, PRES_BY_ID, reformShare, politicalCapitalRegen,
+  processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -432,6 +434,72 @@ describe('дефолт по государственному долгу (реш�
   });
 });
 
+describe('деньги инвестора в миллионах (fmtMln)', () => {
+  it('scales the unit with the amount instead of printing "6118.42 млн"', () => {
+    expect(fmtMln(6.5)).toBe('6.50 млн');
+    expect(fmtMln(6118.42)).toBe('6.12 млрд');
+    expect(fmtMln(2_500_000)).toBe('2.50 трлн');
+    expect(fmtMln(-6118.42)).toBe('-6.12 млрд');
+    expect(fmtMln(NaN)).toBe('—');
+  });
+
+  it('keeps the sign explicit for results and splits value from unit for styled output', () => {
+    expect(fmtMlnSigned(3.2)).toBe('+3.20 млн');
+    expect(fmtMlnSigned(-1200)).toBe('-1.20 млрд');
+    expect(mlnScale(1500)).toEqual({ v: '1.50', unit: 'млрд' });
+  });
+});
+
+describe('новые торговые инструменты рынка', () => {
+  const SERIES = ['bondShortIndex', 'linkerIndex', 'moneyMarketIndex', 'worldEquityIndex'];
+
+  it('starts every new market series at a finite base and keeps it finite over a long run', () => {
+    const initial = makeInitialEconomy();
+    for (const key of SERIES) expect(Number.isFinite(initial[key]), key).toBe(true);
+    const final = runQuarters(40, 'medium');
+    for (const key of SERIES) {
+      expect(Number.isFinite(final[key]), key).toBe(true);
+      expect(final[key], key).toBeGreaterThan(0);
+    }
+  });
+
+  it('prices short bonds off the two-year yield with a duration near 1.9', () => {
+    const economy = makeInitialEconomy();
+    const decisions = { ...defaultDecisions(economy), keyRate: economy.keyRate + 4 };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    const dY2 = r.economy.yield2y - economy.yield2y;
+    expect(Math.abs(dY2)).toBeGreaterThan(0.5); // шок ставки действительно двинул короткий конец
+    const carry = economy.yield2y / 4;
+    const pct = (r.economy.bondShortIndex / economy.bondShortIndex - 1) * 100;
+    expect((carry - pct) / dY2).toBeCloseTo(1.9, 1);
+  });
+
+  it('moves the short bond more than the ten-year on a policy-rate shock, because the long end is anchored', () => {
+    // Не опечатка и не баг: yieldAt() тянет длинный конец к нейтральной ставке, и
+    // на ключевую ставку он почти не реагирует. Короткая бумага дешевле по дюрации,
+    // но именно она принимает на себя разворот политики — от неё прячутся в
+    // денежный рынок, а не наоборот.
+    const economy = makeInitialEconomy();
+    const decisions = { ...defaultDecisions(economy), keyRate: economy.keyRate + 4 };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    expect(Math.abs(r.economy.yield2y - economy.yield2y)).toBeGreaterThan(Math.abs(r.economy.yield10y - economy.yield10y));
+    expect(Math.abs(r.economy.bondShortIndex / economy.bondShortIndex - 1))
+      .toBeGreaterThan(Math.abs(r.economy.bondIndex / economy.bondIndex - 1));
+  });
+
+  it('lets inflation-linked bonds gain from a price shock that hurts the plain ten-year', () => {
+    const calm = { ...makeInitialEconomy() };
+    const hot = { ...makeInitialEconomy(), inflation: 18, inflationExpectations: 16 };
+    const run = (e) => simulateQuarter({ economy: e, decisions: defaultDecisions(e), pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true }).economy;
+    const linkerCalm = run(calm).linkerIndex / calm.linkerIndex;
+    const linkerHot = run(hot).linkerIndex / hot.linkerIndex;
+    expect(linkerHot).toBeGreaterThan(linkerCalm);
+  });
+});
+
 describe('pandemic crisis tracking', () => {
   it('shows up in activeCrises/regime for a few quarters, then clears', () => {
     // pandemicQuartersLeft: 3 здесь эквивалентно "квартал сразу после срабатывания
@@ -451,3 +519,189 @@ describe('pandemic crisis tracking', () => {
     expect(economy.regime).not.toBe('pandemic');
   });
 });
+
+/* =========================================================================================
+   ПРЕЗИДЕНТ
+========================================================================================= */
+// прогон президентской партии: оба ведомства ведут боты, игрок отдаёт только указы
+function runPresident(actionsAt, quarters, extra) {
+  let economy = { ...makeInitialEconomy(), ...extra };
+  let pendingImpulses = []; let eventCooldowns = {};
+  const rows = [];
+  for (let q = 0; q < quarters; q++) {
+    const dec = defaultDecisions(economy);
+    const cb = botCentralBank(economy, 'pragmatic', 'medium');
+    const mof = botFinanceMinistry(economy, 'technocrat', 'medium');
+    const decisions = { ...dec, ...cb.decisions, ...mof.decisions, ...actionsAt[q] };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
+      difficulty: 'medium', quarterIndex: q, stories: [], botAction: cb, botActions: [mof], noEvents: true });
+    economy = r.economy; pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
+    rows.push(economy);
+  }
+  return rows;
+}
+
+describe('роль президента', () => {
+  it('президент есть в ролях, оба ведомства — боты, ползунков у него нет', () => {
+    const pres = ROLES.find((r) => r.id === 'president');
+    expect(pres).toBeDefined();
+    expect(pres.botRole).toBe('both');
+    expect(pres.groups).toEqual([]);
+  });
+
+  it('старая роль «глава государства» переименована и осталась ролью без ботов', () => {
+    const pm = ROLES.find((r) => r.id === 'full_control');
+    expect(pm.title).not.toMatch(/глава государства/i);
+    expect(pm.botRole).toBe(null);
+    expect(pm.groups).toEqual(['monetary', 'fiscal']);
+  });
+
+  it('указ списывает ровно свою цену политического капитала', () => {
+    // сравнивать сами остатки нельзя: прирост считается от капитала уже после
+    // списания, и обращение к нации к тому же поднимает рейтинг, который в этот
+    // прирост входит. Чистая величина — капитал минус прирост этого квартала.
+    const spentIn = (e) => 55 - (e.politicalCapital - e.politicalCapitalGain);
+    expect(spentIn(runPresident({ 0: { presidentActions: ['address'] } }, 1)[0])).toBeCloseTo(PRES_BY_ID.address.cost, 6);
+    expect(spentIn(runPresident({}, 1)[0])).toBeCloseTo(0, 6);
+    expect(spentIn(runPresident({ 0: { presidentActions: ['address', 'elite_deal'] } }, 1)[0]))
+      .toBeCloseTo(PRES_BY_ID.address.cost + PRES_BY_ID.elite_deal.cost, 6);
+  });
+
+  it('решение, на которое не хватает капитала, просто не применяется', () => {
+    const poor = { politicalCapital: 5 };
+    const rows = runPresident({ 0: { presidentActions: ['pension'] } }, 1, poor);
+    expect(rows[0].reforms.pension).toBeUndefined();
+    expect(rows[0].politicalCapital).toBeGreaterThan(0);
+  });
+
+  it('реформа не действует в квартале объявления и раскрывается годами', () => {
+    const rows = runPresident({ 0: { presidentActions: ['education'] } }, 20);
+    expect(reformShare(rows[0].reforms, 'education')).toBe(0);
+    expect(reformShare(rows[8].reforms, 'education')).toBeGreaterThan(0.4);
+    expect(reformShare(rows[8].reforms, 'education')).toBeLessThan(1);
+    expect(reformShare(rows[19].reforms, 'education')).toBe(1);
+    // человеческий капитал — постоянный эффект, а не затухающий импульс
+    expect(rows[19].humanCapitalIndex).toBeGreaterThan(rows[8].humanCapitalIndex);
+  });
+
+  it('одноразовую реформу нельзя провести дважды, а капитал за вторую попытку не списывается', () => {
+    const rows = runPresident({ 0: { presidentActions: ['deregulation'] }, 4: { presidentActions: ['deregulation'] } }, 6);
+    const spentAgain = rows[3].politicalCapital + rows[4].politicalCapitalGain - rows[4].politicalCapital;
+    expect(rows[4].reforms.deregulation).toBe(4);
+    expect(spentAgain).toBeCloseTo(0, 5);
+  });
+
+  it('пенсионная реформа бьёт по рейтингу сразу, а расширяет рабочую силу постепенно', () => {
+    const base = runPresident({}, 16);
+    const ref = runPresident({ 2: { presidentActions: ['pension'] } }, 16);
+    expect(ref[2].approval).toBeLessThan(base[2].approval - 8);
+    expect(ref[15].laborForce).toBeGreaterThan(base[15].laborForce);
+    expect(ref[15].potentialGdp).toBeGreaterThan(base[15].potentialGdp);
+  });
+
+  it('роспуск парламента указом сразу переводит режим в авторитарный и не отыгрывается сам', () => {
+    const rows = runPresident({ 1: { presidentActions: ['dissolve'] } }, 24);
+    expect(rows[1].politicalRegime).toBe('authoritarian');
+    expect(rows[1].parliamentDissolved).toBe(true);
+    expect(rows[1].decreeRule).toBe(true);
+    // без отдельного решения президента режим обратно не откатывается
+    expect(rows[23].politicalRegime).toBe('authoritarian');
+  });
+
+  it('вернуть парламент можно только отдельным решением', () => {
+    const rows = runPresident({ 1: { presidentActions: ['dissolve'] }, 12: { presidentActions: ['restore_parliament'] } }, 16);
+    expect(rows[11].parliamentDissolved).toBe(true);
+    expect(rows[12].parliamentDissolved).toBe(false);
+    expect(rows[12].decreeRule).toBe(false);
+    expect(rows[12].politicalRegime).not.toBe('authoritarian');
+  });
+
+  it('досрочные выборы приближают голосование', () => {
+    const rows = runPresident({ 2: { presidentActions: ['snap_election'] } }, 8);
+    expect(rows[2].quartersToElection).toBe(2);
+    expect(rows[4].electionResult).not.toBe(null);
+  });
+
+  it('смена главы ЦБ обнуляет срок и бьёт по доверию тем сильнее, чем она раньше', () => {
+    const early = runPresident({ 1: { appointCb: 'hawk' } }, 3);
+    const late = runPresident({ 11: { appointCb: 'hawk' } }, 13);
+    const base = runPresident({}, 13);
+    expect(early[1].cbTenure).toBe(0);
+    const earlyHit = base[1].cbCredibility - early[1].cbCredibility;
+    const lateHit = base[11].cbCredibility - late[11].cbCredibility;
+    expect(earlyHit).toBeGreaterThan(lateHit);
+    expect(lateHit).toBeGreaterThan(0);
+    // назначение оплачивается тем же капиталом; считаем на первом же квартале,
+    // где стартовый капитал заведомо равен 55 и шум прогонов ни при чём
+    const first = runPresident({ 0: { appointCb: 'hawk' } }, 1)[0];
+    expect(55 - (first.politicalCapital - first.politicalCapitalGain)).toBeCloseTo(APPOINT_COST.central_bank, 6);
+  });
+});
+
+describe('указания президента ведомствам', () => {
+  const setup = (regime) => {
+    const economy = { ...makeInitialEconomy(), unemployment: 8, politicalRegime: regime };
+    const cb = botCentralBank(economy, 'hawk', 'medium');
+    return { economy, decisions: { ...defaultDecisions(economy), ...cb.decisions } };
+  };
+
+  it('чем меньше институтов, тем меньше у ЦБ возможности отказать', () => {
+    const dem = setup('democracy'); const aut = setup('authoritarian'); const tot = setup('totalitarian');
+    const r1 = processPresidentialDirective('rate_cut', dem.economy, 'hawk', 'technocrat', dem.decisions);
+    const r2 = processPresidentialDirective('rate_cut', aut.economy, 'hawk', 'technocrat', aut.decisions);
+    const r3 = processPresidentialDirective('rate_cut', tot.economy, 'hawk', 'technocrat', tot.decisions);
+    expect(r1.score).toBeLessThan(r2.score);
+    expect(r2.score).toBeLessThan(r3.score);
+    expect(r3.status).toBe('accepted');
+  });
+
+  it('исполненное указание ЦБ стоит доверия к нему, а указание Минфину — нет', () => {
+    const aut = setup('authoritarian');
+    const toCb = processPresidentialDirective('rate_cut', aut.economy, 'hawk', 'technocrat', aut.decisions);
+    const toMof = processPresidentialDirective('infra_up', aut.economy, 'hawk', 'technocrat', aut.decisions);
+    expect(toCb.toCb).toBe(true);
+    expect(toCb.credibilityHit).toBeLessThan(0);
+    expect(toMof.toCb).toBe(false);
+    expect(toMof.credibilityHit).toBe(0);
+  });
+
+  it('стоимость указания списывается через presidentExtraSpend', () => {
+    const withDirective = runPresident({ 0: { presidentExtraSpend: PRES_DIRECTIVE_COST } }, 1)[0];
+    expect(55 - (withDirective.politicalCapital - withDirective.politicalCapitalGain)).toBeCloseTo(PRES_DIRECTIVE_COST, 6);
+  });
+});
+
+describe('политический капитал', () => {
+  it('у капитала есть равновесие: бездействующий президент не копит сотню', () => {
+    const rows = runPresident({}, 40);
+    const last = rows[rows.length - 1];
+    expect(last.politicalCapital).toBeGreaterThan(35);
+    expect(last.politicalCapital).toBeLessThan(85);
+  });
+
+  it('кризисы и беспорядки уводят прирост в минус, репрессивный режим — в плюс', () => {
+    const calm = politicalCapitalRegen({ approval: 55, gdpGrowth: 2.3, potentialGrowth: 2.3,
+      activeCrises: [], unrestActive: false, politicalRegime: 'democracy', politicalCapital: 50 });
+    const crisis = politicalCapitalRegen({ approval: 25, gdpGrowth: -3, potentialGrowth: 2.3,
+      activeCrises: ['banking', 'debt'], unrestActive: true, politicalRegime: 'democracy', politicalCapital: 50 });
+    const total = politicalCapitalRegen({ approval: 55, gdpGrowth: 2.3, potentialGrowth: 2.3,
+      activeCrises: [], unrestActive: false, politicalRegime: 'totalitarian', politicalCapital: 50 });
+    expect(crisis).toBeLessThan(0);
+    expect(calm).toBeGreaterThan(0);
+    expect(total).toBeGreaterThan(calm);
+  });
+
+  it('каталог решений консистентен: уникальные id, положительная цена, есть build', () => {
+    const ids = PRESIDENT_ACTIONS.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    PRESIDENT_ACTIONS.forEach((a) => {
+      expect(a.cost).toBeGreaterThan(0);
+      expect(typeof a.build).toBe('function');
+      expect(PRES_GROUPS).toContain(a.group);
+      const built = a.build(makeInitialEconomy(), 'medium');
+      expect(Array.isArray(built.impulses)).toBe(true);
+      expect(built.news.headline.length).toBeGreaterThan(0);
+    });
+  });
+});
+const PRES_GROUPS = ['public', 'reform', 'power'];
