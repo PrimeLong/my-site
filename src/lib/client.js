@@ -67,3 +67,16 @@ export const renameSoloSlot = (playerId, slot, name) =>
   post({ action: 'rename', playerId, slot, name }, SOLO_API).then((d) => d.slots);
 export const deleteSoloSlot = (playerId, slot) =>
   post({ action: 'delete', playerId, slot }, SOLO_API).then((d) => d.slots);
+
+/* Связывание устройств и общий прогресс. Идентификатор профиля (playerId) — это и
+   есть «аккаунт»: одно устройство показывает одноразовый код, второе его вводит и
+   получает тот же идентификатор. См. api/solo.js. */
+export const createLinkCode = (playerId, progress) =>
+  post({ action: 'link_create', playerId, progress }, SOLO_API);
+export const checkLinkCode = (playerId, code) => post({ action: 'link_status', playerId, code }, SOLO_API);
+export const cancelLinkCode = (playerId, code) => post({ action: 'link_cancel', playerId, code }, SOLO_API);
+export const claimLinkCode = (playerId, code, progress) =>
+  post({ action: 'link_claim', playerId, code, progress }, SOLO_API);
+// слияние прогресса всегда двустороннее: отправляем своё, получаем общее
+export const syncProgress = (playerId, progress) =>
+  post({ action: 'progress', playerId, progress }, SOLO_API).then((d) => d.profile);
