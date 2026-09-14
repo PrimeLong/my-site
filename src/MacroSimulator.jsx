@@ -87,13 +87,18 @@ const GlobalStyle = () => (
     .ems-slider::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-scroll::-webkit-scrollbar { width:6px; height:6px; }
     .ems-scroll::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:3px; }
-    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; }
+    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
     .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
     .ems-tab.active:hover { background:${COLOR.goldSoft}; color:${COLOR.ink}; }
     .ems-fade-in { animation: emsFade .35s ease; }
     @keyframes emsFade { from { opacity:0; transform:translateY(4px);} to { opacity:1; transform:translateY(0);} }
-    @media (prefers-reduced-motion: reduce) { .ems-fade-in { animation:none; } .ems-btn, .ems-tab { transition:none; } }
+    .ems-toast-out { animation: emsToastOut .45s ease forwards; }
+    @keyframes emsToastOut { from { opacity:1; transform:translateY(0) scale(1);} to { opacity:0; transform:translateY(10px) scale(0.96);} }
+    .ems-confetti-piece { border-radius:1px; opacity:1; animation: emsConfettiBurst .85s cubic-bezier(.2,.7,.3,1) forwards; }
+    @keyframes emsConfettiBurst { 0% { transform:translate(-50%,-50%) rotate(0deg); opacity:1; }
+      100% { transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); opacity:0; } }
+    @media (prefers-reduced-motion: reduce) { .ems-fade-in, .ems-toast-out { animation:none; } .ems-confetti-piece { animation:none; display:none; } .ems-btn, .ems-tab { transition:none; } }
 
     /* --- «Витринные» приёмы: крупный заголовок экрана, интерактивные карточки,
        атмосферный фон — используются на входных экранах (меню, новая партия,
@@ -2512,17 +2517,17 @@ const ACHIEVEMENTS = [
   { id: 'first_quarter', icon: '🎬', title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
   { id: 'survivor_20', icon: '🗓️', title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
   { id: 'survivor_40', icon: '📜', title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
-  { id: 'inflation_target', icon: '🎯', title: 'В яблочко', desc: 'Удержи инфляцию рядом с целью 4 квартала подряд.' },
+  { id: 'inflation_target', icon: '🎯', title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
   { id: 'gdp_double', icon: '📈', title: 'Удвоение', desc: 'Удвой реальный ВВП от старта партии.' },
   { id: 'low_unemployment', icon: '🧑‍🏭', title: 'Полная занятость', desc: 'Опусти безработицу ниже 4%.' },
-  { id: 'debt_control', icon: '🏦', title: 'Долговая дисциплина', desc: 'Снизь госдолг ниже 40% ВВП.' },
+  { id: 'debt_control', icon: '🏦', title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизь госдолг ниже 35% ВВП.' },
   { id: 'survived_crisis', icon: '⛈️', title: 'Пережили бурю', desc: 'Выведи страну из кризисного режима обратно к норме.' },
   { id: 'won_election', icon: '🗳️', title: 'Мандат доверия', desc: 'Останься у власти на выборах.' },
   { id: 'all_roles', icon: '🎭', title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, главу государства и трейдера.' },
   { id: 'network_played', icon: '🌐', title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
   { id: 'casino_win', icon: '🎲', title: 'Дебют в казино', desc: 'Выиграй свою первую ставку в казино.' },
-  { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 3 млн в одной игре казино.' },
-  { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 5 млн суммарно за партию.' },
+  { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 30 млн в одной игре казино.' },
+  { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 50 млн суммарно за партию.' },
   { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
   { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
   { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди курс обучения целиком — все пять модулей.' },
@@ -2567,15 +2572,15 @@ function survivedCrisis(history) {
   if ((last.activeCrises || []).length > 0) return false;
   return history.slice(0, -1).some((h) => (h.activeCrises || []).length > 0);
 }
-function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents }) {
+function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role }) {
   const ids = [];
   if (quarterIndex >= 1) ids.push('first_quarter');
   if (quarterIndex >= 20) ids.push('survivor_20');
   if (quarterIndex >= 40) ids.push('survivor_40');
-  if (inflationOnTargetStreak(history) >= 4) ids.push('inflation_target');
+  if (role === 'central_bank' && inflationOnTargetStreak(history) >= 8) ids.push('inflation_target');
   if (history && history.length > 1 && history[0].gdp > 0 && economy.gdp >= history[0].gdp * 2) ids.push('gdp_double');
   if (economy.unemployment < 4) ids.push('low_unemployment');
-  if (economy.debtToGdp < 40) ids.push('debt_control');
+  if (role === 'ministry_finance' && economy.debtToGdp < 35) ids.push('debt_control');
   if (survivedCrisis(history)) ids.push('survived_crisis');
   if (economy.electionResult === 'incumbent') ids.push('won_election');
   if (rolesPlayed && ALL_ROLE_IDS.every((r) => rolesPlayed.includes(r))) ids.push('all_roles');
@@ -2586,40 +2591,83 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
 function casinoAchievementIds({ net, casinoNet }) {
   const ids = [];
   if (net > 0) ids.push('casino_win');
-  if (net >= 3) ids.push('casino_jackpot');
-  if (casinoNet >= 5) ids.push('casino_ahead');
+  if (net >= 30) ids.push('casino_jackpot');
+  if (casinoNet >= 50) ids.push('casino_ahead');
   return ids;
 }
 // очередь тостов «достижение открыто» — общая для соло- и сетевого экрана
 function useAchievementToasts() {
   const [toast, setToast] = useState(null);
+  const [leaving, setLeaving] = useState(false);
   const queueRef = React.useRef([]);
   const showingRef = React.useRef(false);
-  const timerRef = React.useRef(null);
+  const showTimerRef = React.useRef(null);
+  const leaveTimerRef = React.useRef(null);
   const advance = React.useCallback(() => {
     const next = queueRef.current.shift();
-    showingRef.current = !!next;
-    setToast(next || null);
-    if (next) { Audio.play('coin'); timerRef.current = setTimeout(advance, 4200); }
+    if (next) {
+      showingRef.current = true;
+      setToast(next); setLeaving(false);
+      Audio.play('coin');
+      showTimerRef.current = setTimeout(() => {
+        setLeaving(true);
+        leaveTimerRef.current = setTimeout(advance, 450); // время на анимацию исчезновения
+      }, 3800);
+    } else {
+      showingRef.current = false;
+      setToast(null); setLeaving(false);
+    }
   }, []);
-  React.useEffect(() => () => clearTimeout(timerRef.current), []);
+  React.useEffect(() => () => { clearTimeout(showTimerRef.current); clearTimeout(leaveTimerRef.current); }, []);
   const push = React.useCallback((list) => {
     if (!list || !list.length) return;
     queueRef.current.push(...list);
     if (!showingRef.current) advance();
   }, [advance]);
-  return { toast, push };
+  return { toast, leaving, push };
 }
-const AchievementToast = ({ toast }) => (!toast ? null : (
-  <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 90, maxWidth: 300,
-    padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)' }}>
-    <span style={{ fontSize: 26, lineHeight: 1 }}>{toast.icon}</span>
-    <div>
-      <div style={{ fontSize: 10, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
-      <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginTop: 1 }}>{toast.title}</div>
+// Конфетти — фиксированный набор мелких прямоугольников с разлётом наружу через
+// CSS-переменные; пересоздаётся только когда меняется само достижение (по toast.id),
+// а не на каждый ре-рендер, иначе разлёт «дёргался» бы при любом обновлении родителя.
+const CONFETTI_COLORS = ['#C9A227', '#E8C766', '#4E9A82', '#B0503A', '#5B7FA6', '#EDE7D6'];
+function useConfettiPieces(seed, count = 16) {
+  return React.useMemo(() => Array.from({ length: count }, (_, i) => {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
+    const dist = 34 + Math.random() * 46;
+    return {
+      key: i,
+      dx: `${(Math.cos(angle) * dist).toFixed(1)}px`,
+      dy: `${(Math.sin(angle) * dist - 14 - Math.random() * 18).toFixed(1)}px`,
+      rot: `${Math.round((Math.random() - 0.5) * 520)}deg`,
+      delay: `${(Math.random() * 0.12).toFixed(2)}s`,
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      w: 4 + Math.round(Math.random() * 3),
+      h: 7 + Math.round(Math.random() * 5),
+    };
+  }), [seed, count]);
+}
+const AchievementToast = ({ toast, leaving }) => {
+  const pieces = useConfettiPieces(toast ? toast.id : null);
+  if (!toast) return null;
+  return (
+    <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 90, maxWidth: 300,
+      padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
+      <span style={{ position: 'relative', fontSize: 26, lineHeight: 1 }}>
+        {toast.icon}
+        {!leaving && pieces.map((p) => (
+          <span key={p.key} className="ems-confetti-piece" style={{
+            position: 'absolute', top: '50%', left: '50%', width: p.w, height: p.h, background: p.color,
+            '--dx': p.dx, '--dy': p.dy, '--rot': p.rot, animationDelay: p.delay,
+          }} />
+        ))}
+      </span>
+      <div>
+        <div style={{ fontSize: 10, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
+        <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginTop: 1 }}>{toast.title}</div>
+      </div>
     </div>
-  </div>
-));
+  );
+};
 function AchievementsModal({ onClose }) {
   const unlocked = loadUnlockedAchievements();
   const count = ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
@@ -4470,6 +4518,26 @@ const DASHBOARD_PRESETS = [
   { id: 'market', name: 'Рынок', pins: ['stockIndex', 'bondIndex', 'yield10y', 'curveSlope', 'sovereignSpread', 'volatilityIndex'] },
   { id: 'crisis', name: 'Кризис', pins: ['bankNPL', 'bankCapitalAdequacy', 'bankingRisk', 'reserves', 'exchangeRate', 'unemployment'] },
 ];
+/* Пользовательские наборы дашборда хранятся на устройстве (как достижения), а не
+   только внутри конкретного сохранения — «Сохранить текущий набор» должен пережить
+   и «Начать заново», и переход в другую партию. */
+const CUSTOM_DASHBOARDS_KEY = 'ems-custom-dashboards';
+const loadCustomDashboards = () => {
+  try { const arr = JSON.parse(localStorage.getItem(CUSTOM_DASHBOARDS_KEY) || '[]'); return Array.isArray(arr) ? arr : []; }
+  catch { return []; }
+};
+const persistCustomDashboards = (list) => {
+  try { localStorage.setItem(CUSTOM_DASHBOARDS_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
+};
+// Сохранение может нести свои собственные наборы (например, сделанные до появления
+// этой возможности) — подмешиваем их к общеустройственным и заодно закрепляем там же.
+function initDashboards(savedDashboards) {
+  const stored = loadCustomDashboards();
+  const extra = (savedDashboards || []).filter((d) => d && d.custom && !stored.some((s) => s.id === d.id));
+  const merged = [...stored, ...extra];
+  if (extra.length) persistCustomDashboards(merged);
+  return [...DASHBOARD_PRESETS, ...merged];
+}
 const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern); } catch { /* не поддерживается */ } };
 
 function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash }) {
@@ -4513,6 +4581,9 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
           </div>
           <button className="ems-btn" style={{ width: '100%', padding: '5px 0', fontSize: 10.5 }}
             onClick={() => { Audio.play('stamp'); saveDash(); }}>Сохранить текущий набор</button>
+          <div style={{ fontSize: 9.5, color: COLOR.faint, lineHeight: 1.4, marginTop: 6 }}>
+            Свои наборы хранятся на этом устройстве и доступны во всех партиях, а не только в текущей.
+          </div>
         </div>
       )}
     </div>
@@ -4901,7 +4972,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
   const [portfolio, setPortfolio] = useState(() => loadNetworkPortfolio(id, seat) || emptyBook());
   React.useEffect(() => { saveNetworkPortfolio(id, seat, portfolio); }, [id, seat, portfolio]);
-  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const [defeat, setDefeat] = useState(null);
@@ -4968,7 +5039,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       markNetworkPlayed();
       pushAch(unlockAchievements(questProgressAchievementIds({
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
-        rolesPlayed: recordRolePlayed(seat), networkPlayed: true,
+        rolesPlayed: recordRolePlayed(seat), networkPlayed: true, role: seatRole(seat).id,
       })));
       const roleForDefeat = seatRole(seat).id;
       // расчёт по портфелю (переоценка, экспирация опционов, маржин-колл) —
@@ -5011,7 +5082,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [period, setPeriod] = useState('5y');
   const [activeTab, setActiveTab] = useState('economy');
   const [dense, setDense] = useState(false);
-  const [dashboards, setDashboards] = useState(DASHBOARD_PRESETS);
+  const [dashboards, setDashboards] = useState(() => initDashboards());
   const [activeDash, setActiveDash] = useState('overview');
   const [pinned, setPinned] = useState(DEFAULT_PINS);
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
@@ -5031,10 +5102,18 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const saveDash = () => {
     const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
     const did = `custom${Date.now()}`;
-    setDashboards((ds) => [...ds, { id: did, name, pins: [...pinned], custom: true }]);
+    setDashboards((ds) => {
+      const next = [...ds, { id: did, name, pins: [...pinned], custom: true }];
+      persistCustomDashboards(next.filter((d) => d.custom));
+      return next;
+    });
     setActiveDash(did);
   };
-  const deleteDash = (did) => setDashboards((ds) => ds.filter((d) => d.id !== did));
+  const deleteDash = (did) => setDashboards((ds) => {
+    const next = ds.filter((d) => d.id !== did);
+    persistCustomDashboards(next.filter((d) => d.custom));
+    return next;
+  });
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
 
@@ -5138,7 +5217,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
       {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      <AchievementToast toast={achToast} />
+      <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню" />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
@@ -6108,7 +6187,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
 function TutorialHub({ onBack, onStartRealGame }) {
   const [progress, setProgress] = useState(loadCourseProgress);
   const [activeId, setActiveId] = useState(null);
-  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
 
   const isUnlocked = (i) => i === 0 || !!progress[TUTORIAL_MODULES[i - 1].id];
   const doneCount = TUTORIAL_MODULES.filter((m) => progress[m.id]).length;
@@ -6127,7 +6206,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
     const next = TUTORIAL_MODULES[idx + 1];
     return (
       <>
-        <AchievementToast toast={achToast} />
+        <AchievementToast toast={achToast} leaving={achLeaving} />
         <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === TUTORIAL_MODULES.length - 1}
           onExit={() => setActiveId(null)}
           onComplete={() => completeModule(mod, idx)}
@@ -6142,7 +6221,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
-      <AchievementToast toast={achToast} />
+      <AchievementToast toast={achToast} leaving={achLeaving} />
       <div style={{ maxWidth: 640, width: '100%' }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); onBack(); }}>
@@ -6592,7 +6671,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [saveModal, setSaveModal] = useState(null);
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
-  const { toast: achToast, push: pushAch } = useAchievementToasts();
+  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
   const [view, setView] = useState(setup.role === 'trader' ? 'market' : 'dash');
@@ -6612,7 +6691,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [irf, setIrf] = useState(null);
   const [mobileCol, setMobileCol] = useState('center');
   const [narrow, setNarrow] = useState(false);
-  const [dashboards, setDashboards] = useState(initial && initial.dashboards ? initial.dashboards : DASHBOARD_PRESETS);
+  const [dashboards, setDashboards] = useState(() => initDashboards(initial && initial.dashboards));
   const [activeDash, setActiveDash] = useState(initial ? initial.activeDash || 'overview' : 'overview');
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
@@ -6690,10 +6769,18 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const saveDash = () => {
     const name = `Мой набор ${dashboards.filter((d) => d.custom).length + 1}`;
     const id = `custom${Date.now()}`;
-    setDashboards((ds) => [...ds, { id, name, pins: [...pinned], custom: true }]);
+    setDashboards((ds) => {
+      const next = [...ds, { id, name, pins: [...pinned], custom: true }];
+      persistCustomDashboards(next.filter((d) => d.custom));
+      return next;
+    });
     setActiveDash(id);
   };
-  const deleteDash = (id) => setDashboards((ds) => ds.filter((d) => d.id !== id));
+  const deleteDash = (id) => setDashboards((ds) => {
+    const next = ds.filter((d) => d.id !== id);
+    persistCustomDashboards(next.filter((d) => d.custom));
+    return next;
+  });
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
 
   const finishQuarter = useCallback(() => {
@@ -6760,7 +6847,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setHistory(newHistory);
     pushAch(unlockAchievements(questProgressAchievementIds({
       quarterIndex, economy: result.economy, history: newHistory, lastEvents: traderEvents,
-      rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(),
+      rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(), role: setup.role,
     })));
     const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal });
     if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
@@ -6852,7 +6939,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      <AchievementToast toast={achToast} />
+      <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
