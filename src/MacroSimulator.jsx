@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import { createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
-  reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, deleteSoloSlot } from './lib/client.js';
+  reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
@@ -16,7 +16,8 @@ import {
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
-  processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse,
+  processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
+  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -166,8 +167,17 @@ const GlobalStyle = () => (
     .ems-flash { animation: emsFlash 0.9s ease-out forwards; }
     .ems-breathe { animation: emsBreathe 4.2s ease-in-out infinite; }
     .ems-sweep { animation: emsSweep 3.2s linear infinite; }
-    .ems-terminal { display:grid; grid-template-columns: minmax(230px, 0.85fr) minmax(300px, 1.15fr); }
-    @media (max-width: 900px) { .ems-terminal { grid-template-columns: minmax(0,1fr); } }
+    /* Терминал — две колонки одной фиксированной высоты, каждая со своей прокруткой.
+       Иначе карточка инструмента растёт от журнала сделок и тянет вниз всю страницу,
+       а список слева остаётся прежней высоты и под ним зияет пустое место. */
+    .ems-terminal { display:grid; grid-template-columns: minmax(230px, 0.85fr) minmax(300px, 1.15fr);
+      height: clamp(480px, 68vh, 760px); }
+    .ems-terminal > * { min-height: 0; overflow-y: auto; }
+    @media (max-width: 900px) {
+      .ems-terminal { grid-template-columns: minmax(0,1fr); height: auto; }
+      .ems-terminal > * { overflow-y: visible; }
+      .ems-terminal > :first-child { max-height: 320px; overflow-y: auto; }
+    }
     .ems-market-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap:12px; }
     @media (max-width: 420px) { .ems-market-grid { grid-template-columns: minmax(0,1fr); } }
     @media (max-width: 560px) { .ems-casino-grid { grid-template-columns: minmax(0,1fr) !important; } }
@@ -421,7 +431,10 @@ const MEL = (str) => str.trim().split(/\s+/).filter(Boolean).map((tok) => {
   return [parseInt(st, 10), nn(note), parseInt(dur, 10)];
 });
 const drum = (s) => { const out = []; for (let i = 0; i < s.length; i++) if (s[i] !== '.') out.push([i, s[i]]); return out; };
-const DR = (k, sn, h) => ({ kick: drum(k), snare: drum(sn), hat: drum(h) });
+/* DR(бочка, малый, тарелки, опции). В строке тарелок: 'o' — закрытый хэт,
+   'O' — открытый, 'r' — райд. Опции: ghost — призрачные удары малого между
+   долями, fill:false — не играть сбивку в последнем такте секции. */
+const DR = (k, sn, h, opts) => ({ kick: drum(k), snare: drum(sn), hat: drum(h), ...opts });
 
 /* Фигуры левой руки: [шаг в такте, индекс тона аккорда] */
 const LH = {
@@ -440,8 +453,9 @@ const TRACKS = {};
 const tr = (id, name, subtitle, mood, cfg) => { TRACKS[id] = { id, name, subtitle, mood, ...cfg }; };
 
 /* ------------------------------- СПОКОЙСТВИЕ ------------------------------- */
-tr('dawn', 'Рассвет над министерством', 'синт-лид, аналоговый пад', 'calm', {
+tr('dawn', 'Рассвет над министерством', 'фортепиано, струнные, аналоговый пад', 'calm', {
   bpm: 72, swing: 0.12, reverb: 0.42,
+  bassLine: 'half',
   A: H('F2 C3 E3 A3 | A2 E3 G3 C4 | Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4'),
   B: H('D3 A3 C4 F4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | G2 D3 F3 Bb3'),
   melA: MEL('0:C5:4 4:F5:4 8:A5:8 16:G5:4 20:E5:4 24:C5:8 32:D5:4 36:F5:4 40:A5:8 48:G5:8 56:E5:8 64:F5:4 68:A5:4 72:C6:8 80:Bb5:4 84:A5:4 88:F5:8 96:D5:4 100:Bb4:4 104:D5:8 112:E5:4 116:G5:4 120:F5:12'),
@@ -453,8 +467,9 @@ tr('dawn', 'Рассвет над министерством', 'синт-лид,
     sec('A', 'melA', 'waltz', 'piano bass pad strings violin', 1.0),
   ],
 });
-tr('ledger', 'Тихая бухгалтерия', 'синт-лид соло', 'calm', {
+tr('ledger', 'Тихая бухгалтерия', 'фортепиано соло', 'calm', {
   bpm: 68, swing: 0.14, reverb: 0.46,
+  bassLine: 'half', feel: 'loose',
   A: H('D3 A3 C4 F4 | Bb2 F3 A3 D4 | F2 C3 E3 A3 | E2 C3 G3 C4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 A3 D4 | F2 C3 E3 A3 | G2 D3 F3 Bb3 | A2 E3 G3 C#4'),
   melA: MEL('0:A4:4 4:D5:4 8:F5:8 16:E5:4 20:D5:4 24:C5:8 32:A4:4 36:C5:4 40:A4:4 44:F4:4 48:G4:8 56:E4:8 64:A4:4 68:D5:4 72:F5:8 80:G5:4 84:F5:4 88:E5:8 96:D5:4 100:Bb4:4 104:D5:8 112:C#5:4 116:E5:4 120:A4:12'),
@@ -465,8 +480,9 @@ tr('ledger', 'Тихая бухгалтерия', 'синт-лид соло', 'c
     sec('A', 'melA', 'flow', 'piano bass pad cello', 1.0),
   ],
 });
-tr('northlight', 'Северный свет', 'ретро-колокол, аналоговый пад', 'calm', {
+tr('northlight', 'Северный свет', 'ретро-колокол, фортепиано, аналоговый пад', 'calm', {
   bpm: 64, swing: 0, reverb: 0.62,
+  bassLine: 'half',
   A: H('Ab2 Eb3 G3 C4 | Db3 Ab3 C4 F4 | Eb3 Bb3 D4 G4 | C3 G3 Bb3 Eb4 | Ab2 Eb3 G3 C4 | F2 C3 Ab3 Eb4 | Db3 Ab3 C4 F4 | Eb3 Bb3 D4 G4'),
   B: H('F2 C3 Ab3 C4 | Db3 Ab3 C4 F4 | Bb2 F3 Ab3 D4 | Eb3 Bb3 D4 G4'),
   melA: MEL('0:Eb5:8 8:G5:8 16:F5:8 24:Ab5:8 32:G5:8 40:Bb5:8 48:Eb5:14 64:C5:8 72:Eb5:8 80:Ab5:8 88:G5:8 96:F5:8 104:Db5:8 112:Eb5:14'),
@@ -477,8 +493,9 @@ tr('northlight', 'Северный свет', 'ретро-колокол, ана
     sec('A', 'melA', 'flow', 'piano bells pad strings bass', 1.0),
   ],
 });
-tr('promenade', 'Прогулка по столице', 'синт-лид, синт-арпеджио', 'calm', {
+tr('promenade', 'Прогулка по столице', 'фортепиано и арпеджио', 'calm', {
   bpm: 84, swing: 0.16, reverb: 0.34,
+  bassLine: 'root',
   A: H('G2 D3 G3 B3 | E2 B2 E3 G3 | C3 G3 B3 E4 | D3 A3 C4 F#4 | G2 D3 G3 B3 | E2 B2 E3 G3 | A2 E3 G3 C#4 | D3 A3 C4 F#4'),
   B: H('C3 G3 B3 E4 | B2 F#3 A3 D4 | E2 B2 E3 G3 | D3 A3 C4 F#4'),
   melA: MEL('0:D5:4 4:G5:4 8:B5:4 12:A5:4 16:G5:8 24:E5:8 32:G5:4 36:B5:4 40:D6:8 48:C6:4 52:A5:4 56:F#5:8 64:D5:4 68:G5:4 72:B5:4 76:A5:4 80:G5:8 88:E5:8 96:C#5:4 100:E5:4 104:A5:8 112:F#5:4 116:A5:4 120:G5:8'),
@@ -491,8 +508,9 @@ tr('promenade', 'Прогулка по столице', 'синт-лид, син
 });
 // Единственная полностью акустическая пьеса саундтрека: ни синт-пэдов, ни дисторшна —
 // только нейлоновая гитара и синт-бас (cello), другой жанр, а не ещё один синтвейв-трек.
-tr('meadow', 'Загородная тишина', 'нейлоновая гитара — единственная акустическая пьеса саундтрека', 'calm', {
+tr('meadow', 'Загородная тишина', 'нейлоновая гитара и бас — акустическая пьеса саундтрека', 'calm', {
   bpm: 88, swing: 0.1, reverb: 0.3,
+  bassLine: 'root', feel: 'loose',
   A: H('G3 D4 G4 B4 | D3 A3 D4 F#4 | E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4 | C3 G3 C4 E4 | D3 A3 D4 F#4'),
   B: H('E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4'),
   melA: MEL('0:B4:4 4:D5:4 8:G5:4 12:D5:4 16:E5:8 24:D5:4 28:B4:4 32:C5:4 36:E5:4 40:G5:4 44:E5:4 48:D5:8 56:B4:4 60:A4:4 64:B4:4 68:D5:4 72:G5:4 76:D5:4 80:E5:8 88:D5:4 92:B4:4 96:C5:4 100:E5:4 104:G5:4 108:E5:4 112:F#5:8 120:D5:8'),
@@ -505,8 +523,9 @@ tr('meadow', 'Загородная тишина', 'нейлоновая гита
 });
 
 /* --------------------------------- ПОДЪЁМ --------------------------------- */
-tr('ascent', 'Восхождение', 'синт-лид, драм-машина', 'boom', {
+tr('ascent', 'Восхождение', 'фортепиано, бас, драм-машина', 'boom', {
   bpm: 108, swing: 0, reverb: 0.26,
+  bassLine: 'drive',
   A: H('A2 E3 A3 C#4 | G#2 E3 G#3 B3 | F#2 C#3 F#3 A3 | D3 A3 D4 F#4 | A2 E3 A3 C#4 | E3 B3 E4 G#4 | D3 A3 D4 F#4 | E3 B3 D4 G#4'),
   B: H('D3 A3 D4 F#4 | C#3 G#3 C#4 E4 | B2 F#3 B3 D4 | E3 B3 D4 G#4'),
   melA: MEL('0:E5:4 4:F#5:2 6:E5:2 8:C#5:8 16:B4:4 20:C#5:4 24:E5:8 32:F#5:4 36:E5:2 38:C#5:2 40:A4:8 48:D5:4 52:F#5:4 56:A5:8 64:E5:4 68:F#5:2 70:E5:2 72:C#5:8 80:B4:4 84:E5:4 88:G#5:8 96:A5:4 100:F#5:4 104:D5:8 112:E5:4 116:D5:4 120:C#5:8'),
@@ -518,8 +537,9 @@ tr('ascent', 'Восхождение', 'синт-лид, драм-машина',
     sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
   ],
 });
-tr('boulevard', 'Бульвар', 'аналоговый пад, синт-лид', 'boom', {
+tr('boulevard', 'Бульвар', 'аналоговый пад, фортепиано, бас', 'boom', {
   bpm: 116, swing: 0, reverb: 0.3,
+  bassLine: 'drive',
   A: H('E2 B2 E3 G#3 | C#3 G#3 B3 E4 | A2 E3 A3 C#4 | B2 F#3 B3 D#4 | E2 B2 E3 G#3 | C#3 G#3 B3 E4 | F#2 C#3 F#3 A3 | B2 F#3 B3 D#4'),
   B: H('A2 E3 A3 C#4 | B2 F#3 B3 D#4 | G#2 D#3 G#3 B3 | C#3 G#3 B3 E4'),
   melA: MEL('0:B4:4 4:E5:4 8:G#5:8 16:F#5:4 20:E5:4 24:C#5:8 32:E5:4 36:A5:4 40:C#6:8 44:B5:4 48:F#5:4 52:D#5:4 56:B4:8 64:B4:4 68:E5:4 72:G#5:8 80:F#5:4 84:G#5:4 88:E5:8 96:A5:4 100:F#5:4 104:C#5:8 112:D#5:4 116:F#5:4 120:B4:8'),
@@ -530,8 +550,9 @@ tr('boulevard', 'Бульвар', 'аналоговый пад, синт-лид'
     sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
   ],
 });
-tr('overdrive', 'Перегрев', 'синт-лид, драм-машина', 'boom', {
+tr('overdrive', 'Перегрев', 'фортепиано, бас, барабаны', 'boom', {
   bpm: 126, swing: 0, reverb: 0.22,
+  bassLine: 'drive',
   A: H('B2 F#3 B3 D4 | A2 E3 A3 C#4 | G2 D3 G3 B3 | F#2 C#3 F#3 A3 | B2 F#3 B3 D4 | A2 E3 A3 C#4 | E3 B3 E4 G4 | F#2 C#3 F#3 A3'),
   B: H('G2 D3 G3 B3 | D3 A3 D4 F#4 | E3 B3 E4 G4 | F#2 C#3 F#3 A3'),
   melA: MEL('0:F#5:2 2:A5:2 4:F#5:2 6:D5:2 8:B4:8 16:C#5:4 20:E5:4 24:A5:8 32:B5:4 36:G5:4 40:D5:8 48:C#5:4 52:A4:4 56:F#4:8 64:F#5:2 66:A5:2 68:B5:4 72:F#5:8 80:E5:4 84:C#5:4 88:A4:8 96:B4:4 100:E5:4 104:G5:8 112:A5:4 116:F#5:4 120:C#5:8'),
@@ -544,8 +565,9 @@ tr('overdrive', 'Перегрев', 'синт-лид, драм-машина', 'b
 });
 
 /* --------------------------------- СПАД --------------------------------- */
-tr('longwinter', 'Долгая зима', 'синт-лид, синт-бас', 'slump', {
+tr('longwinter', 'Долгая зима', 'фортепиано и бас', 'slump', {
   bpm: 56, swing: 0.08, reverb: 0.58,
+  bassLine: 'half',
   A: H('E2 B2 E3 G3 | C3 G3 B3 E4 | A2 E3 G3 C4 | B2 F#3 A3 D#4 | E2 B2 E3 G3 | C3 G3 B3 E4 | A2 E3 G3 C4 | E2 B2 E3 G3'),
   B: H('C3 G3 B3 E4 | G2 D3 G3 B3 | A2 E3 G3 C4 | B2 F#3 A3 D#4'),
   melA: MEL('0:B4:8 8:G4:8 16:E4:12 32:A4:8 40:C5:8 48:B4:14 64:G4:8 72:E4:8 80:E5:12 96:C5:8 104:B4:8 112:E4:14'),
@@ -556,8 +578,9 @@ tr('longwinter', 'Долгая зима', 'синт-лид, синт-бас', 's
     sec('A', 'melA', 'waltz', 'piano bass cello pad strings', 1.0),
   ],
 });
-tr('emptyhalls', 'Пустые цеха', 'синт-бас, синт-лид', 'slump', {
+tr('emptyhalls', 'Пустые цеха', 'бас и фортепиано', 'slump', {
   bpm: 60, swing: 0.06, reverb: 0.55,
+  bassLine: 'root',
   A: H('A2 E3 A3 C4 | G2 E3 A3 C4 | F2 C3 F3 A3 | E2 C3 G3 C4 | D3 A3 C4 F4 | C3 A3 C4 E4 | E2 B2 E3 A3 | A2 E3 A3 C4'),
   B: H('F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 C4 F4 | E2 B2 E3 G#3'),
   melA: MEL('0:A4:8 8:C5:8 16:B4:12 32:A4:8 40:F4:8 48:G4:14 64:F4:8 72:A4:8 80:E5:12 96:B4:8 104:A4:8 112:A4:14'),
@@ -568,8 +591,9 @@ tr('emptyhalls', 'Пустые цеха', 'синт-бас, синт-лид', 's
     sec('B', 'melB', 'wide', 'piano bass cello pad strings', 1.0),
   ],
 });
-tr('patience', 'Терпение', 'синт-лид, аналоговый пад', 'slump', {
+tr('patience', 'Терпение', 'фортепиано, аналоговый пад', 'slump', {
   bpm: 66, swing: 0.1, reverb: 0.5,
+  bassLine: 'half', feel: 'loose',
   A: H('C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | F2 C3 F3 Ab3 | G2 D3 G3 B3'),
   B: H('Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | Ab2 Eb3 Ab3 C4 | G2 D3 G3 B3'),
   melA: MEL('0:G4:8 8:Eb4:8 16:C5:12 32:Bb4:8 40:D5:8 48:G4:14 64:G4:8 72:C5:8 80:Eb5:12 96:C5:8 104:Ab4:8 112:G4:14'),
@@ -582,8 +606,9 @@ tr('patience', 'Терпение', 'синт-лид, аналоговый пад
 });
 
 /* ------------------------------ СТАГФЛЯЦИЯ ------------------------------ */
-tr('deadlock', 'Тупик', 'синт-арпеджио, низкий пад', 'stag', {
+tr('deadlock', 'Тупик', 'арпеджио, низкий пад', 'stag', {
   bpm: 80, swing: 0, reverb: 0.36,
+  bassLine: 'pulse8',
   A: H('E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | E2 B2 E3 G3 | F2 C3 F3 A3 | C3 G3 C4 E4 | B2 D#3 F#3 A3'),
   B: H('F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | B2 D#3 F#3 A3'),
   melA: MEL('0:E4:8 8:F4:4 12:E4:4 16:F4:12 32:E4:8 40:D4:8 48:D4:14 64:E4:8 72:G4:8 80:F4:12 96:E4:8 104:C4:8 112:D#4:8 120:E4:8'),
@@ -594,8 +619,9 @@ tr('deadlock', 'Тупик', 'синт-арпеджио, низкий пад', '
     sec('A', 'melA', 'pulse', 'piano bass cello pad choir', 1.0, DR('x...x...x...x...', '........x.......', '..o...o...o...o.')),
   ],
 });
-tr('friction', 'Трение', 'синт-лид, PWM-пад', 'stag', {
+tr('friction', 'Трение', 'фортепиано, PWM-пад', 'stag', {
   bpm: 86, swing: 0, reverb: 0.4,
+  bassLine: 'root',
   A: H('D3 A3 D4 F4 | Eb3 Bb3 Eb4 G4 | D3 A3 D4 F4 | C3 G3 C4 Eb4 | D3 A3 D4 F4 | Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
   melA: MEL('0:D4:8 8:Eb4:4 12:D4:4 16:Eb4:12 32:F4:8 40:D4:8 48:C4:14 64:D4:8 72:F4:8 80:G4:12 96:D4:8 104:Bb3:8 112:C#4:8 120:D4:8'),
@@ -608,8 +634,9 @@ tr('friction', 'Трение', 'синт-лид, PWM-пад', 'stag', {
 });
 
 /* -------------------------------- КРИЗИС -------------------------------- */
-tr('collapse', 'Обвал', 'синт-бас, драм-машина, синт-лид', 'crisis', {
+tr('collapse', 'Обвал', 'бас, барабаны, фортепиано', 'crisis', {
   bpm: 128, swing: 0, reverb: 0.26,
+  bassLine: 'drive',
   A: H('C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | F2 C3 F3 Ab3 | G2 D3 F3 B3'),
   B: H('Ab2 Eb3 Ab3 C4 | Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | G2 D3 F3 B3'),
   melA: MEL('0:G4:2 2:Ab4:2 4:G4:2 6:F4:2 8:Eb4:8 16:Eb4:2 18:F4:2 20:Eb4:4 24:C4:8 32:G4:4 36:Bb4:4 40:Eb5:8 48:D5:4 52:Bb4:4 56:F4:8 64:G4:2 66:Ab4:2 68:G4:2 70:F4:2 72:Eb4:8 80:C5:4 84:Ab4:4 88:Eb4:8 96:Ab4:4 100:C5:4 104:F5:8 112:D5:4 116:B4:4 120:G4:8'),
@@ -620,8 +647,9 @@ tr('collapse', 'Обвал', 'синт-бас, драм-машина, синт-�
     sec('A', 'melA', 'drive', 'piano bass cello choir violin', 1.0, DR('x..x..x.x.x..x..', '....x...x...x...', 'oooooooooooooooo')),
   ],
 });
-tr('panic', 'Паника', 'аналоговый пад, синт-том', 'crisis', {
+tr('panic', 'Паника', 'аналоговый пад, литавры, бас', 'crisis', {
   bpm: 136, swing: 0, reverb: 0.3,
+  bassLine: 'pulse8',
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
   melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:A4:2 34:C5:2 36:A4:4 40:F4:8 48:E5:4 52:C5:4 56:G4:8 64:A4:2 66:Bb4:2 68:A4:2 70:G4:2 72:F4:8 80:D5:4 84:F5:4 88:Bb4:8 96:G4:4 100:Bb4:4 104:D5:8 112:C#5:4 116:E5:4 120:A4:8'),
@@ -632,8 +660,9 @@ tr('panic', 'Паника', 'аналоговый пад, синт-том', 'cri
     sec('A', 'melA', 'drive', 'piano bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
   ],
 });
-tr('bankrun', 'Очередь у банка', 'синт-арпеджио, PWM-пад', 'crisis', {
+tr('bankrun', 'Очередь у банка', 'арпеджио, PWM-пад, бас', 'crisis', {
   bpm: 118, swing: 0, reverb: 0.34,
+  bassLine: 'synco',
   A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
   B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
   melA: MEL('0:D5:4 4:Eb5:4 8:D5:8 16:Bb4:4 20:G5:4 24:Eb5:8 32:C5:4 36:A4:4 40:F4:8 48:F#4:4 52:A4:4 56:D5:8 64:D5:4 68:Eb5:4 72:F5:8 80:G5:4 84:Eb5:4 88:Bb4:8 96:C5:4 100:Eb5:4 104:G5:8 112:F#5:4 116:A5:4 120:D5:8'),
@@ -652,6 +681,7 @@ tr('bankrun', 'Очередь у банка', 'синт-арпеджио, PWM-п
 // вместо синтвейв-пэда и мелодии, унаследованной от «паники».
 tr('warmarch', 'Марш', 'духовые стабы, дробь малого барабана, маршевый бас', 'war', {
   bpm: 112, swing: 0, reverb: 0.2,
+  bassLine: 'drive',
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
   melA: MEL('0:D4:3 3:F4:1 4:A4:3 7:D5:1 8:D5:4 12:C5:2 14:Bb4:2 16:C5:3 19:A4:1 20:F4:3 23:C5:1 24:Bb4:4 28:A4:2 30:G4:2 32:F4:3 35:A4:1 36:C5:3 39:F5:1 40:F5:4 44:E5:2 46:D5:2 48:E5:3 51:C5:1 52:G4:3 55:C5:1 56:C5:4 60:B4:2 62:A4:2 64:D4:3 67:F4:1 68:A4:3 71:D5:1 72:D5:4 76:C5:2 78:Bb4:2 80:C5:3 83:A4:1 84:F4:3 87:C5:1 88:Bb4:4 92:A4:2 94:G4:2 96:G4:3 99:Bb4:1 100:D5:3 103:G5:1 104:G5:4 108:F5:2 110:Eb5:2 112:E5:3 115:C#5:1 116:A4:3 119:E5:1 120:A4:4 124:D5:4'),
@@ -666,6 +696,7 @@ tr('warmarch', 'Марш', 'духовые стабы, дробь малого �
 // в низком регистре без дроби и стабов, чтобы отчётливо звучать иначе, чем марш.
 tr('trenches', 'Окопы', 'литавры, низкая виолончель, редкая поступь', 'war', {
   bpm: 90, swing: 0, reverb: 0.36,
+  bassLine: 'half',
   A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
   B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
   melA: MEL('0:Bb4:6 8:G4:4 12:D4:4 16:Eb5:6 24:Bb4:4 28:G4:4 32:A4:6 40:F4:4 44:C4:4 48:F#4:6 56:D4:4 60:A3:4 64:Bb4:6 72:G4:4 76:D4:4 80:Eb5:6 88:Bb4:4 92:G4:4 96:Eb4:6 104:C4:4 108:G3:4 112:F#4:6 120:A4:6'),
@@ -683,6 +714,7 @@ tr('trenches', 'Окопы', 'литавры, низкая виолончель,
 // тоталитарного режима не может быть спутано ни с чем прежним.
 tr('ironmarch', 'Железный марш', 'дисторшн-гитара, тяжёлый бас, драм-машина', 'totalitarian', {
   bpm: 104, swing: 0, reverb: 0.22,
+  bassLine: 'pulse8',
   A: H('D3 A3 D4 F4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | D3 A3 D4 F4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
   melA: MEL('0:D4:3 3:F4:1 8:D4:3 11:F4:1 16:Bb3:3 19:D4:1 24:A3:3 27:C#4:1 32:D4:3 35:F4:1 40:D4:3 43:F4:1 48:G3:3 51:Bb3:1 56:A3:3 59:C#4:1'),
@@ -697,6 +729,7 @@ tr('ironmarch', 'Железный марш', 'дисторшн-гитара, т�
 // тяжёлым басовым дроном, шаги патруля вместо строевого шага.
 tr('curfew', 'Комендантский час', 'бас-дрон, редкие гитарные вспышки', 'totalitarian', {
   bpm: 72, swing: 0, reverb: 0.42,
+  bassLine: 'half',
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
   B: H('Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
   melA: MEL('0:D4:8 16:F4:4 24:D4:4 32:Bb3:8 48:D4:4 56:Bb3:4'),
@@ -711,6 +744,7 @@ tr('curfew', 'Комендантский час', 'бас-дрон, редкие
 /* ------------------------------- ДЕФЛЯЦИЯ ------------------------------- */
 tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM-пад', 'frost', {
   bpm: 52, swing: 0, reverb: 0.72,
+  bassLine: 'half',
   A: H('F2 C3 E3 A3 | C3 G3 B3 E4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | F2 C3 E3 A3 | A2 E3 G3 C4 | G2 D3 F3 Bb3 | C3 G3 C4 D4'),
   B: H('Bb2 F3 A3 D4 | C3 G3 B3 E4 | D3 A3 C4 F4 | C3 G3 C4 D4'),
   melA: MEL('0:C6:12 16:A5:12 32:F5:14 48:D5:14 64:C6:12 80:E5:12 96:Bb5:14 112:G5:14'),
@@ -723,6 +757,7 @@ tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM
 });
 tr('stillness', 'Ничего не происходит', 'PWM-пад, низкий пад', 'frost', {
   bpm: 48, swing: 0, reverb: 0.75,
+  bassLine: 'half',
   A: H('Bb2 F3 A3 D4 | Eb3 Bb3 D4 G4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
   B: H('G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
   melA: MEL('0:D5:14 16:F5:14 32:G5:14 48:A5:14 64:D5:14 80:Bb4:14 96:G5:14 112:A5:14'),
@@ -738,62 +773,174 @@ tr('stillness', 'Ничего не происходит', 'PWM-пад, низк�
    другой пульс — рынок, а не министерство.                                 */
 tr('openingbell', 'Открытие торгов', 'синт-лид, хай-хэт, синт-бас', 'calm', {
   bpm: 92, swing: 0.18, reverb: 0.32,
+  bassLine: 'drive',
   A: H('D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | A2 E3 G3 C#4'),
   B: H('Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | A2 E3 G3 C#4'),
   melA: MEL('0:A4:4 4:D5:4 8:F5:8 16:Bb4:4 20:D5:4 24:G5:8 32:E5:4 36:G5:4 40:Bb5:8 48:A5:4 52:F5:4 56:C5:8 64:D5:4 68:F5:4 72:A5:8 80:C#5:4 84:E5:4 88:A5:8 96:F5:4 100:D5:4 104:A4:8 112:C#5:4 116:E5:4 120:D5:8'),
   melB: MEL('0:D5:4 4:F5:4 8:Bb5:8 16:E5:4 20:G5:4 24:C6:8 32:A5:4 36:F5:4 40:C5:8 48:E5:4 52:C#5:4 56:A4:8'),
   sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.7, DR('x.......x.......', '................', '..o...o...o...o.')),
-    sec('B', 'melB', 'wide', 'piano bass pad', 0.9, DR('x.......x.......', '....x.......x...', '..o...o...o...o.')),
-    sec('A', 'melA', 'roll', 'piano harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('A', 'melA', 'flow', 'synth bass', 0.7, DR('x.......x.......', '................', '..o...o...o...o.')),
+    sec('B', 'melB', 'wide', 'synth bass pad', 0.9, DR('x.......x.......', '....x.......x...', '..o...o...o...o.')),
+    sec('A', 'melA', 'roll', 'synth harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
   ],
 });
 tr('bidask', 'Бид и аск', 'синт-лид, драм-машина', 'boom', {
   bpm: 118, swing: 0, reverb: 0.24,
+  bassLine: 'drive',
   A: H('C3 G3 C4 E4 | A2 E3 A3 C4 | F2 C3 F3 A3 | G2 D3 G3 B3 | C3 G3 C4 E4 | E3 B3 E4 G#4 | F2 C3 F3 A3 | G2 D3 F3 B3'),
   B: H('F2 C3 F3 A3 | G2 D3 G3 B3 | A2 E3 A3 C4 | G2 D3 F3 B3'),
   melA: MEL('0:G4:2 2:C5:2 4:E5:4 8:G5:8 16:E5:4 20:A5:4 24:C6:8 32:A5:4 36:F5:4 40:C5:8 48:B4:4 52:D5:4 56:G5:8 64:G4:2 66:C5:2 68:E5:4 72:C5:8 80:G#5:4 84:E5:4 88:B4:8 96:A5:4 100:F5:4 104:C5:8 112:B4:4 116:D5:4 120:G4:8'),
   melB: MEL('0:A5:4 4:F5:4 8:C5:8 16:B5:4 20:G5:4 24:D5:8 32:C6:4 36:A5:4 40:E5:8 48:B4:4 52:F5:4 56:G5:8'),
   sections: [
-    sec('A', 'melA', 'drive', 'piano bass', 0.8, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'roll', 'piano harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'piano bass pad violin', 1.0, DR('x..x..x...x.....', '....x.......x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'synth bass', 0.8, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'roll', 'synth harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'synth bass pad violin', 1.0, DR('x..x..x...x.....', '....x.......x...', 'oooooooooooooooo')),
   ],
 });
 tr('bearmarket', 'Медвежий рынок', 'синт-бас, синт-лид', 'slump', {
   bpm: 62, swing: 0.08, reverb: 0.56,
+  bassLine: 'root',
   A: H('A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | E2 B2 E3 G#3 | A2 E3 A3 C4 | G2 D3 G3 Bb3 | F2 C3 F3 A3 | E2 B2 E3 G#3'),
   B: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | E2 B2 E3 G#3'),
   melA: MEL('0:E5:8 8:C5:8 16:A4:12 32:D5:8 40:F5:8 48:E5:14 64:C5:8 72:A4:8 80:Bb4:12 96:A4:8 104:F4:8 112:G#4:14'),
   melB: MEL('0:F5:8 8:D5:8 16:Bb4:12 32:E5:8 40:C5:8 48:G#4:12'),
   sections: [
-    sec('A', 'melA', 'air', 'piano bass cello', 0.64),
-    sec('B', 'melB', 'sustain', 'piano bass cello pad', 0.84),
-    sec('A', 'melA', 'wide', 'piano bass cello pad strings', 1.0),
+    sec('A', 'melA', 'air', 'synth bass cello', 0.64),
+    sec('B', 'melB', 'sustain', 'synth bass cello pad', 0.84),
+    sec('A', 'melA', 'wide', 'synth bass cello pad strings', 1.0),
   ],
 });
 tr('thinvolume', 'Тонкий рынок', 'синт-арпеджио, PWM-пад', 'stag', {
   bpm: 76, swing: 0, reverb: 0.38,
+  bassLine: 'synco',
   A: H('E2 B2 E3 G3 | A2 E3 G3 C4 | E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | C3 G3 C4 E4 | B2 F#3 A3 D#4'),
   B: H('A2 E3 G3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | B2 F#3 A3 D#4'),
   melA: MEL('0:B4:8 8:A4:4 12:B4:4 16:G4:12 32:A4:8 40:C5:8 48:B4:14 64:E5:8 72:D5:8 80:C5:12 96:B4:8 104:G4:8 112:D#5:8 120:E4:8'),
   melB: MEL('0:C5:8 8:A4:8 16:F4:12 32:D5:8 40:A4:8 48:D#5:12'),
   sections: [
-    sec('A', 'melA', 'pulse', 'piano bass choir', 0.74, DR('x.......x.......', '................', '....o.......o...')),
-    sec('B', 'melB', 'pulse', 'piano bass cello choir pad', 0.92, DR('x.......x.......', '........x.......', '..o...o...o...o.')),
-    sec('A', 'melA', 'pulse', 'piano bass cello choir pad', 1.0, DR('x...x...x...x...', '........x.......', 'o.o.o.o.o.o.o.o.')),
+    sec('A', 'melA', 'pulse', 'synth bass choir', 0.74, DR('x.......x.......', '................', '....o.......o...')),
+    sec('B', 'melB', 'pulse', 'synth bass cello choir pad', 0.92, DR('x.......x.......', '........x.......', '..o...o...o...o.')),
+    sec('A', 'melA', 'pulse', 'synth bass cello choir pad', 1.0, DR('x...x...x...x...', '........x.......', 'o.o.o.o.o.o.o.o.')),
   ],
 });
 tr('marginwire', 'Маржин-колл', 'синт-бас, синт-том, аналоговый пад', 'crisis', {
   bpm: 132, swing: 0, reverb: 0.26,
+  bassLine: 'drive',
   A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4 | D3 A3 D4 F4 | F2 C3 F3 A3 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
   B: H('G2 D3 G3 Bb3 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | A2 E3 G3 C#4'),
   melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:G4:4 36:Bb4:4 40:D5:8 48:C#5:4 52:E5:4 56:A4:8 64:A4:2 66:D5:2 68:F5:4 72:D5:8 80:C5:4 84:A4:4 88:F4:8 96:Bb4:4 100:D5:4 104:F5:8 112:E5:4 116:C#5:4 120:A4:8'),
   melB: MEL('0:Bb4:4 4:D5:4 8:G5:8 16:F5:4 20:D5:4 24:Bb4:8 32:C5:4 36:E5:4 40:G5:8 48:E5:4 52:C#5:4 56:A4:8'),
   sections: [
-    sec('A', 'melA', 'drive', 'piano bass cello', 0.88, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass strings timpani', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'piano bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'synth bass cello', 0.88, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'drive', 'synth bass strings timpani', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
+    sec('A', 'melA', 'drive', 'synth bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
+  ],
+});
+
+/* --------------------------- ЖИВОЙ СОСТАВ ---------------------------
+   Пьесы, написанные не под синтезатор, а под состав: рояль, бас-гитара или
+   контрабас, барабаны, акустическая гитара. Здесь у баса своя линия, у
+   барабанщика — динамика и сбивки, а у мелодии — фразировка с ответом, а не
+   ровная цепочка нот одинаковой длины.                                    */
+tr('cabinet', 'Кабинет в семь утра', 'фортепианное трио: рояль, контрабас, щётки', 'calm', {
+  bpm: 86, swing: 0.26, reverb: 0.38, feel: 'swing', bassLine: 'walk',
+  A: H('F2 C3 E3 A3 | D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | A2 E3 G3 C4 | D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4'),
+  B: H('Bb2 F3 A3 D4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | C3 G3 Bb3 E4'),
+  melA: MEL('0:A4:4 4:C5:4 8:F5:6 16:E5:4 20:D5:4 24:A4:8 32:Bb4:4 36:D5:4 40:F5:6 48:E5:8 56:C5:8 64:C5:4 68:E5:4 72:A5:6 80:G5:4 84:F5:4 88:D5:8 96:Bb4:4 100:D5:4 104:G5:6 112:F5:4 116:E5:4 120:C5:10'),
+  melB: MEL('0:D5:4 4:F5:4 8:Bb5:8 16:C#5:4 20:E5:4 24:A5:8 32:F5:4 36:A5:4 40:D6:8 48:E5:4 52:G5:4 56:C5:10'),
+  sections: [
+    sec('A', 'melA', 'flow', 'piano bass', 0.68, DR('x.......x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
+    sec('B', 'melB', 'wide', 'piano bass', 0.88, DR('x.....x.x.......', '....x.......x...', 'r..r.r..r..r.r..', { ghost: true })),
+    sec('A', 'melA', 'flow', 'piano bass strings', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
+  ],
+});
+tr('sixstring', 'Шесть струн', 'акустическая гитара, бас, барабаны', 'calm', {
+  bpm: 104, swing: 0.1, reverb: 0.34, feel: 'loose', bassLine: 'root',
+  A: H('G2 D3 G3 B3 | E2 B2 E3 G3 | C3 G3 C4 E4 | D3 A3 D4 F#4 | G2 D3 G3 B3 | E2 B2 E3 G3 | A2 E3 A3 C4 | D3 A3 D4 F#4'),
+  B: H('C3 G3 C4 E4 | D3 A3 D4 F#4 | B2 F#3 B3 D4 | E2 B2 E3 G3'),
+  melA: MEL('0:D5:4 4:G5:4 8:B5:6 16:A5:4 20:G5:4 24:E5:8 32:E5:4 36:G5:4 40:C6:6 48:B5:4 52:A5:4 56:D5:8 64:D5:4 68:G5:4 72:B5:6 80:A5:4 84:B5:4 88:G5:8 96:E5:4 100:A5:4 104:C6:6 112:B5:4 116:A5:4 120:G5:10'),
+  melB: MEL('0:G5:4 4:C6:4 8:E6:8 16:D6:4 20:A5:4 24:F#5:8 32:B5:4 36:D6:4 40:F#6:8 48:E6:4 52:B5:4 56:G5:10'),
+  sections: [
+    sec('A', 'melA', 'flow', 'strum bass nylon', 0.7, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'wide', 'strum bass nylon', 0.9, DR('x.....x.x.......', '....x.......x...', 'o.o.o.o.o.o.o.O.')),
+    sec('A', 'melA', 'flow', 'strum bass nylon strings', 1.0, DR('x..x..x.x..x....', '....x.......x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
+  ],
+});
+tr('fullhouse', 'Полный зал', 'рояль, бас, барабаны — быстрый темп', 'boom', {
+  bpm: 138, swing: 0, reverb: 0.26, bassLine: 'drive',
+  A: H('A2 E3 A3 C4 | F2 C3 F3 A3 | C3 G3 C4 E4 | G2 D3 G3 B3 | A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | E3 B3 E4 G4'),
+  B: H('F2 C3 F3 A3 | G2 D3 G3 B3 | A2 E3 A3 C4 | E3 B3 E4 G4'),
+  melA: MEL('0:A4:2 2:C5:2 4:E5:4 8:A5:6 16:G5:2 18:F5:2 20:E5:4 24:C5:8 32:C5:2 34:E5:2 36:G5:4 40:C6:6 48:B5:2 50:A5:2 52:G5:4 56:D5:8 64:A4:2 66:C5:2 68:E5:4 72:A5:6 80:C6:2 82:B5:2 84:A5:4 88:F5:8 96:D5:2 98:F5:2 100:A5:4 104:D6:6 112:B5:4 116:G5:4 120:E5:8'),
+  melB: MEL('0:F5:2 2:A5:2 4:C6:4 8:F6:6 16:D6:2 18:B5:2 20:G5:4 24:D5:8 32:E5:2 34:A5:2 36:C6:4 40:E6:6 48:D6:4 52:B5:4 56:E5:8'),
+  sections: [
+    sec('A', 'melA', 'drive', 'piano bass', 0.82, DR('x.......x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'drive', 'piano bass brass', 1.0, DR('x..x....x...x...', '....x.......x..x', 'oooooooooooooooo', { ghost: true })),
+    sec('A', 'melA', 'drive', 'piano bass brass strings', 1.0, DR('x..x..x.x...x..x', '....x...x...x...', 'oooooooooooooooo', { ghost: true })),
+  ],
+});
+tr('nightshift', 'Ночная смена', 'рояль и бас, редкие барабаны', 'slump', {
+  bpm: 74, swing: 0.18, reverb: 0.5, feel: 'loose', bassLine: 'half',
+  A: H('D3 A3 D4 F4 | Bb2 F3 A3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C4 | D3 A3 D4 F4 | F2 C3 F3 A3 | Bb2 F3 A3 D4 | A2 E3 A3 C#4'),
+  B: H('G2 D3 G3 Bb3 | C3 G3 C4 Eb4 | Bb2 F3 A3 D4 | A2 E3 A3 C#4'),
+  melA: MEL('0:D5:6 8:F5:6 16:A5:10 32:Bb4:6 40:D5:6 48:F5:12 64:G4:6 72:Bb4:6 80:D5:10 96:C5:6 104:A4:6 112:D5:12'),
+  melB: MEL('0:Bb4:6 8:D5:6 16:G5:12 32:Eb5:6 40:G5:6 48:C6:12'),
+  sections: [
+    sec('A', 'melA', 'sustain', 'piano bass', 0.6, DR('x...............', '........x.......', '....o.......o...')),
+    sec('B', 'melB', 'wide', 'piano bass pad', 0.8, DR('x.......x.......', '........x.......', 'o...o...o...o...')),
+    sec('A', 'melA', 'flow', 'piano bass pad cello', 0.95, DR('x.....x.x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
+  ],
+});
+tr('treadmill', 'Бег на месте', 'синкопированный бас, рояль, барабаны', 'stag', {
+  bpm: 112, swing: 0.14, reverb: 0.3, bassLine: 'synco',
+  A: H('E2 B2 E3 G3 | C3 G3 C4 E4 | D3 A3 D4 F4 | B2 F#3 B3 D4 | E2 B2 E3 G3 | A2 E3 A3 C4 | C3 G3 C4 E4 | B2 F#3 B3 D4'),
+  B: H('A2 E3 A3 C4 | D3 A3 D4 F4 | G2 D3 G3 B3 | B2 F#3 B3 D4'),
+  melA: MEL('0:B4:3 3:E5:3 6:G5:6 16:C5:3 19:E5:3 22:G5:6 32:D5:3 35:F5:3 38:A5:6 48:F#5:6 56:D5:6 64:B4:3 67:E5:3 70:B5:6 80:C5:3 83:A4:3 86:E5:6 96:G5:3 99:E5:3 102:C5:6 112:B4:6 120:F#4:6'),
+  melB: MEL('0:A4:3 3:C5:3 6:E5:6 16:D5:3 19:F5:3 22:A5:6 32:G5:3 35:B5:3 38:D6:6 48:F#5:6 56:B4:6'),
+  sections: [
+    sec('A', 'melA', 'pulse', 'piano bass', 0.75, DR('x.....x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
+    sec('B', 'melB', 'drive', 'piano bass pad', 0.92, DR('x.....x...x...x.', '....x.......x...', 'oo.ooo.ooo.ooo.o', { ghost: true })),
+    sec('A', 'melA', 'pulse', 'piano bass pad strings', 1.0, DR('x.....x...x.....', '....x...x...x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
+  ],
+});
+
+/* ------------------------------ ОБУЧЕНИЕ ------------------------------
+   Курсам нужна своя музыка: не тревожная и не парадная, а такая, под которую
+   спокойно читают и решают задачи. Три пьесы на разный темп — от медленной
+   первой лекции до бодрого экзамена.                                      */
+tr('firstlesson', 'Первый урок', 'рояль и нейлоновая гитара', 'calm', {
+  bpm: 92, swing: 0.16, reverb: 0.42, feel: 'loose', bassLine: 'half',
+  A: H('C3 G3 C4 E4 | A2 E3 A3 C4 | F2 C3 F3 A3 | G2 D3 G3 B3 | C3 G3 C4 E4 | E3 B3 E4 G4 | F2 C3 F3 A3 | G2 D3 G3 B3'),
+  B: H('A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | G2 D3 G3 B3'),
+  melA: MEL('0:E5:4 4:G5:4 8:C6:8 16:B5:4 20:A5:4 24:E5:8 32:F5:4 36:A5:4 40:C6:8 48:D6:4 52:B5:4 56:G5:8 64:E5:4 68:C5:4 72:G5:8 80:B5:4 84:G5:4 88:E5:8 96:A5:4 100:F5:4 104:C6:8 112:D6:4 116:B5:4 120:C6:10'),
+  melB: MEL('0:C6:4 4:A5:4 8:E5:8 16:A5:4 20:F5:4 24:C5:8 32:D5:4 36:F5:4 40:A5:8 48:B5:4 52:D6:4 56:G5:10'),
+  sections: [
+    sec('A', 'melA', 'flow', 'piano bass', 0.62, DR('x.......x.......', '................', '....o.......o...')),
+    sec('B', 'melB', 'wide', 'piano bass nylon', 0.82, DR('x.......x.......', '........x.......', 'o...o...o...o...')),
+    sec('A', 'melA', 'flow', 'piano bass nylon strings', 0.95, DR('x.....x.x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
+  ],
+});
+tr('chalkboard', 'Мел и доска', 'маримба, бас, щётки', 'calm', {
+  bpm: 100, swing: 0.24, reverb: 0.36, feel: 'swing', bassLine: 'walk',
+  A: H('Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | D3 A3 C4 F4 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
+  B: H('G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4'),
+  melA: MEL('0:D5:4 4:F5:4 8:Bb5:6 16:A5:4 20:G5:4 24:D5:8 32:G5:4 36:Bb5:4 40:Eb6:6 48:D6:4 52:C6:4 56:A5:8 64:D5:4 68:A5:4 72:F5:6 80:C6:4 84:A5:4 88:F5:8 96:G5:4 100:Bb5:4 104:D6:6 112:C6:4 116:A5:4 120:Bb5:10'),
+  melB: MEL('0:Bb5:4 4:D6:4 8:G6:8 16:E6:4 20:C6:4 24:G5:8 32:A5:4 36:C6:4 40:F6:8 48:D6:4 52:Bb5:4 56:F5:10'),
+  sections: [
+    sec('A', 'melA', 'flow', 'marimba bass', 0.66, DR('x.......x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
+    sec('B', 'melB', 'wide', 'marimba bass piano', 0.86, DR('x.....x.x.......', '....x.......x...', 'r..r.r..r..r.r..', { ghost: true })),
+    sec('A', 'melA', 'flow', 'marimba bass piano strings', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
+  ],
+});
+tr('graduation', 'Выпуск', 'рояль, бас, барабаны — экзаменационный темп', 'boom', {
+  bpm: 126, swing: 0, reverb: 0.3, bassLine: 'drive',
+  A: H('D3 A3 D4 F#4 | B2 F#3 B3 D4 | G2 D3 G3 B3 | A2 E3 A3 C#4 | D3 A3 D4 F#4 | F#2 C#3 F#3 A3 | G2 D3 G3 B3 | A2 E3 A3 C#4'),
+  B: H('G2 D3 G3 B3 | A2 E3 A3 C#4 | B2 F#3 B3 D4 | E3 B3 E4 G4'),
+  melA: MEL('0:D5:2 2:F#5:2 4:A5:4 8:D6:6 16:C#6:2 18:B5:2 20:A5:4 24:F#5:8 32:G5:2 34:B5:2 36:D6:4 40:G6:6 48:F#6:4 52:D6:4 56:A5:8 64:D5:2 66:A5:2 68:F#5:4 72:D6:6 80:C#6:2 82:A5:2 84:F#5:4 88:C#5:8 96:B5:2 98:G5:2 100:D6:4 104:B5:6 112:C#6:4 116:A5:4 120:D6:8'),
+  melB: MEL('0:G5:2 2:B5:2 4:D6:4 8:G6:6 16:E6:2 18:C#6:2 20:A5:4 24:E5:8 32:F#5:2 34:B5:2 36:D6:4 40:F#6:6 48:G6:4 52:E6:4 56:B5:8'),
+  sections: [
+    sec('A', 'melA', 'drive', 'piano bass', 0.8, DR('x.......x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
+    sec('B', 'melB', 'drive', 'piano bass brass', 0.96, DR('x..x....x...x...', '....x.......x..x', 'oooooooooooooooo', { ghost: true })),
+    sec('A', 'melA', 'drive', 'piano bass brass strings', 1.0, DR('x..x..x.x...x..x', '....x...x...x...', 'oooooooooooooooo', { ghost: true })),
   ],
 });
 
@@ -802,8 +949,9 @@ tr('marginwire', 'Маржин-колл', 'синт-бас, синт-том, а�
 // вкладку «Казино» (см. Audio.setPlaylist('casino')/(null)), поэтому обе
 // темы нарочно бодрые и «фоново-лаунжевые» вне зависимости от состояния
 // экономики за окном
-tr('chips', 'Фишки и блеск', 'свинг-пианино, ксилофонные блики', 'casino', {
+tr('chips', 'Фишки и блеск', 'свинг-фортепиано, контрабас, щётки', 'casino', {
   bpm: 124, swing: 0.32, reverb: 0.3,
+  bassLine: 'walk', feel: 'swing',
   A: H('C3 A3 C4 E4 | A2 G3 A3 C4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 A3 C4 E4 | A2 G3 A3 C4 | D3 C4 D4 F4 | G2 F3 G3 B3'),
   B: H('F2 D3 F3 A3 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 A3 C4 E4'),
   melA: MEL('0:E4:2 2:G4:2 4:C5:2 6:E5:2 8:D5:4 12:C5:4 16:C5:2 18:E5:2 20:A4:2 22:C5:2 24:B4:4 28:A4:4 32:F4:2 34:A4:2 36:D5:2 38:F5:2 40:E5:4 44:D5:4 48:D5:2 50:B4:2 52:G4:2 54:D5:2 56:B4:4 60:G4:4 64:E4:2 66:G4:2 68:C5:2 70:E5:2 72:D5:4 76:C5:4 80:C5:2 82:E5:2 84:A4:2 86:C5:2 88:B4:4 92:A4:4 96:F4:2 98:A4:2 100:D5:2 102:Eb5:2 104:D5:4 108:C5:4 112:D5:2 114:B4:2 116:G4:2 118:D5:2 120:G5:4 124:D5:4'),
@@ -814,8 +962,9 @@ tr('chips', 'Фишки и блеск', 'свинг-пианино, ксилоф
     sec('A', 'melA', 'drive', 'piano bass cello harp bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'xxxxxxxxxxxxxxxx')),
   ],
 });
-tr('croupier', 'Крупье', 'вибрафон, виолончель — настоящий джаз-лаунж', 'casino', {
+tr('croupier', 'Крупье', 'вибрафон, фортепиано, контрабас — джаз-лаунж', 'casino', {
   bpm: 96, swing: 0.28, reverb: 0.4,
+  bassLine: 'walk', feel: 'swing',
   A: H('D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4'),
   B: H('F2 E3 F3 A3 | E3 D4 E4 G4 | A2 G3 A3 C4 | A2 G3 A3 C#4'),
   melA: MEL('0:D4:6 8:A4:4 12:F4:4 16:G4:6 24:B4:4 28:G4:4 32:C5:6 40:E5:4 44:C5:4 48:C#5:6 56:A4:4 60:E4:4 64:D4:6 72:A4:4 76:F4:4 80:G4:6 88:B4:4 92:G4:4 96:C5:6 104:E5:4 108:C5:4 112:C#5:6 120:D5:8'),
@@ -827,11 +976,27 @@ tr('croupier', 'Крупье', 'вибрафон, виолончель — на�
   ],
 });
 
+/* -------------------------------- ЗАГЛАВНАЯ -------------------------------- */
+/* Тема главного меню: рояль ведёт мелодию, струнные держат зал, барабаны почти
+   не слышны — это ещё не партия, это дверь в кабинет. */
+tr('anthem', 'Герб на двери', 'рояль, струнные, контрабас — заглавная тема', 'calm', {
+  bpm: 88, swing: 0.08, reverb: 0.44, bassLine: 'half',
+  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  B: H('Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
+  melA: MEL('0:D5:4 4:F5:4 8:A5:6 16:G5:4 20:F5:4 24:D5:8 32:F5:4 36:A5:4 40:C6:6 48:Bb5:4 52:A5:4 56:F5:8 64:A5:4 68:G5:4 72:F5:6 80:E5:4 84:D5:4 88:C5:8 96:Bb4:4 100:D5:4 104:G5:6 112:F5:4 116:E5:4 120:D5:10'),
+  melB: MEL('0:F5:4 4:Bb5:4 8:D6:8 16:C6:4 20:A5:4 24:F5:8 32:Bb5:4 36:D6:4 40:F6:6 48:E6:4 52:C#6:4 56:A5:10'),
+  sections: [
+    sec('A', 'melA', 'air', 'piano bass', 0.6, DR('x.......x.......', '................', 'r...r...r...r...')),
+    sec('B', 'melB', 'flow', 'piano bass strings', 0.85, DR('x.....x.x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
+    sec('A', 'melA', 'flow', 'piano bass strings cello', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
+  ],
+});
+
 const MOOD_PLAYLISTS = {
-  calm: ['dawn', 'ledger', 'northlight', 'promenade', 'meadow'],
-  boom: ['ascent', 'boulevard', 'overdrive'],
-  slump: ['longwinter', 'emptyhalls', 'patience'],
-  stag: ['deadlock', 'friction'],
+  calm: ['cabinet', 'dawn', 'sixstring', 'ledger', 'northlight', 'promenade', 'meadow'],
+  boom: ['fullhouse', 'ascent', 'boulevard', 'overdrive'],
+  slump: ['nightshift', 'longwinter', 'emptyhalls', 'patience'],
+  stag: ['treadmill', 'deadlock', 'friction'],
   crisis: ['collapse', 'panic', 'bankrun'],
   frost: ['glass', 'stillness'],
   war: ['warmarch', 'trenches'],
@@ -841,8 +1006,26 @@ const MOOD_PLAYLISTS = {
 const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война', totalitarian: 'Тоталитаризм', casino: 'Казино' };
 const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
   banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
-/* Плейлисты, привязанные к роли: у инвестора свой репертуар */
+/* Плейлисты, привязанные к роли: у инвестора свой репертуар, у обучения — свой */
 const ROLE_PLAYLISTS = {
+  /* В меню нет экономики, а значит нет и настроения: один и тот же спокойный
+     репертуар во всех ветках — заглавная тема и то, что к ней прилегает. */
+  menu: {
+    calm: ['anthem', 'cabinet', 'dawn', 'northlight', 'promenade'],
+    boom: ['anthem', 'cabinet', 'dawn'],
+    slump: ['anthem', 'dawn', 'northlight'],
+    stag: ['anthem', 'cabinet', 'meadow'],
+    crisis: ['anthem', 'dawn', 'northlight'],
+    frost: ['anthem', 'meadow', 'dawn'],
+  },
+  tutorial: {
+    calm: ['firstlesson', 'chalkboard', 'cabinet'],
+    boom: ['graduation', 'sixstring'],
+    slump: ['nightshift', 'firstlesson'],
+    stag: ['chalkboard', 'treadmill'],
+    crisis: ['treadmill', 'graduation'],
+    frost: ['firstlesson', 'nightshift'],
+  },
   trader: {
     calm: ['openingbell', 'ledger'],
     boom: ['bidask', 'ascent'],
@@ -907,8 +1090,10 @@ export const Audio = (() => {
     sfxBus = ctx.createGain(); sfxBus.gain.value = opts.sfx ? 0.9 : 0; sfxBus.connect(master);
     dry = ctx.createGain(); dry.gain.value = 1; dry.connect(musicBus);
     try {
-      const body = ctx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 220; body.Q.value = 0.8; body.gain.value = 2.5;
-      const air = ctx.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 5400; air.gain.value = -4;
+      // шельф на верхах был сделан под пилу старого синт-лида и душил бы настоящий
+      // рояль: у него в этой полосе как раз живёт молоточек и «воздух» инструмента
+      const body = ctx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 220; body.Q.value = 0.8; body.gain.value = 2.0;
+      const air = ctx.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 5400; air.gain.value = -1.5;
       pianoBus = ctx.createGain(); pianoBus.gain.value = 1;
       pianoBus.connect(body); body.connect(air); air.connect(dry);
     } catch { pianoBus = dry; }
@@ -951,10 +1136,67 @@ export const Audio = (() => {
   };
   const sendTo = (node, bus, amt) => { const g = ctx.createGain(); g.gain.value = amt; node.connect(g); g.connect(bus); };
 
-  /* ------------------------------- ИНСТРУМЕНТЫ (синтвейв) ------------------------------- */
-  // Основной синт-лид/плак: пила+квадрат в унисон с суб-осциллятором и нисходящей
-  // фильтр-огибающей — тот самый «плак», который держит арпеджио и мелодию в синтвейве.
-  const piano = (t, midi, vel, sustain, maxParts) => {
+  /* ------------------------------- ИНСТРУМЕНТЫ ------------------------------- */
+  /* Рояль. Раньше под именем piano() играла пила с квадратом — то есть каждый трек
+     саундтрека, что бы ни было написано в его аранжировке, звучал одним и тем же
+     синтезаторным плаком. Теперь это настоящий фортепианный голос: собственная
+     волна с фортепианным набором обертонов, две слегка расстроенные «струны»
+     (отсюда живое биение), стук молоточка в атаке и двухступенчатое затухание —
+     быстрый спад первых миллисекунд и длинный хвост, который у басов тянется
+     дольше, чем у верхов. Старый синтезаторный голос никуда не делся, он живёт
+     отдельно под именем synth() — там, где синтвейв нужен осознанно. */
+  let pianoWave = null;
+  const ensurePianoWave = () => {
+    if (pianoWave || !ctx) return pianoWave;
+    // амплитуды обертонов, снятые с характера рояля: сильная первая и вторая,
+    // быстро убывающие верхние — отсюда «деревянный», а не «жужжащий» тембр
+    const amps = [0, 1, 0.58, 0.36, 0.26, 0.17, 0.11, 0.082, 0.058, 0.04, 0.028, 0.02, 0.014, 0.01];
+    const real = new Float32Array(amps.length);
+    const imag = new Float32Array(amps.length);
+    amps.forEach((a, i) => { imag[i] = a; });
+    try { pianoWave = ctx.createPeriodicWave(real, imag, { disableNormalization: false }); }
+    catch { pianoWave = null; }
+    return pianoWave;
+  };
+  const piano = (t, midi, vel, sustain) => {
+    const f = hz(midi);
+    if (f > 5000 || f < 25) return;
+    // низкие струны звучат дольше высоких — это и создаёт ощущение инструмента,
+    // а не одинаково обрубленных нот
+    const pitchLen = clamp(2.6 - (midi - 36) * 0.022, 0.55, 2.6);
+    const dec = clamp(pitchLen * (sustain || 1), 0.16, 3.4);
+    const out = ctx.createGain(); out.gain.value = 0.105 * vel;
+    const pan = panFor(midi, 0.28); out.connect(pan); pan.connect(pianoBus);
+    sendTo(out, verbIn, track.reverb * 0.5);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 0.6;
+    filt.frequency.setValueAtTime(Math.min(12000, f * 11 + 1400), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 3.2, 950), t + dec * 0.55);
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.004);
+    // двухступенчатое затухание: резкий спад молоточка, затем долгий хвост струны
+    g.gain.exponentialRampToValueAtTime(0.42, t + Math.min(0.16, dec * 0.2));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+    g.connect(filt);
+    const wave = ensurePianoWave();
+    [[0, 0.62], [vel > 0.6 ? 3.5 : 2.2, 0.38]].forEach(([det, amp]) => {
+      const o = ctx.createOscillator();
+      if (wave) o.setPeriodicWave(wave); else o.type = 'triangle';
+      o.frequency.value = f; o.detune.value = det;
+      const a = ctx.createGain(); a.gain.value = amp;
+      o.connect(a); a.connect(g); o.start(t); o.stop(t + dec + 0.06);
+    });
+    // стук молоточка по струне: короткий полосовой шум, громче при сильной ноте
+    const hs = ctx.createBufferSource(); hs.buffer = noiseBuf;
+    const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = Math.min(6500, f * 3.2); hf.Q.value = 0.9;
+    const hg = ctx.createGain();
+    hg.gain.setValueAtTime(0.030 * vel * vel, t); hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+    hs.connect(hf); hf.connect(hg); hg.connect(out); hs.start(t); hs.stop(t + 0.07);
+  };
+  // Синт-лид: прежний голос движка — пила с квадратом, суб-осциллятором и
+  // нисходящим фильтром. Остаётся для пьес, где синтезатор — осознанный выбор.
+  const synth = (t, midi, vel, sustain, maxParts) => {
     const f = hz(midi);
     if (f > 5000 || f < 25) return;
     const dec = clamp(0.85 * (sustain || 1), 0.14, 3.0);
@@ -971,7 +1213,7 @@ export const Audio = (() => {
     g.gain.exponentialRampToValueAtTime(1, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
     g.connect(filt);
-    const maxN = maxParts || 8; // сохраняем параметр ради обратной совместимости вызовов
+    const maxN = maxParts || 8;
     [[1, 'sawtooth', 0, 0.5], [1, 'square', 7, 0.34], [0.5, 'sine', 0, Math.min(0.4, maxN / 20)]].forEach(([mul, wave, det, amp]) => {
       const o = ctx.createOscillator(); o.type = wave; o.frequency.value = f * mul; o.detune.value = det;
       const a = ctx.createGain(); a.gain.value = amp;
@@ -982,6 +1224,41 @@ export const Audio = (() => {
     const hg = ctx.createGain();
     hg.gain.setValueAtTime(0.020 * vel * vel, t); hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
     hs.connect(hf); hf.connect(hg); hg.connect(out); hs.start(t); hs.stop(t + 0.06);
+  };
+  /* Бас-гитара. Раньше басовую линию играл тот же piano() вполсилы — то есть баса
+     как отдельного инструмента в движке просто не было. Здесь он свой: синус на
+     фундаменте, поверх — фильтрованная пила с быстрым фильтр-спадом (щипок
+     пальцем), сверху короткий призвук струны о лад. */
+  const bass = (t, midi, dur, vel) => {
+    const f = hz(midi);
+    if (f < 20 || f > 700) return;
+    const out = ctx.createGain(); out.gain.value = 0.18 * vel;
+    out.connect(dry);
+    sendTo(out, verbIn, track.reverb * 0.12);
+    const d = clamp(dur, 0.08, 1.6);
+    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 4.5;
+    filt.frequency.setValueAtTime(Math.min(2600, f * 12), t);
+    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 2.2, 90), t + Math.min(0.22, d * 0.6));
+    filt.connect(out);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.55, t + Math.min(0.12, d * 0.35));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    g.connect(filt);
+    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = f;
+    const subG = ctx.createGain(); subG.gain.value = 0.85;
+    sub.connect(subG); subG.connect(g);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = 5;
+    const oG = ctx.createGain(); oG.gain.value = 0.42;
+    o.connect(oG); oG.connect(g);
+    sub.start(t); sub.stop(t + d + 0.05); o.start(t); o.stop(t + d + 0.05);
+    // призвук струны о порожек — то, по чему бас-гитара и узнаётся
+    const cl = ctx.createBufferSource(); cl.buffer = noiseBuf;
+    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 1400; cf.Q.value = 1.1;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(0.022 * vel, t); cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+    cl.connect(cf); cf.connect(cg); cg.connect(out); cl.start(t); cl.stop(t + 0.05);
   };
   // Плак для аккордовых фигур/арпеджио — короткая пила с нисходящим фильтром,
   // подпёртая слэп-дилеем (см. echo в ensure()) вместо арфового «звона».
@@ -1142,30 +1419,79 @@ export const Audio = (() => {
     g.gain.setValueAtTime(0.15 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
     o.connect(g); g.connect(dry); sendTo(g, verbIn, 0.25); o.start(t); o.stop(t + 0.35);
   };
-  // «808»-бочка: синус с резким питч-дропом плюс щелчок атаки полосовым шумом.
-  const kick = (t, vel) => {
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(155, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.09);
-    g.gain.setValueAtTime(0.22 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
-    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.36);
-    noiseHit(t, 0.012, 0.06 * vel, 'bandpass', 1800, 1.2);
-  };
   const noiseHit = (t, dur, gain, type, freq, q, bus) => {
     const src = ctx.createBufferSource(); src.buffer = noiseBuf;
     const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q || 1;
     const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f); f.connect(g); g.connect(bus || dry); src.start(t); src.stop(t + dur + 0.05);
   };
-  // Снейр+хлопок внахлёст, короче и жёстче прежнего — ближе к драм-машине, чем к оркестру.
-  const snare = (t, vel) => {
-    noiseHit(t, 0.13, 0.075 * vel, 'bandpass', 2200, 1.1);
-    noiseHit(t, 0.05, 0.05 * vel, 'highpass', 3800, 0.8);
+  /* УДАРНЫЕ. Раньше это были три ноты без динамики: бочка, шум-снейр и шум-хэт,
+     всегда одной громкости. Теперь у каждого удара есть velocity, у бочки — тело и
+     щелчок колотушки, у снейра — пружина, а к набору добавились том и райд, без
+     которых не сыграть ни сбивку, ни джазовый грув. */
+  const kick = (t, vel) => {
+    const v = clamp(vel, 0.1, 1.4);
     const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'triangle'; o.frequency.setValueAtTime(210, t);
-    g.gain.setValueAtTime(0.03 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.1);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(160, t);
+    o.frequency.exponentialRampToValueAtTime(48, t + 0.055);
+    o.frequency.exponentialRampToValueAtTime(38, t + 0.22);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.26 * v, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.38);
+    // щелчок колотушки — то, за счёт чего бочка слышна в миксе, а не только ощущается
+    noiseHit(t, 0.010, 0.055 * v, 'bandpass', 2600, 1.4);
   };
-  const hat = (t, open) => noiseHit(t, open ? 0.14 : 0.045, open ? 0.022 : 0.026, 'highpass', 8200, 1.4);
+  const snare = (t, vel) => {
+    const v = clamp(vel, 0.05, 1.4);
+    // тело барабана — две расстроенные головки
+    [188, 242].forEach((fr, i) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'triangle'; o.frequency.setValueAtTime(fr, t);
+      o.frequency.exponentialRampToValueAtTime(fr * 0.82, t + 0.06);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime((i ? 0.022 : 0.034) * v, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+      o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.12);
+    });
+    // пружина: два слоя шума, длинный и короткий
+    noiseHit(t, 0.11 + 0.05 * v, 0.070 * v, 'bandpass', 1900, 0.9);
+    noiseHit(t + 0.004, 0.055, 0.045 * v, 'highpass', 4200, 0.7);
+  };
+  // Том — нужен и для сбивок, и для маршевой дроби
+  const tom = (t, midi, vel) => {
+    const f = hz(midi);
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f * 1.35, t); o.frequency.exponentialRampToValueAtTime(f * 0.88, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.13 * vel, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    o.connect(g); g.connect(dry); sendTo(g, verbIn, track.reverb * 0.3);
+    o.start(t); o.stop(t + 0.38);
+    noiseHit(t, 0.04, 0.018 * vel, 'bandpass', 900, 0.8);
+  };
+  // Хэт с динамикой: закрытый щелчок, открытый «шшш» — и тихие призрачные удары
+  const hat = (t, open, vel) => {
+    const v = clamp(vel === undefined ? 1 : vel, 0.1, 1.4);
+    noiseHit(t, open ? 0.16 : 0.036, (open ? 0.024 : 0.028) * v, 'highpass', open ? 7200 : 8800, 1.4);
+    if (!open) noiseHit(t, 0.012, 0.010 * v, 'bandpass', 11000, 2.0);
+  };
+  // Райд: металлический звон с длинным хвостом — без него джазовый грув не собрать
+  const ride = (t, vel) => {
+    const v = clamp(vel, 0.1, 1.4);
+    noiseHit(t, 0.42, 0.011 * v, 'highpass', 6200, 0.8);
+    [3140, 4270, 5630].forEach((fr, i) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'square'; o.frequency.value = fr;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.006 * v / (i + 1), t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5 - i * 0.1);
+      o.connect(g); g.connect(dry); sendTo(g, verbIn, track.reverb * 0.25);
+      o.start(t); o.stop(t + 0.6);
+    });
+  };
 
   /* Мягкий клиппинг для гитары и нового баса тоталитарного режима — ни один другой
      голос в движке им не пользуется, поэтому у этих двух треков не может быть звучания,
@@ -1303,7 +1629,6 @@ export const Audio = (() => {
   };
   const stepDur = () => 60 / (track.bpm * tempoMod) / 4;
   const accent = (pos) => (pos === 0 ? 1 : pos % 8 === 0 ? 0.92 : pos % 4 === 0 ? 0.84 : 0.72);
-  const BASS_DEG = [0, 7, 12, 3];
 
   const setTrack = (id) => {
     if (!TRACKS[id]) return;
@@ -1315,6 +1640,22 @@ export const Audio = (() => {
     playlistIdx = (playlistIdx + (forward === false ? -1 : 1) + list.length) % list.length;
     pending = list[playlistIdx];
   };
+
+  /* Басовые фигуры. Раньше бас во всех без исключения пьесах играл одну и ту же
+     ломаную восьмыми — отсюда и ощущение однообразия сильнее всего. Теперь рисунок
+     выбирает сама пьеса: рок гонит ровные восьмые, джаз ходит четвертями по тонам
+     аккорда, баллада держит половинки, а фанк дышит синкопой. [шаг, ступень]. */
+  const BASS_LINES = {
+    drive: [[0, 0], [2, 0], [4, 7], [6, 0], [8, 0], [10, 12], [12, 7], [14, 0]],
+    walk: [[0, 0], [4, 4], [8, 7], [12, 9]],
+    root: [[0, 0], [6, 0], [8, 7], [14, 7]],
+    half: [[0, 0], [8, 7]],
+    synco: [[0, 0], [3, 0], [6, 7], [8, 12], [11, 7], [14, 0]],
+    pulse8: [[0, 0], [2, 0], [4, 0], [6, 0], [8, 0], [10, 0], [12, 0], [14, 0]],
+  };
+  // человеческая неровность: одинаковая громкость у всех ударов — первое, по чему
+  // слышно, что играет не живой барабанщик, а сетка
+  const humanVel = (base) => base * (0.86 + Math.random() * 0.2);
 
   const scheduleStep = (idx, t) => {
     const totalSteps = formBars * 16;
@@ -1330,6 +1671,7 @@ export const Audio = (() => {
     const arr = sc.arr;
     const has = (k) => arr.indexOf(k) >= 0;
     const dyn = sc.dyn * (0.88 + 0.18 * intensity);
+    const lastBarOfSection = barIn === sc.bars - 1;
 
     // гармония
     if (pos === 0) {
@@ -1342,20 +1684,31 @@ export const Audio = (() => {
     if (has('brass') && pos % 4 === 0) brass(t, voicing.slice(0, 3), sd * 3.4, 0.1 * dyn);
     // гитарный «чуг» на каждую четверть — тот же маршевый приём, что и духовые стабы,
     // но режущий и жёсткий: собственный узнаваемый ритм тоталитарного саундтрека
-    if (has('guitar') && pos % 4 === 0) guitar(t, voicing[0], sd * 3.4, 0.11 * dyn, true);
-    // бас — постоянные восьмые с движением по тонам аккорда (root/fifth/octave/third),
-    // а не статичная педаль: главный источник «драйва» в синтвейве
-    if (pos % 2 === 0) {
-      const root = voicing[0] - 12;
-      const note = root + BASS_DEG[(pos / 2) % BASS_DEG.length];
-      const vel = (pos % 8 === 0 ? 0.95 : pos % 4 === 0 ? 0.72 : 0.56) * dyn;
-      if (has('growl')) growl(t, note, sd * 1.9, vel);
-      else if (has('cello')) cello(t, note, sd * 1.9, vel);
-      else if (has('bass')) piano(t + jitter(), note, 0.5 * vel, 0.45, 4);
+    if (has('guitar') && has('growl') && pos % 4 === 0) guitar(t, voicing[0], sd * 3.4, 0.11 * dyn, true);
+    // бой акустической гитары: перебор аккорда восьмыми со сменой направления
+    if (has('strum') && pos % 2 === 0) {
+      const dirDown = (pos / 2) % 2 === 0;
+      const order = dirDown ? [0, 1, 2, 3] : [3, 2, 1, 0];
+      order.forEach((k, n) => {
+        const note = voicing[k % voicing.length] + (k > 1 ? 12 : 0);
+        nylon(t + n * 0.011 + jitter() * 0.4, note, sd * 3.2, (dirDown ? 0.5 : 0.34) * dyn);
+      });
     }
+    // бас
+    const bassFig = BASS_LINES[track.bassLine || 'drive'] || BASS_LINES.drive;
+    bassFig.forEach(([st, deg]) => {
+      if (st !== pos) return;
+      const root = voicing[0] - 12;
+      const note = root + deg;
+      const vel = (pos === 0 ? 1.0 : pos % 8 === 0 ? 0.82 : pos % 4 === 0 ? 0.7 : 0.56) * dyn;
+      const len = sd * (track.bassLine === 'walk' ? 3.6 : track.bassLine === 'half' ? 7 : 1.9);
+      if (has('growl')) growl(t, note, len, vel);
+      else if (has('cello')) cello(t, note, len, vel);
+      else if (has('bass')) bass(t + jitter() * 0.5, note, len, vel);
+    });
     // арпеджио по аккорду шестнадцатыми — накладывается на «полные» секции без
     // собственной арпеджио-партии в аранжировке, характерный слой синтвейва
-    if (has('pad') && !has('harp')) {
+    if (has('pad') && !has('harp') && !has('strum')) {
       const arpDeg = [1, 2, 3, 2][(pos / 2) % 4];
       if (pos % 2 === 0) harp(t + jitter(), voicing[arpDeg % voicing.length] + 12, sd * 2.2, 0.3 * dyn);
     }
@@ -1366,8 +1719,9 @@ export const Audio = (() => {
       const vel = (0.38 + 0.16 * accent(pos)) * dyn;
       const note = voicing[deg % voicing.length];
       if (has('harp')) harp(t + jitter(), note + 12, sd * 6, vel);
-      if (has('piano')) piano(t + jitter(), note, vel, track.bpm > 100 ? 0.55 : sc.lh === 'sustain' ? 1.0 : 0.85, sc.lh === 'sustain' ? 4 : 5);
-      else if (has('nylon')) nylon(t + jitter(), note + 12, sd * 4.5, vel);
+      if (has('piano')) piano(t + jitter(), note, vel, track.bpm > 100 ? 0.7 : sc.lh === 'sustain' ? 1.15 : 0.95);
+      else if (has('synth')) synth(t + jitter(), note, vel, track.bpm > 100 ? 0.55 : sc.lh === 'sustain' ? 1.0 : 0.85, sc.lh === 'sustain' ? 4 : 5);
+      else if (has('nylon') && !has('strum')) nylon(t + jitter(), note + 12, sd * 4.5, vel);
       else if (has('marimba')) marimba(t + jitter(), note + 12, sd * 3, vel * 0.9);
       else if (has('bells') && !has('harp') && (st % 4 === 0)) bell(t, note + 12, sd * 6, 0.6 * vel);
     });
@@ -1377,22 +1731,40 @@ export const Audio = (() => {
       const vel = (0.78 + 0.20 * accent(pos)) * dyn;
       if (has('violin')) violin(t, midi, sd * dur * 1.05, vel);
       if (has('bells')) bell(t, midi, sd * dur * 1.7, vel * 0.9);
-      if (has('guitar') && !has('violin') && !has('bells')) guitar(t + jitter(), midi, sd * dur * 0.9, vel * 0.7, false);
-      if (has('marimba') && !has('violin') && !has('bells') && !has('guitar')) marimba(t + jitter(), midi, sd * dur * 0.8, vel * 0.85);
-      if (has('nylon') && !has('violin') && !has('bells') && !has('guitar') && !has('marimba')) nylon(t + jitter(), midi, sd * dur * 0.9, vel * 0.8);
-      if (!has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('nylon')) {
-        piano(t + jitter(), midi, Math.min(1, vel), 1);
-        if (dur >= 8 && track.mood !== 'crisis') piano(t + jitter(), midi - 12, vel * 0.32, 0.8);
+      if (has('lead')) synth(t + jitter(), midi, vel, 1.1, 8);
+      if (has('guitar') && !has('violin') && !has('bells') && !has('lead')) guitar(t + jitter(), midi, sd * dur * 0.9, vel * 0.7, false);
+      if (has('marimba') && !has('violin') && !has('bells') && !has('guitar') && !has('lead')) marimba(t + jitter(), midi, sd * dur * 0.8, vel * 0.85);
+      if (has('nylon') && !has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('lead')) nylon(t + jitter(), midi, sd * dur * 0.9, vel * 0.8);
+      if (!has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('nylon') && !has('lead')) {
+        piano(t + jitter(), midi, Math.min(1, vel), 1.25);
+        if (dur >= 8 && track.mood !== 'crisis') piano(t + jitter(), midi - 12, vel * 0.32, 0.9);
       } else if (has('piano') && has('violin')) {
-        piano(t + jitter(), midi, vel * 0.5, 0.9, 5);
+        piano(t + jitter(), midi, vel * 0.5, 1.0);
       }
     });
     // ударные
     const d = sc.drums;
     if (d) {
-      d.kick.forEach(([st]) => { if (st === pos) kick(t, (0.75 + 0.3 * intensity) * dyn); });
-      d.snare.forEach(([st]) => { if (st === pos) snare(t, (0.75 + 0.3 * intensity) * dyn); });
-      d.hat.forEach(([st, c]) => { if (st === pos) hat(t, c === 'O'); });
+      const power = (0.75 + 0.3 * intensity) * dyn;
+      // сбивка в последнем такте секции: барабанщик объявляет смену, а не молча
+      // доигрывает один и тот же такт по кругу
+      const fillBar = lastBarOfSection && sc.bars >= 4 && d.fill !== false;
+      if (fillBar && pos >= 8) {
+        const TOMS = [52, 50, 47, 43];
+        if (pos % 2 === 0) tom(t, TOMS[Math.min(3, Math.floor((pos - 8) / 2))], humanVel(power * 0.95));
+        if (pos === 15) snare(t, humanVel(power * 1.1));
+        if (pos === 8) kick(t, humanVel(power));
+      } else {
+        d.kick.forEach(([st]) => { if (st === pos) kick(t, humanVel(power)); });
+        d.snare.forEach(([st]) => { if (st === pos) snare(t, humanVel(power)); });
+        d.hat.forEach(([st, c]) => {
+          if (st !== pos) return;
+          if (c === 'r') ride(t, humanVel(power * 0.8));
+          else hat(t, c === 'O', humanVel(pos % 4 === 0 ? power : power * 0.62));
+        });
+        // призрачные удары малого между долями — то, что отличает грув от метронома
+        if (d.ghost && pos % 4 === 2 && Math.random() < 0.45) snare(t, power * 0.18);
+      }
     }
   };
 
@@ -1411,8 +1783,11 @@ export const Audio = (() => {
       }
       if (stepIdx > 0 && stepIdx % totalSteps === 0) advancePlaylist(true);   // пьеса сыграна целиком
       const sd = stepDur();
-      // синтвейву нужна ровная механическая сетка, а не джазовый свинг — приглушаем его
-      const swing = (stepIdx % 2 === 1) ? track.swing * sd * 0.35 : 0;
+      /* Свинг по характеру пьесы, а не один на всех: синтвейву и маршу нужна ровная
+         механическая сетка, а джазу и лаунжу — та самая неровность восьмых, без
+         которой они звучат как упражнение из учебника. */
+      const feelK = track.feel === 'swing' ? 1 : track.feel === 'loose' ? 0.6 : 0.3;
+      const swing = (stepIdx % 2 === 1) ? track.swing * sd * feelK : 0;
       scheduleStep(stepIdx, nextTime + swing);
       nextTime += sd; stepIdx += 1;
     }
@@ -1468,6 +1843,9 @@ export const Audio = (() => {
       if (!running && opts.music) this.startMusic();
     },
     prime() { const c = ensure(); if (c) resume(); return !!c; },
+    // «контекст уже создан и играет» — без создания нового: до первого действия
+    // человека браузер всё равно держал бы его выключенным
+    primed: () => !!ctx && ctx.state === 'running',
     play(name) {
       if (!opts.sfx) return;
       if (name === 'tick') { const t = Date.now(); if (t - lastTick < 70) return; lastTick = t; }
@@ -1765,7 +2143,7 @@ const mixHex = (a, b, t) => {
 };
 const POLITICAL_PAPER_TARGET = {
   crisis: { paper: '#E2D9BE', paperText: '#241C12', paperMuted: '#6B5A3E', paperRule: '#8C6B3E' },
-  authoritarian: { paper: '#CFC9B8', paperText: '#26251E', paperMuted: '#5E5B4E', paperRule: '#8B8570' },
+  authoritarian: { paper: '#B5AF9C', paperText: '#1C1B15', paperMuted: '#4A483C', paperRule: '#6C6755' },
   totalitarian: { paper: '#22252A', paperText: '#B7B7AC', paperMuted: '#6B6D66', paperRule: '#48493F' },
 };
 function politicalPaperPalette(base, economy) {
@@ -1775,7 +2153,7 @@ function politicalPaperPalette(base, economy) {
   const tension = clamp((economy.politicalTension || 0) / 100, 0, 1);
   const war = (economy.warQuartersLeft || 0) > 0;
   const k = regime === 'totalitarian' ? clamp(0.6 + tension * 0.3 + (war ? 0.1 : 0), 0.6, 1)
-    : regime === 'authoritarian' ? clamp(0.35 + tension * 0.35, 0.35, 0.75)
+    : regime === 'authoritarian' ? clamp(0.6 + tension * 0.35, 0.6, 0.95)
       : clamp(0.18 + tension * 0.3, 0.18, 0.5); // crisis: тревожно, но ещё не мрачно
   return {
     paper: mixHex(base.paper, target.paper, k),
@@ -1813,7 +2191,6 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
 
   const pp = politicalPaperPalette(COLOR, economy || {});
   const regimeId = economy && economy.politicalRegime;
-  const regimeInfo = regimeId && POLITICAL_REGIME_INFO[regimeId];
   const PaperBox = ({ children, style }) => (
     <div style={{ background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`, padding: '18px 20px', transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>{children}</div>
   );
@@ -1828,9 +2205,14 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
               <div className="ems-mono" style={{ fontSize: 10, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
                 ЕЖЕКВАРТАЛЬНОЕ ИЗДАНИЕ · {latest ? latest[1][0].qLabel : quarterLabel(quarterIndex)} · ВЫПУСК № {latest ? latest[0] : 0}
               </div>
-              {regimeInfo && regimeId !== 'democracy' && (
-                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: regimeId === 'crisis' ? '#8C6B3E' : '#B0503A', fontWeight: 700 }}>
-                  {regimeId === 'totalitarian' ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · ' : ''}{regimeInfo.label.toUpperCase()}
+              {/* Газета не объявляет режим, в котором выходит: «АВТОРИТАРНЫЙ РЕЖИМ» в
+                  собственной шапке не печатает ни одно издание. Про режим говорит сама
+                  бумага, тон заголовков и вот эта служебная строка выходных данных. */}
+              {(regimeId === 'totalitarian' || regimeId === 'authoritarian') && (
+                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted, fontWeight: 700 }}>
+                  {regimeId === 'totalitarian'
+                    ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · РАСПРОСТРАНЯЕТСЯ ПО ПОДПИСКЕ ОБЯЗАТЕЛЬНО'
+                    : 'ВЫХОДИТ ПО РАЗРЕШЕНИЮ · МАТЕРИАЛЫ СОГЛАСОВАНЫ'}
                 </div>
               )}
             </div>
@@ -2481,6 +2863,99 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
   );
 }
 
+/* Президент глазами ведомства: чей он характер, чего требует прямо сейчас, и
+   насколько администрация вами довольна. Последнее — не косметика: из нуля
+   довольства вырастает отставка, и полоса должна быть видна заранее, а не
+   объявляться постфактум вместе с увольнением. */
+/* Чем кончилось прошлое требование, одним словом. Доля выполнения может прийти
+   и булевой (старые сохранения), и дробной, и вовсе отсутствовать; у указания
+   боту вместо неё — ответ ведомства. */
+const lastDirectiveWord = (last) => {
+  if (last.status) {
+    return last.status === 'accepted' ? 'исполнено' : last.status === 'partial' ? 'исполнено частично' : 'отклонено';
+  }
+  const raw = last.directiveMet;
+  const p = raw === true ? 1 : raw === false ? 0 : Number.isFinite(raw) ? raw : null;
+  const verdict = directiveVerdict(p);
+  return verdict === 'met' ? 'выполнено' : verdict === 'partial' ? 'выполнено частично'
+    : verdict === 'ignored' ? 'проигнорировано' : 'передано ведомству';
+};
+
+function PresidentWatchPanel({ economy, plan, last, branch }) {
+  if (!plan) return null;
+  const P = plan.persona;
+  const sat = clamp(Number.isFinite(economy.presidentSatisfaction) ? economy.presidentSatisfaction : 60, 0, 100);
+  const satColor = sat >= 55 ? COLOR.teal : sat >= 25 ? COLOR.gold : COLOR.rust;
+  const dir = plan.directive;
+  const mine = dir && dir.toPlayer;
+  return (
+    <div className="ems-panel" style={{ padding: 13, borderColor: sat < 25 ? COLOR.rust : COLOR.borderStrong }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
+        <Crown size={14} color={COLOR.gold} />
+        <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Президент</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={11} />бот</span>
+      </div>
+      <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>
+        <b style={{ color: COLOR.text }}>{P.name}</b> · {P.title}
+      </div>
+      {/* его капитал виден и вам: и требование, и указ, и реформа стоят денег,
+          а без счётчика казалось, что президент тратит из воздуха */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5, color: COLOR.muted, marginBottom: 6 }}>
+        <span>Политический капитал</span>
+        <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+          <span style={{ display: 'block', width: `${clamp(economy.politicalCapital || 0, 0, 100)}%`, height: '100%', background: COLOR.gold }} />
+        </span>
+        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.round(economy.politicalCapital || 0)}</span>
+      </div>
+      {/* у трейдера президента не за что увольнять — «отношение к вам» там не про что */}
+      {branch && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5, color: COLOR.muted, marginBottom: 8 }}>
+        <span>Отношение к вам</span>
+        <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+          <span style={{ display: 'block', width: `${sat}%`, height: '100%', background: satColor }} />
+        </span>
+        <span className="ems-mono" style={{ color: satColor }}>{plan.mood}</span>
+      </div>
+      )}
+      {dir ? (
+        <div style={{ fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${mine ? COLOR.rust : COLOR.blue}`, paddingLeft: 9, color: COLOR.text }}>
+          <span style={{ color: mine ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
+            {mine ? 'Требование к вам: ' : `Указание ${dir.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
+          </span>
+          {dir.ask || askText(dir.req, 1)}
+          {mine && (
+            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
+              Выполнить — значит сдвинуть свои ползунки в эту сторону в этом квартале. Отказ никто не запрещает,
+              но администрация его запомнит.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11.5, lineHeight: 1.45, color: COLOR.muted, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 9 }}>
+          В этом квартале требований нет.
+        </div>
+      )}
+      {last && !!(last.label || (last.actions || []).length) && (
+        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.45 }}>
+          В прошлый раз: {last.label
+            ? `${last.toPlayer ? 'требование' : 'указание'} «${last.label}» — ${lastDirectiveWord(last)}`
+            : 'без требований'}
+          {last.actions && last.actions.length ? `; сам занялся: ${last.actions.join(', ').toLowerCase()}` : ''}.
+        </div>
+      )}
+      <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 9, color: COLOR.muted }}>
+        «{plan.quote}»
+      </div>
+      {branch && sat < 25 && (
+        <div style={{ marginTop: 8, fontSize: 11, color: COLOR.rust, lineHeight: 1.45 }}>
+          Администрация всерьёз рассматривает вопрос о вашей отставке. Выполненное требование поднимает
+          отношение заметно быстрее, чем хорошие цифры{branch === 'monetary' ? ' по инфляции' : ' по бюджету'}.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============================ ПРЕЗИДЕНТ ============================
    У президента нет ни одного ползунка: вместо непрерывных величин — набор
    дискретных решений, каждое со своей ценой в политическом капитале. Панель
@@ -2521,18 +2996,60 @@ function CapitalBar({ value, reserved, gain }) {
   );
 }
 
+/* Лестница режимов: где вы сейчас и что нужно, чтобы шагнуть выше или вернуться
+   вниз. Без этой строки путь к авторитаризму и тем более к тоталитаризму был
+   чистой догадкой — пороги живут в движке, а игрок видел только результат. */
+function RegimeLadder({ economy }) {
+  const regime = economy.politicalRegime || 'democracy';
+  const tension = Math.round(economy.politicalTension || 0);
+  const info = POLITICAL_REGIME_INFO[regime] || {};
+  const next = regime === 'democracy'
+    ? { label: 'конфликт ветвей власти', need: 'напряжённость ≥ 62', at: 62 }
+    : regime === 'crisis'
+      ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
+      : regime === 'authoritarian'
+        ? { label: 'тоталитарный режим', need: 'указ «Полный контроль над институтами» (50 ПК) — или напряжённость ≥ 80 и удержать её', at: 80 }
+        : null;
+  const bar = clamp(tension, 0, 100);
+  return (
+    <div style={{ marginTop: 10, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 10.5, marginBottom: 5 }}>
+        <span style={{ color: COLOR.muted }}>Режим</span>
+        <span style={{ color: COLOR.text }}>{info.label || regime}</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', color: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }}>
+          напряжённость {tension}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+        <span style={{ display: 'block', width: `${bar}%`, height: '100%',
+          background: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }} />
+        {next && <span style={{ position: 'absolute', left: `${next.at}%`, top: -2, width: 2, height: 8, background: COLOR.goldSoft }} />}
+      </div>
+      <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 5, lineHeight: 1.45 }}>
+        {next
+          ? <>Следующая ступень — <b style={{ color: COLOR.muted }}>{next.label}</b>: {next.need}. Напряжённость растёт от низкого
+            рейтинга, кризисов, безработицы и инфляции; подавление протеста и непопулярные реформы добавляют её напрямую.</>
+          : 'Выше этой ступени лестницы нет. Вниз режим сходит сам только при напряжённости ниже 92 — либо решением вернуть парламент.'}
+      </div>
+    </div>
+  );
+}
+
 function PresActionCard({ action, economy, cooldowns, selected, affordable, onToggle }) {
+  // у выбранного решения его цена уже вычтена из свободного капитала — проверять
+  // «хватает ли» по остатку без него значит объявлять нехватку на ровном месте
+  const canAfford = selected || affordable;
   const cdLeft = cooldowns[`pres:${action.id}`] || 0;
   const done = action.once && (economy.reforms || {})[action.id] !== undefined;
   const blockedByReq = !!(action.requires && !action.requires(economy));
-  const disabled = done || cdLeft > 0 || blockedByReq || (!selected && !affordable);
+  const disabled = done || cdLeft > 0 || blockedByReq || !canAfford;
   const share = done ? reformShare(economy.reforms, action.id) : 0;
   const why = done ? (REFORM_RAMP[action.id]
     ? `Проведена · внедрена на ${Math.round(share * 100)}%`
     : 'Уже проведена')
     : cdLeft > 0 ? `Повторно через ${cdLeft} кв.`
       : blockedByReq ? (action.reqText || 'Сейчас недоступно')
-        : !affordable ? 'Не хватает капитала' : null;
+        : !canAfford ? 'Не хватает капитала' : null;
   return (
     <div className="ems-card-btn" role="button" tabIndex={disabled ? -1 : 0}
       onClick={() => { if (!disabled) { Audio.play('tick'); onToggle(); } }}
@@ -2557,7 +3074,8 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
 }
 
 function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId, mofPersonaId,
-  appointCb, setAppointCb, appointMof, setAppointMof, directive, setDirective, lastDirective }) {
+  appointCb, setAppointCb, appointMof, setAppointMof, directive, setDirective, lastDirective,
+  directiveStrength, setDirectiveStrength }) {
   const [tab, setTab] = useState('public');
   const capital = Number.isFinite(economy.politicalCapital) ? economy.politicalCapital : 55;
   const reserved = selected.reduce((sum, id) => sum + ((PRES_BY_ID[id] || {}).cost || 0), 0)
@@ -2624,6 +3142,7 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
         <Crown size={14} />Политический капитал
       </div>
       <CapitalBar value={capital} reserved={reserved} gain={economy.politicalCapitalGain || 0} />
+      <RegimeLadder economy={economy} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, margin: '12px 0 10px' }}>
         {PRES_TABS.map((t) => (
@@ -2701,7 +3220,26 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
                       {isSel && <Check size={11} color={COLOR.gold} />}
                       <span style={{ fontSize: 12, color: isSel ? COLOR.goldSoft : COLOR.text }}>{r.label}</span>
                     </div>
-                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{r.ask}»</div>}
+                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{askText(r, r.scale ? (directiveStrength || 1) : 1)}»</div>}
+                    {/* «снизить ставку» без указания насколько — это не указание:
+                        один пункт для ставки очень много, и просить можно меньше */}
+                    {isSel && r.scale && (
+                      <div style={{ marginTop: 7 }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 3 }}>
+                          <span style={{ color: COLOR.muted }}>Насколько</span>
+                          <span className="ems-mono" style={{ color: COLOR.goldSoft }}>
+                            {fmt2(r.scale.base * (directiveStrength || 1))}{r.scale.unit}
+                          </span>
+                        </div>
+                        <input type="range" className="ems-slider"
+                          min={r.scale.min / r.scale.base} max={r.scale.max / r.scale.base}
+                          step={r.scale.step / r.scale.base} value={directiveStrength || 1}
+                          onChange={(e) => { Audio.play('tick'); setDirectiveStrength(Number(e.target.value)); }} />
+                        <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 3, lineHeight: 1.4 }}>
+                          Чем больше просите, тем охотнее ведомство откажет.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -2741,6 +3279,9 @@ function PromisesPanel({ promises, economy }) {
         <Flag size={14} color={COLOR.blue} />
         <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>Предвыборные обещания</span>
         <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>до выборов {economy.quartersToElection} кв.</span>
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 8 }}>
+        Каждое сдержанное обещание добавляет около 2 п.п. голосов на выборах, каждое проваленное — столько же отнимает.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         {promises.map((p) => {
@@ -2836,7 +3377,10 @@ const ACHIEVEMENTS = [
   { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 50 млн суммарно за партию.' },
   { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
   { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
-  { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди курс обучения целиком — все шесть модулей.' },
+  { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди базовый курс целиком, вместе с экзаменом.' },
+  { id: 'course_trader', icon: '📊', title: 'Аналитик', desc: 'Пройди курс частного инвестора целиком, вместе с экзаменом.' },
+  { id: 'course_president', icon: '🏛️', title: 'Государственный ум', desc: 'Пройди курс президента целиком, вместе с экзаменом.' },
+  { id: 'course_all', icon: '🎓', title: 'Красный диплом', desc: 'Пройди все три курса обучения и сдай все три экзамена.' },
   { id: 'promises_kept', icon: '🤝', title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
   { id: 'reformer', icon: '🏗️', title: 'Реформатор', desc: 'Проведи три структурные реформы за одну партию (президент).' },
   { id: 'own_hands', icon: '🕊️', title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
@@ -3024,7 +3568,7 @@ function AchievementsModal({ onClose }) {
    работает смена персон бота после выборов в finishQuarter — независимость
    центробанка переживает обычное поражение партии власти, а министерский
    портфель нет. */
-function checkDefeat({ role, economy, history, bookVal }) {
+function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
   // гиперинфляция — провал денежной/бюджетной политики; трейдер её не проводит и
   // повлиять на неё не может, так что и мандата за неё лишаться ему не за что
   if (role !== 'trader' && history && history.length >= 4) {
@@ -3044,6 +3588,16 @@ function checkDefeat({ role, economy, history, bookVal }) {
     if (last3.every((h) => (h.politicalCapital != null && h.politicalCapital <= 2) && h.approval < 30)) {
       return { id: 'impeachment', title: 'Импичмент',
         text: `Политический капитал исчерпан, рейтинг ${Math.round(economy.approval)} из 100 третий квартал подряд. Парламент отстраняет президента от должности: власть, которая ничего не может предложить и ничем не может заплатить, перестаёт быть властью раньше, чем наступают выборы.` };
+    }
+  }
+  /* Отставка по решению президента: доступна только там, где президент вообще есть.
+     Два квартала на нуле — чтобы увольнение не прилетало от одного неудачного
+     квартала, а полоса отношения успела побыть красной. */
+  if (presidentActive && history && history.length >= 2 && (role === 'central_bank' || role === 'ministry_finance')) {
+    const last2 = history.slice(-2);
+    if (last2.every((h) => Number.isFinite(h.presidentSatisfaction) && h.presidentSatisfaction <= 4)) {
+      return { id: 'dismissal', title: 'Отставка по решению президента',
+        text: `Администрация исчерпала терпение: требования президента игнорировались, а результат их не оправдал. ${role === 'central_bank' ? 'Главу Центрального банка' : 'Министра финансов'} освобождают от должности — формально «по собственному желанию».` };
     }
   }
   const er = economy.electionResult;
@@ -3244,6 +3798,8 @@ function ResultCardModal({ data, onClose }) {
   );
 }
 
+// столько же, сколько в api/solo.js: слоты хранятся на сервере, клиент только рисует
+const SOLO_SLOT_COUNT = 4;
 function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const [tab, setTab] = useState(mode || 'save');
   const [error, setError] = useState('');
@@ -3255,19 +3811,30 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   React.useEffect(() => {
     let cancelled = false;
     fetchSoloSlots(playerId).then((d) => { if (!cancelled) { setSlots(d.slots); setStorageMode(d.storage || null); } })
-      .catch((e) => { if (!cancelled) { setSlots(Array(3).fill(null)); setError(e.message); } });
+      .catch((e) => { if (!cancelled) { setSlots(Array.from({ length: SOLO_SLOT_COUNT }, () => null)); setError(e.message); } });
     return () => { cancelled = true; };
   }, [playerId]);
 
+  // подпись слота: роль и квартал — то, по чему партию узнают, если ей не дали имени
   const slotLabel = (s) => {
     const roleTitle = (ROLES.find((r) => r.id === s.role) || {}).short || s.role;
     return `${roleTitle} · ${quarterLabel(Math.max(1, (s.quarterIndex || 1) - 1))}`;
   };
   const saveToSlot = async (idx) => {
     if (!snapshot) return;
-    if (slots[idx] && !window.confirm(`Перезаписать слот ${idx + 1}?`)) return;
+    if (slots[idx] && !window.confirm(`Перезаписать «${slots[idx].name || `слот ${idx + 1}`}»?`)) return;
     setBusyIdx(idx); setError('');
     try { validateSnapshot(snapshot); setSlots(await saveSoloSlot(playerId, idx, snapshot)); Audio.play('stamp'); }
+    catch (e) { setError(e.message); }
+    finally { setBusyIdx(null); }
+  };
+  const renameSlot = async (idx) => {
+    const cur = slots[idx];
+    if (!cur) return;
+    const next = window.prompt('Название сохранения (пусто — вернуть подпись по умолчанию):', cur.name || '');
+    if (next === null) return;
+    setBusyIdx(idx); setError('');
+    try { setSlots(await renameSoloSlot(playerId, idx, next)); Audio.play('tick'); }
     catch (e) { setError(e.message); }
     finally { setBusyIdx(null); }
   };
@@ -3299,7 +3866,7 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
         </div>
         <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.5 }}>
           {tab === 'save'
-            ? 'Партия хранится на сервере — как и сетевые комнаты. 3 слота на это устройство.'
+            ? `Партия хранится на сервере — как и сетевые комнаты. ${SOLO_SLOT_COUNT} слота на это устройство, каждому можно дать своё название.`
             : 'Выберите слот, чтобы вернуться в сохранённую партию. Текущая партия будет заменена.'}
         </div>
         {storageMode === 'memory' && (
@@ -3315,9 +3882,21 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
             {slots.map((slot, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
                 background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
-                <span style={{ flex: 1, color: slot ? COLOR.text : COLOR.faint }}>
-                  Слот {idx + 1}: {slot ? slotLabel(slot) : 'пусто'}
+                <span style={{ flex: 1, minWidth: 0, color: slot ? COLOR.text : COLOR.faint }}>
+                  {slot ? (
+                    <>
+                      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {slot.name || `Слот ${idx + 1}`}
+                      </span>
+                      <span style={{ fontSize: 10.5, color: COLOR.faint }}>{slotLabel(slot)}</span>
+                    </>
+                  ) : `Слот ${idx + 1}: пусто`}
                 </span>
+                {slot && (
+                  <button className="ems-btn" title="Переименовать сохранение" aria-label={`Переименовать слот ${idx + 1}`}
+                    style={{ padding: '3px 7px', fontSize: 10, color: COLOR.faint }}
+                    disabled={busyIdx === idx} onClick={() => renameSlot(idx)}>✎</button>
+                )}
                 {tab === 'save' && snapshot && (
                   <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} disabled={busyIdx === idx} onClick={() => saveToSlot(idx)}>
                     {busyIdx === idx ? 'Сохраняем…' : (slot ? 'Перезаписать' : 'Сохранить')}
@@ -3388,7 +3967,9 @@ function FiscalMath({ economy, decisions }) {
 /* Сводка по ведомству, которым управляет бот */
 const SUMMARY_TABS = {
   central_bank: { id: 'summary', label: 'Сводка ЦБ', icon: Landmark, rows: [
-    { key: 'keyRate', label: 'Ключевая ставка', fmt: pctFmt },
+    // ставка ходит шагом 0.25 п.п., а pctFmt округлял до десятых: 5.25% и 5.5%
+    // выглядели как «5.3%» и «5.5%», то есть разный шаг казался одинаковым
+    { key: 'keyRate', label: 'Ключевая ставка', fmt: (v) => `${fmt2(v)}%` },
     { key: 'inflationTarget', label: 'Цель ЦБ по инфляции', fmt: pctFmt },
     { key: 'inflation', label: 'Инфляция', fmt: pctFmt },
     { key: 'inflationExpectations', label: 'Ожидания', fmt: pctFmt },
@@ -3979,7 +4560,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
       )}
 
       <div className="ems-terminal">
-        <div className="ems-scroll" style={{ maxHeight: 560, overflowY: 'auto', borderRight: `1px solid ${COLOR.border}` }}>
+        <div className="ems-scroll" style={{ borderRight: `1px solid ${COLOR.border}` }}>
           <div style={{ position: 'sticky', top: 0, zIndex: 2, background: COLOR.panel, borderBottom: `1px solid ${COLOR.border}`, padding: '8px 12px 6px' }}>
             <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск: тикер или название" aria-label="Поиск инструмента"
@@ -4133,8 +4714,14 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
           </div>
           {(book.trades || []).length > 0 && (
             <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, fontSize: 10.5 }}>
-              <div style={{ color: COLOR.blue, marginBottom: 3 }}>Исполнено</div>
-              {(book.trades || []).slice(-5).reverse().map((t, k) => {
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 3 }}>
+                <span style={{ color: COLOR.blue }}>Исполнено</span>
+                <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint }}>{book.trades.length} сделок за партию</span>
+              </div>
+              {/* журнал прокручивается внутри себя: раньше он рос вместе с числом
+                  сделок и растягивал карточку, а с ней и всю страницу */}
+              <div className="ems-scroll" style={{ maxHeight: 112, overflowY: 'auto' }}>
+              {(book.trades || []).slice(-40).reverse().map((t, k) => {
                 const ins = INSTR_BY_ID[t.id];
                 return (
                   <div key={`${t.q}-${k}`} style={{ display: 'flex', gap: 8, padding: '1.5px 0', color: COLOR.muted }}>
@@ -4144,13 +4731,14 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ins ? ins.name : t.id}
                     </span>
-                    <span className="ems-mono">{fmtMln(t.amt)}</span>
-                    <span className="ems-mono" style={{ color: COLOR.faint, width: 54, textAlign: 'right' }}>
+                    <span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{fmtMln(t.amt)}</span>
+                    <span className="ems-mono" style={{ color: COLOR.faint, width: 78, textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       по {t.price.toFixed(2)}
                     </span>
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
           <div>
@@ -4933,7 +5521,7 @@ function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
       </div>
       {cur && (
         <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.gold}`, paddingLeft: 9 }}>
-          «{cur.ask}»
+          «{askText(cur, 1)}»
           <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>Запрос уйдёт вместе с вашими решениями. Ответ зависит от характера ведомства и от того, насколько просьба соответствует ситуации.</div>
         </div>
       )}
@@ -5212,6 +5800,15 @@ function NetworkLobby({ onEnter }) {
   const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
   const [mode, setMode] = useState('policy');
+  /* Те же две настройки, что и в одиночной игре: «классика» бросает характеры
+     ведомств случайно и включает президента, «настраиваемая» открывает всё это
+     руками. До этого сетевая комната всегда собиралась с одними и теми же
+     ботами и вообще без президента. */
+  const [setupMode, setSetupMode] = useState('classic');
+  const [cbPersona, setCbPersona] = useState('random');
+  const [mofPersona, setMofPersona] = useState('random');
+  const [presEnabled, setPresEnabled] = useState(true);
+  const [presPersona, setPresPersona] = useState('random');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
@@ -5290,7 +5887,12 @@ function NetworkLobby({ onEnter }) {
   const doCreate = async () => {
     setBusy(true); setError('');
     try {
-      const r = await createRoom({ difficulty, mode });
+      const custom = setupMode === 'custom';
+      const asId = (v) => (v === 'random' ? undefined : v);
+      const r = await createRoom({ difficulty, mode,
+        cbPersona: custom ? asId(cbPersona) : undefined,
+        mofPersona: custom ? asId(mofPersona) : undefined,
+        president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined } });
       setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
       setSeat(seatsForMode(mode)[0]);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -5397,6 +5999,69 @@ function NetworkLobby({ onEnter }) {
               ))}
             </div>
           </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Как настраивать партию</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['classic', 'Классика'], ['custom', 'Настраиваемая']].map(([id, title]) => (
+                <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
+                  background: setupMode === id ? COLOR.gold : COLOR.panelAlt, color: setupMode === id ? COLOR.ink : COLOR.text,
+                  borderColor: setupMode === id ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('click'); setSetupMode(id); }}>{title}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
+              {setupMode === 'classic'
+                ? 'Характеры ведомств бросаются случайно, президент включён — как в одиночной классике.'
+                : 'Выбрать характер каждого ведомства и президента — или обойтись без президента.'}
+            </div>
+          </div>
+
+          {setupMode === 'custom' && (
+            <div style={{ marginBottom: 14 }}>
+              {[['Характер Центрального банка', CB_PERSONAS, cbPersona, setCbPersona,
+                mode === 'trader' ? 'Ставку ведёт бот — от его характера зависит весь рынок.' : 'Действует, пока место ЦБ пустует или игрок не успел с решением.'],
+              ['Характер Минфина', MOF_PERSONAS, mofPersona, setMofPersona,
+                mode === 'trader' ? 'Бюджет тоже ведёт бот: его щедрость — ваш долговой рынок.' : 'Действует, пока место Минфина пустует или игрок не успел с решением.']]
+                .map(([title, list, value, set, note]) => (
+                  <div key={title} style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, marginBottom: 4 }}>{title}</div>
+                    <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>{note}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {[...list, { id: 'random', name: 'Случайный' }].map((pp) => (
+                        <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
+                          background: value === pp.id ? COLOR.gold : COLOR.panelAlt, color: value === pp.id ? COLOR.ink : COLOR.text,
+                          borderColor: value === pp.id ? COLOR.gold : COLOR.border }}
+                          onClick={() => { Audio.play('click'); set(pp.id); }}>{pp.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 12 }}>Президент</span>
+                <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11,
+                  background: presEnabled ? COLOR.gold : COLOR.panelAlt, color: presEnabled ? COLOR.ink : COLOR.muted,
+                  borderColor: presEnabled ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('tick'); setPresEnabled((v) => !v); }}>
+                  {presEnabled ? 'включён' : 'выключен'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>
+                Над обоими ведомствами стоит президент: он требует своего от каждого из вас, меняет руководителя
+                ведомства, за которым никто не сидит, и тратит политический капитал на реформы и указы.
+              </div>
+              {presEnabled && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[...PRESIDENT_PERSONAS, { id: 'random', name: 'Случайный' }].map((pp) => (
+                    <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
+                      background: presPersona === pp.id ? COLOR.gold : COLOR.panelAlt, color: presPersona === pp.id ? COLOR.ink : COLOR.text,
+                      borderColor: presPersona === pp.id ? COLOR.gold : COLOR.border }}
+                      onClick={() => { Audio.play('click'); setPresPersona(pp.id); }}>{pp.name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doCreate}>
             {busy ? 'Создаём…' : 'Создать комнату'}
           </button>
@@ -5667,12 +6332,25 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const timeLeftMs = room.quarterStartedAt ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - nowTick) : null;
   const timeLeftLabel = timeLeftMs === null ? null
     : `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
-  // таймер общий на квартал, а не «мой» — он должен быть виден, пока ХОТЬ ОДНО
-  // занятое место не отправило решение, а не только пока не ответил партнёр:
-  // раньше условие держалось на room.ready[otherSeat], и как только партнёр
-  // отправлял решение раньше меня, мой собственный (всё ещё тикающий) таймер
-  // необъяснимо пропадал с моего же экрана
-  const quarterPending = roomSeats.some((sx) => room.occupied[sx] && !room.ready[sx]);
+  /* Таймер отсчитывает не «время на ход», а срок, после которого сервер решит за
+     МОЛЧАЩЕГО ПАРТНЁРА ботом. Пока второе место пустует, подгонять некого: квартал
+     считается ровно в тот момент, когда я нажму «готов», — и часы над пустой
+     комнатой только создавали ощущение, что кто-то торопит. Своего собственного
+     «ещё не отправил» таймер тоже не касается. */
+  const quarterPending = !!room.occupied[otherSeat] && !room.ready[otherSeat];
+  /* Президент комнаты приходит с сервера «плоским» (в хранилище нельзя класть
+     объекты просьб с функциями) — собираем из него то, что ждёт панель. Чьё
+     требование «ко мне», зависит от места, за которым сижу я. */
+  const myBranch = seat === 'central_bank' ? 'monetary' : seat === 'ministry_finance' ? 'fiscal' : null;
+  const presState = room.president || null;
+  const presPlan = presState && presState.plan ? {
+    ...presState.plan,
+    persona: { name: presState.plan.personaName, title: presState.plan.personaTitle },
+    directive: presState.plan.directive
+      ? { ...presState.plan.directive, toPlayer: presState.plan.directive.branch === myBranch } : null,
+  } : null;
+  const presLast = presState && presState.last
+    ? { ...presState.last, toPlayer: presState.last.branch === myBranch } : null;
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
   const myLastAction = room.lastActions ? room.lastActions[seat] : null;
@@ -5925,6 +6603,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </>
           )}
 
+          {presPlan && <PresidentWatchPanel economy={economy} plan={presPlan} last={presLast} branch={myBranch} />}
+
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
             <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
@@ -6094,9 +6774,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
             <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-              {isTraderRoom
-                ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
-                : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
+              {!room.occupied[otherSeat]
+                ? (isTraderRoom
+                  ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
+                  : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
+                : isTraderRoom
+                  ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
+                  : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
               {quarterPending && timeLeftLabel && (
                 <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
@@ -6136,6 +6820,23 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(3).fill(null)));
   }, [playerId]);
+  /* Меню — тоже часть игры, и тишины в нём быть не должно. Автозапуск звука
+     браузер не разрешает до первого действия человека, поэтому заводим музыку
+     либо сразу (если звук уже разбужен в этой сессии — например, игрок вернулся
+     из обучения), либо по первому же клику или нажатию клавиши.
+     Роль при выходе не сбрасываем: следом идёт экран новой партии, и обрывать
+     музыку между двумя экранами меню было бы хуже, чем дать ей доиграть. */
+  React.useEffect(() => {
+    Audio.setRole('menu');
+    const kick = () => { if (Audio.prime() && Audio.opts.music) Audio.startMusic(); };
+    if (Audio.primed()) kick();
+    window.addEventListener('pointerdown', kick, { once: true });
+    window.addEventListener('keydown', kick, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', kick);
+      window.removeEventListener('keydown', kick);
+    };
+  }, []);
   const enterSlot = async (idx) => {
     setSlotBusy(idx); setSlotError('');
     try {
@@ -6152,7 +6853,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   const MENU_ITEMS = [
     { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
-    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Курс из пяти модулей — от ставки и бюджета до кризисных инструментов.',
+    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Три курса с тестами, практикой и экзаменами: политика, инвестор, президент.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
     { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
       action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
@@ -6193,7 +6894,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
               <Clock size={13} color={COLOR.teal} />
               <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
-                Продолжить ({soloSlots.filter(Boolean).length}/3)
+                Продолжить ({soloSlots.filter(Boolean).length} из {SOLO_SLOT_COUNT})
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -6203,7 +6904,14 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
                 return (
                   <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
                     background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                    <span style={{ flex: 1, color: COLOR.text }}>{roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}</span>
+                    <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
+                      {slot.name && (
+                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>
+                      )}
+                      <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
+                        {roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}
+                      </span>
+                    </span>
                     <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
                       onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
                     <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение"
@@ -6238,6 +6946,10 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
           })}
         </div>
 
+        <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
+          <AudioControls />
+        </div>
+
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10.5, color: COLOR.faint, marginRight: 2 }}>Оформление:</span>
           {Object.values(THEMES).map((t) => (
@@ -6268,6 +6980,143 @@ const markModuleDone = (id) => {
   try { localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(p)); } catch { /* приватный режим */ }
   return p;
 };
+
+/* ============================ ОБУЧЕНИЕ: ПРОВЕРКА ЗНАНИЙ ============================
+   Модуль больше нельзя пролистать «Далее»: между теорией и следующим модулем стоят
+   два вида проверки — тест (теория) и практика (задача в песочнице). Тест не пускает
+   дальше с неверным ответом, но и не наказывает: показывает разбор и даёт ответить
+   заново, потому что цель проверки — чтобы человек понял, а не чтобы он отсеялся.
+   Практика устроена так же: не получилось за отведённые кварталы — состояние
+   откатывается к началу задачи, и можно попробовать ещё раз. */
+/* Правильный вариант при написании всегда стоит первым — так удобно автору и
+   совершенно негодно для проверяющего: «А» превратилась бы в универсальный ответ.
+   Порядок перемешивается детерминированно по тексту вопроса: у одного и того же
+   вопроса он всегда одинаковый (иначе варианты прыгали бы при каждом рендере и
+   при перепрохождении), но предсказать его по позиции нельзя. */
+const hashStr = (str) => {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+};
+// возвращает порядок показа: order[позиция на экране] = индекс в исходном массиве
+const shuffleOrder = (question, salt) => {
+  const order = question.options.map((_, i) => i);
+  let seed = (hashStr(question.q) ^ (salt || 0)) >>> 0 || 1;
+  for (let i = order.length - 1; i > 0; i--) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const j = seed % (i + 1);
+    const t = order[i]; order[i] = order[j]; order[j] = t;
+  }
+  return order;
+};
+
+function QuizStep({ questions, onPass, passed }) {
+  const [answers, setAnswers] = useState({});
+  const [checked, setChecked] = useState(false);
+  /* Соль перемешивания живёт на время захода в модуль: внутри одной попытки
+     варианты не прыгают, а при следующем заходе порядок другой — иначе тест
+     запоминается позициями, а не смыслом. */
+  const salt = React.useRef(Math.floor(Math.random() * 1e9));
+  const orders = useMemo(() => questions.map((q) => shuffleOrder(q, salt.current)), [questions]);
+  const allAnswered = questions.every((_, i) => answers[i] !== undefined);
+  const isRight = (i) => answers[i] !== undefined && orders[i][answers[i]] === questions[i].answer;
+  const wrongCount = questions.filter((_, i) => !isRight(i)).length;
+  const check = () => {
+    setChecked(true);
+    if (wrongCount === 0) { Audio.play('stamp'); onPass(); } else { Audio.play('alarm'); haptic([40, 60, 40]); }
+  };
+  const pick = (qi, oi) => {
+    if (passed) return;
+    Audio.play('tick');
+    setAnswers((a) => ({ ...a, [qi]: oi }));
+    // после правки ответа разбор прячется: иначе рядом с новым выбором висит
+    // вердикт по старому и читается как оценка того, что ещё не проверяли
+    setChecked(false);
+  };
+  return (
+    <div>
+      {questions.map((q, qi) => {
+        const showVerdict = checked || passed;
+        return (
+          <div key={q.q} className="ems-panel" style={{ padding: 14, marginBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 9 }}>
+              <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint, flexShrink: 0 }}>{qi + 1} / {questions.length}</span>
+              <span style={{ fontSize: 13.5, lineHeight: 1.5, color: COLOR.text }}>{q.q}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {orders[qi].map((srcIdx, oi) => {
+                const opt = q.options[srcIdx];
+                const chosen = answers[qi] === oi;
+                const right = srcIdx === q.answer;
+                const mark = showVerdict && (right || chosen);
+                const color = !mark ? (chosen ? COLOR.gold : COLOR.border) : right ? COLOR.teal : COLOR.rust;
+                return (
+                  <button key={opt} className="ems-btn" onClick={() => pick(qi, oi)} disabled={passed}
+                    style={{ textAlign: 'left', padding: '8px 11px', fontSize: 12.5, lineHeight: 1.45, display: 'flex', gap: 9, alignItems: 'flex-start',
+                      borderColor: color, background: chosen ? COLOR.goldDim : COLOR.panelAlt,
+                      color: COLOR.text, cursor: passed ? 'default' : 'pointer' }}>
+                    <span className="ems-mono" style={{ fontSize: 10.5, color, flexShrink: 0, marginTop: 1 }}>
+                      {mark ? (right ? '✓' : '✕') : String.fromCharCode(1040 + oi)}
+                    </span>
+                    <span>{opt}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {showVerdict && (
+              <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.5, paddingLeft: 10,
+                borderLeft: `2px solid ${isRight(qi) ? COLOR.teal : COLOR.rust}`, color: COLOR.muted }}>
+                <b style={{ color: isRight(qi) ? COLOR.teal : COLOR.rust }}>{isRight(qi) ? 'Верно. ' : 'Неверно. '}</b>{q.explain}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {!passed && (
+        <>
+          <button className="ems-btn primary" disabled={!allAnswered} style={{ width: '100%', padding: '11px 0', fontSize: 13 }}
+            onClick={check}>
+            {checked && wrongCount > 0 ? 'Проверить ещё раз' : 'Проверить ответы'}
+          </button>
+          <div style={{ fontSize: 11, color: checked && wrongCount ? COLOR.rust : COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
+            {checked && wrongCount > 0
+              ? `Ошибок: ${wrongCount}. Разбор под каждым вопросом — исправьте ответы и проверьте снова, попытки не считаются.`
+              : allAnswered ? 'Дальше пустит только полностью верный ответ — но переотвечать можно сколько угодно.'
+                : 'Ответьте на все вопросы, чтобы проверить.'}
+          </div>
+        </>
+      )}
+      {passed && (
+        <div style={{ fontSize: 12.5, color: COLOR.teal, display: 'flex', alignItems: 'center', gap: 7 }}>
+          <Check size={14} />Тест пройден.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Полоса задачи: что нужно сделать, сколько кварталов осталось и где вы сейчас. */
+function PracticeStatus({ step, ctx, quartersUsed, passed, failed }) {
+  const left = step.maxQuarters - quartersUsed;
+  const tone = passed ? COLOR.teal : failed ? COLOR.rust : COLOR.gold;
+  return (
+    <div className="ems-panel" style={{ padding: '11px 14px', marginBottom: 12, borderColor: tone }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 10, letterSpacing: '0.07em', textTransform: 'uppercase', color: tone }}>
+          {passed ? 'Задача решена' : failed ? 'Задача не решена' : 'Задача'}
+        </span>
+        <span style={{ fontSize: 12.5, color: COLOR.text, flex: 1, minWidth: 180 }}>{step.goalLabel}</span>
+        <span className="ems-mono" style={{ fontSize: 11, color: left <= 1 && !passed ? COLOR.rust : COLOR.faint }}>
+          {passed ? `${quartersUsed} кв. потрачено` : `осталось ${left} кв. из ${step.maxQuarters}`}
+        </span>
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>{step.goalText(ctx)}</div>
+      {failed && step.hint && (
+        <div style={{ fontSize: 11.5, color: COLOR.goldSoft, marginTop: 6, lineHeight: 1.45 }}>Подсказка: {step.hint}</div>
+      )}
+    </div>
+  );
+}
 
 const TUTORIAL_MODULES = [
   {
@@ -6545,7 +7394,7 @@ const TUTORIAL_MODULES = [
         lever: 'liquidity', minDelta: 5, runsQuarter: true,
         body: ({ economy }) => (
           <>
-            <p>Другой инструмент — прямая инъекция ликвidности банкам. В отличие от норматива капитала, это разовая скорая помощь, а не структурное решение. Увеличьте вливание ликвидности минимум на 5 млрд.</p>
+            <p>Другой инструмент — прямая инъекция ликвидности банкам. В отличие от норматива капитала, это разовая скорая помощь, а не структурное решение. Увеличьте вливание ликвидности минимум на 5 млрд.</p>
             <p>Сейчас банковский риск {Math.round(economy.bankingRisk)} из 100.</p>
           </>
         ),
@@ -6642,7 +7491,911 @@ const TUTORIAL_MODULES = [
   },
 ];
 
-function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame }) {
+/* ============================ ПРОВЕРКИ ПО МОДУЛЯМ ============================
+   Теория и практика вынесены из тела модулей в отдельную карту: так видно весь
+   набор проверок целиком, а сами модули не расползаются на полтысячи строк.
+   Порядок внутри модуля один и тот же: сначала тест на понимание прочитанного,
+   потом задача, где это понимание надо применить руками. */
+const q = (question, options, answer, explain) => ({ q: question, options, answer, explain });
+
+const MODULE_CHECKS = {
+  basics: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: ставка, расходы и лаг',
+      body: () => <p>Три вопроса по пройденному. Неверный ответ ничем не грозит: под каждым вопросом появится разбор, и ответить можно заново.</p>,
+      questions: [
+        q('Центральный банк поднял ключевую ставку. Когда это сильнее всего скажется на инфляции?',
+          ['Через один-два квартала', 'В том же квартале', 'Ровно через год, не раньше', 'Никогда: ставка на цены не влияет'], 0,
+          'Между решением и ценами стоит цепочка: ставка → стоимость кредита → спрос → выпуск → цены. Каждое звено берёт время, поэтому основной эффект приходит с лагом в один-два квартала.'),
+        q('Чем темп роста госрасходов отличается от ключевой ставки как решение?',
+          ['Он накопительный: заданный темп действует каждый квартал, пока его не изменить',
+            'Он действует ровно один квартал, потом обнуляется', 'Он влияет только на бюджет, но не на спрос',
+            'Он меняет цены мгновенно, без лага'], 0,
+          'Ставка — это уровень, который стоит там, где вы его поставили. Темп роста расходов — это скорость: пока он положительный, расходы растут каждый квартал, и стимул накапливается сам собой.'),
+        q('Вы подняли ставку, а инфляция в том же квартале не снизилась. Что разумнее сделать?',
+          ['Подождать: эффект ещё не дошёл до цен', 'Немедленно поднять ставку ещё раз, вдвое сильнее',
+            'Вернуть ставку обратно — она не работает', 'Одновременно нарастить госрасходы'], 0,
+          'Реакция на отсутствие мгновенного эффекта — самая частая ошибка. Догоняющее ужесточение накладывается на первое, когда оно наконец доходит, и экономика получает двойной удар уже в рецессии.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: остудить перегрев',
+      goalLabel: 'Инфляция ≤ 6.0% и разрыв выпуска ≤ 1.0%',
+      body: () => (
+        <>
+          <p>Ситуация задана заранее: экономика перегрета — выпуск заметно выше потенциала, инфляция разогналась, ожидания поползли вверх. У вас два рычага из первого модуля и шесть кварталов.</p>
+          <p>Помните про лаг: то, что вы поставите сейчас, дойдёт до цен через квартал-другой. Если задача не выйдет — можно откатить её к началу и попробовать иначе.</p>
+        </>
+      ),
+      // перегрев задаётся через сам выпуск: разрыв — величина производная, её
+      // подмена ничего бы не изменила, модель пересчитала бы его в тот же квартал
+      setup: (e) => ({ gdp: e.potentialGdp * 1.03, inflation: 8.6, coreInflation: 8.0,
+        inflationExpectations: 6.6, unemployment: 4.0, keyRate: 5.5 }),
+      levers: ['keyRate', 'govSpending'], maxQuarters: 6,
+      goal: ({ economy }) => economy.inflation <= 6 && economy.outputGap <= 1.0,
+      goalText: ({ economy }) => `Сейчас инфляция ${pctFmt(economy.inflation)}, разрыв выпуска ${fmtSignedPct(economy.outputGap)}.`,
+      hint: 'Ставку в такой ситуации поднимают сразу и заметно, а не по четверти пункта: пока вы добавляете понемногу, ожидания успевают вырасти. И проверьте темп госрасходов — пока он в плюсе, бюджет подогревает спрос каждый квартал.',
+    },
+  },
+
+  budget: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: доходы, расходы, долг',
+      questions: [
+        q('Ставку НДС подняли на 3 п.п. Почему доходы бюджета выросли слабее, чем можно было ожидать?',
+          ['Часть активности ушла в тень, и база сборов сузилась', 'НДС не влияет на доходы бюджета',
+            'Доходы всегда растут ровно пропорционально ставке', 'Собранное автоматически идёт на погашение долга'], 0,
+          'Собираемость зависит от ставки: чем она выше сверх привычного уровня, тем выгоднее уходить в тень. Именно поэтому у налоговых сборов есть потолок, за которым повышение ставки уже уменьшает поступления.'),
+        q('Что такое государственный долг в этой модели?',
+          ['Накопленные за годы дефициты бюджета', 'Разница между экспортом и импортом',
+            'Деньги, которые государство должно центральному банку по ставке', 'Сумма всех налогов за год'], 0,
+          'Дефицит — поток за квартал, долг — накопленный запас. Поэтому один хороший квартал долг почти не меняет, а несколько лет дефицита меняют сильно.'),
+        q('Почему долг измеряют в процентах ВВП, а не в деньгах?',
+          ['Так видно нагрузку на экономику, которая этот долг обслуживает',
+            'Так цифра выглядит меньше', 'В деньгах его посчитать невозможно',
+            'Потому что кредиторы дают в долг проценты, а не деньги'], 0,
+          'Один и тот же долг в деньгах — катастрофа для маленькой экономики и мелочь для большой. Отношение к ВВП как раз и показывает, чем страна способна этот долг обслуживать.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: свести бюджет',
+      goalLabel: 'Дефицит не глубже 3.5% ВВП',
+      body: () => (
+        <>
+          <p>Вам достался бюджет с дырой под 7% ВВП: предшественник опустил НДС и налог на прибыль намного ниже разумного уровня, а расходы оставил как были. Задача — довести дефицит до 3.5% ВВП или лучше за шесть кварталов.</p>
+          <p>Рычагов четыре: два налога и два темпа расходов. Все работают по-разному, и у каждого своя цена — в том числе та, о которой был весь модуль: выше ставка не значит больше сборов.</p>
+        </>
+      ),
+      // баланс в setup задаётся явно: он производный и пересчитается в первом же
+      // квартале, но без него шапка показывала прежние -3.6% и спорила с условием
+      setup: { vatRate: 10, profitTaxRate: 13, budgetBalancePctGdp: -6.6 },
+      pins: ['budgetBalancePctGdp', 'revenuePctGdp', 'debtToGdp', 'shadowShare'],
+      levers: ['vatRate', 'profitTaxRate', 'govSpending', 'transfers'], maxQuarters: 6,
+      goal: ({ economy }) => economy.budgetBalancePctGdp >= -3.5,
+      goalText: ({ economy }) => `Сейчас баланс ${fmtSignedPct(economy.budgetBalancePctGdp)} ВВП, долг ${pctFmt(economy.debtToGdp)}, обслуживание ${pctFmt(economy.interestToRevenue)} доходов.`,
+      hint: 'Начните с налогов: они здесь заниженные, и возврат к нормальным ставкам закрывает бо́льшую часть дыры за один квартал. Но не увлекайтесь — выше определённого уровня ставка начинает кормить тень, а не бюджет, и сборы падают. Расходы — это темпы роста: чтобы они реально сокращались, темп должен уйти в минус, а не просто до нуля.',
+    },
+  },
+
+  fx: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: курс, резервы, интервенции',
+      questions: [
+        q('Курс в модели вырос со 100 до 130. Что это значит?',
+          ['Национальная валюта ослабла', 'Национальная валюта укрепилась',
+            'Резервы выросли на 30%', 'Инфляция снизилась на 30%'], 0,
+          'Курс здесь — сколько национальной валюты стоит иностранная. Чем больше число, тем дешевле национальная валюта и тем дороже импорт, который сразу же попадает в цены.'),
+        q('ЦБ продаёт валюту из резервов, чтобы поддержать курс. В чём главное ограничение?',
+          ['Резервы конечны, и рынок это видит', 'Продажа валюты запрещена при плавающем курсе',
+            'Интервенции не влияют на курс', 'Каждая продажа снижает ключевую ставку'], 0,
+          'Интервенции работают, пока у ЦБ есть чем интервенировать. Когда резервы подходят к концу, защита курса рушится разом — и девальвация выходит резче, чем была бы без защиты.'),
+        q('Как повышение ключевой ставки действует на курс?',
+          ['Укрепляет: активы в национальной валюте становятся привлекательнее для капитала',
+            'Ослабляет: дорогой кредит душит экспорт', 'Никак: ставка и курс не связаны',
+            'Зависит только от цены на сырьё'], 0,
+          'Высокая ставка притягивает капитал, и приток укрепляет валюту. Поэтому ставка и интервенции на покупку валюты тянут курс в разные стороны — и итог зависит от того, что сильнее.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: остановить девальвацию',
+      goalLabel: 'Курс ≤ 126 при резервах ≥ 150',
+      body: () => (
+        <>
+          <p>Валюта резко ослабла, а импортируемая инфляция разгоняет цены. Нужно вернуть курс к 126 или крепче — и не спалить при этом резервы ниже 150.</p>
+          <p>Два рычага тянут курс в одну сторону, но платите вы за них разным: ставка — ростом, интервенции — резервами.</p>
+        </>
+      ),
+      setup: { exchangeRate: 132, reserves: 205, inflation: 8.2, inflationExpectations: 6.5, riskPremium: 2.6, keyRate: 6 },
+      levers: ['keyRate', 'fxIntervention'], maxQuarters: 8,
+      goal: ({ economy }) => economy.exchangeRate <= 126 && economy.reserves >= 150,
+      goalText: ({ economy }) => `Сейчас курс ${fmt1(economy.exchangeRate)}, резервы ${fmtMoney(economy.reserves)}.`,
+      hint: 'Одними интервенциями курс не удержать: тающие резервы рынок читает как слабость, премия за риск растёт — и валюта слабеет быстрее, чем её успевают выкупать. Основой защиты делают ставку, а интервенциями лишь сглаживают, иначе резервов не хватит до конца задачи.',
+    },
+  },
+
+  expectations: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: ожидания и доверие',
+      questions: [
+        q('Почему инфляционные ожидания важнее текущей цифры инфляции?',
+          ['Их закладывают в цены и зарплаты уже сейчас, и они сбываются сами',
+            'Их публикует статистика раньше, чем инфляцию', 'Они входят в ВВП',
+            'Ожидания влияют только на курс валюты'], 0,
+          'Ожидания — это механизм, а не прогноз. Если все ждут роста цен, продавцы поднимают цены заранее, а работники требуют индексации — и инфляция становится высокой независимо от того, что было её первопричиной.'),
+        q('ЦБ поднял цель по инфляции с 4% до 6%. Что произойдёт с доверием к нему?',
+          ['Оно упадёт: цель, которую можно подвинуть, перестаёт быть якорем',
+            'Оно вырастет: цель стала реалистичнее', 'Ничего не изменится',
+            'Доверие вырастет, но только при высокой ставке'], 0,
+          'Ценность цели ровно в том, что она не двигается. Один раз подвинув её под факт, ЦБ показывает, что подвинет и в следующий раз, — и ожидания перестают цепляться за объявленную цифру.'),
+        q('Доверие к ЦБ упало. Как его вернуть?',
+          ['Последовательно действовать в объявленную сторону несколько кварталов подряд',
+            'Объявить новую, более амбициозную цель', 'Один раз резко поднять ставку и сразу отпустить',
+            'Перестать публиковать цель по инфляции'], 0,
+          'Доверие теряется за квартал, а возвращается годами и только делами. Разовый рывок с быстрым разворотом читается как паника и доверие не восстанавливает.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: вернуть ожидания к якорю',
+      goalLabel: 'Ожидания ≤ 6.5% при инфляции ≤ 6.0%',
+      body: () => (
+        <>
+          <p>Ожидания сорвались с якоря, доверие к ЦБ на дне, инфляция почти 10%. Это самая дорогая ситуация в модели: пока ожидания высоко, любая ставка работает хуже, чем должна была бы.</p>
+          <p>Рычаг один — ключевая ставка, кварталов девять. Цель по инфляции трогать нельзя: она и так уже подвинута. Доверие к ЦБ будет восстанавливаться дольше самих ожиданий — это нормально, оно всегда идёт последним.</p>
+        </>
+      ),
+      setup: { inflation: 9.6, coreInflation: 9.0, inflationExpectations: 8.8, cbCredibility: 30, inflationTarget: 4, keyRate: 6.5 },
+      levers: ['keyRate'], maxQuarters: 9,
+      goal: ({ economy }) => economy.inflationExpectations <= 6.5 && economy.inflation <= 6,
+      goalText: ({ economy }) => `Сейчас ожидания ${pctFmt(economy.inflationExpectations)}, доверие ${Math.round(economy.cbCredibility)} из 100, инфляция ${pctFmt(economy.inflation)}.`,
+      hint: 'Доверие растёт, только пока реальная ставка выше нейтральной и политика не мечется. Поставьте ставку заметно выше ожиданий — и не трогайте её несколько кварталов подряд: постоянство здесь и есть инструмент.',
+    },
+  },
+
+  crisis: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: буферы и скорая помощь',
+      questions: [
+        q('Чем норматив достаточности капитала отличается от инъекции ликвидности?',
+          ['Норматив — буфер, который ставят заранее; ликвидность — скорая помощь по факту',
+            'Это одно и то же разными словами', 'Норматив помогает в кризис, а ликвидность — до него',
+            'Норматив увеличивает объём кредита в экономике'], 0,
+          'Норматив капитала работает годами и стоит роста: банки кредитуют осторожнее. Ликвидность спасает от разрыва платежей здесь и сейчас, но ничего не меняет в устойчивости системы.'),
+        q('Зачем панель рисков, если есть сами показатели?',
+          ['Она показывает, где копится опасность, до того как та станет кризисом',
+            'Она заменяет собой отчёт по бюджету', 'Она предсказывает точную дату кризиса',
+            'Она нужна только при игре за Минфин'], 0,
+          'Кризис в модели — не случайность, а порог, к которому показатели подходят постепенно. Риски и есть способ увидеть это приближение за несколько кварталов.'),
+        q('Норматив капитала подняли на 2 п.п. Какова плата за это решение?',
+          ['Банки выдают меньше кредита, и рост замедляется', 'Растёт инфляция',
+            'Падают резервы центрального банка', 'Никакой платы нет — это бесплатная страховка'], 0,
+          'Каждый пункт норматива — это капитал, который банк держит вместо того, чтобы выдать в кредит. Устойчивость всегда покупается за темп роста, и вопрос лишь в том, по какой цене вы её берёте.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: вытащить банки',
+      goalLabel: 'Банковский риск ≤ 45 и ликвидность банков ≥ 58',
+      body: () => (
+        <>
+          <p>Банковская система в стрессе: просрочка растёт, ликвидность на исходе, риск в красной зоне. Задача — вывести систему из опасной зоны за шесть кварталов.</p>
+          <p>Три рычага: норматив капитала, прямые вливания ликвидности и ключевая ставка. Один из них помогает быстро, другой — надолго, третий двигает всю экономику сразу.</p>
+        </>
+      ),
+      setup: { bankNPL: 8.4, bankLiquidity: 36, bankingRisk: 72, financialStability: 42, bankCapital: 118, creditVolume: 1450 },
+      levers: ['liquidity', 'capitalRequirement', 'keyRate'], maxQuarters: 6,
+      goal: ({ economy }) => economy.bankingRisk <= 45 && economy.bankLiquidity >= 58,
+      goalText: ({ economy }) => `Сейчас банковский риск ${Math.round(economy.bankingRisk)} из 100, ликвидность ${Math.round(economy.bankLiquidity)}, просрочка ${pctFmt(economy.bankNPL)}.`,
+      hint: 'Ликвидность возвращается быстро и от прямых вливаний. С нормативом капитала в разгар стресса осторожнее: он лечит систему вдолгую, но прямо сейчас заставляет банки сжимать кредит, а сжатие кредита ухудшает просрочку.',
+    },
+  },
+
+  politics: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: рейтинг, напряжение, режим',
+      questions: [
+        q('От чего в первую очередь зависит рейтинг власти?',
+          ['От реальных доходов, безработицы и инфляции', 'Только от размера госдолга',
+            'От числа кварталов у власти', 'От характера бота на второй ветви власти'], 0,
+          'Рейтинг считается из того, что человек чувствует на себе: растут ли зарплаты быстрее цен, есть ли работа, насколько цены выше цели. Долг сюда попадает косвенно — через то, чем за него платят.'),
+        q('Что происходит с политическим напряжением при силовом подавлении протеста?',
+          ['Сразу падает, но потом возвращается больше, чем было',
+            'Исчезает окончательно', 'Не меняется', 'Растёт сразу и продолжает расти'], 0,
+          'Подавление убирает симптом, а не причину. В модели у него есть и мгновенный минус к напряжению, и растянутый плюс: подавленное недовольство никуда не девается, оно копится.'),
+        q('Авторитарный режим объявил выборы. Чем они отличаются от выборов при демократии?',
+          ['Результат предрешён, и настоящей гонки с неопределённостью для рынков нет',
+            'Ничем', 'Они всегда заканчиваются поражением власти',
+            'Они отменяют политическое напряжение'], 0,
+          'При авторитарном и тоталитарном режиме выборы в модели не проигрываются: они считают голоса, а не решают исход. Зато напряжение продолжает копиться, и рано или поздно оно выходит другим путём.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: удержать власть',
+      goalLabel: 'Рейтинг ≥ 47 и напряжение ≤ 25',
+      pins: ['approval', 'politicalTension', 'inflation', 'unemployment'],
+      body: () => (
+        <>
+          <p>Рейтинг рухнул, безработица высокая, инфляция двузначная, напряжение растёт. До выборов ещё есть время, но если ничего не менять, страна дойдёт до них с конфликтом ветвей власти.</p>
+          <p>Девять кварталов и три рычага. Разгонять экономику выплатами легко — сложнее сделать это, не добив цены, потому что инфляция бьёт по рейтингу не слабее безработицы.</p>
+        </>
+      ),
+      setup: (e) => ({ approval: 33, unemployment: 8.2, inflation: 10.2, coreInflation: 9.4, inflationExpectations: 8.0,
+        politicalTension: 46, gdp: e.potentialGdp * 0.975, keyRate: 7 }),
+      levers: ['keyRate', 'transfers', 'govSpending'], maxQuarters: 9,
+      goal: ({ economy }) => economy.approval >= 47 && economy.politicalTension <= 25,
+      goalText: ({ economy }) => `Сейчас рейтинг ${Math.round(economy.approval)} из 100, напряжение ${Math.round(economy.politicalTension)}, безработица ${pctFmt(economy.unemployment)}, инфляция ${pctFmt(economy.inflation)}.`,
+      hint: 'Рейтинг растёт от реальных доходов — от зарплат за вычетом инфляции — и от занятости. Одной жёсткой ставкой его не поднять: цены вы собьёте, но безработица останется высокой, и рейтинг встанет. Спрос придётся поддержать бюджетом одновременно с тем, как ставка гасит инфляцию.',
+    },
+  },
+};
+
+/* ============================ КУРС ИНВЕСТОРА ============================
+   Песочница здесь — настоящий терминал: те же инструменты, те же котировки, тот же
+   расчёт позиций в конце квартала. Учить торговле на упрощённой имитации смысла нет,
+   потому что весь смысл роли в том, как ведут себя настоящие цены. */
+const TRADER_MODULES = [
+  {
+    id: 'tr_market', depth: 'surface', icon: TrendingUp, sandbox: 'trader',
+    title: 'Рынок: цена, позиция, результат',
+    summary: 'Из чего складывается цена инструмента и почему результат бывает и до продажи.',
+    pins: ['stockIndex', 'bondIndex', 'keyRate', 'inflation'],
+    steps: [
+      {
+        title: 'Вы больше не управляете экономикой',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>За инвестора у вас нет ни ставки, ни бюджета: ставку ведёт бот-ЦБ, бюджет — бот-Минфин, а вы живёте внутри их решений. Ваши инструменты — цены, а не рычаги.</p>
+            <p>Цены здесь не случайны. Индекс акций считается из прибылей компаний и ставки дисконтирования: дешёвые деньги и растущая прибыль поднимают его, дорогие деньги и риск — опускают. Облигации живут от доходности: выросла доходность — упала цена уже выпущенной бумаги.</p>
+            <p>Сейчас индекс акций {fmt1(economy.stockIndex)}, ключевая ставка {pctFmt(economy.keyRate)}. Нажмите «Далее», чтобы посмотреть один квартал со стороны.</p>
+          </>
+        ),
+      },
+      {
+        kind: 'practice', title: 'Позиция, средняя цена и прибыль',
+        goalLabel: 'Открыть любую позицию и завершить квартал',
+        body: () => (
+          <>
+            <p>Купить инструмент — значит открыть <b>позицию</b>. Пока она открыта, её результат называют нереализованным: он меняется каждый квартал вместе с ценой и превращается в деньги только при закрытии.</p>
+            <p>Средняя цена входа — та, по которой вы в среднем набрали позицию. Всё, что выше неё, — прибыль; всё, что ниже, — убыток.</p>
+            <p>Про это проще один раз увидеть, чем прочитать: выберите любой инструмент в терминале ниже, нажмите «Купить / лонг» и завершите квартал. На графике инструмента появится <b>золотой пунктир</b> — ваша средняя цена входа; по расстоянию до линии цены сразу видно, где вы стоите.</p>
+            <p>Есть и обратная сторона: <b>шорт</b>. Это ставка на падение — вы продаёте то, чего у вас нет, и зарабатываете, если цена упадёт. Убыток в шорте, в отличие от покупки, ничем сверху не ограничен.</p>
+          </>
+        ),
+        levers: [], maxQuarters: 4,
+        goal: (c) => Object.values((c.book && c.book.pos) || {}).some((q) => Math.abs(q) > 1e-9),
+        goalText: (c) => {
+          const open = Object.entries((c.book && c.book.pos) || {}).filter(([, q]) => Math.abs(q) > 1e-9);
+          return open.length
+            ? `Открыто позиций: ${open.length}. Золотой пунктир средней цены уже на графике выбранного инструмента.`
+            : 'Открытых позиций пока нет — купите что-нибудь в терминале ниже.';
+        },
+        hint: 'Любой инструмент подойдёт: кнопка «Купить / лонг» под карточкой, сумма сделки задаётся ползунком ниже. После покупки посмотрите на график — золотой пунктир и есть ваша средняя цена входа.',
+      },
+    ],
+  },
+  {
+    id: 'tr_leverage', depth: 'deep', icon: Zap, sandbox: 'trader',
+    title: 'Плечо, обеспечение и маржин-колл',
+    summary: 'Почему заёмные деньги увеличивают не доход, а размер ошибки.',
+    pins: ['stockIndex', 'volatilityIndex', 'keyRate', 'lendingRate'],
+    steps: [
+      {
+        title: 'Что такое плечо',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Плечо — это торговля на заёмные деньги. Купив на 3 млн при своих 1 млн, вы получаете втрое больший результат и от роста, и от падения: плечо умножает не доход, а размер вашей ошибки.</p>
+            <p>За заёмные деньги брокер берёт ставку по кредитам — сейчас {pctFmt(economy.lendingRate)} годовых. Она капает каждый квартал независимо от того, права позиция или нет.</p>
+            <p>Уровень обеспечения — это ваш капитал, делённый на стоимость позиций. Пока он выше поддерживающего уровня, всё в порядке. Как только он падает ниже — брокер закрывает часть позиций сам, по рынку, не спрашивая вас. Это и есть маржин-колл.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Фьючерсы: плечо, встроенное в инструмент',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>У фьючерса плечо не нужно брать отдельно — оно уже внутри. Вы вносите гарантийное обеспечение, а результат считается от полного номинала контракта: при плече 8:1 движение цены на 3% меняет ваши деньги на 24%.</p>
+            <p>Поэтому в списке инструментов у фьючерсов подписано «плечо N:1»: это не реклама доходности, а предупреждение о том, во сколько раз быстрее закончится ваш счёт.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'tr_portfolio', depth: 'deep', icon: Scale, sandbox: 'trader',
+    title: 'Портфель: диверсификация и бенчмарк',
+    summary: 'Зачем держать несколько разных активов и с чем сравнивать свой результат.',
+    pins: ['stockIndex', 'bondIndex', 'exchangeRate', 'inflation'],
+    steps: [
+      {
+        title: 'Активы ведут себя по-разному',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Смысл диверсификации не в том, чтобы купить побольше разного, а в том, чтобы держать активы, которые реагируют на одно и то же событие по-разному.</p>
+            <p>Повышение ставки бьёт по акциям и по длинным облигациям одновременно — они не диверсифицируют друг друга. А вот денежный рынок на повышении ставки, наоборот, начинает приносить больше, инфляционные линкеры защищают от роста цен, мировые акции живут чужим циклом, а золото дорожает при девальвации.</p>
+          </>
+        ),
+      },
+      {
+        title: 'С чем сравнивать результат',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>«Заработал 8% за год» само по себе ничего не значит. Если индекс за это время вырос на 15% — вы отстали от рынка, и проще было купить индекс целиком. Если инфляция была 12% — вы потеряли покупательную способность, несмотря на плюс на счёте.</p>
+            <p>Поэтому в панели портфеля результат показан сразу тремя способами: номинальный, реальный (за вычетом инфляции) и относительно индекса. На графике инструмента индекс можно наложить прямо поверх цены — расхождение линий и есть ваше опережение или отставание.</p>
+          </>
+        ),
+      },
+    ],
+  },
+];
+
+/* ============================ КУРС ПРЕЗИДЕНТА ============================ */
+const PRESIDENT_MODULES = [
+  {
+    id: 'pr_capital', depth: 'surface', icon: Crown, sandbox: 'president',
+    title: 'Политический капитал и кадры',
+    summary: 'Власть без ползунков: чем президент платит и через кого действует.',
+    pins: ['politicalCapital', 'approval', 'politicalTension', 'keyRate'],
+    steps: [
+      {
+        title: 'У президента нет ни одного ползунка',
+        lever: null, runsQuarter: true,
+        body: ({ economy }) => (
+          <>
+            <p>Ни ставки, ни налогов, ни расходов: ЦБ и Минфин ведут боты со своими характерами. Вы влияете на экономику только через людей, которых назначаете, указания, которые они могут не выполнить, и реформы, которые окупятся не в этот срок.</p>
+            <p>Единственный ваш ресурс — политический капитал, сейчас {Math.round(economy.politicalCapital)} из 100. Он копится рейтингом и ростом, тает в кризисах и при беспорядках, и у него есть равновесие: накопить на одну большую реформу можно, на все сразу — нет.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Кадры и указания',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Назначение — самый медленный и самый долгий по эффекту инструмент: характер главы ЦБ определяет реакцию на инфляцию на годы вперёд, характер министра финансов — на что и в каком объёме тратится бюджет.</p>
+            <p>У смены главы ЦБ есть отдельная цена. Чем меньше человек проработал, тем сильнее досрочная отставка бьёт по доверию к денежной политике и по премии за риск: рынок читает её однозначно — независимость центрального банка заканчивается там, где начинается администрация.</p>
+            <p>Указание — быстрый инструмент, но ведомство может отказать. Шанс зависит от того, насколько просьба соответствует ситуации, от характера руководителя и от политического режима: чем меньше в стране институтов, тем меньше у ведомства возможности сказать «нет» — и тем дешевле рынок оценивает его подпись.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'pr_reforms', depth: 'deep', icon: Hammer, sandbox: 'president',
+    title: 'Реформы: платить сейчас, получать потом',
+    summary: 'Единственные решения в игре, которые двигают потенциал, а не спрос.',
+    pins: ['potentialGrowth', 'approval', 'politicalCapital', 'gdp'],
+    steps: [
+      {
+        title: 'Спрос и потенциал — разные вещи',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Всё, чем занимаются ЦБ и Минфин, — это управление спросом: ставка и бюджет решают, насколько загружена экономика относительно своих возможностей. Сами возможности — потенциальный ВВП — от них почти не зависят.</p>
+            <p>Потенциал определяется четырьмя вещами: капиталом, рабочей силой, человеческим капиталом и производительностью. Двигать их умеют только структурные реформы, и это единственный способ сделать страну богаче, а не просто разогнать её на пару лет.</p>
+          </>
+        ),
+      },
+      {
+        title: 'Горизонт и цена',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>У каждой реформы одинаковая форма: рейтинг платится сразу и целиком, эффект приходит годами. Реформа рынка труда разворачивается два года, пенсионная — три, реформа образования — четыре, и полный эффект пенсионной вы увидите уже в следующий срок, возможно, не свой.</p>
+            <p>Отсюда главный конфликт роли: реформа, которая нужнее всего, обычно и самая непопулярная, а расплачиваться за неё рейтингом придётся до ближайших выборов. Нацпроект по инфраструктуре — исключение: он платит не политическим капиталом, а бюджетом, и потому виден быстрее.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'pr_regime', depth: 'deep', icon: Gavel, sandbox: 'president',
+    title: 'Устройство власти и её цена',
+    summary: 'Роспуск парламента, авторитарный поворот и что за это платит экономика.',
+    pins: ['politicalTension', 'approval', 'riskPremium', 'politicalCapital'],
+    steps: [
+      {
+        title: 'Лестница режимов',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Режим меняется не по вашему желанию, а по накопленному напряжению: демократия → конфликт ветвей власти → авторитаризм → тоталитаризм. Напряжение растёт от низкого рейтинга, кризисов, безработицы и инфляции — и, отдельно, от самих репрессий.</p>
+            <p>Но президент может пройти по этой лестнице и сознательно: распустить парламент указом. Тогда режим становится авторитарным сразу, и — в отличие от чрезвычайного положения, введённого кризисом, — обратно сам уже не отыграется. Вернуть парламент можно только отдельным решением, и стоит оно дороже.</p>
+          </>
+        ),
+      },
+      {
+        title: 'За что платит экономика',
+        lever: null, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Концентрация власти реально работает: политического капитала становится больше, ведомства перестают отказывать, выборы больше не проигрываются. Всё это — настоящие преимущества, и именно поэтому соблазн существует.</p>
+            <p>Платит за них экономика, и по всем каналам сразу: премия за риск растёт, доверие бизнеса падает, капитал уходит, прямые инвестиции сокращаются. А напряжение никуда не девается — репрессии его копят, и подавленный протест возвращается больше, чем был.</p>
+          </>
+        ),
+      },
+    ],
+  },
+];
+
+/* Проверки курсов инвестора и президента. Практика здесь идёт не через ползунки,
+   а через настоящий терминал и настоящую панель политического капитала — поэтому
+   levers у этих задач пустой, а работа делается в самой песочнице. */
+const COURSE_CHECKS = {
+  tr_market: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: цена и позиция',
+      questions: [
+        q('Центральный банк резко поднял ставку. Что произойдёт с индексом акций?',
+          ['Скорее всего упадёт: будущие прибыли дисконтируются дороже',
+            'Вырастет: высокая ставка — признак сильной экономики',
+            'Не изменится: ставка влияет только на облигации',
+            'Вырастет ровно на величину повышения ставки'], 0,
+          'Цена акции — это будущие прибыли, приведённые к сегодняшнему дню. Чем выше ставка дисконтирования, тем меньше сегодня стоит та же самая будущая прибыль, поэтому индекс падает даже без изменения самих прибылей.'),
+        q('Доходность облигаций выросла. Что стало с ценой уже выпущенной бумаги?',
+          ['Упала', 'Выросла', 'Не изменилась', 'Зависит от инфляции, а не от доходности'], 0,
+          'Купон у выпущенной бумаги фиксированный. Чтобы её доходность сравнялась с новой рыночной, цена должна упасть — и тем сильнее, чем длиннее бумага. Это и называется дюрацией.'),
+        q('Что такое нереализованная прибыль по позиции?',
+          ['Результат открытой позиции: он меняется каждый квартал и станет деньгами только при закрытии',
+            'Прибыль, которую брокер удерживает до конца года',
+            'Разница между вашей средней ценой и ценой покупки',
+            'Прибыль от коротких позиций'], 0,
+          'Пока позиция открыта, её результат — это переоценка, а не деньги. Он растёт и падает вместе с ценой, и зафиксировать его можно только сделкой в обратную сторону.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: обогнать безрисковую ставку',
+      goalLabel: 'Прирост капитала не меньше 10% за шесть кварталов',
+      body: ({ ctx }) => (
+        <>
+          <p>У вас {fmtMln(ctx.startValue)} и шесть кварталов. Задача — вырасти минимум на 10%.</p>
+          <p>Просто пересидеть в деньгах не выйдет: денежный рынок и депозит дадут заметно меньше. Придётся выбрать, каким риском вы за эту разницу платите, — и терминал ниже настоящий, со всеми инструментами сразу.</p>
+        </>
+      ),
+      levers: [], maxQuarters: 6,
+      goal: (c) => c.value >= c.startValue * 1.10,
+      goalText: (c) => `Сейчас капитал ${fmtMln(c.value)} против ${fmtMln(c.startValue)} на старте — ${fmtSigned1((c.value / Math.max(0.001, c.startValue) - 1) * 100)}%.`,
+      hint: 'Посмотрите, что делает бот-ЦБ со ставкой: от неё зависит и денежный рынок, и облигации, и акции. Если ставка идёт вниз — выигрывают длинные облигации и акции; если вверх — денежный рынок и короткие бумаги. Плечо доступно, но и убыток оно множит на ту же величину.',
+    },
+  },
+
+  tr_leverage: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: плечо и обеспечение',
+      questions: [
+        q('Вы купили на 4 млн, имея 1 млн своих. Цена упала на 10%. Сколько вы потеряли от своего капитала?',
+          ['40%', '10%', '4%', 'Ничего, пока позиция не закрыта'], 0,
+          'Плечо 4:1 умножает движение цены на четыре. Падение на 10% от четырёх миллионов — это 0.4 млн, то есть 40% вашего собственного миллиона. Именно так позиции и заканчиваются раньше, чем рынок разворачивается.'),
+        q('Что такое маржин-колл?',
+          ['Брокер сам закрывает часть позиций, когда обеспечения перестаёт хватать',
+            'Требование брокера продать всё до конца дня',
+            'Комиссия за использование заёмных средств',
+            'Автоматическое увеличение плеча при росте цены'], 0,
+          'Это не предупреждение, а действие: закрытие происходит по рынку и в худший момент — когда цена уже упала. Поэтому уровень обеспечения смотрят до сделки, а не после.'),
+        q('Чем фьючерс отличается от покупки актива с плечом?',
+          ['Плечо в него уже встроено: вы вносите обеспечение, а результат считается от полного номинала',
+            'Фьючерс нельзя потерять целиком', 'У фьючерса нет расчётов по кварталам',
+            'Фьючерс не зависит от цены базового актива'], 0,
+          'Экономически это то же плечо, только оформленное иначе. Разница практическая: у фьючерса плечо фиксированное и указано прямо в инструменте, так что «случайно» набрать его больше, чем собирались, сложнее.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: заработать на падающем рынке',
+      goalLabel: 'Прирост не меньше 4% за шесть кварталов на падающем рынке',
+      body: () => (
+        <>
+          <p>Ставка высокая и останется высокой, инфляция двузначная, акции уже упали и падать им есть куда. Цель скромная — плюс 4% — и в этом весь смысл: на таком рынке сохранить капитал уже работа.</p>
+          <p>Просто сидеть в деньгах не выйдет: они не приносят ничего. Плечо в лонге здесь — самый быстрый способ закончить партию, зато есть инструменты, которым высокая ставка идёт на пользу.</p>
+        </>
+      ),
+      setup: (e) => ({ keyRate: 12, inflation: 11.5, coreInflation: 10.5, inflationExpectations: 9,
+        stockIndex: e.stockIndex * 0.92, riskPremium: 3.0, volatilityIndex: 34 }),
+      levers: [], maxQuarters: 6,
+      goal: (c) => c.value >= c.startValue * 1.04,
+      goalText: (c) => `Капитал ${fmtMln(c.value)} против ${fmtMln(c.startValue)} на старте — ${fmtSigned1((c.value / Math.max(0.001, c.startValue) - 1) * 100)}%.`,
+      hint: 'Денежный рынок при ставке 12% приносит примерно 3% за квартал и ничем не рискует. Инфляционные линкеры индексируются на сами цены. Короткие облигации почти не реагируют на движение ставки — в отличие от десятилетних.',
+    },
+  },
+
+  tr_portfolio: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: портфель и бенчмарк',
+      questions: [
+        q('Какая пара активов хуже всего диверсифицирует друг друга?',
+          ['Акции и длинные облигации', 'Акции и денежный рынок',
+            'Акции и инфляционные линкеры', 'Акции и мировые акции'], 0,
+          'И акции, и длинные облигации падают от одного и того же — от роста ставки. Держать их вместе — значит дважды поставить на одно событие, хотя выглядит это как два разных инструмента.'),
+        q('Ваш портфель вырос на 9% за год, индекс акций — на 14%, инфляция составила 11%. Как честно описать результат?',
+          ['Вы отстали от рынка и потеряли покупательную способность',
+            'Вы заработали 9% — это хороший результат', 'Вы обогнали рынок на 9%',
+            'Реальный результат +9%, номинальный +14%'], 0,
+          'Плюс на счёте не означает прибыли. Относительно индекса вы отстали на 5 п.п., а относительно цен потеряли около 2%: на те же деньги в конце года можно купить меньше, чем в начале.'),
+        q('Зачем накладывать индекс на график инструмента?',
+          ['Чтобы увидеть, обгоняет ваш инструмент рынок или просто едет вместе с ним',
+            'Чтобы предсказать будущую цену', 'Чтобы уменьшить комиссию',
+            'Чтобы посчитать уровень обеспечения'], 0,
+          'Индекс приводится к стартовой цене инструмента, поэтому важно не то, где проходит его линия, а как она расходится с вашей. Совпали — вы просто купили рынок. Разошлись — вот это и есть ваш собственный результат.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: обогнать индекс',
+      goalLabel: 'Портфель растёт быстрее индекса акций и не в минусе',
+      body: () => (
+        <>
+          <p>Формальная цель роли «обогнать индекс» звучит просто, а на деле это самая честная проверка: купить сам индекс — доступно всем, и результат ровно такой же, как у рынка.</p>
+          <p>Восемь кварталов. Побеждает не тот, кто угадал направление, а тот, кто держал то, что в этих условиях работает лучше рынка.</p>
+        </>
+      ),
+      levers: [], maxQuarters: 8,
+      goal: (c) => c.value > c.startValue
+        && c.value / Math.max(0.001, c.startValue) >= c.economy.stockIndex / Math.max(0.001, c.start.stockIndex),
+      goalText: (c) => `Портфель ${fmtSigned1((c.value / Math.max(0.001, c.startValue) - 1) * 100)}%, индекс ${fmtSigned1((c.economy.stockIndex / Math.max(0.001, c.start.stockIndex) - 1) * 100)}% за то же время.`,
+      hint: 'Обогнать индекс на растущем рынке можно плечом, но тогда вы обгоните его и вниз. Надёжнее — держать то, чего в индексе нет: секторные фонды, облигации на развороте ставки, мировые акции при слабеющей валюте.',
+    },
+  },
+
+  pr_capital: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: капитал, кадры, указания',
+      questions: [
+        q('Откуда у президента берётся политический капитал?',
+          ['Он копится от рейтинга и роста экономики и тает в кризисах',
+            'Он выдаётся фиксированной суммой раз в год', 'Он покупается за бюджетные деньги',
+            'Он равен рейтингу власти'], 0,
+          'Капитал — это следствие того, как идут дела: популярного президента в растущей экономике власть кормит сама. Отсюда и главная ловушка роли: когда рычаги нужнее всего, платить за них уже нечем.'),
+        q('Президент меняет главу ЦБ, проработавшего два квартала из двенадцати. Что произойдёт?',
+          ['Доверие к денежной политике заметно упадёт, премия за риск вырастет',
+            'Ничего: назначение — обычная процедура', 'Вырастет согласованность политики',
+            'Инфляция немедленно снизится'], 0,
+          'Дело не в том, кто пришёл, а в том, как ушёл предыдущий. Досрочная отставка показывает рынку, что срок главы ЦБ ничего не значит, — и ожидания перестают верить его обещаниям, кто бы их ни давал.'),
+        q('При каком режиме ведомство с наименьшей вероятностью откажет президенту?',
+          ['При тоталитарном', 'При демократии', 'При конфликте ветвей власти',
+            'Вероятность отказа от режима не зависит'], 0,
+          'Возможность сказать «нет» — это и есть институт. Чем меньше институтов, тем послушнее ведомство и тем меньше стоит его подпись: рынок дисконтирует решения управляемого центробанка независимо от их содержания.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: сбить инфляцию чужими руками',
+      goalLabel: 'Инфляция ≤ 6.3% — но ставку задаёте не вы',
+      body: () => (
+        <>
+          <p>Инфляция под 10%, а во главе ЦБ сидит Голубь: он терпит рост цен ради занятости и ставку поднимать не спешит. Ключевой ставки у вас нет — есть кадры и указания.</p>
+          <p>Шесть кварталов. Оба инструмента стоят политического капитала, и у каждого свои последствия помимо инфляции.</p>
+        </>
+      ),
+      setup: () => ({ inflation: 9.8, coreInflation: 9.2, inflationExpectations: 8.2, keyRate: 5.5, cbTenure: 11 }),
+      personas: { cb: 'dove' },
+      levers: [], maxQuarters: 6,
+      goal: (c) => c.economy.inflation <= 6.3,
+      goalText: (c) => `Инфляция ${pctFmt(c.economy.inflation)}, ставка ${pctFmt(c.economy.keyRate)}, ожидания ${pctFmt(c.economy.inflationExpectations)}.`,
+      hint: 'Глава ЦБ отработал одиннадцать кварталов из двенадцати — смена почти плановая и обойдётся дёшево. Ястреб реагирует на инфляцию вдвое жёстче Голубя. Есть и быстрый путь — указание «решительно подавить инфляцию», но Голубь на него скорее всего ответит отказом.',
+    },
+  },
+
+  pr_reforms: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: реформы и горизонт',
+      questions: [
+        q('Чем структурная реформа отличается от снижения ставки?',
+          ['Реформа двигает потенциал экономики, ставка — только загрузку имеющегося',
+            'Реформа действует быстрее', 'Реформа не требует политического капитала',
+            'Ставка влияет на потенциал, а реформа — на спрос'], 0,
+          'Ставка и бюджет решают, работает ли экономика ниже или выше своих возможностей. Сами возможности — капитал, рабочая сила, человеческий капитал, производительность — меняются только реформами.'),
+        q('Почему пенсионная реформа — самое дорогое решение в наборе?',
+          ['Рейтинг падает сразу и целиком, а эффект приходит через три года',
+            'Она стоит больше всего бюджетных денег', 'Она снижает потенциальный ВВП',
+            'Она требует роспуска парламента'], 0,
+          'Форма у всех реформ одна: платите сегодня, получаете потом. У пенсионной этот разрыв максимальный — и по величине удара по рейтингу, и по длине горизонта, на котором окупается расширение рабочей силы.'),
+        q('Чем национальный проект по инфраструктуре отличается от остальных реформ?',
+          ['За него платит бюджет — дефицитом и долгом, а не политический капитал',
+            'Он не влияет на потенциал', 'Он действует мгновенно',
+            'Его нельзя провести дважды'], 0,
+          'Указ обязывает Минфин ускорить реальные госинвестиции на несколько лет. Инфраструктура и потенциал растут — вместе с дефицитом и долгом, считать который будет уже не президент.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: реформировать и удержаться',
+      goalLabel: 'Две реформы за восемь кварталов при рейтинге ≥ 42',
+      body: () => (
+        <>
+          <p>Провести реформу легко — сложно провести её и остаться у власти. Задача: объявить минимум две структурные реформы за восемь кварталов и подойти к концу с рейтингом не ниже 42.</p>
+          <p>Капитала на всё сразу не хватит, и после непопулярной реформы рейтинг придётся чем-то чинить.</p>
+        </>
+      ),
+      levers: [], maxQuarters: 8,
+      goal: (c) => Object.keys(c.economy.reforms || {}).length >= 2 && c.economy.approval >= 42,
+      goalText: (c) => `Проведено реформ: ${Object.keys(c.economy.reforms || {}).length}. Рейтинг ${Math.round(c.economy.approval)}, капитал ${Math.round(c.economy.politicalCapital)}.`,
+      hint: 'Начните с дешёвых и не самых болезненных: дерегулирование и судебная реформа стоят меньше и по рейтингу почти не бьют. Обращение к нации восстанавливает поддержку быстро — но работает тем хуже, чем сильнее слова расходятся с ценами.',
+    },
+  },
+
+  pr_regime: {
+    quiz: {
+      kind: 'quiz', title: 'Тест: режим и его цена',
+      questions: [
+        q('Президент распустил парламент указом при спокойной экономике. Что будет дальше?',
+          ['Режим станет авторитарным и сам обратно не вернётся',
+            'Ничего не изменится, пока не вырастет напряжение',
+            'Режим станет авторитарным на два квартала и вернётся',
+            'Начнётся тоталитарный режим'], 0,
+          'Чрезвычайное положение, введённое в кризис, снимается, когда кризис проходит. Осознанный роспуск — другое: власть, взятая указом, отдаётся только таким же указом, и стоит это дороже.'),
+        q('Что происходит с политическим напряжением при авторитарном режиме?',
+          ['У него появляется собственная подпитка: репрессии сами добавляют напряжения',
+            'Оно перестаёт расти', 'Оно обнуляется при роспуске парламента',
+            'Оно зависит только от инфляции'], 0,
+          'Подавление убирает проявления недовольства, а не его причины. В модели у репрессивного режима есть постоянное слагаемое в напряжении — поэтому авторитаризм устойчив ровно до тех пор, пока экономика позволяет.'),
+        q('Чем экономика расплачивается за концентрацию власти?',
+          ['Премией за риск, доверием бизнеса, оттоком капитала и прямых инвестиций',
+            'Только инфляцией', 'Ничем: это чисто политическое решение',
+            'Ростом безработицы в первый же квартал'], 0,
+          'Издержки идут не одним каналом, а сразу всеми и не мгновенно. Именно поэтому размен выглядит выгодным в квартале, когда его совершают, и невыгодным через несколько лет.'),
+      ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: удержать страну, не распуская парламент',
+      goalLabel: 'Напряжение ≤ 15 при работающем парламенте',
+      body: () => (
+        <>
+          <p>Напряжение почти на пороге конфликта ветвей власти, рейтинг низкий, элиты нервничают. Самый быстрый выход — указ о роспуске парламента, и он вам доступен.</p>
+          <p>Задача в том, чтобы обойтись без него: снять напряжение до 15 за шесть кварталов, сохранив парламент. Если распустите — задача считается проваленной.</p>
+          <p>Само оно так низко не опустится: напряжение тянется к уровню, который задают рейтинг и экономика, а он сейчас куда выше пятнадцати. Придётся либо поднимать рейтинг, либо снимать напряжение напрямую.</p>
+        </>
+      ),
+      setup: () => ({ politicalTension: 58, approval: 36, unemployment: 7.4, inflation: 8.4, coreInflation: 7.8 }),
+      levers: [], maxQuarters: 6,
+      goal: (c) => c.economy.politicalTension <= 15 && !c.economy.parliamentDissolved && c.economy.politicalRegime !== 'authoritarian',
+      goalText: (c) => `Напряжение ${Math.round(c.economy.politicalTension)}, рейтинг ${Math.round(c.economy.approval)}, режим — ${(POLITICAL_REGIME_INFO[c.economy.politicalRegime] || {}).label || c.economy.politicalRegime}.`,
+      hint: 'Напряжение считается от рейтинга, кризисов, безработицы и инфляции — то есть чинится тем же, чем чинится экономика. Сделка с элитами снимает его быстро и прямо; силовое подавление — тоже, но потом возвращает больше, чем сняло.',
+    },
+  },
+};
+
+/* ============================ ЭКЗАМЕНЫ ============================
+   Экзамен — это отдельный модуль в конце курса: сначала теория по всему
+   пройденному, потом одна задача, где взаимодействуют сразу несколько
+   механизмов и однозначно правильного рычага уже нет. */
+const EXAM_MODULES = [
+  {
+    id: 'policy_exam', depth: 'deep', icon: GraduationCap, isExam: true,
+    title: 'Экзамен: экономическая политика',
+    summary: 'Шесть вопросов по всему курсу и стагфляция напоследок.',
+    pins: ['inflation', 'unemployment', 'gdpGrowth', 'debtToGdp'],
+    steps: [
+      {
+        title: 'Экзамен',
+        lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Шесть вопросов по всем шести модулям сразу, а после них — задача, в которой ни один рычаг не работает в одну сторону.</p>
+            <p>Как и в тестах модулей, ошибиться не страшно: разбор появится под каждым вопросом, а задачу можно перезапустить.</p>
+          </>
+        ),
+      },
+      {
+        kind: 'quiz', title: 'Теория: весь курс',
+        questions: [
+          q('Экономика перегрета, инфляция 9%, бюджет в дефиците 6% ВВП. Какая пара решений последовательна?',
+            ['Поднять ставку и сократить темп госрасходов',
+              'Снизить ставку и нарастить выплаты',
+              'Поднять ставку и одновременно нарастить госрасходы',
+              'Ничего не делать: перегрев проходит сам'], 0,
+            'При перегреве обе ветви политики должны тянуть в одну сторону. Если бюджет продолжает подогревать спрос, ЦБ придётся держать ставку выше — и за несогласованность заплатит выпуск.'),
+          q('Что произойдёт с ценой десятилетней облигации, если ЦБ резко поднимет ставку?',
+            ['Упадёт сильнее, чем цена двухлетней', 'Вырастет', 'Упадёт слабее, чем цена двухлетней',
+              'Не изменится: длинные бумаги от ставки не зависят'], 0,
+            'Чем длиннее бумага, тем сильнее её цена реагирует на изменение доходности. Это и есть дюрация — и именно поэтому в ожидании роста ставок уходят в короткие бумаги.'),
+          q('Инфляционные ожидания 9% при цели 4%. Почему это дороже, чем просто высокая инфляция?',
+            ['Ожидания закладываются в цены и зарплаты и делают инфляцию устойчивой',
+              'Ожидания напрямую входят в расчёт ВВП',
+              'Ожидания увеличивают государственный долг',
+              'Ожидания влияют только на курс валюты'], 0,
+            'Разовый скачок цен проходит сам. Сорванные ожидания превращают его в самоподдерживающийся процесс: чтобы его остановить, ставку приходится держать выше и дольше, а платит за это выпуск.'),
+          q('Резервы тают, а курс продолжает слабеть. Что это чаще всего означает?',
+            ['Защита курса одними интервенциями не работает: рынок видит конечность резервов',
+              'Интервенции проводятся в неверную сторону',
+              'Нужно ускорить продажу резервов', 'Курс скоро развернётся сам'], 0,
+            'Интервенции работают, пока рынок верит, что резервов хватит. Как только видно дно, тающие резервы сами становятся аргументом против валюты — и премия за риск добавляет к девальвации больше, чем снимают интервенции.'),
+          q('Банковский риск 70, ликвидность банков 35. Что делать в первую очередь?',
+            ['Дать ликвидность: это скорая помощь, которая действует сразу',
+              'Резко поднять норматив капитала', 'Поднять ключевую ставку',
+              'Сократить государственные расходы'], 0,
+            'Норматив капитала — профилактика на годы, и в разгар стресса он только заставляет банки сжимать кредит. Ликвидность закрывает разрыв платежей здесь и сейчас; укреплять буферы будете, когда система перестанет гореть.'),
+          q('Рейтинг власти третий год ниже 35, инфляция двузначная, идут протесты. Что говорит модель?',
+            ['Политическое напряжение растёт, и режим может сойти с демократической ветки',
+              'Ничего: рейтинг влияет только на исход выборов',
+              'Экономика автоматически стабилизируется',
+              'Центральный банк потеряет независимость по закону'], 0,
+            'Рейтинг — не только счётчик к выборам. Через политическое напряжение он выводит страну на лестницу режимов: конфликт ветвей власти, авторитаризм, тоталитаризм — и каждый шаг оплачивается премией за риск и оттоком капитала.'),
+        ],
+      },
+      {
+        kind: 'practice', title: 'Экзаменационная задача: стагфляция',
+        goalLabel: 'Инфляция ≤ 6.5% и безработица ≤ 6.5% одновременно',
+        body: () => (
+          <>
+            <p>Худшее сочетание из возможных: цены растут, а экономика при этом стоит. Ставка лечит одно и калечит другое, бюджет — ровно наоборот.</p>
+            <p>Десять кварталов и четыре рычага. Однозначно правильного ответа здесь нет — есть последовательность, в которой рычаги применяют.</p>
+          </>
+        ),
+        setup: (e) => ({ inflation: 11.4, coreInflation: 10.6, inflationExpectations: 8.6, unemployment: 7.8,
+          gdp: e.potentialGdp * 0.972, keyRate: 7, cbCredibility: 42 }),
+        levers: ['keyRate', 'govSpending', 'transfers', 'vatRate'], maxQuarters: 10,
+        goal: (c) => c.economy.inflation <= 6.5 && c.economy.unemployment <= 6.5,
+        goalText: (c) => `Инфляция ${pctFmt(c.economy.inflation)}, безработица ${pctFmt(c.economy.unemployment)}, разрыв выпуска ${fmtSignedPct(c.economy.outputGap)}.`,
+        hint: 'Сначала цены, потом занятость: пока ожидания высоко, любой бюджетный стимул уходит в инфляцию, а не в выпуск. Сбейте инфляцию жёсткой ставкой, а когда ожидания опустятся — отпускайте её и поддерживайте спрос бюджетом.',
+      },
+      {
+        title: 'Экзамен сдан', isFinal: true, lever: null, runsQuarter: false,
+        body: () => (
+          <>
+            <p>Вы прошли курс целиком: ставка и расходы, бюджет и долг, курс и резервы, ожидания и доверие, риски и буферы, политический режим — и свели всё это вместе в одной задаче без правильного ответа.</p>
+            <p>Дальше два прикладных курса: за частного инвестора и за президента. Или сразу настоящая партия — там всё перечисленное работает одновременно.</p>
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    id: 'tr_exam', depth: 'deep', icon: GraduationCap, isExam: true, sandbox: 'trader',
+    title: 'Экзамен: частный инвестор',
+    summary: 'Теория по трём модулям и портфель на развороте ставки.',
+    pins: ['stockIndex', 'bondIndex', 'keyRate', 'inflation'],
+    steps: [
+      {
+        title: 'Экзамен',
+        lever: null, runsQuarter: false,
+        body: () => <p>Четыре вопроса и одна задача. В задаче важно не угадать направление рынка, а понять, какие инструменты в этих условиях работают.</p>,
+      },
+      {
+        kind: 'quiz', title: 'Теория: рынок, плечо, портфель',
+        questions: [
+          q('Ставка идёт вниз третий квартал подряд. Какой инструмент выигрывает больше всех?',
+            ['Длинные облигации', 'Денежный рынок', 'Короткие облигации', 'Депозит'], 0,
+            'Чем длиннее бумага, тем сильнее растёт её цена при снижении доходности. Денежный рынок и депозит, наоборот, начинают приносить меньше — они живут текущей ставкой, а не переоценкой.'),
+          q('Инфляция 14%, ваш портфель за год вырос на 9%. Что произошло с вашими деньгами?',
+            ['Покупательная способность упала примерно на 4%',
+              'Вы заработали 9%', 'Вы заработали 23%', 'Ничего не изменилось'], 0,
+            'Реальный результат — это номинальный за вычетом инфляции. Плюс на счёте и прибыль — разные вещи, и различать их важнее всего именно в те годы, когда цены растут быстрее всего.'),
+          q('Уровень обеспечения 135% при поддерживающем 120%. Что это значит?',
+            ['Падение позиций примерно на 11% приведёт к принудительному закрытию',
+              'У вас нет заёмных средств', 'Брокер закроет позиции прямо сейчас',
+              'Можно безопасно увеличить плечо вдвое'], 0,
+            'Запас до маржин-колла считается от текущего уровня к поддерживающему. Пятнадцать пунктов запаса при высокой волатильности — это одно неудачное движение рынка, а не комфортная подушка.'),
+          q('Что защищает портфель от девальвации национальной валюты?',
+            ['Золото и мировые акции', 'Длинные государственные облигации',
+              'Депозит в национальной валюте', 'Акции банков'], 0,
+            'Активы, чья цена выражена в чужой валюте или в сырье, при ослаблении национальной валюты дорожают в местных деньгах. Депозит и облигации в национальной валюте, наоборот, обесцениваются вместе с ней.'),
+        ],
+      },
+      {
+        kind: 'practice', title: 'Экзаменационная задача: разворот ставки',
+        goalLabel: 'Прирост капитала не меньше 12% за восемь кварталов',
+        body: () => (
+          <>
+            <p>Инфляция уже сбита, но ставка ещё высокая: бот-ЦБ будет снижать её по мере того, как ожидания опускаются. Это самый предсказуемый момент рынка — и самый упускаемый.</p>
+            <p>Восемь кварталов, цель — плюс 12%. Подумайте, что дорожает, когда ставка идёт вниз, и что перестаёт приносить.</p>
+          </>
+        ),
+        setup: () => ({ keyRate: 12, inflation: 4.6, coreInflation: 4.4, inflationExpectations: 5.0, cbCredibility: 58 }),
+        levers: [], maxQuarters: 8,
+        goal: (c) => c.value >= c.startValue * 1.12,
+        goalText: (c) => `Капитал ${fmtMln(c.value)} против ${fmtMln(c.startValue)} — ${fmtSigned1((c.value / Math.max(0.001, c.startValue) - 1) * 100)}%. Ставка ${pctFmt(c.economy.keyRate)}.`,
+        hint: 'Когда инфляция уже у цели, а ставка вдвое выше нейтральной, ЦБ будет смягчать политику. От снижения ставки выигрывают длинные облигации и акции — а денежный рынок с каждым снижением приносит всё меньше.',
+      },
+      {
+        title: 'Экзамен сдан', isFinal: true, lever: null, runsQuarter: false,
+        body: () => <p>Курс инвестора пройден: цена и позиция, плечо и обеспечение, портфель и бенчмарк. В настоящей партии добавятся случайные кризисы, опционы и казино — но правила те же.</p>,
+      },
+    ],
+  },
+  {
+    id: 'pr_exam', depth: 'deep', icon: GraduationCap, isExam: true, sandbox: 'president',
+    title: 'Экзамен: президент',
+    summary: 'Теория по трём модулям и страна, которую надо вытащить чужими руками.',
+    pins: ['politicalCapital', 'approval', 'politicalTension', 'inflation'],
+    steps: [
+      {
+        title: 'Экзамен',
+        lever: null, runsQuarter: false,
+        body: () => <p>Четыре вопроса и одна задача. В задаче у вас по-прежнему нет ни одного ползунка — только люди, указания и реформы.</p>,
+      },
+      {
+        kind: 'quiz', title: 'Теория: капитал, реформы, режим',
+        questions: [
+          q('Кризис, беспорядки, рейтинг 25. Что происходит с политическим капиталом?',
+            ['Он уходит в минус и быстро обнуляется', 'Он растёт: в кризис власть концентрируется',
+              'Он не меняется', 'Он превращается в рейтинг'], 0,
+            'В этом и состоит ловушка роли: рычаги отключаются ровно тогда, когда они нужнее всего. Копить капитал имеет смысл до кризиса, а не во время него.'),
+          q('Вы хотите поднять потенциальный ВВП. Что для этого нужно?',
+            ['Структурная реформа: они единственные двигают потенциал',
+              'Указание Минфину нарастить выплаты', 'Снижение ключевой ставки через указание ЦБ',
+              'Обращение к нации'], 0,
+            'Спрос можно двигать быстро, возможности экономики — нет. Труд, суды, дерегулирование, образование и инфраструктура и есть тот единственный канал, через который страна становится богаче, а не просто загруженнее.'),
+          q('ЦБ выполнил ваше указание снизить ставку. Что при этом произошло помимо ставки?',
+            ['Доверие к денежной политике снизилось: рынок увидел управляемый центробанк',
+              'Выросла согласованность и доверие', 'Ничего: указание — обычная процедура',
+              'Политическое напряжение выросло'], 0,
+            'Цена управляемости — сама управляемость. Исполненное политическое указание обесценивает будущие обещания ЦБ, и возвращать ожидания к якорю потом придётся более высокой ставкой, чем понадобилась бы.'),
+          q('Что отличает роспуск парламента указом от авторитарного поворота из-за кризиса?',
+            ['Указ обратно сам не отыгрывается — власть придётся возвращать отдельным решением',
+              'Указ не меняет политический режим', 'Указ не влияет на премию за риск',
+              'Указ снижает политическое напряжение навсегда'], 0,
+            'Чрезвычайное положение снимают, когда отпадают обстоятельства. Осознанный захват полномочий обстоятельствами не объясняется, и модель это различает: обратный ход возможен только как такое же осознанное решение.'),
+        ],
+      },
+      {
+        kind: 'practice', title: 'Экзаменационная задача: вытащить страну',
+        goalLabel: 'Рейтинг ≥ 48, инфляция ≤ 6.5%, хотя бы одна реформа, парламент работает',
+        body: () => (
+          <>
+            <p>Вам достаётся страна с двузначной инфляцией, высокой безработицей, низким рейтингом и Голубем во главе ЦБ. Десять кварталов.</p>
+            <p>Ни ставки, ни бюджета у вас нет. Есть кадры, указания, реформы, публичная политика — и соблазн решить всё указом о роспуске парламента, который здесь считается провалом задачи.</p>
+            <p>Вытащить экономику мало: за срок нужно ещё и оставить после себя хотя бы одну проведённую структурную реформу. Разбираться с ценами и при этом тратить капитал на то, что окупится после вас, — и есть работа президента.</p>
+          </>
+        ),
+        setup: () => ({ inflation: 10.4, coreInflation: 9.8, inflationExpectations: 8.4, unemployment: 7.6,
+          approval: 34, politicalTension: 44, keyRate: 6, cbTenure: 10, politicalCapital: 60 }),
+        personas: { cb: 'dove', mof: 'populist' },
+        levers: [], maxQuarters: 10,
+        goal: (c) => c.economy.approval >= 48 && c.economy.inflation <= 6.5
+          && Object.keys(c.economy.reforms || {}).length >= 1 && !c.economy.parliamentDissolved,
+        goalText: (c) => `Рейтинг ${Math.round(c.economy.approval)}, инфляция ${pctFmt(c.economy.inflation)}, реформ ${Object.keys(c.economy.reforms || {}).length}, капитал ${Math.round(c.economy.politicalCapital)}.`,
+        hint: 'Начните с ЦБ: с Голубем инфляцию не сбить, а без этого рейтинг не вырастет — реальные доходы съедаются ценами. Дальше рейтинг чинится тем же, чем чинится экономика, плюс обращением к нации, которое работает тем лучше, чем ближе цифры к обещаниям.',
+      },
+      {
+        title: 'Экзамен сдан', isFinal: true, lever: null, runsQuarter: false,
+        body: () => <p>Курс президента пройден: капитал и кадры, реформы и горизонт, режим и его цена. Осталось попробовать это в настоящей партии — там ещё случайные кризисы, выборы и бот, который вас не слушается.</p>,
+      },
+    ],
+  },
+];
+const EXAM_BY_ID = {};
+EXAM_MODULES.forEach((m) => { EXAM_BY_ID[m.id] = m; });
+
+// вставляем проверки перед финальным шагом каждого модуля
+TUTORIAL_MODULES.forEach((m) => {
+  const c = MODULE_CHECKS[m.id];
+  if (!c) return;
+  const fin = m.steps.pop();
+  if (c.quiz) m.steps.push(c.quiz);
+  if (c.practice) m.steps.push(c.practice);
+  m.steps.push(fin);
+});
+/* Модули курсов инвестора и президента написаны без финального шага: он
+   одинаковый по смыслу, поэтому дописывается здесь вместе с проверками. */
+[...TRADER_MODULES, ...PRESIDENT_MODULES].forEach((m) => {
+  const c = COURSE_CHECKS[m.id];
+  if (c && c.quiz) m.steps.push(c.quiz);
+  if (c && c.practice) m.steps.push(c.practice);
+  m.steps.push({
+    title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
+    body: () => <p>Теория и практика этого модуля пройдены. Следующий модуль откроется в программе курса.</p>,
+  });
+});
+
+/* ============================ ПРОГРАММА КУРСОВ ============================ */
+const TUTORIAL_COURSES = [
+  { id: 'policy', icon: Landmark, title: 'Экономическая политика',
+    lede: 'Базовый курс: как ставка, бюджет, курс валюты и ожидания связаны между собой. Семь модулей от поверхностного понимания к углублённому, каждый заканчивается тестом и практической задачей.',
+    modules: [...TUTORIAL_MODULES, EXAM_BY_ID.policy_exam] },
+  { id: 'trader', icon: TrendingUp, title: 'Частный инвестор',
+    lede: 'Прикладной курс для роли трейдера: цена и позиция, плечо и маржин-колл, портфель и бенчмарк. Практика идёт в настоящем терминале, с настоящими котировками и расчётом позиций.',
+    modules: [...TRADER_MODULES, EXAM_BY_ID.tr_exam] },
+  { id: 'president', icon: Crown, title: 'Президент',
+    lede: 'Прикладной курс для роли президента: политический капитал, кадры, указания ведомствам, структурные реформы и цена концентрации власти. Ни одного ползунка — только решения.',
+    modules: [...PRESIDENT_MODULES, EXAM_BY_ID.pr_exam] },
+];
+
+/* Экран модуля. Три песочницы под три курса: политическая (ползунки ЦБ/Минфина),
+   трейдерская (настоящий терминал и расчёт позиций) и президентская (панель
+   политического капитала с двумя ботами). Общее у них одно — «Завершить квартал»
+   двигает одну и ту же модель, поэтому практика в обучении считается ровно тем же
+   кодом, что и настоящая партия, а не отдельной облегчённой имитацией. */
+function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNext, onGoHub, onStartRealGame,
+  saved, onSaveProgress, completed }) {
+  const sandbox = module.sandbox || 'policy';
   const initEconomy = useMemo(() => makeInitialEconomy(), [module.id]);
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState([{ q: 0, label: `${quarterLabel(1)} (старт)`, ...initEconomy }]);
@@ -6650,59 +8403,230 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
   const [pendingImpulses, setPendingImpulses] = useState([]);
   const [eventCooldowns, setEventCooldowns] = useState({});
   const [quarterIndex, setQuarterIndex] = useState(1);
-  const [step, setStep] = useState(0);
+  /* Шаг и пройденные проверки хранятся снаружи: раньше выход «к программе курса»
+     на четвёртом шаге из пяти означал проходить модуль заново. Отдельно от step
+     живёт maxStep — докуда дошли: назад можно вернуться перечитать теорию, но
+     кварталы при этом заново не проигрываются. */
+  /* Докуда дошли (maxStep) и где стоим сейчас (step) — это разные величины, и
+     наружу надо отдавать обе. Раньше сохранялся только step: стоило на пройденном
+     модуле вернуться по содержанию с седьмого шага на четвёртый и выйти — и шаги
+     5–7 снова оказывались закрыты. Пройденный модуль открыт целиком независимо от
+     того, что лежит в сохранении. */
+  const [step, setStep] = useState(() => (saved && (saved.at ?? saved.step)) || 0);
+  const [maxStep, setMaxStep] = useState(() => (completed ? module.steps.length - 1
+    : Math.max((saved && saved.step) || 0, (saved && saved.at) || 0)));
   const [leverBaseline, setLeverBaseline] = useState(0);
+  const [passed, setPassed] = useState(() => (saved && saved.passed) || {});
+  const [lastNews, setLastNews] = useState([]);
+  const [showToc, setShowToc] = useState(false);
+  React.useEffect(() => { onSaveProgress(module.id, { step: maxStep, at: step, passed }); },
+    [module.id, step, maxStep, passed, onSaveProgress]);
+  const [practice, setPractice] = useState(null);
+  const [book, setBook] = useState(() => emptyBook());
+  const [cbPersonaId, setCbPersonaId] = useState('pragmatic');
+  const [mofPersonaId, setMofPersonaId] = useState('technocrat');
+  const [presActions, setPresActions] = useState([]);
+  const [presAppointCb, setPresAppointCb] = useState(null);
+  const [presAppointMof, setPresAppointMof] = useState(null);
+  const [presDirective, setPresDirective] = useState(null);
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
 
+  // музыка курса реагирует на состояние песочницы так же, как в настоящей партии
+  React.useEffect(() => { Audio.setMood(economy); },
+    [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.recessionRisk]);
+
   const cur = module.steps[step];
+  const kind = cur.kind || 'read';
   const lever = cur.lever ? LEVERS.find((l) => l.id === cur.lever) : null;
   const delta = lever ? decisions[cur.lever] - leverBaseline : 0;
-  const canAdvance = !lever || delta >= cur.minDelta - 1e-9;
+
+  const startEconomy = practice ? practice.anchor.economy : initEconomy;
+  const startBook = practice ? practice.anchor.book : book;
+  const ctx = { economy, history, book, decisions, start: startEconomy, startBook,
+    value: bookValue(book, economy, null), startValue: bookValue(startBook, startEconomy, null) };
+
+  /* Вход в практику фиксирует состояние песочницы: не получилось — откатываемся сюда.
+     step.setup задаёт исходную ситуацию задачи (перегрев, сорванные ожидания,
+     банковский стресс): без него условие задачи зависело бы от того, как именно
+     человек прошёл теоретические шаги, и одна и та же задача у разных людей была
+     бы то невыполнимой, то уже выполненной. */
+  React.useEffect(() => {
+    const st = module.steps[step];
+    if (st && (st.kind === 'practice')) {
+      let eco = economy; let hist = history; let dec = decisions;
+      if (st.personas) {
+        // характер ведомства — такое же условие задачи, как инфляция или долг:
+        // «сбить инфляцию при Голубе во главе ЦБ» без этого было бы не воспроизвести
+        if (st.personas.cb) setCbPersonaId(st.personas.cb);
+        if (st.personas.mof) setMofPersonaId(st.personas.mof);
+      }
+      if (st.setup) {
+        // setup может быть функцией: часть величин имеет смысл задавать только
+        // относительно текущего состояния (долг к ВВП — это доля от номинального
+        // ВВП, перегрев — превышение над потенциалом, а не абсолютное число)
+        const patch = typeof st.setup === 'function' ? st.setup(economy) : st.setup;
+        eco = { ...economy, ...patch };
+        hist = [...history.slice(0, -1), { ...history[history.length - 1], ...patch }];
+        dec = defaultDecisions(eco, decisions);
+        setEconomy(eco); setHistory(hist); setDecisions(dec); setPendingImpulses([]);
+      }
+      setPractice({ used: 0, anchor: { economy: eco, history: hist, decisions: dec,
+        pendingImpulses: st.setup ? [] : pendingImpulses, eventCooldowns, quarterIndex, book } });
+    } else setPractice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, module.id]);
+
+  const practicePassed = !!passed[step];
+  const practiceFailed = kind === 'practice' && !!practice && !practicePassed && practice.used >= cur.maxQuarters;
+  const canAdvance = kind === 'quiz' || kind === 'practice' ? !!passed[step]
+    : (!lever || delta >= cur.minDelta - 1e-9);
+
+  // один квартал модели; отличается только тем, кто принимает решения помимо игрока
+  const runQuarter = (extraDecisions) => {
+    let eff = { ...decisions, ...extraDecisions };
+    let cbAction = null; let mofAction = null;
+    if (sandbox !== 'policy') {
+      cbAction = botCentralBank(economy, cbPersonaId, 'easy');
+      mofAction = botFinanceMinistry(economy, mofPersonaId, 'easy');
+      eff = { ...eff, ...cbAction.decisions, ...mofAction.decisions };
+    }
+    if (sandbox === 'president') {
+      eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof };
+    }
+    const result = simulateQuarter({
+      economy, decisions: eff, pendingImpulses, eventCooldowns,
+      difficulty: 'easy', quarterIndex, stories: [],
+      botAction: cbAction, botActions: mofAction ? [mofAction] : [], noEvents: true,
+    });
+    const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
+    const newDecisions = defaultDecisions(result.economy, decisions);
+    let newBook = book;
+    if (sandbox === 'trader') {
+      const withBench = book.benchStart ? book : { ...book, benchStart: { stockIndex: economy.stockIndex,
+        bondIndex: economy.bondIndex, depositIndex: economy.depositIndex, priceLevel: economy.priceLevel } };
+      newBook = settleQuarter(withBench, result.economy);
+      setBook(newBook);
+    }
+    if (sandbox === 'president') {
+      if (presAppointCb) setCbPersonaId(presAppointCb);
+      if (presAppointMof) setMofPersonaId(presAppointMof);
+      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null);
+    }
+    setEconomy(result.economy);
+    setHistory(newHistory);
+    setPendingImpulses(result.pendingImpulses);
+    setEventCooldowns(result.eventCooldowns);
+    setQuarterIndex((q) => q + 1);
+    setDecisions(newDecisions);
+    // без ленты новостей в песочнице непонятно, что вообще произошло за квартал —
+    // согласился ли ЦБ, сработал ли указ, что случилось с ценами
+    setLastNews((result.newsEntries || []).slice(0, 5));
+    return { economy: result.economy, history: newHistory, decisions: newDecisions, book: newBook };
+  };
+
+  const runPracticeQuarter = () => {
+    Audio.play('stamp');
+    const out = runQuarter();
+    const used = (practice ? practice.used : 0) + 1;
+    setPractice((pr) => (pr ? { ...pr, used } : pr));
+    const nextCtx = { ...out, start: startEconomy, startBook,
+      value: bookValue(out.book, out.economy, null), startValue: ctx.startValue };
+    if (cur.goal(nextCtx)) { setPassed((s2) => ({ ...s2, [step]: true })); Audio.play('up'); }
+  };
+
+  const resetPractice = () => {
+    if (!practice) return;
+    Audio.play('click');
+    const a = practice.anchor;
+    setEconomy(a.economy); setHistory(a.history); setDecisions(a.decisions);
+    setPendingImpulses(a.pendingImpulses); setEventCooldowns(a.eventCooldowns);
+    setQuarterIndex(a.quarterIndex); setBook(a.book);
+    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null);
+    setPractice({ ...practice, used: 0 });
+  };
 
   const advance = () => {
     Audio.play('stamp');
+    // если вернулись перечитать теорию, «далее» просто листает вперёд по уже
+    // пройденному: кварталы второй раз не играются
+    if (step < maxStep) { setStep((v) => v + 1); return; }
     if (cur.runsQuarter) {
-      const result = simulateQuarter({
-        economy, decisions, pendingImpulses, eventCooldowns,
-        difficulty: 'easy', quarterIndex, stories: [],
-        botAction: null, botActions: [], noEvents: true,
-      });
-      const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
-      const newDecisions = defaultDecisions(result.economy, decisions);
-      setEconomy(result.economy);
-      setHistory(newHistory);
-      setPendingImpulses(result.pendingImpulses);
-      setEventCooldowns(result.eventCooldowns);
-      setQuarterIndex((q) => q + 1);
-      setDecisions(newDecisions);
+      const out = runQuarter();
       const nextStep = module.steps[step + 1];
-      if (nextStep && nextStep.lever) setLeverBaseline(newDecisions[nextStep.lever]);
+      if (nextStep && nextStep.lever) setLeverBaseline(out.decisions[nextStep.lever]);
     }
     const willReachFinal = step + 1 >= module.steps.length - 1;
     if (willReachFinal) onComplete();
-    setStep((s) => s + 1);
+    setStep((v) => v + 1); setMaxStep((v) => Math.max(v, step + 1));
   };
+  const goStep = (i) => { if (i <= maxStep) { Audio.play('tab'); setStep(i); setShowToc(false); } };
+
+  const onTrade = (id, amt, side, live) => setBook((b) => {
+    const nb = tradeBook(b, id, amt, side, economy, live);
+    const instr = INSTR_BY_ID[id];
+    return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
+  });
+
+  const leverIds = kind === 'practice' ? (cur.levers || []) : lever ? [cur.lever] : [];
+  // широкий макет нужен только терминалу: панель президента узкая, и на 1180 px
+  // рядом с ней оставалось бы полэкрана пустоты
+  const wide = kind === 'practice' && sandbox === 'trader';
 
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
-      <div style={{ maxWidth: 640, width: '100%' }}>
-        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
-          onClick={() => { Audio.play('click'); onExit(); }}>
-          ← К программе курса
-        </button>
+      <div style={{ maxWidth: wide ? 1180 : 640, width: '100%' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22 }}>
+          <button className="ems-btn" style={{ padding: '7px 12px', fontSize: 12 }}
+            onClick={() => { Audio.play('click'); onExit(); }}>
+            ← К программе курса
+          </button>
+          <div style={{ marginLeft: 'auto' }}><AudioControls /></div>
+        </div>
 
         <div key={step} className="ems-fade-in">
           <div className="ems-hero-eyebrow">{module.title}</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4, marginBottom: 6, gap: 10, flexWrap: 'wrap' }}>
             <span className="ems-serif" style={{ fontSize: 22, fontWeight: 600 }}>{cur.title}</span>
-            <span className="ems-hero-badge" style={{ marginTop: 0 }}>шаг {step + 1} из {module.steps.length}</span>
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {kind === 'quiz' && <span className="ems-hero-badge" style={{ marginTop: 0 }}>теория</span>}
+              {kind === 'practice' && <span className="ems-hero-badge" style={{ marginTop: 0 }}>практика</span>}
+              <button className="ems-btn" style={{ padding: '4px 10px', fontSize: 11 }}
+                title="Содержание модуля: можно вернуться и перечитать пройденное"
+                onClick={() => { Audio.play('tab'); setShowToc((v) => !v); }}>
+                шаг {step + 1} из {module.steps.length} <ChevronDown size={11} style={{ verticalAlign: -1 }} />
+              </button>
+            </span>
           </div>
         </div>
+        {/* Содержание модуля. Без него нельзя было вернуться и перечитать теорию —
+            особенно неудобно в тесте, где вопрос как раз про прочитанное. */}
+        {showToc && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 10, marginBottom: 12 }}>
+            {module.steps.map((st, i) => {
+              const reached = i <= maxStep;
+              const k = st.kind || 'read';
+              return (
+                <div key={st.title} role="button" tabIndex={reached ? 0 : -1}
+                  onClick={() => goStep(i)} onKeyDown={(e) => { if (e.key === 'Enter') goStep(i); }}
+                  className={reached ? 'ems-row-hover' : ''}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, fontSize: 11.5,
+                    cursor: reached ? 'pointer' : 'default', opacity: reached ? 1 : 0.45,
+                    background: i === step ? COLOR.goldDim : 'transparent' }}>
+                  <span className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, width: 16 }}>{i + 1}</span>
+                  <span style={{ flex: 1, color: i === step ? COLOR.goldSoft : COLOR.text }}>{st.title}</span>
+                  {k !== 'read' && <span style={{ fontSize: 9.5, color: COLOR.faint }}>{k === 'quiz' ? 'тест' : 'практика'}</span>}
+                  {passed[i] && <Check size={11} color={COLOR.teal} />}
+                  {!reached && <Lock size={10} color={COLOR.faint} />}
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="ems-hr" style={{ marginBottom: 18 }} />
 
         <div className="ems-kpi-strip" style={{ marginBottom: 18 }}>
-          {module.pins.map((key) => {
+          {(cur.pins || module.pins).map((key) => {
             const m = ALL_METRICS[key];
             const val = economy[key];
             return (
@@ -6713,21 +8637,88 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
           })}
         </div>
 
-        <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
-          {cur.body({ economy, history, decisions })}
-        </div>
+        {cur.body && (
+          <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
+            {cur.body({ economy, history, decisions, book, ctx })}
+          </div>
+        )}
 
-        {lever && (
+        {kind === 'quiz' && (
+          <QuizStep questions={cur.questions} passed={!!passed[step]}
+            onPass={() => setPassed((s2) => ({ ...s2, [step]: true }))} />
+        )}
+
+        {kind === 'practice' && (
+          <>
+            <PracticeStatus step={cur} ctx={ctx} quartersUsed={practice ? practice.used : 0}
+              passed={practicePassed} failed={practiceFailed} />
+            {sandbox === 'trader' && (
+              <div style={{ marginBottom: 14 }}>
+                <TradingTerminal economy={economy} prev={prevEcon} history={history} book={book} onTrade={onTrade} />
+              </div>
+            )}
+            {lastNews.length > 0 && (
+              <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
+                  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 7 }}>
+                  <Newspaper size={11} />Что произошло за квартал
+                </div>
+                {lastNews.map((n) => (
+                  <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
+                    borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
+                    <div style={{ color: COLOR.text }}>{n.headline}</div>
+                    <div style={{ color: COLOR.muted }}>{n.text}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sandbox === 'president' && (
+              <div style={{ marginBottom: 14 }}>
+                <PresidentPanel economy={economy} cooldowns={eventCooldowns}
+                  selected={presActions} setSelected={setPresActions}
+                  cbPersonaId={cbPersonaId} mofPersonaId={mofPersonaId}
+                  appointCb={presAppointCb} setAppointCb={setPresAppointCb}
+                  appointMof={presAppointMof} setAppointMof={setPresAppointMof}
+                  directive={presDirective} setDirective={setPresDirective} lastDirective={null}
+                  directiveStrength={1} setDirectiveStrength={() => {}} />
+              </div>
+            )}
+          </>
+        )}
+
+        {leverIds.length > 0 && (
           <div className="ems-panel" style={{ padding: 16, marginBottom: 22 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 9 }}>
-              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{lever.label}</span>
-              <span className="ems-mono" style={{ fontSize: 13 }}>{decisions[cur.lever].toFixed(2)}{lever.suffix}</span>
-            </div>
-            <input type="range" className="ems-slider" min={lever.min} max={lever.max} step={lever.step} value={decisions[cur.lever]}
-              onChange={(e) => { Audio.play('tick'); setDecisions((d) => ({ ...d, [cur.lever]: Number(e.target.value) })); }} />
-            <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint, marginTop: 8 }}>
-              Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
-            </div>
+            {leverIds.map((id) => {
+              const lv = scaleLever(LEVERS.find((l) => l.id === id), economy);
+              return (
+                <div key={id} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{lv.label}</span>
+                    <span className="ems-mono" style={{ fontSize: 13 }}>{decisions[id].toFixed(2)}{lv.suffix}</span>
+                  </div>
+                  <input type="range" className="ems-slider" min={lv.min} max={lv.max} step={lv.step} value={decisions[id]}
+                    disabled={practicePassed}
+                    onChange={(e) => { Audio.play('tick'); setDecisions((d) => ({ ...d, [id]: Number(e.target.value) })); }} />
+                </div>
+              );
+            })}
+            {lever && (
+              <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint }}>
+                Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
+              </div>
+            )}
+          </div>
+        )}
+
+        {kind === 'practice' && !practicePassed && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button className="ems-btn primary" disabled={practiceFailed} style={{ flex: 1, minWidth: 200, padding: '12px 0', fontSize: 13.5 }}
+              onClick={runPracticeQuarter}>
+              Завершить квартал
+            </button>
+            <button className="ems-btn" style={{ padding: '12px 18px', fontSize: 12.5 }} onClick={resetPractice}>
+              <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Начать задачу заново
+            </button>
           </div>
         )}
 
@@ -6749,42 +8740,91 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             </button>
           </div>
         ) : (
-          <button disabled={!canAdvance} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
-            onClick={advance}>
-            Далее
-          </button>
+          <>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="ems-btn" disabled={step === 0} style={{ padding: '13px 18px', fontSize: 13 }}
+                onClick={() => goStep(step - 1)}>← Назад</button>
+              <button disabled={!canAdvance} className="ems-btn primary" style={{ flex: 1, padding: '13px 0', fontSize: 14 }}
+                onClick={advance}>
+                {step < maxStep ? 'Далее →' : 'Далее'}
+              </button>
+            </div>
+            {!canAdvance && (kind === 'quiz' || kind === 'practice') && (
+              <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 7, textAlign: 'center' }}>
+                {kind === 'quiz' ? 'Следующий шаг откроется после верных ответов на все вопросы.'
+                  : 'Следующий шаг откроется, когда задача будет решена.'}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
+const MODULE_STATE_KEY = 'ems-module-progress';
+const loadModuleState = () => { try { return JSON.parse(localStorage.getItem(MODULE_STATE_KEY) || '{}'); } catch { return {}; } };
 function TutorialHub({ onBack, onStartRealGame }) {
   const [progress, setProgress] = useState(loadCourseProgress);
+  // незаконченные модули: на каком шаге остановились и что уже сдали
+  const [moduleState, setModuleState] = useState(loadModuleState);
+  const saveModuleProgress = useCallback((id, st) => {
+    setModuleState((prev) => {
+      if (prev[id] && prev[id].step === st.step && prev[id].at === st.at
+        && Object.keys(prev[id].passed || {}).length === Object.keys(st.passed).length) return prev;
+      const next = { ...prev, [id]: st };
+      try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
+      return next;
+    });
+  }, []);
+  /* Своя музыка курса: спокойные пьесы под чтение и разбор задач. Роль ставится
+     на весь хаб, поэтому переходы между модулями её не сбрасывают. */
+  React.useEffect(() => {
+    Audio.setRole('tutorial');
+    return () => { Audio.setRole(null); Audio.stopMusic(); };
+  }, []);
+  const [courseId, setCourseId] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
 
-  const isUnlocked = (i) => i === 0 || !!progress[TUTORIAL_MODULES[i - 1].id];
-  const doneCount = TUTORIAL_MODULES.filter((m) => progress[m.id]).length;
+  const course = TUTORIAL_COURSES.find((c) => c.id === courseId) || null;
+  const doneIn = (c) => c.modules.filter((m) => progress[m.id]).length;
 
-  const completeModule = (mod, idx) => {
+  const completeModule = (mod) => {
     const next = markModuleDone(mod.id);
     setProgress(next);
+    /* Пройденный модуль остаётся открытым целиком: его шаги не «сбрасываются», а
+       фиксируются пройденными — вернуться по содержанию к четвёртому шагу из семи
+       и выйти теперь не значит закрыть себе пятый, шестой и седьмой. */
+    setModuleState((prev) => {
+      const cur = prev[mod.id] || { passed: {} };
+      const full = { ...cur, step: mod.steps.length - 1, at: cur.at ?? (mod.steps.length - 1) };
+      const nextState = { ...prev, [mod.id]: full };
+      try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(nextState)); } catch { /* приватный режим */ }
+      return nextState;
+    });
     const achIds = ['tutorial_done'];
-    if (idx === TUTORIAL_MODULES.length - 1) achIds.push('tutorial_course_done');
+    // «Экономист» — за базовый курс целиком, включая экзамен; отдельные значки
+    // за прикладные курсы, чтобы у каждого была своя цель, а не общий счётчик
+    const policy = TUTORIAL_COURSES[0];
+    if (policy.modules.every((m) => next[m.id])) achIds.push('tutorial_course_done');
+    if (TUTORIAL_COURSES[1].modules.every((m) => next[m.id])) achIds.push('course_trader');
+    if (TUTORIAL_COURSES[2].modules.every((m) => next[m.id])) achIds.push('course_president');
+    if (TUTORIAL_COURSES.every((c) => c.modules.every((m) => next[m.id]))) achIds.push('course_all');
     pushAch(unlockAchievements(achIds));
   };
 
-  if (activeId) {
-    const idx = TUTORIAL_MODULES.findIndex((m) => m.id === activeId);
-    const mod = TUTORIAL_MODULES[idx];
-    const next = TUTORIAL_MODULES[idx + 1];
+  if (activeId && course) {
+    const idx = course.modules.findIndex((m) => m.id === activeId);
+    const mod = course.modules[idx];
+    const next = course.modules[idx + 1];
     return (
       <>
         <AchievementToast toast={achToast} leaving={achLeaving} />
-        <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === TUTORIAL_MODULES.length - 1}
+        <TutorialModuleScreen key={mod.id} module={mod} isLastModule={idx === course.modules.length - 1}
+          saved={moduleState[mod.id]} onSaveProgress={saveModuleProgress} completed={!!progress[mod.id]}
           onExit={() => setActiveId(null)}
-          onComplete={() => completeModule(mod, idx)}
+          onComplete={() => completeModule(mod)}
           onGoNext={next ? () => setActiveId(next.id) : null}
           onGoHub={() => setActiveId(null)}
           onStartRealGame={onStartRealGame}
@@ -6793,60 +8833,119 @@ function TutorialHub({ onBack, onStartRealGame }) {
     );
   }
 
+  const totalDone = TUTORIAL_COURSES.reduce((n, c) => n + doneIn(c), 0);
+  const totalModules = TUTORIAL_COURSES.reduce((n, c) => n + c.modules.length, 0);
+
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <AchievementToast toast={achToast} leaving={achLeaving} />
       <div style={{ maxWidth: 640, width: '100%' }}>
-        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
-          onClick={() => { Audio.play('click'); onBack(); }}>
-          ← Назад в меню
-        </button>
+        {/* В обучении музыки не было вообще и включить её было нечем — та же панель
+            саундтрека, что и в партии, только прижата к строке навигации. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22 }}>
+          <button className="ems-btn" style={{ padding: '7px 12px', fontSize: 12 }}
+            onClick={() => { Audio.play('click'); if (course) setCourseId(null); else onBack(); }}>
+            ← {course ? 'Ко всем курсам' : 'Назад в меню'}
+          </button>
+          <div style={{ marginLeft: 'auto' }}><AudioControls /></div>
+        </div>
 
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 30 }}>
-          <div className="ems-hero-eyebrow">Курс обучения</div>
-          <div className="ems-hero-title small">Как устроена экономика</div>
+          <div className="ems-hero-eyebrow">{course ? 'Программа курса' : 'Обучение'}</div>
+          <div className="ems-hero-title small">{course ? course.title : 'Три курса'}</div>
           <div className="ems-hero-rule" />
-          <span className="ems-hero-badge"><GraduationCap size={11} color={COLOR.gold} />Пройдено {doneCount} из {TUTORIAL_MODULES.length}</span>
+          <span className="ems-hero-badge">
+            <GraduationCap size={11} color={COLOR.gold} />
+            {course ? `Пройдено ${doneIn(course)} из ${course.modules.length}` : `Пройдено ${totalDone} из ${totalModules} модулей`}
+          </span>
           <div className="ems-hero-lede">
-            Шесть модулей от поверхностного понимания к углублённому: каждый открывает следующий. Можно проходить заново — прогресс не сбрасывается.
+            {course ? course.lede
+              : 'Каждый модуль заканчивается тестом на понимание и практической задачей в песочнице: дальше пускает только верный ответ и решённая задача. В конце каждого курса — экзамен. Прогресс сохраняется, проходить заново можно сколько угодно.'}
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-          {TUTORIAL_MODULES.map((mod, i) => {
-            const unlocked = isUnlocked(i);
-            const done = !!progress[mod.id];
-            const Icon = mod.icon;
-            const depthColor = mod.depth === 'deep' ? COLOR.rust : COLOR.teal;
-            const depthDim = mod.depth === 'deep' ? COLOR.rustDim : COLOR.tealDim;
-            return (
-              <div key={mod.id} onClick={() => { if (unlocked) { Audio.prime(); Audio.play('stamp'); setActiveId(mod.id); } }}
-                className="ems-card-btn ems-fade-in"
-                style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms`,
-                  opacity: unlocked ? 1 : 0.55, cursor: unlocked ? 'pointer' : 'not-allowed' }}
-                role="button" tabIndex={unlocked ? 0 : -1}
-                onKeyDown={(e) => { if (unlocked && (e.key === 'Enter' || e.key === ' ')) setActiveId(mod.id); }}>
-                <div className="ems-card-icon">
-                  {done ? <Check size={19} color={COLOR.teal} /> : unlocked ? <Icon size={19} color={COLOR.gold} /> : <Lock size={17} color={COLOR.faint} />}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{mod.title}</span>
-                    <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999,
-                      color: depthColor, border: `1px solid ${depthDim}`, background: depthDim }}>
-                      {mod.depth === 'deep' ? 'углублённо' : 'поверхностно'}
-                    </span>
+        {!course && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            {TUTORIAL_COURSES.map((c, i) => {
+              const Icon = c.icon;
+              const done = doneIn(c);
+              const complete = done === c.modules.length;
+              return (
+                <div key={c.id} onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); setCourseId(c.id); }}
+                  className="ems-card-btn ems-fade-in" style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms` }}
+                  role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setCourseId(c.id); }}>
+                  <div className="ems-card-icon">
+                    {complete ? <Check size={19} color={COLOR.teal} /> : <Icon size={19} color={COLOR.gold} />}
                   </div>
-                  <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
-                    {unlocked ? mod.summary : `Сначала пройдите «${TUTORIAL_MODULES[i - 1].title}»`}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{c.title}</span>
+                      <span className="ems-mono" style={{ fontSize: 10, color: complete ? COLOR.teal : COLOR.faint }}>
+                        {done} / {c.modules.length}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{c.lede}</div>
+                    <div style={{ marginTop: 7, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+                      <span style={{ display: 'block', width: `${done / c.modules.length * 100}%`, height: '100%',
+                        background: complete ? COLOR.teal : COLOR.gold }} />
+                    </div>
                   </div>
+                  <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
                 </div>
-                {unlocked && <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />}
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
+
+        {course && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+            {course.modules.map((mod, i) => {
+              const unlocked = i === 0 || !!progress[course.modules[i - 1].id];
+              const done = !!progress[mod.id];
+              const Icon = mod.icon;
+              const label = mod.isExam ? 'экзамен' : mod.depth === 'deep' ? 'углублённо' : 'поверхностно';
+              const depthColor = mod.isExam ? COLOR.gold : mod.depth === 'deep' ? COLOR.rust : COLOR.teal;
+              const depthDim = mod.isExam ? COLOR.goldDim : mod.depth === 'deep' ? COLOR.rustDim : COLOR.tealDim;
+              const nChecks = mod.steps.filter((st) => st.kind === 'quiz' || st.kind === 'practice').length;
+              return (
+                <div key={mod.id} onClick={() => { if (unlocked) { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); setActiveId(mod.id); } }}
+                  className="ems-card-btn ems-fade-in"
+                  style={{ padding: '17px 20px', animationDelay: `${80 + i * 45}ms`,
+                    opacity: unlocked ? 1 : 0.55, cursor: unlocked ? 'pointer' : 'not-allowed' }}
+                  role="button" tabIndex={unlocked ? 0 : -1}
+                  onKeyDown={(e) => { if (unlocked && (e.key === 'Enter' || e.key === ' ')) setActiveId(mod.id); }}>
+                  <div className="ems-card-icon">
+                    {done ? <Check size={19} color={COLOR.teal} /> : unlocked ? <Icon size={19} color={COLOR.gold} /> : <Lock size={17} color={COLOR.faint} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{mod.title}</span>
+                      <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999,
+                        color: depthColor, border: `1px solid ${depthDim}`, background: depthDim }}>{label}</span>
+                      {nChecks > 0 && (
+                        <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint }}>
+                          {mod.steps.some((st) => st.kind === 'quiz') ? 'тест' : ''}
+                          {mod.steps.some((st) => st.kind === 'quiz') && mod.steps.some((st) => st.kind === 'practice') ? ' + ' : ''}
+                          {mod.steps.some((st) => st.kind === 'practice') ? 'практика' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
+                      {unlocked ? mod.summary : `Сначала пройдите «${course.modules[i - 1].title}»`}
+                    </div>
+                    {unlocked && !done && moduleState[mod.id] && moduleState[mod.id].step > 0 && (
+                      <div style={{ fontSize: 10.5, color: COLOR.goldSoft, marginTop: 3 }}>
+                        Начат — продолжить с шага {(moduleState[mod.id].at ?? moduleState[mod.id].step) + 1} из {mod.steps.length}
+                      </div>
+                    )}
+                  </div>
+                  {unlocked && <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6861,13 +8960,22 @@ function SetupScreen({ onStart, onBack }) {
   React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : 'living_standards'); }, [role]);
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
+  /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
+     случайно, а президент включён — то есть игрок садится за пульт, не выбирая
+     заранее, с кем ему иметь дело. Все эти ручки никуда не делись, они просто не
+     вываливаются на человека, который хочет просто начать играть. */
+  const [mode, setMode] = useState('classic');
+  const [presEnabled, setPresEnabled] = useState(true);
+  const [presPersona, setPresPersona] = useState('random');
   const roleDef = ROLES.find((r) => r.id === role);
   const botRole = roleDef ? roleDef.botRole : null;
+  // президент-бот имеет смысл только там, где над игроком вообще кто-то стоит
+  const presAvailable = role === 'central_bank' || role === 'ministry_finance' || role === 'trader';
+  const custom = mode === 'custom';
   const personaBlocks = botRole === 'central_bank' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' }]
     : botRole === 'ministry_finance' ? [{ list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }]
       : botRole === 'both' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' },
         { list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }] : [];
-  const personas = personaBlocks.length ? personaBlocks : null;
 
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
@@ -6883,7 +8991,7 @@ function SetupScreen({ onStart, onBack }) {
           <div className="ems-hero-rule" />
           <span className="ems-hero-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear}</span>
           <div className="ems-hero-lede">
-            Экономика работает как цепочка причин: ставка → рыночные ставки → кредит → спрос → выпуск → занятость → зарплаты → цены → ожидания. Второй ветвью власти управляет бот со своим характером — и у него будут к вам требования.
+            Экономика работает как цепочка причин: ставка → рыночные ставки → кредит → спрос → выпуск → занятость → зарплаты → цены → ожидания. Второй ветвью власти управляет бот со своим характером, а над обоими ведомствами стоит президент — и требования будут у каждого из них.
           </div>
         </div>
 
@@ -6910,10 +9018,93 @@ function SetupScreen({ onStart, onBack }) {
           })}
         </div>
 
-        {personaBlocks.map((blk, bi) => (
+        {role && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>2</span>
+              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Как настраивать партию</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: custom ? 22 : 26 }}>
+              {[['classic', 'Классика', 'Характеры ведомств бросаются случайно, президент включён. Начать и разбираться по ходу — как и должно быть в первый раз.'],
+                ['custom', 'Настраиваемая', 'Выбрать характер каждого ведомства и президента — или отключить президента совсем.']].map(([id, title, note]) => {
+                const active = mode === id;
+                return (
+                  <div key={id} onClick={() => { Audio.play('click'); setMode(id); }} className="ems-card-btn"
+                    style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                      borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                    role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setMode(id); }}>
+                    {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                    <div className="ems-serif" style={{ fontSize: 13.5, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{title}</div>
+                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{note}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {custom && presAvailable && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }} />
+              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Президент</span>
+              <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11,
+                background: presEnabled ? COLOR.gold : COLOR.panelAlt, color: presEnabled ? COLOR.ink : COLOR.muted,
+                borderColor: presEnabled ? COLOR.gold : COLOR.border }}
+                onClick={() => { Audio.play('tick'); setPresEnabled((v) => !v); }}>
+                {presEnabled ? 'включён' : 'выключен'}
+              </button>
+            </div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.45 }}>
+              {role === 'trader'
+                ? 'Президент не управляет ставкой и бюджетом, но требует своего от обоих ведомств и тратит политический капитал на реформы — для рынка это ещё один источник новостей и риска.'
+                : 'Над вашим ведомством стоит президент: он выдвигает требования, назначает руководителя соседнего ведомства и тратит политический капитал на реформы и указы. Требования можно игнорировать — но администрация ведёт счёт, и на нуле терпения следует отставка.'}
+            </div>
+            {presEnabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: 22 }}>
+                {PRESIDENT_PERSONAS.map((p) => {
+                  const active = presPersona === p.id;
+                  return (
+                    <div key={p.id} onClick={() => { Audio.play('click'); setPresPersona(p.id); }} className="ems-card-btn"
+                      style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                        borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                      role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setPresPersona(p.id); }}>
+                      {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Crown size={14} color={active ? COLOR.gold : COLOR.muted} />
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>{p.name}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>{p.title}</div>
+                      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{p.desc}</div>
+                    </div>
+                  );
+                })}
+                {(() => {
+                  const active = presPersona === 'random';
+                  return (
+                    <div onClick={() => { Audio.play('click'); setPresPersona('random'); }} className="ems-card-btn"
+                      style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                        borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                      role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setPresPersona('random'); }}>
+                      {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
+                        <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
+                      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>С кем придётся работать, выяснится уже в должности.</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </>
+        )}
+
+        {custom && personaBlocks.map((blk, bi) => (
           <React.Fragment key={blk.title}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{bi === 0 ? 2 : ''}</span>
+              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{bi === 0 ? '' : ''}</span>
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{blk.title}</span>
             </div>
             <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10 }}>
@@ -6968,7 +9159,7 @@ function SetupScreen({ onStart, onBack }) {
             что роль: сводим в одну компактную секцию вместо двух полноразмерных
             сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{personas ? 3 : 2}</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
@@ -7004,9 +9195,14 @@ function SetupScreen({ onStart, onBack }) {
             if (!role) return;
             Audio.prime(); Audio.play('stamp'); Audio.startMusic();
             const pick = (list) => list[Math.floor(Math.random() * list.length)].id;
-            const finalCb = cbPersona === 'random' ? pick(CB_PERSONAS) : cbPersona;
-            const finalMof = mofPersona === 'random' ? pick(MOF_PERSONAS) : mofPersona;
-            onStart({ role, difficulty, goal, cbPersona: finalCb, mofPersona: finalMof });
+            const cbWanted = custom ? cbPersona : 'random';
+            const mofWanted = custom ? mofPersona : 'random';
+            const presWanted = custom ? presPersona : 'random';
+            onStart({ role, difficulty, goal,
+              cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
+              mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
+              president: { enabled: presAvailable && (custom ? presEnabled : true),
+                persona: presWanted === 'random' ? pick(PRESIDENT_PERSONAS) : presWanted } });
           }}>
           Принять полномочия
         </button>
@@ -7184,8 +9380,9 @@ function PinButton({ active, onClick }) {
 }
 
 /* Полоса требований: то, чего от вас прямо сейчас хотят */
-function DemandStrip({ botAction, botAction2, botRole, economy }) {
+function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   const items = [];
+  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1), color: COLOR.gold });
   if (economy.mandate) items.push({ who: 'Мандат власти', text: `Новое правительство пришло с задачей: ${MANDATE_LABEL[economy.mandate] || economy.mandate}.`, color: COLOR.gold });
   if (botAction && botAction.demand) items.push({ who: botRole === 'central_bank' ? 'Центральный банк' : 'Минфин', text: botAction.demand, color: COLOR.blue });
   // у президента оба ведомства — боты, и требования к нему идут с обеих сторон
@@ -7258,6 +9455,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   // информационную закрытость: он в кабинете и видит намерения ведомств
   const isPresident = setup.role === 'president';
   const bothBots = isTrader || isPresident;
+  /* Президент-бот стоит НАД ведомством игрока: он ничего не считает сам, но требует,
+     назначает и тратит политический капитал. За саму роль президента его, понятно,
+     нет, а у премьера игрок и так вся власть целиком. */
+  const presEnabled = !!(setup.president && setup.president.enabled)
+    && (setup.role === 'central_bank' || setup.role === 'ministry_finance' || setup.role === 'trader');
+  const playerBranch = setup.role === 'central_bank' ? 'monetary' : setup.role === 'ministry_finance' ? 'fiscal' : null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
 
   const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
@@ -7309,6 +9512,19 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [botAction2, setBotAction2] = useState(initial ? initial.botAction2 || null : null);
   const [portfolio, setPortfolio] = useState(initial && initial.portfolio ? initial.portfolio : emptyBook());
   const [cbPersonaId, setCbPersonaId] = useState(initial && initial.cbPersonaId ? initial.cbPersonaId : setup.cbPersona);
+  const [presPersonaId] = useState(() => (initial && initial.presPersonaId)
+    || ((setup.president && setup.president.persona) || 'technocrat'));
+  // план президента на ближайший квартал: требование должно быть видно ДО решений
+  const [presidentPlan, setPresidentPlan] = useState(() => (presEnabled
+    ? botPresident(initEconomy, presPersonaId, setup.difficulty,
+      { playerBranch, cooldowns: {}, cbPersonaId: setup.cbPersona, mofPersonaId: setup.mofPersona })
+    : null));
+  const [presidentLast, setPresidentLast] = useState(initial ? initial.presidentLast || null : null);
+  // сколько кварталов назад президент требовал в прошлый раз и чего именно —
+  // чтобы он не повторял одно и то же слово в слово каждый квартал
+  const [presDirMemo, setPresDirMemo] = useState({ lastReqId: null, ago: 99 });
+  // решения на начало квартала — по ним проверяется, выполнено ли требование
+  const [decisionsBaseline, setDecisionsBaseline] = useState(() => defaultDecisions(initEconomy));
   const [mofPersonaId, setMofPersonaId] = useState(initial && initial.mofPersonaId ? initial.mofPersonaId : setup.mofPersona);
   // предвыборные обещания — у премьера и президента: у них нет бота-оппонента
   // с требованиями, и это единственные роли без встречного давления по политике
@@ -7319,6 +9535,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
+  const [presDirStrength, setPresDirStrength] = useState(1);
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -7359,7 +9576,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
-    portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective });
+    portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
+    presPersonaId, presidentLast });
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -7399,7 +9617,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (isPresident) {
       eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof };
       if (presDirective) {
-        dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff);
+        dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff, presDirStrength);
       }
       if (dirResult) {
         eff = { ...dirResult.decisions, presidentExtraSpend: PRES_DIRECTIVE_COST };
@@ -7412,6 +9630,43 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         if (dirResult.tension) {
           extraImpulses.push(makeImpulse('tensionPush', dirResult.tension,
             'Ведомство отклонило указание президента', 'fast', difficulty, 'other'));
+        }
+      }
+    }
+    /* Президент-бот. Его собственные решения (указы, реформы, назначения) движок
+       разбирает тем же кодом, что и решения игрока-президента; указание ведомству
+       игрока проверяется здесь, потому что «выполнено» — это про то, что игрок
+       сделал с ползунками, а не про то, что получилось в экономике. */
+    let presDirResult = null;
+    let directiveMet = null;
+    if (presEnabled && presidentPlan) {
+      const presPersona = presidentPlan.persona;
+      eff = { ...eff, presidentActive: true, presidentActions: presidentPlan.actions,
+        presidentPatience: presPersona.patience };
+      if (presidentPlan.appointBot) {
+        const ap = presidentPlan.appointBot;
+        eff = { ...eff, [ap.kind === 'central_bank' ? 'appointCb' : 'appointMof']: ap.persona };
+      }
+      const dir = presidentPlan.directive;
+      if (dir && dir.toPlayer) {
+        directiveMet = directiveProgress(dir.reqId, decisionsBaseline, decisions, economy);
+        // требование стоит президенту капитала — иначе давить можно бесконечно
+        eff = { ...eff, presidentDirectiveMet: directiveMet, presidentExtraSpend: PRES_DIRECTIVE_COST };
+      } else if (dir) {
+        presDirResult = processPresidentialDirective(dir.reqId, economy, cbPersonaId, mofPersonaId, eff);
+        if (presDirResult) {
+          eff = { ...presDirResult.decisions, presidentActive: true,
+            presidentActions: presidentPlan.actions, presidentPatience: presPersona.patience,
+            presidentExtraSpend: PRES_DIRECTIVE_COST,
+            ...(presidentPlan.appointBot
+              ? { [presidentPlan.appointBot.kind === 'central_bank' ? 'appointCb' : 'appointMof']: presidentPlan.appointBot.persona }
+              : {}) };
+          if (presDirResult.toCb) cbAction = redescribeCbAction(economy, cbPersonaId, eff);
+          else mofAction = redescribeMofAction(economy, mofPersonaId, eff);
+          if (presDirResult.credibilityHit) {
+            extraImpulses.push(makeImpulse('cbCredibilityPush', presDirResult.credibilityHit,
+              'Центральный банк исполнил указание президента', 'fast', difficulty, 'other'));
+          }
         }
       }
     }
@@ -7434,6 +9689,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6
       - (eff.vatRate - economy.vatRate + eff.incomeTaxRate - economy.incomeTaxRate) * 0.3, -1, 1);
 
+    // обещания считает движок в момент голосования: от них зависит доля голосов,
+    // а не только строчка в новостях постфактум
+    if (promises) eff = { ...eff, promises };
     const result = simulateQuarter({
       economy: { ...economy, cbStance, mofStance,
         policyCoordination: clamp(economy.policyCoordination + (reqResult ? reqResult.coordination : 0), 0, 100) },
@@ -7446,7 +9704,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       const who = dirResult.toCb ? 'ПРЕЗИДЕНТ → ЦБ' : 'ПРЕЗИДЕНТ → МИНФИН';
       result.newsEntries.unshift({ id: `dir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${dirResult.req.label.toUpperCase()} — ${dirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : dirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
-        text: `«${dirResult.req.ask}» ${dirResult.text}${dirResult.credibilityHit
+        text: `«${dirResult.ask}» ${dirResult.text}${dirResult.credibilityHit
           ? ' Исполненное политическое указание ЦБ рынок читает как потерю независимости — доверие к денежной политике снижается.'
           : dirResult.status === 'rejected' ? ' Публичный отказ ведомства добавляет напряжения в отношения ветвей власти.' : ''}` });
       setLastDirective({ status: dirResult.status, text: dirResult.text });
@@ -7455,7 +9713,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       const who = botRole === 'central_bank' ? 'ЦБ → МИНФИН' : 'МИНФИН → ЦБ';
       result.newsEntries.unshift({ id: `req${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${reqResult.req.label.toUpperCase()} — ${reqResult.status === 'accepted' ? 'СОГЛАСОВАНО' : reqResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
-        text: `«${reqResult.req.ask}» ${reqResult.text} Согласованность политики ${reqResult.coordination > 0 ? 'выросла' : 'снизилась'} на ${Math.abs(reqResult.coordination)} пункта.` });
+        text: `«${reqResult.ask}» ${reqResult.text} Согласованность политики ${reqResult.coordination > 0 ? 'выросла' : 'снизилась'} на ${Math.abs(reqResult.coordination)} пункта.` });
       setLastResponse({ status: reqResult.status, text: reqResult.text });
       setPendingRequest(null);
     }
@@ -7483,12 +9741,60 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       quarterIndex, economy: result.economy, history: newHistory, lastEvents: traderEvents,
       rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(), role: setup.role,
     })));
-    const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal });
+    const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal,
+      presidentActive: presEnabled });
     if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
     setPendingImpulses(result.pendingImpulses);
     setEventCooldowns(result.eventCooldowns);
     setLastReasons(result.reasons);
     setLastReport(result.report);
+    if (presEnabled && presidentPlan) {
+      const dir = presidentPlan.directive;
+      if (dir && dir.toPlayer) {
+        const verdict = directiveVerdict(directiveMet);
+        const pct = Number.isFinite(directiveMet) ? Math.round(directiveMet * 100) : null;
+        const word = verdict === 'met' ? 'ВЫПОЛНЕНО' : verdict === 'partial' ? 'ВЫПОЛНЕНО ЧАСТИЧНО'
+          : verdict === 'ignored' ? 'ПРОИГНОРИРОВАНО' : 'БЕЗ ОТВЕТА';
+        result.newsEntries.unshift({ id: `presdir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+          headline: `${presDirMemo.lastReqId === dir.reqId
+            ? `ПРЕЗИДЕНТ ВНОВЬ ТРЕБУЕТ ОТ ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИНА'}`
+            : `ПРЕЗИДЕНТ → ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИН'}`}: ${dir.req.label.toUpperCase()} — ${word}`,
+          text: `«${dir.ask || askText(dir.req, 1)}» ${verdict === 'met'
+            ? 'Ведомство пошло навстречу — администрация это отметила.'
+            : verdict === 'partial'
+              ? `Ведомство сделало примерно ${pct}% запрошенного. В администрации это считают полумерой.`
+              : verdict === 'ignored'
+                ? 'Ведомство поступило по-своему. В администрации президента это запомнят.'
+                : 'Требование осталось без внятного ответа.'}` });
+      } else if (presDirResult) {
+        result.newsEntries.unshift({ id: `presdir${quarterIndex}`, cat: 'gov', priority: 8, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+          headline: `ПРЕЗИДЕНТ → ${presDirResult.toCb ? 'ЦБ' : 'МИНФИН'}: ${presDirResult.req.label.toUpperCase()} — ${presDirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : presDirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
+          text: `«${presDirResult.ask}» ${presDirResult.text}` });
+      }
+      if (presidentPlan.appointBot) {
+        const ap = presidentPlan.appointBot;
+        if (ap.kind === 'central_bank') setCbPersonaId(ap.persona); else setMofPersonaId(ap.persona);
+      }
+      // в тихий квартал не затираем прошлую запись: иначе строка «в прошлый раз»
+      // мигает и исчезает, хотя требование как раз и остаётся в силе
+      if (presidentPlan.directive || presidentPlan.actions.length) {
+        setPresidentLast({ directiveMet, label: presidentPlan.directive ? presidentPlan.directive.req.label : null,
+          toPlayer: !!(presidentPlan.directive && presidentPlan.directive.toPlayer),
+          // указание соседнему ведомству тоже имеет исход — ответ бота, а не «передано»
+          status: presDirResult ? presDirResult.status : null,
+          actions: presidentPlan.actions.map((id) => (PRES_BY_ID[id] || {}).label).filter(Boolean) });
+      }
+      const nextCb = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'central_bank' ? presidentPlan.appointBot.persona : cbPersonaId;
+      const nextMof = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'ministry_finance' ? presidentPlan.appointBot.persona : mofPersonaId;
+      const memo = presidentPlan.directive
+        ? { lastReqId: presidentPlan.directive.reqId, ago: 0 }
+        : { lastReqId: presDirMemo.lastReqId, ago: Math.min(99, presDirMemo.ago + 1) };
+      setPresDirMemo(memo);
+      setPresidentPlan(botPresident(result.economy, presPersonaId, difficulty,
+        { playerBranch, cooldowns: result.eventCooldowns, cbPersonaId: nextCb, mofPersonaId: nextMof,
+          lastReqId: memo.lastReqId, lastDirectiveAgo: memo.ago }));
+    }
+    setDecisionsBaseline(defaultDecisions(result.economy, decisions));
     setBotAction(action);
     setBotAction2(bothBots ? mofAction : null);
     if (isPresident) {
@@ -7499,7 +9805,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       // «Своими руками» — именно вернуть парламент, распущенный указом, а не тот,
       // который распустил кризис: decreeRule до квартала как раз это и означает
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
-      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null);
+      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
@@ -7532,10 +9838,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     // формально срок ещё не закончился, пока не наступил сам день голосования
     if (promises && er) {
       const kept = promises.map((p) => evaluatePromise(p, result.economy).met);
-      const keptCount = kept.filter(Boolean).length;
+      const keptCount = Number.isFinite(result.economy.promisesKept) ? result.economy.promisesKept : kept.filter(Boolean).length;
+      const broken = promises.length - keptCount;
       result.newsEntries.unshift({ id: `promises${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `ОБЕЩАНИЯ У УРНЫ: СДЕРЖАНО ${keptCount} ИЗ ${promises.length}`,
-        text: promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ') + '.' });
+        text: `${promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ')}. ${
+          keptCount > broken ? `Это добавило власти примерно ${fmt1((keptCount - broken) * 2.2)} п.п. голосов.`
+            : keptCount < broken ? `Это стоило власти примерно ${fmt1((broken - keptCount) * 2.2)} п.п. голосов.`
+              : 'На итог голосования обещания в сумме не повлияли.'}` });
       if (keptCount === promises.length) pushAch(unlockAchievements(['promises_kept']));
       if (er === 'incumbent') setPromises(pickPromises(result.economy));
     }
@@ -7553,7 +9863,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setBusy(false);
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
-    presActions, presAppointCb, presAppointMof, presDirective]);
+    presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -7716,7 +10027,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {!isTrader && <DemandStrip botAction={botAction} botAction2={isPresident ? botAction2 : null}
-          botRole={isPresident ? 'central_bank' : botRole} economy={economy} />}
+          botRole={isPresident ? 'central_bank' : botRole} economy={economy}
+          president={presEnabled && presidentPlan && presidentPlan.directive && presidentPlan.directive.toPlayer ? presidentPlan : null} />}
         <RegimeBanner economy={economy} />
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
@@ -7769,7 +10081,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 cbPersonaId={cbPersonaId} mofPersonaId={mofPersonaId}
                 appointCb={presAppointCb} setAppointCb={setPresAppointCb}
                 appointMof={presAppointMof} setAppointMof={setPresAppointMof}
-                directive={presDirective} setDirective={setPresDirective} lastDirective={lastDirective} />
+                directive={presDirective} setDirective={setPresDirective} lastDirective={lastDirective}
+                directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
               <div className="ems-panel" style={{ padding: 12, fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>
                 Приоритет: <b style={{ color: COLOR.text }}>{goalDef.label}</b>. Ставку ведёт бот-ЦБ, бюджет — бот-Минфин;
                 их решения и заявления ниже. Вы влияете на экономику только через людей, которых назначаете, указания,
@@ -7889,6 +10202,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
+          {presEnabled && <PresidentWatchPanel economy={economy} plan={presidentPlan} last={presidentLast} branch={playerBranch} />}
         </div>
 
         {/* ЦЕНТР */}
