@@ -7,7 +7,7 @@ import {
   ROLES, PRESIDENT_ACTIONS, PRES_BY_ID, reformShare, politicalCapitalRegen,
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
-  askText, REQUESTS,
+  askText, REQUESTS, militaryCoupRisk,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -734,7 +734,7 @@ describe('политический капитал', () => {
     });
   });
 });
-const PRES_GROUPS = ['public', 'reform', 'power'];
+const PRES_GROUPS = ['public', 'reform', 'power', 'war'];
 
 describe('президент как третье лицо у ЦБ и Минфина', () => {
   it('характеры описаны полностью и различаются', () => {
@@ -987,14 +987,16 @@ describe('лестница режимов: тоталитаризм как ре�
   it('указ о полном контроле доступен только из авторитарного режима', () => {
     const act = PRES_BY_ID.seize_control;
     expect(act).toBeTruthy();
-    expect(act.requires({ politicalRegime: 'democracy', parliamentDissolved: false })).toBe(false);
-    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: false })).toBe(false);
-    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: true })).toBe(true);
+    expect(act.requires({ politicalRegime: 'democracy', parliamentDissolved: false, warQuartersLeft: 3 })).toBe(false);
+    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: false, warQuartersLeft: 3 })).toBe(false);
+    // с этого обновления — только во время войны
+    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: true, warQuartersLeft: 0 })).toBe(false);
+    expect(act.requires({ politicalRegime: 'authoritarian', parliamentDissolved: true, warQuartersLeft: 3 })).toBe(true);
   });
 
   it('указ переводит страну в тоталитарный режим и стоит капитала', () => {
     const s = { ...makeInitialEconomy(), politicalRegime: 'authoritarian', parliamentDissolved: true,
-      decreeRule: true, politicalCapital: 90, politicalTension: 40 };
+      decreeRule: true, politicalCapital: 90, politicalTension: 40, warQuartersLeft: 4, warType: 'offensive', warByChoice: true };
     const out = simulateQuarter({ economy: s,
       decisions: { ...defaultDecisions(s), presidentActive: true, presidentActions: ['seize_control'] },
       pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
@@ -1005,7 +1007,7 @@ describe('лестница режимов: тоталитаризм как ре�
 
   it('без капитала указ не проходит', () => {
     const s = { ...makeInitialEconomy(), politicalRegime: 'authoritarian', parliamentDissolved: true,
-      decreeRule: true, politicalCapital: 10, politicalTension: 30 };
+      decreeRule: true, politicalCapital: 10, politicalTension: 30, warQuartersLeft: 4, warType: 'offensive' };
     const out = simulateQuarter({ economy: s,
       decisions: { ...defaultDecisions(s), presidentActive: true, presidentActions: ['seize_control'] },
       pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
@@ -1090,5 +1092,93 @@ describe('военный переворот как единственный вы
       expect(r.economy.politicalRegime).toBe('authoritarian');
       expect(r.economy.powerLost).toBe(null);
     } finally { spy.mockRestore(); }
+  });
+});
+
+describe('война как решение президента', () => {
+  const warState = (patch) => ({ ...makeInitialEconomy(), politicalCapital: 95, ...patch });
+  const quarter = (economy, actions) => simulateQuarter({ economy,
+    decisions: { ...defaultDecisions(economy), presidentActive: true, presidentActions: actions },
+    pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 3, stories: [], noEvents: true });
+
+  it('указ начинает наступательную войну и помечает её как собственную', () => {
+    const r = quarter(warState(), ['war_start']);
+    expect(r.economy.warQuartersLeft).toBeGreaterThan(0);
+    expect(r.economy.warType).toBe('offensive');
+    expect(r.economy.warByChoice).toBe(true);
+    expect(r.economy.regime).toBe('war');
+    assertFiniteEconomy(r.economy, 'после объявления войны');
+  });
+
+  it('своя война подаётся не как кризис, а как решение', () => {
+    const r = quarter(warState(), ['war_start']);
+    const start = r.newsEntries.find((n) => /ВОЕННОЕ ПОЛОЖЕНИЕ|ВОЕННОЙ ОПЕРАЦИИ/.test(n.headline));
+    expect(start).toBeTruthy();
+    // ни одна новость о начале войны не идёт под рубрикой кризиса
+    expect(r.newsEntries.filter((n) => n.cat === 'crisis' && /ВОЙН/.test(n.headline))).toHaveLength(0);
+  });
+
+  it('сплочение вокруг флага поднимает рейтинг, а мобилизация его обваливает', () => {
+    const started = quarter(warState({ approval: 55 }), ['war_start']);
+    expect(started.economy.approval).toBeGreaterThan(55);
+    const mob = quarter({ ...started.economy, politicalCapital: 95 }, ['mobilization']);
+    expect(mob.economy.approval).toBeLessThan(started.economy.approval);
+    expect(mob.economy.politicalTension).toBeGreaterThan(started.economy.politicalTension);
+    expect(mob.economy.warQuartersLeft).toBeGreaterThan(started.economy.warQuartersLeft - 1);
+  });
+
+  it('мир заканчивает войну досрочно', () => {
+    const started = quarter(warState(), ['war_start']);
+    const peace = quarter({ ...started.economy, politicalCapital: 95 }, ['peace_deal']);
+    expect(peace.economy.warQuartersLeft).toBe(0);
+    expect(peace.economy.regime).not.toBe('war');
+    assertFiniteEconomy(peace.economy, 'после мира');
+  });
+
+  it('полный контроль над институтами доступен только во время войны', () => {
+    const act = PRES_BY_ID.seize_control;
+    const base = { politicalRegime: 'authoritarian', parliamentDissolved: true };
+    expect(act.requires({ ...base, warQuartersLeft: 0 })).toBe(false);
+    expect(act.requires({ ...base, warQuartersLeft: 3 })).toBe(true);
+  });
+});
+
+describe('переворот случается там, где есть недовольство', () => {
+  it('спокойная популярная власть не рискует ничем, даже растратив капитал', () => {
+    const calm = { politicalTension: 12, approval: 53, unemployment: 5, inflation: 4,
+      nairu: 5, activeCrises: [], politicalCapital: 0 };
+    expect(militaryCoupRisk(calm)).toBe(0);
+  });
+
+  it('разваливающаяся страна рискует всерьёз', () => {
+    const bad = { politicalTension: 75, approval: 20, unemployment: 13, inflation: 25,
+      nairu: 5, activeCrises: ['banking', 'currency'], politicalCapital: 0, unrestActive: true };
+    expect(militaryCoupRisk(bad)).toBeGreaterThan(0.15);
+  });
+
+  it('пустая казна только умножает уже существующее недовольство', () => {
+    const base = { politicalTension: 60, approval: 40, unemployment: 7, inflation: 9, nairu: 5, activeCrises: [] };
+    const rich = militaryCoupRisk({ ...base, politicalCapital: 80 });
+    const broke = militaryCoupRisk({ ...base, politicalCapital: 0 });
+    expect(rich).toBeGreaterThan(0);
+    expect(broke).toBeGreaterThan(rich);
+    expect(broke).toBeLessThan(rich * 2);
+  });
+});
+
+describe('одно решение по ставке — одна новость', () => {
+  it('сводка ЦБ и общая новость о шаге не печатаются вместе', () => {
+    let economy = { ...makeInitialEconomy(), inflation: 9, coreInflation: 8.4, inflationExpectations: 7.5 };
+    let decisions = defaultDecisions(economy);
+    let stories = []; let pendingImpulses = []; let eventCooldowns = {};
+    for (let q = 0; q < 6; q++) {
+      const act = botCentralBank(economy, 'hawk', 'medium');
+      const r = simulateQuarter({ economy, decisions: { ...decisions, ...act.decisions }, pendingImpulses,
+        eventCooldowns, difficulty: 'medium', quarterIndex: q + 1, stories, botAction: act, noEvents: true });
+      const rateNews = r.newsEntries.filter((n) => /СТАВК/.test(n.headline) && n.cat === 'cb');
+      expect(rateNews.length, `квартал ${q + 1}: ${JSON.stringify(rateNews.map((n) => n.headline))}`).toBeLessThanOrEqual(1);
+      economy = r.economy; decisions = defaultDecisions(economy, decisions);
+      stories = r.stories; pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
+    }
   });
 });

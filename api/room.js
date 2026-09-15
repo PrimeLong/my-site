@@ -114,6 +114,7 @@ function freshRoom(opts) {
       : { persona: pickPersona(opts.president && opts.president.persona, PRES_PERSONA_IDS, PRESIDENT_PERSONAS) },
     presidentPlan: null,
     presidentLast: null,
+    presidentDemand: null,
     presMemo: { lastReqId: null, ago: 99 },
     seats: zip(null),
     names: zip(null),
@@ -177,6 +178,9 @@ const publicView = (room) => {
   const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
   return {
     id: room.id, version: room.version, difficulty: room.difficulty, mode: room.mode === 'trader' ? 'trader' : 'policy',
+    // время сервера: таймер квартала считается от него, а часы на устройствах
+    // расходятся на минуты — и у двух игроков были разные цифры на экране
+    now: Date.now(),
     quarterIndex: room.quarterIndex, quarterLabel: quarterLabel(room.quarterIndex), quarterStartedAt: room.quarterStartedAt,
     economy: room.economy, history: room.history, news: room.news.slice(0, 120),
     report: room.report, reasons: room.reasons, stories: room.stories,
@@ -192,7 +196,7 @@ const publicView = (room) => {
     presCooldowns: Object.fromEntries(Object.entries(room.eventCooldowns || {}).filter(([k]) => k.startsWith('pres:'))),
     president: room.president
       ? { ...room.president, human: !!room.seats.president, plan: room.seats.president ? null : (room.presidentPlan || null),
-        last: room.presidentLast || null }
+        demand: room.seats.president ? (room.presidentDemand || null) : null, last: room.presidentLast || null }
       : null,
     chat: room.chat || [],
     portfolioValues: room.portfolioValues || {},
@@ -230,24 +234,38 @@ function resolveQuarter(room) {
      исполнить (processPresidentialDirective). Всё остальное — указы, реформы,
      назначения — считает движок теми же полями решений, что и в одиночной игре. */
   /* За президента может сидеть человек. Тогда план на квартал — это его решения,
-     а не решения бота: тот же набор полей, только приходит из submit, а не из
-     botPresident. Всё, что ниже, дальше не различает, кто именно их принял. */
+     а не решения бота: тот же набор полей, только приходит из submit.
+
+     Указание при этом живёт квартал. Раньше оно выдвигалось и проверялось в одном
+     и том же квартале: ведомство физически не могло его увидеть — решения идут
+     одновременно, — и в следующем же квартале приходила новость «ПРОИГНОРИРОВАНО».
+     Теперь требование, выданное в этом квартале, публикуется сразу, а исполнение
+     сверяется по решениям СЛЕДУЮЩЕГО. У бота-президента такая же фора и была:
+     его план считается до квартала и показан игроку заранее. */
+  const humanSeat = !!room.seats.president;
   const humanPres = subs.president && subs.president.president ? subs.president.president : null;
-  const plan = humanPres
-    ? { human: true, actions: humanPres.actions, appointBot: null,
-      directive: humanPres.directive ? (() => {
-        const req = REQUESTS.find((r) => r.id === humanPres.directive);
-        return req ? { reqId: req.id, branch: req.from === 'ministry_finance' ? 'monetary' : 'fiscal',
-          label: req.label, ask: askText(req, humanPres.directiveStrength), strength: humanPres.directiveStrength } : null;
-      })() : null }
+  const demandOf = (reqId, strength) => {
+    const req = REQUESTS.find((r) => r.id === reqId);
+    if (!req) return null;
+    return { reqId: req.id, branch: req.from === 'ministry_finance' ? 'monetary' : 'fiscal',
+      label: req.label, ask: askText(req, strength), strength };
+  };
+  const activeDemand = humanSeat ? (room.presidentDemand || null) : null;
+  const newDemand = humanSeat && humanPres && humanPres.directive
+    ? demandOf(humanPres.directive, humanPres.directiveStrength) : null;
+  const plan = humanSeat
+    ? { human: true, actions: humanPres ? humanPres.actions : [], appointBot: null, directive: activeDemand }
     : (room.president ? room.presidentPlan : null);
   const extraImpulses = [...(room.pendingImpulses || [])];
   let presDirResult = null;
   let directiveMet = null;
+  // новое требование оплачивается сразу, исполнение проверяется бесплатно
+  if (newDemand) eff = { ...eff, presidentExtraSpend: PRES_DIRECTIVE_COST };
   if (plan) {
-    const persona = humanPres ? null : getPresPersona(room.president.persona);
+    const persona = humanSeat ? null : getPresPersona(room.president.persona);
     eff = { ...eff, presidentActive: true, presidentActions: plan.actions,
-      presidentPatience: persona ? persona.patience : 1 };
+      presidentPatience: persona ? persona.patience : 1,
+      presidentExtraSpend: eff.presidentExtraSpend || 0 };
     if (humanPres) {
       if (humanPres.appointCb) eff.appointCb = humanPres.appointCb;
       if (humanPres.appointMof) eff.appointMof = humanPres.appointMof;
@@ -260,11 +278,11 @@ function resolveQuarter(room) {
       if (live) {
         directiveMet = directiveProgress(dir.reqId, room.decisions,
           seat === 'central_bank' ? cbDecisions : mofDecisions, room.economy, dir.strength);
-        eff = { ...eff, presidentDirectiveMet: directiveMet, presidentExtraSpend: PRES_DIRECTIVE_COST };
+        eff = { ...eff, presidentDirectiveMet: directiveMet };
       } else {
         presDirResult = processPresidentialDirective(dir.reqId, room.economy, cbPersona, mofPersona, eff, dir.strength);
         if (presDirResult) {
-          eff = { ...presDirResult.decisions, presidentExtraSpend: PRES_DIRECTIVE_COST };
+          eff = { ...presDirResult.decisions };
           if (presDirResult.toCb) {
             cbDecisions = { ...cbDecisions, ...pickFields(eff, LEVER_IDS_BY_GROUP.monetary) };
             cbAct = redescribeCbAction(room.economy, cbPersona, eff);
@@ -311,6 +329,13 @@ function resolveQuarter(room) {
               : 'Требование осталось без внятного ответа.'}` });
     }
   }
+  if (newDemand) {
+    const to = newDemand.branch === 'monetary' ? 'ЦБ' : 'МИНФИН';
+    res.newsEntries.unshift({ id: `presask${room.quarterIndex}`, cat: 'gov', priority: 9,
+      q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+      headline: `ПРЕЗИДЕНТ → ${to}: ${newDemand.label.toUpperCase()} — ТРЕБОВАНИЕ ВЫДВИНУТО`,
+      text: `«${newDemand.ask}» Ответ ведомства будет виден по решениям следующего квартала.` });
+  }
   const nextCbPersona = (humanPres && humanPres.appointCb)
     || (plan && plan.appointBot && plan.appointBot.kind === 'central_bank' ? plan.appointBot.persona : cbPersona);
   const nextMofPersona = (humanPres && humanPres.appointMof)
@@ -330,7 +355,9 @@ function resolveQuarter(room) {
     quarterIndex: room.quarterIndex + 1,
     quarterStartedAt: Date.now(),
     presidentPlan: room.seats.president ? null : planPresident(afterPresident, res.economy, res.eventCooldowns),
-    presidentLast: plan && (plan.directive || plan.actions.length)
+    // требование, выданное в этом квартале, ведомства исполняют в следующем
+    presidentDemand: humanSeat ? newDemand : null,
+    presidentLast: plan && (plan.directive || plan.actions.length || newDemand)
       ? { label: plan.directive ? plan.directive.label : null,
         branch: plan.directive ? plan.directive.branch : null,
         directiveMet, status: presDirResult ? presDirResult.status : null,
