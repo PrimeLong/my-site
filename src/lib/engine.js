@@ -750,7 +750,8 @@ function reformEffects(reforms) {
   };
 }
 
-const PRES_GROUP_LABEL = { public: 'Публичная политика', reform: 'Структурные реформы', power: 'Устройство власти' };
+const PRES_GROUP_LABEL = { public: 'Публичная политика', reform: 'Структурные реформы',
+  power: 'Устройство власти', war: 'Война и чрезвычайные полномочия' };
 
 /* Каждое действие: build(s, difficulty) -> { impulses, news, patch }.
    patch может нести snapElection / dissolve / restore / reform — то, что меняет
@@ -852,6 +853,94 @@ const PRESIDENT_ACTIONS = [
         text: 'Указ отменён тем же, кто его подписал. Оппозиция называет это вынужденным шагом, рынки — первым за долгое время сигналом, что правила ещё что-то значат.',
         priority: 9, chain: ['Указ отменён', 'Парламент работает', 'Напряжение ↓', 'Премия за риск ↓'] },
     }) },
+  /* ============================== ВОЙНА КАК РЕШЕНИЕ ==============================
+     До сих пор война в модели была только внешним событием — она случалась с
+     экономикой, и ЦБ с Минфином могли лишь разгребать последствия. У президента
+     другая позиция: он может начать её сам. Это и есть его уникальный рычаг —
+     единственный, который переписывает не проценты, а рамку, в которой считают
+     все остальные: рейтинг взлетает на волне сплочения, чрезвычайные полномочия
+     становятся доступны, газеты меняют язык, — а платят за это торговля,
+     инвестиции, капитал и люди.
+
+     Наступательная война отличается от оборонительной именно ценой: союзников
+     нет, есть санкции. Поэтому её и не показывают как «кризис, который случился»:
+     это решение, у которого есть автор. */
+  { id: 'war_start', group: 'war', label: 'Начать военную операцию', cost: 45, cooldown: 20,
+    requires: (s) => (s.warQuartersLeft || 0) <= 0,
+    reqText: 'Доступно, пока страна не воюет',
+    desc: 'Собственная война вместо чужой. Первые кварталы рейтинг растёт на сплочении вокруг флага, а с ним открываются чрезвычайные полномочия. Дальше начинается счёт: санкции, бегство капитала, сжатие торговли и инвестиций, рост цен со стороны предложения. Из войны выходят не тогда, когда захотят, а когда смогут.',
+    build: (s, difficulty) => ({
+      patch: { startWar: true },
+      impulses: [
+        makeImpulse('approvalPush', 11, 'Сплочение вокруг флага', 'fast', difficulty, 'other'),
+        sustainedImpulse('approvalPush', -2.2, 6, 'Война затягивается', 'other'),
+        makeImpulse('tensionPush', 10, 'Начало военной операции', 'fast', difficulty, 'other'),
+        makeImpulse('exportsGrowth', -7, 'Санкции против наступающей стороны', 'default', difficulty),
+        makeImpulse('importsGrowth', -6, 'Закрытие торговых каналов', 'default', difficulty),
+        makeImpulse('capitalFlow', -26, 'Бегство капитала из воюющей страны', 'default', difficulty),
+        makeImpulse('fdi', -18, 'Прямые инвестиции сворачиваются', 'default', difficulty),
+        makeImpulse('riskPremium', 1.2, 'Военная премия за риск', 'default', difficulty),
+        makeImpulse('businessConfidence', -15, 'Война: бизнес не планирует', 'default', difficulty, 'other'),
+        makeImpulse('inflationSupply', 1.4, 'Разрыв поставок и военный спрос', 'default', difficulty),
+        makeImpulse('stockShock', -16, 'Рынок переоценивает риск войны', 'fast', difficulty),
+        sustainedImpulse('potentialShock', -0.35, 8, 'Люди и мощности уходят на войну'),
+      ],
+      news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О НАЧАЛЕ ВОЕННОЙ ОПЕРАЦИИ',
+        text: `Решение объявлено как вынужденное и единственно возможное. Рейтинг власти ${Math.round(s.approval)} из 100 в ближайшие кварталы вырастет — так бывает всегда в первые месяцы. Партнёры уже готовят ограничения: экспорт, импорт, капитал и прямые инвестиции пойдут вниз одновременно.`,
+        priority: 10, chain: ['Решение президента', 'Сплочение вокруг флага', 'Санкции', 'Торговля ↓', 'Капитал ↓', 'Цены ↑'] },
+    }) },
+  { id: 'mobilization', group: 'war', label: 'Объявить мобилизацию', cost: 28, cooldown: 8,
+    requires: (s) => (s.warQuartersLeft || 0) > 0,
+    reqText: 'Доступно только во время войны',
+    desc: 'Забрать людей из экономики в армию. Безработица падает — но не потому, что появились рабочие места; выпуск и потенциал падают вместе с ней. Рейтинг платит сразу и заметно: мобилизация касается каждой семьи, в отличие от войны на экране.',
+    build: (s, difficulty) => ({
+      patch: { warExtend: 2 },
+      impulses: [
+        makeImpulse('approvalPush', -13, 'Мобилизация коснулась каждой семьи', 'fast', difficulty, 'other'),
+        makeImpulse('tensionPush', 16, 'Мобилизация', 'fast', difficulty, 'other'),
+        sustainedImpulse('potentialShock', -0.55, 8, 'Люди изъяты из экономики'),
+        makeImpulse('consumption', -1.6, 'Отъезд работников и неопределённость', 'default', difficulty),
+        makeImpulse('capitalFlow', -14, 'Отъезд капитала вслед за людьми', 'default', difficulty),
+        makeImpulse('businessConfidence', -9, 'Мобилизация: кадры выбывают', 'default', difficulty, 'other'),
+      ],
+      news: { cat: 'gov', headline: 'ОБЪЯВЛЕНА МОБИЛИЗАЦИЯ',
+        text: `Призыв затрагивает всю страну. Формально безработица снизится — из экономики просто изымают людей; выпуск, потенциал и потребление уйдут вниз следом. Напряжённость была ${Math.round(s.politicalTension || 0)} из 100, и это решение её не уменьшит.`,
+        priority: 10, chain: ['Мобилизация', 'Рабочих рук ↓', 'Потенциал ↓', 'Рейтинг ↓', 'Напряжённость ↑'] },
+    }) },
+  { id: 'war_economy', group: 'war', label: 'Перевести экономику на военные рельсы', cost: 34, cooldown: 12,
+    requires: (s) => (s.warQuartersLeft || 0) > 0,
+    reqText: 'Доступно только во время войны',
+    desc: 'Госзаказ вместо рынка: оборонная промышленность растёт, гражданский сектор сжимается. Выпуск и занятость держатся, но держатся на бюджете — и всё, что произведено, не становится ни потреблением, ни будущим ростом.',
+    build: (s, difficulty) => ({
+      impulses: [
+        sustainedImpulse('govInvestmentPush', 3.0, 8, 'Военный заказ'),
+        makeImpulse('secIndustry', 12, 'Оборонная промышленность на подъёме', 'fast', difficulty),
+        makeImpulse('secConsumer', -10, 'Гражданский сектор сжимается', 'fast', difficulty),
+        makeImpulse('inflationSupply', 0.8, 'Военный заказ вытесняет гражданское производство', 'default', difficulty),
+        sustainedImpulse('productivity', -0.08, 8, 'Производство не по спросу, а по разнарядке'),
+      ],
+      news: { cat: 'gov', headline: 'ЭКОНОМИКА ПЕРЕВЕДЕНА НА ВОЕННЫЕ РЕЛЬСЫ',
+        text: 'Госзаказ становится главным покупателем: оборонные заводы работают в три смены, гражданские линии останавливаются. Цифры выпуска это поддержит — благосостояние нет: произведённое не съесть, не надеть и не вложить в завтрашний рост.',
+        priority: 9, chain: ['Военный заказ', 'Оборонка ↑', 'Гражданский сектор ↓', 'Производительность ↓'] },
+    }) },
+  { id: 'peace_deal', group: 'war', label: 'Заключить мир', cost: 24, cooldown: 6,
+    requires: (s) => (s.warQuartersLeft || 0) > 0,
+    reqText: 'Доступно только во время войны',
+    desc: 'Выйти из войны раньше, чем она закончится сама. Санкции снимаются медленнее, чем вводились, а внутри решение читается как признание поражения — но экономика начинает восстанавливаться с этого квартала, а не через год.',
+    build: (s, difficulty) => ({
+      patch: { endWar: true },
+      impulses: [
+        makeImpulse('approvalPush', -6, 'Мир читается как поражение', 'fast', difficulty, 'other'),
+        makeImpulse('tensionPush', -8, 'Война окончена', 'fast', difficulty, 'other'),
+        makeImpulse('businessConfidence', 12, 'Мир: бизнес возвращается к планированию', 'default', difficulty, 'other'),
+        makeImpulse('capitalFlow', 16, 'Возврат капитала после мира', 'default', difficulty),
+        makeImpulse('riskPremium', -0.7, 'Военная премия за риск уходит', 'default', difficulty),
+        sustainedImpulse('exportsGrowth', 1.4, 6, 'Торговые каналы открываются заново'),
+      ],
+      news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О ЗАКЛЮЧЕНИИ МИРА',
+        text: 'Боевые действия прекращены решением главы государства. Часть ограничений снимут не сразу, а часть не снимут вовсе — но премия за риск, капитал и деловая уверенность начинают возвращаться уже в этом квартале.',
+        priority: 10, chain: ['Мир', 'Премия за риск ↓', 'Капитал ↑', 'Торговля ↑', 'Рейтинг ↓'] },
+    }) },
   /* Верхняя ступень лестницы режимов. Раньше тоталитаризм существовал только как
      несчастный случай: из авторитарного режима туда вела единственная дорога —
      напряжённость 80+ и бросок кубика, то есть страна должна была сама дойти до
@@ -860,9 +949,9 @@ const PRESIDENT_ACTIONS = [
      производительностью, а власть получает управляемость и политический капитал,
      который копится почти сам. Обратно ведёт та же дорога, что и из авторитаризма, —
      указ «Вернуть парламент», и стоит он ровно столько же, сколько стоил всегда. */
-  { id: 'seize_control', group: 'power', label: 'Полный контроль над институтами', cost: 50, cooldown: 24,
-    requires: (s) => s.politicalRegime === 'authoritarian' && !!s.parliamentDissolved,
-    reqText: 'Доступно при авторитарном режиме и распущенном парламенте',
+  { id: 'seize_control', group: 'war', label: 'Полный контроль над институтами', cost: 50, cooldown: 24,
+    requires: (s) => s.politicalRegime === 'authoritarian' && !!s.parliamentDissolved && (s.warQuartersLeft || 0) > 0,
+    reqText: 'Доступно во время войны при авторитарном режиме и распущенном парламенте',
     desc: 'Суды, пресса и остатки самостоятельных ведомств переходят под прямое управление. Ведомства почти перестают отказывать, политический капитал копится сам — но инвестиции, производительность и капитал уходят из страны и обратно не возвращаются.',
     build: (s, difficulty) => ({
       patch: { totalize: true },
@@ -1018,8 +1107,13 @@ function militaryCoupRisk(x) {
   const crisisLoad = clamp((x.activeCrises || []).length / 2, 0, 1);
   const weakness = clamp((45 - (x.approval || 0)) / 40, 0, 1);
   const naked = clamp((30 - (Number.isFinite(x.politicalCapital) ? x.politicalCapital : 55)) / 30, 0, 1);
-  return clamp((pressure * 0.10 + misery * 0.05 + crisisLoad * 0.05 + weakness * 0.04 + naked * 0.06)
-    * (x.unrestActive ? 1.7 : 1), 0, 0.28);
+  /* Пустая казна политического капитала — множитель, а не отдельное слагаемое.
+     Слагаемым она поднимала армию и в спокойной популярной стране: президент,
+     потративший капитал на реформы, получал переворот при напряжённости 12 и
+     рейтинге 53. Армия выступает там, где есть недовольство; отсутствие денег
+     на своих только делает выступление вероятнее. Нет недовольства — нет и риска. */
+  const trouble = pressure * 0.11 + misery * 0.055 + crisisLoad * 0.055 + weakness * 0.045;
+  return clamp(trouble * (1 + naked * 0.8) * (x.unrestActive ? 1.7 : 1), 0, 0.28);
 }
 
 /* Разбор пакета решений президента за квартал: списывает капитал, ставит
@@ -1721,7 +1815,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
       const busy = (stories || []).some((x) => x.tplId === evt.id);
-      if (STORY_TEMPLATES[evt.id] && !busy) newStories.push({ tplId: evt.id, nextIdx: 0, wait: 0 });
+      if (STORY_TEMPLATES[evt.id] && !busy) newStories.push({ tplId: evt.id, nextIdx: 0, wait: storyStartWait(evt.id) });
       else news.push(mkNews(KIND_CAT[evt.kind] || 'world', evt.title.toUpperCase(), built.news, { priority: 8 }));
     }
   }
@@ -2365,10 +2459,21 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const pandemicQuartersLeft = pandemicTriggered ? 3 : Math.max(0, (s.pandemicQuartersLeft || 0) - 1);
   // война, как и пандемия, — не пороговое состояние, а отдельное событие с растянутым
   // эффектом; длится дольше пандемии (её экономический урон гасится 4 квартала)
-  const warQuartersLeft = warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
+  /* Война может прийти извне (событие), а может быть решением президента: указ
+     ставит те же счётчики, только длиннее — свою войну не заканчивают через год
+     потому, что надоело, — и всегда наступательного типа, со всеми вытекающими
+     санкциями. Мобилизация продлевает, мир обрывает. */
+  const warDecreed = !!pres.patch.startWar;
+  const warEnded = !!pres.patch.endWar;
+  let warQuartersLeft = warDecreed ? 6 : warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
+  if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
+  if (warEnded) warQuartersLeft = 0;
   // тип войны (оборонительная/наступательная) решает исход дипломатически — помощь
   // союзников или санкции — и держится неизменным, пока идёт одна и та же война
-  const warType = warTriggered ? warTypeRolled : (warQuartersLeft > 0 ? (s.warType || null) : null);
+  const warType = warDecreed ? 'offensive' : warTriggered ? warTypeRolled : (warQuartersLeft > 0 ? (s.warType || null) : null);
+  // чья это война: случившаяся с экономикой или объявленная её же руководством —
+  // от этого зависит и язык новостей, и то, как её показывает интерфейс
+  const warByChoice = warDecreed ? true : (warQuartersLeft > 0 ? !!s.warByChoice : false);
   const activeCrises = [];
   if (bankingRisk >= CONFIG.thresholds.bankingRisk || bankCapitalAdequacy < 8) activeCrises.push('banking');
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
@@ -2417,6 +2522,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       news.push(mkNews('crisis', 'ДЕФЛЯЦИОННАЯ УГРОЗА', 'Цены почти не растут при слабом спросе: реальная ставка высока даже при нулевой ключевой. Обычных инструментов может не хватить.', { priority: 9 }));
     } else if (c === 'pandemic') {
       news.push(mkNews('crisis', 'ПАНДЕМИЯ: РЕЖИМ ЧРЕЗВЫЧАЙНОЙ СИТУАЦИИ', 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям — эффект растянут на несколько кварталов.', { priority: 9 }));
+    } else if (c === 'war' && warByChoice) {
+      // указ о начале операции уже напечатан решениями президента — здесь не
+      // «кризис, который случился», а описание режима, в котором теперь живут
+      news.push(mkNews('gov', 'СТРАНА ПЕРЕХОДИТ НА ВОЕННОЕ ПОЛОЖЕНИЕ',
+        'Торговля, инвестиции и доверие сжимаются одновременно — это не стихия, а прямое следствие принятого решения. Расходы на оборону, сделанные до войны, определяют, насколько тяжёлым будет первый год. Чрезвычайные полномочия с этого момента доступны власти в полном объёме.',
+        { priority: 10, chain: ['Решение о войне', 'Санкции', 'Торговля ↓', 'Военное положение'] }));
     } else if (c === 'war') {
       const typeNote = warType === 'offensive'
         ? ' Война носит наступательный характер: партнёры вводят санкции, торговые и финансовые каналы сжимаются сильнее, чем от одного военного шока.'
@@ -2433,7 +2544,11 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // war/pandemic же управляются событием с фиксированной длительностью и кулдауном,
   // мигать не могут
   prevCrises.filter((c) => !activeCrises.includes(c)).forEach((c) => {
-    if (c === 'war') {
+    if (c === 'war' && s.warByChoice) {
+      news.push(mkNews('gov', 'ВОЕННАЯ ОПЕРАЦИЯ ЗАВЕРШЕНА',
+        'Официально — «цели достигнуты». Санкции снимаются медленнее, чем вводились, капитал возвращается неохотно, а потенциал, из которого забрали людей и мощности, восстанавливается годами. Чрезвычайные полномочия перестают быть доступны.',
+        { priority: 9, chain: ['Война окончена', 'Премия за риск ↓', 'Санкции остаются', 'Потенциал восстанавливается годами'] }));
+    } else if (c === 'war') {
       const endNote = s.warType === 'offensive'
         ? ' Санкции обычно снимаются медленнее, чем вводились — торговые ограничения ещё долго будут сдерживать восстановление.'
         : s.warType === 'defensive'
@@ -2594,15 +2709,30 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       const chance = militaryCoupRisk({ politicalTension, unemployment, nairu, inflation,
         activeCrises, approval, unrestActive, politicalCapital: Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55 });
       if (chance > 0 && Math.random() < chance) {
-        powerLost = 'military';
+        /* Выступить — не значит победить. Власть, которую поддерживает большинство,
+           переворот переживает: люди выходят на улицу за неё, а не против, и
+           заговорщиков арестовывают к утру. Чем ниже рейтинг и выше напряжение,
+           тем меньше желающих её защищать. */
+        const legitimacy = clamp((approval - 35) / 40, 0, 1) * 0.6 + clamp((45 - politicalTension) / 45, 0, 1) * 0.4;
         cooldowns['political:military'] = 8;
-        politicalRegime = 'crisis'; parliamentDissolved = false; decreeRule = false;
-        nextQueue.push(makeImpulse('businessConfidence', -12, 'Военный переворот: правил больше нет', 'default', difficulty, 'other'));
-        nextQueue.push(makeImpulse('riskPremium', 0.9, 'Военный переворот', 'default', difficulty));
-        nextQueue.push(makeImpulse('capitalFlow', -22, 'Бегство капитала после переворота', 'default', difficulty));
-        news.push(mkNews('crisis', 'ВОЕННЫЙ ПЕРЕВОРОТ: АРМИЯ БЕРЁТ ВЛАСТЬ',
-          `Ночью войска заняли правительственные здания. Официальное объяснение — «восстановление порядка» при напряжённости ${Math.round(politicalTension)} из 100 и рейтинге власти ${Math.round(approval)}. Тот, кто отменил выборы, снимается с должности не голосованием.`,
-          { priority: 10, chain: ['Напряжение в стране', 'Раскол в элитах', 'Выступление армии', 'Смена власти', 'Бегство капитала'] }));
+        if (Math.random() < legitimacy) {
+          nextQueue.push(makeImpulse('approvalPush', 6, 'Попытка переворота провалилась: власть защитили', 'fast', difficulty, 'other'));
+          nextQueue.push(makeImpulse('tensionPush', 9, 'Раскол в силовых структурах', 'fast', difficulty, 'other'));
+          nextQueue.push(makeImpulse('businessConfidence', -7, 'Попытка переворота: страна на грани', 'default', difficulty, 'other'));
+          nextQueue.push(makeImpulse('riskPremium', 0.35, 'Попытка переворота', 'default', difficulty));
+          news.push(mkNews('gov', 'ПОПЫТКА ПЕРЕВОРОТА ПРОВАЛИЛАСЬ',
+            `Ночью часть войск попыталась занять правительственные здания. При рейтинге власти ${Math.round(approval)} из 100 и напряжённости ${Math.round(politicalTension)} улица вышла за действующую власть, а не против неё: к утру мятеж подавлен, зачинщики арестованы. Рейтинг вырос, но раскол в силовых структурах теперь виден всем.`,
+            { priority: 10, chain: ['Выступление части армии', 'Улица за власть', 'Мятеж подавлен', 'Рейтинг ↑', 'Раскол в элитах'] }));
+        } else {
+          powerLost = 'military';
+          politicalRegime = 'crisis'; parliamentDissolved = false; decreeRule = false;
+          nextQueue.push(makeImpulse('businessConfidence', -12, 'Военный переворот: правил больше нет', 'default', difficulty, 'other'));
+          nextQueue.push(makeImpulse('riskPremium', 0.9, 'Военный переворот', 'default', difficulty));
+          nextQueue.push(makeImpulse('capitalFlow', -22, 'Бегство капитала после переворота', 'default', difficulty));
+          news.push(mkNews('crisis', 'ВОЕННЫЙ ПЕРЕВОРОТ: АРМИЯ БЕРЁТ ВЛАСТЬ',
+            `Ночью войска заняли правительственные здания. Официальное объяснение — «восстановление порядка» при напряжённости ${Math.round(politicalTension)} из 100 и рейтинге власти ${Math.round(approval)}: защищать эту власть на улицу никто не вышел. Тот, кто отменил выборы, снимается с должности не голосованием.`,
+            { priority: 10, chain: ['Напряжение в стране', 'Раскол в элитах', 'Выступление армии', 'Смена власти', 'Бегство капитала'] }));
+        }
       }
     }
   } else if (coupCooldown > 0) cooldowns['political:military'] = coupCooldown - 1;
@@ -2685,7 +2815,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
     bondShortIndex, linkerIndex, moneyMarketIndex, worldEquityIndex,
-    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType,
+    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
@@ -2704,7 +2834,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // сюжеты: запуск новых цепочек и продвижение уже идущих
   const activeStories = [...(stories || []), ...newStories];
   storyTriggers(s, newEconomy, decisions, activeStories, cooldowns).forEach((id) => {
-    activeStories.push({ tplId: id, nextIdx: 0, wait: 0 });
+    activeStories.push({ tplId: id, nextIdx: 0, wait: storyStartWait(id) });
     cooldowns[`story:${id}`] = 10;
   });
   const advanced = advanceStories(activeStories, newEconomy, quarterIndex);
@@ -2862,11 +2992,10 @@ const STORY_TEMPLATES = {
         `Экономика переварила всплеск спроса: разрыв выпуска ${rfs(s.outputGap)}%, инфляция ${rf1(s.inflation)}%. Свободные мощности сделали своё дело.`, { priority: 4 })) },
   ] },
   /* --- сюжеты, которые запускает сам игрок --- */
+  /* Сюжет начинается не с объявления решения — его и так печатают либо сводка ЦБ,
+     либо общая новость о шаге ставки, — а с того, что происходит дальше. */
   rate_hike: { id: 'rate_hike', title: 'Ужесточение денежной политики', steps: [
-    { make: (s) => mkNews('cb', `КЛЮЧЕВАЯ СТАВКА ПОВЫШЕНА ДО ${rf2(s.keyRate)}%`,
-      `ЦБ ужесточает политику при инфляции ${rf1(s.inflation)}% и ожиданиях ${rf1(s.inflationExpectations)}%. Реальная ставка ${rfs(s.realPolicyRate)}% против нейтральной ${rf1(s.rStar)}% — рынок закладывает замедление кредитования.`, { priority: 8,
-        chain: ['Ставка ↑', 'Ставка по кредитам ↑', 'Кредит ↓', 'Инвестиции и спрос ↓', 'Безработица ↑', 'Инфляция ↓ через 3–5 кв.'] }) },
-    { gap: 1, make: (s) => mkNews('markets', `БАНКИ ПЕРЕНОСЯТ СТАВКУ В КРЕДИТЫ: ${rf1(s.lendingRate)}%`,
+    { gap: 2, make: (s) => mkNews('markets', `БАНКИ ПЕРЕНОСЯТ СТАВКУ В КРЕДИТЫ: ${rf1(s.lendingRate)}%`,
       `Перенос ключевой ставки в рыночные идёт с лагом. Рост кредитного портфеля ${rfs(s.creditGrowth)}%, спрос на заёмные деньги остывает.`, { priority: 6 }) },
     { gap: 1, make: (s) => mkNews('business', `ИНВЕСТИЦИИ ЗАМЕДЛЯЮТСЯ: ${rfs(s.investmentGrowth)}%`,
       `Дорогие деньги переписывают инвестиционные планы. Доверие бизнеса ${Math.round(s.businessConfidence)}, разрыв выпуска ${rfs(s.outputGap)}%.`, { priority: 6 }) },
@@ -2874,9 +3003,6 @@ const STORY_TEMPLATES = {
       `Замедление цен оплачено занятостью — это и есть коэффициент жертв. Ожидания ${rf1(s.inflationExpectations)}%: чем выше доверие к ЦБ, тем дешевле обходится такой манёвр.`, { priority: 7 }) },
   ] },
   rate_cut: { id: 'rate_cut', title: 'Смягчение денежной политики', steps: [
-    { make: (s) => mkNews('cb', `КЛЮЧЕВАЯ СТАВКА СНИЖЕНА ДО ${rf2(s.keyRate)}%`,
-      `ЦБ смягчает условия при разрыве выпуска ${rfs(s.outputGap)}% и инфляции ${rf1(s.inflation)}%. Реальная ставка ${rfs(s.realPolicyRate)}% против нейтральной ${rf1(s.rStar)}%.`, { priority: 7,
-        chain: ['Ставка ↓', 'Кредит ↑', 'Спрос ↑', 'Занятость ↑', 'Инфляция ↑ с лагом'] }) },
     { gap: 2, make: (s) => mkNews('business', `КРЕДИТ ОЖИВАЕТ: ПОРТФЕЛЬ ${rfs(s.creditGrowth)}%`,
       `Инвестиции ${rfs(s.investmentGrowth)}%, доверие бизнеса ${Math.round(s.businessConfidence)}. Кредитный разрыв ${rfs(s.creditGap)} п.п. ВВП — за этим показателем стоит следить: сегодняшний бум завтра вернётся просрочкой.`, { priority: 6 }) },
     { gap: 2, make: (s) => mkNews('cb', `ПРОВЕРКА ОЖИДАНИЙ: ${rf1(s.inflationExpectations)}% ПРИ ЦЕЛИ 4%`,
@@ -2928,6 +3054,13 @@ const STORY_TEMPLATES = {
   ] },
 };
 
+// пауза перед первым шагом сюжета: у части сюжетов первое сообщение — это уже
+// следствие, и печатать его в тот же квартал, что и само решение, рано
+const storyStartWait = (id) => {
+  const tpl = STORY_TEMPLATES[id];
+  return tpl && tpl.steps.length ? Math.max(0, (tpl.steps[0].gap || 1) - 1) : 0;
+};
+
 function advanceStories(stories, next, quarterIndex) {
   const out = []; const keep = [];
   for (const st of (stories || [])) {
@@ -2967,14 +3100,50 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   const once = (key, gap) => { if ((cd[`news:${key}`] || 0) > 0) return false; cd[`news:${key}`] = gap; return true; };
   const tgt = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
 
+  /* Решение второй ветви власти. Печатается ПЕРЕД блоком ЦБ намеренно: ниже нужно
+     знать, попала ли сводка ведомства в ленту. Если попала — общая новость о шаге
+     ставки будет тем же фактом второй раз подряд, только с другими цифрами
+     инфляции (до и после квартала); если нет (сводка повторяет прошлый курс и
+     придержана) — общая новость остаётся единственной, и без неё изменение ставки
+     вообще пропало бы из ленты. Порядок в ленте задаётся приоритетом, а не местом
+     в коде, так что перестановка ничего не ломает. */
+  let cbReported = false;
+  const actions = [botAction, ...(extraActions || [])].filter(Boolean);
+  actions.forEach((act, ix) => {
+    const isCb = act.institution === 'cb';
+    const changedCourse = (isCb ? prev.botHeadline : prev.botHeadline2) !== act.headline;
+    const newDemand = act.demand && (isCb ? prev.botDemand : prev.botDemand2) !== act.demand;
+    if (changedCourse || newDemand || once(`bot${ix}`, 8)) {
+      if (isCb) cbReported = true;
+      if (publicMode) {
+        push(isCb ? 'cb' : 'gov', act.publicHeadline || act.newsHeadline,
+          `${act.publicNote || ''}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}`, 7);
+      } else {
+        push(isCb ? 'cb' : 'gov', act.newsHeadline,
+          `${act.newsNote || act.note}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}${act.demand ? ` ${act.demand}` : ''}`,
+          changedCourse || newDemand ? 8 : 5);
+      }
+    }
+  });
+
   /* 🏦 ЦЕНТРАЛЬНЫЙ БАНК */
+  /* Решение по ставке описывает ЛИБО сводка ведомства (у неё есть и цитата, и
+     требование к соседу), ЛИБО — если такой сводки нет, то есть ставку двигал сам
+     игрок, — общая новость о шаге. Раньше в ленте стояли обе: «ЦБ ПОВЫШАЕТ СТАВКУ
+     ДО 8,75%» и следом «ЦБ УЖЕСТОЧАЕТ ПОЛИТИКУ: СТАВКА 8,75%», да ещё и с разными
+     цифрами инфляции — до и после квартала. */
   const dRate = s.keyRate - prev.keyRate;
-  if (Math.abs(dRate) > 0.01 && Math.abs(dRate) < 0.75) {
-    push('cb', `${dRate > 0 ? 'ЦБ ПОВЫШАЕТ' : 'ЦБ СНИЖАЕТ'} КЛЮЧЕВУЮ СТАВКУ ДО ${rf2(s.keyRate)}%`,
-      `Шаг ${rfs2(dRate)} п.п. при инфляции ${rf1(s.inflation)}% и цели ${rf1(tgt)}%. Реальная ставка ${rfs(s.realPolicyRate)}% против нейтральной ${rf1(s.rStar)}% — условия ${s.rateGap > 0.3 ? 'жёстче нейтральных' : s.rateGap < -0.3 ? 'мягче нейтральных' : 'близки к нейтральным'}.`, 6);
-  } else if (Math.abs(dRate) < 0.01 && Math.abs(s.inflation - tgt) > 2 && once('hold', 4)) {
-    push('cb', `ЦБ СОХРАНЯЕТ СТАВКУ ${rf2(s.keyRate)}% ПРИ ИНФЛЯЦИИ ${rf1(s.inflation)}%`,
-      `Бездействие — тоже решение. Ожидания ${rf1(s.inflationExpectations)}%, доверие к ЦБ ${Math.round(s.cbCredibility)} из 100.`, 5);
+  if (!cbReported) {
+    // верхней границы у шага больше нет: раньше крупное движение (больше 0,75 п.п.)
+    // намеренно уступало место сводке ЦБ, а теперь сводка и так печатается отдельно —
+    // и без этого условия резкий разворот ставки просто пропадал из ленты
+    if (Math.abs(dRate) > 0.01) {
+      push('cb', `${dRate > 0 ? 'ЦБ ПОВЫШАЕТ' : 'ЦБ СНИЖАЕТ'} КЛЮЧЕВУЮ СТАВКУ ДО ${rf2(s.keyRate)}%`,
+        `Шаг ${rfs2(dRate)} п.п. при инфляции ${rf1(s.inflation)}% и цели ${rf1(tgt)}%. Реальная ставка ${rfs(s.realPolicyRate)}% против нейтральной ${rf1(s.rStar)}% — условия ${s.rateGap > 0.3 ? 'жёстче нейтральных' : s.rateGap < -0.3 ? 'мягче нейтральных' : 'близки к нейтральным'}.`, 6);
+    } else if (Math.abs(dRate) < 0.01 && Math.abs(s.inflation - tgt) > 2 && once('hold', 4)) {
+      push('cb', `ЦБ СОХРАНЯЕТ СТАВКУ ${rf2(s.keyRate)}% ПРИ ИНФЛЯЦИИ ${rf1(s.inflation)}%`,
+        `Бездействие — тоже решение. Ожидания ${rf1(s.inflationExpectations)}%, доверие к ЦБ ${Math.round(s.cbCredibility)} из 100.`, 5);
+    }
   }
   const dTarget = tgt - (Number.isFinite(prev.inflationTarget) ? prev.inflationTarget : CONFIG.target.inflation);
   if (Math.abs(dTarget) > 0.01) {
@@ -3107,7 +3276,8 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   /* ⚠️ КРИЗИС / РЕЖИМ */
   if (s.regime !== prev.regime && REGIME_INFO[s.regime]) {
     const info = REGIME_INFO[s.regime];
-    push('crisis', `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${info.label.toUpperCase()}`, regimeInfoText(info, s), s.regime === 'normal' ? 6 : 10);
+    push(s.regime === 'war' && s.warByChoice ? 'gov' : 'crisis',
+      `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${regimeInfoLabel(info, s).toUpperCase()}`, regimeInfoText(info, s), s.regime === 'normal' ? 6 : 10);
   }
 
   /* 📊 РЫНОК */
@@ -3326,23 +3496,6 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   }
   picked.forEach((v) => push('opinion', typeof v.q === 'function' ? v.q() : v.q, `${v.who}. ${v.t()}`, 4));
 
-  /* решение второй ветви власти */
-  const actions = [botAction, ...(extraActions || [])].filter(Boolean);
-  actions.forEach((act, ix) => {
-    const isCb = act.institution === 'cb';
-    const changedCourse = (isCb ? prev.botHeadline : prev.botHeadline2) !== act.headline;
-    const newDemand = act.demand && (isCb ? prev.botDemand : prev.botDemand2) !== act.demand;
-    if (changedCourse || newDemand || once(`bot${ix}`, 8)) {
-      if (publicMode) {
-        push(isCb ? 'cb' : 'gov', act.publicHeadline || act.newsHeadline,
-          `${act.publicNote || ''}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}`, 7);
-      } else {
-        push(isCb ? 'cb' : 'gov', act.newsHeadline,
-          `${act.newsNote || act.note}${act.quote ? ` Из заявления по итогам решения: «${act.quote}»` : ''}${act.demand ? ` ${act.demand}` : ''}`,
-          changedCourse || newDemand ? 8 : 5);
-      }
-    }
-  });
   return out;
 }
 
@@ -3409,7 +3562,7 @@ function makeInitialEconomy() {
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
-    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null,
+    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
@@ -3463,11 +3616,19 @@ const REGIME_INFO = {
   currency: { label: 'Валютный кризис', color: 'rust', text: 'Курс переносится в цены. Защита резервами конечна, свободный курс — импорт инфляции.' },
   deflation: { label: 'Дефляционная ловушка', color: 'blue', text: 'Реальная ставка высока даже при нулевой ключевой. Обычная денежная политика теряет силу — нужен бюджет.' },
   pandemic: { label: 'Пандемия', color: 'rust', text: 'Вспышка заболевания одновременно сократила спрос и производственные возможности. Эффект растянут на несколько кварталов и постепенно сходит на нет.' },
-  war: { label: 'Война', color: 'rust', text: (e) => `Экономика в состоянии ${e.warType === 'offensive' ? 'наступательной войны: под санкциями сжались торговля и инвестиции, капитал уходит в защитные активы' : e.warType === 'defensive' ? 'оборонительной войны: удар смягчает иностранная помощь союзников, но торговля и инвестиции всё равно сжались' : 'войны: торговля и инвестиции сжались, издержки растут, капитал уходит в защитные активы'}. Расходы на оборону, сделанные ещё до войны, смягчают удар.` },
+  /* «Военное положение» вместо «Войны», когда войну объявили сами: это не кризис,
+     который случился с экономикой, а режим, в который её перевели решением. */
+  war: { label: (e) => (e.warByChoice ? 'Военное положение' : 'Война'), color: 'rust',
+    text: (e) => (e.warByChoice
+      ? `Страна ведёт объявленную ею войну. Санкции сжали торговлю и инвестиции, капитал уходит, издержки растут — это прямая цена решения, а не внешний шок. Взамен открыты чрезвычайные полномочия, а рейтинг первые кварталы держится на сплочении.`
+      : `Экономика в состоянии ${e.warType === 'offensive' ? 'наступательной войны: под санкциями сжались торговля и инвестиции, капитал уходит в защитные активы' : e.warType === 'defensive' ? 'оборонительной войны: удар смягчает иностранная помощь союзников, но торговля и инвестиции всё равно сжались' : 'войны: торговля и инвестиции сжались, издержки растут, капитал уходит в защитные активы'}. Расходы на оборону, сделанные ещё до войны, смягчают удар.`) },
 };
 /* text может быть строкой или функцией (economy) => строка — второе нужно там,
    где формулировка зависит от состояния (например, тип войны) */
 const regimeInfoText = (info, economy) => (typeof info.text === 'function' ? info.text(economy) : info.text);
+// label тоже может зависеть от состояния: «Война» или «Военное положение» — это
+// один и тот же режим экономики, но с разным автором
+const regimeInfoLabel = (info, economy) => (typeof info.label === 'function' ? info.label(economy) : info.label);
 const CRISIS_INFO = {
   banking: { label: 'Банковский кризис', text: 'Просрочка съедает капитал, капитал ограничивает кредит, сжатие кредита повышает просрочку.' },
   debt: { label: 'Долговой кризис', text: 'Инвесторы требуют премию за риск; стоимость обслуживания растёт быстрее доходов.' },
@@ -3477,7 +3638,8 @@ const CRISIS_INFO = {
   recession: { label: 'Рецессия', text: 'Выпуск ниже потенциала уже несколько кварталов.' },
   deflation: { label: 'Дефляция', text: 'Слабый спрос и почти нулевой рост цен.' },
   pandemic: { label: 'Пандемия', text: 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям.' },
-  war: { label: 'Война', text: (e) => `Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери. ${e.warType === 'offensive' ? 'Наступательный характер войны привёл к санкциям.' : e.warType === 'defensive' ? 'Оборонительный характер войны приносит иностранную помощь.' : ''}`.trim() },
+  war: { label: (e) => (e.warByChoice ? 'Военное положение' : 'Война'),
+    text: (e) => `${e.warByChoice ? 'Объявленная война бьёт по торговле, инвестициям и доверию — это цена решения, а не внешний шок.' : 'Военный конфликт бьёт по торговле, инвестициям и доверию; заранее высокие расходы на оборону снижают потери.'} ${e.warType === 'offensive' ? 'Наступательный характер войны привёл к санкциям.' : e.warType === 'defensive' ? 'Оборонительный характер войны приносит иностранную помощь.' : ''}`.trim() },
 };
 
 /* =========================================================================================
@@ -3498,8 +3660,16 @@ const POLITICAL_REGIME_INFO = {
    вместо анализа. Во время войны пропаганда при тоталитаризме усиливается ещё сильнее. */
 function propagandaEditorial(e) {
   const regime = e.politicalRegime;
-  if (regime !== 'authoritarian' && regime !== 'totalitarian') return null;
   const war = (e.warQuartersLeft || 0) > 0;
+  /* Свободная пресса о той же войне пишет иначе — и это и есть влияние режима на
+     газету: не только шрифт и вёрстка, но и то, чей счёт она предъявляет. */
+  if (regime !== 'authoritarian' && regime !== 'totalitarian') {
+    if (!war || !e.warByChoice) return null;
+    return {
+      headline: 'ВОЙНА И ЭКОНОМИКА: СЧЁТ, КОТОРЫЙ ПРИДЁТ ПОЗЖЕ',
+      text: `Рейтинг власти ${Math.round(e.approval)} из 100: сплочение вокруг флага работает первые кварталы и не работает дальше. Санкции уже видны в торговле и инвестициях, премия за риск ${fmt1(e.riskPremium)} п.п., капитал уходит. Редакция напоминает: потенциал экономики, из которого забрали людей и мощности, не возвращается вместе с прекращением огня.`,
+    };
+  }
   const totalitarian = regime === 'totalitarian';
   const growthLine = e.gdpGrowth >= 0
     ? `Рост экономики составил ${fmt1(e.gdpGrowth)}% — государство подтверждает верность выбранного курса.`
@@ -3513,7 +3683,11 @@ function propagandaEditorial(e) {
   const debtLine = totalitarian
     ? (e.debtToGdp > 80 ? ' Финансовая система работает с полной отдачей, мобилизуя все доступные резервы.' : '')
     : '';
-  const warLine = war
+  const warLine = war && e.warByChoice
+    ? (totalitarian
+      ? ' Операция развивается по плану, и каждый её этап приближает неизбежную победу. Сомневающийся в успехе действует на руку противнику.'
+      : ' Особые меры, введённые в связи с операцией, носят временный характер и будут сняты по мере достижения поставленных целей.')
+    : war
     ? (totalitarian
       ? ' Все трудности — достойная цена, которую нация с гордостью платит за неизбежную победу над врагом. Тот, кто сомневается в успехе, действует на руку противнику.'
       : ' Особые меры военного времени объясняют часть текущих трудностей и постепенно снимаются по мере стабилизации обстановки.')
@@ -3539,7 +3713,7 @@ function buildReport({ prev, next, reasons }) {
   }
   const top = reasons.gdpGrowth[0];
   if (top) p.push(`Главный фактор динамики выпуска: ${top.reasonText.charAt(0).toLowerCase()}${top.reasonText.slice(1)}.`);
-  if (next.regime !== 'normal' && REGIME_INFO[next.regime]) p.push(`Режим экономики — ${REGIME_INFO[next.regime].label.toLowerCase()}. ${regimeInfoText(REGIME_INFO[next.regime], next)}`);
+  if (next.regime !== 'normal' && REGIME_INFO[next.regime]) p.push(`Режим экономики — ${regimeInfoLabel(REGIME_INFO[next.regime], next).toLowerCase()}. ${regimeInfoText(REGIME_INFO[next.regime], next)}`);
   return p.join(' ');
 }
 
@@ -3668,7 +3842,7 @@ function leverPreview(id, newVal, s, difficulty) {
 export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
-  STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
+  STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, propagandaEditorial,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,

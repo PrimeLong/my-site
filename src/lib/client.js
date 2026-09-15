@@ -78,6 +78,8 @@ export const checkLinkCode = (playerId, code) => post({ action: 'link_status', p
 export const cancelLinkCode = (playerId, code) => post({ action: 'link_cancel', playerId, code }, SOLO_API);
 export const claimLinkCode = (playerId, code, progress) =>
   post({ action: 'link_claim', playerId, code, progress }, SOLO_API);
+// разрыв связки с любой стороны: устройство забирает копию профиля на новый id
+export const revokeLink = (playerId, progress) => post({ action: 'link_revoke', playerId, progress }, SOLO_API);
 // слияние прогресса всегда двустороннее: отправляем своё, получаем общее
 export const syncProgress = (playerId, progress) =>
   post({ action: 'progress', playerId, progress }, SOLO_API).then((d) => d.profile);

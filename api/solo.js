@@ -4,7 +4,7 @@
    Сама партия — экономика, история, декэижны — целиком лежит на сервере,
    как и у сетевых комнат (тот же _lib/store.js). */
 import { getSoloSlots, setSoloSlots, getProfile, setProfile, getLink, setLink, delLink, hasKv } from './_lib/store.js';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 
 const SLOT_COUNT = 4;
 const MAX_NAME_LEN = 40;
@@ -16,7 +16,7 @@ const MAX_PLAYER_ID_LEN = 64;
 const HISTORY_CAP = 40;
 const NEWS_CAP = 40;
 
-const PROFILE_ACTIONS = new Set(['progress', 'link_create', 'link_status', 'link_claim', 'link_cancel']);
+const PROFILE_ACTIONS = new Set(['progress', 'link_create', 'link_status', 'link_claim', 'link_cancel', 'link_revoke']);
 const emptySlots = () => Array.from({ length: SLOT_COUNT }, () => null);
 /* Слотов стало четыре: у игроков, сохранявшихся раньше, в хранилище лежит массив
    из трёх — дополняем его, а не считаем сохранения битыми. */
@@ -83,6 +83,9 @@ function normalizeProgress(p) {
     network: !!src.network,
     courses: cleanMap(src.courses),
     modules,
+    // когда профиль стал общим: по этой отметке ОБА устройства понимают, что связка
+    // есть, и могут её разорвать — раньше кнопка была только у того, кто вводил код
+    linkedAt: Number.isFinite(src.linkedAt) ? src.linkedAt : null,
   };
 }
 
@@ -107,6 +110,7 @@ function mergeProgress(a, b) {
     network: x.network || y.network,
     courses: { ...x.courses, ...y.courses },
     modules,
+    linkedAt: Math.max(x.linkedAt || 0, y.linkedAt || 0) || null,
     updatedAt: Date.now(),
   };
 }
@@ -222,7 +226,7 @@ async function handleProfileAction(body, res) {
     if (link.playerId === playerId) return res.status(400).json({ error: 'Это то же самое устройство' });
     // прогресс входящего устройства вливается в профиль: связывание не должно
     // стоить игроку достижений, открытых на телефоне
-    const merged = mergeProgress(await getProfile(link.playerId), body.progress);
+    const merged = { ...mergeProgress(await getProfile(link.playerId), body.progress), linkedAt: Date.now() };
     await setProfile(link.playerId, merged);
     // код помечаем использованным и держим ещё минуту, чтобы первое устройство
     // успело показать «готово», а не решить, что код просто протух
@@ -232,6 +236,19 @@ async function handleProfileAction(body, res) {
       slots: slots.map(summarize), storage: hasKv() ? 'kv' : 'memory' });
   }
 
+  if (action === 'link_revoke') {
+    /* Разорвать связку можно с ЛЮБОГО устройства, а не только с того, которое
+       вводило код. Данные при этом не пропадают ни у кого: устройство, нажавшее
+       кнопку, забирает копию профиля и сохранений на новый идентификатор, а
+       прежний остаётся второму устройству как есть. Дальше они живут отдельно. */
+    const profile = await getProfile(playerId);
+    const slots = normalizeSlots(await getSoloSlots(playerId));
+    const fresh = randomUUID();
+    await setProfile(fresh, { ...mergeProgress(profile, body.progress), linkedAt: null });
+    await setSoloSlots(fresh, slots);
+    return res.status(200).json({ playerId: fresh, profile: await getProfile(fresh),
+      slots: slots.map(summarize), storage: hasKv() ? 'kv' : 'memory' });
+  }
   if (action === 'link_cancel') {
     const code = cleanCode(body.code);
     const link = code ? await getLink(code) : null;

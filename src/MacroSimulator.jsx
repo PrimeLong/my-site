@@ -1,5 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
-import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, syncProgress,
+import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress,
   createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
   reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
-  CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText,
+  CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, mlnScale, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
@@ -207,6 +207,11 @@ const GlobalStyle = () => (
     @media (max-width: 760px) { .ems-paper-cols { column-count: 1 !important; } }
     .ems-kpi-strip { display:grid; grid-template-columns: repeat(auto-fit, minmax(158px,1fr)); gap:10px; }
     @media (max-width: 700px) { .ems-kpi-strip { grid-template-columns: repeat(2,1fr); } }
+    /* Практика в курсе: на широком экране условие задачи слева, рабочие панели
+       (рычаги, панель президента, лента новостей) справа — вместо одной длинной
+       колонки посреди пустого экрана. На узком остаётся один столбец. */
+    .ems-tut-cols { display:grid; grid-template-columns: 1fr; gap:0 20px; }
+    @media (min-width: 1000px) { .ems-tut-cols { grid-template-columns: minmax(0,1fr) minmax(320px,0.95fr); } }
   `}</style>
 );
 
@@ -2416,7 +2421,7 @@ function CrisisBar({ economy, botAction }) {
       display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }} role="status" aria-live="polite">
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className={a.urgent ? 'ems-blink' : ''} style={{ width: 7, height: 7, borderRadius: '50%', background: a.accent, display: 'inline-block' }} />
-        <span className="ems-mono" style={{ fontSize: 11, color: a.accent, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{info.label}</span>
+        <span className="ems-mono" style={{ fontSize: 11, color: a.accent, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{regimeInfoLabel(info, economy)}</span>
         <span style={{ fontSize: 11, color: COLOR.faint }}>{economy.regimeStreak}-й квартал</span>
       </span>
       {metrics.map(([l, v]) => (
@@ -2805,7 +2810,7 @@ function RegimeBanner({ economy }) {
       border: `1px solid ${c}`, borderLeft: `${isCrisis ? 4 : 1}px solid ${c}`, borderRadius: 3,
       padding: isCrisis ? '11px 14px' : '9px 12px', fontSize: 12 }}>
       <Activity size={isCrisis ? 17 : 15} color={c} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div><b style={{ color: c, fontSize: isCrisis ? 12.5 : 12 }}>Режим экономики: {info.label}.</b> <span style={{ color: COLOR.muted }}>{regimeInfoText(info, economy)}</span></div>
+      <div><b style={{ color: c, fontSize: isCrisis ? 12.5 : 12 }}>Режим экономики: {regimeInfoLabel(info, economy)}.</b> <span style={{ color: COLOR.muted }}>{regimeInfoText(info, economy)}</span></div>
     </div>
   );
 }
@@ -2976,10 +2981,13 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
    поэтому устроена не как список слайдеров, а как ведомость: сколько капитала
    есть, сколько уже забронировано выбранными на этот квартал решениями и
    сколько останется. Пока квартал не завершён, любое решение можно снять. */
-const PRES_GROUP_ICON = { public: Megaphone, reform: Hammer, power: Gavel };
+const PRES_GROUP_ICON = { public: Megaphone, reform: Hammer, power: Gavel, war: ShieldAlert };
 const PRES_TABS = [
   { id: 'public', label: 'Указы' },
   { id: 'reform', label: 'Реформы' },
+  // война — отдельная вкладка: это единственный рычаг президента, который меняет
+  // не проценты, а саму рамку, в которой считают все остальные
+  { id: 'war', label: 'Война' },
   { id: 'staff', label: 'Кадры' },
   { id: 'directive', label: 'Указания' },
 ];
@@ -3022,7 +3030,7 @@ function RegimeLadder({ economy }) {
     : regime === 'crisis'
       ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
       : regime === 'authoritarian'
-        ? { label: 'тоталитарный режим', need: 'указ «Полный контроль над институтами» (50 ПК) — или напряжённость ≥ 80 и удержать её', at: 80 }
+        ? { label: 'тоталитарный режим', need: 'указ «Полный контроль над институтами» (50 ПК, только во время войны) — или напряжённость ≥ 80 и удержать её', at: 80 }
         : null;
   const bar = clamp(tension, 0, 100);
   return (
@@ -3200,6 +3208,21 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
               </React.Fragment>
             );
           })}
+        </div>
+      )}
+
+      {tab === 'war' && (
+        <div>
+          <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 9 }}>
+            Война — не рычаг экономики, а смена рамки: рейтинг первые кварталы растёт на сплочении,
+            чрезвычайные полномочия становятся доступны, газеты меняют язык. Платят за это торговля,
+            инвестиции, капитал и люди — и платят дольше, чем идёт сама война.
+          </div>
+          {PRESIDENT_ACTIONS.filter((a) => a.group === 'war').map((a) => (
+            <PresActionCard key={a.id} action={a} economy={economy} cooldowns={cooldowns}
+              selected={selected.includes(a.id)} affordable={free >= a.cost}
+              onToggle={() => toggle(a.id)} />
+          ))}
         </div>
       )}
 
@@ -3648,11 +3671,20 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(null);      // сколько партий приехало с профилем
+  const [doneKind, setDoneKind] = useState('linked'); // чем кончилось: связали или разорвали
   const [now, setNow] = useState(Date.now());
   // без общего хранилища (Redis) код физически не доедет до второго устройства:
   // серверная функция держит его в памяти одного случайного вызова
   const [noStorage, setNoStorage] = useState(false);
   const linkedTo = getOwnPlayerId();
+  // общий ли сейчас профиль — знает сервер: отметка ставится в момент обмена кодом
+  // и видна ОБОИМ устройствам, а не только тому, которое вводило код
+  const [shared, setShared] = useState(false);
+  React.useEffect(() => {
+    let alive = true;
+    syncProfile(playerId).then((pf) => { if (alive && pf && pf.linkedAt) setShared(true); });
+    return () => { alive = false; };
+  }, [playerId]);
 
   React.useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   // пока код на экране, спрашиваем сервер, не ввели ли его на втором устройстве:
@@ -3699,6 +3731,20 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
       onLinked(r.playerId);
     } catch (e) { setError(e.message); Audio.play('down'); } finally { setBusy(false); }
   };
+  const doRevoke = async () => {
+    if (!window.confirm('Разорвать связку? Это устройство продолжит с копией общего профиля — сохранения, достижения и курсы останутся при нём. Второе устройство останется на прежнем профиле со своей копией, но общими они больше не будут.')) return;
+    setBusy(true); setError('');
+    try {
+      const r = await revokeLink(playerId, readLocalProgress());
+      setPlayerId(r.playerId, { keepOwn: false });
+      writeLocalProgress(r.profile);
+      setShared(false);
+      setDoneKind('revoked');
+      setDone((r.slots || []).filter(Boolean).length);
+      Audio.play('click');
+      onLinked(r.playerId);
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
   const doUnlink = () => {
     if (!window.confirm('Отвязать это устройство? Вернутся сохранения и прогресс, которые были на нём до связывания. Партии общего профиля останутся на другом устройстве.')) return;
     const own = unlinkDevice();
@@ -3724,11 +3770,17 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.teal }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <Check size={14} color={COLOR.teal} />
-              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.teal }}>Устройства связаны</span>
+              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.teal }}>
+                {doneKind === 'revoked' ? 'Связка разорвана' : 'Устройства связаны'}
+              </span>
             </div>
             <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>
-              Профиль теперь общий: {done ? `${done} ${done === 1 ? 'сохранение доступно' : done < 5 ? 'сохранения доступны' : 'сохранений доступно'} на этом устройстве` : 'общих сохранений пока нет'}.
-              Достижения и курсы обоих устройств объединены.
+              {doneKind === 'revoked'
+                ? <>Это устройство перешло на собственный профиль с копией всего, что было общим:
+                  {done ? ` ${done} ${done === 1 ? 'сохранение' : done < 5 ? 'сохранения' : 'сохранений'} на месте` : ' сохранений в нём не было'},
+                  достижения и курсы тоже. Второе устройство осталось на прежнем профиле — со своей копией.</>
+                : <>Профиль теперь общий: {done ? `${done} ${done === 1 ? 'сохранение доступно' : done < 5 ? 'сохранения доступны' : 'сохранений доступно'} на этом устройстве` : 'общих сохранений пока нет'}.
+                  Достижения и курсы обоих устройств объединены.</>}
             </div>
             <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0', marginTop: 11 }} onClick={onClose}>Готово</button>
           </div>
@@ -3798,6 +3850,17 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
                   устройства, скорее всего, не найдётся. Это настройка развёртывания
                   (<b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>), а не ошибка ввода.
                 </div>
+              </div>
+            )}
+
+            {shared && !linkedTo && (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${COLOR.hairline}` }}>
+                <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
+                  Профиль общий с другим устройством. Разорвать связку можно и отсюда: это устройство заберёт
+                  копию профиля и сохранений себе, второе останется на прежнем — но общими они быть перестанут.
+                </div>
+                <button className="ems-btn" disabled={busy} style={{ width: '100%', padding: '9px 0', fontSize: 12, color: COLOR.rust, borderColor: COLOR.rust }}
+                  onClick={doRevoke}>Разорвать связку устройств</button>
               </div>
             )}
 
@@ -5930,6 +5993,38 @@ function initDashboards(savedDashboards) {
 // «Сбросить» имеет смысл показывать, только если со встроенными наборами что-то
 // сделали: убрали из списка или переименовали. Свои наборы кнопка не трогает.
 const presetsAreDefault = (list) => DASHBOARD_PRESETS.every((p) => list.some((d) => d.id === p.id && d.name === p.name));
+/* Что закреплено на верхней полосе и какой набор выбран — это тоже настройка вида,
+   а не часть партии: раньше она жила только в памяти вкладки, и любое изменение
+   пропадало, если его не сохранить кнопкой отдельным набором. */
+const PINS_KEY = 'ems-pins';
+const loadPinView = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(PINS_KEY) || '{}');
+    const pins = Array.isArray(v.pinned) ? v.pinned.filter((k) => typeof k === 'string' && ALL_METRICS[k]) : [];
+    return { pinned: pins.length ? pins.slice(0, MAX_PINS) : null,
+      activeDash: typeof v.activeDash === 'string' ? v.activeDash : null };
+  } catch { return { pinned: null, activeDash: null }; }
+};
+const persistPinView = (pinned, activeDash) => {
+  try { localStorage.setItem(PINS_KEY, JSON.stringify({ pinned, activeDash })); } catch { /* приватный режим */ }
+};
+/* Закреплённые показатели: своя память на устройстве, плюс автосохранение в свой
+   набор, если сейчас выбран именно он. Партия, загруженная из сохранения, важнее:
+   в ней полоса была своя. */
+function usePinnedStrip(initialPins, initialDash, dashActions) {
+  const saved = React.useRef(null);
+  if (!saved.current) saved.current = loadPinView();
+  const [activeDash, setActiveDash] = useState(initialDash || saved.current.activeDash || 'overview');
+  const [pinned, setPinned] = useState(initialPins || saved.current.pinned || DEFAULT_PINS);
+  React.useEffect(() => {
+    persistPinView(pinned, activeDash);
+    dashActions.syncActive(activeDash, pinned);
+    // dashActions пересоздаётся каждый рендер — в зависимостях ему делать нечего
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinned, activeDash]);
+  return { pinned, setPinned, activeDash, setActiveDash };
+}
+
 /* Действия над наборами одинаковы в соло- и сетевом экране, а правила хранения
    нетривиальны (свои наборы лежат целиком, у встроенных хранятся только отличия) —
    поэтому логика одна на оба экрана, а не две расходящиеся копии. */
@@ -5944,6 +6039,16 @@ function makeDashboardActions(setDashboards) {
       });
       setActive(id);
     },
+    /* Правка полосы при выбранном своём наборе пишется прямо в него: отдельная
+       кнопка «сохранить» для этого не нужна — набор и есть то, что сейчас на
+       экране. Встроенные наборы так не меняются: их правят «поверх», а вернуть
+       исходный вид можно кнопкой сброса. */
+    syncActive: (id, pins) => setDashboards((ds) => {
+      const target = ds.find((d) => d.id === id);
+      if (!target || !target.custom) return ds;
+      if (target.pins.length === pins.length && target.pins.every((k, i) => k === pins[i])) return ds;
+      return syncCustom(ds.map((d) => (d.id === id ? { ...d, pins: [...pins] } : d)));
+    }),
     deleteDash: (id) => setDashboards((ds) => {
       const target = ds.find((d) => d.id === id);
       if (target && !target.custom) persistHiddenPresets([...loadHiddenPresets().filter((x) => x !== id), id]);
@@ -6543,6 +6648,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [chatText, setChatText] = useState('');
   const [nowTick, setNowTick] = useState(() => Date.now());
   React.useEffect(() => { const iv = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(iv); }, []);
+  /* Таймер квартала отсчитывается от серверного времени, а часы на устройствах
+     расходятся на минуты: у двух игроков на экране были разные цифры, а иногда и
+     давно истёкший срок. Держим поправку «сервер минус мы» и считаем по ней. */
+  const [skew, setSkew] = useState(0);
+  React.useEffect(() => {
+    if (Number.isFinite(room.now)) setSkew(room.now - Date.now());
+  }, [room.now]);
   const [chatBusy, setChatBusy] = useState(false);
   const chatEndRef = React.useRef(null);
   const [sent, setSent] = useState(false);
@@ -6632,8 +6744,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [presDirStrength, setPresDirStrength] = useState(1);
   const [dense, setDense] = useState(false);
   const [dashboards, setDashboards] = useState(() => initDashboards());
-  const [activeDash, setActiveDash] = useState('overview');
-  const [pinned, setPinned] = useState(DEFAULT_PINS);
+  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
+  const { pinned, setPinned, activeDash, setActiveDash } = usePinnedStrip(null, null, dashActions);
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -6648,7 +6760,6 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
   });
   const applyDash = (did) => { const d = dashboards.find((x) => x.id === did); if (d) { setPinned(d.pins); setActiveDash(did); } };
-  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
   const saveDash = () => dashActions.saveDash(pinned, setActiveDash);
   const { deleteDash, renameDash, resetDash } = dashActions;
   const kpiDelta = (key) => economy[key] - prevEcon[key];
@@ -6700,7 +6811,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   // сколько времени осталось до того, как сервер решит за отсутствующего игрока
   // ботом (см. QUARTER_TIMEOUT_MS/maybeForceResolve в api/room.js) — держим в поле
   // зрения, чтобы «квартал стоит» не выглядело так, будто ничего не произойдёт
-  const timeLeftMs = room.quarterStartedAt ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - nowTick) : null;
+  const timeLeftMs = room.quarterStartedAt
+    ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - (nowTick + skew)) : null;
   const timeLeftLabel = timeLeftMs === null ? null
     : `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
   /* Таймер отсчитывает не «время на ход», а срок, после которого сервер решит за
@@ -6722,6 +6834,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   } : null;
   const presLast = presState && presState.last
     ? { ...presState.last, toPlayer: presState.last.branch === myBranch } : null;
+  // требование живого президента: оно выдвинуто в прошлом квартале и исполняется
+  // в этом — у ведомства есть на него ход, а не «претензия задним числом»
+  const presDemand = presState && presState.human ? presState.demand : null;
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
   const disconnectedSeat = otherSeats.find((sx) => room.occupied[sx] && room.connected && !room.connected[sx]) || null;
   const otherDisconnected = !!disconnectedSeat;
@@ -6935,6 +7050,20 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 lastDirective={presState && presState.last && presState.last.status
                   ? { status: presState.last.status, text: `Указание «${presState.last.label}».` } : null}
                 directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
+              {presState && presState.demand && (
+                <div className="ems-panel" style={{ padding: 12, borderColor: COLOR.gold }}>
+                  <div style={{ fontSize: 10, color: COLOR.faint, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
+                    Требование в силе
+                  </div>
+                  <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                    {presState.demand.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: «{presState.demand.ask}»
+                  </div>
+                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4, lineHeight: 1.4 }}>
+                    Ведомство отвечает решениями этого квартала — итог будет в новостях, когда квартал закроется.
+                    Новое указание встанет в силу со следующего.
+                  </div>
+                </div>
+              )}
               <div className="ems-panel" style={{ padding: 13 }}>
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.blue, marginBottom: 8 }}>Ведомства</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -7005,6 +7134,27 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           )}
 
           {presPlan && !isPresidentSeat && <PresidentWatchPanel economy={economy} plan={presPlan} last={presLast} branch={myBranch} />}
+          {presDemand && !isPresidentSeat && (
+            <div className="ems-panel" style={{ padding: 13, borderColor: presDemand.branch === myBranch ? COLOR.rust : COLOR.borderStrong }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+                <Crown size={14} color={COLOR.gold} />
+                <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Президент</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.names.president || 'игрок'}</span>
+              </div>
+              <div style={{ fontSize: 11.5, lineHeight: 1.45, paddingLeft: 9, color: COLOR.text,
+                borderLeft: `2px solid ${presDemand.branch === myBranch ? COLOR.rust : COLOR.blue}` }}>
+                <span style={{ color: presDemand.branch === myBranch ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
+                  {presDemand.branch === myBranch ? 'Требование к вам: ' : `Указание ${presDemand.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
+                </span>
+                {presDemand.ask}
+                {presDemand.branch === myBranch && (
+                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
+                    Выполнить — значит сдвинуть свои рычаги в эту сторону в этом квартале. Отказать можно, но администрация ведёт счёт.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
@@ -9112,11 +9262,85 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
   // широкий макет нужен только терминалу: панель президента узкая, и на 1180 px
   // рядом с ней оставалось бы полэкрана пустоты
   const wide = kind === 'practice' && sandbox === 'trader';
+  /* Курс раньше жил в колонке 640 px посреди пустого экрана: на компьютере это
+     выглядело как страница из телефона. Читать всё ещё удобнее в узкой колонке —
+     поэтому текст не растягиваем до края, а вот рабочие панели практики (рычаги,
+     панель президента, лента новостей) на широком экране уходят во второй столбец,
+     рядом с условием задачи, а не под него. */
+  const twoCol = kind === 'practice' && sandbox !== 'trader';
+
+  /* Рабочие панели практики: на широком экране уходят во второй столбец. */
+  const sideBlocks = (
+    <>
+      {newsLog.length > 0 && (
+              <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
+                  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 7 }}>
+                  <Newspaper size={11} />Что происходило по кварталам
+                  <span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>
+              {newsLog.length > 1 ? 'сверху — последний' : ''}
+                  </span>
+                </div>
+                {/* лента прокручивается: по задаче на восемь-десять кварталов важно
+                    уметь отмотать назад и сверить, после чего что произошло */}
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+            {newsLog.map((qn) => (
+                    <div key={qn.q} style={{ marginBottom: 8 }}>
+                      <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginBottom: 4 }}>{qn.label}</div>
+                      {qn.items.map((n) => (
+                        <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
+                          borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
+                          <div style={{ color: COLOR.text }}>{n.headline}</div>
+                          <div style={{ color: COLOR.muted }}>{n.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+      {sandbox === 'president' && (
+              <div style={{ marginBottom: 14 }}>
+                <PresidentPanel economy={economy} cooldowns={eventCooldowns}
+                  selected={presActions} setSelected={setPresActions}
+                  cbPersonaId={cbPersonaId} mofPersonaId={mofPersonaId}
+                  appointCb={presAppointCb} setAppointCb={setPresAppointCb}
+                  appointMof={presAppointMof} setAppointMof={setPresAppointMof}
+                  directive={presDirective} setDirective={setPresDirective} lastDirective={null}
+                  directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
+              </div>
+            )}
+      {leverIds.length > 0 && (
+          <div className="ems-panel" style={{ padding: 16, marginBottom: 22 }}>
+          {leverIds.map((id) => {
+              const lv = scaleLever(LEVERS.find((l) => l.id === id), economy);
+              return (
+                <div key={id} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 9 }}>
+                    <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{lv.label}</span>
+                    <span className="ems-mono" style={{ fontSize: 13 }}>{decisions[id].toFixed(2)}{lv.suffix}</span>
+                  </div>
+                  <input type="range" className="ems-slider" min={lv.min} max={lv.max} step={lv.step} value={decisions[id]}
+                    disabled={practicePassed}
+                    onChange={(e) => { Audio.play('tick'); setDecisions((d) => ({ ...d, [id]: Number(e.target.value) })); }} />
+                </div>
+              );
+            })}
+            {lever && (
+              <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint }}>
+                Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
+              </div>
+            )}
+          </div>
+        )}
+
+    </>
+  );
 
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
-      <div style={{ maxWidth: wide ? 1180 : 640, width: '100%' }}>
+      <div style={{ maxWidth: wide ? 1180 : twoCol ? 1120 : 900, width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22 }}>
           <button className="ems-btn" style={{ padding: '7px 12px', fontSize: 12 }}
             onClick={() => { Audio.play('click'); onExit(); }}>
@@ -9183,11 +9407,20 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
           })}
         </div>
 
-        {cur.body && (
-          <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
-            {cur.body({ economy, history, decisions, book, ctx })}
+        <div className={twoCol ? 'ems-tut-cols' : undefined}>
+          <div style={{ minWidth: 0 }}>
+            {cur.body && (
+              <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
+                {cur.body({ economy, history, decisions, book, ctx })}
+              </div>
+            )}
+            {twoCol && (
+              <PracticeStatus step={cur} ctx={ctx} quartersUsed={practice ? practice.used : 0}
+                passed={practicePassed} failed={practiceFailed} />
+            )}
           </div>
-        )}
+          {twoCol && <div style={{ minWidth: 0 }}>{sideBlocks}</div>}
+        </div>
 
         {kind === 'quiz' && (
           <QuizStep questions={cur.questions} passed={!!passed[step]}
@@ -9196,78 +9429,19 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
 
         {kind === 'practice' && (
           <>
-            <PracticeStatus step={cur} ctx={ctx} quartersUsed={practice ? practice.used : 0}
-              passed={practicePassed} failed={practiceFailed} />
+            {!twoCol && (
+              <PracticeStatus step={cur} ctx={ctx} quartersUsed={practice ? practice.used : 0}
+                passed={practicePassed} failed={practiceFailed} />
+            )}
             {sandbox === 'trader' && (
               <div style={{ marginBottom: 14 }}>
                 <TradingTerminal economy={economy} prev={prevEcon} history={history} book={book} onTrade={onTrade} />
               </div>
             )}
-            {newsLog.length > 0 && (
-              <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
-                  letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 7 }}>
-                  <Newspaper size={11} />Что происходило по кварталам
-                  <span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>
-                    {newsLog.length > 1 ? 'сверху — последний' : ''}
-                  </span>
-                </div>
-                {/* лента прокручивается: по задаче на восемь-десять кварталов важно
-                    уметь отмотать назад и сверить, после чего что произошло */}
-                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
-                  {newsLog.map((qn) => (
-                    <div key={qn.q} style={{ marginBottom: 8 }}>
-                      <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginBottom: 4 }}>{qn.label}</div>
-                      {qn.items.map((n) => (
-                        <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
-                          borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
-                          <div style={{ color: COLOR.text }}>{n.headline}</div>
-                          <div style={{ color: COLOR.muted }}>{n.text}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sandbox === 'president' && (
-              <div style={{ marginBottom: 14 }}>
-                <PresidentPanel economy={economy} cooldowns={eventCooldowns}
-                  selected={presActions} setSelected={setPresActions}
-                  cbPersonaId={cbPersonaId} mofPersonaId={mofPersonaId}
-                  appointCb={presAppointCb} setAppointCb={setPresAppointCb}
-                  appointMof={presAppointMof} setAppointMof={setPresAppointMof}
-                  directive={presDirective} setDirective={setPresDirective} lastDirective={null}
-                  directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
-              </div>
-            )}
           </>
         )}
 
-        {leverIds.length > 0 && (
-          <div className="ems-panel" style={{ padding: 16, marginBottom: 22 }}>
-            {leverIds.map((id) => {
-              const lv = scaleLever(LEVERS.find((l) => l.id === id), economy);
-              return (
-                <div key={id} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 9 }}>
-                    <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{lv.label}</span>
-                    <span className="ems-mono" style={{ fontSize: 13 }}>{decisions[id].toFixed(2)}{lv.suffix}</span>
-                  </div>
-                  <input type="range" className="ems-slider" min={lv.min} max={lv.max} step={lv.step} value={decisions[id]}
-                    disabled={practicePassed}
-                    onChange={(e) => { Audio.play('tick'); setDecisions((d) => ({ ...d, [id]: Number(e.target.value) })); }} />
-                </div>
-              );
-            })}
-            {lever && (
-              <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint }}>
-                Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
-              </div>
-            )}
-          </div>
-        )}
-
+        {twoCol ? null : sideBlocks}
         {kind === 'practice' && !practicePassed && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             <button className="ems-btn primary" disabled={practiceFailed} style={{ flex: 1, minWidth: 200, padding: '12px 0', fontSize: 13.5 }}
@@ -10062,7 +10236,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [mobileCol, setMobileCol] = useState('center');
   const [narrow, setNarrow] = useState(false);
   const [dashboards, setDashboards] = useState(() => initDashboards(initial && initial.dashboards));
-  const [activeDash, setActiveDash] = useState(initial ? initial.activeDash || 'overview' : 'overview');
+  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
+  const initialDash = initial ? initial.activeDash || null : null;
   React.useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined;
     const mq = window.matchMedia('(max-width: 860px)');
@@ -10071,7 +10246,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (mq.addEventListener) { mq.addEventListener('change', upd); return () => mq.removeEventListener('change', upd); }
     mq.addListener(upd); return () => mq.removeListener(upd);
   }, []);
-  const [pinned, setPinned] = useState(initial && initial.pinned ? initial.pinned : DEFAULT_PINS);
+  const { pinned, setPinned, activeDash, setActiveDash } = usePinnedStrip(
+    initial && initial.pinned ? initial.pinned : null, initialDash, dashActions);
   const [pendingRequest, setPendingRequest] = useState(null);
   const [lastResponse, setLastResponse] = useState(initial ? initial.lastResponse || null : null);
   const [botAction2, setBotAction2] = useState(initial ? initial.botAction2 || null : null);
@@ -10155,7 +10331,6 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
   });
   const applyDash = (id) => { const d = dashboards.find((x) => x.id === id); if (d) { setPinned(d.pins); setActiveDash(id); } };
-  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
   const saveDash = () => dashActions.saveDash(pinned, setActiveDash);
   const { deleteDash, renameDash, resetDash } = dashActions;
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
@@ -10596,7 +10771,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>{CRISIS_INFO[c] ? CRISIS_INFO[c].label : c}.</b> <span style={{ color: COLOR.muted }}>{CRISIS_INFO[c] ? regimeInfoText(CRISIS_INFO[c], economy) : ''}</span></span>
+            <span><b style={{ color: COLOR.rust }}>{CRISIS_INFO[c] ? regimeInfoLabel(CRISIS_INFO[c], economy) : c}.</b> <span style={{ color: COLOR.muted }}>{CRISIS_INFO[c] ? regimeInfoText(CRISIS_INFO[c], economy) : ''}</span></span>
           </div>
         ))}
       </div>
