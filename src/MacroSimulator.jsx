@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict,
+  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -1927,7 +1927,7 @@ function useExclusiveDropdown(width) {
   if (!idRef.current) idRef.current = ++dropdownSeq;
   const btnRef = React.useRef(null);
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState({ top: 0, bottom: 'auto', left: 0, maxHeight: '80vh' });
   React.useEffect(() => {
     const onOther = () => { if (dropdownActiveId !== idRef.current) setOpen(false); };
     dropdownListeners.add(onOther);
@@ -1942,9 +1942,19 @@ function useExclusiveDropdown(width) {
       dropdownListeners.forEach((fn) => fn());
       const r = btnRef.current && btnRef.current.getBoundingClientRect();
       if (r) {
-        const vw = window.innerWidth;
+        const vw = window.innerWidth; const vh = window.innerHeight;
         const left = Math.max(8, Math.min(r.right - width, vw - width - 8));
-        setPos({ top: r.bottom + 6, left });
+        /* Панель не должна уезжать за нижний край экрана. На телефоне список
+           саундтрека открывался вниз от кнопки, стоящей в нижней половине окна, и
+           четыреста пикселей содержимого оказывались за пределами видимой части —
+           до кнопок в нём было просто не добраться. Теперь: если снизу тесно,
+           раскрываемся вверх, и в любом случае ограничиваем высоту экраном. */
+        const below = vh - r.bottom - 14;
+        const above = r.top - 14;
+        const down = below >= 320 || below >= above;
+        setPos(down
+          ? { top: r.bottom + 6, bottom: 'auto', left, maxHeight: Math.max(180, below) }
+          : { top: 'auto', bottom: Math.max(8, vh - r.top + 6), left, maxHeight: Math.max(180, above) });
       }
     }
     setOpen(next);
@@ -1954,7 +1964,7 @@ function useExclusiveDropdown(width) {
 
 function AudioControls() {
   const DD_WIDTH = 268;
-  const { open, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
+  const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   const [music, setMusic] = useState(Audio.opts.music);
   const [sfx, setSfx] = useState(Audio.opts.sfx);
   const [vol, setVol] = useState(Audio.opts.volume);
@@ -1972,11 +1982,14 @@ function AudioControls() {
         {anyOn ? <Volume2 size={14} /> : <VolumeX size={14} color={COLOR.faint} />}
       </button>
       {open && (
-        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto' }}>
+        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: pos.maxHeight, overflowY: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
             <Music size={13} color={COLOR.gold} />
             <span className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft }}>Саундтрек</span>
             <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{np.moodLabel} · {np.bpm} BPM</span>
+            {/* на телефоне «ткнуть мимо» — не очевидный способ закрыть панель */}
+            <button className="ems-btn" style={{ padding: '3px 5px', lineHeight: 0 }} aria-label="Закрыть"
+              onClick={() => { Audio.play('click'); setOpen(false); }}><X size={12} /></button>
           </div>
           <div style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '9px 10px', marginBottom: 9 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.2 }}>{np.name}</div>
@@ -3026,11 +3039,29 @@ function RegimeLadder({ economy }) {
           background: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }} />
         {next && <span style={{ position: 'absolute', left: `${next.at}%`, top: -2, width: 2, height: 8, background: COLOR.goldSoft }} />}
       </div>
+      {(regime === 'authoritarian' || regime === 'totalitarian') && (() => {
+        /* Риск, о котором нельзя узнать заранее, — это лотерея, а не механика.
+           Показываем его прямо: чем выше напряжение, безработица, инфляция и чем
+           меньше политического капитала, тем ближе армия. */
+        const risk = militaryCoupRisk(economy);
+        // словом и числом — по одной и той же величине: «низкий · 3%» рядом с
+        // порогом в 3% читался бы как ошибка
+        const pct = Math.round(risk * 1000) / 10;
+        const color = pct >= 8 ? COLOR.rust : pct >= 3 ? COLOR.gold : COLOR.teal;
+        return (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 10.5, marginTop: 6 }}>
+            <span style={{ color: COLOR.muted }}>Риск военного переворота</span>
+            <span style={{ marginLeft: 'auto', color }} className="ems-mono">
+              {pct >= 8 ? 'высокий' : pct >= 3 ? 'заметный' : 'низкий'} · {pct}% за квартал
+            </span>
+          </div>
+        );
+      })()}
       <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 5, lineHeight: 1.45 }}>
         {next
           ? <>Следующая ступень — <b style={{ color: COLOR.muted }}>{next.label}</b>: {next.need}. Напряжённость растёт от низкого
             рейтинга, кризисов, безработицы и инфляции; подавление протеста и непопулярные реформы добавляют её напрямую.</>
-          : 'Выше этой ступени лестницы нет. Вниз режим сходит сам только при напряжённости ниже 92 — либо решением вернуть парламент.'}
+          : 'Выше этой ступени лестницы нет: выборы отменены, сменить власть голосованием нельзя. Зато остаётся армия — чем выше напряжённость, безработица и инфляция, тем вероятнее военный переворот. Вниз режим сходит либо так, либо решением вернуть парламент.'}
       </div>
     </div>
   );
@@ -3279,7 +3310,8 @@ function PromisesPanel({ promises, economy }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
         <Flag size={14} color={COLOR.blue} />
         <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>Предвыборные обещания</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>до выборов {economy.quartersToElection} кв.</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>
+          {economy.noElections ? 'выборы отменены' : `до выборов ${economy.quartersToElection} кв.`}</span>
       </div>
       <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 8 }}>
         Каждое сдержанное обещание добавляет около 2 п.п. голосов на выборах, каждое проваленное — столько же отнимает.
@@ -3865,6 +3897,16 @@ function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
       return { id: 'dismissal', title: 'Отставка по решению президента',
         text: `Администрация исчерпала терпение: требования президента игнорировались, а результат их не оправдал. ${role === 'central_bank' ? 'Главу Центрального банка' : 'Министра финансов'} освобождают от должности — формально «по собственному желанию».` };
     }
+  }
+  /* Потеря власти не у урны: восстание или армия. При тоталитарном режиме выборов
+     нет вовсе, и это единственный способ проиграть — зато настоящий. Трейдера это
+     не касается: он не власть. */
+  if (role !== 'trader' && economy.powerLost) {
+    return economy.powerLost === 'military'
+      ? { id: 'military_coup', title: 'Военный переворот',
+        text: `Армия заняла правительственные здания при напряжённости ${Math.round(economy.politicalTension || 0)} из 100 и рейтинге ${Math.round(economy.approval)}. Власть, отменившую выборы, снимают с должности не голосованием — и не спрашивая.` }
+      : { id: 'uprising', title: 'Режим пал',
+        text: `Массовые протесты и раскол элит вынудили власть отступить. Напряжённость ${Math.round(economy.politicalTension || 0)} из 100: удерживать страну силой дороже, чем управлять ею.` };
   }
   const er = economy.electionResult;
   if (er && er !== 'incumbent' && (role === 'full_control' || role === 'president' || role === 'ministry_finance' || (role === 'central_bank' && er === 'landslide'))) {
@@ -4940,7 +4982,7 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
               <div style={{ fontSize: 10, color: COLOR.faint, marginTop: -2, lineHeight: 1.4 }}>
                 {marks.length > 0 && <><span style={{ color: COLOR.teal }}>B</span> — ваши покупки, <span style={{ color: COLOR.rust }}>S</span> — продажи. </>}
                 {showBench && instr.key !== 'stockIndex' && 'Индекс приведён к стартовой цене инструмента: расхождение линий — это опережение или отставание от рынка. '}
-                {Number.isFinite(avg) && instr.kind !== 'opt' && 'Золотой пунктир — ваша средняя цена входа.'}
+                {Number.isFinite(avg) && instr.kind !== 'opt' && 'Пунктир с подписью «ваша средняя» — ваша средняя цена входа.'}
               </div>
             </div>
           )}
@@ -5815,6 +5857,36 @@ const DASHBOARD_PRESETS = [
 /* Пользовательские наборы дашборда хранятся на устройстве (как достижения), а не
    только внутри конкретного сохранения — «Сохранить текущий набор» должен пережить
    и «Начать заново», и переход в другую партию. */
+/* Настройка графика — категория, период и выключенные линии — тоже запоминается
+   на устройстве. Раньше каждая новая партия (и каждое возвращение в меню) начиналась
+   с «Выпуск» и всеми включёнными линиями, хотя человек уже настроил себе вид. */
+const CHART_VIEW_KEY = 'ems-chart-view';
+const loadChartView = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHART_VIEW_KEY) || '{}');
+    return {
+      group: typeof v.group === 'string' ? v.group : 'output',
+      period: typeof v.period === 'string' ? v.period : '5y',
+      hidden: Array.isArray(v.hidden) ? v.hidden.filter((x) => typeof x === 'string') : [],
+    };
+  } catch { return { group: 'output', period: '5y', hidden: [] }; }
+};
+const persistChartView = (v) => {
+  try { localStorage.setItem(CHART_VIEW_KEY, JSON.stringify(v)); } catch { /* приватный режим */ }
+};
+/* Хук на три связанных значения: и в одиночной партии, и в сетевой — один и тот же
+   вид графика, потому что настраивает его один и тот же человек. */
+function useChartView() {
+  const init = React.useRef(null);
+  if (!init.current) init.current = loadChartView();
+  const [chartGroup, setChartGroup] = useState(init.current.group);
+  const [period, setPeriod] = useState(init.current.period);
+  const [hiddenSeries, setHiddenSeries] = useState(init.current.hidden);
+  React.useEffect(() => { persistChartView({ group: chartGroup, period, hidden: hiddenSeries }); },
+    [chartGroup, period, hiddenSeries]);
+  return { chartGroup, setChartGroup, period, setPeriod, hiddenSeries, setHiddenSeries };
+}
+
 const CUSTOM_DASHBOARDS_KEY = 'ems-custom-dashboards';
 const HIDDEN_PRESETS_KEY = 'ems-hidden-dashboards';
 const loadCustomDashboards = () => {
@@ -5897,7 +5969,7 @@ const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' && navi
 
 function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash }) {
   const DD_WIDTH = 250;
-  const { open, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
+  const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
     <div style={{ position: 'relative' }}>
       <button ref={btnRef} className="ems-btn" style={{ padding: '7px 9px' }} title="Вид, тема и доступность" aria-label="Настройки вида"
@@ -5905,8 +5977,12 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
         <Sliders size={14} />
       </button>
       {open && (
-        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto' }}>
-          <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, marginBottom: 8 }}>Тема оформления</div>
+        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: pos.maxHeight, overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
+            <span className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft }}>Тема оформления</span>
+            <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 5px', lineHeight: 0 }} aria-label="Закрыть"
+              onClick={() => { Audio.play('click'); setOpen(false); }}><X size={12} /></button>
+          </div>
           {Object.values(THEMES).map((t) => (
             <button key={t.id} className="ems-btn" style={{ width: '100%', textAlign: 'left', padding: '6px 9px', fontSize: 11.5, marginBottom: 4,
               display: 'flex', alignItems: 'center', gap: 7,
@@ -5969,13 +6045,14 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
    Сервер (api/room.js) считает квартал, когда решения прислали оба места; здесь — только
    отображение состояния комнаты и отправка своих решений.
 ========================================================================================= */
-const NETWORK_SEATS = ['central_bank', 'ministry_finance'];
+const NETWORK_SEATS = ['central_bank', 'ministry_finance', 'president'];
 const TRADER_SEATS = ['trader1', 'trader2'];
 const seatsForMode = (mode) => (mode === 'trader' ? TRADER_SEATS : NETWORK_SEATS);
 // оба трейдерских места делят одну и ту же роль из ROLES (id 'trader') — нумеруем
 // их отдельно только в подписи, чтобы «Трейдер 1» и «Трейдер 2» не выглядели одним
 // и тем же местом в UI
 const seatRole = (seat) => {
+  if (seat === 'president') return ROLES.find((r) => r.id === 'president');
   if (seat === 'trader1' || seat === 'trader2') {
     const base = ROLES.find((r) => r.id === 'trader');
     const n = seat.slice(-1);
@@ -6113,15 +6190,20 @@ function NetworkLobby({ onEnter }) {
     // переключаем выбранное место, если оно занято ИЛИ вообще не существует в
     // режиме этой комнаты (например, код привёл в «рыночную» комнату, а по
     // умолчанию выбран ЦБ — место из другого режима)
-    const validSeats = seatsForMode(roomPreview.mode);
+    const validSeats = previewSeats(roomPreview);
     const occ = roomPreview.occupied || {};
     if (!validSeats.includes(seat) || occ[seat]) {
       const free = validSeats.find((sx) => !occ[sx]) || validSeats[0];
       setSeat(free);
     }
   }, [roomPreview]);
+  /* Место президента существует только там, где президент в комнате включён —
+     иначе его незачем и показывать. */
+  const previewSeats = (r) => seatsForMode(r ? r.mode : mode)
+    // в «классике» президент включён — значит и место за него есть
+    .filter((sx) => sx !== 'president' || !!(r ? r.president : (setupMode === 'classic' || presEnabled)));
   const bothSeatsTaken = !!(roomPreview && roomPreview.occupied
-    && seatsForMode(roomPreview.mode).every((sx) => roomPreview.occupied[sx]));
+    && previewSeats(roomPreview).every((sx) => roomPreview.occupied[sx]));
 
   const enterSlot = async (idx) => {
     const slot = slots[idx];
@@ -6365,7 +6447,7 @@ function NetworkLobby({ onEnter }) {
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Ваша роль</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {seatsForMode(roomPreview ? roomPreview.mode : mode).map((sx) => {
+              {previewSeats(roomPreview).map((sx) => {
                 const rd = seatRole(sx); const RoleIcon = ROLE_ICON[rd.icon];
                 const taken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied[sx]);
                 return (
@@ -6514,12 +6596,24 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     }
     Audio.setMood(r.economy);
   }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
+  // новый квартал — новый ход президента: прошлые указы уже оплачены и применены
+  React.useEffect(() => {
+    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null);
+    setPresDirective(null); setPresDirStrength(1);
+  }, [room.quarterIndex]);
 
   const isTraderRoom = room.mode === 'trader';
   const roleDef = seatRole(seat);
   const RoleIcon = ROLE_ICON[roleDef.icon];
-  const roomSeats = seatsForMode(room.mode);
-  const otherSeat = roomSeats[0] === seat ? roomSeats[1] : roomSeats[0];
+  /* Мест теперь может быть три: ЦБ, Минфин и президент. «Партнёр» по-прежнему один —
+     второе ведомство (для президента это ЦБ, чьи цифры и показываем рядом), но ждём
+     квартала мы от всех занятых мест, а не от одного. */
+  const roomSeats = seatsForMode(room.mode).filter((sx) => sx !== 'president' || !!room.president);
+  const isPresidentSeat = seat === 'president';
+  const DEPT_PAIR = { central_bank: 'ministry_finance', ministry_finance: 'central_bank' };
+  const otherSeat = isTraderRoom ? (roomSeats[0] === seat ? roomSeats[1] : roomSeats[0])
+    : (DEPT_PAIR[seat] || 'central_bank');
+  const otherSeats = roomSeats.filter((sx) => sx !== seat);
   const otherRole = seatRole(otherSeat);
   const OtherRoleIcon = ROLE_ICON[otherRole.icon];
   const levers = LEVERS.filter((l) => roleDef.groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
@@ -6528,10 +6622,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const setLever = (id2, v) => setDecisions((d) => ({ ...d, [id2]: v }));
   const shareKey = (lid) => (lid === 'shareHealth' ? 'health' : lid === 'shareEducation' ? 'education' : lid === 'shareScience' ? 'science' : lid === 'shareDefense' ? 'defense' : 'admin');
   const leverDisplay = (l) => (l.subgroup === 'budget' ? economy.budgetShares[shareKey(l.id)] : economy[l.id]);
-  const [chartGroup, setChartGroup] = useState('output');
-  const [hiddenSeries, setHiddenSeries] = useState([]);
-  const [period, setPeriod] = useState('5y');
+  const { chartGroup, setChartGroup, period, setPeriod, hiddenSeries, setHiddenSeries } = useChartView();
   const [activeTab, setActiveTab] = useState('economy');
+  // ход живого президента: указы и реформы, кадры, одно указание и его сила
+  const [presActions, setPresActions] = useState([]);
+  const [presAppointCb, setPresAppointCb] = useState(null);
+  const [presAppointMof, setPresAppointMof] = useState(null);
+  const [presDirective, setPresDirective] = useState(null);
+  const [presDirStrength, setPresDirStrength] = useState(1);
   const [dense, setDense] = useState(false);
   const [dashboards, setDashboards] = useState(() => initDashboards());
   const [activeDash, setActiveDash] = useState('overview');
@@ -6573,7 +6671,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       // основной канал — report_portfolio после каждой сделки (см. выше), это
       // просто подстраховка на случай, если тот эффект ещё не успел отправиться
       const portfolioValue = isTraderRoom ? bookValue(portfolio, room.economy, null) : undefined;
-      const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue);
+      // президент шлёт не рычаги, а решения: сервер разберёт их тем же кодом, что и
+      // ход бота-президента в одиночной игре
+      const president = isPresidentSeat
+        ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
+          directive: presDirective, directiveStrength: presDirStrength }
+        : undefined;
+      const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
       setRoom(r.room); setSent(true); Audio.play('stamp');
     } catch (e) { failWithError(e); } finally { setBusy(false); }
   };
@@ -6591,7 +6695,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   };
   React.useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }); }, [room.chat?.length]);
 
-  const waitingForOther = sent && !room.ready[otherSeat];
+  const pendingSeats = otherSeats.filter((sx) => room.occupied[sx] && !room.ready[sx]);
+  const waitingForOther = sent && pendingSeats.length > 0;
   // сколько времени осталось до того, как сервер решит за отсутствующего игрока
   // ботом (см. QUARTER_TIMEOUT_MS/maybeForceResolve в api/room.js) — держим в поле
   // зрения, чтобы «квартал стоит» не выглядело так, будто ничего не произойдёт
@@ -6603,7 +6708,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
      считается ровно в тот момент, когда я нажму «готов», — и часы над пустой
      комнатой только создавали ощущение, что кто-то торопит. Своего собственного
      «ещё не отправил» таймер тоже не касается. */
-  const quarterPending = !!room.occupied[otherSeat] && !room.ready[otherSeat];
+  const quarterPending = pendingSeats.length > 0;
   /* Президент комнаты приходит с сервера «плоским» (в хранилище нельзя класть
      объекты просьб с функциями) — собираем из него то, что ждёт панель. Чьё
      требование «ко мне», зависит от места, за которым сижу я. */
@@ -6618,7 +6723,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const presLast = presState && presState.last
     ? { ...presState.last, toPlayer: presState.last.branch === myBranch } : null;
   const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
-  const otherDisconnected = room.occupied[otherSeat] && room.connected && !room.connected[otherSeat];
+  const disconnectedSeat = otherSeats.find((sx) => room.occupied[sx] && room.connected && !room.connected[sx]) || null;
+  const otherDisconnected = !!disconnectedSeat;
   const myLastAction = room.lastActions ? room.lastActions[seat] : null;
   const [welcomeBackDismissed, setWelcomeBackDismissed] = useState(false);
   React.useEffect(() => { setWelcomeBackDismissed(false); }, [room.quarterIndex]);
@@ -6789,7 +6895,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         {otherDisconnected && (
           <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div><b style={{ color: COLOR.rust }}>{room.names[otherSeat] || 'Партнёр'} не на связи.</b> <span style={{ color: COLOR.muted }}>
+            <div><b style={{ color: COLOR.rust }}>{(disconnectedSeat && room.names[disconnectedSeat]) || 'Партнёр'} не на связи.</b> <span style={{ color: COLOR.muted }}>
               Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. {isTraderRoom
                 ? 'Если решение не придёт в течение 5 минут с начала квартала, квартал наступит без него — место останется за партнёром.'
                 : 'Если решение не придёт в течение 5 минут с начала квартала, за это ведомство один раз решит бот, а место останется за партнёром.'}</span></div>
@@ -6815,6 +6921,35 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <PortfolioSummary book={portfolio} economy={economy} live={null} goal="max_wealth"
               prevValue={portfolio.history && portfolio.history.length > 1 ? portfolio.history[portfolio.history.length - 2] : null}
               opponent={{ label: room.names[otherSeat] || otherRole.short, value: (room.portfolioValues || {})[otherSeat] }} />
+          ) : isPresidentSeat ? (
+            <>
+              {/* у президента нет ни одного рычага: его ход — кадры, указания,
+                  реформы и публичная политика, ровно как в одиночной игре */}
+              <PresidentPanel economy={economy} cooldowns={room.presCooldowns || {}}
+                selected={presActions} setSelected={setPresActions}
+                cbPersonaId={(room.personas || {}).central_bank || 'pragmatic'}
+                mofPersonaId={(room.personas || {}).ministry_finance || 'technocrat'}
+                appointCb={presAppointCb} setAppointCb={setPresAppointCb}
+                appointMof={presAppointMof} setAppointMof={setPresAppointMof}
+                directive={presDirective} setDirective={setPresDirective}
+                lastDirective={presState && presState.last && presState.last.status
+                  ? { status: presState.last.status, text: `Указание «${presState.last.label}».` } : null}
+                directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
+              <div className="ems-panel" style={{ padding: 13 }}>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.blue, marginBottom: 8 }}>Ведомства</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {[['Ключевая ставка', pctFmt(economy.keyRate)],
+                    ['Баланс бюджета', fmtSignedPct(economy.budgetBalancePctGdp)],
+                    ['Долг', pctFmt(economy.debtToGdp)],
+                    ['За ЦБ', room.occupied.central_bank ? (room.names.central_bank || 'игрок') : 'бот'],
+                    ['За Минфин', room.occupied.ministry_finance ? (room.names.ministry_finance || 'игрок') : 'бот']].map(([l, v]) => (
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                        <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </>
           ) : (
             <>
               <div className="ems-panel" style={{ padding: 14 }}>
@@ -6869,7 +7004,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </>
           )}
 
-          {presPlan && <PresidentWatchPanel economy={economy} plan={presPlan} last={presLast} branch={myBranch} />}
+          {presPlan && !isPresidentSeat && <PresidentWatchPanel economy={economy} plan={presPlan} last={presLast} branch={myBranch} />}
 
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
@@ -7059,7 +7194,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
           ) : (
             <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
-              {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу' : 'Отправить решения квартала'}
+              {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу'
+                : isPresidentSeat ? 'Подписать и завершить квартал' : 'Отправить решения квартала'}
             </button>
           )}
         </div>
@@ -7245,6 +7381,92 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   );
 }
 
+/* ================================ СЛОВАРЬ ТЕРМИНОВ ================================
+   Курс объясняет механику, но пользуется словами, которых человек мог никогда не
+   встречать: «дисконтируется», «бенчмарк», «разрыв выпуска». Раньше их приходилось
+   либо угадывать по контексту, либо искать снаружи. Теперь термин в тексте подчёркнут
+   пунктиром: наведите (или нажмите с телефона) — и определение раскроется прямо под
+   абзацем. Тот же список целиком лежит в «Словаре» на странице курсов. */
+const GLOSSARY = {
+  discount: { title: 'Дисконтирование', text: 'Приведение будущих денег к сегодняшнему дню. Тысяча через год стоит сегодня меньше тысячи: её можно было бы положить под процент. Чем выше ставка, тем дешевле сегодня стоит одна и та же будущая прибыль — поэтому от роста ставки акции дешевеют даже без изменения самих прибылей.' },
+  long: { title: 'Лонг (длинная позиция)', text: 'Покупка в расчёте на рост цены. Максимальный убыток — вся вложенная сумма: ниже нуля цена не падает.' },
+  short: { title: 'Шорт (короткая позиция)', text: 'Ставка на падение: вы продаёте занятый актив, чтобы позже выкупить его дешевле. Прибыль ограничена (цена не упадёт ниже нуля), а убыток растёт вместе с ценой и потолка не имеет — на практике позицию раньше закроет маржин-колл.' },
+  leverage: { title: 'Плечо', text: 'Сделка на сумму больше собственного капитала: остальное — заём под обеспечение. Во столько же раз растут и прибыль, и убыток, и скорость, с которой вы упираетесь в маржин-колл.' },
+  margincall: { title: 'Маржин-колл', text: 'Требование довнести обеспечение, когда убыток съел его запас. Если вносить нечего, позиции закрывают принудительно по текущей цене — и убыток фиксируется независимо от того, что цена сделает дальше.' },
+  benchmark: { title: 'Бенчмарк (эталон)', text: 'То, с чем сравнивают результат: индекс акций, облигации, депозит, инфляция. «Заработал 8%» ничего не значит, пока неизвестно, сколько за то же время дал рынок и сколько съели цены.' },
+  volatility: { title: 'Волатильность', text: 'Размах колебаний цены. Высокая волатильность — это не «падение», а неопределённость: сильные движения в обе стороны, из-за которых плечо становится опасным.' },
+  liquidity: { title: 'Ликвидность', text: 'Насколько быстро актив превращается в деньги без потери цены. У банка — запас средств, которыми он может рассчитаться прямо сейчас; его нехватка останавливает кредитование раньше, чем банк становится неплатёжеспособным.' },
+  riskpremium: { title: 'Премия за риск', text: 'Надбавка к ставке, которую требуют за право одолжить именно вам. Растёт от долга, политической неопределённости и слабых институтов — и удорожает весь новый долг государства.' },
+  realrate: { title: 'Реальная ставка', text: 'Ставка за вычетом инфляции (точнее — ожидаемой инфляции). Именно она определяет, дорогие деньги или дешёвые: ставка 8% при инфляции 10% — это мягкая политика, а не жёсткая.' },
+  rstar: { title: 'Нейтральная ставка (r*)', text: 'Уровень реальной ставки, при котором политика никуда не толкает экономику: не разгоняет и не тормозит. Жёсткость политики измеряют расстоянием до неё, а не абсолютной цифрой.' },
+  outputgap: { title: 'Разрыв выпуска', text: 'Насколько фактический ВВП отличается от потенциального, в процентах. Плюс — экономика работает выше своих возможностей (перегрев, цены пойдут вверх), минус — недозагружена (простаивают люди и мощности).' },
+  potential: { title: 'Потенциальный рост', text: 'Темп, с которым экономика может расти долго и без разгона цен: определяется людьми, капиталом и производительностью. Спрос можно поднять указом, потенциал — только реформами и инвестициями, и не за квартал.' },
+  nairu: { title: 'Естественная безработица (NAIRU)', text: 'Уровень безработицы, при котором зарплаты и цены не ускоряются. Опускать безработицу ниже него можно — но только ценой растущей инфляции.' },
+  expectations: { title: 'Инфляционные ожидания', text: 'То, какую инфляцию люди и бизнес закладывают в цены и зарплаты уже сейчас. Это механизм, а не прогноз: если все ждут роста цен, он происходит независимо от первопричины.' },
+  anchor: { title: 'Якорь ожиданий', text: 'Состояние, при котором ожидания стоят у цели центрального банка и не реагируют на каждый скачок цен. Якорь держится доверием: сорвать его можно за квартал, вернуть — за годы.' },
+  credibility: { title: 'Доверие к ЦБ', text: 'Насколько рынок верит, что объявленная цель будет достигнута. Высокое доверие делает ту же ставку эффективнее: ожидания опускаются сами, без дополнительного ужесточения.' },
+  fiscalimpulse: { title: 'Бюджетный импульс', text: 'Насколько бюджет в этом году добавляет спроса по сравнению с прошлым. Положительный импульс разгоняет экономику, даже если дефицит формально не растёт.' },
+  consolidation: { title: 'Бюджетная консолидация', text: 'Сокращение дефицита: расходы вниз или налоги вверх. Лечит долг и помогает ставке, но забирает спрос — обычно в самый неподходящий политически момент.' },
+  transfers: { title: 'Социальные выплаты (трансферты)', text: 'Пенсии, пособия, индексации. Это не разовая трата, а темп: подняли один раз — расходы растут каждый квартал, пока решение не отменят.' },
+  shadow: { title: 'Теневая экономика', text: 'Доля активности, которая не видна бюджету и не платит налогов. Растёт от чрезмерной налоговой нагрузки: часть возможных сборов теряется ровно так, а не из-за «плохого администрирования».' },
+  intervention: { title: 'Валютные интервенции', text: 'Покупка или продажа валюты центральным банком ради курса. Против фундаментальных причин ослабления работают недолго — ровно столько, сколько хватит резервов.' },
+  yieldcurve: { title: 'Кривая доходности', text: 'Соотношение доходностей коротких и длинных облигаций. Когда короткие дороже длинных (кривая перевёрнута), рынок ждёт снижения ставки — обычно из-за приближающегося спада.' },
+  polcapital: { title: 'Политический капитал', text: 'Ресурс президента вместо ползунков: им оплачиваются указы, кадровые решения, реформы и требования к ведомствам. Копится рейтингом и ростом, тает кризисами и беспорядками.' },
+  reform: { title: 'Структурная реформа', text: 'Изменение правил, а не суммы: рынок труда, пенсии, суды, образование. Двигает потенциал экономики, а не её загрузку, платит за себя годами и почти всегда стоит рейтинга сразу.' },
+};
+const GLOSSARY_KEYS = Object.keys(GLOSSARY);
+
+/* Термин в тексте курса: пунктирное подчёркивание, определение раскрывается по
+   нажатию (на десктопе работает и обычная подсказка при наведении). */
+function Term({ k, children }) {
+  const [open, setOpen] = useState(false);
+  const g = GLOSSARY[k];
+  if (!g) return <>{children}</>;
+  return (
+    <span style={{ position: 'relative' }}>
+      <span role="button" tabIndex={0} title={`${g.title} — ${g.text}`}
+        onClick={() => { Audio.play('tick'); setOpen((v) => !v); }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((v) => !v); } }}
+        style={{ borderBottom: `1px dashed ${COLOR.gold}`, cursor: 'help', color: COLOR.goldSoft }}>{children}</span>
+      {open && (
+        <span style={{ display: 'block', margin: '7px 0', padding: '9px 11px', background: COLOR.panelAlt,
+          border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 11.5, lineHeight: 1.55, color: COLOR.muted }}>
+          <b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function GlossaryModal({ onClose }) {
+  const [q, setQ] = useState('');
+  const norm = q.trim().toLowerCase();
+  const list = GLOSSARY_KEYS.map((k) => GLOSSARY[k])
+    .filter((g) => !norm || g.title.toLowerCase().includes(norm) || g.text.toLowerCase().includes(norm))
+    .sort((a, b) => a.title.localeCompare(b.title, 'ru'));
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 620, width: '100%', maxHeight: '86vh', overflow: 'auto', padding: 18 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <GraduationCap size={15} color={COLOR.gold} />
+          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Словарь терминов</span>
+          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} aria-label="Закрыть" onClick={onClose}><X size={13} /></button>
+        </div>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="поиск по словарю"
+          style={{ width: '100%', padding: '9px 11px', fontSize: 13, marginBottom: 12,
+            background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+        {list.map((g) => (
+          <div key={g.title} className="ems-panel" style={{ padding: '10px 12px', marginBottom: 7 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: COLOR.goldSoft, marginBottom: 3 }}>{g.title}</div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.55 }}>{g.text}</div>
+          </div>
+        ))}
+        {!list.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Ничего не нашлось.</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ============================ ОБУЧЕНИЕ: КУРС ИЗ МОДУЛЕЙ ============================ */
 // Курс из последовательных модулей вместо одного урока: каждый — своя
 // мини-экономика (без бота-оппонента, кризисов и оценки партии) на настоящем
@@ -7297,7 +7519,10 @@ function QuizStep({ questions, onPass, passed }) {
   const salt = React.useRef(Math.floor(Math.random() * 1e9));
   const orders = useMemo(() => questions.map((q) => shuffleOrder(q, salt.current)), [questions]);
   const allAnswered = questions.every((_, i) => answers[i] !== undefined);
-  const isRight = (i) => answers[i] !== undefined && orders[i][answers[i]] === questions[i].answer;
+  /* Тест, сданный в прошлый заход, отвечать заново не нужно — прогресс модуля
+     сохраняется. Но разбор при этом строился по пустому набору ответов и писал
+     «Неверно» под вариантом, который тут же был отмечен галочкой как правильный. */
+  const isRight = (i) => (answers[i] === undefined ? !!passed : orders[i][answers[i]] === questions[i].answer);
   const wrongCount = questions.filter((_, i) => !isRight(i)).length;
   const check = () => {
     setChecked(true);
@@ -7415,7 +7640,7 @@ const TUTORIAL_MODULES = [
         ),
       },
       {
-        title: 'Ключевая ставка',
+        title: 'Ключевая ставка', pins: ['keyRate', 'inflation', 'gdp', 'unemployment'],
         lever: 'keyRate', minDelta: 1, runsQuarter: true,
         body: ({ economy }) => (
           <>
@@ -7426,7 +7651,7 @@ const TUTORIAL_MODULES = [
         ),
       },
       {
-        title: 'Лаг и бюджетный рычаг',
+        title: 'Лаг и бюджетный рычаг', pins: ['keyRate', 'inflation', 'outputGap', 'gdp'],
         lever: 'govSpending', minDelta: 2, runsQuarter: true,
         body: ({ economy }) => (
           <>
@@ -7437,7 +7662,7 @@ const TUTORIAL_MODULES = [
         ),
       },
       {
-        title: 'Вот и эффект',
+        title: 'Вот и эффект', pins: ['keyRate', 'inflation', 'outputGap', 'unemployment'],
         lever: null, runsQuarter: false,
         body: ({ economy, history }) => {
           const before = history[1] ? history[1].inflation : economy.inflation;
@@ -7480,12 +7705,12 @@ const TUTORIAL_MODULES = [
         ),
       },
       {
-        title: 'Налоги',
+        title: 'Налоги', pins: ['revenuePctGdp', 'shadowShare', 'budgetBalancePctGdp', 'debtToGdp'],
         lever: 'vatRate', minDelta: 3, runsQuarter: true,
         body: ({ economy }) => (
           <>
             <p>Поднимите НДС минимум на 3 п.п. Казалось бы, доходы бюджета должны вырасти пропорционально ставке — но так работает только в теории.</p>
-            <p>Сейчас НДС {pctFmt(economy.vatRate)}, теневая экономика {pctFmt(economy.shadowShare)} ВВП. Чем выше ставка сверх разумного, тем больше активности уходит «в тень» — часть возможных сборов модель теряет именно так.</p>
+            <p>Сейчас НДС {pctFmt(economy.vatRate)}, <Term k="shadow">теневая экономика</Term> {pctFmt(economy.shadowShare)} ВВП. Чем выше ставка сверх разумного, тем больше активности уходит «в тень» — часть возможных сборов модель теряет именно так.</p>
           </>
         ),
       },
@@ -7658,7 +7883,7 @@ const TUTORIAL_MODULES = [
         ),
       },
       {
-        title: 'Норматив достаточности капитала',
+        title: 'Норматив достаточности капитала', pins: ['bankCapitalAdequacy', 'capitalRequirement', 'bankNPL', 'bankingRisk'],
         lever: 'capitalRequirement', minDelta: 1.5, runsQuarter: true,
         body: ({ economy }) => (
           <>
@@ -7668,7 +7893,7 @@ const TUTORIAL_MODULES = [
         ),
       },
       {
-        title: 'Быстрая помощь ликвидностью',
+        title: 'Быстрая помощь ликвидностью', pins: ['bankLiquidity', 'bankingRisk', 'bankCapitalAdequacy', 'bankNPL'],
         lever: 'liquidity', minDelta: 5, runsQuarter: true,
         body: ({ economy }) => (
           <>
@@ -7798,6 +8023,7 @@ const MODULE_CHECKS = {
     },
     practice: {
       kind: 'practice', title: 'Практика: остудить перегрев',
+      pins: ['inflation', 'outputGap', 'unemployment', 'gdp'],
       goalLabel: 'Инфляция ≤ 6.0% и разрыв выпуска ≤ 1.0%',
       body: () => (
         <>
@@ -7951,6 +8177,7 @@ const MODULE_CHECKS = {
     },
     practice: {
       kind: 'practice', title: 'Практика: вытащить банки',
+      pins: ['bankingRisk', 'bankCapitalAdequacy', 'bankNPL', 'bankLiquidity'],
       goalLabel: 'Банковский риск ≤ 45 и ликвидность банков ≥ 58',
       body: () => (
         <>
@@ -8022,7 +8249,7 @@ const TRADER_MODULES = [
         body: ({ economy }) => (
           <>
             <p>За инвестора у вас нет ни ставки, ни бюджета: ставку ведёт бот-ЦБ, бюджет — бот-Минфин, а вы живёте внутри их решений. Ваши инструменты — цены, а не рычаги.</p>
-            <p>Цены здесь не случайны. Индекс акций считается из прибылей компаний и ставки дисконтирования: дешёвые деньги и растущая прибыль поднимают его, дорогие деньги и риск — опускают. Облигации живут от доходности: выросла доходность — упала цена уже выпущенной бумаги.</p>
+            <p>Цены здесь не случайны. Индекс акций считается из прибылей компаний и ставки <Term k="discount">дисконтирования</Term>: дешёвые деньги и растущая прибыль поднимают его, дорогие деньги и риск — опускают. Облигации живут от доходности: выросла доходность — упала цена уже выпущенной бумаги.</p>
             <p>Сейчас индекс акций {fmt1(economy.stockIndex)}, ключевая ставка {pctFmt(economy.keyRate)}. Нажмите «Далее», чтобы посмотреть один квартал со стороны.</p>
           </>
         ),
@@ -8034,8 +8261,8 @@ const TRADER_MODULES = [
           <>
             <p>Купить инструмент — значит открыть <b>позицию</b>. Пока она открыта, её результат называют нереализованным: он меняется каждый квартал вместе с ценой и превращается в деньги только при закрытии.</p>
             <p>Средняя цена входа — та, по которой вы в среднем набрали позицию. Всё, что выше неё, — прибыль; всё, что ниже, — убыток.</p>
-            <p>Про это проще один раз увидеть, чем прочитать: выберите любой инструмент в терминале ниже, нажмите «Купить / лонг» и завершите квартал. На графике инструмента появится <b>золотой пунктир</b> — ваша средняя цена входа; по расстоянию до линии цены сразу видно, где вы стоите.</p>
-            <p>Есть и обратная сторона: <b>шорт</b>. Это ставка на падение — вы продаёте то, чего у вас нет, и зарабатываете, если цена упадёт. Убыток в шорте, в отличие от покупки, ничем сверху не ограничен.</p>
+            <p>Про это проще один раз увидеть, чем прочитать: выберите любой инструмент в терминале ниже, нажмите «Купить / <Term k="long">лонг</Term>» и завершите квартал. На графике инструмента появится пунктирная линия с подписью <b>«ваша средняя»</b> — это и есть ваша средняя цена входа; по расстоянию до линии цены сразу видно, где вы стоите.</p>
+            <p>Есть и обратная сторона: <Term k="short">шорт</Term>. Это ставка на падение — вы продаёте занятый актив, чтобы выкупить его дешевле. Заработать в лонге можно сколько угодно, а потерять — не больше вложенного: ниже нуля цена не падает. В шорте наоборот: заработок ограничен, а убыток растёт вместе с ценой. До бесконечности он, впрочем, не дорастёт — раньше сработает <Term k="margincall">маржин-колл</Term> и закроет позицию принудительно.</p>
           </>
         ),
         levers: [], maxQuarters: 4,
@@ -8046,7 +8273,7 @@ const TRADER_MODULES = [
             ? `Открыто позиций: ${open.length}. Золотой пунктир средней цены уже на графике выбранного инструмента.`
             : 'Открытых позиций пока нет — купите что-нибудь в терминале ниже.';
         },
-        hint: 'Любой инструмент подойдёт: кнопка «Купить / лонг» под карточкой, сумма сделки задаётся ползунком ниже. После покупки посмотрите на график — золотой пунктир и есть ваша средняя цена входа.',
+        hint: 'Любой инструмент подойдёт: кнопка «Купить / лонг» под карточкой, сумма сделки задаётся ползунком ниже. После покупки посмотрите на график — пунктир с подписью «ваша средняя» и есть ваша средняя цена входа.',
       },
     ],
   },
@@ -8061,9 +8288,9 @@ const TRADER_MODULES = [
         lever: null, runsQuarter: true,
         body: ({ economy }) => (
           <>
-            <p>Плечо — это торговля на заёмные деньги. Купив на 3 млн при своих 1 млн, вы получаете втрое больший результат и от роста, и от падения: плечо умножает не доход, а размер вашей ошибки.</p>
+            <p>Плечо — это торговля на заёмные деньги. Купив на 3 млн при своих 1 млн, вы получаете втрое больший результат и от роста, и от падения: <Term k="leverage">плечо</Term> умножает не доход, а размер вашей ошибки.</p>
             <p>За заёмные деньги брокер берёт ставку по кредитам — сейчас {pctFmt(economy.lendingRate)} годовых. Она капает каждый квартал независимо от того, права позиция или нет.</p>
-            <p>Уровень обеспечения — это ваш капитал, делённый на стоимость позиций. Пока он выше поддерживающего уровня, всё в порядке. Как только он падает ниже — брокер закрывает часть позиций сам, по рынку, не спрашивая вас. Это и есть маржин-колл.</p>
+            <p>Уровень обеспечения — это ваш капитал, делённый на стоимость позиций. Пока он выше поддерживающего уровня, всё в порядке. Как только он падает ниже — брокер закрывает часть позиций сам, по рынку, не спрашивая вас. Это и есть <Term k="margincall">маржин-колл</Term>.</p>
           </>
         ),
       },
@@ -8123,7 +8350,7 @@ const PRESIDENT_MODULES = [
         body: ({ economy }) => (
           <>
             <p>Ни ставки, ни налогов, ни расходов: ЦБ и Минфин ведут боты со своими характерами. Вы влияете на экономику только через людей, которых назначаете, указания, которые они могут не выполнить, и реформы, которые окупятся не в этот срок.</p>
-            <p>Единственный ваш ресурс — политический капитал, сейчас {Math.round(economy.politicalCapital)} из 100. Он копится рейтингом и ростом, тает в кризисах и при беспорядках, и у него есть равновесие: накопить на одну большую реформу можно, на все сразу — нет.</p>
+            <p>Единственный ваш ресурс — <Term k="polcapital">политический капитал</Term>, сейчас {Math.round(economy.politicalCapital)} из 100. Он копится рейтингом и ростом, тает в кризисах и при беспорядках, и у него есть равновесие: накопить на одну большую реформу можно, на все сразу — нет.</p>
           </>
         ),
       },
@@ -8190,7 +8417,7 @@ const PRESIDENT_MODULES = [
         body: () => (
           <>
             <p>Концентрация власти реально работает: политического капитала становится больше, ведомства перестают отказывать, выборы больше не проигрываются. Всё это — настоящие преимущества, и именно поэтому соблазн существует.</p>
-            <p>Платит за них экономика, и по всем каналам сразу: премия за риск растёт, доверие бизнеса падает, капитал уходит, прямые инвестиции сокращаются. А напряжение никуда не девается — репрессии его копят, и подавленный протест возвращается больше, чем был.</p>
+            <p>Платит за них экономика, и по всем каналам сразу: <Term k="riskpremium">премия за риск</Term> растёт, доверие бизнеса падает, капитал уходит, прямые инвестиции сокращаются. А напряжение никуда не девается — репрессии его копят, и подавленный протест возвращается больше, чем был.</p>
           </>
         ),
       },
@@ -8336,6 +8563,7 @@ const COURSE_CHECKS = {
     },
     practice: {
       kind: 'practice', title: 'Практика: сбить инфляцию чужими руками',
+      pins: ['inflation', 'inflationExpectations', 'keyRate', 'politicalCapital'],
       goalLabel: 'Инфляция ≤ 6.3% — но ставку задаёте не вы',
       body: () => (
         <>
@@ -8346,7 +8574,7 @@ const COURSE_CHECKS = {
       setup: () => ({ inflation: 9.8, coreInflation: 9.2, inflationExpectations: 8.2, keyRate: 5.5, cbTenure: 11 }),
       personas: { cb: 'dove' },
       levers: [], maxQuarters: 6,
-      goal: (c) => c.economy.inflation <= 6.3,
+      goal: (c) => shown1(c.economy.inflation) <= 6.3,
       goalText: (c) => `Инфляция ${pctFmt(c.economy.inflation)}, ставка ${pctFmt(c.economy.keyRate)}, ожидания ${pctFmt(c.economy.inflationExpectations)}.`,
       hint: 'Глава ЦБ отработал одиннадцать кварталов из двенадцати — смена почти плановая и обойдётся дёшево. Ястреб реагирует на инфляцию вдвое жёстче Голубя. Есть и быстрый путь — указание «решительно подавить инфляцию», но Голубь на него скорее всего ответит отказом.',
     },
@@ -8383,7 +8611,7 @@ const COURSE_CHECKS = {
         </>
       ),
       levers: [], maxQuarters: 8,
-      goal: (c) => Object.keys(c.economy.reforms || {}).length >= 2 && c.economy.approval >= 42,
+      goal: (c) => Object.keys(c.economy.reforms || {}).length >= 2 && shown0(c.economy.approval) >= 42,
       goalText: (c) => `Проведено реформ: ${Object.keys(c.economy.reforms || {}).length}. Рейтинг ${Math.round(c.economy.approval)}, капитал ${Math.round(c.economy.politicalCapital)}.`,
       hint: 'Начните с дешёвых и не самых болезненных: дерегулирование и судебная реформа стоят меньше и по рейтингу почти не бьют. Обращение к нации восстанавливает поддержку быстро — но работает тем хуже, чем сильнее слова расходятся с ценами.',
     },
@@ -8423,7 +8651,7 @@ const COURSE_CHECKS = {
       ),
       setup: () => ({ politicalTension: 58, approval: 36, unemployment: 7.4, inflation: 8.4, coreInflation: 7.8 }),
       levers: [], maxQuarters: 6,
-      goal: (c) => c.economy.politicalTension <= 15 && !c.economy.parliamentDissolved && c.economy.politicalRegime !== 'authoritarian',
+      goal: (c) => shown0(c.economy.politicalTension) <= 15 && !c.economy.parliamentDissolved && c.economy.politicalRegime !== 'authoritarian',
       goalText: (c) => `Напряжение ${Math.round(c.economy.politicalTension)}, рейтинг ${Math.round(c.economy.approval)}, режим — ${(POLITICAL_REGIME_INFO[c.economy.politicalRegime] || {}).label || c.economy.politicalRegime}.`,
       hint: 'Напряжение считается от рейтинга, кризисов, безработицы и инфляции — то есть чинится тем же, чем чинится экономика. Сделка с элитами снимает его быстро и прямо; силовое подавление — тоже, но потом возвращает больше, чем сняло.',
     },
@@ -8490,6 +8718,7 @@ const EXAM_MODULES = [
       },
       {
         kind: 'practice', title: 'Экзаменационная задача: стагфляция',
+        pins: ['inflation', 'unemployment', 'outputGap', 'gdpGrowth'],
         goalLabel: 'Инфляция ≤ 6.5% и безработица ≤ 6.5% одновременно',
         body: () => (
           <>
@@ -8500,7 +8729,7 @@ const EXAM_MODULES = [
         setup: (e) => ({ inflation: 11.4, coreInflation: 10.6, inflationExpectations: 8.6, unemployment: 7.8,
           gdp: e.potentialGdp * 0.972, keyRate: 7, cbCredibility: 42 }),
         levers: ['keyRate', 'govSpending', 'transfers', 'vatRate'], maxQuarters: 10,
-        goal: (c) => c.economy.inflation <= 6.5 && c.economy.unemployment <= 6.5,
+        goal: (c) => shown1(c.economy.inflation) <= 6.5 && shown1(c.economy.unemployment) <= 6.5,
         goalText: (c) => `Инфляция ${pctFmt(c.economy.inflation)}, безработица ${pctFmt(c.economy.unemployment)}, разрыв выпуска ${fmtSignedPct(c.economy.outputGap)}.`,
         hint: 'Сначала цены, потом занятость: пока ожидания высоко, любой бюджетный стимул уходит в инфляцию, а не в выпуск. Сбейте инфляцию жёсткой ставкой, а когда ожидания опустятся — отпускайте её и поддерживайте спрос бюджетом.',
       },
@@ -8564,7 +8793,7 @@ const EXAM_MODULES = [
       },
       {
         title: 'Экзамен сдан', isFinal: true, lever: null, runsQuarter: false,
-        body: () => <p>Курс инвестора пройден: цена и позиция, плечо и обеспечение, портфель и бенчмарк. В настоящей партии добавятся случайные кризисы, опционы и казино — но правила те же.</p>,
+        body: () => <p>Курс инвестора пройден: цена и позиция, плечо и обеспечение, портфель и <Term k="benchmark">бенчмарк</Term>. В настоящей партии добавятся случайные кризисы, опционы и казино — но правила те же.</p>,
       },
     ],
   },
@@ -8610,14 +8839,14 @@ const EXAM_MODULES = [
           <>
             <p>Вам достаётся страна с двузначной инфляцией, высокой безработицей, низким рейтингом и Голубем во главе ЦБ. Десять кварталов.</p>
             <p>Ни ставки, ни бюджета у вас нет. Есть кадры, указания, реформы, публичная политика — и соблазн решить всё указом о роспуске парламента, который здесь считается провалом задачи.</p>
-            <p>Вытащить экономику мало: за срок нужно ещё и оставить после себя хотя бы одну проведённую структурную реформу. Разбираться с ценами и при этом тратить капитал на то, что окупится после вас, — и есть работа президента.</p>
+            <p>Вытащить экономику мало: за срок нужно ещё и оставить после себя хотя бы одну проведённую <Term k="reform">структурную реформу</Term>. Разбираться с ценами и при этом тратить капитал на то, что окупится после вас, — и есть работа президента.</p>
           </>
         ),
         setup: () => ({ inflation: 10.4, coreInflation: 9.8, inflationExpectations: 8.4, unemployment: 7.6,
           approval: 34, politicalTension: 44, keyRate: 6, cbTenure: 10, politicalCapital: 60 }),
         personas: { cb: 'dove', mof: 'populist' },
         levers: [], maxQuarters: 10,
-        goal: (c) => c.economy.approval >= 48 && c.economy.inflation <= 6.5
+        goal: (c) => shown0(c.economy.approval) >= 48 && shown1(c.economy.inflation) <= 6.5
           && Object.keys(c.economy.reforms || {}).length >= 1 && !c.economy.parliamentDissolved,
         goalText: (c) => `Рейтинг ${Math.round(c.economy.approval)}, инфляция ${pctFmt(c.economy.inflation)}, реформ ${Object.keys(c.economy.reforms || {}).length}, капитал ${Math.round(c.economy.politicalCapital)}.`,
         hint: 'Начните с ЦБ: с Голубем инфляцию не сбить, а без этого рейтинг не вырастет — реальные доходы съедаются ценами. Дальше рейтинг чинится тем же, чем чинится экономика, плюс обращением к нации, которое работает тем лучше, чем ближе цифры к обещаниям.',
@@ -8629,6 +8858,11 @@ const EXAM_MODULES = [
     ],
   },
 ];
+/* Задача сверяется с теми же числами, которые видит игрок. Иначе «Рейтинг 48»
+   при цели «≥ 48» читается как обман: под округлением там 47.6. */
+const shown0 = (v) => Math.round(v);
+const shown1 = (v) => Math.round(v * 10) / 10;
+
 const EXAM_BY_ID = {};
 EXAM_MODULES.forEach((m) => { EXAM_BY_ID[m.id] = m; });
 
@@ -8695,8 +8929,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     : Math.max((saved && saved.step) || 0, (saved && saved.at) || 0)));
   const [leverBaseline, setLeverBaseline] = useState(0);
   const [passed, setPassed] = useState(() => (saved && saved.passed) || {});
-  const [lastNews, setLastNews] = useState([]);
+  const [newsLog, setNewsLog] = useState([]);
   const [showToc, setShowToc] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(false);
   React.useEffect(() => { onSaveProgress(module.id, { step: maxStep, at: step, passed }); },
     [module.id, step, maxStep, passed, onSaveProgress]);
   const [practice, setPractice] = useState(null);
@@ -8707,6 +8942,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
+  const [presDirStrength, setPresDirStrength] = useState(1);
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
 
   // музыка курса реагирует на состояние песочницы так же, как в настоящей партии
@@ -8768,14 +9004,33 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
       mofAction = botFinanceMinistry(economy, mofPersonaId, 'easy');
       eff = { ...eff, ...cbAction.decisions, ...mofAction.decisions };
     }
+    /* Указание ведомству в песочнице раньше только выбиралось: разбирал его
+       интерфейс настоящей партии, а не курс, — и в обучении оно не делало ровно
+       ничего. Теперь считается тем же кодом и с той же силой, которую выставили
+       ползунком. */
+    let dirResult = null;
     if (sandbox === 'president') {
       eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof };
+      if (presDirective) {
+        dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff, presDirStrength);
+        if (dirResult) {
+          eff = { ...dirResult.decisions, presidentActions: presActions,
+            appointCb: presAppointCb, appointMof: presAppointMof, presidentExtraSpend: PRES_DIRECTIVE_COST };
+          if (dirResult.toCb) cbAction = redescribeCbAction(economy, cbPersonaId, eff);
+          else mofAction = redescribeMofAction(economy, mofPersonaId, eff);
+        }
+      }
     }
     const result = simulateQuarter({
       economy, decisions: eff, pendingImpulses, eventCooldowns,
       difficulty: 'easy', quarterIndex, stories: [],
       botAction: cbAction, botActions: mofAction ? [mofAction] : [], noEvents: true,
     });
+    if (dirResult) {
+      result.newsEntries.unshift({ id: `dir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex,
+        headline: `ПРЕЗИДЕНТ → ${dirResult.toCb ? 'ЦБ' : 'МИНФИН'}: ${dirResult.req.label.toUpperCase()} — ${dirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : dirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
+        text: `«${dirResult.ask}» ${dirResult.text}` });
+    }
     const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
     const newDecisions = defaultDecisions(result.economy, decisions);
     let newBook = book;
@@ -8788,7 +9043,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     if (sandbox === 'president') {
       if (presAppointCb) setCbPersonaId(presAppointCb);
       if (presAppointMof) setMofPersonaId(presAppointMof);
-      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null);
+      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     setEconomy(result.economy);
     setHistory(newHistory);
@@ -8798,7 +9053,14 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     setDecisions(newDecisions);
     // без ленты новостей в песочнице непонятно, что вообще произошло за квартал —
     // согласился ли ЦБ, сработал ли указ, что случилось с ценами
-    setLastNews((result.newsEntries || []).slice(0, 5));
+    /* Новости копятся: раньше лента показывала только последний квартал, и
+       вернуться к тому, что было два хода назад, было невозможно — а в задаче
+       на несколько кварталов это как раз то, по чему и отслеживают, сработало
+       решение или нет. Заголовки уже отсортированы движком по важности. */
+    setNewsLog((log) => [
+      { q: quarterIndex, label: quarterLabel(quarterIndex), items: (result.newsEntries || []).slice(0, 6) },
+      ...log,
+    ].slice(0, 12));
     return { economy: result.economy, history: newHistory, decisions: newDecisions, book: newBook };
   };
 
@@ -8819,7 +9081,8 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     setEconomy(a.economy); setHistory(a.history); setDecisions(a.decisions);
     setPendingImpulses(a.pendingImpulses); setEventCooldowns(a.eventCooldowns);
     setQuarterIndex(a.quarterIndex); setBook(a.book);
-    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null);
+    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
+    setNewsLog([]);
     setPractice({ ...practice, used: 0 });
   };
 
@@ -8859,8 +9122,11 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             onClick={() => { Audio.play('click'); onExit(); }}>
             ← К программе курса
           </button>
-          <div style={{ marginLeft: 'auto' }}><AudioControls /></div>
+          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 12 }}
+            onClick={() => { Audio.play('click'); setShowGlossary(true); }}>Словарь</button>
+          <AudioControls />
         </div>
+        {showGlossary && <GlossaryModal onClose={() => setShowGlossary(false)} />}
 
         <div key={step} className="ems-fade-in">
           <div className="ems-hero-eyebrow">{module.title}</div>
@@ -8904,7 +9170,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
         <div className="ems-hr" style={{ marginBottom: 18 }} />
 
         <div className="ems-kpi-strip" style={{ marginBottom: 18 }}>
-          {(cur.pins || module.pins).map((key) => {
+          {/* незнакомый ключ в списке — опечатка автора курса, а не повод показать
+              человеку пустой экран вместо урока: просто пропускаем плитку */}
+          {(cur.pins || module.pins).filter((key) => ALL_METRICS[key]).map((key) => {
             const m = ALL_METRICS[key];
             const val = economy[key];
             return (
@@ -8935,19 +9203,31 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                 <TradingTerminal economy={economy} prev={prevEcon} history={history} book={book} onTrade={onTrade} />
               </div>
             )}
-            {lastNews.length > 0 && (
+            {newsLog.length > 0 && (
               <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
                   letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 7 }}>
-                  <Newspaper size={11} />Что произошло за квартал
+                  <Newspaper size={11} />Что происходило по кварталам
+                  <span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>
+                    {newsLog.length > 1 ? 'сверху — последний' : ''}
+                  </span>
                 </div>
-                {lastNews.map((n) => (
-                  <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
-                    borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
-                    <div style={{ color: COLOR.text }}>{n.headline}</div>
-                    <div style={{ color: COLOR.muted }}>{n.text}</div>
-                  </div>
-                ))}
+                {/* лента прокручивается: по задаче на восемь-десять кварталов важно
+                    уметь отмотать назад и сверить, после чего что произошло */}
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  {newsLog.map((qn) => (
+                    <div key={qn.q} style={{ marginBottom: 8 }}>
+                      <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginBottom: 4 }}>{qn.label}</div>
+                      {qn.items.map((n) => (
+                        <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
+                          borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
+                          <div style={{ color: COLOR.text }}>{n.headline}</div>
+                          <div style={{ color: COLOR.muted }}>{n.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {sandbox === 'president' && (
@@ -8958,7 +9238,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                   appointCb={presAppointCb} setAppointCb={setPresAppointCb}
                   appointMof={presAppointMof} setAppointMof={setPresAppointMof}
                   directive={presDirective} setDirective={setPresDirective} lastDirective={null}
-                  directiveStrength={1} setDirectiveStrength={() => {}} />
+                  directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
               </div>
             )}
           </>
@@ -9063,6 +9343,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
   }, []);
   const [courseId, setCourseId] = useState(null);
   const [activeId, setActiveId] = useState(null);
+  const [showGlossary, setShowGlossary] = useState(false);
   const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
 
   const course = TUTORIAL_COURSES.find((c) => c.id === courseId) || null;
@@ -9126,8 +9407,11 @@ function TutorialHub({ onBack, onStartRealGame }) {
             onClick={() => { Audio.play('click'); if (course) setCourseId(null); else onBack(); }}>
             ← {course ? 'Ко всем курсам' : 'Назад в меню'}
           </button>
-          <div style={{ marginLeft: 'auto' }}><AudioControls /></div>
+          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 12 }}
+            onClick={() => { Audio.play('click'); setShowGlossary(true); }}>Словарь терминов</button>
+          <AudioControls />
         </div>
+        {showGlossary && <GlossaryModal onClose={() => setShowGlossary(false)} />}
 
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 30 }}>
           <div className="ems-hero-eyebrow">{course ? 'Программа курса' : 'Обучение'}</div>
@@ -9530,6 +9814,9 @@ const INDICATOR_TABS = [
     { key: 'bankNPL', label: 'Просроченные кредиты', fmt: pctFmt },
     { key: 'bankCapital', label: 'Капитал банков', fmt: fmtMoney },
     { key: 'bankCapitalAdequacy', label: 'Достаточность капитала', fmt: pctFmt },
+    // норматив задаётся рычагом, но смотреть на него игроку тоже нужно: рядом с
+    // фактической достаточностью видно, есть ли у банков запас над требованием
+    { key: 'capitalRequirement', label: 'Норматив достаточности', fmt: pctFmt, noDelta: true },
     { key: 'bankProfit', label: 'Прибыль банков за квартал', fmt: fmtMoneySigned },
     { key: 'bankLiquidity', label: 'Ликвидность банков', fmt: idx0 },
     { key: 'bankingRisk', label: 'Банковский риск', fmt: idx0 },
@@ -9821,9 +10108,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [botAction, setBotAction] = useState(initial ? initial.botAction || null : null);
   const [showWhy, setShowWhy] = useState(false);
   const [activeTab, setActiveTab] = useState('economy');
-  const [chartGroup, setChartGroup] = useState('output');
-  const [hiddenSeries, setHiddenSeries] = useState([]);
-  const [period, setPeriod] = useState('5y');
+  const { chartGroup, setChartGroup, period, setPeriod, hiddenSeries, setHiddenSeries } = useChartView();
   const [busy, setBusy] = useState(false);
 
   const activeBotPersona = botRole === 'central_bank' ? getCbPersona(cbPersonaId) : botRole === 'ministry_finance' ? getMofPersona(mofPersonaId) : null;
@@ -10204,7 +10489,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 11, color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
-              <Flag size={11} />Выборы через {economy.quartersToElection} кв.
+              <Flag size={11} />{economy.noElections ? 'Выборы отменены' : `Выборы через ${economy.quartersToElection} кв.`}
             </div>
             <div style={{ fontSize: 12, marginTop: 2 }}>
               <span style={{ color: COLOR.muted }}>рейтинг власти </span>

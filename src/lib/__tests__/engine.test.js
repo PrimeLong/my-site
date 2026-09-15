@@ -217,14 +217,23 @@ describe('политический режим и пропаганда', () => {
     expect(war.text.toLowerCase()).toContain('враг');
   });
 
-  it('rigs the election in favour of the incumbent once the regime has turned authoritarian or totalitarian', () => {
-    for (const regime of ['authoritarian', 'totalitarian']) {
-      const economy = { ...makeInitialEconomy(), politicalRegime: regime, quartersToElection: 1, approval: 8 };
-      const decisions = defaultDecisions(economy);
-      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
-        difficulty: 'medium', quarterIndex: 1, stories: [] });
-      expect(r.economy.electionResult).toBe('incumbent');
-    }
+  it('rigs the election in favour of the incumbent once the regime has turned authoritarian', () => {
+    const economy = { ...makeInitialEconomy(), politicalRegime: 'authoritarian', quartersToElection: 1, approval: 8 };
+    const decisions = defaultDecisions(economy);
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    expect(r.economy.electionResult).toBe('incumbent');
+  });
+
+  it('holds no election at all under a totalitarian regime — the counter simply stops', () => {
+    const economy = { ...makeInitialEconomy(), politicalRegime: 'totalitarian', quartersToElection: 1, approval: 8 };
+    const decisions = defaultDecisions(economy);
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [] });
+    expect(r.economy.electionResult).toBe(null);
+    expect(r.economy.quartersToElection).toBe(1);
+    expect(r.economy.noElections).toBe(true);
+    expect(r.newsEntries.some((n) => /ВЫБОР|ГОЛОСОВАНИ/.test(n.headline))).toBe(false);
   });
 
   it('escalates democracy -> crisis -> authoritarian -> totalitarian once tension and the odds line up', () => {
@@ -330,7 +339,7 @@ describe('политический режим и пропаганда', () => {
   });
 
   it('does not leak the real approval number in the rigged "unanimous" election result — state media would not print that', () => {
-    const economy = { ...makeInitialEconomy(), politicalRegime: 'totalitarian', quartersToElection: 1, approval: 31 };
+    const economy = { ...makeInitialEconomy(), politicalRegime: 'authoritarian', quartersToElection: 1, approval: 31 };
     const decisions = defaultDecisions(economy);
     const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
       difficulty: 'medium', quarterIndex: 1, stories: [] });
@@ -1035,5 +1044,51 @@ describe('президент разговаривает с обоими ведо
       expect(plan.directive.toPlayer).toBe(false);
       expect(typeof plan.directive.ask).toBe('string');
     }
+  });
+});
+
+describe('военный переворот как единственный выход при отменённых выборах', () => {
+  const repressive = (patch) => ({ ...makeInitialEconomy(), politicalRegime: 'totalitarian',
+    parliamentDissolved: true, decreeRule: true, ...patch });
+
+  it('разваливающаяся страна теряет власть не у урны, а через армию', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const economy = repressive({ politicalTension: 95, approval: 6, unemployment: 15, inflation: 30 });
+      const r = simulateQuarter({ economy, decisions: defaultDecisions(economy), pendingImpulses: [],
+        eventCooldowns: {}, difficulty: 'medium', quarterIndex: 8, stories: [], noEvents: true });
+      // при random=0 сначала срабатывает восстание («режим пал»), иначе — армия;
+      // в обоих случаях власть потеряна, и это видно снаружи
+      expect(['uprising', 'military']).toContain(r.economy.powerLost);
+      assertFiniteEconomy(r.economy, 'после потери власти');
+    } finally { spy.mockRestore(); }
+  });
+
+  it('спокойная страна переворота не видит', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      let economy = repressive({ politicalTension: 10, approval: 70, unemployment: 4.5, inflation: 4 });
+      let decisions = defaultDecisions(economy);
+      for (let i = 0; i < 12; i++) {
+        const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+          difficulty: 'medium', quarterIndex: i + 1, stories: [], noEvents: true });
+        expect(r.economy.powerLost).toBe(null);
+        economy = r.economy; decisions = defaultDecisions(economy, decisions);
+      }
+    } finally { spy.mockRestore(); }
+  });
+
+  it('два переворота подряд в один квартал невозможны', () => {
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      // переворот по итогам выборов уводит в авторитаризм — военный в тот же
+      // квартал сверху не накладывается
+      const economy = { ...makeInitialEconomy(), politicalRegime: 'democracy', quartersToElection: 1,
+        approval: 0, politicalTension: 80 };
+      const r = simulateQuarter({ economy, decisions: defaultDecisions(economy), pendingImpulses: [],
+        eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [] });
+      expect(r.economy.politicalRegime).toBe('authoritarian');
+      expect(r.economy.powerLost).toBe(null);
+    } finally { spy.mockRestore(); }
   });
 });

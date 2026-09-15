@@ -8,8 +8,9 @@ const post = async (payload, url = API) => {
 };
 export const createRoom = (opts) => post({ action: 'create', ...opts });
 export const joinRoom = (id, seat, name) => post({ action: 'join', id, seat, name });
-export const submitDecisions = (id, seat, token, decisions, note, portfolioValue) =>
-  post({ action: 'submit', id, seat, token, decisions, note, portfolioValue });
+// president — только для места президента: указы, кадры и указание вместо рычагов
+export const submitDecisions = (id, seat, token, decisions, note, portfolioValue, president) =>
+  post({ action: 'submit', id, seat, token, decisions, note, portfolioValue, president });
 // сообщает стоимость портфеля трейдера отдельно от submit — вызывается после
 // каждой сделки, а не только при готовности к следующему кварталу, иначе
 // соперник полквартала видел бы устаревшее (или вовсе никакое) значение
