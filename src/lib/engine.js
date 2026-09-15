@@ -633,6 +633,18 @@ const REQUESTS = [
     yes: 'Минфин соглашается не расширять бюджетный импульс дальше.',
     partial: 'Минфин частично сдерживает рост расходов, но не отказывается от него полностью.',
     no: 'Минфин отвечает, что взятые бюджетные обязательства снижать не намерен.' },
+  { id: 'defense_up', from: 'central_bank', label: 'Нарастить военные расходы',
+    scale: { base: 3, min: 1, max: 6, step: 1, unit: ' п.п. бюджета' },
+    ask: (n) => `Просим увеличить долю военных расходов в бюджете на ${askNum(n)} п.п.: недофинансированная оборона в нынешней обстановке — риск дороже, чем строчка в бюджете.`,
+    // вне войны эта просьба почти не имеет смысла для ЦБ — а во время войны
+    // недофинансированная оборона бьёт по премии за риск и по доверию сильнее,
+    // чем сам факт военных расходов
+    fit: (s) => ((s.warQuartersLeft || 0) > 0 ? 1.5 : -0.9) + (s.debtToGdp > 85 ? -0.5 : 0.2),
+    bias: { technocrat: -0.1, austerity: -0.4, populist: 0.1 },
+    apply: (d, k) => ({ shareDefense: clamp(d.shareDefense + 6 * k, 2, 40) }),
+    yes: 'Минфин соглашается нарастить долю военных расходов за счёт остальных статей.',
+    partial: 'Минфин идёт на скромное увеличение военной доли бюджета.',
+    no: 'Минфин отказывает: перекраивать бюджет в пользу обороны сейчас не готовы.' },
   { id: 'rate_cut', from: 'ministry_finance', label: 'Снизить ключевую ставку',
     scale: { base: 1, min: 0.25, max: 2.5, step: 0.25, unit: ' п.п.' },
     ask: (n) => `Просим снизить ключевую ставку на ${askNum(n)} п.п.: стоимость кредита душит инвестиции и обслуживание долга.`,
@@ -1176,7 +1188,12 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
    бьёт по доверию тем сильнее, чем меньше человек проработал. */
 const APPOINT_COST = { central_bank: 22, ministry_finance: 14 };
 const CB_FULL_TERM = 12;
-function appointmentEffects(kind, s, difficulty, personaName) {
+/* persona передаётся целиком (не только имя): «Прагматик»/«Технократ» — это ярлык
+   архетипа для интерфейса игрока, а не имя человека, и печатать его в заголовке
+   новости капслоком, как если бы это было чьё-то имя, — читается ровно так же
+   нелепо, как заголовок «ПРЕЗИДЕНТ НАЗНАЧАЕТ ГЛАВОЙ ЦБ: ЯСТРЕБ». Настоящая пресса
+   пишет о курсе нового человека, а не воспроизводит игровой ярлык. */
+function appointmentEffects(kind, s, difficulty, persona) {
   const tenure = (kind === 'central_bank' ? s.cbTenure : s.mofTenure) || 0;
   const early = kind === 'central_bank' ? Math.max(0, CB_FULL_TERM - tenure) / CB_FULL_TERM : 0;
   const impulses = [];
@@ -1186,16 +1203,17 @@ function appointmentEffects(kind, s, difficulty, personaName) {
   } else {
     impulses.push(makeImpulse('businessConfidence', -4, 'Смена министра финансов', 'default', difficulty, 'other'));
   }
+  const stance = String(persona.title || persona.name || '').toLowerCase();
   const news = {
     cat: kind === 'central_bank' ? 'cb' : 'gov',
     headline: kind === 'central_bank'
-      ? `ПРЕЗИДЕНТ МЕНЯЕТ ГЛАВУ ЦЕНТРАЛЬНОГО БАНКА: ${String(personaName).toUpperCase()}`
-      : `ПРЕЗИДЕНТ МЕНЯЕТ МИНИСТРА ФИНАНСОВ: ${String(personaName).toUpperCase()}`,
+      ? 'ПРЕЗИДЕНТ МЕНЯЕТ ГЛАВУ ЦЕНТРАЛЬНОГО БАНКА'
+      : 'ПРЕЗИДЕНТ МЕНЯЕТ МИНИСТРА ФИНАНСОВ',
     text: kind === 'central_bank'
       ? `Предшественник проработал ${tenure} кв. ${early > 0.5
         ? 'Досрочная отставка главы ЦБ читается однозначно: независимость заканчивается там, где начинается администрация, и ожидания это учтут.'
-        : 'Срок отработан полностью, и смена выглядит плановой — доверие к политике задето, но не сломано.'}`
-      : `Смена руководства Минфина меняет и логику бюджета: ${String(personaName)} придёт со своим представлением о том, что такое допустимый дефицит.`,
+        : 'Срок отработан полностью, и смена выглядит плановой — доверие к политике задето, но не сломано.'} Новый глава известен как сторонник курса «${stance}».`
+      : `Смена руководства Минфина меняет и логику бюджета: новый министр придёт со своим представлением о том, что такое допустимый дефицит, — в правительстве его называют сторонником курса «${stance}».`,
     priority: 9,
   };
   return { impulses, news, cost: APPOINT_COST[kind] };
@@ -1233,7 +1251,7 @@ const PRES_REQ_LEAN = {
   rate_cut: { pop: 1.0, ref: -0.3 }, rate_hike: { pop: -1.0, ref: 0.5 }, rate_hold: { pop: 0.5, ref: -0.1 },
   liquidity_help: { pop: 0.3, ref: 0.1 }, capreq_ease: { pop: 0.4, ref: -0.2 }, fx_support: { pop: 0.5, ref: -0.1 },
   infra_up: { pop: 0.6, ref: 0.6 }, deficit_cut: { pop: -1.0, ref: 0.6 }, transfers_freeze: { pop: -1.0, ref: 0.4 },
-  tax_relief_business: { pop: -0.2, ref: 0.6 }, fiscal_hold: { pop: -0.6, ref: 0.4 },
+  tax_relief_business: { pop: -0.2, ref: 0.6 }, fiscal_hold: { pop: -0.6, ref: 0.4 }, defense_up: { pop: 0.4, ref: -0.2 },
 };
 
 /* Насколько выполнено требование — доля от 0 до 1, а не «да/нет». Раньше снижение
@@ -1842,7 +1860,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   [['central_bank', decisions.appointCb, getCbPersona], ['ministry_finance', decisions.appointMof, getMofPersona]]
     .forEach(([kind, pid, look]) => {
       if (!pid || startCapital - presSpent < APPOINT_COST[kind]) return;
-      const eff = appointmentEffects(kind, s, difficulty, look(pid).name);
+      const eff = appointmentEffects(kind, s, difficulty, look(pid));
       presSpent += eff.cost;
       queue = queue.concat(eff.impulses);
       news.push(mkNews(eff.news.cat, eff.news.headline, eff.news.text, { priority: eff.news.priority }));
@@ -2720,8 +2738,13 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
           nextQueue.push(makeImpulse('tensionPush', 9, 'Раскол в силовых структурах', 'fast', difficulty, 'other'));
           nextQueue.push(makeImpulse('businessConfidence', -7, 'Попытка переворота: страна на грани', 'default', difficulty, 'other'));
           nextQueue.push(makeImpulse('riskPremium', 0.35, 'Попытка переворота', 'default', difficulty));
-          news.push(mkNews('gov', 'ПОПЫТКА ПЕРЕВОРОТА ПРОВАЛИЛАСЬ',
-            `Ночью часть войск попыталась занять правительственные здания. При рейтинге власти ${Math.round(approval)} из 100 и напряжённости ${Math.round(politicalTension)} улица вышла за действующую власть, а не против неё: к утру мятеж подавлен, зачинщики арестованы. Рейтинг вырос, но раскол в силовых структурах теперь виден всем.`,
+          // подавленный мятеж — это и есть демонстрация единства: режим,
+          // который его пережил, не станет сам объявлять, что в войсках раскол —
+          // такую новость раньше писали прямым текстом, будто это независимая
+          // пресса, хотя событие в принципе не может случиться вне авторитарного
+          // или тоталитарного режима (см. условие блока выше)
+          news.push(mkNews('gov', 'ПОПЫТКА ГОСУДАРСТВЕННОГО ПЕРЕВОРОТА ПРЕСЕЧЕНА',
+            `Ночью часть войск попыталась занять правительственные здания. При рейтинге власти ${Math.round(approval)} из 100 и напряжённости ${Math.round(politicalTension)} улица вышла за действующую власть, а не против неё: к утру мятеж подавлен, зачинщики арестованы. Официально — «происки внешних сил, не нашедшие поддержки в народе»; то, что часть армии вообще была готова выступить, в сводки не попадёт.`,
             { priority: 10, chain: ['Выступление части армии', 'Улица за власть', 'Мятеж подавлен', 'Рейтинг ↑', 'Раскол в элитах'] }));
         } else {
           powerLost = 'military';
@@ -2825,9 +2848,16 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   };
 
   const byHeadline = (h) => log.filter((c) => c.headline === h).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 6);
+  // разрыв выпуска — это фактический рост против потенциального, а не отдельная
+  // строчка в журнале причин: своего списка импульсов у него нет, поэтому
+  // «почему» составляется из тех же двух источников, которые его и образуют —
+  // спросовых причин роста ВВП и причин, двигающих сам потенциал
+  const outputGapReasons = log.filter((c) => c.headline === 'gdpGrowth' || c.headline === 'potential')
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 6);
   const reasons = {
     gdpGrowth: byHeadline('gdpGrowth'), inflation: byHeadline('inflation'), exchangeRate: byHeadline('exchangeRate'),
     budget: byHeadline('budget'), unemployment: byHeadline('unemployment'), banking: byHeadline('banking'), potential: byHeadline('potential'),
+    outputGap: outputGapReasons,
   };
   const report = buildReport({ prev: s, next: newEconomy, reasons });
 
@@ -3359,7 +3389,11 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
       q: '«Проблема уже не в ценах, а в том, что в цель никто не верит»',
       who: 'Ольга Р., экономист, колонка в деловом еженедельнике',
       t: () => `Ожидания ${rf1(s.inflationExpectations)}% при цели ${rf1(tgt)}%. Заякоренные ожидания — это бесплатный инструмент, а разъякоренные приходится выкупать безработицей.` },
-    { id: 'econ_dove', p: 6, when: () => s.outputGap < -2.5 && s.inflation < tgt + 1,
+    // «держать жёсткие условия» — упрёк, который имеет смысл, только если условия
+    // и правда жёстче нейтральных (s.rateGap > 0.3, тот же порог, что и в остальной
+    // ленте): без этого экономист критиковал бы жёсткость на фоне уже смягчённой
+    // ставки, а дашборд рядом показывал бы «мягче нейтральных» — прямое противоречие
+    { id: 'econ_dove', p: 6, when: () => s.outputGap < -2.5 && s.inflation < tgt + 1 && s.rateGap > 0.3,
       q: '«Мы лечим болезнь, которой нет, и получаем ту, что есть»',
       who: 'Павел К., профессор макроэкономики',
       t: () => `Разрыв выпуска ${rfs(s.outputGap)}% при инфляции ${rf1(s.inflation)}%. Держать жёсткие условия, когда спрос и так слаб, — значит превращать циклическую безработицу в структурную.` },

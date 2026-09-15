@@ -177,7 +177,12 @@ const GlobalStyle = () => (
     @media (max-width: 900px) {
       .ems-terminal { grid-template-columns: minmax(0,1fr); height: auto; }
       .ems-terminal > * { overflow-y: visible; }
-      .ems-terminal > :first-child { max-height: 320px; overflow-y: auto; }
+      /* 320px оставлял на телефоне буквально три строки списка (заголовок с
+         поиском и фильтрами занимает почти половину этого места) — список
+         инструментов приходилось листать, чтобы просто увидеть, что вообще есть.
+         58vh подняло это только до четырёх — на карточку и график места на
+         телефоне и так хватает своей прокруткой, отдаём списку заметно больше. */
+      .ems-terminal > :first-child { max-height: min(76vh, 660px); overflow-y: auto; }
     }
     .ems-market-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap:12px; }
     @media (max-width: 420px) { .ems-market-grid { grid-template-columns: minmax(0,1fr); } }
@@ -382,7 +387,7 @@ const InstrumentChart = React.lazy(() => import('./charts.jsx').then((m) => ({ d
 function WhyModal({ reasons, onClose }) {
   const [tab, setTab] = useState('gdpGrowth');
   const TABS = [
-    { id: 'gdpGrowth', label: 'ВВП' }, { id: 'inflation', label: 'Инфляция' },
+    { id: 'gdpGrowth', label: 'ВВП' }, { id: 'outputGap', label: 'Разрыв выпуска' }, { id: 'inflation', label: 'Инфляция' },
     { id: 'unemployment', label: 'Безработица' }, { id: 'exchangeRate', label: 'Курс валюты' },
     { id: 'budget', label: 'Бюджет' }, { id: 'banking', label: 'Банки' }, { id: 'potential', label: 'Потенциал' },
   ];
@@ -5092,23 +5097,40 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
               {/* журнал прокручивается внутри себя: раньше он рос вместе с числом
                   сделок и растягивал карточку, а с ней и всю страницу */}
               <div className="ems-scroll" style={{ maxHeight: 112, overflowY: 'auto' }}>
-              {(book.trades || []).slice(-40).reverse().map((t, k) => {
-                const ins = INSTR_BY_ID[t.id];
-                return (
-                  <div key={`${t.q}-${k}`} style={{ display: 'flex', gap: 8, padding: '1.5px 0', color: COLOR.muted }}>
-                    <span className="ems-mono" style={{ color: t.side === 'buy' ? COLOR.teal : COLOR.rust, width: 62 }}>
-                      {t.side === 'buy' ? 'покупка' : 'продажа'}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ins ? ins.name : t.id}
-                    </span>
-                    <span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{fmtMln(t.amt)}</span>
-                    <span className="ems-mono" style={{ color: COLOR.faint, width: 78, textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                      по {t.price.toFixed(2)}
-                    </span>
-                  </div>
-                );
-              })}
+              {(() => {
+                const list = (book.trades || []).slice(-40).reverse();
+                let lastQ = null;
+                // сделки шли слитной лентой без единого разделителя — за несколько
+                // кварталов не разобрать, где кончился один и начался следующий
+                return list.map((t, k) => {
+                  const ins = INSTR_BY_ID[t.id];
+                  const showQ = t.q !== lastQ;
+                  lastQ = t.q;
+                  return (
+                    <React.Fragment key={`${t.q}-${k}`}>
+                      {showQ && (
+                        <div className="ems-mono" style={{ fontSize: 9, color: COLOR.faint, letterSpacing: '0.05em',
+                          padding: '4px 0 2px', borderTop: k === 0 ? 'none' : `1px solid ${COLOR.hairline}`,
+                          marginTop: k === 0 ? 0 : 2 }}>
+                          {(t.label || quarterLabel(t.q)).toUpperCase()}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 8, padding: '1.5px 0', color: COLOR.muted }}>
+                        <span className="ems-mono" style={{ color: t.side === 'buy' ? COLOR.teal : COLOR.rust, width: 62 }}>
+                          {t.side === 'buy' ? 'покупка' : 'продажа'}
+                        </span>
+                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {ins ? ins.name : t.id}
+                        </span>
+                        <span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{fmtMln(t.amt)}</span>
+                        <span className="ems-mono" style={{ color: COLOR.faint, width: 78, textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          по {t.price.toFixed(2)}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  );
+                });
+              })()}
               </div>
             </div>
           )}
@@ -7563,6 +7585,8 @@ const GLOSSARY = {
   yieldcurve: { title: 'Кривая доходности', text: 'Соотношение доходностей коротких и длинных облигаций. Когда короткие дороже длинных (кривая перевёрнута), рынок ждёт снижения ставки — обычно из-за приближающегося спада.' },
   polcapital: { title: 'Политический капитал', text: 'Ресурс президента вместо ползунков: им оплачиваются указы, кадровые решения, реформы и требования к ведомствам. Копится рейтингом и ростом, тает кризисами и беспорядками.' },
   reform: { title: 'Структурная реформа', text: 'Изменение правил, а не суммы: рынок труда, пенсии, суды, образование. Двигает потенциал экономики, а не её загрузку, платит за себя годами и почти всегда стоит рейтинга сразу.' },
+  futures: { title: 'Фьючерс', text: 'Контракт на актив с расчётами по рыночной цене каждый квартал, а не сама покупка. Плечо в нём не берётся отдельно — оно встроено в номинал контракта: вносится лишь гарантийное обеспечение, а прибыль и убыток считаются от полной суммы контракта, поэтому и то, и другое растёт кратно быстрее, чем при прямой покупке актива.' },
+  option: { title: 'Опцион', text: 'Право (но не обязанность) купить (call) или продать (put) актив по заранее оговорённой цене (страйку) до определённого срока. Стоит премию — это и есть максимум, который можно потерять; выигрыш при этом ничем не ограничен сверху у call и ограничен нулевой ценой актива у put.' },
 };
 const GLOSSARY_KEYS = Object.keys(GLOSSARY);
 
@@ -8420,7 +8444,7 @@ const TRADER_MODULES = [
         goalText: (c) => {
           const open = Object.entries((c.book && c.book.pos) || {}).filter(([, q]) => Math.abs(q) > 1e-9);
           return open.length
-            ? `Открыто позиций: ${open.length}. Золотой пунктир средней цены уже на графике выбранного инструмента.`
+            ? `Открыто позиций: ${open.length}. Пунктир «ваша средняя» уже на графике выбранного инструмента.`
             : 'Открытых позиций пока нет — купите что-нибудь в терминале ниже.';
         },
         hint: 'Любой инструмент подойдёт: кнопка «Купить / лонг» под карточкой, сумма сделки задаётся ползунком ниже. После покупки посмотрите на график — пунктир с подписью «ваша средняя» и есть ваша средняя цена входа.',
@@ -8449,7 +8473,7 @@ const TRADER_MODULES = [
         lever: null, runsQuarter: true,
         body: () => (
           <>
-            <p>У фьючерса плечо не нужно брать отдельно — оно уже внутри. Вы вносите гарантийное обеспечение, а результат считается от полного номинала контракта: при плече 8:1 движение цены на 3% меняет ваши деньги на 24%.</p>
+            <p>У <Term k="futures">фьючерса</Term> плечо не нужно брать отдельно — оно уже внутри. Вы вносите гарантийное обеспечение, а результат считается от полного номинала контракта: при плече 8:1 движение цены на 3% меняет ваши деньги на 24%.</p>
             <p>Поэтому в списке инструментов у фьючерсов подписано «плечо N:1»: это не реклама доходности, а предупреждение о том, во сколько раз быстрее закончится ваш счёт.</p>
           </>
         ),
@@ -8679,15 +8703,21 @@ const COURSE_CHECKS = {
       goalLabel: 'Портфель растёт быстрее индекса акций и не в минусе',
       body: () => (
         <>
-          <p>Формальная цель роли «обогнать индекс» звучит просто, а на деле это самая честная проверка: купить сам индекс — доступно всем, и результат ровно такой же, как у рынка.</p>
-          <p>Восемь кварталов. Побеждает не тот, кто угадал направление, а тот, кто держал то, что в этих условиях работает лучше рынка.</p>
+          <p>Экономика на подъёме, ставка ниже нейтральной, спрос растёт — индекс акций в таких условиях сам по себе прибавит заметно за восемь кварталов. Купить сам индекс — доступно всем, и результат будет ровно такой же, как у рынка. Задача — обогнать его, а не просто оказаться в плюсе: на растущем рынке в плюс выйдет почти любая позиция, а вот обогнать сам рынок — уже вопрос выбора.</p>
+          <p>Восемь кварталов. Побеждает не тот, кто угадал направление (тут его несложно угадать), а тот, кто держал то, что в этих условиях растёт быстрее широкого индекса.</p>
         </>
       ),
+      // экономика на подъёме: индекс акций сам по себе прибавит около 20% за
+      // восемь кварталов — просто пересидеть в безрисковых инструментах (денежный
+      // рынок при такой ставке даёт не больше 8-10%) этот рубеж не возьмёт, и
+      // «купить что угодно» перестаёт быть решением
+      setup: (e) => ({ keyRate: 4, inflation: 3.4, coreInflation: 3.3, inflationExpectations: 3.6,
+        outputGap: 1.6, businessConfidence: 64, riskPremium: 0.8, unemployment: Math.min(e.unemployment, e.nairu - 0.5) }),
       levers: [], maxQuarters: 8,
       goal: (c) => c.value > c.startValue
         && c.value / Math.max(0.001, c.startValue) >= c.economy.stockIndex / Math.max(0.001, c.start.stockIndex),
       goalText: (c) => `Портфель ${fmtSigned1((c.value / Math.max(0.001, c.startValue) - 1) * 100)}%, индекс ${fmtSigned1((c.economy.stockIndex / Math.max(0.001, c.start.stockIndex) - 1) * 100)}% за то же время.`,
-      hint: 'Обогнать индекс на растущем рынке можно плечом, но тогда вы обгоните его и вниз. Надёжнее — держать то, чего в индексе нет: секторные фонды, облигации на развороте ставки, мировые акции при слабеющей валюте.',
+      hint: 'Обогнать индекс на растущем рынке можно плечом на самом индексе или на отдельном секторе, который растёт быстрее рынка, — но тогда вы обгоните его и вниз, если подъём развернётся. Надёжнее — искать то, что в буме растёт сильнее широкого рынка: секторные фонды на пике цикла, мировые акции при крепнущей валюте.',
     },
   },
 
@@ -9133,6 +9163,11 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
         hist = [...history.slice(0, -1), { ...history[history.length - 1], ...patch }];
         dec = defaultDecisions(eco, decisions);
         setEconomy(eco); setHistory(hist); setDecisions(dec); setPendingImpulses([]);
+        // setup переписывает сценарий (ставка, инфляция и т.д.) заново — новости из
+        // предыдущих шагов рассказывали про старое состояние экономики и теперь
+        // прямо противоречат тому, что показано на дашборде («ставка 12%» на панели
+        // и тут же в ленте «ЦБ сохраняет ставку 5.5%» из шага до setup)
+        setNewsLog([]);
       }
       setPractice({ used: 0, anchor: { economy: eco, history: hist, decisions: dec,
         pendingImpulses: st.setup ? [] : pendingImpulses, eventCooldowns, quarterIndex, book } });
@@ -9497,18 +9532,34 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
 const MODULE_STATE_KEY = 'ems-module-progress';
 const loadModuleState = () => { try { return JSON.parse(localStorage.getItem(MODULE_STATE_KEY) || '{}'); } catch { return {}; } };
 function TutorialHub({ onBack, onStartRealGame }) {
+  const playerId = useMemo(getPlayerId, []);
   const [progress, setProgress] = useState(loadCourseProgress);
   // незаконченные модули: на каком шаге остановились и что уже сдали
   const [moduleState, setModuleState] = useState(loadModuleState);
+  /* Прогресс курса раньше синхронизировался только в главном меню — если
+     человек прошёл несколько уроков и закрыл вкладку, не заходя в меню снова,
+     второе связанное устройство об этом так и не узнавало. Здесь синхронизация
+     срабатывает трижды: при входе в хаб (подтянуть то, что сделали на другом
+     устройстве), при каждом сохранении шага (отправить своё) и при выходе. */
+  React.useEffect(() => {
+    let alive = true;
+    syncProfile(playerId).then(() => {
+      if (!alive) return;
+      setProgress(loadCourseProgress());
+      setModuleState(loadModuleState());
+    });
+    return () => { alive = false; syncProfile(playerId); };
+  }, [playerId]);
   const saveModuleProgress = useCallback((id, st) => {
     setModuleState((prev) => {
       if (prev[id] && prev[id].step === st.step && prev[id].at === st.at
         && Object.keys(prev[id].passed || {}).length === Object.keys(st.passed).length) return prev;
       const next = { ...prev, [id]: st };
       try { localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
+      syncProfile(playerId);
       return next;
     });
-  }, []);
+  }, [playerId]);
   /* Своя музыка курса: спокойные пьесы под чтение и разбор задач. Роль ставится
      на весь хаб, поэтому переходы между модулями её не сбрасывают. */
   React.useEffect(() => {
@@ -9526,6 +9577,7 @@ function TutorialHub({ onBack, onStartRealGame }) {
   const completeModule = (mod) => {
     const next = markModuleDone(mod.id);
     setProgress(next);
+    syncProfile(playerId);
     /* Пройденный модуль остаётся открытым целиком: его шаги не «сбрасываются», а
        фиксируются пройденными — вернуться по содержанию к четвёртому шагу из семи
        и выйти теперь не значит закрыть себе пятый, шестой и седьмой. */
@@ -10585,7 +10637,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             : keptCount < broken ? `Это стоило власти примерно ${fmt1((broken - keptCount) * 2.2)} п.п. голосов.`
               : 'На итог голосования обещания в сумме не повлияли.'}` });
       if (keptCount === promises.length) pushAch(unlockAchievements(['promises_kept']));
-      if (er === 'incumbent') setPromises(pickPromises(result.economy));
+      if (er === 'incumbent') {
+        // старые обещания подведены итогом выше — но откуда взяться новым,
+        // если их никто не объявил? Без этой новости обещания в шапке менялись
+        // молча, и на следующий день после выборов было не понять, что вообще
+        // изменилось в условиях игры
+        const nextPromises = pickPromises(result.economy);
+        setPromises(nextPromises);
+        result.newsEntries.unshift({ id: `newpromises${quarterIndex}`, cat: 'gov', priority: 8, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+          headline: 'НОВЫЙ СРОК: ОБЪЯВЛЕНЫ ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ',
+          text: `На новый срок заявлено: ${nextPromises.map((p) => `«${p.label}» — ${p.text.toLowerCase()}`).join('; ')}.` });
+      }
     }
     const newCrisis = (result.economy.activeCrises || []).some((c) => !(economy.activeCrises || []).includes(c));
     if (newCrisis) { setFlashKey(quarterIndex); setShake(true); haptic([45, 70, 45, 70, 90]); setTimeout(() => setShake(false), 950); }
