@@ -114,24 +114,47 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
       interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
     }));
     if (!forecast || !hist.length) return hist;
-    // веер неопределённости: инерционный прогноз к якорю с расширяющимися границами
     const last = hist[hist.length - 1];
     const vis = group.series.filter((x) => !hiddenSeries.includes(x.id));
+    const out = hist.map((h) => ({ ...h, fanInner: null }));
     const lead = vis[0];
-    const out = hist.map((h) => ({ ...h, fanBand: null }));
     if (!lead) return out;
-    const anchorFn = FORECAST_ANCHORS[lead.id];
-    const anchor = anchorFn ? anchorFn(last) : last[lead.id];
+    /* Прогноз продолжает линию, а не прыгает к якорю. Раньше он с первого же
+       квартала уводил показатель к цели (на четверть расстояния за шаг), и график
+       «выравнивался по середине»: пунктир уходил горизонталью, а широкий веер
+       95-процентного интервала растягивал вертикальную шкалу так, что вся реальная
+       история сплющивалась в узкую полосу. Теперь берётся импульс последних
+       кварталов — он затухает, и только потом уровень медленно подтягивается к
+       якорю. И продолжаются ВСЕ включённые линии, а не одна первая. */
+    const momentum = (id) => {
+      const tail = hist.slice(-4).map((h) => h[id]).filter(Number.isFinite);
+      if (tail.length < 2) return 0;
+      return (tail[tail.length - 1] - tail[0]) / (tail.length - 1);
+    };
+    const state = {};
+    vis.forEach((sx) => { state[sx.id] = { v: last[sx.id], m: momentum(sx.id) }; });
     const sigma = FORECAST_SIGMA[lead.id] || Math.max(0.4, Math.abs(last[lead.id] || 1) * 0.06);
-    let v = last[lead.id];
     for (let i = 1; i <= 8; i++) {
-      v += (anchor - v) * 0.28;
-      const sd = sigma * Math.sqrt(i) * 0.9;
-      out.push({ label: `+${i} кв.`, forecastPoint: true,
-        [`${lead.id}__f`]: v, fanBand: [v - 1.96 * sd, v + 1.96 * sd], fanInner: [v - sd, v + sd] });
+      const row = { label: `+${i} кв.`, forecastPoint: true };
+      vis.forEach((sx) => {
+        const st = state[sx.id];
+        if (!Number.isFinite(st.v)) return;
+        const anchorFn = FORECAST_ANCHORS[sx.id];
+        const anchor = anchorFn ? anchorFn(last) : st.v;
+        st.m *= 0.72;
+        st.v = st.v + st.m + (anchor - st.v) * 0.12;
+        row[`${sx.id}__f`] = st.v;
+      });
+      const lv = row[`${lead.id}__f`];
+      // веер остался, но только ±1σ и только для первого показателя: с широким
+      // 95-процентным интервалом шкала жила по вееру, а не по самим данным
+      if (Number.isFinite(lv)) { const sd = sigma * Math.sqrt(i) * 0.7; row.fanInner = [lv - sd, lv + sd]; }
+      out.push(row);
     }
-    out[hist.length - 1] = { ...out[hist.length - 1], [`${lead.id}__f`]: last[lead.id],
-      fanBand: [last[lead.id], last[lead.id]], fanInner: [last[lead.id], last[lead.id]] };
+    // стык: пунктир начинается ровно из последней фактической точки
+    const joint = { ...out[hist.length - 1], fanInner: [last[lead.id], last[lead.id]] };
+    vis.forEach((sx) => { joint[`${sx.id}__f`] = last[sx.id]; });
+    out[hist.length - 1] = joint;
     return out;
   }, [history, period, forecast, chartGroup, hiddenSeries]);
 
@@ -198,17 +221,13 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
                 label={{ value: 'сейчас', position: 'insideTop', fontSize: 9.5, fill: COLOR.muted }} />
             )}
             {forecast && visible[0] && (
-              <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanBand" name="95% интервал"
-                stroke="none" fill={visible[0].color} fillOpacity={0.10} isAnimationActive={false} legendType="none" />
-            )}
-            {forecast && visible[0] && (
               <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanInner" name="68% интервал"
-                stroke="none" fill={visible[0].color} fillOpacity={0.18} isAnimationActive={false} legendType="none" />
+                stroke="none" fill={visible[0].color} fillOpacity={0.16} isAnimationActive={false} legendType="none" />
             )}
-            {forecast && visible[0] && (
-              <Line yAxisId={visible[0].axis} type="monotone" dataKey={`${visible[0].id}__f`} name="прогноз"
-                stroke={visible[0].color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
-            )}
+            {forecast && visible.map((s) => (
+              <Line key={`${s.id}__f`} yAxisId={s.axis} type="monotone" dataKey={`${s.id}__f`} name="прогноз"
+                stroke={s.color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
+            ))}
             {visible.map((s) => (
               <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={s.label} stroke={s.color} strokeWidth={2} dot={false} />
             ))}
@@ -217,13 +236,13 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
       </div>
       <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
-          ? <>Прогноз для показателя <b style={{ color: COLOR.text }}>«{(visible[0] || group.series[0]).label}»</b> — первого включённого в списке выше.
-            Пунктир справа от отметки «сейчас» — куда показатель придёт <b style={{ color: COLOR.text }}>сам собой</b>, если вы больше ничего не меняете:
-            он затухает к своему якорю (цель ЦБ по инфляции, потенциальный рост, естественная безработица) примерно на четверть расстояния за квартал.
-            Заливка — насколько этой оценке можно верить: тёмная полоса это 68%, светлая 95%. Это не предсказание модели, а линейка неопределённости:
-            чем дальше горизонт, тем она шире.</>
+          ? <>Пунктир справа от отметки «сейчас» продолжает каждую включённую линию туда, куда она идёт <b style={{ color: COLOR.text }}>сама собой</b>,
+            если вы больше ничего не меняете: движение последних кварталов затухает, и показатель постепенно подтягивается к своему якорю
+            (цель ЦБ по инфляции, потенциальный рост, естественная безработица). Заливка — разброс вокруг
+            <b style={{ color: COLOR.text }}> «{(visible[0] || group.series[0]).label}»</b>, первого включённого показателя: не предсказание,
+            а линейка неопределённости, и чем дальше горизонт, тем она шире.</>
           : <>Темпы роста и ставки показаны в годовом выражении; траектория рассчитывается по кварталам. Нажмите на показатель выше, чтобы скрыть или показать его линию.
-            Кнопка <b style={{ color: COLOR.text }}>«прогноз на 8 кв.»</b> дорисовывает справа, куда первый включённый показатель уйдёт сам, если ничего не менять — с веером неопределённости.</>}
+            Кнопка <b style={{ color: COLOR.text }}>«прогноз на 8 кв.»</b> продолжает включённые линии пунктиром: куда они уйдут сами, если ничего не менять.</>}
       </div>
     </div>
   );

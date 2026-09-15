@@ -876,7 +876,7 @@ const PRESIDENT_ACTIONS = [
         makeImpulse('govTrust', -6, 'Независимых источников информации не осталось', 'default', difficulty, 'other'),
       ],
       news: { cat: 'gov', headline: 'УКАЗ ПРЕЗИДЕНТА: ИНСТИТУТЫ ПЕРЕХОДЯТ ПОД ПРЯМОЕ УПРАВЛЕНИЕ',
-        text: 'Суды, надзорные органы и оставшиеся независимые медиа подчинены администрации. Отказать теперь почти невозможно — и почти некому: цену такой управляемости страна платит инвестициями и людьми, которые умеют считать.',
+        text: 'Суды, надзорные органы и оставшиеся независимые медиа подчинены администрации. Выборы отменены без назначения новой даты — сменить эту власть у урны больше нельзя. Отказать теперь почти невозможно и почти некому: цену такой управляемости страна платит инвестициями и людьми, которые умеют считать.',
         priority: 10, chain: ['Указ президента', 'Институты подчинены', 'Тоталитарный режим', 'Бегство капитала', 'Производительность ↓'] } }) },
   { id: 'snap_election', group: 'power', label: 'Назначить досрочные выборы', cost: 28, cooldown: 16,
     requires: (s) => (s.quartersToElection || 0) > 4,
@@ -1003,6 +1003,23 @@ function politicalCapitalRegen(x) {
     + (x.politicalRegime === 'totalitarian' ? 4.2 : x.politicalRegime === 'authoritarian' ? 2.4 : 0)
     - 0.075 * cap,
     -10, 9);
+}
+
+/* Вероятность военного переворота за квартал. Вынесена отдельно, потому что её
+   показывает и интерфейс: риск, о котором нельзя узнать заранее, — это не механика,
+   а лотерея. Армия выступает не «иногда», а когда совпадают напряжение, нищета,
+   кризисы, презрение к правителю и пустая казна политического капитала: у власти,
+   которой есть чем платить своим, переворотов не бывает. */
+function militaryCoupRisk(x) {
+  const tension = clamp(x.politicalTension || 0, 0, 100);
+  const pressure = clamp((tension - 40) / 45, 0, 1);
+  const misery = clamp(((x.unemployment || 0) - (x.nairu || 5)) / 6, 0, 1) * 0.5
+    + clamp(((x.inflation || 0) - 8) / 20, 0, 1) * 0.5;
+  const crisisLoad = clamp((x.activeCrises || []).length / 2, 0, 1);
+  const weakness = clamp((45 - (x.approval || 0)) / 40, 0, 1);
+  const naked = clamp((30 - (Number.isFinite(x.politicalCapital) ? x.politicalCapital : 55)) / 30, 0, 1);
+  return clamp((pressure * 0.10 + misery * 0.05 + crisisLoad * 0.05 + weakness * 0.04 + naked * 0.06)
+    * (x.unrestActive ? 1.7 : 1), 0, 0.28);
 }
 
 /* Разбор пакета решений президента за квартал: списывает капитал, ставит
@@ -2238,7 +2255,13 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const approval = clamp(ema(Number.isFinite(s.approval) ? s.approval : 55, approvalTarget, 0.28)
     + (d.approvalPush || 0), 0, 100);
   const prevToElection = Number.isFinite(s.quartersToElection) ? s.quartersToElection : CONFIG.election.cycle;
-  let quartersToElection = prevToElection - 1;
+  /* При тоталитарном режиме выборов нет вообще. В авторитарном они ещё проводятся —
+     формально, с заранее известным результатом; это часть его фасада. А там, где
+     независимых институтов не осталось, голосование отменяют, а не рисуют: счётчик
+     до выборов замирает, кампании не начинается, власть не меняется у урны.
+     Единственный способ её потерять — переворот (см. ниже). */
+  const noElections = (s.politicalRegime || 'democracy') === 'totalitarian';
+  let quartersToElection = noElections ? prevToElection : prevToElection - 1;
   // досрочные выборы президента: срок обрезается, кампания начинается тем же кварталом
   if (pres.patch.snapElection) quartersToElection = Math.min(quartersToElection, pres.patch.snapElection);
   let term = s.term || 1;
@@ -2248,7 +2271,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса,
   // а значит там нет и настоящей предвыборной гонки с её неопределённостью для рынков
   const riggedElection = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
-  const campaign = quartersToElection <= CONFIG.election.campaign && quartersToElection > 0;
+  const campaign = !noElections && quartersToElection <= CONFIG.election.campaign && quartersToElection > 0;
   if (campaign && !s.campaignActive) {
     if (riggedElection) {
       news.push(mkNews('gov', 'НАЗНАЧЕНА ДАТА ГОЛОСОВАНИЯ',
@@ -2274,7 +2297,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      голосования. Сюда же попадают сдержанные и проваленные обещания: раньше они
      были чистой декорацией. */
   let promiseScore = 0; let promisesKept = 0; let promisesTotal = 0;
-  if (quartersToElection <= 0 && Array.isArray(decisions.promises) && decisions.promises.length) {
+  if (quartersToElection <= 0 && !noElections && Array.isArray(decisions.promises) && decisions.promises.length) {
     promisesTotal = decisions.promises.length;
     /* Обещания сверяются со свежими величинами этого квартала. Единственное
        исключение — благополучие: сводные оценки считаются ниже по файлу, поэтому
@@ -2284,11 +2307,11 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     promiseScore = (promisesKept - (promisesTotal - promisesKept)) * 2.2;
   }
   const incumbencyBonus = 2.5;
-  const voteShare = quartersToElection <= 0
+  const voteShare = quartersToElection <= 0 && !noElections
     ? clamp(50 + (approval - 50) * 0.85 + incumbencyBonus + promiseScore + gauss(2.2 * nMult), 0, 100)
     : null;
   let coup = false;
-  if (quartersToElection <= 0) {
+  if (quartersToElection <= 0 && !noElections) {
     const margin = voteShare - 50;
     if (!riggedElection && margin < 0) {
       const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
@@ -2452,6 +2475,8 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // переворот из блока выборов выше замыкает переход на авторитаризм напрямую,
   // минуя обычную пороговую цепочку демократия→кризис→авторитаризм — он уже
   // случился в этом квартале, а не подкрадывался несколько кварталов подряд
+  // как именно власть потеряли, если потеряли: восстание или армия
+  let powerLost = null;
   let politicalRegime = coup ? 'authoritarian' : prevPoliticalRegime;
   let parliamentDissolved = coup ? true : !!s.parliamentDissolved;
   /* Указы президента о парламенте — это прямой ход по той же лестнице режимов, а не
@@ -2506,7 +2531,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         nextQueue.push(makeImpulse('investment', -3, 'Инвесторы уходят из страны', 'default', difficulty));
         nextQueue.push(makeImpulse('capitalFlow', -18, 'Бегство капитала', 'default', difficulty));
         news.push(mkNews('gov', 'ВЛАСТЬ УСТАНАВЛИВАЕТ ПОЛНЫЙ КОНТРОЛЬ',
-          'Оставшиеся независимые институты и медиа переходят под прямое управление. Несогласие приравнено к угрозе государству.',
+          'Оставшиеся независимые институты и медиа переходят под прямое управление. Несогласие приравнено к угрозе государству, выборы отменены без назначения новой даты.',
           { priority: 10, chain: ['Авторитарный поворот', 'Подавление институтов', 'Тоталитарный режим'] }));
       } else if (politicalTension <= 25 && !decreeRule && Math.random() < 0.25) {
         // Возврат к демократии «сам собой» — это про режим, который вводился как
@@ -2522,6 +2547,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       if (politicalTension >= 92 && Math.random() < 0.12) {
         politicalRegime = 'crisis'; parliamentDissolved = false;
         cooldowns['political:transition'] = 5;
+        powerLost = 'uprising';
         nextQueue.push(makeImpulse('businessConfidence', 6, 'Режим пал: осторожный оптимизм', 'default', difficulty, 'other'));
         news.push(mkNews('gov', 'РЕЖИМ ПАЛ', 'Массовые протесты и раскол в элитах вынудили власть отступить. Страна входит в переходный период с неясным исходом.',
           { priority: 10, chain: ['Массовые протесты', 'Раскол элит', 'Падение режима', 'Переходный период'] }));
@@ -2550,6 +2576,36 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   }
   const unrestQuartersLeft = unrestTriggered ? 2 : Math.max(0, (s.unrestQuartersLeft || 0) - 1);
   const unrestActive = unrestQuartersLeft > 0;
+
+  /* Военный переворот. Там, где выборов нет или они ничего не решают, власть всё
+     равно можно потерять — просто не у урны. Армия выступает не от хорошей жизни:
+     её поднимают напряжение, нищета, кризисы и правитель, которого перестали
+     бояться. Это единственный способ проиграть при тоталитарном режиме — и
+     ровно поэтому он не должен быть ни неизбежным, ни невозможным: при спокойной
+     стране вероятность почти нулевая, при разваливающейся — около пятой части
+     за квартал. Кулдаун не даёт двум переворотам подряд. */
+  const coupCooldown = cooldowns['political:military'] || 0;
+  // не в тот же квартал, когда режим уже сменился: два переворота подряд — это не
+  // драма, а сбой. Кулдаун смены режима заодно даёт новой власти время осмотреться
+  const regimeJustChanged = coup || (cooldowns['political:transition'] || 0) > 0;
+  if (!powerLost && !regimeJustChanged && (politicalRegime === 'authoritarian' || politicalRegime === 'totalitarian')) {
+    if (coupCooldown > 0) cooldowns['political:military'] = coupCooldown - 1;
+    else {
+      const chance = militaryCoupRisk({ politicalTension, unemployment, nairu, inflation,
+        activeCrises, approval, unrestActive, politicalCapital: Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55 });
+      if (chance > 0 && Math.random() < chance) {
+        powerLost = 'military';
+        cooldowns['political:military'] = 8;
+        politicalRegime = 'crisis'; parliamentDissolved = false; decreeRule = false;
+        nextQueue.push(makeImpulse('businessConfidence', -12, 'Военный переворот: правил больше нет', 'default', difficulty, 'other'));
+        nextQueue.push(makeImpulse('riskPremium', 0.9, 'Военный переворот', 'default', difficulty));
+        nextQueue.push(makeImpulse('capitalFlow', -22, 'Бегство капитала после переворота', 'default', difficulty));
+        news.push(mkNews('crisis', 'ВОЕННЫЙ ПЕРЕВОРОТ: АРМИЯ БЕРЁТ ВЛАСТЬ',
+          `Ночью войска заняли правительственные здания. Официальное объяснение — «восстановление порядка» при напряжённости ${Math.round(politicalTension)} из 100 и рейтинге власти ${Math.round(approval)}. Тот, кто отменил выборы, снимается с должности не голосованием.`,
+          { priority: 10, chain: ['Напряжение в стране', 'Раскол в элитах', 'Выступление армии', 'Смена власти', 'Бегство капитала'] }));
+      }
+    }
+  } else if (coupCooldown > 0) cooldowns['political:military'] = coupCooldown - 1;
 
   /* Политический капитал президента: копится рейтингом и ростом, тает кризисами.
      Считается после режима и беспорядков — они на него и влияют. */
@@ -2619,7 +2675,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
-    politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive,
+    politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive, powerLost, noElections,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -3625,7 +3681,7 @@ export {
   PROMISE_POOL, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
   presActionAvailable, applyPresidentActions, politicalCapitalRegen,
-  PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext,
+  PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext, militaryCoupRisk,
   directiveProgress, directiveVerdict, DIRECTIVE_FULL, DIRECTIVE_PART,
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
