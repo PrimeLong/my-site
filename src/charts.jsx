@@ -214,7 +214,17 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
             <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')} />
             {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)} />}
             <Tooltip contentStyle={{ background: COLOR.panel, border: `1px solid ${COLOR.border}`, fontSize: 12 }} labelStyle={{ color: COLOR.goldSoft }}
-              formatter={(value, name, props) => { const def = seriesById[props.dataKey]; return [def ? tooltipVal(def.fmt)(value) : value, name]; }} />
+              formatter={(value, name, props) => {
+                // прогноз рисуется отдельными ключами (`${id}__f`, `fanInner`) —
+                // они не совпадают ни с одним настоящим показателем, formatter
+                // проваливался в необработанное число и печатал все 13 знаков
+                // после запятой, которые накопились в вычислениях с плавающей точкой
+                const rawKey = String(props.dataKey || '').replace(/__f$/, '');
+                const def = seriesById[rawKey] || seriesById[(visible[0] || {}).id];
+                const fmtFn = def ? tooltipVal(def.fmt) : fmt1;
+                if (Array.isArray(value)) return [`${fmtFn(value[0])} – ${fmtFn(value[1])}`, name];
+                return [fmtFn(value), name];
+              }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             {forecast && nowLabel && (
               <ReferenceLine yAxisId="left" x={nowLabel} stroke={COLOR.faint} strokeDasharray="3 3"
