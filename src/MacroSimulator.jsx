@@ -6047,6 +6047,42 @@ function usePinnedStrip(initialPins, initialDash, dashActions) {
   return { pinned, setPinned, activeDash, setActiveDash };
 }
 
+/* Ширина и порядок трёх столбцов панели («Решения»/«Новости и графики»/«Показатели») —
+   настройка устройства, общая для одиночной и сетевой партии. Ниже 1241px CSS сама
+   переводит сетку в адаптивный режим (см. .ems-grid) — там своя ширина и порядок не
+   к месту, поэтому в этом диапазоне хук отдаёт исходный порядок и не трогает шаблон. */
+function useLayoutColumns() {
+  const [layoutEditMode, setLayoutEditMode] = useState(false);
+  const [columnOrder, setColumnOrderState] = useState(() => loadColumnOrder());
+  const [columnWidths, setColumnWidthsState] = useState(() => loadColumnWidths());
+  const [wide, setWide] = useState(true);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(min-width: 1241px)');
+    const upd = () => setWide(mq.matches);
+    upd();
+    if (mq.addEventListener) { mq.addEventListener('change', upd); return () => mq.removeEventListener('change', upd); }
+    mq.addListener(upd); return () => mq.removeListener(upd);
+  }, []);
+  const moveColumn = (id, dir) => setColumnOrderState((prev) => {
+    const idx = prev.indexOf(id); const j = idx + dir;
+    if (j < 0 || j >= prev.length) return prev;
+    const next = [...prev]; [next[idx], next[j]] = [next[j], next[idx]];
+    persistColumnOrder(next);
+    return next;
+  });
+  const setColumnWidthsLive = (w) => setColumnWidthsState(w);
+  const commitWidths = (w) => { setColumnWidthsState(w); persistColumnWidths(w); };
+  const resetLayout = () => {
+    setColumnOrderState([...DEFAULT_COLUMN_ORDER]);
+    setColumnWidthsState({ ...DEFAULT_COLUMN_WIDTHS });
+    persistColumnOrder([...DEFAULT_COLUMN_ORDER]);
+    persistColumnWidths({ ...DEFAULT_COLUMN_WIDTHS });
+  };
+  return { layoutEditMode, setLayoutEditMode, columnOrder, columnWidths, wide, moveColumn,
+    setColumnWidthsLive, commitWidths, resetLayout, layoutIsDefaultNow: layoutIsDefault(columnOrder, columnWidths) };
+}
+
 /* Действия над наборами одинаковы в соло- и сетевом экране, а правила хранения
    нетривиальны (свои наборы лежат целиком, у встроенных хранятся только отличия) —
    поэтому логика одна на оба экрана, а не две расходящиеся копии. */
@@ -6094,7 +6130,71 @@ function makeDashboardActions(setDashboards) {
 }
 const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern); } catch { /* не поддерживается */ } };
 
-function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash }) {
+/* Макет трёх столбцов панели («Решения» / «Новости и графики» / «Показатели») —
+   какой из них слева, в центре, справа, и насколько широки крайние. Устройство,
+   а не партия: хранится напрямую в localStorage, как тема, а не в сохранении игры. */
+const LAYOUT_ORDER_KEY = 'ems-layout-order';
+const LAYOUT_WIDTHS_KEY = 'ems-layout-widths';
+const DEFAULT_COLUMN_ORDER = ['left', 'center', 'right'];
+const DEFAULT_COLUMN_WIDTHS = { left: 300, right: 300 };
+const COLUMN_LABELS = { left: 'Решения', center: 'Новости и графики', right: 'Показатели' };
+const loadColumnOrder = () => {
+  try {
+    const arr = JSON.parse(localStorage.getItem(LAYOUT_ORDER_KEY) || 'null');
+    if (Array.isArray(arr) && arr.length === 3 && ['left', 'center', 'right'].every((k) => arr.includes(k))) return arr;
+  } catch { /* приватный режим */ }
+  return [...DEFAULT_COLUMN_ORDER];
+};
+const persistColumnOrder = (order) => { try { localStorage.setItem(LAYOUT_ORDER_KEY, JSON.stringify(order)); } catch { /* приватный режим */ } };
+const loadColumnWidths = () => {
+  try {
+    const o = JSON.parse(localStorage.getItem(LAYOUT_WIDTHS_KEY) || 'null');
+    if (o && Number.isFinite(o.left) && Number.isFinite(o.right)) return { left: clamp(o.left, 220, 520), right: clamp(o.right, 220, 520) };
+  } catch { /* приватный режим */ }
+  return { ...DEFAULT_COLUMN_WIDTHS };
+};
+const persistColumnWidths = (w) => { try { localStorage.setItem(LAYOUT_WIDTHS_KEY, JSON.stringify(w)); } catch { /* приватный режим */ } };
+const layoutIsDefault = (order, widths) => DEFAULT_COLUMN_ORDER.every((v, i) => order[i] === v)
+  && widths.left === DEFAULT_COLUMN_WIDTHS.left && widths.right === DEFAULT_COLUMN_WIDTHS.right;
+
+/* Перетаскиваемая граница между двумя столбцами: «резиновый» (center, 1fr) сосед
+   ширину не хранит — тянется тот, у кого она вообще есть. Если по обе стороны
+   от границы стоят два фиксированных столбца (после перестановки), двигаются оба
+   разом, как в обычном сплиттере. */
+function ColumnResizeHandle({ leftId, rightId, widths, onResize, onCommit }) {
+  const dragRef = React.useRef(null);
+  const onPointerDown = (e) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidths: { ...widths } };
+    const move = (ev) => {
+      if (!dragRef.current) return;
+      const dx = ev.clientX - dragRef.current.startX;
+      const next = { ...dragRef.current.startWidths };
+      if (leftId !== 'center') next[leftId] = clamp(dragRef.current.startWidths[leftId] + dx, 220, 520);
+      if (rightId !== 'center') next[rightId] = clamp(dragRef.current.startWidths[rightId] - dx, 220, 520);
+      dragRef.current.last = next;
+      onResize(next);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (dragRef.current && dragRef.current.last) onCommit(dragRef.current.last);
+      dragRef.current = null;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div onPointerDown={onPointerDown} title="Потяните, чтобы изменить ширину столбцов"
+      style={{ position: 'absolute', top: 0, bottom: 0, right: -11, width: 14, cursor: 'col-resize', zIndex: 5 }}>
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: 6, width: 2, borderRadius: 1,
+        background: COLOR.gold, opacity: 0.55 }} />
+    </div>
+  );
+}
+
+function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash,
+  layoutEditMode, setLayoutEditMode, columnOrder, moveColumn, resetLayout, layoutIsDefaultNow }) {
   const DD_WIDTH = 250;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
@@ -6161,6 +6261,40 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
             Свои наборы хранятся на этом устройстве и доступны во всех партиях, а не только в текущей.
             Встроенные наборы можно убрать из списка и переименовать — «Сбросить» вернёт их обратно.
           </div>
+          {moveColumn && (
+            <>
+              <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, margin: '12px 0 6px' }}>Макет столбцов</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                <span style={{ fontSize: 11.5, color: layoutEditMode ? COLOR.text : COLOR.muted, flex: 1 }}>Растягивание столбцов</span>
+                <button className="ems-btn" aria-label="Переключить растягивание столбцов" style={{ padding: '2px 9px', fontSize: 10.5, background: layoutEditMode ? COLOR.gold : COLOR.panelAlt, color: layoutEditMode ? COLOR.ink : COLOR.muted, borderColor: layoutEditMode ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('tick'); setLayoutEditMode(!layoutEditMode); }}>{layoutEditMode ? 'вкл' : 'выкл'}</button>
+              </div>
+              <div style={{ fontSize: 10, color: COLOR.faint, lineHeight: 1.4, marginBottom: 9 }}>
+                Включите и потяните за границу между столбцами панели — ширина запомнится. Выключение прячет
+                рамки для перетаскивания, но не сбрасывает уже подобранную ширину.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 7 }}>
+                {columnOrder.map((id, i) => (
+                  <div key={id} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 4px 3px 7px', borderRadius: 4 }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 11, color: COLOR.muted }}>{COLUMN_LABELS[id]}</span>
+                    <button className="ems-btn" title="Сдвинуть влево" aria-label={`Сдвинуть «${COLUMN_LABELS[id]}» влево`}
+                      disabled={i === 0} style={{ padding: '1px 6px', fontSize: 10, lineHeight: 1.5, color: i === 0 ? COLOR.faint : COLOR.text }}
+                      onClick={() => { Audio.play('tick'); moveColumn(id, -1); }}>◀</button>
+                    <button className="ems-btn" title="Сдвинуть вправо" aria-label={`Сдвинуть «${COLUMN_LABELS[id]}» вправо`}
+                      disabled={i === columnOrder.length - 1} style={{ padding: '1px 6px', fontSize: 10, lineHeight: 1.5, color: i === columnOrder.length - 1 ? COLOR.faint : COLOR.text }}
+                      onClick={() => { Audio.play('tick'); moveColumn(id, 1); }}>▶</button>
+                  </div>
+                ))}
+              </div>
+              {!layoutIsDefaultNow && (
+                <button className="ems-btn" style={{ width: '100%', padding: '5px 0', fontSize: 10.5, color: COLOR.rust, borderColor: COLOR.rust }}
+                  onClick={() => { Audio.play('click'); resetLayout(); }}>Сбросить макет столбцов</button>
+              )}
+              <div style={{ fontSize: 9.5, color: COLOR.faint, lineHeight: 1.4, marginTop: 6 }}>
+                Порядок и ширина столбцов — на широком экране (шире 1240px); на узком панель уже адаптивна.
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -6768,6 +6902,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [dashboards, setDashboards] = useState(() => initDashboards());
   const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
   const { pinned, setPinned, activeDash, setActiveDash } = usePinnedStrip(null, null, dashActions);
+  const layout = useLayoutColumns();
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -6953,7 +7088,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
-            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash} />
+            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
+            layoutEditMode={layout.layoutEditMode} setLayoutEditMode={layout.setLayoutEditMode}
+            columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
+            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
             <Share2 size={14} color={COLOR.gold} />
@@ -7052,7 +7190,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
       )}
 
-      <div className="ems-grid" style={{ padding: 18 }}>
+      {(() => {
+      const leftNode = (
         <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isTraderRoom ? (
             <PortfolioSummary book={portfolio} economy={economy} live={null} goal="max_wealth"
@@ -7220,7 +7359,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             )}
           </div>
         </div>
-
+      );
+      const centerNode = (
         <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           {isTraderRoom && (
             <>
@@ -7266,7 +7406,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </div>
           </div>
         </div>
-
+      );
+      const rightNode = (
         <div className={narrow && mobileCol !== 'right' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {!isTraderRoom && <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />}
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
@@ -7336,7 +7477,25 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             })}
           </div>
         </div>
-      </div>
+      );
+      const nodes = { left: leftNode, center: centerNode, right: rightNode };
+      const order = layout.wide ? layout.columnOrder : DEFAULT_COLUMN_ORDER;
+      const colWidthFor = (id) => (id === 'center' ? 'minmax(0,1fr)' : `${layout.columnWidths[id]}px`);
+      const gridStyle = { padding: 18, ...(layout.wide ? { gridTemplateColumns: order.map(colWidthFor).join(' ') } : null) };
+      return (
+        <div className="ems-grid" style={gridStyle}>
+          {order.map((id, i) => (
+            <div key={id} style={{ position: 'relative', minWidth: 0 }}>
+              {nodes[id]}
+              {layout.wide && layout.layoutEditMode && i < order.length - 1 && (
+                <ColumnResizeHandle leftId={id} rightId={order[i + 1]} widths={layout.columnWidths}
+                  onResize={layout.setColumnWidthsLive} onCommit={layout.commitWidths} />
+              )}
+            </div>
+          ))}
+        </div>
+      );
+      })()}
 
       {defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню" />
@@ -10300,6 +10459,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, []);
   const { pinned, setPinned, activeDash, setActiveDash } = usePinnedStrip(
     initial && initial.pinned ? initial.pinned : null, initialDash, dashActions);
+  const layout = useLayoutColumns();
   const [pendingRequest, setPendingRequest] = useState(null);
   const [lastResponse, setLastResponse] = useState(initial ? initial.lastResponse || null : null);
   const [botAction2, setBotAction2] = useState(initial ? initial.botAction2 || null : null);
@@ -10761,7 +10921,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           </div>
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
-            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash} />
+            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
+            layoutEditMode={layout.layoutEditMode} setLayoutEditMode={layout.setLayoutEditMode}
+            columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
+            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
             <Share2 size={14} color={COLOR.gold} />
@@ -10860,8 +11023,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         </div>
       )}
 
-      <div className="ems-grid" style={{ padding: 18, display: view === 'dash' ? undefined : 'none' }}>
-        {/* ЛЕВАЯ ПАНЕЛЬ */}
+      {(() => {
+      /* ЛЕВАЯ ПАНЕЛЬ */
+      const leftNode = (
         <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isTrader && (
             <PortfolioSummary book={portfolio} economy={economy} live={null} goal={setup.goal}
@@ -11004,8 +11168,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           )}
           {presEnabled && <PresidentWatchPanel economy={economy} plan={presidentPlan} last={presidentLast} branch={playerBranch} />}
         </div>
-
-        {/* ЦЕНТР */}
+      );
+      /* ЦЕНТР */
+      const centerNode = (
         <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} />
           <Suspense fallback={<ChartFallback />}>
@@ -11035,8 +11200,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             </div>
           </div>
         </div>
-
-        {/* ПРАВАЯ ПАНЕЛЬ */}
+      );
+      /* ПРАВАЯ ПАНЕЛЬ */
+      const rightNode = (
         <div className={narrow && mobileCol !== 'right' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
           <div className="ems-panel" style={{ padding: 14 }}>
@@ -11081,7 +11247,26 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           </div>
           {!isTrader && <DemandsPanel demands={economy.demands} />}
         </div>
-      </div>
+      );
+      const nodes = { left: leftNode, center: centerNode, right: rightNode };
+      const order = layout.wide ? layout.columnOrder : DEFAULT_COLUMN_ORDER;
+      const colWidthFor = (id) => (id === 'center' ? 'minmax(0,1fr)' : `${layout.columnWidths[id]}px`);
+      const gridStyle = { padding: 18, display: view === 'dash' ? undefined : 'none',
+        ...(layout.wide ? { gridTemplateColumns: order.map(colWidthFor).join(' ') } : null) };
+      return (
+        <div className="ems-grid" style={gridStyle}>
+          {order.map((id, i) => (
+            <div key={id} style={{ position: 'relative', minWidth: 0 }}>
+              {nodes[id]}
+              {layout.wide && layout.layoutEditMode && i < order.length - 1 && (
+                <ColumnResizeHandle leftId={id} rightId={order[i + 1]} widths={layout.columnWidths}
+                  onResize={layout.setColumnWidthsLive} onCommit={layout.commitWidths} />
+              )}
+            </div>
+          ))}
+        </div>
+      );
+      })()}
 
       {defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart} />

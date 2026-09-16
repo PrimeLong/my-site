@@ -881,26 +881,38 @@ const PRESIDENT_ACTIONS = [
     requires: (s) => (s.warQuartersLeft || 0) <= 0,
     reqText: 'Доступно, пока страна не воюет',
     desc: 'Собственная война вместо чужой. Первые кварталы рейтинг растёт на сплочении вокруг флага, а с ним открываются чрезвычайные полномочия. Дальше начинается счёт: санкции, бегство капитала, сжатие торговли и инвестиций, рост цен со стороны предложения. Из войны выходят не тогда, когда захотят, а когда смогут.',
-    build: (s, difficulty) => ({
-      patch: { startWar: true },
-      impulses: [
-        makeImpulse('approvalPush', 11, 'Сплочение вокруг флага', 'fast', difficulty, 'other'),
-        sustainedImpulse('approvalPush', -2.2, 6, 'Война затягивается', 'other'),
-        makeImpulse('tensionPush', 10, 'Начало военной операции', 'fast', difficulty, 'other'),
-        makeImpulse('exportsGrowth', -7, 'Санкции против наступающей стороны', 'default', difficulty),
-        makeImpulse('importsGrowth', -6, 'Закрытие торговых каналов', 'default', difficulty),
-        makeImpulse('capitalFlow', -26, 'Бегство капитала из воюющей страны', 'default', difficulty),
-        makeImpulse('fdi', -18, 'Прямые инвестиции сворачиваются', 'default', difficulty),
-        makeImpulse('riskPremium', 1.2, 'Военная премия за риск', 'default', difficulty),
-        makeImpulse('businessConfidence', -15, 'Война: бизнес не планирует', 'default', difficulty, 'other'),
-        makeImpulse('inflationSupply', 1.4, 'Разрыв поставок и военный спрос', 'default', difficulty),
-        makeImpulse('stockShock', -16, 'Рынок переоценивает риск войны', 'fast', difficulty),
-        sustainedImpulse('potentialShock', -0.35, 8, 'Люди и мощности уходят на войну'),
-      ],
-      news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О НАЧАЛЕ ВОЕННОЙ ОПЕРАЦИИ',
-        text: `Решение объявлено как вынужденное и единственно возможное. Рейтинг власти ${Math.round(s.approval)} из 100 в ближайшие кварталы вырастет — так бывает всегда в первые месяцы. Партнёры уже готовят ограничения: экспорт, импорт, капитал и прямые инвестиции пойдут вниз одновременно.`,
-        priority: 10, chain: ['Решение президента', 'Сплочение вокруг флага', 'Санкции', 'Торговля ↓', 'Капитал ↓', 'Цены ↑'] },
-    }) },
+    build: (s, difficulty) => {
+      const authoritarianPress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+      return {
+        patch: { startWar: true },
+        impulses: [
+          // сплочение вокруг флага греет рейтинг резко, но не гаснет за один квартал —
+          // угасающая по кварталам добавка вместо разового скачка, который ema тут же
+          // почти полностью стирает обратно к базовому уровню
+          taperedImpulse('approvalPush', [11, 7, 4, 2, 1], 'Сплочение вокруг флага', 'other'),
+          sustainedImpulse('approvalPush', -1.8, 9, 'Война затягивается', 'other'),
+          makeImpulse('tensionPush', 10, 'Начало военной операции', 'fast', difficulty, 'other'),
+          makeImpulse('exportsGrowth', -7, 'Санкции против наступающей стороны', 'default', difficulty),
+          makeImpulse('importsGrowth', -6, 'Закрытие торговых каналов', 'default', difficulty),
+          makeImpulse('capitalFlow', -26, 'Бегство капитала из воюющей страны', 'default', difficulty),
+          makeImpulse('fdi', -18, 'Прямые инвестиции сворачиваются', 'default', difficulty),
+          makeImpulse('riskPremium', 1.2, 'Военная премия за риск', 'default', difficulty),
+          makeImpulse('businessConfidence', -15, 'Война: бизнес не планирует', 'default', difficulty, 'other'),
+          makeImpulse('inflationSupply', 1.4, 'Разрыв поставок и военный спрос', 'default', difficulty),
+          makeImpulse('stockShock', -16, 'Рынок переоценивает риск войны', 'fast', difficulty),
+          sustainedImpulse('potentialShock', -0.35, 10, 'Люди и мощности уходят на войну'),
+        ],
+        news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О НАЧАЛЕ ВОЕННОЙ ОПЕРАЦИИ',
+          // при авторитаризме и тем более тоталитаризме это не мог бы написать никто:
+          // ни прогноз роста рейтинга, ни признание готовящихся санкций — государственная
+          // пресса объявляет решение оправданным и заранее списывает любую реакцию
+          // извне на враждебность, а не анализирует его последствия для страны
+          text: authoritarianPress
+            ? 'Официальное сообщение: решение принято ради безопасности и будущего страны, альтернативы ему не было. Народ сплотился вокруг руководства, армия выполняет поставленную задачу. Попытки внешних сил давить санкциями обречены на провал и лишь ускорят опору на собственные силы.'
+            : `Решение объявлено как вынужденное и единственно возможное. Рейтинг власти ${Math.round(s.approval)} из 100 в ближайшие кварталы вырастет — так бывает всегда в первые месяцы. Партнёры уже готовят ограничения: экспорт, импорт, капитал и прямые инвестиции пойдут вниз одновременно.`,
+          priority: 10, chain: ['Решение президента', 'Сплочение вокруг флага', 'Санкции', 'Торговля ↓', 'Капитал ↓', 'Цены ↑'] },
+      };
+    } },
   { id: 'mobilization', group: 'war', label: 'Объявить мобилизацию', cost: 28, cooldown: 8,
     requires: (s) => (s.warQuartersLeft || 0) > 0,
     reqText: 'Доступно только во время войны',
@@ -1657,6 +1669,12 @@ function makeImpulse(channel, amount, reasonText, spreadKind, difficulty, headli
 function sustainedImpulse(channel, perQuarter, quarters, reasonText, headline) {
   return { id: uid(), channel, reasonText, headline: headline || headlineFor(channel),
     values: Array.from({ length: Math.max(1, quarters) }, () => perQuarter), idx: 0 };
+}
+/* Как sustainedImpulse, но со своим значением на каждый квартал — нужно там, где
+   эффект не постоянен, а угасает по графику (сплочение вокруг флага греет рейтинг
+   резко и быстро остывает, а не держится на одном уровне и не обрывается разом). */
+function taperedImpulse(channel, values, reasonText, headline) {
+  return { id: uid(), channel, reasonText, headline: headline || headlineFor(channel), values, idx: 0 };
 }
 function pickEvent(state, eventCooldowns) {
   const pool = EVENTS.filter((e) => {
@@ -2483,7 +2501,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      санкциями. Мобилизация продлевает, мир обрывает. */
   const warDecreed = !!pres.patch.startWar;
   const warEnded = !!pres.patch.endWar;
-  let warQuartersLeft = warDecreed ? 6 : warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
+  let warQuartersLeft = warDecreed ? 10 : warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
   if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
   if (warEnded) warQuartersLeft = 0;
   // тип войны (оборонительная/наступательная) решает исход дипломатически — помощь
@@ -3306,8 +3324,11 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
   /* ⚠️ КРИЗИС / РЕЖИМ */
   if (s.regime !== prev.regime && REGIME_INFO[s.regime]) {
     const info = REGIME_INFO[s.regime];
+    // ярлык нормального режима сам заканчивается на «режим» («Нормальный режим») —
+    // без обрезки получалась тавтология «ПЕРЕХОДИТ В РЕЖИМ: НОРМАЛЬНЫЙ РЕЖИМ»
+    const label = regimeInfoLabel(info, s).replace(/\s*режим$/i, '');
     push(s.regime === 'war' && s.warByChoice ? 'gov' : 'crisis',
-      `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${regimeInfoLabel(info, s).toUpperCase()}`, regimeInfoText(info, s), s.regime === 'normal' ? 6 : 10);
+      `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${label.toUpperCase()}`, regimeInfoText(info, s), s.regime === 'normal' ? 6 : 10);
   }
 
   /* 📊 РЫНОК */
