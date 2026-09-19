@@ -98,7 +98,7 @@ const CONFIG = {
   eventProbability: { easy: 0.09, medium: 0.14, hard: 0.20 },
   election: { cycle: 16, campaign: 3 },
   thresholds: {
-    bankingRisk: 70, debtRisk: 75, recessionGapQuarters: 2, recessionGap: -2.0,
+    bankingRisk: 70, debtRisk: 75, recessionGapQuarters: 2, recessionGap: -2.0, recessionGapExit: -0.8,
     overheatGap: 3.5, stagflationInflation: 6.5, stagflationGap: -1.0,
     currencyMovePct: 11, deflation: 0.5, carCrunch: 10.5,
   },
@@ -633,6 +633,12 @@ function requestOutcomeText(req, status, economyBefore, after) {
   return status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no;
 }
 
+// liquidity/fxIntervention — рычаги в номинальных млрд, а не в % ВВП: их диапазон
+// растёт вместе с экономикой (см. scaleLever в интерфейсе). Просьба, двигающая их
+// на фиксированное число миллиардов, в позднем ВВП, выросшем в разы, превращается
+// в неразличимую на глаз поправку — «исполнено», а по факту ничего не изменилось.
+const gdpLeverScale = (s) => Math.max(1, (s && s.nominalGdp ? s.nominalGdp : CONFIG.initial.gdp) / CONFIG.initial.gdp);
+
 const REQUESTS = [
   { id: 'infra_up', from: 'central_bank', label: 'Нарастить госинвестиции',
     scale: { base: 1.5, min: 0.5, max: 3, step: 0.5, unit: '% ВВП' },
@@ -675,6 +681,15 @@ const REQUESTS = [
     yes: 'Минфин снижает налог на прибыль, рассчитывая вернуть выпадающие доходы ростом базы.',
     partial: 'Минфин идёт на символическое снижение ставки.',
     no: 'Минфин отказывается: выпадающие доходы нечем закрыть.' },
+  { id: 'vat_relief', from: 'central_bank', label: 'Снизить НДС',
+    scale: { base: 1.5, min: 0.5, max: 3, step: 0.5, unit: ' п.п.' },
+    ask: (n) => `Просим снизить НДС на ${askNum(n)} п.п.: налоговая нагрузка бьёт по спросу населения раньше, чем по цифрам роста.`,
+    fit: (s) => (s.vatRate > 20 ? 1.3 : -0.5) + (s.budgetBalancePctGdp > -3 ? 0.4 : -1.0),
+    bias: { technocrat: 0.1, austerity: -0.7, populist: 0.9 },
+    apply: (d, k) => ({ vatRate: clamp(d.vatRate - 2 * k, 0, 30) }),
+    yes: 'Минфин снижает НДС, рассчитывая компенсировать выпадающие доходы ростом потребления.',
+    partial: 'Минфин идёт на символическое снижение НДС.',
+    no: 'Минфин отказывается: выпадающие доходы бюджета нечем закрыть.' },
   { id: 'fiscal_hold', from: 'central_bank', label: 'Не наращивать бюджетный импульс',
     hold: [{ key: 'govSpending', dir: 1 }, { key: 'transfers', dir: 1 }, { key: 'govInvestment', dir: 1 }],
     ask: 'Просим не расширять бюджетный импульс дальше: дополнительное стимулирование сейчас разгонит инфляцию и вынудит нас держать ставку выше.',
@@ -749,7 +764,7 @@ const REQUESTS = [
     ask: 'Просим предоставить банковской системе ликвидность: кредитование останавливается, страдают предприятия.',
     fit: (s) => (s.bankLiquidity < 60 ? 1.4 : -0.3) + (s.creditCrunch ? 1.0 : 0) + (s.inflation > 8 ? -0.7 : 0.2),
     bias: { dove: 0.6, pragmatic: 0.5, hawk: 0.1 },
-    apply: (d, k) => ({ liquidity: clamp(d.liquidity + 12 * k, -100, 200) }),
+    apply: (d, k, economy) => ({ liquidity: clamp(d.liquidity + 12 * k * gdpLeverScale(economy), -100 * gdpLeverScale(economy), 200 * gdpLeverScale(economy)) }),
     yes: 'Центральный банк открывает окно ликвидности для банков.',
     partial: 'Центральный банк предоставляет ограниченный объём ликвидности.',
     no: 'Центральный банк считает поддержку преждевременной.' },
@@ -772,7 +787,7 @@ const REQUESTS = [
     ask: 'Просим выйти на валютный рынок и продавать резервы (сдвиньте валютные интервенции в минус): ослабление курса разгоняет цены и стоимость импорта для бюджета.',
     fit: (s) => (s.fxDeprAnnual > 6 ? 1.3 : -0.6) + (s.reserves > 200 ? 0.5 : -1.0),
     bias: { hawk: 0.5, pragmatic: 0.3, dove: 0.0 },
-    apply: (d, k) => ({ fxIntervention: clamp(d.fxIntervention - 12 * k, -400, 400) }),
+    apply: (d, k, economy) => ({ fxIntervention: clamp(d.fxIntervention - 12 * k * gdpLeverScale(economy), -400 * gdpLeverScale(economy), 400 * gdpLeverScale(economy)) }),
     yes: 'Центральный банк выходит на рынок в поддержку курса.',
     partial: 'Центральный банк проводит ограниченные интервенции.',
     no: 'Центральный банк отвечает, что тратить резервы против фундаментальных факторов бессмысленно.' },
@@ -1011,24 +1026,55 @@ const PRESIDENT_ACTIONS = [
         text: 'Госзаказ становится главным покупателем: оборонные заводы работают в три смены, гражданские линии останавливаются. Цифры выпуска это поддержит — благосостояние нет: произведённое не съесть, не надеть и не вложить в завтрашний рост.',
         priority: 9, chain: ['Военный заказ', 'Оборонка ↑', 'Гражданский сектор ↓', 'Производительность ↓'] },
     }) },
-  { id: 'peace_deal', group: 'war', label: 'Заключить мир', cost: 24, cooldown: 6,
+  { id: 'peace_deal', group: 'war',
+    // в оборонительной войне у страны нет позиции для переговоров на равных:
+    // прекратить её раньше срока значит принять условия того, кто напал, —
+    // это капитуляция, а не мир, и цена у неё другая
+    label: (s) => (s.warType === 'defensive' ? 'Капитулировать' : 'Заключить мир'),
+    cost: 24, cooldown: 6,
     requires: (s) => (s.warQuartersLeft || 0) > 0,
     reqText: 'Доступно только во время войны',
-    desc: 'Выйти из войны раньше, чем она закончится сама. Санкции снимаются медленнее, чем вводились, а внутри решение читается как признание поражения — но экономика начинает восстанавливаться с этого квартала, а не через год.',
-    build: (s, difficulty) => ({
-      patch: { endWar: true },
-      impulses: [
-        makeImpulse('approvalPush', -6, 'Мир читается как поражение', 'fast', difficulty, 'other'),
-        makeImpulse('tensionPush', -8, 'Война окончена', 'fast', difficulty, 'other'),
-        makeImpulse('businessConfidence', 12, 'Мир: бизнес возвращается к планированию', 'default', difficulty, 'other'),
-        makeImpulse('capitalFlow', 16, 'Возврат капитала после мира', 'default', difficulty),
-        makeImpulse('riskPremium', -0.7, 'Военная премия за риск уходит', 'default', difficulty),
-        sustainedImpulse('exportsGrowth', 1.4, 6, 'Торговые каналы открываются заново'),
-      ],
-      news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О ЗАКЛЮЧЕНИИ МИРА',
-        text: 'Боевые действия прекращены решением главы государства. Часть ограничений снимут не сразу, а часть не снимут вовсе — но премия за риск, капитал и деловая уверенность начинают возвращаться уже в этом квартале.',
-        priority: 10, chain: ['Мир', 'Премия за риск ↓', 'Капитал ↑', 'Торговля ↑', 'Рейтинг ↓'] },
-    }) },
+    desc: (s) => (s.warType === 'defensive'
+      ? 'Остановить войну на условиях противника, потому что обороняться дальше нечем. Это не переговоры на равных: часть требований будет выполнена, санкции снимутся не полностью, а внутри страны решение читается как поражение, а не как облегчение. Экономика перестаёт терять с этого квартала — но не возвращает то, что уже потеряно.'
+      : 'Выйти из войны раньше, чем она закончится сама. Санкции снимаются медленнее, чем вводились, а внутри решение читается как признание поражения — но экономика начинает восстанавливаться с этого квартала, а не через год.'),
+    build: (s, difficulty) => {
+      const authoritarianPress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+      if (s.warType === 'defensive') {
+        return {
+          patch: { endWar: true },
+          impulses: [
+            makeImpulse('approvalPush', -18, 'Капитуляция читается как поражение', 'fast', difficulty, 'other'),
+            makeImpulse('tensionPush', 12, 'Капитуляция раскалывает общество', 'fast', difficulty, 'other'),
+            makeImpulse('businessConfidence', 5, 'Боевые действия прекращены, но условия невыгодны', 'default', difficulty, 'other'),
+            makeImpulse('capitalFlow', 5, 'Капитал возвращается осторожно', 'default', difficulty),
+            makeImpulse('riskPremium', 0.5, 'Уступки повышают премию за риск на будущее', 'default', difficulty),
+            makeImpulse('stockShock', -12, 'Рынок закладывает цену капитуляции', 'fast', difficulty),
+            sustainedImpulse('potentialShock', -0.4, 6, 'Утрата территорий и производственных мощностей'),
+            sustainedImpulse('exportsGrowth', -0.8, 4, 'Торговые маршруты достались победителю'),
+          ],
+          news: { cat: 'gov',
+            headline: authoritarianPress ? 'БОЕВЫЕ ДЕЙСТВИЯ ОСТАНОВЛЕНЫ' : 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О КАПИТУЛЯЦИИ',
+            text: authoritarianPress
+              ? 'Официальное сообщение: руководство остановило боевые действия ради сохранения жизней и стабильности страны. Условия соглашения не разглашаются полностью; независимые источники называют их уступками стороне, начавшей конфликт.'
+              : 'Глава государства принимает условия противника, чтобы остановить боевые действия. Это не мирный договор равных сторон, а признание невозможности обороняться дальше: часть требований противника выполнена, потери территорий и репараций фиксируются соглашением. Рынок и общество читают это как поражение, а не как облегчение.',
+            priority: 10, chain: ['Капитуляция', 'Потери территорий', 'Премия за риск ↑', 'Рейтинг ↓↓'] },
+        };
+      }
+      return {
+        patch: { endWar: true },
+        impulses: [
+          makeImpulse('approvalPush', -6, 'Мир читается как поражение', 'fast', difficulty, 'other'),
+          makeImpulse('tensionPush', -8, 'Война окончена', 'fast', difficulty, 'other'),
+          makeImpulse('businessConfidence', 12, 'Мир: бизнес возвращается к планированию', 'default', difficulty, 'other'),
+          makeImpulse('capitalFlow', 16, 'Возврат капитала после мира', 'default', difficulty),
+          makeImpulse('riskPremium', -0.7, 'Военная премия за риск уходит', 'default', difficulty),
+          sustainedImpulse('exportsGrowth', 1.4, 6, 'Торговые каналы открываются заново'),
+        ],
+        news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ О ЗАКЛЮЧЕНИИ МИРА',
+          text: 'Боевые действия прекращены решением главы государства. Часть ограничений снимут не сразу, а часть не снимут вовсе — но премия за риск, капитал и деловая уверенность начинают возвращаться уже в этом квартале.',
+          priority: 10, chain: ['Мир', 'Премия за риск ↓', 'Капитал ↑', 'Торговля ↑', 'Рейтинг ↓'] },
+      };
+    } },
   /* Верхняя ступень лестницы режимов. Раньше тоталитаризм существовал только как
      несчастный случай: из авторитарного режима туда вела единственная дорога —
      напряжённость 80+ и бросок кубика, то есть страна должна была сама дойти до
@@ -2567,6 +2613,17 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     + Math.max(0, 200 - reserves) * 0.12 + Math.max(0, riskPremium - 2) * 8, 0, 100), 0.3), 0, 100);
 
   const recessionStreak = outputGap < CONFIG.thresholds.recessionGap ? (s.recessionStreak || 0) + 1 : 0;
+  // без гистерезиса разрыв выпуска, колеблющийся у порога входа (-2.0%), качал
+  // режим «рецессия ⇄ норма» каждый квартал: выход был мгновенным (один квартал
+  // выше порога — и рецессии как не бывало), а вход требовал двух кварталов подряд.
+  // Раз войдя в рецессию, выходим из неё только после закрытия разрыва выше
+  // более высокого порога (-0.8%), тоже выдержанного пару кварталов, — вход и
+  // выход больше не делят одну и ту же границу.
+  const wasRecession = (s.activeCrises || []).includes('recession');
+  const recessionRecoverStreak = outputGap >= CONFIG.thresholds.recessionGapExit ? (s.recessionRecoverStreak || 0) + 1 : 0;
+  const recessionNow = wasRecession
+    ? recessionRecoverStreak < CONFIG.thresholds.recessionGapQuarters
+    : recessionStreak >= CONFIG.thresholds.recessionGapQuarters;
   const regimeStreakPrev = s.regimeStreak || 0;
   const fxMovePct = Math.abs(fxDeprAnnual);
   // пандемия — не пороговое состояние экономики, а отдельное событие с растянутым
@@ -2595,7 +2652,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
   if (fxMovePct >= CONFIG.thresholds.currencyMovePct || fxBreak) activeCrises.push('currency');
   if (inflation >= Math.max(CONFIG.thresholds.stagflationInflation, infTarget + 2.5) && outputGap <= CONFIG.thresholds.stagflationGap) activeCrises.push('stagflation');
-  else if (recessionStreak >= CONFIG.thresholds.recessionGapQuarters) activeCrises.push('recession');
+  else if (recessionNow) activeCrises.push('recession');
   if (outputGap >= CONFIG.thresholds.overheatGap && inflation > infTarget + 1) activeCrises.push('overheating');
   if (inflation < CONFIG.thresholds.deflation && outputGap < -1) activeCrises.push('deflation');
   if (pandemicQuartersLeft > 0) activeCrises.push('pandemic');
@@ -2636,21 +2693,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       news.push(mkNews('crisis', 'РЕЦЕССИЯ: ВЫПУСК НИЖЕ ПОТЕНЦИАЛА', 'Второй квартал подряд. Затяжная безработица поднимает и сам естественный уровень — часть потерь станет необратимой.', { priority: 9 }));
     } else if (c === 'deflation') {
       news.push(mkNews('crisis', 'ДЕФЛЯЦИОННАЯ УГРОЗА', 'Цены почти не растут при слабом спросе: реальная ставка высока даже при нулевой ключевой. Обычных инструментов может не хватить.', { priority: 9 }));
-    } else if (c === 'pandemic') {
-      news.push(mkNews('crisis', 'ПАНДЕМИЯ: РЕЖИМ ЧРЕЗВЫЧАЙНОЙ СИТУАЦИИ', 'Вспышка заболевания одновременно бьёт по спросу и по производственным возможностям — эффект растянут на несколько кварталов.', { priority: 9 }));
     } else if (c === 'war' && warByChoice) {
       // указ о начале операции уже напечатан решениями президента — здесь не
-      // «кризис, который случился», а описание режима, в котором теперь живут
+      // «кризис, который случился», а описание режима, в котором теперь живут.
+      // Случайно начавшаяся война и пандемия сюда не попадают: обеим уже
+      // объявляет первый эпизод их сюжетной цепочки (см. STORY_TEMPLATES) —
+      // второй текст о том же самом только повторял его другими словами.
       news.push(mkNews('gov', 'СТРАНА ПЕРЕХОДИТ НА ВОЕННОЕ ПОЛОЖЕНИЕ',
         'Торговля, инвестиции и доверие сжимаются одновременно — это не стихия, а прямое следствие принятого решения. Расходы на оборону, сделанные до войны, определяют, насколько тяжёлым будет первый год. Чрезвычайные полномочия с этого момента доступны власти в полном объёме.',
         { priority: 10, chain: ['Решение о войне', 'Санкции', 'Торговля ↓', 'Военное положение'] }));
-    } else if (c === 'war') {
-      const typeNote = warType === 'offensive'
-        ? ' Война носит наступательный характер: партнёры вводят санкции, торговые и финансовые каналы сжимаются сильнее, чем от одного военного шока.'
-        : warType === 'defensive'
-          ? ' Война носит оборонительный характер: союзники открывают кредитные линии и наращивают закупки — часть удара смягчает иностранная помощь.'
-          : '';
-      news.push(mkNews('crisis', 'ВОЙНА: ЭКОНОМИКА В ЧРЕЗВЫЧАЙНОМ РЕЖИМЕ', `Торговля, инвестиции и доверие сжимаются одновременно. Расходы на оборону, сделанные ещё до войны, определили, насколько тяжёлым будет удар.${typeNote}`, { priority: 10 }));
     }
   });
   // окончание войны/пандемии тоже должно попасть в новости — раньше они молча
@@ -2942,7 +2993,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
     bondShortIndex, linkerIndex, moneyMarketIndex, worldEquityIndex,
-    activeCrises, regime, recessionStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice,
+    activeCrises, regime, recessionStreak, recessionRecoverStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
@@ -3411,14 +3462,20 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
       `Торговый баланс ${fmtMoneySigned(s.tradeBalance)}: страна ${s.tradeBalance >= 0 ? 'выигрывает от дорогого сырья' : 'платит за него'}.`, 5);
   }
 
-  /* ⚠️ КРИЗИС / РЕЖИМ */
-  if (s.regime !== prev.regime && REGIME_INFO[s.regime]) {
-    const info = REGIME_INFO[s.regime];
-    // ярлык нормального режима сам заканчивается на «режим» («Нормальный режим») —
-    // без обрезки получалась тавтология «ПЕРЕХОДИТ В РЕЖИМ: НОРМАЛЬНЫЙ РЕЖИМ»
-    const label = regimeInfoLabel(info, s).replace(/\s*режим$/i, '');
-    push(s.regime === 'war' && s.warByChoice ? 'gov' : 'crisis',
-      `ЭКОНОМИКА ПЕРЕХОДИТ В РЕЖИМ: ${label.toUpperCase()}`, regimeInfoText(info, s), s.regime === 'normal' ? 6 : 10);
+  /* ⚠️ КРИЗИС / РЕЖИМ
+     Вход в любой кризисный режим уже объявлен ниже, в переходах activeCrises,
+     своим более конкретным текстом — а для пандемии и случайно начавшейся войны
+     ещё и сюжетной цепочкой с первым эпизодом день в день. Раньше этот общий
+     переход дублировал их слово в слово, и игрок получал по три новости об
+     одном и том же событии за один квартал. Выход из войны и пандемии тоже
+     объявлен отдельно и точнее (санкции снимутся не сразу, помощь союзников
+     свернётся и т.д.). Единственный случай, для которого объявлять больше
+     нечему, — возврат к норме из порогового режима (рецессия, перегрев,
+     дефляция, стагфляция, банковский/долговой/валютный кризис): для них нет
+     отдельного текста о выходе. */
+  if (s.regime === 'normal' && prev.regime !== 'normal' && prev.regime !== 'war' && prev.regime !== 'pandemic') {
+    const info = REGIME_INFO.normal;
+    push('crisis', `ЭКОНОМИКА ВОЗВРАЩАЕТСЯ В НОРМАЛЬНЫЙ РЕЖИМ`, regimeInfoText(info, s), 6);
   }
 
   /* 📊 РЫНОК */
@@ -3707,7 +3764,7 @@ function makeInitialEconomy() {
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
-    activeCrises: [], regime: 'normal', recessionStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
+    activeCrises: [], regime: 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };

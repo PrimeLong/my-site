@@ -3074,6 +3074,8 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
   // у выбранного решения его цена уже вычтена из свободного капитала — проверять
   // «хватает ли» по остатку без него значит объявлять нехватку на ровном месте
   const canAfford = selected || affordable;
+  const label = typeof action.label === 'function' ? action.label(economy) : action.label;
+  const desc = typeof action.desc === 'function' ? action.desc(economy) : action.desc;
   const cdLeft = cooldowns[`pres:${action.id}`] || 0;
   const done = action.once && (economy.reforms || {})[action.id] !== undefined;
   const blockedByReq = !!(action.requires && !action.requires(economy));
@@ -3094,7 +3096,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
         borderColor: selected ? COLOR.gold : COLOR.border, background: selected ? COLOR.goldDim : COLOR.panelAlt }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         {selected && <Check size={12} color={COLOR.gold} style={{ alignSelf: 'center', flexShrink: 0 }} />}
-        <span style={{ fontSize: 12.5, color: selected ? COLOR.goldSoft : COLOR.text, fontWeight: 600, flex: 1 }}>{action.label}</span>
+        <span style={{ fontSize: 12.5, color: selected ? COLOR.goldSoft : COLOR.text, fontWeight: 600, flex: 1 }}>{label}</span>
         <span className="ems-mono" style={{ fontSize: 11, color: selected ? COLOR.goldSoft : COLOR.muted, flexShrink: 0 }}>{action.cost} ПК</span>
       </div>
       {/* решение, запертое условием («доступно при беспорядках или напряжённости
@@ -3102,7 +3104,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
           абзац описания в таком виде только растягивает список вниз, когда
           выбрать всё равно нельзя; причина недоступности сама по себе короче
           и полезнее */}
-      {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{action.desc}</div>}
+      {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
       {done && REFORM_RAMP[action.id] && (
         <div style={{ marginTop: 5, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${share * 100}%`, height: '100%', background: COLOR.teal }} />
@@ -4191,10 +4193,13 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
     return () => { cancelled = true; };
   }, [playerId]);
 
-  // подпись слота: роль и квартал — то, по чему партию узнают, если ей не дали имени
+  // подпись слота: роль и квартал — то, по чему партию узнают, если ей не дали имени.
+  // quarterIndex в сохранении — это уже тот квартал, на который партия откроется при
+  // загрузке, а не последний сыгранный: подпись должна показывать именно его, иначе
+  // список сохранений называет квартал на один раньше того, что откроется по «Играть».
   const slotLabel = (s) => {
     const roleTitle = (ROLES.find((r) => r.id === s.role) || {}).short || s.role;
-    return `${roleTitle} · ${quarterLabel(Math.max(1, (s.quarterIndex || 1) - 1))}`;
+    return `${roleTitle} · ${quarterLabel(s.quarterIndex || 1)}`;
   };
   const saveToSlot = async (idx) => {
     if (!snapshot) return;
@@ -7679,7 +7684,11 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>
                       )}
                       <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
-                        {roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}
+                        {/* quarterIndex в сохранении — это уже тот квартал, на который партия
+                            откроется при загрузке (см. setQuarterIndex(q => q + 1) в finishQuarter),
+                            а не последний сыгранный. Вычитание кварта здесь показывало метку на
+                            квартал раньше того, что игрок реально увидит после «Играть». */}
+                        {roleTitle} · {quarterLabel(slot.quarterIndex || 1)}
                       </span>
                     </span>
                     <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
@@ -8017,6 +8026,11 @@ const TUTORIAL_MODULES = [
         body: ({ economy }) => (
           <>
             <p>Инфляция сейчас {pctFmt(economy.inflation)} — почти как и была. Это ожидаемо: решение по ставке действует не мгновенно, а с лагом в один-два квартала — эффект будет виден чуть позже.</p>
+            <p>На панели рядом появился новый показатель — <Term k="outputgap">разрыв выпуска</Term>: насколько фактический ВВП отличается от потенциального, в процентах. Сейчас он {fmtSignedPct(economy.outputGap)}: {economy.outputGap >= 0.3
+              ? 'экономика работает выше своих возможностей, это и разгоняет инфляцию'
+              : economy.outputGap <= -0.3
+                ? 'экономика недозагружена — есть свободные мощности и рабочие руки'
+                : 'она почти на нуле, экономика работает примерно на пределе своих текущих возможностей'}. Именно за него, а не за сам ВВП, и идёт вся борьба ставкой и бюджетом.</p>
             <p>А вот и второй канал — расходы государства. В отличие от ставки, это решение «по накопительной»: заданный темп роста расходов сохраняется, пока вы его не измените, — не нужно повторять его каждый квартал.</p>
             <p>Поднимите темп роста госрасходов минимум на 2 п.п. и нажмите «Далее».</p>
           </>
@@ -10730,7 +10744,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       result.newsEntries.unshift({ id: `dir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${dirResult.req.label.toUpperCase()} — ${dirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : dirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
         text: `«${dirResult.ask}» ${dirResult.text}${dirResult.credibilityHit
-          ? ' Исполненное политическое указание ЦБ рынок читает как потерю независимости — доверие к денежной политике снижается.'
+          ? (economy.politicalRegime === 'authoritarian' || economy.politicalRegime === 'totalitarian'
+            // при авторитаризме и тем более тоталитаризме государственная пресса не станет
+            // сама признавать, что независимость ЦБ пострадала, — она подаёт исполнение
+            // указа как слаженную работу ветвей власти, а не как её потерю
+            ? ' Государственная пресса подаёт это как слаженную работу ветвей власти.'
+            : ' Исполненное политическое указание ЦБ рынок читает как потерю независимости — доверие к денежной политике снижается.')
           : dirResult.status === 'rejected' ? ' Публичный отказ ведомства добавляет напряжения в отношения ветвей власти.' : ''}` });
       setLastDirective({ status: dirResult.status, text: dirResult.text });
     }
@@ -10807,7 +10826,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           toPlayer: !!(presidentPlan.directive && presidentPlan.directive.toPlayer),
           // указание соседнему ведомству тоже имеет исход — ответ бота, а не «передано»
           status: presDirResult ? presDirResult.status : null,
-          actions: presidentPlan.actions.map((id) => (PRES_BY_ID[id] || {}).label).filter(Boolean) });
+          actions: presidentPlan.actions.map((id) => {
+            const a = PRES_BY_ID[id]; if (!a) return null;
+            return typeof a.label === 'function' ? a.label(economy) : a.label;
+          }).filter(Boolean) });
       }
       const nextCb = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'central_bank' ? presidentPlan.appointBot.persona : cbPersonaId;
       const nextMof = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'ministry_finance' ? presidentPlan.appointBot.persona : mofPersonaId;
