@@ -9,7 +9,7 @@
    (экспортирован оттуда), а не копия: смена темы и звук работают как раньше. */
 import React, { useState, useMemo } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
 import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
@@ -106,6 +106,12 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   const group = CHART_GROUPS.find((g) => g.id === chartGroup);
   const [forecast, setForecast] = useState(false);
   const panelCls = 'ems-panel ems-visual';
+  /* Сравнение двух точек по графику: зажали мышь на одной, отпустили на другой —
+     вместо того чтобы читать всплывающую подсказку дважды и вычитать в уме,
+     разница показывается сразу по всем включённым линиям. */
+  const [dragStart, setDragStart] = useState(null);
+  const [dragRange, setDragRange] = useState(null);
+  React.useEffect(() => { setDragStart(null); setDragRange(null); }, [chartGroup, period, forecast]);
   const data = useMemo(() => {
     const p = PERIODS.find((x) => x.id === period);
     const hist = history.slice(-p.q).map((h) => ({
@@ -169,6 +175,29 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   const rightDef = visible.find((s) => s.axis === 'right');
   const seriesById = Object.fromEntries(group.series.map((s) => [s.id, s]));
 
+  // значение показателя в точке графика: прогнозная точка хранит его под
+  // `${id}__f`, фактическая — под самим id
+  const valueAt = (row, id) => (row ? (row.forecastPoint ? row[`${id}__f`] : row[id]) : undefined);
+  const onChartMouseDown = (e) => { if (e && e.activeLabel != null) { setDragStart(e.activeLabel); setDragRange(null); } };
+  const onChartMouseMove = (e) => {
+    if (dragStart == null || !e || e.activeLabel == null) return;
+    setDragRange(e.activeLabel === dragStart ? null : { from: dragStart, to: e.activeLabel });
+  };
+  const onChartMouseUp = () => setDragStart(null);
+  const compare = useMemo(() => {
+    if (!dragRange) return null;
+    const i1 = data.findIndex((r) => r.label === dragRange.from);
+    const i2 = data.findIndex((r) => r.label === dragRange.to);
+    if (i1 === -1 || i2 === -1) return null;
+    const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
+    const rowA = data[lo]; const rowB = data[hi];
+    const rows = visible.map((s) => {
+      const a = valueAt(rowA, s.id); const b = valueAt(rowB, s.id);
+      return { s, a, b, delta: (Number.isFinite(a) && Number.isFinite(b)) ? b - a : null };
+    });
+    return { labelA: rowA.label, labelB: rowB.label, quarters: hi - lo, rows };
+  }, [dragRange, data, visible]);
+
   return (
     <div className={panelCls} style={{ padding: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
@@ -206,9 +235,10 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
         })}
       </div>
 
-      <div className="ems-visual" style={{ width: '100%', height: 250 }}>
+      <div className="ems-visual" style={{ width: '100%', height: 250, cursor: dragStart != null ? 'col-resize' : 'crosshair' }}>
         <ResponsiveContainer>
-          <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}
+            onMouseDown={onChartMouseDown} onMouseMove={onChartMouseMove} onMouseUp={onChartMouseUp} onMouseLeave={onChartMouseUp}>
             <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR.muted }} interval="preserveStartEnd" />
             <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')} />
@@ -226,6 +256,10 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
                 return [fmtFn(value), name];
               }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
+            {dragRange && (
+              <ReferenceArea yAxisId="left" x1={dragRange.from} x2={dragRange.to}
+                stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.1} />
+            )}
             {forecast && nowLabel && (
               <ReferenceLine yAxisId="left" x={nowLabel} stroke={COLOR.faint} strokeDasharray="3 3"
                 label={{ value: 'сейчас', position: 'insideTop', fontSize: 9.5, fill: COLOR.muted }} />
@@ -244,6 +278,35 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      {compare && (
+        <div className="ems-panel" style={{ padding: '9px 11px', marginTop: 8, background: COLOR.panelAlt }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: COLOR.text }}>
+              <b style={{ color: COLOR.goldSoft }}>{compare.labelA}</b> → <b style={{ color: COLOR.goldSoft }}>{compare.labelB}</b>
+            </span>
+            <span style={{ fontSize: 10, color: COLOR.faint }}>{compare.quarters} кв.</span>
+            <button className="ems-btn" style={{ marginLeft: 'auto', padding: '2px 7px', fontSize: 10 }}
+              onClick={() => { Audio.play('click'); setDragRange(null); }}>Сбросить</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {compare.rows.map(({ s, a, b, delta }) => {
+              const fmtFn = tooltipVal(s.fmt);
+              return (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                  <span style={{ color: COLOR.muted, flex: 1, minWidth: 0 }}>{s.label}</span>
+                  {delta === null ? <span style={{ color: COLOR.faint }}>нет данных</span> : (
+                    <span className="ems-mono">
+                      {fmtFn(a)} → {fmtFn(b)} <b style={{ color: delta > 0 ? COLOR.teal : delta < 0 ? COLOR.rust : COLOR.muted }}>
+                        ({delta >= 0 ? '+' : ''}{fmtFn(delta)})</b>
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
           ? <>Пунктир справа от отметки «сейчас» продолжает каждую включённую линию туда, куда она идёт <b style={{ color: COLOR.text }}>сама собой</b>,
@@ -252,7 +315,8 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
             <b style={{ color: COLOR.text }}> «{(visible[0] || group.series[0]).label}»</b>, первого включённого показателя: не предсказание,
             а линейка неопределённости, и чем дальше горизонт, тем она шире.</>
           : <>Темпы роста и ставки показаны в годовом выражении; траектория рассчитывается по кварталам. Нажмите на показатель выше, чтобы скрыть или показать его линию.
-            Кнопка <b style={{ color: COLOR.text }}>«прогноз на 8 кв.»</b> продолжает включённые линии пунктиром: куда они уйдут сами, если ничего не менять.</>}
+            Кнопка <b style={{ color: COLOR.text }}>«прогноз на 8 кв.»</b> продолжает включённые линии пунктиром: куда они уйдут сами, если ничего не менять.
+            Зажмите мышь на графике и потяните в сторону, чтобы сравнить значения между двумя точками.</>}
       </div>
     </div>
   );
