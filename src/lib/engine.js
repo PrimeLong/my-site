@@ -577,9 +577,10 @@ const reqAmount = (req, strength) => (req && req.scale ? req.scale.base : 1)
 /* Текст просьбы. «Снизить ставку на 1 п.п.» и «на 0,25 п.п.» — разные просьбы, и в
    новостях обязана стоять та, которую действительно выдвинули: раньше в кавычках
    всегда висела базовая формулировка, сколько бы ни просили на самом деле. */
-const askText = (req, strength, bySpeaker) => {
+const askText = (req, strength, bySpeaker, regime) => {
   if (!req) return '';
   const raw = typeof req.ask === 'function' ? req.ask(reqAmount(req, strength)) : req.ask;
+  let text = raw;
   // указание ведомству от имени президента передаёт он сам, а не то ведомство,
   // чьим голосом написан текст просьбы («...вынудит НАС держать ставку выше» —
   // это фраза ЦБ о себе). Без замены президент рассказывал бы про ставку так,
@@ -589,10 +590,18 @@ const askText = (req, strength, bySpeaker) => {
     // \b в JS-регулярках размечает границы по ASCII \w и кириллицу словом не
     // считает — «\bнас\b» поэтому вообще не находит «нас» внутри кириллического
     // текста ни разу. \p{L} с флагом u распознаёт кириллицу как буквы корректно.
-    return raw.replace(/(?<!\p{L})нас(?!\p{L})/giu, institutionName)
+    text = text.replace(/(?<!\p{L})нас(?!\p{L})/giu, institutionName)
       .replace(/(?<!\p{L})нам(?!\p{L})/giu, institutionName);
   }
-  return raw;
+  // «Просим»/«Требуем»/«Предлагаем» — формулировки для ведомства, у которого
+  // есть право отказать. При тоталитарном режиме отказать почти невозможно
+  // (см. authority = 4.0 в processPresidentialDirective) — и президент,
+  // который «просит» при таком раскладе, звучит фальшиво: это не просьба,
+  // а распоряжение с заранее известным ответом.
+  if (bySpeaker === 'president' && regime === 'totalitarian') {
+    text = text.replace(/^(Просим|Требуем|Предлагаем) /, 'Приказываем ');
+  }
+  return text;
 };
 /* «Согласились наполовину» у ставочных запросов считается от того, что бот и
    так планировал сделать в этом квартале (decisions.keyRate ДО применения
@@ -636,7 +645,12 @@ const REQUESTS = [
     no: 'Минфин отказывает: наращивать расходы при нынешнем состоянии бюджета он не намерен.' },
   { id: 'deficit_cut', from: 'central_bank', label: 'Сократить дефицит бюджета',
     scale: { base: 1, min: 0.5, max: 2.5, step: 0.5, unit: '×' },
-    ask: 'Требуем сокращения бюджетного импульса: он вынуждает нас держать ставку выше, чем требовалось бы.',
+    // «×2» читалось как «дефицит уменьшится вдвое», хотя запрос двигает не сам
+    // дефицит, а темп роста двух статей расходов — итоговый эффект на баланс
+    // бюджета зависит ещё и от доходов, процентных платежей и остальных
+    // статей, которых запрос не касается. Текст явно называет то, что
+    // реально просят, а не то, что могло бы показаться пропорциональным.
+    ask: (n) => `Требуем притормозить рост расходов на ${askNum(2 * n)} п.п. и социальных выплат на ${askNum(1.5 * n)} п.п.: нынешний бюджетный импульс вынуждает нас держать ставку выше, чем требовалось бы.`,
     fit: (s) => (s.budgetBalancePctGdp < -4 ? 1.4 : 0.2) + (s.outputGap > 1 ? 0.8 : -0.3) + (s.inflation > 6 ? 0.6 : 0),
     bias: { technocrat: 0.6, austerity: 1.0, populist: -0.9 },
     apply: (d, k) => ({ govSpending: clamp(d.govSpending - 2 * k, -10, 10), transfers: clamp(d.transfers - 1.5 * k, -12, 12) }),
@@ -1058,17 +1072,26 @@ const PRESIDENT_ACTIONS = [
 
   { id: 'labor', group: 'reform', label: 'Реформа рынка труда', cost: 26, once: true,
     desc: 'Упростить наём и увольнение, перестроить пособия. Через два года структурная безработица ниже почти на процентный пункт — но первыми это почувствуют те, кого увольняют, и они это запомнят.',
-    build: (s, difficulty) => ({
-      patch: { reform: 'labor' },
-      impulses: [
-        makeImpulse('unemployment', 0.45, 'Реформа рынка труда: перестройка занятости', 'default', difficulty),
-        makeImpulse('approvalPush', -6, 'Непопулярная реформа рынка труда', 'fast', difficulty, 'other'),
-        makeImpulse('tensionPush', 11, 'Профсоюзы против реформы рынка труда', 'fast', difficulty, 'other'),
-      ],
-      news: { cat: 'gov', headline: 'ОБЪЯВЛЕНА РЕФОРМА РЫНКА ТРУДА',
-        text: 'Правила найма и увольнения переписываются, пособия привязываются к активному поиску работы. Профсоюзы объявляют протест; экономисты напоминают, что структурная безработица снижается не указом, а годами.',
-        priority: 8, chain: ['Реформа объявлена', 'Протест профсоюзов', 'Перестройка занятости', 'Структурная безработица ↓'] },
-    }) },
+    build: (s, difficulty) => {
+      // при авторитаризме и тем более тоталитаризме государственная пресса не
+      // станет сама печатать, что профсоюзы вышли на протест против решения
+      // власти, — «реформа встречена с пониманием» и есть та версия, которую
+      // такая пресса про себя предпочла бы написать
+      const authoritarianPress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+      return {
+        patch: { reform: 'labor' },
+        impulses: [
+          makeImpulse('unemployment', 0.45, 'Реформа рынка труда: перестройка занятости', 'default', difficulty),
+          makeImpulse('approvalPush', -6, 'Непопулярная реформа рынка труда', 'fast', difficulty, 'other'),
+          makeImpulse('tensionPush', 11, 'Профсоюзы против реформы рынка труда', 'fast', difficulty, 'other'),
+        ],
+        news: { cat: 'gov', headline: 'ОБЪЯВЛЕНА РЕФОРМА РЫНКА ТРУДА',
+          text: authoritarianPress
+            ? 'Правила найма и увольнения переписываются, пособия привязываются к активному поиску работы. Официально — реформа встречена трудовыми коллективами с пониманием и поддержкой.'
+            : 'Правила найма и увольнения переписываются, пособия привязываются к активному поиску работы. Профсоюзы объявляют протест; экономисты напоминают, что структурная безработица снижается не указом, а годами.',
+          priority: 8, chain: ['Реформа объявлена', 'Протест профсоюзов', 'Перестройка занятости', 'Структурная безработица ↓'] },
+      };
+    } },
   { id: 'pension', group: 'reform', label: 'Пенсионная реформа', cost: 42, once: true,
     desc: 'Поднять возраст выхода на пенсию. Самое непопулярное решение из возможных — и единственное, которое одновременно расширяет рабочую силу и снимает постоянную нагрузку с бюджета.',
     build: (s, difficulty) => ({
@@ -1084,6 +1107,12 @@ const PRESIDENT_ACTIONS = [
         priority: 9, chain: ['Реформа объявлена', 'Рейтинг ↓↓', 'Напряжённость ↑', 'Рабочая сила ↑', 'Выплаты ↓'] },
     }) },
   { id: 'courts', group: 'reform', label: 'Судебная реформа', cost: 34, once: true,
+    // независимый суд и полный контроль над институтами — противоположные
+    // вещи: указ «Полный контроль» (totalize) прямо забирает суды под
+    // администрацию, реформа обещает ровно обратное. При тоталитарном
+    // режиме такого выбора для президента уже не существует.
+    requires: (s) => s.politicalRegime !== 'totalitarian',
+    reqText: 'Недоступно при тоталитарном режиме: независимых судов при нём уже нет',
     desc: 'Независимые суды и защита собственности. Ничего не даёт в этом квартале и почти всё — в горизонте пяти лет: премия за риск, прямые инвестиции и производительность зависят от того, можно ли выиграть спор у государства.',
     build: (s, difficulty) => ({
       patch: { reform: 'courts' },
@@ -1237,7 +1266,7 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   const credibilityHit = toCb ? -7 * k : 0;
   const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions;
   return {
-    req, status, score, toCb, persona, strength: str, ask: askText(req, str, 'president'),
+    req, status, score, toCb, persona, strength: str, ask: askText(req, str, 'president', regime),
     decisions: finalDecisions,
     text: requestOutcomeText(req, status, economy, finalDecisions),
     credibilityHit,
@@ -1449,7 +1478,7 @@ function botPresident(s, personaId, difficulty, ctx) {
   const canPressure = capital >= PRES_DIRECTIVE_COST + 4;
   const directive = canPressure && best && best.sc >= threshold
     ? { reqId: best.req.id, branch: branchOf(best.req), toPlayer: branchOf(best.req) === playerBranch,
-      req: best.req, ask: askText(best.req, 1, 'president') }
+      req: best.req, ask: askText(best.req, 1, 'president', s.politicalRegime) }
     : null;
 
   /* --- 3. смена руководителя ведомства, которым игрок не управляет --- */
@@ -1482,7 +1511,7 @@ function botPresident(s, personaId, difficulty, ctx) {
     newsHeadline: `ПРЕЗИДЕНТ ${directive
       ? `→ ${directive.branch === 'monetary' ? 'ЦБ' : 'МИНФИН'}: ${directive.req.label.toUpperCase()}`
       : 'О ПОЛОЖЕНИИ ДЕЛ'}`,
-    demand: directive ? `Президент (${P.name}): ${askText(directive.req, 1, 'president')}` : null,
+    demand: directive ? `Президент (${P.name}): ${askText(directive.req, 1, 'president', s.politicalRegime)}` : null,
   };
 }
 
