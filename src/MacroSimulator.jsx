@@ -7899,7 +7899,10 @@ function QuizStep({ questions, onPass, passed }) {
                 const opt = q.options[srcIdx];
                 const chosen = answers[qi] === oi;
                 const right = srcIdx === q.answer;
-                const mark = showVerdict && (right || chosen);
+                // пока задача не пройдена, отмечаем только собственный выбор —
+                // иначе неверный ответ тут же подсвечивал правильный вариант,
+                // и «сколько угодно попыток» превращалось в «нажми на галочку»
+                const mark = showVerdict && (passed ? (right || chosen) : chosen);
                 const color = !mark ? (chosen ? COLOR.gold : COLOR.border) : right ? COLOR.teal : COLOR.rust;
                 return (
                   <button key={opt} className="ems-btn" onClick={() => pick(qi, oi)} disabled={passed}
@@ -8658,7 +8661,10 @@ const TRADER_MODULES = [
     id: 'tr_portfolio', depth: 'deep', icon: Scale, sandbox: 'trader',
     title: 'Портфель: диверсификация и бенчмарк',
     summary: 'Зачем держать несколько разных активов и с чем сравнивать свой результат.',
-    pins: ['stockIndex', 'bondIndex', 'exchangeRate', 'inflation'],
+    // подсказка практики «обогнать индекс» говорит про растущую экономику и
+    // ставку ниже нейтральной — без outputGap/rateGap в закреплённых
+    // показателях это не увидеть нигде на экране практики
+    pins: ['stockIndex', 'bondIndex', 'exchangeRate', 'inflation', 'outputGap', 'rateGap'],
     steps: [
       {
         title: 'Активы ведут себя по-разному',
@@ -9102,7 +9108,11 @@ const EXAM_MODULES = [
     id: 'tr_exam', depth: 'deep', icon: GraduationCap, isExam: true, sandbox: 'trader',
     title: 'Экзамен: частный инвестор',
     summary: 'Теория по трём модулям и портфель на развороте ставки.',
-    pins: ['stockIndex', 'bondIndex', 'keyRate', 'inflation'],
+    // подсказка практики говорит «ставка вдвое выше нейтральной» и «инфляция уже
+    // у цели» — без rateGap/outputGap в закреплённых показателях это никак не
+    // проверить и негде увидеть, а разрыв выпуска нужен, чтобы убедиться, что
+    // сценарий про нормализацию ставки, а не про рецессию
+    pins: ['keyRate', 'rateGap', 'inflation', 'outputGap', 'stockIndex', 'bondIndex'],
     steps: [
       {
         title: 'Экзамен',
@@ -9119,11 +9129,11 @@ const EXAM_MODULES = [
             ['Покупательная способность упала примерно на 4%',
               'Вы заработали 9%', 'Вы заработали 23%', 'Ничего не изменилось'], 0,
             'Реальный результат — это номинальный за вычетом инфляции. Плюс на счёте и прибыль — разные вещи, и различать их важнее всего именно в те годы, когда цены растут быстрее всего.'),
-          q('Уровень обеспечения 135% при поддерживающем 120%. Что это значит?',
+          q('Уровень обеспечения 28% при поддерживающем уровне терминала 25%. Что это значит?',
             ['Падение позиций примерно на 11% приведёт к принудительному закрытию',
               'У вас нет заёмных средств', 'Брокер закроет позиции прямо сейчас',
               'Можно безопасно увеличить плечо вдвое'], 0,
-            'Запас до маржин-колла считается от текущего уровня к поддерживающему. Пятнадцать пунктов запаса при высокой волатильности — это одно неудачное движение рынка, а не комфортная подушка.'),
+            'Запас до маржин-колла считается от текущего уровня к поддерживающему: (28 − 25) / 28 ≈ 11%. Три пункта запаса при высокой волатильности — это одно неудачное движение рынка, а не комфортная подушка.'),
           q('Что защищает портфель от девальвации национальной валюты?',
             ['Золото и мировые акции', 'Длинные государственные облигации',
               'Депозит в национальной валюте', 'Акции банков'], 0,
@@ -9415,9 +9425,13 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     /* Новости копятся: раньше лента показывала только последний квартал, и
        вернуться к тому, что было два хода назад, было невозможно — а в задаче
        на несколько кварталов это как раз то, по чему и отслеживают, сработало
-       решение или нет. Заголовки уже отсортированы движком по важности. */
+       решение или нет. Заголовки уже отсортированы движком по важности.
+       «Мнения» (cat: 'opinion') — атмосферные цитаты для настоящей игры, в
+       обучении это шум: они не говорят, сработало ли решение, а место в
+       коротком списке отнимают у новостей, которые как раз об этом. */
+    const tutorialNews = (result.newsEntries || []).filter((n) => n.cat !== 'opinion');
     setNewsLog((log) => [
-      { q: quarterIndex, label: quarterLabel(quarterIndex), items: (result.newsEntries || []).slice(0, 6) },
+      { q: quarterIndex, label: quarterLabel(quarterIndex), items: tutorialNews.slice(0, 6) },
       ...log,
     ].slice(0, 12));
     return { economy: result.economy, history: newHistory, decisions: newDecisions, book: newBook };
@@ -9442,6 +9456,14 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     setQuarterIndex(a.quarterIndex); setBook(a.book);
     setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     setNewsLog([]);
+    // характер ЦБ/Минфина — условие задачи («сбить инфляцию при Голубе»), а
+    // не что-то, что игрок настраивает сам: кадровая перестановка внутри
+    // неудачной попытки меняла его насовсем, и «начать заново» возвращало
+    // экономику к исходной точке, но оставляло уже другого главу ведомства
+    if (cur.personas) {
+      setCbPersonaId(cur.personas.cb || 'pragmatic');
+      setMofPersonaId(cur.personas.mof || 'technocrat');
+    }
     setPractice({ ...practice, used: 0 });
   };
 
@@ -9615,6 +9637,22 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             );
           })}
         </div>
+
+        {/* В настоящей партии кризис виден баннером и бейджами сразу на экране;
+            в практике его не было вообще — в задаче на несколько кварталов
+            банковский или валютный кризис мог развернуться и погаситься
+            незаметно для того, кто его как раз должен был разгребать. */}
+        {kind === 'practice' && (
+          <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <RegimeBanner economy={economy} />
+            {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
+              <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
+                <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+                <span><b style={{ color: COLOR.rust }}>{CRISIS_INFO[c] ? regimeInfoLabel(CRISIS_INFO[c], economy) : c}.</b> <span style={{ color: COLOR.muted }}>{CRISIS_INFO[c] ? regimeInfoText(CRISIS_INFO[c], economy) : ''}</span></span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className={twoCol ? 'ems-tut-cols' : undefined}>
           <div style={{ minWidth: 0 }}>
@@ -10833,7 +10871,15 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       newCrisis,
       bigNews: result.newsEntries.some((n) => n.priority >= 8),
     });
-    setDecisions(defaultDecisions(result.economy, decisions));
+    // без этого directiveProgress следующего квартала сравнивал бы решения с
+    // тем, какими они были в САМОМ ПЕРВОМ квартале партии: базовая точка ни разу
+    // не обновлялась, и «выполнено ли требование» проверялось не с начала этого
+    // квартала, а с начала игры — там, где давнее ручное вмешательство игрока
+    // уже само по себе считалось «движением», а свежее совпадало с базой и
+    // засчитывалось как отказ, даже при максимальном ответе на директиву
+    const nextDecisions = defaultDecisions(result.economy, decisions);
+    setDecisions(nextDecisions);
+    setDecisionsBaseline(nextDecisions);
     setQuarterIndex((q) => q + 1);
     setBusy(false);
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
