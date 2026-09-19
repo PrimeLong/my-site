@@ -80,7 +80,7 @@ const GlobalStyle = () => (
     .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px -10px rgba(0,0,0,0.4); }
     .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.14), 0 14px 30px -12px rgba(0,0,0,0.55); }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
-    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; }
+    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
     .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; box-shadow: 0 3px 10px -4px rgba(0,0,0,0.35); }
     .ems-btn:active { transform: scale(0.98); }
     .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 12px -3px ${COLOR.goldDim}; }
@@ -91,7 +91,7 @@ const GlobalStyle = () => (
     .ems-slider::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-scroll::-webkit-scrollbar { width:6px; height:6px; }
     .ems-scroll::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:3px; }
-    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; }
+    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
     .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
     .ems-tab.active:hover { background:${COLOR.goldSoft}; color:${COLOR.ink}; }
@@ -129,7 +129,8 @@ const GlobalStyle = () => (
     .ems-card-btn { position: relative; display: flex; align-items: center; gap: 15px; cursor: pointer;
       border-radius: 13px; border: 1px solid ${COLOR.border}; background: ${COLOR.panel};
       box-shadow: 0 1px 2px rgba(0,0,0,0.14), 0 12px 28px -16px rgba(0,0,0,0.55);
-      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+      user-select: none; -webkit-user-select: none; }
     .ems-card-btn:hover, .ems-card-btn:focus-visible { transform: translateY(-2px); border-color: ${COLOR.gold};
       background: ${COLOR.panelRaised}; box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 18px 36px -16px rgba(0,0,0,0.65); }
     .ems-card-btn:active { transform: translateY(0); }
@@ -139,7 +140,7 @@ const GlobalStyle = () => (
     .ems-card-btn:hover .ems-card-icon { transform: scale(1.07) rotate(-2deg); border-color: ${COLOR.gold}; }
     .ems-card-chevron { transition: transform .18s ease; }
     .ems-card-btn:hover .ems-card-chevron { transform: translateX(3px) rotate(-90deg); }
-    .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; }
+    .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; user-select: none; -webkit-user-select: none; }
     .ems-row-hover:hover { background: ${COLOR.panelRaised} !important; border-color: ${COLOR.borderStrong} !important; }
     .ems-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 10.5px;
       cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
@@ -2152,7 +2153,23 @@ function NewsTerminal({ items, onOpenPaper }) {
       )}
       <div ref={scrollRef} className="ems-scroll" style={{ maxHeight: 430, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 13 }}>
         {list.length === 0 && <div style={{ fontSize: 12, color: COLOR.muted }}>Лента пуста — завершите первый квартал, и экономика начнёт рассказывать о себе сама.</div>}
-        {list.map((n) => (<NewsItem key={n.id} item={n} showQuarter />))}
+        {/* новости шли сплошным потоком без границы между кварталами — метка
+            квартала в каждой строке терялась среди заголовков и не читалась
+            как раздел. Заголовок раздела перед первой новостью нового квартала
+            разбивает ленту на понятные блоки — по одному на квартал. */}
+        {list.map((n, i) => (
+          <React.Fragment key={n.id}>
+            {(i === 0 || n.q !== list[i - 1].q) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: i === 0 ? '0 0 -5px' : '3px 0 -5px' }}>
+                <span className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, fontWeight: 700, letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                  {n.qLabel || quarterLabel(n.q)}
+                </span>
+                <div style={{ flex: 1, height: 1, background: COLOR.hairline }} />
+              </div>
+            )}
+            <NewsItem item={n} />
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );
@@ -3398,6 +3415,22 @@ function validateSnapshot(data) {
   return data;
 }
 
+/* Автосохранение текущей одиночной партии: раньше перезагрузка вкладки (случайный
+   F5, восстановление после сна ноутбука) откатывала партию к главному меню, хотя
+   игрок ничего не сохранял и не выходил. Слот в localStorage хранит полный снимок
+   того же вида, что и ручное сохранение, и перезаписывается на каждый квартал —
+   при следующем открытии страница просто открывает партию с того же места. */
+const AUTOSAVE_KEY = 'ems-autosave-v1';
+const loadAutosave = () => {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    return validateSnapshot(JSON.parse(raw));
+  } catch { return null; }
+};
+const saveAutosave = (data) => { try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data)); } catch { /* квота или приватный режим — просто не автосохраняем */ } };
+const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ } };
+
 /* Player ID — единственное, что остаётся на клиенте: без него некому
    адресовать слоты на сервере (аккаунтов в игре нет). Сама партия — экономика,
    история, декэижны — целиком лежит на сервере, как и сетевые комнаты. */
@@ -3991,7 +4024,7 @@ function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
   }
   return null;
 }
-function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, restartLabel = 'Начать заново' }) {
+function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, restartLabel = 'Начать заново' }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 460, width: '100%', padding: 26, textAlign: 'center', borderColor: COLOR.rust }} onClick={(e) => e.stopPropagation()}>
@@ -4002,20 +4035,30 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, on
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
           <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Поделиться</button>
           <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
+          {onRollback && (
+            <button className="ems-btn" style={{ borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
+              <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Откатить на 3 хода назад
+            </button>
+          )}
           <button className="ems-btn primary" onClick={onRestart}>{restartLabel}</button>
         </div>
       </div>
     </div>
   );
 }
-const GameOverBar = ({ defeat, onReopen, onRestart, restartLabel = 'Начать заново' }) => (
+const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLabel = 'Начать заново' }) => (
   <div style={{ borderTop: `2px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
     display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
-    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)' }}>
+    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)', flexWrap: 'wrap' }}>
     <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
       <AlertTriangle size={14} />Партия окончена: {defeat.title}
     </span>
     <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5 }} onClick={onReopen}>Подробнее</button>
+    {onRollback && (
+      <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5, borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
+        <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Откатить на 3 хода назад
+      </button>
+    )}
     <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onRestart}>{restartLabel}</button>
   </div>
 );
@@ -4354,7 +4397,8 @@ const SUMMARY_TABS = {
     { key: 'inflationTarget', label: 'Цель ЦБ по инфляции', fmt: pctFmt },
     { key: 'inflation', label: 'Инфляция', fmt: pctFmt },
     { key: 'inflationExpectations', label: 'Ожидания', fmt: pctFmt },
-    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0) },
+    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0),
+      hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt },
     { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.` },
@@ -5541,7 +5585,11 @@ function SlotsGame({ cash, onResult }) {
     if (final[0].id === final[1].id && final[1].id === final[2].id) mult = final[0].pay3;
     else if (final.filter((s) => s.id === 'cherry').length >= 2) mult = SLOT_SYMBOLS[0].pay2;
     const didWin = mult > 0;
-    const n = didWin ? bet * mult : -bet;
+    // «× N» в таблице выплат читается как «столько раз вернётся ваша ставка», та же
+    // конвенция, что и в рулетке и костях (bet*(mult-1)) — раньше здесь выплачивался
+    // весь mult сверху ставки, и с текущей таблицей это давало казино отрицательный
+    // (в пользу игрока) матожидание вместо небольшого преимущества дома.
+    const n = didWin ? bet * (mult - 1) : -bet;
     setNet(null); setWin(false);
     setSpinningReels([true, true, true]);
     timersRef.current.forEach(clearInterval); timersRef.current = [];
@@ -5655,7 +5703,19 @@ function DiceGame({ cash, onResult }) {
 
 const CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const CARD_SUITS = ['♠', '♥', '♦', '♣'];
-const drawCard = () => CARD_RANKS[Math.floor(Math.random() * 13)] + CARD_SUITS[Math.floor(Math.random() * 4)];
+// раньше каждая карта тянулась независимо (ранг и масть — отдельные случайные
+// числа), поэтому в одной раздаче могли выпасть две одинаковые карты — то, чего
+// в реальной колоде на 52 карты просто не бывает. Теперь раздача тасует полную
+// колоду один раз и тянет карты из неё по очереди, без возврата.
+const FULL_DECK = CARD_RANKS.flatMap((r) => CARD_SUITS.map((s) => r + s));
+const shuffledDeck = () => {
+  const d = [...FULL_DECK];
+  for (let i = d.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [d[i], d[j]] = [d[j], d[i]];
+  }
+  return d;
+};
 const cardRank = (c) => c.slice(0, -1);
 const cardSuit = (c) => c.slice(-1);
 const cardValue = (c) => { const r = cardRank(c); return r === 'A' ? 11 : (r === 'J' || r === 'Q' || r === 'K') ? 10 : parseInt(r, 10); };
@@ -5682,6 +5742,10 @@ function BlackjackGame({ cash, onResult }) {
   const [dealer, setDealer] = useState([]);
   const [bet, setBet] = useState(0);
   const [outcome, setOutcome] = useState(null);
+  // одна перетасованная колода на раздачу: тянем по очереди, без возврата и
+  // без повторной перетасовки внутри того же раунда
+  const shoeRef = React.useRef([]);
+  const draw = () => shoeRef.current.pop();
   const resolve = (p, d, b) => {
     const pv = handValue(p); const dv = handValue(d);
     const pBJ = pv === 21 && p.length === 2; const dBJ = dv === 21 && d.length === 2;
@@ -5700,20 +5764,21 @@ function BlackjackGame({ cash, onResult }) {
   const deal = () => {
     const b = clamp(amount, 0.01, cash);
     if (b <= 0) return;
-    const p = [drawCard(), drawCard()]; const d = [drawCard(), drawCard()];
+    shoeRef.current = shuffledDeck();
+    const p = [draw(), draw()]; const d = [draw(), draw()];
     setPlayer(p); setDealer(d); setBet(b); setOutcome(null);
     Audio.play('tick');
     if (handValue(p) === 21 || handValue(d) === 21) resolve(p, d, b);
     else setPhase('player');
   };
   const hit = () => {
-    const p = [...player, drawCard()];
+    const p = [...player, draw()];
     setPlayer(p); Audio.play('tick');
     if (handValue(p) > 21) resolve(p, dealer, bet);
   };
   const stand = () => {
     let d = [...dealer];
-    while (handValue(d) < 17) d = [...d, drawCard()];
+    while (handValue(d) < 17) d = [...d, draw()];
     resolve(player, d, bet);
   };
   const again = () => { setPhase('bet'); setPlayer([]); setDealer([]); setOutcome(null); };
@@ -7494,9 +7559,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               }
               return (
                 <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }} title={row.hint || undefined}>
                     {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
-                    {row.label}
+                    {row.label}{row.hint && <Info size={10} color={COLOR.faint} />}
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
@@ -10255,7 +10320,8 @@ const INDICATOR_TABS = [
     { key: 'inflation', label: 'Инфляция (ИПЦ)', fmt: pctFmt },
     { key: 'coreInflation', label: 'Базовая инфляция', fmt: pctFmt },
     { key: 'inflationExpectations', label: 'Инфляционные ожидания', fmt: pctFmt },
-    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: idx0 },
+    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: idx0,
+      hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
     { key: 'importPriceInflation', label: 'Инфляция цен импорта', fmt: pctFmt },
     { key: 'unitLaborCostGrowth', label: 'Удельные издержки труда', fmt: fmtSignedPct },
     { key: 'moneySupply', label: 'Денежная масса (индекс)', fmt: fmt1 },
@@ -10297,6 +10363,8 @@ const INDICATOR_TABS = [
     { key: 'govDebt', label: 'Государственный долг', fmt: fmtMoney },
     { key: 'debtToGdp', label: 'Долг к ВВП', fmt: pctFmt },
     { key: 'effectiveDebtRate', label: 'Средняя ставка по долгу', fmt: pctFmt },
+    { key: 'sovereignFund', label: 'Суверенный фонд', fmt: fmtMoney,
+      hint: 'Профицит бюджета сначала гасит госдолг, а после того как долг обнулился, идёт сюда, а не исчезает. Фонд, в свою очередь, приносит доход в бюджет. Дефицит сначала тратит фонд и только потом занимает.' },
     { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt },
   ] },
   { id: 'labor', label: 'Труд', icon: Users, rows: [
@@ -10618,6 +10686,20 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
     presPersonaId, presidentLast });
+  // история снимков для отката после поражения: три хода назад решение ещё можно
+  // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
+  // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
+  // ни одного поля состояния. Держим с запасом (8, а не 3) на случай, если между
+  // кварталами эффект сработает не идеально ровно.
+  const rollbackHistoryRef = React.useRef([]);
+  React.useEffect(() => {
+    const snap = snapshot();
+    rollbackHistoryRef.current = [...rollbackHistoryRef.current, { quarterIndex, snap }].slice(-8);
+    saveAutosave(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quarterIndex]);
+  const rollbackTarget = rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
+  const handleRollback = () => { if (rollbackTarget) onLoadState(rollbackTarget.snap); };
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -10964,7 +11046,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
+        onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }}
+        onRollback={rollbackTarget ? handleRollback : null} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
@@ -11338,9 +11421,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 }
                 return (
                   <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                    <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }} title={row.hint || undefined}>
                       {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
-                      {row.label}
+                      {row.label}{row.hint && <Info size={10} color={COLOR.faint} />}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
@@ -11375,7 +11458,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       })()}
 
       {defeat ? (
-        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart} />
+        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart}
+          onRollback={rollbackTarget ? handleRollback : null} />
       ) : (
         <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
           boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
@@ -11446,8 +11530,11 @@ class ScreenErrorBoundary extends React.Component {
 }
 
 export default function MacroSimulator() {
-  const [setup, setSetup] = useState(null);
-  const [loaded, setLoaded] = useState(null);
+  // партия из автосохранения открывается сама, минуя меню — но только если
+  // в адресе нет приглашения в сетевую комнату: оно важнее того, что было
+  // открыто на этой вкладке раньше
+  const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() ? null : loadAutosave()));
+  const [setup, setSetup] = useState(() => (roomCodeFromUrl() ? null : (loadAutosave() || {}).setup || null));
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
@@ -11474,7 +11561,7 @@ export default function MacroSimulator() {
       if (view === 'setup') {
         return (
           <SetupScreen key={theme}
-            onStart={(x) => { setLoaded(null); setSetup(x); }}
+            onStart={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }}
             onBack={goMenu}
           />
         );
@@ -11502,7 +11589,7 @@ export default function MacroSimulator() {
     return (
       <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
         theme={theme} setTheme={setTheme}
-        onRestart={() => { setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
+        onRestart={() => { clearAutosave(); setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
     );
   })();
   return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{screen}</ScreenErrorBoundary>;
