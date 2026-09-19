@@ -2204,9 +2204,40 @@ function politicalPaperPalette(base, economy) {
   };
 }
 
+/* Иконка «экономической погоды» на первой полосе — тот же REGIME_INFO, которым
+   уже размечена авариная строка панели, только переведённый в один символ:
+   свежий взгляд на состояние экономики, не изобретающий новую классификацию. */
+const WEATHER_ICON = {
+  normal: '☀️', overheating: '🌡️', recession: '☁️', stagflation: '🌪️',
+  banking: '🌊', debt: '📉', currency: '💱', deflation: '❄️', pandemic: '🦠', war: '⚔️',
+};
+/* Девять рубрик NEWS_CATEGORIES на первой полосе выглядели бы как девять
+   маленьких колонок ни о чём — читатель не понимает, где заканчивается одна
+   тема и начинается другая. Разделы группируют их в тот же костяк, которым
+   устроена любая деловая газета: политика, деньги, рынки, экономика, общество, мир. */
+const NEWS_SECTION = {
+  gov: 'ПОЛИТИКА И ПРАВИТЕЛЬСТВО', cb: 'ДЕНЬГИ И БАНКИ', markets: 'РЫНКИ',
+  business: 'ЭКОНОМИКА', households: 'ОБЩЕСТВО', world: 'МИР',
+};
+const NEWS_SECTION_ORDER = ['gov', 'cb', 'markets', 'business', 'households', 'world'];
+
+/* Строка тикера — курсив цифр наверху полосы, как в деловой прессе: значение
+   и стрелка относительно предыдущего выпуска, без лишних слов. */
+function TickerStat({ label, value, delta, pp }) {
+  const arrow = !Number.isFinite(delta) || Math.abs(delta) < 1e-9 ? null : delta > 0 ? '▲' : '▼';
+  return (
+    <span className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
+      {label} <b style={{ color: pp.paperText }}>{value}</b>{arrow && <span style={{ fontSize: 8.5 }}>{arrow}</span>}
+    </span>
+  );
+}
+
 /* Газета: выпуск квартала, хроника страны и сюжетные линии */
 function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   const [tab, setTab] = useState('issue');
+  const [chronicleFilter, setChronicleFilter] = useState('all');
+  const [chronicleSearch, setChronicleSearch] = useState('');
+  const [chronicleShown, setChronicleShown] = useState(8);
   const quarters = useMemo(() => {
     const map = new Map();
     news.forEach((n) => { if (!map.has(n.q)) map.set(n.q, []); map.get(n.q).push(n); });
@@ -2214,10 +2245,24 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   }, [news]);
   const latest = quarters.length ? quarters[0] : null;
   const issueItems = latest ? latest[1] : [];
-  const lead = issueItems.find((n) => n.cat !== 'editorial');
+  // мнение — колонка, а не главная тема: ведёт номер твёрдая новость, если она
+  // вообще была, и только в совсем тихий квартал мнение остаётся единственным
+  // кандидатом на первую полосу
+  const lead = issueItems.find((n) => n.cat !== 'editorial' && n.cat !== 'opinion') || issueItems.find((n) => n.cat !== 'editorial');
   const editorial = issueItems.find((n) => n.cat === 'editorial');
-  const rest = issueItems.filter((n) => n !== lead && n !== editorial);
+  // «мнение» теперь одно на квартал (см. движок) — есть смысл дать ему
+  // собственную колонку, а не смешивать с обычными заметками сетки
+  const opinionItem = issueItems.find((n) => n.cat === 'opinion' && n !== lead);
+  // кризисные заметки — не рубрика среди прочих, а тревога, которая должна
+  // читаться раньше обычной сетки
+  const urgentItems = issueItems.filter((n) => n !== lead && n !== editorial && n !== opinionItem && n.cat === 'crisis');
+  const rest = issueItems.filter((n) => n !== lead && n !== editorial && n !== opinionItem && !urgentItems.includes(n));
+  const sections = NEWS_SECTION_ORDER
+    .map((cat) => ({ cat, label: NEWS_SECTION[cat], items: rest.filter((n) => n.cat === cat) }))
+    .filter((s) => s.items.length > 0);
   const snapshot = latest ? history.find((h) => h.q === latest[0]) : null;
+  const prevSnapshot = latest ? history.find((h) => h.q === latest[0] - 1) : null;
+  const delta = (key) => (snapshot && prevSnapshot && Number.isFinite(snapshot[key]) && Number.isFinite(prevSnapshot[key]) ? snapshot[key] - prevSnapshot[key] : NaN);
 
   const stories = useMemo(() => {
     const map = new Map();
@@ -2232,9 +2277,26 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
 
   const pp = politicalPaperPalette(COLOR, economy || {});
   const regimeId = economy && economy.politicalRegime;
+  const econRegimeId = economy && economy.regime;
+  const weatherIcon = WEATHER_ICON[econRegimeId] || WEATHER_ICON.normal;
+  const weatherInfo = REGIME_INFO[econRegimeId] || REGIME_INFO.normal;
+  const atWar = economy && (economy.warQuartersLeft || 0) > 0;
   const PaperBox = ({ children, style }) => (
     <div style={{ background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`, padding: '18px 20px', transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>{children}</div>
   );
+
+  // хроника: фильтр по рубрике + поиск по тексту + постраничная подгрузка —
+  // без них лента через десяток-другой кварталов превращается в стену текста,
+  // в которой ничего конкретного не найти
+  const filteredQuarters = useMemo(() => {
+    const q = chronicleSearch.trim().toLowerCase();
+    return quarters
+      .map(([qi, list]) => [qi, list.filter((n) => n.cat !== 'editorial'
+        && (chronicleFilter === 'all' || n.cat === chronicleFilter)
+        && (!q || n.headline.toLowerCase().includes(q) || n.text.toLowerCase().includes(q)))])
+      .filter(([, list]) => list.length > 0);
+  }, [quarters, chronicleFilter, chronicleSearch]);
+  const chronicleCats = NEWS_CATEGORIES.filter((c) => c.id !== 'editorial' && quarters.some(([, list]) => list.some((n) => n.cat === c.id)));
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 14px', overflowY: 'auto' }} onClick={onClose}>
@@ -2248,17 +2310,35 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
               </div>
               {/* Газета не объявляет режим, в котором выходит: «АВТОРИТАРНЫЙ РЕЖИМ» в
                   собственной шапке не печатает ни одно издание. Про режим говорит сама
-                  бумага, тон заголовков и вот эта служебная строка выходных данных. */}
-              {(regimeId === 'totalitarian' || regimeId === 'authoritarian') && (
+                  бумага, тон заголовков и вот эта служебная строка выходных данных —
+                  теперь при демократии и конфликте ветвей власти тоже, а не только
+                  тогда, когда свободу прессы уже отняли: контраст виден только если
+                  показать обе стороны. */}
+              {(regimeId === 'totalitarian' || regimeId === 'authoritarian') ? (
                 <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted, fontWeight: 700 }}>
                   {regimeId === 'totalitarian'
                     ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · РАСПРОСТРАНЯЕТСЯ ПО ПОДПИСКЕ ОБЯЗАТЕЛЬНО'
                     : 'ВЫХОДИТ ПО РАЗРЕШЕНИЮ · МАТЕРИАЛЫ СОГЛАСОВАНЫ'}
                 </div>
+              ) : (
+                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted }}>
+                  НЕЗАВИСИМОЕ ИЗДАНИЕ · РЕДАКЦИЯ НЕ СОГЛАСОВЫВАЕТ МАТЕРИАЛЫ С ВЛАСТЬЮ
+                </div>
               )}
             </div>
             <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
           </div>
+
+          {snapshot && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 18px', borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0' }}>
+              <TickerStat pp={pp} label="Ставка" value={pctFmt(snapshot.keyRate)} delta={delta('keyRate')} />
+              <TickerStat pp={pp} label="Инфляция" value={pctFmt(snapshot.inflation)} delta={delta('inflation')} />
+              <TickerStat pp={pp} label="Курс" value={fmt1(snapshot.exchangeRate)} delta={delta('exchangeRate')} />
+              <TickerStat pp={pp} label="Индекс акций" value={fmt1(snapshot.stockIndex)} delta={delta('stockIndex')} />
+              <TickerStat pp={pp} label="Рейтинг власти" value={Math.round(snapshot.approval)} delta={delta('approval')} />
+              {atWar && <TickerStat pp={pp} label="До конца операции" value={`${economy.warQuartersLeft} кв.`} delta={NaN} />}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
             {[['issue', 'Выпуск'], ['chronicle', 'Хроника страны'], ['stories', 'Сюжетные линии']].map(([id, label]) => (
@@ -2271,44 +2351,76 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
             <div>
               {!lead && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
               {lead && (
-                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14 }}>
+                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14, borderLeft: `4px solid ${pp.paperText}`, paddingLeft: 14 }}>
                   <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
                     {catOf(lead.cat).icon} {catOf(lead.cat).label.toUpperCase()} · ГЛАВНАЯ ТЕМА
                   </div>
-                  <div className="ems-serif" style={{ fontSize: 25, fontWeight: 700, lineHeight: 1.12, marginBottom: 8 }}>{lead.headline}</div>
-                  <div className="ems-serif" style={{ fontSize: 13.5, lineHeight: 1.6 }}>{lead.text}</div>
-                  {lead.chain && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 10 }}>
-                      {lead.chain.map((st, i) => (
-                        <React.Fragment key={i}>
-                          <span style={{ fontSize: 10.5, padding: '2px 7px', border: `1px solid ${pp.paperRule}`, color: pp.paperText }}>{st}</span>
-                          {i < lead.chain.length - 1 && <span style={{ color: pp.paperMuted }}>→</span>}
-                        </React.Fragment>
-                      ))}
+                  <div className="ems-serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, marginBottom: 8 }}>{lead.headline}</div>
+                  <div className="ems-serif" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+                    <span style={{ float: 'left', fontSize: 40, lineHeight: 0.8, fontWeight: 700, padding: '4px 6px 0 0' }}>{lead.text.charAt(0)}</span>
+                    {lead.text.slice(1)}
+                  </div>
+                  {lead.chain && <ChainTrail chain={lead.chain} />}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
+                <div style={{ flex: '1 1 260px', border: `1px solid ${pp.paperRule}`, padding: '10px 12px' }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 13 }}>{weatherIcon}</span> СОСТОЯНИЕ ЭКОНОМИКИ
+                  </div>
+                  {snapshot && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 16px' }}>
+                      {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
+                        ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
+                          <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
+                        ))}
                     </div>
                   )}
+                  {econRegimeId && econRegimeId !== 'normal' && (
+                    <div className="ems-serif" style={{ fontSize: 11, color: pp.paperMuted, marginTop: 7, lineHeight: 1.4 }}>{regimeInfoText(weatherInfo, economy)}</div>
+                  )}
                 </div>
-              )}
-
-              {snapshot && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', border: `1px solid ${pp.paperRule}`, padding: '9px 12px', marginBottom: 14 }}>
-                  {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
-                    ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
-                      <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
-                    ))}
-                </div>
-              )}
-
-              <div style={{ columnCount: 2, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
-                {rest.map((n) => (
-                  <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
-                    <div className="ems-mono" style={{ fontSize: 9, color: pp.paperMuted, letterSpacing: '0.08em' }}>{catOf(n.cat).icon} {catOf(n.cat).label.toUpperCase()}</div>
-                    <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, margin: '3px 0 4px' }}>{n.headline}</div>
-                    <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
-                    {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
-                  </div>
-                ))}
               </div>
+
+              {urgentItems.length > 0 && (
+                <div style={{ border: `2px solid ${pp.paperText}`, padding: '10px 12px', marginBottom: 14 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', marginBottom: 7, fontWeight: 700 }}>⚠ ТРЕВОГА НОМЕРА</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                    {urgentItems.map((n) => (
+                      <div key={n.id}>
+                        <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
+                        <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.5 }}>{n.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {sections.map((s) => (
+                <div key={s.cat} style={{ marginBottom: 16 }}>
+                  <div className="ems-mono" style={{ fontSize: 10, letterSpacing: '0.1em', borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 4, marginBottom: 10, color: pp.paperText, fontWeight: 700 }}>
+                    {s.label}
+                  </div>
+                  <div style={{ columnCount: s.items.length > 1 ? 2 : 1, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
+                    {s.items.map((n) => (
+                      <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
+                        <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>{n.headline}</div>
+                        <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
+                        {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {opinionItem && (
+                <div style={{ borderTop: `1px solid ${pp.paperRule}`, borderBottom: `1px solid ${pp.paperRule}`, padding: '12px 4px', marginBottom: 14 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>{catOf('opinion').icon} КОЛОНКА МНЕНИЙ</div>
+                  <div className="ems-serif" style={{ fontSize: 17, fontStyle: 'italic', fontWeight: 700, lineHeight: 1.35, marginBottom: 6 }}>{opinionItem.headline}</div>
+                  <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.5 }}>{opinionItem.text}</div>
+                </div>
+              )}
 
               {editorial && (
                 <div style={{ borderTop: `3px double ${pp.paperRule}`, marginTop: 6, paddingTop: 12 }}>
@@ -2320,59 +2432,99 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
           )}
 
           {tab === 'chronicle' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div>
               {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
-              {quarters.map(([q, list]) => {
-                const snap = history.find((h) => h.q === q);
-                const top = list.filter((n) => n.cat !== 'editorial').slice(0, 3);
-                return (
-                  <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
-                    <div style={{ width: 92, flexShrink: 0 }}>
-                      <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
-                      {snap && (
-                        <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
-                          ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {top.map((n) => (
-                        <div key={n.id}>
-                          <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
-                          <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
-                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
-                        </div>
-                      ))}
-                    </div>
+              {quarters.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 14 }}>
+                  <input value={chronicleSearch} onChange={(e) => { setChronicleSearch(e.target.value); setChronicleShown(8); }}
+                    placeholder="Поиск по хронике…" className="ems-serif"
+                    style={{ flex: '1 1 180px', padding: '5px 9px', fontSize: 12, background: 'transparent', color: pp.paperText, border: `1px solid ${pp.paperRule}` }} />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    <span onClick={() => { setChronicleFilter('all'); setChronicleShown(8); }} className="ems-mono"
+                      style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === 'all' ? 700 : 400,
+                        background: chronicleFilter === 'all' ? pp.paperRule : 'transparent', color: pp.paperText }}>ВСЁ</span>
+                    {chronicleCats.map((c) => (
+                      <span key={c.id} onClick={() => { setChronicleFilter(c.id); setChronicleShown(8); }} className="ems-mono"
+                        style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === c.id ? 700 : 400,
+                          background: chronicleFilter === c.id ? pp.paperRule : 'transparent', color: pp.paperText }}>{c.icon} {c.short.toUpperCase()}</span>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
+              {quarters.length > 0 && filteredQuarters.length === 0 && (
+                <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>По такому запросу в хронике ничего не нашлось.</div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {filteredQuarters.slice(0, chronicleShown).map(([q, list]) => {
+                  const snap = history.find((h) => h.q === q);
+                  const top = list.slice(0, 4);
+                  return (
+                    <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
+                      <div style={{ width: 92, flexShrink: 0 }}>
+                        <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
+                        {snap && (
+                          <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
+                            ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {top.map((n) => (
+                          <div key={n.id}>
+                            <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
+                            <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
+                            <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {filteredQuarters.length > chronicleShown && (
+                <div style={{ textAlign: 'center', marginTop: 14 }}>
+                  <button className="ems-btn" style={{ background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }}
+                    onClick={() => setChronicleShown((n) => n + 8)}>Показать ещё</button>
+                </div>
+              )}
             </div>
           )}
 
           {tab === 'stories' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
-              {stories.map((st) => (
-                <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
-                  <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
-                    {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {st.steps.length} из {st.steps[0].steps} частей
-                  </div>
-                  {st.steps.map((n, i) => (
-                    <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
-                      <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
-                        <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
-                        <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
+              {stories.map((st) => {
+                const total = st.steps[0].steps;
+                const done = st.steps.length;
+                return (
+                  <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                      <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {Array.from({ length: total }).map((_, i) => (
+                          <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i < done ? pp.paperText : 'transparent', border: `1px solid ${pp.paperRule}`, display: 'inline-block' }} />
+                        ))}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                        <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
-                      </div>
+                      {done < total && <span className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted }}>продолжение следует</span>}
                     </div>
-                  ))}
-                </div>
-              ))}
+                    <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
+                      {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {done} из {total} частей
+                    </div>
+                    {st.steps.map((n, i) => (
+                      <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
+                        <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
+                          <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
+                          <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
+                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </PaperBox>
