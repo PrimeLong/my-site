@@ -102,16 +102,66 @@ const FORECAST_ANCHORS = {
 const FORECAST_SIGMA = { inflation: 0.9, inflationExpectations: 0.5, gdpGrowth: 1.1, outputGap: 0.9,
   unemployment: 0.4, keyRate: 0.8, lendingRate: 0.9, wageGrowth: 1.0, stockIndex: 55, exchangeRate: 4 };
 
+/* Сравнение двух точек по графику: зажали мышь на одной, отпустили на другой —
+   вместо того чтобы читать всплывающую подсказку дважды и вычитать разницу в
+   уме. Один крючок на все графики модуля: recharts сам отдаёт activeLabel в
+   мышиных событиях графика, ловить координаты вручную не нужно.
+   preventDefault на mousedown — чтобы браузер не запускал попутно выделение
+   текста рядом с графиком; userSelect:none на обёртке — вторая, более надёжная
+   линия обороны на случай, если событие всё-таки успело уйти дальше. */
+function useDragCompare() {
+  const [dragStart, setDragStart] = useState(null);
+  const [dragRange, setDragRange] = useState(null);
+  const onMouseDown = (state, event) => {
+    if (event && event.preventDefault) event.preventDefault();
+    if (state && state.activeLabel != null) { setDragStart(state.activeLabel); setDragRange(null); }
+  };
+  const onMouseMove = (state) => {
+    if (dragStart == null || !state || state.activeLabel == null) return;
+    setDragRange(state.activeLabel === dragStart ? null : { from: dragStart, to: state.activeLabel });
+  };
+  const onMouseUp = () => setDragStart(null);
+  return { dragStart, dragRange, setDragRange, onMouseDown, onMouseMove, onMouseUp };
+}
+/* Общая карточка с итогом сравнения — одна вёрстка на все графики, которые
+   его поддерживают, чтобы не разъезжались стили и поведение. `rows` уже
+   содержит готовые подписи и отформатированные значения. */
+function CompareBadge({ compare, onReset }) {
+  if (!compare) return null;
+  return (
+    <div className="ems-panel" style={{ padding: '9px 11px', marginTop: 8, background: COLOR.panelAlt, userSelect: 'text' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 6, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: COLOR.text }}>
+          <b style={{ color: COLOR.goldSoft }}>{compare.labelA}</b> → <b style={{ color: COLOR.goldSoft }}>{compare.labelB}</b>
+        </span>
+        {compare.quarters != null && <span style={{ fontSize: 10, color: COLOR.faint }}>{compare.quarters} кв.</span>}
+        <button className="ems-btn" style={{ marginLeft: 'auto', padding: '2px 7px', fontSize: 10 }}
+          onClick={() => { Audio.play('click'); onReset(); }}>Сбросить</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {compare.rows.map((r) => (
+          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+            {r.color && <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.color, flexShrink: 0 }} />}
+            <span style={{ color: COLOR.muted, flex: 1, minWidth: 0 }}>{r.label}</span>
+            {r.delta === null ? <span style={{ color: COLOR.faint }}>нет данных</span> : (
+              <span className="ems-mono">
+                {r.fmt(r.a)} → {r.fmt(r.b)} <b style={{ color: r.delta > 0 ? COLOR.teal : r.delta < 0 ? COLOR.rust : COLOR.muted }}>
+                  ({r.delta >= 0 ? '+' : ''}{r.fmt(r.delta)})</b>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod }) {
   const group = CHART_GROUPS.find((g) => g.id === chartGroup);
   const [forecast, setForecast] = useState(false);
   const panelCls = 'ems-panel ems-visual';
-  /* Сравнение двух точек по графику: зажали мышь на одной, отпустили на другой —
-     вместо того чтобы читать всплывающую подсказку дважды и вычитать в уме,
-     разница показывается сразу по всем включённым линиям. */
-  const [dragStart, setDragStart] = useState(null);
-  const [dragRange, setDragRange] = useState(null);
-  React.useEffect(() => { setDragStart(null); setDragRange(null); }, [chartGroup, period, forecast]);
+  const { dragStart, dragRange, setDragRange, onMouseDown: onChartMouseDown, onMouseMove: onChartMouseMove, onMouseUp: onChartMouseUp } = useDragCompare();
+  React.useEffect(() => { setDragRange(null); }, [chartGroup, period, forecast, setDragRange]);
   const data = useMemo(() => {
     const p = PERIODS.find((x) => x.id === period);
     const hist = history.slice(-p.q).map((h) => ({
@@ -178,12 +228,6 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   // значение показателя в точке графика: прогнозная точка хранит его под
   // `${id}__f`, фактическая — под самим id
   const valueAt = (row, id) => (row ? (row.forecastPoint ? row[`${id}__f`] : row[id]) : undefined);
-  const onChartMouseDown = (e) => { if (e && e.activeLabel != null) { setDragStart(e.activeLabel); setDragRange(null); } };
-  const onChartMouseMove = (e) => {
-    if (dragStart == null || !e || e.activeLabel == null) return;
-    setDragRange(e.activeLabel === dragStart ? null : { from: dragStart, to: e.activeLabel });
-  };
-  const onChartMouseUp = () => setDragStart(null);
   const compare = useMemo(() => {
     if (!dragRange) return null;
     const i1 = data.findIndex((r) => r.label === dragRange.from);
@@ -193,7 +237,8 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     const rowA = data[lo]; const rowB = data[hi];
     const rows = visible.map((s) => {
       const a = valueAt(rowA, s.id); const b = valueAt(rowB, s.id);
-      return { s, a, b, delta: (Number.isFinite(a) && Number.isFinite(b)) ? b - a : null };
+      const fmtFn = tooltipVal(s.fmt);
+      return { key: s.id, label: s.label, color: s.color, fmt: fmtFn, a, b, delta: (Number.isFinite(a) && Number.isFinite(b)) ? b - a : null };
     });
     return { labelA: rowA.label, labelB: rowB.label, quarters: hi - lo, rows };
   }, [dragRange, data, visible]);
@@ -235,7 +280,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
         })}
       </div>
 
-      <div className="ems-visual" style={{ width: '100%', height: 250, cursor: dragStart != null ? 'col-resize' : 'crosshair' }}>
+      <div className="ems-visual" style={{ width: '100%', height: 250, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>
         <ResponsiveContainer>
           <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}
             onMouseDown={onChartMouseDown} onMouseMove={onChartMouseMove} onMouseUp={onChartMouseUp} onMouseLeave={onChartMouseUp}>
@@ -278,35 +323,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      {compare && (
-        <div className="ems-panel" style={{ padding: '9px 11px', marginTop: 8, background: COLOR.panelAlt }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: COLOR.text }}>
-              <b style={{ color: COLOR.goldSoft }}>{compare.labelA}</b> → <b style={{ color: COLOR.goldSoft }}>{compare.labelB}</b>
-            </span>
-            <span style={{ fontSize: 10, color: COLOR.faint }}>{compare.quarters} кв.</span>
-            <button className="ems-btn" style={{ marginLeft: 'auto', padding: '2px 7px', fontSize: 10 }}
-              onClick={() => { Audio.play('click'); setDragRange(null); }}>Сбросить</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {compare.rows.map(({ s, a, b, delta }) => {
-              const fmtFn = tooltipVal(s.fmt);
-              return (
-                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-                  <span style={{ color: COLOR.muted, flex: 1, minWidth: 0 }}>{s.label}</span>
-                  {delta === null ? <span style={{ color: COLOR.faint }}>нет данных</span> : (
-                    <span className="ems-mono">
-                      {fmtFn(a)} → {fmtFn(b)} <b style={{ color: delta > 0 ? COLOR.teal : delta < 0 ? COLOR.rust : COLOR.muted }}>
-                        ({delta >= 0 ? '+' : ''}{fmtFn(delta)})</b>
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
       <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
           ? <>Пунктир справа от отметки «сейчас» продолжает каждую включённую линию туда, куда она идёт <b style={{ color: COLOR.text }}>сама собой</b>,
@@ -324,6 +341,8 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
 
 function MiniChart({ data, color, height = 46, label, fmt, marks }) {
   const rows = (data || []).map((v, i) => ({ i, v: Number.isFinite(v) ? v : null }));
+  const { dragStart, dragRange, setDragRange, onMouseDown, onMouseMove, onMouseUp } = useDragCompare();
+  React.useEffect(() => { setDragRange(null); }, [data, setDragRange]);
   if (rows.filter((r) => r.v !== null).length < 2) return <div style={{ height }} />;
   const markSet = {};
   (marks || []).forEach((m) => { if (m.idx >= 0) markSet[m.idx] = m; });
@@ -339,17 +358,33 @@ function MiniChart({ data, color, height = 46, label, fmt, marks }) {
       </g>
     );
   };
+  const fmtFn = fmt || fmt1;
+  const pointLabel = (i) => (rows.length - 1 - i === 0 ? 'сейчас' : `${rows.length - 1 - i} кв. назад`);
+  const compare = useMemo(() => {
+    if (!dragRange) return null;
+    const rowA = rows[dragRange.from]; const rowB = rows[dragRange.to];
+    if (!rowA || !rowB) return null;
+    const [a, b] = dragRange.from <= dragRange.to ? [rowA.v, rowB.v] : [rowB.v, rowA.v];
+    const [lo, hi] = dragRange.from <= dragRange.to ? [dragRange.from, dragRange.to] : [dragRange.to, dragRange.from];
+    return { labelA: pointLabel(lo), labelB: pointLabel(hi), quarters: hi - lo,
+      rows: [{ key: 'v', label: label || 'значение', color, fmt: fmtFn, a, b, delta: (Number.isFinite(a) && Number.isFinite(b)) ? b - a : null }] };
+  }, [dragRange, rows]);
   return (
-    <div className="ems-visual" style={{ width: '100%', height }}>
-      <ResponsiveContainer>
-        <LineChart data={rows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
-          <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11, padding: '4px 8px' }}
-            labelFormatter={(i) => `${(marks && marks.label) || ''}${rows.length - 1 - i === 0 ? 'сейчас' : `${rows.length - 1 - i} кв. назад`}`}
-            formatter={(v) => [fmt ? fmt(v) : fmt1(v), label || 'значение']} />
-          <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.6} dot={marks && marks.length ? dot : false} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <>
+      <div className="ems-visual" style={{ width: '100%', height, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <ResponsiveContainer>
+          <LineChart data={rows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}
+            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11, padding: '4px 8px' }}
+              labelFormatter={(i) => `${(marks && marks.label) || ''}${pointLabel(i)}`}
+              formatter={(v) => [fmt ? fmt(v) : fmt1(v), label || 'значение']} />
+            {dragRange && <ReferenceArea x1={dragRange.from} x2={dragRange.to} stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.12} />}
+            <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.6} dot={marks && marks.length ? dot : false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
+    </>
   );
 }
 export const MemoChart = React.memo(MiniChart);
@@ -373,31 +408,53 @@ function InstrumentChartBase({ rows, color, avg, marks, benchLabel, benchColor, 
       </g>
     );
   };
+  const { dragStart, dragRange, setDragRange, onMouseDown, onMouseMove, onMouseUp } = useDragCompare();
+  React.useEffect(() => { setDragRange(null); }, [rows, setDragRange]);
+  const compare = useMemo(() => {
+    if (!dragRange || !rows) return null;
+    const i1 = rows.findIndex((r) => r.label === dragRange.from);
+    const i2 = rows.findIndex((r) => r.label === dragRange.to);
+    if (i1 === -1 || i2 === -1) return null;
+    const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
+    const rowA = rows[lo]; const rowB = rows[hi];
+    const compareRows = [{ key: 'price', label: 'Цена', color, fmt: fmt1, a: rowA.price, b: rowB.price,
+      delta: (Number.isFinite(rowA.price) && Number.isFinite(rowB.price)) ? rowB.price - rowA.price : null }];
+    if (benchLabel) {
+      compareRows.push({ key: 'bench', label: benchLabel, color: benchColor || COLOR.faint, fmt: fmt1, a: rowA.bench, b: rowB.bench,
+        delta: (Number.isFinite(rowA.bench) && Number.isFinite(rowB.bench)) ? rowB.bench - rowA.bench : null });
+    }
+    return { labelA: rowA.label, labelB: rowB.label, quarters: hi - lo, rows: compareRows };
+  }, [dragRange, rows, color, benchLabel, benchColor]);
   if (!rows || rows.length < 2) return <div style={{ height }} />;
   return (
-    <div className="ems-visual" style={{ width: '100%', height }}>
-      <ResponsiveContainer>
-        <LineChart data={rows} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}>
-          <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 9.5, fill: COLOR.faint }} interval="preserveStartEnd" minTickGap={22} />
-          <YAxis tick={{ fontSize: 9.5, fill: COLOR.muted }} width={52} domain={['auto', 'auto']}
-            tickFormatter={(v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru-RU') : fmt1(v))} />
-          <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11.5, padding: '5px 9px' }}
-            labelStyle={{ color: COLOR.goldSoft }}
-            formatter={(v, name) => [fmt1(v), name]} />
-          {Number.isFinite(avg) && avg > 0 && (
-            <ReferenceLine y={avg} stroke={COLOR.goldSoft} strokeDasharray="4 4" strokeWidth={1.2}
-              label={{ value: `ваша средняя ${fmt1(avg)}`, position: 'insideTopRight', fontSize: 9.5, fill: COLOR.goldSoft }} />
-          )}
-          {benchLabel && (
-            <Line type="monotone" dataKey="bench" name={benchLabel} stroke={benchColor || COLOR.faint}
-              strokeWidth={1.3} strokeDasharray="5 3" dot={false} isAnimationActive={false} />
-          )}
-          <Line type="monotone" dataKey="price" name="цена" stroke={color} strokeWidth={2}
-            dot={marks && marks.length ? dot : false} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <>
+      <div className="ems-visual" style={{ width: '100%', height, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <ResponsiveContainer>
+          <LineChart data={rows} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}
+            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+            <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 9.5, fill: COLOR.faint }} interval="preserveStartEnd" minTickGap={22} />
+            <YAxis tick={{ fontSize: 9.5, fill: COLOR.muted }} width={52} domain={['auto', 'auto']}
+              tickFormatter={(v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru-RU') : fmt1(v))} />
+            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11.5, padding: '5px 9px' }}
+              labelStyle={{ color: COLOR.goldSoft }}
+              formatter={(v, name) => [fmt1(v), name]} />
+            {dragRange && <ReferenceArea x1={dragRange.from} x2={dragRange.to} stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.1} />}
+            {Number.isFinite(avg) && avg > 0 && (
+              <ReferenceLine y={avg} stroke={COLOR.goldSoft} strokeDasharray="4 4" strokeWidth={1.2}
+                label={{ value: `ваша средняя ${fmt1(avg)}`, position: 'insideTopRight', fontSize: 9.5, fill: COLOR.goldSoft }} />
+            )}
+            {benchLabel && (
+              <Line type="monotone" dataKey="bench" name={benchLabel} stroke={benchColor || COLOR.faint}
+                strokeWidth={1.3} strokeDasharray="5 3" dot={false} isAnimationActive={false} />
+            )}
+            <Line type="monotone" dataKey="price" name="цена" stroke={color} strokeWidth={2}
+              dot={marks && marks.length ? dot : false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
+    </>
   );
 }
 export const InstrumentChart = React.memo(InstrumentChartBase);
@@ -449,6 +506,22 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
   const data = useMemo(() => computeIRF(economy, decisions, lever.id, baseValue, value, difficulty, 12),
     [lever.id, baseValue, value]);
   const peak = (key) => data.reduce((a, d) => (Math.abs(d[key]) > Math.abs(a.v) ? { v: d[key], q: d.q } : a), { v: 0, q: 0 });
+  const { dragStart, dragRange, setDragRange, onMouseDown, onMouseMove, onMouseUp } = useDragCompare();
+  React.useEffect(() => { setDragRange(null); }, [data, setDragRange]);
+  const compare = useMemo(() => {
+    if (!dragRange) return null;
+    const i1 = data.findIndex((r) => r.q === dragRange.from);
+    const i2 = data.findIndex((r) => r.q === dragRange.to);
+    if (i1 === -1 || i2 === -1) return null;
+    const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
+    const rowA = data[lo]; const rowB = data[hi];
+    const rows = IRF_SERIES.map((sr) => {
+      const a = rowA[sr.key]; const b = rowB[sr.key];
+      return { key: sr.key, label: sr.label, color: sr.color, fmt: (v) => `${fmtSigned1(v)}${sr.unit}`, a, b,
+        delta: (Number.isFinite(a) && Number.isFinite(b)) ? b - a : null };
+    });
+    return { labelA: `${rowA.q}-й кв.`, labelB: `${rowB.q}-й кв.`, quarters: hi - lo, rows };
+  }, [dragRange, data]);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 720, width: '100%', padding: 18, maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
@@ -462,9 +535,10 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
           и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий. На графике — разница между этими двумя мирами,
           то есть чистый эффект именно вашего решения.
         </div>
-        <div className="ems-visual" style={{ height: 230 }}>
+        <div className="ems-visual" style={{ height: 230, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
+            <LineChart data={data} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}
+              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
               <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
               <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border}
                 label={{ value: 'кварталов после решения', fill: COLOR.faint, fontSize: 10, position: 'insideBottom', offset: -2 }} />
@@ -472,12 +546,16 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
               <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11 }}
                 labelFormatter={(v) => `${v}-й квартал`} formatter={(v, n) => [fmtSigned1(v), n]} />
               <Legend wrapperStyle={{ fontSize: 10.5 }} />
+              {dragRange && (
+                <ReferenceArea x1={dragRange.from} x2={dragRange.to} stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.1} />
+              )}
               {IRF_SERIES.map((sr) => (
                 <Line key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stroke={sr.color} strokeWidth={1.6} dot={false} />
               ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
+        <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginTop: 12 }}>
           {IRF_SERIES.map((sr) => {
             const pk = peak(sr.key);
