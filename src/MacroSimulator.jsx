@@ -80,7 +80,7 @@ const GlobalStyle = () => (
     .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px -10px rgba(0,0,0,0.4); }
     .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.14), 0 14px 30px -12px rgba(0,0,0,0.55); }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
-    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; }
+    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
     .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; box-shadow: 0 3px 10px -4px rgba(0,0,0,0.35); }
     .ems-btn:active { transform: scale(0.98); }
     .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 12px -3px ${COLOR.goldDim}; }
@@ -91,7 +91,7 @@ const GlobalStyle = () => (
     .ems-slider::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-scroll::-webkit-scrollbar { width:6px; height:6px; }
     .ems-scroll::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:3px; }
-    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; }
+    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
     .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
     .ems-tab.active:hover { background:${COLOR.goldSoft}; color:${COLOR.ink}; }
@@ -129,7 +129,8 @@ const GlobalStyle = () => (
     .ems-card-btn { position: relative; display: flex; align-items: center; gap: 15px; cursor: pointer;
       border-radius: 13px; border: 1px solid ${COLOR.border}; background: ${COLOR.panel};
       box-shadow: 0 1px 2px rgba(0,0,0,0.14), 0 12px 28px -16px rgba(0,0,0,0.55);
-      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+      user-select: none; -webkit-user-select: none; }
     .ems-card-btn:hover, .ems-card-btn:focus-visible { transform: translateY(-2px); border-color: ${COLOR.gold};
       background: ${COLOR.panelRaised}; box-shadow: 0 1px 2px rgba(0,0,0,0.18), 0 18px 36px -16px rgba(0,0,0,0.65); }
     .ems-card-btn:active { transform: translateY(0); }
@@ -139,7 +140,7 @@ const GlobalStyle = () => (
     .ems-card-btn:hover .ems-card-icon { transform: scale(1.07) rotate(-2deg); border-color: ${COLOR.gold}; }
     .ems-card-chevron { transition: transform .18s ease; }
     .ems-card-btn:hover .ems-card-chevron { transform: translateX(3px) rotate(-90deg); }
-    .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; }
+    .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; user-select: none; -webkit-user-select: none; }
     .ems-row-hover:hover { background: ${COLOR.panelRaised} !important; border-color: ${COLOR.borderStrong} !important; }
     .ems-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 10.5px;
       cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
@@ -2152,7 +2153,23 @@ function NewsTerminal({ items, onOpenPaper }) {
       )}
       <div ref={scrollRef} className="ems-scroll" style={{ maxHeight: 430, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 13 }}>
         {list.length === 0 && <div style={{ fontSize: 12, color: COLOR.muted }}>Лента пуста — завершите первый квартал, и экономика начнёт рассказывать о себе сама.</div>}
-        {list.map((n) => (<NewsItem key={n.id} item={n} showQuarter />))}
+        {/* новости шли сплошным потоком без границы между кварталами — метка
+            квартала в каждой строке терялась среди заголовков и не читалась
+            как раздел. Заголовок раздела перед первой новостью нового квартала
+            разбивает ленту на понятные блоки — по одному на квартал. */}
+        {list.map((n, i) => (
+          <React.Fragment key={n.id}>
+            {(i === 0 || n.q !== list[i - 1].q) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: i === 0 ? '0 0 -5px' : '3px 0 -5px' }}>
+                <span className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, fontWeight: 700, letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                  {n.qLabel || quarterLabel(n.q)}
+                </span>
+                <div style={{ flex: 1, height: 1, background: COLOR.hairline }} />
+              </div>
+            )}
+            <NewsItem item={n} />
+          </React.Fragment>
+        ))}
       </div>
     </div>
   );
@@ -2165,6 +2182,31 @@ const mixHex = (a, b, t) => {
   const m = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, '0');
   return `#${m(1)}${m(3)}${m(5)}`;
 };
+const hexLuminance = (hex) => {
+  const c = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * c(1) + 0.7152 * c(3) + 0.0722 * c(5);
+};
+const contrastRatio = (hexA, hexB) => {
+  const a = hexLuminance(hexA); const b = hexLuminance(hexB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+};
+/* Тоталитарная бумага светлеет фоном и темнеет текстом (наоборот у демократии) —
+   а линейная интерполяция между двумя такими концами на полпути неизбежно сводит
+   и фон, и текст к одному и тому же блёклому серому: газета читалась ровно так,
+   как её описал игрок, — серым по серому. Если смешанный текст на смешанном фоне
+   не набирает читаемого контраста, дотягиваем его до чёрного или белого — смотря
+   что дальше от фона в моменте — вместо того чтобы верить, что оба конца сами
+   разойдутся к нужным крайностям. */
+const ensureReadable = (bgHex, fgHex, minRatio) => {
+  if (contrastRatio(bgHex, fgHex) >= minRatio) return fgHex;
+  const toward = hexLuminance(bgHex) > 0.4 ? '#000000' : '#FFFFFF';
+  let result = fgHex;
+  for (let t = 0.05; t <= 1; t += 0.05) {
+    result = mixHex(fgHex, toward, t);
+    if (contrastRatio(bgHex, result) >= minRatio) break;
+  }
+  return result;
+};
 const POLITICAL_PAPER_TARGET = {
   crisis: { paper: '#E2D9BE', paperText: '#241C12', paperMuted: '#6B5A3E', paperRule: '#8C6B3E' },
   authoritarian: { paper: '#B5AF9C', paperText: '#1C1B15', paperMuted: '#4A483C', paperRule: '#6C6755' },
@@ -2173,23 +2215,85 @@ const POLITICAL_PAPER_TARGET = {
 function politicalPaperPalette(base, economy) {
   const regime = economy && economy.politicalRegime;
   const target = POLITICAL_PAPER_TARGET[regime];
-  if (!target) return base;
+  if (!target) return { ...base, k: 0, regime };
   const tension = clamp((economy.politicalTension || 0) / 100, 0, 1);
   const war = (economy.warQuartersLeft || 0) > 0;
   const k = regime === 'totalitarian' ? clamp(0.6 + tension * 0.3 + (war ? 0.1 : 0), 0.6, 1)
     : regime === 'authoritarian' ? clamp(0.6 + tension * 0.35, 0.6, 0.95)
       : clamp(0.18 + tension * 0.3, 0.18, 0.5); // crisis: тревожно, но ещё не мрачно
+  const paper = mixHex(base.paper, target.paper, k);
+  const paperRule = mixHex(base.paperRule, target.paperRule, k);
   return {
-    paper: mixHex(base.paper, target.paper, k),
-    paperText: mixHex(base.paperText, target.paperText, k),
-    paperMuted: mixHex(base.paperMuted, target.paperMuted, k),
-    paperRule: mixHex(base.paperRule, target.paperRule, k),
+    paper,
+    paperText: ensureReadable(paper, mixHex(base.paperText, target.paperText, k), 4.5),
+    paperMuted: ensureReadable(paper, mixHex(base.paperMuted, target.paperMuted, k), 3.0),
+    paperRule,
+    k, regime,
   };
+}
+/* «Материальность» бумаги: зерно, лёгкое старение к краям и — для тоталитаризма —
+   подпалённые углы. Интенсивность растёт вместе с k, так что демократическая
+   бумага остаётся чистой и хрустящей, а тоталитарная выглядит так, будто её
+   читали при свече и один раз чуть не сожгли. */
+function PaperTexture({ k, burn }) {
+  return (
+    <>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05 + k * 0.16, mixBlendMode: 'multiply',
+        backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")",
+        backgroundSize: '180px 180px' }} />
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: `radial-gradient(120% 90% at 50% 42%, transparent 52%, rgba(20,14,6,${0.06 + k * 0.24}) 100%)` }} />
+      {/* сгиб — тонкая тень посередине листа, как от сложенной пополам газеты */}
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 2, marginLeft: -1, pointerEvents: 'none',
+        background: `linear-gradient(90deg, transparent, rgba(0,0,0,${0.05 + k * 0.08}), transparent)` }} />
+      {burn > 0 && (
+        <>
+          <div style={{ position: 'absolute', top: -36, left: -36, width: 190, height: 190, pointerEvents: 'none', filter: 'blur(3px)', opacity: burn,
+            background: 'radial-gradient(circle, rgba(18,9,3,0.95) 0%, rgba(46,24,8,0.55) 38%, transparent 72%)' }} />
+          <div style={{ position: 'absolute', bottom: -46, right: -30, width: 230, height: 230, pointerEvents: 'none', filter: 'blur(4px)', opacity: burn,
+            background: 'radial-gradient(circle, rgba(15,7,2,0.92) 0%, rgba(40,20,7,0.5) 40%, transparent 72%)' }} />
+          <div style={{ position: 'absolute', top: -20, right: -50, width: 140, height: 140, pointerEvents: 'none', filter: 'blur(3px)', opacity: burn * 0.7,
+            background: 'radial-gradient(circle, rgba(18,9,3,0.85) 0%, transparent 68%)' }} />
+        </>
+      )}
+    </>
+  );
+}
+
+/* Иконка «экономической погоды» на первой полосе — тот же REGIME_INFO, которым
+   уже размечена авариная строка панели, только переведённый в один символ:
+   свежий взгляд на состояние экономики, не изобретающий новую классификацию. */
+const WEATHER_ICON = {
+  normal: '☀️', overheating: '🌡️', recession: '☁️', stagflation: '🌪️',
+  banking: '🌊', debt: '📉', currency: '💱', deflation: '❄️', pandemic: '🦠', war: '⚔️',
+};
+/* Девять рубрик NEWS_CATEGORIES на первой полосе выглядели бы как девять
+   маленьких колонок ни о чём — читатель не понимает, где заканчивается одна
+   тема и начинается другая. Разделы группируют их в тот же костяк, которым
+   устроена любая деловая газета: политика, деньги, рынки, экономика, общество, мир. */
+const NEWS_SECTION = {
+  gov: 'ПОЛИТИКА И ПРАВИТЕЛЬСТВО', cb: 'ДЕНЬГИ И БАНКИ', markets: 'РЫНКИ',
+  business: 'ЭКОНОМИКА', households: 'ОБЩЕСТВО', world: 'МИР',
+};
+const NEWS_SECTION_ORDER = ['gov', 'cb', 'markets', 'business', 'households', 'world'];
+
+/* Строка тикера — курсив цифр наверху полосы, как в деловой прессе: значение
+   и стрелка относительно предыдущего выпуска, без лишних слов. */
+function TickerStat({ label, value, delta, pp }) {
+  const arrow = !Number.isFinite(delta) || Math.abs(delta) < 1e-9 ? null : delta > 0 ? '▲' : '▼';
+  return (
+    <span className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
+      {label} <b style={{ color: pp.paperText }}>{value}</b>{arrow && <span style={{ fontSize: 8.5 }}>{arrow}</span>}
+    </span>
+  );
 }
 
 /* Газета: выпуск квартала, хроника страны и сюжетные линии */
 function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   const [tab, setTab] = useState('issue');
+  const [chronicleFilter, setChronicleFilter] = useState('all');
+  const [chronicleSearch, setChronicleSearch] = useState('');
+  const [chronicleShown, setChronicleShown] = useState(8);
   const quarters = useMemo(() => {
     const map = new Map();
     news.forEach((n) => { if (!map.has(n.q)) map.set(n.q, []); map.get(n.q).push(n); });
@@ -2197,10 +2301,24 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   }, [news]);
   const latest = quarters.length ? quarters[0] : null;
   const issueItems = latest ? latest[1] : [];
-  const lead = issueItems.find((n) => n.cat !== 'editorial');
+  // мнение — колонка, а не главная тема: ведёт номер твёрдая новость, если она
+  // вообще была, и только в совсем тихий квартал мнение остаётся единственным
+  // кандидатом на первую полосу
+  const lead = issueItems.find((n) => n.cat !== 'editorial' && n.cat !== 'opinion') || issueItems.find((n) => n.cat !== 'editorial');
   const editorial = issueItems.find((n) => n.cat === 'editorial');
-  const rest = issueItems.filter((n) => n !== lead && n !== editorial);
+  // «мнение» теперь одно на квартал (см. движок) — есть смысл дать ему
+  // собственную колонку, а не смешивать с обычными заметками сетки
+  const opinionItem = issueItems.find((n) => n.cat === 'opinion' && n !== lead);
+  // кризисные заметки — не рубрика среди прочих, а тревога, которая должна
+  // читаться раньше обычной сетки
+  const urgentItems = issueItems.filter((n) => n !== lead && n !== editorial && n !== opinionItem && n.cat === 'crisis');
+  const rest = issueItems.filter((n) => n !== lead && n !== editorial && n !== opinionItem && !urgentItems.includes(n));
+  const sections = NEWS_SECTION_ORDER
+    .map((cat) => ({ cat, label: NEWS_SECTION[cat], items: rest.filter((n) => n.cat === cat) }))
+    .filter((s) => s.items.length > 0);
   const snapshot = latest ? history.find((h) => h.q === latest[0]) : null;
+  const prevSnapshot = latest ? history.find((h) => h.q === latest[0] - 1) : null;
+  const delta = (key) => (snapshot && prevSnapshot && Number.isFinite(snapshot[key]) && Number.isFinite(prevSnapshot[key]) ? snapshot[key] - prevSnapshot[key] : NaN);
 
   const stories = useMemo(() => {
     const map = new Map();
@@ -2215,9 +2333,34 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
 
   const pp = politicalPaperPalette(COLOR, economy || {});
   const regimeId = economy && economy.politicalRegime;
+  const econRegimeId = economy && economy.regime;
+  const weatherIcon = WEATHER_ICON[econRegimeId] || WEATHER_ICON.normal;
+  const weatherInfo = REGIME_INFO[econRegimeId] || REGIME_INFO.normal;
+  const atWar = economy && (economy.warQuartersLeft || 0) > 0;
+  // подпалины — только у тоталитаризма всерьёз («слегка сгоревшая», как и просили);
+  // авторитаризм получает лёгкий намёк, чтобы переход не был внезапным
+  const burnIntensity = pp.regime === 'totalitarian' ? pp.k : pp.regime === 'authoritarian' ? pp.k * 0.3 : 0;
   const PaperBox = ({ children, style }) => (
-    <div style={{ background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`, padding: '18px 20px', transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>{children}</div>
+    <div style={{ position: 'relative', overflow: 'hidden', background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`,
+      padding: '18px 20px', boxShadow: '0 18px 50px -18px rgba(0,0,0,0.65), 0 4px 14px rgba(0,0,0,0.35)',
+      transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>
+      <PaperTexture k={pp.k || 0} burn={burnIntensity} />
+      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
+    </div>
   );
+
+  // хроника: фильтр по рубрике + поиск по тексту + постраничная подгрузка —
+  // без них лента через десяток-другой кварталов превращается в стену текста,
+  // в которой ничего конкретного не найти
+  const filteredQuarters = useMemo(() => {
+    const q = chronicleSearch.trim().toLowerCase();
+    return quarters
+      .map(([qi, list]) => [qi, list.filter((n) => n.cat !== 'editorial'
+        && (chronicleFilter === 'all' || n.cat === chronicleFilter)
+        && (!q || n.headline.toLowerCase().includes(q) || n.text.toLowerCase().includes(q)))])
+      .filter(([, list]) => list.length > 0);
+  }, [quarters, chronicleFilter, chronicleSearch]);
+  const chronicleCats = NEWS_CATEGORIES.filter((c) => c.id !== 'editorial' && quarters.some(([, list]) => list.some((n) => n.cat === c.id)));
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 14px', overflowY: 'auto' }} onClick={onClose}>
@@ -2231,17 +2374,35 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
               </div>
               {/* Газета не объявляет режим, в котором выходит: «АВТОРИТАРНЫЙ РЕЖИМ» в
                   собственной шапке не печатает ни одно издание. Про режим говорит сама
-                  бумага, тон заголовков и вот эта служебная строка выходных данных. */}
-              {(regimeId === 'totalitarian' || regimeId === 'authoritarian') && (
+                  бумага, тон заголовков и вот эта служебная строка выходных данных —
+                  теперь при демократии и конфликте ветвей власти тоже, а не только
+                  тогда, когда свободу прессы уже отняли: контраст виден только если
+                  показать обе стороны. */}
+              {(regimeId === 'totalitarian' || regimeId === 'authoritarian') ? (
                 <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted, fontWeight: 700 }}>
                   {regimeId === 'totalitarian'
                     ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · РАСПРОСТРАНЯЕТСЯ ПО ПОДПИСКЕ ОБЯЗАТЕЛЬНО'
                     : 'ВЫХОДИТ ПО РАЗРЕШЕНИЮ · МАТЕРИАЛЫ СОГЛАСОВАНЫ'}
                 </div>
+              ) : (
+                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted }}>
+                  НЕЗАВИСИМОЕ ИЗДАНИЕ · РЕДАКЦИЯ НЕ СОГЛАСОВЫВАЕТ МАТЕРИАЛЫ С ВЛАСТЬЮ
+                </div>
               )}
             </div>
             <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
           </div>
+
+          {snapshot && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 18px', borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0' }}>
+              <TickerStat pp={pp} label="Ставка" value={pctFmt(snapshot.keyRate)} delta={delta('keyRate')} />
+              <TickerStat pp={pp} label="Инфляция" value={pctFmt(snapshot.inflation)} delta={delta('inflation')} />
+              <TickerStat pp={pp} label="Курс" value={fmt1(snapshot.exchangeRate)} delta={delta('exchangeRate')} />
+              <TickerStat pp={pp} label="Индекс акций" value={fmt1(snapshot.stockIndex)} delta={delta('stockIndex')} />
+              <TickerStat pp={pp} label="Рейтинг власти" value={Math.round(snapshot.approval)} delta={delta('approval')} />
+              {atWar && <TickerStat pp={pp} label="До конца операции" value={`${economy.warQuartersLeft} кв.`} delta={NaN} />}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
             {[['issue', 'Выпуск'], ['chronicle', 'Хроника страны'], ['stories', 'Сюжетные линии']].map(([id, label]) => (
@@ -2254,44 +2415,76 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
             <div>
               {!lead && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
               {lead && (
-                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14 }}>
+                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14, borderLeft: `4px solid ${pp.paperText}`, paddingLeft: 14 }}>
                   <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
                     {catOf(lead.cat).icon} {catOf(lead.cat).label.toUpperCase()} · ГЛАВНАЯ ТЕМА
                   </div>
-                  <div className="ems-serif" style={{ fontSize: 25, fontWeight: 700, lineHeight: 1.12, marginBottom: 8 }}>{lead.headline}</div>
-                  <div className="ems-serif" style={{ fontSize: 13.5, lineHeight: 1.6 }}>{lead.text}</div>
-                  {lead.chain && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 5, marginTop: 10 }}>
-                      {lead.chain.map((st, i) => (
-                        <React.Fragment key={i}>
-                          <span style={{ fontSize: 10.5, padding: '2px 7px', border: `1px solid ${pp.paperRule}`, color: pp.paperText }}>{st}</span>
-                          {i < lead.chain.length - 1 && <span style={{ color: pp.paperMuted }}>→</span>}
-                        </React.Fragment>
-                      ))}
+                  <div className="ems-serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, marginBottom: 8 }}>{lead.headline}</div>
+                  <div className="ems-serif" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+                    <span style={{ float: 'left', fontSize: 40, lineHeight: 0.8, fontWeight: 700, padding: '4px 6px 0 0' }}>{lead.text.charAt(0)}</span>
+                    {lead.text.slice(1)}
+                  </div>
+                  {lead.chain && <ChainTrail chain={lead.chain} />}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
+                <div style={{ flex: '1 1 260px', border: `1px solid ${pp.paperRule}`, padding: '10px 12px' }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 13 }}>{weatherIcon}</span> СОСТОЯНИЕ ЭКОНОМИКИ
+                  </div>
+                  {snapshot && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 16px' }}>
+                      {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
+                        ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
+                          <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
+                        ))}
                     </div>
                   )}
+                  {econRegimeId && econRegimeId !== 'normal' && (
+                    <div className="ems-serif" style={{ fontSize: 11, color: pp.paperMuted, marginTop: 7, lineHeight: 1.4 }}>{regimeInfoText(weatherInfo, economy)}</div>
+                  )}
                 </div>
-              )}
-
-              {snapshot && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', border: `1px solid ${pp.paperRule}`, padding: '9px 12px', marginBottom: 14 }}>
-                  {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
-                    ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
-                      <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
-                    ))}
-                </div>
-              )}
-
-              <div style={{ columnCount: 2, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
-                {rest.map((n) => (
-                  <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
-                    <div className="ems-mono" style={{ fontSize: 9, color: pp.paperMuted, letterSpacing: '0.08em' }}>{catOf(n.cat).icon} {catOf(n.cat).label.toUpperCase()}</div>
-                    <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, margin: '3px 0 4px' }}>{n.headline}</div>
-                    <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
-                    {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
-                  </div>
-                ))}
               </div>
+
+              {urgentItems.length > 0 && (
+                <div style={{ border: `2px solid ${pp.paperText}`, padding: '10px 12px', marginBottom: 14 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', marginBottom: 7, fontWeight: 700 }}>⚠ ТРЕВОГА НОМЕРА</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                    {urgentItems.map((n) => (
+                      <div key={n.id}>
+                        <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
+                        <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.5 }}>{n.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {sections.map((s) => (
+                <div key={s.cat} style={{ marginBottom: 16 }}>
+                  <div className="ems-mono" style={{ fontSize: 10, letterSpacing: '0.1em', borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 4, marginBottom: 10, color: pp.paperText, fontWeight: 700 }}>
+                    {s.label}
+                  </div>
+                  <div style={{ columnCount: s.items.length > 1 ? 2 : 1, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
+                    {s.items.map((n) => (
+                      <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
+                        <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>{n.headline}</div>
+                        <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
+                        {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {opinionItem && (
+                <div style={{ borderTop: `1px solid ${pp.paperRule}`, borderBottom: `1px solid ${pp.paperRule}`, padding: '12px 4px', marginBottom: 14 }}>
+                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>{catOf('opinion').icon} КОЛОНКА МНЕНИЙ</div>
+                  <div className="ems-serif" style={{ fontSize: 17, fontStyle: 'italic', fontWeight: 700, lineHeight: 1.35, marginBottom: 6 }}>{opinionItem.headline}</div>
+                  <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.5 }}>{opinionItem.text}</div>
+                </div>
+              )}
 
               {editorial && (
                 <div style={{ borderTop: `3px double ${pp.paperRule}`, marginTop: 6, paddingTop: 12 }}>
@@ -2303,59 +2496,99 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
           )}
 
           {tab === 'chronicle' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div>
               {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
-              {quarters.map(([q, list]) => {
-                const snap = history.find((h) => h.q === q);
-                const top = list.filter((n) => n.cat !== 'editorial').slice(0, 3);
-                return (
-                  <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
-                    <div style={{ width: 92, flexShrink: 0 }}>
-                      <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
-                      {snap && (
-                        <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
-                          ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {top.map((n) => (
-                        <div key={n.id}>
-                          <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
-                          <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
-                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
-                        </div>
-                      ))}
-                    </div>
+              {quarters.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 14 }}>
+                  <input value={chronicleSearch} onChange={(e) => { setChronicleSearch(e.target.value); setChronicleShown(8); }}
+                    placeholder="Поиск по хронике…" className="ems-serif"
+                    style={{ flex: '1 1 180px', padding: '5px 9px', fontSize: 12, background: 'transparent', color: pp.paperText, border: `1px solid ${pp.paperRule}` }} />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    <span onClick={() => { setChronicleFilter('all'); setChronicleShown(8); }} className="ems-mono"
+                      style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === 'all' ? 700 : 400,
+                        background: chronicleFilter === 'all' ? pp.paperRule : 'transparent', color: pp.paperText }}>ВСЁ</span>
+                    {chronicleCats.map((c) => (
+                      <span key={c.id} onClick={() => { setChronicleFilter(c.id); setChronicleShown(8); }} className="ems-mono"
+                        style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === c.id ? 700 : 400,
+                          background: chronicleFilter === c.id ? pp.paperRule : 'transparent', color: pp.paperText }}>{c.icon} {c.short.toUpperCase()}</span>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
+              {quarters.length > 0 && filteredQuarters.length === 0 && (
+                <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>По такому запросу в хронике ничего не нашлось.</div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {filteredQuarters.slice(0, chronicleShown).map(([q, list]) => {
+                  const snap = history.find((h) => h.q === q);
+                  const top = list.slice(0, 4);
+                  return (
+                    <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
+                      <div style={{ width: 92, flexShrink: 0 }}>
+                        <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
+                        {snap && (
+                          <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
+                            ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {top.map((n) => (
+                          <div key={n.id}>
+                            <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
+                            <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
+                            <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {filteredQuarters.length > chronicleShown && (
+                <div style={{ textAlign: 'center', marginTop: 14 }}>
+                  <button className="ems-btn" style={{ background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }}
+                    onClick={() => setChronicleShown((n) => n + 8)}>Показать ещё</button>
+                </div>
+              )}
             </div>
           )}
 
           {tab === 'stories' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
-              {stories.map((st) => (
-                <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
-                  <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
-                    {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {st.steps.length} из {st.steps[0].steps} частей
-                  </div>
-                  {st.steps.map((n, i) => (
-                    <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
-                      <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
-                        <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
-                        <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
+              {stories.map((st) => {
+                const total = st.steps[0].steps;
+                const done = st.steps.length;
+                return (
+                  <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                      <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {Array.from({ length: total }).map((_, i) => (
+                          <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i < done ? pp.paperText : 'transparent', border: `1px solid ${pp.paperRule}`, display: 'inline-block' }} />
+                        ))}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                        <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
-                      </div>
+                      {done < total && <span className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted }}>продолжение следует</span>}
                     </div>
-                  ))}
-                </div>
-              ))}
+                    <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
+                      {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {done} из {total} частей
+                    </div>
+                    {st.steps.map((n, i) => (
+                      <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
+                        <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
+                          <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
+                          <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
+                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </PaperBox>
@@ -3074,6 +3307,8 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
   // у выбранного решения его цена уже вычтена из свободного капитала — проверять
   // «хватает ли» по остатку без него значит объявлять нехватку на ровном месте
   const canAfford = selected || affordable;
+  const label = typeof action.label === 'function' ? action.label(economy) : action.label;
+  const desc = typeof action.desc === 'function' ? action.desc(economy) : action.desc;
   const cdLeft = cooldowns[`pres:${action.id}`] || 0;
   const done = action.once && (economy.reforms || {})[action.id] !== undefined;
   const blockedByReq = !!(action.requires && !action.requires(economy));
@@ -3094,7 +3329,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
         borderColor: selected ? COLOR.gold : COLOR.border, background: selected ? COLOR.goldDim : COLOR.panelAlt }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         {selected && <Check size={12} color={COLOR.gold} style={{ alignSelf: 'center', flexShrink: 0 }} />}
-        <span style={{ fontSize: 12.5, color: selected ? COLOR.goldSoft : COLOR.text, fontWeight: 600, flex: 1 }}>{action.label}</span>
+        <span style={{ fontSize: 12.5, color: selected ? COLOR.goldSoft : COLOR.text, fontWeight: 600, flex: 1 }}>{label}</span>
         <span className="ems-mono" style={{ fontSize: 11, color: selected ? COLOR.goldSoft : COLOR.muted, flexShrink: 0 }}>{action.cost} ПК</span>
       </div>
       {/* решение, запертое условием («доступно при беспорядках или напряжённости
@@ -3102,7 +3337,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
           абзац описания в таком виде только растягивает список вниз, когда
           выбрать всё равно нельзя; причина недоступности сама по себе короче
           и полезнее */}
-      {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{action.desc}</div>}
+      {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
       {done && REFORM_RAMP[action.id] && (
         <div style={{ marginTop: 5, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${share * 100}%`, height: '100%', background: COLOR.teal }} />
@@ -3395,6 +3630,22 @@ function validateSnapshot(data) {
   if (data.v > SAVE_VERSION) throw new Error('Сохранение сделано в более новой версии симулятора.');
   return data;
 }
+
+/* Автосохранение текущей одиночной партии: раньше перезагрузка вкладки (случайный
+   F5, восстановление после сна ноутбука) откатывала партию к главному меню, хотя
+   игрок ничего не сохранял и не выходил. Слот в localStorage хранит полный снимок
+   того же вида, что и ручное сохранение, и перезаписывается на каждый квартал —
+   при следующем открытии страница просто открывает партию с того же места. */
+const AUTOSAVE_KEY = 'ems-autosave-v1';
+const loadAutosave = () => {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (!raw) return null;
+    return validateSnapshot(JSON.parse(raw));
+  } catch { return null; }
+};
+const saveAutosave = (data) => { try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data)); } catch { /* квота или приватный режим — просто не автосохраняем */ } };
+const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ } };
 
 /* Player ID — единственное, что остаётся на клиенте: без него некому
    адресовать слоты на сервере (аккаунтов в игре нет). Сама партия — экономика,
@@ -3989,7 +4240,7 @@ function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
   }
   return null;
 }
-function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, restartLabel = 'Начать заново' }) {
+function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, restartLabel = 'Начать заново' }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 460, width: '100%', padding: 26, textAlign: 'center', borderColor: COLOR.rust }} onClick={(e) => e.stopPropagation()}>
@@ -4000,20 +4251,30 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, on
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
           <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Поделиться</button>
           <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
+          {onRollback && (
+            <button className="ems-btn" style={{ borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
+              <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Откатить на 3 хода назад
+            </button>
+          )}
           <button className="ems-btn primary" onClick={onRestart}>{restartLabel}</button>
         </div>
       </div>
     </div>
   );
 }
-const GameOverBar = ({ defeat, onReopen, onRestart, restartLabel = 'Начать заново' }) => (
+const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLabel = 'Начать заново' }) => (
   <div style={{ borderTop: `2px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
     display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
-    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)' }}>
+    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)', flexWrap: 'wrap' }}>
     <span style={{ fontSize: 12, color: COLOR.rust, marginRight: 'auto', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
       <AlertTriangle size={14} />Партия окончена: {defeat.title}
     </span>
     <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5 }} onClick={onReopen}>Подробнее</button>
+    {onRollback && (
+      <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5, borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
+        <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Откатить на 3 хода назад
+      </button>
+    )}
     <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onRestart}>{restartLabel}</button>
   </div>
 );
@@ -4191,10 +4452,13 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
     return () => { cancelled = true; };
   }, [playerId]);
 
-  // подпись слота: роль и квартал — то, по чему партию узнают, если ей не дали имени
+  // подпись слота: роль и квартал — то, по чему партию узнают, если ей не дали имени.
+  // quarterIndex в сохранении — это уже тот квартал, на который партия откроется при
+  // загрузке, а не последний сыгранный: подпись должна показывать именно его, иначе
+  // список сохранений называет квартал на один раньше того, что откроется по «Играть».
   const slotLabel = (s) => {
     const roleTitle = (ROLES.find((r) => r.id === s.role) || {}).short || s.role;
-    return `${roleTitle} · ${quarterLabel(Math.max(1, (s.quarterIndex || 1) - 1))}`;
+    return `${roleTitle} · ${quarterLabel(s.quarterIndex || 1)}`;
   };
   const saveToSlot = async (idx) => {
     if (!snapshot) return;
@@ -4349,7 +4613,8 @@ const SUMMARY_TABS = {
     { key: 'inflationTarget', label: 'Цель ЦБ по инфляции', fmt: pctFmt },
     { key: 'inflation', label: 'Инфляция', fmt: pctFmt },
     { key: 'inflationExpectations', label: 'Ожидания', fmt: pctFmt },
-    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0) },
+    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0),
+      hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt },
     { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.` },
@@ -5536,7 +5801,11 @@ function SlotsGame({ cash, onResult }) {
     if (final[0].id === final[1].id && final[1].id === final[2].id) mult = final[0].pay3;
     else if (final.filter((s) => s.id === 'cherry').length >= 2) mult = SLOT_SYMBOLS[0].pay2;
     const didWin = mult > 0;
-    const n = didWin ? bet * mult : -bet;
+    // «× N» в таблице выплат читается как «столько раз вернётся ваша ставка», та же
+    // конвенция, что и в рулетке и костях (bet*(mult-1)) — раньше здесь выплачивался
+    // весь mult сверху ставки, и с текущей таблицей это давало казино отрицательный
+    // (в пользу игрока) матожидание вместо небольшого преимущества дома.
+    const n = didWin ? bet * (mult - 1) : -bet;
     setNet(null); setWin(false);
     setSpinningReels([true, true, true]);
     timersRef.current.forEach(clearInterval); timersRef.current = [];
@@ -5650,7 +5919,19 @@ function DiceGame({ cash, onResult }) {
 
 const CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const CARD_SUITS = ['♠', '♥', '♦', '♣'];
-const drawCard = () => CARD_RANKS[Math.floor(Math.random() * 13)] + CARD_SUITS[Math.floor(Math.random() * 4)];
+// раньше каждая карта тянулась независимо (ранг и масть — отдельные случайные
+// числа), поэтому в одной раздаче могли выпасть две одинаковые карты — то, чего
+// в реальной колоде на 52 карты просто не бывает. Теперь раздача тасует полную
+// колоду один раз и тянет карты из неё по очереди, без возврата.
+const FULL_DECK = CARD_RANKS.flatMap((r) => CARD_SUITS.map((s) => r + s));
+const shuffledDeck = () => {
+  const d = [...FULL_DECK];
+  for (let i = d.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [d[i], d[j]] = [d[j], d[i]];
+  }
+  return d;
+};
 const cardRank = (c) => c.slice(0, -1);
 const cardSuit = (c) => c.slice(-1);
 const cardValue = (c) => { const r = cardRank(c); return r === 'A' ? 11 : (r === 'J' || r === 'Q' || r === 'K') ? 10 : parseInt(r, 10); };
@@ -5677,6 +5958,10 @@ function BlackjackGame({ cash, onResult }) {
   const [dealer, setDealer] = useState([]);
   const [bet, setBet] = useState(0);
   const [outcome, setOutcome] = useState(null);
+  // одна перетасованная колода на раздачу: тянем по очереди, без возврата и
+  // без повторной перетасовки внутри того же раунда
+  const shoeRef = React.useRef([]);
+  const draw = () => shoeRef.current.pop();
   const resolve = (p, d, b) => {
     const pv = handValue(p); const dv = handValue(d);
     const pBJ = pv === 21 && p.length === 2; const dBJ = dv === 21 && d.length === 2;
@@ -5695,20 +5980,21 @@ function BlackjackGame({ cash, onResult }) {
   const deal = () => {
     const b = clamp(amount, 0.01, cash);
     if (b <= 0) return;
-    const p = [drawCard(), drawCard()]; const d = [drawCard(), drawCard()];
+    shoeRef.current = shuffledDeck();
+    const p = [draw(), draw()]; const d = [draw(), draw()];
     setPlayer(p); setDealer(d); setBet(b); setOutcome(null);
     Audio.play('tick');
     if (handValue(p) === 21 || handValue(d) === 21) resolve(p, d, b);
     else setPhase('player');
   };
   const hit = () => {
-    const p = [...player, drawCard()];
+    const p = [...player, draw()];
     setPlayer(p); Audio.play('tick');
     if (handValue(p) > 21) resolve(p, dealer, bet);
   };
   const stand = () => {
     let d = [...dealer];
-    while (handValue(d) < 17) d = [...d, drawCard()];
+    while (handValue(d) < 17) d = [...d, draw()];
     resolve(player, d, bet);
   };
   const again = () => { setPhase('bet'); setPlayer([]); setDealer([]); setOutcome(null); };
@@ -7489,9 +7775,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               }
               return (
                 <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }} title={row.hint || undefined}>
                     {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
-                    {row.label}
+                    {row.label}{row.hint && <Info size={10} color={COLOR.faint} />}
                   </span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
@@ -7679,7 +7965,11 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
                         <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>
                       )}
                       <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
-                        {roleTitle} · {quarterLabel(Math.max(1, (slot.quarterIndex || 1) - 1))}
+                        {/* quarterIndex в сохранении — это уже тот квартал, на который партия
+                            откроется при загрузке (см. setQuarterIndex(q => q + 1) в finishQuarter),
+                            а не последний сыгранный. Вычитание кварта здесь показывало метку на
+                            квартал раньше того, что игрок реально увидит после «Играть». */}
+                        {roleTitle} · {quarterLabel(slot.quarterIndex || 1)}
                       </span>
                     </span>
                     <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
@@ -8017,6 +8307,11 @@ const TUTORIAL_MODULES = [
         body: ({ economy }) => (
           <>
             <p>Инфляция сейчас {pctFmt(economy.inflation)} — почти как и была. Это ожидаемо: решение по ставке действует не мгновенно, а с лагом в один-два квартала — эффект будет виден чуть позже.</p>
+            <p>На панели рядом появился новый показатель — <Term k="outputgap">разрыв выпуска</Term>: насколько фактический ВВП отличается от потенциального, в процентах. Сейчас он {fmtSignedPct(economy.outputGap)}: {economy.outputGap >= 0.3
+              ? 'экономика работает выше своих возможностей, это и разгоняет инфляцию'
+              : economy.outputGap <= -0.3
+                ? 'экономика недозагружена — есть свободные мощности и рабочие руки'
+                : 'она почти на нуле, экономика работает примерно на пределе своих текущих возможностей'}. Именно за него, а не за сам ВВП, и идёт вся борьба ставкой и бюджетом.</p>
             <p>А вот и второй канал — расходы государства. В отличие от ставки, это решение «по накопительной»: заданный темп роста расходов сохраняется, пока вы его не измените, — не нужно повторять его каждый квартал.</p>
             <p>Поднимите темп роста госрасходов минимум на 2 п.п. и нажмите «Далее».</p>
           </>
@@ -10241,7 +10536,8 @@ const INDICATOR_TABS = [
     { key: 'inflation', label: 'Инфляция (ИПЦ)', fmt: pctFmt },
     { key: 'coreInflation', label: 'Базовая инфляция', fmt: pctFmt },
     { key: 'inflationExpectations', label: 'Инфляционные ожидания', fmt: pctFmt },
-    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: idx0 },
+    { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: idx0,
+      hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
     { key: 'importPriceInflation', label: 'Инфляция цен импорта', fmt: pctFmt },
     { key: 'unitLaborCostGrowth', label: 'Удельные издержки труда', fmt: fmtSignedPct },
     { key: 'moneySupply', label: 'Денежная масса (индекс)', fmt: fmt1 },
@@ -10283,6 +10579,8 @@ const INDICATOR_TABS = [
     { key: 'govDebt', label: 'Государственный долг', fmt: fmtMoney },
     { key: 'debtToGdp', label: 'Долг к ВВП', fmt: pctFmt },
     { key: 'effectiveDebtRate', label: 'Средняя ставка по долгу', fmt: pctFmt },
+    { key: 'sovereignFund', label: 'Суверенный фонд', fmt: fmtMoney,
+      hint: 'Профицит бюджета сначала гасит госдолг, а после того как долг обнулился, идёт сюда, а не исчезает. Фонд, в свою очередь, приносит доход в бюджет. Дефицит сначала тратит фонд и только потом занимает.' },
     { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt },
   ] },
   { id: 'labor', label: 'Труд', icon: Users, rows: [
@@ -10604,6 +10902,20 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
     presPersonaId, presidentLast });
+  // история снимков для отката после поражения: три хода назад решение ещё можно
+  // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
+  // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
+  // ни одного поля состояния. Держим с запасом (8, а не 3) на случай, если между
+  // кварталами эффект сработает не идеально ровно.
+  const rollbackHistoryRef = React.useRef([]);
+  React.useEffect(() => {
+    const snap = snapshot();
+    rollbackHistoryRef.current = [...rollbackHistoryRef.current, { quarterIndex, snap }].slice(-8);
+    saveAutosave(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quarterIndex]);
+  const rollbackTarget = rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
+  const handleRollback = () => { if (rollbackTarget) onLoadState(rollbackTarget.snap); };
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -10730,7 +11042,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       result.newsEntries.unshift({ id: `dir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${dirResult.req.label.toUpperCase()} — ${dirResult.status === 'accepted' ? 'ИСПОЛНЕНО' : dirResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
         text: `«${dirResult.ask}» ${dirResult.text}${dirResult.credibilityHit
-          ? ' Исполненное политическое указание ЦБ рынок читает как потерю независимости — доверие к денежной политике снижается.'
+          ? (economy.politicalRegime === 'authoritarian' || economy.politicalRegime === 'totalitarian'
+            // при авторитаризме и тем более тоталитаризме государственная пресса не станет
+            // сама признавать, что независимость ЦБ пострадала, — она подаёт исполнение
+            // указа как слаженную работу ветвей власти, а не как её потерю
+            ? ' Государственная пресса подаёт это как слаженную работу ветвей власти.'
+            : ' Исполненное политическое указание ЦБ рынок читает как потерю независимости — доверие к денежной политике снижается.')
           : dirResult.status === 'rejected' ? ' Публичный отказ ведомства добавляет напряжения в отношения ветвей власти.' : ''}` });
       setLastDirective({ status: dirResult.status, text: dirResult.text });
     }
@@ -10807,7 +11124,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           toPlayer: !!(presidentPlan.directive && presidentPlan.directive.toPlayer),
           // указание соседнему ведомству тоже имеет исход — ответ бота, а не «передано»
           status: presDirResult ? presDirResult.status : null,
-          actions: presidentPlan.actions.map((id) => (PRES_BY_ID[id] || {}).label).filter(Boolean) });
+          actions: presidentPlan.actions.map((id) => {
+            const a = PRES_BY_ID[id]; if (!a) return null;
+            return typeof a.label === 'function' ? a.label(economy) : a.label;
+          }).filter(Boolean) });
       }
       const nextCb = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'central_bank' ? presidentPlan.appointBot.persona : cbPersonaId;
       const nextMof = presidentPlan.appointBot && presidentPlan.appointBot.kind === 'ministry_finance' ? presidentPlan.appointBot.persona : mofPersonaId;
@@ -10942,7 +11262,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} />}
+        onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }}
+        onRollback={rollbackTarget ? handleRollback : null} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
@@ -11316,9 +11637,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 }
                 return (
                   <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                    <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }} title={row.hint || undefined}>
                       {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
-                      {row.label}
+                      {row.label}{row.hint && <Info size={10} color={COLOR.faint} />}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
@@ -11353,7 +11674,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       })()}
 
       {defeat ? (
-        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart} />
+        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart}
+          onRollback={rollbackTarget ? handleRollback : null} />
       ) : (
         <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
           boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
@@ -11424,8 +11746,11 @@ class ScreenErrorBoundary extends React.Component {
 }
 
 export default function MacroSimulator() {
-  const [setup, setSetup] = useState(null);
-  const [loaded, setLoaded] = useState(null);
+  // партия из автосохранения открывается сама, минуя меню — но только если
+  // в адресе нет приглашения в сетевую комнату: оно важнее того, что было
+  // открыто на этой вкладке раньше
+  const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() ? null : loadAutosave()));
+  const [setup, setSetup] = useState(() => (roomCodeFromUrl() ? null : (loadAutosave() || {}).setup || null));
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
@@ -11452,7 +11777,7 @@ export default function MacroSimulator() {
       if (view === 'setup') {
         return (
           <SetupScreen key={theme}
-            onStart={(x) => { setLoaded(null); setSetup(x); }}
+            onStart={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }}
             onBack={goMenu}
           />
         );
@@ -11480,7 +11805,7 @@ export default function MacroSimulator() {
     return (
       <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
         theme={theme} setTheme={setTheme}
-        onRestart={() => { setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
+        onRestart={() => { clearAutosave(); setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
     );
   })();
   return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{screen}</ScreenErrorBoundary>;
