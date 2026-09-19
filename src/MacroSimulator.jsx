@@ -4654,7 +4654,11 @@ function scaleLever(l, e) {
   if (l.scale === 'gdp') {
     const k = Math.max(1, e.nominalGdp / CONFIG.initial.gdp);
     const mag = Math.max(5, Math.round(l.max * k / 5) * 5);
-    return { ...l, min: -mag, max: mag, step: Math.max(1, Math.round(mag / 25)) };
+    // рычаг с исходным минимумом 0 (например, размещение облигаций — занять
+    // можно только неотрицательную сумму) должен и после масштабирования
+    // остаться неотрицательным, а не зеркалиться в минус вслед за симметричными
+    // рычагами вроде валютных интервенций
+    return { ...l, min: l.min < 0 ? -mag : 0, max: mag, step: Math.max(1, Math.round(mag / 25)) };
   }
   if (l.id === 'fxTarget') {
     const cur = e.exchangeRate;
@@ -4665,6 +4669,10 @@ function scaleLever(l, e) {
 
 
 /* ============================ ТОРГОВЫЙ ТЕРМИНАЛ ============================ */
+// доля госдолга (в тех же единицах, что и книга инвестора — млн), которую
+// разрешено выкупить одному инвестору в гособлигации: остальное держат другие
+// участники рынка, о которых игра просто не рассказывает
+const GOV_BOND_INVESTOR_SHARE = 0.05;
 const INSTRUMENTS = [
   { id: 'eq_broad', name: 'Индекс акций', ticker: 'IDX', group: 'Акции', color: COLOR.gold, key: 'stockIndex', fee: 0.0015, kind: 'spot',
     note: 'Весь рынок целиком. Растёт на дешёвых деньгах и прибылях, падает на ставке и риске.' },
@@ -4773,6 +4781,17 @@ function tradeBook(book, instrId, amountMln, side, economy, live) {
   if (!instr || !(amountMln > 0.0001)) return book;
   const price = priceOf(instr, economy, live);
   const dir = side === 'buy' ? 1 : -1;
+  // подстраховка на случай, если запрос пришёл с устаревшим лимитом (например,
+  // «макс.» был нажат за мгновение до того, как госдолг подрос или сократился) —
+  // сама UI уже не даёт запросить больше, но здесь тот же потолок применяется
+  // ещё раз, чтобы позиция никогда не превысила долю рынка ни при каких гонках
+  if (instrId === 'bond_gov' && side === 'buy') {
+    const held0 = book.pos[instrId] || 0;
+    const heldVal0 = held0 * price / 1000;
+    const room = Math.max(0, (economy.govDebt || 0) * 1000 * GOV_BOND_INVESTOR_SHARE - Math.max(0, heldVal0));
+    amountMln = Math.min(amountMln, room);
+    if (!(amountMln > 0.0001)) return book;
+  }
 
   if (instr.kind === 'opt') {
     const vol = impliedVol(economy);
@@ -5082,9 +5101,18 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
   const lotsValue = lots.reduce((a, l) => a + optionValue(l.type, price, l.strike, vol, l.left) * l.qty / 1000, 0);
   const unreal = instr.kind === 'opt' ? lotsValue - lots.reduce((a, l) => a + l.premium * l.qty / 1000, 0)
     : held !== 0 && avg ? held * (price - avg) / 1000 : 0;
-  const maxBuy = instr.kind === 'fut' ? Math.max(0, freeRisk / (instr.lev || 1))
+  let maxBuy = instr.kind === 'fut' ? Math.max(0, freeRisk / (instr.lev || 1))
     : instr.kind === 'opt' ? Math.max(0, book.cash)
       : useMargin ? Math.max(0, Math.min(book.cash + Math.max(0, equity * 0.6), freeRisk)) : Math.max(0, book.cash);
+  // гособлигации существуют в конечном количестве — весь госдолг разом. Один
+  // инвестор не может выкупить в него больше разумной доли рынка, иначе
+  // «купить гособлигаций» превращается в «купить сколько угодно денег из
+  // ниоткуда». Фьючерс на облигации — расчётный дериватив, а не сама бумага,
+  // поэтому его это ограничение не касается.
+  const govBondRoom = instr.id === 'bond_gov'
+    ? Math.max(0, (economy.govDebt || 0) * 1000 * GOV_BOND_INVESTOR_SHARE - Math.max(0, heldValue))
+    : Infinity;
+  if (instr.id === 'bond_gov') maxBuy = Math.min(maxBuy, govBondRoom);
   const maxSell = instr.kind === 'opt' ? lotsValue
     : instr.kind === 'fut' ? Math.max(0, freeRisk / (instr.lev || 1))
       : Math.max(0, heldValue) + (useMargin ? Math.max(0, Math.min(equity * 0.5, freeRisk)) : 0);
@@ -5432,6 +5460,11 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                   {useMargin ? `Доступно ${fmtMln(maxBuy)}, из них ${fmtMln(Math.max(0, maxBuy - Math.max(0, book.cash)))} заёмных под ${fmt1(economy.lendingRate)}% годовых.`
                     : `Сделки только на свои: доступно ${fmtMln(Math.max(0, book.cash))}.`}
                 </span>
+              </div>
+            )}
+            {instr.id === 'bond_gov' && side === 'buy' && (
+              <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 6, lineHeight: 1.35 }}>
+                Гособлигации — не бездонный инструмент: рынок ограничен размером госдолга ({fmtMoney(economy.govDebt)}), и один инвестор не может выкупить больше {Math.round(GOV_BOND_INVESTOR_SHARE * 100)}% от него. Свободно ещё {fmtMln(govBondRoom)}.
               </div>
             )}
           </div>
@@ -10895,6 +10928,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     groups.includes('fiscal') && { id: 'fiscal-core', label: 'Расходы' },
     groups.includes('fiscal') && { id: 'fiscal-taxes', label: 'Налоги' },
     groups.includes('fiscal') && { id: 'fiscal-budget', label: 'Бюджет' },
+    groups.includes('fiscal') && { id: 'fiscal-debt', label: 'Долг' },
   ].filter(Boolean);
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
   const tabs = useMemo(() => tabsForBotRole(botRole), [botRole]);
@@ -11551,6 +11585,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
                     value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                ))}
+              </div>
+            )}
+            {levTab === 'fiscal-debt' && (
+              <div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
+                  Дефицит финансируется сам — рынок и так занимает за вас ровно столько, сколько не хватает. Здесь — добровольное решение занять сверх этого: долг растёт сразу, а деньги идут в резерв на будущее, а не в расходы этого квартала.
+                </div>
+                {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'debt').map((l) => (
+                  <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
+                    onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
               </div>
             )}

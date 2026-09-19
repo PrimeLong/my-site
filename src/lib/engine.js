@@ -220,6 +220,9 @@ const LEVERS = [
   { id: 'transfers', group: 'fiscal', subgroup: 'core', label: 'Социальные выплаты', suffix: '%', min: -12, max: 12, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — сильный эффект в кризис, слабый при перегреве' },
   { id: 'govInvestment', group: 'fiscal', subgroup: 'core', label: 'Госинвестиции в инфраструктуру', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Единственный расход, повышающий потенциальный ВВП' },
 
+  { id: 'bondIssuance', group: 'fiscal', subgroup: 'debt', label: 'Размещение облигаций', suffix: ' млрд', min: 0, max: 60, step: 5, type: 'flow', scale: 'gdp',
+    hint: 'Занять сверх того, что нужно для покрытия дефицита — долг растёт сразу, деньги идут в резерв' },
+
   { id: 'shareHealth', group: 'fiscal', subgroup: 'budget', label: 'Здравоохранение', suffix: '%', min: 5, max: 40, step: 1, type: 'level', hint: 'Доля госзакупок' },
   { id: 'shareEducation', group: 'fiscal', subgroup: 'budget', label: 'Образование', suffix: '%', min: 5, max: 40, step: 1, type: 'level', hint: 'Долгосрочно — человеческий капитал' },
   { id: 'shareScience', group: 'fiscal', subgroup: 'budget', label: 'Наука и НИОКР', suffix: '%', min: 0, max: 20, step: 1, type: 'level', hint: 'Долгосрочно — производительность (TFP)' },
@@ -231,14 +234,14 @@ const UNCERTAINTY = {
   keyRate: 'средняя', reserveReq: 'средняя', capitalRequirement: 'средняя', moneySupplyOp: 'высокая',
   fxIntervention: 'средняя', liquidity: 'средняя', incomeTaxRate: 'средняя', profitTaxRate: 'высокая',
   vatRate: 'низкая', exciseRate: 'низкая', capitalTaxRate: 'высокая', socialContribRate: 'средняя',
-  govSpending: 'низкая', transfers: 'низкая', govInvestment: 'высокая',
+  govSpending: 'низкая', transfers: 'низкая', govInvestment: 'высокая', bondIssuance: 'низкая',
   shareHealth: 'высокая', shareEducation: 'высокая', shareScience: 'высокая', shareDefense: 'низкая', shareAdmin: 'низкая',
 };
 
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -2396,6 +2399,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     sovereignFund -= draw;
     govDebt += (-flow - draw);
   }
+  // добровольное размещение облигаций сверх того, что требуется для покрытия
+  // дефицита: сознательное решение Минфина, а не автоматическое финансирование
+  // дыры в бюджете выше — долг растёт сразу, а вырученные деньги идут в резерв
+  const bondIssuance = Math.max(0, decisions.bondIssuance || 0);
+  govDebt += bondIssuance;
+  sovereignFund += bondIssuance;
   govDebt = Math.max(0, govDebt);
   const debtToGdp = govDebt / nominalGdp * 100;
   const fundPctGdp = sovereignFund / nominalGdp * 100;
@@ -3754,6 +3763,14 @@ function buildDecisionImpulses(dec, s, difficulty) {
   }
   const dReserve = dec.reserveReq - s.reserveReq;
   if (Math.abs(dReserve) > 1e-6) out.push(makeImpulse('creditDemand', -dReserve * 0.5, `Изменение нормы резервирования до ${dec.reserveReq.toFixed(1)}%`, 'default', difficulty, 'banking'));
+  const bondIssuance = Math.max(0, dec.bondIssuance || 0);
+  if (bondIssuance > 0.01) {
+    // рынок читает размещение сверх необходимого как сигнал: раз занимают, не
+    // будучи прижатыми дефицитом, значит готовятся к чему-то — премия растёт
+    // пропорционально размеру размещения относительно экономики, а не самой сумме
+    out.push(makeImpulse('riskPremium', bondIssuance / Math.max(1, s.nominalGdp) * 100 * 0.6,
+      `Минфин разместил облигации на ${fmtMoney(bondIssuance)} сверх необходимого для покрытия дефицита`, 'default', difficulty));
+  }
   return out.filter((im) => im.values.some((x) => Math.abs(x) > 1e-9));
 }
 
@@ -4005,6 +4022,15 @@ function leverPreview(id, newVal, s, difficulty) {
       add2('Финансовая стабильность', `${fmtSigned1(pctGdp * 5)} пункта`);
       pros = ['снижение риска банковской паники', 'поддержка кредитования'];
       cons = ['рост денежной массы', 'банки привыкают к поддержке'];
+      break;
+    }
+    case 'bondIssuance': {
+      const pctGdp = newVal / Math.max(1, s.nominalGdp) * 100;
+      add2('Госдолг', `${fmtMoneySigned(newVal)} сразу (сейчас ${fmtMoney(s.govDebt)})`);
+      add2('Резерв (суверенный фонд)', `${fmtMoneySigned(newVal)} сразу (сейчас ${fmtMoney(s.sovereignFund || 0)})`);
+      add2('Премия за риск', `${fmtSigned1(pctGdp * 0.6)} п.п. — рынок читает лишний долг как сигнал`);
+      pros = ['резерв на случай, если рынок вдруг откажет в финансировании дефицита', 'больше гособлигаций доступно инвесторам'];
+      cons = ['долг растёт независимо от реальной потребности', 'крупное размещение стоит премии за риск'];
       break;
     }
     case 'govSpending': case 'transfers': case 'govInvestment': {
