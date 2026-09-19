@@ -4616,8 +4616,10 @@ const SUMMARY_TABS = {
     { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0),
       hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
-    { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt },
-    { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.` },
+    { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt,
+      hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
+    { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Насколько фактическая ставка жёстче или мягче нейтральной r*. Положительный — политика сдерживает экономику, отрицательный — стимулирует.' },
     { key: 'capitalRequirement', label: 'Норматив капитала банков', fmt: pctFmt },
     { key: 'creditGrowth', label: 'Рост кредитования', fmt: fmtSignedPct },
     { key: 'bankCapitalAdequacy', label: 'Достаточность капитала', fmt: pctFmt },
@@ -4628,14 +4630,17 @@ const SUMMARY_TABS = {
     { key: 'govRevenue', label: 'Доходы бюджета', fmt: fmtMoney },
     { key: 'govSpendingTotal', label: 'Расходы бюджета', fmt: fmtMoney },
     { key: 'budgetBalancePctGdp', label: 'Баланс бюджета', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
-    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
+    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП`,
+      hint: 'Баланс бюджета, очищенный от влияния экономического цикла. Показывает, дефицитна ли бюджетная политика сама по себе, а не только из-за текущего спада или подъёма.' },
     { key: 'debtToGdp', label: 'Долг к ВВП', fmt: pctFmt },
     { key: 'interestToRevenue', label: 'Проценты к доходам', fmt: pctFmt },
-    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.` },
+    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Изменение бюджетного стимула за квартал. Положительный — бюджет разгоняет спрос сверх прошлого квартала, отрицательный — сдерживает.' },
     { key: 'vatRate', label: 'НДС', fmt: pctFmt },
     { key: 'incomeTaxRate', label: 'Подоходный налог', fmt: pctFmt },
     { key: 'profitTaxRate', label: 'Налог на прибыль', fmt: pctFmt },
-    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt },
+    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt,
+      hint: 'Доля экономики вне налогообложения. Растёт вместе с налоговой нагрузкой, снижается при её облегчении.' },
     { label: 'Доля образования', get: (e) => e.budgetShares.education, fmt: pctFmt },
     { label: 'Доля науки', get: (e) => e.budgetShares.science, fmt: pctFmt },
     { label: 'Доля здравоохранения', get: (e) => e.budgetShares.health, fmt: pctFmt },
@@ -7115,6 +7120,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [showCard, setShowCard] = useState(false);
   const [defeat, setDefeat] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
+  /* Откат на 3 хода назад, как в соло-игре, здесь возможен только для трейдера:
+     его портфель — локальное состояние этого клиента, а не общая с партнёром
+     серверная экономика (room.economy/history). Откатить саму экономику
+     означало бы отменить чужие уже принятые решения — для ЦБ/Минфина/президента
+     в сетевой игре это не сделать без сервера и без риска обидеть партнёра. */
+  const portfolioHistoryRef = React.useRef([]);
   const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
     const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
     const instr = INSTR_BY_ID[instrId];
@@ -7199,6 +7210,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           if (marginCalled) { Audio.play('alarm'); haptic([60, 80, 60]); pushAch(unlockAchievements(['margin_call'])); }
           const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: bookValue(nb, r.economy, null) });
           if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
+          portfolioHistoryRef.current = [...portfolioHistoryRef.current, { quarterIndex: r.quarterIndex, book: nb }].slice(-8);
           return nb;
         });
       } else {
@@ -7215,6 +7227,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   }, [room.quarterIndex]);
 
   const isTraderRoom = room.mode === 'trader';
+  const portfolioRollbackTarget = isTraderRoom
+    ? portfolioHistoryRef.current.find((e) => e.quarterIndex === room.quarterIndex - 3) : null;
+  const handlePortfolioRollback = () => {
+    if (!portfolioRollbackTarget) return;
+    setPortfolio(portfolioRollbackTarget.book);
+    setDefeat(null); setShowGameOver(false);
+  };
   const roleDef = seatRole(seat);
   const RoleIcon = ROLE_ICON[roleDef.icon];
   /* Мест теперь может быть три: ЦБ, Минфин и президент. «Партнёр» по-прежнему один —
@@ -7393,7 +7412,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню" />}
+        onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню"
+        onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: seatRole(seat).id, quarterIndex: room.quarterIndex, economy: room.economy,
         startEconomy: room.history && room.history[0], portfolio, defeat,
@@ -7592,13 +7612,22 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 </div>
                 {['monetary', 'fiscal'].filter((g) => roleDef.groups.includes(g)).map((g) => (
                   <React.Fragment key={g}>
-                    {['core', 'macropru', 'taxes', 'budget'].map((sub) => {
+                    {['core', 'macropru', 'taxes', 'budget', 'debt'].map((sub) => {
                       const set = levers.filter((l) => l.group === g && l.subgroup === sub);
                       if (!set.length) return null;
-                      return set.map((l) => (
-                        <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
-                          onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
-                      ));
+                      return (
+                        <React.Fragment key={sub}>
+                          {sub === 'debt' && (
+                            <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
+                              Дефицит финансируется сам — рынок и так занимает за вас ровно столько, сколько не хватает. Здесь — добровольное решение занять сверх этого: долг растёт сразу, а деньги идут в резерв на будущее.
+                            </div>
+                          )}
+                          {set.map((l) => (
+                            <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
+                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
+                          ))}
+                        </React.Fragment>
+                      );
                     })}
                     {g === 'monetary' && <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />}
                   </React.Fragment>
@@ -7842,7 +7871,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       })()}
 
       {defeat ? (
-        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню" />
+        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
+          onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
       ) : (
         <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
           display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
@@ -8115,6 +8145,7 @@ const GLOSSARY = {
   consolidation: { title: 'Бюджетная консолидация', text: 'Сокращение дефицита: расходы вниз или налоги вверх. Лечит долг и помогает ставке, но забирает спрос — обычно в самый неподходящий политически момент.' },
   transfers: { title: 'Социальные выплаты (трансферты)', text: 'Пенсии, пособия, индексации. Это не разовая трата, а темп: подняли один раз — расходы растут каждый квартал, пока решение не отменят.' },
   shadow: { title: 'Теневая экономика', text: 'Доля активности, которая не видна бюджету и не платит налогов. Растёт от чрезмерной налоговой нагрузки: часть возможных сборов теряется ровно так, а не из-за «плохого администрирования».' },
+  sovereignfund: { title: 'Суверенный фонд', text: 'Резерв бюджета: профицит сначала гасит госдолг, а после того как долг обнулился, идёт сюда, принося доход. Дефицит сначала тратит фонд и только потом занимает — фонд смягчает необходимость экстренных займов в плохие времена.' },
   intervention: { title: 'Валютные интервенции', text: 'Покупка или продажа валюты центральным банком ради курса. Против фундаментальных причин ослабления работают недолго — ровно столько, сколько хватит резервов.' },
   yieldcurve: { title: 'Кривая доходности', text: 'Соотношение доходностей коротких и длинных облигаций. Когда короткие дороже длинных (кривая перевёрнута), рынок ждёт снижения ставки — обычно из-за приближающегося спада.' },
   polcapital: { title: 'Политический капитал', text: 'Ресурс президента вместо ползунков: им оплачиваются указы, кадровые решения, реформы и требования к ведомствам. Копится рейтингом и ростом, тает кризисами и беспорядками.' },
@@ -8454,10 +8485,33 @@ const TUTORIAL_MODULES = [
         },
       },
       {
+        title: 'Резерв на будущее', pins: ['sovereignFund', 'govDebt', 'debtToGdp'],
+        lever: 'bondIssuance', minDelta: 10, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Дефицит и так финансируется сам — рынок занимает за вас ровно столько денег, сколько не хватает бюджету. Но есть и отдельный, добровольный рычаг во вкладке «Долг» — «Размещение облигаций»: занять сверх этого специально, не под расходы этого квартала.</p>
+            <p>Разместите облигаций минимум на 10 млрд и нажмите «Далее».</p>
+          </>
+        ),
+      },
+      {
+        title: 'Куда идут деньги',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history.length >= 2 ? history[history.length - 2] : economy;
+          return (
+            <>
+              <p>Долг к ВВП вырос сразу — с {pctFmt(before.debtToGdp)} до {pctFmt(economy.debtToGdp)}. Но эти деньги не ушли на расходы: они легли в <Term k="sovereignfund">суверенный фонд</Term> ({fmtMoney(economy.sovereignFund)}) и останутся там, пока не понадобятся — например, чтобы профинансировать будущий дефицит, не занимая по условиям, которые к тому моменту могут быть хуже нынешних.</p>
+              <p>Это компромисс, а не бесплатный доход: занять раньше, чем нужно, — тоже долг, и обслуживать его придётся уже сейчас.</p>
+            </>
+          );
+        },
+      },
+      {
         title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
         body: () => (
           <>
-            <p>Налоги не масштабируются линейно, а расходы, увеличенные один раз, продолжают давить на баланс каждый квартал. Долг — это не разовая проблема, а нарастающая стоимость обслуживания. Дальше — то, что происходит на границе: валютный курс.</p>
+            <p>Налоги не масштабируются линейно, а расходы, увеличенные один раз, продолжают давить на баланс каждый квартал. Долг — это не разовая проблема, а нарастающая стоимость обслуживания, и его можно нарастить не только по необходимости, но и заранее, про запас. Дальше — то, что происходит на границе: валютный курс.</p>
           </>
         ),
       },
@@ -9464,6 +9518,7 @@ const EXAM_MODULES = [
           <>
             <p>Вы прошли курс целиком: ставка и расходы, бюджет и долг, курс и резервы, ожидания и доверие, риски и буферы, политический режим — и свели всё это вместе в одной задаче без правильного ответа.</p>
             <p>Дальше два прикладных курса: за частного инвестора и за президента. Или сразу настоящая партия — там всё перечисленное работает одновременно.</p>
+            <p>В настоящей партии прогресс автоматически сохраняется в этом браузере после каждого квартала — можно спокойно закрыть вкладку и продолжить позже с того же места.</p>
           </>
         ),
       },
@@ -10586,11 +10641,13 @@ const INDICATOR_TABS = [
     { key: 'gdpGrowth', label: 'Темп роста ВВП', fmt: fmtSignedPct },
     { key: 'potentialGdp', label: 'Потенциальный ВВП', fmt: fmtMoney },
     { key: 'potentialGrowth', label: 'Рост потенциала', fmt: fmtSignedPct },
-    { key: 'outputGap', label: 'Разрыв выпуска', fmt: fmtSignedPct },
+    { key: 'outputGap', label: 'Разрыв выпуска', fmt: fmtSignedPct,
+      hint: 'Насколько ВВП отклонился от потенциального. Отрицательный — экономика недогружена, безработица выше нормы. Положительный — перегрев, риск ускорения инфляции.' },
     { key: 'gdpPerCapita', label: 'ВВП на душу населения', fmt: (v) => `${Math.round(v).toLocaleString('ru-RU')} у.е.` },
     { key: 'consumption', label: 'Потребление', fmt: fmtMoney },
     { key: 'businessInvestment', label: 'Инвестиции бизнеса', fmt: fmtMoney },
-    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.` },
+    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Изменение бюджетного стимула за квартал. Положительный — бюджет разгоняет спрос сверх прошлого квартала, отрицательный — сдерживает.' },
   ] },
   { id: 'prices', label: 'Цены', icon: Coins, rows: [
     { key: 'inflation', label: 'Инфляция (ИПЦ)', fmt: pctFmt },
@@ -10610,14 +10667,18 @@ const INDICATOR_TABS = [
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'depositRate', label: 'Ставка по депозитам', fmt: pctFmt },
     { key: 'realLendingRate', label: 'Реальная ставка по кредитам', fmt: pctFmt },
-    { key: 'rStar', label: 'Нейтральная реальная ставка r*', fmt: pctFmt },
-    { key: 'rateGap', label: 'Жёсткость условий (факт − нейтраль)', fmt: (v) => `${fmtSigned1(v)} п.п.` },
-    { key: 'riskPremium', label: 'Премия за риск страны', fmt: pctFmt },
+    { key: 'rStar', label: 'Нейтральная реальная ставка r*', fmt: pctFmt,
+      hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
+    { key: 'rateGap', label: 'Жёсткость условий (факт − нейтраль)', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Насколько фактическая ставка жёстче или мягче нейтральной r*. Положительный — политика сдерживает экономику, отрицательный — стимулирует.' },
+    { key: 'riskPremium', label: 'Премия за риск страны', fmt: pctFmt,
+      hint: 'Надбавка к стоимости займов, которую требуют кредиторы за риск. Растёт от высокого долга, дефолтов и политической нестабильности — удорожает займы не только государству, но и бизнесу.' },
   ] },
   { id: 'banking', label: 'Банки', icon: ShieldAlert, rows: [
     { key: 'creditVolume', label: 'Кредитный портфель', fmt: fmtMoney },
     { key: 'creditGrowth', label: 'Рост кредитования', fmt: fmtSignedPct },
-    { key: 'creditGap', label: 'Кредитный разрыв (бум/сжатие)', fmt: (v) => `${fmtSigned1(v)} п.п. ВВП` },
+    { key: 'creditGap', label: 'Кредитный разрыв (бум/сжатие)', fmt: (v) => `${fmtSigned1(v)} п.п. ВВП`,
+      hint: 'Объём кредита относительно долгосрочного тренда. Сильно положительный — кредитный бум и риск пузыря, отрицательный — сжатие кредитования.' },
     { key: 'bankNPL', label: 'Просроченные кредиты', fmt: pctFmt },
     { key: 'bankCapital', label: 'Капитал банков', fmt: fmtMoney },
     { key: 'bankCapitalAdequacy', label: 'Достаточность капитала', fmt: pctFmt },
@@ -10635,13 +10696,16 @@ const INDICATOR_TABS = [
     { key: 'interestPayment', label: 'Обслуживание долга', fmt: fmtMoney },
     { key: 'interestToRevenue', label: 'Обслуживание к доходам', fmt: pctFmt },
     { key: 'budgetBalancePctGdp', label: 'Баланс бюджета', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
-    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
+    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП`,
+      hint: 'Баланс бюджета, очищенный от влияния экономического цикла. Показывает, дефицитна ли бюджетная политика сама по себе, а не только из-за текущего спада или подъёма.' },
     { key: 'govDebt', label: 'Государственный долг', fmt: fmtMoney },
     { key: 'debtToGdp', label: 'Долг к ВВП', fmt: pctFmt },
-    { key: 'effectiveDebtRate', label: 'Средняя ставка по долгу', fmt: pctFmt },
+    { key: 'effectiveDebtRate', label: 'Средняя ставка по долгу', fmt: pctFmt,
+      hint: 'Средняя ставка по уже выпущенному долгу целиком, а не по новым займам. Меняется медленно — только по мере того, как старые выпуски гасятся и замещаются новыми по текущей ставке.' },
     { key: 'sovereignFund', label: 'Суверенный фонд', fmt: fmtMoney,
       hint: 'Профицит бюджета сначала гасит госдолг, а после того как долг обнулился, идёт сюда, а не исчезает. Фонд, в свою очередь, приносит доход в бюджет. Дефицит сначала тратит фонд и только потом занимает.' },
-    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt },
+    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt,
+      hint: 'Доля экономики вне налогообложения. Растёт вместе с налоговой нагрузкой, снижается при её облегчении.' },
   ] },
   { id: 'labor', label: 'Труд', icon: Users, rows: [
     { key: 'unemployment', label: 'Безработица', fmt: pctFmt },
@@ -10668,7 +10732,8 @@ const INDICATOR_TABS = [
     { key: 'humanCapitalIndex', label: 'Человеческий капитал', fmt: fmt1 },
     { key: 'infrastructureIndex', label: 'Инфраструктура', fmt: fmt1 },
     { key: 'capitalStock', label: 'Основной капитал', fmt: fmtMoney },
-    { key: 'supplyScar', label: 'Шрамы предложения', fmt: (v) => `${fmtSigned1(v)}%` },
+    { key: 'supplyScar', label: 'Шрамы предложения', fmt: (v) => `${fmtSigned1(v)}%`,
+      hint: 'Постоянная потеря потенциального выпуска от прошлых кризисов. Сама не восстанавливается — только через рост инвестиций и производительности.' },
   ] },
   { id: 'market', label: 'Рынок', icon: TrendingUp, rows: [
     { key: 'stockIndex', label: 'Индекс акций', fmt: fmt1 },
@@ -10678,9 +10743,12 @@ const INDICATOR_TABS = [
     { key: 'bondIndex', label: 'Индекс облигаций', fmt: fmt1 },
     { key: 'yield2y', label: 'Доходность 2 года', fmt: pctFmt },
     { key: 'yield10y', label: 'Доходность 10 лет', fmt: pctFmt },
-    { key: 'curveSlope', label: 'Наклон кривой', fmt: (v) => `${fmtSigned1(v)} п.п.` },
-    { key: 'sovereignSpread', label: 'Суверенный спред', fmt: (v) => `${Math.round(v)} б.п.` },
-    { key: 'corporateSpread', label: 'Корпоративный спред', fmt: (v) => `${Math.round(v)} б.п.` },
+    { key: 'curveSlope', label: 'Наклон кривой', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Разница доходностей 10 лет и 2 года. Инверсия (отрицательное значение) — рынок закладывает будущую рецессию.' },
+    { key: 'sovereignSpread', label: 'Суверенный спред', fmt: (v) => `${Math.round(v)} б.п.`,
+      hint: 'Надбавка в базисных пунктах, которую государство платит сверх безрискового уровня за заём. Индикатор доверия рынка к платёжеспособности страны.' },
+    { key: 'corporateSpread', label: 'Корпоративный спред', fmt: (v) => `${Math.round(v)} б.п.`,
+      hint: 'То же самое для бизнеса: надбавка сверх безрискового уровня, которую компании платят по своим облигациям.' },
     { key: 'volatilityIndex', label: 'Индекс страха', fmt: fmt1 },
     { key: 'bankPB', label: 'Банки: цена к капиталу', fmt: fmt2 },
     { key: 'bankROE', label: 'Банки: рентабельность', fmt: pctFmt },
@@ -10691,8 +10759,10 @@ const INDICATOR_TABS = [
     { key: 'approval', label: 'Рейтинг власти', fmt: (v) => v.toFixed(0) },
     { key: 'quartersToElection', label: 'Кварталов до выборов', fmt: (v) => v.toFixed(0), noDelta: true },
     { key: 'term', label: 'Срок правительства', fmt: (v) => `${v}-й` },
-    { key: 'govTrust', label: 'Доверие к правительству', fmt: (v) => v.toFixed(0) },
-    { key: 'policyCoordination', label: 'Согласованность политики', fmt: (v) => v.toFixed(0) },
+    { key: 'govTrust', label: 'Доверие к правительству', fmt: (v) => v.toFixed(0),
+      hint: 'Отдельно от рейтинга власти: реакция на последовательность и предсказуемость курса, а не на сиюминутные успехи или неудачи.' },
+    { key: 'policyCoordination', label: 'Согласованность политики', fmt: (v) => v.toFixed(0),
+      hint: 'Насколько решения ЦБ и Минфина тянут экономику в одну сторону, а не работают друг против друга — например, бюджетный стимул при ужесточении ставки его гасит.' },
     { label: 'Мандат власти', get: (e) => e.mandate, text: true, map: MANDATE_LABEL },
     { label: 'Линия правительства', get: (e) => e.governmentLine, text: true, map: { centrist: 'центристская', populist: 'популистская', austerity: 'консервативная', technocrat: 'технократическая' } },
     { label: 'Политический режим', get: (e) => e.politicalRegime, text: true,
@@ -10719,7 +10789,8 @@ const INDICATOR_TABS = [
     { key: 'financialStability', label: 'Финансовая стабильность', fmt: idx0 },
     { key: 'consumerConfidence', label: 'Доверие населения', fmt: idx0 },
     { key: 'businessConfidence', label: 'Доверие бизнеса', fmt: idx0 },
-    { key: 'govTrust', label: 'Доверие к правительству', fmt: idx0 },
+    { key: 'govTrust', label: 'Доверие к правительству', fmt: idx0,
+      hint: 'Отдельно от рейтинга власти: реакция на последовательность и предсказуемость курса, а не на сиюминутные успехи или неудачи.' },
   ] },
 ];
 
