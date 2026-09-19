@@ -2836,7 +2836,7 @@ function StanceBar({ value, leftLabel, rightLabel }) {
 }
 
 /* Панель ведомства, которым управляет бот */
-function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
+function BotPanel({ botRole, persona, lastAction, coordination }) {
   if (!botRole) return null;
   const isCb = botRole === 'central_bank';
   const Icon = isCb ? Landmark : Coins;
@@ -2849,21 +2849,6 @@ function BotPanel({ botRole, persona, lastAction, economy, coordination }) {
       </div>
       <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>
         <b style={{ color: COLOR.text }}>{persona.name}</b> · {persona.title}
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 11, marginBottom: 4 }}>
-        {isCb ? (
-          <>
-            <span style={{ color: COLOR.muted }}>Ставка: <span className="ems-mono" style={{ color: COLOR.text }}>{fmt2(economy.keyRate)}%</span></span>
-            <span style={{ color: COLOR.muted }}>Норматив капитала: <span className="ems-mono" style={{ color: COLOR.text }}>{fmt1(economy.capitalRequirement)}%</span></span>
-            <span style={{ color: COLOR.muted }}>Реальная ставка − r*: <span className="ems-mono" style={{ color: COLOR.text }}>{fmtSigned1(economy.policyStance)}</span></span>
-          </>
-        ) : (
-          <>
-            <span style={{ color: COLOR.muted }}>Баланс бюджета: <span className="ems-mono" style={{ color: COLOR.text }}>{fmtSigned1(economy.budgetBalancePctGdp)}% ВВП</span></span>
-            <span style={{ color: COLOR.muted }}>Долг: <span className="ems-mono" style={{ color: COLOR.text }}>{fmt1(economy.debtToGdp)}%</span></span>
-            <span style={{ color: COLOR.muted }}>НДС: <span className="ems-mono" style={{ color: COLOR.text }}>{fmt1(economy.vatRate)}%</span></span>
-          </>
-        )}
       </div>
       <StanceBar value={lastAction ? lastAction.stance : 0} leftLabel={isCb ? 'мягкая политика' : 'консолидация'} rightLabel={isCb ? 'жёсткая политика' : 'стимулирование'} />
       {lastAction && (
@@ -2946,7 +2931,7 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
           <span style={{ color: mine ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
             {mine ? 'Требование к вам: ' : `Указание ${dir.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
           </span>
-          {dir.ask || askText(dir.req, 1)}
+          {dir.ask || askText(dir.req, 1, 'president')}
           {mine && (
             <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
               Выполнить — значит сдвинуть свои ползунки в эту сторону в этом квартале. Отказ никто не запрещает,
@@ -3035,14 +3020,17 @@ function RegimeLadder({ economy }) {
     : regime === 'crisis'
       ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
       : regime === 'authoritarian'
-        ? { label: 'тоталитарный режим', need: 'указ «Полный контроль над институтами» (50 ПК, только во время войны) — или напряжённость ≥ 80 и удержать её', at: 80 }
+        ? { label: 'тоталитарный режим', need: 'указ «Полный контроль над институтами» во время войны или напряжённость ≥ 80', at: 80 }
         : null;
   const bar = clamp(tension, 0, 100);
   return (
     <div style={{ marginTop: 10, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 10.5, marginBottom: 5 }}>
         <span style={{ color: COLOR.muted }}>Режим</span>
-        <span style={{ color: COLOR.text }}>{info.label || regime}</span>
+        {/* ярлыки авторитаризма и тоталитаризма сами заканчиваются на «режим»
+            («Авторитарный режим») — рядом с меткой поля получалась тавтология
+            «Режим: Авторитарный режим» */}
+        <span style={{ color: COLOR.text }}>{(info.label || regime).replace(/\s*режим$/i, '')}</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', color: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }}>
           напряжённость {tension}
         </span>
@@ -3055,26 +3043,28 @@ function RegimeLadder({ economy }) {
       {(regime === 'authoritarian' || regime === 'totalitarian') && (() => {
         /* Риск, о котором нельзя узнать заранее, — это лотерея, а не механика.
            Показываем его прямо: чем выше напряжение, безработица, инфляция и чем
-           меньше политического капитала, тем ближе армия. */
+           меньше политического капитала, тем ближе армия. Пока он пренебрежимо
+           мал, строка только шумит — ноль полезной информации при каждом взгляде
+           на панель, — поэтому ниже 1% в квартал её просто нет. */
         const risk = militaryCoupRisk(economy);
         // словом и числом — по одной и той же величине: «низкий · 3%» рядом с
         // порогом в 3% читался бы как ошибка
         const pct = Math.round(risk * 1000) / 10;
-        const color = pct >= 8 ? COLOR.rust : pct >= 3 ? COLOR.gold : COLOR.teal;
+        if (pct < 1) return null;
+        const color = pct >= 8 ? COLOR.rust : COLOR.gold;
         return (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 10.5, marginTop: 6 }}>
             <span style={{ color: COLOR.muted }}>Риск военного переворота</span>
             <span style={{ marginLeft: 'auto', color }} className="ems-mono">
-              {pct >= 8 ? 'высокий' : pct >= 3 ? 'заметный' : 'низкий'} · {pct}% за квартал
+              {pct >= 8 ? 'высокий' : 'заметный'} · {pct}% за квартал
             </span>
           </div>
         );
       })()}
       <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 5, lineHeight: 1.45 }}>
         {next
-          ? <>Следующая ступень — <b style={{ color: COLOR.muted }}>{next.label}</b>: {next.need}. Напряжённость растёт от низкого
-            рейтинга, кризисов, безработицы и инфляции; подавление протеста и непопулярные реформы добавляют её напрямую.</>
-          : 'Выше этой ступени лестницы нет: выборы отменены, сменить власть голосованием нельзя. Зато остаётся армия — чем выше напряжённость, безработица и инфляция, тем вероятнее военный переворот. Вниз режим сходит либо так, либо решением вернуть парламент.'}
+          ? <>Следующая ступень — <b style={{ color: COLOR.muted }}>{next.label}</b>: {next.need}. Напряжённость растёт от низкого рейтинга, кризисов, безработицы и инфляции.</>
+          : 'Дальше по этой лестнице идти некуда: выборов нет, голосованием власть не сменить. Остаётся армия — чем выше напряжённость, безработица и инфляция, тем вероятнее переворот. Спуститься можно только так или вернуть парламент по своей воле.'}
       </div>
     </div>
   );
@@ -3280,7 +3270,7 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
                       {isSel && <Check size={11} color={COLOR.gold} />}
                       <span style={{ fontSize: 12, color: isSel ? COLOR.goldSoft : COLOR.text }}>{r.label}</span>
                     </div>
-                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{askText(r, r.scale ? (directiveStrength || 1) : 1)}»</div>}
+                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{askText(r, r.scale ? (directiveStrength || 1) : 1, 'president')}»</div>}
                     {/* «снизить ставку» без указания насколько — это не указание:
                         один пункт для ставки очень много, и просить можно меньше */}
                     {isSel && r.scale && (
@@ -4342,7 +4332,7 @@ function FiscalMath({ economy, decisions }) {
 
 /* Сводка по ведомству, которым управляет бот */
 const SUMMARY_TABS = {
-  central_bank: { id: 'summary', label: 'Сводка ЦБ', icon: Landmark, rows: [
+  central_bank: { id: 'summary_cb', label: 'Сводка ЦБ', icon: Landmark, rows: [
     // ставка ходит шагом 0.25 п.п., а pctFmt округлял до десятых: 5.25% и 5.5%
     // выглядели как «5.3%» и «5.5%», то есть разный шаг казался одинаковым
     { key: 'keyRate', label: 'Ключевая ставка', fmt: (v) => `${fmt2(v)}%` },
@@ -4359,7 +4349,7 @@ const SUMMARY_TABS = {
     { key: 'reserves', label: 'Резервы', fmt: fmtMoney },
     { label: 'Режим курса', get: (e) => e.fxRegime, text: true, map: { free: 'плавающий', managed: 'управляемый', peg: 'фиксированный' } },
   ] },
-  ministry_finance: { id: 'summary', label: 'Сводка Минфина', icon: Coins, rows: [
+  ministry_finance: { id: 'summary_mof', label: 'Сводка Минфина', icon: Coins, rows: [
     { key: 'govRevenue', label: 'Доходы бюджета', fmt: fmtMoney },
     { key: 'govSpendingTotal', label: 'Расходы бюджета', fmt: fmtMoney },
     { key: 'budgetBalancePctGdp', label: 'Баланс бюджета', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
@@ -4376,6 +4366,13 @@ const SUMMARY_TABS = {
     { label: 'Доля здравоохранения', get: (e) => e.budgetShares.health, fmt: pctFmt },
   ] },
 };
+/* «Показатели экономики» — единственное место, где смотрят на ставку, норматив
+   капитала, баланс бюджета и прочие цифры ведомств: раньше те же три-четыре
+   значения ещё раз печатались прямо в карточке бота (см. BotPanel), и правка
+   там неизбежно расходилась с тем, что показывала эта вкладка. При «обоих ботах»
+   (президент, трейдер) нужны сразу обе сводки, а не только одна. */
+const tabsForBotRole = (botRole) => (botRole === 'both' ? [...INDICATOR_TABS, SUMMARY_TABS.central_bank, SUMMARY_TABS.ministry_finance]
+  : botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS);
 
 /* Рычаги в миллиардах масштабируются вместе с экономикой, курсовой ориентир — вокруг текущего курса */
 function scaleLever(l, e) {
@@ -5981,6 +5978,19 @@ const loadCustomDashboards = () => {
 const persistCustomDashboards = (list) => {
   try { localStorage.setItem(CUSTOM_DASHBOARDS_KEY, JSON.stringify(list)); } catch { /* приватный режим */ }
 };
+/* Свои наборы дашбордов лежат и в localStorage устройства, и — снимком на момент
+   сохранения — в каждой партии. Без надгробного списка удалённый набор молча
+   возвращался: загрузка более старой партии видела его в своём снимке, не
+   находила среди актуальных (loadCustomDashboards уже без него) и решала, что
+   это забытый набор из прошлого, который надо вернуть. */
+const DELETED_CUSTOM_KEY = 'ems-deleted-dashboards';
+const loadDeletedCustomIds = () => {
+  try { const arr = JSON.parse(localStorage.getItem(DELETED_CUSTOM_KEY) || '[]'); return Array.isArray(arr) ? arr : []; }
+  catch { return []; }
+};
+const persistDeletedCustomIds = (list) => {
+  try { localStorage.setItem(DELETED_CUSTOM_KEY, JSON.stringify(list.slice(-200))); } catch { /* приватный режим */ }
+};
 /* Встроенные наборы («Обзор», «Цены и ставки»…) удалить насовсем нельзя — иначе
    их было бы не вернуть; вместо этого запоминаем, какие из них скрыты, и «Сбросить»
    возвращает список к заводскому виду. */
@@ -6003,7 +6013,9 @@ const persistPresetNames = (map) => {
 // этой возможности) — подмешиваем их к общеустройственным и заодно закрепляем там же.
 function initDashboards(savedDashboards) {
   const stored = loadCustomDashboards();
-  const extra = (savedDashboards || []).filter((d) => d && d.custom && !stored.some((s) => s.id === d.id));
+  const deleted = loadDeletedCustomIds();
+  const extra = (savedDashboards || []).filter((d) => d && d.custom
+    && !stored.some((s) => s.id === d.id) && !deleted.includes(d.id));
   const merged = [...stored, ...extra];
   if (extra.length) persistCustomDashboards(merged);
   const hidden = loadHiddenPresets();
@@ -6110,6 +6122,9 @@ function makeDashboardActions(setDashboards) {
     deleteDash: (id) => setDashboards((ds) => {
       const target = ds.find((d) => d.id === id);
       if (target && !target.custom) persistHiddenPresets([...loadHiddenPresets().filter((x) => x !== id), id]);
+      // надгробие нужно только своим наборам: встроенные и так не возвращаются
+      // из старых партий (initDashboards пересобирает их заново из HIDDEN_PRESETS_KEY)
+      if (target && target.custom) persistDeletedCustomIds([...loadDeletedCustomIds().filter((x) => x !== id), id]);
       return syncCustom(ds.filter((d) => d.id !== id));
     }),
     renameDash: (id) => setDashboards((ds) => {
@@ -10332,7 +10347,7 @@ function PinButton({ active, onClick }) {
 /* Полоса требований: то, чего от вас прямо сейчас хотят */
 function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   const items = [];
-  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1), color: COLOR.gold });
+  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1, 'president'), color: COLOR.gold });
   if (economy.mandate) items.push({ who: 'Мандат власти', text: `Новое правительство пришло с задачей: ${MANDATE_LABEL[economy.mandate] || economy.mandate}.`, color: COLOR.gold });
   if (botAction && botAction.demand) items.push({ who: botRole === 'central_bank' ? 'Центральный банк' : 'Минфин', text: botAction.demand, color: COLOR.blue });
   // у президента оба ведомства — боты, и требования к нему идут с обеих сторон
@@ -10524,7 +10539,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     groups.includes('fiscal') && { id: 'fiscal-budget', label: 'Бюджет' },
   ].filter(Boolean);
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
-  const tabs = useMemo(() => (botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS), [botRole]);
+  const tabs = useMemo(() => tabsForBotRole(botRole), [botRole]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
@@ -10709,7 +10724,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           headline: `${presDirMemo.lastReqId === dir.reqId
             ? `ПРЕЗИДЕНТ ВНОВЬ ТРЕБУЕТ ОТ ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИНА'}`
             : `ПРЕЗИДЕНТ → ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИН'}`}: ${dir.req.label.toUpperCase()} — ${word}`,
-          text: `«${dir.ask || askText(dir.req, 1)}» ${verdict === 'met'
+          text: `«${dir.ask || askText(dir.req, 1, 'president')}» ${verdict === 'met'
             ? 'Ведомство пошло навстречу — администрация это отметила.'
             : verdict === 'partial'
               ? `Ведомство сделало примерно ${pct}% запрошенного. В администрации это считают полумерой.`
@@ -11158,11 +11173,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           ) : isPresident ? (
             <>
               <PromisesPanel promises={promises} economy={economy} />
-              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} economy={economy} coordination={economy.policyCoordination} />
-              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} economy={economy} coordination={economy.policyCoordination} />
+              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} />
+              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} />
             </>
           ) : botRole ? (
-            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} economy={economy} coordination={economy.policyCoordination} />
+            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} />
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
