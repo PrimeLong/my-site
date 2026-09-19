@@ -7896,6 +7896,12 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   const [storageMode, setStorageMode] = useState(null);
   const [showAch, setShowAch] = useState(false);
   const [showLink, setShowLink] = useState(false);
+  // партия из автосохранения обычно открывается сама, минуя меню (см. App()) —
+  // сюда игрок попадает с ней «на руках» только если разбирался с крашем
+  // («Вернуться в меню» не трогает автосохранение) или пришёл по ссылке-
+  // приглашению в сетевую комнату. Карточка здесь — и подстраховка на этот
+  // случай, и просто видимое подтверждение того, что автосохранение вообще есть.
+  const [autosave, setAutosaveState] = useState(loadAutosave);
   React.useEffect(() => {
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(SOLO_SLOT_COUNT).fill(null)));
@@ -7974,6 +7980,27 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
               запроса и могут пропасть между обращениями. Это настройка развёртывания
               (переменные окружения <b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>),
               не баг в самой партии.
+            </div>
+          </div>
+        )}
+
+        {autosave && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20, borderColor: COLOR.gold }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+              <Clock size={13} color={COLOR.gold} />
+              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Автосохранение</span>
+            </div>
+            <div className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+              background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
+              <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
+                {(ROLES.find((r) => r.id === autosave.setup.role) || {}).short || autosave.setup.role} · {quarterLabel(autosave.quarterIndex || 1)}
+              </span>
+              <button className="ems-btn primary" style={{ padding: '4px 9px', fontSize: 11 }}
+                onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onLoad(autosave); }}>Играть</button>
+              <button onClick={() => { clearAutosave(); setAutosaveState(null); }} aria-label="Скрыть автосохранение"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                <X size={12} />
+              </button>
             </div>
           </div>
         )}
@@ -10942,10 +10969,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   // ни одного поля состояния. Держим с запасом (8, а не 3) на случай, если между
   // кварталами эффект сработает не идеально ровно.
   const rollbackHistoryRef = React.useRef([]);
+  // короткая вспышка «автосохранено» — единственное подтверждение того, что
+  // автосохранение вообще происходит: раньше оно было полностью незаметным,
+  // и со стороны выглядело так, будто его нет вовсе
+  const [autosaveFlash, setAutosaveFlash] = useState(false);
   React.useEffect(() => {
     const snap = snapshot();
     rollbackHistoryRef.current = [...rollbackHistoryRef.current, { quarterIndex, snap }].slice(-8);
     saveAutosave(snap);
+    setAutosaveFlash(true);
+    const t = setTimeout(() => setAutosaveFlash(false), 2500);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarterIndex]);
   const rollbackTarget = rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
@@ -11350,6 +11384,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
+          {autosaveFlash && (
+            <span className="ems-fade-in" style={{ fontSize: 10.5, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4 }}
+              title="Партия автосохраняется в этом браузере на каждый квартал">
+              <Check size={11} color={COLOR.teal} />автосохранено
+            </span>
+          )}
           <div style={{ position: 'relative' }}>
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
               title="Сложность партии" className="ems-btn"
