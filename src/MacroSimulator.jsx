@@ -2182,6 +2182,31 @@ const mixHex = (a, b, t) => {
   const m = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, '0');
   return `#${m(1)}${m(3)}${m(5)}`;
 };
+const hexLuminance = (hex) => {
+  const c = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * c(1) + 0.7152 * c(3) + 0.0722 * c(5);
+};
+const contrastRatio = (hexA, hexB) => {
+  const a = hexLuminance(hexA); const b = hexLuminance(hexB);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+};
+/* Тоталитарная бумага светлеет фоном и темнеет текстом (наоборот у демократии) —
+   а линейная интерполяция между двумя такими концами на полпути неизбежно сводит
+   и фон, и текст к одному и тому же блёклому серому: газета читалась ровно так,
+   как её описал игрок, — серым по серому. Если смешанный текст на смешанном фоне
+   не набирает читаемого контраста, дотягиваем его до чёрного или белого — смотря
+   что дальше от фона в моменте — вместо того чтобы верить, что оба конца сами
+   разойдутся к нужным крайностям. */
+const ensureReadable = (bgHex, fgHex, minRatio) => {
+  if (contrastRatio(bgHex, fgHex) >= minRatio) return fgHex;
+  const toward = hexLuminance(bgHex) > 0.4 ? '#000000' : '#FFFFFF';
+  let result = fgHex;
+  for (let t = 0.05; t <= 1; t += 0.05) {
+    result = mixHex(fgHex, toward, t);
+    if (contrastRatio(bgHex, result) >= minRatio) break;
+  }
+  return result;
+};
 const POLITICAL_PAPER_TARGET = {
   crisis: { paper: '#E2D9BE', paperText: '#241C12', paperMuted: '#6B5A3E', paperRule: '#8C6B3E' },
   authoritarian: { paper: '#B5AF9C', paperText: '#1C1B15', paperMuted: '#4A483C', paperRule: '#6C6755' },
@@ -2190,18 +2215,49 @@ const POLITICAL_PAPER_TARGET = {
 function politicalPaperPalette(base, economy) {
   const regime = economy && economy.politicalRegime;
   const target = POLITICAL_PAPER_TARGET[regime];
-  if (!target) return base;
+  if (!target) return { ...base, k: 0, regime };
   const tension = clamp((economy.politicalTension || 0) / 100, 0, 1);
   const war = (economy.warQuartersLeft || 0) > 0;
   const k = regime === 'totalitarian' ? clamp(0.6 + tension * 0.3 + (war ? 0.1 : 0), 0.6, 1)
     : regime === 'authoritarian' ? clamp(0.6 + tension * 0.35, 0.6, 0.95)
       : clamp(0.18 + tension * 0.3, 0.18, 0.5); // crisis: тревожно, но ещё не мрачно
+  const paper = mixHex(base.paper, target.paper, k);
+  const paperRule = mixHex(base.paperRule, target.paperRule, k);
   return {
-    paper: mixHex(base.paper, target.paper, k),
-    paperText: mixHex(base.paperText, target.paperText, k),
-    paperMuted: mixHex(base.paperMuted, target.paperMuted, k),
-    paperRule: mixHex(base.paperRule, target.paperRule, k),
+    paper,
+    paperText: ensureReadable(paper, mixHex(base.paperText, target.paperText, k), 4.5),
+    paperMuted: ensureReadable(paper, mixHex(base.paperMuted, target.paperMuted, k), 3.0),
+    paperRule,
+    k, regime,
   };
+}
+/* «Материальность» бумаги: зерно, лёгкое старение к краям и — для тоталитаризма —
+   подпалённые углы. Интенсивность растёт вместе с k, так что демократическая
+   бумага остаётся чистой и хрустящей, а тоталитарная выглядит так, будто её
+   читали при свече и один раз чуть не сожгли. */
+function PaperTexture({ k, burn }) {
+  return (
+    <>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05 + k * 0.16, mixBlendMode: 'multiply',
+        backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")",
+        backgroundSize: '180px 180px' }} />
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: `radial-gradient(120% 90% at 50% 42%, transparent 52%, rgba(20,14,6,${0.06 + k * 0.24}) 100%)` }} />
+      {/* сгиб — тонкая тень посередине листа, как от сложенной пополам газеты */}
+      <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 2, marginLeft: -1, pointerEvents: 'none',
+        background: `linear-gradient(90deg, transparent, rgba(0,0,0,${0.05 + k * 0.08}), transparent)` }} />
+      {burn > 0 && (
+        <>
+          <div style={{ position: 'absolute', top: -36, left: -36, width: 190, height: 190, pointerEvents: 'none', filter: 'blur(3px)', opacity: burn,
+            background: 'radial-gradient(circle, rgba(18,9,3,0.95) 0%, rgba(46,24,8,0.55) 38%, transparent 72%)' }} />
+          <div style={{ position: 'absolute', bottom: -46, right: -30, width: 230, height: 230, pointerEvents: 'none', filter: 'blur(4px)', opacity: burn,
+            background: 'radial-gradient(circle, rgba(15,7,2,0.92) 0%, rgba(40,20,7,0.5) 40%, transparent 72%)' }} />
+          <div style={{ position: 'absolute', top: -20, right: -50, width: 140, height: 140, pointerEvents: 'none', filter: 'blur(3px)', opacity: burn * 0.7,
+            background: 'radial-gradient(circle, rgba(18,9,3,0.85) 0%, transparent 68%)' }} />
+        </>
+      )}
+    </>
+  );
 }
 
 /* Иконка «экономической погоды» на первой полосе — тот же REGIME_INFO, которым
@@ -2281,8 +2337,16 @@ function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
   const weatherIcon = WEATHER_ICON[econRegimeId] || WEATHER_ICON.normal;
   const weatherInfo = REGIME_INFO[econRegimeId] || REGIME_INFO.normal;
   const atWar = economy && (economy.warQuartersLeft || 0) > 0;
+  // подпалины — только у тоталитаризма всерьёз («слегка сгоревшая», как и просили);
+  // авторитаризм получает лёгкий намёк, чтобы переход не был внезапным
+  const burnIntensity = pp.regime === 'totalitarian' ? pp.k : pp.regime === 'authoritarian' ? pp.k * 0.3 : 0;
   const PaperBox = ({ children, style }) => (
-    <div style={{ background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`, padding: '18px 20px', transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>{children}</div>
+    <div style={{ position: 'relative', overflow: 'hidden', background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`,
+      padding: '18px 20px', boxShadow: '0 18px 50px -18px rgba(0,0,0,0.65), 0 4px 14px rgba(0,0,0,0.35)',
+      transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>
+      <PaperTexture k={pp.k || 0} burn={burnIntensity} />
+      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
+    </div>
   );
 
   // хроника: фильтр по рубрике + поиск по тексту + постраничная подгрузка —
