@@ -2931,7 +2931,7 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
           <span style={{ color: mine ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
             {mine ? 'Требование к вам: ' : `Указание ${dir.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
           </span>
-          {dir.ask || askText(dir.req, 1, 'president')}
+          {dir.ask || askText(dir.req, 1, 'president', economy.politicalRegime)}
           {mine && (
             <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
               Выполнить — значит сдвинуть свои ползунки в эту сторону в этом квартале. Отказ никто не запрещает,
@@ -3097,7 +3097,12 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
         <span style={{ fontSize: 12.5, color: selected ? COLOR.goldSoft : COLOR.text, fontWeight: 600, flex: 1 }}>{action.label}</span>
         <span className="ems-mono" style={{ fontSize: 11, color: selected ? COLOR.goldSoft : COLOR.muted, flexShrink: 0 }}>{action.cost} ПК</span>
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{action.desc}</div>
+      {/* решение, запертое условием («доступно при беспорядках или напряжённости
+          от 45»), может оставаться недоступным весь ранний квартал партии —
+          абзац описания в таком виде только растягивает список вниз, когда
+          выбрать всё равно нельзя; причина недоступности сама по себе короче
+          и полезнее */}
+      {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{action.desc}</div>}
       {done && REFORM_RAMP[action.id] && (
         <div style={{ marginTop: 5, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${share * 100}%`, height: '100%', background: COLOR.teal }} />
@@ -3270,7 +3275,7 @@ function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPersonaId
                       {isSel && <Check size={11} color={COLOR.gold} />}
                       <span style={{ fontSize: 12, color: isSel ? COLOR.goldSoft : COLOR.text }}>{r.label}</span>
                     </div>
-                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{askText(r, r.scale ? (directiveStrength || 1) : 1, 'president')}»</div>}
+                    {isSel && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 4 }}>«{askText(r, r.scale ? (directiveStrength || 1) : 1, 'president', economy.politicalRegime)}»</div>}
                     {/* «снизить ставку» без указания насколько — это не указание:
                         один пункт для ставки очень много, и просить можно меньше */}
                     {isSel && r.scale && (
@@ -3566,7 +3571,12 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
   if (networkPlayed) ids.push('network_played');
   if ((lastEvents || []).some((e) => e.kind === 'call')) ids.push('margin_call');
   if (role === 'president') {
-    if (Object.keys(economy.reforms || {}).length >= 3) ids.push('reformer');
+    // объявить реформу — не то же самое, что провести её: у судебной или
+    // пенсионной реформы эффект разворачивается 8-12 кварталов, и указ,
+    // подписанный минуту назад, до сих пор не изменил в стране ничего
+    const completedReforms = Object.keys(economy.reforms || {})
+      .filter((id) => reformShare(economy.reforms, id) >= 1).length;
+    if (completedReforms >= 3) ids.push('reformer');
     if (economy.politicalRegime === 'totalitarian') ids.push('iron_president');
   }
   return ids;
@@ -3613,10 +3623,10 @@ function useAchievementToasts() {
 // CSS-переменные; пересоздаётся только когда меняется само достижение (по toast.id),
 // а не на каждый ре-рендер, иначе разлёт «дёргался» бы при любом обновлении родителя.
 const CONFETTI_COLORS = ['#C9A227', '#E8C766', '#4E9A82', '#B0503A', '#5B7FA6', '#EDE7D6'];
-function useConfettiPieces(seed, count = 16) {
+function useConfettiPieces(seed, count = 26) {
   return React.useMemo(() => Array.from({ length: count }, (_, i) => {
     const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.6;
-    const dist = 34 + Math.random() * 46;
+    const dist = 40 + Math.random() * 58;
     return {
       key: i,
       dx: `${(Math.cos(angle) * dist).toFixed(1)}px`,
@@ -3624,8 +3634,8 @@ function useConfettiPieces(seed, count = 16) {
       rot: `${Math.round((Math.random() - 0.5) * 520)}deg`,
       delay: `${(Math.random() * 0.12).toFixed(2)}s`,
       color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      w: 4 + Math.round(Math.random() * 3),
-      h: 7 + Math.round(Math.random() * 5),
+      w: 5 + Math.round(Math.random() * 4),
+      h: 8 + Math.round(Math.random() * 6),
     };
   }), [seed, count]);
 }
@@ -3633,9 +3643,9 @@ const AchievementToast = ({ toast, leaving }) => {
   const pieces = useConfettiPieces(toast ? toast.id : null);
   if (!toast) return null;
   return (
-    <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 90, maxWidth: 300,
-      padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
-      <span style={{ position: 'relative', fontSize: 26, lineHeight: 1 }}>
+    <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} style={{ position: 'fixed', bottom: 18, right: 18, zIndex: 90, maxWidth: 350,
+      padding: '13px 17px', display: 'flex', alignItems: 'center', gap: 12, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
+      <span style={{ position: 'relative', fontSize: 32, lineHeight: 1 }}>
         {toast.icon}
         {!leaving && pieces.map((p) => (
           <span key={p.key} className="ems-confetti-piece" style={{
@@ -3645,8 +3655,8 @@ const AchievementToast = ({ toast, leaving }) => {
         ))}
       </span>
       <div>
-        <div style={{ fontSize: 10, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
-        <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginTop: 1 }}>{toast.title}</div>
+        <div style={{ fontSize: 10.5, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
+        <div className="ems-serif" style={{ fontSize: 15.5, color: COLOR.goldSoft, marginTop: 2 }}>{toast.title}</div>
       </div>
     </div>
   );
@@ -10237,7 +10247,10 @@ const INDICATOR_TABS = [
     { key: 'moneySupply', label: 'Денежная масса (индекс)', fmt: fmt1 },
   ] },
   { id: 'money', label: 'Ставки', icon: Banknote, rows: [
-    { key: 'keyRate', label: 'Ключевая ставка', fmt: pctFmt },
+    // ставка ходит шагом 0.25 п.п.: округление до десятых схлопывает соседние
+    // значения (8.75% и 9.0% выглядели бы одинаково как «8.8%» и «9.0%» —
+    // то есть разный шаг казался бы одинаковым или вовсе пропадал)
+    { key: 'keyRate', label: 'Ключевая ставка', fmt: (v) => `${fmt2(v)}%` },
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'depositRate', label: 'Ставка по депозитам', fmt: pctFmt },
     { key: 'realLendingRate', label: 'Реальная ставка по кредитам', fmt: pctFmt },
@@ -10385,7 +10398,7 @@ function PinButton({ active, onClick }) {
 /* Полоса требований: то, чего от вас прямо сейчас хотят */
 function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   const items = [];
-  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1, 'president'), color: COLOR.gold });
+  if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1, 'president', economy.politicalRegime), color: COLOR.gold });
   if (economy.mandate) items.push({ who: 'Мандат власти', text: `Новое правительство пришло с задачей: ${MANDATE_LABEL[economy.mandate] || economy.mandate}.`, color: COLOR.gold });
   if (botAction && botAction.demand) items.push({ who: botRole === 'central_bank' ? 'Центральный банк' : 'Минфин', text: botAction.demand, color: COLOR.blue });
   // у президента оба ведомства — боты, и требования к нему идут с обеих сторон
@@ -10551,6 +10564,15 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [activeTab, setActiveTab] = useState('economy');
   const { chartGroup, setChartGroup, period, setPeriod, hiddenSeries, setHiddenSeries } = useChartView();
   const [busy, setBusy] = useState(false);
+  // короткая заморозка кнопки после обработки квартала: без неё нетерпеливый
+  // клик по уже отпущенной кнопке прогонял несколько кварталов подряд быстрее,
+  // чем успевала прочитаться лента новостей
+  const [finishCooldown, setFinishCooldown] = useState(0);
+  React.useEffect(() => {
+    if (finishCooldown <= 0) return undefined;
+    const t = setTimeout(() => setFinishCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [finishCooldown]);
 
   const activeBotPersona = botRole === 'central_bank' ? getCbPersona(cbPersonaId) : botRole === 'ministry_finance' ? getMofPersona(mofPersonaId) : null;
   const onTrade = (id, amt, side, live) => setPortfolio((b) => {
@@ -10762,7 +10784,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           headline: `${presDirMemo.lastReqId === dir.reqId
             ? `ПРЕЗИДЕНТ ВНОВЬ ТРЕБУЕТ ОТ ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИНА'}`
             : `ПРЕЗИДЕНТ → ${playerBranch === 'monetary' ? 'ЦБ' : 'МИНФИН'}`}: ${dir.req.label.toUpperCase()} — ${word}`,
-          text: `«${dir.ask || askText(dir.req, 1, 'president')}» ${verdict === 'met'
+          text: `«${dir.ask || askText(dir.req, 1, 'president', economy.politicalRegime)}» ${verdict === 'met'
             ? 'Ведомство пошло навстречу — администрация это отметила.'
             : verdict === 'partial'
               ? `Ведомство сделало примерно ${pct}% запрошенного. В администрации это считают полумерой.`
@@ -10882,6 +10904,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setDecisionsBaseline(nextDecisions);
     setQuarterIndex((q) => q + 1);
     setBusy(false);
+    setFinishCooldown(3);
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
@@ -11339,9 +11362,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
                 : 'Обе ветви политики под вашим контролем'}
           </span>
-          <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={finishQuarter}
+          <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy || finishCooldown > 0} onClick={finishQuarter}
             aria-label="Завершить квартал и применить решения">
-            {busy ? 'Обработка…' : 'Завершить квартал'}
+            {busy ? 'Обработка…' : finishCooldown > 0 ? `Подождите ${finishCooldown}с` : 'Завершить квартал'}
           </button>
         </div>
       )}
