@@ -577,8 +577,52 @@ const reqAmount = (req, strength) => (req && req.scale ? req.scale.base : 1)
 /* Текст просьбы. «Снизить ставку на 1 п.п.» и «на 0,25 п.п.» — разные просьбы, и в
    новостях обязана стоять та, которую действительно выдвинули: раньше в кавычках
    всегда висела базовая формулировка, сколько бы ни просили на самом деле. */
-const askText = (req, strength) => (!req ? ''
-  : typeof req.ask === 'function' ? req.ask(reqAmount(req, strength)) : req.ask);
+const askText = (req, strength, bySpeaker) => {
+  if (!req) return '';
+  const raw = typeof req.ask === 'function' ? req.ask(reqAmount(req, strength)) : req.ask;
+  // указание ведомству от имени президента передаёт он сам, а не то ведомство,
+  // чьим голосом написан текст просьбы («...вынудит НАС держать ставку выше» —
+  // это фраза ЦБ о себе). Без замены президент рассказывал бы про ставку так,
+  // будто сам её устанавливает, хотя ни одного рычага у него нет.
+  if (bySpeaker === 'president' && req.from) {
+    const institutionName = req.from === 'central_bank' ? 'ЦБ' : 'Минфин';
+    // \b в JS-регулярках размечает границы по ASCII \w и кириллицу словом не
+    // считает — «\bнас\b» поэтому вообще не находит «нас» внутри кириллического
+    // текста ни разу. \p{L} с флагом u распознаёт кириллицу как буквы корректно.
+    return raw.replace(/(?<!\p{L})нас(?!\p{L})/giu, institutionName)
+      .replace(/(?<!\p{L})нам(?!\p{L})/giu, institutionName);
+  }
+  return raw;
+};
+/* «Согласились наполовину» у ставочных запросов считается от того, что бот и
+   так планировал сделать в этом квартале (decisions.keyRate ДО применения
+   запроса — а это уже решение бота, которое само может быть повышением на
+   фоне высокой инфляции), а не от ставки, которая реально действовала
+   прошлый квартал (economy.keyRate). Если инфляция достаточно сильна,
+   уступка в сторону смягчения может не спасти ставку от роста — и тогда
+   статический текст «снижает вдвое меньше запрошенного» прямо противоречит
+   соседней новости о повышении ставки, которая смотрит именно на факт:
+   выросла ставка относительно прошлого квартала или нет. Поэтому текст у
+   rate_cut/rate_hike сравнивает итог именно с economy.keyRate. */
+function requestOutcomeText(req, status, economyBefore, after) {
+  if ((req.id === 'rate_cut' || req.id === 'rate_hike') && status !== 'rejected') {
+    const beforeRate = Number.isFinite(economyBefore.keyRate) ? economyBefore.keyRate : 0;
+    const afterRate = Number.isFinite(after.keyRate) ? after.keyRate : beforeRate;
+    const cut = afterRate < beforeRate - 0.01;
+    const hike = afterRate > beforeRate + 0.01;
+    if (req.id === 'rate_cut') {
+      if (cut) return status === 'accepted' ? req.yes : req.partial;
+      return hike
+        ? `Центральный банк смягчает свою реакцию, но инфляция всё равно требует более высокой ставки — она растёт до ${rf2(afterRate)}%, просто меньше, чем без уступки.`
+        : `Центральный банк идёт навстречу и отказывается от дальнейшего повышения, но снизить ставку пока не готов — она остаётся на ${rf2(afterRate)}%.`;
+    }
+    if (hike) return status === 'accepted' ? req.yes : req.partial;
+    return cut
+      ? `Центральный банк ужесточает тон, но экономика требует смягчения — ставка всё равно снижается до ${rf2(afterRate)}%.`
+      : `Центральный банк соглашается не смягчать политику дальше, но и на решительное повышение пока не идёт — ставка остаётся на ${rf2(afterRate)}%.`;
+  }
+  return status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no;
+}
 
 const REQUESTS = [
   { id: 'infra_up', from: 'central_bank', label: 'Нарастить госинвестиции',
@@ -722,10 +766,11 @@ function processRequest(reqId, economy, botKind, personaId, decisions) {
     + (economy.policyCoordination > 70 ? 0.3 : economy.policyCoordination < 35 ? -0.4 : 0);
   const status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
   const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
+  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k, economy) } : decisions;
   return {
     req, status, score, ask: askText(req, 1),
-    decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k, economy) } : decisions,
-    text: status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no,
+    decisions: finalDecisions,
+    text: requestOutcomeText(req, status, economy, finalDecisions),
     coordination: status === 'accepted' ? 9 : status === 'partial' ? 4 : -7,
   };
 }
@@ -1185,10 +1230,11 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   // независимость ЦБ — не декларация, а то, насколько заметно он выполняет
   // политические указания; рынок это видит и переоценивает якорь ожиданий
   const credibilityHit = toCb ? -7 * k : 0;
+  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions;
   return {
-    req, status, score, toCb, persona, strength: str, ask: askText(req, str),
-    decisions: k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions,
-    text: status === 'accepted' ? req.yes : status === 'partial' ? req.partial : req.no,
+    req, status, score, toCb, persona, strength: str, ask: askText(req, str, 'president'),
+    decisions: finalDecisions,
+    text: requestOutcomeText(req, status, economy, finalDecisions),
     credibilityHit,
     tension: status === 'rejected' ? 5 : 0,
     coordination: status === 'accepted' ? 5 : status === 'partial' ? 2 : -6,
@@ -1398,7 +1444,7 @@ function botPresident(s, personaId, difficulty, ctx) {
   const canPressure = capital >= PRES_DIRECTIVE_COST + 4;
   const directive = canPressure && best && best.sc >= threshold
     ? { reqId: best.req.id, branch: branchOf(best.req), toPlayer: branchOf(best.req) === playerBranch,
-      req: best.req, ask: askText(best.req, 1) }
+      req: best.req, ask: askText(best.req, 1, 'president') }
     : null;
 
   /* --- 3. смена руководителя ведомства, которым игрок не управляет --- */
@@ -1431,7 +1477,7 @@ function botPresident(s, personaId, difficulty, ctx) {
     newsHeadline: `ПРЕЗИДЕНТ ${directive
       ? `→ ${directive.branch === 'monetary' ? 'ЦБ' : 'МИНФИН'}: ${directive.req.label.toUpperCase()}`
       : 'О ПОЛОЖЕНИИ ДЕЛ'}`,
-    demand: directive ? `Президент (${P.name}): ${askText(directive.req, 1)}` : null,
+    demand: directive ? `Президент (${P.name}): ${askText(directive.req, 1, 'president')}` : null,
   };
 }
 
@@ -2581,8 +2627,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // мигать не могут
   prevCrises.filter((c) => !activeCrises.includes(c)).forEach((c) => {
     if (c === 'war' && s.warByChoice) {
-      news.push(mkNews('gov', 'ВОЕННАЯ ОПЕРАЦИЯ ЗАВЕРШЕНА',
-        'Официально — «цели достигнуты». Санкции снимаются медленнее, чем вводились, капитал возвращается неохотно, а потенциал, из которого забрали людей и мощности, восстанавливается годами. Чрезвычайные полномочия перестают быть доступны.',
+      // при авторитаризме и тем более тоталитаризме государственная пресса не
+      // станет сама признавать, что санкции снимаются неохотно, а капитал и
+      // потенциал не возвращаются вместе с перемирием, — это ровно те факты,
+      // которые превращают победную реляцию в её противоположность
+      const authoritarianPress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+      news.push(mkNews('gov', 'ВОЕННАЯ ОПЕРАЦИЯ ЗАВЕРШЕНА', authoritarianPress
+        ? 'Официальное сообщение: поставленные задачи выполнены полностью, операция завершена победой. Чрезвычайные полномочия, введённые на время войны, снимаются — страна возвращается к мирной жизни с позиции силы.'
+        : 'Официально — «цели достигнуты». Санкции снимаются медленнее, чем вводились, капитал возвращается неохотно, а потенциал, из которого забрали людей и мощности, восстанавливается годами. Чрезвычайные полномочия перестают быть доступны.',
         { priority: 9, chain: ['Война окончена', 'Премия за риск ↓', 'Санкции остаются', 'Потенциал восстанавливается годами'] }));
     } else if (c === 'war') {
       const endNote = s.warType === 'offensive'
@@ -3157,11 +3209,15 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
      в коде, так что перестановка ничего не ломает. */
   let cbReported = false;
   const actions = [botAction, ...(extraActions || [])].filter(Boolean);
-  actions.forEach((act, ix) => {
+  // раньше сюда же подмешивался периодический «отчёт о том, что ничего не
+  // изменилось» раз в 8 кварталов (once(`bot${ix}`, 8)) — без реального повода
+  // это читалось как «зачем вообще об этом писать»; сводка ведомства теперь
+  // попадает в ленту, только когда курс или требование правда изменились
+  actions.forEach((act) => {
     const isCb = act.institution === 'cb';
     const changedCourse = (isCb ? prev.botHeadline : prev.botHeadline2) !== act.headline;
     const newDemand = act.demand && (isCb ? prev.botDemand : prev.botDemand2) !== act.demand;
-    if (changedCourse || newDemand || once(`bot${ix}`, 8)) {
+    if (changedCourse || newDemand) {
       if (isCb) cbReported = true;
       if (publicMode) {
         push(isCb ? 'cb' : 'gov', act.publicHeadline || act.newsHeadline,
