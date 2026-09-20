@@ -3372,6 +3372,11 @@ const ACHIEVEMENTS = [
   { id: 'reformer', icon: '🏗️', title: 'Реформатор', desc: 'Проведи три структурные реформы за одну партию (президент).' },
   { id: 'own_hands', icon: '🕊️', title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
   { id: 'iron_president', icon: '🎖️', title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
+  { id: 'imf_bailout', icon: '🆘', title: 'Спасательный круг', desc: 'Играя за Минфин, получи экстренное финансирование МВФ вместо дефолта.' },
+  { id: 'diplomacy_sanctions', icon: '🚧', title: 'Экономическое давление', desc: 'Играя за президента, введи санкции против торгового партнёра.' },
+  { id: 'trade_bloc_join', icon: '🌍', title: 'Открытые границы', desc: 'Играя за президента, договорись о едином рынке с соседями.' },
+  { id: 'cds_trade', icon: '📉', title: 'Ставка на дефолт', desc: 'Соверши сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
+  { id: 'public_room_played', icon: '🚪', title: 'Открытая дверь', desc: 'Доиграй хотя бы один квартал в открытой (публичной) сетевой комнате.' },
 ];
 const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -3452,7 +3457,7 @@ function survivedCrisis(history) {
   if ((last.activeCrises || []).length > 0) return false;
   return history.slice(0, -1).some((h) => (h.activeCrises || []).length > 0);
 }
-function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role }) {
+function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role, presActionsThisQuarter, isPublicRoom }) {
   const ids = [];
   if (quarterIndex >= 1) ids.push('first_quarter');
   if (quarterIndex >= 20) ids.push('survivor_20');
@@ -3461,12 +3466,16 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
   if (history && history.length > 1 && history[0].gdp > 0 && economy.gdp >= history[0].gdp * 2) ids.push('gdp_double');
   if (economy.unemployment < 4) ids.push('low_unemployment');
   if (role === 'ministry_finance' && economy.debtToGdp < 35) ids.push('debt_control');
+  if (role === 'ministry_finance' && economy.imfActive) ids.push('imf_bailout');
   if (survivedCrisis(history)) ids.push('survived_crisis');
   if (economy.electionResult === 'incumbent') ids.push('won_election');
   if (rolesPlayed && ALL_ROLE_IDS.every((r) => rolesPlayed.includes(r))) ids.push('all_roles');
   if (networkPlayed) ids.push('network_played');
+  if (isPublicRoom) ids.push('public_room_played');
   if ((lastEvents || []).some((e) => e.kind === 'call')) ids.push('margin_call');
   if (role === 'president') {
+    if ((presActionsThisQuarter || []).includes('sanctions_impose')) ids.push('diplomacy_sanctions');
+    if ((presActionsThisQuarter || []).includes('trade_bloc')) ids.push('trade_bloc_join');
     // объявить реформу — не то же самое, что провести её: у судебной или
     // пенсионной реформы эффект разворачивается 8-12 кварталов, и указ,
     // подписанный минуту назад, до сих пор не изменил в стране ничего
@@ -5657,11 +5666,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
      означало бы отменить чужие уже принятые решения — для ЦБ/Минфина/президента
      в сетевой игре это не сделать без сервера и без риска обидеть партнёра. */
   const portfolioHistoryRef = React.useRef([]);
-  const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
-    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
-    const instr = INSTR_BY_ID[instrId];
-    return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
-  });
+  const onTrade = (instrId, amt, side, liveQuotes) => {
+    if (instrId === 'cds_sovereign') pushAch(unlockAchievements(['cds_trade']));
+    setPortfolio((b) => {
+      const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
+      const instr = INSTR_BY_ID[instrId];
+      return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
+    });
+  };
   const onCasino = (net) => {
     const casinoNet = (portfolio.casinoNet || 0) + net;
     setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
@@ -5736,6 +5748,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       pushAch(unlockAchievements(questProgressAchievementIds({
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
         rolesPlayed: recordRolePlayed(seat), networkPlayed: true, role: seatRole(seat).id,
+        presActionsThisQuarter: presActionsRef.current, isPublicRoom: !!r.isPublic,
       })));
       // «Своими руками» — вернуть парламент, распущенный указом, а не тот, который
       // распустил кризис: decreeRule ДО этого квартала (когда решение принималось)
@@ -7428,11 +7441,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [finishCooldown]);
 
   const activeBotPersona = botRole === 'central_bank' ? getCbPersona(cbPersonaId) : botRole === 'ministry_finance' ? getMofPersona(mofPersonaId) : null;
-  const onTrade = (id, amt, side, live) => setPortfolio((b) => {
-    const nb = tradeBook(b, id, amt, side, economy, live);
-    const instr = INSTR_BY_ID[id];
-    return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
-  });
+  const onTrade = (id, amt, side, live) => {
+    if (id === 'cds_sovereign') pushAch(unlockAchievements(['cds_trade']));
+    setPortfolio((b) => {
+      const nb = tradeBook(b, id, amt, side, economy, live);
+      const instr = INSTR_BY_ID[id];
+      return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
+    });
+  };
   const onCasino = (net) => {
     const casinoNet = (portfolio.casinoNet || 0) + net;
     setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
@@ -7665,6 +7681,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     pushAch(unlockAchievements(questProgressAchievementIds({
       quarterIndex, economy: result.economy, history: newHistory, lastEvents: traderEvents,
       rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(), role: setup.role,
+      presActionsThisQuarter: presActions,
     })));
     const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal,
       presidentActive: presEnabled });
