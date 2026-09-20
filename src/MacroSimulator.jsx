@@ -7788,12 +7788,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
-          {autosaveFlash && (
-            <span className="ems-fade-in" style={{ fontSize: 10.5, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4 }}
-              title="Партия автосохраняется в этом браузере на каждый квартал">
-              <Check size={11} color={COLOR.teal} />автосохранено
-            </span>
-          )}
+          <span style={{ fontSize: 10.5, color: autosaveFlash ? COLOR.teal : COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4, transition: 'color 0.6s ease' }}
+            title={Number.isFinite(activeSlot)
+              ? `Партия в слоте ${activeSlot + 1}: каждый квартал автосохраняется туда же (и параллельно в этот браузер).`
+              : 'Партия не привязана ни к одному слоту сохранений: автосохраняется только в этом браузере и пропадёт при его очистке. Сохраните вручную («Партия»), чтобы закрепить её за слотом и не потерять при смене устройства.'}>
+            <Check size={11} color={autosaveFlash ? COLOR.teal : COLOR.faint} />
+            {Number.isFinite(activeSlot) ? `слот ${activeSlot + 1}` : 'только в браузере'}
+          </span>
           <div style={{ position: 'relative' }}>
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
               title="Сложность партии" className="ems-btn"
