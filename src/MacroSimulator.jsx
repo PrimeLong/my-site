@@ -2702,6 +2702,11 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
           {lastAction.note}
         </div>
       )}
+      {lastAction && lastAction.quote && (
+        <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 9, color: COLOR.muted, fontStyle: 'italic' }}>
+          «{lastAction.quote}»
+        </div>
+      )}
       {lastAction && lastAction.demand && (
         <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.rust}`, paddingLeft: 9, color: COLOR.muted }}>
           <span style={{ color: COLOR.rust, fontWeight: 600 }}>Требование: </span>{lastAction.demand}

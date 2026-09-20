@@ -300,7 +300,11 @@ function botCentralBank(s, personaId, _difficulty) {
   const P = getCbPersona(personaId);
   const cbTarget = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
   const inflGap = s.inflation - cbTarget;
-  const effInflGap = Math.abs(inflGap) < P.tolerance ? inflGap * 0.35 : inflGap;
+  // санкции разгоняют инфляцию через подорожавший импорт (издержки), а не через
+  // спрос — такой всплеск ставкой не лечится, и вменяемый ЦБ временно смотрит
+  // сквозь часть отклонения вместо того, чтобы душить экономику ради разового шока
+  const sanctionsTolerance = (s.sanctionsQuartersLeft || 0) > 0 ? P.tolerance * 1.3 : P.tolerance;
+  const effInflGap = Math.abs(inflGap) < sanctionsTolerance ? inflGap * 0.35 : inflGap;
   const overheat = Math.max(0, s.outputGap - 1.5);
   const taylor = s.rStar + s.inflationExpectations + P.infl * effInflGap + P.gap * s.outputGap
     + P.fiscalLean * 2.2 * (s.fiscalImpulse || 0) + 0.45 * overheat
@@ -376,6 +380,14 @@ function buildCbResult(s, P, vals) {
   const stance = clamp((keyRate - s.inflationExpectations - s.rStar) / 3, -1, 1);
   const quote = (() => {
     if (emergency) return 'Мы приняли решение поддержать банковскую систему. Да, это денежная эмиссия, и мы понимаем её инфляционную цену — но альтернатива дороже: остановка платежей парализовала бы всю экономику.';
+    // санкции — свежее политическое решение, а не собственный манёвр ЦБ: персона
+    // какое-то время явно проговаривает, почему не гоняется ставкой за скачком
+    // цен на импорт, вместо того чтобы молчать о решении, которое бьёт по мандату
+    if ((s.sanctionsQuartersLeft || 0) > 6) {
+      if (P.id === 'hawk') return `Санкции против торгового партнёра разгоняют цены на импорт — это разовый сдвиг уровня цен, а не устойчивая инфляция, но мы не готовы списывать на него всё отклонение от цели без реакции.`;
+      if (P.id === 'dove') return `Подорожавший из-за санкций импорт — это удар по издержкам, а не по спросу. Гасить его ставкой значит добавить к чужому решению ещё и рецессию, поэтому мы смотрим сквозь большую часть этого всплеска.`;
+      return `Санкции против торгового партнёра — не наше решение, но инфляционные последствия разбирать приходится нам: часть всплеска — разовый эффект дорогого импорта, и на него мы реагируем мягче, чем на устойчивую инфляцию спроса.`;
+    }
     if (keyRate > s.keyRate + 0.05) {
       if (s.outputGap > 1.5) return `Экономика работает выше своих возможностей: разрыв выпуска ${fmtSigned1(s.outputGap)}%. Мы повышаем ставку не потому, что хотим замедлить рост, а потому, что этот рост уже не производится — он только переоценивается в ценах.`;
       if ((s.fiscalImpulse || 0) > 0.4) return `Бюджетный импульс ${fmtSigned1(s.fiscalImpulse)} п.п. добавляет спрос, который экономика не может удовлетворить. Мы вынуждены компенсировать это ставкой — и хотели бы, чтобы в следующий раз эта работа была разделена между нами и Минфином.`;
@@ -494,6 +506,10 @@ function buildMofResult(s, P, targetDeficit, vals) {
   const stance = clamp((govSpending + transfers * 0.6 + govInvestment * 0.8) / 6 - (vatRate - s.vatRate) * 0.3, -1, 1);
   const quote = (() => {
     if (consolidationNeed > 1.5) return `Дефицит ${fmt1(Math.abs(s.budgetBalancePctGdp))}% ВВП при долге ${fmt1(s.debtToGdp)}% — это не абстракция, а проценты, которые мы платим вместо школ и дорог. Консолидация неприятна, но занимать дороже, чем экономить.`;
+    // вступление в блок — решение президента, но занимать на внешних рынках
+    // после него приходится Минфину, и персона какое-то время явно связывает
+    // более дешёвый долг именно с этим, а не с собственной заслугой
+    if ((s.tradeBlocQuartersLeft || 0) > 0) return `Торговый блок уже виден в стоимости займов: премия за риск ниже, чем была бы без него. Не наша заслуга — но пользоваться этим окном мы обязаны, пока согласование с блоком не свело его на нет.`;
     if (s.unemployment > 7) return `Безработица ${fmt1(s.unemployment)}%. Люди без работы не ждут, пока заработают рыночные механизмы, поэтому бюджет берёт часть спроса на себя — и мы готовы объяснить каждый рубль этих расходов.`;
     if (s.outputGap < -1.5) return `Экономика работает ниже своих возможностей. Сейчас мультипликатор государственных расходов высок: каждый вложенный рубль доходит до выпуска, а не до цен. Это редкое окно, и мы им пользуемся.`;
     if (govInvestment > 1) return 'Мы смещаем расходы от текущего потребления к инвестициям. Трансферты поддерживают спрос сегодня, инфраструктура повышает то, что страна способна произвести завтра.';
@@ -967,6 +983,7 @@ const PRESIDENT_ACTIONS = [
     reqText: 'Недоступно во время войны — экономическое давление теряет смысл рядом с настоящей',
     desc: 'Ограничить торговлю и инвестиции с одной из стран-партнёров — экономическое давление вместо военного. Рейтинг греется сплочением почти сразу, но подорожавший импорт и осторожность инвесторов остаются на годы.',
     build: (s, difficulty) => ({
+      patch: { sanctionsStart: true },
       impulses: [
         makeImpulse('approvalPush', 3.5, 'Санкции против торгового партнёра', 'fast', difficulty, 'other'),
         makeImpulse('tensionPush', -2, 'Внешний оппонент сплачивает вокруг власти', 'fast', difficulty, 'other'),
@@ -984,6 +1001,7 @@ const PRESIDENT_ACTIONS = [
     reqText: 'Недоступно во время войны',
     desc: 'Договориться о едином рынке с соседями: ниже барьеры для торговли, дешевле капитал, ниже премия за риск — но часть регуляторных решений придётся согласовывать, а не принимать в одиночку. Долгий эффект, почти не отменяется.',
     build: (s, difficulty) => ({
+      patch: { tradeBlocJoin: true },
       impulses: [
         sustainedImpulse('investment', 0.7, 16, 'Членство в торговом блоке', 'other'),
         sustainedImpulse('businessConfidence', 0.9, 16, 'Членство в торговом блоке', 'other'),
@@ -2776,6 +2794,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // чья это война: случившаяся с экономикой или объявленная её же руководством —
   // от этого зависит и язык новостей, и то, как её показывает интерфейс
   const warByChoice = warDecreed ? true : (warQuartersLeft > 0 ? !!s.warByChoice : false);
+  // окна «свежей реакции» ЦБ/Минфина на дипломатию президента — сам
+  // экономический эффект уже идёт через sustainedImpulse у соответствующих
+  // действий, эти счётчики нужны только чтобы бот-персона какое-то время
+  // явно комментировала санкции/блок, а не молчала о решении, которое бьёт
+  // прямо по её мандату
+  const sanctionsQuartersLeft = pres.patch.sanctionsStart ? 10 : Math.max(0, (s.sanctionsQuartersLeft || 0) - 1);
+  const tradeBlocQuartersLeft = pres.patch.tradeBlocJoin ? 6 : Math.max(0, (s.tradeBlocQuartersLeft || 0) - 1);
+  const tradeBlocActive = !!pres.patch.tradeBlocJoin || !!s.tradeBlocActive;
   const activeCrises = [];
   if (bankingRisk >= CONFIG.thresholds.bankingRisk || bankCapitalAdequacy < 8) activeCrises.push('banking');
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
@@ -3133,6 +3159,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
     bondShortIndex, linkerIndex, moneyMarketIndex, worldEquityIndex,
     activeCrises, regime, recessionStreak, recessionRecoverStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice,
+    sanctionsQuartersLeft, tradeBlocQuartersLeft, tradeBlocActive,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
