@@ -3270,6 +3270,16 @@ const STORY_TEMPLATES = {
     { gap: 2, make: (s) => mkNews('business', `ЭКОНОМИКА БЕЗ КРЕДИТА: ИНВЕСТИЦИИ ${rfs(s.investmentGrowth)}%`,
       `Разрыв выпуска ${rfs(s.outputGap)}%, безработица ${rf1(s.unemployment)}%. Разорвать петлю можно рекапитализацией банков или смягчением норматива — у обоих решений есть цена.`, { priority: 8 }) },
   ] },
+  bond_issuance: { id: 'bond_issuance', title: 'Заём про запас', steps: [
+    { make: (s) => mkNews('markets', `МИНФИН ЗАНИМАЕТ СВЕРХ НЕОБХОДИМОГО: ДОЛГ ${rf1(s.debtToGdp)}% ВВП`,
+      `Размещение прошло не под дефицит этого квартала, а про запас — рынок это видит и закладывает в цену: премия за риск ${rf1(s.riskPremium)} п.п. Резерв в суверенном фонде вырос, но занять заранее — тоже занять.`,
+      { priority: 6, chain: ['Размещение сверх дефицита', 'Долг ↑ сразу', 'Премия за риск ↑', 'Резерв в фонде ↑', 'Доступен без нового займа позже'] }) },
+    { gap: 2, make: (s) => (s.sovereignFund > 1
+      ? mkNews('gov', `СУВЕРЕННЫЙ ФОНД: ${fmtMoney(s.sovereignFund)} В РЕЗЕРВЕ`,
+        `Отложенное про запас разместилось не в расходы, а в фонд. Обслуживание долга при этом уже обходится в ${rf1(s.interestToRevenue)}% доходов бюджета — резерв не бесплатен, он занят заранее.`, { priority: 5 })
+      : mkNews('markets', 'РЕЗЕРВ УЖЕ РАЗОШЁЛСЯ НА ДЕФИЦИТ',
+        `Фонд, пополненный про запас, снова пуст — дефицит следующих кварталов забрал его раньше, чем он успел пригодиться при более выгодных условиях займа.`, { priority: 5 })) },
+  ] },
 };
 
 // пауза перед первым шагом сюжета: у части сюжетов первое сообщение — это уже
@@ -3307,6 +3317,9 @@ function storyTriggers(prev, next, decisions, active, cooldowns) {
   if (next.creditGap > 5.5 && !busy('credit_boom')) fire.push('credit_boom');
   if (next.creditCrunch && !prev.creditCrunch && !busy('credit_crunch')) fire.push('credit_crunch');
   if (next.debtToGdp > 80 && Math.floor(next.debtToGdp / 10) > Math.floor(prev.debtToGdp / 10) && !busy('debt_spiral')) fire.push('debt_spiral');
+  // порог в % ВВП, а не в абсолютных млрд — иначе в разросшейся вдвое экономике
+  // тот же сюжет либо запускался бы от любого чиха, либо не запускался вовсе
+  if ((decisions.bondIssuance || 0) / Math.max(1, next.nominalGdp) * 100 >= 0.5 && !busy('bond_issuance')) fire.push('bond_issuance');
   return fire;
 }
 
