@@ -477,6 +477,7 @@ async function handleRequest(req, res) {
           id: r.id, mode: r.mode === 'trader' ? 'trader' : 'policy', difficulty: r.difficulty,
           president: !!r.president, quarterIndex: r.quarterIndex, created: r.created,
           seatsTotal: seatsList.length, seatsFree: seatsList.filter((sx) => !r.seats[sx]).length,
+          activeCrises: (r.economy && r.economy.activeCrises) || [],
         });
       }
       rooms.sort((a, b) => b.created - a.created);

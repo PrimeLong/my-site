@@ -5215,6 +5215,13 @@ const roomCodeFromUrl = () => {
   return (new URLSearchParams(window.location.search).get('room') || '').toUpperCase();
 };
 
+// краткие ярлыки кризисов для превью в браузере открытых комнат — список
+// комнат нарочно лёгкий (без полной экономики), поэтому берём готовые id
+// из activeCrises, а не CRISIS_INFO с его иногда функциональными label
+const CRISIS_SHORT = { banking: 'банковский кризис', debt: 'долговой кризис', currency: 'валютный кризис',
+  stagflation: 'стагфляция', overheating: 'перегрев', recession: 'рецессия', deflation: 'дефляция',
+  pandemic: 'пандемия', war: 'война' };
+
 function NetworkLobby({ onEnter }) {
   const linkedCode = useMemo(roomCodeFromUrl, []);
   const [tab, setTab] = useState(linkedCode ? 'join' : 'create');
@@ -5615,6 +5622,13 @@ function NetworkLobby({ onEnter }) {
                   <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
                   <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
                   <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
+                  {(r.activeCrises || []).length > 0 ? (
+                    <span style={{ color: COLOR.rust, fontSize: 10.5 }} title={r.activeCrises.map((c) => CRISIS_SHORT[c] || c).join(', ')}>
+                      ⚠ {CRISIS_SHORT[r.activeCrises[0]] || r.activeCrises[0]}{r.activeCrises.length > 1 ? ` +${r.activeCrises.length - 1}` : ''}
+                    </span>
+                  ) : (
+                    <span style={{ color: COLOR.teal, fontSize: 10.5 }}>спокойно</span>
+                  )}
                   <span style={{ marginLeft: 'auto', color: COLOR.muted }}>{r.seatsTotal - r.seatsFree}/{r.seatsTotal}</span>
                   <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
                 </div>
