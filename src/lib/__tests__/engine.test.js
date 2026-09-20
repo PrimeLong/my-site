@@ -7,7 +7,7 @@ import {
   ROLES, PRESIDENT_ACTIONS, PRES_BY_ID, reformShare, politicalCapitalRegen,
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
-  askText, REQUESTS, militaryCoupRisk,
+  askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -1180,5 +1180,120 @@ describe('одно решение по ставке — одна новость'
       economy = r.economy; decisions = defaultDecisions(economy, decisions);
       stories = r.stories; pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
     }
+  });
+});
+
+/* Регресс на класс бага, который дважды находился и чинился вручную
+   (infra_up/vat_relief/defense_up, потом ещё 4 запроса без числа в тексте
+   вовсе): scale.base определяет число, напечатанное в askText, а apply()
+   отдельно кодирует, на сколько реально двигается рычаг при полном согласии
+   (k=1). Если множитель в apply() разойдётся со scale.base — а раньше
+   расходился, — игрок делает ровно то, что попросили, но игра пишет
+   «частично» или «отказ». Эти тесты проверяют сам факт совпадения, а не
+   какое-то конкретное число: если кто-то сознательно перебалансирует один
+   коэффициент, тест заставит обновить и второй. */
+describe('processRequest — коэффициент в apply() совпадает со scale.base из askText', () => {
+  const cases = [
+    { id: 'infra_up', lever: 'govInvestment', sign: 1 },
+    { id: 'transfers_freeze', lever: 'transfers', sign: -1 },
+    { id: 'tax_relief_business', lever: 'profitTaxRate', sign: -1 },
+    { id: 'vat_relief', lever: 'vatRate', sign: -1 },
+    { id: 'defense_up', lever: 'shareDefense', sign: 1 },
+    { id: 'capreq_ease', lever: 'capitalRequirement', sign: -1 },
+  ];
+  for (const { id, lever, sign } of cases) {
+    it(`${id}: при k=1 сдвигает ${lever} ровно на scale.base (знак ${sign > 0 ? '+' : '-'})`, () => {
+      const req = REQUESTS.find((r) => r.id === id);
+      const economy = makeInitialEconomy();
+      const decisions = defaultDecisions(economy);
+      const n = reqAmount(req, 1);
+      const applied = req.apply(decisions, 1, economy);
+      expect(applied[lever] - decisions[lever]).toBeCloseTo(sign * n, 5);
+    });
+  }
+
+  it('deficit_cut: два рычага, каждый со своим множителем (2× и 1.5× из текста просьбы)', () => {
+    const req = REQUESTS.find((r) => r.id === 'deficit_cut');
+    const economy = makeInitialEconomy();
+    const decisions = defaultDecisions(economy);
+    const n = reqAmount(req, 1);
+    const applied = req.apply(decisions, 1, economy);
+    expect(applied.govSpending - decisions.govSpending).toBeCloseTo(-2 * n, 5);
+    expect(applied.transfers - decisions.transfers).toBeCloseTo(-1.5 * n, 5);
+  });
+
+  it('fiscal_hold: полное согласие гасит запланированное расширение до нуля роста', () => {
+    const req = REQUESTS.find((r) => r.id === 'fiscal_hold');
+    const decisions = { govSpending: 4, transfers: 3, govInvestment: 2 };
+    const applied = req.apply(decisions, 1);
+    expect(applied.govSpending).toBe(0);
+    expect(applied.transfers).toBe(0);
+    expect(applied.govInvestment).toBe(0);
+  });
+
+  it('fiscal_hold: уже отрицательный (консолидирующий) план не трогает', () => {
+    const req = REQUESTS.find((r) => r.id === 'fiscal_hold');
+    const decisions = { govSpending: -2, transfers: -1, govInvestment: -3 };
+    expect(req.apply(decisions, 1)).toEqual(decisions);
+  });
+
+  for (const [id, , sign] of [['rate_cut', 'keyRate', -1], ['rate_hike', 'keyRate', 1]]) {
+    it(`${id}: полное согласие двигает ставку ровно на scale.base п.п. (с учётом сетки 0.25)`, () => {
+      const req = REQUESTS.find((r) => r.id === id);
+      const economy = { ...makeInitialEconomy(), keyRate: 6 };
+      const decisions = { ...defaultDecisions(economy), keyRate: 6 };
+      const n = reqAmount(req, 1);
+      const applied = req.apply(decisions, 1, economy);
+      expect(applied.keyRate - decisions.keyRate).toBeCloseTo(sign * n, 5);
+    });
+  }
+
+  // liquidity_help/fx_support масштабируют рычаг по размеру экономики
+  // (gdpLeverScale) — точный коэффициент не выразить без доступа к economy
+  // внутри apply(), поэтому здесь проверяем то, что можно проверить снаружи:
+  // эффект растёт линейно с силой запроса, а не залипает или квадратично разгоняется
+  for (const [id, lever, sign] of [['liquidity_help', 'liquidity', 1], ['fx_support', 'fxIntervention', -1]]) {
+    it(`${id}: эффект на ${lever} линейно растёт с силой запроса`, () => {
+      const req = REQUESTS.find((r) => r.id === id);
+      const economy = makeInitialEconomy();
+      const decisions = defaultDecisions(economy);
+      const d1 = req.apply(decisions, 1, economy)[lever] - decisions[lever];
+      const d2 = req.apply(decisions, 2, economy)[lever] - decisions[lever];
+      expect(Math.sign(d1)).toBe(sign);
+      expect(d2).toBeCloseTo(d1 * 2, 5);
+    });
+  }
+});
+
+describe('storyTriggers / STORY_TEMPLATES — сюжет «Заём про запас» (bond_issuance)', () => {
+  it('запускается только при размещении от 0.5% ВВП, а не при символическом', () => {
+    const prev = makeInitialEconomy();
+    const big = { ...defaultDecisions(prev), bondIssuance: prev.nominalGdp * 0.01 };
+    const small = { ...defaultDecisions(prev), bondIssuance: prev.nominalGdp * 0.001 };
+    expect(storyTriggers(prev, prev, big, [], {})).toContain('bond_issuance');
+    expect(storyTriggers(prev, prev, small, [], {})).not.toContain('bond_issuance');
+  });
+
+  it('не запускается повторно, пока сюжет ещё активен или на кулдауне', () => {
+    const prev = makeInitialEconomy();
+    const decisions = { ...defaultDecisions(prev), bondIssuance: prev.nominalGdp * 0.02 };
+    const active = [{ tplId: 'bond_issuance', nextIdx: 0, wait: 1 }];
+    expect(storyTriggers(prev, prev, decisions, active, {})).not.toContain('bond_issuance');
+    expect(storyTriggers(prev, prev, decisions, [], { 'story:bond_issuance': 3 })).not.toContain('bond_issuance');
+  });
+
+  it('advanceStories выдаёт двухшаговый сюжет с правильным quarterIndex и storyId', () => {
+    const economy = makeInitialEconomy();
+    const active = [{ tplId: 'bond_issuance', nextIdx: 0, wait: 0 }];
+    const step1 = advanceStories(active, economy, 5);
+    expect(step1.news).toHaveLength(1);
+    expect(step1.news[0].storyId).toBe('bond_issuance');
+    expect(step1.news[0].q).toBe(5);
+    expect(step1.stories).toHaveLength(1); // ждёт второго шага, gap:2 → wait:1
+    const step2 = advanceStories(step1.stories, economy, 6);
+    expect(step2.news).toHaveLength(0); // ещё ждёт
+    const step3 = advanceStories(step2.stories, economy, 7);
+    expect(step3.news).toHaveLength(1);
+    expect(step3.stories).toHaveLength(0); // сюжет закончен
   });
 });
