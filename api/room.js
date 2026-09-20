@@ -7,7 +7,8 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   describeHumanCbAction, describeHumanMofAction, redescribeCbAction, redescribeMofAction,
   botPresident, getPresPersona, processPresidentialDirective, directiveProgress, directiveVerdict,
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
-  quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS,
+  quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
+  pickPromises, evaluatePromise,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
@@ -116,6 +117,10 @@ function freshRoom(opts) {
     presidentLast: null,
     presidentDemand: null,
     presMemo: { lastReqId: null, ago: 99 },
+    // предвыборные обещания — только там, где вообще есть президентский пост
+    // (мест «премьер-министр» в сетевой игре нет — за оба ведомства сразу
+    // здесь не садятся); та же логика, что и в одиночной игре
+    promises: mode === 'policy' && opts.president !== null ? pickPromises(economy) : null,
     seats: zip(null),
     names: zip(null),
     lastSeen: zip(null),
@@ -200,6 +205,7 @@ const publicView = (room) => {
       : null,
     chat: room.chat || [],
     portfolioValues: room.portfolioValues || {},
+    promises: room.promises || null,
   };
 };
 
@@ -336,6 +342,32 @@ function resolveQuarter(room) {
       headline: `ПРЕЗИДЕНТ → ${to}: ${newDemand.label.toUpperCase()} — ТРЕБОВАНИЕ ВЫДВИНУТО`,
       text: `«${newDemand.ask}» Ответ ведомства будет виден по решениям следующего квартала.` });
   }
+  // предвыборные обещания подводятся тем же способом и в тот же момент, что и
+  // в одиночной игре (см. finishQuarter в MacroSimulator.jsx): в квартал, когда
+  // electionResult сформировался, а не раньше. При поражении на выборах партия
+  // для этого места уже закончилась (см. checkDefeat на клиенте) — обещания
+  // просто остаются как есть, следующего срока не будет.
+  let nextPromises = room.promises;
+  if (room.promises && res.economy.electionResult) {
+    const er = res.economy.electionResult;
+    const kept = room.promises.map((p) => evaluatePromise(p, res.economy).met);
+    const keptCount = Number.isFinite(res.economy.promisesKept) ? res.economy.promisesKept : kept.filter(Boolean).length;
+    const broken = room.promises.length - keptCount;
+    res.newsEntries.unshift({ id: `promises${room.quarterIndex}`, cat: 'gov', priority: 9,
+      q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+      headline: `ОБЕЩАНИЯ У УРНЫ: СДЕРЖАНО ${keptCount} ИЗ ${room.promises.length}`,
+      text: `${room.promises.map((p, i) => `«${p.label}» — ${kept[i] ? 'сдержано' : 'провалено'}`).join('; ')}. ${
+        keptCount > broken ? `Это добавило власти примерно ${fmt1((keptCount - broken) * 2.2)} п.п. голосов.`
+          : keptCount < broken ? `Это стоило власти примерно ${fmt1((broken - keptCount) * 2.2)} п.п. голосов.`
+            : 'На итог голосования обещания в сумме не повлияли.'}` });
+    if (er === 'incumbent') {
+      nextPromises = pickPromises(res.economy);
+      res.newsEntries.unshift({ id: `newpromises${room.quarterIndex}`, cat: 'gov', priority: 8,
+        q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+        headline: 'НОВЫЙ СРОК: ОБЪЯВЛЕНЫ ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ',
+        text: `На новый срок заявлено: ${nextPromises.map((p) => `«${p.label}» — ${p.text.toLowerCase()}`).join('; ')}.` });
+    }
+  }
   const nextCbPersona = (humanPres && humanPres.appointCb)
     || (plan && plan.appointBot && plan.appointBot.kind === 'central_bank' ? plan.appointBot.persona : cbPersona);
   const nextMofPersona = (humanPres && humanPres.appointMof)
@@ -350,6 +382,7 @@ function resolveQuarter(room) {
     history: [...room.history, { q: room.quarterIndex, label: quarterLabel(room.quarterIndex), ...res.economy }].slice(-160),
     news: [...res.newsEntries, ...room.news].slice(0, 240),
     report: res.report, reasons: res.reasons,
+    promises: nextPromises,
     pendingImpulses: res.pendingImpulses, eventCooldowns: res.eventCooldowns, stories: res.stories,
     decisions: defaultDecisions(res.economy, eff),
     quarterIndex: room.quarterIndex + 1,

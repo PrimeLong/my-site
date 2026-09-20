@@ -6317,6 +6317,22 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
         rolesPlayed: recordRolePlayed(seat), networkPlayed: true, role: seatRole(seat).id,
       })));
+      // «Своими руками» — вернуть парламент, распущенный указом, а не тот, который
+      // распустил кризис: decreeRule ДО этого квартала (когда решение принималось)
+      // и есть признак «был распущен указом». Экономика в комнате общая и меняется
+      // на сервере, поэтому «до» берём из рефа, обновляя его сразу после проверки.
+      if (seat === 'president' && presActionsRef.current.includes('restore_parliament') && prevDecreeRuleRef.current) {
+        pushAch(unlockAchievements(['own_hands']));
+      }
+      prevDecreeRuleRef.current = r.economy.decreeRule;
+      // «Слово держат» — подводится сервером в новости квартала, где наступили
+      // выборы (см. resolveQuarter в api/room.js); достижения — локальные для
+      // игрока, поэтому разбираем ту же новость здесь, а не полагаемся на сервер
+      if (seat === 'president') {
+        const promisesMatch = r.news.find((n) => n.q === r.quarterIndex - 1 && n.headline.startsWith('ОБЕЩАНИЯ У УРНЫ'))
+          ?.headline.match(/СДЕРЖАНО (\d+) ИЗ (\d+)/);
+        if (promisesMatch && promisesMatch[1] === promisesMatch[2]) pushAch(unlockAchievements(['promises_kept']));
+      }
       const roleForDefeat = seatRole(seat).id;
       // расчёт по портфелю (переоценка, экспирация опционов, маржин-колл) —
       // тем же способом, что и в соло-игре трейдера, только экономику берём
@@ -6381,6 +6397,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
   const [presDirStrength, setPresDirStrength] = useState(1);
+  // watchRoom подписывается один раз (см. эффект выше, завязан на id/seat/token) —
+  // обычные переменные в его колбэке навсегда остались бы тем, чем были на момент
+  // подписки. presActionsRef — то же решение, что и autoPaperRef.
+  const presActionsRef = React.useRef(presActions);
+  React.useEffect(() => { presActionsRef.current = presActions; }, [presActions]);
+  const prevDecreeRuleRef = React.useRef(room.economy.decreeRule);
   const [dense, setDense] = useState(false);
   const [dashboards, setDashboards] = useState(() => initDashboards());
   const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
@@ -6700,6 +6722,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 lastDirective={presState && presState.last && presState.last.status
                   ? { status: presState.last.status, text: `Указание «${presState.last.label}».` } : null}
                 directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
+              <PromisesPanel promises={room.promises} economy={economy} />
               {presState && presState.demand && (
                 <div className="ems-panel" style={{ padding: 12, borderColor: COLOR.gold }}>
                   <div style={{ fontSize: 10, color: COLOR.faint, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
