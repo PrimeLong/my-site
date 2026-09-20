@@ -8,7 +8,7 @@ import {
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
-  SCENARIOS,
+  SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -1360,5 +1360,58 @@ describe('сценарии — другая стартовая точка тог
         difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
       assertFiniteEconomy(r.economy, `scenario:${sc.id}`);
     });
+  });
+});
+
+describe('пресс-конференция — вопрос выбирается детерминированно, ответ двигает доверие', () => {
+  it('pickPressQuestion детерминирован: тот же (economy, quarterIndex) даёт тот же вопрос', () => {
+    const economy = makeInitialEconomy();
+    const a = pickPressQuestion(economy, 3);
+    const b = pickPressQuestion(economy, 3);
+    expect(a).toBe(b); // одна и та же ссылка на объект из PRESS_QUESTIONS
+    expect(a).not.toBeNull();
+  });
+
+  it('без ответа (pressAnswer не задан) пресс-конференция не влияет на экономику', () => {
+    const economy = makeInitialEconomy();
+    const decisions = defaultDecisions(economy);
+    expect(decisions.pressAnswer).toBeNull();
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    expect(r.newsEntries.some((n) => n.headline.startsWith('ПРЕСС-КОНФЕРЕНЦИЯ'))).toBe(false);
+  });
+
+  it('выбранный ответ создаёт новость и двигает нужный канал (govTrust вверх при честном признании)', () => {
+    const economy = makeInitialEconomy();
+    const q = pickPressQuestion(economy, 1);
+    const honestOpt = q.options.find((o) => o.id === 'honest' || o.id === 'engage' || o.id === 'own_it');
+    expect(honestOpt).toBeDefined();
+    const decisions = { ...defaultDecisions(economy), pressAnswer: honestOpt.id };
+    const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    expect(r.newsEntries.some((n) => n.headline.startsWith('ПРЕСС-КОНФЕРЕНЦИЯ') && n.text.includes(honestOpt.quote))).toBe(true);
+    assertFiniteEconomy(r.economy, 'press-answered');
+  });
+
+  it('каждый вопрос и каждый вариант ответа считается движком без NaN/Infinity', () => {
+    const economy = makeInitialEconomy();
+    PRESS_QUESTIONS.forEach((q) => {
+      q.options.forEach((opt) => {
+        const decisions = { ...defaultDecisions(economy), pressAnswer: opt.id };
+        // подбираем quarterIndex, на котором именно этот вопрос будет выбран
+        let qi = 0;
+        while (pickPressQuestion(economy, qi) !== q && qi < 50) qi++;
+        const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+          difficulty: 'medium', quarterIndex: qi, stories: [], noEvents: true });
+        assertFiniteEconomy(r.economy, `press:${q.id}:${opt.id}`);
+      });
+    });
+  });
+
+  it('неизвестный pressAnswer (устаревший id из старого сохранения) тихо игнорируется', () => {
+    const economy = makeInitialEconomy();
+    const decisions = { ...defaultDecisions(economy), pressAnswer: 'no-such-option' };
+    expect(() => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true })).not.toThrow();
   });
 });

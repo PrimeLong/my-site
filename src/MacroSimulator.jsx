@@ -15,7 +15,7 @@ import {
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
-  simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
+  simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
@@ -2739,6 +2739,38 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
         </span>
         <span className="ems-mono">{Math.round(coordination)}</span>
       </div>
+    </div>
+  );
+}
+
+/* Пресс-конференция: один вопрос за квартал, выбранный вариант ответа — а не
+   цифры политики — сам двигает доверие и рейтинг. Отдельно от обещаний: те
+   подводят итог по факту на выборах, здесь решает само слово. Не показывается
+   трейдеру — у него нет мандата, за который отвечают перед прессой. */
+function PressConferencePanel({ question, answer, setAnswer }) {
+  if (!question) return null;
+  return (
+    <div className="ems-panel" style={{ padding: 13 }}>
+      <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Megaphone size={13} />Пресс-конференция
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45, marginBottom: 9 }}>«{question.prompt}»</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {question.options.map((opt) => {
+          const active = answer === opt.id;
+          return (
+            <div key={opt.id} role="button" tabIndex={0} className="ems-card-btn"
+              onClick={() => { Audio.play('tick'); setAnswer(active ? null : opt.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAnswer(active ? null : opt.id); } }}
+              style={{ padding: '8px 10px', flexDirection: 'column', alignItems: 'flex-start', gap: 2, cursor: 'pointer',
+                borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.goldDim : COLOR.panelAlt }}>
+              <span style={{ fontSize: 11.5, color: active ? COLOR.goldSoft : COLOR.text, fontWeight: active ? 600 : 400 }}>{opt.label}</span>
+              {active && <span style={{ fontSize: 10.5, color: COLOR.muted, fontStyle: 'italic', marginTop: 2 }}>«{opt.quote}»</span>}
+            </div>
+          );
+        })}
+      </div>
+      {!answer && <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 7 }}>Можно не отвечать — тогда ответ никак не скажется на доверии и рейтинге.</div>}
     </div>
   );
 }
@@ -8269,6 +8301,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
+          )}
+          {!isTrader && (
+            <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
+              setAnswer={(id) => setLever('pressAnswer', id)} />
           )}
           {presEnabled && <PresidentWatchPanel economy={economy} plan={presidentPlan} last={presidentLast} branch={playerBranch} />}
         </div>

@@ -265,7 +265,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -1804,6 +1804,104 @@ function evaluatePromise(promise, economy) {
 }
 
 /* =========================================================================================
+   ПРЕСС-КОНФЕРЕНЦИЯ: раз в квартал журналисты задают вопрос, и ответ — это не
+   рычаг с числом, а слово, которое само по себе двигает доверие и рейтинг.
+   Отдельно от обещаний: обещания подводят итог на выборах по факту, здесь же
+   решает сам выбор ответа, а не то, что происходит с экономикой дальше.
+   Вопрос выбирается детерминированно от (economy, quarterIndex) — без
+   Math.random() — чтобы превью в интерфейсе перед отправкой решений и сам
+   расчёт квартала внутри simulateQuarter всегда сходились на одном и том же
+   вопросе без необходимости протаскивать его id через decisions отдельно. */
+const PRESS_QUESTIONS = [
+  { id: 'growth', shortLabel: 'ОБ ИТОГАХ КВАРТАЛА', when: () => true,
+    prompt: 'Как вы оцениваете экономические результаты квартала?',
+    options: [
+      { id: 'spin', label: 'Показать результаты в лучшем свете',
+        quote: 'Мы видим уверенный прогресс по всем ключевым направлениям.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2.5, 'Пресс-конференция: оптимистичный тон', 'fast', d, 'other'),
+          makeImpulse('govTrust', -2, 'Пресс-конференция: приукрашенные цифры', 'fast', d, 'other')] }) },
+      { id: 'honest', label: 'Признать проблемы честно',
+        quote: 'Есть реальные сложности, и мы не собираемся их замалчивать.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 3, 'Пресс-конференция: честное признание проблем', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -1, 'Пресс-конференция: неприятная правда', 'fast', d, 'other')] }) },
+      { id: 'deflect', label: 'Уйти от прямого ответа',
+        quote: 'Экономика — это сложная система, нельзя всё сводить к одной цифре.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -1.5, 'Пресс-конференция: уклончивый ответ', 'fast', d, 'other')] }) },
+    ] },
+  { id: 'opposition', shortLabel: 'ОБ ОБВИНЕНИЯХ ОППОЗИЦИИ', when: () => true,
+    prompt: 'Оппозиция называет вашу экономическую политику провальной — ваш ответ?',
+    options: [
+      { id: 'attack', label: 'Перейти в контратаку',
+        quote: 'Оппозиция предлагает лишь популизм без единой цифры расчётов.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2, 'Пресс-конференция: жёсткий ответ оппозиции', 'fast', d, 'other'),
+          makeImpulse('tensionPush', 3, 'Пресс-конференция: обострение риторики', 'fast', d, 'other')] }) },
+      { id: 'engage', label: 'Признать часть критики обоснованной',
+        quote: 'В критике есть здравое зерно, и мы готовы это обсуждать.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 2.5, 'Пресс-конференция: готовность к диалогу', 'fast', d, 'other'),
+          makeImpulse('tensionPush', -2, 'Пресс-конференция: снижение накала', 'fast', d, 'other')] }) },
+      { id: 'ignore', label: 'Проигнорировать вопрос',
+        quote: 'Мы сосредоточены на работе, а не на политических дебатах.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', -1, 'Пресс-конференция: отказ отвечать критикам', 'fast', d, 'other')] }) },
+    ] },
+  { id: 'inflation', shortLabel: 'ОБ ИНФЛЯЦИИ', when: (s) => s.inflation > (s.inflationTarget || 4) + 2,
+    prompt: 'Цены снова растут быстрее обещанного — как вы это объясните?',
+    options: [
+      { id: 'blame_external', label: 'Списать на внешние факторы',
+        quote: 'Инфляция ускоряется во всём мире, мы не исключение.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 1.5, 'Пресс-конференция: инфляция как внешний шок', 'fast', d, 'other'),
+          makeImpulse('govTrust', -2.5, 'Пресс-конференция: перекладывание ответственности', 'fast', d, 'other')] }) },
+      { id: 'own_it', label: 'Взять ответственность на себя',
+        quote: 'Часть решений оказалась ошибочной, и мы это исправляем.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 3.5, 'Пресс-конференция: ответственность за инфляцию', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -2, 'Пресс-конференция: признание ошибки', 'fast', d, 'other')] }) },
+      { id: 'promise', label: 'Пообещать скорое улучшение',
+        quote: 'Уже в следующих кварталах инфляция пойдёт на спад.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2, 'Пресс-конференция: обещание скорого улучшения', 'fast', d, 'other'),
+          makeImpulse('govTrust', -1, 'Пресс-конференция: невыполнимое обещание', 'default', d, 'other')] }) },
+    ] },
+  { id: 'unemployment', shortLabel: 'О БЕЗРАБОТИЦЕ', when: (s) => s.unemployment > s.nairu + 1.2,
+    prompt: 'Люди теряют работу — что вы скажете тем, кто остался без дохода?',
+    options: [
+      { id: 'sympathy', label: 'Выразить сочувствие и пообещать поддержку',
+        quote: 'Мы разделяем эту боль и расширяем программы поддержки.',
+        build: (s, d) => ({ impulses: [makeImpulse('consumerConfidence', 2.5, 'Пресс-конференция: сочувствие безработным', 'fast', d, 'other'),
+          makeImpulse('govTrust', 1.5, 'Пресс-конференция: сочувствие безработным', 'fast', d, 'other')] }) },
+      { id: 'structural', label: 'Назвать это неизбежной структурной перестройкой',
+        quote: 'Экономика проходит через болезненную, но необходимую перестройку.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -2, 'Пресс-конференция: безработица названа неизбежной', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -1.5, 'Пресс-конференция: холодный ответ безработным', 'fast', d, 'other')] }) },
+      { id: 'minimize', label: 'Преуменьшить масштаб проблемы',
+        quote: 'Цифры безработицы не так тревожны, как их представляют.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -3, 'Пресс-конференция: преуменьшение безработицы', 'fast', d, 'other'),
+          makeImpulse('consumerConfidence', -2, 'Пресс-конференция: преуменьшение безработицы', 'fast', d, 'other')] }) },
+    ] },
+  { id: 'debt', shortLabel: 'О ГОСДОЛГЕ', when: (s) => s.debtToGdp > 70,
+    prompt: 'Госдолг продолжает расти — вас не пугает эта цифра?',
+    options: [
+      { id: 'reassure', label: 'Заверить, что долг под контролем',
+        quote: 'Долговая нагрузка полностью управляема, поводов для паники нет.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 1.5, 'Пресс-конференция: заверения по долгу', 'fast', d, 'other'),
+          makeImpulse('riskPremium', 0.15, 'Пресс-конференция: рынок не поверил заверениям по долгу', 'default', d)] }) },
+      { id: 'plan', label: 'Изложить конкретный план консолидации',
+        quote: 'У нас есть чёткий график снижения долговой нагрузки.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 3, 'Пресс-конференция: план консолидации долга', 'fast', d, 'other'),
+          makeImpulse('riskPremium', -0.2, 'Пресс-конференция: рынок поверил в план консолидации', 'default', d)] }) },
+      { id: 'shrug', label: 'Сказать, что так живут многие страны',
+        quote: 'Уровень нашего долга сопоставим со многими развитыми странами.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -2, 'Пресс-конференция: долг списан на общемировую практику', 'fast', d, 'other')] }) },
+    ] },
+];
+
+// без Math.random(): один и тот же (economy, quarterIndex) всегда даёт один и
+// тот же вопрос, поэтому клиентское превью перед отправкой решений и расчёт
+// внутри simulateQuarter не могут разойтись
+function pickPressQuestion(s, quarterIndex) {
+  const eligible = PRESS_QUESTIONS.filter((q) => !q.when || q.when(s));
+  if (!eligible.length) return null;
+  return eligible[quarterIndex % eligible.length];
+}
+
+/* =========================================================================================
    СОБЫТИЯ. kind: demand | supply | financial | external | structural
 ========================================================================================= */
 const EVENTS = [
@@ -2153,6 +2251,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const pres = applyPresidentActions(s, decisions.presidentActions, cooldowns, difficulty);
   queue = queue.concat(pres.impulses);
   pres.newsSpecs.forEach((n) => news.push(mkNews(n.cat, n.headline, n.text, { priority: n.priority, chain: n.chain })));
+
+  /* --- 1в. ПРЕСС-КОНФЕРЕНЦИЯ: один вопрос за квартал, ответ значит больше цифр --- */
+  const pressQ = pickPressQuestion(s, quarterIndex);
+  const pressOpt = pressQ && (pressQ.options.find((o) => o.id === decisions.pressAnswer) || null);
+  if (pressOpt) {
+    const built = pressOpt.build(s, difficulty) || {};
+    queue = queue.concat(built.impulses || []);
+    news.push(mkNews('gov', `ПРЕСС-КОНФЕРЕНЦИЯ: ${pressQ.shortLabel}`, `«${pressOpt.quote}»`, { priority: 6 }));
+  }
   // указание ведомству разбирается на уровне интерфейса (ему нужны уже готовые
   // решения ботов), но платит за него тот же политический капитал
   let presSpent = pres.spent + Math.max(0, decisions.presidentExtraSpend || 0);
@@ -4331,7 +4438,7 @@ export {
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   describeHumanCbAction, describeHumanMofAction,
-  PROMISE_POOL, pickPromises, evaluatePromise,
+  PROMISE_POOL, pickPromises, evaluatePromise, PRESS_QUESTIONS, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
   presActionAvailable, applyPresidentActions, politicalCapitalRegen, parliamentBlocksReform,
   PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext, militaryCoupRisk,
