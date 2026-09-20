@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk,
+  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -2958,6 +2958,10 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
     : cdLeft > 0 ? `Повторно через ${cdLeft} кв.`
       : blockedByReq ? (action.reqText || 'Сейчас недоступно')
         : !canAfford ? 'Не хватает капитала' : null;
+  // реформа — это законопроект, а не указ: пока парламент жив, при таком
+  // напряжении или таком провальном рейтинге он гарантированно его отклонит,
+  // и капитал уйдёт на лоббирование впустую, без всякого эффекта
+  const willBeBlocked = action.group === 'reform' && !done && parliamentBlocksReform(economy);
   return (
     <div className="ems-card-btn" role="button" tabIndex={disabled ? -1 : 0}
       onClick={() => { if (!disabled) { Audio.play('tick'); onToggle(); } }}
@@ -2976,6 +2980,11 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
           выбрать всё равно нельзя; причина недоступности сама по себе короче
           и полезнее */}
       {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
+      {!blockedByReq && willBeBlocked && (
+        <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3 }}>
+          Парламент отклонит: слишком высокое напряжение или провальный рейтинг. Капитал спишется впустую.
+        </div>
+      )}
       {done && REFORM_RAMP[action.id] && (
         <div style={{ marginTop: 5, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${share * 100}%`, height: '100%', background: COLOR.teal }} />

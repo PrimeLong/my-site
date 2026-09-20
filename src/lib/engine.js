@@ -1370,13 +1370,39 @@ function militaryCoupRisk(x) {
 /* Разбор пакета решений президента за квартал: списывает капитал, ставит
    кулдауны, собирает импульсы и новости. Проверки дублируют интерфейс намеренно —
    состояние может прийти из сохранения, а движок обязан оставаться замкнутым. */
+// Пока парламент жив и не распущен указом, а страна не авторитарна, реформа —
+// это не решение президента в одиночку, а внесённый в парламент законопроект.
+// Порог, а не бросок кубика: при таком напряжении или таком провальном
+// рейтинге оппозиция гарантированно консолидируется против инициативы —
+// исход зависит от того, что игрок сделал со страной, а не от удачи. Роспуск
+// парламента или авторитарный/тоталитарный режим убирают этот риск вовсе —
+// именно поэтому концентрация власти работает, а не только вредит.
+function parliamentBlocksReform(s) {
+  if (s.parliamentDissolved) return false;
+  if (s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian') return false;
+  const tension = s.politicalTension || 0;
+  const approval = Number.isFinite(s.approval) ? s.approval : 50;
+  return tension >= 65 || approval <= 30;
+}
+
 function applyPresidentActions(s, ids, cooldowns, difficulty) {
   const impulses = []; const newsSpecs = []; const patch = {};
   let spent = 0; let budget = Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55;
-  const applied = [];
+  const applied = []; const blocked = [];
   (ids || []).forEach((id) => {
     const a = PRES_BY_ID[id];
     if (!a || !presActionAvailable(a, s, cooldowns) || a.cost > budget) return;
+    if (a.group === 'reform' && parliamentBlocksReform(s)) {
+      // законопроект не прошёл: часть капитала уже потрачена на лоббирование,
+      // но эффект и отметка «once» не применяются — попробовать снова можно
+      // в любой следующий квартал, реформа не считается использованной
+      const blockCost = Math.round(a.cost * 0.4);
+      budget -= blockCost; spent += blockCost; blocked.push(id);
+      newsSpecs.push({ cat: 'gov', headline: `ПАРЛАМЕНТ ОТКЛОНИЛ ЗАКОНОПРОЕКТ: ${a.label.toUpperCase()}`,
+        text: 'Голосов не хватило: при текущем напряжении в обществе и рейтинге власти оппозиция консолидировалась против инициативы. Часть политического капитала потрачена на лоббирование впустую — само право внести законопроект снова никуда не делось.',
+        priority: 7, chain: ['Законопроект внесён', 'Напряжение/рейтинг', 'Голосов не хватило', 'Капитал потрачен впустую'] });
+      return;
+    }
     const r = a.build(s, difficulty) || {};
     budget -= a.cost; spent += a.cost; applied.push(id);
     if (a.cooldown) cooldowns[`pres:${a.id}`] = a.cooldown;
@@ -1385,7 +1411,7 @@ function applyPresidentActions(s, ids, cooldowns, difficulty) {
     Object.assign(patch, r.patch || {});
     if (r.patch && r.patch.reform) (patch.reforms = patch.reforms || []).push(r.patch.reform);
   });
-  return { impulses, newsSpecs, spent, patch, applied };
+  return { impulses, newsSpecs, spent, patch, applied, blocked };
 }
 
 /* Указание ведомству. Тот же каталог REQUESTS, что и для межведомственных
@@ -4282,7 +4308,7 @@ export {
   describeHumanCbAction, describeHumanMofAction,
   PROMISE_POOL, pickPromises, evaluatePromise,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
-  presActionAvailable, applyPresidentActions, politicalCapitalRegen,
+  presActionAvailable, applyPresidentActions, politicalCapitalRegen, parliamentBlocksReform,
   PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext, militaryCoupRisk,
   directiveProgress, directiveVerdict, DIRECTIVE_FULL, DIRECTIVE_PART,
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,

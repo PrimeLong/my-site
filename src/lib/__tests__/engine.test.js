@@ -587,6 +587,24 @@ describe('роль президента', () => {
     expect(rows[0].politicalCapital).toBeGreaterThan(0);
   });
 
+  it('парламент блокирует реформу при высоком напряжении, списывая только часть капитала', () => {
+    const tense = { politicalTension: 70 };
+    const rows = runPresident({ 0: { presidentActions: ['education'] } }, 1, tense);
+    expect(rows[0].reforms.education).toBeUndefined();
+    const spent = 55 - rows[0].politicalCapital + rows[0].politicalCapitalGain;
+    expect(spent).toBeCloseTo(Math.round(PRES_BY_ID.education.cost * 0.4), 6);
+  });
+
+  it('роспуск парламента и авторитарный режим снимают риск блокировки реформы', () => {
+    const dissolved = { politicalTension: 90, parliamentDissolved: true };
+    const rowsDissolved = runPresident({ 0: { presidentActions: ['education'] } }, 1, dissolved);
+    expect(rowsDissolved[0].reforms.education).toBeDefined();
+
+    const authoritarian = { politicalTension: 90, politicalRegime: 'authoritarian' };
+    const rowsAuth = runPresident({ 0: { presidentActions: ['education'] } }, 1, authoritarian);
+    expect(rowsAuth[0].reforms.education).toBeDefined();
+  });
+
   it('реформа не действует в квартале объявления и раскрывается годами', () => {
     const rows = runPresident({ 0: { presidentActions: ['education'] } }, 20);
     expect(reformShare(rows[0].reforms, 'education')).toBe(0);
