@@ -7327,7 +7327,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
-  const [decisions, setDecisions] = useState(initial ? initial.decisions : defaultDecisions(initEconomy));
+  // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
+  // (например, «Размещение облигаций»/дефолт/МВФ) — без подстраховки открытие
+  // вкладки с новым рычагом падало на undefined.toFixed()
+  const [decisions, setDecisions] = useState(initial ? { ...defaultDecisions(initEconomy), ...initial.decisions } : defaultDecisions(initEconomy));
   const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : []);
   const [eventCooldowns, setEventCooldowns] = useState(initial ? initial.eventCooldowns || {} : {});
   const [quarterIndex, setQuarterIndex] = useState(initial ? initial.quarterIndex : 1);
