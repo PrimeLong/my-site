@@ -8,8 +8,8 @@
    оттуда, используются и панелью новостей в игре), а не копия. */
 import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
-import { clamp, pctFmt, fmt1, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText } from './lib/engine.js';
-import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail } from './MacroSimulator.jsx';
+import { clamp, pctFmt, fmt1, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText, POLITICAL_REGIME_INFO } from './lib/engine.js';
+import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal } from './MacroSimulator.jsx';
 
 /* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
    бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */
@@ -226,7 +226,10 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                 </div>
               )}
             </div>
-            <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <StateSeal regime={regimeId} size={46} title={(POLITICAL_REGIME_INFO[regimeId] || {}).label} />
+              <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
+            </div>
           </div>
 
           {snapshot && (

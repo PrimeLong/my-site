@@ -193,6 +193,30 @@ const GOALS = [
   { id: 'survive', label: 'Пройти цикл без маржин-колла', score: 'financial', trader: true },
 ];
 
+/* Сценарии — не отдельная песочница, а другая стартовая точка того же движка:
+   переопределяют часть CONFIG.initial перед расчётом makeInitialEconomy, а не
+   правят его — иначе baseline-сравнения в остальном коде (валютный порог
+   резервов, доля потребления/инвестиций «как в нормальной экономике») сами
+   поехали бы вместе со стартом и потеряли смысл как ориентир. */
+const SCENARIOS = [
+  { id: 'sandbox', title: 'Открытая партия', short: 'Песочница',
+    desc: 'Стабильная экономика без стартового кризиса — учиться или экспериментировать без давления времени.', overrides: null },
+  { id: 'currency_crisis', title: 'Валютный кризис', short: 'Курс и резервы',
+    desc: 'Резервы уже наполовину истрачены, инфляция разогналась, ставка экстренно поднята — но доверие подорвано, и рынок ждёт девальвации.',
+    overrides: { reserves: 60, inflation: 11, coreInflation: 9.5, inflationExpectations: 9, riskPremium: 3.4,
+      keyRate: 15, lendingRate: 19, depositRate: 12, fxRegime: 'managed', cbCredibility: 32,
+      consumerConfidence: 32, businessConfidence: 30, approval: 38, politicalTension: 28 } },
+  { id: 'housing_bubble', title: 'Ипотечный пузырь', short: 'Банки и кредит',
+    desc: 'Кредитный бум уже случился: портфель раздут, просрочка растёт, капитал банков на исходе. Вопрос не в том, лопнет ли пузырь, а когда.',
+    overrides: { creditVolume: 2100, bankCapital: 85, bankNPL: 8.5, bankLiquidity: 38, financialStability: 30,
+      unemployment: 6.2, wageGrowth: 3.2, consumerConfidence: 40, businessConfidence: 38, approval: 45 } },
+  { id: 'hyperinflation', title: 'Гиперинфляция', short: 'Доверие к деньгам',
+    desc: 'Цены разгоняются на глазах, доверие к цели по инфляции разрушено, долг уже дорогой. Классическая спираль: инфляция кормит саму себя через ожидания.',
+    overrides: { inflation: 34, coreInflation: 30, inflationExpectations: 27, cbCredibility: 18, keyRate: 24,
+      lendingRate: 30, depositRate: 22, govDebt: 1700, effectiveDebtRate: 13, riskPremium: 4.2,
+      consumerConfidence: 25, businessConfidence: 28, approval: 33, politicalTension: 34 } },
+];
+
 const FX_REGIMES = [
   { id: 'free', label: 'Плавающий', hint: 'Курс определяется платёжным балансом. Резервы не тратятся, но инфляция импортируется быстрее.' },
   { id: 'managed', label: 'Управляемый', hint: 'ЦБ гасит половину давления интервенциями. Умеренный расход резервов.' },
@@ -241,7 +265,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -300,7 +324,11 @@ function botCentralBank(s, personaId, _difficulty) {
   const P = getCbPersona(personaId);
   const cbTarget = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
   const inflGap = s.inflation - cbTarget;
-  const effInflGap = Math.abs(inflGap) < P.tolerance ? inflGap * 0.35 : inflGap;
+  // санкции разгоняют инфляцию через подорожавший импорт (издержки), а не через
+  // спрос — такой всплеск ставкой не лечится, и вменяемый ЦБ временно смотрит
+  // сквозь часть отклонения вместо того, чтобы душить экономику ради разового шока
+  const sanctionsTolerance = (s.sanctionsQuartersLeft || 0) > 0 ? P.tolerance * 1.3 : P.tolerance;
+  const effInflGap = Math.abs(inflGap) < sanctionsTolerance ? inflGap * 0.35 : inflGap;
   const overheat = Math.max(0, s.outputGap - 1.5);
   const taylor = s.rStar + s.inflationExpectations + P.infl * effInflGap + P.gap * s.outputGap
     + P.fiscalLean * 2.2 * (s.fiscalImpulse || 0) + 0.45 * overheat
@@ -376,6 +404,14 @@ function buildCbResult(s, P, vals) {
   const stance = clamp((keyRate - s.inflationExpectations - s.rStar) / 3, -1, 1);
   const quote = (() => {
     if (emergency) return 'Мы приняли решение поддержать банковскую систему. Да, это денежная эмиссия, и мы понимаем её инфляционную цену — но альтернатива дороже: остановка платежей парализовала бы всю экономику.';
+    // санкции — свежее политическое решение, а не собственный манёвр ЦБ: персона
+    // какое-то время явно проговаривает, почему не гоняется ставкой за скачком
+    // цен на импорт, вместо того чтобы молчать о решении, которое бьёт по мандату
+    if ((s.sanctionsQuartersLeft || 0) > 6) {
+      if (P.id === 'hawk') return `Санкции против торгового партнёра разгоняют цены на импорт — это разовый сдвиг уровня цен, а не устойчивая инфляция, но мы не готовы списывать на него всё отклонение от цели без реакции.`;
+      if (P.id === 'dove') return `Подорожавший из-за санкций импорт — это удар по издержкам, а не по спросу. Гасить его ставкой значит добавить к чужому решению ещё и рецессию, поэтому мы смотрим сквозь большую часть этого всплеска.`;
+      return `Санкции против торгового партнёра — не наше решение, но инфляционные последствия разбирать приходится нам: часть всплеска — разовый эффект дорогого импорта, и на него мы реагируем мягче, чем на устойчивую инфляцию спроса.`;
+    }
     if (keyRate > s.keyRate + 0.05) {
       if (s.outputGap > 1.5) return `Экономика работает выше своих возможностей: разрыв выпуска ${fmtSigned1(s.outputGap)}%. Мы повышаем ставку не потому, что хотим замедлить рост, а потому, что этот рост уже не производится — он только переоценивается в ценах.`;
       if ((s.fiscalImpulse || 0) > 0.4) return `Бюджетный импульс ${fmtSigned1(s.fiscalImpulse)} п.п. добавляет спрос, который экономика не может удовлетворить. Мы вынуждены компенсировать это ставкой — и хотели бы, чтобы в следующий раз эта работа была разделена между нами и Минфином.`;
@@ -494,6 +530,10 @@ function buildMofResult(s, P, targetDeficit, vals) {
   const stance = clamp((govSpending + transfers * 0.6 + govInvestment * 0.8) / 6 - (vatRate - s.vatRate) * 0.3, -1, 1);
   const quote = (() => {
     if (consolidationNeed > 1.5) return `Дефицит ${fmt1(Math.abs(s.budgetBalancePctGdp))}% ВВП при долге ${fmt1(s.debtToGdp)}% — это не абстракция, а проценты, которые мы платим вместо школ и дорог. Консолидация неприятна, но занимать дороже, чем экономить.`;
+    // вступление в блок — решение президента, но занимать на внешних рынках
+    // после него приходится Минфину, и персона какое-то время явно связывает
+    // более дешёвый долг именно с этим, а не с собственной заслугой
+    if ((s.tradeBlocQuartersLeft || 0) > 0) return `Торговый блок уже виден в стоимости займов: премия за риск ниже, чем была бы без него. Не наша заслуга — но пользоваться этим окном мы обязаны, пока согласование с блоком не свело его на нет.`;
     if (s.unemployment > 7) return `Безработица ${fmt1(s.unemployment)}%. Люди без работы не ждут, пока заработают рыночные механизмы, поэтому бюджет берёт часть спроса на себя — и мы готовы объяснить каждый рубль этих расходов.`;
     if (s.outputGap < -1.5) return `Экономика работает ниже своих возможностей. Сейчас мультипликатор государственных расходов высок: каждый вложенный рубль доходит до выпуска, а не до цен. Это редкое окно, и мы им пользуемся.`;
     if (govInvestment > 1) return 'Мы смещаем расходы от текущего потребления к инвестициям. Трансферты поддерживают спрос сегодня, инфраструктура повышает то, что страна способна произвести завтра.';
@@ -967,6 +1007,7 @@ const PRESIDENT_ACTIONS = [
     reqText: 'Недоступно во время войны — экономическое давление теряет смысл рядом с настоящей',
     desc: 'Ограничить торговлю и инвестиции с одной из стран-партнёров — экономическое давление вместо военного. Рейтинг греется сплочением почти сразу, но подорожавший импорт и осторожность инвесторов остаются на годы.',
     build: (s, difficulty) => ({
+      patch: { sanctionsStart: true },
       impulses: [
         makeImpulse('approvalPush', 3.5, 'Санкции против торгового партнёра', 'fast', difficulty, 'other'),
         makeImpulse('tensionPush', -2, 'Внешний оппонент сплачивает вокруг власти', 'fast', difficulty, 'other'),
@@ -984,6 +1025,7 @@ const PRESIDENT_ACTIONS = [
     reqText: 'Недоступно во время войны',
     desc: 'Договориться о едином рынке с соседями: ниже барьеры для торговли, дешевле капитал, ниже премия за риск — но часть регуляторных решений придётся согласовывать, а не принимать в одиночку. Долгий эффект, почти не отменяется.',
     build: (s, difficulty) => ({
+      patch: { tradeBlocJoin: true },
       impulses: [
         sustainedImpulse('investment', 0.7, 16, 'Членство в торговом блоке', 'other'),
         sustainedImpulse('businessConfidence', 0.9, 16, 'Членство в торговом блоке', 'other'),
@@ -995,7 +1037,7 @@ const PRESIDENT_ACTIONS = [
         priority: 8, chain: ['Соглашение подписано', 'Барьеры ↓', 'Капитал дешевле', 'Согласование с блоком', 'Напряжение ↑'] },
     }) },
 
-  { id: 'dissolve', group: 'power', label: 'Распустить парламент', cost: 45, cooldown: 14,
+  { id: 'dissolve', group: 'power', severe: true, label: 'Распустить парламент', cost: 45, cooldown: 14,
     requires: (s) => !s.parliamentDissolved,
     reqText: 'Доступно, пока парламент работает',
     desc: 'Убрать единственный орган, способный сказать «нет». Решения перестают тормозиться — вместе с ними перестаёт работать всё, что держало премию за риск низкой.',
@@ -1040,7 +1082,7 @@ const PRESIDENT_ACTIONS = [
      Наступательная война отличается от оборонительной именно ценой: союзников
      нет, есть санкции. Поэтому её и не показывают как «кризис, который случился»:
      это решение, у которого есть автор. */
-  { id: 'war_start', group: 'war', label: 'Начать военную операцию', cost: 45, cooldown: 20,
+  { id: 'war_start', group: 'war', severe: true, label: 'Начать военную операцию', cost: 45, cooldown: 20,
     requires: (s) => (s.warQuartersLeft || 0) <= 0,
     reqText: 'Доступно, пока страна не воюет',
     desc: 'Собственная война вместо чужой. Первые кварталы рейтинг растёт на сплочении вокруг флага, а с ним открываются чрезвычайные полномочия. Дальше начинается счёт: санкции, бегство капитала, сжатие торговли и инвестиций, рост цен со стороны предложения. Из войны выходят не тогда, когда захотят, а когда смогут.',
@@ -1076,7 +1118,7 @@ const PRESIDENT_ACTIONS = [
           priority: 10, chain: ['Решение президента', 'Сплочение вокруг флага', 'Санкции', 'Торговля ↓', 'Капитал ↓', 'Цены ↑'] },
       };
     } },
-  { id: 'mobilization', group: 'war', label: 'Объявить мобилизацию', cost: 28, cooldown: 8,
+  { id: 'mobilization', group: 'war', severe: true, label: 'Объявить мобилизацию', cost: 28, cooldown: 8,
     requires: (s) => (s.warQuartersLeft || 0) > 0,
     reqText: 'Доступно только во время войны',
     desc: 'Забрать людей из экономики в армию. Безработица падает — но не потому, что появились рабочие места; выпуск и потенциал падают вместе с ней. Рейтинг платит сразу и заметно: мобилизация касается каждой семьи, в отличие от войны на экране.',
@@ -1094,7 +1136,7 @@ const PRESIDENT_ACTIONS = [
         text: `Призыв затрагивает всю страну. Формально безработица снизится — из экономики просто изымают людей; выпуск, потенциал и потребление уйдут вниз следом. Напряжённость была ${Math.round(s.politicalTension || 0)} из 100, и это решение её не уменьшит.`,
         priority: 10, chain: ['Мобилизация', 'Рабочих рук ↓', 'Потенциал ↓', 'Рейтинг ↓', 'Напряжённость ↑'] },
     }) },
-  { id: 'war_economy', group: 'war', label: 'Перевести экономику на военные рельсы', cost: 34, cooldown: 12,
+  { id: 'war_economy', group: 'war', severe: true, label: 'Перевести экономику на военные рельсы', cost: 34, cooldown: 12,
     requires: (s) => (s.warQuartersLeft || 0) > 0,
     reqText: 'Доступно только во время войны',
     desc: 'Госзаказ вместо рынка: оборонная промышленность растёт, гражданский сектор сжимается. Выпуск и занятость держатся, но держатся на бюджете — и всё, что произведено, не становится ни потреблением, ни будущим ростом.',
@@ -1110,7 +1152,7 @@ const PRESIDENT_ACTIONS = [
         text: 'Госзаказ становится главным покупателем: оборонные заводы работают в три смены, гражданские линии останавливаются. Цифры выпуска это поддержит — благосостояние нет: произведённое не съесть, не надеть и не вложить в завтрашний рост.',
         priority: 9, chain: ['Военный заказ', 'Оборонка ↑', 'Гражданский сектор ↓', 'Производительность ↓'] },
     }) },
-  { id: 'peace_deal', group: 'war',
+  { id: 'peace_deal', group: 'war', severe: true,
     // в оборонительной войне у страны нет позиции для переговоров на равных:
     // прекратить её раньше срока значит принять условия того, кто напал, —
     // это капитуляция, а не мир, и цена у неё другая
@@ -1167,7 +1209,7 @@ const PRESIDENT_ACTIONS = [
      производительностью, а власть получает управляемость и политический капитал,
      который копится почти сам. Обратно ведёт та же дорога, что и из авторитаризма, —
      указ «Вернуть парламент», и стоит он ровно столько же, сколько стоил всегда. */
-  { id: 'seize_control', group: 'war', label: 'Полный контроль над институтами', cost: 50, cooldown: 24,
+  { id: 'seize_control', group: 'war', severe: true, label: 'Полный контроль над институтами', cost: 50, cooldown: 24,
     requires: (s) => s.politicalRegime === 'authoritarian' && !!s.parliamentDissolved && (s.warQuartersLeft || 0) > 0,
     reqText: 'Доступно во время войны при авторитарном режиме и распущенном парламенте',
     desc: 'Суды, пресса и остатки самостоятельных ведомств переходят под прямое управление. Ведомства почти перестают отказывать, политический капитал копится сам — но инвестиции, производительность и капитал уходят из страны и обратно не возвращаются.',
@@ -1352,13 +1394,39 @@ function militaryCoupRisk(x) {
 /* Разбор пакета решений президента за квартал: списывает капитал, ставит
    кулдауны, собирает импульсы и новости. Проверки дублируют интерфейс намеренно —
    состояние может прийти из сохранения, а движок обязан оставаться замкнутым. */
+// Пока парламент жив и не распущен указом, а страна не авторитарна, реформа —
+// это не решение президента в одиночку, а внесённый в парламент законопроект.
+// Порог, а не бросок кубика: при таком напряжении или таком провальном
+// рейтинге оппозиция гарантированно консолидируется против инициативы —
+// исход зависит от того, что игрок сделал со страной, а не от удачи. Роспуск
+// парламента или авторитарный/тоталитарный режим убирают этот риск вовсе —
+// именно поэтому концентрация власти работает, а не только вредит.
+function parliamentBlocksReform(s) {
+  if (s.parliamentDissolved) return false;
+  if (s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian') return false;
+  const tension = s.politicalTension || 0;
+  const approval = Number.isFinite(s.approval) ? s.approval : 50;
+  return tension >= 65 || approval <= 30;
+}
+
 function applyPresidentActions(s, ids, cooldowns, difficulty) {
   const impulses = []; const newsSpecs = []; const patch = {};
   let spent = 0; let budget = Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55;
-  const applied = [];
+  const applied = []; const blocked = [];
   (ids || []).forEach((id) => {
     const a = PRES_BY_ID[id];
     if (!a || !presActionAvailable(a, s, cooldowns) || a.cost > budget) return;
+    if (a.group === 'reform' && parliamentBlocksReform(s)) {
+      // законопроект не прошёл: часть капитала уже потрачена на лоббирование,
+      // но эффект и отметка «once» не применяются — попробовать снова можно
+      // в любой следующий квартал, реформа не считается использованной
+      const blockCost = Math.round(a.cost * 0.4);
+      budget -= blockCost; spent += blockCost; blocked.push(id);
+      newsSpecs.push({ cat: 'gov', headline: `ПАРЛАМЕНТ ОТКЛОНИЛ ЗАКОНОПРОЕКТ: ${a.label.toUpperCase()}`,
+        text: 'Голосов не хватило: при текущем напряжении в обществе и рейтинге власти оппозиция консолидировалась против инициативы. Часть политического капитала потрачена на лоббирование впустую — само право внести законопроект снова никуда не делось.',
+        priority: 7, chain: ['Законопроект внесён', 'Напряжение/рейтинг', 'Голосов не хватило', 'Капитал потрачен впустую'] });
+      return;
+    }
     const r = a.build(s, difficulty) || {};
     budget -= a.cost; spent += a.cost; applied.push(id);
     if (a.cooldown) cooldowns[`pres:${a.id}`] = a.cooldown;
@@ -1367,7 +1435,7 @@ function applyPresidentActions(s, ids, cooldowns, difficulty) {
     Object.assign(patch, r.patch || {});
     if (r.patch && r.patch.reform) (patch.reforms = patch.reforms || []).push(r.patch.reform);
   });
-  return { impulses, newsSpecs, spent, patch, applied };
+  return { impulses, newsSpecs, spent, patch, applied, blocked };
 }
 
 /* Указание ведомству. Тот же каталог REQUESTS, что и для межведомственных
@@ -1736,6 +1804,104 @@ function evaluatePromise(promise, economy) {
 }
 
 /* =========================================================================================
+   ПРЕСС-КОНФЕРЕНЦИЯ: раз в квартал журналисты задают вопрос, и ответ — это не
+   рычаг с числом, а слово, которое само по себе двигает доверие и рейтинг.
+   Отдельно от обещаний: обещания подводят итог на выборах по факту, здесь же
+   решает сам выбор ответа, а не то, что происходит с экономикой дальше.
+   Вопрос выбирается детерминированно от (economy, quarterIndex) — без
+   Math.random() — чтобы превью в интерфейсе перед отправкой решений и сам
+   расчёт квартала внутри simulateQuarter всегда сходились на одном и том же
+   вопросе без необходимости протаскивать его id через decisions отдельно. */
+const PRESS_QUESTIONS = [
+  { id: 'growth', shortLabel: 'ОБ ИТОГАХ КВАРТАЛА', when: () => true,
+    prompt: 'Как вы оцениваете экономические результаты квартала?',
+    options: [
+      { id: 'spin', label: 'Показать результаты в лучшем свете',
+        quote: 'Мы видим уверенный прогресс по всем ключевым направлениям.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2.5, 'Пресс-конференция: оптимистичный тон', 'fast', d, 'other'),
+          makeImpulse('govTrust', -2, 'Пресс-конференция: приукрашенные цифры', 'fast', d, 'other')] }) },
+      { id: 'honest', label: 'Признать проблемы честно',
+        quote: 'Есть реальные сложности, и мы не собираемся их замалчивать.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 3, 'Пресс-конференция: честное признание проблем', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -1, 'Пресс-конференция: неприятная правда', 'fast', d, 'other')] }) },
+      { id: 'deflect', label: 'Уйти от прямого ответа',
+        quote: 'Экономика — это сложная система, нельзя всё сводить к одной цифре.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -1.5, 'Пресс-конференция: уклончивый ответ', 'fast', d, 'other')] }) },
+    ] },
+  { id: 'opposition', shortLabel: 'ОБ ОБВИНЕНИЯХ ОППОЗИЦИИ', when: () => true,
+    prompt: 'Оппозиция называет вашу экономическую политику провальной — ваш ответ?',
+    options: [
+      { id: 'attack', label: 'Перейти в контратаку',
+        quote: 'Оппозиция предлагает лишь популизм без единой цифры расчётов.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2, 'Пресс-конференция: жёсткий ответ оппозиции', 'fast', d, 'other'),
+          makeImpulse('tensionPush', 3, 'Пресс-конференция: обострение риторики', 'fast', d, 'other')] }) },
+      { id: 'engage', label: 'Признать часть критики обоснованной',
+        quote: 'В критике есть здравое зерно, и мы готовы это обсуждать.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 2.5, 'Пресс-конференция: готовность к диалогу', 'fast', d, 'other'),
+          makeImpulse('tensionPush', -2, 'Пресс-конференция: снижение накала', 'fast', d, 'other')] }) },
+      { id: 'ignore', label: 'Проигнорировать вопрос',
+        quote: 'Мы сосредоточены на работе, а не на политических дебатах.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', -1, 'Пресс-конференция: отказ отвечать критикам', 'fast', d, 'other')] }) },
+    ] },
+  { id: 'inflation', shortLabel: 'ОБ ИНФЛЯЦИИ', when: (s) => s.inflation > (s.inflationTarget || 4) + 2,
+    prompt: 'Цены снова растут быстрее обещанного — как вы это объясните?',
+    options: [
+      { id: 'blame_external', label: 'Списать на внешние факторы',
+        quote: 'Инфляция ускоряется во всём мире, мы не исключение.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 1.5, 'Пресс-конференция: инфляция как внешний шок', 'fast', d, 'other'),
+          makeImpulse('govTrust', -2.5, 'Пресс-конференция: перекладывание ответственности', 'fast', d, 'other')] }) },
+      { id: 'own_it', label: 'Взять ответственность на себя',
+        quote: 'Часть решений оказалась ошибочной, и мы это исправляем.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 3.5, 'Пресс-конференция: ответственность за инфляцию', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -2, 'Пресс-конференция: признание ошибки', 'fast', d, 'other')] }) },
+      { id: 'promise', label: 'Пообещать скорое улучшение',
+        quote: 'Уже в следующих кварталах инфляция пойдёт на спад.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2, 'Пресс-конференция: обещание скорого улучшения', 'fast', d, 'other'),
+          makeImpulse('govTrust', -1, 'Пресс-конференция: невыполнимое обещание', 'default', d, 'other')] }) },
+    ] },
+  { id: 'unemployment', shortLabel: 'О БЕЗРАБОТИЦЕ', when: (s) => s.unemployment > s.nairu + 1.2,
+    prompt: 'Люди теряют работу — что вы скажете тем, кто остался без дохода?',
+    options: [
+      { id: 'sympathy', label: 'Выразить сочувствие и пообещать поддержку',
+        quote: 'Мы разделяем эту боль и расширяем программы поддержки.',
+        build: (s, d) => ({ impulses: [makeImpulse('consumerConfidence', 2.5, 'Пресс-конференция: сочувствие безработным', 'fast', d, 'other'),
+          makeImpulse('govTrust', 1.5, 'Пресс-конференция: сочувствие безработным', 'fast', d, 'other')] }) },
+      { id: 'structural', label: 'Назвать это неизбежной структурной перестройкой',
+        quote: 'Экономика проходит через болезненную, но необходимую перестройку.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -2, 'Пресс-конференция: безработица названа неизбежной', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -1.5, 'Пресс-конференция: холодный ответ безработным', 'fast', d, 'other')] }) },
+      { id: 'minimize', label: 'Преуменьшить масштаб проблемы',
+        quote: 'Цифры безработицы не так тревожны, как их представляют.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -3, 'Пресс-конференция: преуменьшение безработицы', 'fast', d, 'other'),
+          makeImpulse('consumerConfidence', -2, 'Пресс-конференция: преуменьшение безработицы', 'fast', d, 'other')] }) },
+    ] },
+  { id: 'debt', shortLabel: 'О ГОСДОЛГЕ', when: (s) => s.debtToGdp > 70,
+    prompt: 'Госдолг продолжает расти — вас не пугает эта цифра?',
+    options: [
+      { id: 'reassure', label: 'Заверить, что долг под контролем',
+        quote: 'Долговая нагрузка полностью управляема, поводов для паники нет.',
+        build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 1.5, 'Пресс-конференция: заверения по долгу', 'fast', d, 'other'),
+          makeImpulse('riskPremium', 0.15, 'Пресс-конференция: рынок не поверил заверениям по долгу', 'default', d)] }) },
+      { id: 'plan', label: 'Изложить конкретный план консолидации',
+        quote: 'У нас есть чёткий график снижения долговой нагрузки.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', 3, 'Пресс-конференция: план консолидации долга', 'fast', d, 'other'),
+          makeImpulse('riskPremium', -0.2, 'Пресс-конференция: рынок поверил в план консолидации', 'default', d)] }) },
+      { id: 'shrug', label: 'Сказать, что так живут многие страны',
+        quote: 'Уровень нашего долга сопоставим со многими развитыми странами.',
+        build: (s, d) => ({ impulses: [makeImpulse('govTrust', -2, 'Пресс-конференция: долг списан на общемировую практику', 'fast', d, 'other')] }) },
+    ] },
+];
+
+// без Math.random(): один и тот же (economy, quarterIndex) всегда даёт один и
+// тот же вопрос, поэтому клиентское превью перед отправкой решений и расчёт
+// внутри simulateQuarter не могут разойтись
+function pickPressQuestion(s, quarterIndex) {
+  const eligible = PRESS_QUESTIONS.filter((q) => !q.when || q.when(s));
+  if (!eligible.length) return null;
+  return eligible[quarterIndex % eligible.length];
+}
+
+/* =========================================================================================
    СОБЫТИЯ. kind: demand | supply | financial | external | structural
 ========================================================================================= */
 const EVENTS = [
@@ -2085,6 +2251,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const pres = applyPresidentActions(s, decisions.presidentActions, cooldowns, difficulty);
   queue = queue.concat(pres.impulses);
   pres.newsSpecs.forEach((n) => news.push(mkNews(n.cat, n.headline, n.text, { priority: n.priority, chain: n.chain })));
+
+  /* --- 1в. ПРЕСС-КОНФЕРЕНЦИЯ: один вопрос за квартал, ответ значит больше цифр --- */
+  const pressQ = pickPressQuestion(s, quarterIndex);
+  const pressOpt = pressQ && (pressQ.options.find((o) => o.id === decisions.pressAnswer) || null);
+  if (pressOpt) {
+    const built = pressOpt.build(s, difficulty) || {};
+    queue = queue.concat(built.impulses || []);
+    news.push(mkNews('gov', `ПРЕСС-КОНФЕРЕНЦИЯ: ${pressQ.shortLabel}`, `«${pressOpt.quote}»`, { priority: 6 }));
+  }
   // указание ведомству разбирается на уровне интерфейса (ему нужны уже готовые
   // решения ботов), но платит за него тот же политический капитал
   let presSpent = pres.spent + Math.max(0, decisions.presidentExtraSpend || 0);
@@ -2776,6 +2951,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // чья это война: случившаяся с экономикой или объявленная её же руководством —
   // от этого зависит и язык новостей, и то, как её показывает интерфейс
   const warByChoice = warDecreed ? true : (warQuartersLeft > 0 ? !!s.warByChoice : false);
+  // окна «свежей реакции» ЦБ/Минфина на дипломатию президента — сам
+  // экономический эффект уже идёт через sustainedImpulse у соответствующих
+  // действий, эти счётчики нужны только чтобы бот-персона какое-то время
+  // явно комментировала санкции/блок, а не молчала о решении, которое бьёт
+  // прямо по её мандату
+  const sanctionsQuartersLeft = pres.patch.sanctionsStart ? 10 : Math.max(0, (s.sanctionsQuartersLeft || 0) - 1);
+  const tradeBlocQuartersLeft = pres.patch.tradeBlocJoin ? 6 : Math.max(0, (s.tradeBlocQuartersLeft || 0) - 1);
+  const tradeBlocActive = !!pres.patch.tradeBlocJoin || !!s.tradeBlocActive;
   const activeCrises = [];
   if (bankingRisk >= CONFIG.thresholds.bankingRisk || bankCapitalAdequacy < 8) activeCrises.push('banking');
   if (debtRisk >= CONFIG.thresholds.debtRisk) activeCrises.push('debt');
@@ -3133,6 +3316,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
     bondShortIndex, linkerIndex, moneyMarketIndex, worldEquityIndex,
     activeCrises, regime, recessionStreak, recessionRecoverStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice,
+    sanctionsQuartersLeft, tradeBlocQuartersLeft, tradeBlocActive,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
     cbStance: s.cbStance || 0, mofStance: s.mofStance || 0,
@@ -3392,6 +3576,16 @@ const STORY_TEMPLATES = {
       : mkNews('markets', 'РЕЗЕРВ УЖЕ РАЗОШЁЛСЯ НА ДЕФИЦИТ',
         `Фонд, пополненный про запас, снова пуст — дефицит следующих кварталов забрал его раньше, чем он успел пригодиться при более выгодных условиях займа.`, { priority: 5 })) },
   ] },
+  cds_spike: { id: 'cds_spike', title: 'Ставка против суверена', steps: [
+    { make: (s) => mkNews('markets', `СВОП НА ДЕФОЛТ (CDS) ПОДСКОЧИЛ ДО ${Math.round(s.sovereignSpread)} Б.П.`,
+      `Инструмент, который прежде почти не двигался, за квартал резко переоценил риск: премия за риск ${rf1(s.riskPremium)} п.п. Это не абстрактная цифра из сводки, а ставка, которую можно купить или продать прямо в трейдерском терминале, — и рынок свопов уже сделал свою.`,
+      { priority: 8, chain: ['Скачок спреда', 'CDS дорожает', 'Рынок закладывает риск дефолта', 'Занимать дороже для всех'] }) },
+    { gap: 2, make: (s) => (s.sovereignSpread > 250
+      ? mkNews('markets', `ПРЕМИЯ ЗА ДЕФОЛТ ОСТАЁТСЯ ВЫСОКОЙ: ${Math.round(s.sovereignSpread)} Б.П.`,
+        `Рынок CDS не разворачивается — устойчиво повышенная премия означает, что инвесторы всё ещё считают риск дефолта реальным, а не разовой паникой. Каждый новый выпуск долга занимает по этой цене.`, { priority: 6 })
+      : mkNews('markets', 'ПРЕМИЯ ЗА ДЕФОЛТ ОТКАТИЛАСЬ',
+        `Своп на дефолт подешевел обратно — рынок решил, что скачок был паникой, а не переоценкой фундаментальных рисков. Доверие к платёжеспособности страны восстановилось быстрее, чем сам долг.`, { priority: 5 })) },
+  ] },
 };
 
 // пауза перед первым шагом сюжета: у части сюжетов первое сообщение — это уже
@@ -3438,6 +3632,11 @@ function storyTriggers(prev, next, decisions, active, cooldowns) {
   // порог в % ВВП, а не в абсолютных млрд — иначе в разросшейся вдвое экономике
   // тот же сюжет либо запускался бы от любого чиха, либо не запускался вовсе
   if ((decisions.bondIssuance || 0) / Math.max(1, next.nominalGdp) * 100 >= 0.5 && !busy('bond_issuance')) fire.push('bond_issuance');
+  // резкий скачок CDS-спреда — отдельное событие от общего «долг дорожает»
+  // (та новость про обслуживание долга остаётся, но она про бюджет; здесь —
+  // про то, что рынок деривативов уже поставил на дефолт, а инструмент для
+  // этого лежит прямо в трейдерском терминале)
+  if (!busy('cds_spike') && next.sovereignSpread > 250 && next.sovereignSpread - (prev.sovereignSpread || 0) > 45) fire.push('cds_spike');
   return fire;
 }
 
@@ -3917,8 +4116,9 @@ function buildDecisionImpulses(dec, s, difficulty) {
 /* =========================================================================================
    НАЧАЛЬНОЕ СОСТОЯНИЕ
 ========================================================================================= */
-function makeInitialEconomy() {
-  const I = CONFIG.initial;
+function makeInitialEconomy(scenarioId) {
+  const scenario = SCENARIOS.find((sc) => sc.id === scenarioId);
+  const I = { ...CONFIG.initial, ...(scenario && scenario.overrides) };
   const potentialGdp = potentialFrom(I.capitalStock, I.laborForce, I.nairu, I.humanCapitalIndex, I.productivity, I.infrastructureIndex, TFP_SCALE, 0);
   const nominalGdp = I.gdp * I.priceLevel / 100;
   const base = {
@@ -4226,7 +4426,7 @@ function leverPreview(id, newVal, s, difficulty) {
 }
 
 export {
-  CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS, UNCERTAINTY,
+  CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, propagandaEditorial,
@@ -4238,9 +4438,9 @@ export {
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   describeHumanCbAction, describeHumanMofAction,
-  PROMISE_POOL, pickPromises, evaluatePromise,
+  PROMISE_POOL, pickPromises, evaluatePromise, PRESS_QUESTIONS, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
-  presActionAvailable, applyPresidentActions, politicalCapitalRegen,
+  presActionAvailable, applyPresidentActions, politicalCapitalRegen, parliamentBlocksReform,
   PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext, militaryCoupRisk,
   directiveProgress, directiveVerdict, DIRECTIVE_FULL, DIRECTIVE_PART,
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,

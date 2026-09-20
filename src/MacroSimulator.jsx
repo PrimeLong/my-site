@@ -3,22 +3,23 @@ import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLin
   createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom, listPublicRooms,
   reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
-  Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
-  ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
+  Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Activity, Newspaper, Factory, Scale, Banknote,
+  ShieldAlert, ShieldCheck, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
   X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
   Trophy, Lock, Share2, Download, GraduationCap, Crown, Gavel, Hammer, Smartphone,
+  Play, Calendar, BookOpen, Vote, Layers, PartyPopper, Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen,
 } from 'lucide-react';
 import {
-  CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
+  CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
-  simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise,
+  simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk,
+  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -293,6 +294,53 @@ function Sparkline({ series, color, height = 16 }) {
   return (
     <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
       <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+// пятиконечная звезда: точки чередуют внешний/внутренний радиус через 36°,
+// начиная сверху — обычная параметрическая формула геральдической звезды
+function starPath(cx, cy, rOuter, rInner) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? rOuter : rInner;
+    const a = -Math.PI / 2 + i * (Math.PI / 5);
+    pts.push(`${(cx + Math.cos(a) * r).toFixed(2)},${(cy + Math.sin(a) * r).toFixed(2)}`);
+  }
+  return `M${pts.join('L')}Z`;
+}
+/* Государственная печать — единственный сквозной визуальный образ страны:
+   не карта и не герб конкретного государства (их у безымянной страны панели
+   нет и не может быть), а абстрактная эмблема власти, которая грубеет вместе
+   с политическим режимом — то же самое, что уже делает газета своим тоном,
+   но как знак, а не текст. Democracy: тонкие линии, разомкнутые насечки,
+   контурная звезда. Totalitarian: двойное кольцо, сплошные насечки-клинья,
+   залитая звезда. Один компонент на все режимы — только веса и заливки
+   разные, чтобы получить не четыре разных значка, а один и тот же символ,
+   который явно тяжелеет. */
+export function StateSeal({ regime = 'democracy', size = 40, title }) {
+  const info = POLITICAL_REGIME_INFO[regime] || POLITICAL_REGIME_INFO.democracy;
+  const color = COLOR[info.color] || COLOR.gold;
+  const hard = regime === 'authoritarian' || regime === 'totalitarian';
+  const heavy = regime === 'totalitarian';
+  const cx = 50; const cy = 50;
+  const rOuter = 46; const rInner = hard ? 34 : 37;
+  const tickInner = hard ? 38 : 40.5; const tickOuter = 45;
+  const ticks = 16;
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title || info.label} style={{ flexShrink: 0 }}>
+      {heavy && <circle cx={cx} cy={cy} r={rOuter - 4.5} fill="none" stroke={color} strokeWidth={1.3} opacity={0.65} />}
+      <circle cx={cx} cy={cy} r={rOuter} fill="none" stroke={color} strokeWidth={hard ? 3 : 1.6} />
+      {Array.from({ length: ticks }).map((_, i) => {
+        const a = (i / ticks) * Math.PI * 2;
+        return (
+          <line key={i} x1={(cx + Math.cos(a) * tickInner).toFixed(2)} y1={(cy + Math.sin(a) * tickInner).toFixed(2)}
+            x2={(cx + Math.cos(a) * tickOuter).toFixed(2)} y2={(cy + Math.sin(a) * tickOuter).toFixed(2)}
+            stroke={color} strokeWidth={hard ? 3.2 : 1.2} strokeLinecap={hard ? 'square' : 'round'} opacity={hard ? 0.9 : 0.55} />
+        );
+      })}
+      <circle cx={cx} cy={cy} r={rInner} fill="none" stroke={color} strokeWidth={hard ? 2.4 : 1.3} />
+      <path d={starPath(cx, cy, hard ? 21 : 18, hard ? 9.5 : 7.5)} fill={hard ? color : 'none'} stroke={color} strokeWidth={hard ? 0 : 1.5} strokeLinejoin="round" />
     </svg>
   );
 }
@@ -2680,6 +2728,10 @@ function StanceBar({ value, leftLabel, rightLabel }) {
 function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
   if (!botRole) return null;
   const isCb = botRole === 'central_bank';
+  // ЦБ и Минфин раньше делили один и тот же синий заголовок панели — в плотной
+  // колонке не читалось, чьё это решение, без чтения подписи целиком. Синий
+  // остаётся за ЦБ (уже сложившаяся ассоциация в интерфейсе), Минфину — тил.
+  const accent = isCb ? COLOR.blue : COLOR.teal;
   const Icon = isCb ? Landmark : Coins;
   const row = (l, v) => (
     <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '1.5px 0', color: l.startsWith('·') ? COLOR.muted : COLOR.text }}>
@@ -2687,10 +2739,10 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
     </div>
   );
   return (
-    <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
+    <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong, borderLeft: `3px solid ${accent}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
-        <Icon size={14} color={COLOR.blue} />
-        <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.blue }}>{isCb ? 'Центральный банк' : 'Министерство финансов'}</span>
+        <Icon size={14} color={accent} />
+        <span className="ems-serif" style={{ fontSize: 13.5, color: accent }}>{isCb ? 'Центральный банк' : 'Министерство финансов'}</span>
         <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={11} />бот</span>
       </div>
       <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 7 }}>
@@ -2698,8 +2750,13 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
       </div>
       <StanceBar value={lastAction ? lastAction.stance : 0} leftLabel={isCb ? 'мягкая политика' : 'консолидация'} rightLabel={isCb ? 'жёсткая политика' : 'стимулирование'} />
       {lastAction && (
-        <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.blue}`, paddingLeft: 9, color: COLOR.text }}>
+        <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${accent}`, paddingLeft: 9, color: COLOR.text }}>
           {lastAction.note}
+        </div>
+      )}
+      {lastAction && lastAction.quote && (
+        <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 9, color: COLOR.muted, fontStyle: 'italic' }}>
+          «{lastAction.quote}»
         </div>
       )}
       {lastAction && lastAction.demand && (
@@ -2734,6 +2791,38 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
         </span>
         <span className="ems-mono">{Math.round(coordination)}</span>
       </div>
+    </div>
+  );
+}
+
+/* Пресс-конференция: один вопрос за квартал, выбранный вариант ответа — а не
+   цифры политики — сам двигает доверие и рейтинг. Отдельно от обещаний: те
+   подводят итог по факту на выборах, здесь решает само слово. Не показывается
+   трейдеру — у него нет мандата, за который отвечают перед прессой. */
+function PressConferencePanel({ question, answer, setAnswer }) {
+  if (!question) return null;
+  return (
+    <div className="ems-panel" style={{ padding: 13 }}>
+      <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Megaphone size={13} />Пресс-конференция
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45, marginBottom: 9 }}>«{question.prompt}»</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {question.options.map((opt) => {
+          const active = answer === opt.id;
+          return (
+            <div key={opt.id} role="button" tabIndex={0} className="ems-card-btn"
+              onClick={() => { Audio.play('tick'); setAnswer(active ? null : opt.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAnswer(active ? null : opt.id); } }}
+              style={{ padding: '8px 10px', flexDirection: 'column', alignItems: 'flex-start', gap: 2, cursor: 'pointer',
+                borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.goldDim : COLOR.panelAlt }}>
+              <span style={{ fontSize: 11.5, color: active ? COLOR.goldSoft : COLOR.text, fontWeight: active ? 600 : 400 }}>{opt.label}</span>
+              {active && <span style={{ fontSize: 10.5, color: COLOR.muted, fontStyle: 'italic', marginTop: 2 }}>«{opt.quote}»</span>}
+            </div>
+          );
+        })}
+      </div>
+      {!answer && <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 7 }}>Можно не отвечать — тогда ответ никак не скажется на доверии и рейтинге.</div>}
     </div>
   );
 }
@@ -2953,24 +3042,45 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
     : cdLeft > 0 ? `Повторно через ${cdLeft} кв.`
       : blockedByReq ? (action.reqText || 'Сейчас недоступно')
         : !canAfford ? 'Не хватает капитала' : null;
+  // реформа — это законопроект, а не указ: пока парламент жив, при таком
+  // напряжении или таком провальном рейтинге он гарантированно его отклонит,
+  // и капитал уйдёт на лоббирование впустую, без всякого эффекта
+  const willBeBlocked = action.group === 'reform' && !done && parliamentBlocksReform(economy);
+  // необратимые решения (война, роспуск парламента, тоталитарный контроль)
+  // получают ржавый акцент вместо обычного золотого — интерфейс сам должен
+  // сигналить о разнице в весе решения, а не полагаться на то, что игрок
+  // дочитает описание до конца
+  const severe = !!action.severe && !done;
+  const selectedColor = severe ? COLOR.rust : COLOR.gold;
+  const selectedDim = severe ? COLOR.rustDim : COLOR.goldDim;
   return (
     <div className="ems-card-btn" role="button" tabIndex={disabled ? -1 : 0}
       onClick={() => { if (!disabled) { Audio.play('tick'); onToggle(); } }}
       onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onToggle(); } }}
       style={{ padding: '9px 11px', flexDirection: 'column', alignItems: 'stretch', gap: 0, marginBottom: 6,
         cursor: disabled ? 'default' : 'pointer', opacity: disabled && !selected ? 0.5 : 1,
-        borderColor: selected ? COLOR.gold : COLOR.border, background: selected ? COLOR.goldDim : COLOR.panelAlt }}>
+        borderColor: selected ? selectedColor : severe ? COLOR.rustDim : COLOR.border,
+        background: selected ? selectedDim : COLOR.panelAlt }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        {selected && <Check size={12} color={COLOR.gold} style={{ alignSelf: 'center', flexShrink: 0 }} />}
-        <span style={{ fontSize: 12.5, color: selected ? COLOR.goldSoft : COLOR.text, fontWeight: 600, flex: 1 }}>{label}</span>
-        <span className="ems-mono" style={{ fontSize: 11, color: selected ? COLOR.goldSoft : COLOR.muted, flexShrink: 0 }}>{action.cost} ПК</span>
+        {selected && <Check size={12} color={selectedColor} style={{ alignSelf: 'center', flexShrink: 0 }} />}
+        {!selected && severe && !blockedByReq && <AlertTriangle size={12} color={COLOR.rust} style={{ alignSelf: 'center', flexShrink: 0 }} />}
+        <span style={{ fontSize: 12.5, color: selected ? (severe ? COLOR.rust : COLOR.goldSoft) : COLOR.text, fontWeight: 600, flex: 1 }}>{label}</span>
+        <span className="ems-mono" style={{ fontSize: 11, color: selected ? (severe ? COLOR.rust : COLOR.goldSoft) : COLOR.muted, flexShrink: 0 }}>{action.cost} ПК</span>
       </div>
+      {severe && !blockedByReq && (
+        <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3, fontWeight: 600 }}>Необратимое решение</div>
+      )}
       {/* решение, запертое условием («доступно при беспорядках или напряжённости
           от 45»), может оставаться недоступным весь ранний квартал партии —
           абзац описания в таком виде только растягивает список вниз, когда
           выбрать всё равно нельзя; причина недоступности сама по себе короче
           и полезнее */}
       {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
+      {!blockedByReq && willBeBlocked && (
+        <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3 }}>
+          Парламент отклонит: слишком высокое напряжение или провальный рейтинг. Капитал спишется впустую.
+        </div>
+      )}
       {done && REFORM_RAMP[action.id] && (
         <div style={{ marginTop: 5, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${share * 100}%`, height: '100%', background: COLOR.teal }} />
@@ -3016,22 +3126,27 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
           const isCur = p.id === current.id;
           const isPending = pending === p.id;
           const disabled = isCur || (!isPending && !canPay);
+          // досрочная отставка главы ЦБ — необратимое и дорогое по доверию
+          // решение, а не рутинная кадровая рокировка: тот же ржавый акцент,
+          // что и у severe-указов президента, вместо обычного золотого
+          const pendingColor = isPending && early ? COLOR.rust : COLOR.gold;
+          const pendingDim = isPending && early ? COLOR.rustDim : COLOR.goldDim;
           return (
             <div key={p.id} className="ems-card-btn" role="button" tabIndex={disabled ? -1 : 0}
               onClick={() => { if (!disabled) { Audio.play('tick'); setPending(isPending ? null : p.id); } }}
               onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setPending(isPending ? null : p.id); } }}
               style={{ padding: '7px 10px', flexDirection: 'column', alignItems: 'stretch', gap: 0, marginBottom: 5,
                 cursor: disabled ? 'default' : 'pointer', opacity: disabled && !isCur ? 0.5 : 1,
-                borderColor: isPending ? COLOR.gold : isCur ? COLOR.blue : COLOR.border,
-                background: isPending ? COLOR.goldDim : isCur ? COLOR.blueDim : COLOR.panelAlt }}>
+                borderColor: isPending ? pendingColor : isCur ? COLOR.blue : COLOR.border,
+                background: isPending ? pendingDim : isCur ? COLOR.blueDim : COLOR.panelAlt }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, flexShrink: 0, color: isPending ? COLOR.goldSoft : COLOR.text }}>{p.name}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, flexShrink: 0, color: isPending ? (early ? COLOR.rust : COLOR.goldSoft) : COLOR.text }}>{p.name}</span>
                 {/* должность режем в одну строку: иначе она переносится и утаскивает
                     вниз метку «действующий», разрывая строку карточки надвое */}
                 <span style={{ fontSize: 10, color: COLOR.faint, flex: 1, minWidth: 0,
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
                 {isCur && <span style={{ fontSize: 9.5, color: COLOR.blue, flexShrink: 0 }}>действующий</span>}
-                {isPending && <span style={{ fontSize: 9.5, color: COLOR.gold, flexShrink: 0 }}>назначить</span>}
+                {isPending && <span style={{ fontSize: 9.5, color: pendingColor, flexShrink: 0 }}>{early ? 'досрочная отставка' : 'назначить'}</span>}
               </div>
               <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, marginTop: 3 }}>{p.desc}</div>
             </div>
@@ -3348,30 +3463,35 @@ const ROLES_PLAYED_KEY = 'ems-roles-played';
 const NETWORK_PLAYED_KEY = 'ems-network-played';
 const ALL_ROLE_IDS = ['central_bank', 'ministry_finance', 'full_control', 'president', 'trader'];
 const ACHIEVEMENTS = [
-  { id: 'first_quarter', icon: '🎬', title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
-  { id: 'survivor_20', icon: '🗓️', title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
-  { id: 'survivor_40', icon: '📜', title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
-  { id: 'inflation_target', icon: '🎯', title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
-  { id: 'gdp_double', icon: '📈', title: 'Удвоение', desc: 'Удвой реальный ВВП от старта партии.' },
-  { id: 'low_unemployment', icon: '🧑‍🏭', title: 'Полная занятость', desc: 'Опусти безработицу ниже 4%.' },
-  { id: 'debt_control', icon: '🏦', title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизь госдолг ниже 35% ВВП.' },
-  { id: 'survived_crisis', icon: '⛈️', title: 'Пережили бурю', desc: 'Выведи страну из кризисного режима обратно к норме.' },
-  { id: 'won_election', icon: '🗳️', title: 'Мандат доверия', desc: 'Останься у власти на выборах.' },
-  { id: 'all_roles', icon: '🎭', title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
-  { id: 'network_played', icon: '🌐', title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
-  { id: 'casino_win', icon: '🎲', title: 'Дебют в казино', desc: 'Выиграй свою первую ставку в казино.' },
-  { id: 'casino_jackpot', icon: '💰', title: 'Куш', desc: 'Выиграй разом от 30 млн в одной игре казино.' },
-  { id: 'casino_ahead', icon: '🥂', title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 50 млн суммарно за партию.' },
-  { id: 'margin_call', icon: '⚠️', title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
-  { id: 'tutorial_done', icon: '🎓', title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
-  { id: 'tutorial_course_done', icon: '🏅', title: 'Экономист', desc: 'Пройди базовый курс целиком, вместе с экзаменом.' },
-  { id: 'course_trader', icon: '📊', title: 'Аналитик', desc: 'Пройди курс частного инвестора целиком, вместе с экзаменом.' },
-  { id: 'course_president', icon: '🏛️', title: 'Государственный ум', desc: 'Пройди курс президента целиком, вместе с экзаменом.' },
-  { id: 'course_all', icon: '🎓', title: 'Красный диплом', desc: 'Пройди все три курса обучения и сдай все три экзамена.' },
-  { id: 'promises_kept', icon: '🤝', title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
-  { id: 'reformer', icon: '🏗️', title: 'Реформатор', desc: 'Проведи три структурные реформы за одну партию (президент).' },
-  { id: 'own_hands', icon: '🕊️', title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
-  { id: 'iron_president', icon: '🎖️', title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
+  { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
+  { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
+  { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
+  { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
+  { id: 'gdp_double', icon: TrendingUp, title: 'Удвоение', desc: 'Удвой реальный ВВП от старта партии.' },
+  { id: 'low_unemployment', icon: Users, title: 'Полная занятость', desc: 'Опусти безработицу ниже 4%.' },
+  { id: 'debt_control', icon: Scale, title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизь госдолг ниже 35% ВВП.' },
+  { id: 'survived_crisis', icon: ShieldCheck, title: 'Пережили бурю', desc: 'Выведи страну из кризисного режима обратно к норме.' },
+  { id: 'won_election', icon: Vote, title: 'Мандат доверия', desc: 'Останься у власти на выборах.' },
+  { id: 'all_roles', icon: Layers, title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
+  { id: 'network_played', icon: Share2, title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
+  { id: 'casino_win', icon: Dices, title: 'Дебют в казино', desc: 'Выиграй свою первую ставку в казино.' },
+  { id: 'casino_jackpot', icon: Coins, title: 'Куш', desc: 'Выиграй разом от 30 млн в одной игре казино.' },
+  { id: 'casino_ahead', icon: PartyPopper, title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 50 млн суммарно за партию.' },
+  { id: 'margin_call', icon: AlertTriangle, title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
+  { id: 'tutorial_done', icon: GraduationCap, title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
+  { id: 'tutorial_course_done', icon: Award, title: 'Экономист', desc: 'Пройди базовый курс целиком, вместе с экзаменом.' },
+  { id: 'course_trader', icon: BarChart3, title: 'Аналитик', desc: 'Пройди курс частного инвестора целиком, вместе с экзаменом.' },
+  { id: 'course_president', icon: Landmark, title: 'Государственный ум', desc: 'Пройди курс президента целиком, вместе с экзаменом.' },
+  { id: 'course_all', icon: Medal, title: 'Красный диплом', desc: 'Пройди все три курса обучения и сдай все три экзамена.' },
+  { id: 'promises_kept', icon: Handshake, title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
+  { id: 'reformer', icon: Hammer, title: 'Реформатор', desc: 'Проведи три структурные реформы за одну партию (президент).' },
+  { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
+  { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
+  { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получи экстренное финансирование МВФ вместо дефолта.' },
+  { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введи санкции против торгового партнёра.' },
+  { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договорись о едином рынке с соседями.' },
+  { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Соверши сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
+  { id: 'public_room_played', icon: DoorOpen, title: 'Открытая дверь', desc: 'Доиграй хотя бы один квартал в открытой (публичной) сетевой комнате.' },
 ];
 const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -3452,7 +3572,7 @@ function survivedCrisis(history) {
   if ((last.activeCrises || []).length > 0) return false;
   return history.slice(0, -1).some((h) => (h.activeCrises || []).length > 0);
 }
-function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role }) {
+function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role, presActionsThisQuarter, isPublicRoom }) {
   const ids = [];
   if (quarterIndex >= 1) ids.push('first_quarter');
   if (quarterIndex >= 20) ids.push('survivor_20');
@@ -3461,12 +3581,16 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
   if (history && history.length > 1 && history[0].gdp > 0 && economy.gdp >= history[0].gdp * 2) ids.push('gdp_double');
   if (economy.unemployment < 4) ids.push('low_unemployment');
   if (role === 'ministry_finance' && economy.debtToGdp < 35) ids.push('debt_control');
+  if (role === 'ministry_finance' && economy.imfActive) ids.push('imf_bailout');
   if (survivedCrisis(history)) ids.push('survived_crisis');
   if (economy.electionResult === 'incumbent') ids.push('won_election');
   if (rolesPlayed && ALL_ROLE_IDS.every((r) => rolesPlayed.includes(r))) ids.push('all_roles');
   if (networkPlayed) ids.push('network_played');
+  if (isPublicRoom) ids.push('public_room_played');
   if ((lastEvents || []).some((e) => e.kind === 'call')) ids.push('margin_call');
   if (role === 'president') {
+    if ((presActionsThisQuarter || []).includes('sanctions_impose')) ids.push('diplomacy_sanctions');
+    if ((presActionsThisQuarter || []).includes('trade_bloc')) ids.push('trade_bloc_join');
     // объявить реформу — не то же самое, что провести её: у судебной или
     // пенсионной реформы эффект разворачивается 8-12 кварталов, и указ,
     // подписанный минуту назад, до сих пор не изменил в стране ничего
@@ -3538,11 +3662,12 @@ function useConfettiPieces(seed, count = 26) {
 export const AchievementToast = ({ toast, leaving }) => {
   const pieces = useConfettiPieces(toast ? toast.id : null);
   if (!toast) return null;
+  const ToastIcon = toast.icon;
   return (
     <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} style={{ position: 'fixed', bottom: 18, right: 18, zIndex: 90, maxWidth: 350,
       padding: '13px 17px', display: 'flex', alignItems: 'center', gap: 12, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
-      <span style={{ position: 'relative', fontSize: 32, lineHeight: 1 }}>
-        {toast.icon}
+      <span style={{ position: 'relative', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <ToastIcon size={26} color={COLOR.gold} />
         {!leaving && pieces.map((p) => (
           <span key={p.key} className="ems-confetti-piece" style={{
             position: 'absolute', top: '50%', left: '50%', width: p.w, height: p.h, background: p.color,
@@ -3804,10 +3929,13 @@ function AchievementsModal({ onClose }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
           {ACHIEVEMENTS.map((a) => {
             const done = !!unlocked[a.id];
+            const AchIcon = a.icon;
             return (
               <div key={a.id} className="ems-panel" style={{ padding: '9px 11px', display: 'flex', gap: 10, alignItems: 'flex-start',
                 opacity: done ? 1 : 0.55, borderColor: done ? COLOR.gold : COLOR.border }}>
-                <span style={{ fontSize: 22, lineHeight: 1, filter: done ? 'none' : 'grayscale(1)' }}>{done ? a.icon : <Lock size={18} color={COLOR.faint} />}</span>
+                <span style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {done ? <AchIcon size={19} color={COLOR.goldSoft} /> : <Lock size={18} color={COLOR.faint} />}
+                </span>
                 <div>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: done ? COLOR.goldSoft : COLOR.text }}>{a.title}</div>
                   <div style={{ fontSize: 11, color: COLOR.muted, marginTop: 2, lineHeight: 1.4 }}>{a.desc}</div>
@@ -4637,7 +4765,7 @@ function InstitutionsPanel({ economy, cbAction, mofAction }) {
       {row('Объявленная цель по инфляции', pctFmt(economy.inflationTarget))}
       {row('Инфляция / ожидания', `${fmt1(economy.inflation)}% / ${fmt1(economy.inflationExpectations)}%`)}
       {row('Норматив капитала банков', pctFmt(economy.capitalRequirement))}
-      <div style={{ fontSize: 11, color: COLOR.blue, margin: '8px 0 3px' }}>Минфин</div>
+      <div style={{ fontSize: 11, color: COLOR.teal, margin: '8px 0 3px' }}>Минфин</div>
       {row('Баланс бюджета', `${fmtSigned1(economy.budgetBalancePctGdp)}% ВВП`)}
       {row('Госдолг', pctFmt(economy.debtToGdp))}
       {row('НДС / прибыль', `${fmt1(economy.vatRate)}% / ${fmt1(economy.profitTaxRate)}%`)}
@@ -5201,6 +5329,13 @@ const roomCodeFromUrl = () => {
   return (new URLSearchParams(window.location.search).get('room') || '').toUpperCase();
 };
 
+// краткие ярлыки кризисов для превью в браузере открытых комнат — список
+// комнат нарочно лёгкий (без полной экономики), поэтому берём готовые id
+// из activeCrises, а не CRISIS_INFO с его иногда функциональными label
+const CRISIS_SHORT = { banking: 'банковский кризис', debt: 'долговой кризис', currency: 'валютный кризис',
+  stagflation: 'стагфляция', overheating: 'перегрев', recession: 'рецессия', deflation: 'дефляция',
+  pandemic: 'пандемия', war: 'война' };
+
 function NetworkLobby({ onEnter }) {
   const linkedCode = useMemo(roomCodeFromUrl, []);
   const [tab, setTab] = useState(linkedCode ? 'join' : 'create');
@@ -5601,6 +5736,13 @@ function NetworkLobby({ onEnter }) {
                   <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
                   <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
                   <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
+                  {(r.activeCrises || []).length > 0 ? (
+                    <span style={{ color: COLOR.rust, fontSize: 10.5 }} title={r.activeCrises.map((c) => CRISIS_SHORT[c] || c).join(', ')}>
+                      ⚠ {CRISIS_SHORT[r.activeCrises[0]] || r.activeCrises[0]}{r.activeCrises.length > 1 ? ` +${r.activeCrises.length - 1}` : ''}
+                    </span>
+                  ) : (
+                    <span style={{ color: COLOR.teal, fontSize: 10.5 }}>спокойно</span>
+                  )}
                   <span style={{ marginLeft: 'auto', color: COLOR.muted }}>{r.seatsTotal - r.seatsFree}/{r.seatsTotal}</span>
                   <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
                 </div>
@@ -5657,11 +5799,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
      означало бы отменить чужие уже принятые решения — для ЦБ/Минфина/президента
      в сетевой игре это не сделать без сервера и без риска обидеть партнёра. */
   const portfolioHistoryRef = React.useRef([]);
-  const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
-    const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
-    const instr = INSTR_BY_ID[instrId];
-    return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
-  });
+  const onTrade = (instrId, amt, side, liveQuotes) => {
+    if (instrId === 'cds_sovereign') pushAch(unlockAchievements(['cds_trade']));
+    setPortfolio((b) => {
+      const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
+      const instr = INSTR_BY_ID[instrId];
+      return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
+    });
+  };
   const onCasino = (net) => {
     const casinoNet = (portfolio.casinoNet || 0) + net;
     setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
@@ -5736,6 +5881,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       pushAch(unlockAchievements(questProgressAchievementIds({
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
         rolesPlayed: recordRolePlayed(seat), networkPlayed: true, role: seatRole(seat).id,
+        presActionsThisQuarter: presActionsRef.current, isPublicRoom: !!r.isPublic,
       })));
       // «Своими руками» — вернуть парламент, распущенный указом, а не тот, который
       // распустил кризис: decreeRule ДО этого квартала (когда решение принималось)
@@ -5803,6 +5949,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const otherSeats = roomSeats.filter((sx) => sx !== seat);
   const otherRole = seatRole(otherSeat);
   const OtherRoleIcon = ROLE_ICON[otherRole.icon];
+  const otherAccent = otherSeat === 'central_bank' ? COLOR.blue : otherSeat === 'ministry_finance' ? COLOR.teal
+    : otherSeat === 'president' ? COLOR.gold : COLOR.blue;
   const levers = LEVERS.filter((l) => roleDef.groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
   const economy = room.economy;
   const prevEcon = room.history.length >= 2 ? room.history[room.history.length - 2] : economy;
@@ -5988,6 +6136,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <StateSeal regime={economy.politicalRegime} size={36}
+            title={(POLITICAL_REGIME_INFO[economy.politicalRegime] || {}).label} />
           <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
@@ -6248,8 +6398,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                   приходилось либо спрашивать в чате, либо искать по всем вкладкам
                   «Показателей экономики»; ниже — сводка его последних решённых
                   значений, как в соло-игре у бота-оппонента */}
-              <div className="ems-panel" style={{ padding: 13 }}>
-                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.blue, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <div className="ems-panel" style={{ padding: 13, borderLeft: `3px solid ${otherAccent}` }}>
+                <div className="ems-serif" style={{ fontSize: 13, color: otherAccent, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <OtherRoleIcon size={13} />{otherRole.title}
                   <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'}</span>
                 </div>
@@ -6625,6 +6775,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
       )}
       <div style={{ maxWidth: 640, width: '100%' }}>
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 40 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+            <StateSeal regime="democracy" size={52} title="Государственная печать" />
+          </div>
           <div className="ems-hero-eyebrow">Симулятор макроэкономической политики</div>
           <div className="ems-hero-title">Экономическая панель государства</div>
           <div className="ems-hero-rule" />
@@ -6794,6 +6947,7 @@ function SetupScreen({ onStart, onBack }) {
   const [goal, setGoalRaw] = useState('living_standards');
   const setGoal = (g) => setGoalRaw(g);
   React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : 'living_standards'); }, [role]);
+  const [scenario, setScenario] = useState('sandbox');
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -6991,11 +7145,34 @@ function SetupScreen({ onStart, onBack }) {
           </React.Fragment>
         ))}
 
+        {/* сценарий задаёт не песочницу, а другую стартовую точку той же экономики:
+            переопределяет часть начальных условий движка, а не превращает партию
+            во что-то отдельное — сюжет, обучение и достижения работают как обычно */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
+          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
+          {SCENARIOS.map((sc) => {
+            const active = scenario === sc.id;
+            return (
+              <div key={sc.id} onClick={() => { Audio.play('click'); setScenario(sc.id); }} className="ems-card-btn"
+                style={{ padding: 13, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                  borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setScenario(sc.id); }}>
+                {active && <Check size={12} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                <div className="ems-serif" style={{ fontSize: 13, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
+                <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+
         {/* сложность и приоритет — это быстрые настройки, а не решения того же веса,
             что роль: сводим в одну компактную секцию вместо двух полноразмерных
             сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>4</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
@@ -7034,7 +7211,7 @@ function SetupScreen({ onStart, onBack }) {
             const cbWanted = custom ? cbPersona : 'random';
             const mofWanted = custom ? mofPersona : 'random';
             const presWanted = custom ? presPersona : 'random';
-            onStart({ role, difficulty, goal,
+            onStart({ role, difficulty, goal, scenario,
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
               president: { enabled: presAvailable && (custom ? presEnabled : true),
@@ -7324,7 +7501,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const playerBranch = setup.role === 'central_bank' ? 'monetary' : setup.role === 'ministry_finance' ? 'fiscal' : null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
 
-  const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
+  const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy(setup.scenario)), []);
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
   // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
@@ -7428,11 +7605,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [finishCooldown]);
 
   const activeBotPersona = botRole === 'central_bank' ? getCbPersona(cbPersonaId) : botRole === 'ministry_finance' ? getMofPersona(mofPersonaId) : null;
-  const onTrade = (id, amt, side, live) => setPortfolio((b) => {
-    const nb = tradeBook(b, id, amt, side, economy, live);
-    const instr = INSTR_BY_ID[id];
-    return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
-  });
+  const onTrade = (id, amt, side, live) => {
+    if (id === 'cds_sovereign') pushAch(unlockAchievements(['cds_trade']));
+    setPortfolio((b) => {
+      const nb = tradeBook(b, id, amt, side, economy, live);
+      const instr = INSTR_BY_ID[id];
+      return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
+    });
+  };
   const onCasino = (net) => {
     const casinoNet = (portfolio.casinoNet || 0) + net;
     setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
@@ -7665,6 +7845,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     pushAch(unlockAchievements(questProgressAchievementIds({
       quarterIndex, economy: result.economy, history: newHistory, lastEvents: traderEvents,
       rolesPlayed: recordRolePlayed(setup.role), networkPlayed: isNetworkPlayed(), role: setup.role,
+      presActionsThisQuarter: presActions,
     })));
     const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal,
       presidentActive: presEnabled });
@@ -7857,6 +8038,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <StateSeal regime={economy.politicalRegime} size={36}
+            title={(POLITICAL_REGIME_INFO[economy.politicalRegime] || {}).label} />
           <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
@@ -7864,6 +8047,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <div className="ems-serif" style={{ fontSize: 18 }}>Страна — экономическая панель</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
               {roleDef.title} · сложность: {(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title}
+              {setup.scenario && setup.scenario !== 'sandbox' ? ` · сценарий: ${(SCENARIOS.find((sc) => sc.id === setup.scenario) || {}).title}` : ''}
               {activeBotPersona ? ` · вторая ветвь: ${activeBotPersona.name} (бот)`
                 : isPresident ? ` · ЦБ: ${getCbPersona(cbPersonaId).name} (бот) · Минфин: ${getMofPersona(mofPersonaId).name} (бот)`
                   : setup.role === 'trader' ? '' : ' · без ботов'}
@@ -8199,6 +8383,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
+          )}
+          {!isTrader && (
+            <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
+              setAnswer={(id) => setLever('pressAnswer', id)} />
           )}
           {presEnabled && <PresidentWatchPanel economy={economy} plan={presidentPlan} last={presidentLast} branch={playerBranch} />}
         </div>
