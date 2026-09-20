@@ -3363,7 +3363,13 @@ function storyTriggers(prev, next, decisions, active, cooldowns) {
   if (decisions.transfers >= 3 && prev.transfersGrowth < next.transfersGrowth && !busy('social_boost')) fire.push('social_boost');
   if (next.creditGap > 5.5 && !busy('credit_boom')) fire.push('credit_boom');
   if (next.creditCrunch && !prev.creditCrunch && !busy('credit_crunch')) fire.push('credit_crunch');
-  if (next.debtToGdp > 80 && Math.floor(next.debtToGdp / 10) > Math.floor(prev.debtToGdp / 10) && !busy('debt_spiral')) fire.push('debt_spiral');
+  // раньше «Долговая спираль» объясняла разгон долга только выше 80% ВВП — а
+  // разрыв «ставка минус рост», из-за которого долг растёт даже при
+  // консолидации Минфина, реально кусается и при более скромном долге:
+  // вторая ветка ловит это раньше, не дожидаясь, пока цифра станет пугающей
+  const debtGrowthGap = next.effectiveDebtRate - next.gdpGrowth - next.inflation;
+  if (!busy('debt_spiral') && ((next.debtToGdp > 80 && Math.floor(next.debtToGdp / 10) > Math.floor(prev.debtToGdp / 10))
+    || (next.debtToGdp > 50 && next.debtToGdp > prev.debtToGdp + 0.1 && debtGrowthGap > 3))) fire.push('debt_spiral');
   // порог в % ВВП, а не в абсолютных млрд — иначе в разросшейся вдвое экономике
   // тот же сюжет либо запускался бы от любого чиха, либо не запускался вовсе
   if ((decisions.bondIssuance || 0) / Math.max(1, next.nominalGdp) * 100 >= 0.5 && !busy('bond_issuance')) fire.push('bond_issuance');
