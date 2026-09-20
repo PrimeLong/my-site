@@ -193,6 +193,30 @@ const GOALS = [
   { id: 'survive', label: 'Пройти цикл без маржин-колла', score: 'financial', trader: true },
 ];
 
+/* Сценарии — не отдельная песочница, а другая стартовая точка того же движка:
+   переопределяют часть CONFIG.initial перед расчётом makeInitialEconomy, а не
+   правят его — иначе baseline-сравнения в остальном коде (валютный порог
+   резервов, доля потребления/инвестиций «как в нормальной экономике») сами
+   поехали бы вместе со стартом и потеряли смысл как ориентир. */
+const SCENARIOS = [
+  { id: 'sandbox', title: 'Открытая партия', short: 'Песочница',
+    desc: 'Стабильная экономика без стартового кризиса — учиться или экспериментировать без давления времени.', overrides: null },
+  { id: 'currency_crisis', title: 'Валютный кризис', short: 'Курс и резервы',
+    desc: 'Резервы уже наполовину истрачены, инфляция разогналась, ставка экстренно поднята — но доверие подорвано, и рынок ждёт девальвации.',
+    overrides: { reserves: 60, inflation: 11, coreInflation: 9.5, inflationExpectations: 9, riskPremium: 3.4,
+      keyRate: 15, lendingRate: 19, depositRate: 12, fxRegime: 'managed', cbCredibility: 32,
+      consumerConfidence: 32, businessConfidence: 30, approval: 38, politicalTension: 28 } },
+  { id: 'housing_bubble', title: 'Ипотечный пузырь', short: 'Банки и кредит',
+    desc: 'Кредитный бум уже случился: портфель раздут, просрочка растёт, капитал банков на исходе. Вопрос не в том, лопнет ли пузырь, а когда.',
+    overrides: { creditVolume: 2100, bankCapital: 85, bankNPL: 8.5, bankLiquidity: 38, financialStability: 30,
+      unemployment: 6.2, wageGrowth: 3.2, consumerConfidence: 40, businessConfidence: 38, approval: 45 } },
+  { id: 'hyperinflation', title: 'Гиперинфляция', short: 'Доверие к деньгам',
+    desc: 'Цены разгоняются на глазах, доверие к цели по инфляции разрушено, долг уже дорогой. Классическая спираль: инфляция кормит саму себя через ожидания.',
+    overrides: { inflation: 34, coreInflation: 30, inflationExpectations: 27, cbCredibility: 18, keyRate: 24,
+      lendingRate: 30, depositRate: 22, govDebt: 1700, effectiveDebtRate: 13, riskPremium: 4.2,
+      consumerConfidence: 25, businessConfidence: 28, approval: 33, politicalTension: 34 } },
+];
+
 const FX_REGIMES = [
   { id: 'free', label: 'Плавающий', hint: 'Курс определяется платёжным балансом. Резервы не тратятся, но инфляция импортируется быстрее.' },
   { id: 'managed', label: 'Управляемый', hint: 'ЦБ гасит половину давления интервенциями. Умеренный расход резервов.' },
@@ -3985,8 +4009,9 @@ function buildDecisionImpulses(dec, s, difficulty) {
 /* =========================================================================================
    НАЧАЛЬНОЕ СОСТОЯНИЕ
 ========================================================================================= */
-function makeInitialEconomy() {
-  const I = CONFIG.initial;
+function makeInitialEconomy(scenarioId) {
+  const scenario = SCENARIOS.find((sc) => sc.id === scenarioId);
+  const I = { ...CONFIG.initial, ...(scenario && scenario.overrides) };
   const potentialGdp = potentialFrom(I.capitalStock, I.laborForce, I.nairu, I.humanCapitalIndex, I.productivity, I.infrastructureIndex, TFP_SCALE, 0);
   const nominalGdp = I.gdp * I.priceLevel / 100;
   const base = {
@@ -4294,7 +4319,7 @@ function leverPreview(id, newVal, s, difficulty) {
 }
 
 export {
-  CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS, UNCERTAINTY,
+  CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, propagandaEditorial,

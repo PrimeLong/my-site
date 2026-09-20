@@ -9,7 +9,7 @@ import {
   Trophy, Lock, Share2, Download, GraduationCap, Crown, Gavel, Hammer, Smartphone,
 } from 'lucide-react';
 import {
-  CONFIG, ROLES, DIFFICULTIES, GOALS, FX_REGIMES, LEVERS,
+  CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
@@ -6835,6 +6835,7 @@ function SetupScreen({ onStart, onBack }) {
   const [goal, setGoalRaw] = useState('living_standards');
   const setGoal = (g) => setGoalRaw(g);
   React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : 'living_standards'); }, [role]);
+  const [scenario, setScenario] = useState('sandbox');
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -7032,11 +7033,34 @@ function SetupScreen({ onStart, onBack }) {
           </React.Fragment>
         ))}
 
+        {/* сценарий задаёт не песочницу, а другую стартовую точку той же экономики:
+            переопределяет часть начальных условий движка, а не превращает партию
+            во что-то отдельное — сюжет, обучение и достижения работают как обычно */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
+          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
+          {SCENARIOS.map((sc) => {
+            const active = scenario === sc.id;
+            return (
+              <div key={sc.id} onClick={() => { Audio.play('click'); setScenario(sc.id); }} className="ems-card-btn"
+                style={{ padding: 13, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                  borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setScenario(sc.id); }}>
+                {active && <Check size={12} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                <div className="ems-serif" style={{ fontSize: 13, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
+                <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+
         {/* сложность и приоритет — это быстрые настройки, а не решения того же веса,
             что роль: сводим в одну компактную секцию вместо двух полноразмерных
             сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>4</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
@@ -7075,7 +7099,7 @@ function SetupScreen({ onStart, onBack }) {
             const cbWanted = custom ? cbPersona : 'random';
             const mofWanted = custom ? mofPersona : 'random';
             const presWanted = custom ? presPersona : 'random';
-            onStart({ role, difficulty, goal,
+            onStart({ role, difficulty, goal, scenario,
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
               president: { enabled: presAvailable && (custom ? presEnabled : true),
@@ -7365,7 +7389,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const playerBranch = setup.role === 'central_bank' ? 'monetary' : setup.role === 'ministry_finance' ? 'fiscal' : null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
 
-  const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy()), []);
+  const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy(setup.scenario)), []);
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
   // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
@@ -7909,6 +7933,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <div className="ems-serif" style={{ fontSize: 18 }}>Страна — экономическая панель</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
               {roleDef.title} · сложность: {(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title}
+              {setup.scenario && setup.scenario !== 'sandbox' ? ` · сценарий: ${(SCENARIOS.find((sc) => sc.id === setup.scenario) || {}).title}` : ''}
               {activeBotPersona ? ` · вторая ветвь: ${activeBotPersona.name} (бот)`
                 : isPresident ? ` · ЦБ: ${getCbPersona(cbPersonaId).name} (бот) · Минфин: ${getMofPersona(mofPersonaId).name} (бот)`
                   : setup.role === 'trader' ? '' : ' · без ботов'}

@@ -8,6 +8,7 @@ import {
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
+  SCENARIOS,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -1313,5 +1314,51 @@ describe('storyTriggers / STORY_TEMPLATES — сюжет «Заём про за�
     const step3 = advanceStories(step2.stories, economy, 7);
     expect(step3.news).toHaveLength(1);
     expect(step3.stories).toHaveLength(0); // сюжет закончен
+  });
+});
+
+describe('сценарии — другая стартовая точка того же движка', () => {
+  it('без сценария (или с sandbox) makeInitialEconomy не меняется', () => {
+    const plain = makeInitialEconomy();
+    const sandbox = makeInitialEconomy('sandbox');
+    expect(sandbox).toEqual(plain);
+  });
+
+  it('валютный кризис стартует с низкими резервами и уже разогнанной инфляцией', () => {
+    const plain = makeInitialEconomy();
+    const crisis = makeInitialEconomy('currency_crisis');
+    expect(crisis.reserves).toBeLessThan(plain.reserves);
+    expect(crisis.inflation).toBeGreaterThan(plain.inflation);
+    assertFiniteEconomy(crisis, 'currency_crisis');
+  });
+
+  it('ипотечный пузырь стартует с раздутым кредитом и слабым капиталом банков', () => {
+    const plain = makeInitialEconomy();
+    const bubble = makeInitialEconomy('housing_bubble');
+    expect(bubble.creditVolume).toBeGreaterThan(plain.creditVolume);
+    expect(bubble.bankCapitalAdequacy).toBeLessThan(plain.bankCapitalAdequacy);
+    assertFiniteEconomy(bubble, 'housing_bubble');
+  });
+
+  it('гиперинфляция стартует ниже дефолтного порога 40%, не отдавая мгновенное поражение', () => {
+    const hyper = makeInitialEconomy('hyperinflation');
+    expect(hyper.inflation).toBeLessThan(40);
+    expect(hyper.inflation).toBeGreaterThan(20);
+    assertFiniteEconomy(hyper, 'hyperinflation');
+  });
+
+  it('неизвестный id сценария не роняет makeInitialEconomy', () => {
+    expect(() => makeInitialEconomy('no-such-scenario')).not.toThrow();
+    expect(makeInitialEconomy('no-such-scenario')).toEqual(makeInitialEconomy());
+  });
+
+  it('каждый сценарий из списка считается движком без NaN/Infinity после квартала', () => {
+    SCENARIOS.forEach((sc) => {
+      const economy = makeInitialEconomy(sc.id);
+      const decisions = defaultDecisions(economy);
+      const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+      assertFiniteEconomy(r.economy, `scenario:${sc.id}`);
+    });
   });
 });
