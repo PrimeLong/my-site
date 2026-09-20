@@ -2677,10 +2677,15 @@ function StanceBar({ value, leftLabel, rightLabel }) {
 }
 
 /* Панель ведомства, которым управляет бот */
-function BotPanel({ botRole, persona, lastAction, coordination }) {
+function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
   if (!botRole) return null;
   const isCb = botRole === 'central_bank';
   const Icon = isCb ? Landmark : Coins;
+  const row = (l, v) => (
+    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '1.5px 0', color: l.startsWith('·') ? COLOR.muted : COLOR.text }}>
+      <span>{l}</span><span className="ems-mono">{v}</span>
+    </div>
+  );
   return (
     <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
@@ -2700,6 +2705,26 @@ function BotPanel({ botRole, persona, lastAction, coordination }) {
       {lastAction && lastAction.demand && (
         <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.rust}`, paddingLeft: 9, color: COLOR.muted }}>
           <span style={{ color: COLOR.rust, fontWeight: 600 }}>Требование: </span>{lastAction.demand}
+        </div>
+      )}
+      {economy && (
+        <div style={{ marginTop: 9, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
+          {isCb ? (
+            <>
+              {row('Ключевая ставка', pctFmt(economy.keyRate))}
+              {row('Норматив капитала банков', pctFmt(economy.capitalRequirement))}
+              {row('Ликвидность банков', pctFmt(economy.bankLiquidity))}
+            </>
+          ) : (
+            <>
+              {row('Расходы всего', `${fmtMoney(economy.govSpendingTotal)} · ${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`)}
+              {row('· госзакупки', fmtMoney(economy.govPurchasesNominal))}
+              {row('· выплаты', fmtMoney(economy.transfersNominal))}
+              {row('· инвестиции', fmtMoney(economy.govInvestmentNominal))}
+              {row('· обслуживание долга', `${fmtMoney(economy.interestPayment)} · ставка ${fmt1(economy.effectiveDebtRate)}%`)}
+              {row('Госдолг', `${pctFmt(economy.debtToGdp)} ВВП`)}
+            </>
+          )}
         </div>
       )}
       <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5, color: COLOR.muted }}>
@@ -8030,11 +8055,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           ) : isPresident ? (
             <>
               <PromisesPanel promises={promises} economy={economy} />
-              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} />
-              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} />
+              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
+              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} economy={economy} />
             </>
           ) : botRole ? (
-            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} />
+            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}

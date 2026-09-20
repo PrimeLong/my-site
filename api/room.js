@@ -8,7 +8,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   botPresident, getPresPersona, processPresidentialDirective, directiveProgress, directiveVerdict,
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
-  pickPromises, evaluatePromise,
+  pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
@@ -89,7 +89,7 @@ function sanitizePresident(v) {
   };
 }
 
-function freshRoom(opts) {
+export function freshRoom(opts) {
   const economy = makeInitialEconomy();
   const mode = opts.mode === 'trader' ? 'trader' : 'policy';
   const seats = SEATS_BY_MODE[mode];
@@ -158,7 +158,7 @@ const slimPlan = (plan) => (!plan ? null : {
 /* Кому президент адресует требование, зависит от того, где сидит живой человек:
    давить на бота неинтересно. Если заняты оба места (или оба пусты — «рыночная»
    комната), предпочтения нет и требование идёт туда, где оно уместнее по ситуации. */
-function planPresident(room, economy, cooldowns) {
+export function planPresident(room, economy, cooldowns) {
   if (!room.president) return null;
   const humanCb = !!room.seats.central_bank;
   const humanMof = !!room.seats.ministry_finance;
@@ -177,7 +177,7 @@ const CHAT_LOG_CAP = 60;
    ключи для ОБЕИХ пар мест (политика и рынок), а не только текущего режима
    комнаты — так клиент читает свою пару единообразно, а неиспользуемая просто
    всегда пустая */
-const publicView = (room) => {
+export const publicView = (room) => {
   const lastSeen = room.lastSeen || {};
   const isConnected = (seat) => !!room.seats[seat] && !!lastSeen[seat] && (Date.now() - lastSeen[seat]) < PRESENCE_TIMEOUT_MS;
   const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
@@ -209,7 +209,7 @@ const publicView = (room) => {
   };
 };
 
-function resolveQuarter(room) {
+export function resolveQuarter(room) {
   const subs = room.submissions;
   const cbPersona = room.cbPersona || 'pragmatic';
   const mofPersona = room.mofPersona || 'technocrat';
@@ -306,6 +306,10 @@ function resolveQuarter(room) {
   }
   const cbStance = clamp((eff.keyRate - room.economy.inflationExpectations - room.economy.rStar) / 3, -1, 1);
   const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6, -1, 1);
+  // без этого обещания никогда не попадают в decisions, которые видит движок, —
+  // голоса на выборах считались бы так, будто обещаний вообще не было (то же
+  // самое делает solo в MacroSimulator.jsx перед своим вызовом simulateQuarter)
+  if (room.promises) eff = { ...eff, promises: room.promises };
   const res = simulateQuarter({
     economy: { ...room.economy, cbStance, mofStance },
     decisions: eff, pendingImpulses: extraImpulses, eventCooldowns: room.eventCooldowns,
@@ -368,10 +372,40 @@ function resolveQuarter(room) {
         text: `На новый срок заявлено: ${nextPromises.map((p) => `«${p.label}» — ${p.text.toLowerCase()}`).join('; ')}.` });
     }
   }
-  const nextCbPersona = (humanPres && humanPres.appointCb)
+  let nextCbPersona = (humanPres && humanPres.appointCb)
     || (plan && plan.appointBot && plan.appointBot.kind === 'central_bank' ? plan.appointBot.persona : cbPersona);
-  const nextMofPersona = (humanPres && humanPres.appointMof)
+  let nextMofPersona = (humanPres && humanPres.appointMof)
     || (plan && plan.appointBot && plan.appointBot.kind === 'ministry_finance' ? plan.appointBot.persona : mofPersona);
+  // после проигранных выборов новая власть меняет руководство ведомства — тем же
+  // способом и с теми же условиями, что в одиночной игре (см. finishQuarter в
+  // MacroSimulator.jsx): Минфин при любой смене власти, ЦБ — только при разгромном
+  // результате. Меняем только место, за которым сейчас нет живого игрока: если оно
+  // занято человеком, это его партия, а не бота, и выборы её не отменяют.
+  {
+    const er = res.economy.electionResult;
+    if (er && er !== 'incumbent') {
+      if (!room.seats.ministry_finance) {
+        const np = personaAfterElection('ministry_finance', res.economy);
+        if (np !== nextMofPersona) {
+          nextMofPersona = np;
+          res.newsEntries.unshift({ id: `pers${room.quarterIndex}`, cat: 'gov', priority: 9,
+            q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+            headline: `НОВЫЙ МИНИСТР ФИНАНСОВ: ${getMofPersona(np).name.toUpperCase()}`,
+            text: `${getMofPersona(np).title}. ${getMofPersona(np).desc} Другому месту предстоит работать с другим бюджетом и другой логикой расходов.` });
+        }
+      }
+      if (!room.seats.central_bank && er === 'landslide') {
+        const np = personaAfterElection('central_bank', res.economy);
+        if (np !== nextCbPersona) {
+          nextCbPersona = np;
+          res.newsEntries.unshift({ id: `perscb${room.quarterIndex}`, cat: 'cb', priority: 9,
+            q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+            headline: `СМЕНА ГЛАВЫ ЦЕНТРАЛЬНОГО БАНКА: ${getCbPersona(np).name.toUpperCase()}`,
+            text: `${getCbPersona(np).title}. ${getCbPersona(np).desc} Смена руководства ЦБ после выборов — всегда вопрос к независимости политики и к тому, чего стоят её обещания.` });
+        }
+      }
+    }
+  }
   const presMemo = plan && plan.directive ? { lastReqId: plan.directive.reqId, ago: 0 }
     : { lastReqId: (room.presMemo || {}).lastReqId || null, ago: Math.min(99, ((room.presMemo || {}).ago ?? 99) + 1) };
   const afterPresident = { ...room, cbPersona: nextCbPersona, mofPersona: nextMofPersona,
