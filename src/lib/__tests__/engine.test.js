@@ -734,7 +734,7 @@ describe('политический капитал', () => {
     });
   });
 });
-const PRES_GROUPS = ['public', 'reform', 'power', 'war'];
+const PRES_GROUPS = ['public', 'reform', 'power', 'war', 'diplomacy'];
 
 describe('президент как третье лицо у ЦБ и Минфина', () => {
   it('характеры описаны полностью и различаются', () => {

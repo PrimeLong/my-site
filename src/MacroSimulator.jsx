@@ -2837,7 +2837,7 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
    поэтому устроена не как список слайдеров, а как ведомость: сколько капитала
    есть, сколько уже забронировано выбранными на этот квартал решениями и
    сколько останется. Пока квартал не завершён, любое решение можно снять. */
-const PRES_GROUP_ICON = { public: Megaphone, reform: Hammer, power: Gavel, war: ShieldAlert };
+const PRES_GROUP_ICON = { public: Megaphone, reform: Hammer, power: Gavel, war: ShieldAlert, diplomacy: Globe2 };
 const PRES_TABS = [
   { id: 'public', label: 'Указы' },
   { id: 'reform', label: 'Реформы' },
@@ -3061,7 +3061,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
 
       {tab === 'public' && (
         <div>
-          {['public', 'power'].map((g) => {
+          {['public', 'diplomacy', 'power'].map((g) => {
             const Icon = PRES_GROUP_ICON[g];
             return (
               <React.Fragment key={g}>
