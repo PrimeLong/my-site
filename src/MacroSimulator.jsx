@@ -91,6 +91,15 @@ const GlobalStyle = () => (
     .ems-slider::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
     .ems-scroll::-webkit-scrollbar { width:6px; height:6px; }
     .ems-scroll::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:3px; }
+    /* Полоса прокрутки самой страницы (не только внутренних панелей .ems-scroll):
+       по умолчанию браузер рисует её светло-серой поверх тёмного фона — на тёмных
+       темах это выглядит инородным светлым столбиком. Красим в цвет темы, тонкую
+       и без трека, чтобы прокрутка не спорила с остальным интерфейсом. */
+    html { scrollbar-width: thin; scrollbar-color: ${COLOR.border} transparent; }
+    ::-webkit-scrollbar { width:8px; height:8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:4px; }
+    ::-webkit-scrollbar-thumb:hover { background:${COLOR.borderStrong}; }
     .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
     .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
