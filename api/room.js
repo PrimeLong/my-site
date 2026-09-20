@@ -2,7 +2,7 @@
    POST /api/room  { action, ... }
    Модель считается ТОЛЬКО здесь: иначе у игроков разойдутся случайные шоки. */
 import { randomUUID, randomBytes } from 'node:crypto';
-import { getRoom, setRoom, withRoom, hasKv } from './_lib/store.js';
+import { getRoom, setRoom, withRoom, hasKv, addPublicRoom, removePublicRoom, listPublicRoomIds } from './_lib/store.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
   describeHumanCbAction, describeHumanMofAction, redescribeCbAction, redescribeMofAction,
   botPresident, getPresPersona, processPresidentialDirective, directiveProgress, directiveVerdict,
@@ -98,6 +98,9 @@ export function freshRoom(opts) {
     id: opts.id, created: Date.now(), version: 1, mode,
     ownerToken: token(), // владелец лобби — тот, кто нажал «Создать комнату»; не привязан к месту,
     // потому что место выбирается отдельным шагом уже ПОСЛЕ создания
+    // общедоступная комната видна всем в браузере комнат и не требует кода;
+    // приватная (по умолчанию) — только по коду/ссылке, как было раньше
+    isPublic: !!opts.public,
     difficulty: DIFFICULTY_IDS.has(opts.difficulty) ? opts.difficulty : 'medium',
     goalCb: GOAL_IDS.has(opts.goalCb) ? opts.goalCb : 'min_inflation',
     goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
@@ -183,6 +186,7 @@ export const publicView = (room) => {
   const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
   return {
     id: room.id, version: room.version, difficulty: room.difficulty, mode: room.mode === 'trader' ? 'trader' : 'policy',
+    isPublic: !!room.isPublic,
     // время сервера: таймер квартала считается от него, а часы на устройствах
     // расходятся на минуты — и у двух игроков были разные цифры на экране
     now: Date.now(),
@@ -455,7 +459,25 @@ function maybeForceResolve(room) {
 
 async function handleRequest(req, res) {
   if (req.method === 'GET') {
-    const { id, since, seat, token: seatToken } = req.query;
+    const { id, since, seat, token: seatToken, list } = req.query;
+    if (list === 'public') {
+      const ids = await listPublicRoomIds();
+      const rooms = [];
+      for (const rid of ids) {
+        const r = await getRoom(rid);
+        // индекс не знает о TTL самой комнаты — протухшую запись подчищаем сразу,
+        // а не оставляем висеть до следующего случайного обращения к ней
+        if (!r) { await removePublicRoom(rid); continue; }
+        const seatsList = seatsFor(r);
+        rooms.push({
+          id: r.id, mode: r.mode === 'trader' ? 'trader' : 'policy', difficulty: r.difficulty,
+          president: !!r.president, quarterIndex: r.quarterIndex, created: r.created,
+          seatsTotal: seatsList.length, seatsFree: seatsList.filter((sx) => !r.seats[sx]).length,
+        });
+      }
+      rooms.sort((a, b) => b.created - a.created);
+      return res.status(200).json({ rooms: rooms.slice(0, 40) });
+    }
     let room = await getRoom(String(id || '').toUpperCase());
     if (!room) return res.status(404).json({ error: 'Комната не найдена' });
     const forceResolved = maybeForceResolve(room);
@@ -492,9 +514,10 @@ async function handleRequest(req, res) {
     const president = body.president === null || (body.president && body.president.enabled === false)
       ? null : (body.president || {});
     const base = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof,
-      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president });
+      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public });
     const room = { ...base, presidentPlan: planPresident(base, base.economy, {}) };
     await setRoom(id, room);
+    if (room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ id, ownerToken: room.ownerToken, storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
   }
 
@@ -517,6 +540,9 @@ async function handleRequest(req, res) {
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
     const t = out.room.__token; delete out.room.__token;
     await setRoom(id, out.room);
+    // заполненную общедоступную комнату незачем предлагать в браузере комнат —
+    // всё равно ни одно место не занять; освобождённое место возвращает её обратно
+    if (out.room.isPublic && seatsFor(out.room).every((sx) => out.room.seats[sx])) await removePublicRoom(id);
     return res.status(200).json({ token: t, seat, storage: hasKv() ? 'kv' : 'memory', room: publicView(out.room) });
   }
 
@@ -610,6 +636,8 @@ async function handleRequest(req, res) {
         version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    // освободившееся место в общедоступной комнате возвращает её в браузер комнат
+    if (out.room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ room: publicView(out.room) });
   }
 
@@ -625,6 +653,7 @@ async function handleRequest(req, res) {
         version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    if (out.room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ room: publicView(out.room) });
   }
 

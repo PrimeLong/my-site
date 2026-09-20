@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress,
-  createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
+  createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom, listPublicRooms,
   reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
@@ -5216,6 +5216,11 @@ function NetworkLobby({ onEnter }) {
   const [mofPersona, setMofPersona] = useState('random');
   const [presEnabled, setPresEnabled] = useState(true);
   const [presPersona, setPresPersona] = useState('random');
+  // приватная (по умолчанию) — только по коду/ссылке; общедоступная попадает
+  // в браузер комнат ниже, и войти в неё можно без кода вообще
+  const [isPublicRoom, setIsPublicRoom] = useState(false);
+  const [publicRooms, setPublicRooms] = useState(null);
+  const [publicRoomsError, setPublicRoomsError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
@@ -5262,12 +5267,30 @@ function NetworkLobby({ onEnter }) {
       setSeat(free);
     }
   }, [roomPreview]);
+  // браузер комнат: список общедоступных партий, куда можно войти без кода —
+  // обновляем при открытии вкладки и затем периодически, пока она открыта
+  React.useEffect(() => {
+    if (tab !== 'browse') return undefined;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rooms = await listPublicRooms();
+        if (!cancelled) { setPublicRooms(rooms); setPublicRoomsError(''); }
+      } catch (e) { if (!cancelled) setPublicRoomsError(e.message); }
+    };
+    load();
+    const iv = setInterval(load, 4000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [tab]);
+  const joinPublicRoom = (rid) => {
+    setCode(rid); setTab('join');
+  };
   /* Место президента существует только там, где президент в комнате включён —
      иначе его незачем и показывать. */
   const previewSeats = (r) => seatsForMode(r ? r.mode : mode)
     // в «классике» президент включён — значит и место за него есть
     .filter((sx) => sx !== 'president' || !!(r ? r.president : (setupMode === 'classic' || presEnabled)));
-  const bothSeatsTaken = !!(roomPreview && roomPreview.occupied
+  const allSeatsTaken = !!(roomPreview && roomPreview.occupied
     && previewSeats(roomPreview).every((sx) => roomPreview.occupied[sx]));
 
   const enterSlot = async (idx) => {
@@ -5302,7 +5325,7 @@ function NetworkLobby({ onEnter }) {
     try {
       const custom = setupMode === 'custom';
       const asId = (v) => (v === 'random' ? undefined : v);
-      const r = await createRoom({ difficulty, mode,
+      const r = await createRoom({ difficulty, mode, public: isPublicRoom,
         cbPersona: custom ? asId(cbPersona) : undefined,
         mofPersona: custom ? asId(mofPersona) : undefined,
         president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined } });
@@ -5383,14 +5406,14 @@ function NetworkLobby({ onEnter }) {
       )}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
-        {[['create', 'Создать комнату'], ['join', 'Войти по коду']].map(([id, label]) => (
+        {[['create', 'Создать комнату'], ['join', 'Войти по коду'], ['browse', 'Открытые комнаты']].map(([id, label]) => (
           <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
         ))}
       </div>
 
       {tab === 'create' && (
         <div className="ems-panel" style={{ padding: 18 }}>
-          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая партия на двоих</div>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая сетевая партия</div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Режим партии</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -5405,7 +5428,7 @@ function NetworkLobby({ onEnter }) {
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
             {mode === 'trader'
               ? 'Оба игрока — частные инвесторы на одной и той же экономике: ставку ведёт бот-ЦБ, бюджет — бот-Минфин, а вы независимо друг от друга распределяете капитал между активами. Квартал наступает, когда готовы оба.'
-              : 'Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике. Квартал наступает, когда решения пришлют оба; если партнёр ещё не подключился, его место временно ведёт бот.'}
+              : 'Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике; если включён президент — его тоже может занять живой игрок, третьим. Квартал наступает, когда решения пришлют все подключившиеся; за не занятое место временно решает бот.'}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Сложность партии</div>
@@ -5416,6 +5439,22 @@ function NetworkLobby({ onEnter }) {
                   borderColor: difficulty === d.id ? COLOR.gold : COLOR.border }}
                   onClick={() => { Audio.play('click'); setDifficulty(d.id); }}>{d.title}</button>
               ))}
+            </div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Доступ к комнате</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[[false, 'По коду'], [true, 'Общедоступная']].map(([val, title]) => (
+                <button key={String(val)} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
+                  background: isPublicRoom === val ? COLOR.gold : COLOR.panelAlt, color: isPublicRoom === val ? COLOR.ink : COLOR.text,
+                  borderColor: isPublicRoom === val ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('click'); setIsPublicRoom(val); }}>{title}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
+              {isPublicRoom
+                ? 'Комната появится во вкладке «Открытые комнаты» у всех — войти сможет кто угодно, без кода. Как только все места заняты, она пропадает из списка сама.'
+                : 'Войти можно только по коду комнаты или по ссылке-приглашению — как раньше.'}
             </div>
           </div>
           <div style={{ marginBottom: 14 }}>
@@ -5534,9 +5573,38 @@ function NetworkLobby({ onEnter }) {
               })}
             </div>
           </div>
-          <button className="ems-btn primary" disabled={busy || bothSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
-            {busy ? 'Входим…' : bothSeatsTaken ? 'Оба места заняты' : 'Войти в партию'}
+          <button className="ems-btn primary" disabled={busy || allSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
+            {busy ? 'Входим…' : allSeatsTaken ? 'Все места заняты' : 'Войти в партию'}
           </button>
+        </div>
+      )}
+
+      {tab === 'browse' && (
+        <div className="ems-panel" style={{ padding: 18 }}>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 4 }}>Открытые комнаты</div>
+          <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.45 }}>
+            Партии, которые их создатели сделали общедоступными, — войти можно сразу, без кода.
+          </div>
+          {publicRoomsError && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 10 }}>{publicRoomsError}</div>}
+          {publicRooms === null ? (
+            <div style={{ fontSize: 12, color: COLOR.faint }}>Загрузка…</div>
+          ) : publicRooms.length === 0 ? (
+            <div style={{ fontSize: 12, color: COLOR.faint }}>Сейчас открытых комнат нет — создайте свою на вкладке «Создать комнату» и включите «Общедоступная».</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {publicRooms.map((r) => (
+                <div key={r.id} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
+                  <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{r.id}</span>
+                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
+                  <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
+                  <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
+                  <span style={{ marginLeft: 'auto', color: COLOR.muted }}>{r.seatsTotal - r.seatsFree}/{r.seatsTotal}</span>
+                  <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {error && <div style={{ marginTop: 10, fontSize: 12.5, color: COLOR.rust }}>{error}</div>}
@@ -5555,7 +5623,7 @@ function NetworkEntryScreen({ onEnter, onBack }) {
         </button>
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
           <div className="ems-hero-eyebrow">Мультиплеер</div>
-          <div className="ems-hero-title small">Партия на двоих</div>
+          <div className="ems-hero-title small">Сетевая партия</div>
           <div className="ems-hero-rule" />
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -5924,7 +5992,11 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           <div>
             <div className="ems-serif" style={{ fontSize: 18 }}>Сетевая партия · комната {room.id}</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-              вы — {roleDef.title} · партнёр — {room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : (isTraderRoom ? 'место свободно' : 'бот')} за {otherRole.short}
+              вы — {roleDef.title} · {otherSeats.map((sx) => {
+                const rd = seatRole(sx);
+                const who = room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'место свободно' : 'бот');
+                return `${who} за ${rd.short}`;
+              }).join(' · ')}
             </div>
           </div>
         </div>
@@ -6273,7 +6345,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               ) : (
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>
                   {isTraderRoom ? 'Совершайте сделки слева и нажмите «готов» — квартал наступит, когда готовы оба трейдера.'
-                    : 'Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.'}
+                    : `Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют ${roomSeats.length > 2 ? 'все игроки' : 'оба игрока'}.`}
                 </div>
               )}
             </div>
@@ -6380,13 +6452,16 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
             <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-              {!room.occupied[otherSeat]
-                ? (isTraderRoom
+              {isTraderRoom
+                ? (!room.occupied[otherSeat]
                   ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
-                  : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
-                : isTraderRoom
-                  ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
-                  : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
+                  : (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.'))
+                : (otherSeats.every((sx) => !room.occupied[sx])
+                  ? (otherSeats.length > 1 ? 'Остальные места свободны: за них решают боты, квартал наступит сразу после ваших решений.'
+                    : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
+                  : (waitingForOther
+                    ? (pendingSeats.length > 1 ? 'Решения отправлены — ждём остальных.' : 'Решения отправлены — ждём партнёра.')
+                    : (otherSeats.length > 1 ? 'Квартал наступит, когда решения пришлют все игроки.' : 'Квартал наступит, когда решения пришлют оба игрока.')))}
               {quarterPending && timeLeftLabel && (
                 <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
