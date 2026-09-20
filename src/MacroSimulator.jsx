@@ -2052,7 +2052,7 @@ function AudioControls() {
 }
 
 /* ============================ НОВОСТНАЯ ПОДСИСТЕМА ============================ */
-const NEWS_CATEGORIES = [
+export const NEWS_CATEGORIES = [
   { id: 'cb', label: 'Центральный банк', short: 'ЦБ', icon: '🏦', color: COLOR.blue },
   { id: 'gov', label: 'Правительство', short: 'Правительство', icon: '🏛', color: COLOR.gold },
   { id: 'markets', label: 'Рынки', short: 'Рынки', icon: '📊', color: COLOR.teal },
@@ -2065,9 +2065,9 @@ const NEWS_CATEGORIES = [
 ];
 const CATMAP = {};
 NEWS_CATEGORIES.forEach((c) => { CATMAP[c.id] = c; });
-const catOf = (id) => CATMAP[id] || CATMAP.markets;
+export const catOf = (id) => CATMAP[id] || CATMAP.markets;
 
-function ChainTrail({ chain, compact }) {
+export function ChainTrail({ chain, compact }) {
   if (!chain || !chain.length) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 7 }}>
@@ -2175,428 +2175,9 @@ function NewsTerminal({ items, onOpenPaper }) {
   );
 }
 
-/* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
-   бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */
-const mixHex = (a, b, t) => {
-  const c = (h, i) => parseInt(h.slice(i, i + 2), 16);
-  const m = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, '0');
-  return `#${m(1)}${m(3)}${m(5)}`;
-};
-const hexLuminance = (hex) => {
-  const c = (i) => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-  return 0.2126 * c(1) + 0.7152 * c(3) + 0.0722 * c(5);
-};
-const contrastRatio = (hexA, hexB) => {
-  const a = hexLuminance(hexA); const b = hexLuminance(hexB);
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-};
-/* Тоталитарная бумага светлеет фоном и темнеет текстом (наоборот у демократии) —
-   а линейная интерполяция между двумя такими концами на полпути неизбежно сводит
-   и фон, и текст к одному и тому же блёклому серому: газета читалась ровно так,
-   как её описал игрок, — серым по серому. Если смешанный текст на смешанном фоне
-   не набирает читаемого контраста, дотягиваем его до чёрного или белого — смотря
-   что дальше от фона в моменте — вместо того чтобы верить, что оба конца сами
-   разойдутся к нужным крайностям. */
-const ensureReadable = (bgHex, fgHex, minRatio) => {
-  if (contrastRatio(bgHex, fgHex) >= minRatio) return fgHex;
-  const toward = hexLuminance(bgHex) > 0.4 ? '#000000' : '#FFFFFF';
-  let result = fgHex;
-  for (let t = 0.05; t <= 1; t += 0.05) {
-    result = mixHex(fgHex, toward, t);
-    if (contrastRatio(bgHex, result) >= minRatio) break;
-  }
-  return result;
-};
-const POLITICAL_PAPER_TARGET = {
-  crisis: { paper: '#E2D9BE', paperText: '#241C12', paperMuted: '#6B5A3E', paperRule: '#8C6B3E' },
-  authoritarian: { paper: '#B5AF9C', paperText: '#1C1B15', paperMuted: '#4A483C', paperRule: '#6C6755' },
-  totalitarian: { paper: '#22252A', paperText: '#B7B7AC', paperMuted: '#6B6D66', paperRule: '#48493F' },
-};
-function politicalPaperPalette(base, economy) {
-  const regime = economy && economy.politicalRegime;
-  const target = POLITICAL_PAPER_TARGET[regime];
-  if (!target) return { ...base, k: 0, regime };
-  const tension = clamp((economy.politicalTension || 0) / 100, 0, 1);
-  const war = (economy.warQuartersLeft || 0) > 0;
-  const k = regime === 'totalitarian' ? clamp(0.6 + tension * 0.3 + (war ? 0.1 : 0), 0.6, 1)
-    : regime === 'authoritarian' ? clamp(0.6 + tension * 0.35, 0.6, 0.95)
-      : clamp(0.18 + tension * 0.3, 0.18, 0.5); // crisis: тревожно, но ещё не мрачно
-  const paper = mixHex(base.paper, target.paper, k);
-  const paperRule = mixHex(base.paperRule, target.paperRule, k);
-  return {
-    paper,
-    paperText: ensureReadable(paper, mixHex(base.paperText, target.paperText, k), 4.5),
-    paperMuted: ensureReadable(paper, mixHex(base.paperMuted, target.paperMuted, k), 3.0),
-    paperRule,
-    k, regime,
-  };
-}
-/* «Материальность» бумаги: зерно, лёгкое старение к краям и — для тоталитаризма —
-   подпалённые углы. Интенсивность растёт вместе с k, так что демократическая
-   бумага остаётся чистой и хрустящей, а тоталитарная выглядит так, будто её
-   читали при свече и один раз чуть не сожгли. */
-function PaperTexture({ k, burn }) {
-  return (
-    <>
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05 + k * 0.16, mixBlendMode: 'multiply',
-        backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>\")",
-        backgroundSize: '180px 180px' }} />
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: `radial-gradient(120% 90% at 50% 42%, transparent 52%, rgba(20,14,6,${0.06 + k * 0.24}) 100%)` }} />
-      {/* сгиб — тонкая тень посередине листа, как от сложенной пополам газеты */}
-      <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 2, marginLeft: -1, pointerEvents: 'none',
-        background: `linear-gradient(90deg, transparent, rgba(0,0,0,${0.05 + k * 0.08}), transparent)` }} />
-      {burn > 0 && (
-        <>
-          <div style={{ position: 'absolute', top: -36, left: -36, width: 190, height: 190, pointerEvents: 'none', filter: 'blur(3px)', opacity: burn,
-            background: 'radial-gradient(circle, rgba(18,9,3,0.95) 0%, rgba(46,24,8,0.55) 38%, transparent 72%)' }} />
-          <div style={{ position: 'absolute', bottom: -46, right: -30, width: 230, height: 230, pointerEvents: 'none', filter: 'blur(4px)', opacity: burn,
-            background: 'radial-gradient(circle, rgba(15,7,2,0.92) 0%, rgba(40,20,7,0.5) 40%, transparent 72%)' }} />
-          <div style={{ position: 'absolute', top: -20, right: -50, width: 140, height: 140, pointerEvents: 'none', filter: 'blur(3px)', opacity: burn * 0.7,
-            background: 'radial-gradient(circle, rgba(18,9,3,0.85) 0%, transparent 68%)' }} />
-        </>
-      )}
-    </>
-  );
-}
-
-/* Иконка «экономической погоды» на первой полосе — тот же REGIME_INFO, которым
-   уже размечена авариная строка панели, только переведённый в один символ:
-   свежий взгляд на состояние экономики, не изобретающий новую классификацию. */
-const WEATHER_ICON = {
-  normal: '☀️', overheating: '🌡️', recession: '☁️', stagflation: '🌪️',
-  banking: '🌊', debt: '📉', currency: '💱', deflation: '❄️', pandemic: '🦠', war: '⚔️',
-};
-/* Девять рубрик NEWS_CATEGORIES на первой полосе выглядели бы как девять
-   маленьких колонок ни о чём — читатель не понимает, где заканчивается одна
-   тема и начинается другая. Разделы группируют их в тот же костяк, которым
-   устроена любая деловая газета: политика, деньги, рынки, экономика, общество, мир. */
-const NEWS_SECTION = {
-  gov: 'ПОЛИТИКА И ПРАВИТЕЛЬСТВО', cb: 'ДЕНЬГИ И БАНКИ', markets: 'РЫНКИ',
-  business: 'ЭКОНОМИКА', households: 'ОБЩЕСТВО', world: 'МИР',
-};
-const NEWS_SECTION_ORDER = ['gov', 'cb', 'markets', 'business', 'households', 'world'];
-
-/* Строка тикера — курсив цифр наверху полосы, как в деловой прессе: значение
-   и стрелка относительно предыдущего выпуска, без лишних слов. */
-function TickerStat({ label, value, delta, pp }) {
-  const arrow = !Number.isFinite(delta) || Math.abs(delta) < 1e-9 ? null : delta > 0 ? '▲' : '▼';
-  return (
-    <span className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
-      {label} <b style={{ color: pp.paperText }}>{value}</b>{arrow && <span style={{ fontSize: 8.5 }}>{arrow}</span>}
-    </span>
-  );
-}
-
-/* Газета: выпуск квартала, хроника страны и сюжетные линии */
-function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
-  const [tab, setTab] = useState('issue');
-  const [chronicleFilter, setChronicleFilter] = useState('all');
-  const [chronicleSearch, setChronicleSearch] = useState('');
-  const [chronicleShown, setChronicleShown] = useState(8);
-  const quarters = useMemo(() => {
-    const map = new Map();
-    news.forEach((n) => { if (!map.has(n.q)) map.set(n.q, []); map.get(n.q).push(n); });
-    return [...map.entries()].sort((a, b) => b[0] - a[0]);
-  }, [news]);
-  const latest = quarters.length ? quarters[0] : null;
-  const issueItems = latest ? latest[1] : [];
-  // мнение — колонка, а не главная тема: ведёт номер твёрдая новость, если она
-  // вообще была, и только в совсем тихий квартал мнение остаётся единственным
-  // кандидатом на первую полосу
-  const lead = issueItems.find((n) => n.cat !== 'editorial' && n.cat !== 'opinion') || issueItems.find((n) => n.cat !== 'editorial');
-  const editorial = issueItems.find((n) => n.cat === 'editorial');
-  // «мнение» теперь одно на квартал (см. движок) — есть смысл дать ему
-  // собственную колонку, а не смешивать с обычными заметками сетки
-  const opinionItem = issueItems.find((n) => n.cat === 'opinion' && n !== lead);
-  // кризисные заметки — не рубрика среди прочих, а тревога, которая должна
-  // читаться раньше обычной сетки
-  const urgentItems = issueItems.filter((n) => n !== lead && n !== editorial && n !== opinionItem && n.cat === 'crisis');
-  const rest = issueItems.filter((n) => n !== lead && n !== editorial && n !== opinionItem && !urgentItems.includes(n));
-  const sections = NEWS_SECTION_ORDER
-    .map((cat) => ({ cat, label: NEWS_SECTION[cat], items: rest.filter((n) => n.cat === cat) }))
-    .filter((s) => s.items.length > 0);
-  const snapshot = latest ? history.find((h) => h.q === latest[0]) : null;
-  const prevSnapshot = latest ? history.find((h) => h.q === latest[0] - 1) : null;
-  const delta = (key) => (snapshot && prevSnapshot && Number.isFinite(snapshot[key]) && Number.isFinite(prevSnapshot[key]) ? snapshot[key] - prevSnapshot[key] : NaN);
-
-  const stories = useMemo(() => {
-    const map = new Map();
-    news.slice().reverse().forEach((n) => {
-      if (!n.storyId) return;
-      const key = `${n.storyId}`;
-      if (!map.has(key)) map.set(key, { id: key, title: n.storyTitle, steps: [] });
-      map.get(key).steps.push(n);
-    });
-    return [...map.values()].reverse();
-  }, [news]);
-
-  const pp = politicalPaperPalette(COLOR, economy || {});
-  const regimeId = economy && economy.politicalRegime;
-  const econRegimeId = economy && economy.regime;
-  const weatherIcon = WEATHER_ICON[econRegimeId] || WEATHER_ICON.normal;
-  const weatherInfo = REGIME_INFO[econRegimeId] || REGIME_INFO.normal;
-  const atWar = economy && (economy.warQuartersLeft || 0) > 0;
-  // подпалины — только у тоталитаризма всерьёз («слегка сгоревшая», как и просили);
-  // авторитаризм получает лёгкий намёк, чтобы переход не был внезапным
-  const burnIntensity = pp.regime === 'totalitarian' ? pp.k : pp.regime === 'authoritarian' ? pp.k * 0.3 : 0;
-  const PaperBox = ({ children, style }) => (
-    <div style={{ position: 'relative', overflow: 'hidden', background: pp.paper, color: pp.paperText, border: `1px solid ${pp.paperRule}`,
-      padding: '18px 20px', boxShadow: '0 18px 50px -18px rgba(0,0,0,0.65), 0 4px 14px rgba(0,0,0,0.35)',
-      transition: 'background 1.2s ease, color 1.2s ease, border-color 1.2s ease', ...style }}>
-      <PaperTexture k={pp.k || 0} burn={burnIntensity} />
-      <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
-    </div>
-  );
-
-  // хроника: фильтр по рубрике + поиск по тексту + постраничная подгрузка —
-  // без них лента через десяток-другой кварталов превращается в стену текста,
-  // в которой ничего конкретного не найти
-  const filteredQuarters = useMemo(() => {
-    const q = chronicleSearch.trim().toLowerCase();
-    return quarters
-      .map(([qi, list]) => [qi, list.filter((n) => n.cat !== 'editorial'
-        && (chronicleFilter === 'all' || n.cat === chronicleFilter)
-        && (!q || n.headline.toLowerCase().includes(q) || n.text.toLowerCase().includes(q)))])
-      .filter(([, list]) => list.length > 0);
-  }, [quarters, chronicleFilter, chronicleSearch]);
-  const chronicleCats = NEWS_CATEGORIES.filter((c) => c.id !== 'editorial' && quarters.some(([, list]) => list.some((n) => n.cat === c.id)));
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 14px', overflowY: 'auto' }} onClick={onClose}>
-      <div className="ems-fade-in" style={{ maxWidth: 940, width: '100%' }} onClick={(e) => e.stopPropagation()}>
-        <PaperBox>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${pp.paperRule}`, paddingBottom: 10 }}>
-            <div>
-              <div className="ems-serif" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1 }}>ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
-              <div className="ems-mono" style={{ fontSize: 10, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
-                ЕЖЕКВАРТАЛЬНОЕ ИЗДАНИЕ · {latest ? latest[1][0].qLabel : quarterLabel(quarterIndex)} · ВЫПУСК № {latest ? latest[0] : 0}
-              </div>
-              {/* Газета не объявляет режим, в котором выходит: «АВТОРИТАРНЫЙ РЕЖИМ» в
-                  собственной шапке не печатает ни одно издание. Про режим говорит сама
-                  бумага, тон заголовков и вот эта служебная строка выходных данных —
-                  теперь при демократии и конфликте ветвей власти тоже, а не только
-                  тогда, когда свободу прессы уже отняли: контраст виден только если
-                  показать обе стороны. */}
-              {(regimeId === 'totalitarian' || regimeId === 'authoritarian') ? (
-                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted, fontWeight: 700 }}>
-                  {regimeId === 'totalitarian'
-                    ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · РАСПРОСТРАНЯЕТСЯ ПО ПОДПИСКЕ ОБЯЗАТЕЛЬНО'
-                    : 'ВЫХОДИТ ПО РАЗРЕШЕНИЮ · МАТЕРИАЛЫ СОГЛАСОВАНЫ'}
-                </div>
-              ) : (
-                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted }}>
-                  НЕЗАВИСИМОЕ ИЗДАНИЕ · РЕДАКЦИЯ НЕ СОГЛАСОВЫВАЕТ МАТЕРИАЛЫ С ВЛАСТЬЮ
-                </div>
-              )}
-            </div>
-            <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
-          </div>
-
-          {snapshot && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 18px', borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0' }}>
-              <TickerStat pp={pp} label="Ставка" value={pctFmt(snapshot.keyRate)} delta={delta('keyRate')} />
-              <TickerStat pp={pp} label="Инфляция" value={pctFmt(snapshot.inflation)} delta={delta('inflation')} />
-              <TickerStat pp={pp} label="Курс" value={fmt1(snapshot.exchangeRate)} delta={delta('exchangeRate')} />
-              <TickerStat pp={pp} label="Индекс акций" value={fmt1(snapshot.stockIndex)} delta={delta('stockIndex')} />
-              <TickerStat pp={pp} label="Рейтинг власти" value={Math.round(snapshot.approval)} delta={delta('approval')} />
-              {atWar && <TickerStat pp={pp} label="До конца операции" value={`${economy.warQuartersLeft} кв.`} delta={NaN} />}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '8px 0', marginBottom: 14 }}>
-            {[['issue', 'Выпуск'], ['chronicle', 'Хроника страны'], ['stories', 'Сюжетные линии']].map(([id, label]) => (
-              <span key={id} onClick={() => { Audio.play('paper'); setTab(id); }} style={{ cursor: 'pointer', fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase',
-                fontWeight: tab === id ? 700 : 400, color: tab === id ? pp.paperText : pp.paperMuted, borderBottom: tab === id ? `2px solid ${pp.paperText}` : '2px solid transparent', paddingBottom: 3 }}>{label}</span>
-            ))}
-          </div>
-
-          {tab === 'issue' && (
-            <div>
-              {!lead && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
-              {lead && (
-                <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14, borderLeft: `4px solid ${pp.paperText}`, paddingLeft: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
-                    {catOf(lead.cat).icon} {catOf(lead.cat).label.toUpperCase()} · ГЛАВНАЯ ТЕМА
-                  </div>
-                  <div className="ems-serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, marginBottom: 8 }}>{lead.headline}</div>
-                  <div className="ems-serif" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
-                    <span style={{ float: 'left', fontSize: 40, lineHeight: 0.8, fontWeight: 700, padding: '4px 6px 0 0' }}>{lead.text.charAt(0)}</span>
-                    {lead.text.slice(1)}
-                  </div>
-                  {lead.chain && <ChainTrail chain={lead.chain} />}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
-                <div style={{ flex: '1 1 260px', border: `1px solid ${pp.paperRule}`, padding: '10px 12px' }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 13 }}>{weatherIcon}</span> СОСТОЯНИЕ ЭКОНОМИКИ
-                  </div>
-                  {snapshot && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 16px' }}>
-                      {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
-                        ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
-                          <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
-                        ))}
-                    </div>
-                  )}
-                  {econRegimeId && econRegimeId !== 'normal' && (
-                    <div className="ems-serif" style={{ fontSize: 11, color: pp.paperMuted, marginTop: 7, lineHeight: 1.4 }}>{regimeInfoText(weatherInfo, economy)}</div>
-                  )}
-                </div>
-              </div>
-
-              {urgentItems.length > 0 && (
-                <div style={{ border: `2px solid ${pp.paperText}`, padding: '10px 12px', marginBottom: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', marginBottom: 7, fontWeight: 700 }}>⚠ ТРЕВОГА НОМЕРА</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                    {urgentItems.map((n) => (
-                      <div key={n.id}>
-                        <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                        <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.5 }}>{n.text}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {sections.map((s) => (
-                <div key={s.cat} style={{ marginBottom: 16 }}>
-                  <div className="ems-mono" style={{ fontSize: 10, letterSpacing: '0.1em', borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 4, marginBottom: 10, color: pp.paperText, fontWeight: 700 }}>
-                    {s.label}
-                  </div>
-                  <div style={{ columnCount: s.items.length > 1 ? 2 : 1, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
-                    {s.items.map((n) => (
-                      <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
-                        <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>{n.headline}</div>
-                        <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
-                        {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-
-              {opinionItem && (
-                <div style={{ borderTop: `1px solid ${pp.paperRule}`, borderBottom: `1px solid ${pp.paperRule}`, padding: '12px 4px', marginBottom: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>{catOf('opinion').icon} КОЛОНКА МНЕНИЙ</div>
-                  <div className="ems-serif" style={{ fontSize: 17, fontStyle: 'italic', fontWeight: 700, lineHeight: 1.35, marginBottom: 6 }}>{opinionItem.headline}</div>
-                  <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.5 }}>{opinionItem.text}</div>
-                </div>
-              )}
-
-              {editorial && (
-                <div style={{ borderTop: `3px double ${pp.paperRule}`, marginTop: 6, paddingTop: 12 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
-                  <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65 }}>{editorial.text}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {tab === 'chronicle' && (
-            <div>
-              {quarters.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Хроника начнётся с первого завершённого квартала.</div>}
-              {quarters.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 14 }}>
-                  <input value={chronicleSearch} onChange={(e) => { setChronicleSearch(e.target.value); setChronicleShown(8); }}
-                    placeholder="Поиск по хронике…" className="ems-serif"
-                    style={{ flex: '1 1 180px', padding: '5px 9px', fontSize: 12, background: 'transparent', color: pp.paperText, border: `1px solid ${pp.paperRule}` }} />
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    <span onClick={() => { setChronicleFilter('all'); setChronicleShown(8); }} className="ems-mono"
-                      style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === 'all' ? 700 : 400,
-                        background: chronicleFilter === 'all' ? pp.paperRule : 'transparent', color: pp.paperText }}>ВСЁ</span>
-                    {chronicleCats.map((c) => (
-                      <span key={c.id} onClick={() => { setChronicleFilter(c.id); setChronicleShown(8); }} className="ems-mono"
-                        style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === c.id ? 700 : 400,
-                          background: chronicleFilter === c.id ? pp.paperRule : 'transparent', color: pp.paperText }}>{c.icon} {c.short.toUpperCase()}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {quarters.length > 0 && filteredQuarters.length === 0 && (
-                <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>По такому запросу в хронике ничего не нашлось.</div>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                {filteredQuarters.slice(0, chronicleShown).map(([q, list]) => {
-                  const snap = history.find((h) => h.q === q);
-                  const top = list.slice(0, 4);
-                  return (
-                    <div key={q} style={{ display: 'flex', gap: 14, borderBottom: `1px solid ${pp.paperRule}`, padding: '11px 0' }}>
-                      <div style={{ width: 92, flexShrink: 0 }}>
-                        <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
-                        {snap && (
-                          <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
-                            ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {top.map((n) => (
-                          <div key={n.id}>
-                            <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
-                            <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
-                            <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {filteredQuarters.length > chronicleShown && (
-                <div style={{ textAlign: 'center', marginTop: 14 }}>
-                  <button className="ems-btn" style={{ background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }}
-                    onClick={() => setChronicleShown((n) => n + 8)}>Показать ещё</button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {tab === 'stories' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {stories.length === 0 && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Сюжетов пока нет. Они рождаются из шоков и ваших собственных решений — и разворачиваются несколько кварталов подряд.</div>}
-              {stories.map((st) => {
-                const total = st.steps[0].steps;
-                const done = st.steps.length;
-                return (
-                  <div key={st.id} style={{ borderLeft: `2px solid ${pp.paperRule}`, paddingLeft: 14 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-                      <div className="ems-serif" style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>Сюжет: {st.title}</div>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {Array.from({ length: total }).map((_, i) => (
-                          <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i < done ? pp.paperText : 'transparent', border: `1px solid ${pp.paperRule}`, display: 'inline-block' }} />
-                        ))}
-                      </div>
-                      {done < total && <span className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted }}>продолжение следует</span>}
-                    </div>
-                    <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
-                      {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {done} из {total} частей
-                    </div>
-                    {st.steps.map((n, i) => (
-                      <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
-                        <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
-                          <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
-                          <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </PaperBox>
-      </div>
-    </div>
-  );
-}
-
+/* Газета («Газета и хроника») подгружается лениво через React.lazy() — см.
+   комментарий в начале src/newspaper.jsx. */
+const NewspaperModal = React.lazy(() => import('./newspaper.jsx').then((m) => ({ default: m.NewspaperModal })));
 
 /* ============================ АТМОСФЕРА ============================ */
 const ATMOSPHERE = {
@@ -4616,8 +4197,10 @@ const SUMMARY_TABS = {
     { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0),
       hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
-    { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt },
-    { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.` },
+    { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt,
+      hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
+    { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Насколько фактическая ставка жёстче или мягче нейтральной r*. Положительный — политика сдерживает экономику, отрицательный — стимулирует.' },
     { key: 'capitalRequirement', label: 'Норматив капитала банков', fmt: pctFmt },
     { key: 'creditGrowth', label: 'Рост кредитования', fmt: fmtSignedPct },
     { key: 'bankCapitalAdequacy', label: 'Достаточность капитала', fmt: pctFmt },
@@ -4628,14 +4211,17 @@ const SUMMARY_TABS = {
     { key: 'govRevenue', label: 'Доходы бюджета', fmt: fmtMoney },
     { key: 'govSpendingTotal', label: 'Расходы бюджета', fmt: fmtMoney },
     { key: 'budgetBalancePctGdp', label: 'Баланс бюджета', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
-    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
+    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП`,
+      hint: 'Баланс бюджета, очищенный от влияния экономического цикла. Показывает, дефицитна ли бюджетная политика сама по себе, а не только из-за текущего спада или подъёма.' },
     { key: 'debtToGdp', label: 'Долг к ВВП', fmt: pctFmt },
     { key: 'interestToRevenue', label: 'Проценты к доходам', fmt: pctFmt },
-    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.` },
+    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Изменение бюджетного стимула за квартал. Положительный — бюджет разгоняет спрос сверх прошлого квартала, отрицательный — сдерживает.' },
     { key: 'vatRate', label: 'НДС', fmt: pctFmt },
     { key: 'incomeTaxRate', label: 'Подоходный налог', fmt: pctFmt },
     { key: 'profitTaxRate', label: 'Налог на прибыль', fmt: pctFmt },
-    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt },
+    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt,
+      hint: 'Доля экономики вне налогообложения. Растёт вместе с налоговой нагрузкой, снижается при её облегчении.' },
     { label: 'Доля образования', get: (e) => e.budgetShares.education, fmt: pctFmt },
     { label: 'Доля науки', get: (e) => e.budgetShares.science, fmt: pctFmt },
     { label: 'Доля здравоохранения', get: (e) => e.budgetShares.health, fmt: pctFmt },
@@ -4654,7 +4240,11 @@ function scaleLever(l, e) {
   if (l.scale === 'gdp') {
     const k = Math.max(1, e.nominalGdp / CONFIG.initial.gdp);
     const mag = Math.max(5, Math.round(l.max * k / 5) * 5);
-    return { ...l, min: -mag, max: mag, step: Math.max(1, Math.round(mag / 25)) };
+    // рычаг с исходным минимумом 0 (например, размещение облигаций — занять
+    // можно только неотрицательную сумму) должен и после масштабирования
+    // остаться неотрицательным, а не зеркалиться в минус вслед за симметричными
+    // рычагами вроде валютных интервенций
+    return { ...l, min: l.min < 0 ? -mag : 0, max: mag, step: Math.max(1, Math.round(mag / 25)) };
   }
   if (l.id === 'fxTarget') {
     const cur = e.exchangeRate;
@@ -4665,7 +4255,11 @@ function scaleLever(l, e) {
 
 
 /* ============================ ТОРГОВЫЙ ТЕРМИНАЛ ============================ */
-const INSTRUMENTS = [
+// доля госдолга (в тех же единицах, что и книга инвестора — млн), которую
+// разрешено выкупить одному инвестору в гособлигации: остальное держат другие
+// участники рынка, о которых игра просто не рассказывает
+const GOV_BOND_INVESTOR_SHARE = 0.05;
+export const INSTRUMENTS = [
   { id: 'eq_broad', name: 'Индекс акций', ticker: 'IDX', group: 'Акции', color: COLOR.gold, key: 'stockIndex', fee: 0.0015, kind: 'spot',
     note: 'Весь рынок целиком. Растёт на дешёвых деньгах и прибылях, падает на ставке и риске.' },
   { id: 'eq_banks', name: 'Банки (ETF)', ticker: 'BNK', group: 'Акции', color: COLOR.blue, key: 'sectorBanks', fee: 0.002, kind: 'spot',
@@ -4709,7 +4303,7 @@ const INSTRUMENTS = [
   { id: 'opt_put', name: 'Опцион put на индекс', ticker: 'PUT', group: 'Опционы', color: COLOR.rust, key: 'stockIndex', fee: 0.004, kind: 'opt', optType: 'put', life: 2,
     note: 'Право продать индекс по текущей цене через 2 квартала. Страховка портфеля от обвала.' },
 ];
-const INSTR_BY_ID = {};
+export const INSTR_BY_ID = {};
 INSTRUMENTS.forEach((x) => { INSTR_BY_ID[x.id] = x; });
 const MAINTENANCE = 0.25;     // ниже этого уровня приходит маржин-колл
 const TARGET_MARGIN = 0.38;   // до этого уровня принудительно закрывают
@@ -4773,6 +4367,17 @@ function tradeBook(book, instrId, amountMln, side, economy, live) {
   if (!instr || !(amountMln > 0.0001)) return book;
   const price = priceOf(instr, economy, live);
   const dir = side === 'buy' ? 1 : -1;
+  // подстраховка на случай, если запрос пришёл с устаревшим лимитом (например,
+  // «макс.» был нажат за мгновение до того, как госдолг подрос или сократился) —
+  // сама UI уже не даёт запросить больше, но здесь тот же потолок применяется
+  // ещё раз, чтобы позиция никогда не превысила долю рынка ни при каких гонках
+  if (instrId === 'bond_gov' && side === 'buy') {
+    const held0 = book.pos[instrId] || 0;
+    const heldVal0 = held0 * price / 1000;
+    const room = Math.max(0, (economy.govDebt || 0) * 1000 * GOV_BOND_INVESTOR_SHARE - Math.max(0, heldVal0));
+    amountMln = Math.min(amountMln, room);
+    if (!(amountMln > 0.0001)) return book;
+  }
 
   if (instr.kind === 'opt') {
     const vol = impliedVol(economy);
@@ -5082,9 +4687,18 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
   const lotsValue = lots.reduce((a, l) => a + optionValue(l.type, price, l.strike, vol, l.left) * l.qty / 1000, 0);
   const unreal = instr.kind === 'opt' ? lotsValue - lots.reduce((a, l) => a + l.premium * l.qty / 1000, 0)
     : held !== 0 && avg ? held * (price - avg) / 1000 : 0;
-  const maxBuy = instr.kind === 'fut' ? Math.max(0, freeRisk / (instr.lev || 1))
+  let maxBuy = instr.kind === 'fut' ? Math.max(0, freeRisk / (instr.lev || 1))
     : instr.kind === 'opt' ? Math.max(0, book.cash)
       : useMargin ? Math.max(0, Math.min(book.cash + Math.max(0, equity * 0.6), freeRisk)) : Math.max(0, book.cash);
+  // гособлигации существуют в конечном количестве — весь госдолг разом. Один
+  // инвестор не может выкупить в него больше разумной доли рынка, иначе
+  // «купить гособлигаций» превращается в «купить сколько угодно денег из
+  // ниоткуда». Фьючерс на облигации — расчётный дериватив, а не сама бумага,
+  // поэтому его это ограничение не касается.
+  const govBondRoom = instr.id === 'bond_gov'
+    ? Math.max(0, (economy.govDebt || 0) * 1000 * GOV_BOND_INVESTOR_SHARE - Math.max(0, heldValue))
+    : Infinity;
+  if (instr.id === 'bond_gov') maxBuy = Math.min(maxBuy, govBondRoom);
   const maxSell = instr.kind === 'opt' ? lotsValue
     : instr.kind === 'fut' ? Math.max(0, freeRisk / (instr.lev || 1))
       : Math.max(0, heldValue) + (useMargin ? Math.max(0, Math.min(equity * 0.5, freeRisk)) : 0);
@@ -5434,6 +5048,11 @@ function TradingTerminal({ economy, prev, book, onTrade, history }) {
                 </span>
               </div>
             )}
+            {instr.id === 'bond_gov' && side === 'buy' && (
+              <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 6, lineHeight: 1.35 }}>
+                Гособлигации — не бездонный инструмент: рынок ограничен размером госдолга ({fmtMoney(economy.govDebt)}), и один инвестор не может выкупить больше {Math.round(GOV_BOND_INVESTOR_SHARE * 100)}% от него. Свободно ещё {fmtMln(govBondRoom)}.
+              </div>
+            )}
           </div>
 
           <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.5, borderLeft: `2px solid ${side === 'buy' ? COLOR.teal : COLOR.rust}`, paddingLeft: 9 }}>
@@ -5617,540 +5236,7 @@ function PortfolioSummary({ book, economy, live, prevValue, goal, opponent }) {
    выигрыш/проигрыш — через onResult(net), тем же путём, что и обычная сделка,
    поэтому сразу видны в общей стоимости портфеля и в сравнении с соперником.
 ========================================================================================= */
-const CASINO_GAMES = [
-  { id: 'roulette', label: 'Рулетка', icon: '🎡' },
-  { id: 'slots', label: 'Слоты', icon: '🎰' },
-  { id: 'dice', label: 'Кости', icon: '🎲' },
-  { id: 'blackjack', label: 'Блэкджек', icon: '🃏' },
-  { id: 'binary', label: 'Бинарные опционы', icon: '📉' },
-];
-
-const ROULETTE_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
-const rouletteColor = (n) => (n === 0 ? 'green' : ROULETTE_RED.has(n) ? 'red' : 'black');
-// порядок секторов настоящего европейского колеса — от него зависит, где именно
-// останавливается стрелка, а не только какое число «выпало» по RNG
-const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-const WHEEL_SEG = 360 / WHEEL_ORDER.length;
-const WHEEL_SIZE = 260;
-const WHEEL_GRADIENT = (() => {
-  const stops = WHEEL_ORDER.map((n, i) => {
-    const c = n === 0 ? '#1F7A4D' : ROULETTE_RED.has(n) ? '#A4342A' : '#17181C';
-    return `${c} ${(i * WHEEL_SEG).toFixed(3)}deg ${((i + 1) * WHEEL_SEG).toFixed(3)}deg`;
-  }).join(', ');
-  return `conic-gradient(${stops})`;
-})();
-const ROULETTE_BETS = [
-  { id: 'red', label: 'Красное', mult: 2 }, { id: 'black', label: 'Чёрное', mult: 2 },
-  { id: 'even', label: 'Чёт', mult: 2 }, { id: 'odd', label: 'Нечет', mult: 2 },
-  { id: 'low', label: '1–18', mult: 2 }, { id: 'high', label: '19–36', mult: 2 },
-  { id: 'straight', label: 'Число', mult: 36 },
-];
-
-// Мелкая ставка = процент от свободных денег, крупная = абсолютная сумма —
-// общий контрол для всех игр казино, чтобы не плодить одну и ту же вёрстку пять раз
-function CasinoBet({ amount, setAmount, cash }) {
-  const setPct = (p) => setAmount(Math.max(0.01, Math.round(cash * p * 100) / 100));
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>
-        <span>Ставка</span><span className="ems-mono">{fmtMln(amount)}</span>
-      </div>
-      <input type="range" min={0.01} max={Math.max(0.01, cash)} step={0.01} value={Math.min(amount, Math.max(0.01, cash))}
-        onChange={(e) => setAmount(parseFloat(e.target.value))} style={{ width: '100%' }} />
-      <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
-        {[0.1, 0.25, 0.5, 1].map((p) => (
-          <button key={p} className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 10.5 }} onClick={() => setPct(p)}>
-            {p === 1 ? 'макс.' : `${p * 100}%`}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-const CasinoResult = ({ net }) => (net === null ? null : (
-  <div className="ems-mono" style={{ marginTop: 12, fontSize: 19, fontWeight: 700, color: net > 0 ? COLOR.teal : net < 0 ? COLOR.rust : COLOR.muted }}>
-    {fmtMlnSigned(net)}
-  </div>
-));
-
-function RouletteGame({ cash, onResult }) {
-  const [betType, setBetType] = useState('red');
-  const [number, setNumber] = useState(7);
-  const [amount, setAmount] = useState(Math.min(1, cash));
-  const [spinning, setSpinning] = useState(false);
-  const [spin, setSpin] = useState(null);
-  const [rotation, setRotation] = useState(0);
-  const SPIN_MS = 2200;
-  const play = () => {
-    const bet = clamp(amount, 0.01, cash);
-    if (bet <= 0 || spinning) return;
-    const n = Math.floor(Math.random() * 37);
-    const color = rouletteColor(n);
-    const b = ROULETTE_BETS.find((x) => x.id === betType);
-    let win = false;
-    if (betType === 'straight') win = n === number;
-    else if (betType === 'red' || betType === 'black') win = color === betType;
-    else if (betType === 'even') win = n !== 0 && n % 2 === 0;
-    else if (betType === 'odd') win = n % 2 === 1;
-    else if (betType === 'low') win = n >= 1 && n <= 18;
-    else if (betType === 'high') win = n >= 19 && n <= 36;
-    const net = win ? bet * (b.mult - 1) : -bet;
-    // колесо реально останавливается на выпавшем секторе, а не крутится вслепую:
-    // подгоняем итоговый угол под сектор n, всегда вперёд от текущего положения
-    const idx = WHEEL_ORDER.indexOf(n);
-    const targetMod = 360 - (idx * WHEEL_SEG + WHEEL_SEG / 2);
-    const curMod = ((rotation % 360) + 360) % 360;
-    let delta = targetMod - curMod;
-    if (delta <= 0) delta += 360;
-    const spins = 5 + Math.floor(Math.random() * 2);
-    setSpinning(true); setSpin(null); Audio.play('tick');
-    setRotation((r) => r + spins * 360 + delta);
-    setTimeout(() => {
-      onResult(net);
-      Audio.play(win ? 'coin' : 'click');
-      setSpin({ n, color, win, net });
-      setSpinning(false);
-    }, SPIN_MS);
-  };
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
-      <div>
-        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Тип ставки</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-          {ROULETTE_BETS.map((b) => (
-            <span key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} style={{ padding: '4px 9px', fontSize: 11 }}
-              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></span>
-          ))}
-        </div>
-        {betType === 'straight' && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>Число (0–36)</div>
-            <input type="number" min={0} max={36} value={number} onChange={(e) => setNumber(clamp(parseInt(e.target.value, 10) || 0, 0, 36))}
-              style={{ width: '100%', padding: '7px 9px', fontSize: 13, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
-          </div>
-        )}
-        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
-        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={spinning || cash <= 0} onClick={play}>
-          {spinning ? 'Крутится…' : 'Крутить'}
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <div style={{ position: 'relative', width: WHEEL_SIZE, height: WHEEL_SIZE }}>
-          <div style={{ position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', width: 0, height: 0,
-            borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderTop: `18px solid ${COLOR.goldSoft}`, zIndex: 2 }} />
-          <div className={!spinning && !spin ? 'ems-wheel-idle' : ''} style={{ position: 'relative', width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: '50%',
-            background: WHEEL_GRADIENT, border: `4px solid ${COLOR.borderStrong}`, boxShadow: 'inset 0 0 0 2px rgba(0,0,0,0.4)',
-            transform: `rotate(${rotation}deg)`, transition: `transform ${SPIN_MS}ms cubic-bezier(0.12,0.67,0.1,0.99)` }}>
-            {WHEEL_ORDER.map((n, i) => {
-              const mid = i * WHEEL_SEG + WHEEL_SEG / 2;
-              return (
-                <div key={n} style={{ position: 'absolute', top: '50%', left: '50%', width: 0, height: 0, transform: `rotate(${mid}deg)` }}>
-                  <span style={{ position: 'absolute', left: -11, top: -(WHEEL_SIZE / 2 - 22), width: 22, textAlign: 'center',
-                    fontSize: 12.5, fontWeight: 700, color: '#F4F1E8', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>{n}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div className="ems-mono" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            width: 80, height: 80, borderRadius: '50%', background: COLOR.panel, border: `3px solid ${COLOR.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, fontWeight: 700,
-            color: !spin ? COLOR.faint : spin.color === 'red' ? COLOR.rust : spin.color === 'black' ? COLOR.text : COLOR.teal }}>
-            {spinning ? '' : spin ? spin.n : '—'}
-          </div>
-        </div>
-        {spin && !spinning && (
-          <div className="ems-coin-pop" style={{ marginTop: 12, fontSize: 13, color: COLOR.muted }}>
-            Выпало {spin.n} ({spin.color === 'red' ? 'красное' : spin.color === 'black' ? 'чёрное' : 'зеро'}) — {spin.win ? 'выигрыш' : 'проигрыш'}
-          </div>
-        )}
-        <div className={spin && !spinning ? (spin.win ? 'ems-win-pulse' : 'ems-lose-pulse') : ''} style={{ borderRadius: 8 }}>
-          <CasinoResult net={spin && !spinning ? spin.net : null} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const SLOT_SYMBOLS = [
-  { id: 'cherry', icon: '🍒', weight: 40, pay3: 4, pay2: 1.5 },
-  { id: 'lemon', icon: '🍋', weight: 28, pay3: 6 },
-  { id: 'bell', icon: '🔔', weight: 16, pay3: 12 },
-  { id: 'gem', icon: '💎', weight: 8, pay3: 25 },
-  { id: 'seven', icon: '7️⃣', weight: 3, pay3: 60 },
-];
-const SLOT_WEIGHT_TOTAL = SLOT_SYMBOLS.reduce((a, s) => a + s.weight, 0);
-const pickSlotSymbol = () => {
-  let r = Math.random() * SLOT_WEIGHT_TOTAL;
-  for (const s of SLOT_SYMBOLS) { r -= s.weight; if (r <= 0) return s; }
-  return SLOT_SYMBOLS[0];
-};
-function SlotsGame({ cash, onResult }) {
-  const [amount, setAmount] = useState(Math.min(1, cash));
-  const [display, setDisplay] = useState([SLOT_SYMBOLS[0], SLOT_SYMBOLS[0], SLOT_SYMBOLS[0]]);
-  const [spinningReels, setSpinningReels] = useState([false, false, false]);
-  const [net, setNet] = useState(null);
-  const [win, setWin] = useState(false);
-  const timersRef = React.useRef([]);
-  React.useEffect(() => () => timersRef.current.forEach(clearInterval), []);
-  const play = () => {
-    const bet = clamp(amount, 0.01, cash);
-    if (bet <= 0 || spinningReels.some(Boolean)) return;
-    Audio.play('tick');
-    const final = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
-    let mult = 0;
-    if (final[0].id === final[1].id && final[1].id === final[2].id) mult = final[0].pay3;
-    else if (final.filter((s) => s.id === 'cherry').length >= 2) mult = SLOT_SYMBOLS[0].pay2;
-    const didWin = mult > 0;
-    // «× N» в таблице выплат читается как «столько раз вернётся ваша ставка», та же
-    // конвенция, что и в рулетке и костях (bet*(mult-1)) — раньше здесь выплачивался
-    // весь mult сверху ставки, и с текущей таблицей это давало казино отрицательный
-    // (в пользу игрока) матожидание вместо небольшого преимущества дома.
-    const n = didWin ? bet * (mult - 1) : -bet;
-    setNet(null); setWin(false);
-    setSpinningReels([true, true, true]);
-    timersRef.current.forEach(clearInterval); timersRef.current = [];
-    // барабаны останавливаются не одновременно, а с задержкой друг за другом —
-    // тот самый «дзынь-дзынь-дзынь» настоящего слот-автомата
-    [0, 1, 2].forEach((i) => {
-      const iv = setInterval(() => setDisplay((d) => { const nd = [...d]; nd[i] = pickSlotSymbol(); return nd; }), 65);
-      timersRef.current.push(iv);
-      setTimeout(() => {
-        clearInterval(iv); Audio.play('tick');
-        setDisplay((d) => { const nd = [...d]; nd[i] = final[i]; return nd; });
-        setSpinningReels((s) => { const ns = [...s]; ns[i] = false; return ns; });
-        if (i === 2) {
-          onResult(n);
-          Audio.play(didWin ? 'coin' : 'click');
-          setNet(n); setWin(didWin);
-        }
-      }, 600 + i * 280);
-    });
-  };
-  const anySpinning = spinningReels.some(Boolean);
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
-      <div>
-        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
-        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={anySpinning || cash <= 0} onClick={play}>
-          {anySpinning ? 'Крутится…' : 'Крутить'}
-        </button>
-        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.5 }}>
-          {SLOT_SYMBOLS.map((s) => (<div key={s.id}>{s.icon}{s.icon}{s.icon} × {s.pay3}</div>))}
-          <div>🍒🍒 × {SLOT_SYMBOLS[0].pay2}</div>
-        </div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <div className={net !== null ? (win ? 'ems-win-pulse' : 'ems-lose-pulse') : ''} style={{ display: 'flex', gap: 16, fontSize: 66, padding: 10, borderRadius: 10 }}>
-          {display.map((s, i) => (
-            <div key={i} className={spinningReels[i] ? 'ems-reel-spin' : net !== null ? 'ems-coin-pop' : ''}
-              style={{ width: 98, height: 98, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: COLOR.panelAlt, border: `2px solid ${spinningReels[i] ? COLOR.gold : COLOR.border}`, borderRadius: 6 }}>
-              {s.icon}
-            </div>
-          ))}
-        </div>
-        <CasinoResult net={net} />
-      </div>
-    </div>
-  );
-}
-
-const DICE_BETS = [
-  { id: 'under', label: 'Меньше 7', mult: 2 }, { id: 'over', label: 'Больше 7', mult: 2 }, { id: 'seven', label: 'Ровно 7', mult: 5 },
-];
-const DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-function DiceGame({ cash, onResult }) {
-  const [betType, setBetType] = useState('over');
-  const [amount, setAmount] = useState(Math.min(1, cash));
-  const [dice, setDice] = useState(null);
-  const [rolling, setRolling] = useState(false);
-  const [net, setNet] = useState(null);
-  const [win, setWin] = useState(false);
-  const play = () => {
-    const bet = clamp(amount, 0.01, cash);
-    if (bet <= 0 || rolling) return;
-    setRolling(true); setNet(null); Audio.play('tick');
-    setTimeout(() => {
-      const d1 = 1 + Math.floor(Math.random() * 6); const d2 = 1 + Math.floor(Math.random() * 6);
-      const sum = d1 + d2;
-      const b = DICE_BETS.find((x) => x.id === betType);
-      let didWin = false;
-      if (betType === 'under') didWin = sum < 7;
-      else if (betType === 'over') didWin = sum > 7;
-      else didWin = sum === 7;
-      const n = didWin ? bet * (b.mult - 1) : -bet;
-      onResult(n);
-      Audio.play(didWin ? 'coin' : 'click');
-      setDice([d1, d2, sum]); setNet(n); setWin(didWin);
-      setRolling(false);
-    }, 650);
-  };
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
-      <div>
-        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Ставка на сумму двух костей</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-          {DICE_BETS.map((b) => (
-            <span key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} style={{ padding: '4px 9px', fontSize: 11 }}
-              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></span>
-          ))}
-        </div>
-        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
-        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={rolling || cash <= 0} onClick={play}>
-          {rolling ? 'Бросок…' : 'Бросить'}
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <div className={net !== null ? (win ? 'ems-win-pulse' : 'ems-lose-pulse') : ''} style={{ display: 'flex', gap: 16, padding: 10, borderRadius: 12 }}>
-          {[0, 1].map((i) => (
-            <div key={i} className={rolling ? 'ems-dice-roll' : dice ? 'ems-coin-pop' : ''}
-              style={{ width: 92, height: 92, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 70, lineHeight: 1,
-                color: COLOR.text, background: COLOR.panelAlt, border: `2px solid ${COLOR.border}`, borderRadius: 10 }}>
-              {rolling ? '⚅' : dice ? DICE_FACES[dice[i]] : '—'}
-            </div>
-          ))}
-        </div>
-        {dice && !rolling && <div style={{ marginTop: 10, fontSize: 13, color: COLOR.muted }}>Сумма: {dice[2]}</div>}
-        <CasinoResult net={rolling ? null : net} />
-      </div>
-    </div>
-  );
-}
-
-const CARD_RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-const CARD_SUITS = ['♠', '♥', '♦', '♣'];
-// раньше каждая карта тянулась независимо (ранг и масть — отдельные случайные
-// числа), поэтому в одной раздаче могли выпасть две одинаковые карты — то, чего
-// в реальной колоде на 52 карты просто не бывает. Теперь раздача тасует полную
-// колоду один раз и тянет карты из неё по очереди, без возврата.
-const FULL_DECK = CARD_RANKS.flatMap((r) => CARD_SUITS.map((s) => r + s));
-const shuffledDeck = () => {
-  const d = [...FULL_DECK];
-  for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [d[i], d[j]] = [d[j], d[i]];
-  }
-  return d;
-};
-const cardRank = (c) => c.slice(0, -1);
-const cardSuit = (c) => c.slice(-1);
-const cardValue = (c) => { const r = cardRank(c); return r === 'A' ? 11 : (r === 'J' || r === 'Q' || r === 'K') ? 10 : parseInt(r, 10); };
-function handValue(cards) {
-  let sum = cards.reduce((a, c) => a + cardValue(c), 0);
-  let aces = cards.filter((c) => cardRank(c) === 'A').length;
-  while (sum > 21 && aces > 0) { sum -= 10; aces--; }
-  return sum;
-}
-const Card = ({ c, hidden, dealIndex, className }) => {
-  const red = !hidden && (cardSuit(c) === '♥' || cardSuit(c) === '♦');
-  return (
-    <div className={`ems-mono ems-card-deal ${className || ''}`} style={{ width: 70, height: 98, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: hidden ? COLOR.panelRaised : '#F4F1E8', color: hidden ? COLOR.faint : red ? '#A4342A' : '#17181C', borderRadius: 7, fontSize: 22, fontWeight: 700, lineHeight: 1.2,
-      border: `1px solid ${COLOR.border}`, boxShadow: '0 3px 8px rgba(0,0,0,0.35)', animationDelay: `${(dealIndex || 0) * 90}ms` }}>
-      {hidden ? <span style={{ fontSize: 32 }}>🂠</span> : (<><span>{cardRank(c)}</span><span style={{ fontSize: 26 }}>{cardSuit(c)}</span></>)}
-    </div>
-  );
-};
-function BlackjackGame({ cash, onResult }) {
-  const [amount, setAmount] = useState(Math.min(1, cash));
-  const [phase, setPhase] = useState('bet'); // bet | player | done
-  const [player, setPlayer] = useState([]);
-  const [dealer, setDealer] = useState([]);
-  const [bet, setBet] = useState(0);
-  const [outcome, setOutcome] = useState(null);
-  // одна перетасованная колода на раздачу: тянем по очереди, без возврата и
-  // без повторной перетасовки внутри того же раунда
-  const shoeRef = React.useRef([]);
-  const draw = () => shoeRef.current.pop();
-  const resolve = (p, d, b) => {
-    const pv = handValue(p); const dv = handValue(d);
-    const pBJ = pv === 21 && p.length === 2; const dBJ = dv === 21 && d.length === 2;
-    let net; let text;
-    if (pv > 21) { net = -b; text = 'Перебор — вы проиграли.'; }
-    else if (pBJ && !dBJ) { net = b * 1.5; text = 'Блэкджек! Выплата 3:2.'; }
-    else if (dBJ && !pBJ) { net = -b; text = 'Блэкджек у дилера.'; }
-    else if (dv > 21) { net = b; text = 'Дилер перебрал — вы выиграли.'; }
-    else if (pv > dv) { net = b; text = 'Вы выиграли.'; }
-    else if (pv < dv) { net = -b; text = 'Дилер выиграл.'; }
-    else { net = 0; text = 'Ничья — ставка возвращена.'; }
-    onResult(net);
-    Audio.play(net > 0 ? 'coin' : net < 0 ? 'click' : 'tick');
-    setDealer(d); setOutcome({ text, net }); setPhase('done');
-  };
-  const deal = () => {
-    const b = clamp(amount, 0.01, cash);
-    if (b <= 0) return;
-    shoeRef.current = shuffledDeck();
-    const p = [draw(), draw()]; const d = [draw(), draw()];
-    setPlayer(p); setDealer(d); setBet(b); setOutcome(null);
-    Audio.play('tick');
-    if (handValue(p) === 21 || handValue(d) === 21) resolve(p, d, b);
-    else setPhase('player');
-  };
-  const hit = () => {
-    const p = [...player, draw()];
-    setPlayer(p); Audio.play('tick');
-    if (handValue(p) > 21) resolve(p, dealer, bet);
-  };
-  const stand = () => {
-    let d = [...dealer];
-    while (handValue(d) < 17) d = [...d, draw()];
-    resolve(player, d, bet);
-  };
-  const again = () => { setPhase('bet'); setPlayer([]); setDealer([]); setOutcome(null); };
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
-      <div>
-        {phase === 'bet' ? (
-          <>
-            <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
-            <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={cash <= 0} onClick={deal}>Сдать карты</button>
-          </>
-        ) : phase === 'player' ? (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="ems-btn" style={{ flex: 1, padding: '10px 0' }} onClick={hit}>Ещё карту</button>
-            <button className="ems-btn primary" style={{ flex: 1, padding: '10px 0' }} onClick={stand}>Хватит</button>
-          </div>
-        ) : (
-          <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} onClick={again}>Ещё раз</button>
-        )}
-      </div>
-      <div>
-        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 7 }}>Дилер {phase !== 'bet' && phase !== 'player' && `— ${handValue(dealer)}`}</div>
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-          {dealer.map((c, i) => {
-            const hidden = phase === 'player' && i === 1;
-            return <Card key={i} c={c} hidden={hidden} dealIndex={i} className={!hidden && phase === 'done' && i === 1 ? 'ems-card-flip' : ''} />;
-          })}
-        </div>
-        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 7 }}>Вы {player.length > 0 && `— ${handValue(player)}`}</div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {player.map((c, i) => (<Card key={i} c={c} dealIndex={i} />))}
-        </div>
-        {outcome && (
-          <div style={{ marginTop: 10, fontSize: 12, color: COLOR.muted }}>{outcome.text}</div>
-        )}
-        <div className={outcome ? (outcome.net > 0 ? 'ems-win-pulse' : outcome.net < 0 ? 'ems-lose-pulse' : '') : ''} style={{ borderRadius: 8 }}>
-          <CasinoResult net={outcome ? outcome.net : null} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BinaryOptionGame({ cash, onResult }) {
-  const [instrId, setInstrId] = useState('eq_broad');
-  const [dir, setDir] = useState('up');
-  const [amount, setAmount] = useState(Math.min(1, cash));
-  const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState(null);
-  const [path, setPath] = useState([50]);
-  const tickRef = React.useRef(null);
-  React.useEffect(() => () => clearInterval(tickRef.current), []);
-  const play = () => {
-    const bet = clamp(amount, 0.01, cash);
-    if (bet <= 0 || busy) return;
-    setBusy(true); setRes(null); setPath([50]); Audio.play('tick');
-    const up = Math.random() < 0.5;
-    const win = (dir === 'up' && up) || (dir === 'down' && !up);
-    const net = win ? bet * 0.85 : -bet;
-    // «живой» тик котировки — тянет к итоговому направлению, но с шумом,
-    // а не прямая линия, чтобы разрешение пари не выглядело предрешённым сразу
-    const drift = up ? 1.7 : -1.7;
-    clearInterval(tickRef.current);
-    tickRef.current = setInterval(() => {
-      setPath((prev) => [...prev, clamp(prev[prev.length - 1] + drift + (Math.random() - 0.5) * 5.5, 4, 96)].slice(-26));
-    }, 90);
-    setTimeout(() => {
-      clearInterval(tickRef.current);
-      onResult(net);
-      Audio.play(win ? 'coin' : 'click');
-      setRes({ up, win, net });
-      setBusy(false);
-    }, 1450);
-  };
-  const instr = INSTR_BY_ID[instrId];
-  const lineColor = busy ? COLOR.gold : res ? (res.win ? COLOR.teal : COLOR.rust) : COLOR.faint;
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
-      <div>
-        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Инструмент</div>
-        <select value={instrId} onChange={(e) => setInstrId(e.target.value)}
-          style={{ width: '100%', padding: '7px 9px', fontSize: 12, marginBottom: 10, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }}>
-          {INSTRUMENTS.filter((i) => i.kind === 'spot').map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
-        </select>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          <button className="ems-btn" style={{ flex: 1, padding: '9px 0', background: dir === 'up' ? COLOR.tealDim : COLOR.panelAlt, borderColor: dir === 'up' ? COLOR.teal : COLOR.border, color: dir === 'up' ? COLOR.teal : COLOR.text }}
-            onClick={() => setDir('up')}><ArrowUpRight size={13} style={{ verticalAlign: -2 }} /> Вверх</button>
-          <button className="ems-btn" style={{ flex: 1, padding: '9px 0', background: dir === 'down' ? COLOR.rustDim : COLOR.panelAlt, borderColor: dir === 'down' ? COLOR.rust : COLOR.border, color: dir === 'down' ? COLOR.rust : COLOR.text }}
-            onClick={() => setDir('down')}><ArrowDownRight size={13} style={{ verticalAlign: -2 }} /> Вниз</button>
-        </div>
-        <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
-        <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={busy || cash <= 0} onClick={play}>
-          {busy ? 'Идёт торг…' : 'Заключить пари'}
-        </button>
-        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9 }}>Выплата 1.85× ставки при угадывании направления {instr ? instr.name.toLowerCase() : ''} — без плеча, без комиссии, чистое пари на монетку.</div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', width: '100%' }}>
-        <div className={res && !busy ? (res.win ? 'ems-win-pulse' : 'ems-lose-pulse') : ''} style={{ width: '100%', maxWidth: 480, borderRadius: 10, padding: 8 }}>
-          <svg width="100%" height="150" viewBox="0 0 100 90" preserveAspectRatio="none" style={{ display: 'block' }}>
-            <line x1="0" y1="45" x2="100" y2="45" stroke={COLOR.hairline} strokeWidth="0.6" strokeDasharray="2,2" />
-            <polyline points={path.map((v, i) => `${(i / Math.max(1, path.length - 1)) * 100},${90 - (v / 100) * 90}`).join(' ')}
-              fill="none" stroke={lineColor} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          </svg>
-        </div>
-        {res && !busy && (
-          <div className="ems-coin-pop" style={{ marginTop: 4, fontSize: 12, color: COLOR.muted }}>
-            {res.up ? <ArrowUpRight size={13} color={COLOR.teal} style={{ verticalAlign: -2 }} /> : <ArrowDownRight size={13} color={COLOR.rust} style={{ verticalAlign: -2 }} />} Рынок пошёл {res.up ? 'вверх' : 'вниз'} — {res.win ? 'вы угадали' : 'вы не угадали'}
-          </div>
-        )}
-        <CasinoResult net={busy ? null : res ? res.net : null} />
-      </div>
-    </div>
-  );
-}
-
-function CasinoScreen({ book, onCasino }) {
-  const [game, setGame] = useState('roulette');
-  const cash = Math.max(0, book.cash);
-  return (
-      <div className="ems-panel" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', alignItems: 'center', padding: '9px 13px',
-          borderBottom: `1px solid ${COLOR.border}`, background: COLOR.panelAlt }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <Dices size={13} color={COLOR.gold} />
-            <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Казино</span>
-          </span>
-          <span style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'baseline' }}>
-            <span style={{ color: COLOR.muted }}>Свободные деньги</span><span className="ems-mono" style={{ color: cash < 0.01 ? COLOR.rust : COLOR.text }}>{fmtMln(cash)}</span>
-          </span>
-          <span style={{ fontSize: 10.5, color: COLOR.faint, marginLeft: 'auto' }}>
-            Матожидание отрицательное — это развлечение, а не стратегия
-          </span>
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '9px 13px', borderBottom: `1px solid ${COLOR.border}` }}>
-          {CASINO_GAMES.map((g) => (
-            <span key={g.id} className={`ems-tab ${game === g.id ? 'active' : ''}`} style={{ padding: '5px 10px', fontSize: 11.5 }}
-              onClick={() => { Audio.play('tab'); setGame(g.id); }}>{g.icon} {g.label}</span>
-          ))}
-        </div>
-        {/* лёгкий зелёный отблеск поверх ФОНА ТЕМЫ, а не сплошной сукно-зелёный:
-            текст внутри игр по-прежнему берёт цвета из COLOR.* — если сделать
-            стол по-настоящему тёмным, он ломает контраст на светлой теме */}
-        <div style={{ padding: 24, borderTop: `2px solid ${COLOR.gold}`,
-          background: `radial-gradient(ellipse 480px 220px at 50% -10%, rgba(31,122,77,0.16) 0%, rgba(31,122,77,0) 62%), ${COLOR.panel}` }}>
-          {cash <= 0 && (
-            <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 12 }}>Свободных денег нет — освободите средства из позиций на «Рынке», чтобы сделать ставку.</div>
-          )}
-          {game === 'roulette' && <RouletteGame cash={cash} onResult={onCasino} />}
-          {game === 'slots' && <SlotsGame cash={cash} onResult={onCasino} />}
-          {game === 'dice' && <DiceGame cash={cash} onResult={onCasino} />}
-          {game === 'blackjack' && <BlackjackGame cash={cash} onResult={onCasino} />}
-          {game === 'binary' && <BinaryOptionGame cash={cash} onResult={onCasino} />}
-        </div>
-      </div>
-  );
-}
+const CasinoScreen = React.lazy(() => import('./casino.jsx').then((m) => ({ default: m.CasinoScreen })));
 
 /* Панель ведомств для инвестора: только наблюдаемые факты и публичные заявления */
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
@@ -7082,6 +6168,12 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [showCard, setShowCard] = useState(false);
   const [defeat, setDefeat] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
+  /* Откат на 3 хода назад, как в соло-игре, здесь возможен только для трейдера:
+     его портфель — локальное состояние этого клиента, а не общая с партнёром
+     серверная экономика (room.economy/history). Откатить саму экономику
+     означало бы отменить чужие уже принятые решения — для ЦБ/Минфина/президента
+     в сетевой игре это не сделать без сервера и без риска обидеть партнёра. */
+  const portfolioHistoryRef = React.useRef([]);
   const onTrade = (instrId, amt, side, liveQuotes) => setPortfolio((b) => {
     const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
     const instr = INSTR_BY_ID[instrId];
@@ -7166,6 +6258,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           if (marginCalled) { Audio.play('alarm'); haptic([60, 80, 60]); pushAch(unlockAchievements(['margin_call'])); }
           const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: bookValue(nb, r.economy, null) });
           if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
+          portfolioHistoryRef.current = [...portfolioHistoryRef.current, { quarterIndex: r.quarterIndex, book: nb }].slice(-8);
           return nb;
         });
       } else {
@@ -7182,6 +6275,13 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   }, [room.quarterIndex]);
 
   const isTraderRoom = room.mode === 'trader';
+  const portfolioRollbackTarget = isTraderRoom
+    ? portfolioHistoryRef.current.find((e) => e.quarterIndex === room.quarterIndex - 3) : null;
+  const handlePortfolioRollback = () => {
+    if (!portfolioRollbackTarget) return;
+    setPortfolio(portfolioRollbackTarget.book);
+    setDefeat(null); setShowGameOver(false);
+  };
   const roleDef = seatRole(seat);
   const RoleIcon = ROLE_ICON[roleDef.icon];
   /* Мест теперь может быть три: ЦБ, Минфин и президент. «Партнёр» по-прежнему один —
@@ -7356,11 +6456,16 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <Atmosphere regime={economy.regime}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />}
+      {showPaper && (
+        <Suspense fallback={null}>
+          <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />
+        </Suspense>
+      )}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню" />}
+        onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню"
+        onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: seatRole(seat).id, quarterIndex: room.quarterIndex, economy: room.economy,
         startEconomy: room.history && room.history[0], portfolio, defeat,
@@ -7559,13 +6664,22 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 </div>
                 {['monetary', 'fiscal'].filter((g) => roleDef.groups.includes(g)).map((g) => (
                   <React.Fragment key={g}>
-                    {['core', 'macropru', 'taxes', 'budget'].map((sub) => {
+                    {['core', 'macropru', 'taxes', 'budget', 'debt'].map((sub) => {
                       const set = levers.filter((l) => l.group === g && l.subgroup === sub);
                       if (!set.length) return null;
-                      return set.map((l) => (
-                        <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
-                          onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
-                      ));
+                      return (
+                        <React.Fragment key={sub}>
+                          {sub === 'debt' && (
+                            <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
+                              Дефицит финансируется сам — рынок и так занимает за вас ровно столько, сколько не хватает. Здесь — добровольное решение занять сверх этого: долг растёт сразу, а деньги идут в резерв на будущее.
+                            </div>
+                          )}
+                          {set.map((l) => (
+                            <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
+                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
+                          ))}
+                        </React.Fragment>
+                      );
                     })}
                     {g === 'monetary' && <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />}
                   </React.Fragment>
@@ -7683,7 +6797,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </div>
               {marketTab === 'market'
                 ? <TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} />
-                : <CasinoScreen book={portfolio} onCasino={onCasino} />}
+                : <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>}
             </>
           )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
@@ -7809,7 +6923,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       })()}
 
       {defeat ? (
-        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню" />
+        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
+          onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
       ) : (
         <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
           display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
@@ -7863,6 +6978,12 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   const [storageMode, setStorageMode] = useState(null);
   const [showAch, setShowAch] = useState(false);
   const [showLink, setShowLink] = useState(false);
+  // партия из автосохранения обычно открывается сама, минуя меню (см. App()) —
+  // сюда игрок попадает с ней «на руках» только если разбирался с крашем
+  // («Вернуться в меню» не трогает автосохранение) или пришёл по ссылке-
+  // приглашению в сетевую комнату. Карточка здесь — и подстраховка на этот
+  // случай, и просто видимое подтверждение того, что автосохранение вообще есть.
+  const [autosave, setAutosaveState] = useState(loadAutosave);
   React.useEffect(() => {
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(SOLO_SLOT_COUNT).fill(null)));
@@ -7941,6 +7062,27 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
               запроса и могут пропасть между обращениями. Это настройка развёртывания
               (переменные окружения <b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>),
               не баг в самой партии.
+            </div>
+          </div>
+        )}
+
+        {autosave && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20, borderColor: COLOR.gold }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+              <Clock size={13} color={COLOR.gold} />
+              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Автосохранение</span>
+            </div>
+            <div className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+              background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
+              <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
+                {(ROLES.find((r) => r.id === autosave.setup.role) || {}).short || autosave.setup.role} · {quarterLabel(autosave.quarterIndex || 1)}
+              </span>
+              <button className="ems-btn primary" style={{ padding: '4px 9px', fontSize: 11 }}
+                onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onLoad(autosave); }}>Играть</button>
+              <button onClick={() => { clearAutosave(); setAutosaveState(null); }} aria-label="Скрыть автосохранение"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
+                <X size={12} />
+              </button>
             </div>
           </div>
         )}
@@ -8055,6 +7197,7 @@ const GLOSSARY = {
   consolidation: { title: 'Бюджетная консолидация', text: 'Сокращение дефицита: расходы вниз или налоги вверх. Лечит долг и помогает ставке, но забирает спрос — обычно в самый неподходящий политически момент.' },
   transfers: { title: 'Социальные выплаты (трансферты)', text: 'Пенсии, пособия, индексации. Это не разовая трата, а темп: подняли один раз — расходы растут каждый квартал, пока решение не отменят.' },
   shadow: { title: 'Теневая экономика', text: 'Доля активности, которая не видна бюджету и не платит налогов. Растёт от чрезмерной налоговой нагрузки: часть возможных сборов теряется ровно так, а не из-за «плохого администрирования».' },
+  sovereignfund: { title: 'Суверенный фонд', text: 'Резерв бюджета: профицит сначала гасит госдолг, а после того как долг обнулился, идёт сюда, принося доход. Дефицит сначала тратит фонд и только потом занимает — фонд смягчает необходимость экстренных займов в плохие времена.' },
   intervention: { title: 'Валютные интервенции', text: 'Покупка или продажа валюты центральным банком ради курса. Против фундаментальных причин ослабления работают недолго — ровно столько, сколько хватит резервов.' },
   yieldcurve: { title: 'Кривая доходности', text: 'Соотношение доходностей коротких и длинных облигаций. Когда короткие дороже длинных (кривая перевёрнута), рынок ждёт снижения ставки — обычно из-за приближающегося спада.' },
   polcapital: { title: 'Политический капитал', text: 'Ресурс президента вместо ползунков: им оплачиваются указы, кадровые решения, реформы и требования к ведомствам. Копится рейтингом и ростом, тает кризисами и беспорядками.' },
@@ -8394,10 +7537,33 @@ const TUTORIAL_MODULES = [
         },
       },
       {
+        title: 'Резерв на будущее', pins: ['sovereignFund', 'govDebt', 'debtToGdp'],
+        lever: 'bondIssuance', minDelta: 10, runsQuarter: true,
+        body: () => (
+          <>
+            <p>Дефицит и так финансируется сам — рынок занимает за вас ровно столько денег, сколько не хватает бюджету. Но есть и отдельный, добровольный рычаг во вкладке «Долг» — «Размещение облигаций»: занять сверх этого специально, не под расходы этого квартала.</p>
+            <p>Разместите облигаций минимум на 10 млрд и нажмите «Далее».</p>
+          </>
+        ),
+      },
+      {
+        title: 'Куда идут деньги',
+        lever: null, runsQuarter: false,
+        body: ({ economy, history }) => {
+          const before = history.length >= 2 ? history[history.length - 2] : economy;
+          return (
+            <>
+              <p>Долг к ВВП вырос сразу — с {pctFmt(before.debtToGdp)} до {pctFmt(economy.debtToGdp)}. Но эти деньги не ушли на расходы: они легли в <Term k="sovereignfund">суверенный фонд</Term> ({fmtMoney(economy.sovereignFund)}) и останутся там, пока не понадобятся — например, чтобы профинансировать будущий дефицит, не занимая по условиям, которые к тому моменту могут быть хуже нынешних.</p>
+              <p>Это компромисс, а не бесплатный доход: занять раньше, чем нужно, — тоже долг, и обслуживать его придётся уже сейчас.</p>
+            </>
+          );
+        },
+      },
+      {
         title: 'Модуль пройден', isFinal: true, lever: null, runsQuarter: false,
         body: () => (
           <>
-            <p>Налоги не масштабируются линейно, а расходы, увеличенные один раз, продолжают давить на баланс каждый квартал. Долг — это не разовая проблема, а нарастающая стоимость обслуживания. Дальше — то, что происходит на границе: валютный курс.</p>
+            <p>Налоги не масштабируются линейно, а расходы, увеличенные один раз, продолжают давить на баланс каждый квартал. Долг — это не разовая проблема, а нарастающая стоимость обслуживания, и его можно нарастить не только по необходимости, но и заранее, про запас. Дальше — то, что происходит на границе: валютный курс.</p>
           </>
         ),
       },
@@ -9404,6 +8570,7 @@ const EXAM_MODULES = [
           <>
             <p>Вы прошли курс целиком: ставка и расходы, бюджет и долг, курс и резервы, ожидания и доверие, риски и буферы, политический режим — и свели всё это вместе в одной задаче без правильного ответа.</p>
             <p>Дальше два прикладных курса: за частного инвестора и за президента. Или сразу настоящая партия — там всё перечисленное работает одновременно.</p>
+            <p>В настоящей партии прогресс автоматически сохраняется в этом браузере после каждого квартала — можно спокойно закрыть вкладку и продолжить позже с того же места.</p>
           </>
         ),
       },
@@ -10526,11 +9693,13 @@ const INDICATOR_TABS = [
     { key: 'gdpGrowth', label: 'Темп роста ВВП', fmt: fmtSignedPct },
     { key: 'potentialGdp', label: 'Потенциальный ВВП', fmt: fmtMoney },
     { key: 'potentialGrowth', label: 'Рост потенциала', fmt: fmtSignedPct },
-    { key: 'outputGap', label: 'Разрыв выпуска', fmt: fmtSignedPct },
+    { key: 'outputGap', label: 'Разрыв выпуска', fmt: fmtSignedPct,
+      hint: 'Насколько ВВП отклонился от потенциального. Отрицательный — экономика недогружена, безработица выше нормы. Положительный — перегрев, риск ускорения инфляции.' },
     { key: 'gdpPerCapita', label: 'ВВП на душу населения', fmt: (v) => `${Math.round(v).toLocaleString('ru-RU')} у.е.` },
     { key: 'consumption', label: 'Потребление', fmt: fmtMoney },
     { key: 'businessInvestment', label: 'Инвестиции бизнеса', fmt: fmtMoney },
-    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.` },
+    { key: 'fiscalImpulse', label: 'Бюджетный импульс', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Изменение бюджетного стимула за квартал. Положительный — бюджет разгоняет спрос сверх прошлого квартала, отрицательный — сдерживает.' },
   ] },
   { id: 'prices', label: 'Цены', icon: Coins, rows: [
     { key: 'inflation', label: 'Инфляция (ИПЦ)', fmt: pctFmt },
@@ -10550,14 +9719,18 @@ const INDICATOR_TABS = [
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'depositRate', label: 'Ставка по депозитам', fmt: pctFmt },
     { key: 'realLendingRate', label: 'Реальная ставка по кредитам', fmt: pctFmt },
-    { key: 'rStar', label: 'Нейтральная реальная ставка r*', fmt: pctFmt },
-    { key: 'rateGap', label: 'Жёсткость условий (факт − нейтраль)', fmt: (v) => `${fmtSigned1(v)} п.п.` },
-    { key: 'riskPremium', label: 'Премия за риск страны', fmt: pctFmt },
+    { key: 'rStar', label: 'Нейтральная реальная ставка r*', fmt: pctFmt,
+      hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
+    { key: 'rateGap', label: 'Жёсткость условий (факт − нейтраль)', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Насколько фактическая ставка жёстче или мягче нейтральной r*. Положительный — политика сдерживает экономику, отрицательный — стимулирует.' },
+    { key: 'riskPremium', label: 'Премия за риск страны', fmt: pctFmt,
+      hint: 'Надбавка к стоимости займов, которую требуют кредиторы за риск. Растёт от высокого долга, дефолтов и политической нестабильности — удорожает займы не только государству, но и бизнесу.' },
   ] },
   { id: 'banking', label: 'Банки', icon: ShieldAlert, rows: [
     { key: 'creditVolume', label: 'Кредитный портфель', fmt: fmtMoney },
     { key: 'creditGrowth', label: 'Рост кредитования', fmt: fmtSignedPct },
-    { key: 'creditGap', label: 'Кредитный разрыв (бум/сжатие)', fmt: (v) => `${fmtSigned1(v)} п.п. ВВП` },
+    { key: 'creditGap', label: 'Кредитный разрыв (бум/сжатие)', fmt: (v) => `${fmtSigned1(v)} п.п. ВВП`,
+      hint: 'Объём кредита относительно долгосрочного тренда. Сильно положительный — кредитный бум и риск пузыря, отрицательный — сжатие кредитования.' },
     { key: 'bankNPL', label: 'Просроченные кредиты', fmt: pctFmt },
     { key: 'bankCapital', label: 'Капитал банков', fmt: fmtMoney },
     { key: 'bankCapitalAdequacy', label: 'Достаточность капитала', fmt: pctFmt },
@@ -10575,13 +9748,16 @@ const INDICATOR_TABS = [
     { key: 'interestPayment', label: 'Обслуживание долга', fmt: fmtMoney },
     { key: 'interestToRevenue', label: 'Обслуживание к доходам', fmt: pctFmt },
     { key: 'budgetBalancePctGdp', label: 'Баланс бюджета', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
-    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП` },
+    { key: 'structuralBalancePctGdp', label: 'Структурный баланс', fmt: (v) => `${fmtSignedPct(v)} ВВП`,
+      hint: 'Баланс бюджета, очищенный от влияния экономического цикла. Показывает, дефицитна ли бюджетная политика сама по себе, а не только из-за текущего спада или подъёма.' },
     { key: 'govDebt', label: 'Государственный долг', fmt: fmtMoney },
     { key: 'debtToGdp', label: 'Долг к ВВП', fmt: pctFmt },
-    { key: 'effectiveDebtRate', label: 'Средняя ставка по долгу', fmt: pctFmt },
+    { key: 'effectiveDebtRate', label: 'Средняя ставка по долгу', fmt: pctFmt,
+      hint: 'Средняя ставка по уже выпущенному долгу целиком, а не по новым займам. Меняется медленно — только по мере того, как старые выпуски гасятся и замещаются новыми по текущей ставке.' },
     { key: 'sovereignFund', label: 'Суверенный фонд', fmt: fmtMoney,
       hint: 'Профицит бюджета сначала гасит госдолг, а после того как долг обнулился, идёт сюда, а не исчезает. Фонд, в свою очередь, приносит доход в бюджет. Дефицит сначала тратит фонд и только потом занимает.' },
-    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt },
+    { key: 'shadowShare', label: 'Теневая экономика', fmt: pctFmt,
+      hint: 'Доля экономики вне налогообложения. Растёт вместе с налоговой нагрузкой, снижается при её облегчении.' },
   ] },
   { id: 'labor', label: 'Труд', icon: Users, rows: [
     { key: 'unemployment', label: 'Безработица', fmt: pctFmt },
@@ -10608,7 +9784,8 @@ const INDICATOR_TABS = [
     { key: 'humanCapitalIndex', label: 'Человеческий капитал', fmt: fmt1 },
     { key: 'infrastructureIndex', label: 'Инфраструктура', fmt: fmt1 },
     { key: 'capitalStock', label: 'Основной капитал', fmt: fmtMoney },
-    { key: 'supplyScar', label: 'Шрамы предложения', fmt: (v) => `${fmtSigned1(v)}%` },
+    { key: 'supplyScar', label: 'Шрамы предложения', fmt: (v) => `${fmtSigned1(v)}%`,
+      hint: 'Постоянная потеря потенциального выпуска от прошлых кризисов. Сама не восстанавливается — только через рост инвестиций и производительности.' },
   ] },
   { id: 'market', label: 'Рынок', icon: TrendingUp, rows: [
     { key: 'stockIndex', label: 'Индекс акций', fmt: fmt1 },
@@ -10618,9 +9795,12 @@ const INDICATOR_TABS = [
     { key: 'bondIndex', label: 'Индекс облигаций', fmt: fmt1 },
     { key: 'yield2y', label: 'Доходность 2 года', fmt: pctFmt },
     { key: 'yield10y', label: 'Доходность 10 лет', fmt: pctFmt },
-    { key: 'curveSlope', label: 'Наклон кривой', fmt: (v) => `${fmtSigned1(v)} п.п.` },
-    { key: 'sovereignSpread', label: 'Суверенный спред', fmt: (v) => `${Math.round(v)} б.п.` },
-    { key: 'corporateSpread', label: 'Корпоративный спред', fmt: (v) => `${Math.round(v)} б.п.` },
+    { key: 'curveSlope', label: 'Наклон кривой', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Разница доходностей 10 лет и 2 года. Инверсия (отрицательное значение) — рынок закладывает будущую рецессию.' },
+    { key: 'sovereignSpread', label: 'Суверенный спред', fmt: (v) => `${Math.round(v)} б.п.`,
+      hint: 'Надбавка в базисных пунктах, которую государство платит сверх безрискового уровня за заём. Индикатор доверия рынка к платёжеспособности страны.' },
+    { key: 'corporateSpread', label: 'Корпоративный спред', fmt: (v) => `${Math.round(v)} б.п.`,
+      hint: 'То же самое для бизнеса: надбавка сверх безрискового уровня, которую компании платят по своим облигациям.' },
     { key: 'volatilityIndex', label: 'Индекс страха', fmt: fmt1 },
     { key: 'bankPB', label: 'Банки: цена к капиталу', fmt: fmt2 },
     { key: 'bankROE', label: 'Банки: рентабельность', fmt: pctFmt },
@@ -10631,8 +9811,10 @@ const INDICATOR_TABS = [
     { key: 'approval', label: 'Рейтинг власти', fmt: (v) => v.toFixed(0) },
     { key: 'quartersToElection', label: 'Кварталов до выборов', fmt: (v) => v.toFixed(0), noDelta: true },
     { key: 'term', label: 'Срок правительства', fmt: (v) => `${v}-й` },
-    { key: 'govTrust', label: 'Доверие к правительству', fmt: (v) => v.toFixed(0) },
-    { key: 'policyCoordination', label: 'Согласованность политики', fmt: (v) => v.toFixed(0) },
+    { key: 'govTrust', label: 'Доверие к правительству', fmt: (v) => v.toFixed(0),
+      hint: 'Отдельно от рейтинга власти: реакция на последовательность и предсказуемость курса, а не на сиюминутные успехи или неудачи.' },
+    { key: 'policyCoordination', label: 'Согласованность политики', fmt: (v) => v.toFixed(0),
+      hint: 'Насколько решения ЦБ и Минфина тянут экономику в одну сторону, а не работают друг против друга — например, бюджетный стимул при ужесточении ставки его гасит.' },
     { label: 'Мандат власти', get: (e) => e.mandate, text: true, map: MANDATE_LABEL },
     { label: 'Линия правительства', get: (e) => e.governmentLine, text: true, map: { centrist: 'центристская', populist: 'популистская', austerity: 'консервативная', technocrat: 'технократическая' } },
     { label: 'Политический режим', get: (e) => e.politicalRegime, text: true,
@@ -10659,7 +9841,8 @@ const INDICATOR_TABS = [
     { key: 'financialStability', label: 'Финансовая стабильность', fmt: idx0 },
     { key: 'consumerConfidence', label: 'Доверие населения', fmt: idx0 },
     { key: 'businessConfidence', label: 'Доверие бизнеса', fmt: idx0 },
-    { key: 'govTrust', label: 'Доверие к правительству', fmt: idx0 },
+    { key: 'govTrust', label: 'Доверие к правительству', fmt: idx0,
+      hint: 'Отдельно от рейтинга власти: реакция на последовательность и предсказуемость курса, а не на сиюминутные успехи или неудачи.' },
   ] },
 ];
 
@@ -10895,6 +10078,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     groups.includes('fiscal') && { id: 'fiscal-core', label: 'Расходы' },
     groups.includes('fiscal') && { id: 'fiscal-taxes', label: 'Налоги' },
     groups.includes('fiscal') && { id: 'fiscal-budget', label: 'Бюджет' },
+    groups.includes('fiscal') && { id: 'fiscal-debt', label: 'Долг' },
   ].filter(Boolean);
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
   const tabs = useMemo(() => tabsForBotRole(botRole), [botRole]);
@@ -10908,10 +10092,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   // ни одного поля состояния. Держим с запасом (8, а не 3) на случай, если между
   // кварталами эффект сработает не идеально ровно.
   const rollbackHistoryRef = React.useRef([]);
+  // короткая вспышка «автосохранено» — единственное подтверждение того, что
+  // автосохранение вообще происходит: раньше оно было полностью незаметным,
+  // и со стороны выглядело так, будто его нет вовсе
+  const [autosaveFlash, setAutosaveFlash] = useState(false);
   React.useEffect(() => {
     const snap = snapshot();
     rollbackHistoryRef.current = [...rollbackHistoryRef.current, { quarterIndex, snap }].slice(-8);
     saveAutosave(snap);
+    setAutosaveFlash(true);
+    const t = setTimeout(() => setAutosaveFlash(false), 2500);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarterIndex]);
   const rollbackTarget = rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
@@ -11256,7 +10447,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
       {showWhy && <WhyModal reasons={lastReasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} economy={economy} onClose={() => setShowPaper(false)} />}
+      {showPaper && (
+        <Suspense fallback={null}>
+          <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} economy={economy} onClose={() => setShowPaper(false)} />
+        </Suspense>
+      )}
       {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
@@ -11316,6 +10511,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
+          {autosaveFlash && (
+            <span className="ems-fade-in" style={{ fontSize: 10.5, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4 }}
+              title="Партия автосохраняется в этом браузере на каждый квартал">
+              <Check size={11} color={COLOR.teal} />автосохранено
+            </span>
+          )}
           <div style={{ position: 'relative' }}>
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
               title="Сложность партии" className="ems-btn"
@@ -11413,7 +10614,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       {view === 'casino' && isTrader && (
         <div style={{ padding: '0 18px 18px' }}>
-          <CasinoScreen book={portfolio} onCasino={onCasino} />
+          <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>
         </div>
       )}
 
@@ -11551,6 +10752,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
                     value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                ))}
+              </div>
+            )}
+            {levTab === 'fiscal-debt' && (
+              <div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
+                  Дефицит финансируется сам — рынок и так занимает за вас ровно столько, сколько не хватает. Здесь — добровольное решение занять сверх этого: долг растёт сразу, а деньги идут в резерв на будущее, а не в расходы этого квартала.
+                </div>
+                {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'debt').map((l) => (
+                  <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
+                    onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
                 ))}
               </div>
             )}

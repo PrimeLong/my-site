@@ -146,7 +146,7 @@ function CompareBadge({ compare, onReset }) {
             {r.delta === null ? <span style={{ color: COLOR.faint }}>нет данных</span> : (
               <span className="ems-mono">
                 {r.fmt(r.a)} → {r.fmt(r.b)} <b style={{ color: r.delta > 0 ? COLOR.teal : r.delta < 0 ? COLOR.rust : COLOR.muted }}>
-                  ({r.delta >= 0 ? '+' : ''}{r.fmt(r.delta)})</b>
+                  ({r.delta >= 0 ? '+' : ''}{r.deltaPct != null ? `${r.deltaPct.toFixed(1)}%` : r.fmt(r.delta)})</b>
               </span>
             )}
           </div>
@@ -366,8 +366,13 @@ function MiniChart({ data, color, height = 46, label, fmt, marks }) {
     if (!rowA || !rowB) return null;
     const [a, b] = dragRange.from <= dragRange.to ? [rowA.v, rowB.v] : [rowB.v, rowA.v];
     const [lo, hi] = dragRange.from <= dragRange.to ? [dragRange.from, dragRange.to] : [dragRange.to, dragRange.from];
+    const valid = Number.isFinite(a) && Number.isFinite(b);
+    // мини-графики — сплошь рыночные и портфельные ряды (индексы, курс, капитал):
+    // изменение в пунктах индекса ничего не говорит без знания шкалы, а вот
+    // проценты сравнимы между инструментами и с ожиданиями игрока
     return { labelA: pointLabel(lo), labelB: pointLabel(hi), quarters: hi - lo,
-      rows: [{ key: 'v', label: label || 'значение', color, fmt: fmtFn, a, b, delta: (Number.isFinite(a) && Number.isFinite(b)) ? b - a : null }] };
+      rows: [{ key: 'v', label: label || 'значение', color, fmt: fmtFn, a, b, delta: valid ? b - a : null,
+        deltaPct: valid && a !== 0 ? (b - a) / Math.abs(a) * 100 : null }] };
   }, [dragRange, rows]);
   return (
     <>
@@ -417,11 +422,18 @@ function InstrumentChartBase({ rows, color, avg, marks, benchLabel, benchColor, 
     if (i1 === -1 || i2 === -1) return null;
     const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
     const rowA = rows[lo]; const rowB = rows[hi];
+    // цена инструмента и цена эталона — это рынок: изменение в пунктах цены ничего
+    // не говорит без знания её масштаба, а вот в процентах инструменты сравнимы
+    // друг с другом и с ожиданиями игрока
+    const pricePctValid = Number.isFinite(rowA.price) && Number.isFinite(rowB.price);
     const compareRows = [{ key: 'price', label: 'Цена', color, fmt: fmt1, a: rowA.price, b: rowB.price,
-      delta: (Number.isFinite(rowA.price) && Number.isFinite(rowB.price)) ? rowB.price - rowA.price : null }];
+      delta: pricePctValid ? rowB.price - rowA.price : null,
+      deltaPct: pricePctValid && rowA.price !== 0 ? (rowB.price - rowA.price) / Math.abs(rowA.price) * 100 : null }];
     if (benchLabel) {
+      const benchPctValid = Number.isFinite(rowA.bench) && Number.isFinite(rowB.bench);
       compareRows.push({ key: 'bench', label: benchLabel, color: benchColor || COLOR.faint, fmt: fmt1, a: rowA.bench, b: rowB.bench,
-        delta: (Number.isFinite(rowA.bench) && Number.isFinite(rowB.bench)) ? rowB.bench - rowA.bench : null });
+        delta: benchPctValid ? rowB.bench - rowA.bench : null,
+        deltaPct: benchPctValid && rowA.bench !== 0 ? (rowB.bench - rowA.bench) / Math.abs(rowA.bench) * 100 : null });
     }
     return { labelA: rowA.label, labelB: rowB.label, quarters: hi - lo, rows: compareRows };
   }, [dragRange, rows, color, benchLabel, benchColor]);
