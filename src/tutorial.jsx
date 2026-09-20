@@ -6,7 +6,7 @@
 
    COLOR/Audio/COURSE_PROGRESS_KEY/... — те же самые общие объекты/функции,
    что и в MacroSimulator.jsx (экспортированы оттуда), а не копия. */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import {
   Landmark, Coins, Globe2, TrendingUp, Newspaper, Scale, ShieldAlert, RotateCcw, ChevronDown,
   X, Check, AlertTriangle, Target, Zap, Flag, Lock, GraduationCap, Crown, Gavel, Hammer,
@@ -2007,7 +2007,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             )}
             {sandbox === 'trader' && (
               <div style={{ marginBottom: 14 }}>
-                <TradingTerminal economy={economy} prev={prevEcon} history={history} book={book} onTrade={onTrade} />
+                <Suspense fallback={<div style={{ padding: 18, color: COLOR.faint, fontSize: 12 }}>Загрузка терминала…</div>}>
+                  <TradingTerminal economy={economy} prev={prevEcon} history={history} book={book} onTrade={onTrade} />
+                </Suspense>
               </div>
             )}
           </>
