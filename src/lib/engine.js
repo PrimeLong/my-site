@@ -241,7 +241,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -867,7 +867,7 @@ function reformEffects(reforms) {
 }
 
 const PRES_GROUP_LABEL = { public: 'Публичная политика', reform: 'Структурные реформы',
-  power: 'Устройство власти', war: 'Война и чрезвычайные полномочия' };
+  power: 'Устройство власти', war: 'Война и чрезвычайные полномочия', diplomacy: 'Внешняя политика' };
 
 /* Каждое действие: build(s, difficulty) -> { impulses, news, patch }.
    patch может нести snapElection / dissolve / restore / reform — то, что меняет
@@ -934,6 +934,65 @@ const PRESIDENT_ACTIONS = [
       news: { cat: 'crisis', headline: 'ПЛОЩАДИ ОЧИЩЕНЫ: ВЛАСТЬ ВЫБРАЛА СИЛОВОЙ СЦЕНАРИЙ',
         text: 'Официально — «восстановление порядка». Улицы пусты, но опросы фиксируют не согласие, а страх: подавленное напряжение возвращается позже и сильнее.',
         priority: 9, chain: ['Протест', 'Разгон', 'Тишина сейчас', 'Напряжение вглубь', 'Отток капитала'] },
+    }) },
+  { id: 'military_parade', group: 'public', label: 'Военный парад', cost: 10, cooldown: 5,
+    desc: 'Демонстрация силы без единого выстрела: техника на площади, войска в строю, трансляция на всю страну. Рейтинг растёт от одного зрелища — заметно сильнее, если стране есть чем гордиться прямо сейчас (идёт война), и слабее, а то и в минус, если экономика тем временем явно страдает: тогда парад читается не как повод для гордости, а как отвлечение внимания.',
+    build: (s, difficulty) => {
+      const struggling = s.unemployment - s.nairu > 1.5 || s.inflation > s.inflationTarget + 3;
+      const atWar = (s.warQuartersLeft || 0) > 0;
+      const kick = (atWar ? 5.5 : 3.2) * (struggling ? 0.4 : 1) - (struggling ? 1.6 : 0);
+      return {
+        impulses: [
+          makeImpulse('approvalPush', kick, 'Военный парад', 'fast', difficulty, 'other'),
+          makeImpulse('tensionPush', struggling ? 3 : -1.5, 'Военный парад', 'fast', difficulty, 'other'),
+        ],
+        news: { cat: 'gov', headline: 'ВОЕННЫЙ ПАРАД В СТОЛИЦЕ',
+          text: `Техника и войска перед трибунами, трансляция идёт весь день. ${atWar
+            ? 'На фоне идущей войны зрелище работает: есть, чем гордиться прямо сейчас.'
+            : struggling
+              ? `При безработице ${fmt1(s.unemployment)}% и инфляции ${fmt1(s.inflation)}% зрелище многие читают не как повод для гордости, а как отвлечение от повседневных проблем.`
+              : 'В мирное время это чистая демонстрация силы, которую пока не пришлось применять.'}`,
+          priority: 6 },
+      };
+    } },
+
+  /* ============================== ДИПЛОМАТИЯ ==============================
+     Рычаг между «ничего не делать» и «начать войну»: экономическое давление
+     или сближение с другой страной, без единого выстрела. Санкции греют
+     рейтинг сплочением почти как парад, но бьют по импорту и инвестициям на
+     годы; торговый блок — обратный обмен: дешевле капитал ценой части
+     самостоятельности в регулировании. */
+  { id: 'sanctions_impose', group: 'diplomacy', label: 'Ввести санкции против торгового партнёра', cost: 20, cooldown: 12,
+    requires: (s) => (s.warQuartersLeft || 0) <= 0,
+    reqText: 'Недоступно во время войны — экономическое давление теряет смысл рядом с настоящей',
+    desc: 'Ограничить торговлю и инвестиции с одной из стран-партнёров — экономическое давление вместо военного. Рейтинг греется сплочением почти сразу, но подорожавший импорт и осторожность инвесторов остаются на годы.',
+    build: (s, difficulty) => ({
+      impulses: [
+        makeImpulse('approvalPush', 3.5, 'Санкции против торгового партнёра', 'fast', difficulty, 'other'),
+        makeImpulse('tensionPush', -2, 'Внешний оппонент сплачивает вокруг власти', 'fast', difficulty, 'other'),
+        sustainedImpulse('inflationSupply', 0.35, 10, 'Санкции: подорожавший импорт', 'other'),
+        sustainedImpulse('businessConfidence', -0.6, 10, 'Санкции: торговые ограничения'),
+        sustainedImpulse('investment', -0.5, 10, 'Санкции: инвесторы закладывают риск ограничений'),
+        makeImpulse('riskPremium', 0.25, 'Санкции повышают премию за риск', 'default', difficulty),
+      ],
+      news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ВВОДИТ САНКЦИИ ПРОТИВ ТОРГОВОГО ПАРТНЁРА',
+        text: 'Ограничения на торговлю и инвестиции с одной из стран-партнёров. Внутри это читают как решительность, снаружи — как разрыв связей, который бьёт по импорту и инвестициям на годы вперёд.',
+        priority: 8, chain: ['Санкции объявлены', 'Рейтинг ↑ сразу', 'Импорт дороже', 'Инвестиции ↓', 'Премия за риск ↑'] },
+    }) },
+  { id: 'trade_bloc', group: 'diplomacy', label: 'Вступить в торговый блок', cost: 30, cooldown: 60,
+    requires: (s) => (s.warQuartersLeft || 0) <= 0,
+    reqText: 'Недоступно во время войны',
+    desc: 'Договориться о едином рынке с соседями: ниже барьеры для торговли, дешевле капитал, ниже премия за риск — но часть регуляторных решений придётся согласовывать, а не принимать в одиночку. Долгий эффект, почти не отменяется.',
+    build: (s, difficulty) => ({
+      impulses: [
+        sustainedImpulse('investment', 0.7, 16, 'Членство в торговом блоке', 'other'),
+        sustainedImpulse('businessConfidence', 0.9, 16, 'Членство в торговом блоке', 'other'),
+        makeImpulse('riskPremium', -0.4, 'Торговый блок снижает премию за риск', 'default', difficulty),
+        makeImpulse('tensionPush', 5, 'Часть решений теперь согласуется с блоком, а не только внутри страны', 'fast', difficulty, 'other'),
+      ],
+      news: { cat: 'gov', headline: 'СТРАНА ВСТУПАЕТ В ТОРГОВЫЙ БЛОК',
+        text: 'Соглашение снимает барьеры для торговли и капитала с партнёрами по блоку. Издержки бизнеса падают вместе с премией за риск — а часть регуляторных решений теперь придётся согласовывать, а не принимать в одиночку.',
+        priority: 8, chain: ['Соглашение подписано', 'Барьеры ↓', 'Капитал дешевле', 'Согласование с блоком', 'Напряжение ↑'] },
     }) },
 
   { id: 'dissolve', group: 'power', label: 'Распустить парламент', cost: 45, cooldown: 14,
@@ -2082,6 +2141,26 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     nextQueue.push(makeImpulse('capitalFlow', -35, 'Бегство капитала после дефолта', 'default', difficulty));
   }
 
+  /* --- 2б. ПОМОЩЬ МВФ --- */
+  // Альтернатива дефолту, а не его дополнение: тоже осознанное решение Минфина
+  // в реальном долговом кризисе, но не отказ платить, а внешнее экстренное
+  // финансирование под условия. Ставка и премия за риск падают сразу, а взамен
+  // расходы и выплаты обязаны сокращаться два года — это условие программы,
+  // а не то, что можно передумать через квартал.
+  const prevImfLeft = Math.max(0, (s.imfQuartersLeft || 0) - 1);
+  const imfStarted = !!decisions.imfProgram && prevImfLeft === 0 && !sovereignDefault && (s.activeCrises || []).includes('debt');
+  const imfQuartersLeft = imfStarted ? 8 : prevImfLeft;
+  const imfActive = imfQuartersLeft > 0;
+  if (imfStarted) {
+    news.push(mkNews('gov', 'МВФ ОДОБРИЛ ЭКСТРЕННОЕ ФИНАНСИРОВАНИЕ',
+      'Вместо реструктуризации — кредит на льготных условиях: ставка по долгу и премия за риск снижаются сразу. Взамен бюджет два года обязан сокращать расходы и выплаты — это уже не решение Минфина, а условие программы, и его нельзя будет отменить, не разорвав саму программу.',
+      { priority: 10, chain: ['Долговой кризис', 'Программа МВФ', 'Ставка по долгу ↓', 'Обязательная консолидация', 'Доверие ↓'] }));
+    nextQueue.push(makeImpulse('riskPremium', -1.6, 'Программа МВФ снижает премию за риск', 'fast', difficulty));
+    nextQueue.push(makeImpulse('govTrust', -5, 'Программа МВФ: обязательная экономия непопулярна', 'default', difficulty, 'other'));
+  } else if ((s.imfQuartersLeft || 0) > 0 && imfQuartersLeft === 0) {
+    news.push(mkNews('gov', 'ПРОГРАММА МВФ ЗАВЕРШЕНА', 'Обязательные условия сняты — бюджетная политика снова полностью в руках Минфина.', { priority: 8 }));
+  }
+
   /* --- 3. статьи бюджета --- */
   const rawShares = { health: decisions.shareHealth, education: decisions.shareEducation, science: decisions.shareScience, defense: decisions.shareDefense, admin: decisions.shareAdmin };
   const sum5 = rawShares.health + rawShares.education + rawShares.science + rawShares.defense + rawShares.admin;
@@ -2152,9 +2231,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
 
   /* --- 7. БЮДЖЕТ: реальные уровни расходов и фискальный импульс --- */
   const trendReal = potentialGrowth;
-  const govPurchasesGrowth = clamp(trendReal + decisions.govSpending, -12, 14);
-  const transfersGrowth = clamp(trendReal + decisions.transfers + (d.transfersPressure || 0) + RE.transfers, -12, 16);
-  const govInvestmentGrowth = clamp(trendReal + decisions.govInvestment + (d.govInvestmentPush || 0), -16, 20);
+  // условие программы МВФ — не совет, а потолок: пока она действует, госзакупки
+  // и выплаты обязаны сокращаться (не решение Минфина), инвестиции — не расти
+  const imfGovSpending = imfActive ? Math.min(decisions.govSpending, -1) : decisions.govSpending;
+  const imfTransfers = imfActive ? Math.min(decisions.transfers, -1) : decisions.transfers;
+  const imfGovInvestment = imfActive ? Math.min(decisions.govInvestment, 0) : decisions.govInvestment;
+  const govPurchasesGrowth = clamp(trendReal + imfGovSpending, -12, 14);
+  const transfersGrowth = clamp(trendReal + imfTransfers + (d.transfersPressure || 0) + RE.transfers, -12, 16);
+  const govInvestmentGrowth = clamp(trendReal + imfGovInvestment + (d.govInvestmentPush || 0), -16, 20);
   const plannedPurchases = Math.max(1, applyAnnualGrowth(s.govPurchasesReal, govPurchasesGrowth));
   const plannedTransfers = Math.max(1, applyAnnualGrowth(s.transfersReal, transfersGrowth));
   const plannedGovInv = Math.max(1, applyAnnualGrowth(s.govInvestmentReal, govInvestmentGrowth));
@@ -2713,6 +2797,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
                 : activeCrises.includes('overheating') ? 'overheating'
                   : activeCrises.includes('recession') ? 'recession' : 'normal';
 
+  // Дефляция как самостоятельное событие: инфляция может уйти в минус и без
+  // полноценного спада (outputGap < -1), которого требует режим 'deflation'
+  // выше, — а падение цен само по себе достаточно необычно, чтобы про него
+  // сообщить отдельно, не дожидаясь, пока разрыв выпуска дорастёт до кризиса.
+  if (inflation < 0 && s.inflation >= 0) {
+    news.push(mkNews('crisis', `ИНФЛЯЦИЯ УШЛА В МИНУС: ${rfs(inflation)}%`,
+      'Цены в среднем снижаются — это уже дефляция, а не просто медленный рост. Отложенный спрос («подождём — подешевеет») бьёт по продажам сильнее, чем кажется, а реальная тяжесть долгов растёт даже без роста номинального долга.', { priority: 8 }));
+  }
+
   const prevCrises = s.activeCrises || [];
   activeCrises.filter((c) => !prevCrises.includes(c)).forEach((c) => {
     if (c === 'banking') {
@@ -3025,6 +3118,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
     govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
+    imfQuartersLeft, imfActive, imfStarted,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
@@ -3201,8 +3295,14 @@ const STORY_TEMPLATES = {
     { make: (s) => mkNews('business', 'СБОИ ПОСТАВОК: ИЗДЕРЖКИ РАСТУТ, ПОТЕНЦИАЛ СНИЖАЕТСЯ',
       `Производство встало без комплектующих: выпуск падает, разрыв ${rfs(s.outputGap)}%, рост потенциала снизился до ${rf1(s.potentialGrowth)}%. Падает и то, что экономика производит, и то, что она в принципе способна произвести — но цены при этом растут.`, { priority: 8,
         chain: ['Сбои поставок', 'Выпуск ↓', 'Потенциал ↓', 'Издержки ↑', 'Инфляция ↑', 'Дилемма ЦБ'] }) },
-    { gap: 1, make: (s) => mkNews('cb', `ДИЛЕММА ЦБ: ИНФЛЯЦИЯ ${rf1(s.inflation)}% ПРИ РАЗРЫВЕ ВЫПУСКА ${rfs(s.outputGap)}%`,
-      `Ожидания ${rf1(s.inflationExpectations)}%. Подавлять инфляцию — углублять спад. Терпеть — рисковать срывом ожиданий, после которого возврат к цели обойдётся дороже.`, { priority: 8 }) },
+    { gap: 1, make: (s) => (s.outputGap < 0 && s.inflation > s.inflationTarget
+      ? mkNews('cb', `ДИЛЕММА ЦБ: ИНФЛЯЦИЯ ${rf1(s.inflation)}% ПРИ РАЗРЫВЕ ВЫПУСКА ${rfs(s.outputGap)}%`,
+        `Ожидания ${rf1(s.inflationExpectations)}%. Подавлять инфляцию — углублять спад. Терпеть — рисковать срывом ожиданий, после которого возврат к цели обойдётся дороже.`, { priority: 8 })
+      : s.outputGap >= 0
+        ? mkNews('cb', `ШОК ПРОШЁЛ, НО РАЗРЫВ ВЫПУСКА УЖЕ ${rfs(s.outputGap)}%`,
+          `Пока экономика подстраивалась под сбой поставок, спрос успел обогнать восстановившееся предложение: инфляция ${rf1(s.inflation)}% при ожиданиях ${rf1(s.inflationExpectations)}%. Дилемма сменилась на обратную — сдерживать перегрев, а не спасать от спада.`, { priority: 7 })
+        : mkNews('cb', `ШОК ПОСТАВОК ПОЗАДИ: ИНФЛЯЦИЯ ${rf1(s.inflation)}% ПРИ РАЗРЫВЕ ВЫПУСКА ${rfs(s.outputGap)}%`,
+          `Издержки перестали расти быстрее спроса — цены отпустило раньше, чем закрылся разрыв выпуска. Дилеммы уже нет: пространство поддержать спрос есть, инфляция не мешает.`, { priority: 6 })) },
   ] },
   demographic: { id: 'demographic', title: 'Демографический сдвиг', steps: [
     { make: (_s) => mkNews('households', 'СТАРЕНИЕ НАСЕЛЕНИЯ СЖИМАЕТ РАБОЧУЮ СИЛУ',
@@ -3328,7 +3428,13 @@ function storyTriggers(prev, next, decisions, active, cooldowns) {
   if (decisions.transfers >= 3 && prev.transfersGrowth < next.transfersGrowth && !busy('social_boost')) fire.push('social_boost');
   if (next.creditGap > 5.5 && !busy('credit_boom')) fire.push('credit_boom');
   if (next.creditCrunch && !prev.creditCrunch && !busy('credit_crunch')) fire.push('credit_crunch');
-  if (next.debtToGdp > 80 && Math.floor(next.debtToGdp / 10) > Math.floor(prev.debtToGdp / 10) && !busy('debt_spiral')) fire.push('debt_spiral');
+  // раньше «Долговая спираль» объясняла разгон долга только выше 80% ВВП — а
+  // разрыв «ставка минус рост», из-за которого долг растёт даже при
+  // консолидации Минфина, реально кусается и при более скромном долге:
+  // вторая ветка ловит это раньше, не дожидаясь, пока цифра станет пугающей
+  const debtGrowthGap = next.effectiveDebtRate - next.gdpGrowth - next.inflation;
+  if (!busy('debt_spiral') && ((next.debtToGdp > 80 && Math.floor(next.debtToGdp / 10) > Math.floor(prev.debtToGdp / 10))
+    || (next.debtToGdp > 50 && next.debtToGdp > prev.debtToGdp + 0.1 && debtGrowthGap > 3))) fire.push('debt_spiral');
   // порог в % ВВП, а не в абсолютных млрд — иначе в разросшейся вдвое экономике
   // тот же сюжет либо запускался бы от любого чиха, либо не запускался вовсе
   if ((decisions.bondIssuance || 0) / Math.max(1, next.nominalGdp) * 100 >= 0.5 && !busy('bond_issuance')) fire.push('bond_issuance');

@@ -33,6 +33,27 @@ export async function withRoom(id, fn) {
   return { room: next || room };
 }
 
+/* Индекс общедоступных комнат — отдельный от самих комнат: TTL комнаты не
+   удаляет её id из индекса, поэтому listPublicRoomIds всегда подчищает
+   протухшие записи сама, при каждом обращении (self-healing, без крон-задач). */
+const PUBLIC_ROOMS_KEY = 'public_rooms';
+export async function addPublicRoom(id) {
+  if (redis) return redis.sadd(PUBLIC_ROOMS_KEY, id);
+  if (!mem.has(PUBLIC_ROOMS_KEY)) mem.set(PUBLIC_ROOMS_KEY, new Set());
+  mem.get(PUBLIC_ROOMS_KEY).add(id);
+  return true;
+}
+export async function removePublicRoom(id) {
+  if (redis) return redis.srem(PUBLIC_ROOMS_KEY, id);
+  if (mem.has(PUBLIC_ROOMS_KEY)) mem.get(PUBLIC_ROOMS_KEY).delete(id);
+  return true;
+}
+export async function listPublicRoomIds() {
+  const ids = redis ? await redis.smembers(PUBLIC_ROOMS_KEY)
+    : (mem.has(PUBLIC_ROOMS_KEY) ? [...mem.get(PUBLIC_ROOMS_KEY)] : []);
+  return ids || [];
+}
+
 /* Код связывания устройств живёт десять минут и одноразовый: он не даёт доступа
    сам по себе — он ОБМЕНИВАЕТСЯ на идентификатор профиля, после чего исчезает.
    TTL держим и внутри значения тоже: в памяти (локальная разработка) redis-ного

@@ -2,13 +2,13 @@
    POST /api/room  { action, ... }
    Модель считается ТОЛЬКО здесь: иначе у игроков разойдутся случайные шоки. */
 import { randomUUID, randomBytes } from 'node:crypto';
-import { getRoom, setRoom, withRoom, hasKv } from './_lib/store.js';
+import { getRoom, setRoom, withRoom, hasKv, addPublicRoom, removePublicRoom, listPublicRoomIds } from './_lib/store.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
   describeHumanCbAction, describeHumanMofAction, redescribeCbAction, redescribeMofAction,
   botPresident, getPresPersona, processPresidentialDirective, directiveProgress, directiveVerdict,
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
-  pickPromises, evaluatePromise,
+  pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
@@ -71,6 +71,10 @@ function sanitizeDecisions(base, submitted, seat) {
     if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
     if (typeof submitted.emergency === 'boolean') out.emergency = submitted.emergency;
   }
+  if (group === 'fiscal') {
+    if (typeof submitted.sovereignDefault === 'boolean') out.sovereignDefault = submitted.sovereignDefault;
+    if (typeof submitted.imfProgram === 'boolean') out.imfProgram = submitted.imfProgram;
+  }
   return out;
 }
 
@@ -89,7 +93,7 @@ function sanitizePresident(v) {
   };
 }
 
-function freshRoom(opts) {
+export function freshRoom(opts) {
   const economy = makeInitialEconomy();
   const mode = opts.mode === 'trader' ? 'trader' : 'policy';
   const seats = SEATS_BY_MODE[mode];
@@ -98,6 +102,9 @@ function freshRoom(opts) {
     id: opts.id, created: Date.now(), version: 1, mode,
     ownerToken: token(), // владелец лобби — тот, кто нажал «Создать комнату»; не привязан к месту,
     // потому что место выбирается отдельным шагом уже ПОСЛЕ создания
+    // общедоступная комната видна всем в браузере комнат и не требует кода;
+    // приватная (по умолчанию) — только по коду/ссылке, как было раньше
+    isPublic: !!opts.public,
     difficulty: DIFFICULTY_IDS.has(opts.difficulty) ? opts.difficulty : 'medium',
     goalCb: GOAL_IDS.has(opts.goalCb) ? opts.goalCb : 'min_inflation',
     goalMof: GOAL_IDS.has(opts.goalMof) ? opts.goalMof : 'living_standards',
@@ -158,7 +165,7 @@ const slimPlan = (plan) => (!plan ? null : {
 /* Кому президент адресует требование, зависит от того, где сидит живой человек:
    давить на бота неинтересно. Если заняты оба места (или оба пусты — «рыночная»
    комната), предпочтения нет и требование идёт туда, где оно уместнее по ситуации. */
-function planPresident(room, economy, cooldowns) {
+export function planPresident(room, economy, cooldowns) {
   if (!room.president) return null;
   const humanCb = !!room.seats.central_bank;
   const humanMof = !!room.seats.ministry_finance;
@@ -177,12 +184,13 @@ const CHAT_LOG_CAP = 60;
    ключи для ОБЕИХ пар мест (политика и рынок), а не только текущего режима
    комнаты — так клиент читает свою пару единообразно, а неиспользуемая просто
    всегда пустая */
-const publicView = (room) => {
+export const publicView = (room) => {
   const lastSeen = room.lastSeen || {};
   const isConnected = (seat) => !!room.seats[seat] && !!lastSeen[seat] && (Date.now() - lastSeen[seat]) < PRESENCE_TIMEOUT_MS;
   const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
   return {
     id: room.id, version: room.version, difficulty: room.difficulty, mode: room.mode === 'trader' ? 'trader' : 'policy',
+    isPublic: !!room.isPublic,
     // время сервера: таймер квартала считается от него, а часы на устройствах
     // расходятся на минуты — и у двух игроков были разные цифры на экране
     now: Date.now(),
@@ -209,7 +217,7 @@ const publicView = (room) => {
   };
 };
 
-function resolveQuarter(room) {
+export function resolveQuarter(room) {
   const subs = room.submissions;
   const cbPersona = room.cbPersona || 'pragmatic';
   const mofPersona = room.mofPersona || 'technocrat';
@@ -306,6 +314,10 @@ function resolveQuarter(room) {
   }
   const cbStance = clamp((eff.keyRate - room.economy.inflationExpectations - room.economy.rStar) / 3, -1, 1);
   const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6, -1, 1);
+  // без этого обещания никогда не попадают в decisions, которые видит движок, —
+  // голоса на выборах считались бы так, будто обещаний вообще не было (то же
+  // самое делает solo в MacroSimulator.jsx перед своим вызовом simulateQuarter)
+  if (room.promises) eff = { ...eff, promises: room.promises };
   const res = simulateQuarter({
     economy: { ...room.economy, cbStance, mofStance },
     decisions: eff, pendingImpulses: extraImpulses, eventCooldowns: room.eventCooldowns,
@@ -368,10 +380,40 @@ function resolveQuarter(room) {
         text: `На новый срок заявлено: ${nextPromises.map((p) => `«${p.label}» — ${p.text.toLowerCase()}`).join('; ')}.` });
     }
   }
-  const nextCbPersona = (humanPres && humanPres.appointCb)
+  let nextCbPersona = (humanPres && humanPres.appointCb)
     || (plan && plan.appointBot && plan.appointBot.kind === 'central_bank' ? plan.appointBot.persona : cbPersona);
-  const nextMofPersona = (humanPres && humanPres.appointMof)
+  let nextMofPersona = (humanPres && humanPres.appointMof)
     || (plan && plan.appointBot && plan.appointBot.kind === 'ministry_finance' ? plan.appointBot.persona : mofPersona);
+  // после проигранных выборов новая власть меняет руководство ведомства — тем же
+  // способом и с теми же условиями, что в одиночной игре (см. finishQuarter в
+  // MacroSimulator.jsx): Минфин при любой смене власти, ЦБ — только при разгромном
+  // результате. Меняем только место, за которым сейчас нет живого игрока: если оно
+  // занято человеком, это его партия, а не бота, и выборы её не отменяют.
+  {
+    const er = res.economy.electionResult;
+    if (er && er !== 'incumbent') {
+      if (!room.seats.ministry_finance) {
+        const np = personaAfterElection('ministry_finance', res.economy);
+        if (np !== nextMofPersona) {
+          nextMofPersona = np;
+          res.newsEntries.unshift({ id: `pers${room.quarterIndex}`, cat: 'gov', priority: 9,
+            q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+            headline: `НОВЫЙ МИНИСТР ФИНАНСОВ: ${getMofPersona(np).name.toUpperCase()}`,
+            text: `${getMofPersona(np).title}. ${getMofPersona(np).desc} Другому месту предстоит работать с другим бюджетом и другой логикой расходов.` });
+        }
+      }
+      if (!room.seats.central_bank && er === 'landslide') {
+        const np = personaAfterElection('central_bank', res.economy);
+        if (np !== nextCbPersona) {
+          nextCbPersona = np;
+          res.newsEntries.unshift({ id: `perscb${room.quarterIndex}`, cat: 'cb', priority: 9,
+            q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+            headline: `СМЕНА ГЛАВЫ ЦЕНТРАЛЬНОГО БАНКА: ${getCbPersona(np).name.toUpperCase()}`,
+            text: `${getCbPersona(np).title}. ${getCbPersona(np).desc} Смена руководства ЦБ после выборов — всегда вопрос к независимости политики и к тому, чего стоят её обещания.` });
+        }
+      }
+    }
+  }
   const presMemo = plan && plan.directive ? { lastReqId: plan.directive.reqId, ago: 0 }
     : { lastReqId: (room.presMemo || {}).lastReqId || null, ago: Math.min(99, ((room.presMemo || {}).ago ?? 99) + 1) };
   const afterPresident = { ...room, cbPersona: nextCbPersona, mofPersona: nextMofPersona,
@@ -421,7 +463,25 @@ function maybeForceResolve(room) {
 
 async function handleRequest(req, res) {
   if (req.method === 'GET') {
-    const { id, since, seat, token: seatToken } = req.query;
+    const { id, since, seat, token: seatToken, list } = req.query;
+    if (list === 'public') {
+      const ids = await listPublicRoomIds();
+      const rooms = [];
+      for (const rid of ids) {
+        const r = await getRoom(rid);
+        // индекс не знает о TTL самой комнаты — протухшую запись подчищаем сразу,
+        // а не оставляем висеть до следующего случайного обращения к ней
+        if (!r) { await removePublicRoom(rid); continue; }
+        const seatsList = seatsFor(r);
+        rooms.push({
+          id: r.id, mode: r.mode === 'trader' ? 'trader' : 'policy', difficulty: r.difficulty,
+          president: !!r.president, quarterIndex: r.quarterIndex, created: r.created,
+          seatsTotal: seatsList.length, seatsFree: seatsList.filter((sx) => !r.seats[sx]).length,
+        });
+      }
+      rooms.sort((a, b) => b.created - a.created);
+      return res.status(200).json({ rooms: rooms.slice(0, 40) });
+    }
     let room = await getRoom(String(id || '').toUpperCase());
     if (!room) return res.status(404).json({ error: 'Комната не найдена' });
     const forceResolved = maybeForceResolve(room);
@@ -458,9 +518,10 @@ async function handleRequest(req, res) {
     const president = body.president === null || (body.president && body.president.enabled === false)
       ? null : (body.president || {});
     const base = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof,
-      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president });
+      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public });
     const room = { ...base, presidentPlan: planPresident(base, base.economy, {}) };
     await setRoom(id, room);
+    if (room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ id, ownerToken: room.ownerToken, storage: hasKv() ? 'kv' : 'memory', room: publicView(room) });
   }
 
@@ -483,6 +544,9 @@ async function handleRequest(req, res) {
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
     const t = out.room.__token; delete out.room.__token;
     await setRoom(id, out.room);
+    // заполненную общедоступную комнату незачем предлагать в браузере комнат —
+    // всё равно ни одно место не занять; освобождённое место возвращает её обратно
+    if (out.room.isPublic && seatsFor(out.room).every((sx) => out.room.seats[sx])) await removePublicRoom(id);
     return res.status(200).json({ token: t, seat, storage: hasKv() ? 'kv' : 'memory', room: publicView(out.room) });
   }
 
@@ -576,6 +640,8 @@ async function handleRequest(req, res) {
         version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    // освободившееся место в общедоступной комнате возвращает её в браузер комнат
+    if (out.room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ room: publicView(out.room) });
   }
 
@@ -591,6 +657,7 @@ async function handleRequest(req, res) {
         version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    if (out.room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ room: publicView(out.room) });
   }
 

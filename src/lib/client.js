@@ -21,6 +21,13 @@ export const leaveRoom = (id, seat, token) => post({ action: 'leave', id, seat, 
 export const setRoomDifficulty = (id, seat, token, difficulty) => post({ action: 'set_difficulty', id, seat, token, difficulty });
 export const sendChatMessage = (id, seat, token, text) => post({ action: 'chat', id, seat, token, text });
 export const kickFromRoom = (id, ownerToken, seat) => post({ action: 'kick', id, ownerToken, seat });
+// браузер комнат: открытые общедоступные партии, куда можно войти без кода
+export async function listPublicRooms() {
+  const r = await fetch(`${API}?${new URLSearchParams({ list: 'public' })}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Не удалось получить список комнат');
+  return data.rooms || [];
+}
 export async function fetchRoom(id, since, seat, token) {
   const params = new URLSearchParams({ id });
   if (since) params.set('since', since);

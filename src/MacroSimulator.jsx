@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress,
-  createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom,
+  createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom, listPublicRooms,
   reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
@@ -2677,10 +2677,15 @@ function StanceBar({ value, leftLabel, rightLabel }) {
 }
 
 /* Панель ведомства, которым управляет бот */
-function BotPanel({ botRole, persona, lastAction, coordination }) {
+function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
   if (!botRole) return null;
   const isCb = botRole === 'central_bank';
   const Icon = isCb ? Landmark : Coins;
+  const row = (l, v) => (
+    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '1.5px 0', color: l.startsWith('·') ? COLOR.muted : COLOR.text }}>
+      <span>{l}</span><span className="ems-mono">{v}</span>
+    </div>
+  );
   return (
     <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
@@ -2700,6 +2705,26 @@ function BotPanel({ botRole, persona, lastAction, coordination }) {
       {lastAction && lastAction.demand && (
         <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.rust}`, paddingLeft: 9, color: COLOR.muted }}>
           <span style={{ color: COLOR.rust, fontWeight: 600 }}>Требование: </span>{lastAction.demand}
+        </div>
+      )}
+      {economy && (
+        <div style={{ marginTop: 9, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
+          {isCb ? (
+            <>
+              {row('Ключевая ставка', pctFmt(economy.keyRate))}
+              {row('Норматив капитала банков', pctFmt(economy.capitalRequirement))}
+              {row('Ликвидность банков', pctFmt(economy.bankLiquidity))}
+            </>
+          ) : (
+            <>
+              {row('Расходы всего', `${fmtMoney(economy.govSpendingTotal)} · ${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`)}
+              {row('· госзакупки', fmtMoney(economy.govPurchasesNominal))}
+              {row('· выплаты', fmtMoney(economy.transfersNominal))}
+              {row('· инвестиции', fmtMoney(economy.govInvestmentNominal))}
+              {row('· обслуживание долга', `${fmtMoney(economy.interestPayment)} · ставка ${fmt1(economy.effectiveDebtRate)}%`)}
+              {row('Госдолг', `${pctFmt(economy.debtToGdp)} ВВП`)}
+            </>
+          )}
         </div>
       )}
       <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 7, fontSize: 10.5, color: COLOR.muted }}>
@@ -2812,7 +2837,7 @@ function PresidentWatchPanel({ economy, plan, last, branch }) {
    поэтому устроена не как список слайдеров, а как ведомость: сколько капитала
    есть, сколько уже забронировано выбранными на этот квартал решениями и
    сколько останется. Пока квартал не завершён, любое решение можно снять. */
-const PRES_GROUP_ICON = { public: Megaphone, reform: Hammer, power: Gavel, war: ShieldAlert };
+const PRES_GROUP_ICON = { public: Megaphone, reform: Hammer, power: Gavel, war: ShieldAlert, diplomacy: Globe2 };
 const PRES_TABS = [
   { id: 'public', label: 'Указы' },
   { id: 'reform', label: 'Реформы' },
@@ -3036,7 +3061,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
 
       {tab === 'public' && (
         <div>
-          {['public', 'power'].map((g) => {
+          {['public', 'diplomacy', 'power'].map((g) => {
             const Icon = PRES_GROUP_ICON[g];
             return (
               <React.Fragment key={g}>
@@ -4350,6 +4375,8 @@ export const INSTRUMENTS = [
     note: 'Право купить индекс по текущей цене через 2 квартала. Убыток ограничен премией, прибыль — нет.' },
   { id: 'opt_put', name: 'Опцион put на индекс', ticker: 'PUT', group: 'Опционы', color: COLOR.rust, key: 'stockIndex', fee: 0.004, kind: 'opt', optType: 'put', life: 2,
     note: 'Право продать индекс по текущей цене через 2 квартала. Страховка портфеля от обвала.' },
+  { id: 'cds_sovereign', name: 'Своп на дефолт (CDS)', ticker: 'CDS', group: 'Производные', color: '#B0503A', key: 'sovereignSpread', fee: 0.003, kind: 'spot',
+    note: 'Не индекс, а сама премия за риск по гособлигациям в базисных пунктах: растёт вместе с долговым риском и подскакивает при первых признаках кризиса. Прямая ставка на то, что Минфин не удержит долг под контролем, а не на то, что будет с производством или спросом.' },
 ];
 export const INSTR_BY_ID = {};
 INSTRUMENTS.forEach((x) => { INSTR_BY_ID[x.id] = x; });
@@ -5191,6 +5218,11 @@ function NetworkLobby({ onEnter }) {
   const [mofPersona, setMofPersona] = useState('random');
   const [presEnabled, setPresEnabled] = useState(true);
   const [presPersona, setPresPersona] = useState('random');
+  // приватная (по умолчанию) — только по коду/ссылке; общедоступная попадает
+  // в браузер комнат ниже, и войти в неё можно без кода вообще
+  const [isPublicRoom, setIsPublicRoom] = useState(false);
+  const [publicRooms, setPublicRooms] = useState(null);
+  const [publicRoomsError, setPublicRoomsError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState(null);
@@ -5237,12 +5269,30 @@ function NetworkLobby({ onEnter }) {
       setSeat(free);
     }
   }, [roomPreview]);
+  // браузер комнат: список общедоступных партий, куда можно войти без кода —
+  // обновляем при открытии вкладки и затем периодически, пока она открыта
+  React.useEffect(() => {
+    if (tab !== 'browse') return undefined;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rooms = await listPublicRooms();
+        if (!cancelled) { setPublicRooms(rooms); setPublicRoomsError(''); }
+      } catch (e) { if (!cancelled) setPublicRoomsError(e.message); }
+    };
+    load();
+    const iv = setInterval(load, 4000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [tab]);
+  const joinPublicRoom = (rid) => {
+    setCode(rid); setTab('join');
+  };
   /* Место президента существует только там, где президент в комнате включён —
      иначе его незачем и показывать. */
   const previewSeats = (r) => seatsForMode(r ? r.mode : mode)
     // в «классике» президент включён — значит и место за него есть
     .filter((sx) => sx !== 'president' || !!(r ? r.president : (setupMode === 'classic' || presEnabled)));
-  const bothSeatsTaken = !!(roomPreview && roomPreview.occupied
+  const allSeatsTaken = !!(roomPreview && roomPreview.occupied
     && previewSeats(roomPreview).every((sx) => roomPreview.occupied[sx]));
 
   const enterSlot = async (idx) => {
@@ -5277,7 +5327,7 @@ function NetworkLobby({ onEnter }) {
     try {
       const custom = setupMode === 'custom';
       const asId = (v) => (v === 'random' ? undefined : v);
-      const r = await createRoom({ difficulty, mode,
+      const r = await createRoom({ difficulty, mode, public: isPublicRoom,
         cbPersona: custom ? asId(cbPersona) : undefined,
         mofPersona: custom ? asId(mofPersona) : undefined,
         president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined } });
@@ -5358,14 +5408,14 @@ function NetworkLobby({ onEnter }) {
       )}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
-        {[['create', 'Создать комнату'], ['join', 'Войти по коду']].map(([id, label]) => (
+        {[['create', 'Создать комнату'], ['join', 'Войти по коду'], ['browse', 'Открытые комнаты']].map(([id, label]) => (
           <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
         ))}
       </div>
 
       {tab === 'create' && (
         <div className="ems-panel" style={{ padding: 18 }}>
-          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая партия на двоих</div>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая сетевая партия</div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Режим партии</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -5380,7 +5430,7 @@ function NetworkLobby({ onEnter }) {
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
             {mode === 'trader'
               ? 'Оба игрока — частные инвесторы на одной и той же экономике: ставку ведёт бот-ЦБ, бюджет — бот-Минфин, а вы независимо друг от друга распределяете капитал между активами. Квартал наступает, когда готовы оба.'
-              : 'Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике. Квартал наступает, когда решения пришлют оба; если партнёр ещё не подключился, его место временно ведёт бот.'}
+              : 'Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике; если включён президент — его тоже может занять живой игрок, третьим. Квартал наступает, когда решения пришлют все подключившиеся; за не занятое место временно решает бот.'}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Сложность партии</div>
@@ -5391,6 +5441,22 @@ function NetworkLobby({ onEnter }) {
                   borderColor: difficulty === d.id ? COLOR.gold : COLOR.border }}
                   onClick={() => { Audio.play('click'); setDifficulty(d.id); }}>{d.title}</button>
               ))}
+            </div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Доступ к комнате</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[[false, 'По коду'], [true, 'Общедоступная']].map(([val, title]) => (
+                <button key={String(val)} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
+                  background: isPublicRoom === val ? COLOR.gold : COLOR.panelAlt, color: isPublicRoom === val ? COLOR.ink : COLOR.text,
+                  borderColor: isPublicRoom === val ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('click'); setIsPublicRoom(val); }}>{title}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
+              {isPublicRoom
+                ? 'Комната появится во вкладке «Открытые комнаты» у всех — войти сможет кто угодно, без кода. Как только все места заняты, она пропадает из списка сама.'
+                : 'Войти можно только по коду комнаты или по ссылке-приглашению — как раньше.'}
             </div>
           </div>
           <div style={{ marginBottom: 14 }}>
@@ -5509,9 +5575,38 @@ function NetworkLobby({ onEnter }) {
               })}
             </div>
           </div>
-          <button className="ems-btn primary" disabled={busy || bothSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
-            {busy ? 'Входим…' : bothSeatsTaken ? 'Оба места заняты' : 'Войти в партию'}
+          <button className="ems-btn primary" disabled={busy || allSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
+            {busy ? 'Входим…' : allSeatsTaken ? 'Все места заняты' : 'Войти в партию'}
           </button>
+        </div>
+      )}
+
+      {tab === 'browse' && (
+        <div className="ems-panel" style={{ padding: 18 }}>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 4 }}>Открытые комнаты</div>
+          <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.45 }}>
+            Партии, которые их создатели сделали общедоступными, — войти можно сразу, без кода.
+          </div>
+          {publicRoomsError && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 10 }}>{publicRoomsError}</div>}
+          {publicRooms === null ? (
+            <div style={{ fontSize: 12, color: COLOR.faint }}>Загрузка…</div>
+          ) : publicRooms.length === 0 ? (
+            <div style={{ fontSize: 12, color: COLOR.faint }}>Сейчас открытых комнат нет — создайте свою на вкладке «Создать комнату» и включите «Общедоступная».</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {publicRooms.map((r) => (
+                <div key={r.id} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
+                  <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{r.id}</span>
+                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
+                  <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
+                  <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
+                  <span style={{ marginLeft: 'auto', color: COLOR.muted }}>{r.seatsTotal - r.seatsFree}/{r.seatsTotal}</span>
+                  <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {error && <div style={{ marginTop: 10, fontSize: 12.5, color: COLOR.rust }}>{error}</div>}
@@ -5530,7 +5625,7 @@ function NetworkEntryScreen({ onEnter, onBack }) {
         </button>
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
           <div className="ems-hero-eyebrow">Мультиплеер</div>
-          <div className="ems-hero-title small">Партия на двоих</div>
+          <div className="ems-hero-title small">Сетевая партия</div>
           <div className="ems-hero-rule" />
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -5899,7 +5994,11 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           <div>
             <div className="ems-serif" style={{ fontSize: 18 }}>Сетевая партия · комната {room.id}</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-              вы — {roleDef.title} · партнёр — {room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : (isTraderRoom ? 'место свободно' : 'бот')} за {otherRole.short}
+              вы — {roleDef.title} · {otherSeats.map((sx) => {
+                const rd = seatRole(sx);
+                const who = room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'место свободно' : 'бот');
+                return `${who} за ${rd.short}`;
+              }).join(' · ')}
             </div>
           </div>
         </div>
@@ -6109,6 +6208,41 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 ))}
               </div>
 
+              {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt') && economy.imfActive && (
+                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                  <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
+                </div>
+              )}
+              {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt')
+                && !(economy.marketLockoutQuartersLeft > 0) && !economy.imfActive && (
+                <div className="ems-panel" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div>
+                    <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
+                      onClick={() => {
+                        if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
+                        Audio.play('alarm'); setLever('sovereignDefault', true);
+                      }}>
+                      <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                    </button>
+                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                      Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                    </div>
+                  </div>
+                  <div>
+                    <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.gold }}
+                      onClick={() => {
+                        if (!window.confirm('Запросить экстренное финансирование МВФ? Ставка по долгу и премия за риск снизятся сразу, но на два года бюджет обязан сокращать расходы и выплаты — это условие программы, отменить его будет нельзя, не разорвав саму программу.')) return;
+                        Audio.play('alarm'); setLever('imfProgram', true);
+                      }}>
+                      <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
+                    </button>
+                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                      Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* без этой панели игрок видел только собственные рычаги — о том, что
                   сейчас установлено у партнёра (ставка ЦБ, налоги/бюджет Минфина),
                   приходилось либо спрашивать в чате, либо искать по всем вкладкам
@@ -6248,7 +6382,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               ) : (
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>
                   {isTraderRoom ? 'Совершайте сделки слева и нажмите «готов» — квартал наступит, когда готовы оба трейдера.'
-                    : 'Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют оба игрока.'}
+                    : `Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют ${roomSeats.length > 2 ? 'все игроки' : 'оба игрока'}.`}
                 </div>
               )}
             </div>
@@ -6355,13 +6489,16 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
             <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-              {!room.occupied[otherSeat]
-                ? (isTraderRoom
+              {isTraderRoom
+                ? (!room.occupied[otherSeat]
                   ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
-                  : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
-                : isTraderRoom
-                  ? (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.')
-                  : (waitingForOther ? 'Решения отправлены — ждём партнёра.' : 'Квартал наступит, когда решения пришлют оба игрока.')}
+                  : (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.'))
+                : (otherSeats.every((sx) => !room.occupied[sx])
+                  ? (otherSeats.length > 1 ? 'Остальные места свободны: за них решают боты, квартал наступит сразу после ваших решений.'
+                    : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
+                  : (waitingForOther
+                    ? (pendingSeats.length > 1 ? 'Решения отправлены — ждём остальных.' : 'Решения отправлены — ждём партнёра.')
+                    : (otherSeats.length > 1 ? 'Квартал наступит, когда решения пришлют все игроки.' : 'Квартал наступит, когда решения пришлют оба игрока.')))}
               {quarterPending && timeLeftLabel && (
                 <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
@@ -7763,12 +7900,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
-          {autosaveFlash && (
-            <span className="ems-fade-in" style={{ fontSize: 10.5, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4 }}
-              title="Партия автосохраняется в этом браузере на каждый квартал">
-              <Check size={11} color={COLOR.teal} />автосохранено
-            </span>
-          )}
+          <span style={{ fontSize: 10.5, color: autosaveFlash ? COLOR.teal : COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4, transition: 'color 0.6s ease' }}
+            title={Number.isFinite(activeSlot)
+              ? `Партия в слоте ${activeSlot + 1}: каждый квартал автосохраняется туда же (и параллельно в этот браузер).`
+              : 'Партия не привязана ни к одному слоту сохранений: автосохраняется только в этом браузере и пропадёт при его очистке. Сохраните вручную («Партия»), чтобы закрепить её за слотом и не потерять при смене устройства.'}>
+            <Check size={11} color={autosaveFlash ? COLOR.teal : COLOR.faint} />
+            {Number.isFinite(activeSlot) ? `слот ${activeSlot + 1}` : 'только в браузере'}
+          </span>
           <div style={{ position: 'relative' }}>
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
               title="Сложность партии" className="ems-btn"
@@ -7932,17 +8070,38 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               </div>
             )}
 
-            {groups.includes('fiscal') && debtCrisisActive && (
+            {groups.includes('fiscal') && economy.imfActive && (
               <div style={{ paddingBottom: 10 }}>
-                <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
-                  onClick={() => {
-                    if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
-                    Audio.play('alarm'); setLever('sovereignDefault', true);
-                  }}>
-                  <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
-                </button>
-                <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
-                  Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                  <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
+                </div>
+              </div>
+            )}
+            {groups.includes('fiscal') && debtCrisisActive && !economy.imfActive && (
+              <div style={{ paddingBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
+                    onClick={() => {
+                      if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
+                      Audio.play('alarm'); setLever('sovereignDefault', true);
+                    }}>
+                    <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                  </button>
+                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                    Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                  </div>
+                </div>
+                <div>
+                  <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.gold }}
+                    onClick={() => {
+                      if (!window.confirm('Запросить экстренное финансирование МВФ? Ставка по долгу и премия за риск снизятся сразу, но на два года бюджет обязан сокращать расходы и выплаты — это условие программы, отменить его будет нельзя, не разорвав саму программу.')) return;
+                      Audio.play('alarm'); setLever('imfProgram', true);
+                    }}>
+                    <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
+                  </button>
+                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                    Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
+                  </div>
                 </div>
               </div>
             )}
@@ -8030,11 +8189,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           ) : isPresident ? (
             <>
               <PromisesPanel promises={promises} economy={economy} />
-              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} />
-              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} />
+              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
+              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} economy={economy} />
             </>
           ) : botRole ? (
-            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} />
+            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
