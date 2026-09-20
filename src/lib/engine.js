@@ -241,7 +241,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -2102,6 +2102,26 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     nextQueue.push(makeImpulse('capitalFlow', -35, 'Бегство капитала после дефолта', 'default', difficulty));
   }
 
+  /* --- 2б. ПОМОЩЬ МВФ --- */
+  // Альтернатива дефолту, а не его дополнение: тоже осознанное решение Минфина
+  // в реальном долговом кризисе, но не отказ платить, а внешнее экстренное
+  // финансирование под условия. Ставка и премия за риск падают сразу, а взамен
+  // расходы и выплаты обязаны сокращаться два года — это условие программы,
+  // а не то, что можно передумать через квартал.
+  const prevImfLeft = Math.max(0, (s.imfQuartersLeft || 0) - 1);
+  const imfStarted = !!decisions.imfProgram && prevImfLeft === 0 && !sovereignDefault && (s.activeCrises || []).includes('debt');
+  const imfQuartersLeft = imfStarted ? 8 : prevImfLeft;
+  const imfActive = imfQuartersLeft > 0;
+  if (imfStarted) {
+    news.push(mkNews('gov', 'МВФ ОДОБРИЛ ЭКСТРЕННОЕ ФИНАНСИРОВАНИЕ',
+      'Вместо реструктуризации — кредит на льготных условиях: ставка по долгу и премия за риск снижаются сразу. Взамен бюджет два года обязан сокращать расходы и выплаты — это уже не решение Минфина, а условие программы, и его нельзя будет отменить, не разорвав саму программу.',
+      { priority: 10, chain: ['Долговой кризис', 'Программа МВФ', 'Ставка по долгу ↓', 'Обязательная консолидация', 'Доверие ↓'] }));
+    nextQueue.push(makeImpulse('riskPremium', -1.6, 'Программа МВФ снижает премию за риск', 'fast', difficulty));
+    nextQueue.push(makeImpulse('govTrust', -5, 'Программа МВФ: обязательная экономия непопулярна', 'default', difficulty, 'other'));
+  } else if ((s.imfQuartersLeft || 0) > 0 && imfQuartersLeft === 0) {
+    news.push(mkNews('gov', 'ПРОГРАММА МВФ ЗАВЕРШЕНА', 'Обязательные условия сняты — бюджетная политика снова полностью в руках Минфина.', { priority: 8 }));
+  }
+
   /* --- 3. статьи бюджета --- */
   const rawShares = { health: decisions.shareHealth, education: decisions.shareEducation, science: decisions.shareScience, defense: decisions.shareDefense, admin: decisions.shareAdmin };
   const sum5 = rawShares.health + rawShares.education + rawShares.science + rawShares.defense + rawShares.admin;
@@ -2172,9 +2192,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
 
   /* --- 7. БЮДЖЕТ: реальные уровни расходов и фискальный импульс --- */
   const trendReal = potentialGrowth;
-  const govPurchasesGrowth = clamp(trendReal + decisions.govSpending, -12, 14);
-  const transfersGrowth = clamp(trendReal + decisions.transfers + (d.transfersPressure || 0) + RE.transfers, -12, 16);
-  const govInvestmentGrowth = clamp(trendReal + decisions.govInvestment + (d.govInvestmentPush || 0), -16, 20);
+  // условие программы МВФ — не совет, а потолок: пока она действует, госзакупки
+  // и выплаты обязаны сокращаться (не решение Минфина), инвестиции — не расти
+  const imfGovSpending = imfActive ? Math.min(decisions.govSpending, -1) : decisions.govSpending;
+  const imfTransfers = imfActive ? Math.min(decisions.transfers, -1) : decisions.transfers;
+  const imfGovInvestment = imfActive ? Math.min(decisions.govInvestment, 0) : decisions.govInvestment;
+  const govPurchasesGrowth = clamp(trendReal + imfGovSpending, -12, 14);
+  const transfersGrowth = clamp(trendReal + imfTransfers + (d.transfersPressure || 0) + RE.transfers, -12, 16);
+  const govInvestmentGrowth = clamp(trendReal + imfGovInvestment + (d.govInvestmentPush || 0), -16, 20);
   const plannedPurchases = Math.max(1, applyAnnualGrowth(s.govPurchasesReal, govPurchasesGrowth));
   const plannedTransfers = Math.max(1, applyAnnualGrowth(s.transfersReal, transfersGrowth));
   const plannedGovInv = Math.max(1, applyAnnualGrowth(s.govInvestmentReal, govInvestmentGrowth));
@@ -3054,6 +3079,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
     govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
+    imfQuartersLeft, imfActive, imfStarted,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
     approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,

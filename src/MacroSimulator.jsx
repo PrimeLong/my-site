@@ -6206,6 +6206,41 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 ))}
               </div>
 
+              {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt') && economy.imfActive && (
+                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                  <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
+                </div>
+              )}
+              {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt')
+                && !(economy.marketLockoutQuartersLeft > 0) && !economy.imfActive && (
+                <div className="ems-panel" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div>
+                    <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
+                      onClick={() => {
+                        if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
+                        Audio.play('alarm'); setLever('sovereignDefault', true);
+                      }}>
+                      <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                    </button>
+                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                      Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                    </div>
+                  </div>
+                  <div>
+                    <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.gold }}
+                      onClick={() => {
+                        if (!window.confirm('Запросить экстренное финансирование МВФ? Ставка по долгу и премия за риск снизятся сразу, но на два года бюджет обязан сокращать расходы и выплаты — это условие программы, отменить его будет нельзя, не разорвав саму программу.')) return;
+                        Audio.play('alarm'); setLever('imfProgram', true);
+                      }}>
+                      <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
+                    </button>
+                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                      Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* без этой панели игрок видел только собственные рычаги — о том, что
                   сейчас установлено у партнёра (ставка ЦБ, налоги/бюджет Минфина),
                   приходилось либо спрашивать в чате, либо искать по всем вкладкам
@@ -8033,17 +8068,38 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               </div>
             )}
 
-            {groups.includes('fiscal') && debtCrisisActive && (
+            {groups.includes('fiscal') && economy.imfActive && (
               <div style={{ paddingBottom: 10 }}>
-                <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
-                  onClick={() => {
-                    if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
-                    Audio.play('alarm'); setLever('sovereignDefault', true);
-                  }}>
-                  <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
-                </button>
-                <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
-                  Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                  <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
+                </div>
+              </div>
+            )}
+            {groups.includes('fiscal') && debtCrisisActive && !economy.imfActive && (
+              <div style={{ paddingBottom: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
+                    onClick={() => {
+                      if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
+                      Audio.play('alarm'); setLever('sovereignDefault', true);
+                    }}>
+                    <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                  </button>
+                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                    Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
+                  </div>
+                </div>
+                <div>
+                  <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.gold }}
+                    onClick={() => {
+                      if (!window.confirm('Запросить экстренное финансирование МВФ? Ставка по долгу и премия за риск снизятся сразу, но на два года бюджет обязан сокращать расходы и выплаты — это условие программы, отменить его будет нельзя, не разорвав саму программу.')) return;
+                      Audio.play('alarm'); setLever('imfProgram', true);
+                    }}>
+                    <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
+                  </button>
+                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                    Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
+                  </div>
                 </div>
               </div>
             )}

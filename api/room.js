@@ -71,6 +71,10 @@ function sanitizeDecisions(base, submitted, seat) {
     if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
     if (typeof submitted.emergency === 'boolean') out.emergency = submitted.emergency;
   }
+  if (group === 'fiscal') {
+    if (typeof submitted.sovereignDefault === 'boolean') out.sovereignDefault = submitted.sovereignDefault;
+    if (typeof submitted.imfProgram === 'boolean') out.imfProgram = submitted.imfProgram;
+  }
   return out;
 }
 
