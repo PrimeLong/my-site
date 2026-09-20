@@ -2132,6 +2132,13 @@ function NewsTerminal({ items, onOpenPaper }) {
     // в поле зрения, но мягко: 'nearest' ничего не делает, если она и так видна
     scrollRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [items[0] && items[0].id]);
+  // переключение рубрики тоже должно возвращать список наверх: список
+  // отфильтрованных записей короче общего, и старая позиция прокрутки
+  // могла указывать на середину этого нового, более короткого списка —
+  // человек видел бы старые записи там, где ждал самые свежие
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [filter]);
   return (
     <div className="ems-panel" style={{ padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 9 }}>
@@ -3228,6 +3235,12 @@ const loadAutosave = () => {
 const saveAutosave = (data) => { try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data)); } catch { /* квота или приватный режим — просто не автосохраняем */ } };
 const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* ignore */ } };
 
+// «Газета сама открывается» — настройка на устройство, а не на партию: игрок,
+// которому нравится читать сводку каждый квартал, хочет этого во всех своих играх.
+const AUTO_PAPER_KEY = 'ems-auto-paper';
+const loadAutoPaper = () => { try { return localStorage.getItem(AUTO_PAPER_KEY) === '1'; } catch { return false; } };
+const saveAutoPaper = (v) => { try { localStorage.setItem(AUTO_PAPER_KEY, v ? '1' : '0'); } catch { /* ignore */ } };
+
 /* Player ID — единственное, что остаётся на клиенте: без него некому
    адресовать слоты на сервере (аккаунтов в игре нет). Сама партия — экономика,
    история, декэижны — целиком лежит на сервере, как и сетевые комнаты. */
@@ -4018,7 +4031,7 @@ function ResultCardModal({ data, onClose }) {
 
 // столько же, сколько в api/solo.js: слоты хранятся на сервере, клиент только рисует
 const SOLO_SLOT_COUNT = 4;
-function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
+function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
   const [tab, setTab] = useState(mode || 'save');
   const [error, setError] = useState('');
   const [slots, setSlots] = useState(null); // null = ещё загружаются
@@ -4045,8 +4058,14 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
     if (!snapshot) return;
     if (slots[idx] && !window.confirm(`Перезаписать «${slots[idx].name || `слот ${idx + 1}`}»?`)) return;
     setBusyIdx(idx); setError('');
-    try { validateSnapshot(snapshot); setSlots(await saveSoloSlot(playerId, idx, snapshot)); Audio.play('stamp'); }
-    catch (e) { setError(e.message); }
+    try {
+      validateSnapshot(snapshot);
+      setSlots(await saveSoloSlot(playerId, idx, snapshot));
+      Audio.play('stamp');
+      // партия отныне привязана к этому слоту — дальнейшие автосохранения
+      // должны обновлять именно его, а не только анонимную копию в браузере
+      if (onSaved) onSaved(idx);
+    } catch (e) { setError(e.message); }
     finally { setBusyIdx(null); }
   };
   const renameSlot = async (idx) => {
@@ -4062,8 +4081,11 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad }) {
   const loadFromSlot = async (idx) => {
     if (!slots[idx]) return;
     setBusyIdx(idx); setError('');
-    try { const snap = validateSnapshot(await fetchSoloSlot(playerId, idx)); Audio.play('stamp'); onLoad(snap); }
-    catch (e) { setError(e.message); setBusyIdx(null); }
+    try {
+      const snap = validateSnapshot(await fetchSoloSlot(playerId, idx));
+      Audio.play('stamp');
+      onLoad({ ...snap, slotIdx: idx });
+    } catch (e) { setError(e.message); setBusyIdx(null); }
   };
   const deleteSlot = async (idx) => {
     setBusyIdx(idx); setError('');
@@ -5591,7 +5613,7 @@ function ColumnResizeHandle({ leftId, rightId, widths, onResize, onCommit }) {
 }
 
 function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash,
-  layoutEditMode, setLayoutEditMode, columnOrder, moveColumn, resetLayout, layoutIsDefaultNow }) {
+  layoutEditMode, setLayoutEditMode, columnOrder, moveColumn, resetLayout, layoutIsDefaultNow, autoPaper, setAutoPaper }) {
   const DD_WIDTH = 250;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
@@ -5625,6 +5647,18 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
           <div style={{ fontSize: 10, color: COLOR.faint, lineHeight: 1.4, marginBottom: 10 }}>
             Скрывает графики, шкалы и декоративные слои — остаются только таблицы и текст.
           </div>
+          {setAutoPaper && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 11.5, color: autoPaper ? COLOR.text : COLOR.muted, flex: 1 }}>Газета сама открывается</span>
+                <button className="ems-btn" style={{ padding: '2px 9px', fontSize: 10.5, background: autoPaper ? COLOR.gold : COLOR.panelAlt, color: autoPaper ? COLOR.ink : COLOR.muted, borderColor: autoPaper ? COLOR.gold : COLOR.border }}
+                  onClick={() => { Audio.play('tick'); setAutoPaper(!autoPaper); }}>{autoPaper ? 'вкл' : 'выкл'}</button>
+              </div>
+              <div style={{ fontSize: 10, color: COLOR.faint, lineHeight: 1.4, marginBottom: 10 }}>
+                При включении «Газета и хроника» открывается сама после каждого нового квартала — не нужно нажимать кнопку.
+              </div>
+            </>
+          )}
           <div className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft, marginBottom: 6 }}>Дашборды</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 7 }}>
             {dashboards.map((d) => (
@@ -6221,6 +6255,14 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [error, setError] = useState('');
   const [showWhy, setShowWhy] = useState(false);
   const [showPaper, setShowPaper] = useState(false);
+  const [autoPaper, setAutoPaperState] = useState(loadAutoPaper);
+  const setAutoPaper = (v) => { saveAutoPaper(v); setAutoPaperState(v); };
+  // watchRoom подписывается один раз на монтирование (эффект ниже завязан на
+  // id/seat/token, а не на autoPaper) — обычная переменная в его колбэке
+  // навсегда осталась бы тем autoPaper, что был на момент подписки. Ref читает
+  // актуальное значение, не заставляя пересоздавать подписку на каждый тумблер.
+  const autoPaperRef = React.useRef(autoPaper);
+  React.useEffect(() => { autoPaperRef.current = autoPaper; }, [autoPaper]);
   const [mobileCol, setMobileCol] = useState('center');
   const [narrow, setNarrow] = useState(false);
   React.useEffect(() => {
@@ -6239,6 +6281,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       prevQuarter.current = r.quarterIndex;
       setSent(false);
       setDecisions((d) => defaultDecisions(r.economy, d));
+      if (autoPaperRef.current) setShowPaper(true);
       Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
       markNetworkPlayed();
       pushAch(unlockAchievements(questProgressAchievementIds({
@@ -6507,7 +6550,8 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
             layoutEditMode={layout.layoutEditMode} setLayoutEditMode={layout.setLayoutEditMode}
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
-            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow} />
+            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
+            autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
             <Share2 size={14} color={COLOR.gold} />
@@ -7013,7 +7057,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
     try {
       const snap = await fetchSoloSlot(playerId, idx);
       Audio.prime(); Audio.play('stamp'); Audio.startMusic();
-      onLoad(snap);
+      onLoad({ ...snap, slotIdx: idx });
     } catch (e) { setSlotError(e.message); setSlotBusy(null); }
   };
   const removeSlot = async (idx) => {
@@ -7066,7 +7110,12 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
           </div>
         )}
 
-        {autosave && (
+        {/* Партия, у которой уже есть свой слот, автосохраняется прямо в него
+            (см. GameScreen) — она и так видна ниже в списке «Продолжить», и
+            карточка здесь только дублировала бы её. Показываем карточку только
+            для партии без слота: новая игра, которую ещё ни разу не сохраняли
+            вручную и не открывали через «Продолжить». */}
+        {autosave && autosave.slotIdx == null && (
           <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20, borderColor: COLOR.gold }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
               <Clock size={13} color={COLOR.gold} />
@@ -9971,6 +10020,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [stories, setStories] = useState(initial ? initial.stories || [] : []);
   const [showPaper, setShowPaper] = useState(false);
   const [saveModal, setSaveModal] = useState(null);
+  // слот, с которым сейчас связана партия: пришла из «Продолжить», была
+  // сохранена вручную в конкретный слот, либо восстановлена из автосохранения,
+  // унаследовавшего эту связь. Пока слота нет (совсем новая партия), автосохранение
+  // остаётся анонимным — как раньше.
+  const [activeSlot, setActiveSlot] = useState(initial && Number.isFinite(initial.slotIdx) ? initial.slotIdx : null);
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
   const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
@@ -10085,7 +10139,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
-    presPersonaId, presidentLast });
+    presPersonaId, presidentLast, slotIdx: activeSlot });
   // история снимков для отката после поражения: три хода назад решение ещё можно
   // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
   // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
@@ -10100,6 +10154,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     const snap = snapshot();
     rollbackHistoryRef.current = [...rollbackHistoryRef.current, { quarterIndex, snap }].slice(-8);
     saveAutosave(snap);
+    // партия, у которой уже есть свой слот (пришла из «Продолжить» или была
+    // сохранена вручную), автосохраняется прямо в него на сервере — иначе слот
+    // застревал на моменте последнего ручного сохранения, а свежий прогресс
+    // был виден только анонимной карточке в меню, отдельно от него
+    if (Number.isFinite(activeSlot)) saveSoloSlot(getPlayerId(), activeSlot, snap).catch(() => {});
     setAutosaveFlash(true);
     const t = setTimeout(() => setAutosaveFlash(false), 2500);
     return () => clearTimeout(t);
@@ -10107,6 +10166,17 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [quarterIndex]);
   const rollbackTarget = rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
   const handleRollback = () => { if (rollbackTarget) onLoadState(rollbackTarget.snap); };
+  const [autoPaper, setAutoPaperState] = useState(loadAutoPaper);
+  const setAutoPaper = (v) => { saveAutoPaper(v); setAutoPaperState(v); };
+  // «сама открывается» — это про КАЖДЫЙ СЛЕДУЮЩИЙ квартал, а не про открытие
+  // на старте партии: первый рендер (новая игра или загруженное сохранение)
+  // эффект тоже проходит, и его нужно явно пропустить
+  const firstQuarterRef = React.useRef(true);
+  React.useEffect(() => {
+    if (firstQuarterRef.current) { firstQuarterRef.current = false; return; }
+    if (autoPaper) { setShowPaper(true); Audio.play('paper'); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quarterIndex]);
   const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
   const movePin = (key, dir) => setPinned((ps) => {
     const i = ps.indexOf(key); const j = i + dir;
@@ -10243,7 +10313,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       setLastDirective({ status: dirResult.status, text: dirResult.text });
     }
     if (reqResult) {
-      const who = botRole === 'central_bank' ? 'ЦБ → МИНФИН' : 'МИНФИН → ЦБ';
+      // botRole — роль бота, а не того, кто послал запрос: запрос всегда шлёт
+      // игрок, и его направление задаёт req.from, а не то, кем управляет бот.
+      // Раньше при botRole === 'ministry_finance' (игрок — ЦБ) стрелка всё
+      // равно указывала «МИНФИН → ЦБ», будто ответ вёл бот, а не игрок.
+      const who = reqResult.req.from === 'central_bank' ? 'ЦБ → МИНФИН' : 'МИНФИН → ЦБ';
       result.newsEntries.unshift({ id: `req${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
         headline: `${who}: ${reqResult.req.label.toUpperCase()} — ${reqResult.status === 'accepted' ? 'СОГЛАСОВАНО' : reqResult.status === 'partial' ? 'ЧАСТИЧНО' : 'ОТКАЗ'}`,
         text: `«${reqResult.ask}» ${reqResult.text} Согласованность политики ${reqResult.coordination > 0 ? 'выросла' : 'снизилась'} на ${Math.abs(reqResult.coordination)} пункта.` });
@@ -10453,7 +10527,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         </Suspense>
       )}
       {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
-        onLoad={(d) => { setSaveModal(null); onLoadState(d); }} />}
+        onLoad={(d) => { setSaveModal(null); onLoadState(d); }} onSaved={setActiveSlot} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
@@ -10530,7 +10604,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
             layoutEditMode={layout.layoutEditMode} setLayoutEditMode={layout.setLayoutEditMode}
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
-            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow} />
+            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
+            autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
           <AudioControls />
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
             <Share2 size={14} color={COLOR.gold} />
