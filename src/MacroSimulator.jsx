@@ -5813,6 +5813,23 @@ const saveNetworkSlot = (net) => {
 const clearNetworkSlotAt = (idx) => { const slots = loadNetworkSlots(); slots[idx] = null; writeNetworkSlots(slots); };
 const clearNetworkSlotFor = (id, seat) => writeNetworkSlots(loadNetworkSlots().map((s) => ((s && s.id === id && s.seat === seat) ? null : s)));
 
+// квартал и режим партии по каждому запомненному месту — общий хук для лобби и
+// главного меню (см. NetworkLobby и MainMenu): комната всегда живёт на сервере,
+// так что превью не устаревает так, как устаревал локальный снимок в одиночной
+// игре — здесь только не хватало самого запроса.
+function useNetworkSlotPreviews(slots) {
+  const [slotPreviews, setSlotPreviews] = useState({});
+  React.useEffect(() => {
+    let cancelled = false;
+    slots.forEach((slot, idx) => {
+      if (!slot) return;
+      fetchRoom(slot.id).then((d) => { if (!cancelled && d.room) setSlotPreviews((p) => ({ ...p, [idx]: d.room })); }).catch(() => {});
+    });
+    return () => { cancelled = true; };
+  }, [slots]);
+  return slotPreviews;
+}
+
 // портфель трейдера в сетевой «рыночной» комнате — целиком на клиенте: сделки
 // одного трейдера никак не задевают другого (независимые позиции на одной и той
 // же экономике), поэтому синхронизировать их через сервер незачем — только
@@ -5859,20 +5876,7 @@ function NetworkLobby({ onEnter }) {
   const [createdOwnerToken, setCreatedOwnerToken] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [slots, setSlots] = useState(loadNetworkSlots);
-  // квартал и режим партии по каждому запомненному месту — раньше список
-  // показывал только код комнаты и роль, а свежесть партии («на каком мы
-  // сейчас квартале») была видна только после «Войти». Комната всегда живёт
-  // на сервере, так что превью не устаревает так, как устаревал локальный
-  // снимок в одиночной игре — здесь только не хватало самого запроса.
-  const [slotPreviews, setSlotPreviews] = useState({});
-  React.useEffect(() => {
-    let cancelled = false;
-    slots.forEach((slot, idx) => {
-      if (!slot) return;
-      fetchRoom(slot.id).then((d) => { if (!cancelled && d.room) setSlotPreviews((p) => ({ ...p, [idx]: d.room })); }).catch(() => {});
-    });
-    return () => { cancelled = true; };
-  }, [slots]);
+  const slotPreviews = useNetworkSlotPreviews(slots);
   const [slotBusy, setSlotBusy] = useState(null);
   const [roomPreview, setRoomPreview] = useState(null);
   // если сервер не подключён к Redis (нет KV_REST_API_URL/KV_REST_API_TOKEN),
@@ -7064,7 +7068,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 // Витринные классы (.ems-hero-*, .ems-card-btn, .ems-theme-*) определены в
 // GlobalStyle и переиспользуются на всех входных экранах (меню, новая партия,
 // обучение, сеть) — не только здесь.
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -7080,6 +7084,27 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
   // приглашению в сетевую комнату. Карточка здесь — и подстраховка на этот
   // случай, и просто видимое подтверждение того, что автосохранение вообще есть.
   const [autosave, setAutosaveState] = useState(loadAutosave);
+  // сетевая партия ничего не теряет при случайном закрытии вкладки (комната
+  // живёт на сервере), но раньше, чтобы в неё вернуться, нужно было ещё
+  // знать, что для этого нужно зайти в «Игра по сети» → «Ваши партии» —
+  // не самый очевидный путь после случайной перезагрузки. Здесь та же
+  // карточка «на видном месте», что и для одиночного автосохранения.
+  const [networkSlots, setNetworkSlots] = useState(loadNetworkSlots);
+  const networkSlotPreviews = useNetworkSlotPreviews(networkSlots);
+  const [networkSlotBusy, setNetworkSlotBusy] = useState(null);
+  const enterNetworkSlot = async (idx) => {
+    const slot = networkSlots[idx];
+    if (!slot) return;
+    setNetworkSlotBusy(idx);
+    try {
+      const data = await fetchRoom(slot.id, undefined, slot.seat, slot.token);
+      if (!data.room) throw new Error('Комната недоступна');
+      Audio.prime(); Audio.play('stamp'); Audio.startMusic();
+      onEnterNetwork({ id: slot.id, seat: slot.seat, token: slot.token, ownerToken: slot.ownerToken || null, room: data.room });
+    } catch {
+      clearNetworkSlotAt(idx); setNetworkSlots(loadNetworkSlots());
+    } finally { setNetworkSlotBusy(null); }
+  };
   React.useEffect(() => {
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(SOLO_SLOT_COUNT).fill(null)));
@@ -7226,6 +7251,37 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad })
               })}
             </div>
             {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
+          </div>
+        )}
+
+        {networkSlots.some(Boolean) && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+              <Users size={13} color={COLOR.teal} />
+              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
+                Сетевые партии ({networkSlots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {networkSlots.map((slot, idx) => {
+                if (!slot) return null;
+                const rd = seatRole(slot.seat);
+                const SlotIcon = ROLE_ICON[rd.icon];
+                const preview = networkSlotPreviews[idx];
+                return (
+                  <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
+                    {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
+                    <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
+                      Комната <b className="ems-mono">{slot.id}</b> · {rd.short}
+                      {preview && <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>}
+                    </span>
+                    <button className="ems-btn primary" style={{ padding: '4px 9px', fontSize: 11 }} disabled={networkSlotBusy === idx}
+                      onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Играть'}</button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -11138,6 +11194,7 @@ export default function MacroSimulator() {
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
           onLoad={startLoaded}
+          onEnterNetwork={setNetwork}
         />
       );
     }
