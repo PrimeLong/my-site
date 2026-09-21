@@ -4241,6 +4241,87 @@ const POLITICAL_REGIME_INFO = {
   totalitarian: { label: 'Тоталитарный режим', color: 'rust', text: 'Полный государственный контроль над институтами и прессой; несогласие приравнено к угрозе государству.' },
 };
 
+/* Карта страны — семь округов правильным шестиугольным кластером (центр и
+   кольцо из шести): осевые координаты гарантируют, что фигуры точно
+   стыкуются без наложений и дыр, без ручной подгонки полигонов. Экономику
+   отдельно по округам не считаем — это отдельный, гораздо более рискованный
+   слой поверх движка (новое измерение состояния, новый баланс); вместо
+   этого «напряжение округа» — взвешенная сумма уже существующих индексов
+   риска (0..100) с весами по профилю сектора округа, так что карта реагирует
+   на настоящее состояние экономики, а не рисует отдельную придуманную цифру. */
+const MAP_REGIONS = [
+  { id: 'capital', name: 'Столичный округ', sector: 'Управление', icon: 'capital', axial: [0, 0],
+    weights: { politicalTension: 0.5, bankingRisk: 0.2, debtRisk: 0.3 } },
+  { id: 'port', name: 'Портовый край', sector: 'Внешняя торговля', icon: 'port', axial: [1, 0],
+    weights: { currencyRisk: 0.55, recessionRisk: 0.25, debtRisk: 0.2 } },
+  { id: 'industry', name: 'Кузнечный пояс', sector: 'Промышленность', icon: 'industry', axial: [1, -1],
+    weights: { recessionRisk: 0.5, inflationRisk: 0.2, bankingRisk: 0.3 } },
+  { id: 'agri', name: 'Хлебородье', sector: 'Сельское хозяйство', icon: 'agri', axial: [0, -1],
+    weights: { inflationRisk: 0.6, recessionRisk: 0.2, currencyRisk: 0.2 } },
+  { id: 'finance', name: 'Биржевой квартал', sector: 'Финансы', icon: 'finance', axial: [-1, 0],
+    weights: { bankingRisk: 0.45, debtRisk: 0.35, currencyRisk: 0.2 } },
+  { id: 'mining', name: 'Шахтёрский край', sector: 'Добыча и энергетика', icon: 'mining', axial: [-1, 1],
+    weights: { inflationRisk: 0.35, recessionRisk: 0.35, bankingRisk: 0.3 } },
+  { id: 'periphery', name: 'Тихая окраина', sector: 'Услуги и село', icon: 'periphery', axial: [0, 1],
+    weights: { politicalTension: 0.2, recessionRisk: 0.3, inflationRisk: 0.2, currencyRisk: 0.3 } },
+];
+function regionStress(region, economy) {
+  const fields = {
+    politicalTension: clamp(economy.politicalTension || 0, 0, 100),
+    bankingRisk: clamp(economy.bankingRisk || 0, 0, 100),
+    debtRisk: clamp(economy.debtRisk || 0, 0, 100),
+    currencyRisk: clamp(economy.currencyRisk || 0, 0, 100),
+    recessionRisk: clamp(economy.recessionRisk || 0, 0, 100),
+    inflationRisk: clamp(economy.inflationRisk || 0, 0, 100),
+  };
+  let sum = 0; let wsum = 0;
+  Object.entries(region.weights).forEach(([k, w]) => { sum += (fields[k] || 0) * w; wsum += w; });
+  return wsum > 0 ? clamp(sum / wsum, 0, 100) : 0;
+}
+const REGION_TEXT = {
+  capital: {
+    calm: (e) => `Аппарат работает штатно, рейтинг власти держится на ${Math.round(e.approval)} из 100 — округу нечего обсуждать сверх обычной повестки.`,
+    tense: (e) => `Напряжённость в стране ${Math.round(e.politicalTension)} из 100 ощущается здесь острее всего — ближе всего к власти, ближе всего к недовольству ею.`,
+    crisis: (e) => `Улицы столичного округа — первыми на очереди у любой перемены власти: рейтинг ${Math.round(e.approval)}, напряжённость ${Math.round(e.politicalTension)} из 100.`,
+  },
+  port: {
+    calm: () => 'Погрузка идёт по графику, курс не пугает импортёров — обычный квартал для внешней торговли.',
+    tense: (e) => `Курс ${fmt1(e.exchangeRate)} держит трейдеров в напряжении: контракты на следующий квартал подписывают с оговорками.`,
+    crisis: (e) => `Резервы истрачены, курс ${fmt1(e.exchangeRate)} — импортные контракты замораживают, а не подписывают.`,
+  },
+  industry: {
+    calm: () => 'Цеха загружены, заказы есть — обычный квартал для промышленного пояса.',
+    tense: (e) => `Безработица ${fmt1(e.unemployment)}% при норме ${fmt1(e.nairu)}% — часть цехов уже перешла на неполную неделю.`,
+    crisis: (e) => `Заказы встали, безработица ${fmt1(e.unemployment)}% — не статистика, а очередь у проходной.`,
+  },
+  agri: {
+    calm: () => 'Цены на урожай предсказуемы, кредит на посевную доступен — обычный квартал для хлебородья.',
+    tense: (e) => `Инфляция ${fmt1(e.inflation)}% съедает выручку быстрее, чем успевает вырасти цена на зерно.`,
+    crisis: (e) => `При инфляции ${fmt1(e.inflation)}% продавать урожай по контрактным ценам — значит себе в убыток; хозяйства придерживают запасы.`,
+  },
+  finance: {
+    calm: () => 'Спреды узкие, кредит доступен — обычный квартал для биржевого квартала.',
+    tense: (e) => `Премия за риск ${fmt1(e.riskPremium)} п.п. — кредит дорожает быстрее, чем успевают пересчитать ставки по старым займам.`,
+    crisis: (e) => `Премия за риск ${fmt1(e.riskPremium)} п.п. и банковский риск ${Math.round(e.bankingRisk)} из 100 — межбанк торгуется нервно, лимиты друг на друга урезаны.`,
+  },
+  mining: {
+    calm: () => 'Добыча и энергогенерация идут ровным ходом — обычный квартал для шахтёрского края.',
+    tense: (e) => `Инфляция ${fmt1(e.inflation)}% при просевшем спросе — не лучшее время закладывать новую смену.`,
+    crisis: () => 'Часть добывающих мощностей встала на консервацию — дешевле переждать, чем работать в убыток.',
+  },
+  periphery: {
+    calm: () => 'Обычный квартал: ни ажиотажа, ни оттока — тихая окраина этим и живёт.',
+    tense: () => 'Отток молодёжи в столичный округ ускоряется — там хотя бы платят вовремя.',
+    crisis: (e) => `При напряжённости ${Math.round(e.politicalTension)} из 100 периферия голосует не бюллетенем, а переездом.`,
+  },
+};
+function regionBlurb(region, economy) {
+  const stress = regionStress(region, economy);
+  const tier = stress >= 65 ? 'crisis' : stress >= 35 ? 'tense' : 'calm';
+  const fn = (REGION_TEXT[region.id] || {})[tier];
+  return { stress, tier, text: fn ? fn(economy) : '' };
+}
+
 /* «От редакции» под властью, которая контролирует прессу: не искажаем цифры, которые видит
    игрок (report остаётся точным и используется отдельно), а полностью пересобираем тон
    газетной колонки из тех же показателей — эвфемизмы вместо признаний, победные реляции
@@ -4439,7 +4520,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, propagandaEditorial,
+  POLITICAL_REGIME_INFO, propagandaEditorial, MAP_REGIONS, regionStress, regionBlurb,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,

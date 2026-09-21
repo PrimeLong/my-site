@@ -8,11 +8,12 @@ import {
   X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
   Trophy, Lock, Share2, Download, GraduationCap, Crown, Gavel, Hammer, Smartphone,
   Play, Calendar, BookOpen, Vote, Layers, PartyPopper, Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen,
+  Map as MapIcon, Anchor, Wheat, Pickaxe,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO,
+  POLITICAL_REGIME_INFO, MAP_REGIONS, regionBlurb,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
@@ -416,6 +417,71 @@ function StateZone({ children, label, hidden }) {
         <span style={{ width: 9, height: 6, background: COLOR.muted, opacity: 0.7, display: 'inline-block', borderRadius: '1px 1px 0 0' }} />{label || 'Состояние страны'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>{children}</div>
+    </div>
+  );
+}
+
+/* Карта страны: семь округов шестиугольным кластером (см. MAP_REGIONS в
+   engine.js — почему семь и почему шестиугольники, а не произвольные
+   полигоны). Осевые координаты → пиксели по стандартной формуле для
+   плоских шестиугольников, без ручной подгонки геометрии. Округ выбирает
+   клавиатура (Enter/Space на фокусе) точно так же, как мышь/тап — карта не
+   отдельный игровой экран, а ещё один взгляд на ту же самую экономику. */
+const HEX_SIZE = 66;
+const HEX_ICON = { capital: Landmark, port: Anchor, industry: Factory, agri: Wheat, finance: Coins, mining: Pickaxe, periphery: Users };
+function hexCenter([q, r]) {
+  return [HEX_SIZE * 1.5 * q, HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r)];
+}
+function hexPoints(cx, cy, size) {
+  return Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 180) * (60 * i);
+    return `${(cx + size * Math.cos(a)).toFixed(1)},${(cy + size * Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+}
+function tierColor(tier) { return tier === 'crisis' ? COLOR.rust : tier === 'tense' ? COLOR.gold : COLOR.teal; }
+function tierLabel(tier) { return tier === 'crisis' ? 'кризис' : tier === 'tense' ? 'напряжённо' : 'спокойно'; }
+function CountryMap({ economy }) {
+  const [selected, setSelected] = useState(MAP_REGIONS[0].id);
+  const region = MAP_REGIONS.find((r) => r.id === selected) || MAP_REGIONS[0];
+  const blurb = regionBlurb(region, economy);
+  const Icon = HEX_ICON[region.icon];
+  return (
+    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <svg viewBox="-215 -230 430 460" style={{ width: 340, height: 363, flexShrink: 0 }} role="img" aria-label="Карта округов страны">
+        {MAP_REGIONS.map((r) => {
+          const [cx, cy] = hexCenter(r.axial);
+          const b = regionBlurb(r, economy);
+          const color = tierColor(b.tier);
+          const isSel = r.id === selected;
+          const RIcon = HEX_ICON[r.icon];
+          return (
+            <g key={r.id} role="button" tabIndex={0} aria-label={`${r.name}, ${r.sector}: ${tierLabel(b.tier)}, ${Math.round(b.stress)} из 100`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => { Audio.play('tab'); setSelected(r.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Audio.play('tab'); setSelected(r.id); } }}>
+              <polygon points={hexPoints(cx, cy, HEX_SIZE - 3)}
+                fill={isSel ? `${color}33` : `${color}1a`} stroke={color} strokeWidth={isSel ? 3 : 1.4} />
+              {RIcon && <RIcon x={cx - 9} y={cy - 25} width={18} height={18} color={color} />}
+              <text x={cx} y={cy + 12} textAnchor="middle" className="ems-numeral" style={{ fontSize: 13, fontWeight: 600, fill: color }}>{Math.round(b.stress)}</text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="ems-panel" style={{ flex: 1, minWidth: 220, padding: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+          {Icon && <Icon size={16} color={tierColor(blurb.tier)} />}
+          <span className="ems-serif" style={{ fontSize: 15 }}>{region.name}</span>
+        </div>
+        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 10 }}>{region.sector}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{ position: 'relative', width: 100, height: 5, borderRadius: 3, flexShrink: 0,
+            background: `linear-gradient(90deg, ${COLOR.tealDim} 0%, ${COLOR.tealDim} 35%, ${COLOR.goldDim} 35%, ${COLOR.goldDim} 65%, ${COLOR.rustDim} 65%, ${COLOR.rustDim} 100%)` }}>
+            <span style={{ position: 'absolute', left: `calc(${blurb.stress}% - 2px)`, top: -2.5, width: 4, height: 10, borderRadius: 1.5, background: tierColor(blurb.tier) }} />
+          </span>
+          <span className="ems-mono" style={{ color: tierColor(blurb.tier), fontWeight: 600, fontSize: 12 }}>{Math.round(blurb.stress)} · {tierLabel(blurb.tier)}</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55 }}>{blurb.text}</div>
+      </div>
     </div>
   );
 }
@@ -8265,7 +8331,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <Gauge value={economy.wellbeing} size={74} />
           </div>
           <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
-            {[['dash', 'Панель', GaugeIcon], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
+            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
               <button key={id} className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
                 background: view === id ? COLOR.gold : COLOR.panelAlt, color: view === id ? COLOR.ink : COLOR.text, borderColor: view === id ? COLOR.gold : COLOR.border }}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
@@ -8373,6 +8439,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           </div>
         ))}
       </div>
+
+      {view === 'map' && (
+        <div style={{ padding: '0 18px 18px' }}><CountryMap economy={economy} /></div>
+      )}
 
       {view === 'market' && (
         <MarketScreen economy={economy} prev={prevEcon} history={history}

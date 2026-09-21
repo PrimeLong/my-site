@@ -9,6 +9,7 @@ import {
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
+  MAP_REGIONS, regionStress, regionBlurb,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -1426,5 +1427,47 @@ describe('пресс-конференция — вопрос выбираетс�
     const decisions = { ...defaultDecisions(economy), pressAnswer: 'no-such-option' };
     expect(() => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
       difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true })).not.toThrow();
+  });
+});
+
+describe('карта страны — округа реагируют на настоящее состояние экономики', () => {
+  it('семь округов, каждый с весами, суммирующими вклад в 0..100', () => {
+    expect(MAP_REGIONS).toHaveLength(7);
+    const economy = makeInitialEconomy();
+    MAP_REGIONS.forEach((region) => {
+      const s = regionStress(region, economy);
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThanOrEqual(100);
+    });
+  });
+
+  it('спокойная экономика — все округа в спокойном тоне', () => {
+    const calm = { ...makeInitialEconomy(), politicalTension: 5, bankingRisk: 5, debtRisk: 5,
+      currencyRisk: 5, recessionRisk: 5, inflationRisk: 5, approval: 60 };
+    MAP_REGIONS.forEach((region) => {
+      const b = regionBlurb(region, calm);
+      expect(b.tier).toBe('calm');
+      expect(b.text.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('разваливающаяся экономика — округа переходят в кризисный тон, а не молчат', () => {
+    const bad = { ...makeInitialEconomy(), politicalTension: 90, bankingRisk: 90, debtRisk: 90,
+      currencyRisk: 90, recessionRisk: 90, inflationRisk: 90, approval: 15,
+      exchangeRate: 210, unemployment: 18, nairu: 5, inflation: 40, riskPremium: 9 };
+    MAP_REGIONS.forEach((region) => {
+      const b = regionBlurb(region, bad);
+      expect(b.tier).toBe('crisis');
+      expect(b.text).not.toMatch(/undefined|NaN/);
+    });
+  });
+
+  it('у столичного округа политическая напряжённость весит больше, чем один лишь банковский риск', () => {
+    // вес politicalTension (0.5) — самый большой отдельный вес в профиле округа,
+    // больше любого другого показателя по отдельности (bankingRisk 0.2, debtRisk 0.3)
+    const capital = MAP_REGIONS.find((r) => r.id === 'capital');
+    const politicallyHot = { ...makeInitialEconomy(), politicalTension: 95, bankingRisk: 5, debtRisk: 5 };
+    const bankingHot = { ...makeInitialEconomy(), politicalTension: 5, bankingRisk: 95, debtRisk: 5 };
+    expect(regionStress(capital, politicallyHot)).toBeGreaterThan(regionStress(capital, bankingHot));
   });
 });
