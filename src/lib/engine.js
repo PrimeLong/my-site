@@ -125,13 +125,32 @@ const fmt2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
 const fmtSigned1 = (v) => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + v.toFixed(1) : '—');
 const pctFmt = (v) => `${fmt1(v)}%`;
 const fmtSignedPct = (v) => `${fmtSigned1(v)}%`;
+/* Единица растёт вместе с суммой. Раньше шкала обрывалась на триллионах, и
+   длинная партия с высокой инфляцией показывала «6512258.68 трлн» — число,
+   которое невозможно прочитать. */
+const MONEY_UNITS = [
+  [1e9, 'секстлн'], [1e6, 'квинтлн'], [1e3, 'квадрлн'], [1, 'трлн'],
+];
 const fmtMoney = (bn) => {
   if (!Number.isFinite(bn)) return '—';
   const abs = Math.abs(bn);
-  if (abs >= 1000) return `${(bn / 1000).toFixed(2)} трлн`;
-  return `${bn.toFixed(0)} млрд`;
+  if (abs < 1000) return `${bn.toFixed(0)} млрд`;
+  const trn = bn / 1000;
+  const unit = MONEY_UNITS.find(([min]) => Math.abs(trn) >= min) || MONEY_UNITS[MONEY_UNITS.length - 1];
+  return `${(trn / unit[0]).toFixed(2)} ${unit[1]}`;
 };
 const fmtMoneySigned = (bn) => (bn >= 0 ? '+' : '') + fmtMoney(bn);
+/* Биржевой индекс номинальный: он растёт вместе с номинальным ВВП и за долгую
+   партию с высокой инфляцией честно уходит в миллионы пунктов — как и реальные
+   индексы стран, переживших гиперинфляцию. Читать «8374980.7» невозможно,
+   поэтому крупные значения сокращаются до тыс./млн пунктов. */
+const fmtIndex = (v) => {
+  if (!Number.isFinite(v)) return '—';
+  const abs = Math.abs(v);
+  if (abs >= 1e6) return `${(v / 1e6).toFixed(2)} млн`;
+  if (abs >= 1e4) return `${(v / 1e3).toFixed(1)} тыс.`;
+  return v.toFixed(1);
+};
 /* Деньги трейдера считаются в миллионах — но показывать «6118.42 млн» вместо
    «6.12 млрд» нельзя: единица должна расти вместе с капиталом. mlnScale отдаёт
    число и единицу по отдельности для мест, где единица набрана своим стилем. */
@@ -253,6 +272,16 @@ const LEVERS = [
   { id: 'shareDefense', group: 'fiscal', subgroup: 'budget', label: 'Оборона', suffix: '%', min: 2, max: 40, step: 1, type: 'level' },
   { id: 'shareAdmin', group: 'fiscal', subgroup: 'budget', label: 'Госаппарат', suffix: '%', min: 2, max: 30, step: 1, type: 'level' },
 ];
+const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
+/* Бот управляет теми же рычагами и в тех же пределах, что и игрок: ни шага
+   мельче, ни значения за границей ползунка. Иначе со стороны игрока это
+   выглядит как «Минфину можно то, чего нельзя мне» — и это была правда для
+   налогов, которые бот двигал долями десятой процента. */
+const clampToLever = (id, v) => {
+  const l = LEVER_BY_ID[id];
+  if (!l || !Number.isFinite(v)) return v;
+  return clamp(roundTo(v, l.step), l.min, l.max);
+};
 
 const UNCERTAINTY = {
   keyRate: 'средняя', reserveReq: 'средняя', capitalRequirement: 'средняя', moneySupplyOp: 'высокая',
@@ -482,13 +511,20 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   else if (toVote >= CONFIG.election.cycle - 2) { transfers -= 0.8; govSpending -= 0.5; }
   govSpending = dead(govSpending); transfers = dead(transfers); govInvestment = dead(govInvestment);
 
-  const taxStep = 0.5 * P.taxWill;
+  /* Бот двигает налоги той же сеткой, что и игрок: рычаг налога ходит по
+     0.5 п.п., поэтому «поднять НДС на 0.09» невозможно ни для кого. Раньше
+     шаг бота был 0.5 * taxWill (от 0.09 до 0.375 п.п.) — со стороны это
+     выглядело как отдельные правила для бота. Характер персоны сохраняется в
+     размере шага, но уже целым числом ходов игрока. */
+  const TAX_GRID = LEVER_BY_ID.vatRate ? LEVER_BY_ID.vatRate.step : 0.5;
+  const taxMove = (mult) => Math.max(TAX_GRID, roundTo(P.taxWill * (mult || 1), TAX_GRID));
+  const taxStep = taxMove(1);
   let incomeTaxRate = s.incomeTaxRate; let vatRate = s.vatRate; let profitTaxRate = s.profitTaxRate;
   let capitalTaxRate = s.capitalTaxRate; let socialContribRate = s.socialContribRate; let exciseRate = s.exciseRate;
   if (consolidationNeed > 1.5) {
     if (P.id === 'populist') { profitTaxRate = clamp(profitTaxRate + taxStep, 0, 45); capitalTaxRate = clamp(capitalTaxRate + taxStep, 0, 35); }
     else if (P.id === 'technocrat') { vatRate = clamp(vatRate + taxStep, 0, 30); exciseRate = clamp(exciseRate + taxStep, 0, 25); }
-    else { vatRate = clamp(vatRate + taxStep * 0.6, 0, 30); incomeTaxRate = clamp(incomeTaxRate + taxStep * 0.6, 0, 45); }
+    else { vatRate = clamp(vatRate + taxMove(0.6), 0, 30); incomeTaxRate = clamp(incomeTaxRate + taxMove(0.6), 0, 45); }
   } else if (consolidationNeed < -2 && s.outputGap < 0) {
     if (P.id === 'populist') incomeTaxRate = clamp(incomeTaxRate - taxStep, 0, 45);
     else profitTaxRate = clamp(profitTaxRate - taxStep, 0, 45);
@@ -501,9 +537,17 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareDefense = drift(s.budgetShares.defense, P.shares.defense);
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
-  return buildMofResult(s, P, targetDeficit, { incomeTaxRate, profitTaxRate, vatRate, exciseRate, capitalTaxRate,
-    socialContribRate, govSpending, transfers, govInvestment, shareHealth, shareEducation, shareScience,
-    shareDefense, shareAdmin });
+  return buildMofResult(s, P, targetDeficit, {
+    incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate),
+    profitTaxRate: clampToLever('profitTaxRate', profitTaxRate),
+    vatRate: clampToLever('vatRate', vatRate),
+    exciseRate: clampToLever('exciseRate', exciseRate),
+    capitalTaxRate: clampToLever('capitalTaxRate', capitalTaxRate),
+    socialContribRate: clampToLever('socialContribRate', socialContribRate),
+    govSpending: clampToLever('govSpending', govSpending),
+    transfers: clampToLever('transfers', transfers),
+    govInvestment: clampToLever('govInvestment', govInvestment),
+    shareHealth, shareEducation, shareScience, shareDefense, shareAdmin });
 }
 
 /* Аналог buildCbResult для Минфина: собирает текст решения по итоговым
@@ -957,6 +1001,9 @@ const PRESIDENT_ACTIONS = [
       ],
       news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ АНТИКОРРУПЦИОННУЮ КАМПАНИЮ',
         text: 'Проверки в госкорпорациях и первые задержания. Улица одобряет, инвесторы берут паузу, а те, по кому идёт кампания, впервые за долгое время объединяются против власти.',
+        // под контролем государства та же кампания печатается как торжество
+        // порядка: о консолидации элит против власти в такой газете не пишут
+        textHard: 'Проверки в госкорпорациях и первые задержания. Ведётся планомерная работа по очищению государственного аппарата; граждане поддерживают решительность руководства. Отдельные хозяйственные структуры временно приостановили инвестиционные программы.',
         priority: 8, chain: ['Кампания объявлена', 'Бизнес выжидает', 'Элиты в оппозиции', 'Доверие ↑', 'Производительность ↑'] },
     }) },
   { id: 'crackdown', group: 'public', label: 'Силовое подавление протеста', cost: 14, cooldown: 4,
@@ -1228,8 +1275,11 @@ const PRESIDENT_ACTIONS = [
         text: 'Суды, надзорные органы и оставшиеся независимые медиа подчинены администрации. Выборы отменены без назначения новой даты — сменить эту власть у урны больше нельзя. Отказать теперь почти невозможно и почти некому: цену такой управляемости страна платит инвестициями и людьми, которые умеют считать.',
         priority: 10, chain: ['Указ президента', 'Институты подчинены', 'Тоталитарный режим', 'Бегство капитала', 'Производительность ↓'] } }) },
   { id: 'snap_election', group: 'power', label: 'Назначить досрочные выборы', cost: 28, cooldown: 16,
-    requires: (s) => (s.quartersToElection || 0) > 4,
-    reqText: 'Доступно, если до плановых выборов больше 4 кв.',
+    // при тоталитаризме выборов не существует вовсе (noElections), назначать
+    // досрочные — нечего: раньше кнопка предлагала пойти к урнам стране,
+    // в которой урны уже отменены
+    requires: (s) => (s.politicalRegime !== 'totalitarian') && (s.quartersToElection || 0) > 4,
+    reqText: 'Доступно, если выборы вообще проводятся и до плановых больше 4 кв.',
     desc: 'Пойти к урнам через два квартала вместо оставшегося срока. При высоком рейтинге — способ обменять сегодняшнюю популярность на новый полный срок; при низком — способ проиграть раньше.',
     build: (s, difficulty) => ({
       patch: { snapElection: 2 },
@@ -1438,7 +1488,14 @@ function applyPresidentActions(s, ids, cooldowns, difficulty) {
     budget -= a.cost; spent += a.cost; applied.push(id);
     if (a.cooldown) cooldowns[`pres:${a.id}`] = a.cooldown;
     (r.impulses || []).forEach((i) => impulses.push(i));
-    if (r.news) newsSpecs.push(r.news);
+    /* Подконтрольная пресса не напечатает того, что печатает свободная:
+       про раскол элит, про оппозицию и про рейтинг власти. Где формулировка
+       прямо противоречит режиму, у новости есть вариант textHard — им
+       и заменяется текст при авторитаризме и тоталитаризме. */
+    if (r.news) {
+      const unfree = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+      newsSpecs.push(unfree && r.news.textHard ? { ...r.news, text: r.news.textHard } : r.news);
+    }
     Object.assign(patch, r.patch || {});
     if (r.patch && r.patch.reform) (patch.reforms = patch.reforms || []).push(r.patch.reform);
   });
@@ -1807,7 +1864,9 @@ function evaluatePromise(promise, economy) {
   if (!def) return { met: true, value: null };
   const value = def.metric(economy, promise.baseline);
   const met = def.direction === 'below' ? value <= promise.target : value >= promise.target;
-  return { met, value };
+  // direction нужен интерфейсу, чтобы подписать порог («надо ≤» или «надо ≥»),
+  // а не показывать две голые цифры через дробь
+  return { met, value, direction: def.direction };
 }
 
 /* =========================================================================================
@@ -2247,7 +2306,9 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       if (evt.id === 'war') warTypeRolled = built.warType || null;
       queue = queue.concat(built.impulses);
       cooldowns[evt.id] = evt.cooldown;
-      const busy = (stories || []).some((x) => x.tplId === evt.id);
+      // встречный сюжет (сырьё вверх при идущем «сырьё вниз») запускать нельзя:
+      // они объясняли бы одно и то же противоположными причинами в одной ленте
+      const busy = (stories || []).some((x) => x.tplId === evt.id) || storyConflicts(evt.id, stories);
       if (STORY_TEMPLATES[evt.id] && !busy) newStories.push({ tplId: evt.id, nextIdx: 0, wait: storyStartWait(evt.id) });
       else news.push(mkNews(KIND_CAT[evt.kind] || 'world', evt.title.toUpperCase(), built.news, { priority: 8 }));
     }
@@ -2760,7 +2821,13 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const stockIndex = Math.max(30, ema(prevStock, fairIndex, 0.42) * (1 + ((d.stockShock || 0) + gauss(1.6 * nMult)) / 100));
   const stockReturn = (stockIndex / prevStock - 1) * 100;
   const stockPE = stockIndex * STOCK_NORM / earnings;
-  const marketCap = stockIndex / 1000 * 1100 * (priceLevel / 100);
+  /* Капитализация считается от индекса и только от него. Раньше здесь был ещё
+     множитель priceLevel/100 — но индекс и сам уже номинальный: он растёт из
+     earnings, а те пропорциональны номинальному ВВП. Инфляция входила в
+     капитализацию дважды, и «% ВВП» рос вместе с уровнем цен без всякого
+     предела: на длинной партии с высокой инфляцией выходило 31 000% ВВП
+     вместо правдоподобных 50–200%. */
+  const marketCap = stockIndex / 1000 * 1100;
   const marketCapPctGdp = marketCap / nominalGdp * 100;
 
   const netInterestMarginPre = lendingRate - depositRate;
@@ -3622,6 +3689,18 @@ const STORY_TEMPLATES = {
   ] },
 };
 
+/* Взаимоисключающие сюжеты. Игрок видел в одной ленте «Падение сырьевых цен,
+   часть 4 из 5» и «Сырьевой рост, часть 2 из 3» — мировая цена не может
+   одновременно падать и расти, и обе новости объясняли курс противоположными
+   причинами. Пока идёт один сюжет пары, встречный не начинается. */
+const STORY_CONFLICTS = {
+  commodity_down: ['oil_up'], oil_up: ['commodity_down'],
+  credit_boom: ['credit_crunch'], credit_crunch: ['credit_boom'],
+  rate_hike: ['rate_cut'], rate_cut: ['rate_hike'],
+};
+const storyConflicts = (id, active) => (STORY_CONFLICTS[id] || [])
+  .some((other) => (active || []).some((x) => x.tplId === other));
+
 // пауза перед первым шагом сюжета: у части сюжетов первое сообщение — это уже
 // следствие, и печатать его в тот же квартал, что и само решение, рано
 const storyStartWait = (id) => {
@@ -3648,7 +3727,8 @@ function advanceStories(stories, next, quarterIndex) {
 /* Что запускает новый сюжет: решения игрока и накопленные состояния */
 function storyTriggers(prev, next, decisions, active, cooldowns) {
   const fire = [];
-  const busy = (id) => active.some((x) => x.tplId === id) || (cooldowns[`story:${id}`] || 0) > 0;
+  const busy = (id) => active.some((x) => x.tplId === id) || (cooldowns[`story:${id}`] || 0) > 0
+    || storyConflicts(id, active);
   const dRate = decisions.keyRate - prev.keyRate;
   if (dRate >= 0.75 && !busy('rate_hike')) fire.push('rate_hike');
   if (dRate <= -0.75 && !busy('rate_cut')) fire.push('rate_cut');
@@ -4586,7 +4666,7 @@ export {
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
-  fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, mlnScale, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
+  fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtIndex, mlnScale, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   ru, rf1, rf2, rfs,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,

@@ -14,7 +14,7 @@ import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, MAP_REGIONS, regionBlurb,
-  clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
+  clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtIndex, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
@@ -793,11 +793,18 @@ function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF })
       {lever.hint && <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 1 }}>{lever.hint}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         <input type="range" className="ems-slider" style={trackStyle} min={lever.min} max={lever.max} step={lever.step}
-          aria-label={`${lever.label}, текущее значение ${value}${lever.suffix}`}
+          aria-label={`${lever.label}, текущее значение ${value}${lever.suffix}, допустимо от ${lever.min} до ${lever.max}, шаг ${lever.step}`}
           value={value} onChange={(e) => { Audio.play('tick'); onChange(parseFloat(e.target.value)); }} />
         <span className="ems-mono" style={{ fontSize: 12.5, width: 62, textAlign: 'right', color: COLOR.goldSoft, fontWeight: 600 }}>
           {lever.type === 'level' ? `${value.toFixed(2)}${lever.suffix}` : `${value >= 0 ? '+' : ''}${value.toFixed(1)}${lever.suffix}`}
         </span>
+      </div>
+      {/* границы рычага нигде не были написаны: упереться в предел можно было
+          только перетащив ползунок до конца, а сравнить свои возможности с
+          решениями бота — вообще никак */}
+      <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginTop: 3, display: 'flex', justifyContent: 'space-between' }}>
+        <span>{lever.type === 'level' ? '' : 'за квартал: '}от {lever.min}{lever.suffix} до {lever.max}{lever.suffix}</span>
+        <span>шаг {lever.step}{lever.suffix}</span>
       </div>
       {Math.abs(delta) > 0.001 && (
         <div className="ems-fade-in" style={{ marginTop: 8, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '8px 9px' }}>
@@ -2933,7 +2940,7 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
       <div className="ems-market-grid">
         <Panel title="Фондовый рынок" icon={TrendingUp}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 }}>
-            <Quote label="Сводный индекс" value={Number.isFinite(q('stockIndex')) ? q('stockIndex').toFixed(1) : '—'} change={chg('stockIndex')} big />
+            <Quote label="Сводный индекс" value={fmtIndex(q('stockIndex'))} change={chg('stockIndex')} big />
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 10.5, color: COLOR.muted }}>Капитализация</div>
               <div className="ems-mono" style={{ fontSize: 14 }}>{fmtMoney(economy.marketCap)}</div>
@@ -2942,7 +2949,7 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
           </div>
           <div style={{ margin: '6px 0 4px' }}>
             <Suspense fallback={<ChartFallback height={64} />}>
-              <MemoChart data={ser('stockIndex')} color={COLOR.gold} height={64} label="Индекс акций" fmt={(v) => v.toFixed(1)} />
+              <MemoChart data={ser('stockIndex')} color={COLOR.gold} height={64} label="Индекс акций" fmt={fmtIndex} />
             </Suspense>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px 12px', marginTop: 8 }}>
@@ -2993,7 +3000,7 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
           </div>
           <div style={{ margin: '6px 0' }}>
             <Suspense fallback={<ChartFallback height={54} />}>
-              <MemoChart data={ser('bondIndex')} color={COLOR.blue} height={54} label="Индекс облигаций" fmt={(v) => v.toFixed(1)} />
+              <MemoChart data={ser('bondIndex')} color={COLOR.blue} height={54} label="Индекс облигаций" fmt={fmtIndex} />
             </Suspense>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -3520,6 +3527,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
   // сигналить о разнице в весе решения, а не полагаться на то, что игрок
   // дочитает описание до конца
   const severe = !!action.severe && !done;
+  const hideDesc = blockedByReq || cdLeft > 0 || done;
   const selectedColor = severe ? COLOR.rust : COLOR.gold;
   const selectedDim = severe ? COLOR.rustDim : COLOR.goldDim;
   return (
@@ -3543,13 +3551,13 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
       {severe && !blockedByReq && (
         <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3, fontWeight: 600 }}>Необратимое решение</div>
       )}
-      {/* решение, запертое условием («доступно при беспорядках или напряжённости
-          от 45»), может оставаться недоступным весь ранний квартал партии —
-          абзац описания в таком виде только растягивает список вниз, когда
-          выбрать всё равно нельзя; причина недоступности сама по себе короче
-          и полезнее */}
-      {!blockedByReq && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
-      {!blockedByReq && willBeBlocked && (
+      {/* Решение, которое сейчас взять нельзя — заперто условием, стоит на
+          перезарядке или уже проведено, — показывает только причину: абзац
+          описания в этом случае лишь растягивает список вниз. Исключение —
+          «не хватает капитала»: на такое решение копят, и чтобы копить
+          осознанно, надо знать, на что именно. */}
+      {!hideDesc && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
+      {!hideDesc && willBeBlocked && (
         <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3 }}>
           Парламент отклонит: слишком высокое напряжение или провальный рейтинг. Капитал спишется впустую.
         </div>
@@ -3784,6 +3792,22 @@ const PROMISE_FMT = {
    при откате/загрузке сохранения. */
 function PromisesPanel({ promises, economy }) {
   if (!promises || !promises.length) return null;
+  /* Выборов нет — нет и предвыборных обещаний: при тоталитаризме панель висела
+     со счётчиком «до выборов», которых не будет, и с итогом, который никто
+     никогда не подведёт. Одна строка вместо неё честнее. */
+  if (economy.noElections) {
+    return (
+      <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+          <Flag size={14} color={COLOR.faint} />
+          <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.muted }}>Предвыборные обещания</span>
+        </div>
+        <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45 }}>
+          Выборы отменены — обещания больше не подводятся. Власть удерживают не у урны.
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
@@ -3797,7 +3821,7 @@ function PromisesPanel({ promises, economy }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         {promises.map((p) => {
-          const { met, value } = evaluatePromise(p, economy);
+          const { met, value, direction } = evaluatePromise(p, economy);
           const fmtFn = PROMISE_FMT[p.id] || fmt1;
           const color = met ? COLOR.teal : COLOR.rust;
           return (
@@ -3806,7 +3830,13 @@ function PromisesPanel({ promises, economy }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: met ? COLOR.text : COLOR.muted }}>{p.label}</span>
-                  <span className="ems-mono" style={{ fontSize: 10.5, color, flexShrink: 0 }}>{fmtFn(value)} / {fmtFn(p.target)}</span>
+                  {/* «36.2% / 35.3%» без подписей читалось наоборот: игрок
+                      принимал вторую цифру за текущую и не понимал, почему
+                      обещание провалено. Теперь видно, где факт, а где порог,
+                      и в какую сторону он должен выполняться */}
+                  <span className="ems-mono" style={{ fontSize: 10.5, color, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    сейчас {fmtFn(value)} · надо {direction === 'above' ? '≥' : '≤'} {fmtFn(p.target)}
+                  </span>
                 </div>
                 <div style={{ fontSize: 10.5, color: COLOR.faint }}>{p.text}</div>
               </div>
@@ -7118,16 +7148,9 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 );
               }
               return (
-                <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                  <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }} title={row.hint || undefined}>
-                    {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
-                    {row.label}{row.hint && <Info size={10} color={COLOR.faint} />}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
-                    {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
-                  </span>
-                </div>
+                <MetricRow key={row.label || row.key} row={row} delta={delta} last={i === arr.length - 1}
+                  value={Number.isFinite(val) ? row.fmt(val) : '—'}
+                  pinnable={!!ALL_METRICS[row.key]} pinned={pinned.includes(row.key)} onPin={() => togglePin(row.key)} />
               );
             })}
           </div>
@@ -7941,6 +7964,40 @@ function PinButton({ active, onClick }) {
       style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', lineHeight: 0, color: active ? COLOR.gold : COLOR.faint, opacity: active ? 1 : 0.55 }}>
       <Star size={11} fill={active ? COLOR.gold : 'none'} />
     </button>
+  );
+}
+
+/* Строка показателя. Пояснение к термину раньше жило только в атрибуте title —
+   то есть открывалось наведением мыши, которого на телефоне нет: значок «i»
+   там был виден, а прочитать за ним было нечего. Теперь по нему (и по самому
+   названию) можно нажать — подсказка раскрывается прямо под строкой, а title
+   остаётся для мыши. */
+function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) {
+  const [openHint, setOpenHint] = useState(false);
+  const hint = row.hint;
+  return (
+    <div style={{ padding: '6px 0', borderBottom: last ? 'none' : `1px solid ${COLOR.hairline}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+        <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          {pinnable && <PinButton active={pinned} onClick={onPin} />}
+          {hint ? (
+            <span role="button" tabIndex={0} title={hint} aria-expanded={openHint}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'help', color: openHint ? COLOR.text : undefined }}
+              onClick={() => { Audio.play('tick'); setOpenHint((o) => !o); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenHint((o) => !o); } }}>
+              {row.label}<Info size={10} color={openHint ? COLOR.gold : COLOR.faint} />
+            </span>
+          ) : row.label}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="ems-mono">{value}</span>
+          {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
+        </span>
+      </div>
+      {hint && openHint && (
+        <div className="ems-fade-in" style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginTop: 4, paddingRight: 18 }}>{hint}</div>
+      )}
+    </div>
   );
 }
 
@@ -9000,16 +9057,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                   );
                 }
                 return (
-                  <div key={row.label || row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                    <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }} title={row.hint || undefined}>
-                      {ALL_METRICS[row.key] && <PinButton active={pinned.includes(row.key)} onClick={() => togglePin(row.key)} />}
-                      {row.label}{row.hint && <Info size={10} color={COLOR.faint} />}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span className="ems-mono">{Number.isFinite(val) ? row.fmt(val) : '—'}</span>
-                      {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
-                    </span>
-                  </div>
+                  <MetricRow key={row.label || row.key} row={row} delta={delta} last={i === arr.length - 1}
+                    value={Number.isFinite(val) ? row.fmt(val) : '—'}
+                    pinnable={!!ALL_METRICS[row.key]} pinned={pinned.includes(row.key)} onPin={() => togglePin(row.key)} />
                 );
               })}
             </div>

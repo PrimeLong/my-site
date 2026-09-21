@@ -8,7 +8,7 @@
    оттуда, используются и панелью новостей в игре), а не копия. */
 import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
-import { clamp, pctFmt, fmt1, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText, POLITICAL_REGIME_INFO } from './lib/engine.js';
+import { clamp, pctFmt, fmt1, fmtIndex, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText, POLITICAL_REGIME_INFO } from './lib/engine.js';
 import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal, useEscapeClose } from './MacroSimulator.jsx';
 
 /* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
@@ -242,8 +242,13 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
               <TickerStat pp={pp} label="Ставка" value={pctFmt(snapshot.keyRate)} delta={delta('keyRate')} />
               <TickerStat pp={pp} label="Инфляция" value={pctFmt(snapshot.inflation)} delta={delta('inflation')} />
               <TickerStat pp={pp} label="Курс" value={fmt1(snapshot.exchangeRate)} delta={delta('exchangeRate')} />
-              <TickerStat pp={pp} label="Индекс акций" value={fmt1(snapshot.stockIndex)} delta={delta('stockIndex')} />
-              <TickerStat pp={pp} label="Рейтинг власти" value={Math.round(snapshot.approval)} delta={delta('approval')} />
+              <TickerStat pp={pp} label="Индекс акций" value={fmtIndex(snapshot.stockIndex)} delta={delta('stockIndex')} />
+              {/* Рейтинг власти и тем более его падение — не та строка, которую
+                  печатает подконтрольная государству газета: там выходит
+                  «всенародная поддержка» без цифры и без стрелки вниз */}
+              {regimeId === 'authoritarian' || regimeId === 'totalitarian'
+                ? <TickerStat pp={pp} label="Поддержка курса" value="всенародная" delta={NaN} />
+                : <TickerStat pp={pp} label="Рейтинг власти" value={Math.round(snapshot.approval)} delta={delta('approval')} />}
               {atWar && <TickerStat pp={pp} label="До конца операции" value={`${economy.warQuartersLeft} кв.`} delta={NaN} />}
             </div>
           )}
