@@ -10,6 +10,7 @@ import {
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
+  fmtMoney, fmtIndex,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -183,9 +184,18 @@ describe('noEvents (используется режимом «Обучение»
       pendingImpulses = res.pendingImpulses;
       eventCooldowns = res.eventCooldowns;
       decisions = defaultDecisions(economy, decisions);
-      expect(economy.activeCrises).toEqual([]);
+      /* Проверяем то, что и написано в названии: noEvents глушит СЛУЧАЙНЫЕ
+         СОБЫТИЯ. Раньше здесь стояло «activeCrises пуст» — но рецессия и
+         прочие кризисы выводятся из порогов самой экономики, а не из события,
+         и на hard за 30 кварталов шум (gauss) изредка честно уводил разрыв
+         выпуска в спад: тест падал раз в несколько десятков прогонов на
+         совершенно правильном поведении движка. */
+      expect(economy.activeCrises.filter((c) => c === 'pandemic')).toEqual([]);
+      expect(economy.pandemicQuartersLeft || 0).toBe(0);
+      expect(economy.warQuartersLeft || 0).toBe(0);
     }
-    expect(economy.regime).toBe('normal');
+    expect(economy.regime).not.toBe('pandemic');
+    expect(economy.regime).not.toBe('war');
   });
 });
 
@@ -1533,5 +1543,76 @@ describe('карта страны — округа реагируют на на�
     const politicallyHot = { ...makeInitialEconomy(), politicalTension: 95, bankingRisk: 5, debtRisk: 5 };
     const bankingHot = { ...makeInitialEconomy(), politicalTension: 5, bankingRisk: 95, debtRisk: 5 };
     expect(regionStress(capital, politicallyHot)).toBeGreaterThan(regionStress(capital, bankingHot));
+  });
+});
+
+describe('жалобы игрока: рынок, бот и сюжеты', () => {
+  it('капитализация не считает инфляцию дважды: к ВВП она остаётся правдоподобной', () => {
+    // игрок доиграл до капитализации 31273.9% ВВП — priceLevel входил в неё
+    // и через индекс (через номинальные прибыли), и ещё раз множителем
+    let economy = makeInitialEconomy('hyperinflation');
+    const startPrice = economy.priceLevel;
+    let decisions = defaultDecisions(economy);
+    let pendingImpulses = []; let eventCooldowns = {};
+    for (let q = 1; q <= 60; q++) {
+      const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
+        difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
+      economy = r.economy; pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
+      decisions = defaultDecisions(economy, decisions);
+      expect(economy.marketCapPctGdp).toBeLessThan(400);
+      expect(economy.marketCapPctGdp).toBeGreaterThanOrEqual(0);
+    }
+    // уровень цен за партию вырос в разы — а отношение капитализации к ВВП нет
+    expect(economy.priceLevel).toBeGreaterThan(startPrice * 3);
+  });
+
+  it('крупные суммы и индексы не превращаются в нечитаемую ленту цифр', () => {
+    expect(fmtMoney(6512258680)).toMatch(/квинтлн|квадрлн|секстлн/);
+    expect(fmtMoney(1500)).toBe('1.50 трлн');
+    expect(fmtIndex(8374980.7)).toBe('8.37 млн');
+    expect(fmtIndex(1234.5)).toBe('1234.5');
+  });
+
+  it('досрочные выборы нельзя назначить там, где выборов не бывает', () => {
+    const act = PRES_BY_ID.snap_election;
+    const base = { quartersToElection: 10, politicalRegime: 'democracy' };
+    expect(act.requires(base)).toBe(true);
+    expect(act.requires({ ...base, politicalRegime: 'totalitarian' })).toBe(false);
+  });
+
+  it('встречные сюжеты не идут одновременно: сырьё не может и падать, и расти', () => {
+    const prev = makeInitialEconomy();
+    const next = { ...prev, creditGap: 9 };
+    const decisions = defaultDecisions(prev);
+    // «сырьё вниз» уже идёт — «сырьё вверх» в этот момент стартовать не должно
+    const active = [{ tplId: 'commodity_down', nextIdx: 1, wait: 0 }];
+    expect(storyTriggers(prev, next, decisions, active, {})).not.toContain('oil_up');
+    // а несвязанный сюжет по-прежнему запускается
+    expect(storyTriggers(prev, next, decisions, active, {})).toContain('credit_boom');
+  });
+
+  it('бот-Минфин двигает налоги той же сеткой, что и игрок (0.5 п.п.)', () => {
+    const step = LEVERS.find((l) => l.id === 'vatRate').step;
+    const stressed = { ...makeInitialEconomy(), budgetBalancePctGdp: -9, debtToGdp: 120, outputGap: 1 };
+    ['technocrat', 'austerity', 'populist'].forEach((persona) => {
+      const res = botFinanceMinistry(stressed, persona, 'medium');
+      ['vatRate', 'profitTaxRate', 'incomeTaxRate', 'exciseRate', 'capitalTaxRate'].forEach((k) => {
+        const v = res.decisions[k];
+        if (!Number.isFinite(v)) return;
+        // значение обязано лежать на сетке ползунка игрока
+        expect(Math.abs(v / step - Math.round(v / step))).toBeLessThan(1e-9);
+      });
+    });
+  });
+
+  it('бот-Минфин не выходит за границы ползунков игрока', () => {
+    const stressed = { ...makeInitialEconomy(), outputGap: -7, recessionStreak: 4, unemployment: 12,
+      quartersToElection: 1, budgetBalancePctGdp: -1 };
+    const res = botFinanceMinistry(stressed, 'populist', 'medium');
+    ['govSpending', 'transfers', 'govInvestment'].forEach((id) => {
+      const lever = LEVERS.find((l) => l.id === id);
+      expect(res.decisions[id]).toBeLessThanOrEqual(lever.max);
+      expect(res.decisions[id]).toBeGreaterThanOrEqual(lever.min);
+    });
   });
 });
