@@ -26,7 +26,7 @@ const THEMES = {
   ink: { id: 'ink', name: 'Ночная канцелярия', dark: true, colors: {
     bg: '#0B0F17', bgVignette: '#0E1420', panel: '#161D2B', panelAlt: '#1B2333', panelRaised: '#202B41',
     border: '#28324A', borderStrong: '#3D4C6B', hairline: '#1F2A3D',
-    text: '#E8E6DD', muted: '#8B94A8', faint: '#5B6478',
+    text: '#E8E6DD', muted: '#8B94A8', faint: '#7D869A',
     paper: '#EDE7D6', paperText: '#22261D', paperMuted: '#6B6754', paperRule: '#C9BFA0',
     gold: '#C9A227', goldSoft: '#E8C766', goldDim: 'rgba(201,162,39,0.14)', ink: '#1B1204',
     teal: '#4E9A82', tealDim: 'rgba(78,154,130,0.14)',
@@ -35,7 +35,7 @@ const THEMES = {
   slate: { id: 'slate', name: 'Холодный кабинет', dark: true, colors: {
     bg: '#0A1014', bgVignette: '#0C151B', panel: '#13202A', panelAlt: '#182833', panelRaised: '#1E3240',
     border: '#24404F', borderStrong: '#365C70', hairline: '#1B2E3A',
-    text: '#DFE8EC', muted: '#87A0AC', faint: '#5A717C',
+    text: '#DFE8EC', muted: '#87A0AC', faint: '#718994',
     paper: '#E6E9E4', paperText: '#1C2428', paperMuted: '#63706F', paperRule: '#B7C2BF',
     gold: '#8FB8C9', goldSoft: '#BBDCEA', goldDim: 'rgba(143,184,201,0.14)', ink: '#08161C',
     teal: '#57A98E', tealDim: 'rgba(87,169,142,0.14)',
@@ -44,7 +44,7 @@ const THEMES = {
   chamber: { id: 'chamber', name: 'Дневная канцелярия', dark: false, colors: {
     bg: '#EFEADF', bgVignette: '#E7E1D2', panel: '#F7F3E9', panelAlt: '#EDE7D8', panelRaised: '#FFFCF4',
     border: '#D3C9B2', borderStrong: '#B5A888', hairline: '#E0D8C6',
-    text: '#221F19', muted: '#5F5A4C', faint: '#8A8372',
+    text: '#221F19', muted: '#5F5A4C', faint: '#756F5F',
     paper: '#FBF7EC', paperText: '#221F19', paperMuted: '#6B6653', paperRule: '#CDC2A6',
     gold: '#8A6D12', goldSoft: '#6F5710', goldDim: 'rgba(138,109,18,0.12)', ink: '#FBF7EC',
     teal: '#2F6B57', tealDim: 'rgba(47,107,87,0.12)',
@@ -407,8 +407,13 @@ function StateZone({ children, label, hidden }) {
   return (
     <div className={hidden ? 'ems-col-hidden' : ''} style={{ position: 'relative', borderRadius: 13, padding: `${SPACE[4]}px ${SPACE[3]}px ${SPACE[3]}px`,
       background: COLOR.bg, border: `1px solid ${COLOR.paperRule}4a` }}>
-      <div className="ems-hero-eyebrow" style={{ marginBottom: SPACE[3], color: COLOR.paperRule, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 9, height: 6, background: COLOR.paperRule, opacity: 0.7, display: 'inline-block', borderRadius: '1px 1px 0 0' }} />{label || 'Состояние страны'}
+      {/* COLOR.paperRule как цвет ТЕКСТА здесь раньше проваливал контраст в
+          светлой теме («Дневная канцелярия» — 1.5:1, tan на почти белом): это
+          цвет линовки бумаги, не читаемого текста. COLOR.muted проверен на
+          контраст во всех темах и остаётся приглушённым. Бордюр (paperRule
+          с альфой) — декоративная линия, а не текст, на неё это не распространяется. */}
+      <div className="ems-hero-eyebrow" style={{ marginBottom: SPACE[3], color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 9, height: 6, background: COLOR.muted, opacity: 0.7, display: 'inline-block', borderRadius: '1px 1px 0 0' }} />{label || 'Состояние страны'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>{children}</div>
     </div>
@@ -491,6 +496,7 @@ const IRFModal = React.lazy(() => import('./charts.jsx').then((m) => ({ default:
 export const InstrumentChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.InstrumentChart })));
 
 function WhyModal({ reasons, onClose }) {
+  useEscapeClose(onClose);
   const [tab, setTab] = useState('gdpGrowth');
   const TABS = [
     { id: 'gdpGrowth', label: 'ВВП' }, { id: 'outputGap', label: 'Разрыв выпуска' }, { id: 'inflation', label: 'Инфляция' },
@@ -2030,6 +2036,17 @@ export const Audio = (() => {
   };
 })();
 
+/* Ни одна полноэкранная модалка (газета, достижения, карточка результата,
+   график реакции и т.д.) не закрывалась по Esc — только кликом мимо или по
+   крестику, то есть только мышью/тапом. Один хук на все модалки разом. */
+export function useEscapeClose(onClose) {
+  React.useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+}
+
 /* Общая логика для выпадающих панелей в шапке (звук, вид): не даёт двум
    открыться одновременно и накрыть друг друга, и считает позицию от кнопки
    через getBoundingClientRect + fixed — на телефоне, где шапка переносится
@@ -2049,6 +2066,17 @@ function useExclusiveDropdown(width) {
     dropdownListeners.add(onOther);
     return () => dropdownListeners.delete(onOther);
   }, []);
+  // Esc не закрывала ни одно из выпадающих меню на всей панели (звук, вид,
+  // «⋯») — мышью/тапом мимо можно, с клавиатуры некуда деться, кроме Tab
+  // через всё содержимое меню. Общий хук — общий фикс сразу для всех.
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   /* Закрытие соседей нельзя делать внутри апдейтера setState: он выполняется в фазе
      рендера, и React ругается на setState в чужом компоненте. Считаем next заранее. */
   const toggle = () => {
@@ -3780,6 +3808,7 @@ export const AchievementToast = ({ toast, leaving }) => {
    код, второе его вводит. Прогресс (достижения, курсы) при этом не заменяется, а
    объединяется — открытое на телефоне остаётся открытым. */
 function DeviceLinkModal({ playerId, onClose, onLinked }) {
+  useEscapeClose(onClose);
   const [tab, setTab] = useState('show');      // show — показать код, enter — ввести
   const [code, setCode] = useState(null);
   const [expiresAt, setExpiresAt] = useState(0);
@@ -4003,6 +4032,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
 }
 
 function AchievementsModal({ onClose }) {
+  useEscapeClose(onClose);
   const unlocked = loadUnlockedAchievements();
   const count = ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
   return (
@@ -4105,6 +4135,7 @@ function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
   return null;
 }
 function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, restartLabel = 'Начать заново' }) {
+  useEscapeClose(onClose);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 460, width: '100%', padding: 26, textAlign: 'center', borderColor: COLOR.rust }} onClick={(e) => e.stopPropagation()}>
@@ -4294,6 +4325,7 @@ function drawResultCard(canvas, data) {
   ctx.fillText(`🏆 Открыто ${data.unlockedCount} из ${ACHIEVEMENTS.length} достижений`, W / 2, H - 30);
 }
 function ResultCardModal({ data, onClose }) {
+  useEscapeClose(onClose);
   const canvasRef = React.useRef(null);
   const [copied, setCopied] = useState(false);
   React.useEffect(() => { if (canvasRef.current) drawResultCard(canvasRef.current, data); }, [data]);
@@ -4342,6 +4374,7 @@ function ResultCardModal({ data, onClose }) {
 // столько же, сколько в api/solo.js: слоты хранятся на сервере, клиент только рисует
 const SOLO_SLOT_COUNT = 4;
 function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
+  useEscapeClose(onClose);
   const [tab, setTab] = useState(mode || 'save');
   const [error, setError] = useState('');
   const [slots, setSlots] = useState(null); // null = ещё загружаются
@@ -5999,11 +6032,17 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     mq.addListener(upd); return () => mq.removeListener(upd);
   }, []);
   const prevQuarter = React.useRef(room.quarterIndex);
+  const [stampKey, setStampKey] = useState(0);
 
   React.useEffect(() => watchRoom(id, (r) => {
     setRoom(r);
     if (r.quarterIndex !== prevQuarter.current) {
       prevQuarter.current = r.quarterIndex;
+      // в одиночной игре печать оттискивается по клику «Завершить квартал» —
+      // здесь квартал резолвит сервер асинхронно (когда все сдали решения),
+      // так что тот же переход играет по приходу нового r.quarterIndex с опроса,
+      // а не по локальному клику
+      setStampKey((k) => k + 1);
       setSent(false);
       setDecisions((d) => defaultDecisions(r.economy, d));
       if (autoPaperRef.current) setShowPaper(true);
@@ -6248,6 +6287,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <GlobalStyle />
       <Atmosphere regime={economy.regime}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
+      <QuarterStamp stampKey={stampKey} regime={economy.politicalRegime} />
       {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
       {showPaper && (
         <Suspense fallback={null}>

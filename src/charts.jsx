@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
 import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
-import { COLOR, Audio } from './MacroSimulator.jsx';
+import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
 
 const CHART_GROUPS = [
   { id: 'output', label: 'Выпуск', series: [
@@ -515,6 +515,7 @@ const IRF_SERIES = [
   { key: 'stockIndex', label: 'Индекс акций', color: '#8E7CC3', unit: '%' },
 ];
 export function IRFModal({ economy, decisions, lever, value, baseValue, difficulty, onClose }) {
+  useEscapeClose(onClose);
   const data = useMemo(() => computeIRF(economy, decisions, lever.id, baseValue, value, difficulty, 12),
     [lever.id, baseValue, value]);
   const peak = (key) => data.reduce((a, d) => (Math.abs(d[key]) > Math.abs(a.v) ? { v: d[key], q: d.q } : a), { v: 0, q: 0 });

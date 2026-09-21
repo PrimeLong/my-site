@@ -9,7 +9,7 @@
 import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { clamp, pctFmt, fmt1, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText, POLITICAL_REGIME_INFO } from './lib/engine.js';
-import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal } from './MacroSimulator.jsx';
+import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal, useEscapeClose } from './MacroSimulator.jsx';
 
 /* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
    бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */
@@ -126,6 +126,7 @@ function TickerStat({ label, value, delta, pp }) {
 
 /* Газета: выпуск квартала, хроника страны и сюжетные линии */
 export function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
+  useEscapeClose(onClose);
   const [tab, setTab] = useState('issue');
   const [chronicleFilter, setChronicleFilter] = useState('all');
   const [chronicleSearch, setChronicleSearch] = useState('');

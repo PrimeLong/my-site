@@ -21,7 +21,7 @@ import {
   COLOR, Audio, AudioControls, GlobalStyle, KpiTile, PresidentPanel, RegimeBanner, TradingTerminal,
   AchievementToast, ALL_METRICS, INSTR_BY_ID, getPlayerId, syncProfile, unlockAchievements, useAchievementToasts,
   COURSE_PROGRESS_KEY, loadCourseProgress, MODULE_STATE_KEY, loadModuleState,
-  emptyBook, priceOf, bookValue, tradeBook, settleQuarter, scaleLever, haptic,
+  emptyBook, priceOf, bookValue, tradeBook, settleQuarter, scaleLever, haptic, useEscapeClose,
 } from './MacroSimulator.jsx';
 
 /* ================================ СЛОВАРЬ ТЕРМИНОВ ================================
@@ -85,6 +85,7 @@ function Term({ k, children }) {
 }
 
 function GlossaryModal({ onClose }) {
+  useEscapeClose(onClose);
   const [q, setQ] = useState('');
   const norm = q.trim().toLowerCase();
   const list = GLOSSARY_KEYS.map((k) => GLOSSARY[k])
