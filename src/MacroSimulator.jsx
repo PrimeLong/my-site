@@ -65,11 +65,19 @@ function applyTheme(id) {
   const t = THEMES[id] || THEMES.ink;
   Object.assign(COLOR, t.colors);
 }
+/* PT Serif/PT Sans/PT Mono — единственное семейство на Google Fonts, спроектированное
+   ParaType специально для кириллицы (программа «Общественные шрифты РФ»): в отличие
+   от системных стеков или модных латинских гарнитур типа Fraunces/IBM Plex, здесь
+   не будет незаметного отвала на Georgia для всего русского текста. Fragment Mono —
+   акцентная цифирь для витринных KPI, к обычному тексту не применяется. */
 const FONT = {
-  serif: "'Iowan Old Style','Palatino Linotype',Georgia,'Times New Roman',serif",
-  sans: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
-  mono: "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace",
+  serif: "'PT Serif','Iowan Old Style','Palatino Linotype',Georgia,'Times New Roman',serif",
+  sans: "'PT Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+  mono: "'PT Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace",
+  numeral: "'Fragment Mono','PT Mono','SFMono-Regular',Consolas,Menlo,monospace",
 };
+const SIZE = { xs: 11, sm: 12, base: 13, md: 15, lg: 18, xl: 24, xxl: 32, hero: 42 };
+const SPACE = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 28, 7: 40 };
 
 export const GlobalStyle = () => (
   <style>{`
@@ -78,6 +86,11 @@ export const GlobalStyle = () => (
     .ems-root :focus-visible { outline: 2px solid ${COLOR.goldSoft}; outline-offset: 2px; }
     .ems-serif { font-family:${FONT.serif}; }
     .ems-mono { font-family:${FONT.mono}; font-variant-numeric: tabular-nums; }
+    .ems-numeral { font-family:${FONT.numeral}; font-variant-numeric: tabular-nums; }
+    .ems-btn.ghost { background:transparent; border-color:transparent; color:${COLOR.faint}; box-shadow:none; }
+    .ems-btn.ghost:hover { background:${COLOR.panelAlt}; border-color:${COLOR.border}; color:${COLOR.text}; box-shadow:none; }
+    .ems-btn.secondary { background:transparent; border-color:${COLOR.border}; color:${COLOR.text}; }
+    .ems-btn.secondary:hover { background:${COLOR.panelAlt}; border-color:${COLOR.borderStrong}; }
     .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px -10px rgba(0,0,0,0.4); }
     .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.14), 0 14px 30px -12px rgba(0,0,0,0.55); }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
@@ -112,7 +125,10 @@ export const GlobalStyle = () => (
     .ems-confetti-piece { border-radius:1px; opacity:1; animation: emsConfettiBurst .85s cubic-bezier(.2,.7,.3,1) forwards; }
     @keyframes emsConfettiBurst { 0% { transform:translate(-50%,-50%) rotate(0deg); opacity:1; }
       100% { transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)); opacity:0; } }
-    @media (prefers-reduced-motion: reduce) { .ems-fade-in, .ems-toast-out { animation:none; } .ems-confetti-piece { animation:none; display:none; } .ems-btn, .ems-tab { transition:none; } }
+    .ems-quarter-stamp { opacity:0; animation: emsStamp .85s cubic-bezier(.2,.75,.25,1) forwards; filter: drop-shadow(0 8px 22px rgba(0,0,0,0.45)); }
+    @keyframes emsStamp { 0% { transform:scale(2.4) rotate(-10deg); opacity:0; } 20% { transform:scale(0.92) rotate(2deg); opacity:0.92; }
+      32% { transform:scale(1) rotate(0deg); opacity:0.85; } 78% { opacity:0.55; } 100% { opacity:0; transform:scale(1.02) rotate(0deg); } }
+    @media (prefers-reduced-motion: reduce) { .ems-fade-in, .ems-toast-out { animation:none; } .ems-confetti-piece, .ems-quarter-stamp { animation:none; display:none; } .ems-btn, .ems-tab { transition:none; } }
 
     /* --- «Витринные» приёмы: крупный заголовок экрана, интерактивные карточки,
        атмосферный фон — используются на входных экранах (меню, новая партия,
@@ -345,17 +361,19 @@ export function StateSeal({ regime = 'democracy', size = 40, title }) {
   );
 }
 
-export function KpiTile({ label, value, delta, invert, icon: Icon, series }) {
+export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero }) {
   const good = Number.isFinite(delta) && Math.abs(delta) >= 0.05 ? (invert ? delta < 0 : delta > 0) : null;
   const barColor = good === null ? COLOR.border : good ? COLOR.teal : COLOR.rust;
   return (
-    <div className="ems-panel" style={{ padding: '10px 12px 10px 14px', position: 'relative', overflow: 'hidden' }}>
-      <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: barColor }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: COLOR.muted, fontSize: 11, marginBottom: 7 }}>
-        {Icon && <Icon size={12} />}<span>{label}</span>
+    <div className={hero ? 'ems-panel-raised' : 'ems-panel'}
+      style={{ padding: hero ? '14px 16px 14px 20px' : '10px 12px 10px 14px', position: 'relative', overflow: 'hidden',
+        gridColumn: hero ? 'span 2' : undefined, borderColor: hero ? COLOR.gold : undefined }}>
+      <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: hero ? 4 : 3, background: hero ? COLOR.gold : barColor }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: hero ? COLOR.goldSoft : COLOR.muted, fontSize: hero ? 12 : SIZE.xs, marginBottom: hero ? 9 : 7 }}>
+        {Icon && <Icon size={hero ? 13 : 12} />}<span>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-        <span className="ems-mono ems-serif" style={{ fontSize: 21, fontWeight: 600, letterSpacing: '-0.02em' }}>{value}</span>
+        <span className={hero ? 'ems-numeral ems-serif' : 'ems-mono ems-serif'} style={{ fontSize: hero ? SIZE.hero : SIZE.xl - 3, fontWeight: 600, letterSpacing: '-0.02em' }}>{value}</span>
         <DeltaTag value={delta} invert={invert} />
       </div>
       {/* спарклайн — под цифрой, во всю ширину плитки: так его не приходится
@@ -363,6 +381,36 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series }) {
       {series && series.length >= 2 && (
         <div style={{ marginTop: 6 }}><Sparkline series={series} color={barColor === COLOR.border ? COLOR.faint : barColor} /></div>
       )}
+    </div>
+  );
+}
+
+/* Радикальный пункт дизайн-ревизии: разделить «кабинет игрока» (решения, которые
+   он лично принимает) и «состояние страны» (то, что ему докладывают) на два разных
+   визуальных плана — не перекрашивая заново каждую внутреннюю панель (это отдельный,
+   куда более рискованный рефакторинг всей темизации), а обрамляя одну и ту же
+   колонку разной атмосферой снаружи: тёплый кабинетный свет слева, казённая рамка
+   досье справа. */
+function CabinetZone({ children, hidden }) {
+  return (
+    <div className={hidden ? 'ems-col-hidden' : ''} style={{ position: 'relative', borderRadius: 13, padding: `${SPACE[4]}px ${SPACE[3]}px ${SPACE[3]}px`,
+      background: `radial-gradient(130% 85% at 12% -6%, ${COLOR.goldDim} 0%, transparent 58%), ${COLOR.bg}`,
+      border: `1px solid ${COLOR.borderStrong}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
+      <div className="ems-hero-eyebrow" style={{ marginBottom: SPACE[3], display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 5, height: 5, borderRadius: '50%', background: COLOR.gold, display: 'inline-block' }} />Кабинет
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
+    </div>
+  );
+}
+function StateZone({ children, label, hidden }) {
+  return (
+    <div className={hidden ? 'ems-col-hidden' : ''} style={{ position: 'relative', borderRadius: 13, padding: `${SPACE[4]}px ${SPACE[3]}px ${SPACE[3]}px`,
+      background: COLOR.bg, border: `1px solid ${COLOR.paperRule}4a` }}>
+      <div className="ems-hero-eyebrow" style={{ marginBottom: SPACE[3], color: COLOR.paperRule, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 9, height: 6, background: COLOR.paperRule, opacity: 0.7, display: 'inline-block', borderRadius: '1px 1px 0 0' }} />{label || 'Состояние страны'}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>{children}</div>
     </div>
   );
 }
@@ -2108,6 +2156,31 @@ export function AudioControls() {
   );
 }
 
+/* Второстепенные действия шапки (карточка результата, выход в меню) — раньше висели
+   в ряд такими же квадратными иконками, что и «Газета»/«Достижения», хотя пользуются
+   ими на порядок реже. Прячем их за один «⋯», оставляя на виду только то, что имеет
+   самостоятельный смысл прямо по ходу партии. */
+function HeaderOverflowMenu({ items }) {
+  const DD_WIDTH = 220;
+  const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
+  return (
+    <div style={{ position: 'relative' }}>
+      <button ref={btnRef} className="ems-btn ghost" style={{ padding: '7px 10px', fontSize: 16, lineHeight: 1 }}
+        title="Ещё" aria-label="Ещё действия" onClick={() => { Audio.play('click'); toggle(); }}>⋯</button>
+      {open && (
+        <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: DD_WIDTH, padding: SPACE[2], zIndex: 60 }}>
+          {items.map((it) => (
+            <button key={it.label} className="ems-btn ghost" style={{ width: '100%', textAlign: 'left', padding: `${SPACE[2]}px ${SPACE[3]}px`, fontSize: SIZE.sm + 0.5, display: 'flex', alignItems: 'center', gap: SPACE[2], color: it.danger ? COLOR.rust : COLOR.text }}
+              onClick={() => { setOpen(false); it.onClick(); }}>
+              <it.icon size={13} />{it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============================ НОВОСТНАЯ ПОДСИСТЕМА ============================ */
 export const NEWS_CATEGORIES = [
   { id: 'cb', label: 'Центральный банк', short: 'ЦБ', icon: '🏦', color: COLOR.blue },
@@ -2291,6 +2364,20 @@ function Atmosphere({ regime, intensity, flashKey }) {
           background: `radial-gradient(circle at 50% 40%, ${a.accent}55, transparent 70%)` }} />
       ) : null}
     </>
+  );
+}
+
+/* Радикальный пункт ревизии: смена квартала — самое частое действие в игре —
+   раньше происходила без единого визуального акцента, только смена цифр.
+   Печать здесь и до этого жила только в газете (StateSeal/ProceduralNewspaper);
+   расширяем её же мотив на сам момент перехода — «оттиск» ложится на экран и
+   тут же тает, отмечая закрытие квартала, как отметка в гроссбухе. */
+function QuarterStamp({ stampKey, regime }) {
+  if (!stampKey) return null;
+  return (
+    <div key={stampKey} style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 55 }}>
+      <div className="ems-quarter-stamp"><StateSeal regime={regime} size={132} /></div>
+    </div>
   );
 }
 
@@ -3062,7 +3149,11 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
         borderColor: selected ? selectedColor : severe ? COLOR.rustDim : COLOR.border,
         background: selected ? selectedDim : COLOR.panelAlt }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        {selected && <Check size={12} color={selectedColor} style={{ alignSelf: 'center', flexShrink: 0 }} />}
+        {/* необратимое решение скрепляется печатью вместо обычной галочки —
+            тот же оттиск, что и в переходе между кварталами, только маленький
+            и постоянный: не мигает и не тает, отмечает решение до конца партии */}
+        {selected && severe && <StateSeal regime={economy.politicalRegime} size={14} title="Скреплено печатью" />}
+        {selected && !severe && <Check size={12} color={selectedColor} style={{ alignSelf: 'center', flexShrink: 0 }} />}
         {!selected && severe && !blockedByReq && <AlertTriangle size={12} color={COLOR.rust} style={{ alignSelf: 'center', flexShrink: 0 }} />}
         <span style={{ fontSize: 12.5, color: selected ? (severe ? COLOR.rust : COLOR.goldSoft) : COLOR.text, fontWeight: 600, flex: 1 }}>{label}</span>
         <span className="ems-mono" style={{ fontSize: 11, color: selected ? (severe ? COLOR.rust : COLOR.goldSoft) : COLOR.muted, flexShrink: 0 }}>{action.cost} ПК</span>
@@ -4094,6 +4185,7 @@ function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio,
     years: (quarterIndex / 4).toFixed(1),
     outcome: defeat ? defeat.title : 'Партия продолжается',
     isDefeat: !!defeat, stats, unlockedCount: countUnlockedAchievements(),
+    regime: economy.politicalRegime || 'democracy',
   };
 }
 function canvasRoundRect(ctx, x, y, w, h, r) {
@@ -4104,6 +4196,44 @@ function canvasRoundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+/* Тот же оттиск, что StateSeal рисует в SVG для шапки/газеты/перехода между
+   кварталами, — здесь его canvas-версия для карточки результата: она уходит
+   за пределы приложения (сохраняется, репостится), и печать в углу — это то,
+   что делает её «официальным документом», а не просто скриншотом статистики. */
+function canvasSeal(ctx, cx, cy, r, regime) {
+  const info = POLITICAL_REGIME_INFO[regime] || POLITICAL_REGIME_INFO.democracy;
+  const color = COLOR[info.color] || COLOR.gold;
+  const hard = regime === 'authoritarian' || regime === 'totalitarian';
+  ctx.save();
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = hard ? 2.4 : 1.3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  const ticks = 16;
+  for (let i = 0; i < ticks; i++) {
+    const a = (i / ticks) * Math.PI * 2;
+    const inner = r * (hard ? 0.82 : 0.86); const outer = r * 0.98;
+    ctx.globalAlpha = hard ? 0.9 : 0.55;
+    ctx.lineWidth = hard ? 2.6 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+    ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = hard ? 2 : 1.1;
+  ctx.beginPath(); ctx.arc(cx, cy, r * (hard ? 0.68 : 0.74), 0, Math.PI * 2); ctx.stroke();
+  // пятиконечная звезда в центре — контурная в демократии, залитая в жёстких режимах
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 === 0 ? r * 0.42 : r * 0.18;
+    const a = -Math.PI / 2 + i * (Math.PI / 5);
+    const px = cx + Math.cos(a) * rr; const py = cy + Math.sin(a) * rr;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  if (hard) ctx.fill(); else ctx.stroke();
+  ctx.restore();
 }
 function drawResultCard(canvas, data) {
   const W = 1000; const H = 625; const DPR = Math.min(2, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
@@ -4119,6 +4249,7 @@ function drawResultCard(canvas, data) {
   ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = COLOR.gold; ctx.fillRect(0, 0, W, 4);
   ctx.strokeStyle = COLOR.border; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+  canvasSeal(ctx, W - 60, 60, 34, data.regime);
 
   ctx.textAlign = 'center';
   ctx.fillStyle = COLOR.goldSoft;
@@ -6177,10 +6308,6 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
             resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
             autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
-          <AudioControls />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
-            <Share2 size={14} color={COLOR.gold} />
-          </button>
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
             <Trophy size={14} color={COLOR.gold} />
           </button>
@@ -6188,9 +6315,11 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
             <Newspaper size={14} />Газета
           </button>
-          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти в меню" onClick={() => { Audio.play('click'); exit(); }}>
-            <RotateCcw size={14} />
-          </button>
+          <AudioControls />
+          <HeaderOverflowMenu items={[
+            { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
+            { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => exit() },
+          ]} />
         </div>
       </div>
 
@@ -6198,7 +6327,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
       <div style={{ padding: '14px 18px 4px' }}>
         <div className="ems-kpi-strip">
-          {pinned.map((key) => {
+          {pinned.map((key, idx) => {
             const m = ALL_METRICS[key];
             if (!m) return null;
             const val = economy[key];
@@ -6209,7 +6338,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
                 style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
-                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} />
+                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
@@ -6277,7 +6406,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
       {(() => {
       const leftNode = (
-        <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isTraderRoom ? (
             <Suspense fallback={<ChartFallback height={120} />}>
               <PortfolioSummary book={portfolio} economy={economy} live={null} goal="max_wealth"
@@ -6493,7 +6622,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
       );
       const centerNode = (
-        <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           {isTraderRoom && (
             <>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -6540,7 +6669,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         </div>
       );
       const rightNode = (
-        <div className={narrow && mobileCol !== 'right' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {!isTraderRoom && <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />}
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
@@ -6610,7 +6739,11 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
         </div>
       );
-      const nodes = { left: leftNode, center: centerNode, right: rightNode };
+      const nodes = {
+        left: <CabinetZone hidden={narrow && mobileCol !== 'left'}>{leftNode}</CabinetZone>,
+        center: <StateZone label="Экономический вестник" hidden={narrow && mobileCol !== 'center'}>{centerNode}</StateZone>,
+        right: <StateZone label="Показатели страны" hidden={narrow && mobileCol !== 'right'}>{rightNode}</StateZone>,
+      };
       const order = layout.wide ? layout.columnOrder : DEFAULT_COLUMN_ORDER;
       const colWidthFor = (id) => (id === 'center' ? 'minmax(0,1fr)' : `${layout.columnWidths[id]}px`);
       const gridStyle = { padding: 18, ...(layout.wide ? { gridTemplateColumns: order.map(colWidthFor).join(' ') } : null) };
@@ -7538,6 +7671,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [view]);
   const [flashKey, setFlashKey] = useState(0);
   const [shake, setShake] = useState(false);
+  const [stampKey, setStampKey] = useState(0);
   const [dense, setDense] = useState(initial ? !!initial.dense : false);
   const [irf, setIrf] = useState(null);
   const [mobileCol, setMobileCol] = useState('center');
@@ -7987,6 +8121,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     setDecisions(nextDecisions);
     setDecisionsBaseline(nextDecisions);
     setQuarterIndex((q) => q + 1);
+    setStampKey((k) => k + 1);
     setBusy(false);
     setFinishCooldown(3);
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
@@ -8019,6 +8154,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       )}
       <Atmosphere regime={economy.regime} flashKey={flashKey}
         intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
+      <QuarterStamp stampKey={stampKey} regime={economy.politicalRegime} />
       {showWhy && <WhyModal reasons={lastReasons} onClose={() => setShowWhy(false)} />}
       {showPaper && (
         <Suspense fallback={null}>
@@ -8109,20 +8245,19 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
             resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
             autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
-          <AudioControls />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowCard(true); }} title="Карточка результата">
-            <Share2 size={14} color={COLOR.gold} />
-          </button>
           <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
             <Trophy size={14} color={COLOR.gold} />
           </button>
           <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
             <Newspaper size={14} />Газета
           </button>
-          <button className="ems-btn" style={{ padding: '7px 9px' }} title="Выйти в меню"
-            onClick={() => { if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); } }}>
-            <RotateCcw size={14} />
-          </button>
+          <AudioControls />
+          <HeaderOverflowMenu items={[
+            { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
+            { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => {
+              if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); }
+            } },
+          ]} />
         </div>
       </div>
 
@@ -8130,7 +8265,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       <div style={{ padding: '14px 18px 4px' }}>
         <div className="ems-kpi-strip">
-          {pinned.map((key) => {
+          {pinned.map((key, idx) => {
             const m = ALL_METRICS[key];
             if (!m) return null;
             const val = economy[key];
@@ -8141,7 +8276,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
                 style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
-                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} />
+                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
@@ -8210,7 +8345,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {(() => {
       /* ЛЕВАЯ ПАНЕЛЬ */
       const leftNode = (
-        <div className={narrow && mobileCol !== 'left' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {isTrader && (
             <Suspense fallback={<ChartFallback height={120} />}>
               <PortfolioSummary book={portfolio} economy={economy} live={null} goal={setup.goal}
@@ -8393,7 +8528,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       );
       /* ЦЕНТР */
       const centerNode = (
-        <div className={narrow && mobileCol !== 'center' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} />
           <Suspense fallback={<ChartFallback />}>
             <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
@@ -8425,7 +8560,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       );
       /* ПРАВАЯ ПАНЕЛЬ */
       const rightNode = (
-        <div className={narrow && mobileCol !== 'right' ? 'ems-col-hidden' : ''} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
           <div className="ems-panel" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Показатели экономики</div>
@@ -8470,7 +8605,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           {!isTrader && <DemandsPanel demands={economy.demands} />}
         </div>
       );
-      const nodes = { left: leftNode, center: centerNode, right: rightNode };
+      const nodes = {
+        left: <CabinetZone hidden={narrow && mobileCol !== 'left'}>{leftNode}</CabinetZone>,
+        center: <StateZone label="Экономический вестник" hidden={narrow && mobileCol !== 'center'}>{centerNode}</StateZone>,
+        right: <StateZone label="Показатели страны" hidden={narrow && mobileCol !== 'right'}>{rightNode}</StateZone>,
+      };
       const order = layout.wide ? layout.columnOrder : DEFAULT_COLUMN_ORDER;
       const colWidthFor = (id) => (id === 'center' ? 'minmax(0,1fr)' : `${layout.columnWidths[id]}px`);
       const gridStyle = { padding: 18, display: view === 'dash' ? undefined : 'none',
