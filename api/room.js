@@ -354,6 +354,16 @@ export function resolveQuarter(room) {
       headline: `ПРЕЗИДЕНТ → ${to}: ${newDemand.label.toUpperCase()} — ТРЕБОВАНИЕ ВЫДВИНУТО`,
       text: `«${newDemand.ask}» Ответ ведомства будет виден по решениям следующего квартала.` });
   }
+  // то же объявление обещаний на старте срока, что и в одиночной игре (см.
+  // finishQuarter в MacroSimulator.jsx) — без него игрок узнавал о своих
+  // обещаниях только на дне голосования, приговором «сдержано/провалено»,
+  // хотя сам их никогда не выбирал (их назначает pickPromises при создании комнаты)
+  if (room.quarterIndex === 1 && room.promises && room.promises.length) {
+    res.newsEntries.unshift({ id: 'promisesstart', cat: 'gov', priority: 8,
+      q: room.quarterIndex, qLabel: quarterLabel(room.quarterIndex),
+      headline: 'ПРИНЯТА ПРИСЯГА: ОБЪЯВЛЕНЫ ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ',
+      text: `На этот срок заявлено: ${room.promises.map((p) => `«${p.label}» — ${p.text.toLowerCase()}`).join('; ')}. К дню голосования по каждому подведут итог — сдержано оно или нет.` });
+  }
   // предвыборные обещания подводятся тем же способом и в тот же момент, что и
   // в одиночной игре (см. finishQuarter в MacroSimulator.jsx): в квартал, когда
   // electionResult сформировался, а не раньше. При поражении на выборах партия

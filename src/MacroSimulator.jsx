@@ -8076,6 +8076,16 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         }
       }
     }
+    // «обещания у урны» на первом же голосовании были для игрока полной
+    // неожиданностью: их выбирает pickPromises при старте партии, без единого
+    // решения игрока, и до сих пор про них узнавали только из маленькой панели
+    // в кабинете — если пропустить её в первом квартале, следующая весть о них
+    // приходила через много кварталов сразу приговором «сдержано/провалено»
+    if (quarterIndex === 1 && promises && promises.length) {
+      result.newsEntries.unshift({ id: `promisesstart`, cat: 'gov', priority: 8, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+        headline: 'ПРИНЯТА ПРИСЯГА: ОБЪЯВЛЕНЫ ПРЕДВЫБОРНЫЕ ОБЕЩАНИЯ',
+        text: `На этот срок заявлено: ${promises.map((p) => `«${p.label}» — ${p.text.toLowerCase()}`).join('; ')}. К дню голосования по каждому подведут итог — сдержано оно или нет.` });
+    }
     // предвыборные обещания подводятся в тот же квартал, когда выборы наступили
     // (quartersToElection обнулился и сформировал electionResult) — не раньше:
     // формально срок ещё не закончился, пока не наступил сам день голосования
@@ -8180,9 +8190,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <RoleIcon size={18} color={COLOR.gold} />
           </div>
           <div>
-            <div className="ems-serif" style={{ fontSize: 18 }}>Страна — экономическая панель</div>
+            {/* «Страна — экономическая панель» тут была раньше как заголовок —
+                название приложения, а не игры: игроку это ни о чём не говорит
+                на экране, где он уже внутри партии. Пост и его контекст —
+                единственное, что имеет смысл заявлять здесь. */}
+            <div className="ems-serif" style={{ fontSize: 18 }}>{roleDef.title}</div>
             <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-              {roleDef.title} · сложность: {(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title}
+              сложность: {(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title}
               {setup.scenario && setup.scenario !== 'sandbox' ? ` · сценарий: ${(SCENARIOS.find((sc) => sc.id === setup.scenario) || {}).title}` : ''}
               {activeBotPersona ? ` · вторая ветвь: ${activeBotPersona.name} (бот)`
                 : isPresident ? ` · ЦБ: ${getCbPersona(cbPersonaId).name} (бот) · Минфин: ${getMofPersona(mofPersonaId).name} (бот)`

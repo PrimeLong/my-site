@@ -523,8 +523,11 @@ describe('pandemic crisis tracking', () => {
     let decisions = defaultDecisions(economy);
     const seen = [];
     for (let q = 1; q <= 5; q++) {
+      // noEvents: без него случайное событие/переворот того же квартала иногда
+      // подмешивал в activeCrises что-то ещё — тест проверяет только таймер
+      // пандемии, а не всю ветку случайных событий разом
       const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
-        difficulty: 'medium', quarterIndex: q, stories: [] });
+        difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
       economy = r.economy;
       decisions = defaultDecisions(economy, decisions);
       seen.push(economy.activeCrises.includes('pandemic'));
@@ -1182,6 +1185,16 @@ describe('переворот случается там, где есть недо
     expect(rich).toBeGreaterThan(0);
     expect(broke).toBeGreaterThan(rich);
     expect(broke).toBeLessThan(rich * 2);
+  });
+
+  it('тяжёлый кризис не поднимает армию против спокойного и не растратившего популярность лидера', () => {
+    // именно этот случай сообщил игрок как незаслуженный переворот: напряжённость
+    // 38 (ниже порога 40 у pressure) и рейтинг 52 (выше порога 45 у weakness) —
+    // нищета и кризисы раньше суммировались в риск независимо от того, что за
+    // лидера некому было выступать против
+    const stressedButPopular = { politicalTension: 38, approval: 52, unemployment: 14, inflation: 30,
+      nairu: 5, activeCrises: ['banking', 'currency'], politicalCapital: 55, unrestActive: false };
+    expect(militaryCoupRisk(stressedButPopular)).toBe(0);
   });
 });
 
