@@ -23,6 +23,21 @@ describe('publicView — обещания не теряются на выход�
   });
 });
 
+describe('resolveQuarter — обещания объявляются в начале срока, не только на голосовании', () => {
+  it('первый же квартал сообщает игроку, что за обещания на нём висят', () => {
+    // раньше об обещаниях узнавали только на дне голосования, приговором
+    // «сдержано/провалено», хотя игрок их вообще не выбирал (см. pickPromises
+    // в freshRoom) — теперь первый квартал сразу называет их
+    const room = newRoom();
+    expect(room.quarterIndex).toBe(1);
+    const next = resolveQuarter(room);
+    const oath = next.news.find((n) => n.id === 'promisesstart');
+    expect(oath).toBeTruthy();
+    expect(oath.headline).toMatch(/ПРИНЯТА ПРИСЯГА/);
+    room.promises.forEach((p) => expect(oath.text).toContain(p.label));
+  });
+});
+
 describe('resolveQuarter — обещания доходят до движка (голоса на выборах)', () => {
   it('decisions, переданные в simulateQuarter, содержат promises комнаты', () => {
     const room = newRoom();

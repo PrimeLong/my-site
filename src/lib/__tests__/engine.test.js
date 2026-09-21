@@ -9,6 +9,7 @@ import {
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
+  MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -523,8 +524,11 @@ describe('pandemic crisis tracking', () => {
     let decisions = defaultDecisions(economy);
     const seen = [];
     for (let q = 1; q <= 5; q++) {
+      // noEvents: без него случайное событие/переворот того же квартала иногда
+      // подмешивал в activeCrises что-то ещё — тест проверяет только таймер
+      // пандемии, а не всю ветку случайных событий разом
       const r = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
-        difficulty: 'medium', quarterIndex: q, stories: [] });
+        difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
       economy = r.economy;
       decisions = defaultDecisions(economy, decisions);
       seen.push(economy.activeCrises.includes('pandemic'));
@@ -1183,6 +1187,16 @@ describe('переворот случается там, где есть недо
     expect(broke).toBeGreaterThan(rich);
     expect(broke).toBeLessThan(rich * 2);
   });
+
+  it('тяжёлый кризис не поднимает армию против спокойного и не растратившего популярность лидера', () => {
+    // именно этот случай сообщил игрок как незаслуженный переворот: напряжённость
+    // 38 (ниже порога 40 у pressure) и рейтинг 52 (выше порога 45 у weakness) —
+    // нищета и кризисы раньше суммировались в риск независимо от того, что за
+    // лидера некому было выступать против
+    const stressedButPopular = { politicalTension: 38, approval: 52, unemployment: 14, inflation: 30,
+      nairu: 5, activeCrises: ['banking', 'currency'], politicalCapital: 55, unrestActive: false };
+    expect(militaryCoupRisk(stressedButPopular)).toBe(0);
+  });
 });
 
 describe('одно решение по ставке — одна новость', () => {
@@ -1413,5 +1427,111 @@ describe('пресс-конференция — вопрос выбираетс�
     const decisions = { ...defaultDecisions(economy), pressAnswer: 'no-such-option' };
     expect(() => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
       difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true })).not.toThrow();
+  });
+});
+
+describe('карта страны — округа реагируют на настоящее состояние экономики', () => {
+  it('семь округов, каждый с весами, суммирующими вклад в 0..100', () => {
+    expect(MAP_REGIONS).toHaveLength(7);
+    const economy = makeInitialEconomy();
+    MAP_REGIONS.forEach((region) => {
+      const s = regionStress(region, economy);
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThanOrEqual(100);
+    });
+  });
+
+  it('спокойная экономика — все округа в спокойном тоне', () => {
+    const calm = { ...makeInitialEconomy(), politicalTension: 5, bankingRisk: 5, debtRisk: 5,
+      currencyRisk: 5, recessionRisk: 5, inflationRisk: 5, approval: 60 };
+    MAP_REGIONS.forEach((region) => {
+      const b = regionBlurb(region, calm);
+      expect(b.tier).toBe('calm');
+      expect(b.text.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('разваливающаяся экономика — округа переходят в кризисный тон, а не молчат', () => {
+    const bad = { ...makeInitialEconomy(), politicalTension: 90, bankingRisk: 90, debtRisk: 90,
+      currencyRisk: 90, recessionRisk: 90, inflationRisk: 90, approval: 15,
+      exchangeRate: 210, unemployment: 18, nairu: 5, inflation: 40, riskPremium: 9 };
+    MAP_REGIONS.forEach((region) => {
+      const b = regionBlurb(region, bad);
+      expect(b.tier).toBe('crisis');
+      expect(b.text).not.toMatch(/undefined|NaN/);
+    });
+  });
+
+  it('средний результат по округам сходится с общенациональным', () => {
+    // иначе карта и новость о выборах показывали бы разные проценты
+    const economy = makeInitialEconomy();
+    [35, 47.4, 50, 61.2, 88].forEach((national) => {
+      const rows = regionVoteShares(economy, national, false);
+      expect(rows).toHaveLength(MAP_REGIONS.length);
+      const mean = rows.reduce((a, b) => a + b.share, 0) / rows.length;
+      expect(mean).toBeCloseTo(national, 6);
+    });
+  });
+
+  it('округ, которому живётся хуже среднего, голосует за власть хуже среднего', () => {
+    // промышленный пояс завязан на рецессию: при глубоком спаде он должен
+    // отвернуться от власти сильнее, чем село, которого спад касается меньше
+    const slump = { ...makeInitialEconomy(), recessionRisk: 95, bankingRisk: 60,
+      inflationRisk: 10, currencyRisk: 10, debtRisk: 10, politicalTension: 20 };
+    const rows = regionVoteShares(slump, 50, false);
+    const industry = rows.find((r) => r.id === 'industry').share;
+    const periphery = rows.find((r) => r.id === 'periphery').share;
+    expect(industry).toBeLessThan(50);
+    expect(periphery).toBeGreaterThan(industry);
+  });
+
+  it('сфальсифицированные выборы рисуют почти ровный результат по всей стране', () => {
+    const autocracy = { ...makeInitialEconomy(), politicalRegime: 'authoritarian',
+      politicalTension: 80, recessionRisk: 90, approval: 12 };
+    const rows = regionVoteShares(autocracy, 18, true);
+    const min = Math.min(...rows.map((r) => r.share));
+    const max = Math.max(...rows.map((r) => r.share));
+    // настоящий рейтинг 12, «официальный» — под 80 и почти без разброса
+    expect(min).toBeGreaterThan(70);
+    expect(max - min).toBeLessThan(4);
+  });
+
+  it('выборы оставляют результат по округам в экономике до следующего голосования', () => {
+    let economy = { ...makeInitialEconomy(), quartersToElection: 1 };
+    let decisions = defaultDecisions(economy);
+    const first = simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 4, stories: [], noEvents: true });
+    expect(first.economy.lastElection).toBeTruthy();
+    expect(first.economy.lastElection.byRegion).toHaveLength(MAP_REGIONS.length);
+    expect(first.economy.lastElection.qLabel).toBeTruthy();
+    // следующий квартал выборами не является, но карта всё ещё должна их помнить
+    economy = first.economy;
+    decisions = defaultDecisions(economy, decisions);
+    const next = simulateQuarter({ economy, decisions, pendingImpulses: first.pendingImpulses,
+      eventCooldowns: first.eventCooldowns, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
+    expect(next.economy.electionResult).toBeNull();
+    expect(next.economy.lastElection).toEqual(first.economy.lastElection);
+  });
+
+  it('новость о выборах называет те же лучший и худший округ, что и карта', () => {
+    const economy = { ...makeInitialEconomy(), quartersToElection: 1 };
+    const r = simulateQuarter({ economy, decisions: defaultDecisions(economy), pendingImpulses: [],
+      eventCooldowns: {}, difficulty: 'medium', quarterIndex: 8, stories: [], noEvents: true });
+    const rows = [...r.economy.lastElection.byRegion].sort((a, b) => b.share - a.share);
+    const best = MAP_REGIONS.find((x) => x.id === rows[0].id).name;
+    const worst = MAP_REGIONS.find((x) => x.id === rows[rows.length - 1].id).name;
+    const vote = r.newsEntries.find((n) => /МАНДАТ|ОППОЗИЦИЯ ПОБЕЖДАЕТ|ПОРАЖЕНИЕ ВЛАСТИ/.test(n.headline));
+    expect(vote).toBeTruthy();
+    expect(vote.text).toContain(best);
+    expect(vote.text).toContain(worst);
+  });
+
+  it('у столичного округа политическая напряжённость весит больше, чем один лишь банковский риск', () => {
+    // вес politicalTension (0.5) — самый большой отдельный вес в профиле округа,
+    // больше любого другого показателя по отдельности (bankingRisk 0.2, debtRisk 0.3)
+    const capital = MAP_REGIONS.find((r) => r.id === 'capital');
+    const politicallyHot = { ...makeInitialEconomy(), politicalTension: 95, bankingRisk: 5, debtRisk: 5 };
+    const bankingHot = { ...makeInitialEconomy(), politicalTension: 5, bankingRisk: 95, debtRisk: 5 };
+    expect(regionStress(capital, politicallyHot)).toBeGreaterThan(regionStress(capital, bankingHot));
   });
 });

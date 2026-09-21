@@ -1387,7 +1387,14 @@ function militaryCoupRisk(x) {
      потративший капитал на реформы, получал переворот при напряжённости 12 и
      рейтинге 53. Армия выступает там, где есть недовольство; отсутствие денег
      на своих только делает выступление вероятнее. Нет недовольства — нет и риска. */
-  const trouble = pressure * 0.11 + misery * 0.055 + crisisLoad * 0.055 + weakness * 0.045;
+  // Нищета и кризисы сами по себе не поднимают армию против спокойного и
+  // популярного лидера — иначе тяжёлая рецессия при рейтинге 52 и напряжённости
+  // 38 (ниже обоих порогов pressure/weakness) всё равно давала переворот через
+  // одну лишь безработицу. Их вклад отпирается vulnerability — минимальной
+  // политической уязвимостью (хоть немного напряжения ИЛИ хоть немного
+  // непопулярности): нет её — армии не за что зацепиться, экономика бы ни была.
+  const vulnerability = clamp(Math.max(pressure, weakness) * 2, 0, 1);
+  const trouble = pressure * 0.11 + weakness * 0.045 + (misery * 0.055 + crisisLoad * 0.055) * vulnerability;
   return clamp(trouble * (1 + naked * 0.8) * (x.unrestActive ? 1.7 : 1), 0, 0.28);
 }
 
@@ -2826,6 +2833,9 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   if (pres.patch.snapElection) quartersToElection = Math.min(quartersToElection, pres.patch.snapElection);
   let term = s.term || 1;
   let electionResult = null;
+  // последние состоявшиеся выборы живут в экономике между голосованиями: карта
+  // округов показывает именно их, а electionResult обнуляется каждый квартал
+  let lastElection = s.lastElection || null;
   let mandate = s.mandate || null;
   let governmentLine = s.governmentLine || 'centrist';
   // авторитарный/тоталитарный режим не проигрывает выборы — только считает голоса,
@@ -2880,18 +2890,39 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       coup = Math.random() < coupChance;
     }
     electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (voteShare < 42 ? 'landslide' : 'opposition'));
+    /* Результат по округам считаем по состоянию НА ДЕНЬ ГОЛОСОВАНИЯ, то есть по
+       рискам и напряжённости, с которыми страна подошла к выборам (s), а не по
+       тем, что сложились уже после подсчёта. Карта хранит последние выборы
+       целиком: между голосованиями показывать нечего, кроме них. */
+    const byRegion = regionVoteShares(s, voteShare, riggedElection);
+    lastElection = {
+      q: quarterIndex, qLabel: quarterLabel(quarterIndex),
+      result: electionResult, rigged: !!riggedElection, coup,
+      // при честном подсчёте среднее по округам и есть национальный результат
+      // (см. поправку на среднее в regionVoteShares); при нарисованном —
+      // «официальная» цифра тоже выводится из того, что напечатали по округам
+      nationalShare: byRegion.reduce((a, b) => a + b.share, 0) / (byRegion.length || 1),
+      byRegion,
+    };
+    /* Карта и газета должны рассказывать об одном и том же голосовании одно и
+       то же: в новость добавляется самый верный и самый оппозиционный округ. */
+    const sortedRegions = [...byRegion].sort((a, b) => b.share - a.share);
+    const nameOf = (id) => (MAP_REGIONS.find((r) => r.id === id) || {}).name || id;
+    const geoLine = riggedElection
+      ? ` По округам результат тоже ровный: от ${fmt1(sortedRegions[sortedRegions.length - 1].share)}% до ${fmt1(sortedRegions[0].share)}%.`
+      : ` Лучший результат — ${nameOf(sortedRegions[0].id)} (${fmt1(sortedRegions[0].share)}%), худший — ${nameOf(sortedRegions[sortedRegions.length - 1].id)} (${fmt1(sortedRegions[sortedRegions.length - 1].share)}%).`;
     quartersToElection = CONFIG.election.cycle; term += 1;
     if (electionResult === 'incumbent') {
       nextQueue.push(makeImpulse('businessConfidence', 4, 'Преемственность политики после выборов', 'default', difficulty, 'other'));
       news.push(riggedElection
         ? mkNews('gov', 'ВЫБОРЫ БЕЗ НЕОЖИДАННОСТЕЙ: РЕЗУЛЬТАТ БЛИЗОК К ЕДИНОГЛАСНОМУ',
-          'Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, альтернативных кандидатов не зарегистрировано.', { priority: 9 })
+          `Официально — явка рекордная, поддержка почти абсолютная. Независимые наблюдатели на участки не допущены, альтернативных кандидатов не зарегистрировано.${geoLine}`, { priority: 9 })
         : coup
           ? mkNews('gov', 'ПЕРЕВОРОТ: ВЛАСТЬ НЕ ПРИЗНАЛА ПОРАЖЕНИЕ НА ВЫБОРАХ',
             `Рейтинг ${Math.round(approval)} из 100 не оставлял шансов на честную победу. Вместо передачи власти объявлено чрезвычайное положение: результаты аннулированы, парламент распущен, оппозиция объявлена вне закона.`,
             { priority: 10, chain: ['Разгромное поражение', 'Отказ признать результат', 'Чрезвычайное положение', 'Авторитарный поворот'] })
           : mkNews('gov', `ВЛАСТЬ СОХРАНЯЕТ МАНДАТ: ${fmt1(voteShare)}% ГОЛОСОВ`,
-            `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%.${promisesTotal ? ` Сдержано обещаний: ${promisesKept} из ${promisesTotal}.` : ''} Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
+            `Избиратель одобрил курс при росте ${fmt1(gdpGrowth)}%, инфляции ${fmt1(inflation)}% и безработице ${fmt1(unemployment)}%.${promisesTotal ? ` Сдержано обещаний: ${promisesKept} из ${promisesTotal}.` : ''}${geoLine} Преемственность экономической политики — это не только про идеи, это про то, что ожидания не приходится заново заякоривать.`, { priority: 9 }));
     } else {
       mandate = (unemployment - nairu > 1.2) ? 'jobs' : (inflation > infTarget + 2) ? 'prices' : (debtToGdp > 85) ? 'budget' : 'growth';
       governmentLine = mandate === 'jobs' ? 'populist' : mandate === 'budget' ? 'austerity' : 'technocrat';
@@ -2902,7 +2933,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       nextQueue.push(makeImpulse('capitalFlow', -14 * shock, 'Отток капитала после смены власти', 'default', difficulty));
       const MAND = { jobs: 'занятость любой ценой', prices: 'обуздать цены', budget: 'привести бюджет в порядок', growth: 'вернуть рост' };
       news.push(mkNews('gov', electionResult === 'landslide' ? 'СОКРУШИТЕЛЬНОЕ ПОРАЖЕНИЕ ВЛАСТИ НА ВЫБОРАХ' : 'ОППОЗИЦИЯ ПОБЕЖДАЕТ НА ВЫБОРАХ',
-        `За власть ${fmt1(voteShare)}% голосов при рейтинге ${Math.round(approval)} из 100.${promisesTotal ? ` Сдержано обещаний: ${promisesKept} из ${promisesTotal} — избиратель это посчитал.` : ''} Новое правительство приходит с мандатом: ${MAND[mandate]}. Экономический курс будет переписан, а пока он переписывается, инвестиции и капитал ждут в стороне.`,
+        `За власть ${fmt1(voteShare)}% голосов при рейтинге ${Math.round(approval)} из 100.${promisesTotal ? ` Сдержано обещаний: ${promisesKept} из ${promisesTotal} — избиратель это посчитал.` : ''}${geoLine} Новое правительство приходит с мандатом: ${MAND[mandate]}. Экономический курс будет переписан, а пока он переписывается, инвестиции и капитал ждут в стороне.`,
         { priority: 10, chain: ['Низкий рейтинг', 'Смена власти', 'Неопределённость ↑', 'Инвестиции ↓', 'Премия за риск ↑', 'Новый курс'] }));
     }
   }
@@ -3228,8 +3259,11 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
           nextQueue.push(makeImpulse('businessConfidence', -12, 'Военный переворот: правил больше нет', 'default', difficulty, 'other'));
           nextQueue.push(makeImpulse('riskPremium', 0.9, 'Военный переворот', 'default', difficulty));
           nextQueue.push(makeImpulse('capitalFlow', -22, 'Бегство капитала после переворота', 'default', difficulty));
+          // «отменил выборы» было правдой только для тоталитарного режима
+          // (noElections); авторитарный их фальсифицирует, но формально проводит —
+          // текст утверждал обратное для обоих режимов сразу
           news.push(mkNews('crisis', 'ВОЕННЫЙ ПЕРЕВОРОТ: АРМИЯ БЕРЁТ ВЛАСТЬ',
-            `Ночью войска заняли правительственные здания. Официальное объяснение — «восстановление порядка» при напряжённости ${Math.round(politicalTension)} из 100 и рейтинге власти ${Math.round(approval)}: защищать эту власть на улицу никто не вышел. Тот, кто отменил выборы, снимается с должности не голосованием.`,
+            `Ночью войска заняли правительственные здания. Официальное объяснение — «восстановление порядка» при напряжённости ${Math.round(politicalTension)} из 100 и рейтинге власти ${Math.round(approval)}: защищать эту власть на улицу никто не вышел. ${noElections ? 'Тот, кто отменил выборы' : 'Тот, кто превратил выборы в формальность'}, снимается с должности не голосованием.`,
             { priority: 10, chain: ['Напряжение в стране', 'Раскол в элитах', 'Выступление армии', 'Смена власти', 'Бегство капитала'] }));
         }
       }
@@ -3303,7 +3337,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     imfQuartersLeft, imfActive, imfStarted,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
-    approval, quartersToElection, term, mandate, governmentLine, electionResult, campaignActive: campaign,
+    approval, quartersToElection, term, mandate, governmentLine, electionResult, lastElection, campaignActive: campaign,
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive, powerLost, noElections,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
@@ -4231,6 +4265,125 @@ const POLITICAL_REGIME_INFO = {
   totalitarian: { label: 'Тоталитарный режим', color: 'rust', text: 'Полный государственный контроль над институтами и прессой; несогласие приравнено к угрозе государству.' },
 };
 
+/* Карта страны — семь округов правильным шестиугольным кластером (центр и
+   кольцо из шести): осевые координаты гарантируют, что фигуры точно
+   стыкуются без наложений и дыр, без ручной подгонки полигонов. Экономику
+   отдельно по округам не считаем — это отдельный, гораздо более рискованный
+   слой поверх движка (новое измерение состояния, новый баланс); вместо
+   этого «напряжение округа» — взвешенная сумма уже существующих индексов
+   риска (0..100) с весами по профилю сектора округа, так что карта реагирует
+   на настоящее состояние экономики, а не рисует отдельную придуманную цифру. */
+/* lean — структурная политическая склонность округа, а не реакция на экономику:
+   город исторически голосует против действующей власти, село — за неё, и так
+   почти везде, независимо от того, какой сейчас квартал. Реакция на экономику
+   добавляется сверху (см. regionVoteShares): округ, которому живётся хуже
+   среднего по стране, отворачивается от власти дополнительно. */
+const MAP_REGIONS = [
+  { id: 'capital', name: 'Столичный округ', short: 'Столица', sector: 'Управление', icon: 'capital', lean: -6,
+    weights: { politicalTension: 0.5, bankingRisk: 0.2, debtRisk: 0.3 } },
+  { id: 'port', name: 'Портовый край', short: 'Порт', sector: 'Внешняя торговля', icon: 'port', lean: -2,
+    weights: { currencyRisk: 0.55, recessionRisk: 0.25, debtRisk: 0.2 } },
+  { id: 'industry', name: 'Кузнечный пояс', short: 'Заводы', sector: 'Промышленность', icon: 'industry', lean: -3,
+    weights: { recessionRisk: 0.5, inflationRisk: 0.2, bankingRisk: 0.3 } },
+  { id: 'agri', name: 'Хлебородье', short: 'Хлебородье', sector: 'Сельское хозяйство', icon: 'agri', lean: 6,
+    weights: { inflationRisk: 0.6, recessionRisk: 0.2, currencyRisk: 0.2 } },
+  { id: 'finance', name: 'Биржевой округ', short: 'Биржа', sector: 'Финансы', icon: 'finance', lean: -1,
+    weights: { bankingRisk: 0.45, debtRisk: 0.35, currencyRisk: 0.2 } },
+  { id: 'mining', name: 'Шахтёрский край', short: 'Шахты', sector: 'Добыча и энергетика', icon: 'mining', lean: 2,
+    weights: { inflationRisk: 0.35, recessionRisk: 0.35, bankingRisk: 0.3 } },
+  { id: 'periphery', name: 'Тихая окраина', short: 'Окраина', sector: 'Услуги и село', icon: 'periphery', lean: 7,
+    weights: { politicalTension: 0.2, recessionRisk: 0.3, inflationRisk: 0.2, currencyRisk: 0.3 } },
+];
+function regionStress(region, economy) {
+  const fields = {
+    politicalTension: clamp(economy.politicalTension || 0, 0, 100),
+    bankingRisk: clamp(economy.bankingRisk || 0, 0, 100),
+    debtRisk: clamp(economy.debtRisk || 0, 0, 100),
+    currencyRisk: clamp(economy.currencyRisk || 0, 0, 100),
+    recessionRisk: clamp(economy.recessionRisk || 0, 0, 100),
+    inflationRisk: clamp(economy.inflationRisk || 0, 0, 100),
+  };
+  let sum = 0; let wsum = 0;
+  Object.entries(region.weights).forEach(([k, w]) => { sum += (fields[k] || 0) * w; wsum += w; });
+  return wsum > 0 ? clamp(sum / wsum, 0, 100) : 0;
+}
+const REGION_TEXT = {
+  capital: {
+    calm: (e) => `Аппарат работает штатно, рейтинг власти держится на ${Math.round(e.approval)} из 100 — округу нечего обсуждать сверх обычной повестки.`,
+    tense: (e) => `Напряжённость в стране ${Math.round(e.politicalTension)} из 100 ощущается здесь острее всего — ближе всего к власти, ближе всего к недовольству ею.`,
+    crisis: (e) => `Улицы столичного округа — первыми на очереди у любой перемены власти: рейтинг ${Math.round(e.approval)}, напряжённость ${Math.round(e.politicalTension)} из 100.`,
+  },
+  port: {
+    calm: () => 'Погрузка идёт по графику, курс не пугает импортёров — обычный квартал для внешней торговли.',
+    tense: (e) => `Курс ${fmt1(e.exchangeRate)} держит трейдеров в напряжении: контракты на следующий квартал подписывают с оговорками.`,
+    crisis: (e) => `Резервы истрачены, курс ${fmt1(e.exchangeRate)} — импортные контракты замораживают, а не подписывают.`,
+  },
+  industry: {
+    calm: () => 'Цеха загружены, заказы есть — обычный квартал для промышленного пояса.',
+    tense: (e) => `Безработица ${fmt1(e.unemployment)}% при норме ${fmt1(e.nairu)}% — часть цехов уже перешла на неполную неделю.`,
+    crisis: (e) => `Заказы встали, безработица ${fmt1(e.unemployment)}% — не статистика, а очередь у проходной.`,
+  },
+  agri: {
+    calm: () => 'Цены на урожай предсказуемы, кредит на посевную доступен — обычный квартал для хлебородья.',
+    tense: (e) => `Инфляция ${fmt1(e.inflation)}% съедает выручку быстрее, чем успевает вырасти цена на зерно.`,
+    crisis: (e) => `При инфляции ${fmt1(e.inflation)}% продавать урожай по контрактным ценам — значит себе в убыток; хозяйства придерживают запасы.`,
+  },
+  finance: {
+    calm: () => 'Спреды узкие, кредит доступен — обычный квартал для биржевого округа.',
+    tense: (e) => `Премия за риск ${fmt1(e.riskPremium)} п.п. — кредит дорожает быстрее, чем успевают пересчитать ставки по старым займам.`,
+    crisis: (e) => `Премия за риск ${fmt1(e.riskPremium)} п.п. и банковский риск ${Math.round(e.bankingRisk)} из 100 — межбанк торгуется нервно, лимиты друг на друга урезаны.`,
+  },
+  mining: {
+    calm: () => 'Добыча и энергогенерация идут ровным ходом — обычный квартал для шахтёрского края.',
+    tense: (e) => `Инфляция ${fmt1(e.inflation)}% при просевшем спросе — не лучшее время закладывать новую смену.`,
+    crisis: () => 'Часть добывающих мощностей встала на консервацию — дешевле переждать, чем работать в убыток.',
+  },
+  periphery: {
+    calm: () => 'Обычный квартал: ни ажиотажа, ни оттока — тихая окраина этим и живёт.',
+    tense: () => 'Отток молодёжи в столичный округ ускоряется — там хотя бы платят вовремя.',
+    crisis: (e) => `При напряжённости ${Math.round(e.politicalTension)} из 100 периферия голосует не бюллетенем, а переездом.`,
+  },
+};
+function regionBlurb(region, economy) {
+  const stress = regionStress(region, economy);
+  const tier = stress >= 65 ? 'crisis' : stress >= 35 ? 'tense' : 'calm';
+  const fn = (REGION_TEXT[region.id] || {})[tier];
+  return { stress, tier, text: fn ? fn(economy) : '' };
+}
+
+/* Результат выборов по округам. Отдельной «региональной явки» движок не
+   считает — доля голосов за действующую власть в округе выводится из уже
+   посчитанного общенационального результата тремя понятными слагаемыми:
+   структурная склонность округа (lean), то, насколько именно ему живётся
+   хуже или лучше среднего по стране (regionStress), и поправка, которая
+   возвращает среднее по округам ровно к национальному результату — иначе
+   сумма по карте не сходилась бы с цифрой в новостях.
+
+   Без Math.random(): один и тот же квартал всегда даёт одну и ту же карту.
+   При сфальсифицированных выборах (авторитаризм/тоталитаризм) рисуется не
+   этот расчёт, а «официальный результат» — почти ровный по всей стране,
+   потому что рисуют его в одном кабинете, а не считают по участкам. */
+function regionVoteShares(economy, nationalShare, rigged) {
+  if (rigged) {
+    // официальная цифра тем «единодушнее», чем жёстче режим
+    const official = economy.politicalRegime === 'totalitarian' ? 91 : 78;
+    return MAP_REGIONS.map((r, i) => ({
+      id: r.id,
+      // разброс в пределах пары процентов — чтобы таблица не выглядела
+      // напечатанной под копирку, но и не походила на настоящий подсчёт
+      share: clamp(official + ((i % 3) - 1) * 1.4, 0, 100),
+    }));
+  }
+  const stresses = MAP_REGIONS.map((r) => regionStress(r, economy));
+  const avgStress = stresses.reduce((a, b) => a + b, 0) / (stresses.length || 1);
+  const raw = MAP_REGIONS.map((r, i) => (r.lean || 0) + (avgStress - stresses[i]) * 0.35);
+  const mean = raw.reduce((a, b) => a + b, 0) / (raw.length || 1);
+  return MAP_REGIONS.map((r, i) => ({
+    id: r.id,
+    share: clamp(nationalShare + (raw[i] - mean), 0, 100),
+  }));
+}
+
 /* «От редакции» под властью, которая контролирует прессу: не искажаем цифры, которые видит
    игрок (report остаётся точным и используется отдельно), а полностью пересобираем тон
    газетной колонки из тех же показателей — эвфемизмы вместо признаний, победные реляции
@@ -4429,7 +4582,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, propagandaEditorial,
+  POLITICAL_REGIME_INFO, propagandaEditorial, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,

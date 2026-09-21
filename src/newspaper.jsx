@@ -9,7 +9,7 @@
 import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { clamp, pctFmt, fmt1, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText, POLITICAL_REGIME_INFO } from './lib/engine.js';
-import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal } from './MacroSimulator.jsx';
+import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal, useEscapeClose } from './MacroSimulator.jsx';
 
 /* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
    бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */
@@ -126,6 +126,7 @@ function TickerStat({ label, value, delta, pp }) {
 
 /* Газета: выпуск квартала, хроника страны и сюжетные линии */
 export function NewspaperModal({ news, history, quarterIndex, onClose, economy }) {
+  useEscapeClose(onClose);
   const [tab, setTab] = useState('issue');
   const [chronicleFilter, setChronicleFilter] = useState('all');
   const [chronicleSearch, setChronicleSearch] = useState('');
@@ -202,9 +203,13 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 60, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px 14px', overflowY: 'auto' }} onClick={onClose}>
       <div className="ems-fade-in" style={{ maxWidth: 940, width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <PaperBox>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${pp.paperRule}`, paddingBottom: 10 }}>
-            <div>
-              <div className="ems-serif" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1 }}>ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', rowGap: 8, justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `3px double ${pp.paperRule}`, paddingBottom: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              {/* На узком экране заголовок в две капслочных «стены» шириной под 30px
+                  не влезает рядом с печатью и крестиком закрытия: без flexWrap выше
+                  и уменьшения кегля здесь крестик просто выталкивало за край экрана —
+                  не пропадал из DOM, но становился недостижимым. */}
+              <div className="ems-serif" style={{ fontSize: 'clamp(20px, 7vw, 30px)', fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1.1 }}>ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
               <div className="ems-mono" style={{ fontSize: 10, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
                 ЕЖЕКВАРТАЛЬНОЕ ИЗДАНИЕ · {latest ? latest[1][0].qLabel : quarterLabel(quarterIndex)} · ВЫПУСК № {latest ? latest[0] : 0}
               </div>
@@ -226,7 +231,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
               <StateSeal regime={regimeId} size={46} title={(POLITICAL_REGIME_INFO[regimeId] || {}).label} />
               <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
             </div>
