@@ -273,13 +273,38 @@ const LEVERS = [
   { id: 'shareAdmin', group: 'fiscal', subgroup: 'budget', label: 'Госаппарат', suffix: '%', min: 2, max: 30, step: 1, type: 'level' },
 ];
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
+
+/* Часть ползунков не статична: рычаги в миллиардах растут вместе с экономикой
+   (10 млрд при ВВП 100 трлн — не тот же инструмент, что при ВВП 1 000 трлн),
+   а курсовой ориентир имеет смысл только вокруг текущего курса. Это правило
+   живёт здесь, а не в интерфейсе, потому что «что доступно игроку» обязаны
+   знать трое: сам интерфейс, боты и тесты. */
+export function scaleLever(l, e) {
+  if (l.scale === 'gdp') {
+    const k = Math.max(1, e.nominalGdp / CONFIG.initial.gdp);
+    const mag = Math.max(5, Math.round(l.max * k / 5) * 5);
+    // рычаг с исходным минимумом 0 (например, размещение облигаций — занять
+    // можно только неотрицательную сумму) должен и после масштабирования
+    // остаться неотрицательным, а не зеркалиться в минус вслед за симметричными
+    // рычагами вроде валютных интервенций
+    return { ...l, min: l.min < 0 ? -mag : 0, max: mag, step: Math.max(1, Math.round(mag / 25)) };
+  }
+  if (l.id === 'fxTarget') {
+    const cur = e.exchangeRate;
+    return { ...l, min: Math.round(cur * 0.6), max: Math.round(cur * 1.6), step: 0.5 };
+  }
+  return l;
+}
+
 /* Бот управляет теми же рычагами и в тех же пределах, что и игрок: ни шага
    мельче, ни значения за границей ползунка. Иначе со стороны игрока это
    выглядит как «Минфину можно то, чего нельзя мне» — и это была правда для
-   налогов, которые бот двигал долями десятой процента. */
-const clampToLever = (id, v) => {
-  const l = LEVER_BY_ID[id];
-  if (!l || !Number.isFinite(v)) return v;
+   налогов, которые бот двигал долями десятой процента. Экономика передаётся,
+   чтобы границы совпадали с теми, что игрок видит на экране именно сейчас. */
+const clampToLever = (id, v, e) => {
+  const base = LEVER_BY_ID[id];
+  if (!base || !Number.isFinite(v)) return v;
+  const l = e ? scaleLever(base, e) : base;
   return clamp(roundTo(v, l.step), l.min, l.max);
 };
 
@@ -455,8 +480,24 @@ function buildCbResult(s, P, vals) {
   })();
   return {
     quote,
-    decisions: { keyRate, reserveReq, capitalRequirement, moneySupplyOp, fxIntervention, liquidity, fxRegime,
-      emergency, inflationTarget: cbTarget, fxTarget: fxTargetCur },
+    /* Решения ЦБ приводятся к сетке и границам ползунков игрока по той же
+       причине, что и налоги Минфина: бот не имеет права на ход, которого нет
+       у человека. Так, макропруденциальный шаг «+0,5 × характер» давал
+       прагматику норматив капитала 10,8% при шаге ползунка 0,5.
+       fxTarget здесь не трогаем: это не ход ЦБ, а унаследованный ориентир —
+       после срыва фиксации он может оказаться далеко от рынка, и подтягивать
+       его к текущему курсу значило бы менять политику молча. */
+    decisions: {
+      keyRate: clampToLever('keyRate', keyRate, s),
+      reserveReq: clampToLever('reserveReq', reserveReq, s),
+      capitalRequirement: clampToLever('capitalRequirement', capitalRequirement, s),
+      moneySupplyOp: clampToLever('moneySupplyOp', moneySupplyOp, s),
+      fxIntervention: clampToLever('fxIntervention', fxIntervention, s),
+      liquidity: clampToLever('liquidity', liquidity, s),
+      fxRegime, emergency,
+      inflationTarget: clampToLever('inflationTarget', cbTarget, s),
+      fxTarget: fxTargetCur,
+    },
     detail: [
       `ставка ${keyRate.toFixed(2)}% (реальная ${fmtSigned1(keyRate - s.inflationExpectations)}% при нейтральной ${fmt1(s.rStar)}%)`,
       `цель по инфляции ${cbTarget.toFixed(2)}%, фактическая ${fmt1(s.inflation)}%`,
@@ -538,15 +579,15 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
   return buildMofResult(s, P, targetDeficit, {
-    incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate),
-    profitTaxRate: clampToLever('profitTaxRate', profitTaxRate),
-    vatRate: clampToLever('vatRate', vatRate),
-    exciseRate: clampToLever('exciseRate', exciseRate),
-    capitalTaxRate: clampToLever('capitalTaxRate', capitalTaxRate),
-    socialContribRate: clampToLever('socialContribRate', socialContribRate),
-    govSpending: clampToLever('govSpending', govSpending),
-    transfers: clampToLever('transfers', transfers),
-    govInvestment: clampToLever('govInvestment', govInvestment),
+    incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate, s),
+    profitTaxRate: clampToLever('profitTaxRate', profitTaxRate, s),
+    vatRate: clampToLever('vatRate', vatRate, s),
+    exciseRate: clampToLever('exciseRate', exciseRate, s),
+    capitalTaxRate: clampToLever('capitalTaxRate', capitalTaxRate, s),
+    socialContribRate: clampToLever('socialContribRate', socialContribRate, s),
+    govSpending: clampToLever('govSpending', govSpending, s),
+    transfers: clampToLever('transfers', transfers, s),
+    govInvestment: clampToLever('govInvestment', govInvestment, s),
     shareHealth, shareEducation, shareScience, shareDefense, shareAdmin });
 }
 
@@ -956,6 +997,40 @@ const PRES_GROUP_LABEL = { public: 'Публичная политика', reform
 /* Каждое действие: build(s, difficulty) -> { impulses, news, patch }.
    patch может нести snapElection / dissolve / restore / reform — то, что меняет
    не поток, а состояние, и обрабатывается в simulateQuarter отдельно. */
+/* =========================================================================================
+   ОДНО ПРАВИЛО НА ВЕСЬ РЕЖИМ
+
+   Игрок нашёл сразу три места, где игра забывала, при каком режиме идёт партия:
+   антикоррупционная кампания, о которой при тоталитаризме отчитывались как при
+   свободной прессе; «Рейтинг власти 62 ▼» в газете государства, где рейтингов
+   не печатают; кнопка досрочных выборов там, где выборы отменены. Чинить это
+   по одному месту значит гарантированно пропустить четвёртое.
+
+   Поэтому правило одно и живёт здесь. Всё, что игра показывает как публичное
+   слово — газетная новость, лента, вопрос на пресс-конференции, — проходит
+   через фильтр режима. Всё, что игрок видит как собственный инструмент
+   (панели кабинета, цепочка последствий новости, сводки ведомств), остаётся
+   честным: правительство знает свои настоящие цифры, даже когда не публикует их.
+
+   Техника простая: рядом с публичным текстом лежит его «жёсткий» вариант
+   (textHard / headlineHard / promptHard / quoteHard), и при подконтрольной
+   прессе берётся он. Тест regimeVoice в engine.test.js обходит все действия
+   президента и все вопросы прессы и валится, если новый текст при
+   тоталитаризме говорит словами свободной печати, — так четвёртое место
+   найдётся само.
+========================================================================================= */
+const pressControlled = (e) => e.politicalRegime === 'authoritarian' || e.politicalRegime === 'totalitarian';
+
+/* Публичный текст (новость) при подконтрольной прессе. Цепочку последствий
+   (chain) намеренно не трогаем: это не газета, а объяснение механики игроку. */
+function publicNews(spec, e) {
+  if (!spec || !pressControlled(e)) return spec;
+  const out = { ...spec };
+  if (spec.textHard) out.text = spec.textHard;
+  if (spec.headlineHard) out.headline = spec.headlineHard;
+  return out;
+}
+
 const PRESIDENT_ACTIONS = [
   { id: 'address', group: 'public', label: 'Обращение к нации', cost: 8, cooldown: 3,
     desc: 'Прямой эфир поверх всех ведомств. Работает тем хуже, чем сильнее слова расходятся с ценами в магазине и с безработицей: рейтинг покупается доверием, а доверие — единственное, что нельзя напечатать.',
@@ -1020,6 +1095,8 @@ const PRESIDENT_ACTIONS = [
       ],
       news: { cat: 'crisis', headline: 'ПЛОЩАДИ ОЧИЩЕНЫ: ВЛАСТЬ ВЫБРАЛА СИЛОВОЙ СЦЕНАРИЙ',
         text: 'Официально — «восстановление порядка». Улицы пусты, но опросы фиксируют не согласие, а страх: подавленное напряжение возвращается позже и сильнее.',
+        headlineHard: 'ПОРЯДОК В СТОЛИЦЕ ПОЛНОСТЬЮ ВОССТАНОВЛЕН',
+        textHard: 'Попытка дестабилизации пресечена, работа городских служб не прерывалась. Ведомства отмечают спокойствие и сознательность граждан; отдельные участники беспорядков устанавливаются.',
         priority: 9, chain: ['Протест', 'Разгон', 'Тишина сейчас', 'Напряжение вглубь', 'Отток капитала'] },
     }) },
   { id: 'military_parade', group: 'public', label: 'Военный парад', cost: 10, cooldown: 5,
@@ -1115,6 +1192,10 @@ const PRESIDENT_ACTIONS = [
       ],
       news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ВОЗВРАЩАЕТ ПОЛНОМОЧИЯ ПАРЛАМЕНТУ',
         text: 'Указ отменён тем же, кто его подписал. Оппозиция называет это вынужденным шагом, рынки — первым за долгое время сигналом, что правила ещё что-то значат.',
+        /* Указ подписан ещё при подконтрольной прессе: газета того же вечера
+           печатает не оттепель, а плановое решение руководства. Оттепель в
+           ней появится со следующего квартала — вместе со сменой режима. */
+        textHard: 'Работа представительного органа возобновляется по решению главы государства. Руководство подчёркивает: мера принята в плановом порядке, поскольку обстоятельства, потребовавшие особого управления, исчерпаны.',
         priority: 9, chain: ['Указ отменён', 'Парламент работает', 'Напряжение ↓', 'Премия за риск ↓'] },
     }) },
   /* ============================== ВОЙНА КАК РЕШЕНИЕ ==============================
@@ -1273,6 +1354,8 @@ const PRESIDENT_ACTIONS = [
       ],
       news: { cat: 'gov', headline: 'УКАЗ ПРЕЗИДЕНТА: ИНСТИТУТЫ ПЕРЕХОДЯТ ПОД ПРЯМОЕ УПРАВЛЕНИЕ',
         text: 'Суды, надзорные органы и оставшиеся независимые медиа подчинены администрации. Выборы отменены без назначения новой даты — сменить эту власть у урны больше нельзя. Отказать теперь почти невозможно и почти некому: цену такой управляемости страна платит инвестициями и людьми, которые умеют считать.',
+        headlineHard: 'УКАЗ ПРЕЗИДЕНТА: УПРАВЛЕНИЕ ГОСУДАРСТВОМ ПРИВЕДЕНО К ЕДИНОМУ ПОРЯДКУ',
+        textHard: 'Работа судов, надзорных органов и информационной сферы приведена к единому государственному стандарту. Проведение выборов отложено до нормализации обстановки. Собранность управления объявлена условием победы; отдельные хозяйственные структуры пересматривают инвестиционные планы.',
         priority: 10, chain: ['Указ президента', 'Институты подчинены', 'Тоталитарный режим', 'Бегство капитала', 'Производительность ↓'] } }) },
   { id: 'snap_election', group: 'power', label: 'Назначить досрочные выборы', cost: 28, cooldown: 16,
     // при тоталитаризме выборов не существует вовсе (noElections), назначать
@@ -1289,6 +1372,10 @@ const PRESIDENT_ACTIONS = [
       ],
       news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ НАЗНАЧАЕТ ДОСРОЧНЫЕ ВЫБОРЫ',
         text: `Голосование через 2 кв. вместо запланированных ${s.quartersToElection}. При рейтинге ${Math.round(s.approval)} из 100 это ставка: выиграть — значит получить полный срок заново, проиграть — уйти раньше, чем пришлось бы.`,
+        /* При тоталитаризме кнопки нет вовсе, но при авторитарном режиме выборы
+           формально проводятся — и подконтрольная газета не пишет о них как о
+           ставке с двумя исходами: исход в ней известен заранее. */
+        textHard: `Голосование состоится через 2 кв. вместо запланированных ${s.quartersToElection}. Руководство страны намерено досрочно получить подтверждение всенародной поддержки выбранного курса.`,
         priority: 9 },
     }) },
 
@@ -1326,6 +1413,7 @@ const PRESIDENT_ACTIONS = [
       ],
       news: { cat: 'gov', headline: 'ПРЕЗИДЕНТ ОБЪЯВЛЯЕТ ПОВЫШЕНИЕ ПЕНСИОННОГО ВОЗРАСТА',
         text: `Рейтинг власти ${Math.round(s.approval)} из 100 до объявления. Бюджет получает постоянную экономию, рынок труда — дополнительные руки, а власть — самый тяжёлый разговор со страной из всех возможных.`,
+        textHard: 'Пенсионный возраст повышается. Решение объясняется растущей продолжительностью жизни и заботой о будущих поколениях: бюджет получает постоянную экономию, экономика — дополнительные рабочие руки.',
         priority: 9, chain: ['Реформа объявлена', 'Рейтинг ↓↓', 'Напряжённость ↑', 'Рабочая сила ↑', 'Выплаты ↓'] },
     }) },
   { id: 'courts', group: 'reform', label: 'Судебная реформа', cost: 34, once: true,
@@ -1493,8 +1581,7 @@ function applyPresidentActions(s, ids, cooldowns, difficulty) {
        прямо противоречит режиму, у новости есть вариант textHard — им
        и заменяется текст при авторитаризме и тоталитаризме. */
     if (r.news) {
-      const unfree = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
-      newsSpecs.push(unfree && r.news.textHard ? { ...r.news, text: r.news.textHard } : r.news);
+      newsSpecs.push(publicNews(r.news, s));
     }
     Object.assign(patch, r.patch || {});
     if (r.patch && r.patch.reform) (patch.reforms = patch.reforms || []).push(r.patch.reform);
@@ -1881,6 +1968,7 @@ function evaluatePromise(promise, economy) {
 const PRESS_QUESTIONS = [
   { id: 'growth', shortLabel: 'ОБ ИТОГАХ КВАРТАЛА', when: () => true,
     prompt: 'Как вы оцениваете экономические результаты квартала?',
+    promptHard: 'Какими достижениями отмечен завершившийся квартал?',
     options: [
       { id: 'spin', label: 'Показать результаты в лучшем свете',
         quote: 'Мы видим уверенный прогресс по всем ключевым направлениям.',
@@ -1894,23 +1982,32 @@ const PRESS_QUESTIONS = [
         quote: 'Экономика — это сложная система, нельзя всё сводить к одной цифре.',
         build: (s, d) => ({ impulses: [makeImpulse('govTrust', -1.5, 'Пресс-конференция: уклончивый ответ', 'fast', d, 'other')] }) },
     ] },
-  { id: 'opposition', shortLabel: 'ОБ ОБВИНЕНИЯХ ОППОЗИЦИИ', when: () => true,
+  /* Оппозиции, которая задаёт вопросы через прессу, при авторитарном и тем
+     более тоталитарном режиме не существует. Вопрос при этом не исчезает —
+     он меняет источник: критику курса озвучивают «зарубежные издания», и
+     отвечать на неё приходится ровно теми же тремя способами. */
+  { id: 'opposition', shortLabel: 'ОБ ОБВИНЕНИЯХ ОППОЗИЦИИ', shortLabelHard: 'О ЗАРУБЕЖНЫХ ОЦЕНКАХ', when: () => true,
     prompt: 'Оппозиция называет вашу экономическую политику провальной — ваш ответ?',
+    promptHard: 'Зарубежные издания называют экономический курс страны провальным. Как вы прокомментируете эти публикации?',
     options: [
       { id: 'attack', label: 'Перейти в контратаку',
         quote: 'Оппозиция предлагает лишь популизм без единой цифры расчётов.',
+        quoteHard: 'За этими публикациями стоят те, кому наш курс мешает. Ни одной цифры расчётов они не предъявили.',
         build: (s, d) => ({ impulses: [makeImpulse('approvalPush', 2, 'Пресс-конференция: жёсткий ответ оппозиции', 'fast', d, 'other'),
           makeImpulse('tensionPush', 3, 'Пресс-конференция: обострение риторики', 'fast', d, 'other')] }) },
       { id: 'engage', label: 'Признать часть критики обоснованной',
         quote: 'В критике есть здравое зерно, и мы готовы это обсуждать.',
+        quoteHard: 'Даже в недружественных оценках встречается полезное, и мы это учитываем в работе.',
         build: (s, d) => ({ impulses: [makeImpulse('govTrust', 2.5, 'Пресс-конференция: готовность к диалогу', 'fast', d, 'other'),
           makeImpulse('tensionPush', -2, 'Пресс-конференция: снижение накала', 'fast', d, 'other')] }) },
       { id: 'ignore', label: 'Проигнорировать вопрос',
         quote: 'Мы сосредоточены на работе, а не на политических дебатах.',
+        quoteHard: 'Мы сосредоточены на работе, а не на чужих публикациях.',
         build: (s, d) => ({ impulses: [makeImpulse('approvalPush', -1, 'Пресс-конференция: отказ отвечать критикам', 'fast', d, 'other')] }) },
     ] },
   { id: 'inflation', shortLabel: 'ОБ ИНФЛЯЦИИ', when: (s) => s.inflation > (s.inflationTarget || 4) + 2,
     prompt: 'Цены снова растут быстрее обещанного — как вы это объясните?',
+    promptHard: 'Отдельные группы товаров подорожали заметнее прочих. Что делается для сдерживания цен?',
     options: [
       { id: 'blame_external', label: 'Списать на внешние факторы',
         quote: 'Инфляция ускоряется во всём мире, мы не исключение.',
@@ -1927,6 +2024,7 @@ const PRESS_QUESTIONS = [
     ] },
   { id: 'unemployment', shortLabel: 'О БЕЗРАБОТИЦЕ', when: (s) => s.unemployment > s.nairu + 1.2,
     prompt: 'Люди теряют работу — что вы скажете тем, кто остался без дохода?',
+    promptHard: 'Часть предприятий проводит оптимизацию штата. Какая поддержка предусмотрена для работников?',
     options: [
       { id: 'sympathy', label: 'Выразить сочувствие и пообещать поддержку',
         quote: 'Мы разделяем эту боль и расширяем программы поддержки.',
@@ -1943,6 +2041,7 @@ const PRESS_QUESTIONS = [
     ] },
   { id: 'debt', shortLabel: 'О ГОСДОЛГЕ', when: (s) => s.debtToGdp > 70,
     prompt: 'Госдолг продолжает расти — вас не пугает эта цифра?',
+    promptHard: 'Показатель государственного долга растёт. Насколько устойчива финансовая система государства?',
     options: [
       { id: 'reassure', label: 'Заверить, что долг под контролем',
         quote: 'Долговая нагрузка полностью управляема, поводов для паники нет.',
@@ -1961,10 +2060,22 @@ const PRESS_QUESTIONS = [
 // без Math.random(): один и тот же (economy, quarterIndex) всегда даёт один и
 // тот же вопрос, поэтому клиентское превью перед отправкой решений и расчёт
 // внутри simulateQuarter не могут разойтись
+/* Вопрос уже приходит отфильтрованным по режиму: pickPressQuestion получает
+   состояние, поэтому и движок (он публикует цитату ответа новостью), и
+   интерфейс (он рисует вопрос) видят одну и ту же формулировку — без
+   отдельной проверки режима на каждой стороне. Идентификаторы вариантов
+   ответа не меняются: механика и эффекты остаются те же, меняются слова. */
 function pickPressQuestion(s, quarterIndex) {
   const eligible = PRESS_QUESTIONS.filter((q) => !q.when || q.when(s));
   if (!eligible.length) return null;
-  return eligible[quarterIndex % eligible.length];
+  const q = eligible[quarterIndex % eligible.length];
+  if (!pressControlled(s)) return q;
+  return {
+    ...q,
+    shortLabel: q.shortLabelHard || q.shortLabel,
+    prompt: q.promptHard || q.prompt,
+    options: q.options.map((o) => (o.quoteHard ? { ...o, quote: o.quoteHard } : o)),
+  };
 }
 
 /* =========================================================================================
@@ -2603,7 +2714,16 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const pppAnchor = s.inflationExpectations - worldInflation;
   const rawPressure = pppAnchor + C.fxBop * (-bop / Math.max(1, s.nominalGdp) * 100) - C.fxCarry * carry;
   const regimeDamp = decisions.fxRegime === 'peg' ? 0.08 : decisions.fxRegime === 'managed' ? 0.45 : 1.0;
-  const fxTarget = decisions.fxRegime === 'free' ? s.exchangeRate : clamp(decisions.fxTarget || s.exchangeRate, 20, 1200);
+  /* При свободном курсе ориентир не задаёт никто: движок держит его равным
+     рынку, чтобы при переходе на управляемый режим ползунок стартовал с
+     осмысленного значения. Округление до целого — потому что ползунок игрока
+     ходит по единице: иначе бот-ЦБ следующего квартала возвращал бы в решениях
+     курс вроде 100.38, которого игрок выставить не может (нашёл стенд длинных
+     партий). Сам диапазон при этом шире ползунка: рынок имеет право уйти
+     дальше, чем защищает интервенциями любой центробанк. */
+  const fxTarget = decisions.fxRegime === 'free'
+    ? roundTo(clamp(s.exchangeRate, 20, 1200), 1)
+    : clamp(decisions.fxTarget || s.exchangeRate, 20, 1200);
   const marketDepr = rawPressure + gauss(NB.exchangeRate * nMult);           // что сделал бы свободный курс
   const pullToTarget = clamp((fxTarget / Math.max(1, s.exchangeRate) - 1) * 100 * 2, -35, 35);
   const desiredDepr = decisions.fxRegime === 'free' ? marketDepr
@@ -4118,10 +4238,18 @@ function generateNews(prev, s, decisions, quarterIndex, botAction, cd, extraActi
       q: '«Контракты подписаны, деньги отозваны — объясняйте это подрядчикам сами»',
       who: 'Финансовый директор госпредприятия',
       t: () => `Секвестр урезал расходы на ${rf1((1 - s.sequesterFactor) * 100)}%. Когда рынок отказывается финансировать дефицит, выбор делает уже не правительство.` },
-    { id: 'journalist_elect', p: 6, when: () => s.quartersToElection <= 3,
+    /* Голос обозревателя перед выборами. Двойная проверка режима: при
+       тоталитаризме счётчик до выборов замирает на своём последнем значении
+       (выборов больше нет), и без первого условия этот голос звучал бы в
+       стране без урн бесконечно — «До выборов 3 кв.» кряду десятки лет.
+       А подконтрольная пресса, даже когда выборы формально проводятся, не
+       печатает рейтинг власти — ровно то, на что жаловался игрок. */
+    { id: 'journalist_elect', p: 6, when: () => !s.noElections && s.quartersToElection <= 3,
       q: '«Обещаний в этом квартале больше, чем в предыдущие два года»',
       who: 'Политический обозреватель',
-      t: () => `До выборов ${s.quartersToElection} кв., рейтинг власти ${Math.round(s.approval)}. Предвыборные расходы всегда оплачиваются после выборов — обычно ставкой.` },
+      t: () => (pressControlled(s)
+        ? `До голосования ${s.quartersToElection} кв. Предвыборные расходы государства всё равно оплачиваются после голосования — обычно ставкой.`
+        : `До выборов ${s.quartersToElection} кв., рейтинг власти ${Math.round(s.approval)}. Предвыборные расходы всегда оплачиваются после выборов — обычно ставкой.`) },
     { id: 'mayor_fund', p: 4, when: () => (s.fundPctGdp || 0) > 4,
       q: '«Впервые за долгое время у страны есть подушка, а не только долги»',
       who: 'Экономический обозреватель',

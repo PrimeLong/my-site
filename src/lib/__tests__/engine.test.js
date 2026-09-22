@@ -8,6 +8,7 @@ import {
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
+  presActionAvailable, applyPresidentActions,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
   fmtMoney, fmtIndex,
@@ -1613,6 +1614,88 @@ describe('жалобы игрока: рынок, бот и сюжеты', () => 
       const lever = LEVERS.find((l) => l.id === id);
       expect(res.decisions[id]).toBeLessThanOrEqual(lever.max);
       expect(res.decisions[id]).toBeGreaterThanOrEqual(lever.min);
+    });
+  });
+});
+
+
+/* ============================================================================
+   ГОЛОС РЕЖИМА
+
+   Игрок нашёл три места, где игра забывала про режим: отчёт об
+   антикоррупционной кампании, «Рейтинг власти 62 ▼» в газете и кнопка
+   досрочных выборов там, где выборов нет. Это не три опечатки, а одна
+   отсутствующая проверка, поэтому и тест здесь один: он обходит весь
+   публичный текст — новости всех действий президента и все вопросы
+   пресс-конференции — и валится, если при подконтрольной прессе в нём
+   встречаются слова, которых в такой газете быть не может.
+
+   Проверяется именно публичное слово. Панели кабинета, цепочки последствий
+   и сводки ведомств остаются честными: правительство знает свой настоящий
+   рейтинг, даже когда страна его не читает.
+============================================================================ */
+describe('голос режима: подконтрольная пресса говорит иначе', () => {
+  /* Словарь свободной печати. Не «плохие слова», а признаки взгляда со
+     стороны: чужой рейтинг власти, оппозиция, независимые институты, опросы
+     про настроения, протест как протест, признание раскола наверху. Именно
+     на таких оборотах игрок и поймал игру. */
+  const FREE_PRESS = new RegExp([
+    'рейтинг власти', 'при рейтинге',
+    'оппозици',
+    'независим(ые|ых|ая|ой) (медиа|СМИ|суд|пресс)',
+    'профсоюзы объявляют протест',
+    'раскол (в )?элит',
+    'опросы (фиксируют|показывают)',
+    'объединяются против власти',
+    'сменить эту власть',
+  ].join('|'), 'i');
+  const unfreeStates = [
+    { label: 'авторитарный режим', s: { politicalRegime: 'authoritarian', parliamentDissolved: true } },
+    { label: 'тоталитарный режим', s: { politicalRegime: 'totalitarian', parliamentDissolved: true, noElections: true } },
+  ];
+
+  unfreeStates.forEach(({ label, s: patch }) => {
+    it(`${label}: ни одна новость действия президента не говорит словами свободной прессы`, () => {
+      const base = { ...makeInitialEconomy(), politicalCapital: 100, politicalTension: 60,
+        unrestActive: true, warQuartersLeft: 8, warByChoice: true, quartersToElection: 12, ...patch };
+      PRESIDENT_ACTIONS.forEach((a) => {
+        if (!presActionAvailable(a, base, {})) return;
+        const r = applyPresidentActions(base, [a.id], {}, 'medium');
+        r.newsSpecs.forEach((n) => {
+          const printed = `${n.headline} ${n.text}`;
+          const bad = FREE_PRESS.exec(printed);
+          expect(bad, `${a.id}: газета при режиме «${label}» печатает «${bad && bad[0]}» — нужен вариант textHard/headlineHard`).toBeNull();
+        });
+      });
+    });
+
+    it(`${label}: вопросы пресс-конференции не задаёт свободная пресса`, () => {
+      const base = { ...makeInitialEconomy(), inflation: 12, unemployment: 14, nairu: 5, debtToGdp: 95, ...patch };
+      PRESS_QUESTIONS.forEach((_, i) => {
+        const q = pickPressQuestion(base, i);
+        if (!q) return;
+        const printed = `${q.shortLabel} ${q.prompt} ${q.options.map((o) => o.quote).join(' ')}`;
+        const bad = FREE_PRESS.exec(printed);
+        expect(bad, `вопрос «${q.id}» при режиме «${label}» звучит как «${bad && bad[0]}» — нужен promptHard/quoteHard`).toBeNull();
+      });
+    });
+  });
+
+  it('при свободной прессе остаются исходные, честные формулировки', () => {
+    const free = { ...makeInitialEconomy(), politicalRegime: 'democracy', politicalCapital: 100, politicalTension: 60, unrestActive: true };
+    const q = pickPressQuestion(free, 1);
+    expect(q.prompt).toMatch(/Оппозиция/);
+    const r = applyPresidentActions(free, ['crackdown'], {}, 'medium');
+    expect(r.newsSpecs[0].text).toMatch(/опросы фиксируют не согласие, а страх/);
+  });
+
+  it('варианты ответа на пресс-конференции не меняются вместе со словами', () => {
+    const free = { ...makeInitialEconomy(), politicalRegime: 'democracy' };
+    const hard = { ...makeInitialEconomy(), politicalRegime: 'totalitarian' };
+    PRESS_QUESTIONS.forEach((_, i) => {
+      const a = pickPressQuestion(free, i); const b = pickPressQuestion(hard, i);
+      expect(b.id).toBe(a.id);
+      expect(b.options.map((o) => o.id)).toEqual(a.options.map((o) => o.id));
     });
   });
 });
