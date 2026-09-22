@@ -142,6 +142,79 @@ function playGame({ seed, scenario, difficulty, cbPersona, mofPersona, presPerso
   });
 }
 
+/* Отдельная партия при несвободном режиме: сюда попадают не только новости
+   действий президента (их проверяет engine.test.js), но и всё, что газета
+   печатает сама — голоса улицы, колонка «от редакции», сюжетные линии,
+   комментарии к событиям. Проверка именно длинной партией не случайна: так и
+   нашёлся голос обозревателя «До выборов 3 кв., рейтинг власти 0», который в
+   стране без выборов повторялся из квартала в квартал, потому что счётчик до
+   выборов там навсегда замер на последнем значении. */
+function playUnfree({ seed, regime, presPersona, scenario, quarters, onNews }) {
+  withSeed(seed, () => {
+    let economy = { ...makeInitialEconomy(scenario), politicalRegime: regime,
+      parliamentDissolved: true, noElections: regime === 'totalitarian' };
+    let decisions = defaultDecisions(economy);
+    let pendingImpulses = []; let eventCooldowns = {}; let stories = [];
+    for (let q = 1; q <= quarters; q++) {
+      const before = economy.politicalRegime;
+      const cb = botCentralBank(economy, 'pragmatic', 'medium');
+      const mof = botFinanceMinistry(economy, 'populist', 'medium');
+      const plan = botPresident(economy, presPersona, eventCooldowns, 'medium');
+      const r = simulateQuarter({
+        economy, decisions: { ...decisions, ...cb.decisions, ...mof.decisions,
+          presidentActive: true, presidentActions: (plan && plan.actions) || [] },
+        pendingImpulses, eventCooldowns, difficulty: 'medium', quarterIndex: q, stories,
+        botAction: cb, botActions: [mof],
+      });
+      /* Квартал, в котором режим сменился, не проверяем: новость о падении
+         режима пишет уже освобождённая пресса, и это правильно. */
+      if (before === r.economy.politicalRegime && (before === 'authoritarian' || before === 'totalitarian')) {
+        (r.newsEntries || []).forEach((n) => onNews(n, { q, regime: before, economy: r.economy }));
+      }
+      economy = r.economy; pendingImpulses = r.pendingImpulses;
+      eventCooldowns = r.eventCooldowns; stories = r.stories || stories;
+      decisions = defaultDecisions(economy, decisions);
+    }
+  });
+}
+
+describe('голос режима в длинной партии', () => {
+  /* Тот же словарь свободной печати, что и в engine.test.js: признаки взгляда
+     со стороны — чужой рейтинг власти, оппозиция, независимые институты,
+     опросы про настроения, признание раскола наверху. */
+  const FREE_PRESS = new RegExp([
+    'рейтинг власти', 'при рейтинге', 'оппозици',
+    'независим(ые|ых|ая|ой) (медиа|СМИ|суд|пресс)',
+    'профсоюзы объявляют протест', 'раскол (в )?элит',
+    'опросы (фиксируют|показывают)', 'объединяются против власти',
+    'сменить эту власть', 'свободн(ые|ых) выбор',
+  ].join('|'), 'i');
+
+  ['authoritarian', 'totalitarian'].forEach((regime) => {
+    it(`${regime}: за 60 кварталов газета ни разу не заговорила языком свободной прессы`, () => {
+      ['strongman', 'populist', 'reformer'].forEach((pres, i) => {
+        playUnfree({ seed: 900 + i, regime, presPersona: pres, scenario: 'sandbox', quarters: 60,
+          onNews: (n, ctx) => {
+            const printed = `${n.headline} ${n.text}`;
+            const bad = FREE_PRESS.exec(printed);
+            if (bad) throw new Error(`${regime}/${pres} q${ctx.q}: «${bad[0]}» в тексте — ${n.headline}`);
+          } });
+      });
+    });
+  });
+
+  it('там, где выборы отменены, газета о них не пишет', () => {
+    playUnfree({ seed: 951, regime: 'totalitarian', presPersona: 'strongman', scenario: 'sandbox', quarters: 60,
+      onNews: (n, ctx) => {
+        if (!ctx.economy.noElections) return;
+        const printed = `${n.headline} ${n.text}`;
+        if (/до выборов|предвыборн|у урны|избирател/i.test(printed)) {
+          throw new Error(`q${ctx.q}: в стране без выборов напечатано «${printed.slice(0, 120)}»`);
+        }
+      } });
+  });
+});
+
 describe('длинная партия: 120 кварталов не ломают экономику', () => {
   const seeds = [1, 7, 20260922];
   SCENARIOS.forEach((sc) => {
