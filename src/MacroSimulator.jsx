@@ -21,6 +21,7 @@ import {
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  scaleLever,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -4984,23 +4985,12 @@ const SUMMARY_TABS = {
 const tabsForBotRole = (botRole) => (botRole === 'both' ? [...INDICATOR_TABS, SUMMARY_TABS.central_bank, SUMMARY_TABS.ministry_finance]
   : botRole && SUMMARY_TABS[botRole] ? [...INDICATOR_TABS, SUMMARY_TABS[botRole]] : INDICATOR_TABS);
 
-/* Рычаги в миллиардах масштабируются вместе с экономикой, курсовой ориентир — вокруг текущего курса */
-export function scaleLever(l, e) {
-  if (l.scale === 'gdp') {
-    const k = Math.max(1, e.nominalGdp / CONFIG.initial.gdp);
-    const mag = Math.max(5, Math.round(l.max * k / 5) * 5);
-    // рычаг с исходным минимумом 0 (например, размещение облигаций — занять
-    // можно только неотрицательную сумму) должен и после масштабирования
-    // остаться неотрицательным, а не зеркалиться в минус вслед за симметричными
-    // рычагами вроде валютных интервенций
-    return { ...l, min: l.min < 0 ? -mag : 0, max: mag, step: Math.max(1, Math.round(mag / 25)) };
-  }
-  if (l.id === 'fxTarget') {
-    const cur = e.exchangeRate;
-    return { ...l, min: Math.round(cur * 0.6), max: Math.round(cur * 1.6), step: 0.5 };
-  }
-  return l;
-}
+/* scaleLever («какой ползунок на самом деле доступен игроку при этой экономике»)
+   переехал в движок: по тем же границам теперь ходят и боты, и стенд длинных
+   партий. Пока правило жило здесь, бот-ЦБ мог выдать норматив капитала 10,8%
+   при шаге ползунка 0,5 — интерфейс о боте не знал, а бот не знал о ползунке.
+   Реэкспорт оставлен, чтобы обучение и панели импортировали как раньше. */
+export { scaleLever };
 
 
 /* ============================ ТОРГОВЫЙ ТЕРМИНАЛ ============================ */

@@ -273,13 +273,38 @@ const LEVERS = [
   { id: 'shareAdmin', group: 'fiscal', subgroup: 'budget', label: 'Госаппарат', suffix: '%', min: 2, max: 30, step: 1, type: 'level' },
 ];
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
+
+/* Часть ползунков не статична: рычаги в миллиардах растут вместе с экономикой
+   (10 млрд при ВВП 100 трлн — не тот же инструмент, что при ВВП 1 000 трлн),
+   а курсовой ориентир имеет смысл только вокруг текущего курса. Это правило
+   живёт здесь, а не в интерфейсе, потому что «что доступно игроку» обязаны
+   знать трое: сам интерфейс, боты и тесты. */
+export function scaleLever(l, e) {
+  if (l.scale === 'gdp') {
+    const k = Math.max(1, e.nominalGdp / CONFIG.initial.gdp);
+    const mag = Math.max(5, Math.round(l.max * k / 5) * 5);
+    // рычаг с исходным минимумом 0 (например, размещение облигаций — занять
+    // можно только неотрицательную сумму) должен и после масштабирования
+    // остаться неотрицательным, а не зеркалиться в минус вслед за симметричными
+    // рычагами вроде валютных интервенций
+    return { ...l, min: l.min < 0 ? -mag : 0, max: mag, step: Math.max(1, Math.round(mag / 25)) };
+  }
+  if (l.id === 'fxTarget') {
+    const cur = e.exchangeRate;
+    return { ...l, min: Math.round(cur * 0.6), max: Math.round(cur * 1.6), step: 0.5 };
+  }
+  return l;
+}
+
 /* Бот управляет теми же рычагами и в тех же пределах, что и игрок: ни шага
    мельче, ни значения за границей ползунка. Иначе со стороны игрока это
    выглядит как «Минфину можно то, чего нельзя мне» — и это была правда для
-   налогов, которые бот двигал долями десятой процента. */
-const clampToLever = (id, v) => {
-  const l = LEVER_BY_ID[id];
-  if (!l || !Number.isFinite(v)) return v;
+   налогов, которые бот двигал долями десятой процента. Экономика передаётся,
+   чтобы границы совпадали с теми, что игрок видит на экране именно сейчас. */
+const clampToLever = (id, v, e) => {
+  const base = LEVER_BY_ID[id];
+  if (!base || !Number.isFinite(v)) return v;
+  const l = e ? scaleLever(base, e) : base;
   return clamp(roundTo(v, l.step), l.min, l.max);
 };
 
@@ -455,8 +480,24 @@ function buildCbResult(s, P, vals) {
   })();
   return {
     quote,
-    decisions: { keyRate, reserveReq, capitalRequirement, moneySupplyOp, fxIntervention, liquidity, fxRegime,
-      emergency, inflationTarget: cbTarget, fxTarget: fxTargetCur },
+    /* Решения ЦБ приводятся к сетке и границам ползунков игрока по той же
+       причине, что и налоги Минфина: бот не имеет права на ход, которого нет
+       у человека. Так, макропруденциальный шаг «+0,5 × характер» давал
+       прагматику норматив капитала 10,8% при шаге ползунка 0,5.
+       fxTarget здесь не трогаем: это не ход ЦБ, а унаследованный ориентир —
+       после срыва фиксации он может оказаться далеко от рынка, и подтягивать
+       его к текущему курсу значило бы менять политику молча. */
+    decisions: {
+      keyRate: clampToLever('keyRate', keyRate, s),
+      reserveReq: clampToLever('reserveReq', reserveReq, s),
+      capitalRequirement: clampToLever('capitalRequirement', capitalRequirement, s),
+      moneySupplyOp: clampToLever('moneySupplyOp', moneySupplyOp, s),
+      fxIntervention: clampToLever('fxIntervention', fxIntervention, s),
+      liquidity: clampToLever('liquidity', liquidity, s),
+      fxRegime, emergency,
+      inflationTarget: clampToLever('inflationTarget', cbTarget, s),
+      fxTarget: fxTargetCur,
+    },
     detail: [
       `ставка ${keyRate.toFixed(2)}% (реальная ${fmtSigned1(keyRate - s.inflationExpectations)}% при нейтральной ${fmt1(s.rStar)}%)`,
       `цель по инфляции ${cbTarget.toFixed(2)}%, фактическая ${fmt1(s.inflation)}%`,
@@ -538,15 +579,15 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
   return buildMofResult(s, P, targetDeficit, {
-    incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate),
-    profitTaxRate: clampToLever('profitTaxRate', profitTaxRate),
-    vatRate: clampToLever('vatRate', vatRate),
-    exciseRate: clampToLever('exciseRate', exciseRate),
-    capitalTaxRate: clampToLever('capitalTaxRate', capitalTaxRate),
-    socialContribRate: clampToLever('socialContribRate', socialContribRate),
-    govSpending: clampToLever('govSpending', govSpending),
-    transfers: clampToLever('transfers', transfers),
-    govInvestment: clampToLever('govInvestment', govInvestment),
+    incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate, s),
+    profitTaxRate: clampToLever('profitTaxRate', profitTaxRate, s),
+    vatRate: clampToLever('vatRate', vatRate, s),
+    exciseRate: clampToLever('exciseRate', exciseRate, s),
+    capitalTaxRate: clampToLever('capitalTaxRate', capitalTaxRate, s),
+    socialContribRate: clampToLever('socialContribRate', socialContribRate, s),
+    govSpending: clampToLever('govSpending', govSpending, s),
+    transfers: clampToLever('transfers', transfers, s),
+    govInvestment: clampToLever('govInvestment', govInvestment, s),
     shareHealth, shareEducation, shareScience, shareDefense, shareAdmin });
 }
 
@@ -2603,7 +2644,16 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const pppAnchor = s.inflationExpectations - worldInflation;
   const rawPressure = pppAnchor + C.fxBop * (-bop / Math.max(1, s.nominalGdp) * 100) - C.fxCarry * carry;
   const regimeDamp = decisions.fxRegime === 'peg' ? 0.08 : decisions.fxRegime === 'managed' ? 0.45 : 1.0;
-  const fxTarget = decisions.fxRegime === 'free' ? s.exchangeRate : clamp(decisions.fxTarget || s.exchangeRate, 20, 1200);
+  /* При свободном курсе ориентир не задаёт никто: движок держит его равным
+     рынку, чтобы при переходе на управляемый режим ползунок стартовал с
+     осмысленного значения. Округление до целого — потому что ползунок игрока
+     ходит по единице: иначе бот-ЦБ следующего квартала возвращал бы в решениях
+     курс вроде 100.38, которого игрок выставить не может (нашёл стенд длинных
+     партий). Сам диапазон при этом шире ползунка: рынок имеет право уйти
+     дальше, чем защищает интервенциями любой центробанк. */
+  const fxTarget = decisions.fxRegime === 'free'
+    ? roundTo(clamp(s.exchangeRate, 20, 1200), 1)
+    : clamp(decisions.fxTarget || s.exchangeRate, 20, 1200);
   const marketDepr = rawPressure + gauss(NB.exchangeRate * nMult);           // что сделал бы свободный курс
   const pullToTarget = clamp((fxTarget / Math.max(1, s.exchangeRate) - 1) * 100 * 2, -35, 35);
   const desiredDepr = decisions.fxRegime === 'free' ? marketDepr
