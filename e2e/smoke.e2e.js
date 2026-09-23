@@ -181,6 +181,21 @@ test('карта: соседние страны на месте, Минфин з
   expect(errors).toEqual([]);
 });
 
+test('общество: после квартала видны группы, коалиция и их лидеры', async ({ page, isMobile }) => {
+  const { errors } = await openApp(page);
+  await startSoloGame(page, 'Глава Министерства финансов');
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  await page.getByRole('button', { name: 'Общество', exact: true }).click();
+  await expect(page.getByText(/^Коалиция власти:/)).toBeVisible();
+  for (const name of ['Пенсионеры', 'Силовики', 'Молодёжь']) await expect(page.getByLabel(new RegExp(`^${name}: \\d+ из 100`))).toBeVisible();
+  await expect(page.getByText('Галина Воронцова,', { exact: false })).toBeVisible();
+  await page.screenshot({ path: `test-results/society-${isMobile ? 'phone' : 'desktop'}.png`, fullPage: true });
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
 test('президент ведёт наступление на карте: цель, штурм, продвижение', async ({ page, isMobile }) => {
   test.skip(isMobile, 'сценарий проверяется на ширине компьютера');
   const { errors } = await openApp(page);

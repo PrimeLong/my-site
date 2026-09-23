@@ -1,0 +1,129 @@
+/* Общество: на ком держится власть. Рейтинг — взвешенная сумма поддержки семи
+   социальных групп (см. SOCIAL_GROUPS в движке); здесь видно, кто в коалиции,
+   кто колеблется, кого уже потеряли, что каждую группу двигает сейчас и какие
+   решения она помнит. Грузится лениво, как и карта. */
+import { Briefcase, HardHat, Heart, MapPin, Megaphone, Shield, Stethoscope, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1 } from './lib/engine.js';
+import { COLOR } from './MacroSimulator.jsx';
+
+const GROUP_ICON = { pensioners: Heart, workers: HardHat, business: Briefcase, siloviki: Shield, public: Stethoscope, youth: Megaphone, regions: MapPin };
+const statusColor = (v) => (v >= 50 ? COLOR.teal : v >= 35 ? COLOR.gold : COLOR.rust);
+const signed = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt1(Math.abs(v))}`;
+
+export function SocietyView({ economy }) {
+  const base = Number.isFinite(economy.approval) ? economy.approval : 50;
+  // до первого квартала групп ещё нет: все стартуют с общего рейтинга
+  const support = economy.groupSupport || Object.fromEntries(SOCIAL_GROUPS.map((g) => [g.id, base]));
+  const prev = economy.groupSupportPrev || null;
+  const coalition = coalitionOf(support);
+  const lost = SOCIAL_GROUPS.filter((g) => support[g.id] < 35);
+  const unfree = economy.politicalRegime === 'authoritarian' || economy.politicalRegime === 'totalitarian';
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="ems-panel" style={{ padding: 16 }} aria-label="Коалиция власти">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6, flexWrap: 'wrap' }}>
+          <Users size={17} color={COLOR.gold} />
+          <span className="ems-serif" style={{ fontSize: 16 }}>Общество: на ком держится власть</span>
+          <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.muted }}>рейтинг {Math.round(base)} из 100</span>
+        </div>
+        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.55, marginBottom: 12 }}>
+          Рейтинг — взвешенная сумма поддержки семи групп. Любое решение выигрывает у одних и проигрывает у других,
+          а группы помнят решения кварталами. Выборы, протесты и перевороты вырастают из того, кого вы потеряли.
+          {unfree && ' При несвободном режиме это закрытые данные: публичные опросы о них молчат.'}
+        </div>
+        {/* полоса коалиции: ширина — вес группы, цвет — её отношение к власти */}
+        <div style={{ display: 'flex', height: 22, borderRadius: 4, overflow: 'hidden', border: `1px solid ${COLOR.border}`, marginBottom: 6 }}>
+          {SOCIAL_GROUPS.map((g) => (
+            <div key={g.id} title={`${g.name}: ${Math.round(support[g.id])} — ${groupStatus(support[g.id])}`}
+              style={{ width: `${g.weight * 100}%`, background: `${statusColor(support[g.id])}${support[g.id] >= 50 ? 'cc' : '55'}`,
+                borderRight: `1px solid ${COLOR.bg}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <span style={{ fontSize: 10, color: support[g.id] >= 50 ? COLOR.ink : COLOR.text, whiteSpace: 'nowrap', padding: '0 3px' }}>{g.name}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.5 }}>
+          Коалиция власти: <b style={{ color: coalition.weight >= 0.5 ? COLOR.teal : COLOR.rust }}>{Math.round(coalition.weight * 100)}% политического веса</b>
+          {coalition.members.length ? ` — ${coalition.members.map((id) => SOCIAL_GROUPS.find((g) => g.id === id).name.toLowerCase()).join(', ')}` : ' — ни одной группы'}.
+          {coalition.weight < 0.5 && (
+            <span style={{ color: COLOR.rust }}> Коалиция в меньшинстве: власть держится не на поддержке, а на {unfree ? 'силе' : 'инерции'}.</span>
+          )}
+        </div>
+        {lost.length > 0 && (
+          <div style={{ fontSize: 12, color: COLOR.rust, marginTop: 6, lineHeight: 1.5 }}>
+            В оппозиции: {lost.map((g) => g.name.toLowerCase()).join(', ')} — их лидеры переходят к делу.
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 12 }}>
+        {SOCIAL_GROUPS.map((g) => (
+          <GroupCard key={g.id} g={g} v={support[g.id]} prevV={prev ? prev[g.id] : null}
+            drivers={(economy.groupDriversNow || {})[g.id] || []}
+            memory={(economy.groupMemory || []).filter((m) => m.group === g.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GroupCard({ g, v, prevV, drivers, memory }) {
+  const Icon = GROUP_ICON[g.id] || Users;
+  const c = statusColor(v);
+  const delta = Number.isFinite(prevV) ? v - prevV : null;
+  const top = [...drivers].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 3);
+  // одно и то же решение могло оставить память по нескольким поводам — складываем по подписи
+  const mem = Object.values(memory.reduce((acc, m) => {
+    const k = m.text;
+    acc[k] = acc[k] || { text: k, amount: 0, left: m.left };
+    acc[k].amount += (m.amount * m.left) / m.total;
+    acc[k].left = Math.max(acc[k].left, m.left);
+    return acc;
+  }, {})).filter((m) => Math.abs(m.amount) >= 0.5).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 3);
+  return (
+    <div className="ems-panel" style={{ padding: 14, borderLeft: `3px solid ${c}` }} aria-label={`${g.name}: ${Math.round(v)} из 100, ${groupStatus(v)}`}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <Icon size={16} color={c} />
+        <span className="ems-serif" style={{ fontSize: 14.5 }}>{g.name}</span>
+        <span style={{ fontSize: 10.5, color: COLOR.faint }}>вес {Math.round(g.weight * 100)}%</span>
+        <span className="ems-numeral" style={{ marginLeft: 'auto', fontSize: 22, fontWeight: 700, color: c }}>{Math.round(v)}</span>
+        {delta != null && Math.abs(delta) >= 0.5 && (delta > 0
+          ? <TrendingUp size={14} color={COLOR.teal} aria-label={`за квартал ${signed(delta)}`} />
+          : <TrendingDown size={14} color={COLOR.rust} aria-label={`за квартал ${signed(delta)}`} />)}
+      </div>
+      <div style={{ position: 'relative', height: 6, borderRadius: 3, background: COLOR.panelAlt, marginBottom: 4 }}>
+        <div style={{ width: `${v}%`, height: '100%', borderRadius: 3, background: c }} />
+        {[35, 50].map((m) => <span key={m} style={{ position: 'absolute', left: `${m}%`, top: -2, bottom: -2, width: 1.5, background: COLOR.text, opacity: 0.55 }} />)}
+      </div>
+      <div style={{ display: 'flex', fontSize: 10.5, marginBottom: 8 }}>
+        <span style={{ color: c, fontWeight: 600 }}>{groupStatus(v)}</span>
+        {delta != null && <span className="ems-mono" style={{ marginLeft: 'auto', color: COLOR.faint }}>за квартал {signed(delta)}</span>}
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.text, marginBottom: 4 }}>{g.leader.name}, <span style={{ color: COLOR.muted }}>{g.leader.title}</span></div>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45, marginBottom: 8 }}>Хотят: {g.wants}</div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginBottom: 3 }}>Сейчас двигает</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+        {top.length ? top.map(([k, val]) => (
+          <span key={k} className="ems-mono" style={{ fontSize: 10.5, padding: '2px 6px', borderRadius: 3, border: `1px solid ${COLOR.border}`,
+            color: val >= 0 ? COLOR.teal : COLOR.rust }}>{k} {signed(val)}</span>
+        )) : <span style={{ fontSize: 10.5, color: COLOR.faint }}>ничего сверх общего фона</span>}
+      </div>
+      {mem.length > 0 && (
+        <>
+          <div style={{ fontSize: 10.5, color: COLOR.faint, marginBottom: 3 }}>Помнят</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+            {mem.map((m) => (
+              <div key={m.text} style={{ display: 'flex', gap: 6, fontSize: 11 }}>
+                <span style={{ color: COLOR.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.text}</span>
+                <span className="ems-mono" style={{ color: m.amount >= 0 ? COLOR.teal : COLOR.rust }}>{signed(m.amount)}</span>
+                <span style={{ color: COLOR.faint }}>ещё {m.left} кв.</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div style={{ fontSize: 10.5, lineHeight: 1.45, padding: v < 35 ? '6px 8px' : 0, borderRadius: 3,
+        background: v < 35 ? COLOR.rustDim : 'none', color: v < 35 ? COLOR.rust : COLOR.faint }}>
+        {v < 35 ? 'Потеряны: ' : 'Если потерять: '}{g.lost}
+      </div>
+    </div>
+  );
+}

@@ -15,6 +15,7 @@ import {
   activeRegions, votingRegions, annexLoyalty, sanitizeIntegration, REGION_PROJECTS, projectBlocker, REGION_EVENTS,
   INTEGRATED_AT, INTEGRATION_COST,
   treatyCost, sanitizeTreaty, botTreaty, revancheGrowth,
+  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, coalitionOf, groupTurnoutShift, groupStatus,
   fmtMoney, fmtIndex,
 } from '../engine.js';
 
@@ -2464,5 +2465,68 @@ describe('мир с Норландом и реванш', () => {
   it('во время войны за новые земли «заключить мир» указом нельзя: её кончают на карте', () => {
     const e = atWar();
     expect(PRES_BY_ID.peace_deal.requires(e)).toBe(false);
+  });
+});
+
+describe('общество: социальные группы', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const withRandom = (v, fn) => { const r = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = r; } };
+  const all = (v) => Object.fromEntries(SOCIAL_GROUPS.map((g) => [g.id, v]));
+  const base = (extra) => ({ ...makeInitialEconomy(), regionEventCooldown: 99, ...extra });
+
+  it('веса групп в сумме — единица; рейтинг — взвешенная сумма их поддержки', () => withRandom(0.99, () => {
+    expect(SOCIAL_GROUPS.reduce((a, g) => a + g.weight, 0)).toBeCloseTo(1, 6);
+    const e = step(base()).economy;
+    const weighted = SOCIAL_GROUPS.reduce((a, g) => a + g.weight * e.groupSupport[g.id], 0);
+    expect(e.approval).toBeCloseTo(weighted, 6);
+  }));
+
+  it('пенсионная реформа бьёт по пенсионерам и нравится бизнесу — и это помнят', () => withRandom(0.99, () => {
+    const e0 = base({ groupSupport: all(55), politicalCapital: 100 });
+    const e = step(e0, { presidentActions: ['pension'] }).economy;
+    const e2 = step(e, {}, 7).economy;
+    expect(e2.groupSupport.pensioners).toBeLessThan(e2.groupSupport.business - 5);
+    expect(e2.groupMemory.some((m) => m.group === 'pensioners' && m.amount < 0)).toBe(true);
+    expect(ACTION_GROUP_EFFECTS.pension.pensioners).toBeLessThan(0);
+  }));
+
+  it('потерянные силовики поднимают риск переворота, лояльные — гасят', () => {
+    const x = { politicalTension: 55, unemployment: 8, nairu: 5, inflation: 12, activeCrises: ['recession'], approval: 40, politicalCapital: 30 };
+    const neutral = militaryCoupRisk({ ...x, groupSupport: all(50) });
+    expect(militaryCoupRisk({ ...x, groupSupport: { ...all(50), siloviki: 15 } })).toBeGreaterThan(neutral * 1.8);
+    expect(militaryCoupRisk({ ...x, groupSupport: { ...all(50), siloviki: 70 } })).toBeLessThan(neutral * 0.5);
+    // спокойная популярная страна, но армия потеряна — риск уже не ноль
+    expect(militaryCoupRisk({ politicalTension: 20, approval: 55, groupSupport: { ...all(55), siloviki: 10 } })).toBeGreaterThan(0);
+  });
+
+  it('пенсионеры голосуют активнее: их недовольство тянет итог выборов вниз', () => {
+    expect(groupTurnoutShift({ groupSupport: all(50) })).toBeCloseTo(0, 6);
+    expect(groupTurnoutShift({ groupSupport: { ...all(50), pensioners: 20 } })).toBeLessThan(-1);
+    expect(groupTurnoutShift({ groupSupport: { ...all(50), youth: 20 } })).toBeGreaterThan(-1);
+  });
+
+  it('область голосует как те, кто в ней живёт: без рабочих Кузнецк отстаёт от страны', () => {
+    const e = base({ groupSupport: { ...all(55), workers: 20 } });
+    const shares = regionVoteShares(e, 55, false);
+    const industry = shares.find((r) => r.id === 'industry').share;
+    const finance = shares.find((r) => r.id === 'finance').share;
+    expect(industry).toBeLessThan(finance - 5);
+  });
+
+  it('лидер потерянной группы переходит к делу — новость с его именем', () => withRandom(0, () => {
+    const out = step(base({ groupSupport: { ...all(55), youth: 10 } }));
+    expect(out.newsEntries.some((n) => n.text.includes('Кира Лебедь'))).toBe(true);
+    expect(out.economy.groupUnrestCd.youth).toBe(3);
+  }));
+
+  it('коалиция — группы от 50; статус группы по порогам', () => {
+    const c = coalitionOf({ ...all(40), pensioners: 60, workers: 55 });
+    expect(c.members).toEqual(['pensioners', 'workers']);
+    expect(c.weight).toBeCloseTo(0.4, 6);
+    expect(groupStatus(65)).toBe('опора власти');
+    expect(groupStatus(20)).toBe('в оппозиции');
   });
 });

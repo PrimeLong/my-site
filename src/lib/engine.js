@@ -1655,9 +1655,14 @@ function militaryCoupRisk(x) {
   // одну лишь безработицу. Их вклад отпирается vulnerability — минимальной
   // политической уязвимостью (хоть немного напряжения ИЛИ хоть немного
   // непопулярности): нет её — армии не за что зацепиться, экономика бы ни была.
-  const vulnerability = clamp(Math.max(pressure, weakness) * 2, 0, 1);
-  const trouble = pressure * 0.11 + weakness * 0.045 + (misery * 0.055 + crisisLoad * 0.055) * vulnerability;
-  return clamp(trouble * (1 + naked * 0.8) * (x.unrestActive ? 1.7 : 1), 0, 0.28);
+  /* Силовики — те, кто на самом деле выводит танки: лояльные почти исключают
+     переворот, потерянные делают его возможным и при терпимом рейтинге. */
+  const sil = x.groupSupport && Number.isFinite(x.groupSupport.siloviki) ? x.groupSupport.siloviki : 50;
+  const silMult = sil >= 60 ? 0.35 : sil < 35 ? 1 + (35 - sil) / 15 : 1;
+  const vulnerability = clamp(Math.max(pressure, weakness, sil < 30 ? 0.3 : 0) * 2, 0, 1);
+  const grudge = sil < 30 ? (30 - sil) / 30 * 0.05 : 0;
+  const trouble = pressure * 0.11 + weakness * 0.045 + grudge + (misery * 0.055 + crisisLoad * 0.055) * vulnerability;
+  return clamp(trouble * silMult * (1 + naked * 0.8) * (x.unrestActive ? 1.7 : 1), 0, 0.28);
 }
 
 /* Разбор пакета решений президента за квартал: списывает капитал, ставит
@@ -3324,8 +3329,39 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   /* Публичные шаги власти двигают сам рейтинг, а не его «равновесие»: пенсионная
      реформа сбивает поддержку сразу и целиком, а не на 28% от заявленного, и дальше
      рейтинг возвращается к тому, что говорят цены, зарплаты и безработица. */
-  const approval = clamp(ema(Number.isFinite(s.approval) ? s.approval : 55, approvalTarget, 0.28)
-    + (d.approvalPush || 0) + stabilizationBonus, 0, 100);
+  /* Рейтинг — взвешенная сумма поддержки групп (см. groupStep): тот же общий фон
+     для всех плюс то, что каждая группа выиграла или проиграла от политики, и то,
+     что она помнит. */
+  const prevRegimeForGroups = s.politicalRegime || 'democracy';
+  const groupMemoryNew = [];
+  pres.applied.forEach((id) => {
+    const a = PRES_BY_ID[id];
+    const label = typeof a.label === 'function' ? a.label(s) : a.label;
+    groupMemoryNew.push(...groupMemoryOf(ACTION_GROUP_EFFECTS[id], label, a.group === 'reform' ? 16 : 10));
+  });
+  const res = RS.lastRegionResolution;
+  if (res && res.q === quarterIndex) {
+    const tone = ((REGION_EVENT_BY_ID[res.id] || { options: [] }).options.find((o) => o.id === res.option) || {}).tone;
+    if (res.byDefault || tone === 'wait') groupMemoryNew.push(...groupMemoryOf({ regions: -3 }, `${res.title}: ответа не было`, 8));
+    else if (tone === 'generous') groupMemoryNew.push(...groupMemoryOf({ regions: 3 }, res.title, 8));
+    else if (tone === 'hard') groupMemoryNew.push(...groupMemoryOf({ youth: -3, siloviki: 2 }, res.title, 8));
+  }
+  if (sovereignDefault) groupMemoryNew.push(...groupMemoryOf({ business: -15, pensioners: -8, public: -8 }, 'Дефолт', 12));
+  if (RV.lost.length) groupMemoryNew.push(...groupMemoryOf({ siloviki: -8, pensioners: -3 }, 'Потеря новых земель', 10));
+  if (PC.returned.length) groupMemoryNew.push(...groupMemoryOf({ siloviki: -10 }, 'Земли возвращены Норланду', 12));
+  if (PC.treaty && PC.treaty !== s.treaty && PC.treaty.recognized) groupMemoryNew.push(...groupMemoryOf({ business: 6 }, 'Граница признана', 10));
+  const groupStress = activeRegions(s).map((r) => regionStress(r, s));
+  const GS = groupStep(s, {
+    approvalTarget, push: (d.approvalPush || 0) + stabilizationBonus, newMemory: groupMemoryNew,
+    inflation, infTarget, unemployment, nairu, wageGrowth, decisions, budgetShares: s.budgetShares,
+    businessConfidence, offensiveWar: (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive', atWar: (s.warQuartersLeft || 0) > 0,
+    repression: prevRegimeForGroups === 'totalitarian' ? 1 : prevRegimeForGroups === 'authoritarian' ? 0.55 : 0,
+    avgStress: groupStress.reduce((a, b) => a + b, 0) / (groupStress.length || 1), projects: (s.projects || []).length,
+  });
+  const approval = GS.approval;
+  const GE = groupEpisodes(s, GS.support, difficulty);
+  GE.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  nextQueue.push(...GE.impulses);
   const prevToElection = Number.isFinite(s.quartersToElection) ? s.quartersToElection : CONFIG.election.cycle;
   /* При тоталитарном режиме выборов нет вообще. В авторитарном они ещё проводятся —
      формально, с заранее известным результатом; это часть его фасада. А там, где
@@ -3383,7 +3419,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   }
   const incumbencyBonus = 2.5;
   let voteShare = quartersToElection <= 0 && !noElections
-    ? clamp(50 + (approval - 50) * 0.85 + incumbencyBonus + promiseScore + gauss(2.2 * nMult), 0, 100)
+    ? clamp(50 + (approval - 50 + groupTurnoutShift(s)) * 0.85 + incumbencyBonus + promiseScore + gauss(2.2 * nMult), 0, 100)
     : null;
   // штабы кампании: прибавка по областям, сложенная в общенациональный итог
   let campaignRegions = null;
@@ -3501,10 +3537,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      в экономику приходят люди и руда, а на новых землях первое время неспокойно. */
   let annexed = [...(s.annexed || [])];
   const annexLoyaltyNext = { ...AN.loyalty };
+  const groupMemoryLate = [];
   if (s.warType === 'offensive' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0) {
     const fresh = (((WC.campaign || s.warCampaign) || {}).captured || []).filter((id) => !annexed.includes(id) && ANNEX_EFFECT[id]);
     if (fresh.length) {
       annexed = [...annexed, ...fresh];
+      groupMemoryLate.push(...groupMemoryOf({ siloviki: 6, pensioners: 3, business: -3 }, 'Присоединение новых земель', 10));
       fresh.forEach((id) => {
         nextQueue.push(...ANNEX_EFFECT[id].impulses(difficulty));
         annexLoyaltyNext[ANNEX_REGION_OF[id]] = regionById(ANNEX_REGION_OF[id]).loyalty0;
@@ -3681,6 +3719,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     + saturating(Math.max(0, inflation - 8), 1.6, 12.5)
     + Math.max(0, debtToGdp - 90) * 0.15
     + repression * 14
+    + GS.unrest
     - 22 * mandateEffect
     - Math.max(0, approval - 55) * 0.6,
     0, 100);
@@ -3927,6 +3966,8 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     annexed: territory.annexed, annexLoyalty: territory.annexLoyalty, annexIntegrated: territory.annexIntegrated, annexFunded: territory.annexFunded,
     revancheCampaign: warQuartersLeft > 0 && warType === 'revanche' ? (RV.campaign || s.revancheCampaign) : null,
     norlandRevanche: RV.revanche, revancheWarned: RV.warned, peaceTalks, treaty,
+    groupSupport: GS.support, groupSupportPrev: s.groupSupport || null, groupDriversNow: GS.drivers, groupUnrestCd: GE.cd,
+    groupMemory: [...GS.memory, ...groupMemoryLate],
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -4785,6 +4826,7 @@ function makeInitialEconomy(scenarioId) {
     lastRegionResolution: null, projectReal: 0, warCampaign: null, annexed: [], campaignSpend: {},
     annexLoyalty: {}, annexIntegrated: [], annexFunded: [],
     norlandRevanche: 0, revancheWarned: false, revancheCampaign: null, peaceTalks: null, treaty: null,
+    groupSupport: null, groupSupportPrev: null, groupMemory: [], groupDriversNow: null, groupUnrestCd: {},
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
@@ -6069,7 +6111,7 @@ function electionForecast(s, extraPlan) {
   const toVote = Number.isFinite(s.quartersToElection) ? s.quartersToElection : 16;
   const closed = CLOSED_POLL_MARGIN[s.politicalRegime] || 0;
   if (!closed && (toVote > POLL_WINDOW || toVote < 1 || !campaignOpen(s))) return null;
-  const base = clamp(50 + ((s.approval || 50) - 50) * 0.85 + 2.5, 0, 100);
+  const base = clamp(50 + ((s.approval || 50) - 50 + groupTurnoutShift(s)) * 0.85 + 2.5, 0, 100);
   const spent = closed ? {} : { ...s.campaignSpend };
   if (!closed) Object.entries(extraPlan || {}).forEach(([id, n]) => { spent[id] = (spent[id] || 0) + n; });
   const byRegion = regionVoteShares(s, base, false).map((r) => ({
@@ -6111,6 +6153,186 @@ function campaignStep(s, decisions) {
   let total = 0;
   Object.entries(plan).forEach(([id, n]) => { spend[id] = (spend[id] || 0) + n; total += n; });
   return { spend, spendPct: total * CAMPAIGN_COST };
+}
+
+/* ======================== ОБЩЕСТВО: СОЦИАЛЬНЫЕ ГРУППЫ ========================
+   Рейтинг власти — не одна цифра на всю страну, а взвешенная сумма поддержки
+   семи групп. У каждой свои интересы (groupDrivers — что и насколько двигает её
+   поддержку сверх общего фона), память (groupMemory — решения, которые она
+   помнит кварталами: пенсионная реформа, мобилизация, разгон протестов) и лидер.
+   Группа с поддержкой от 50 — в коалиции власти; ниже 35 — в оппозиции и
+   действует: пенсионеры выходят на улицы и голосуют активнее всех, рабочие
+   бастуют, бизнес выводит капитал, молодёжь протестует и уезжает, силовики
+   ропщут — и именно их потеря делает переворот вероятнее.
+   В нейтральной экономике отклонения групп в сумме около нуля — рейтинг
+   ведёт себя как раньше; разница появляется, когда политика выигрывает у одних
+   и проигрывает у других. */
+const SOCIAL_GROUPS = [
+  { id: 'pensioners', name: 'Пенсионеры', weight: 0.2, turnout: 1.5, icon: 'pensioners',
+    leader: { name: 'Галина Воронцова', title: 'председатель Союза пенсионеров' },
+    wants: 'Стабильные цены и индексацию пенсий и соцвыплат.',
+    lost: 'Выходят на улицы и приходят на выборы активнее всех: их недовольство сильнее всего бьёт по итогу голосования.' },
+  { id: 'workers', name: 'Рабочие', weight: 0.2, turnout: 1, icon: 'workers',
+    leader: { name: 'Степан Грачёв', title: 'лидер Федерации профсоюзов' },
+    wants: 'Работу, растущие реальные зарплаты и заказы заводам.',
+    lost: 'Бастуют: встают заводы и шахты, проседают выпуск и экспорт.' },
+  { id: 'business', name: 'Бизнес', weight: 0.12, turnout: 1, icon: 'business',
+    leader: { name: 'Аркадий Левин', title: 'глава Союза промышленников' },
+    wants: 'Низкие налоги и ставки, предсказуемые правила, никакой войны и произвола.',
+    lost: 'Выводит капитал и откладывает инвестиции: растёт премия за риск.' },
+  { id: 'siloviki', name: 'Силовики', weight: 0.08, turnout: 1, icon: 'siloviki',
+    leader: { name: 'генерал Олег Рубцов', title: 'начальник Генштаба' },
+    wants: 'Деньги на оборону, порядок и сильную руку.',
+    lost: 'Ропщут в казармах: риск военного переворота растёт в разы даже при терпимом рейтинге.' },
+  { id: 'public', name: 'Бюджетники', weight: 0.15, turnout: 1.1, icon: 'public',
+    leader: { name: 'Нина Сомова', title: 'председатель профсоюза учителей и врачей' },
+    wants: 'Зарплаты в бюджетной сфере, деньги на школы и больницы.',
+    lost: 'Учителя и врачи бастуют: падает доверие к государству.' },
+  { id: 'youth', name: 'Молодёжь', weight: 0.15, turnout: 0.6, icon: 'youth',
+    leader: { name: 'Кира Лебедь', title: 'лидер студенческого движения' },
+    wants: 'Работу, свободы и будущее — без войны и цензуры.',
+    lost: 'Протестует и уезжает: растёт напряжённость, страна теряет рабочие руки.' },
+  { id: 'regions', name: 'Регионы', weight: 0.1, turnout: 1.1, icon: 'regions',
+    leader: { name: 'Павел Мирошник', title: 'глава Ассоциации губернаторов' },
+    wants: 'Трансферты и стройки в областях, спокойствие на местах.',
+    lost: 'Губернаторы саботируют решения центра: растут напряжённость и недоверие.' },
+];
+// что каждое решение президента значит для групп: кто выиграл, кто проиграл
+const ACTION_GROUP_EFFECTS = {
+  address: { pensioners: 2, public: 1, regions: 1 },
+  elite_deal: { business: 8, regions: 6, siloviki: 4, youth: -6, workers: -3 },
+  anticorruption: { youth: 8, workers: 4, public: 3, business: -5, regions: -6, siloviki: -3 },
+  crackdown: { siloviki: 10, youth: -18, workers: -8, business: -4, public: -4 },
+  military_parade: { siloviki: 6, pensioners: 4, youth: -4 },
+  sanctions_impose: { siloviki: 4, business: -8, workers: -2 },
+  trade_bloc: { business: 8, youth: 4, workers: -3, siloviki: -3 },
+  dissolve: { siloviki: 6, youth: -15, business: -6, public: -4 },
+  restore_parliament: { youth: 10, business: 5, siloviki: -8 },
+  war_start: { siloviki: 14, pensioners: 3, youth: -14, business: -12, workers: -3 },
+  mobilization: { youth: -22, workers: -10, pensioners: -6, siloviki: 6 },
+  war_economy: { workers: 6, siloviki: 8, business: -10, youth: -3 },
+  peace_deal: { business: 8, youth: 8, siloviki: -10 },
+  seize_control: { siloviki: 10, youth: -20, business: -10, public: -6, regions: -4 },
+  labor: { business: 12, workers: -14, youth: 3 },
+  pension: { pensioners: -22, business: 6, youth: 4, public: -3 },
+  courts: { business: 8, youth: 5, siloviki: -6, regions: -3 },
+  deregulation: { business: 12, youth: 3, public: -6, regions: -2 },
+  education: { youth: 8, public: 6, pensioners: -2 },
+  infra_program: { regions: 12, workers: 6, business: 3 },
+};
+const groupMemoryOf = (effects, text, quarters) => Object.entries(effects || {})
+  .filter(([, v]) => v).map(([group, amount]) => ({ group, amount, left: quarters, total: quarters, text }));
+// что двигает группу сверх общего фона: [подпись, вклад в пунктах]
+function groupDrivers(id, x) {
+  const infGap = Math.max(0, x.inflation - x.infTarget);
+  const uGap = x.unemployment - x.nairu;
+  const d = x.decisions || {};
+  const sh = x.budgetShares || {};
+  const num = (v, def) => (Number.isFinite(v) ? v : def);
+  switch (id) {
+    case 'pensioners': return [['Цены', -1.2 * infGap], ['Соцвыплаты', 0.7 * num(d.transfers, 0)]];
+    case 'workers': return [['Безработица', -1.8 * uGap], ['Реальные зарплаты', 1.2 * (x.wageGrowth - x.inflation - 2)]];
+    case 'business': return [['Ставка', -0.7 * (num(d.keyRate, 5.5) - (x.infTarget + 2))], ['Налог на прибыль', -0.8 * (num(d.profitTaxRate, 20) - 20)],
+      ['Настроения бизнеса', 0.15 * (x.businessConfidence - 55)], ['Война', x.offensiveWar ? -6 : 0], ['Произвол', -8 * x.repression]];
+    case 'siloviki': return [['Оборона в бюджете', 1.2 * (num(sh.defense, 15) - 15)], ['Сильная рука', 10 * x.repression], ['Война', x.atWar ? 4 : 0]];
+    case 'public': return [['Госрасходы', 0.8 * num(d.govSpending, 0)], ['Школы и больницы', 0.5 * (num(sh.health, 19) + num(sh.education, 16) - 35)], ['Цены', -0.8 * infGap]];
+    case 'youth': return [['Работа', -1.5 * uGap], ['Свободы', -14 * x.repression], ['Война', x.atWar ? -6 : 0]];
+    case 'regions': return [['Напряжение в областях', -0.3 * (x.avgStress - 15)], ['Соцвыплаты', 0.5 * num(d.transfers, 0)], ['Стройки', 2 * x.projects]];
+    default: return [];
+  }
+}
+function groupStep(s, ctx) {
+  const base = Number.isFinite(s.approval) ? s.approval : 55;
+  const prev = s.groupSupport || {};
+  const memory = [...(s.groupMemory || []).map((m) => ({ ...m, left: m.left - 1 })).filter((m) => m.left > 0), ...(ctx.newMemory || [])];
+  const support = {}; const drivers = {};
+  SOCIAL_GROUPS.forEach((g) => {
+    const parts = groupDrivers(g.id, ctx).filter(([, v]) => Math.abs(v) >= 0.05);
+    drivers[g.id] = parts.map(([k, v]) => [k, Math.round(v * 10) / 10]);
+    const dev = clamp(parts.reduce((a, [, v]) => a + v, 0), -25, 25);
+    const mem = memory.filter((m) => m.group === g.id).reduce((a, m) => a + (m.amount * m.left) / m.total, 0);
+    const target = clamp(ctx.approvalTarget + dev + mem, 0, 100);
+    support[g.id] = clamp(ema(Number.isFinite(prev[g.id]) ? prev[g.id] : base, target, 0.28) + (ctx.push || 0), 0, 100);
+  });
+  const approval = clamp(SOCIAL_GROUPS.reduce((a, g) => a + g.weight * support[g.id], 0), 0, 100);
+  // потерянные группы добавляют напряжённости сверх той, что даёт низкий рейтинг:
+  // расколотое общество неспокойнее ровно недовольного
+  const unrest = SOCIAL_GROUPS.reduce((a, g) => a + g.weight * Math.max(0, 40 - support[g.id]), 0) * 0.9;
+  return { support, memory, drivers, approval, unrest };
+}
+const groupStatus = (v) => (v >= 60 ? 'опора власти' : v >= 50 ? 'лояльны' : v >= 35 ? 'колеблются' : 'в оппозиции');
+function coalitionOf(support) {
+  const members = SOCIAL_GROUPS.filter((g) => (support || {})[g.id] >= 50);
+  return { members: members.map((g) => g.id), weight: members.reduce((a, g) => a + g.weight, 0) };
+}
+// пенсионеры голосуют чаще молодёжи: итог выборов считается по явке, а не только по весу
+function groupTurnoutShift(s) {
+  const sup = s.groupSupport;
+  if (!sup) return 0;
+  let tw = 0; let ts = 0; let plain = 0;
+  SOCIAL_GROUPS.forEach((g) => {
+    const v = Number.isFinite(sup[g.id]) ? sup[g.id] : 50;
+    tw += g.weight * g.turnout; ts += g.weight * g.turnout * v; plain += g.weight * v;
+  });
+  return tw > 0 ? ts / tw - plain : 0;
+}
+// кто в какой области живёт — отсюда и разница в голосовании областей
+const REGION_GROUP_MIX = {
+  capital: { youth: 0.25, public: 0.2, business: 0.2, pensioners: 0.15, workers: 0.1, siloviki: 0.1 },
+  port: { workers: 0.3, business: 0.2, youth: 0.2, pensioners: 0.15, public: 0.1, regions: 0.05 },
+  industry: { workers: 0.45, pensioners: 0.2, public: 0.15, youth: 0.1, regions: 0.1 },
+  agri: { pensioners: 0.35, regions: 0.3, workers: 0.15, public: 0.15, youth: 0.05 },
+  finance: { business: 0.4, youth: 0.2, public: 0.15, pensioners: 0.15, workers: 0.1 },
+  mining: { workers: 0.45, regions: 0.2, pensioners: 0.15, siloviki: 0.1, public: 0.1 },
+  periphery: { pensioners: 0.35, regions: 0.3, public: 0.2, workers: 0.1, youth: 0.05 },
+};
+const ANNEX_GROUP_MIX = { regions: 0.4, workers: 0.3, pensioners: 0.2, youth: 0.1 };
+function regionGroupSupport(regionId, s) {
+  const sup = s.groupSupport;
+  if (!sup) return null;
+  const mix = REGION_GROUP_MIX[regionId] || ANNEX_GROUP_MIX;
+  return Object.entries(mix).reduce((a, [g, w]) => a + w * (Number.isFinite(sup[g]) ? sup[g] : 50), 0);
+}
+// лидер потерянной группы переходит к делу: протест, забастовка, бегство капитала
+const GROUP_UNREST = {
+  pensioners: { headline: 'ПЕНСИОНЕРЫ ВЫШЛИ НА УЛИЦЫ',
+    text: (g) => `${g.leader.name}, ${g.leader.title}: «Пенсия не поспевает за ценами. Мы помним, кто это допустил, — и придём на выборы».`,
+    impulses: (d) => [makeImpulse('tensionPush', 2, 'Протесты пенсионеров', 'fast', d, 'other')] },
+  workers: { headline: 'ЗАБАСТОВКА: ПРОФСОЮЗЫ ОСТАНОВИЛИ ЗАВОДЫ',
+    text: (g) => `${g.leader.name}, ${g.leader.title}: «Работать за такие деньги — и при таких решениях — мы больше не будем».`,
+    impulses: (d) => [makeImpulse('exportsGrowth', -0.8, 'Забастовка рабочих', 'fast', d, 'other'),
+      makeImpulse('tensionPush', 2, 'Забастовка рабочих', 'fast', d, 'other')] },
+  business: { headline: 'БИЗНЕС ВЫВОДИТ КАПИТАЛ',
+    text: (g) => `${g.leader.name}, ${g.leader.title}: «Вкладываться туда, где правила меняются каждый квартал, никто не будет».`,
+    impulses: (d) => [makeImpulse('capitalFlow', -8, 'Бизнес выводит капитал', 'fast', d),
+      makeImpulse('riskPremium', 0.05, 'Бизнес не верит власти', 'fast', d), makeImpulse('businessConfidence', -3, 'Бизнес не верит власти', 'fast', d, 'other')] },
+  siloviki: { headline: 'РОПОТ В ГЕНШТАБЕ',
+    text: (g) => `${g.leader.name}, ${g.leader.title}, на закрытом совещании: «Армию держат впроголодь и не слушают. Долго так продолжаться не может».`,
+    impulses: (d) => [makeImpulse('tensionPush', 1, 'Недовольство силовиков', 'fast', d, 'other')] },
+  public: { headline: 'УЧИТЕЛЯ И ВРАЧИ БАСТУЮТ',
+    text: (g) => `${g.leader.name}, ${g.leader.title}: «Школы и больницы держатся на нашем терпении. Оно кончилось».`,
+    impulses: (d) => [makeImpulse('govTrust', -2, 'Забастовка бюджетников', 'default', d, 'other'),
+      makeImpulse('tensionPush', 1.5, 'Забастовка бюджетников', 'fast', d, 'other')] },
+  youth: { headline: 'МОЛОДЁЖЬ ПРОТЕСТУЕТ — И УЕЗЖАЕТ',
+    text: (g) => `${g.leader.name}, ${g.leader.title}: «Здесь нам не оставили ни работы, ни голоса. Кто не выходит на площадь — покупает билет».`,
+    impulses: (d) => [makeImpulse('tensionPush', 3, 'Протесты молодёжи', 'fast', d, 'other'),
+      makeImpulse('laborForce', -0.05, 'Молодые уезжают', 'slow', d, 'other')] },
+  regions: { headline: 'ГУБЕРНАТОРЫ ПРОТИВ ЦЕНТРА',
+    text: (g) => `${g.leader.name}, ${g.leader.title}: «Области забыты. Решения центра на местах исполнять некому и незачем».`,
+    impulses: (d) => [makeImpulse('govTrust', -1, 'Губернаторы против центра', 'default', d, 'other'),
+      makeImpulse('tensionPush', 1, 'Губернаторы против центра', 'fast', d, 'other')] },
+};
+function groupEpisodes(s, support, difficulty) {
+  const out = { impulses: [], news: [], cd: {} };
+  Object.entries(s.groupUnrestCd || {}).forEach(([id, v]) => { if (v > 1) out.cd[id] = v - 1; });
+  SOCIAL_GROUPS.forEach((g) => {
+    if (support[g.id] >= 35 || out.cd[g.id] || Math.random() >= 0.35) return;
+    const u = GROUP_UNREST[g.id];
+    out.impulses.push(...u.impulses(difficulty));
+    out.news.push(['crisis', u.headline, u.text(g), 7]);
+    out.cd[g.id] = 3;
+  });
+  return out;
 }
 
 const REGION_TEXT = {
@@ -6185,8 +6407,11 @@ function regionVoteShares(economy, nationalShare, rigged) {
   const stresses = regions.map((r) => regionStress(r, economy));
   const avgStress = stresses.reduce((a, b) => a + b, 0) / (stresses.length || 1);
   // новая земля голосует ещё и по тому, насколько она уже своя
+  // и по тому, кто в ней живёт: область рабочих голосует как рабочие
+  const national = economy.groupSupport ? SOCIAL_GROUPS.reduce((a, g) => a + g.weight * (economy.groupSupport[g.id] ?? 50), 0) : 0;
   const raw = regions.map((r, i) => (r.lean || 0) + (avgStress - stresses[i]) * 0.35
-    + (r.annex ? (annexLoyalty(economy, r.id) - 60) * 0.15 : 0));
+    + (r.annex ? (annexLoyalty(economy, r.id) - 60) * 0.15 : 0)
+    + (economy.groupSupport ? (regionGroupSupport(r.id, economy) - national) * 0.5 : 0));
   const mean = raw.reduce((a, b) => a + b, 0) / (raw.length || 1);
   return regions.map((r, i) => ({
     id: r.id,
@@ -6395,6 +6620,7 @@ export {
   POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
+  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
   sanitizeTreaty, treatyCost, botTreaty, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,

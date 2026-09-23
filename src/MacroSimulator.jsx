@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -427,6 +427,8 @@ export function StateZone({ children, label, hidden }) {
 /* Карта страны вынесена в src/countrymap.jsx и грузится лениво: её открывают
    вкладкой, а геометрия округов и береговой линии первому экрану не нужна. */
 export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) => ({ default: m.CountryMap })));
+// экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
+export const SocietyView = React.lazy(() => import('./society.jsx').then((m) => ({ default: m.SocietyView })));
 
 export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF }) {
   const delta = lever.type === 'level' ? value - currentDisplay : value;
@@ -1733,6 +1735,22 @@ function RegimeLadder({ economy }) {
   );
 }
 
+/* Кто выиграет и кто проиграет от решения — группы общества (см. «Общество»):
+   они запомнят его на несколько лет. */
+function GroupStakes({ effects }) {
+  const name = (id) => (SOCIAL_GROUPS.find((g) => g.id === id) || {}).name || id;
+  const pro = Object.entries(effects).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const con = Object.entries(effects).filter(([, v]) => v < 0).sort((a, b) => a[1] - b[1]);
+  if (!pro.length && !con.length) return null;
+  return (
+    <div style={{ fontSize: 10, lineHeight: 1.45, marginTop: 4 }}>
+      {pro.length > 0 && <span style={{ color: COLOR.teal }}>За: {pro.map(([id, v]) => `${name(id).toLowerCase()} +${v}`).join(', ')}</span>}
+      {pro.length > 0 && con.length > 0 && <span style={{ color: COLOR.faint }}> · </span>}
+      {con.length > 0 && <span style={{ color: COLOR.rust }}>Против: {con.map(([id, v]) => `${name(id).toLowerCase()} −${-v}`).join(', ')}</span>}
+    </div>
+  );
+}
+
 function PresActionCard({ action, economy, cooldowns, selected, affordable, onToggle }) {
   // у выбранного решения его цена уже вычтена из свободного капитала — проверять
   // «хватает ли» по остатку без него значит объявлять нехватку на ровном месте
@@ -1790,6 +1808,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
           «не хватает капитала»: на такое решение копят, и чтобы копить
           осознанно, надо знать, на что именно. */}
       {!hideDesc && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
+      {!hideDesc && ACTION_GROUP_EFFECTS[action.id] && <GroupStakes effects={ACTION_GROUP_EFFECTS[action.id]} />}
       {!hideDesc && willBeBlocked && (
         <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3 }}>
           Парламент отклонит: слишком высокое напряжение или провальный рейтинг. Капитал спишется впустую.
@@ -5734,7 +5753,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <Gauge value={economy.wellbeing} size={74} />
           </div>
           <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
-            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
+            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
               <button key={id} className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
                 background: view === id ? COLOR.gold : COLOR.panelAlt, color: view === id ? COLOR.ink : COLOR.text, borderColor: view === id ? COLOR.gold : COLOR.border }}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
@@ -5901,6 +5920,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         </Suspense></div>
       )}
 
+      {view === 'society' && (
+        <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+          <SocietyView economy={economy} />
+        </Suspense></div>
+      )}
       {view === 'market' && (
         <MarketScreen economy={economy} prev={prevEcon} history={history}
           book={isTrader ? portfolio : null} onTrade={onTrade} />

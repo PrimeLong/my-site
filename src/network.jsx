@@ -10,7 +10,7 @@ import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
   ALL_METRICS, AchievementToast, AchievementsModal, Atmosphere, Audio, AudioControls, COLOR, CabinetZone,
-  CasinoScreen, ChartFallback, ChartPanel, ColumnResizeHandle, CountryMap, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
+  CasinoScreen, ChartFallback, ChartPanel, ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
   ChronicleModal, GameOverModal, Gauge, GlobalStyle, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile, LeverSlider,
   MAX_PINS, MetricRow, NETWORK_SLOT_COUNT, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel, PresidentWatchPanel,
   PressConferencePanel, PromisesPanel, QuarterStamp, ROLE_ICON, RegimeBanner, ResultCardModal, RiskBadge, ScorePanel,
@@ -1278,7 +1278,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               последних выборов. Данные для неё уже приходят с сервера — движок
               хранит lastElection в экономике комнаты, — не хватало только вида. */}
           <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Вид центральной колонки">
-            {[['news', 'Вестник', Newspaper], ['map', 'Карта страны', MapIcon]].map(([vid, label, Icon]) => (
+            {[['news', 'Вестник', Newspaper], ['map', 'Карта страны', MapIcon], ['society', 'Общество', Users]].map(([vid, label, Icon]) => (
               <span key={vid} role="tab" aria-selected={centerView === vid} tabIndex={0}
                 className={`ems-tab ${centerView === vid ? 'active' : ''}`}
                 style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
@@ -1288,7 +1288,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </span>
             ))}
           </div>
-          {centerView === 'map' ? <Suspense fallback={<ChartFallback />}>
+          {centerView === 'society' ? <Suspense fallback={<ChartFallback />}><SocietyView economy={economy} /></Suspense>
+            : centerView === 'map' ? <Suspense fallback={<ChartFallback />}>
             <CountryMap economy={economy}
               plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null }}
               onPlan={canPlanMap && !sent ? (pl) => setDecisions((d) => ({ ...d, ...pl })) : null}
