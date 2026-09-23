@@ -80,10 +80,10 @@ try {
     for (const id of Object.keys(STINGERS)) out.push({ id, ...eng.measureBuffer(await eng.renderStingerOffline(id)) });
     return out;
   });
-  const stMed = [...stingers].sort((a, b) => a.rms - b.rms)[stingers.length >> 1].rms;
-  const stingerGain = Math.max(-MAX_CUT, Math.min(MAX_BOOST, Math.round((TARGET + 1 - stMed) * 2) / 2));
-  stingers.forEach((x) => console.log(`заставка ${x.id.padEnd(15)} ${String(x.rms).padStart(6)} дБ  пик ${String(x.peak).padStart(5)}`));
-  console.log(`общая поправка заставок: ${stingerGain} дБ`);
+  stingers.forEach((x) => {
+    x.gain = Math.max(-MAX_CUT, Math.min(MAX_BOOST, Math.round((TARGET + 1 - x.rms) * 2) / 2));
+    console.log(`заставка ${x.id.padEnd(15)} ${String(x.rms).padStart(6)} дБ  пик ${String(x.peak).padStart(5)}  → поправка ${x.gain}`);
+  });
   const med = [...rows].sort((a, b) => a.raw.rms - b.raw.rms)[rows.length >> 1].raw.rms;
   console.log(`\nмедиана сырой громкости ${med} дБ`);
   const spreadOf = (xs) => (Math.max(...xs) - Math.min(...xs)).toFixed(1);
@@ -96,7 +96,9 @@ try {
 export const TRACK_GAIN_DB = {
 ${body}
 };
-export const STINGER_GAIN_DB = ${stingerGain};
+export const STINGER_GAIN_DB = {
+${stingers.map((x) => `  ${x.id}: ${x.gain},`).join('\n')}
+};
 `);
     console.log('поправки записаны в src/audio/loudness.js');
   }

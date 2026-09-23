@@ -192,3 +192,14 @@ describe('настроение и заставки', () => {
     expect(() => a.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: false, stinger: 'coup' })).not.toThrow();
   });
 });
+
+describe('поправки громкости', () => {
+  it('замерены все пьесы и заставки, поправки в разумных пределах', async () => {
+    const { TRACK_GAIN_DB, STINGER_GAIN_DB } = await import('../loudness.js');
+    for (const id of Object.keys(TRACKS)) {
+      expect(TRACK_GAIN_DB[id], `${id}: перезапустите npm run loudness -- --write`).toBeTypeOf('number');
+      expect(Math.abs(TRACK_GAIN_DB[id]), id).toBeLessThanOrEqual(9);
+    }
+    for (const id of Object.keys(STINGERS)) expect(STINGER_GAIN_DB[id], id).toBeTypeOf('number');
+  });
+});

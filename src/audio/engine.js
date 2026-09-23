@@ -870,7 +870,7 @@ export function createAudioEngine(options = {}) {
     const t0 = now() + 0.26;
     songBus.gain.cancelScheduledValues(now());
     songBus.gain.setTargetAtTime(0.0001, now(), 0.05);
-    songBus.gain.setValueAtTime(Math.pow(10, (STINGER_GAIN_DB || 0) / 20), t0 - 0.01);
+    songBus.gain.setValueAtTime(Math.pow(10, (STINGER_GAIN_DB[id] || 0) / 20), t0 - 0.01);
     let len = 0;
     S.parts.forEach((p) => {
       const fn = STINGER_VOICES[p.inst]; if (!fn) return;
