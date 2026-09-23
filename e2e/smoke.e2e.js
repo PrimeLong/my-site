@@ -168,8 +168,8 @@ test('карта: соседние страны на месте, Минфин з
   // «Карта» — отдельный экран, а не колонка: на телефоне вкладки колонок тут не нужны
   const openMap = () => page.getByRole('button', { name: 'Карта', exact: true }).click();
   await openMap();
-  const map = page.locator('svg[aria-label="Карта округов страны"]');
-  for (const nb of ['СЕВЕРНОЕ КОРОЛЕВСТВО', 'ЗАПАДНАЯ ФЕДЕРАЦИЯ', 'СТЕПНОЙ СОЮЗ']) await expect(map.getByText(nb)).toBeAttached();
+  const map = page.locator('svg[aria-label="Карта областей страны"]');
+  for (const nb of ['КОРОЛЕВСТВО НОРЛАНД', 'ВЕСТРАВСКАЯ РЕСПУБЛИКА', 'РЕСПУБЛИКА ДЕШТ']) await expect(map.getByText(nb)).toBeAttached();
   await page.getByRole('button', { name: 'Начать стройку' }).click();
   await expect(page.getByRole('button', { name: /Стройка начнётся в конце квартала/ })).toBeVisible();
   await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();

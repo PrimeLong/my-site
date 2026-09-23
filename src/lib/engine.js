@@ -3392,7 +3392,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     const sortedRegions = [...byRegion].sort((a, b) => b.share - a.share);
     const nameOf = (id) => (MAP_REGIONS.find((r) => r.id === id) || {}).name || id;
     const geoLine = riggedElection
-      ? ` По округам результат тоже ровный: от ${fmt1(sortedRegions[sortedRegions.length - 1].share)}% до ${fmt1(sortedRegions[0].share)}%.`
+      ? ` По областям результат тоже ровный: от ${fmt1(sortedRegions[sortedRegions.length - 1].share)}% до ${fmt1(sortedRegions[0].share)}%.`
       : ` Лучший результат — ${nameOf(sortedRegions[0].id)} (${fmt1(sortedRegions[0].share)}%), худший — ${nameOf(sortedRegions[sortedRegions.length - 1].id)} (${fmt1(sortedRegions[sortedRegions.length - 1].share)}%).`;
     quartersToElection = CONFIG.election.cycle; term += 1;
     if (electionResult === 'incumbent') {
@@ -5022,19 +5022,19 @@ const POLITICAL_REGIME_INFO = {
    добавляется сверху (см. regionVoteShares): округ, которому живётся хуже
    среднего по стране, отворачивается от власти дополнительно. */
 const MAP_REGIONS = [
-  { id: 'capital', name: 'Столичный округ', short: 'Столица', sector: 'Управление', icon: 'capital', lean: -6,
+  { id: 'capital', name: 'Велеградский столичный округ', short: 'Велеградский', city: 'Велеград', loc: 'Велеградском столичном округе', gen: 'Велеградского столичного округа', sector: 'Управление', icon: 'capital', lean: -6,
     weights: { politicalTension: 0.5, bankingRisk: 0.2, debtRisk: 0.3 } },
-  { id: 'port', name: 'Портовый край', short: 'Порт', sector: 'Внешняя торговля', icon: 'port', lean: -2,
+  { id: 'port', name: 'Янтарская область', short: 'Янтарская', city: 'Янтарск', loc: 'Янтарской области', gen: 'Янтарской области', sector: 'Внешняя торговля', icon: 'port', lean: -2,
     weights: { currencyRisk: 0.55, recessionRisk: 0.25, debtRisk: 0.2 } },
-  { id: 'industry', name: 'Кузнечный пояс', short: 'Заводы', sector: 'Промышленность', icon: 'industry', lean: -3,
+  { id: 'industry', name: 'Кузнецкая область', short: 'Кузнецкая', city: 'Кузнецк', loc: 'Кузнецкой области', gen: 'Кузнецкой области', sector: 'Промышленность', icon: 'industry', lean: -3,
     weights: { recessionRisk: 0.5, inflationRisk: 0.2, bankingRisk: 0.3 } },
-  { id: 'agri', name: 'Хлебородье', short: 'Хлебородье', sector: 'Сельское хозяйство', icon: 'agri', lean: 6,
+  { id: 'agri', name: 'Приреченская область', short: 'Приреченская', city: 'Приреченск', loc: 'Приреченской области', gen: 'Приреченской области', sector: 'Сельское хозяйство', icon: 'agri', lean: 6,
     weights: { inflationRisk: 0.6, recessionRisk: 0.2, currencyRisk: 0.2 } },
-  { id: 'finance', name: 'Биржевой округ', short: 'Биржа', sector: 'Финансы', icon: 'finance', lean: -1,
+  { id: 'finance', name: 'Златоградская область', short: 'Златоградская', city: 'Златоград', loc: 'Златоградской области', gen: 'Златоградской области', sector: 'Финансы', icon: 'finance', lean: -1,
     weights: { bankingRisk: 0.45, debtRisk: 0.35, currencyRisk: 0.2 } },
-  { id: 'mining', name: 'Шахтёрский край', short: 'Шахты', sector: 'Добыча и энергетика', icon: 'mining', lean: 2,
+  { id: 'mining', name: 'Рудногорская область', short: 'Рудногорская', city: 'Рудногорск', loc: 'Рудногорской области', gen: 'Рудногорской области', sector: 'Добыча и энергетика', icon: 'mining', lean: 2,
     weights: { inflationRisk: 0.35, recessionRisk: 0.35, bankingRisk: 0.3 } },
-  { id: 'periphery', name: 'Лесная окраина', short: 'Окраина', sector: 'Лес, село и услуги', icon: 'periphery', lean: 7,
+  { id: 'periphery', name: 'Боровская область', short: 'Боровская', city: 'Боровец', loc: 'Боровской области', gen: 'Боровской области', sector: 'Лес, село и услуги', icon: 'periphery', lean: 7,
     weights: { politicalTension: 0.2, recessionRisk: 0.3, inflationRisk: 0.2, currencyRisk: 0.3 } },
 ];
 function regionStress(region, economy) {
@@ -5054,31 +5054,42 @@ function regionStress(region, economy) {
   const built = (economy.regionMods || {})[region.id] || 0;
   const shock = (economy.regionShock || {})[region.id] || 0;
   const building = (economy.projects || []).some((x) => x.region === region.id) ? -4 : 0;
-  return clamp(base + built + shock + building, 0, 100);
+  // война: прифронтовая область живёт под обстрелом, остальные — в тылу
+  const atWar = (economy.warQuartersLeft || 0) > 0;
+  const war = atWar ? (warFrontRegion(economy) === region.id ? 22 : 5) : 0;
+  return clamp(base + built + shock + building + war, 0, 100);
+}
+/* Где проходит фронт. В обороне противник заходит со степной границы на юго-западе
+   (Приреченская область), в наступлении страна сама бьёт на север, из Рудногорской
+   области. Карта рисует фронт по той же привязке. */
+const WAR_FRONT_REGION = { defensive: 'agri', offensive: 'mining' };
+function warFrontRegion(economy) {
+  if (!((economy.warQuartersLeft || 0) > 0)) return null;
+  return WAR_FRONT_REGION[economy.warType] || WAR_FRONT_REGION.defensive;
 }
 /* ============================ СТРОЙКИ В ОКРУГАХ ============================
    У каждого округа — своя большая стройка, отвечающая его характеру: метро в
-   столице, глубоководный порт, электростанция в шахтёрском крае. Стройка идёт
+   Велеграде, глубоководный порт в Янтарске, электростанция в Рудногорских горах. Стройка идёт
    несколько кварталов и всё это время стоит денег (cost — % ВВП в год: это
    госинвестиции сверх ползунка, они входят в ВВП, дефицит и индекс
    инфраструктуры). Пока идёт стройка, в округе есть работа — напряжение ниже.
    Достроенная — навсегда снижает напряжение округа (relief) и даёт свой эффект
    на экономику. Запускает стройку Минфин; живой президент — поверх него. */
 const REGION_PROJECTS = [
-  { id: 'metro', region: 'capital', name: 'Метро в столице', quarters: 8, cost: 0.35, relief: 12,
+  { id: 'metro', region: 'capital', name: 'Велеградское метро', quarters: 8, cost: 0.35, relief: 12,
     effect: 'Инфраструктура и доверие к власти: столица видит результат каждый день.',
-    done: (d) => [makeImpulse('infrastructureIndex', 2.5, 'Открыто столичное метро', 'fast', d, 'other'),
-      makeImpulse('approvalPush', 2.5, 'Открыто столичное метро', 'fast', d, 'other')] },
+    done: (d) => [makeImpulse('infrastructureIndex', 2.5, 'Открыто велеградское метро', 'fast', d, 'other'),
+      makeImpulse('approvalPush', 2.5, 'Открыто велеградское метро', 'fast', d, 'other')] },
   { id: 'deepport', region: 'port', name: 'Глубоководный порт', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Экспорт растёт: к причалам встают суда, которые раньше шли к соседям.',
     done: (d) => [sustainedImpulse('exportsGrowth', 1.2, 4, 'Глубоководный порт принимает крупные суда'),
       makeImpulse('infrastructureIndex', 1.5, 'Глубоководный порт', 'fast', d, 'other')] },
   { id: 'factories', region: 'industry', name: 'Модернизация заводов', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Производительность: новые станки выпускают больше тем же числом рук.',
-    done: (d) => [makeImpulse('productivity', 1.6, 'Заводы Кузнечного пояса модернизированы', 'slow', d, 'other')] },
+    done: (d) => [makeImpulse('productivity', 1.6, 'Заводы Кузнецкой области модернизированы', 'slow', d, 'other')] },
   { id: 'irrigation', region: 'agri', name: 'Ирригация и элеваторы', quarters: 4, cost: 0.2, relief: 12,
     effect: 'Дешевле продовольствие: урожай меньше зависит от погоды и доезжает до города.',
-    done: (d) => [makeImpulse('inflationSupply', -0.35, 'Ирригация Хлебородья снижает цены на продовольствие', 'slow', d, 'other')] },
+    done: (d) => [makeImpulse('inflationSupply', -0.35, 'Ирригация Приреченской области снижает цены на продовольствие', 'slow', d, 'other')] },
   { id: 'powerplant', region: 'mining', name: 'Новая электростанция', quarters: 8, cost: 0.4, relief: 12,
     effect: 'Дешевле энергия для всей страны: ниже издержки и инфляция предложения.',
     done: (d) => [makeImpulse('inflationSupply', -0.45, 'Новая электростанция удешевляет энергию', 'slow', d, 'other'),
@@ -5087,10 +5098,10 @@ const REGION_PROJECTS = [
     effect: 'Производительность и доверие бизнеса: деньги и идеи находят друг друга.',
     done: (d) => [makeImpulse('productivity', 1.0, 'Открыт технопарк Златограда', 'slow', d, 'other'),
       makeImpulse('businessConfidence', 4, 'Открыт технопарк Златограда', 'default', d, 'other')] },
-  { id: 'railway', region: 'periphery', name: 'Железная дорога на окраину', quarters: 7, cost: 0.3, relief: 14,
-    effect: 'Окраина перестаёт пустеть: работа и рынки становятся ближе.',
-    done: (d) => [makeImpulse('infrastructureIndex', 2.2, 'Железная дорога дошла до Глухова', 'fast', d, 'other'),
-      makeImpulse('laborForce', 0.25, 'Окраина перестаёт пустеть', 'slow', d, 'other')] },
+  { id: 'railway', region: 'periphery', name: 'Железная дорога на Боровец', quarters: 7, cost: 0.3, relief: 14,
+    effect: 'Боровская область перестаёт пустеть: работа и рынки становятся ближе.',
+    done: (d) => [makeImpulse('infrastructureIndex', 2.2, 'Железная дорога дошла до Боровца', 'fast', d, 'other'),
+      makeImpulse('laborForce', 0.25, 'Боровская область перестаёт пустеть', 'slow', d, 'other')] },
 ];
 const PROJECT_BY_ID = Object.fromEntries(REGION_PROJECTS.map((p) => [p.id, p]));
 const MAX_ACTIVE_PROJECTS = 3;
@@ -5140,7 +5151,7 @@ const REGION_EVENTS = [
           makeImpulse('tensionPush', 2.5, 'Забастовка шахтёров расползается', 'fast', d, 'other')] },
     ] },
   { id: 'drought', region: 'agri', title: 'Засуха и неурожай',
-    text: () => 'В Хлебородье засуха: урожай на треть ниже прошлогоднего, хозяйства просят помощи, а в городах начинают дорожать хлеб и крупа.',
+    text: () => 'В Приреченской области засуха: урожай на треть ниже прошлогоднего, хозяйства просят помощи, а в городах начинают дорожать хлеб и крупа.',
     weight: () => 1.1,
     defaultOption: 'wait',
     options: [
@@ -5156,7 +5167,7 @@ const REGION_EVENTS = [
           makeImpulse('approvalPush', -1.5, 'Неурожай и дорогой хлеб', 'fast', d, 'other')] },
     ] },
   { id: 'port_accident', region: 'port', title: 'Авария в порту',
-    text: () => 'В Портовске обрушился старый причал: треть терминалов закрыта, суда уходят на рейд или к соседям.',
+    text: () => 'В Янтарске обрушился старый причал: треть терминалов закрыта, суда уходят на рейд или к соседям.',
     weight: (s) => 0.8 + 0.01 * (s.currencyRisk || 0),
     defaultOption: 'wait',
     options: [
@@ -5227,29 +5238,29 @@ const REGION_EVENTS = [
         impulses: (s, d) => [makeImpulse('tensionPush', 3, 'Митинг запрещён', 'fast', d, 'other'),
           makeImpulse('govTrust', -2, 'Митинг запрещён', 'default', d, 'other')] },
     ] },
-  { id: 'wildfire', region: 'periphery', title: 'Лесные пожары под Глуховом',
-    text: () => 'Горят леса Лесной окраины: огонь подходит к посёлкам, дым висит над Глуховом вторую неделю.',
+  { id: 'wildfire', region: 'periphery', title: 'Лесные пожары под Боровцом',
+    text: () => 'Горят боровские леса: огонь подходит к посёлкам, дым висит над Боровцом вторую неделю.',
     weight: (s, q) => 0.5 + ((q % 4) === 2 || (q % 4) === 3 ? 0.6 : 0),
     defaultOption: 'regional',
     options: [
       { id: 'army', tone: 'generous', label: 'Бросить армию и авиацию', spend: 0.08, shock: -8,
-        effect: 'Огонь сбит за неделю, округ видит, что о нём помнят.',
-        impulses: (s, d) => [makeImpulse('approvalPush', 1, 'Пожары под Глуховом потушены', 'fast', d, 'other')] },
-      { id: 'regional', tone: 'wait', label: 'Пусть справляется округ', spend: 0, shock: 9,
-        effect: 'Посёлки горят, окраина снова чувствует себя забытой.',
-        impulses: (s, d) => [makeImpulse('approvalPush', -1.5, 'Окраину оставили один на один с пожарами', 'fast', d, 'other')] },
+        effect: 'Огонь сбит за неделю, область видит, что о ней помнят.',
+        impulses: (s, d) => [makeImpulse('approvalPush', 1, 'Пожары под Боровцом потушены', 'fast', d, 'other')] },
+      { id: 'regional', tone: 'wait', label: 'Пусть справляется область', spend: 0, shock: 9,
+        effect: 'Посёлки горят, Боровская область снова чувствует себя забытой.',
+        impulses: (s, d) => [makeImpulse('approvalPush', -1.5, 'Боровскую область оставили один на один с пожарами', 'fast', d, 'other')] },
     ] },
-  { id: 'youth_exodus', region: 'periphery', title: 'Молодёжь уезжает с окраины',
-    text: () => 'Школы Лесной окраины выпускают больше, чем остаётся: молодые семьи уезжают в столицу и за границу.',
+  { id: 'youth_exodus', region: 'periphery', title: 'Молодёжь уезжает из Боровской области',
+    text: () => 'Школы Боровской области выпускают больше, чем остаётся: молодые семьи уезжают в столицу и за границу.',
     weight: (s) => 0.3 + 0.2 * Math.max(0, (s.unemployment || 0) - 6),
     defaultOption: 'wait',
     options: [
       { id: 'grants', tone: 'generous', label: 'Подъёмные и жильё для молодых', spend: 0.06, shock: -7,
-        effect: 'Часть семей остаётся — окраина стареет медленнее.',
+        effect: 'Часть семей остаётся — область стареет медленнее.',
         impulses: () => [] },
       { id: 'wait', tone: 'wait', label: 'Ничего не делать', spend: 0, shock: 5,
         effect: 'Рабочих рук в стране становится чуть меньше.',
-        impulses: (s, d) => [makeImpulse('laborForce', -0.15, 'Отток с окраины', 'slow', d, 'other')] },
+        impulses: (s, d) => [makeImpulse('laborForce', -0.15, 'Отток из Боровской области', 'slow', d, 'other')] },
     ] },
 ];
 const REGION_EVENT_BY_ID = Object.fromEntries(REGION_EVENTS.map((e) => [e.id, e]));
@@ -5302,7 +5313,7 @@ function regionStep(s, decisions, difficulty, quarterIndex) {
     mods[x.region] = (mods[x.region] || 0) - p.relief;
     out.impulses.push(...p.done(difficulty), makeImpulse('approvalPush', 1, `Сдан объект: ${p.name}`, 'fast', difficulty, 'other'));
     const region = MAP_REGIONS.find((r) => r.id === x.region);
-    out.news.push(['gov', `ПОСТРОЕНО: ${p.name.toUpperCase()}`, `${region.name} получил ${p.name.toLowerCase()}. ${p.effect} Напряжение в округе снижается надолго.`, 8]);
+    out.news.push(['gov', `ПОСТРОЕНО: ${p.name.toUpperCase()}`, `${region.name}: сдан объект «${p.name}». ${p.effect} Напряжение в области снижается надолго.`, 8]);
   });
   projects = still;
   // 3) новое событие — не каждый квартал и не раньше третьего
@@ -5355,9 +5366,9 @@ function botRegionPlan(s, P, consolidationNeed) {
 
 const REGION_TEXT = {
   capital: {
-    calm: (e) => `Аппарат работает штатно, рейтинг власти держится на ${Math.round(e.approval)} из 100 — округу нечего обсуждать сверх обычной повестки.`,
+    calm: (e) => `Аппарат работает штатно, рейтинг власти держится на ${Math.round(e.approval)} из 100 — столице нечего обсуждать сверх обычной повестки.`,
     tense: (e) => `Напряжённость в стране ${Math.round(e.politicalTension)} из 100 ощущается здесь острее всего — ближе всего к власти, ближе всего к недовольству ею.`,
-    crisis: (e) => `Улицы столичного округа — первыми на очереди у любой перемены власти: рейтинг ${Math.round(e.approval)}, напряжённость ${Math.round(e.politicalTension)} из 100.`,
+    crisis: (e) => `Улицы Велеграда — первыми на очереди у любой перемены власти: рейтинг ${Math.round(e.approval)}, напряжённость ${Math.round(e.politicalTension)} из 100.`,
   },
   port: {
     calm: () => 'Погрузка идёт по графику, курс не пугает импортёров — обычный квартал для внешней торговли.',
@@ -5365,28 +5376,28 @@ const REGION_TEXT = {
     crisis: (e) => `Резервы истрачены, курс ${fmt1(e.exchangeRate)} — импортные контракты замораживают, а не подписывают.`,
   },
   industry: {
-    calm: () => 'Цеха загружены, заказы есть — обычный квартал для промышленного пояса.',
+    calm: () => 'Цеха загружены, заказы есть — обычный квартал для кузнецких заводов.',
     tense: (e) => `Безработица ${fmt1(e.unemployment)}% при норме ${fmt1(e.nairu)}% — часть цехов уже перешла на неполную неделю.`,
     crisis: (e) => `Заказы встали, безработица ${fmt1(e.unemployment)}% — не статистика, а очередь у проходной.`,
   },
   agri: {
-    calm: () => 'Цены на урожай предсказуемы, кредит на посевную доступен — обычный квартал для хлебородья.',
+    calm: () => 'Цены на урожай предсказуемы, кредит на посевную доступен — обычный квартал для приреченских хозяйств.',
     tense: (e) => `Инфляция ${fmt1(e.inflation)}% съедает выручку быстрее, чем успевает вырасти цена на зерно.`,
     crisis: (e) => `При инфляции ${fmt1(e.inflation)}% продавать урожай по контрактным ценам — значит себе в убыток; хозяйства придерживают запасы.`,
   },
   finance: {
-    calm: () => 'Спреды узкие, кредит доступен — обычный квартал для биржевого округа.',
+    calm: () => 'Спреды узкие, кредит доступен — обычный квартал для златоградских банков.',
     tense: (e) => `Премия за риск ${fmt1(e.riskPremium)} п.п. — кредит дорожает быстрее, чем успевают пересчитать ставки по старым займам.`,
     crisis: (e) => `Премия за риск ${fmt1(e.riskPremium)} п.п. и банковский риск ${Math.round(e.bankingRisk)} из 100 — межбанк торгуется нервно, лимиты друг на друга урезаны.`,
   },
   mining: {
-    calm: () => 'Добыча и энергогенерация идут ровным ходом — обычный квартал для шахтёрского края.',
+    calm: () => 'Добыча и энергогенерация идут ровным ходом — обычный квартал для рудногорских шахт.',
     tense: (e) => `Инфляция ${fmt1(e.inflation)}% при просевшем спросе — не лучшее время закладывать новую смену.`,
     crisis: () => 'Часть добывающих мощностей встала на консервацию — дешевле переждать, чем работать в убыток.',
   },
   periphery: {
-    calm: () => 'Обычный квартал: ни ажиотажа, ни оттока — лесная окраина этим и живёт.',
-    tense: () => 'Отток молодёжи в столичный округ ускоряется — там хотя бы платят вовремя.',
+    calm: () => 'Обычный квартал: ни ажиотажа, ни оттока — Боровская область этим и живёт.',
+    tense: () => 'Отток молодёжи в Велеград ускоряется — там хотя бы платят вовремя.',
     crisis: (e) => `При напряжённости ${Math.round(e.politicalTension)} из 100 периферия голосует не бюллетенем, а переездом.`,
   },
 };
@@ -5628,7 +5639,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct,
+  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
