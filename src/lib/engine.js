@@ -237,7 +237,8 @@ const SCENARIOS = [
     desc: 'Цены разгоняются на глазах, доверие к цели по инфляции разрушено, долг уже дорогой. Классическая спираль: инфляция кормит саму себя через ожидания.',
     overrides: { inflation: 34, coreInflation: 30, inflationExpectations: 27, cbCredibility: 18, keyRate: 24,
       lendingRate: 30, depositRate: 22, govDebt: 1700, effectiveDebtRate: 13, riskPremium: 4.2,
-      consumerConfidence: 25, businessConfidence: 28, approval: 33, politicalTension: 34 } },
+      consumerConfidence: 25, businessConfidence: 28, approval: 33, politicalTension: 34,
+      crisisMandateLeft: 6, crisisMandateTotal: 6 } },
 ];
 
 const FX_REGIMES = [
@@ -2567,7 +2568,10 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     + 0.035 * Math.max(0, 55 - s.govTrust) + 0.03 * Math.max(0, 60 - s.cbCredibility) + 0.02 * Math.max(0, 55 - s.policyCoordination)
     - 0.02 * Math.max(0, -(Number.isFinite(s.netDebtToGdp) ? s.netDebtToGdp : s.debtToGdp)) + (s.regime === 'currency' || s.regime === 'debt' ? 1.5 : 0)
     + (lockedOutOfMarkets ? 3.5 : 0) + (defaultedEver ? 0.3 : 0) // рынок не забывает дефолт — даже после локаута премия не возвращается к нулю
-    + RE.riskPremium; // судебная реформа: спор с государством можно выиграть — риск дешевеет
+    + RE.riskPremium // судебная реформа: спор с государством можно выиграть — риск дешевеет
+    // поверенная стабилизационная программа (с лагом в квартал: рынок судит
+    // по прошлой отчётности) — инвесторы снова готовы держать местные деньги
+    - 1.6 * (Number.isFinite(s.stabilizationCred) ? s.stabilizationCred : 0);
   const riskPremium = clamp(ema(s.riskPremium, riskPremiumTarget, 0.22) + (d.riskPremium || 0), 0.2, 14);
 
   const bankSpread = C.bankSpreadBase + 0.35 * clamp(s.bankNPL - 3, 0, 10) + 0.25 * clamp(12 - s.bankCapitalAdequacy, 0, 8)
@@ -2797,17 +2801,107 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   add('inflation', `Ожидания ${fmt1(s.inflationExpectations)}% + давление спроса ${fmtSigned1(demandPressure)} п.п. + издержки труда ${fmtSigned1(ulcPressure)} п.п.`, inflation - s.inflation);
   if (Math.abs(supplyShock) > 0.1) add('inflation', 'Шок предложения: издержки выросли при падении выпуска', supplyShock);
 
+  /* --- СТАБИЛИЗАЦИОННАЯ ПРОГРАММА ---
+     Большие инфляции в истории кончались не постепенным сжатием, а сменой
+     режима (Сарджент, «Конец четырёх больших инфляций»): жёсткие деньги плюс
+     бюджет, который перестаёт их требовать. Когда рынок верит, что оба условия
+     выполнены всерьёз, ожидания рушатся за кварталы, а не за годы — и
+     рецессия выходит мельче, чем при медленной дезинфляции.
+
+     Без этой механики сценарий «Гиперинфляция» политически не выигрывался:
+     перебор 432 стратегий не нашёл ни одной, сохраняющей демократию, —
+     ожидания сползали так медленно, что сбить инфляцию можно было только
+     рецессией с безработицей 16%.
+
+     Доверие к программе (0..1) копится, пока выполнены опоры:
+       — деньги: реальная ставка ≥ 3 п.п., ЦБ не печатает и не заливает банки;
+       — бюджет: дефицит не больше 3% ВВП или бюджетный импульс сокращается;
+       — якорь (бонус): курс управляется или фиксирован при достаточных резервах.
+     Одна жёсткая ставка без бюджета копит доверие втрое медленнее — рынок
+     помнит, чем кончаются программы, которые Минфин не поддерживает. Нарушение
+     денежной опоры обрушивает доверие сразу. Программа имеет смысл только при
+     высокой инфляции; когда цены вернулись к цели, доверие плавно гаснет —
+     дальше работает обычное доверие к ЦБ. */
+  const prevStab = Number.isFinite(s.stabilizationCred) ? s.stabilizationCred : 0;
+  const highInflation = s.inflation >= infTarget + 8 || (prevStab > 0.05 && s.inflation > infTarget + 2);
+  const moneyPillar = decisions.keyRate - s.inflationExpectations >= 3
+    && (decisions.moneySupplyOp || 0) <= 0 && !decisions.emergency;
+  const budgetPillar = (Number.isFinite(s.budgetBalancePctGdp) ? s.budgetBalancePctGdp : 0) >= -3 || fiscalImpulse <= -0.3;
+  const anchorPillar = decisions.fxRegime !== 'free' && s.reserves >= 0.5 * CONFIG.initial.reserves;
+  let stabilizationCred = prevStab;
+  if (!highInflation) stabilizationCred = prevStab * 0.7;
+  else if (!moneyPillar) stabilizationCred = prevStab * 0.35;
+  else stabilizationCred = prevStab + (budgetPillar ? 0.3 : 0.1) + (anchorPillar ? 0.1 : 0);
+  stabilizationCred = clamp(stabilizationCred, 0, 1);
+  if (stabilizationCred < 0.02) stabilizationCred = 0;
+  if (highInflation && prevStab < 0.5 && stabilizationCred >= 0.5) {
+    news.push(mkNews('cb', 'СТАБИЛИЗАЦИОННАЯ ПРОГРАММА: РЫНКИ ПОВЕРИЛИ',
+      `Жёсткая ставка${budgetPillar ? ' и бюджет без дыры' : ''}${anchorPillar ? ' при удерживаемом курсе' : ''} убеждают, что деньги перестанут обесцениваться. Ожидания начали падать быстрее самих цен.`,
+      { priority: 8, chain: ['Реальная ставка ↑', budgetPillar ? 'Дефицит под контролем' : 'Бюджет отстаёт', 'Доверие к программе ↑', 'Ожидания ↓', 'Инфляция ↓'] }));
+  } else if (prevStab >= 0.5 && highInflation && !moneyPillar) {
+    news.push(mkNews('cb', 'СТАБИЛИЗАЦИЯ СОРВАНА: ДОВЕРИЕ ПОТЕРЯНО',
+      'Денежные условия ослаблены раньше, чем инфляция побеждена. Рынок помнит такие программы — второй раз поверят не скоро.',
+      { priority: 9, chain: ['Ставка ↓ / эмиссия', 'Программа сорвана', 'Ожидания ↑', 'Инфляция ↑'] }));
+  }
+
+  /* --- ЦЕНЫ ОСТАНОВЛЕНЫ ---
+     Доведённая до конца стабилизация — одна из немногих побед, которую люди
+     замечают сразу и помнят: после бразильского Плана Реал в 1994-м министр
+     финансов, остановивший цены, выиграл президентские выборы. Когда
+     поверенная программа (доверие ≥ 0,6) возвращает инфляцию к цели,
+     рейтинг получает разовый скачок, а напряжение — разовый спад. Один раз
+     за партию: второй раз «спасти страну от инфляции» не получится. */
+  const stabilizationWon = !!s.stabilizationWon
+    || (prevStab >= 0.6 && s.inflation > infTarget + 3 && inflation <= infTarget + 3);
+  const stabilizationBonus = stabilizationWon && !s.stabilizationWon ? 15 : 0;
+  if (stabilizationBonus) {
+    news.push(mkNews('gov', 'ЦЕНЫ ОСТАНОВЛЕНЫ: СТАБИЛИЗАЦИЯ УДАЛАСЬ',
+      `Инфляция ${fmt1(inflation)}% при цели ${fmt1(infTarget)}% — впервые за долгое время ценники перестали меняться каждую неделю. Цена победы — рецессия, но её страна готова простить тем, кто вернул деньгам смысл.`,
+      { priority: 10, chain: ['Жёсткая ставка', 'Бюджет под контролем', 'Доверие к программе', 'Ожидания ↓', 'Цены остановлены', 'Рейтинг ↑'] }));
+  }
+
+  /* --- МАНДАТ СПАСЕНИЯ ---
+     Правительству, которое пришло спасать страну от гиперинфляции, люди дают
+     время: так было с Пасом Эстенссоро в Боливии в 1985-м — поддержка держалась,
+     пока цены не встали. Без этого политические часы шли быстрее экономических:
+     рейтинг обваливался за три–четыре квартала, а самая быстрая стабилизация
+     даёт результат через четыре–пять, и перебор 1296 двухфазных стратегий не
+     нашёл ни одной, удерживающей демократию.
+
+     Мандат задаётся сценарием (crisisMandateLeft/Total) и тает с каждым
+     кварталом. Полную силу он даёт, только пока программа реально работает
+     (доверие к ней ≥ 0,3); при бездействии — треть силы, и после первых двух
+     кварталов сгорает вдвое быстрее: терпение людей не бесконечно. Поэтому он
+     спасает хорошую игру, но не бездействие. */
+  const mandateTotal = Number.isFinite(s.crisisMandateTotal) ? s.crisisMandateTotal : 0;
+  const mandatePrev = Number.isFinite(s.crisisMandateLeft) ? s.crisisMandateLeft : 0;
+  const programOn = stabilizationCred >= 0.3;
+  const earlyMandate = mandatePrev > mandateTotal - 2;
+  const crisisMandateLeft = mandatePrev > 0 ? Math.max(0, mandatePrev - (programOn || earlyMandate ? 1 : 2)) : 0;
+  const mandateEffect = mandateTotal > 0 ? (mandatePrev / mandateTotal) * (0.35 + 0.65 * stabilizationCred) : 0;
+  if (mandatePrev > 0 && crisisMandateLeft === 0) {
+    news.push(mkNews('gov', programOn ? 'МАНДАТ СПАСЕНИЯ ИСЧЕРПАН — ДАЛЬШЕ СУДЯТ ПО ЦЕНАМ' : 'ТЕРПЕНИЕ КОНЧИЛОСЬ: МАНДАТ СПАСЕНИЯ СГОРЕЛ',
+      programOn ? 'Кредит доверия, выданный правительству национального спасения, исчерпан. Дальше поддержку определяют не обещания, а ценники и занятость.'
+        : 'Правительству давали время, чтобы остановить цены. Время вышло раньше, чем программа заработала.', { priority: 8 }));
+  }
+
   /* ожидания и доверие к ЦБ */
   const inflDev = Math.abs(inflation - infTarget);
-  const adaptSpeed = clamp(C.expAdaptMin + (C.expAdaptMax - C.expAdaptMin) * clamp(inflDev / 6, 0, 1) * (1 - s.cbCredibility / 140), 0.08, 0.55);
-  const anchorWeight = clamp(s.cbCredibility / 100 * (1 - clamp((inflDev - 2) / 8, 0, 0.6)), 0.05, 0.95);
+  const adaptSpeed = Math.max(
+    clamp(C.expAdaptMin + (C.expAdaptMax - C.expAdaptMin) * clamp(inflDev / 6, 0, 1) * (1 - s.cbCredibility / 140), 0.08, 0.55),
+    0.2 + 0.35 * stabilizationCred);
+  // поверившая программе страна ждёт цель, а не вчерашние цены
+  const anchorWeight = Math.max(clamp(s.cbCredibility / 100 * (1 - clamp((inflDev - 2) / 8, 0, 0.6)), 0.05, 0.95),
+    0.75 * stabilizationCred);
   const expTarget = anchorWeight * infTarget + (1 - anchorWeight) * (0.75 * inflation + 0.25 * s.inflationExpectations);
   // ожидания двигают не только цифры, но и сами события: шоки, кризисы, курс, эмиссия
   const expShock = clamp(0.32 * Math.max(0, supplyShock) + 0.055 * Math.max(0, Math.abs(fxDeprAnnual) - 6)
     + (activeCrisesPre.indexOf('currency') >= 0 ? 0.5 : 0) + (activeCrisesPre.indexOf('banking') >= 0 ? 0.25 : 0)
     + (decisions.emergency ? 0.5 : 0) + 0.25 * Math.max(0, inflation - s.inflation - 1)
     + (Math.abs(targetChange) > 0.01 ? targetChange * 0.6 : 0)
-    - (s.cbCredibility > 75 ? 0.2 : 0) - (s.cbCredibility > 88 ? 0.1 : 0), -0.8, 2.4);
+    - (s.cbCredibility > 75 ? 0.2 : 0) - (s.cbCredibility > 88 ? 0.1 : 0), -0.8, 2.4)
+    // заголовки пугают меньше, когда люди верят программе
+    * (1 - 0.5 * stabilizationCred);
   const inflationExpectations = clamp(s.inflationExpectations + adaptSpeed * (expTarget - s.inflationExpectations)
     + expShock + gauss(0.10 * nMult), -5, 40);
   if (Math.abs(expShock) > 0.08) {
@@ -2938,9 +3032,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
 
   const consumerConfidence = clamp(s.consumerConfidence + 0.11 * (T.neutralConfidence - s.consumerConfidence)
     + 0.30 * (wageGrowth - inflation) - 0.35 * Math.max(0, unemployment - nairu) - 0.25 * Math.max(0, inflation - 6)
+    // деньги снова что-то значат: люди перестают избавляться от них в тот же день
+    + 3.5 * stabilizationCred
     + (d.consumerConfidence || 0) + gauss(NB.consumerConfidence * nMult), 0, 100);
   const businessConfidence = clamp(s.businessConfidence + 0.11 * (T.neutralConfidence - s.businessConfidence)
-    + 0.32 * (gdpGrowth - potentialGrowth) - 0.06 * Math.max(0, bankingRisk - 50) - 0.25 * Math.max(0, rateGap)
+    + 0.32 * (gdpGrowth - potentialGrowth) - 0.06 * Math.max(0, bankingRisk - 50)
+    // жёсткая ставка поверенной программы читается как сигнал, а не как угроза:
+    // бизнес снова может считать на год вперёд
+    - 0.25 * Math.max(0, rateGap) * (1 - 0.7 * stabilizationCred) + 3.5 * stabilizationCred
     + (d.businessConfidence || 0) + gauss(NB.businessConfidence * nMult), 0, 100);
   const ignoredDemands = (s.demands || []).filter((x) => x.quartersActive >= 4).length;
   const govTrust = clamp(s.govTrust + 0.30 * ((budgetBalancePctGdp > -4 ? 0.4 : -0.5) + (gdpGrowth > 1 ? 0.3 : -0.3)
@@ -3053,14 +3152,20 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      ценами растёт быстро, но не бесконечно: выше ~20 пунктов его уже
      перекрывают безработица и падение выпуска, которые считаются отдельно. */
   const inflationPain = saturating(Math.max(0, inflation - infTarget), 2.2, 10);
+  /* Люди голосуют не только по уровню, но и по направлению: когда после
+     месяцев бегущих цен программа действует и инфляция заметно падает, это
+     чувствуют сразу — ценники перестают меняться каждую неделю. Облегчение
+     растёт с доверием к программе и со скоростью падения цен. */
+  const stabilizationRelief = stabilizationCred > 0.3
+    ? 12 * stabilizationCred * clamp((s.inflation - inflation) / 3, 0, 1) : 0;
   const approvalTarget = clamp(50 + 2.4 * (wageGrowth - inflation) - 3.6 * (unemployment - nairu)
-    - inflationPain + 0.22 * (govTrust - 55) + 0.18 * (consumerConfidence - 55)
+    - inflationPain + stabilizationRelief + 25 * mandateEffect + 0.22 * (govTrust - 55) + 0.18 * (consumerConfidence - 55)
     + 1.6 * (gdpGrowth - potentialGrowth), 0, 100);
   /* Публичные шаги власти двигают сам рейтинг, а не его «равновесие»: пенсионная
      реформа сбивает поддержку сразу и целиком, а не на 28% от заявленного, и дальше
      рейтинг возвращается к тому, что говорят цены, зарплаты и безработица. */
   const approval = clamp(ema(Number.isFinite(s.approval) ? s.approval : 55, approvalTarget, 0.28)
-    + (d.approvalPush || 0), 0, 100);
+    + (d.approvalPush || 0) + stabilizationBonus, 0, 100);
   const prevToElection = Number.isFinite(s.quartersToElection) ? s.quartersToElection : CONFIG.election.cycle;
   /* При тоталитарном режиме выборов нет вообще. В авторитарном они ещё проводятся —
      формально, с заранее известным результатом; это часть его фасада. А там, где
@@ -3348,13 +3453,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     + saturating(Math.max(0, inflation - 8), 1.6, 12.5)
     + Math.max(0, debtToGdp - 90) * 0.15
     + repression * 14
+    - 22 * mandateEffect
     - Math.max(0, approval - 55) * 0.6,
     0, 100);
   /* Указы президента двигают сам уровень напряжённости, а не её «равновесие»: разгон
      площади не меняет причин недовольства, он сдвигает состояние здесь и сейчас, а
      EMA сама вернёт напряжение к тому, что говорят экономика и рейтинг. */
   let politicalTension = clamp(ema(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, tensionTarget, 0.3)
-    + (d.tensionPush || 0), 0, 100);
+    + (d.tensionPush || 0) - 0.8 * stabilizationBonus, 0, 100);
   // переворот из блока выборов выше замыкает переход на авторитаризм напрямую,
   // минуя обычную пороговую цепочку демократия→кризис→авторитаризм — он уже
   // случился в этом квартале, а не подкрадывался несколько кварталов подряд
@@ -3583,6 +3689,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     approval, quartersToElection, term, mandate, governmentLine, electionResult, lastElection, campaignActive: campaign,
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive, powerLost, noElections,
+    stabilizationCred, stabilizationWon, crisisMandateLeft, crisisMandateTotal: mandateTotal,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -4439,6 +4546,7 @@ function makeInitialEconomy(scenarioId) {
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
+    stabilizationCred: 0,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
   };
   const rev = computeRevenue(base, base);

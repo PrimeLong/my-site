@@ -1793,3 +1793,59 @@ describe('разбор партии', () => {
     expect(gameChronicle([q(0)]).summary).toBeNull();
   });
 });
+
+/* Стабилизационная программа и мандат спасения. Без них сценарий
+   «Гиперинфляция» политически не выигрывался никакой игрой (перебор 1296
+   двухфазных стратегий — ноль); с ними выигрывается трудно, а бездействие
+   по-прежнему проигрывает. */
+describe('стабилизационная программа', () => {
+  const run = (patchFn, quarters = 4, scenario = 'hyperinflation') => {
+    let e = makeInitialEconomy(scenario); let d = defaultDecisions(e);
+    let pend = []; let cd = {}; const out = [];
+    for (let q = 1; q <= quarters; q++) {
+      const r = simulateQuarter({ economy: e, decisions: { ...d, ...patchFn(e) }, pendingImpulses: pend,
+        eventCooldowns: cd, difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; d = defaultDecisions(e, d);
+      out.push({ e, news: r.newsEntries });
+    }
+    return out;
+  };
+  const hard = (e) => ({ keyRate: Math.round(e.inflationExpectations + 8), govSpending: -6, fxRegime: 'managed' });
+
+  it('жёсткие деньги и бюджет копят доверие к программе быстрее, чем одна ставка', () => {
+    const both = run(hard, 2);
+    const moneyOnly = run((e) => ({ keyRate: Math.round(e.inflationExpectations + 8), govSpending: 6, transfers: 8 }), 2);
+    expect(both[1].e.stabilizationCred).toBeGreaterThan(moneyOnly[1].e.stabilizationCred);
+    expect(both[1].e.stabilizationCred).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('печатание денег обрушивает доверие к программе', () => {
+    const broken = run(hard, 2);
+    const e = broken[1].e;
+    const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), ...hard(e), moneySupplyOp: 4 },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'easy', quarterIndex: 3, stories: [], noEvents: true });
+    expect(r.economy.stabilizationCred).toBeLessThan(e.stabilizationCred * 0.5);
+  });
+
+  it('при поверенной программе ожидания падают быстрее, чем при той же ставке без неё', () => {
+    const credible = run(hard, 3);
+    const printing = run((e) => ({ ...hard(e), moneySupplyOp: 3 }), 3);
+    expect(credible[2].e.inflationExpectations).toBeLessThan(printing[2].e.inflationExpectations - 3);
+  });
+
+  it('мандат спасения при бездействии сгорает быстрее, чем при работающей программе', () => {
+    const acting = run(hard, 4); const idle = run(() => ({}), 4);
+    expect(idle[3].e.crisisMandateLeft).toBeLessThan(acting[3].e.crisisMandateLeft);
+  });
+
+  it('«Цены остановлены» — один раз, когда программа довела инфляцию до цели', () => {
+    const quarters = run(hard, 10);
+    const hits = quarters.flatMap((x) => x.news).filter((n) => n.headline.startsWith('ЦЕНЫ ОСТАНОВЛЕНЫ'));
+    expect(hits.length).toBe(1);
+  });
+
+  it('в спокойной партии программа не включается и ничего не меняет', () => {
+    const calm = run(() => ({}), 6, 'sandbox');
+    calm.forEach((x) => { expect(x.e.stabilizationCred).toBe(0); expect(x.e.crisisMandateLeft || 0).toBe(0); });
+  });
+});

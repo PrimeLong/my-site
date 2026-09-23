@@ -19,9 +19,9 @@
            npm run balance -- --scenarios  (плюс выигрываемость кризисных сценариев)
 
    Выигрываемость — отдельный вопрос, на который боты ответить не могут: они
-   играют одну стратегию. Здесь перебирается 432 простые человеческие стратегии
-   (ставка относительно инфляции, выплаты, закупки, режим курса, изъятие денег)
-   и считается, сколько из них сохраняют демократию за четыре года. Ноль из 432
+   играют одну стратегию. Здесь перебирается 1296
+   двухфазных стратегий (жёсткая фаза, потом мягкая) и считается, сколько из
+   них сохраняют демократию за четыре года. Ноль
    значит, что сценарий политически не выигрывается никакой игрой.
 ============================================================================ */
 import {
@@ -161,22 +161,33 @@ if (JSON_OUT) {
   table('По характеру президента (открытая партия, Прагматик + Технократ)', report.byPresident.map((r) => ({ ...r, label: name(PRESIDENT_PERSONAS, r.key) })), 'президент');
 }
 
-/* --- Выигрываемость кризисных сценариев перебором стратегий --- */
+/* --- Выигрываемость кризисных сценариев перебором стратегий ---
+   Стратегии двухфазные — так играет человек, а не бот: сначала жёсткая фаза
+   (ставка над инфляцией, бюджет, режим курса), а когда инфляция вернулась
+   близко к цели — мягкая (ставка у ожиданий, поддержка выплатами и
+   закупками). Постоянные параметры на всю партию недооценивали игрока: в
+   «Гиперинфляции» они не находили ни одной выигрышной стратегии даже там,
+   где двухфазная находила. */
 function scenarioWinnability(scenarioId) {
   const KR = LEVERS.find((l) => l.id === 'keyRate');
   const rank = { democracy: 0, crisis: 1, authoritarian: 2, totalitarian: 3 };
   let winning = 0; let total = 0; let best = null;
-  for (const prem of [-6, -3, 0, 2, 4, 7]) for (const tr of [0, 4, 8, 12]) for (const gs of [-4, 0, 4])
-    for (const fx of ['free', 'managed', 'peg']) for (const qe of [0, -3]) {
+  for (const prem of [3, 5, 8]) for (const gs1 of [-6, -3, 0]) for (const fx of ['free', 'managed', 'peg']) for (const tr1 of [0, 4, 8])
+    for (const exitAt of [3, 6]) for (const prem2 of [-1, 1]) for (const tr2 of [4, 10]) for (const gs2 of [0, 4]) {
       total += 1; let kept = 0;
       for (const seed of [1, 2, 3, 4]) {
         const realRandom = Math.random; Math.random = mulberry32(seed);
         try {
           let e = makeInitialEconomy(scenarioId); let d = defaultDecisions(e);
-          let pend = []; let cd = {}; let st = []; let worst = 0;
+          let pend = []; let cd = {}; let st = []; let worst = 0; let phase = 1;
           for (let q = 1; q <= 16; q++) {
-            const kr = Math.max(0, Math.min(scaleLever(KR, e).max, Math.round(Math.max(e.inflation, e.inflationExpectations) + prem)));
-            const r = simulateQuarter({ economy: e, decisions: { ...d, keyRate: kr, transfers: tr, govSpending: gs, fxRegime: fx, moneySupplyOp: qe },
+            const tgt = Number.isFinite(e.inflationTarget) ? e.inflationTarget : 4;
+            if (phase === 1 && e.inflation < tgt + exitAt) phase = 2;
+            const cap = scaleLever(KR, e).max;
+            const dec = phase === 1
+              ? { keyRate: Math.min(cap, Math.max(0, Math.round(Math.max(e.inflation, e.inflationExpectations) + prem))), govSpending: gs1, transfers: tr1, fxRegime: fx }
+              : { keyRate: Math.min(cap, Math.max(0, Math.round(e.inflationExpectations + prem2))), govSpending: gs2, transfers: tr2, fxRegime: fx };
+            const r = simulateQuarter({ economy: e, decisions: { ...d, ...dec },
               pendingImpulses: pend, eventCooldowns: cd, difficulty: 'medium', quarterIndex: q, stories: st });
             e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; st = r.stories || st; d = defaultDecisions(e, d);
             worst = Math.max(worst, rank[e.politicalRegime] || 0);
@@ -185,7 +196,7 @@ function scenarioWinnability(scenarioId) {
         } finally { Math.random = realRandom; }
       }
       if (kept > 0) winning += 1;
-      if (!best || kept > best.kept) best = { kept, prem, tr, gs, fx, qe };
+      if (!best || kept > best.kept) best = { kept, prem, gs1, fx, tr1, exitAt, prem2, tr2, gs2 };
     }
   return { winning, total, best };
 }
@@ -197,6 +208,6 @@ if (SCENARIO_SEARCH && !JSON_OUT) {
   SCENARIOS.filter((sc) => sc.id !== 'sandbox').forEach((sc) => {
     const w = scenarioWinnability(sc.id);
     const b = w.best;
-    console.log(`| ${sc.title} | ${w.winning} из ${w.total} | ${b.kept}/4: ставка = инфляция ${b.prem >= 0 ? '+' : ''}${b.prem}, выплаты ${b.tr}, закупки ${b.gs}, курс ${b.fx}, изъятие ${b.qe} |`);
+    console.log(`| ${sc.title} | ${w.winning} из ${w.total} (${Math.round(w.winning / w.total * 100)}%) | ${b.kept}/4: сначала ставка = инфляция +${b.prem}, закупки ${b.gs1}, выплаты ${b.tr1}, курс ${b.fx}; у цели (+${b.exitAt}) — ставка = ожидания ${b.prem2 >= 0 ? '+' : ''}${b.prem2}, выплаты ${b.tr2}, закупки ${b.gs2} |`);
   });
 }
