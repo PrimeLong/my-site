@@ -763,7 +763,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
           directive: presDirective, directiveStrength: presDirStrength,
           region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null },
-          warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null }
+          warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null, treaty: decisions.treaty || null }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
       setRoom(r.room); setSent(true); Audio.play('stamp');
@@ -1298,6 +1298,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               campaignPlan={decisions.campaignPlan || {}}
               onCampaignPlan={isPresidentSeat && !sent ? (cp) => setDecisions((d) => ({ ...d, campaignPlan: cp })) : null}
               campaignPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : 'штаб власти'}
+              treatyPlan={decisions.treaty || null}
+              onTreatyPlan={isPresidentSeat && !sent ? (t) => setDecisions((d) => ({ ...d, treaty: t })) : null}
+              treatyPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : room.president ? 'президент (бот)' : 'МИД по поручению правительства'}
               planner={room.president && room.president.human
                 ? `президент${room.occupied.ministry_finance ? ` и Минфин (${room.names.ministry_finance || 'игрок'})` : ' и бот-Минфин'}`
                 : room.occupied.ministry_finance ? `Минфин (${room.names.ministry_finance || 'игрок'})` : 'Минфин (бот)'} />

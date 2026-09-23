@@ -1,10 +1,11 @@
 /* Карта страны: округа, их напряжение и итоги выборов по округам. Вынесена
    из MacroSimulator.jsx в отдельный чанк и грузится лениво — карта нужна
    только по нажатию вкладки «Карта», а не при первой загрузке сайта. */
-import { AlertTriangle, Anchor, Castle, CheckCircle2, Coins, Construction, Factory, Flag, Landmark, Lock, Mountain, Pickaxe, Swords, Trees, Vote, Wheat } from 'lucide-react';
+import { AlertTriangle, Anchor, Castle, CheckCircle2, Coins, Construction, Factory, Flag, Handshake, Landmark, Lock, Mountain, Pickaxe, Shield, Swords, Trees, Vote, Wheat } from 'lucide-react';
 import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength,
   CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel,
-  regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST } from './lib/engine.js';
+  regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
+  DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, sanitizeTreaty, treatyCost } from './lib/engine.js';
 import { useState } from 'react';
 import {
   Audio, COLOR, starPath,
@@ -333,7 +334,9 @@ function voteAlpha(share) {
    ({ target, stance }); без onWarOrder операция только показывается. */
 /* campaignPlan/onCampaignPlan — штабы кампании на этот квартал ({ regionId: штабов });
    campaignPlanner — кто распределяет их за игрока без права решать. */
-export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner }) {
+/* treatyPlan/onTreatyPlan — условия мира, которые президент предложит Норланду в этом квартале. */
+export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner,
+  treatyPlan, onTreatyPlan, treatyPlanner }) {
   const [selected, setSelected] = useState('capital');
   const [picked, setMode] = useState('stress');
   // слой, который пропал (опросы после выборов), не остаётся выбранным невидимкой
@@ -360,7 +363,17 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
   const camp = atWar && economy.warType === 'offensive' ? (economy.warCampaign || { progress: { pass: 0, mines: 0, city: 0 }, captured: [], last: null }) : null;
   // фронт уходит вглубь Норланда вместе с продвижением операции
   const push = camp ? Math.max(...WAR_OBJECTIVES.map((o) => camp.progress[o.id] || 0)) : 0;
-  const war = atWar ? warGeometry(economy.warType, camp ? 26 + push * 0.42 : null) : null;
+  // война за новые земли: не линия фронта, а удары Норланда по отдельным областям
+  const revCamp = atWar && economy.warType === 'revanche' ? economy.revancheCampaign : null;
+  const war = atWar && !revCamp ? warGeometry(economy.warType, camp ? 26 + push * 0.42 : null) : null;
+  const hotNeighbor = war ? war.cfg.neighbor : revCamp ? 'north' : null;
+  const heldIds = regions.filter((r) => r.annex).map((r) => r.id);
+  const defStanding = revCamp ? defaultDefenseOrder(revCamp) : null;
+  const defOrder = revCamp ? {
+    target: warOrder && heldIds.includes(warOrder.target) ? warOrder.target : heldIds.includes(defStanding.target) ? defStanding.target : heldIds[0],
+    stance: (warOrder && DEFENSE_STANCES.some((x) => x.id === warOrder.stance) && warOrder.stance) || defStanding.stance,
+  } : null;
+  const setDefOrder = onWarOrder && revCamp ? (patch) => onWarOrder({ ...defOrder, ...patch }) : null;
   // действующий приказ: новый, если отдан в этом квартале, иначе прошлый (см. defaultWarOrder)
   const standing = camp ? defaultWarOrder(camp) : null;
   const order = camp ? {
@@ -437,7 +450,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           <path d={nbBorderPath} fill="none" stroke={`${COLOR.text}66`} strokeWidth={2} strokeDasharray="10 4 2 4" />
           {NEIGHBORS.map((n) => (
             <text key={n.id} x={n.label[0]} y={n.label[1]} textAnchor="middle" transform={n.rotate ? `rotate(${n.rotate} ${n.label[0]} ${n.label[1]})` : undefined}
-              style={{ fontSize: 14, letterSpacing: '0.26em', fill: war && war.cfg.neighbor === n.id ? COLOR.rust : COLOR.faint, fontStyle: 'italic', fontWeight: war && war.cfg.neighbor === n.id ? 600 : 400 }}>{n.name}</text>
+              style={{ fontSize: 14, letterSpacing: '0.26em', fill: hotNeighbor === n.id ? COLOR.rust : COLOR.faint, fontStyle: 'italic', fontWeight: hotNeighbor === n.id ? 600 : 400 }}>{n.name}</text>
           ))}
           <text x={905} y={560} textAnchor="middle" style={{ fontSize: 16, letterSpacing: '0.3em', fill: `${COLOR.blue}cc`, fontStyle: 'italic' }}>ЛАЗУРНОЕ</text>
           <text x={905} y={582} textAnchor="middle" style={{ fontSize: 16, letterSpacing: '0.3em', fill: `${COLOR.blue}cc`, fontStyle: 'italic' }}>МОРЕ</text>
@@ -548,6 +561,43 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
                   <Swords x={-7} y={-7} width={14} height={14} color={COLOR.rust} />
                 </g>
               ))}
+            </g>
+          )}
+          {/* война за новые земли: кольцо у города — давление Норланда, мечи — куда он
+              ударит, щит — какую область укрепили; клик — укрепить её */}
+          {revCamp && (
+            <g>
+              {revCamp.next && ANNEX_CITIES[(regionById(revCamp.next) || {}).objective] && (() => {
+                const [tx, ty] = ANNEX_CITIES[regionById(revCamp.next).objective].at;
+                return (
+                  <path d={`M360,-96 Q${(360 + tx) / 2},${Math.min(-96, ty) - 40} ${tx - 12},${ty - 14}`} fill="none" stroke={COLOR.rust}
+                    strokeWidth={5} strokeLinecap="round" markerEnd="url(#map-arrow)" opacity={0.85} style={{ pointerEvents: 'none' }} />
+                );
+              })()}
+              {regions.filter((r) => r.annex).map((r) => {
+                const [x, y] = ANNEX_CITIES[r.objective].at;
+                const p = revCamp.pressure[r.id] || 0;
+                const next = revCamp.next === r.id;
+                const guarded = defOrder.target === r.id && defOrder.stance !== 'talks';
+                const click = setDefOrder ? () => { Audio.play('tick'); setDefOrder({ target: r.id, stance: defOrder.stance === 'talks' ? 'defend' : defOrder.stance }); } : null;
+                const Icon = guarded ? Shield : next ? Swords : Flag;
+                return (
+                  <g key={`rv${r.id}`} transform={`translate(${x},${y - 30})`} role={click ? 'button' : undefined} tabIndex={click ? 0 : undefined}
+                    aria-label={`${r.name}: давление Норланда ${Math.round(p)} из 100${next ? ', сюда готовится удар' : ''}${guarded ? ', область укреплена' : ''}`}
+                    onClick={click || undefined} onKeyDown={click ? (e) => { if (e.key === 'Enter') click(); } : undefined}
+                    style={{ cursor: click ? 'pointer' : 'default' }}>
+                    {next && (
+                      <circle r={20} fill={COLOR.rust} opacity={0.25}>
+                        <animate attributeName="r" values="16;25;16" dur="1.8s" repeatCount="indefinite" />
+                      </circle>
+                    )}
+                    <circle r={16} fill={COLOR.bg} stroke={guarded ? COLOR.gold : COLOR.border} strokeWidth={guarded ? 2.4 : 1.4} />
+                    <circle r={16} fill="none" stroke={COLOR.rust} strokeWidth={3.4}
+                      strokeDasharray={`${(p / 100 * 100.5).toFixed(1)} 100.5`} transform="rotate(-90)" />
+                    <Icon x={-8} y={-8} width={16} height={16} color={guarded ? COLOR.gold : COLOR.rust} />
+                  </g>
+                );
+              })}
             </g>
           )}
           {/* цели наступательной операции: кольцо — продвижение, флаг — взята,
@@ -698,6 +748,11 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
       </div>
       <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {camp && <WarOperationPanel economy={economy} camp={camp} order={order} setOrder={setOrder} planner={warPlanner} />}
+        {revCamp && <DefensePanel economy={economy} camp={revCamp} order={defOrder} setOrder={setDefOrder} planner={warPlanner}
+          onFocus={setSelected} />}
+        {!atWar && (heldIds.length > 0 || economy.peaceTalks) && (
+          <NorlandPanel economy={economy} plan={treatyPlan} onPlan={onTreatyPlan} planner={treatyPlanner} />
+        )}
         {war && !camp && (() => {
           const nb = NEIGHBORS.find((n) => n.id === war.cfg.neighbor);
           const front = MAP_REGIONS.find((r) => r.id === warFrontRegion(economy));
@@ -1093,6 +1148,192 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
           ? (chosen ? 'Ответ применится в конце квартала.' : `Без ответа: «${def ? def.label.toLowerCase() : 'переждать'}».`)
           : `Отвечает ${planner || 'Минфин'} — решение станет известно в конце квартала.`}
       </div>
+    </div>
+  );
+}
+
+/* Война за новые земли: куда бьёт Норланд, давление по областям, его боевой дух и
+   приказ на квартал — какую область укрепить и как. */
+function DefensePanel({ economy, camp, order, setOrder, planner, onFocus }) {
+  const held = activeRegions(economy).filter((r) => r.annex);
+  const last = camp.last;
+  const nameOf = (id) => (regionById(id) || {}).short || '—';
+  const next = regionById(camp.next);
+  return (
+    <div className="ems-panel" style={{ padding: 14, borderColor: COLOR.rust, borderLeft: `3px solid ${COLOR.rust}` }} aria-label="Война за новые земли">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <Shield size={15} color={COLOR.rust} />
+        <span className="ems-serif" style={{ fontSize: 14 }}>Норланд наступает</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
+      </div>
+      {next && (
+        <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 6, lineHeight: 1.45 }}>
+          Разведка: Норланд стягивает силы для удара в {next.loc}.
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>
+        Боевой дух Норланда {Math.round(camp.morale)} из 100 — на нуле он сам попросит мира. Сила вашей армии {Math.round(warStrength(economy) * 100)} из 100.
+      </div>
+      <div style={{ height: 5, borderRadius: 3, background: COLOR.panelAlt, overflow: 'hidden', marginBottom: 10 }}>
+        <div style={{ width: `${camp.morale}%`, height: '100%', background: COLOR.rust }} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+        {held.map((r) => {
+          const p = camp.pressure[r.id] || 0;
+          const sel = order.target === r.id && order.stance !== 'talks';
+          const pick = setOrder ? () => { Audio.play('tick'); onFocus(r.id); setOrder({ target: r.id, stance: order.stance === 'talks' ? 'defend' : order.stance }); } : () => onFocus(r.id);
+          return (
+            <div key={r.id} role="button" tabIndex={0} onClick={pick} onKeyDown={(e) => { if (e.key === 'Enter') pick(); }}
+              style={{ padding: '6px 8px', borderRadius: 3, cursor: 'pointer',
+                border: `1px solid ${sel ? COLOR.gold : COLOR.border}`, background: sel ? COLOR.goldDim : COLOR.panelAlt }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+                {sel ? <Shield size={13} color={COLOR.gold} /> : camp.next === r.id ? <Swords size={13} color={COLOR.rust} /> : <Flag size={13} color={COLOR.muted} />}
+                <span style={{ fontWeight: sel ? 600 : 400 }}>{r.short}</span>
+                <span style={{ fontSize: 10, color: COLOR.faint }}>лояльность {Math.round(annexLoyalty(economy, r.id))}</span>
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 11, color: p >= 60 ? COLOR.rust : COLOR.muted }}>{Math.round(p)} / 100</span>
+              </div>
+              <div style={{ marginTop: 5, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+                <div style={{ width: `${p}%`, height: '100%', background: COLOR.rust }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Приказ на квартал{order.stance !== 'talks' && order.target ? ` — ${nameOf(order.target)}` : ''}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+        {DEFENSE_STANCES.map((st) => {
+          const active = order.stance === st.id;
+          return (
+            <button key={st.id} className="ems-btn" disabled={!setOrder} title={st.desc}
+              onClick={setOrder ? () => { Audio.play('click'); setOrder({ stance: st.id }); } : undefined}
+              style={{ padding: '6px 6px', fontSize: 11, textAlign: 'left', lineHeight: 1.3,
+                background: active ? (st.id === 'talks' ? COLOR.teal : COLOR.gold) : COLOR.panelAlt,
+                color: active ? COLOR.ink : COLOR.text, borderColor: active ? COLOR.gold : COLOR.border, opacity: setOrder || active ? 1 : 0.55 }}>
+              <b>{st.label}</b><br />
+              <span style={{ fontSize: 9.5, opacity: 0.85 }}>{st.spend ? `~${fmtMoney(economy.nominalGdp * st.spend / 100)} за кв.` : 'без затрат'}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
+        {(DEFENSE_STANCES.find((x) => x.id === order.stance) || {}).desc}{' '}
+        {setOrder ? 'Приказ действует, пока вы его не смените. Область, куда целит Норланд, выгоднее укрепить заранее.' : `Приказы отдаёт ${planner || 'президент'}.`}
+      </div>
+      {last && last.hit && (
+        <div style={{ fontSize: 11, color: COLOR.muted, marginTop: 8, paddingTop: 7, borderTop: `1px solid ${COLOR.hairline}`, lineHeight: 1.45 }}>
+          Прошлый квартал: Норланд ударил — {nameOf(last.hit)}{last.feint ? ' (разведка ошиблась)' : ''}, +{last.gain}
+          {last.stance === 'counter' ? `; контрудар — ${nameOf(last.target)}, −${last.pushed}` : last.target === last.hit ? '; удар пришёлся на укреплённую область' : ''}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Норланд в мирное время: реваншизм, договор и — если открыты переговоры — стол
+   переговоров с условиями и ценой каждого из них. */
+function NorlandPanel({ economy, plan, onPlan, planner }) {
+  // ниже нуля — Норланд ещё зализывает раны после проигранной войны
+  const rev = Math.max(0, economy.norlandRevanche || 0);
+  const growth = revancheGrowth(economy);
+  const t = economy.treaty;
+  const talks = economy.peaceTalks;
+  const held = activeRegions(economy).filter((r) => r.annex);
+  return (
+    <div className="ems-panel" style={{ padding: 14 }} aria-label="Отношения с Норландом">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <Handshake size={15} color={talks ? COLOR.gold : COLOR.muted} />
+        <span className="ems-serif" style={{ fontSize: 13.5 }}>Норланд{talks ? ' · переговоры о мире' : ''}</span>
+      </div>
+      {held.length > 0 && (
+        <>
+          <div style={{ display: 'flex', fontSize: 11.5, marginBottom: 4 }}>
+            <span style={{ color: COLOR.muted }}>Реваншизм Норланда</span>
+            <span className="ems-mono" style={{ marginLeft: 'auto', color: rev >= REVANCHE_WARN ? COLOR.rust : COLOR.text, fontWeight: 600 }}>
+              {Math.round(rev)} из 100 {growth > 0 ? `· +${fmt1(growth)} за кв.` : ''}
+            </span>
+          </div>
+          <div style={{ position: 'relative', height: 6, borderRadius: 3, background: COLOR.panelAlt, marginBottom: 5 }}>
+            <div style={{ width: `${rev}%`, height: '100%', borderRadius: 3, background: rev >= REVANCHE_WARN ? COLOR.rust : COLOR.gold }} />
+            <span style={{ position: 'absolute', left: `${REVANCHE_WARN}%`, top: -2, bottom: -2, width: 1.5, background: COLOR.text, opacity: 0.6 }} />
+          </div>
+          <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 9 }}>
+            На 100 Норланд нападает, чтобы вернуть свои земли. Быстрее растёт, когда граница не признана и земель у вас много;
+            медленнее — после договора и особенно после признания границы. Сильная армия сдерживает, кризисы в стране подогревают.
+          </div>
+        </>
+      )}
+      <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.5, marginBottom: talks ? 10 : 0 }}>
+        {t ? (
+          <>Договор подписан: граница {t.recognized ? <b style={{ color: COLOR.teal }}>признана</b> : <b style={{ color: COLOR.rust }}>не признана</b>}
+            {t.sanctions ? ', санкции сняты' : ''}{t.reparations === 'receive' ? ', Норланд платит репарации' : t.reparations === 'pay' ? ', страна платит репарации' : ''}.
+            {!t.recognized && ' Санкции за непризнанную границу продолжаются.'}</>
+        ) : held.length > 0 ? (
+          <>Договора нет: новая граница <b style={{ color: COLOR.rust }}>не признана</b>, санкции продолжаются каждый квартал.</>
+        ) : null}
+      </div>
+      {talks && <TreatyTalks economy={economy} talks={talks} plan={plan} onPlan={onPlan} planner={planner} held={held} />}
+    </div>
+  );
+}
+
+const TERMS_OFF = { recognition: false, sanctions: false, reparations: null, returned: [], propose: false, walkAway: false };
+function TreatyTalks({ economy, talks, plan, onPlan, planner, held }) {
+  const terms = { ...TERMS_OFF, ...plan };
+  const clean = sanitizeTreaty(terms, economy);
+  const cost = treatyCost(clean, economy);
+  const ok = cost <= talks.leverage;
+  const set = (patch) => { if (!onPlan) return; Audio.play('tick'); onPlan({ ...terms, walkAway: false, ...patch }); };
+  const costOf = (patch) => treatyCost(sanitizeTreaty({ ...TERMS_OFF, returned: terms.returned, ...patch }, economy), economy)
+    - treatyCost(sanitizeTreaty({ ...TERMS_OFF, returned: terms.returned }, economy), economy);
+  const Term = ({ active, onClick, label, price }) => (
+    <button className="ems-btn" aria-pressed={active} disabled={!onPlan} onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 9px', fontSize: 11.5, textAlign: 'left',
+        background: active ? COLOR.goldDim : COLOR.panelAlt, borderColor: active ? COLOR.gold : COLOR.border, color: COLOR.text }}>
+      <span style={{ width: 12, height: 12, borderRadius: 2, border: `1.5px solid ${active ? COLOR.gold : COLOR.faint}`, background: active ? COLOR.gold : 'none', flexShrink: 0 }} />
+      <span style={{ flex: 1 }}>{label}</span>
+      <span className="ems-mono" style={{ fontSize: 10.5, color: price < 0 ? COLOR.teal : COLOR.muted }}>{price > 0 ? `цена ${price}` : `уступка ${-price}`}</span>
+    </button>
+  );
+  return (
+    <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 9 }}>
+        <Term active={terms.recognition} onClick={() => set({ recognition: !terms.recognition })}
+          label="Признание новой границы" price={costOf({ recognition: true })} />
+        <Term active={terms.sanctions} onClick={() => set({ sanctions: !terms.sanctions })}
+          label="Поддержка снятия санкций" price={costOf({ sanctions: true })} />
+        <Term active={terms.reparations === 'receive'} onClick={() => set({ reparations: terms.reparations === 'receive' ? null : 'receive' })}
+          label="Норланд платит репарации (~0,6% ВВП в год, 2 года)" price={costOf({ reparations: 'receive' })} />
+        <Term active={terms.reparations === 'pay'} onClick={() => set({ reparations: terms.reparations === 'pay' ? null : 'pay' })}
+          label="Страна платит репарации Норланду" price={costOf({ reparations: 'pay' })} />
+        {held.map((r) => (
+          <Term key={r.id} active={terms.returned.includes(r.id)}
+            onClick={() => set({ returned: terms.returned.includes(r.id) ? terms.returned.filter((id) => id !== r.id) : [...terms.returned, r.id] })}
+            label={`Вернуть Норланду: ${r.name}`} price={treatyCost(sanitizeTreaty({ ...TERMS_OFF, returned: [r.id] }, economy), economy)} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, marginBottom: 4 }}>
+        <span style={{ color: COLOR.muted }}>Позиция страны {Math.round(talks.leverage)} · цена требований {Math.round(cost)}</span>
+        <b style={{ marginLeft: 'auto', color: ok ? COLOR.teal : COLOR.rust }}>{ok ? 'Норланд согласится' : 'Норланд откажет'}</b>
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 8 }}>
+        Позиция тает на 2 в квартал, пока тянут время.{talks.refused ? ` В прошлый раз Норланд отверг условия ценой ${talks.refused.cost}.` : ''}
+      </div>
+      {onPlan ? (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="ems-btn" style={{ flex: 1, padding: '6px 8px', fontSize: 11.5,
+            background: terms.propose ? COLOR.gold : COLOR.panelAlt, color: terms.propose ? COLOR.ink : COLOR.text, borderColor: terms.propose ? COLOR.gold : COLOR.border }}
+            onClick={() => set({ propose: !terms.propose })}>
+            {terms.propose ? 'Договор будет предложен — отменить' : 'Предложить договор'}
+          </button>
+          <button className="ems-btn" style={{ padding: '6px 8px', fontSize: 11.5,
+            background: terms.walkAway ? COLOR.rust : COLOR.panelAlt, color: terms.walkAway ? COLOR.ink : COLOR.text, borderColor: terms.walkAway ? COLOR.rust : COLOR.border }}
+            onClick={() => { Audio.play('tick'); onPlan({ ...terms, propose: false, walkAway: !terms.walkAway }); }}>
+            {terms.walkAway ? 'Выход из переговоров — отменить' : 'Прервать переговоры'}
+          </button>
+        </div>
+      ) : (
+        <div style={{ fontSize: 10.5, color: COLOR.faint }}>Переговоры ведёт {planner || 'президент'}.</div>
+      )}
     </div>
   );
 }

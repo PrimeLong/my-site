@@ -274,3 +274,26 @@ describe('штаб кампании в сетевой партии', () => {
     expect(total(next.economy.campaignSpend)).toBe(0);
   });
 });
+
+describe('Норланд в сетевой партии: оборона и переговоры', () => {
+  const seat = (room, seats) => ({ ...room, seats: { ...room.seats, ...Object.fromEntries(seats.map((sx) => [sx, `tok-${sx}`])) } });
+  const held = (room, extra) => ({ ...room, economy: { ...room.economy, annexed: ['pass', 'mines'], annexLoyalty: { pereval: 40, halvik: 40 }, regionEventCooldown: 99, ...extra } });
+  const presSub = (room, president) => ({ decisions: { ...room.decisions }, note: '',
+    president: { actions: [], appointCb: null, appointMof: null, directive: null, directiveStrength: 1, region: {}, warOrder: null, campaignPlan: {}, treaty: null, ...president } });
+
+  it('живой президент укрепляет область в войне за новые земли', () => {
+    const room = held(seat(newRoom(), ['president']), { warQuartersLeft: 10, warType: 'revanche',
+      revancheCampaign: { pressure: { pereval: 0, halvik: 0 }, morale: 80, lost: [], next: 'halvik', last: null } });
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const next = resolveQuarter({ ...room, submissions: { president: presSub(room, { warOrder: { target: 'halvik', stance: 'defend' } }) } });
+    vi.restoreAllMocks();
+    expect(next.economy.revancheCampaign.last).toMatchObject({ target: 'halvik', stance: 'defend' });
+  });
+
+  it('за пустое президентское место переговоры ведёт бот и подписывает договор', () => {
+    const room = held(newRoom(), { peaceTalks: { since: 2, leverage: 60, attempts: 0, origin: 'offensive' } });
+    const next = resolveQuarter({ ...room, submissions: {} });
+    expect(next.economy.peaceTalks).toBe(null);
+    expect(next.economy.treaty.recognized).toBe(true);
+  });
+});

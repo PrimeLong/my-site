@@ -14,6 +14,7 @@ import {
   CAMPAIGN_POINTS, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   activeRegions, votingRegions, annexLoyalty, sanitizeIntegration, REGION_PROJECTS, projectBlocker, REGION_EVENTS,
   INTEGRATED_AT, INTEGRATION_COST,
+  treatyCost, sanitizeTreaty, botTreaty, revancheGrowth,
   fmtMoney, fmtIndex,
 } from '../engine.js';
 
@@ -2360,4 +2361,108 @@ describe('новые земли как области', () => {
     expect(out.annexed).toContain('pass');
     expect(annexLoyalty(out, 'pereval')).toBeLessThan(30);
   }));
+});
+
+describe('мир с Норландом и реванш', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const withRandom = (v, fn) => { const r = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = r; } };
+  const held = (extra) => ({ ...makeInitialEconomy(), annexed: ['pass', 'mines'], annexLoyalty: { pereval: 40, halvik: 40 }, regionEventCooldown: 99, ...extra });
+  const talks = (leverage, extra) => held({ peaceTalks: { since: 5, leverage, attempts: 0, origin: 'offensive' }, ...extra });
+  const terms = (t) => ({ recognition: false, sanctions: false, reparations: null, returned: [], propose: true, walkAway: false, ...t });
+
+  it('цена условий: признание дороже с каждой областью, уступки со знаком минус', () => {
+    const e = held();
+    expect(treatyCost(sanitizeTreaty(terms({ recognition: true }), e), e)).toBe(10 + 12 * 2);
+    expect(treatyCost(sanitizeTreaty(terms({ recognition: true, returned: ['halvik'] }), e), e)).toBe(10 + 12 - 22);
+    expect(treatyCost(sanitizeTreaty(terms({ reparations: 'pay' }), e), e)).toBe(-25);
+    expect(sanitizeTreaty(terms({ returned: ['nordholm', 'halvik', 'moon'] }), e).returned).toEqual(['halvik']);
+  });
+
+  it('Норланд подписывает, если цена не выше позиции; граница признана, санкции сняты', () => withRandom(0.99, () => {
+    const out = step(talks(50), { treaty: terms({ recognition: true, sanctions: true }) });
+    expect(out.economy.peaceTalks).toBe(null);
+    expect(out.economy.treaty).toMatchObject({ recognized: true, sanctions: true });
+    expect(out.newsEntries.some((n) => n.headline.includes('МИРНЫЙ ДОГОВОР'))).toBe(true);
+  }));
+
+  it('слишком дорого — отказ, позиция тает; можно прервать переговоры', () => withRandom(0.99, () => {
+    const refused = step(talks(30), { treaty: terms({ recognition: true, sanctions: true }) }).economy;
+    expect(refused.treaty).toBe(null);
+    expect(refused.peaceTalks.attempts).toBe(1);
+    expect(refused.peaceTalks.leverage).toBe(28);
+    const gone = step(talks(30), { treaty: terms({ walkAway: true, propose: false }) }).economy;
+    expect(gone.peaceTalks).toBe(null);
+    expect(gone.treaty).toBe(null);
+  }));
+
+  it('возврат земли по договору убирает её из страны; репарации идут в доходы', () => withRandom(0.99, () => {
+    const out = step(talks(10), { treaty: terms({ returned: ['halvik'], reparations: 'receive' }) });
+    expect(out.economy.annexed).toEqual(['pass']);
+    expect(out.economy.annexLoyalty.halvik).toBeUndefined();
+    // уступка (−22) покрыла цену репараций (25) не полностью: 3 ≤ 10
+    expect(out.pendingImpulses.some((i) => i.channel === 'revenue' && i.values[0] > 0)).toBe(true);
+  }));
+
+  it('бот берёт самое ценное, на что Норланд согласится', () => {
+    const e = talks(40);
+    const t = botTreaty(e, 'technocrat');
+    expect(t.recognition).toBe(true);
+    expect(treatyCost(sanitizeTreaty(t, e), e)).toBeLessThanOrEqual(40);
+  });
+
+  it('после своей войны с захватом открываются переговоры', () => withRandom(0.99, () => {
+    const e = { ...makeInitialEconomy(), warQuartersLeft: 10, warType: 'offensive', warByChoice: true, regionEventCooldown: 99,
+      warCampaign: { progress: { pass: 100, mines: 100, city: 0 }, captured: ['pass', 'mines'], last: null } };
+    const out = step(e, { warOrder: { target: 'city', stance: 'ceasefire' } }).economy;
+    expect(out.peaceTalks).toBeTruthy();
+    expect(out.peaceTalks.leverage).toBe(15 + 18 + 22);
+  }));
+
+  it('реваншизм: быстрее без договора, медленнее при признанной границе, гаснет без земель', () => {
+    const none = revancheGrowth(held());
+    const recognized = revancheGrowth(held({ treaty: { recognized: true } }));
+    expect(none).toBeGreaterThan(recognized * 2);
+    expect(revancheGrowth(makeInitialEconomy())).toBeLessThan(0);
+  });
+
+  it('на 100 Норланд нападает: война за новые земли, переговоры и договор отменены', () => withRandom(0.99, () => {
+    const out = step(held({ norlandRevanche: 99.5, treaty: { recognized: false } })).economy;
+    expect(out.warType).toBe('revanche');
+    expect(out.warQuartersLeft).toBeGreaterThan(0);
+    expect(out.revancheCampaign.next).toBeTruthy();
+    expect(out.treaty).toBe(null);
+    expect(out.norlandRevanche).toBe(0);
+  }));
+
+  const atWar = (camp, extra) => held({ warQuartersLeft: 10, warType: 'revanche', warElapsed: 2,
+    revancheCampaign: { pressure: { pereval: 0, halvik: 0 }, morale: 80, lost: [], next: 'halvik', last: null, ...camp }, ...extra });
+
+  it('оборона на направлении удара гасит продвижение Норланда', () => withRandom(0.5, () => {
+    const guarded = step(atWar(), { warOrder: { target: 'halvik', stance: 'defend' } }).economy.revancheCampaign.pressure.halvik;
+    const open = step(atWar(), { warOrder: { target: 'pereval', stance: 'defend' } }).economy.revancheCampaign.pressure.halvik;
+    expect(open).toBeGreaterThan(guarded * 2);
+  }));
+
+  it('давление до 100 — область потеряна и уходит из страны', () => withRandom(0.99, () => {
+    const out = step(atWar({ pressure: { pereval: 0, halvik: 95 } }), { warOrder: { target: 'pereval', stance: 'defend' } }).economy;
+    expect(out.annexed).toEqual(['pass']);
+    expect(out.warType).toBe('revanche');
+  }));
+
+  it('выдохшийся Норланд просит мира; перемирие по приказу открывает переговоры', () => withRandom(0.5, () => {
+    const tired = step(atWar({ morale: 3 }), { warOrder: { target: 'halvik', stance: 'defend' } }).economy;
+    expect(tired.warQuartersLeft).toBe(0);
+    expect(tired.peaceTalks.leverage).toBeGreaterThan(40);
+    const asked = step(atWar(), { warOrder: { target: 'halvik', stance: 'talks' } }).economy;
+    expect(asked.warQuartersLeft).toBe(0);
+    expect(asked.peaceTalks).toBeTruthy();
+  }));
+
+  it('во время войны за новые земли «заключить мир» указом нельзя: её кончают на карте', () => {
+    const e = atWar();
+    expect(PRES_BY_ID.peace_deal.requires(e)).toBe(false);
+  });
 });

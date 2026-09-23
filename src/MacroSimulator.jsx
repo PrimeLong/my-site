@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -5195,6 +5195,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [warOrder, setWarOrder] = useState(null);
   // штабы кампании по областям на этот квартал — их расставляет президент
   const [campaignPlan, setCampaignPlan] = useState({});
+  // условия мира, которые президент предложит Норланду в этом квартале
+  const [treatyPlan, setTreatyPlan] = useState(null);
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -5380,6 +5382,14 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0) {
       eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botWarOrder(economy, presPersonaId) : null };
     }
+    // война за новые земли: тот же приказ, только оборонительный
+    if (economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) {
+      eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botDefenseOrder(economy, presPersonaId) : null };
+    }
+    // переговоры с Норландом: условия президента-игрока, иначе — бота по характеру
+    if (economy.peaceTalks) {
+      eff = { ...eff, treaty: isPresident ? treatyPlan : botTreaty(economy, presEnabled ? presPersonaId : 'technocrat') };
+    }
     // кампания: штабы президента-игрока, иначе — штаб власти по опросам
     eff = { ...eff, campaignPlan: isPresident ? campaignPlan : botCampaignPlan(economy) };
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
@@ -5541,6 +5551,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     // стройка и ответ — на один квартал, программа интеграции действует дальше
     setRegionPlan((p) => ({ startProject: null, regionResponse: null, integrate: p.integrate }));
     setCampaignPlan({});
+    setTreatyPlan(null);
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -5630,7 +5641,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5856,6 +5867,19 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             </div>
           );
         })()}
+        {isPresident && view !== 'map' && ((economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) || economy.peaceTalks) && (
+          <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: economy.peaceTalks ? COLOR.goldDim : COLOR.rustDim,
+              border: `1px solid ${economy.peaceTalks ? COLOR.gold : COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+            <MapIcon size={15} color={economy.peaceTalks ? COLOR.gold : COLOR.rust} style={{ flexShrink: 0 }} />
+            {economy.peaceTalks
+              ? <span><b style={{ color: COLOR.gold }}>Переговоры с Норландом.</b>{' '}
+                <span style={{ color: COLOR.muted }}>{treatyPlan && treatyPlan.propose ? 'Договор будет предложен в конце квартала.' : `Позиция страны ${Math.round(economy.peaceTalks.leverage)} и тает с каждым кварталом — условия мира задаются на карте.`}</span></span>
+              : <span><b style={{ color: COLOR.rust }}>Норланд наступает на новые земли.</b>{' '}
+                <span style={{ color: COLOR.muted }}>Какую область укрепить и как — на карте.</span></span>}
+          </div>
+        )}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
@@ -5871,7 +5895,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             warOrder={warOrder} onWarOrder={isPresident && !defeat ? setWarOrder : null}
             warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'}
             campaignPlan={campaignPlan} onCampaignPlan={isPresident && !defeat ? setCampaignPlan : null}
-            campaignPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'штаб власти'} />
+            campaignPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'штаб власти'}
+            treatyPlan={treatyPlan} onTreatyPlan={isPresident && !defeat ? setTreatyPlan : null}
+            treatyPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
         </Suspense></div>
       )}
 

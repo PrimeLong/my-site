@@ -368,7 +368,7 @@ function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
     moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
-    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null,
+    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null, treaty: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -1409,7 +1409,8 @@ const PRESIDENT_ACTIONS = [
     // это капитуляция, а не мир, и цена у неё другая
     label: (s) => (s.warType === 'defensive' ? 'Капитулировать' : 'Заключить мир'),
     cost: 24, cooldown: 6,
-    requires: (s) => (s.warQuartersLeft || 0) > 0,
+    // войну за новые земли кончают на карте: перемирием и переговорами
+    requires: (s) => (s.warQuartersLeft || 0) > 0 && s.warType !== 'revanche',
     reqText: 'Доступно только во время войны',
     desc: (s) => (s.warType === 'defensive'
       ? 'Остановить войну на условиях противника, потому что обороняться дальше нечем. Это не переговоры на равных: часть требований будет выполнена, санкции снимутся не полностью, а внутри страны решение читается как поражение, а не как облегчение. Экономика перестаёт терять с этого квартала — но не возвращает то, что уже потеряно.'
@@ -2269,6 +2270,8 @@ const EVENTS = [
     build: () => ([['consumption', -6], ['investment', -6], ['unemployment', 1.6], ['potentialShock', -1.2],
       ['consumerConfidence', -16], ['worldGdpGrowth', -1.4], ['inflationSupply', 0.8], ['stockShock', -15], ['secConsumer', -10], ['secReit', -6]]) },
   { id: 'war', kind: 'external', title: 'Начало войны', weight: 0.6, cooldown: 28,
+    // посреди другой войны новая не начинается: иначе она подменяла бы идущую
+    eligible: (s) => !((s.warQuartersLeft || 0) > 0),
     spread: [0.4, 0.3, 0.2, 0.1],
     build: (s) => {
       const defShare = s.budgetShares ? s.budgetShares.defense : CONFIG.initial.budgetShares.defense;
@@ -2595,6 +2598,13 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const WC = warCampaignStep(s, decisions, difficulty);
   queue = queue.concat(WC.impulses);
   WC.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  /* --- 1е. НОРЛАНД: реваншизм, война за новые земли, мирные переговоры --- */
+  const RV = revancheStep(s, decisions, difficulty, quarterIndex, !!pres.patch.startWar);
+  queue = queue.concat(RV.impulses);
+  RV.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  const PC = peaceStep(s, decisions, difficulty, quarterIndex);
+  queue = queue.concat(PC.impulses);
+  PC.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
 
   // указание ведомству разбирается на уровне интерфейса (ему нужны уже готовые
   // решения ботов), но платит за него тот же политический капитал
@@ -2772,7 +2782,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
   // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
   const projectReal = RS.projectPct / 100 * s.gdp;
-  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct + AN.spendPct) / 100 * s.gdp;
+  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct + AN.spendPct + RV.spendPct) / 100 * s.gdp;
   if (sequesterFactor < 0.995) {
     news.push(mkNews('crisis', `СЕКВЕСТР БЮДЖЕТА: РАСХОДЫ УРЕЗАНЫ НА ${fmt1((1 - sequesterFactor) * 100)}%`,
       `Инвесторы отказываются финансировать дефицит больше ${fmt1(maxDeficitPct)}% ВВП при долге ${fmt1(s.debtToGdp)}% и премии за риск ${fmt1(s.riskPremium)} п.п. Правительство вынуждено резать расходы независимо от своих планов — первыми страдают госинвестиции.`,
@@ -3478,11 +3488,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   /* Своя наступательная война не кончается сама по себе, когда истёк какой-то срок:
      её заканчивают победа, перемирие или мир — решением, а не календарём. Счётчик
      у неё не убывает; у пришедшей извне войны он по-прежнему идёт вниз. */
-  const offensiveOngoing = (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive';
-  let warQuartersLeft = warDecreed ? 10 : warTriggered ? 4
+  /* Война за новые земли (реванш Норланда) тоже бессрочная: её кончают перемирие,
+     выдохшийся Норланд или потеря всех земель. */
+  const revancheStart = RV.start;
+  const offensiveOngoing = (s.warQuartersLeft || 0) > 0 && (s.warType === 'offensive' || s.warType === 'revanche');
+  let warQuartersLeft = warDecreed ? 10 : revancheStart ? 10 : warTriggered ? 4
     : offensiveOngoing ? s.warQuartersLeft : Math.max(0, (s.warQuartersLeft || 0) - 1);
   if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
-  if (warEnded || WC.endWar) warQuartersLeft = 0;
+  if (warEnded || WC.endWar || RV.endWar) warQuartersLeft = 0;
   /* Как бы ни кончилась своя война — победой, перемирием или миром, — взятое
      остаётся за страной и становится её территорией: граница на карте сдвигается,
      в экономику приходят люди и руда, а на новых землях первое время неспокойно. */
@@ -3511,12 +3524,37 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   }
   // тип войны (оборонительная/наступательная) решает исход дипломатически — помощь
   // союзников или санкции — и держится неизменным, пока идёт одна и та же война
-  const warType = warDecreed ? 'offensive' : warTriggered ? warTypeRolled : (warQuartersLeft > 0 ? (s.warType || null) : null);
+  const warType = warDecreed ? 'offensive' : revancheStart ? 'revanche' : warTriggered ? warTypeRolled : (warQuartersLeft > 0 ? (s.warType || null) : null);
   // чья это война: случившаяся с экономикой или объявленная её же руководством —
   // от этого зависит и язык новостей, и то, как её показывает интерфейс
   const warByChoice = warDecreed ? true : (warQuartersLeft > 0 ? !!s.warByChoice : false);
   // сколько кварталов уже идёт война — для бессрочной наступательной это и есть её «срок»
-  const warElapsed = (warDecreed || warTriggered) ? 1 : (warQuartersLeft > 0 ? (s.warElapsed || 0) + 1 : 0);
+  const warElapsed = (warDecreed || warTriggered || revancheStart) ? 1 : (warQuartersLeft > 0 ? (s.warElapsed || 0) + 1 : 0);
+  /* Переговоры с Норландом: открываются после своей войны, если что-то взято, и
+     после войны за новые земли, если что-то удержано; закрываются договором,
+     отказом от переговоров или новой войной. Потерянное и возвращённое по
+     договору уходит из состава страны вместе со стройками и лояльностью. */
+  let peaceTalks = PC.talks;
+  let treaty = PC.treaty;
+  if (RV.talks) peaceTalks = RV.talks;
+  if (s.warType === 'offensive' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0 && annexed.length) {
+    const held = (((WC.campaign || s.warCampaign) || {}).captured || []).concat(annexed);
+    const value = [...new Set(held)].reduce((a, id) => a + (OBJECTIVE_VALUE[id] || 0), 0);
+    peaceTalks = { since: quarterIndex, leverage: Math.max(0, 15 + value + (WC.victory ? 50 : 0) - (warEnded ? 10 : 0)), attempts: 0, origin: 'offensive' };
+    news.push(mkNews('gov', 'ОТКРЫТЫ ПЕРЕГОВОРЫ С НОРЛАНДОМ', 'Стрельба прекращена, но чья это земля — решит договор: признание границы, санкции, репарации. Позиция страны тем сильнее, чем больше взято, и тает, пока тянут время.', { priority: 8 }));
+  }
+  if (warDecreed || revancheStart) { peaceTalks = null; treaty = null; }
+  const dropped = [...RV.lost, ...PC.returned];
+  const territory = dropAnnexed({ annexed, annexLoyalty: annexLoyaltyNext, annexIntegrated: AN.integrated, annexFunded: AN.funded,
+    projects: RS.projects, projectsBuilt: RS.projectsBuilt, regionEvent: RS.regionEvent }, dropped);
+  if (dropped.length) {
+    dropped.forEach((id) => {
+      const obj = regionById(id).objective;
+      nextQueue.push(makeImpulse('laborForce', obj === 'city' ? -0.8 : obj === 'mines' ? -0.3 : -0.2, `Утрачен ${regionById(id).name}`, 'slow', difficulty, 'other'));
+      if (obj === 'mines') nextQueue.push(sustainedImpulse('exportsGrowth', -0.8, 6, 'Руда Хальвика больше не наша'));
+    });
+  }
+  if (!territory.annexed.length) peaceTalks = null;
   // окна «свежей реакции» ЦБ/Минфина на дипломатию президента — сам
   // экономический эффект уже идёт через sustainedImpulse у соответствующих
   // действий, эти счётчики нужны только чтобы бот-персона какое-то время
@@ -3880,13 +3918,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive, powerLost, noElections,
     stabilizationCred, stabilizationWon, crisisMandateLeft, crisisMandateTotal: mandateTotal,
-    projects: RS.projects, projectsBuilt: RS.projectsBuilt, regionMods: RS.regionMods, regionShock: RS.regionShock,
-    regionEvent: RS.regionEvent, regionEventCooldown: RS.regionEventCooldown, lastRegionResolution: RS.lastRegionResolution,
+    projects: territory.projects, projectsBuilt: territory.projectsBuilt, regionMods: RS.regionMods, regionShock: RS.regionShock,
+    regionEvent: territory.regionEvent, regionEventCooldown: RS.regionEventCooldown, lastRegionResolution: RS.lastRegionResolution,
     projectReal,
     // штабы копятся весь цикл кампании и обнуляются голосованием
     campaignSpend: quartersToElection === CONFIG.election.cycle ? {} : CP.spend,
-    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign(annexed)) : null, annexed,
-    annexLoyalty: annexLoyaltyNext, annexIntegrated: AN.integrated, annexFunded: AN.funded,
+    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign(annexed)) : null,
+    annexed: territory.annexed, annexLoyalty: territory.annexLoyalty, annexIntegrated: territory.annexIntegrated, annexFunded: territory.annexFunded,
+    revancheCampaign: warQuartersLeft > 0 && warType === 'revanche' ? (RV.campaign || s.revancheCampaign) : null,
+    norlandRevanche: RV.revanche, revancheWarned: RV.warned, peaceTalks, treaty,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -4744,6 +4784,7 @@ function makeInitialEconomy(scenarioId) {
     projects: [], projectsBuilt: [], regionMods: {}, regionShock: {}, regionEvent: null, regionEventCooldown: 1,
     lastRegionResolution: null, projectReal: 0, warCampaign: null, annexed: [], campaignSpend: {},
     annexLoyalty: {}, annexIntegrated: [], annexFunded: [],
+    norlandRevanche: 0, revancheWarned: false, revancheCampaign: null, peaceTalks: null, treaty: null,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
@@ -5156,6 +5197,8 @@ function regionStress(region, economy) {
 const WAR_FRONT_REGION = { defensive: 'agri', offensive: 'mining' };
 function warFrontRegion(economy) {
   if (!((economy.warQuartersLeft || 0) > 0)) return null;
+  // в войне за новые земли фронт там, куда бьёт Норланд
+  if (economy.warType === 'revanche') return (economy.revancheCampaign && economy.revancheCampaign.next) || null;
   return WAR_FRONT_REGION[economy.warType] || WAR_FRONT_REGION.defensive;
 }
 /* ============================ СТРОЙКИ В ОКРУГАХ ============================
@@ -5739,6 +5782,260 @@ function annexStep(s, decisions, difficulty, loyaltyDelta) {
   return out;
 }
 
+/* ========================= МИР С НОРЛАНДОМ =========================
+   Перемирие останавливает стрельбу, но не решает, чья это земля. После войны,
+   в которой страна что-то взяла, открываются переговоры: каждый квартал можно
+   предложить договор — признание новой границы, поддержку Норландом снятия
+   санкций, репарации (получить или выплатить), возврат части земель. Норланд
+   соглашается, если цена требований не выше позиции страны на переговорах
+   (leverage): она тем сильнее, чем больше взято, и тает, пока тянут время.
+   Непризнанная граница продлевает санкции и кормит реваншизм Норланда. */
+const TREATY_LAND_VALUE = { pereval: 18, halvik: 22, nordholm: 35 };
+const OBJECTIVE_VALUE = { pass: 18, mines: 22, city: 35 };
+const heldAnnex = (s) => activeRegions(s).filter((r) => r.annex).map((r) => r.id);
+function sanitizeTreaty(t, s) {
+  if (!t || typeof t !== 'object') return null;
+  const held = heldAnnex(s);
+  return {
+    recognition: !!t.recognition, sanctions: !!t.sanctions,
+    reparations: t.reparations === 'receive' || t.reparations === 'pay' ? t.reparations : null,
+    returned: Array.isArray(t.returned) ? [...new Set(t.returned.filter((id) => held.includes(id)))] : [],
+    propose: !!t.propose, walkAway: !!t.walkAway,
+  };
+}
+// во что Норланду обходятся требования; уступки (выплата, возврат земель) — со знаком минус
+function treatyCost(terms, s) {
+  if (!terms) return 0;
+  const kept = heldAnnex(s).filter((id) => !terms.returned.includes(id));
+  let c = 0;
+  if (terms.recognition) c += 10 + 12 * kept.length + (kept.includes('nordholm') ? 15 : 0);
+  if (terms.sanctions) c += 15;
+  if (terms.reparations === 'receive') c += 25;
+  if (terms.reparations === 'pay') c -= 25;
+  terms.returned.forEach((id) => { c -= TREATY_LAND_VALUE[id] || 0; });
+  return c;
+}
+// бот за столом переговоров: берёт самое ценное, на что Норланд согласится, по своим приоритетам
+function botTreaty(s, personaId) {
+  const talks = s.peaceTalks;
+  if (!talks) return null;
+  const order = personaId === 'strongman' ? ['reparations', 'recognition', 'sanctions']
+    : personaId === 'populist' ? ['recognition', 'reparations', 'sanctions'] : ['recognition', 'sanctions', 'reparations'];
+  const terms = { recognition: false, sanctions: false, reparations: null, returned: [], propose: true, walkAway: false };
+  order.forEach((k) => {
+    const next = { ...terms, [k]: k === 'reparations' ? 'receive' : true };
+    if (treatyCost(next, s) <= talks.leverage) Object.assign(terms, next);
+  });
+  return terms;
+}
+// земля уходит из состава страны: вместе с её стройками, событием и лояльностью
+function dropAnnexed(state, regionIds) {
+  const objs = regionIds.map((id) => (regionById(id) || {}).objective).filter(Boolean);
+  const lostProjects = new Set(REGION_PROJECTS.filter((p) => regionIds.includes(p.region)).map((p) => p.id));
+  const loyalty = { ...state.annexLoyalty };
+  regionIds.forEach((id) => { delete loyalty[id]; });
+  return {
+    annexed: (state.annexed || []).filter((o) => !objs.includes(o)),
+    annexLoyalty: loyalty,
+    annexIntegrated: (state.annexIntegrated || []).filter((id) => !regionIds.includes(id)),
+    annexFunded: (state.annexFunded || []).filter((id) => !regionIds.includes(id)),
+    projects: (state.projects || []).filter((x) => !lostProjects.has(x.id)),
+    projectsBuilt: (state.projectsBuilt || []).filter((id) => !lostProjects.has(id)),
+    regionEvent: state.regionEvent && regionIds.includes(state.regionEvent.region) ? null : state.regionEvent,
+  };
+}
+function peaceStep(s, decisions, difficulty, q) {
+  const out = { impulses: [], news: [], talks: s.peaceTalks || null, treaty: s.treaty || null, returned: [] };
+  const held = heldAnnex(s);
+  // непризнанная граница: партнёры не снимают ограничения, пока Норланд её не признал
+  if (held.length && !(s.treaty && s.treaty.recognized)) {
+    out.impulses.push(makeImpulse('exportsGrowth', -0.3, 'Санкции за непризнанную границу', 'fast', difficulty, 'other'),
+      makeImpulse('fdi', -1, 'Непризнанная граница отпугивает инвесторов', 'fast', difficulty, 'other'));
+  }
+  const talks = s.peaceTalks;
+  if (!talks) return out;
+  const terms = sanitizeTreaty(decisions.treaty, s);
+  if (terms && terms.walkAway) {
+    out.talks = null;
+    out.news.push(['gov', 'ПЕРЕГОВОРЫ С НОРЛАНДОМ ПРЕРВАНЫ', 'Договора не будет: граница остаётся непризнанной, санкции — в силе, а в Норланде говорят о реванше всё громче.', 8]);
+    return out;
+  }
+  if (!terms || !terms.propose) {
+    out.talks = { ...talks, leverage: Math.max(0, talks.leverage - 2) };
+    return out;
+  }
+  const cost = treatyCost(terms, s);
+  if (cost > talks.leverage) {
+    out.talks = { ...talks, leverage: Math.max(0, talks.leverage - 2), attempts: (talks.attempts || 0) + 1, refused: { cost: Math.round(cost), q } };
+    out.news.push(['gov', 'НОРЛАНД ОТВЕРГ УСЛОВИЯ МИРА', `Делегация Норланда покинула зал: требования (${Math.round(cost)}) выше того, что позволяет нынешняя позиция страны (${Math.round(talks.leverage)}). Позиция тает с каждым кварталом.`, 8]);
+    return out;
+  }
+  // договор подписан
+  out.talks = null;
+  const kept = held.filter((id) => !terms.returned.includes(id));
+  out.treaty = { q, recognized: terms.recognition, sanctions: terms.sanctions, reparations: terms.reparations, returned: terms.returned, kept };
+  out.returned = terms.returned;
+  out.impulses.push(makeImpulse('approvalPush', terms.returned.length || terms.reparations === 'pay' ? -2 : 3, 'Мирный договор с Норландом', 'fast', difficulty, 'other'),
+    makeImpulse('tensionPush', -2, 'Мирный договор', 'fast', difficulty, 'other'),
+    makeImpulse('businessConfidence', 4, 'Мирный договор', 'default', difficulty, 'other'));
+  if (terms.recognition) out.impulses.push(makeImpulse('riskPremium', -0.3, 'Граница признана', 'default', difficulty),
+    makeImpulse('fdi', 6, 'Граница признана', 'default', difficulty, 'other'), makeImpulse('exportsGrowth', 1.5, 'Граница признана', 'default', difficulty, 'other'));
+  if (terms.sanctions) out.impulses.push(makeImpulse('exportsGrowth', 3, 'Санкции сняты', 'default', difficulty, 'other'),
+    makeImpulse('importsGrowth', 2, 'Санкции сняты', 'default', difficulty, 'other'), makeImpulse('capitalFlow', 12, 'Санкции сняты', 'default', difficulty),
+    makeImpulse('fdi', 8, 'Санкции сняты', 'default', difficulty, 'other'), makeImpulse('riskPremium', -0.4, 'Санкции сняты', 'default', difficulty),
+    makeImpulse('stockShock', 6, 'Санкции сняты', 'fast', difficulty));
+  const rep = s.nominalGdp * 0.6 / 100;
+  if (terms.reparations === 'receive') out.impulses.push(sustainedImpulse('revenue', rep, 8, 'Репарации Норланда'));
+  if (terms.reparations === 'pay') out.impulses.push(sustainedImpulse('revenue', -rep, 8, 'Выплата репараций Норланду'));
+  const parts = [
+    terms.recognition ? `Норланд признаёт новую границу${kept.length ? ` — за страной остаются: ${kept.map((id) => regionById(id).name).join(', ')}` : ''}.` : 'Граница остаётся непризнанной: это перемирие на бумаге, а не мир.',
+    terms.sanctions ? 'Норланд поддерживает снятие санкций — партнёры возвращаются.' : '',
+    terms.reparations === 'receive' ? 'Норланд выплатит репарации: около 0,6% ВВП в год два года.' : terms.reparations === 'pay' ? 'Страна выплатит Норланду репарации: около 0,6% ВВП в год два года.' : '',
+    terms.returned.length ? `Норланду возвращаются: ${terms.returned.map((id) => regionById(id).name).join(', ')}.` : '',
+  ].filter(Boolean);
+  out.news.push(['gov', 'ПОДПИСАН МИРНЫЙ ДОГОВОР С НОРЛАНДОМ', parts.join(' '), 10]);
+  return out;
+}
+
+/* ========================== РЕВАНШ НОРЛАНДА ==========================
+   Пока у страны есть земли Норланда, Норланд копит реваншизм (norlandRevanche,
+   0..100): быстрее, если граница не признана и земель много; медленнее, если
+   договор подписан, и ещё медленнее, если граница признана; сильная армия
+   сдерживает, кризисы в стране — подталкивают. На 100 Норланд нападает.
+   Тогда война идёт за новые земли: каждый квартал Норланд бьёт по одной из них
+   (куда — разведка сообщает заранее, campaign.next), а президент выбирает,
+   какую область укрепить и как: держать оборону, контрудар или переговоры.
+   Давление на область до 100 — она потеряна. Боевой дух Норланда тает, пока
+   его атаки захлёбываются; на нуле он сам просит мира. */
+const DEFENSE_STANCES = [
+  { id: 'defend', label: 'Держать оборону', spend: 0.15, desc: 'Укрепить выбранную область: удар по ней почти не продвинется, но остальные прикрыты слабее.' },
+  { id: 'counter', label: 'Контрудар', spend: 0.35, desc: 'Отбросить противника там, где он уже продвинулся. Дорого и с потерями, зато ломает его боевой дух.' },
+  { id: 'talks', label: 'Переговоры о перемирии', spend: 0, desc: 'Остановить войну и сесть за стол. Чем больше потеряно, тем хуже условия.' },
+];
+const REVANCHE_WARN = 70;
+function revancheGrowth(s) {
+  const n = heldAnnex(s).length;
+  if (!n) return -10;
+  const t = s.treaty;
+  const mult = (t && t.recognized ? 0.05 : t ? 0.6 : 1) * (s.peaceTalks ? 0.5 : 1);
+  const deter = (warStrength(s) - 1) * 6;
+  const crisis = (s.activeCrises || []).filter((c) => c !== 'war').length * 1.5;
+  return Math.max(0, (3 + 3 * n + crisis) * mult - deter);
+}
+// куда Норланд ударит: где он уже продвинулся и где новой власти меньше всего рады
+function revancheTarget(s, camp) {
+  const held = heldAnnex(s).filter((id) => !(camp.lost || []).includes(id));
+  return held.sort((a, b) => ((camp.pressure[b] || 0) + (60 - annexLoyalty(s, b))) - ((camp.pressure[a] || 0) + (60 - annexLoyalty(s, a))))[0] || null;
+}
+function defaultDefenseOrder(camp) {
+  const last = camp.last && camp.last.stance !== 'talks' ? camp.last : null;
+  return { target: camp.next, stance: last ? last.stance : 'defend' };
+}
+function botDefenseOrder(s, personaId) {
+  const camp = s.revancheCampaign;
+  if (!camp) return null;
+  const worst = Object.entries(camp.pressure).filter(([id]) => heldAnnex(s).includes(id)).sort((a, b) => b[1] - a[1])[0];
+  const approval = s.approval || 50;
+  if (personaId === 'strongman') return worst && worst[1] > 40 ? { target: worst[0], stance: 'counter' } : { target: camp.next, stance: 'defend' };
+  if (personaId === 'populist') return approval < 30 ? { target: camp.next, stance: 'talks' } : { target: camp.next, stance: 'defend' };
+  if ((camp.lost || []).length || approval < 35) return { target: camp.next, stance: 'talks' };
+  return { target: camp.next, stance: 'defend' };
+}
+function revancheStep(s, decisions, difficulty, q, blockStart) {
+  const out = { impulses: [], news: [], spendPct: 0, start: false, endWar: false, lost: [], campaign: null, revanche: s.norlandRevanche || 0, talks: null, warned: !!s.revancheWarned };
+  const atWar = (s.warQuartersLeft || 0) > 0;
+  if (!atWar) {
+    // ниже нуля — Норланд ещё не оправился от прошлой проигранной войны
+    out.revanche = clamp(out.revanche + revancheGrowth(s), -50, 100);
+    if (out.revanche >= REVANCHE_WARN && !out.warned && heldAnnex(s).length) {
+      out.warned = true;
+      out.news.push(['crisis', 'НОРЛАНД СТЯГИВАЕТ ВОЙСКА К НОВОЙ ГРАНИЦЕ', `Разведка докладывает: реваншизм в Норланде ${Math.round(out.revanche)} из 100. Сильная армия и признанная граница остужают его, кризисы в стране — подогревают.`, 8]);
+    }
+    if (out.revanche < 50) out.warned = false;
+    if (out.revanche >= 100 && heldAnnex(s).length && !blockStart) {
+      out.start = true;
+      const camp = { pressure: Object.fromEntries(heldAnnex(s).map((id) => [id, 0])), morale: 100, lost: [], last: null, next: null };
+      camp.next = revancheTarget(s, camp);
+      out.campaign = camp;
+      out.impulses.push(taperedImpulse('approvalPush', [4, 2, 1], 'Страну атаковали: сплочение', 'other'),
+        makeImpulse('tensionPush', 8, 'Норланд напал', 'fast', difficulty, 'other'),
+        makeImpulse('riskPremium', 0.5, 'Война на новой границе', 'default', difficulty),
+        makeImpulse('capitalFlow', -12, 'Война на новой границе', 'default', difficulty),
+        makeImpulse('businessConfidence', -8, 'Война на новой границе', 'default', difficulty, 'other'),
+        makeImpulse('inflationSupply', 0.5, 'Война на новой границе', 'default', difficulty),
+        makeImpulse('exportsGrowth', -2, 'Война на новой границе', 'default', difficulty, 'other'),
+        makeImpulse('stockShock', -8, 'Война на новой границе', 'fast', difficulty));
+      out.news.push(['crisis', 'НОРЛАНД НАЧАЛ ВОЙНУ ЗА ПОТЕРЯННЫЕ ЗЕМЛИ', `Норландские войска перешли новую границу. Первые бои идут в ${regionById(camp.next).loc}.${s.treaty && s.treaty.recognized ? ' Норланд нарушил договор, в котором сам признал границу.' : ''}`, 10]);
+      out.revanche = 0;
+    }
+    return out;
+  }
+  if (s.warType !== 'revanche' || !s.revancheCampaign) return out;
+  const camp = { ...s.revancheCampaign, pressure: { ...s.revancheCampaign.pressure }, lost: [...(s.revancheCampaign.lost || [])] };
+  const held = heldAnnex(s).filter((id) => !camp.lost.includes(id));
+  const def = defaultDefenseOrder(camp);
+  const raw = decisions.warOrder || {};
+  const stance = DEFENSE_STANCES.find((x) => x.id === raw.stance) || DEFENSE_STANCES.find((x) => x.id === def.stance) || DEFENSE_STANCES[0];
+  const target = held.includes(raw.target) ? raw.target : held.includes(def.target) ? def.target : held[0];
+  out.spendPct = stance.spend;
+  if (stance.id === 'talks' || !held.length) {
+    out.endWar = true;
+    out.talks = held.length ? { since: q, leverage: Math.max(0, 5 + 6 * held.length - 10 * camp.lost.length + (100 - camp.morale) * 0.3), attempts: 0, origin: 'revanche' } : null;
+    out.impulses.push(makeImpulse('approvalPush', -2, 'Перемирие на условиях войны', 'fast', difficulty, 'other'),
+      makeImpulse('businessConfidence', 3, 'Бои на границе прекращены', 'default', difficulty, 'other'));
+    out.revanche = -10 - (100 - camp.morale) * 0.3;
+    out.news.push(['gov', 'ПЕРЕМИРИЕ С НОРЛАНДОМ НА НОВОЙ ГРАНИЦЕ', 'Стрельба прекращена, стороны садятся за стол. Условия будут зависеть от того, что удалось удержать.', 9]);
+    camp.last = { target, stance: 'talks', hit: null, gain: 0, pushed: 0 };
+    out.campaign = camp;
+    return out;
+  }
+  // удар Норланда
+  // разведка ошибается: примерно каждый третий удар приходится не туда, куда ждали
+  const planned = held.includes(camp.next) ? camp.next : revancheTarget(s, camp);
+  const others = held.filter((id) => id !== planned);
+  const feint = others.length > 0 && Math.random() < 0.3;
+  const hit = feint ? others[Math.floor(Math.random() * others.length)] : planned;
+  const nStr = 0.5 + camp.morale / 200;
+  const loyal = 1 + Math.max(0, 50 - annexLoyalty(s, hit)) / 100;
+  let gain = (12 + 10 * Math.random()) * nStr * loyal / warStrength(s);
+  if (target === hit) gain *= stance.id === 'defend' ? 0.3 : 0.6;
+  camp.pressure[hit] = clamp((camp.pressure[hit] || 0) + gain, 0, 100);
+  let pushed = 0;
+  if (stance.id === 'counter') {
+    pushed = warStrength(s) * (10 + 12 * Math.random());
+    camp.pressure[target] = clamp((camp.pressure[target] || 0) - pushed, 0, 100);
+    camp.morale -= 6 + 6 * Math.random();
+    out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при контрударе', 'fast', difficulty, 'other'),
+      makeImpulse('tensionPush', 1, 'Потери при контрударе', 'fast', difficulty, 'other'));
+  }
+  if (target === hit && stance.id === 'defend') camp.morale -= 5;
+  camp.morale = Math.max(0, camp.morale - 3);
+  if (feint) out.news.push(['crisis', 'РАЗВЕДКА ОШИБЛАСЬ', `Норланд ударил не туда, где его ждали: бои идут в ${regionById(hit).loc}.`, 7]);
+  if (camp.pressure[hit] >= 100) {
+    camp.lost.push(hit);
+    out.lost.push(hit);
+    const r = regionById(hit);
+    out.impulses.push(makeImpulse('approvalPush', -4, `Потерян ${r.name}`, 'fast', difficulty, 'other'),
+      makeImpulse('tensionPush', 4, `Потерян ${r.name}`, 'fast', difficulty, 'other'));
+    out.news.push(['crisis', `НОРЛАНД ВЕРНУЛ СЕБЕ: ${r.name.toUpperCase()}`, `Оборона ${r.gen} прорвана. Земля, за которую воевали, снова норландская.`, 10]);
+  }
+  const stillHeld = held.filter((id) => !camp.lost.includes(id));
+  if (!stillHeld.length) {
+    out.endWar = true;
+    out.news.push(['crisis', 'НОРЛАНД ВЕРНУЛ ВСЕ ПОТЕРЯННЫЕ ЗЕМЛИ', 'Война за новые земли проиграна: граница там же, где была до первой войны.', 10]);
+  } else if (camp.morale <= 0) {
+    out.endWar = true;
+    out.talks = { since: q, leverage: 35 + 10 * stillHeld.length, attempts: 0, origin: 'revanche' };
+    out.impulses.push(makeImpulse('approvalPush', 4, 'Норланд отступил', 'fast', difficulty, 'other'));
+    out.revanche = -40;
+    out.news.push(['gov', 'НОРЛАНД ПРОСИТ МИРА', 'Атаки захлебнулись, армия Норланда выдохлась и предлагает переговоры. Позиция страны за столом сильная.', 10]);
+  }
+  camp.last = { target, stance: stance.id, hit, gain: Math.round(gain), pushed: Math.round(pushed), feint };
+  camp.next = stillHeld.length ? revancheTarget(s, camp) : null;
+  out.campaign = camp;
+  return out;
+}
+
 /* ======================= ОПРОСЫ И ШТАБ КАМПАНИИ =======================
    За четыре квартала до голосования появляются опросы по областям. Кампания —
    это штабы: каждый квартал президент (или бот за него) распределяет
@@ -6098,6 +6395,7 @@ export {
   POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
+  sanitizeTreaty, treatyCost, botTreaty, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
