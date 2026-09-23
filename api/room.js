@@ -9,7 +9,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -97,13 +97,18 @@ function sanitizePresident(v) {
   };
 }
 
+/* Стартовая ситуация комнаты — те же сценарии, что в одиночной игре. Любой
+   незнакомый идентификатор (или его отсутствие) — открытая партия: так же
+   себя ведёт «классика» в лобби. */
+const SCENARIO_IDS = new Set(SCENARIOS.map((sc) => sc.id));
 export function freshRoom(opts) {
-  const economy = makeInitialEconomy();
+  const scenario = SCENARIO_IDS.has(opts.scenario) ? opts.scenario : 'sandbox';
+  const economy = makeInitialEconomy(scenario);
   const mode = opts.mode === 'trader' ? 'trader' : 'policy';
   const seats = SEATS_BY_MODE[mode];
   const zip = (v) => Object.fromEntries(seats.map((sx) => [sx, v]));
   return {
-    id: opts.id, created: Date.now(), version: 1, mode,
+    id: opts.id, created: Date.now(), version: 1, mode, scenario,
     ownerToken: token(), // владелец лобби — тот, кто нажал «Создать комнату»; не привязан к месту,
     // потому что место выбирается отдельным шагом уже ПОСЛЕ создания
     // общедоступная комната видна всем в браузере комнат и не требует кода;
@@ -194,6 +199,7 @@ export const publicView = (room) => {
   const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
   return {
     id: room.id, version: room.version, difficulty: room.difficulty, mode: room.mode === 'trader' ? 'trader' : 'policy',
+    scenario: room.scenario || 'sandbox',
     isPublic: !!room.isPublic,
     // время сервера: таймер квартала считается от него, а часы на устройствах
     // расходятся на минуты — и у двух игроков были разные цифры на экране
@@ -499,6 +505,7 @@ async function handleRequest(req, res) {
           president: !!r.president, quarterIndex: r.quarterIndex, created: r.created,
           seatsTotal: seatsList.length, seatsFree: seatsList.filter((sx) => !r.seats[sx]).length,
           activeCrises: (r.economy && r.economy.activeCrises) || [],
+          scenario: r.scenario || 'sandbox',
         });
       }
       rooms.sort((a, b) => b.created - a.created);
@@ -540,7 +547,7 @@ async function handleRequest(req, res) {
     const president = body.president === null || (body.president && body.president.enabled === false)
       ? null : (body.president || {});
     const base = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof,
-      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public });
+      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public, scenario: body.scenario });
     const room = { ...base, presidentPlan: planPresident(base, base.economy, {}) };
     await setRoom(id, room);
     if (room.isPublic) await addPublicRoom(id);

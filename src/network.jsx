@@ -5,7 +5,7 @@
    помощники сохранений — те же объекты, что в MacroSimulator.jsx
    (экспортированы оттуда), а не копии. */
 import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Star, TrendingUp, Trophy, Users, X } from 'lucide-react';
-import { CB_PERSONAS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
+import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
@@ -38,6 +38,8 @@ function NetworkLobby({ onEnter }) {
      руками. До этого сетевая комната всегда собиралась с одними и теми же
      ботами и вообще без президента. */
   const [setupMode, setSetupMode] = useState('classic');
+  // стартовая ситуация — только в настраиваемой партии, классика всегда открытая
+  const [netScenario, setNetScenario] = useState('sandbox');
   const [cbPersona, setCbPersona] = useState('random');
   const [mofPersona, setMofPersona] = useState('random');
   const [presEnabled, setPresEnabled] = useState(true);
@@ -154,7 +156,8 @@ function NetworkLobby({ onEnter }) {
       const r = await createRoom({ difficulty, mode, public: isPublicRoom,
         cbPersona: custom ? asId(cbPersona) : undefined,
         mofPersona: custom ? asId(mofPersona) : undefined,
-        president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined } });
+        president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined },
+        scenario: custom ? netScenario : 'sandbox' });
       setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
       setSeat(seatsForMode(mode)[0]);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -295,13 +298,39 @@ function NetworkLobby({ onEnter }) {
             </div>
             <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
               {setupMode === 'classic'
-                ? 'Характеры ведомств бросаются случайно, президент включён — как в одиночной классике.'
-                : 'Выбрать характер каждого ведомства и президента — или обойтись без президента.'}
+                ? 'Открытая партия без стартового кризиса, характеры ведомств бросаются случайно, президент включён — как в одиночной классике.'
+                : 'Выбрать стартовую ситуацию, характер каждого ведомства и президента — или обойтись без президента.'}
             </div>
           </div>
 
           {setupMode === 'custom' && (
             <div style={{ marginBottom: 14 }}>
+              {/* те же сценарии и те же метки сложности, что и в одиночной игре */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, marginBottom: 6 }}>Стартовая ситуация</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
+                    const active = netScenario === sc.id;
+                    const levelColor = sc.level >= 4 ? COLOR.rust : sc.level === 3 ? COLOR.gold : sc.level === 2 ? COLOR.goldSoft : COLOR.teal;
+                    return (
+                      <button key={sc.id} className="ems-btn" style={{ textAlign: 'left', padding: '8px 10px', fontSize: 12,
+                        background: active ? COLOR.goldDim : COLOR.panelAlt, borderColor: active ? COLOR.gold : COLOR.border, color: COLOR.text,
+                        display: 'flex', alignItems: 'center', gap: 8 }}
+                        onClick={() => { Audio.play('click'); setNetScenario(sc.id); }}>
+                        <span style={{ flex: 1 }}>{sc.title}</span>
+                        <span aria-hidden style={{ display: 'flex', gap: 2 }}>
+                          {[1, 2, 3, 4].map((i) => (
+                            <span key={i} style={{ width: 9, height: 3, borderRadius: 2, background: i <= sc.level ? levelColor : COLOR.borderStrong, opacity: i <= sc.level ? 1 : 0.55 }} />
+                          ))}
+                        </span>
+                        <span className="ems-mono" style={{ fontSize: 9.5, color: levelColor, textTransform: 'uppercase', minWidth: 92, textAlign: 'right' }}>{sc.levelLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(() => { const sc = SCENARIOS.find((x) => x.id === netScenario); return sc && sc.levelNote
+                  ? <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 6, lineHeight: 1.4 }}>{sc.levelNote}</div> : null; })()}
+              </div>
               {[['Характер Центрального банка', CB_PERSONAS, cbPersona, setCbPersona,
                 mode === 'trader' ? 'Ставку ведёт бот — от его характера зависит весь рынок.' : 'Действует, пока место ЦБ пустует или игрок не успел с решением.'],
               ['Характер Минфина', MOF_PERSONAS, mofPersona, setMofPersona,
@@ -423,6 +452,10 @@ function NetworkLobby({ onEnter }) {
                   background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                   <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{r.id}</span>
                   <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
+                  {r.scenario && r.scenario !== 'sandbox' && (() => {
+                    const sc = SCENARIOS.find((x) => x.id === r.scenario);
+                    return sc ? <span style={{ color: sc.level >= 4 ? COLOR.rust : COLOR.gold }} title={sc.levelNote}>{sc.title} · {sc.levelLabel.toLowerCase()}</span> : null;
+                  })()}
                   <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
                   <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
                   {(r.activeCrises || []).length > 0 ? (

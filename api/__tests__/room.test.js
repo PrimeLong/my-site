@@ -150,3 +150,21 @@ describe('resolveQuarter — пресс-конференция в сетевой
     expect(pressNews(next)).toBeFalsy();
   });
 });
+
+describe('комната из сценария', () => {
+  it('сервер создаёт экономику выбранного сценария и сообщает его клиенту', () => {
+    const r = freshRoom({ id: 'SC1', mode: 'policy', difficulty: 'medium', president: {}, scenario: 'hyperinflation' });
+    expect(r.scenario).toBe('hyperinflation');
+    expect(r.economy.inflation).toBeGreaterThan(20);
+    expect(r.economy.crisisMandateLeft).toBeGreaterThan(0);
+    expect(publicView(r).scenario).toBe('hyperinflation');
+  });
+
+  it('незнакомый или пустой сценарий — открытая партия', () => {
+    ['', 'nope', undefined, '__proto__'].forEach((sc) => {
+      const r = freshRoom({ id: 'SC2', mode: 'policy', difficulty: 'medium', president: {}, scenario: sc });
+      expect(r.scenario).toBe('sandbox');
+      expect(r.economy.inflation).toBeLessThan(6);
+    });
+  });
+});
