@@ -242,3 +242,30 @@ describe('наступательная операция в сетевой пар
     expect(next.economy.warCampaign.last.stance).toBe('assault');
   });
 });
+
+describe('штаб кампании в сетевой партии', () => {
+  const seat = (room, seats) => ({ ...room, seats: { ...room.seats, ...Object.fromEntries(seats.map((sx) => [sx, `tok-${sx}`])) } });
+  const polls = (room) => ({ ...room, economy: { ...room.economy, quartersToElection: 3, regionEventCooldown: 99 } });
+  const presSub = (room, campaignPlan) => ({ decisions: { ...room.decisions }, note: '',
+    president: { actions: [], appointCb: null, appointMof: null, directive: null, directiveStrength: 1, region: {}, warOrder: null, campaignPlan } });
+  const total = (spend) => Object.values(spend || {}).reduce((a, b) => a + b, 0);
+
+  it('живой президент ставит штабы, лишние и выдуманные области отбрасываются', () => {
+    const room = polls(seat(newRoom(), ['president']));
+    const next = resolveQuarter({ ...room, submissions: { president: presSub(room, { agri: 9, moon: 2 }) } });
+    expect(next.economy.campaignSpend).toEqual({ agri: 4 });
+  });
+
+  it('за пустое президентское место штабы расставляет штаб власти', () => {
+    const room = polls(newRoom());
+    const next = resolveQuarter({ ...room, submissions: {} });
+    expect(total(next.economy.campaignSpend)).toBe(4);
+  });
+
+  it('вне окна опросов кампания ничего не тратит', () => {
+    const room = seat(newRoom(), ['president']);
+    const next = resolveQuarter({ ...room, economy: { ...room.economy, quartersToElection: 10 },
+      submissions: { president: presSub(room, { agri: 4 }) } });
+    expect(total(next.economy.campaignSpend)).toBe(0);
+  });
+});

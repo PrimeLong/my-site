@@ -11,6 +11,7 @@ import {
   presActionAvailable, applyPresidentActions, scaleLever, gameChronicle,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
+  CAMPAIGN_POINTS, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   fmtMoney, fmtIndex,
 } from '../engine.js';
 
@@ -649,8 +650,12 @@ describe('роль президента', () => {
   });
 
   it('пенсионная реформа бьёт по рейтингу сразу, а расширяет рабочую силу постепенно', () => {
-    const base = runPresident({}, 16);
-    const ref = runPresident({ 2: { presidentActions: ['pension'] } }, 16);
+    // оба прогона — на одной и той же случайности: сравнивается реформа, а не удача
+    const seeded = (fn) => { const rnd = Math.random; let x = 12345;
+      Math.random = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+      try { return fn(); } finally { Math.random = rnd; } };
+    const base = seeded(() => runPresident({}, 16));
+    const ref = seeded(() => runPresident({ 2: { presidentActions: ['pension'] } }, 16));
     expect(ref[2].approval).toBeLessThan(base[2].approval - 8);
     expect(ref[15].laborForce).toBeGreaterThan(base[15].laborForce);
     expect(ref[15].potentialGdp).toBeGreaterThan(base[15].potentialGdp);
@@ -2144,5 +2149,136 @@ describe('наступательная операция на карте', () => 
     expect(warStrength({ ...e, budgetShares: { ...e.budgetShares, defense: 30 } })).toBeGreaterThan(warStrength(e));
     expect(botWarOrder(e, 'strongman').stance).toBe('assault');
     expect(botWarOrder({ ...e, approval: 20 }, 'technocrat').stance).toBe('ceasefire');
+  });
+});
+
+describe('война: бессрочность, внешняя война, присоединение', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const war = (extra) => ({ ...makeInitialEconomy(), warQuartersLeft: 10, warType: 'offensive', warByChoice: true, warElapsed: 3, regionEventCooldown: 99, ...extra });
+
+  it('своя наступательная война не кончается сама: счётчик не убывает, идёт отсчёт длительности', () => {
+    const rnd = Math.random; Math.random = () => 0.99;
+    try {
+      let e = war({ warQuartersLeft: 1 });
+      for (let q = 0; q < 5; q++) e = step(e, { warOrder: { target: 'mines', stance: 'hold' } }, 6 + q).economy;
+      expect(e.warQuartersLeft).toBe(1);
+      expect(e.warType).toBe('offensive');
+      expect(e.warElapsed).toBe(8);
+    } finally { Math.random = rnd; }
+  });
+
+  it('если приказа нет, армия продолжает прошлый — а не переключается на осаду', () => {
+    const rnd = Math.random; Math.random = () => 0.99;
+    try {
+      const e = war({ warCampaign: { progress: { pass: 0, mines: 10, city: 0 }, captured: [], last: { target: 'mines', stance: 'assault', gained: 10, counter: null } } });
+      expect(step(e).economy.warCampaign.last).toMatchObject({ target: 'mines', stance: 'assault' });
+    } finally { Math.random = rnd; }
+  });
+
+  it('пришедшая извне война всегда оборонительная', () => {
+    const rnd = Math.random;
+    try {
+      for (let i = 0; i < 20; i++) {
+        let seed = i + 1;
+        Math.random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+        let e = makeInitialEconomy();
+        for (let q = 1; q <= 30; q++) {
+          e = step(e, {}, q).economy;
+          if ((e.warQuartersLeft || 0) > 0) expect(e.warType).toBe('defensive');
+        }
+      }
+    } finally { Math.random = rnd; }
+  });
+
+  it('после перемирия взятое входит в состав страны; второй раз его не штурмуют; всё взято — войну не начать', async () => {
+    const { PRES_BY_ID } = await import('../engine.js');
+    const e = war({ warCampaign: { progress: { pass: 100, mines: 100, city: 10 }, captured: ['pass', 'mines'], last: null } });
+    const res = step(e, { warOrder: { target: null, stance: 'ceasefire' } });
+    expect(res.economy.annexed.sort()).toEqual(['mines', 'pass']);
+    expect(res.newsEntries.some((n) => n.headline === 'ГРАНИЦА СДВИНУТА: НОВЫЕ ЗЕМЛИ В СОСТАВЕ СТРАНЫ')).toBe(true);
+    const again = step({ ...res.economy, warQuartersLeft: 10, warType: 'offensive', warCampaign: null }, { warOrder: { target: 'pass', stance: 'assault' } });
+    expect(again.economy.warCampaign.captured).toEqual(expect.arrayContaining(['pass', 'mines']));
+    expect(again.economy.warCampaign.last.target).toBe('city');
+    expect(PRES_BY_ID.war_start.requires({ ...res.economy, annexed: ['pass', 'mines', 'city'] })).toBe(false);
+    expect(PRES_BY_ID.war_start.requires(res.economy)).toBe(true);
+  });
+});
+
+describe('опросы и штаб кампании', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const seeded = (fn) => {
+    const rnd = Math.random; let seed = 7;
+    Math.random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    try { return fn(); } finally { Math.random = rnd; }
+  };
+  const before = (toVote, extra) => ({ ...makeInitialEconomy(), quartersToElection: toVote, regionEventCooldown: 99, ...extra });
+
+  it('опрос появляется только за несколько кварталов до голосования и только при выборах', () => {
+    expect(electionForecast(before(POLL_WINDOW + 1))).toBe(null);
+    expect(electionForecast(before(2, { politicalRegime: 'authoritarian' }))).toBe(null);
+    const f = electionForecast(before(POLL_WINDOW));
+    expect(f.byRegion).toHaveLength(MAP_REGIONS.length);
+    expect(f.quartersToElection).toBe(POLL_WINDOW);
+    for (const r of f.byRegion) expect(r.label).toBe(swingLabel(r.base));
+  });
+
+  it('метки: колеблющиеся у 50%, потерянные и надёжные — далеко', () => {
+    expect(swingLabel(51)).toBe('колеблется');
+    expect(swingLabel(44)).toBe('склоняется к оппозиции');
+    expect(swingLabel(55)).toBe('склоняется к власти');
+    expect(swingLabel(35)).toBe('потеряна');
+    expect(swingLabel(70)).toBe('надёжная');
+  });
+
+  it('штаб в колеблющейся области даёт больше, чем в потерянной', () => {
+    const e = before(3);
+    const f0 = electionForecast(e);
+    const swing = f0.byRegion.reduce((a, b) => (Math.abs(a.base - 50) < Math.abs(b.base - 50) ? a : b));
+    const far = f0.byRegion.reduce((a, b) => (Math.abs(a.base - 50) > Math.abs(b.base - 50) ? a : b));
+    const gain = (id) => {
+      const f = electionForecast(e, { [id]: 2 });
+      return f.byRegion.find((r) => r.id === id).share - f0.byRegion.find((r) => r.id === id).share;
+    };
+    if (Math.abs(far.base - 50) >= 8 && Math.abs(swing.base - 50) < 4) expect(gain(swing.id)).toBeGreaterThan(gain(far.id) * 3);
+    expect(gain(swing.id)).toBeGreaterThan(0);
+  });
+
+  it('план штабов: не больше положенного, только настоящие области, целые числа', () => {
+    expect(sanitizeCampaignPlan({ agri: 3.7, moon: 5 })).toEqual({ agri: 3 });
+    const capped = sanitizeCampaignPlan({ capital: 9, agri: 2 });
+    expect(Object.values(capped).reduce((a, b) => a + b, 0)).toBe(CAMPAIGN_POINTS);
+    expect(sanitizeCampaignPlan(null)).toEqual({});
+    expect(sanitizeCampaignPlan({ agri: -2 })).toEqual({});
+    const bot = botCampaignPlan(before(2));
+    expect(Object.values(bot).reduce((a, b) => a + b, 0)).toBe(CAMPAIGN_POINTS);
+    expect(botCampaignPlan(before(10))).toEqual({});
+  });
+
+  it('штабы копятся до голосования, стоят денег, поднимают итог и обнуляются после выборов', () => {
+    const plan = { agri: 2, industry: 2 };
+    const run = (withCampaign) => seeded(() => {
+      let e = before(3, { approval: 50 });
+      const trail = [];
+      for (let q = 0; q < 3; q++) {
+        e = step(e, withCampaign ? { campaignPlan: plan } : {}, 6 + q).economy;
+        trail.push(e);
+      }
+      return trail;
+    });
+    const withC = run(true); const without = run(false);
+    expect(withC[0].campaignSpend).toEqual({ agri: 2, industry: 2 });
+    expect(withC[1].campaignSpend).toEqual({ agri: 4, industry: 4 });
+    expect(without[1].campaignSpend).toEqual({});
+    // третий квартал — день голосования: учёт штабов начинается заново
+    expect(withC[2].lastElection).toBeTruthy();
+    expect(withC[2].campaignSpend).toEqual({});
+    const at = (trail, id) => trail[2].lastElection.byRegion.find((r) => r.id === id).share;
+    expect(at(withC, 'agri')).toBeGreaterThan(at(without, 'agri'));
   });
 });

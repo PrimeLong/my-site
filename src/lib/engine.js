@@ -368,7 +368,7 @@ function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
     moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
-    startProject: null, regionResponse: null, warOrder: null,
+    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -1334,8 +1334,8 @@ const PRESIDENT_ACTIONS = [
      нет, есть санкции. Поэтому её и не показывают как «кризис, который случился»:
      это решение, у которого есть автор. */
   { id: 'war_start', group: 'war', severe: true, label: 'Начать военную операцию', cost: 45, cooldown: 20,
-    requires: (s) => (s.warQuartersLeft || 0) <= 0,
-    reqText: 'Доступно, пока страна не воюет',
+    requires: (s) => (s.warQuartersLeft || 0) <= 0 && (s.annexed || []).length < 3,
+    reqText: 'Доступно, пока страна не воюет и у Норланда ещё есть что взять',
     desc: 'Собственная война вместо чужой. Первые кварталы рейтинг растёт на сплочении вокруг флага, а с ним открываются чрезвычайные полномочия. Дальше начинается счёт: санкции, бегство капитала, сжатие торговли и инвестиций, рост цен со стороны предложения. Из войны выходят не тогда, когда захотят, а когда смогут.',
     build: (s, difficulty) => {
       const authoritarianPress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
@@ -2278,9 +2278,11 @@ const EVENTS = [
       const prepNews = mult < 0.7
         ? 'Заранее высокие расходы на оборону смягчили удар по экономике — армия и логистика были готовы.'
         : 'Низкие расходы на оборону обернулись более тяжёлым ударом — тыл оказался не готов.';
-      // тип войны решает дипломатический исход: обороняющаяся сторона получает
-      // сочувствие и помощь союзников, наступающая — санкции и изоляцию
-      const warType = Math.random() < 0.5 ? 'defensive' : 'offensive';
+      /* Война, пришедшая извне, — всегда оборонительная: на страну напали. Начать
+         наступление может только президент своим указом (war_start) — иначе
+         игрок за президента вдруг оказывался во главе войны, которую не объявлял.
+         Обороняющаяся сторона получает сочувствие и помощь союзников. */
+      const warType = 'defensive';
       const diploNews = warType === 'defensive'
         ? 'Война носит оборонительный характер: союзники открывают кредитные линии и наращивают закупки — приходит иностранная помощь.'
         : 'Война носит наступательный характер: партнёры вводят санкции и сворачивают инвестиции — страна оказывается в изоляции.';
@@ -2584,6 +2586,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   queue = queue.concat(RS.impulses);
   RS.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
   /* --- 1д. НАСТУПАТЕЛЬНАЯ ОПЕРАЦИЯ: приказ президента на квартал --- */
+  const CP = campaignStep(s, decisions);
   const WC = warCampaignStep(s, decisions, difficulty);
   queue = queue.concat(WC.impulses);
   WC.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
@@ -2764,7 +2767,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
   // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
   const projectReal = RS.projectPct / 100 * s.gdp;
-  const eventReal = (RS.eventPct + WC.spendPct) / 100 * s.gdp;
+  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct) / 100 * s.gdp;
   if (sequesterFactor < 0.995) {
     news.push(mkNews('crisis', `СЕКВЕСТР БЮДЖЕТА: РАСХОДЫ УРЕЗАНЫ НА ${fmt1((1 - sequesterFactor) * 100)}%`,
       `Инвесторы отказываются финансировать дефицит больше ${fmt1(maxDeficitPct)}% ВВП при долге ${fmt1(s.debtToGdp)}% и премии за риск ${fmt1(s.riskPremium)} п.п. Правительство вынуждено резать расходы независимо от своих планов — первыми страдают госинвестиции.`,
@@ -3364,9 +3367,16 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     promiseScore = (promisesKept - (promisesTotal - promisesKept)) * 2.2;
   }
   const incumbencyBonus = 2.5;
-  const voteShare = quartersToElection <= 0 && !noElections
+  let voteShare = quartersToElection <= 0 && !noElections
     ? clamp(50 + (approval - 50) * 0.85 + incumbencyBonus + promiseScore + gauss(2.2 * nMult), 0, 100)
     : null;
+  // штабы кампании: прибавка по областям, сложенная в общенациональный итог
+  let campaignRegions = null;
+  if (voteShare != null && !riggedElection && Object.keys(CP.spend).length) {
+    campaignRegions = regionVoteShares(s, voteShare, false)
+      .map((r) => ({ id: r.id, share: clamp(r.share + campaignBonus(CP.spend[r.id], r.share), 0, 100) }));
+    voteShare = campaignRegions.reduce((a, b) => a + b.share, 0) / campaignRegions.length;
+  }
   let coup = false;
   if (quartersToElection <= 0 && !noElections) {
     const margin = voteShare - 50;
@@ -3381,7 +3391,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
        рискам и напряжённости, с которыми страна подошла к выборам (s), а не по
        тем, что сложились уже после подсчёта. Карта хранит последние выборы
        целиком: между голосованиями показывать нечего, кроме них. */
-    const byRegion = regionVoteShares(s, voteShare, riggedElection);
+    const byRegion = campaignRegions || regionVoteShares(s, voteShare, riggedElection);
     lastElection = {
       q: quarterIndex, qLabel: quarterLabel(quarterIndex),
       result: electionResult, rigged: !!riggedElection, coup,
@@ -3460,9 +3470,29 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      санкциями. Мобилизация продлевает, мир обрывает. */
   const warDecreed = !!pres.patch.startWar;
   const warEnded = !!pres.patch.endWar;
-  let warQuartersLeft = warDecreed ? 10 : warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
+  /* Своя наступательная война не кончается сама по себе, когда истёк какой-то срок:
+     её заканчивают победа, перемирие или мир — решением, а не календарём. Счётчик
+     у неё не убывает; у пришедшей извне войны он по-прежнему идёт вниз. */
+  const offensiveOngoing = (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive';
+  let warQuartersLeft = warDecreed ? 10 : warTriggered ? 4
+    : offensiveOngoing ? s.warQuartersLeft : Math.max(0, (s.warQuartersLeft || 0) - 1);
   if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
   if (warEnded || WC.endWar) warQuartersLeft = 0;
+  /* Как бы ни кончилась своя война — победой, перемирием или миром, — взятое
+     остаётся за страной и становится её территорией: граница на карте сдвигается,
+     в экономику приходят люди и руда, а на новых землях первое время неспокойно. */
+  let annexed = [...(s.annexed || [])];
+  if (s.warType === 'offensive' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0) {
+    const fresh = (((WC.campaign || s.warCampaign) || {}).captured || []).filter((id) => !annexed.includes(id) && ANNEX_EFFECT[id]);
+    if (fresh.length) {
+      annexed = [...annexed, ...fresh];
+      fresh.forEach((id) => nextQueue.push(...ANNEX_EFFECT[id].impulses(difficulty)));
+      nextQueue.push(sustainedImpulse('tensionPush', 0.8 * fresh.length, 4, 'Сопротивление на присоединённых землях'));
+      news.push(mkNews('gov', 'ГРАНИЦА СДВИНУТА: НОВЫЕ ЗЕМЛИ В СОСТАВЕ СТРАНЫ',
+        `В состав страны входят: ${fresh.map((id) => ANNEX_EFFECT[id].name).join(', ')}. Новые жители, новые рудники и дороги — и первое время неспокойные улицы.`,
+        { priority: 9, chain: ['Война окончена', 'Присоединение', 'Рабочая сила ↑', 'Напряжённость ↑'] }));
+    }
+  }
   // срок войны истёк без победы и без перемирия — фронт замирает там, где стоял
   if (s.warCampaign && warQuartersLeft === 0 && !WC.endWar && !warEnded && !warDecreed) {
     const kept = (WC.campaign || s.warCampaign).captured || [];
@@ -3476,6 +3506,8 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // чья это война: случившаяся с экономикой или объявленная её же руководством —
   // от этого зависит и язык новостей, и то, как её показывает интерфейс
   const warByChoice = warDecreed ? true : (warQuartersLeft > 0 ? !!s.warByChoice : false);
+  // сколько кварталов уже идёт война — для бессрочной наступательной это и есть её «срок»
+  const warElapsed = (warDecreed || warTriggered) ? 1 : (warQuartersLeft > 0 ? (s.warElapsed || 0) + 1 : 0);
   // окна «свежей реакции» ЦБ/Минфина на дипломатию президента — сам
   // экономический эффект уже идёт через sustainedImpulse у соответствующих
   // действий, эти счётчики нужны только чтобы бот-персона какое-то время
@@ -3842,7 +3874,9 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     projects: RS.projects, projectsBuilt: RS.projectsBuilt, regionMods: RS.regionMods, regionShock: RS.regionShock,
     regionEvent: RS.regionEvent, regionEventCooldown: RS.regionEventCooldown, lastRegionResolution: RS.lastRegionResolution,
     projectReal,
-    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign()) : null,
+    // штабы копятся весь цикл кампании и обнуляются голосованием
+    campaignSpend: quartersToElection === CONFIG.election.cycle ? {} : CP.spend,
+    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign(annexed)) : null, annexed,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -3852,7 +3886,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     netInterestMargin, bankROE, bankPB, fxVolatility, volatilityIndex, discountRate,
     depositIndex, fxIndex, fxCarry, corpBondIndex, corpYield, corpReturn, goldIndex, reitIndex,
     bondShortIndex, linkerIndex, moneyMarketIndex, worldEquityIndex,
-    activeCrises, regime, recessionStreak, recessionRecoverStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice,
+    activeCrises, regime, recessionStreak, recessionRecoverStreak, demands, pandemicQuartersLeft, warQuartersLeft, warType, warByChoice, warElapsed,
     sanctionsQuartersLeft, tradeBlocQuartersLeft, tradeBlocActive,
     regimeStreak: (s.regime === regime ? regimeStreakPrev + 1 : 1),
     scoreStability, scoreWelfare, scoreFinancial, scoreFiscal, scorePotential, wellbeing,
@@ -4698,7 +4732,7 @@ function makeInitialEconomy(scenarioId) {
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     // округа: идущие и достроенные стройки, поправки к напряжению, текущее событие
     projects: [], projectsBuilt: [], regionMods: {}, regionShock: {}, regionEvent: null, regionEventCooldown: 1,
-    lastRegionResolution: null, projectReal: 0, warCampaign: null,
+    lastRegionResolution: null, projectReal: 0, warCampaign: null, annexed: [], campaignSpend: {},
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
@@ -5397,7 +5431,19 @@ const WAR_STANCES = [
   { id: 'hold', label: 'Держать позиции', spend: 0.1, desc: 'Фронт почти не движется, контратаки противника слабее.' },
   { id: 'ceasefire', label: 'Предложить перемирие', spend: 0, desc: 'Закончить войну по нынешней линии фронта; взятые цели остаются за страной.' },
 ];
-const newWarCampaign = () => ({ progress: { pass: 0, mines: 0, city: 0 }, captured: [], last: null });
+// уже присоединённое после прошлой войны считается взятым: второй раз его не штурмуют
+const newWarCampaign = (annexed) => {
+  const own = annexed || [];
+  return { progress: Object.fromEntries(WAR_OBJECTIVES.map((o) => [o.id, own.includes(o.id) ? 100 : 0])), captured: [...own], last: null };
+};
+// что даёт присоединение: люди, руда, но и сопротивление на новых землях
+const ANNEX_EFFECT = {
+  pass: { name: 'Перевальский район', impulses: (d) => [makeImpulse('laborForce', 0.2, 'Присоединён Перевальский район', 'slow', d, 'other')] },
+  mines: { name: 'Хальвикский край', impulses: (d) => [makeImpulse('laborForce', 0.3, 'Присоединён Хальвикский край', 'slow', d, 'other'),
+    sustainedImpulse('exportsGrowth', 0.8, 16, 'Руда Хальвикского края'), makeImpulse('inflationSupply', -0.2, 'Своя руда Хальвика', 'slow', d, 'other')] },
+  city: { name: 'Нордхольмская область', impulses: (d) => [makeImpulse('laborForce', 0.8, 'Присоединена Нордхольмская область', 'slow', d, 'other'),
+    makeImpulse('approvalPush', 3, 'Присоединена Нордхольмская область', 'fast', d, 'other')] },
+};
 const warObjectiveOpen = (id, camp) => {
   const o = WAR_OBJECTIVE_BY_ID[id];
   return !!o && !(camp.captured || []).includes(id) && (!o.requires || (camp.captured || []).includes(o.requires));
@@ -5407,21 +5453,25 @@ function warStrength(s) {
   const defense = (s.budgetShares && s.budgetShares.defense) || 15;
   return clamp(0.55 + (defense - 10) / 20 + ((s.approval || 50) - 50) / 200, 0.45, 1.5);
 }
-// приказ по умолчанию — осада первой доступной цели: армия действует по уставу
+/* Приказ действует, пока его не отменят: без нового приказа армия продолжает
+   прошлый (та же цель, если её ещё не взяли, и тот же способ). Самый первый
+   приказ по умолчанию — осада ближайшей цели, армия действует по уставу. */
 function defaultWarOrder(camp) {
-  const target = WAR_OBJECTIVES.find((o) => warObjectiveOpen(o.id, camp));
-  return { target: target ? target.id : null, stance: 'siege' };
+  const last = camp.last && camp.last.stance !== 'ceasefire' ? camp.last : null;
+  const first = WAR_OBJECTIVES.find((o) => warObjectiveOpen(o.id, camp));
+  const target = last && warObjectiveOpen(last.target, camp) ? last.target : first ? first.id : null;
+  return { target, stance: last ? last.stance : 'siege' };
 }
 /* Бот-президент командует по характеру: силовик штурмует, популист штурмует,
    пока его поддерживают, технократ и реформатор осаждают и ищут перемирие,
    когда взято хоть что-то, а поддержка тает. */
 function botWarOrder(s, personaId) {
-  const camp = s.warCampaign || newWarCampaign();
+  const camp = s.warCampaign || newWarCampaign(s.annexed);
   const order = defaultWarOrder(camp);
   if (!order.target) return { target: null, stance: 'ceasefire' };
   const approval = s.approval || 50;
-  if (personaId === 'strongman') order.stance = 'assault';
-  else if (personaId === 'populist') order.stance = approval > 45 ? 'assault' : 'hold';
+  if (personaId === 'strongman') order.stance = approval > 20 ? 'assault' : 'ceasefire';
+  else if (personaId === 'populist') order.stance = approval > 45 ? 'assault' : approval > 30 ? 'hold' : 'ceasefire';
   else {
     order.stance = 'siege';
     if ((camp.captured.length >= 1 && approval < 45) || approval < 30) order.stance = 'ceasefire';
@@ -5435,10 +5485,11 @@ function warCampaignStep(s, decisions, difficulty) {
   const out = { impulses: [], news: [], spendPct: 0, endWar: false, victory: false };
   const active = (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive';
   if (!active) return { ...out, campaign: null };
-  const camp = s.warCampaign ? { progress: { ...s.warCampaign.progress }, captured: [...(s.warCampaign.captured || [])], last: s.warCampaign.last } : newWarCampaign();
+  const camp = s.warCampaign ? { progress: { ...s.warCampaign.progress }, captured: [...(s.warCampaign.captured || [])], last: s.warCampaign.last } : newWarCampaign(s.annexed);
+  const def = defaultWarOrder(camp);
   const raw = decisions.warOrder || {};
-  const stance = WAR_STANCES.find((x) => x.id === raw.stance) || WAR_STANCES[1];
-  let target = warObjectiveOpen(raw.target, camp) ? raw.target : defaultWarOrder(camp).target;
+  const stance = WAR_STANCES.find((x) => x.id === raw.stance) || WAR_STANCES.find((x) => x.id === def.stance) || WAR_STANCES[1];
+  const target = warObjectiveOpen(raw.target, camp) ? raw.target : def.target;
   out.spendPct = stance.spend;
   const pressFree = s.politicalRegime !== 'authoritarian' && s.politicalRegime !== 'totalitarian';
   if (stance.id === 'ceasefire' || !target) {
@@ -5452,6 +5503,12 @@ function warCampaignStep(s, decisions, difficulty) {
       : `Боевые действия остановлены там же, где начались.${pressFree ? ' Цели операции не достигнуты — и это понятно всем.' : ' Официально — ради сохранения жизней.'}`, 10]);
     camp.last = { target: null, stance: 'ceasefire', gained: 0, counter: null };
     return { ...out, campaign: camp };
+  }
+  // затяжная война: санкции и усталость давят всё сильнее, пока её не закончат
+  if ((s.warElapsed || 0) >= 10) {
+    out.impulses.push(makeImpulse('exportsGrowth', -0.6, 'Санкции за затяжную войну', 'fast', difficulty, 'other'),
+      makeImpulse('approvalPush', -0.6, 'Усталость от затяжной войны', 'fast', difficulty, 'other'),
+      makeImpulse('riskPremium', 0.04, 'Затяжная война', 'fast', difficulty));
   }
   const strength = warStrength(s);
   const passBonus = camp.captured.includes('pass') ? 1.25 : 1;
@@ -5493,6 +5550,71 @@ function warCampaignStep(s, decisions, difficulty) {
   }
   camp.last = { target, stance: stance.id, gained: Math.round(gain), counter };
   return { ...out, campaign: camp };
+}
+
+/* ======================= ОПРОСЫ И ШТАБ КАМПАНИИ =======================
+   За четыре квартала до голосования появляются опросы по областям. Кампания —
+   это штабы: каждый квартал президент (или бот за него) распределяет
+   CAMPAIGN_POINTS штабов по областям, каждый стоит денег. Штаб убеждает тем
+   сильнее, чем ближе область к перелому: там, где исход предрешён в ту или
+   другую сторону, агитация почти бесполезна. Прибавка по областям складывается
+   в общенациональный итог — поэтому выгоднее бороться за колеблющиеся области,
+   а безнадёжные признать потерянными. */
+const CAMPAIGN_POINTS = 4;
+const CAMPAIGN_COST = 0.04; // % ВВП за штаб
+const POLL_WINDOW = 4;
+const campaignOpen = (s) => (s.politicalRegime || 'democracy') === 'democracy' || s.politicalRegime === 'crisis';
+function persuadability(share) {
+  const m = Math.abs(share - 50);
+  return m < 4 ? 1 : m < 8 ? 0.55 : 0.2;
+}
+const campaignBonus = (points, share) => 1.6 * Math.sqrt(Math.max(0, points || 0)) * persuadability(share);
+const swingLabel = (share) => {
+  const m = share - 50;
+  if (Math.abs(m) < 4) return 'колеблется';
+  if (Math.abs(m) < 8) return m > 0 ? 'склоняется к власти' : 'склоняется к оппозиции';
+  return m > 0 ? 'надёжная' : 'потеряна';
+};
+/* Прогноз: та же формула, что и в день голосования, без неопределённости дня
+   голосования, но с уже вложенными штабами. Погрешность опроса — ±2,5 п.п. */
+function electionForecast(s, extraPlan) {
+  const toVote = Number.isFinite(s.quartersToElection) ? s.quartersToElection : 16;
+  if (toVote > POLL_WINDOW || toVote < 1 || !campaignOpen(s)) return null;
+  const base = clamp(50 + ((s.approval || 50) - 50) * 0.85 + 2.5, 0, 100);
+  const spent = { ...s.campaignSpend };
+  Object.entries(extraPlan || {}).forEach(([id, n]) => { spent[id] = (spent[id] || 0) + n; });
+  const byRegion = regionVoteShares(s, base, false).map((r) => ({
+    id: r.id, base: r.share, spent: spent[r.id] || 0,
+    share: clamp(r.share + campaignBonus(spent[r.id], r.share), 0, 100),
+  })).map((r) => ({ ...r, label: swingLabel(r.base) }));
+  const national = byRegion.reduce((a, b) => a + b.share, 0) / (byRegion.length || 1);
+  return { national, byRegion, quartersToElection: toVote, margin: 2.5 };
+}
+// только настоящие области, целые штабы и не больше положенного за квартал
+function sanitizeCampaignPlan(plan) {
+  const out = {}; let left = CAMPAIGN_POINTS;
+  MAP_REGIONS.forEach((r) => {
+    const n = Math.max(0, Math.min(left, Math.floor(Number((plan || {})[r.id]) || 0)));
+    if (n > 0) { out[r.id] = n; left -= n; }
+  });
+  return out;
+}
+// бот-штаб: по одному штабу в четыре самые колеблющиеся области
+function botCampaignPlan(s) {
+  const f = electionForecast(s);
+  if (!f) return {};
+  const plan = {};
+  [...f.byRegion].sort((a, b) => Math.abs(a.share - 50) - Math.abs(b.share - 50)).slice(0, CAMPAIGN_POINTS).forEach((r) => { plan[r.id] = 1; });
+  return plan;
+}
+function campaignStep(s, decisions) {
+  const toVote = Number.isFinite(s.quartersToElection) ? s.quartersToElection : 16;
+  if (toVote > POLL_WINDOW || toVote < 1 || !campaignOpen(s)) return { spend: { ...s.campaignSpend }, spendPct: 0 };
+  const plan = sanitizeCampaignPlan(decisions.campaignPlan);
+  const spend = { ...s.campaignSpend };
+  let total = 0;
+  Object.entries(plan).forEach(([id, n]) => { spend[id] = (spend[id] || 0) + n; total += n; });
+  return { spend, spendPct: total * CAMPAIGN_COST };
 }
 
 const REGION_TEXT = {
@@ -5770,7 +5892,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder,
+  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,

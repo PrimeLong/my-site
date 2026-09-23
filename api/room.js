@@ -9,7 +9,8 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder,
+  sanitizeCampaignPlan, botCampaignPlan } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -111,6 +112,7 @@ function sanitizePresident(v, economy) {
   return {
     region: sanitizeRegionPlan(o.region, economy),
     warOrder: sanitizeWarOrder(o.warOrder, economy),
+    campaignPlan: sanitizeCampaignPlan(o.campaignPlan),
     actions: Array.isArray(o.actions) ? o.actions.filter((x) => PRES_ACTION_IDS.has(x)).slice(0, 4) : [],
     appointCb: CB_PERSONA_IDS.has(o.appointCb) ? o.appointCb : null,
     appointMof: MOF_PERSONA_IDS.has(o.appointMof) ? o.appointMof : null,
@@ -283,6 +285,9 @@ export function resolveQuarter(room) {
     const humanOrder = subs.president && subs.president.president ? subs.president.president.warOrder : null;
     eff.warOrder = humanOrder || (room.president && !room.seats.president ? botWarOrder(room.economy, room.president.persona) : null);
   }
+  // кампания: штабы живого президента, иначе — штаб власти по опросам
+  const presSub = subs.president && subs.president.president;
+  eff.campaignPlan = presSub ? presSub.campaignPlan : botCampaignPlan(room.economy);
   /* Решения президента разбираются здесь — им нужны уже посчитанные решения обоих
      ведомств. Требование к живому игроку проверяется по тому, куда он сдвинул свои
      рычаги (directiveProgress), требование к боту — по тому, согласился ли тот его

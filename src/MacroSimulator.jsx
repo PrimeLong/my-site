@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -1575,7 +1575,7 @@ export function PresidentWatchPanel({ economy, plan, last, branch }) {
         <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${clamp(economy.politicalCapital || 0, 0, 100)}%`, height: '100%', background: COLOR.gold }} />
         </span>
-        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.round(economy.politicalCapital || 0)}</span>
+        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.floor((economy.politicalCapital || 0) + 1e-9)}</span>
       </div>
       {/* у трейдера президента не за что увольнять — «отношение к вам» там не про что */}
       {branch && (
@@ -1650,8 +1650,10 @@ function CapitalBar({ value, reserved, gain }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
-        <span className="ems-mono" style={{ fontSize: 25, color: COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{Math.round(left)}</span>
-        <span style={{ fontSize: 11, color: COLOR.muted }}>из {Math.round(v)} свободно</span>
+        {/* вниз, а не до ближайшего: капитал дробный, и «26 свободно» при 25,6 обещало
+            решение за 26, которое на деле недоступно */}
+        <span className="ems-mono" style={{ fontSize: 25, color: COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{Math.floor(left + 1e-9)}</span>
+        <span style={{ fontSize: 11, color: COLOR.muted }}>из {Math.floor(v + 1e-9)} свободно</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 11, color: gain >= 0 ? COLOR.teal : COLOR.rust }}>
           {gain >= 0 ? '+' : ''}{fmt1(gain)} за квартал
         </span>
@@ -1757,7 +1759,8 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
   // сигналить о разнице в весе решения, а не полагаться на то, что игрок
   // дочитает описание до конца
   const severe = !!action.severe && !done;
-  const hideDesc = blockedByReq || cdLeft > 0 || done;
+  // недоступное решение не расписывает, что оно дало бы: причина и цена важнее
+  const hideDesc = blockedByReq || cdLeft > 0 || done || !canAfford;
   const selectedColor = severe ? COLOR.rust : COLOR.gold;
   const selectedDim = severe ? COLOR.rustDim : COLOR.goldDim;
   return (
@@ -5190,6 +5193,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [regionPlan, setRegionPlan] = useState({ startProject: null, regionResponse: null });
   // приказ армии на квартал в наступательной войне — отдаёт его президент
   const [warOrder, setWarOrder] = useState(null);
+  // штабы кампании по областям на этот квартал — их расставляет президент
+  const [campaignPlan, setCampaignPlan] = useState({});
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -5375,6 +5380,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0) {
       eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botWarOrder(economy, presPersonaId) : null };
     }
+    // кампания: штабы президента-игрока, иначе — штаб власти по опросам
+    eff = { ...eff, campaignPlan: isPresident ? campaignPlan : botCampaignPlan(economy) };
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
     if (canPlanMap) {
       eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null };
@@ -5530,7 +5537,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     setRegionPlan({ startProject: null, regionResponse: null });
-    setWarOrder(null);
+    setCampaignPlan({});
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -5620,7 +5627,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5826,9 +5833,26 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
             <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
             <span><b style={{ color: COLOR.rust }}>Наступление на Норланд.</b>{' '}
-              <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии отдан — исполнят в конце квартала.' : 'Отдайте приказ армии на карте: цель и способ действий.'}</span></span>
+              <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
           </div>
         )}
+        {isPresident && view !== 'map' && electionForecast(economy) && (() => {
+          const f = electionForecast(economy, campaignPlan);
+          const used = Object.values(campaignPlan).reduce((a, b) => a + b, 0);
+          const swing = f.byRegion.filter((r) => r.label === 'колеблется').length;
+          return (
+            <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`,
+                borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+              <MapIcon size={15} color={COLOR.gold} style={{ flexShrink: 0 }} />
+              <span><b style={{ color: COLOR.gold }}>Выборы через {f.quartersToElection} кв.: опрос {fmt1(f.national)}% ±{fmt1(f.margin)}.</b>{' '}
+                <span style={{ color: COLOR.muted }}>Колеблющихся областей — {swing}. {used
+                  ? `Штабов расставлено: ${used} — изменить можно на карте.`
+                  : 'Штабы кампании не расставлены — сделайте это на карте, слой «Опросы».'}</span></span>
+            </div>
+          );
+        })()}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
@@ -5838,11 +5862,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       </div>
 
       {view === 'map' && (
-        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+        <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
           <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
             planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`}
             warOrder={warOrder} onWarOrder={isPresident && !defeat ? setWarOrder : null}
-            warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'} />
+            warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'}
+            campaignPlan={campaignPlan} onCampaignPlan={isPresident && !defeat ? setCampaignPlan : null}
+            campaignPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'штаб власти'} />
         </Suspense></div>
       )}
 

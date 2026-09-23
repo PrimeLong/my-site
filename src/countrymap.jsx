@@ -2,7 +2,8 @@
    из MacroSimulator.jsx в отдельный чанк и грузится лениво — карта нужна
    только по нажатию вкладки «Карта», а не при первой загрузке сайта. */
 import { AlertTriangle, Anchor, Castle, CheckCircle2, Coins, Construction, Factory, Flag, Landmark, Lock, Mountain, Pickaxe, Swords, Trees, Vote, Wheat } from 'lucide-react';
-import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength } from './lib/engine.js';
+import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength,
+  CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel } from './lib/engine.js';
 import { useState } from 'react';
 import {
   Audio, COLOR, starPath,
@@ -233,6 +234,52 @@ function frontLine(a, b, depth, inward) {
   }
   return { pts, dir: [nx, ny] };
 }
+/* ------------------------- ПРИСОЕДИНЁННЫЕ ЗЕМЛИ -------------------------
+   Взятые в войне цели после её окончания входят в состав страны. Их земли —
+   три участка Норланда за северной границей, нарезанные тем же способом, что и
+   области: общие отрезки у соседей. У каждого отрезка записано, чья земля по обе
+   стороны; отсюда и граница: где с обеих сторон своё — внутренний пунктир, где
+   своё только с одной — государственная граница. */
+const J1H = edgePts('J1', 'H');
+const M_IDX = Math.floor(J1H.length / 2);
+const ANNEX_Q = { Q1: [664, 44], Q2: [600, 8], Q3: [522, 22], Q4: [704, 2], Q5: [800, 12], Q7: [652, -92], Q8: [540, -104], Q9: [468, -40] };
+const NB_Q6 = NB_COAST_N.findIndex((p) => p[0] === 880 && p[1] === 44);
+const rough = (pts) => roughen(pts, 9, 2);
+// [точки, сторона A, сторона B]; 'home' — исходная страна, null — Норланд, 'sea' — море
+const ANNEX_EDGES = [
+  [J1H.slice(0, M_IDX + 1), 'home', 'pass'],
+  [J1H.slice(M_IDX), 'home', 'mines'],
+  [rough([J1H[M_IDX], ANNEX_Q.Q1]), 'pass', 'mines'],
+  [rough([ANNEX_Q.Q1, ANNEX_Q.Q2, ANNEX_Q.Q3]), 'pass', 'city'],
+  [rough([ANNEX_Q.Q3, NODES.J1]), 'pass', null],
+  [rough([ANNEX_Q.Q1, ANNEX_Q.Q4]), 'mines', 'city'],
+  [rough([ANNEX_Q.Q4, ANNEX_Q.Q5, NB_COAST_N[NB_Q6]]), 'mines', null],
+  [rough([ANNEX_Q.Q4, ANNEX_Q.Q7, ANNEX_Q.Q8, ANNEX_Q.Q9, ANNEX_Q.Q3]), 'city', null],
+];
+const edgeD = (pts) => `${mv(pts[0])}${curveTo(pts)}`;
+const cont = (pts) => curveTo(pts);
+const rev = (pts) => pts.slice().reverse();
+const E = ANNEX_EDGES.map((e) => e[0]);
+const ANNEX_PATH = {
+  pass: `${mv(NODES.J1)}${cont(E[0])}${cont(E[2])}${cont(E[3])}${cont(E[4])} Z`,
+  mines: `${mv(J1H[M_IDX])}${cont(E[1])}${cont(NB_COAST_N.slice(0, NB_Q6 + 1))}${cont(rev(E[6]))}${cont(rev(E[5]))}${cont(rev(E[2]))} Z`,
+  city: `${mv(ANNEX_Q.Q3)}${cont(rev(E[3]))}${cont(E[5])}${cont(E[7])} Z`,
+};
+const ANNEX_CITIES = { city: { name: 'Нордхольм', at: [560, -64] }, mines: { name: 'Хальвик', at: [742, 30] } };
+const ANNEX_LABEL = { pass: { at: [566, 56], name: 'Перевальский р-н' }, mines: { at: [770, 64], name: 'Хальвикский край' }, city: { at: [566, -38], name: 'Нордхольмская обл.' } };
+// граница с учётом присоединённого: где своё с одной стороны — государственная, с двух — внутренняя
+function annexBorders(own) {
+  const mine = (side) => side === 'home' || (side && own.includes(side));
+  const national = []; const inner = [];
+  ANNEX_EDGES.forEach(([pts, a, b]) => {
+    if (b === 'sea') return;
+    const ma = mine(a); const mb = mine(b);
+    if (ma && mb) inner.push(edgeD(pts)); else if (ma || mb) national.push(edgeD(pts));
+  });
+  return { national: national.join(' '), inner: inner.join(' ') };
+}
+const nationalBorderNoNorth = edgesOfKind(['west', 'southwest']) + ' ' + `${mv(NODES.A)}${curveTo(edgePts('A', 'J1'))}`;
+
 // цели наступления в Норланде — там же, где их рисует карта
 const OBJECTIVE_AT = { city: [560, -64], pass: [612, 50], mines: [742, 30] };
 const OBJECTIVE_ICON = { city: Castle, pass: Mountain, mines: Pickaxe };
@@ -247,6 +294,12 @@ function warGeometry(warType, depthOverride) {
   return { cfg, zone, frontPath: `${mv(front[0])}${curveTo(front)}`, teeth: teeth.join(' '), battles: [front[5], front[9]] };
 }
 
+const MAP_MODES = [
+  { id: 'stress', label: 'Напряжение' },
+  { id: 'votes', label: 'Итоги выборов' },
+  // опросы есть только в последние кварталы перед голосованием
+  { id: 'polls', label: 'Опросы', when: (e) => !!electionForecast(e) },
+];
 function tierColor(tier) { return tier === 'crisis' ? COLOR.rust : tier === 'tense' ? COLOR.gold : COLOR.teal; }
 function tierLabel(tier) { return tier === 'crisis' ? 'кризис' : tier === 'tense' ? 'напряжённо' : 'спокойно'; }
 /* Цвет округа на выборах: за кого он проголосовал и насколько уверенно.
@@ -271,35 +324,56 @@ function voteAlpha(share) {
    игрока без права решать («Минфин (бот)»), чтобы было видно, чьё это решение. */
 /* warOrder/onWarOrder — приказ президента на квартал в наступательной войне
    ({ target, stance }); без onWarOrder операция только показывается. */
-export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner }) {
+/* campaignPlan/onCampaignPlan — штабы кампании на этот квартал ({ regionId: штабов });
+   campaignPlanner — кто распределяет их за игрока без права решать. */
+export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner }) {
   const [selected, setSelected] = useState('capital');
-  const [mode, setMode] = useState('stress');
+  const [picked, setMode] = useState('stress');
+  // слой, который пропал (опросы после выборов), не остаётся выбранным невидимкой
+  const modes = MAP_MODES.filter((m) => !m.when || m.when(economy));
+  const mode = modes.some((m) => m.id === picked) ? picked : 'stress';
   const election = economy.lastElection || null;
+  // прогноз — вместе со штабами, которые игрок расставил, но квартал ещё не завершён
+  const forecast = electionForecast(economy, campaignPlan);
+  const showPolls = mode === 'polls' && !!forecast;
   const voteOf = (id) => {
-    const row = election && (election.byRegion || []).find((x) => x.id === id);
+    const rows = showPolls ? forecast.byRegion : election && election.byRegion;
+    const row = (rows || []).find((x) => x.id === id);
     return row ? row.share : null;
   };
   const region = MAP_REGIONS.find((r) => r.id === selected) || MAP_REGIONS[0];
   const blurb = regionBlurb(region, economy);
   const Icon = REGION_ICON[region.icon];
-  const showVotes = mode === 'votes' && !!election;
+  const showVotes = (mode === 'votes' && !!election) || showPolls;
   const sel = voteOf(region.id);
+  const annexed = economy.annexed || [];
+  const borders = annexBorders(annexed);
   const atWar = (economy.warQuartersLeft || 0) > 0;
   const camp = atWar && economy.warType === 'offensive' ? (economy.warCampaign || { progress: { pass: 0, mines: 0, city: 0 }, captured: [], last: null }) : null;
   // фронт уходит вглубь Норланда вместе с продвижением операции
   const push = camp ? Math.max(...WAR_OBJECTIVES.map((o) => camp.progress[o.id] || 0)) : 0;
   const war = atWar ? warGeometry(economy.warType, camp ? 26 + push * 0.42 : null) : null;
-  const firstOpen = camp ? (WAR_OBJECTIVES.find((o) => warObjectiveOpen(o.id, camp)) || {}).id || null : null;
-  const order = camp ? { target: firstOpen, stance: 'siege', ...warOrder } : null;
+  // действующий приказ: новый, если отдан в этом квартале, иначе прошлый (см. defaultWarOrder)
+  const standing = camp ? defaultWarOrder(camp) : null;
+  const order = camp ? {
+    target: warOrder && warObjectiveOpen(warOrder.target, camp) ? warOrder.target : standing.target,
+    stance: (warOrder && warOrder.stance) || standing.stance,
+  } : null;
   const setOrder = onWarOrder ? (patch) => onWarOrder({ ...order, ...patch }) : null;
   return (
     <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <div style={{ flex: '1 1 460px', minWidth: 0, maxWidth: 720 }}>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-          {[['stress', 'Напряжение'], ['votes', 'Выборы']].map(([id, label]) => (
-            <button key={id} className="ems-btn" style={{ padding: '5px 10px', fontSize: 11.5,
+        {/* слои карты — отдельной панелью с подписью и отступом: раньше две кнопки
+            прилипали к верху экрана и сливались с фоном */}
+        <div role="tablist" aria-label="Слой карты"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '4px 0 10px', padding: '7px 9px',
+            background: COLOR.panel, border: `1px solid ${COLOR.borderStrong}`, borderRadius: 6 }}>
+          <span style={{ fontSize: 11, color: COLOR.muted, marginRight: 4 }}>Слой карты:</span>
+          {modes.map(({ id, label }) => (
+            <button key={id} role="tab" aria-selected={mode === id} className="ems-btn" style={{ padding: '6px 12px', fontSize: 12,
+              fontWeight: mode === id ? 600 : 400,
               background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
-              borderColor: mode === id ? COLOR.gold : COLOR.border }}
+              borderColor: mode === id ? COLOR.gold : COLOR.borderStrong }}
               onClick={() => { Audio.play('tab'); setMode(id); }}>{label}</button>
           ))}
         </div>
@@ -322,6 +396,9 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             </pattern>
             <pattern id="map-war" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
               <line x1="0" y1="0" x2="0" y2="8" stroke={COLOR.rust} strokeOpacity={0.55} strokeWidth={3} />
+            </pattern>
+            <pattern id="map-held" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)">
+              <line x1="0" y1="0" x2="0" y2="9" stroke={COLOR.gold} strokeOpacity={0.5} strokeWidth={2.5} />
             </pattern>
             <radialGradient id="map-relief" cx="0.5" cy="0.35" r="0.7">
               <stop offset="0" stopColor={COLOR.text} stopOpacity="0.10" />
@@ -365,7 +442,9 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             const color = showVotes && share != null ? voteColor(share) : tierColor(b.tier);
             const alpha = showVotes && share != null ? voteAlpha(share) : '1e';
             const terrain = TERRAIN[r.id] ? COLOR[TERRAIN[r.id]] : null;
-            const aria = showVotes
+            const aria = showPolls
+              ? `${r.name}: опрос — ${Math.round(share)}% за действующую власть, ${swingLabel(share)}`
+              : showVotes
               ? `${r.name}: ${share != null ? `${Math.round(share)}% за действующую власть` : 'выборы ещё не проходили'}`
               : `${r.name}, ${r.sector}: ${tierLabel(b.tier)}, ${Math.round(b.stress)} из 100`;
             return (
@@ -378,6 +457,26 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               </g>
             );
           })}
+          {/* присоединённые земли — своей землёй; взятые армией, но ещё не присоединённые
+              (война идёт) — золотой штриховкой «под контролем армии» */}
+          <g style={{ pointerEvents: 'none' }}>
+            {Object.keys(ANNEX_PATH).map((id) => {
+              const own = annexed.includes(id);
+              const held = !own && camp && camp.captured.includes(id);
+              if (!own && !held) return null;
+              return (
+                <g key={id}>
+                  <path d={ANNEX_PATH[id]} fill={own ? COLOR.bg : 'none'} />
+                  <path d={ANNEX_PATH[id]} fill={own ? `${COLOR.teal}26` : 'url(#map-held)'} />
+                  {/* пока идёт война, взятое обозначают флаг на цели и штриховка — без подписи */}
+                  {own && (
+                    <text x={ANNEX_LABEL[id].at[0]} y={ANNEX_LABEL[id].at[1]} textAnchor="middle" stroke={COLOR.bg} strokeWidth={3.4} paintOrder="stroke"
+                      style={{ fontSize: 11.5, fontWeight: 600, fill: COLOR.text, letterSpacing: '0.04em' }}>{ANNEX_LABEL[id].name.toUpperCase()}</text>
+                  )}
+                </g>
+              );
+            })}
+          </g>
           {/* слой 2 — угодья, рельеф, дороги и реки; клики проходят насквозь */}
           <g style={{ pointerEvents: 'none' }}>
             <path d={regionPath('agri')} fill="url(#map-fields)" />
@@ -422,7 +521,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           <g style={{ pointerEvents: 'none' }}>
             <path d={innerBorderPath} fill="none" stroke={`${COLOR.text}66`} strokeWidth={1.3} strokeDasharray="4 4" strokeLinecap="round" />
             <path d={coastPath} fill="none" stroke={`${COLOR.text}99`} strokeWidth={2.4} strokeLinecap="round" />
-            <path d={nationalBorderPath} fill="none" stroke={COLOR.rust} strokeOpacity={0.75} strokeWidth={3} strokeDasharray="14 5 3 5" />
+            {annexed.length > 0 && <path d={borders.inner} fill="none" stroke={`${COLOR.text}66`} strokeWidth={1.3} strokeDasharray="4 4" />}
+            <path d={annexed.length > 0 ? `${nationalBorderNoNorth} ${borders.national}` : nationalBorderPath} fill="none" stroke={COLOR.rust} strokeOpacity={0.75} strokeWidth={3} strokeDasharray="14 5 3 5" />
             <path d={regionPath(selected)} fill="none" stroke={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)}
               strokeWidth={3.2} strokeLinejoin="round" />
           </g>
@@ -487,6 +587,16 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           )}
           {/* слой 5 — города и подписи поверх всего */}
           <g style={{ pointerEvents: 'none' }}>
+            {!camp && annexed.filter((id) => ANNEX_CITIES[id]).map((id) => {
+              const c = ANNEX_CITIES[id];
+              return (
+                <g key={`ac${id}`}>
+                  <circle cx={c.at[0]} cy={c.at[1]} r={5} fill={COLOR.bg} stroke={COLOR.text} strokeWidth={1.6} />
+                  <circle cx={c.at[0]} cy={c.at[1]} r={1.8} fill={COLOR.text} />
+                  <text x={c.at[0] + 9} y={c.at[1] - 6} stroke={COLOR.bg} strokeWidth={3} paintOrder="stroke" style={{ fontSize: 12, fill: COLOR.muted }}>{c.name}</text>
+                </g>
+              );
+            })}
             {TOWNS.map((t) => (
               <g key={t.name}>
                 <circle cx={t.at[0]} cy={t.at[1]} r={2.4} fill={COLOR.muted} />
@@ -631,7 +741,86 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55 }}>{blurb.text}</div>
           <RegionProject region={region} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />
         </div>
-        <ElectionPanel economy={economy} region={region} election={election} share={sel} />
+        {forecast && (
+          <CampaignPanel economy={economy} forecast={forecast} region={region} plan={campaignPlan} onPlan={onCampaignPlan}
+            planner={campaignPlanner} onFocus={(id) => { setSelected(id); setMode('polls'); }} />
+        )}
+        <ElectionPanel economy={economy} region={region} election={election} share={showPolls ? null : sel} />
+      </div>
+    </div>
+  );
+}
+
+/* Штаб кампании: опрос по областям за несколько кварталов до голосования и
+   распределение штабов. Штаб сдвигает колеблющуюся область сильнее всего,
+   надёжную и потерянную — почти никак: решать, кого убеждать, а кого списать. */
+const SWING_ORDER = ['колеблется', 'склоняется к власти', 'склоняется к оппозиции', 'надёжная', 'потеряна'];
+function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFocus }) {
+  const used = Object.values(plan || {}).reduce((a, b) => a + b, 0);
+  const left = CAMPAIGN_POINTS - used;
+  const perPoint = fmtMoney(economy.nominalGdp * CAMPAIGN_COST / 100);
+  const set = (id, n) => {
+    if (!onPlan) return;
+    Audio.play('tab');
+    const next = { ...plan };
+    if (n > 0) next[id] = n; else delete next[id];
+    onPlan(next);
+  };
+  const rows = [...forecast.byRegion].sort((a, b) => SWING_ORDER.indexOf(a.label) - SWING_ORDER.indexOf(b.label)
+    || Math.abs(a.base - 50) - Math.abs(b.base - 50));
+  const nat = forecast.national;
+  const verdict = nat - forecast.margin > 50 ? 'власть впереди с запасом'
+    : nat + forecast.margin < 50 ? 'власть проигрывает'
+    : 'в пределах погрешности — исход решат колеблющиеся области';
+  return (
+    <div className="ems-panel" style={{ padding: 14 }} aria-label="Штаб кампании">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        <Flag size={15} color={COLOR.gold} />
+        <span className="ems-serif" style={{ fontSize: 13.5 }}>Штаб кампании · до выборов {forecast.quartersToElection} кв.</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: voteColor(nat), fontWeight: 600 }}>
+          {fmt1(nat)}% ±{fmt1(forecast.margin)}
+        </span>
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.45 }}>
+        Опрос: {verdict}. Штаб в колеблющейся области сдвигает её сильнее всего, в надёжной или потерянной — почти ничего.
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.text, marginBottom: 8 }}>
+        {onPlan
+          ? <>Штабов на этот квартал: <b className="ems-mono" style={{ color: left > 0 ? COLOR.gold : COLOR.muted }}>{left} из {CAMPAIGN_POINTS}</b> · {perPoint} каждый</>
+          : <>Штабы распределяет {planner || 'штаб власти'}: {used} из {CAMPAIGN_POINTS} в этом квартале.</>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {rows.map((row) => {
+          const r = MAP_REGIONS.find((x) => x.id === row.id);
+          if (!r) return null;
+          const now = (plan || {})[row.id] || 0;
+          const lostCause = row.label === 'потеряна' || row.label === 'надёжная';
+          return (
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5,
+              color: row.id === region.id ? COLOR.text : COLOR.muted }}>
+              <button className="ems-btn" onClick={() => onFocus(row.id)} aria-label={`Показать ${r.short} на карте`}
+                style={{ width: 92, flexShrink: 0, padding: 0, border: 'none', background: 'none', textAlign: 'left', color: 'inherit',
+                  fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{r.short}</button>
+              <span className="ems-mono" style={{ width: 40, textAlign: 'right', color: voteColor(row.share), fontWeight: 600 }}>{Math.round(row.share)}%</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: lostCause ? COLOR.faint : voteColor(row.base),
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {row.label}{row.spent - now > 0 ? ` · штабов ${row.spent - now}` : ''}
+              </span>
+              {onPlan ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                  <button className="ems-btn" aria-label={`Убрать штаб: ${r.short}`} disabled={now === 0}
+                    style={{ width: 22, height: 22, padding: 0, fontSize: 13 }} onClick={() => set(row.id, now - 1)}>−</button>
+                  <span className="ems-mono" style={{ width: 14, textAlign: 'center', color: now ? COLOR.gold : COLOR.faint }}>{now}</span>
+                  <button className="ems-btn" aria-label={`Добавить штаб: ${r.short}`} disabled={left === 0}
+                    style={{ width: 22, height: 22, padding: 0, fontSize: 13 }} onClick={() => set(row.id, now + 1)}>+</button>
+                </span>
+              ) : now > 0 && <span className="ems-mono" style={{ color: COLOR.gold }}>+{now}</span>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
+        Проценты — уже с расставленными штабами. Вложенное копится до дня голосования; каждый следующий штаб в той же области даёт меньше предыдущего.
       </div>
     </div>
   );
@@ -817,7 +1006,7 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <Swords size={15} color={COLOR.rust} />
         <span className="ems-serif" style={{ fontSize: 14 }}>Наступление на Норланд</span>
-        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>ещё {economy.warQuartersLeft} кв.</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
       </div>
       <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 9 }}>
         Сила армии {Math.round(strength * 100)} из 100 — от доли обороны в бюджете и поддержки в стране.
@@ -870,7 +1059,7 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
       </div>
       <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
         {(WAR_STANCES.find((x) => x.id === order.stance) || {}).desc}{' '}
-        {setOrder ? 'Приказ исполнят в конце квартала; без приказа армия ведёт осаду ближайшей цели.' : `Приказы отдаёт ${planner || 'президент'}.`}
+        {setOrder ? 'Приказ действует, пока вы его не смените: армия продолжит его и в следующих кварталах.' : `Приказы отдаёт ${planner || 'президент'}.`}
       </div>
       {last && (
         <div style={{ fontSize: 11, color: COLOR.muted, marginTop: 8, paddingTop: 7, borderTop: `1px solid ${COLOR.hairline}`, lineHeight: 1.45 }}>
