@@ -883,7 +883,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         startEconomy: room.history && room.history[0], portfolio, defeat,
       })} />}
 
-      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
+      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: `linear-gradient(180deg, ${COLOR.panelRaised} 0%, ${COLOR.panel} 100%)`,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <StateSeal regime={economy.politicalRegime} size={36}
@@ -903,14 +903,17 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', rowGap: 10 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
-            <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{room.quarterLabel}</div>
-          </div>
-          <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
-            <Gauge value={economy.wellbeing} size={68} />
+          {/* статус — той же плашкой, что и в одиночной партии */}
+          <div className="ems-status" style={narrow ? { width: '100%', justifyContent: 'space-between' } : undefined}>
+            <div style={{ whiteSpace: 'nowrap' }}>
+              <div className="ems-eyebrow">Период</div>
+              <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{room.quarterLabel}</div>
+            </div>
+            <span className="sep" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Благополучие: сводная оценка жизни в стране">
+              <div className="ems-eyebrow" style={{ lineHeight: 1.3 }}>Благо-<br />получие</div>
+              <Gauge value={economy.wellbeing} size={58} />
+            </div>
           </div>
           {/* на телефоне сложность, достижения и газета — в меню «⋯» */}
           {!narrow && <div style={{ position: 'relative' }}>
@@ -1032,13 +1035,16 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       </div>
 
       {narrow && (
-        <div style={{ display: 'flex', gap: 4, padding: '10px 18px 0' }}>
+        /* колонки на телефоне — тем же сегментированным переключателем; прилипает к
+           верху экрана, чтобы переключаться, не пролистывая назад */
+        <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 18px', paddingBottom: 8,
+          background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
+          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
           {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 11.5,
-              background: mobileCol === id ? COLOR.gold : COLOR.panelAlt, color: mobileCol === id ? COLOR.ink : COLOR.text,
-              borderColor: mobileCol === id ? COLOR.gold : COLOR.border }}
+            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
               onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
           ))}
+          </div>
         </div>
       )}
 
