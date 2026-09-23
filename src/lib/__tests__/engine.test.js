@@ -282,19 +282,29 @@ describe('политический режим и пропаганда', () => {
     // двигал стрелку к авторитаризму. Здесь форсируется только устойчиво низкий капитал
     // банков (чтобы кризис не рассосался сам собой за пару кварталов) — падение
     // рейтинга, рецессия и долговой стресс дальше нарастают уже сами, без подсказок.
+    //
+    // Проверяется момент выхода из демократии, а не фиксированный квартал: после
+    // исправления двойного дефлирования дохода с капитала кризис разгоняется
+    // медленнее, а прибитый в абсолютных единицах капитал со временем перестаёт
+    // держать кризис (кредит сжимается, норматив восстанавливается сам). Шум зафиксирован.
+    let seed = 7;
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
     let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0 };
     let decisions = defaultDecisions(economy);
     let pendingImpulses = []; let eventCooldowns = {};
-    for (let q = 1; q <= 25; q++) {
+    let exit = null;
+    for (let q = 1; q <= 40 && !exit; q++) {
       const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
         difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
       economy = { ...r.economy, bankCapital: 4 }; // не даём банковскому кризису рассосаться самому
       pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
       decisions = defaultDecisions(economy, decisions);
+      if (economy.politicalRegime !== 'democracy') exit = economy;
     }
-    expect(economy.activeCrises).toContain('banking');
-    expect(economy.politicalTension).toBeGreaterThan(60);
-    expect(economy.politicalRegime).not.toBe('democracy');
+    spy.mockRestore();
+    expect(exit, 'за 40 кварталов банковский кризис так и не вывел страну из демократии').toBeTruthy();
+    expect(exit.activeCrises).toContain('banking');
+    expect(exit.politicalTension).toBeGreaterThan(60);
   });
 
   it('lets a catastrophic approval collapse trigger a coup instead of a quiet election defeat', () => {
@@ -1860,5 +1870,82 @@ describe('сложность сценариев', () => {
     });
     const max = Math.max(...SCENARIOS.map((sc) => sc.level));
     expect(SCENARIOS.filter((sc) => sc.level === max).map((sc) => sc.id)).toEqual(['hyperinflation']);
+  });
+});
+
+/* Боты и стабилизационная программа. До этого бот-ЦБ сдвигал ставку на 1,25–1,75
+   п.п. за квартал и не успевал довести реальную ставку до +3, пока держался
+   мандат: игрок за Минфин или президент в «Гиперинфляции» проигрывал всегда. */
+describe('боты в стабилизационной программе', () => {
+  const hyper = () => makeInitialEconomy('hyperinflation');
+
+  it('ЦБ-бот при бегстве от денег выводит реальную ставку в плюс: ястреб и прагматик сразу, голубь за два квартала', () => {
+    ['hawk', 'pragmatic'].forEach((p) => {
+      const e = hyper();
+      const r = botCentralBank(e, p, 'medium');
+      expect(r.decisions.keyRate - e.inflationExpectations, p).toBeGreaterThanOrEqual(3);
+      expect(r.decisions.moneySupplyOp, p).toBeLessThanOrEqual(0);
+    });
+    const e = hyper();
+    const first = botCentralBank(e, 'dove', 'medium').decisions.keyRate;
+    const second = botCentralBank({ ...e, keyRate: first }, 'dove', 'medium').decisions.keyRate;
+    expect(first).toBeGreaterThan(e.keyRate);
+    expect(second - e.inflationExpectations).toBeGreaterThanOrEqual(3);
+  });
+
+  it('ястреб выводит ставку выше, чем голубь', () => {
+    const e = hyper();
+    expect(botCentralBank(e, 'hawk', 'medium').decisions.keyRate)
+      .toBeGreaterThan(botCentralBank(e, 'dove', 'medium').decisions.keyRate);
+  });
+
+  it('после победы над инфляцией ЦБ-бот снижает сверхжёсткую ставку крупными шагами', () => {
+    const e = { ...makeInitialEconomy(), keyRate: 30, inflation: 2, inflationExpectations: 5, outputGap: -8 };
+    const r = botCentralBank(e, 'pragmatic', 'medium');
+    expect(e.keyRate - r.decisions.keyRate).toBeGreaterThanOrEqual(5);
+  });
+
+  it('технократ и консерватор режут расходы под программу, популист держит выплаты', () => {
+    const e = hyper();
+    const tech = botFinanceMinistry(e, 'technocrat', 'medium').decisions;
+    const aust = botFinanceMinistry(e, 'austerity', 'medium').decisions;
+    const pop = botFinanceMinistry(e, 'populist', 'medium').decisions;
+    expect(tech.govSpending).toBeLessThanOrEqual(-3);
+    expect(aust.govSpending).toBeLessThanOrEqual(-4);
+    expect(pop.transfers).toBeGreaterThan(tech.transfers);
+  });
+
+  it('в спокойной экономике боты не включают режим программы', () => {
+    const e = makeInitialEconomy();
+    const r = botCentralBank(e, 'hawk', 'medium');
+    expect(Math.abs(r.decisions.keyRate - e.keyRate)).toBeLessThan(2);
+  });
+});
+
+describe('жёсткость цен вниз', () => {
+  it('даже при огромном отрицательном разрыве выпуска дефляция не проваливается к −10%', () => {
+    let e = { ...makeInitialEconomy(), gdp: makeInitialEconomy().potentialGdp * 0.8, inflationExpectations: 0, inflation: 0 };
+    let d = defaultDecisions(e);
+    for (let q = 1; q <= 6; q++) {
+      const r = simulateQuarter({ economy: e, decisions: { ...d, keyRate: 8 }, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      e = r.economy; d = defaultDecisions(e, d);
+      expect(e.inflation).toBeGreaterThan(-6);
+    }
+  });
+});
+
+describe('мандат спасения после победы над ценами', () => {
+  it('обновляется один раз, когда программа доводит инфляцию до цели', () => {
+    let e = makeInitialEconomy('hyperinflation'); let d = defaultDecisions(e);
+    let pend = []; let cd = {}; const refills = [];
+    for (let q = 1; q <= 12; q++) {
+      const dec = { keyRate: Math.round(Math.max(e.inflation, e.inflationExpectations) + 3), govSpending: -6 };
+      const r = simulateQuarter({ economy: e, decisions: { ...d, ...dec }, pendingImpulses: pend, eventCooldowns: cd,
+        difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      if (r.newsEntries.some((n) => n.headline.startsWith('СТРАНА ДАЁТ ВРЕМЯ'))) refills.push(q);
+      e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; d = defaultDecisions(e, d);
+    }
+    expect(refills.length).toBe(1);
   });
 });

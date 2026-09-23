@@ -19,7 +19,7 @@
            npm run balance -- --scenarios  (плюс выигрываемость кризисных сценариев)
 
    Выигрываемость — отдельный вопрос, на который боты ответить не могут: они
-   играют одну стратегию. Здесь перебирается 1296
+   играют одну стратегию. Здесь перебирается 2592 (с МВФ при долговом кризисе и без)
    двухфазных стратегий (жёсткая фаза, потом мягкая) и считается, сколько из
    них сохраняют демократию за четыре года. Ноль
    значит, что сценарий политически не выигрывается никакой игрой.
@@ -173,7 +173,7 @@ function scenarioWinnability(scenarioId) {
   const rank = { democracy: 0, crisis: 1, authoritarian: 2, totalitarian: 3 };
   let winning = 0; let total = 0; let best = null;
   for (const prem of [3, 5, 8]) for (const gs1 of [-6, -3, 0]) for (const fx of ['free', 'managed', 'peg']) for (const tr1 of [0, 4, 8])
-    for (const exitAt of [3, 6]) for (const prem2 of [-1, 1]) for (const tr2 of [4, 10]) for (const gs2 of [0, 4]) {
+    for (const exitAt of [3, 6]) for (const prem2 of [-1, 1]) for (const tr2 of [4, 10]) for (const gs2 of [0, 4]) for (const imf of [false, true]) {
       total += 1; let kept = 0;
       for (const seed of [1, 2, 3, 4]) {
         const realRandom = Math.random; Math.random = mulberry32(seed);
@@ -187,6 +187,8 @@ function scenarioWinnability(scenarioId) {
             const dec = phase === 1
               ? { keyRate: Math.min(cap, Math.max(0, Math.round(Math.max(e.inflation, e.inflationExpectations) + prem))), govSpending: gs1, transfers: tr1, fxRegime: fx }
               : { keyRate: Math.min(cap, Math.max(0, Math.round(e.inflationExpectations + prem2))), govSpending: gs2, transfers: tr2, fxRegime: fx };
+            // МВФ — как сделал бы Минфин: при долговом кризисе, пока программы нет
+            if (imf && (e.activeCrises || []).includes('debt') && !e.imfActive && !(e.marketLockoutQuartersLeft > 0)) dec.imfProgram = true;
             const r = simulateQuarter({ economy: e, decisions: { ...d, ...dec },
               pendingImpulses: pend, eventCooldowns: cd, difficulty: 'medium', quarterIndex: q, stories: st });
             e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; st = r.stories || st; d = defaultDecisions(e, d);
@@ -196,7 +198,7 @@ function scenarioWinnability(scenarioId) {
         } finally { Math.random = realRandom; }
       }
       if (kept > 0) winning += 1;
-      if (!best || kept > best.kept) best = { kept, prem, gs1, fx, tr1, exitAt, prem2, tr2, gs2 };
+      if (!best || kept > best.kept) best = { kept, prem, gs1, fx, tr1, exitAt, prem2, tr2, gs2, imf };
     }
   return { winning, total, best };
 }
@@ -208,6 +210,6 @@ if (SCENARIO_SEARCH && !JSON_OUT) {
   SCENARIOS.filter((sc) => sc.id !== 'sandbox').forEach((sc) => {
     const w = scenarioWinnability(sc.id);
     const b = w.best;
-    console.log(`| ${sc.title} | ${w.winning} из ${w.total} (${Math.round(w.winning / w.total * 100)}%) | ${b.kept}/4: сначала ставка = инфляция +${b.prem}, закупки ${b.gs1}, выплаты ${b.tr1}, курс ${b.fx}; у цели (+${b.exitAt}) — ставка = ожидания ${b.prem2 >= 0 ? '+' : ''}${b.prem2}, выплаты ${b.tr2}, закупки ${b.gs2} |`);
+    console.log(`| ${sc.title} | ${w.winning} из ${w.total} (${Math.round(w.winning / w.total * 100)}%) | ${b.kept}/4: сначала ставка = инфляция +${b.prem}, закупки ${b.gs1}, выплаты ${b.tr1}, курс ${b.fx}; у цели (+${b.exitAt}) — ставка = ожидания ${b.prem2 >= 0 ? '+' : ''}${b.prem2}, выплаты ${b.tr2}, закупки ${b.gs2}${b.imf ? '; МВФ при долговом кризисе' : ''} |`);
   });
 }

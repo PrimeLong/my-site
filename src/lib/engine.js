@@ -222,18 +222,20 @@ const GOALS = [
    резервов, доля потребления/инвестиций «как в нормальной экономике») сами
    поехали бы вместе со стартом и потеряли смысл как ориентир. */
 /* Сложность сценария — не на глаз, а по отчёту о балансе (npm run balance --
-   --scenarios): перебор 1296 двухфазных стратегий игрока, доля тех, что
-   удерживают демократию четыре года. Открытая партия и ипотечный пузырь —
-   100%, валютный кризис — около двух третей, гиперинфляция — около 5%.
+   --scenarios): перебор 2592 двухфазных стратегий игрока (с МВФ и без), доля
+   тех, что удерживают демократию четыре года. Открытая партия и ипотечный
+   пузырь — 100%, валютный кризис — около 88%, гиперинфляция — около 7%.
    Ипотечный пузырь всё же «средний», а не «лёгкий»: демократия в нём цела,
-   но выборы боты проигрывают в половине партий — пузырь лопается под урну.
+   но выборы проиграть легко — пузырь лопается под урну. Валютный кризис —
+   «трудный»: демократию удержать можно, но выборы в нём боты проигрывают в
+   трёх партиях из четырёх, и одна ошибка первого года стоит мандата.
    level — от 1 до 4, levelNote объясняет цифру игроку. */
 const SCENARIOS = [
   { id: 'sandbox', title: 'Открытая партия', short: 'Песочница', level: 1, levelLabel: 'Лёгкий',
     levelNote: 'Без стартового кризиса: ошибки видны, но исправимы.',
     desc: 'Стабильная экономика без стартового кризиса — учиться или экспериментировать без давления времени.', overrides: null },
   { id: 'currency_crisis', title: 'Валютный кризис', short: 'Курс и резервы', level: 3, levelLabel: 'Трудный',
-    levelNote: 'Удержать демократию удаётся примерно двум стратегиям из трёх: ошибки первого года дорого стоят.',
+    levelNote: 'Демократию удержать можно, но выборы проиграть легко: ошибки первого года стоят мандата.',
     desc: 'Резервы уже наполовину истрачены, инфляция разогналась, ставка экстренно поднята — но доверие подорвано, и рынок ждёт девальвации.',
     overrides: { reserves: 60, inflation: 11, coreInflation: 9.5, inflationExpectations: 9, riskPremium: 3.4,
       keyRate: 15, lendingRate: 19, depositRate: 12, fxRegime: 'managed', cbCredibility: 32,
@@ -244,11 +246,15 @@ const SCENARIOS = [
     overrides: { creditVolume: 2100, bankCapital: 85, bankNPL: 8.5, bankLiquidity: 38, financialStability: 30,
       unemployment: 6.2, wageGrowth: 3.2, consumerConfidence: 40, businessConfidence: 38, approval: 45 } },
   { id: 'hyperinflation', title: 'Гиперинфляция', short: 'Доверие к деньгам', level: 4, levelLabel: 'Самый трудный',
-    levelNote: 'Выигрывает примерно одна стратегия из двадцати, бездействие проигрывает всегда. Даже верная игра стоит глубокой рецессии.',
+    levelNote: 'Выигрывает примерно одна стратегия из пятнадцати, бездействие проигрывает всегда. Даже верная игра стоит глубокой рецессии.',
     desc: 'Цены разгоняются на глазах, доверие к цели по инфляции разрушено, долг уже дорогой. Выход один — стабилизационная программа: жёсткая ставка вместе с бюджетом без дыры, пока у правительства держится мандат спасения. Постепенностью эту спираль не остановить.',
     overrides: { inflation: 34, coreInflation: 30, inflationExpectations: 27, cbCredibility: 18, keyRate: 24,
       lendingRate: 30, depositRate: 22, govDebt: 1700, effectiveDebtRate: 13, riskPremium: 4.2,
       consumerConfidence: 25, businessConfidence: 28, approval: 33, politicalTension: 34,
+      // при гиперинфляции номинальные зарплаты растут почти вровень с ценами
+      // (индексация), отставая на несколько пунктов; со стартовыми 6,3% модель
+      // считала, что реальные зарплаты падают на 28% в год при любой политике
+      wageGrowth: 26,
       crisisMandateLeft: 6, crisisMandateTotal: 6 } },
 ];
 
@@ -405,6 +411,26 @@ const getMofPersona = (id) => MOF_PERSONAS.find((p) => p.id === id) || MOF_PERSO
 
 // Бот-ЦБ: правило Тейлора вокруг нейтральной ставки + макропруденциальная и кризисная реакция
 const roundTo = (v, step) => Math.round(v / step) * step;
+
+/* Идёт ли борьба с высокой инфляцией — то же условие, при котором движок
+   включает доверие к стабилизационной программе (см. simulateQuarter). Боты
+   должны видеть то же, что и движок: без этого ЦБ-бот сдвигал ставку на
+   1,25–1,75 п.п. за квартал и не успевал довести реальную ставку до +3 п.п.,
+   пока держался мандат спасения, — игрок за Минфин или президент в
+   «Гиперинфляции» проигрывал 6 партий из 6 при любом характере ЦБ. */
+function stabilizationNeeded(s) {
+  const tgt = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
+  const running = (s.stabilizationCred || 0) > 0.05;
+  return s.inflation >= tgt + 8 || (running && s.inflation > tgt + 2);
+}
+/* Как характер ЦБ ведёт себя в стабилизации: какую реальную ставку держит и
+   как быстро к ней идёт. Ястреб прыгает сразу, голубь тянет — но даже голубь
+   понимает, что при бегстве от денег постепенность не работает. */
+const CB_STABILIZATION = {
+  hawk: { margin: 5, step: 12, cut: 4 },
+  pragmatic: { margin: 3.5, step: 7, cut: 6 },
+  dove: { margin: 3, step: 3.5, cut: 8 },
+};
 function botCentralBank(s, personaId, _difficulty) {
   const P = getCbPersona(personaId);
   const cbTarget = Number.isFinite(s.inflationTarget) ? s.inflationTarget : CONFIG.target.inflation;
@@ -426,6 +452,31 @@ function botCentralBank(s, personaId, _difficulty) {
   const rawMove2 = clamp(smoothed - s.keyRate, -maxStep, maxStep);
   const move = Math.abs(rawMove2) < 0.25 ? 0 : roundTo(rawMove2, 0.25);
   let keyRate = clamp(roundTo(s.keyRate + move, 0.25), 0, keyRateCap(s));
+  // стабилизационный режим: реальная ставка выше ожиданий на запас характера,
+  // и идти к ней можно быстрее обычного — постепенность здесь и есть ошибка
+  const stabMode = stabilizationNeeded(s);
+  const SP = CB_STABILIZATION[P.id] || CB_STABILIZATION.pragmatic;
+  if (stabMode) {
+    /* В программе ставка следует не правилу Тейлора (оно с коэффициентом 1,5
+       реагирует на вчерашнюю инфляцию и сглаживает, держа 34% при инфляции
+       10%), а правилу программы: реальная ставка на запас характера выше
+       того, что сейчас выше — инфляции или ожиданий. Вверх — быстро, вниз —
+       вслед за рушащимися ожиданиями. */
+    const need = roundTo(Math.max(s.inflation, s.inflationExpectations) + SP.margin, 0.25);
+    const next = need > s.keyRate ? Math.min(need, s.keyRate + SP.step) : Math.max(need, s.keyRate - SP.cut);
+    keyRate = clamp(roundTo(next, 0.25), 0, keyRateCap(s));
+  }
+  /* Выход из программы. Победив инфляцию, ЦБ оставался со ставкой 30% и
+     снижал её по два пункта за квартал — при дефляции −10% реальная ставка
+     выходила за 25%, и рецессия после удачной стабилизации добивала то, что
+     пощадила сама стабилизация. Настоящие ЦБ в этот момент снижают быстро:
+     если ставка жёстче правила Тейлора больше чем на 5 п.п., а инфляция уже
+     у цели, бот идёт вниз крупными шагами. Голубь — быстрее всех, ястреб —
+     осторожнее. */
+  const overTight = s.keyRate - Math.max(0, taylor) > 5 && s.inflation < cbTarget + 2;
+  if (overTight) {
+    keyRate = clamp(roundTo(Math.max(Math.max(0, taylor), s.keyRate - SP.cut), 0.25), 0, keyRateCap(s));
+  }
 
   const fxTargetCur = s.fxTarget;
   const crisis = s.bankingRisk >= CONFIG.thresholds.bankingRisk || s.bankCapitalAdequacy < 9;
@@ -436,11 +487,16 @@ function botCentralBank(s, personaId, _difficulty) {
   if (crisis) liquidity = Math.max(liquidity, 14);
 
   let moneySupplyOp = 0;
-  if (keyRate < 0.8 && s.outputGap < -2) moneySupplyOp = 2.5;
+  if (keyRate < 0.8 && s.outputGap < -2 && !stabMode) moneySupplyOp = 2.5;
   if (s.outputGap > 3 && s.inflation > 7) moneySupplyOp = -2;
 
   let fxIntervention = 0;
-  const fxRegime = s.fxRegime;
+  /* В программе курс — третья опора: управляемый курс при достаточных резервах
+     даёт людям видимый якорь, пока ожидания ещё не поверили ставке. Бот берёт
+     его сам, только если резервов хватает на защиту; после программы
+     возвращает тот режим, что был. */
+  const reservesOk = s.reserves >= 0.5 * CONFIG.initial.reserves;
+  const fxRegime = stabMode && reservesOk && s.fxRegime === 'free' ? 'managed' : s.fxRegime;
   if (s.regime === 'currency' && s.reserves > 120) fxIntervention = -10;
 
   let capitalRequirement = s.capitalRequirement;
@@ -453,7 +509,7 @@ function botCentralBank(s, personaId, _difficulty) {
   else if ((s.creditCrunch || s.bankLiquidity < 50) && s.reserveReq > 3) reserveReq = clamp(s.reserveReq - 1, 0, 20);
 
   return buildCbResult(s, P, { keyRate, reserveReq, capitalRequirement, moneySupplyOp, fxIntervention, liquidity,
-    fxRegime, emergency, cbTarget, fxTargetCur });
+    fxRegime, emergency, cbTarget, fxTargetCur, stabMode });
 }
 
 /* Собирает текст решения ЦБ (новости, цитата, детали) по итоговым значениям.
@@ -462,7 +518,7 @@ function botCentralBank(s, personaId, _difficulty) {
    реально произошло, а не изначальное намерение ЦБ до вмешательства. */
 function buildCbResult(s, P, vals) {
   const { keyRate, reserveReq, capitalRequirement, moneySupplyOp, fxIntervention, liquidity, fxRegime,
-    emergency, cbTarget, fxTargetCur } = vals;
+    emergency, cbTarget, fxTargetCur, stabMode } = vals;
   const parts = [];
   if (Math.abs(keyRate - s.keyRate) > 0.05) parts.push(`${keyRate > s.keyRate ? 'повысил' : 'снизил'} ключевую ставку до ${keyRate.toFixed(2)}%`);
   else parts.push(`сохранил ключевую ставку на уровне ${keyRate.toFixed(2)}%`);
@@ -489,6 +545,7 @@ function buildCbResult(s, P, vals) {
   const stance = clamp((keyRate - s.inflationExpectations - s.rStar) / 3, -1, 1);
   const quote = (() => {
     if (emergency) return 'Мы приняли решение поддержать банковскую систему. Да, это денежная эмиссия, и мы понимаем её инфляционную цену — но альтернатива дороже: остановка платежей парализовала бы всю экономику.';
+    if (stabMode && keyRate > s.keyRate + 0.05) return `Инфляция ${fmt1(s.inflation)}% — это уже не цикл, а бегство от денег. Реальная ставка ${fmtSigned1(keyRate - s.inflationExpectations)}% должна вернуть смысл сбережениям. Но программа сработает, только если бюджет перестанет требовать денег: одна ставка без Минфина — полдела.`;
     // санкции — свежее политическое решение, а не собственный манёвр ЦБ: персона
     // какое-то время явно проговаривает, почему не гоняется ставкой за скачком
     // цен на импорт, вместо того чтобы молчать о решении, которое бьёт по мандату
@@ -574,12 +631,28 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   let transfers = clamp(0.4 * P.transferBias * Math.max(0, s.unemployment - 5) + (P.id === 'populist' ? 1.2 : 0) - 1.1 * Math.max(0, consolidationNeed), -5, 7);
   let govInvestment = clamp(P.investBias * (1.2 - 0.9 * Math.max(0, consolidationNeed)) + 0.4 * Math.max(0, -s.outputGap), -5, 6);
   if (s.inflation > 8 && P.id !== 'populist') { govSpending -= 0.8; transfers -= 0.6; }
+  /* Стабилизационная программа держится на двух опорах, и бюджетная — за
+     Минфином: дефицит не больше 3% ВВП или сокращение расходов. Технократ
+     поддерживает программу полностью, консерватор — охотно (консолидация и
+     так его курс), популист сопротивляется: урезает лишь закупки и держит
+     выплаты, поэтому с ним доверие к программе копится втрое медленнее, и
+     президенту или ЦБ придётся его дожимать. В этом режиме предвыборная
+     щедрость отменяется у всех, кроме популиста. */
+  const stabMode = stabilizationNeeded(s);
+  if (stabMode) {
+    if (P.id === 'populist') { govSpending = Math.min(govSpending, -0.5); }
+    else {
+      govSpending = Math.min(govSpending, P.id === 'austerity' ? -4 : -3);
+      transfers = Math.min(transfers, P.id === 'austerity' ? -2 : -1);
+      govInvestment = Math.min(govInvestment, 0);
+    }
+  }
   // политический цикл: перед выборами бюджет щедрее, сразу после — жёстче
   const toVote = Number.isFinite(s.quartersToElection) ? s.quartersToElection : 16;
-  if (s.outputGap < -2 && s.recessionStreak >= 2) {   // затяжной спад требует реакции даже от консерватора
+  if (s.outputGap < -2 && s.recessionStreak >= 2 && !stabMode) {   // затяжной спад требует реакции даже от консерватора
     govSpending += 1.2; govInvestment += 1.6; transfers += 0.8;
   }
-  if (toVote <= CONFIG.election.campaign) { transfers += 1.5 * (P.id === 'populist' ? 1.6 : 1); govSpending += 0.7; }
+  if (toVote <= CONFIG.election.campaign && (!stabMode || P.id === 'populist')) { transfers += 1.5 * (P.id === 'populist' ? 1.6 : 1); govSpending += 0.7; }
   else if (toVote >= CONFIG.election.cycle - 2) { transfers -= 0.8; govSpending -= 0.5; }
   govSpending = dead(govSpending); transfers = dead(transfers); govInvestment = dead(govInvestment);
 
@@ -2691,7 +2764,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const employmentGrowthPrev = -(s.unemployment - prevU) * QUARTERS_PER_YEAR;
   const realWageIncome = s.wageGrowth - s.inflation + employmentGrowthPrev;
   const realTransferGrowth = transfersGrowth;
-  const capitalIncomeGrowth = s.gdpGrowth - s.inflation + 0.5 * (s.gdpGrowth - s.potentialGrowth);
+  /* Доход с капитала — реальная величина: gdpGrowth уже реальный рост, и
+     вычитать из него всю инфляцию значило дефлировать дважды. При инфляции
+     34% это одно слагаемое опускало рост потребления на семь пунктов при
+     любой политике. Реальный доход держателей бумаг съедает только
+     неожиданная инфляция — ожидаемая уже заложена в ставки. */
+  const capitalIncomeGrowth = s.gdpGrowth - Math.max(0, s.inflation - s.inflationExpectations) + 0.5 * (s.gdpGrowth - s.potentialGrowth);
   const wedgeDrag = -wedgeChange * 0.55;
   const realIncomeGrowth = 0.62 * realWageIncome + 0.16 * realTransferGrowth + 0.22 * capitalIncomeGrowth + wedgeDrag;
 
@@ -2807,7 +2885,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   if (Math.abs(fxPressureInfl) > 0.1) add('inflation', `Перенос курса в цены импорта: валюта ${fxDeprAnnual > 0 ? 'ослабла' : 'укрепилась'} на ${fmt1(Math.abs(fxDeprAnnual))}% годовых`, fxPressureInfl);
   if (Math.abs(depreciationPct) > 0.5) add('exchangeRate', `Платёжный баланс ${fmtMoneySigned(bop)} и разница реальных ставок (${fmt1(carry)} п.п.) ${bop < 0 ? 'давят на' : 'поддерживают'} курс`, depreciationPct);
 
-  const inflation = clamp(inflationPre + fxPressureInfl + (d.inflation || 0) + gauss(NB.inflation * nMult), -10, 90);
+  /* Жёсткость цен вниз. Магазины и работодатели охотно поднимают цены и
+     зарплаты и очень неохотно их режут: дефляции в современных экономиках
+     редко глубже −2…−4% в год. Без этого после удачной стабилизации модель
+     проваливалась в дефляцию −10% (её нижняя граница) при нулевой ставке —
+     реальная ставка выходила за 10%, и рецессия добивала то, что пощадила
+     сама стабилизация. Ниже нуля давление на цены проходит лишь на 35%:
+     сырые −10% становятся примерно −3,5%; выше нуля ничего не меняется. */
+  const inflationRaw = inflationPre + fxPressureInfl + (d.inflation || 0) + gauss(NB.inflation * nMult);
+  const inflation = clamp(inflationRaw >= 0 ? inflationRaw : inflationRaw * 0.35, -10, 90);
   const coreInflation = clamp(s.inflationExpectations + demandPressure + ulcPressure * 0.9, -10, 90);
   add('inflation', `Ожидания ${fmt1(s.inflationExpectations)}% + давление спроса ${fmtSigned1(demandPressure)} п.п. + издержки труда ${fmtSigned1(ulcPressure)} п.п.`, inflation - s.inflation);
   if (Math.abs(supplyShock) > 0.1) add('inflation', 'Шок предложения: издержки выросли при падении выпуска', supplyShock);
@@ -2888,9 +2974,22 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const mandatePrev = Number.isFinite(s.crisisMandateLeft) ? s.crisisMandateLeft : 0;
   const programOn = stabilizationCred >= 0.3;
   const earlyMandate = mandatePrev > mandateTotal - 2;
-  const crisisMandateLeft = mandatePrev > 0 ? Math.max(0, mandatePrev - (programOn || earlyMandate ? 1 : 2)) : 0;
-  const mandateEffect = mandateTotal > 0 ? (mandatePrev / mandateTotal) * (0.35 + 0.65 * stabilizationCred) : 0;
-  if (mandatePrev > 0 && crisisMandateLeft === 0) {
+  /* Победа над ценами обновляет мандат один раз и полностью: заслуга того,
+     кто остановил инфляцию, держится годами (Кардозу после Плана Реал выиграл
+     двое выборов подряд), и как раз её не хватало, чтобы пережить рецессию
+     после стабилизации — мандат кончался на самом дне спада. После победы
+     мандат действует в полную силу: это уже заработанное доверие, а не аванс. */
+  const mandateRefill = stabilizationBonus > 0 && mandateTotal > 0;
+  const mandateBase = mandateRefill ? mandateTotal : mandatePrev;
+  const crisisMandateLeft = mandateBase > 0
+    ? Math.max(0, mandateBase - (programOn || earlyMandate || stabilizationWon ? 1 : 2)) : 0;
+  const mandateEffect = mandateTotal > 0
+    ? (mandateBase / mandateTotal) * (stabilizationWon ? 1 : 0.35 + 0.65 * stabilizationCred) : 0;
+  if (mandateRefill) {
+    news.push(mkNews('gov', 'СТРАНА ДАЁТ ВРЕМЯ ТЕМ, КТО ОСТАНОВИЛ ЦЕНЫ',
+      'Мандат правительства национального спасения продлён: люди готовы пережить рецессию, раз деньги снова что-то значат. Но это последний кредит — дальше судят по работе и зарплатам.',
+      { priority: 8 }));
+  } else if (mandateBase > 0 && crisisMandateLeft === 0) {
     news.push(mkNews('gov', programOn ? 'МАНДАТ СПАСЕНИЯ ИСЧЕРПАН — ДАЛЬШЕ СУДЯТ ПО ЦЕНАМ' : 'ТЕРПЕНИЕ КОНЧИЛОСЬ: МАНДАТ СПАСЕНИЯ СГОРЕЛ',
       programOn ? 'Кредит доверия, выданный правительству национального спасения, исчерпан. Дальше поддержку определяют не обещания, а ценники и занятость.'
         : 'Правительству давали время, чтобы остановить цены. Время вышло раньше, чем программа заработала.', { priority: 8 }));
