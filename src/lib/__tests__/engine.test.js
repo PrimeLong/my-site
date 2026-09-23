@@ -2080,3 +2080,17 @@ describe('округа: стройки и события', () => {
     expect(botFinanceMinistry(e, 'austerity', 'medium').decisions.regionResponse).toBe('import');
   });
 });
+
+describe('война на карте', () => {
+  it('прифронтовая область напряжена сильнее тыловых: оборона — Приреченская, наступление — Рудногорская', async () => {
+    const { MAP_REGIONS, regionStress, warFrontRegion } = await import('../engine.js');
+    const e = { ...makeInitialEconomy(), inflationRisk: 30, recessionRisk: 30, politicalTension: 30, currencyRisk: 30, bankingRisk: 30, debtRisk: 30 };
+    const R = (id) => MAP_REGIONS.find((r) => r.id === id);
+    expect(warFrontRegion(e)).toBe(null);
+    const def = { ...e, warQuartersLeft: 3, warType: 'defensive' };
+    expect(warFrontRegion(def)).toBe('agri');
+    expect(regionStress(R('agri'), def) - regionStress(R('agri'), e)).toBeCloseTo(22, 5);
+    expect(regionStress(R('capital'), def) - regionStress(R('capital'), e)).toBeCloseTo(5, 5);
+    expect(warFrontRegion({ ...e, warQuartersLeft: 3, warType: 'offensive' })).toBe('mining');
+  });
+});
