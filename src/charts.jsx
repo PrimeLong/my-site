@@ -223,6 +223,28 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   const visible = group.series.filter((s) => !hiddenSeries.includes(s.id));
   const leftDef = visible.find((s) => s.axis === 'left');
   const rightDef = visible.find((s) => s.axis === 'right');
+  /* Масштаб оси — по данным, но не уже разумного минимума. Раньше шкала ВВП
+     начиналась с нуля (линия лежала плоско под потолком), а процентная ось
+     подстраивалась под разброс в сотые доли: разрыв выпуска −0,2% за первый
+     квартал выглядел обвалом во всю высоту графика. */
+  const axisDomainFor = (axis) => {
+    const list = visible.filter((x) => x.axis === axis);
+    if (!list.length) return ['auto', 'auto'];
+    const vals = [];
+    data.forEach((row) => {
+      list.forEach((x) => { [row[x.id], row[`${x.id}__f`]].forEach((v) => { if (Number.isFinite(v)) vals.push(v); }); });
+      if (Array.isArray(row.fanInner) && visible[0] && visible[0].axis === axis) row.fanInner.forEach((v) => { if (Number.isFinite(v)) vals.push(v); });
+    });
+    if (!vals.length) return ['auto', 'auto'];
+    let lo = Math.min(...vals); let hi = Math.max(...vals);
+    const level = list[0].fmt === 'money' || list[0].fmt === 'idx';
+    const minSpan = level ? Math.max(Math.abs((lo + hi) / 2) * 0.06, 1) : 2;
+    if (hi - lo < minSpan) { const mid = (lo + hi) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
+    const pad = (hi - lo) * 0.08;
+    lo -= pad; hi += pad;
+    const step = Math.pow(10, Math.floor(Math.log10((hi - lo) / 4)));
+    return [Math.floor(lo / step) * step, Math.ceil(hi / step) * step];
+  };
   const seriesById = Object.fromEntries(group.series.map((s) => [s.id, s]));
 
   // значение показателя в точке графика: прогнозная точка хранит его под
@@ -286,8 +308,10 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
             onMouseDown={onChartMouseDown} onMouseMove={onChartMouseMove} onMouseUp={onChartMouseUp} onMouseLeave={onChartMouseUp}>
             <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" />
             <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR.muted }} interval="preserveStartEnd" />
-            <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')} />
-            {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)} />}
+            <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')}
+              domain={axisDomainFor('left')} />
+            {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)}
+              domain={axisDomainFor('right')} />}
             <Tooltip contentStyle={{ background: COLOR.panel, border: `1px solid ${COLOR.border}`, fontSize: 12 }} labelStyle={{ color: COLOR.goldSoft }}
               formatter={(value, name, props) => {
                 // прогноз рисуется отдельными ключами (`${id}__f`, `fanInner`) —

@@ -912,14 +912,15 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
             <Gauge value={economy.wellbeing} size={68} />
           </div>
-          <div style={{ position: 'relative' }}>
+          {/* на телефоне сложность, достижения и газета — в меню «⋯» */}
+          {!narrow && <div style={{ position: 'relative' }}>
             <select value={room.difficulty} disabled={difficultyBusy} onChange={(e) => changeDifficulty(e.target.value)}
               title="Сложность партии" className="ems-btn"
               style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
               {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
             </select>
             <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          </div>
+          </div>}
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
             deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
@@ -927,15 +928,28 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
             resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
             autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
-            <Trophy size={14} color={COLOR.gold} />
-          </button>
-          <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-            onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
-            <Newspaper size={14} />Газета
-          </button>
+          {!narrow && (
+            <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
+              <Trophy size={14} color={COLOR.gold} />
+            </button>
+          )}
+          {!narrow && (
+            <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+              onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
+              <Newspaper size={14} />Газета
+            </button>
+          )}
           <AudioControls />
           <HeaderOverflowMenu items={[
+            ...(narrow ? [
+              { icon: Newspaper, label: 'Газета', onClick: () => { Audio.play('paper'); setShowPaper(true); } },
+              { icon: Trophy, label: 'Достижения', onClick: () => setShowAch(true) },
+              { icon: ChevronDown, label: `Сложность: ${(DIFFICULTIES.find((x) => x.id === room.difficulty) || {}).title} — сменить`, onClick: () => {
+                if (difficultyBusy) return;
+                const i = DIFFICULTIES.findIndex((x) => x.id === room.difficulty);
+                changeDifficulty(DIFFICULTIES[(i + 1) % DIFFICULTIES.length].id);
+              } },
+            ] : []),
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
             { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => exit() },
@@ -957,7 +971,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
-                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
+                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab', gridColumn: idx === 0 ? 'span 2' : undefined }}>
                 <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
@@ -1447,12 +1461,15 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
           onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
       ) : (
-        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
-          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
-          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: narrow ? '8px 16px 10px' : '14px 18px',
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: narrow ? 6 : 10, position: 'sticky', bottom: 0, zIndex: 5,
+          flexWrap: narrow ? 'wrap' : undefined, boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
+          {/* на телефоне статус — строкой над кнопкой, кнопка во всю ширину: иначе оба
+              переносились в три строки и панель занимала четверть экрана */}
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
-            <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: narrow ? 10.5 : 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7,
+              width: narrow ? '100%' : undefined, lineHeight: 1.35 }}>
               {isTraderRoom
                 ? (!room.occupied[otherSeat]
                   ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
@@ -1472,9 +1489,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </span>
           )}
           {waitingForOther ? (
-            <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
+            <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13, width: narrow ? '100%' : undefined }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
           ) : (
-            <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
+            <button className="ems-btn primary" style={{ padding: narrow ? '11px 16px' : '12px 26px', fontSize: 13.5, width: narrow ? '100%' : undefined }} disabled={busy} onClick={send}>
               {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу'
                 : isPresidentSeat ? 'Подписать и завершить квартал' : 'Отправить решения квартала'}
             </button>
