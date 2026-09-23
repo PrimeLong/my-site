@@ -1,19 +1,17 @@
 ﻿import React, { useState, useMemo, useCallback, Suspense } from 'react';
-import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress,
-  createRoom, joinRoom, submitDecisions, cancelSubmission, watchRoom, leaveRoom, fetchRoom, setRoomDifficulty, sendChatMessage, kickFromRoom, listPublicRooms,
-  reportPortfolioValue, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
+import { createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress, fetchRoom, fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ShieldCheck, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight,
   X, Check, AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Volume2, VolumeX, Music, Save, Copy, Star, Flag, Megaphone, Sliders, Dices, Clock,
   Trophy, Lock, Share2, Download, GraduationCap, Crown, Gavel, Hammer, Smartphone,
   Play, Calendar, BookOpen, Vote, Layers, PartyPopper, Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen,
-  Map as MapIcon, Anchor, Wheat, Pickaxe,
+  Map as MapIcon,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, MAP_REGIONS, regionBlurb,
+  POLITICAL_REGIME_INFO, gameChronicle,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtIndex, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
@@ -23,6 +21,10 @@ import {
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
+import { Audio, stingerFor } from './audio/engine.js';
+import { TRACKS, MOOD_LABEL, STINGERS } from './audio/tracks.js';
+
+export { Audio };
 
 const THEMES = {
   ink: { id: 'ink', name: 'Ночная канцелярия', dark: true, colors: {
@@ -264,7 +266,7 @@ function DeltaTag({ value, invert, suffix = '' }) {
   );
 }
 
-function Gauge({ value, size = 110 }) {
+export function Gauge({ value, size = 110 }) {
   const v = clamp(value, 0, 100);
   const angle = -90 + (v / 100) * 180;
   const color = v >= 65 ? COLOR.teal : v >= 40 ? COLOR.gold : COLOR.rust;
@@ -318,7 +320,7 @@ function Sparkline({ series, color, height = 16 }) {
 
 // пятиконечная звезда: точки чередуют внешний/внутренний радиус через 36°,
 // начиная сверху — обычная параметрическая формула геральдической звезды
-function starPath(cx, cy, rOuter, rInner) {
+export function starPath(cx, cy, rOuter, rInner) {
   const pts = [];
   for (let i = 0; i < 10; i++) {
     const r = i % 2 === 0 ? rOuter : rInner;
@@ -393,7 +395,7 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
    куда более рискованный рефакторинг всей темизации), а обрамляя одну и ту же
    колонку разной атмосферой снаружи: тёплый кабинетный свет слева, казённая рамка
    досье справа. */
-function CabinetZone({ children, hidden }) {
+export function CabinetZone({ children, hidden }) {
   return (
     <div className={hidden ? 'ems-col-hidden' : ''} style={{ position: 'relative', borderRadius: 13, padding: `${SPACE[4]}px ${SPACE[3]}px ${SPACE[3]}px`,
       background: `radial-gradient(130% 85% at 12% -6%, ${COLOR.goldDim} 0%, transparent 58%), ${COLOR.bg}`,
@@ -405,7 +407,7 @@ function CabinetZone({ children, hidden }) {
     </div>
   );
 }
-function StateZone({ children, label, hidden }) {
+export function StateZone({ children, label, hidden }) {
   return (
     <div className={hidden ? 'ems-col-hidden' : ''} style={{ position: 'relative', borderRadius: 13, padding: `${SPACE[4]}px ${SPACE[3]}px ${SPACE[3]}px`,
       background: COLOR.bg, border: `1px solid ${COLOR.paperRule}4a` }}>
@@ -422,360 +424,11 @@ function StateZone({ children, label, hidden }) {
   );
 }
 
-/* ------------------------------ КАРТА СТРАНЫ ------------------------------
-   Страна безымянная, но карта у неё должна быть похожа на настоящую: рваный
-   берег, сухопутная граница, река, столица — а не ровные шестиугольники,
-   которые читаются как инфографика, а не как государство.
+/* Карта страны вынесена в src/countrymap.jsx и грузится лениво: её открывают
+   вкладкой, а геометрия округов и береговой линии первому экрану не нужна. */
+export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) => ({ default: m.CountryMap })));
 
-   Геометрия собрана из ОБЩИХ отрезков, а не из независимых полигонов: контур
-   (MAP_RING) режется шестью опорными точками (MAP_ANCHORS) на дуги, от каждой
-   опорной точки внутрь идёт радиальная граница (через изгиб MAP_RADIAL к
-   вершине столичного округа MAP_CENTER). Соседние округа переиспользуют один
-   и тот же отрезок в обратном порядке — поэтому между ними физически не может
-   появиться щель или нахлёст, как бы ни сглаживалась линия.
-
-   Сглаживание — Catmull-Rom, он симметричен относительно разворота списка
-   точек: одна и та же дуга, пройденная в обе стороны, даёт одну и ту же
-   кривую. Без этого свойства общие границы разъехались бы. */
-const MAP_RING = [
-  [306, 34], [330, 44], [356, 48], [380, 80], [410, 96], [436, 126],       // северная оконечность
-  [470, 140], [506, 176], [528, 222], [552, 262], [530, 300], [496, 342],  // восток с заливом
-  [556, 420], [572, 470], [542, 522], [520, 578], [470, 626], [414, 668],  // юго-восток
-  [346, 712], [292, 700], [246, 672], [206, 640], [176, 592], [146, 540],  // южная оконечность
-  [120, 486], [146, 436], [128, 390], [156, 336], [132, 282], [160, 228],  // западный рубеж
-  [150, 170], [186, 140], [214, 104], [246, 96], [268, 62], [284, 40],     // северо-запад
-];
-const MAP_ANCHORS = [0, 6, 12, 18, 24, 30];
-const MAP_CENTER = [[300, 290], [372, 304], [432, 388], [358, 472], [276, 446], [268, 348]];
-// лёгкий излом на каждой грани столичного округа: ровный многоугольник в
-// середине карты выдавал бы «диаграмму», а сильный изгиб — пузырь; поэтому
-// смещение от середины грани маленькое, на несколько единиц
-const MAP_CENTER_BEND = [[330, 288], [412, 338], [402, 436], [312, 470], [262, 396], [288, 312]];
-// у каждой радиальной границы свой излом — иначе округа читаются как ровные
-// доли пирога, а не как губернии, нарезанные по рекам и водоразделам
-const MAP_RADIAL = [
-  [[330, 124], [300, 222]], [[452, 218], [408, 268]], [[494, 400], [452, 424]],
-  [[372, 622], [338, 534]], [[188, 500], [244, 470]], [[196, 246], [232, 292]],
-];
-// какой округ занимает клин между опорными точками i и i+1 (по часовой стрелке)
-const MAP_WEDGES = ['agri', 'port', 'industry', 'mining', 'periphery', 'finance'];
-// дуги 0..3 — морской берег, 4 и 5 — сухопутная граница с соседями
-const MAP_SEA_ARCS = [0, 1, 2, 3];
-const MAP_LAND_ARCS = [4, 5];
-const MAP_RIVER = [[168, 556], [230, 522], [292, 494], [338, 458], [392, 430], [446, 400], [492, 346]];
-const MAP_CITIES = [[404, 196], [500, 250], [250, 616], [176, 372], [392, 618], [252, 210]];
-const MAP_ISLANDS = [[596, 316, 11, 7], [614, 246, 7, 5]];
-const REGION_ICON = { capital: Landmark, port: Anchor, industry: Factory, agri: Wheat, finance: Coins, mining: Pickaxe, periphery: Users };
-
-function rawArcPoints(i) {
-  const from = MAP_ANCHORS[i]; const to = MAP_ANCHORS[(i + 1) % MAP_ANCHORS.length];
-  const out = []; let k = from;
-  for (;;) { out.push(MAP_RING[k]); if (k === to) break; k = (k + 1) % MAP_RING.length; }
-  return out;
-}
-/* Изломанность берега и границ. Ровная кривая по десятку точек читается как
-   лист или клякса; настоящая береговая линия неровная на любом масштабе.
-   Классическое смещение середины отрезка по нормали, два прохода — этого
-   хватает, чтобы контур перестал быть «гладким».
-
-   Псевдослучайность выведена из самих координат (детерминированный хэш), а не
-   из Math.random(): карта обязана быть одинаковой при каждой перерисовке и в
-   каждой партии. Концы отрезка не смещаются никогда — именно поэтому опорные
-   точки, где сходятся три округа, остаются общими. */
-function hash01(x, y, salt) {
-  const s = Math.sin(x * 12.9898 + y * 78.233 + salt * 37.719) * 43758.5453;
-  return s - Math.floor(s);
-}
-function roughen(points, amp, passes) {
-  let pts = points;
-  for (let p = 0; p < passes; p++) {
-    const out = [pts[0]];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i]; const b = pts[i + 1];
-      const mx = (a[0] + b[0]) / 2; const my = (a[1] + b[1]) / 2;
-      const dx = b[0] - a[0]; const dy = b[1] - a[1];
-      const len = Math.hypot(dx, dy) || 1;
-      const k = (hash01(mx, my, p) - 0.5) * amp * Math.min(1, len / 38);
-      out.push([+(mx - (dy / len) * k).toFixed(1), +(my + (dx / len) * k).toFixed(1)], b);
-    }
-    pts = out;
-  }
-  return pts;
-}
-// считаем один раз: и клин округа, и линия берега должны брать ОДИН И ТОТ ЖЕ
-// изломанный список точек, иначе заливка и контур разойдутся
-const ARC_PTS = MAP_ANCHORS.map((_, i) => roughen(rawArcPoints(i), 30, 3));
-const arcPoints = (i) => ARC_PTS[i];
-/* Catmull-Rom → кубические безье. Концы дублируются, поэтому кривая проходит
-   ровно через первую и последнюю точку и не зависит от того, что было до и
-   после отрезка — это и делает разворот списка безопасным. */
-function curveTo(points) {
-  const n = points.length;
-  if (n < 2) return '';
-  let d = '';
-  for (let i = 0; i < n - 1; i++) {
-    const p0 = points[Math.max(i - 1, 0)]; const p1 = points[i];
-    const p2 = points[i + 1]; const p3 = points[Math.min(i + 2, n - 1)];
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
-  }
-  return d;
-}
-const mv = (p) => `M${p[0]},${p[1]}`;
-const RADIAL_PTS = MAP_ANCHORS.map((_, i) => roughen([MAP_RING[MAP_ANCHORS[i]], ...MAP_RADIAL[i], MAP_CENTER[i]], 17, 2));
-const radialPoints = (i) => RADIAL_PTS[i];
-/* Грань столичного округа — ДВА прямых отрезка через излом, а не кривая:
-   сглаженный шестиугольник с изломами превращается в ровный круг, который
-   читается как пузырь, а не как область. Прямые отрезки дают ломаную с
-   углами — и при этом тривиально совпадают у соседа при обходе в обратную
-   сторону. */
-const centerEdge = (i) => [MAP_CENTER[i], MAP_CENTER_BEND[i], MAP_CENTER[(i + 1) % MAP_CENTER.length]];
-const lineTo = (points) => points.slice(1).map((p) => ` L${p[0]},${p[1]}`).join('');
-function wedgePath(i) {
-  const j = (i + 1) % MAP_ANCHORS.length;
-  const arc = arcPoints(i);
-  return `${mv(arc[0])}${curveTo(arc)}${curveTo(radialPoints(j))}`
-    + `${lineTo(centerEdge(i).slice().reverse())}${curveTo(radialPoints(i).slice().reverse())} Z`;
-}
-const capitalPath = `${mv(MAP_CENTER[0])}${MAP_CENTER.map((_, i) => lineTo(centerEdge(i))).join('')} Z`;
-const regionPath = (id) => (id === 'capital' ? capitalPath : wedgePath(MAP_WEDGES.indexOf(id)));
-const arcPath = (i) => `${mv(arcPoints(i)[0])}${curveTo(arcPoints(i))}`;
-const coastPath = MAP_SEA_ARCS.map(arcPath).join(' ');
-const borderPath = MAP_LAND_ARCS.map(arcPath).join(' ');
-/* Внутренние границы рисуются ОТДЕЛЬНЫМ слоем, а не обводкой самих округов:
-   обводка каждого клина проходила и по внешнему контуру тоже и закрашивала
-   промежутки пунктира — сухопутная граница переставала отличаться от берега. */
-const innerBorderPath = [
-  ...MAP_ANCHORS.map((_, i) => `${mv(radialPoints(i)[0])}${curveTo(radialPoints(i))}`),
-  capitalPath,
-].join(' ');
-// ореол у берега — классический картографический приём; рисуем его только по
-// восточным дугам, где смещение копии наружу действительно уходит в море
-const coastHaloPath = [1, 2].map(arcPath).join(' ');
-// подпись ставится между серединой внутренней грани округа и серединой его
-// куска побережья; nudge — ручная поправка там, где клин узкий и надпись
-// иначе ложится на границу
-const MAP_LABEL_NUDGE = { agri: [6, 4], port: [-12, 8], industry: [-6, -10], mining: [14, -18], periphery: [12, 4], finance: [-14, 18] };
-function regionLabelAt(id) {
-  if (id === 'capital') return [330, 378];
-  const i = MAP_WEDGES.indexOf(id); const j = (i + 1) % MAP_ANCHORS.length;
-  const arc = arcPoints(i);
-  const mid = arc[Math.floor(arc.length / 2)];
-  const inner = [(MAP_CENTER[i][0] + MAP_CENTER[j][0]) / 2, (MAP_CENTER[i][1] + MAP_CENTER[j][1]) / 2];
-  const nudge = MAP_LABEL_NUDGE[id] || [0, 0];
-  return [inner[0] + (mid[0] - inner[0]) * 0.52 + nudge[0], inner[1] + (mid[1] - inner[1]) * 0.52 + nudge[1]];
-}
-
-function tierColor(tier) { return tier === 'crisis' ? COLOR.rust : tier === 'tense' ? COLOR.gold : COLOR.teal; }
-function tierLabel(tier) { return tier === 'crisis' ? 'кризис' : tier === 'tense' ? 'напряжённо' : 'спокойно'; }
-/* Цвет округа на выборах: за кого он проголосовал и насколько уверенно.
-   Считаем по округлённому значению — иначе подпись «52%» могла оказаться
-   жёлтой (потому что на самом деле 51.6), и цвет спорил бы с числом. */
-function voteColor(share) {
-  const v = Math.round(share);
-  return v >= 52 ? COLOR.teal : v <= 48 ? COLOR.rust : COLOR.gold;
-}
-const ELECTION_OUTCOME = {
-  incumbent: 'власть сохранила мандат',
-  opposition: 'победила оппозиция',
-  landslide: 'разгромное поражение власти',
-};
-function voteAlpha(share) {
-  const margin = clamp(Math.abs(share - 50) / 18, 0, 1);
-  return `0${Math.round(20 + margin * 45).toString(16)}`.slice(-2);
-}
-
-function CountryMap({ economy }) {
-  const [selected, setSelected] = useState('capital');
-  const [mode, setMode] = useState('stress');
-  const election = economy.lastElection || null;
-  const voteOf = (id) => {
-    const row = election && (election.byRegion || []).find((x) => x.id === id);
-    return row ? row.share : null;
-  };
-  const region = MAP_REGIONS.find((r) => r.id === selected) || MAP_REGIONS[0];
-  const blurb = regionBlurb(region, economy);
-  const Icon = REGION_ICON[region.icon];
-  const showVotes = mode === 'votes' && !!election;
-  const sel = voteOf(region.id);
-  return (
-    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      <div style={{ flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-          {[['stress', 'Напряжение'], ['votes', 'Выборы']].map(([id, label]) => (
-            <button key={id} className="ems-btn" style={{ padding: '5px 10px', fontSize: 11.5,
-              background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
-              borderColor: mode === id ? COLOR.gold : COLOR.border }}
-              onClick={() => { Audio.play('tab'); setMode(id); }}>{label}</button>
-          ))}
-        </div>
-        <svg viewBox="92 6 516 730" style={{ width: '100%', maxWidth: 372, height: 'auto', display: 'block' }}
-          role="img" aria-label="Карта округов страны">
-          {/* море: лёгкая заливка по всему полю и ореол вдоль берега — суша
-              рисуется поверх, поэтому отдельный полигон моря не нужен */}
-          <rect x="92" y="6" width="516" height="730" fill={`${COLOR.blue}12`} />
-          {[0, 1].map((k) => (
-            <path key={k} d={coastHaloPath} fill="none" stroke={`${COLOR.blue}${['30', '1c'][k]}`} strokeWidth={1.2}
-              transform={`translate(${5 + k * 6},${2 + k * 3})`} />
-          ))}
-          {MAP_ISLANDS.map(([x, y, rx, ry]) => (
-            <ellipse key={`${x},${y}`} cx={x} cy={y} rx={rx} ry={ry}
-              fill={`${COLOR.text}1a`} stroke={`${COLOR.text}66`} strokeWidth={1.2} />
-          ))}
-          {/* слой 1 — только заливки: по ним кликают и по ним ходит фокус */}
-          {MAP_REGIONS.map((r) => {
-            const b = regionBlurb(r, economy);
-            const share = voteOf(r.id);
-            const color = showVotes && share != null ? voteColor(share) : tierColor(b.tier);
-            const alpha = showVotes && share != null ? voteAlpha(share) : '1f';
-            const aria = showVotes
-              ? `${r.name}: ${share != null ? `${Math.round(share)}% за действующую власть` : 'выборы ещё не проходили'}`
-              : `${r.name}, ${r.sector}: ${tierLabel(b.tier)}, ${Math.round(b.stress)} из 100`;
-            return (
-              <g key={r.id} role="button" tabIndex={0} aria-label={aria} style={{ cursor: 'pointer' }}
-                onClick={() => { Audio.play('tab'); setSelected(r.id); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Audio.play('tab'); setSelected(r.id); } }}>
-                <path d={regionPath(r.id)} fill={`${color}${r.id === selected ? '40' : alpha}`} />
-              </g>
-            );
-          })}
-          {/* слой 2 — линии карты: внутренние границы тоньше, берег сплошной и
-              толстый, сухопутная граница пунктиром. Раньше пунктир забивала
-              обводка самих округов, поэтому границы вынесены сюда отдельно */}
-          <g style={{ pointerEvents: 'none' }}>
-            <path d={innerBorderPath} fill="none" stroke={`${COLOR.text}55`} strokeWidth={1.2} strokeLinejoin="round" />
-            <path d={coastPath} fill="none" stroke={`${COLOR.text}88`} strokeWidth={2.4} strokeLinecap="round" />
-            <path d={borderPath} fill="none" stroke={`${COLOR.text}99`} strokeWidth={2.6} strokeDasharray="12 7" strokeLinecap="butt" />
-            <path d={`${mv(MAP_RIVER[0])}${curveTo(MAP_RIVER)}`} fill="none" stroke={`${COLOR.blue}aa`} strokeWidth={2.6} strokeLinecap="round" />
-            {MAP_CITIES.map(([x, y]) => (
-              <circle key={`${x},${y}`} cx={x} cy={y} r={3.2} fill={COLOR.bg} stroke={`${COLOR.text}88`} strokeWidth={1.4} />
-            ))}
-            <path d={regionPath(selected)} fill="none" stroke={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)}
-              strokeWidth={3} strokeLinejoin="round" />
-          </g>
-          {/* слой 3 — подписи поверх всего; клики проходят сквозь него к заливке */}
-          <g style={{ pointerEvents: 'none' }}>
-            <path d={starPath(342, 424, 12, 5)} fill={COLOR.gold} stroke={COLOR.ink} strokeWidth={0.8} />
-            {MAP_REGIONS.map((r) => {
-              const b = regionBlurb(r, economy);
-              const share = voteOf(r.id);
-              const color = showVotes && share != null ? voteColor(share) : tierColor(b.tier);
-              const label = showVotes
-                ? (share != null ? `${Math.round(share)}%` : '—')
-                : String(Math.round(b.stress));
-              const [lx, ly] = regionLabelAt(r.id);
-              const RIcon = REGION_ICON[r.icon];
-              return (
-                <g key={r.id}>
-                  {!showVotes && RIcon && <RIcon x={lx - 10} y={ly - 32} width={20} height={20} color={color} />}
-                  {/* обводка цветом фона под подписью: иначе название ложится
-                      прямо на границу округа и перестаёт читаться */}
-                  <text x={lx} y={ly - 6} textAnchor="middle" stroke={COLOR.bg} strokeWidth={3.4}
-                    paintOrder="stroke" style={{ fontSize: 14, fill: COLOR.text }}>{r.short}</text>
-                  <text x={lx} y={ly + 16} textAnchor="middle" className="ems-numeral" stroke={COLOR.bg} strokeWidth={3.4}
-                    paintOrder="stroke" style={{ fontSize: 18, fontWeight: 600, fill: color }}>{label}</text>
-                </g>
-              );
-            })}
-          </g>
-        </svg>
-      </div>
-      <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="ems-panel" style={{ padding: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
-            {Icon && <Icon size={16} color={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)} />}
-            <span className="ems-serif" style={{ fontSize: 15 }}>{region.name}</span>
-          </div>
-          <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 10 }}>{region.sector}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <span style={{ position: 'relative', width: 100, height: 5, borderRadius: 3, flexShrink: 0,
-              background: `linear-gradient(90deg, ${COLOR.tealDim} 0%, ${COLOR.tealDim} 35%, ${COLOR.goldDim} 35%, ${COLOR.goldDim} 65%, ${COLOR.rustDim} 65%, ${COLOR.rustDim} 100%)` }}>
-              <span style={{ position: 'absolute', left: `calc(${blurb.stress}% - 2px)`, top: -2.5, width: 4, height: 10, borderRadius: 1.5, background: tierColor(blurb.tier) }} />
-            </span>
-            <span className="ems-mono" style={{ color: tierColor(blurb.tier), fontWeight: 600, fontSize: 12 }}>{Math.round(blurb.stress)} · {tierLabel(blurb.tier)}</span>
-          </div>
-          <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55 }}>{blurb.text}</div>
-        </div>
-        <ElectionPanel economy={economy} region={region} election={election} share={sel} />
-      </div>
-    </div>
-  );
-}
-
-function ElectionPanel({ economy, region, election, share }) {
-  if (!election) {
-    return (
-      <div className="ems-panel" style={{ padding: 14, fontSize: 12, color: COLOR.muted, lineHeight: 1.55 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-          <Vote size={15} color={COLOR.faint} /><span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.text }}>Выборы по округам</span>
-        </div>
-        {economy.noElections
-          ? 'Выборы больше не проводятся: распределять по округам нечего.'
-          : `Первое голосование ещё впереди — через ${economy.quartersToElection} кв. После него карта покажет, как проголосовал каждый округ.`}
-      </div>
-    );
-  }
-  const nat = election.nationalShare;
-  const margin = share != null ? share - nat : null;
-  return (
-    <div className="ems-panel" style={{ padding: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-        <Vote size={15} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 13.5 }}>Выборы · {election.qLabel}</span>
-        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: voteColor(nat), fontWeight: 600 }}>{fmt1(nat)}% по стране</span>
-      </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9 }}>
-        {ELECTION_OUTCOME[election.result] || 'итог не объявлен'}
-      </div>
-      {election.rigged && (
-        <div style={{ fontSize: 11, color: COLOR.rust, marginBottom: 8, lineHeight: 1.45 }}>
-          Официальные результаты. Наблюдатели на участки не допущены — разброс по округам такой же нарисованный, как и итог.
-        </div>
-      )}
-      {election.coup && (
-        <div style={{ fontSize: 11, color: COLOR.rust, marginBottom: 8, lineHeight: 1.45 }}>
-          Результат аннулирован: власть не признала поражение и объявила чрезвычайное положение.
-        </div>
-      )}
-      {share != null && (
-        <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55, marginBottom: 10 }}>
-          <b style={{ color: voteColor(share) }}>{region.name}: {fmt1(share)}%</b> за действующую власть — это{' '}
-          {Math.abs(margin) < 0.5 ? 'ровно как в среднем по стране'
-            : `на ${fmt1(Math.abs(margin))} п.п. ${margin > 0 ? 'больше' : 'меньше'}, чем в среднем по стране`}.
-        </div>
-      )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {[...(election.byRegion || [])].sort((a, b) => b.share - a.share).map((row) => {
-          const r = MAP_REGIONS.find((x) => x.id === row.id);
-          if (!r) return null;
-          return (
-            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5,
-              color: row.id === region.id ? COLOR.text : COLOR.muted }}>
-              <span style={{ width: 96, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.short}</span>
-              {/* полоса отсчитывается ОТ СЕРЕДИНЫ, а не от левого края: при
-                  результатах в диапазоне 45–65% полосы «от нуля» выглядят
-                  одинаково полными, а перевес в пару пунктов — именно то, что
-                  и есть результат выборов */}
-              <span style={{ flex: 1, height: 7, borderRadius: 2, background: COLOR.panelAlt, position: 'relative', overflow: 'hidden' }}>
-                <span style={{ position: 'absolute', top: 0, bottom: 0, background: voteColor(row.share), opacity: 0.9,
-                  left: `${Math.min(50, clamp(row.share, 0, 100))}%`,
-                  width: `${Math.abs(clamp(row.share, 0, 100) - 50)}%` }} />
-                <span style={{ position: 'absolute', left: '50%', top: -1, bottom: -1, width: 1, background: `${COLOR.text}88` }} />
-              </span>
-              <span className="ems-mono" style={{ width: 40, textAlign: 'right', color: voteColor(row.share), fontWeight: 600 }}>{fmt1(row.share)}%</span>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
-        Доля голосов за действующую власть. Засечка посередине полосы — 50%: всё, что левее, округ отдал оппозиции.
-      </div>
-    </div>
-  );
-}
-
-function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF }) {
+export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF }) {
   const delta = lever.type === 'level' ? value - currentDisplay : value;
   const [open, setOpen] = useState(false);
   const pct = clamp(((value - lever.min) / (lever.max - lever.min)) * 100, 0, 100);
@@ -839,7 +492,7 @@ function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF })
 }
 
 
-const ROLE_ICON = { landmark: Landmark, coins: Coins, globe: Globe2, chart: TrendingUp, crown: Crown };
+export const ROLE_ICON = { landmark: Landmark, coins: Coins, globe: Globe2, chart: TrendingUp, crown: Crown };
 
 /* ============================ ГРАФИКИ ============================ */
 /* ChartPanel/MemoChart/IRFModal живут в отдельном чанке (src/charts.jsx) вместе
@@ -852,12 +505,12 @@ export const ChartFallback = ({ height = 250 }) => (
     Загрузка графика…
   </div>
 );
-const ChartPanel = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.ChartPanel })));
+export const ChartPanel = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.ChartPanel })));
 export const MemoChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.MemoChart })));
 const IRFModal = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.IRFModal })));
 export const InstrumentChart = React.lazy(() => import('./charts.jsx').then((m) => ({ default: m.InstrumentChart })));
 
-function WhyModal({ reasons, onClose }) {
+export function WhyModal({ reasons, onClose }) {
   useEscapeClose(onClose);
   const [tab, setTab] = useState('gdpGrowth');
   const TABS = [
@@ -890,1513 +543,7 @@ function WhyModal({ reasons, onClose }) {
   );
 }
 
-/* =========================================================================================
-   ЗВУК: интерфейсные эффекты и генеративная музыка, реагирующая на состояние экономики.
-   Всё синтезируется через Web Audio прямо в браузере — внешних файлов нет.
-========================================================================================= */
-/* =========================================================================================
-   ЗВУК И МУЗЫКА: интерфейсные эффекты и шесть написанных тем, переключающихся
-   по режиму экономики. Всё синтезируется через Web Audio — внешних файлов нет.
-========================================================================================= */
-/* =========================================================================================
-   ЗВУК И МУЗЫКА: синтвейв-саундтрек — двадцать две написанные пьесы с многочастной формой
-   на аналоговых синт-тембрах (лид, бас, пады, драм-машина) и переключением по режиму
-   экономики. Всё синтезируется через Web Audio, внешних файлов нет.
-========================================================================================= */
-const NOTE_BASE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-const nn = (name) => {
-  const m = /^([A-G])([#b]?)(-?\d)$/.exec(name);
-  if (!m) return 60;
-  return NOTE_BASE[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + (parseInt(m[3], 10) + 1) * 12;
-};
-const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
-const H = (str) => str.split('|').map((bar) => bar.trim().split(/\s+/).map(nn));
-const MEL = (str) => str.trim().split(/\s+/).filter(Boolean).map((tok) => {
-  const [st, note, dur] = tok.split(':');
-  return [parseInt(st, 10), nn(note), parseInt(dur, 10)];
-});
-const drum = (s) => { const out = []; for (let i = 0; i < s.length; i++) if (s[i] !== '.') out.push([i, s[i]]); return out; };
-/* DR(бочка, малый, тарелки, опции). В строке тарелок: 'o' — закрытый хэт,
-   'O' — открытый, 'r' — райд. Опции: ghost — призрачные удары малого между
-   долями, fill:false — не играть сбивку в последнем такте секции. */
-const DR = (k, sn, h, opts) => ({ kick: drum(k), snare: drum(sn), hat: drum(h), ...opts });
-
-/* Фигуры левой руки: [шаг в такте, индекс тона аккорда] */
-const LH = {
-  flow: [[0, 0], [2, 1], [4, 2], [6, 3], [8, 2], [10, 1], [12, 2], [14, 3]],
-  wide: [[0, 0], [3, 1], [6, 2], [8, 3], [11, 2], [14, 1]],
-  waltz: [[0, 0], [4, 1], [6, 2], [8, 1], [12, 2], [14, 3]],
-  sustain: [[0, 0], [0, 1], [0, 2], [0, 3]],
-  pulse: [[0, 0], [2, 1], [4, 0], [6, 1], [8, 0], [10, 1], [12, 0], [14, 1]],
-  drive: [[0, 0], [2, 0], [3, 1], [5, 0], [6, 1], [8, 0], [10, 0], [11, 1], [13, 0], [14, 1]],
-  roll: [[0, 0], [1, 1], [2, 2], [3, 3], [4, 2], [5, 1], [8, 0], [9, 1], [10, 2], [11, 3], [12, 2], [13, 1]],
-  air: [[0, 0], [6, 2], [10, 1]],
-};
-const sec = (h, mel, lh, arr, dyn, drums) => ({ h, mel, lh, arr, dyn: dyn || 1, drums: drums || null });
-
-const TRACKS = {};
-const tr = (id, name, subtitle, mood, cfg) => { TRACKS[id] = { id, name, subtitle, mood, ...cfg }; };
-
-/* ------------------------------- СПОКОЙСТВИЕ ------------------------------- */
-tr('dawn', 'Рассвет над министерством', 'фортепиано, струнные, аналоговый пад', 'calm', {
-  bpm: 72, swing: 0.12, reverb: 0.42,
-  bassLine: 'half',
-  A: H('F2 C3 E3 A3 | A2 E3 G3 C4 | Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4'),
-  B: H('D3 A3 C4 F4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | G2 D3 F3 Bb3'),
-  melA: MEL('0:C5:4 4:F5:4 8:A5:8 16:G5:4 20:E5:4 24:C5:8 32:D5:4 36:F5:4 40:A5:8 48:G5:8 56:E5:8 64:F5:4 68:A5:4 72:C6:8 80:Bb5:4 84:A5:4 88:F5:8 96:D5:4 100:Bb4:4 104:D5:8 112:E5:4 116:G5:4 120:F5:12'),
-  melB: MEL('0:A5:4 4:F5:4 8:E5:8 16:C#5:4 20:E5:4 24:A5:8 32:F5:4 36:D5:4 40:C5:8 48:Bb4:4 52:D5:4 56:F5:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.68),
-    sec('A', 'melA', 'flow', 'piano bass pad', 0.85),
-    sec('B', 'melB', 'wide', 'piano bass pad bells', 1.0),
-    sec('A', 'melA', 'waltz', 'piano bass pad strings violin', 1.0),
-  ],
-});
-tr('ledger', 'Тихая бухгалтерия', 'фортепиано соло', 'calm', {
-  bpm: 68, swing: 0.14, reverb: 0.46,
-  bassLine: 'half', feel: 'loose',
-  A: H('D3 A3 C4 F4 | Bb2 F3 A3 D4 | F2 C3 E3 A3 | E2 C3 G3 C4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | A2 E3 G3 C#4'),
-  B: H('Bb2 F3 A3 D4 | F2 C3 E3 A3 | G2 D3 F3 Bb3 | A2 E3 G3 C#4'),
-  melA: MEL('0:A4:4 4:D5:4 8:F5:8 16:E5:4 20:D5:4 24:C5:8 32:A4:4 36:C5:4 40:A4:4 44:F4:4 48:G4:8 56:E4:8 64:A4:4 68:D5:4 72:F5:8 80:G5:4 84:F5:4 88:E5:8 96:D5:4 100:Bb4:4 104:D5:8 112:C#5:4 116:E5:4 120:A4:12'),
-  melB: MEL('0:F5:4 4:D5:4 8:A4:8 16:C5:4 20:E5:4 24:F5:8 32:D5:4 36:Bb4:4 40:G4:8 48:E5:4 52:C#5:4 56:A4:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.7),
-    sec('B', 'melB', 'wide', 'piano bass pad', 0.9),
-    sec('A', 'melA', 'flow', 'piano bass pad cello', 1.0),
-  ],
-});
-tr('northlight', 'Северный свет', 'ретро-колокол, фортепиано, аналоговый пад', 'calm', {
-  bpm: 64, swing: 0, reverb: 0.62,
-  bassLine: 'half',
-  A: H('Ab2 Eb3 G3 C4 | Db3 Ab3 C4 F4 | Eb3 Bb3 D4 G4 | C3 G3 Bb3 Eb4 | Ab2 Eb3 G3 C4 | F2 C3 Ab3 Eb4 | Db3 Ab3 C4 F4 | Eb3 Bb3 D4 G4'),
-  B: H('F2 C3 Ab3 C4 | Db3 Ab3 C4 F4 | Bb2 F3 Ab3 D4 | Eb3 Bb3 D4 G4'),
-  melA: MEL('0:Eb5:8 8:G5:8 16:F5:8 24:Ab5:8 32:G5:8 40:Bb5:8 48:Eb5:14 64:C5:8 72:Eb5:8 80:Ab5:8 88:G5:8 96:F5:8 104:Db5:8 112:Eb5:14'),
-  melB: MEL('0:Ab5:8 8:C6:8 16:Bb5:12 32:F5:8 40:Ab5:8 48:G5:14'),
-  sections: [
-    sec('A', 'melA', 'air', 'bells pad bass', 0.68),
-    sec('B', 'melB', 'sustain', 'bells pad strings bass', 0.9),
-    sec('A', 'melA', 'flow', 'piano bells pad strings bass', 1.0),
-  ],
-});
-tr('promenade', 'Прогулка по столице', 'фортепиано и арпеджио', 'calm', {
-  bpm: 84, swing: 0.16, reverb: 0.34,
-  bassLine: 'root',
-  A: H('G2 D3 G3 B3 | E2 B2 E3 G3 | C3 G3 B3 E4 | D3 A3 C4 F#4 | G2 D3 G3 B3 | E2 B2 E3 G3 | A2 E3 G3 C#4 | D3 A3 C4 F#4'),
-  B: H('C3 G3 B3 E4 | B2 F#3 A3 D4 | E2 B2 E3 G3 | D3 A3 C4 F#4'),
-  melA: MEL('0:D5:4 4:G5:4 8:B5:4 12:A5:4 16:G5:8 24:E5:8 32:G5:4 36:B5:4 40:D6:8 48:C6:4 52:A5:4 56:F#5:8 64:D5:4 68:G5:4 72:B5:4 76:A5:4 80:G5:8 88:E5:8 96:C#5:4 100:E5:4 104:A5:8 112:F#5:4 116:A5:4 120:G5:8'),
-  melB: MEL('0:E5:4 4:G5:4 8:B5:8 16:D5:4 20:F#5:4 24:A5:8 32:G5:4 36:E5:4 40:B4:8 48:A5:4 52:F#5:4 56:D5:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.72),
-    sec('A', 'melA', 'roll', 'piano harp bass pad', 0.92),
-    sec('B', 'melB', 'flow', 'piano harp bass pad strings', 1.0),
-  ],
-});
-// Единственная полностью акустическая пьеса саундтрека: ни синт-пэдов, ни дисторшна —
-// только нейлоновая гитара и синт-бас (cello), другой жанр, а не ещё один синтвейв-трек.
-tr('meadow', 'Загородная тишина', 'нейлоновая гитара и бас — акустическая пьеса саундтрека', 'calm', {
-  bpm: 88, swing: 0.1, reverb: 0.3,
-  bassLine: 'root', feel: 'loose',
-  A: H('G3 D4 G4 B4 | D3 A3 D4 F#4 | E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4 | C3 G3 C4 E4 | D3 A3 D4 F#4'),
-  B: H('E3 B3 E4 G4 | C3 G3 C4 E4 | G3 D4 G4 B4 | D3 A3 D4 F#4'),
-  melA: MEL('0:B4:4 4:D5:4 8:G5:4 12:D5:4 16:E5:8 24:D5:4 28:B4:4 32:C5:4 36:E5:4 40:G5:4 44:E5:4 48:D5:8 56:B4:4 60:A4:4 64:B4:4 68:D5:4 72:G5:4 76:D5:4 80:E5:8 88:D5:4 92:B4:4 96:C5:4 100:E5:4 104:G5:4 108:E5:4 112:F#5:8 120:D5:8'),
-  melB: MEL('0:E5:4 4:G5:4 8:B5:8 16:D5:4 20:C5:4 24:E5:8 32:B4:4 36:D5:4 40:G5:8 48:F#5:4 52:D5:4 56:B4:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'nylon cello', 0.68),
-    sec('A', 'melA', 'roll', 'nylon cello', 0.88),
-    sec('B', 'melB', 'flow', 'nylon cello', 1.0),
-  ],
-});
-
-/* --------------------------------- ПОДЪЁМ --------------------------------- */
-tr('ascent', 'Восхождение', 'фортепиано, бас, драм-машина', 'boom', {
-  bpm: 108, swing: 0, reverb: 0.26,
-  bassLine: 'drive',
-  A: H('A2 E3 A3 C#4 | G#2 E3 G#3 B3 | F#2 C#3 F#3 A3 | D3 A3 D4 F#4 | A2 E3 A3 C#4 | E3 B3 E4 G#4 | D3 A3 D4 F#4 | E3 B3 D4 G#4'),
-  B: H('D3 A3 D4 F#4 | C#3 G#3 C#4 E4 | B2 F#3 B3 D4 | E3 B3 D4 G#4'),
-  melA: MEL('0:E5:4 4:F#5:2 6:E5:2 8:C#5:8 16:B4:4 20:C#5:4 24:E5:8 32:F#5:4 36:E5:2 38:C#5:2 40:A4:8 48:D5:4 52:F#5:4 56:A5:8 64:E5:4 68:F#5:2 70:E5:2 72:C#5:8 80:B4:4 84:E5:4 88:G#5:8 96:A5:4 100:F#5:4 104:D5:8 112:E5:4 116:D5:4 120:C#5:8'),
-  melB: MEL('0:F#5:4 4:A5:4 8:D6:8 16:E5:4 20:G#5:4 24:C#6:8 32:D5:4 36:F#5:4 40:B5:8 48:G#5:4 52:E5:4 56:B4:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.75, DR('x.......x.......', '................', '..o...o...o...o.')),
-    sec('A', 'melA', 'flow', 'piano bass pad', 0.9, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'roll', 'piano harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
-  ],
-});
-tr('boulevard', 'Бульвар', 'аналоговый пад, фортепиано, бас', 'boom', {
-  bpm: 116, swing: 0, reverb: 0.3,
-  bassLine: 'drive',
-  A: H('E2 B2 E3 G#3 | C#3 G#3 B3 E4 | A2 E3 A3 C#4 | B2 F#3 B3 D#4 | E2 B2 E3 G#3 | C#3 G#3 B3 E4 | F#2 C#3 F#3 A3 | B2 F#3 B3 D#4'),
-  B: H('A2 E3 A3 C#4 | B2 F#3 B3 D#4 | G#2 D#3 G#3 B3 | C#3 G#3 B3 E4'),
-  melA: MEL('0:B4:4 4:E5:4 8:G#5:8 16:F#5:4 20:E5:4 24:C#5:8 32:E5:4 36:A5:4 40:C#6:8 44:B5:4 48:F#5:4 52:D#5:4 56:B4:8 64:B4:4 68:E5:4 72:G#5:8 80:F#5:4 84:G#5:4 88:E5:8 96:A5:4 100:F#5:4 104:C#5:8 112:D#5:4 116:F#5:4 120:B4:8'),
-  melB: MEL('0:C#5:4 4:E5:4 8:A5:8 16:B5:4 20:F#5:4 24:D#5:8 32:B4:4 36:D#5:4 40:G#5:8 48:E5:4 52:G#5:4 56:B5:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass strings', 0.8, DR('x.......x.......', '....x.......x...', '..o...o...o...o.')),
-    sec('B', 'melB', 'roll', 'piano harp bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-  ],
-});
-tr('overdrive', 'Перегрев', 'фортепиано, бас, барабаны', 'boom', {
-  bpm: 126, swing: 0, reverb: 0.22,
-  bassLine: 'drive',
-  A: H('B2 F#3 B3 D4 | A2 E3 A3 C#4 | G2 D3 G3 B3 | F#2 C#3 F#3 A3 | B2 F#3 B3 D4 | A2 E3 A3 C#4 | E3 B3 E4 G4 | F#2 C#3 F#3 A3'),
-  B: H('G2 D3 G3 B3 | D3 A3 D4 F#4 | E3 B3 E4 G4 | F#2 C#3 F#3 A3'),
-  melA: MEL('0:F#5:2 2:A5:2 4:F#5:2 6:D5:2 8:B4:8 16:C#5:4 20:E5:4 24:A5:8 32:B5:4 36:G5:4 40:D5:8 48:C#5:4 52:A4:4 56:F#4:8 64:F#5:2 66:A5:2 68:B5:4 72:F#5:8 80:E5:4 84:C#5:4 88:A4:8 96:B4:4 100:E5:4 104:G5:8 112:A5:4 116:F#5:4 120:C#5:8'),
-  melB: MEL('0:D5:4 4:G5:4 8:B5:8 16:A5:4 20:F#5:4 24:D5:8 32:G5:4 36:B5:4 40:E5:8 48:C#5:4 52:A5:4 56:F#5:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass', 0.85, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass pad strings', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'piano bass pad violin', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-  ],
-});
-
-/* --------------------------------- СПАД --------------------------------- */
-tr('longwinter', 'Долгая зима', 'фортепиано и бас', 'slump', {
-  bpm: 56, swing: 0.08, reverb: 0.58,
-  bassLine: 'half',
-  A: H('E2 B2 E3 G3 | C3 G3 B3 E4 | A2 E3 G3 C4 | B2 F#3 A3 D#4 | E2 B2 E3 G3 | C3 G3 B3 E4 | A2 E3 G3 C4 | E2 B2 E3 G3'),
-  B: H('C3 G3 B3 E4 | G2 D3 G3 B3 | A2 E3 G3 C4 | B2 F#3 A3 D#4'),
-  melA: MEL('0:B4:8 8:G4:8 16:E4:12 32:A4:8 40:C5:8 48:B4:14 64:G4:8 72:E4:8 80:E5:12 96:C5:8 104:B4:8 112:E4:14'),
-  melB: MEL('0:G4:8 8:B4:8 16:D5:12 32:C5:8 40:A4:8 48:D#5:12'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'piano bass', 0.66),
-    sec('B', 'melB', 'air', 'piano bass cello pad', 0.85),
-    sec('A', 'melA', 'waltz', 'piano bass cello pad strings', 1.0),
-  ],
-});
-tr('emptyhalls', 'Пустые цеха', 'бас и фортепиано', 'slump', {
-  bpm: 60, swing: 0.06, reverb: 0.55,
-  bassLine: 'root',
-  A: H('A2 E3 A3 C4 | G2 E3 A3 C4 | F2 C3 F3 A3 | E2 C3 G3 C4 | D3 A3 C4 F4 | C3 A3 C4 E4 | E2 B2 E3 A3 | A2 E3 A3 C4'),
-  B: H('F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 C4 F4 | E2 B2 E3 G#3'),
-  melA: MEL('0:A4:8 8:C5:8 16:B4:12 32:A4:8 40:F4:8 48:G4:14 64:F4:8 72:A4:8 80:E5:12 96:B4:8 104:A4:8 112:A4:14'),
-  melB: MEL('0:C5:8 8:A4:8 16:G4:12 32:F4:8 40:D5:8 48:B4:12'),
-  sections: [
-    sec('A', 'melA', 'air', 'piano bass cello', 0.64),
-    sec('A', 'melA', 'sustain', 'piano bass cello pad', 0.82),
-    sec('B', 'melB', 'wide', 'piano bass cello pad strings', 1.0),
-  ],
-});
-tr('patience', 'Терпение', 'фортепиано, аналоговый пад', 'slump', {
-  bpm: 66, swing: 0.1, reverb: 0.5,
-  bassLine: 'half', feel: 'loose',
-  A: H('C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | F2 C3 F3 Ab3 | G2 D3 G3 B3'),
-  B: H('Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | Ab2 Eb3 Ab3 C4 | G2 D3 G3 B3'),
-  melA: MEL('0:G4:8 8:Eb4:8 16:C5:12 32:Bb4:8 40:D5:8 48:G4:14 64:G4:8 72:C5:8 80:Eb5:12 96:C5:8 104:Ab4:8 112:G4:14'),
-  melB: MEL('0:Bb4:8 8:Eb5:8 16:D5:12 32:C5:8 40:Ab4:8 48:B4:12'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.68),
-    sec('B', 'melB', 'wide', 'piano bass pad bells', 0.9),
-    sec('A', 'melA', 'flow', 'piano bass pad strings violin', 1.0),
-  ],
-});
-
-/* ------------------------------ СТАГФЛЯЦИЯ ------------------------------ */
-tr('deadlock', 'Тупик', 'арпеджио, низкий пад', 'stag', {
-  bpm: 80, swing: 0, reverb: 0.36,
-  bassLine: 'pulse8',
-  A: H('E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | E2 B2 E3 G3 | F2 C3 F3 A3 | C3 G3 C4 E4 | B2 D#3 F#3 A3'),
-  B: H('F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | B2 D#3 F#3 A3'),
-  melA: MEL('0:E4:8 8:F4:4 12:E4:4 16:F4:12 32:E4:8 40:D4:8 48:D4:14 64:E4:8 72:G4:8 80:F4:12 96:E4:8 104:C4:8 112:D#4:8 120:E4:8'),
-  melB: MEL('0:A4:8 8:F4:8 16:G4:12 32:F4:8 40:D4:8 48:D#4:12'),
-  sections: [
-    sec('A', 'melA', 'pulse', 'piano bass cello', 0.75, DR('x.......x.......', '................', '....o.......o...')),
-    sec('B', 'melB', 'pulse', 'piano bass cello pad', 0.9, DR('x.......x.......', '........x.......', '..o...o...o...o.')),
-    sec('A', 'melA', 'pulse', 'piano bass cello pad choir', 1.0, DR('x...x...x...x...', '........x.......', '..o...o...o...o.')),
-  ],
-});
-tr('friction', 'Трение', 'фортепиано, PWM-пад', 'stag', {
-  bpm: 86, swing: 0, reverb: 0.4,
-  bassLine: 'root',
-  A: H('D3 A3 D4 F4 | Eb3 Bb3 Eb4 G4 | D3 A3 D4 F4 | C3 G3 C4 Eb4 | D3 A3 D4 F4 | Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
-  B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
-  melA: MEL('0:D4:8 8:Eb4:4 12:D4:4 16:Eb4:12 32:F4:8 40:D4:8 48:C4:14 64:D4:8 72:F4:8 80:G4:12 96:D4:8 104:Bb3:8 112:C#4:8 120:D4:8'),
-  melB: MEL('0:Bb4:8 8:F4:8 16:Eb4:12 32:D4:8 40:A4:8 48:C#4:12'),
-  sections: [
-    sec('A', 'melA', 'pulse', 'piano bass choir', 0.75, DR('x.......x.......', '................', '....o.......o...')),
-    sec('B', 'melB', 'wide', 'piano bass cello choir pad', 0.95, DR('x.......x.......', '........x.......', '..o...o...o...o.')),
-    sec('A', 'melA', 'pulse', 'piano bass cello choir pad', 1.0, DR('x...x...x...x...', '........x.......', 'o.o.o.o.o.o.o.o.')),
-  ],
-});
-
-/* -------------------------------- КРИЗИС -------------------------------- */
-tr('collapse', 'Обвал', 'бас, барабаны, фортепиано', 'crisis', {
-  bpm: 128, swing: 0, reverb: 0.26,
-  bassLine: 'drive',
-  A: H('C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | Eb3 Bb3 Eb4 G4 | Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | Ab2 Eb3 Ab3 C4 | F2 C3 F3 Ab3 | G2 D3 F3 B3'),
-  B: H('Ab2 Eb3 Ab3 C4 | Bb2 F3 Bb3 D4 | C3 G3 C4 Eb4 | G2 D3 F3 B3'),
-  melA: MEL('0:G4:2 2:Ab4:2 4:G4:2 6:F4:2 8:Eb4:8 16:Eb4:2 18:F4:2 20:Eb4:4 24:C4:8 32:G4:4 36:Bb4:4 40:Eb5:8 48:D5:4 52:Bb4:4 56:F4:8 64:G4:2 66:Ab4:2 68:G4:2 70:F4:2 72:Eb4:8 80:C5:4 84:Ab4:4 88:Eb4:8 96:Ab4:4 100:C5:4 104:F5:8 112:D5:4 116:B4:4 120:G4:8'),
-  melB: MEL('0:Ab4:4 4:C5:4 8:Eb5:8 16:D5:4 20:Bb4:4 24:F4:8 32:G4:4 36:C5:4 40:Eb5:8 48:B4:4 52:D5:4 56:G5:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass cello', 0.85, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass cello choir', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'piano bass cello choir violin', 1.0, DR('x..x..x.x.x..x..', '....x...x...x...', 'oooooooooooooooo')),
-  ],
-});
-tr('panic', 'Паника', 'аналоговый пад, литавры, бас', 'crisis', {
-  bpm: 136, swing: 0, reverb: 0.3,
-  bassLine: 'pulse8',
-  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
-  B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
-  melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:A4:2 34:C5:2 36:A4:4 40:F4:8 48:E5:4 52:C5:4 56:G4:8 64:A4:2 66:Bb4:2 68:A4:2 70:G4:2 72:F4:8 80:D5:4 84:F5:4 88:Bb4:8 96:G4:4 100:Bb4:4 104:D5:8 112:C#5:4 116:E5:4 120:A4:8'),
-  melB: MEL('0:F5:4 4:D5:4 8:Bb4:8 16:E5:4 20:C5:4 24:G4:8 32:A5:4 36:F5:4 40:D5:8 48:E5:4 52:C#5:4 56:A4:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass strings timpani', 0.9, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass strings choir timpani', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'piano bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
-  ],
-});
-tr('bankrun', 'Очередь у банка', 'арпеджио, PWM-пад, бас', 'crisis', {
-  bpm: 118, swing: 0, reverb: 0.34,
-  bassLine: 'synco',
-  A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
-  B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
-  melA: MEL('0:D5:4 4:Eb5:4 8:D5:8 16:Bb4:4 20:G5:4 24:Eb5:8 32:C5:4 36:A4:4 40:F4:8 48:F#4:4 52:A4:4 56:D5:8 64:D5:4 68:Eb5:4 72:F5:8 80:G5:4 84:Eb5:4 88:Bb4:8 96:C5:4 100:Eb5:4 104:G5:8 112:F#5:4 116:A5:4 120:D5:8'),
-  melB: MEL('0:G5:4 4:Bb5:4 8:Eb5:8 16:C5:4 20:F5:4 24:A4:8 32:Bb4:4 36:D5:4 40:G5:8 48:A5:4 52:F#5:4 56:D5:8'),
-  sections: [
-    sec('A', 'melA', 'pulse', 'piano bass cello', 0.85, DR('x.......x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass cello choir timpani', 1.0, DR('x..x..x...x.....', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'piano bass cello choir strings timpani', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-  ],
-});
-
-/* --------------------------------- ВОЙНА --------------------------------- */
-// Настоящий марш: пунктирный «длинный-короткий» ритм (3+1 шестнадцатых — то же
-// «та-та́» дудочки и барабана, что в строевых маршах), духовые стабы на каждую
-// четверть и малый барабан с форшлагами-дробью перед каждой сильной долей —
-// вместо синтвейв-пэда и мелодии, унаследованной от «паники».
-tr('warmarch', 'Марш', 'духовые стабы, дробь малого барабана, маршевый бас', 'war', {
-  bpm: 112, swing: 0, reverb: 0.2,
-  bassLine: 'drive',
-  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4'),
-  B: H('Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | D3 A3 D4 F4 | A2 E3 G3 C#4'),
-  melA: MEL('0:D4:3 3:F4:1 4:A4:3 7:D5:1 8:D5:4 12:C5:2 14:Bb4:2 16:C5:3 19:A4:1 20:F4:3 23:C5:1 24:Bb4:4 28:A4:2 30:G4:2 32:F4:3 35:A4:1 36:C5:3 39:F5:1 40:F5:4 44:E5:2 46:D5:2 48:E5:3 51:C5:1 52:G4:3 55:C5:1 56:C5:4 60:B4:2 62:A4:2 64:D4:3 67:F4:1 68:A4:3 71:D5:1 72:D5:4 76:C5:2 78:Bb4:2 80:C5:3 83:A4:1 84:F4:3 87:C5:1 88:Bb4:4 92:A4:2 94:G4:2 96:G4:3 99:Bb4:1 100:D5:3 103:G5:1 104:G5:4 108:F5:2 110:Eb5:2 112:E5:3 115:C#5:1 116:A4:3 119:E5:1 120:A4:4 124:D5:4'),
-  melB: MEL('0:F4:3 3:Bb4:1 4:D5:3 7:F5:1 8:F5:4 12:D5:2 14:Bb4:2 16:E4:3 19:G4:1 20:C5:3 23:E5:1 24:E5:4 28:C5:2 30:G4:2 32:F4:3 35:A4:1 36:D5:3 39:F5:1 40:F5:4 44:D5:2 46:A4:2 48:C#5:3 51:E5:1 52:A4:3 55:C#5:1 56:A4:6 62:D5:2'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass brass timpani', 0.85, DR('x.......x.......', '....x.......x...', 'o...o...o...o...')),
-    sec('B', 'melB', 'drive', 'piano bass brass timpani', 1.0, DR('x.......x.......', '....x.......xxx.', 'o.o.o.o.o.o.o.o.')),
-    sec('A', 'melA', 'drive', 'piano bass brass strings cello timpani', 1.0, DR('x...x...x...x...', '....x.x.....xxx.', 'oooooooooooooooo')),
-  ],
-});
-// Окопы: не марш, а гнетущая, замедленная поступь — редкая, тянущаяся мелодия
-// в низком регистре без дроби и стабов, чтобы отчётливо звучать иначе, чем марш.
-tr('trenches', 'Окопы', 'литавры, низкая виолончель, редкая поступь', 'war', {
-  bpm: 90, swing: 0, reverb: 0.36,
-  bassLine: 'half',
-  A: H('G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | D3 A3 D4 F#4 | G2 D3 G3 Bb3 | Eb3 Bb3 Eb4 G4 | C3 G3 C4 Eb4 | D3 A3 D4 F#4'),
-  B: H('Eb3 Bb3 Eb4 G4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | D3 A3 D4 F#4'),
-  melA: MEL('0:Bb4:6 8:G4:4 12:D4:4 16:Eb5:6 24:Bb4:4 28:G4:4 32:A4:6 40:F4:4 44:C4:4 48:F#4:6 56:D4:4 60:A3:4 64:Bb4:6 72:G4:4 76:D4:4 80:Eb5:6 88:Bb4:4 92:G4:4 96:Eb4:6 104:C4:4 108:G3:4 112:F#4:6 120:A4:6'),
-  melB: MEL('0:G4:4 4:Bb4:4 8:Eb5:8 16:F4:4 20:A4:4 24:C5:8 32:Bb4:4 36:D5:4 40:G5:8 48:F#4:4 52:A4:4 56:D5:8'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'piano bass cello timpani', 0.8, DR('x.......x.......', '....x...........', 'o.......o.......')),
-    sec('B', 'melB', 'drive', 'piano bass cello timpani', 0.95, DR('x...x...x...x...', '....x.......x...', 'o...o...o...o...')),
-    sec('A', 'melA', 'drive', 'piano bass cello strings timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
-  ],
-});
-
-/* ----------------------------- ТОТАЛИТАРНЫЙ РЕЖИМ ----------------------------- */
-// Обе пьесы этого настроения нарочно построены только на новых голосах (guitar, growl) и
-// драм-машине — ни один другой трек саундтрека не пользуется дисторшном, так что звучание
-// тоталитарного режима не может быть спутано ни с чем прежним.
-tr('ironmarch', 'Железный марш', 'дисторшн-гитара, тяжёлый бас, драм-машина', 'totalitarian', {
-  bpm: 104, swing: 0, reverb: 0.22,
-  bassLine: 'pulse8',
-  A: H('D3 A3 D4 F4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | D3 A3 D4 F4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
-  B: H('Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
-  melA: MEL('0:D4:3 3:F4:1 8:D4:3 11:F4:1 16:Bb3:3 19:D4:1 24:A3:3 27:C#4:1 32:D4:3 35:F4:1 40:D4:3 43:F4:1 48:G3:3 51:Bb3:1 56:A3:3 59:C#4:1'),
-  melB: MEL('0:Bb3:3 3:D4:1 8:G3:3 11:Bb3:1 16:D4:3 19:F4:1 24:A3:3 27:C#4:1'),
-  sections: [
-    sec('A', 'melA', 'flow', 'guitar growl', 0.85, DR('x.......x.......', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('B', 'melB', 'flow', 'guitar growl', 1.0, DR('x...x...x...x...', '....x.......xxx.', 'xxxxxxxxxxxxxxxx')),
-    sec('A', 'melA', 'flow', 'guitar growl', 1.0, DR('x...x...x...x...', '....x...x...x...', 'oooooooooooooooo')),
-  ],
-});
-// Комендантский час: не марш, а гнетущая пустота улиц — редкие гитарные вспышки над
-// тяжёлым басовым дроном, шаги патруля вместо строевого шага.
-tr('curfew', 'Комендантский час', 'бас-дрон, редкие гитарные вспышки', 'totalitarian', {
-  bpm: 72, swing: 0, reverb: 0.42,
-  bassLine: 'half',
-  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
-  B: H('Bb2 F3 Bb3 D4 | A2 E3 A3 C#4 | D3 A3 D4 F4 | A2 E3 A3 C#4'),
-  melA: MEL('0:D4:8 16:F4:4 24:D4:4 32:Bb3:8 48:D4:4 56:Bb3:4'),
-  melB: MEL('0:Bb3:8 16:D4:4 24:A3:4 32:A3:8 48:C#4:4 56:A3:4'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'guitar growl', 0.7, DR('x...............', '................', '.......o........')),
-    sec('B', 'melB', 'sustain', 'guitar growl', 0.85, DR('x.......x.......', '................', '.......o.......o')),
-    sec('A', 'melA', 'sustain', 'guitar growl', 1.0, DR('x.......x.......', '....x...........', 'o.......o.......')),
-  ],
-});
-
-/* ------------------------------- ДЕФЛЯЦИЯ ------------------------------- */
-tr('glass', 'Стеклянный воздух', 'ретро-колокол, PWM-пад', 'frost', {
-  bpm: 52, swing: 0, reverb: 0.72,
-  bassLine: 'half',
-  A: H('F2 C3 E3 A3 | C3 G3 B3 E4 | D3 A3 C4 F4 | Bb2 F3 A3 D4 | F2 C3 E3 A3 | A2 E3 G3 C4 | G2 D3 F3 Bb3 | C3 G3 C4 D4'),
-  B: H('Bb2 F3 A3 D4 | C3 G3 B3 E4 | D3 A3 C4 F4 | C3 G3 C4 D4'),
-  melA: MEL('0:C6:12 16:A5:12 32:F5:14 48:D5:14 64:C6:12 80:E5:12 96:Bb5:14 112:G5:14'),
-  melB: MEL('0:D6:12 16:C6:12 32:A5:14 48:G5:14'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'bells bass pad', 0.65),
-    sec('B', 'melB', 'air', 'bells bass pad choir', 0.85),
-    sec('A', 'melA', 'air', 'bells harp bass pad choir strings', 1.0),
-  ],
-});
-tr('stillness', 'Ничего не происходит', 'PWM-пад, низкий пад', 'frost', {
-  bpm: 48, swing: 0, reverb: 0.75,
-  bassLine: 'half',
-  A: H('Bb2 F3 A3 D4 | Eb3 Bb3 D4 G4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
-  B: H('G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
-  melA: MEL('0:D5:14 16:F5:14 32:G5:14 48:A5:14 64:D5:14 80:Bb4:14 96:G5:14 112:A5:14'),
-  melB: MEL('0:Bb4:14 16:E5:14 32:G5:14 48:A5:14'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'bells bass pad choir', 0.6),
-    sec('B', 'melB', 'sustain', 'bells bass pad choir cello', 0.8),
-    sec('A', 'melA', 'air', 'bells harp bass pad choir strings', 0.95),
-  ],
-});
-/* ------------------------------ ТОРГОВЫЙ ЗАЛ ------------------------------
-   Пьесы звучат только у роли «Частный инвестор»: другая инструментовка,
-   другой пульс — рынок, а не министерство.                                 */
-tr('openingbell', 'Открытие торгов', 'синт-лид, хай-хэт, синт-бас', 'calm', {
-  bpm: 92, swing: 0.18, reverb: 0.32,
-  bassLine: 'drive',
-  A: H('D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | A2 E3 G3 C#4'),
-  B: H('Bb2 F3 A3 D4 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | A2 E3 G3 C#4'),
-  melA: MEL('0:A4:4 4:D5:4 8:F5:8 16:Bb4:4 20:D5:4 24:G5:8 32:E5:4 36:G5:4 40:Bb5:8 48:A5:4 52:F5:4 56:C5:8 64:D5:4 68:F5:4 72:A5:8 80:C#5:4 84:E5:4 88:A5:8 96:F5:4 100:D5:4 104:A4:8 112:C#5:4 116:E5:4 120:D5:8'),
-  melB: MEL('0:D5:4 4:F5:4 8:Bb5:8 16:E5:4 20:G5:4 24:C6:8 32:A5:4 36:F5:4 40:C5:8 48:E5:4 52:C#5:4 56:A4:8'),
-  sections: [
-    sec('A', 'melA', 'flow', 'synth bass', 0.7, DR('x.......x.......', '................', '..o...o...o...o.')),
-    sec('B', 'melB', 'wide', 'synth bass pad', 0.9, DR('x.......x.......', '....x.......x...', '..o...o...o...o.')),
-    sec('A', 'melA', 'roll', 'synth harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-  ],
-});
-tr('bidask', 'Бид и аск', 'синт-лид, драм-машина', 'boom', {
-  bpm: 118, swing: 0, reverb: 0.24,
-  bassLine: 'drive',
-  A: H('C3 G3 C4 E4 | A2 E3 A3 C4 | F2 C3 F3 A3 | G2 D3 G3 B3 | C3 G3 C4 E4 | E3 B3 E4 G#4 | F2 C3 F3 A3 | G2 D3 F3 B3'),
-  B: H('F2 C3 F3 A3 | G2 D3 G3 B3 | A2 E3 A3 C4 | G2 D3 F3 B3'),
-  melA: MEL('0:G4:2 2:C5:2 4:E5:4 8:G5:8 16:E5:4 20:A5:4 24:C6:8 32:A5:4 36:F5:4 40:C5:8 48:B4:4 52:D5:4 56:G5:8 64:G4:2 66:C5:2 68:E5:4 72:C5:8 80:G#5:4 84:E5:4 88:B4:8 96:A5:4 100:F5:4 104:C5:8 112:B4:4 116:D5:4 120:G4:8'),
-  melB: MEL('0:A5:4 4:F5:4 8:C5:8 16:B5:4 20:G5:4 24:D5:8 32:C6:4 36:A5:4 40:E5:8 48:B4:4 52:F5:4 56:G5:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'synth bass', 0.8, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'roll', 'synth harp bass pad strings', 1.0, DR('x...x...x...x...', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'synth bass pad violin', 1.0, DR('x..x..x...x.....', '....x.......x...', 'oooooooooooooooo')),
-  ],
-});
-tr('bearmarket', 'Медвежий рынок', 'синт-бас, синт-лид', 'slump', {
-  bpm: 62, swing: 0.08, reverb: 0.56,
-  bassLine: 'root',
-  A: H('A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | E2 B2 E3 G#3 | A2 E3 A3 C4 | G2 D3 G3 Bb3 | F2 C3 F3 A3 | E2 B2 E3 G#3'),
-  B: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | E2 B2 E3 G#3'),
-  melA: MEL('0:E5:8 8:C5:8 16:A4:12 32:D5:8 40:F5:8 48:E5:14 64:C5:8 72:A4:8 80:Bb4:12 96:A4:8 104:F4:8 112:G#4:14'),
-  melB: MEL('0:F5:8 8:D5:8 16:Bb4:12 32:E5:8 40:C5:8 48:G#4:12'),
-  sections: [
-    sec('A', 'melA', 'air', 'synth bass cello', 0.64),
-    sec('B', 'melB', 'sustain', 'synth bass cello pad', 0.84),
-    sec('A', 'melA', 'wide', 'synth bass cello pad strings', 1.0),
-  ],
-});
-tr('thinvolume', 'Тонкий рынок', 'синт-арпеджио, PWM-пад', 'stag', {
-  bpm: 76, swing: 0, reverb: 0.38,
-  bassLine: 'synco',
-  A: H('E2 B2 E3 G3 | A2 E3 G3 C4 | E2 B2 E3 G3 | F2 C3 F3 A3 | E2 B2 E3 G3 | D3 A3 D4 F4 | C3 G3 C4 E4 | B2 F#3 A3 D#4'),
-  B: H('A2 E3 G3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | B2 F#3 A3 D#4'),
-  melA: MEL('0:B4:8 8:A4:4 12:B4:4 16:G4:12 32:A4:8 40:C5:8 48:B4:14 64:E5:8 72:D5:8 80:C5:12 96:B4:8 104:G4:8 112:D#5:8 120:E4:8'),
-  melB: MEL('0:C5:8 8:A4:8 16:F4:12 32:D5:8 40:A4:8 48:D#5:12'),
-  sections: [
-    sec('A', 'melA', 'pulse', 'synth bass choir', 0.74, DR('x.......x.......', '................', '....o.......o...')),
-    sec('B', 'melB', 'pulse', 'synth bass cello choir pad', 0.92, DR('x.......x.......', '........x.......', '..o...o...o...o.')),
-    sec('A', 'melA', 'pulse', 'synth bass cello choir pad', 1.0, DR('x...x...x...x...', '........x.......', 'o.o.o.o.o.o.o.o.')),
-  ],
-});
-tr('marginwire', 'Маржин-колл', 'синт-бас, синт-том, аналоговый пад', 'crisis', {
-  bpm: 132, swing: 0, reverb: 0.26,
-  bassLine: 'drive',
-  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 G3 C#4 | D3 A3 D4 F4 | F2 C3 F3 A3 | Bb2 F3 Bb3 D4 | A2 E3 G3 C#4'),
-  B: H('G2 D3 G3 Bb3 | Bb2 F3 Bb3 D4 | C3 G3 C4 E4 | A2 E3 G3 C#4'),
-  melA: MEL('0:A4:2 2:Bb4:2 4:A4:2 6:G4:2 8:F4:8 16:D5:4 20:Bb4:4 24:F4:8 32:G4:4 36:Bb4:4 40:D5:8 48:C#5:4 52:E5:4 56:A4:8 64:A4:2 66:D5:2 68:F5:4 72:D5:8 80:C5:4 84:A4:4 88:F4:8 96:Bb4:4 100:D5:4 104:F5:8 112:E5:4 116:C#5:4 120:A4:8'),
-  melB: MEL('0:Bb4:4 4:D5:4 8:G5:8 16:F5:4 20:D5:4 24:Bb4:8 32:C5:4 36:E5:4 40:G5:8 48:E5:4 52:C#5:4 56:A4:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'synth bass cello', 0.88, DR('x..x..x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'synth bass strings timpani', 1.0, DR('x..x..x.x.x..x..', '....x.......x...', 'oooooooooooooooo')),
-    sec('A', 'melA', 'drive', 'synth bass strings violin timpani', 1.0, DR('x.x.x.x.x.x.x.x.', '....x...x...x...', 'oooooooooooooooo')),
-  ],
-});
-
-/* --------------------------- ЖИВОЙ СОСТАВ ---------------------------
-   Пьесы, написанные не под синтезатор, а под состав: рояль, бас-гитара или
-   контрабас, барабаны, акустическая гитара. Здесь у баса своя линия, у
-   барабанщика — динамика и сбивки, а у мелодии — фразировка с ответом, а не
-   ровная цепочка нот одинаковой длины.                                    */
-tr('cabinet', 'Кабинет в семь утра', 'фортепианное трио: рояль, контрабас, щётки', 'calm', {
-  bpm: 86, swing: 0.26, reverb: 0.38, feel: 'swing', bassLine: 'walk',
-  A: H('F2 C3 E3 A3 | D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | A2 E3 G3 C4 | D3 A3 C4 F4 | G2 D3 F3 Bb3 | C3 G3 Bb3 E4'),
-  B: H('Bb2 F3 A3 D4 | A2 E3 G3 C#4 | D3 A3 C4 F4 | C3 G3 Bb3 E4'),
-  melA: MEL('0:A4:4 4:C5:4 8:F5:6 16:E5:4 20:D5:4 24:A4:8 32:Bb4:4 36:D5:4 40:F5:6 48:E5:8 56:C5:8 64:C5:4 68:E5:4 72:A5:6 80:G5:4 84:F5:4 88:D5:8 96:Bb4:4 100:D5:4 104:G5:6 112:F5:4 116:E5:4 120:C5:10'),
-  melB: MEL('0:D5:4 4:F5:4 8:Bb5:8 16:C#5:4 20:E5:4 24:A5:8 32:F5:4 36:A5:4 40:D6:8 48:E5:4 52:G5:4 56:C5:10'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.68, DR('x.......x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
-    sec('B', 'melB', 'wide', 'piano bass', 0.88, DR('x.....x.x.......', '....x.......x...', 'r..r.r..r..r.r..', { ghost: true })),
-    sec('A', 'melA', 'flow', 'piano bass strings', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
-  ],
-});
-tr('sixstring', 'Шесть струн', 'акустическая гитара, бас, барабаны', 'calm', {
-  bpm: 104, swing: 0.1, reverb: 0.34, feel: 'loose', bassLine: 'root',
-  A: H('G2 D3 G3 B3 | E2 B2 E3 G3 | C3 G3 C4 E4 | D3 A3 D4 F#4 | G2 D3 G3 B3 | E2 B2 E3 G3 | A2 E3 A3 C4 | D3 A3 D4 F#4'),
-  B: H('C3 G3 C4 E4 | D3 A3 D4 F#4 | B2 F#3 B3 D4 | E2 B2 E3 G3'),
-  melA: MEL('0:D5:4 4:G5:4 8:B5:6 16:A5:4 20:G5:4 24:E5:8 32:E5:4 36:G5:4 40:C6:6 48:B5:4 52:A5:4 56:D5:8 64:D5:4 68:G5:4 72:B5:6 80:A5:4 84:B5:4 88:G5:8 96:E5:4 100:A5:4 104:C6:6 112:B5:4 116:A5:4 120:G5:10'),
-  melB: MEL('0:G5:4 4:C6:4 8:E6:8 16:D6:4 20:A5:4 24:F#5:8 32:B5:4 36:D6:4 40:F#6:8 48:E6:4 52:B5:4 56:G5:10'),
-  sections: [
-    sec('A', 'melA', 'flow', 'strum bass nylon', 0.7, DR('x.......x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'wide', 'strum bass nylon', 0.9, DR('x.....x.x.......', '....x.......x...', 'o.o.o.o.o.o.o.O.')),
-    sec('A', 'melA', 'flow', 'strum bass nylon strings', 1.0, DR('x..x..x.x..x....', '....x.......x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
-  ],
-});
-tr('fullhouse', 'Полный зал', 'рояль, бас, барабаны — быстрый темп', 'boom', {
-  bpm: 138, swing: 0, reverb: 0.26, bassLine: 'drive',
-  A: H('A2 E3 A3 C4 | F2 C3 F3 A3 | C3 G3 C4 E4 | G2 D3 G3 B3 | A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | E3 B3 E4 G4'),
-  B: H('F2 C3 F3 A3 | G2 D3 G3 B3 | A2 E3 A3 C4 | E3 B3 E4 G4'),
-  melA: MEL('0:A4:2 2:C5:2 4:E5:4 8:A5:6 16:G5:2 18:F5:2 20:E5:4 24:C5:8 32:C5:2 34:E5:2 36:G5:4 40:C6:6 48:B5:2 50:A5:2 52:G5:4 56:D5:8 64:A4:2 66:C5:2 68:E5:4 72:A5:6 80:C6:2 82:B5:2 84:A5:4 88:F5:8 96:D5:2 98:F5:2 100:A5:4 104:D6:6 112:B5:4 116:G5:4 120:E5:8'),
-  melB: MEL('0:F5:2 2:A5:2 4:C6:4 8:F6:6 16:D6:2 18:B5:2 20:G5:4 24:D5:8 32:E5:2 34:A5:2 36:C6:4 40:E6:6 48:D6:4 52:B5:4 56:E5:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass', 0.82, DR('x.......x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass brass', 1.0, DR('x..x....x...x...', '....x.......x..x', 'oooooooooooooooo', { ghost: true })),
-    sec('A', 'melA', 'drive', 'piano bass brass strings', 1.0, DR('x..x..x.x...x..x', '....x...x...x...', 'oooooooooooooooo', { ghost: true })),
-  ],
-});
-tr('nightshift', 'Ночная смена', 'рояль и бас, редкие барабаны', 'slump', {
-  bpm: 74, swing: 0.18, reverb: 0.5, feel: 'loose', bassLine: 'half',
-  A: H('D3 A3 D4 F4 | Bb2 F3 A3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C4 | D3 A3 D4 F4 | F2 C3 F3 A3 | Bb2 F3 A3 D4 | A2 E3 A3 C#4'),
-  B: H('G2 D3 G3 Bb3 | C3 G3 C4 Eb4 | Bb2 F3 A3 D4 | A2 E3 A3 C#4'),
-  melA: MEL('0:D5:6 8:F5:6 16:A5:10 32:Bb4:6 40:D5:6 48:F5:12 64:G4:6 72:Bb4:6 80:D5:10 96:C5:6 104:A4:6 112:D5:12'),
-  melB: MEL('0:Bb4:6 8:D5:6 16:G5:12 32:Eb5:6 40:G5:6 48:C6:12'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'piano bass', 0.6, DR('x...............', '........x.......', '....o.......o...')),
-    sec('B', 'melB', 'wide', 'piano bass pad', 0.8, DR('x.......x.......', '........x.......', 'o...o...o...o...')),
-    sec('A', 'melA', 'flow', 'piano bass pad cello', 0.95, DR('x.....x.x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
-  ],
-});
-tr('treadmill', 'Бег на месте', 'синкопированный бас, рояль, барабаны', 'stag', {
-  bpm: 112, swing: 0.14, reverb: 0.3, bassLine: 'synco',
-  A: H('E2 B2 E3 G3 | C3 G3 C4 E4 | D3 A3 D4 F4 | B2 F#3 B3 D4 | E2 B2 E3 G3 | A2 E3 A3 C4 | C3 G3 C4 E4 | B2 F#3 B3 D4'),
-  B: H('A2 E3 A3 C4 | D3 A3 D4 F4 | G2 D3 G3 B3 | B2 F#3 B3 D4'),
-  melA: MEL('0:B4:3 3:E5:3 6:G5:6 16:C5:3 19:E5:3 22:G5:6 32:D5:3 35:F5:3 38:A5:6 48:F#5:6 56:D5:6 64:B4:3 67:E5:3 70:B5:6 80:C5:3 83:A4:3 86:E5:6 96:G5:3 99:E5:3 102:C5:6 112:B4:6 120:F#4:6'),
-  melB: MEL('0:A4:3 3:C5:3 6:E5:6 16:D5:3 19:F5:3 22:A5:6 32:G5:3 35:B5:3 38:D6:6 48:F#5:6 56:B4:6'),
-  sections: [
-    sec('A', 'melA', 'pulse', 'piano bass', 0.75, DR('x.....x...x.....', '....x.......x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
-    sec('B', 'melB', 'drive', 'piano bass pad', 0.92, DR('x.....x...x...x.', '....x.......x...', 'oo.ooo.ooo.ooo.o', { ghost: true })),
-    sec('A', 'melA', 'pulse', 'piano bass pad strings', 1.0, DR('x.....x...x.....', '....x...x...x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
-  ],
-});
-
-/* ------------------------------ ОБУЧЕНИЕ ------------------------------
-   Курсам нужна своя музыка: не тревожная и не парадная, а такая, под которую
-   спокойно читают и решают задачи. Три пьесы на разный темп — от медленной
-   первой лекции до бодрого экзамена.                                      */
-tr('firstlesson', 'Первый урок', 'рояль и нейлоновая гитара', 'calm', {
-  bpm: 92, swing: 0.16, reverb: 0.42, feel: 'loose', bassLine: 'half',
-  A: H('C3 G3 C4 E4 | A2 E3 A3 C4 | F2 C3 F3 A3 | G2 D3 G3 B3 | C3 G3 C4 E4 | E3 B3 E4 G4 | F2 C3 F3 A3 | G2 D3 G3 B3'),
-  B: H('A2 E3 A3 C4 | F2 C3 F3 A3 | D3 A3 D4 F4 | G2 D3 G3 B3'),
-  melA: MEL('0:E5:4 4:G5:4 8:C6:8 16:B5:4 20:A5:4 24:E5:8 32:F5:4 36:A5:4 40:C6:8 48:D6:4 52:B5:4 56:G5:8 64:E5:4 68:C5:4 72:G5:8 80:B5:4 84:G5:4 88:E5:8 96:A5:4 100:F5:4 104:C6:8 112:D6:4 116:B5:4 120:C6:10'),
-  melB: MEL('0:C6:4 4:A5:4 8:E5:8 16:A5:4 20:F5:4 24:C5:8 32:D5:4 36:F5:4 40:A5:8 48:B5:4 52:D6:4 56:G5:10'),
-  sections: [
-    sec('A', 'melA', 'flow', 'piano bass', 0.62, DR('x.......x.......', '................', '....o.......o...')),
-    sec('B', 'melB', 'wide', 'piano bass nylon', 0.82, DR('x.......x.......', '........x.......', 'o...o...o...o...')),
-    sec('A', 'melA', 'flow', 'piano bass nylon strings', 0.95, DR('x.....x.x.......', '....x.......x...', 'o.o.o.o.o.o.o.o.', { ghost: true })),
-  ],
-});
-tr('chalkboard', 'Мел и доска', 'маримба, бас, щётки', 'calm', {
-  bpm: 100, swing: 0.24, reverb: 0.36, feel: 'swing', bassLine: 'walk',
-  A: H('Bb2 F3 A3 D4 | G2 D3 F3 Bb3 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3 | Bb2 F3 A3 D4 | D3 A3 C4 F4 | Eb3 Bb3 D4 G4 | F2 C3 E3 A3'),
-  B: H('G2 D3 F3 Bb3 | C3 G3 Bb3 E4 | F2 C3 E3 A3 | Bb2 F3 A3 D4'),
-  melA: MEL('0:D5:4 4:F5:4 8:Bb5:6 16:A5:4 20:G5:4 24:D5:8 32:G5:4 36:Bb5:4 40:Eb6:6 48:D6:4 52:C6:4 56:A5:8 64:D5:4 68:A5:4 72:F5:6 80:C6:4 84:A5:4 88:F5:8 96:G5:4 100:Bb5:4 104:D6:6 112:C6:4 116:A5:4 120:Bb5:10'),
-  melB: MEL('0:Bb5:4 4:D6:4 8:G6:8 16:E6:4 20:C6:4 24:G5:8 32:A5:4 36:C6:4 40:F6:8 48:D6:4 52:Bb5:4 56:F5:10'),
-  sections: [
-    sec('A', 'melA', 'flow', 'marimba bass', 0.66, DR('x.......x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
-    sec('B', 'melB', 'wide', 'marimba bass piano', 0.86, DR('x.....x.x.......', '....x.......x...', 'r..r.r..r..r.r..', { ghost: true })),
-    sec('A', 'melA', 'flow', 'marimba bass piano strings', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
-  ],
-});
-tr('graduation', 'Выпуск', 'рояль, бас, барабаны — экзаменационный темп', 'boom', {
-  bpm: 126, swing: 0, reverb: 0.3, bassLine: 'drive',
-  A: H('D3 A3 D4 F#4 | B2 F#3 B3 D4 | G2 D3 G3 B3 | A2 E3 A3 C#4 | D3 A3 D4 F#4 | F#2 C#3 F#3 A3 | G2 D3 G3 B3 | A2 E3 A3 C#4'),
-  B: H('G2 D3 G3 B3 | A2 E3 A3 C#4 | B2 F#3 B3 D4 | E3 B3 E4 G4'),
-  melA: MEL('0:D5:2 2:F#5:2 4:A5:4 8:D6:6 16:C#6:2 18:B5:2 20:A5:4 24:F#5:8 32:G5:2 34:B5:2 36:D6:4 40:G6:6 48:F#6:4 52:D6:4 56:A5:8 64:D5:2 66:A5:2 68:F#5:4 72:D6:6 80:C#6:2 82:A5:2 84:F#5:4 88:C#5:8 96:B5:2 98:G5:2 100:D6:4 104:B5:6 112:C#6:4 116:A5:4 120:D6:8'),
-  melB: MEL('0:G5:2 2:B5:2 4:D6:4 8:G6:6 16:E6:2 18:C#6:2 20:A5:4 24:E5:8 32:F#5:2 34:B5:2 36:D6:4 40:F#6:6 48:G6:4 52:E6:4 56:B5:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass', 0.8, DR('x.......x...x...', '....x.......x...', 'o.o.o.o.o.o.o.o.')),
-    sec('B', 'melB', 'drive', 'piano bass brass', 0.96, DR('x..x....x...x...', '....x.......x..x', 'oooooooooooooooo', { ghost: true })),
-    sec('A', 'melA', 'drive', 'piano bass brass strings', 1.0, DR('x..x..x.x...x..x', '....x...x...x...', 'oooooooooooooooo', { ghost: true })),
-  ],
-});
-
-/* ------------------------------- КАЗИНО ------------------------------- */
-// не привязана к режиму экономики — переключается локально при входе на
-// вкладку «Казино» (см. Audio.setPlaylist('casino')/(null)), поэтому обе
-// темы нарочно бодрые и «фоново-лаунжевые» вне зависимости от состояния
-// экономики за окном
-tr('chips', 'Фишки и блеск', 'свинг-фортепиано, контрабас, щётки', 'casino', {
-  bpm: 124, swing: 0.32, reverb: 0.3,
-  bassLine: 'walk', feel: 'swing',
-  A: H('C3 A3 C4 E4 | A2 G3 A3 C4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 A3 C4 E4 | A2 G3 A3 C4 | D3 C4 D4 F4 | G2 F3 G3 B3'),
-  B: H('F2 D3 F3 A3 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 A3 C4 E4'),
-  melA: MEL('0:E4:2 2:G4:2 4:C5:2 6:E5:2 8:D5:4 12:C5:4 16:C5:2 18:E5:2 20:A4:2 22:C5:2 24:B4:4 28:A4:4 32:F4:2 34:A4:2 36:D5:2 38:F5:2 40:E5:4 44:D5:4 48:D5:2 50:B4:2 52:G4:2 54:D5:2 56:B4:4 60:G4:4 64:E4:2 66:G4:2 68:C5:2 70:E5:2 72:D5:4 76:C5:4 80:C5:2 82:E5:2 84:A4:2 86:C5:2 88:B4:4 92:A4:4 96:F4:2 98:A4:2 100:D5:2 102:Eb5:2 104:D5:4 108:C5:4 112:D5:2 114:B4:2 116:G4:2 118:D5:2 120:G5:4 124:D5:4'),
-  melB: MEL('0:A4:2 2:C5:2 4:F5:2 6:A5:2 8:G5:4 12:F5:4 16:D5:2 18:F5:2 20:A5:2 22:C6:2 24:A5:4 28:F5:4 32:B4:2 34:D5:2 36:G5:2 38:B5:2 40:A5:4 44:G5:4 48:E5:2 50:G5:2 52:C6:2 54:E5:2 56:C5:6 62:E5:2'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass cello harp', 0.85, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('B', 'melB', 'drive', 'piano bass cello harp bells', 1.0, DR('x...x...x...x...', '....x...x...x...', 'xxxxxxxxxxxxxxxx')),
-    sec('A', 'melA', 'drive', 'piano bass cello harp bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'xxxxxxxxxxxxxxxx')),
-  ],
-});
-tr('croupier', 'Крупье', 'вибрафон, фортепиано, контрабас — джаз-лаунж', 'casino', {
-  bpm: 96, swing: 0.28, reverb: 0.4,
-  bassLine: 'walk', feel: 'swing',
-  A: H('D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4'),
-  B: H('F2 E3 F3 A3 | E3 D4 E4 G4 | A2 G3 A3 C4 | A2 G3 A3 C#4'),
-  melA: MEL('0:D4:6 8:A4:4 12:F4:4 16:G4:6 24:B4:4 28:G4:4 32:C5:6 40:E5:4 44:C5:4 48:C#5:6 56:A4:4 60:E4:4 64:D4:6 72:A4:4 76:F4:4 80:G4:6 88:B4:4 92:G4:4 96:C5:6 104:E5:4 108:C5:4 112:C#5:6 120:D5:8'),
-  melB: MEL('0:A4:6 8:F4:4 12:E4:4 16:G4:6 24:E4:4 28:D4:4 32:A4:6 40:C5:4 44:A4:4 48:C#5:6 56:A4:8'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'marimba bass cello timpani', 0.78, DR('x.......x.......', '....x.......x...', 'x...x...x...x...')),
-    sec('B', 'melB', 'sustain', 'marimba bass cello strings timpani', 0.92, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('A', 'melA', 'sustain', 'marimba bass cello strings bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-  ],
-});
-
-/* -------------------------------- ЗАГЛАВНАЯ -------------------------------- */
-/* Тема главного меню: рояль ведёт мелодию, струнные держат зал, барабаны почти
-   не слышны — это ещё не партия, это дверь в кабинет. */
-tr('anthem', 'Герб на двери', 'рояль, струнные, контрабас — заглавная тема', 'calm', {
-  bpm: 88, swing: 0.08, reverb: 0.44, bassLine: 'half',
-  A: H('D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | C3 G3 C4 E4 | D3 A3 D4 F4 | Bb2 F3 Bb3 D4 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
-  B: H('Bb2 F3 Bb3 D4 | F2 C3 F3 A3 | G2 D3 G3 Bb3 | A2 E3 A3 C#4'),
-  melA: MEL('0:D5:4 4:F5:4 8:A5:6 16:G5:4 20:F5:4 24:D5:8 32:F5:4 36:A5:4 40:C6:6 48:Bb5:4 52:A5:4 56:F5:8 64:A5:4 68:G5:4 72:F5:6 80:E5:4 84:D5:4 88:C5:8 96:Bb4:4 100:D5:4 104:G5:6 112:F5:4 116:E5:4 120:D5:10'),
-  melB: MEL('0:F5:4 4:Bb5:4 8:D6:8 16:C6:4 20:A5:4 24:F5:8 32:Bb5:4 36:D6:4 40:F6:6 48:E6:4 52:C#6:4 56:A5:10'),
-  sections: [
-    sec('A', 'melA', 'air', 'piano bass', 0.6, DR('x.......x.......', '................', 'r...r...r...r...')),
-    sec('B', 'melB', 'flow', 'piano bass strings', 0.85, DR('x.....x.x.......', '....x.......x...', 'r...r...r...r...', { ghost: true })),
-    sec('A', 'melA', 'flow', 'piano bass strings cello', 1.0, DR('x.....x.x.....x.', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
-  ],
-});
-
-const MOOD_PLAYLISTS = {
-  calm: ['cabinet', 'dawn', 'sixstring', 'ledger', 'northlight', 'promenade', 'meadow'],
-  boom: ['fullhouse', 'ascent', 'boulevard', 'overdrive'],
-  slump: ['nightshift', 'longwinter', 'emptyhalls', 'patience'],
-  stag: ['treadmill', 'deadlock', 'friction'],
-  crisis: ['collapse', 'panic', 'bankrun'],
-  frost: ['glass', 'stillness'],
-  war: ['warmarch', 'trenches'],
-  totalitarian: ['ironmarch', 'curfew'],
-  casino: ['chips', 'croupier'],
-};
-const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция', war: 'Война', totalitarian: 'Тоталитаризм', casino: 'Казино' };
-const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
-  banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
-/* Плейлисты, привязанные к роли: у инвестора свой репертуар, у обучения — свой */
-const ROLE_PLAYLISTS = {
-  /* В меню нет экономики, а значит нет и настроения: один и тот же спокойный
-     репертуар во всех ветках — заглавная тема и то, что к ней прилегает. */
-  menu: {
-    calm: ['anthem', 'cabinet', 'dawn', 'northlight', 'promenade'],
-    boom: ['anthem', 'cabinet', 'dawn'],
-    slump: ['anthem', 'dawn', 'northlight'],
-    stag: ['anthem', 'cabinet', 'meadow'],
-    crisis: ['anthem', 'dawn', 'northlight'],
-    frost: ['anthem', 'meadow', 'dawn'],
-  },
-  tutorial: {
-    calm: ['firstlesson', 'chalkboard', 'cabinet'],
-    boom: ['graduation', 'sixstring'],
-    slump: ['nightshift', 'firstlesson'],
-    stag: ['chalkboard', 'treadmill'],
-    crisis: ['treadmill', 'graduation'],
-    frost: ['firstlesson', 'nightshift'],
-  },
-  trader: {
-    calm: ['openingbell', 'ledger'],
-    boom: ['bidask', 'ascent'],
-    slump: ['bearmarket', 'patience'],
-    stag: ['thinvolume', 'friction'],
-    crisis: ['marginwire', 'panic'],
-    frost: ['thinvolume', 'glass'],
-  },
-};
-
-export const Audio = (() => {
-  let ctx = null; let master = null; let comp = null; let musicBus = null; let sfxBus = null; let noiseBuf = null;
-  let dry = null; let verbIn = null; let echo = null; let pianoBus = null; let chorusIn = null;
-  const opts = { music: true, sfx: true, volume: 0.6 };
-  let lastTick = 0; const listeners = [];
-  let track = TRACKS.dawn; let mood = 'calm'; let lockedMood = null; let playlistIdx = 0;
-  let roleId = null;
-  const listOf = (m) => (
-    (roleId && ROLE_PLAYLISTS[roleId] && ROLE_PLAYLISTS[roleId][m])
-    || MOOD_PLAYLISTS[m] || MOOD_PLAYLISTS.calm
-  );
-  let pending = null; let tempoMod = 1; let intensity = 0.3;
-  let timer = null; let nextTime = 0; let stepIdx = 0; let running = false;
-
-  const now = () => (ctx ? ctx.currentTime : 0);
-  const resume = () => { if (ctx && ctx.state === 'suspended') ctx.resume(); };
-  const jitter = () => (Math.random() - 0.5) * 0.014;
-  const notify = () => listeners.forEach((f) => { try { f(); } catch { /* ignore */ } });
-  const plan = (t) => {
-    let bar = 0;
-    return t.sections.map((s) => { const start = bar; bar += t[s.h].length; return { ...s, start, bars: t[s.h].length }; });
-  };
-  let sectionPlan = plan(track);
-  let formBars = sectionPlan.reduce((a, s) => a + s.bars, 0);
-
-  const makeIR = (seconds, decay) => {
-    const len = Math.floor(ctx.sampleRate * seconds);
-    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let c = 0; c < 2; c++) {
-      const d = buf.getChannelData(c); let lp = 0;
-      for (let i = 0; i < len; i++) {
-        const env = Math.pow(1 - i / len, decay);
-        lp += ((Math.random() * 2 - 1) - lp) * (0.30 - 0.22 * (i / len));
-        d[i] = lp * env;
-      }
-    }
-    return buf;
-  };
-
-  const ensure = () => {
-    if (ctx) return ctx;
-    const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
-    if (!AC) return null;
-    try { ctx = new AC(); } catch { return null; }
-    master = ctx.createGain(); master.gain.value = opts.volume;
-    try {
-      comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -16; comp.knee.value = 22; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.28;
-      master.connect(comp); comp.connect(ctx.destination);
-    } catch { master.connect(ctx.destination); }
-    musicBus = ctx.createGain(); musicBus.gain.value = opts.music ? 0.55 : 0; musicBus.connect(master);
-    sfxBus = ctx.createGain(); sfxBus.gain.value = opts.sfx ? 0.9 : 0; sfxBus.connect(master);
-    dry = ctx.createGain(); dry.gain.value = 1; dry.connect(musicBus);
-    try {
-      // шельф на верхах был сделан под пилу старого синт-лида и душил бы настоящий
-      // рояль: у него в этой полосе как раз живёт молоточек и «воздух» инструмента
-      const body = ctx.createBiquadFilter(); body.type = 'peaking'; body.frequency.value = 220; body.Q.value = 0.8; body.gain.value = 2.0;
-      const air = ctx.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 5400; air.gain.value = -1.5;
-      pianoBus = ctx.createGain(); pianoBus.gain.value = 1;
-      pianoBus.connect(body); body.connect(air); air.connect(dry);
-    } catch { pianoBus = dry; }
-    try {
-      // короче и суше, чем концертный зал: маленькая комната/плата — характернее для синтвейва
-      const conv = ctx.createConvolver(); conv.buffer = makeIR(1.5, 2.6);
-      const pre = ctx.createDelay(0.2); pre.delayTime.value = 0.014;
-      verbIn = ctx.createGain(); verbIn.gain.value = 1;
-      const wet = ctx.createGain(); wet.gain.value = 0.5;
-      verbIn.connect(pre); pre.connect(conv); conv.connect(wet); wet.connect(musicBus);
-    } catch { verbIn = ctx.createGain(); verbIn.gain.value = 0; verbIn.connect(musicBus); }
-    // хорус для струнных и хора: две модулированные линии задержки
-    try {
-      chorusIn = ctx.createGain(); chorusIn.gain.value = 1; chorusIn.connect(dry);
-      [[0.014, 0.31], [0.021, 0.23]].forEach(([base, rate]) => {
-        const dl = ctx.createDelay(0.1); dl.delayTime.value = base;
-        const lfo = ctx.createOscillator(); lfo.frequency.value = rate;
-        const amt = ctx.createGain(); amt.gain.value = 0.0035;
-        const g = ctx.createGain(); g.gain.value = 0.5;
-        lfo.connect(amt); amt.connect(dl.delayTime); lfo.start();
-        chorusIn.connect(dl); dl.connect(g); g.connect(dry);
-      });
-    } catch { chorusIn = dry; }
-    try {
-      // слэп-дилей на синт-лид/арпеджио — фирменный приём синтвейва вместо диффузного эха
-      const dl = ctx.createDelay(1.0); dl.delayTime.value = 0.16;
-      const fb = ctx.createGain(); fb.gain.value = 0.24;
-      const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 3200;
-      echo = ctx.createGain(); echo.gain.value = 0.5;
-      echo.connect(dl); dl.connect(damp); damp.connect(fb); fb.connect(dl); dl.connect(musicBus);
-    } catch { echo = dry; }
-    const len = Math.floor(ctx.sampleRate * 1.2);
-    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const dat = noiseBuf.getChannelData(0);
-    for (let i = 0; i < len; i++) dat[i] = Math.random() * 2 - 1;
-    return ctx;
-  };
-  const panFor = (midi, width) => {
-    try { const p = ctx.createStereoPanner(); p.pan.value = clamp((midi - 62) / 30, -1, 1) * (width || 0.35); return p; } catch { return ctx.createGain(); }
-  };
-  const sendTo = (node, bus, amt) => { const g = ctx.createGain(); g.gain.value = amt; node.connect(g); g.connect(bus); };
-
-  /* ------------------------------- ИНСТРУМЕНТЫ ------------------------------- */
-  /* Рояль. Раньше под именем piano() играла пила с квадратом — то есть каждый трек
-     саундтрека, что бы ни было написано в его аранжировке, звучал одним и тем же
-     синтезаторным плаком. Теперь это настоящий фортепианный голос: собственная
-     волна с фортепианным набором обертонов, две слегка расстроенные «струны»
-     (отсюда живое биение), стук молоточка в атаке и двухступенчатое затухание —
-     быстрый спад первых миллисекунд и длинный хвост, который у басов тянется
-     дольше, чем у верхов. Старый синтезаторный голос никуда не делся, он живёт
-     отдельно под именем synth() — там, где синтвейв нужен осознанно. */
-  let pianoWave = null;
-  const ensurePianoWave = () => {
-    if (pianoWave || !ctx) return pianoWave;
-    // амплитуды обертонов, снятые с характера рояля: сильная первая и вторая,
-    // быстро убывающие верхние — отсюда «деревянный», а не «жужжащий» тембр
-    const amps = [0, 1, 0.58, 0.36, 0.26, 0.17, 0.11, 0.082, 0.058, 0.04, 0.028, 0.02, 0.014, 0.01];
-    const real = new Float32Array(amps.length);
-    const imag = new Float32Array(amps.length);
-    amps.forEach((a, i) => { imag[i] = a; });
-    try { pianoWave = ctx.createPeriodicWave(real, imag, { disableNormalization: false }); }
-    catch { pianoWave = null; }
-    return pianoWave;
-  };
-  const piano = (t, midi, vel, sustain) => {
-    const f = hz(midi);
-    if (f > 5000 || f < 25) return;
-    // низкие струны звучат дольше высоких — это и создаёт ощущение инструмента,
-    // а не одинаково обрубленных нот
-    const pitchLen = clamp(2.6 - (midi - 36) * 0.022, 0.55, 2.6);
-    const dec = clamp(pitchLen * (sustain || 1), 0.16, 3.4);
-    const out = ctx.createGain(); out.gain.value = 0.105 * vel;
-    const pan = panFor(midi, 0.28); out.connect(pan); pan.connect(pianoBus);
-    sendTo(out, verbIn, track.reverb * 0.5);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 0.6;
-    filt.frequency.setValueAtTime(Math.min(12000, f * 11 + 1400), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 3.2, 950), t + dec * 0.55);
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.004);
-    // двухступенчатое затухание: резкий спад молоточка, затем долгий хвост струны
-    g.gain.exponentialRampToValueAtTime(0.42, t + Math.min(0.16, dec * 0.2));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
-    g.connect(filt);
-    const wave = ensurePianoWave();
-    [[0, 0.62], [vel > 0.6 ? 3.5 : 2.2, 0.38]].forEach(([det, amp]) => {
-      const o = ctx.createOscillator();
-      if (wave) o.setPeriodicWave(wave); else o.type = 'triangle';
-      o.frequency.value = f; o.detune.value = det;
-      const a = ctx.createGain(); a.gain.value = amp;
-      o.connect(a); a.connect(g); o.start(t); o.stop(t + dec + 0.06);
-    });
-    // стук молоточка по струне: короткий полосовой шум, громче при сильной ноте
-    const hs = ctx.createBufferSource(); hs.buffer = noiseBuf;
-    const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = Math.min(6500, f * 3.2); hf.Q.value = 0.9;
-    const hg = ctx.createGain();
-    hg.gain.setValueAtTime(0.030 * vel * vel, t); hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-    hs.connect(hf); hf.connect(hg); hg.connect(out); hs.start(t); hs.stop(t + 0.07);
-  };
-  // Синт-лид: прежний голос движка — пила с квадратом, суб-осциллятором и
-  // нисходящим фильтром. Остаётся для пьес, где синтезатор — осознанный выбор.
-  const synth = (t, midi, vel, sustain, maxParts) => {
-    const f = hz(midi);
-    if (f > 5000 || f < 25) return;
-    const dec = clamp(0.85 * (sustain || 1), 0.14, 3.0);
-    const out = ctx.createGain(); out.gain.value = 0.095 * vel;
-    const pan = panFor(midi); out.connect(pan); pan.connect(pianoBus);
-    sendTo(out, verbIn, track.reverb * 0.45);
-    sendTo(out, echo, 0.22);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 3.5;
-    filt.frequency.setValueAtTime(Math.min(9500, f * 7 + 600), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.6, 300), t + dec * 0.7);
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.006);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
-    g.connect(filt);
-    const maxN = maxParts || 8;
-    [[1, 'sawtooth', 0, 0.5], [1, 'square', 7, 0.34], [0.5, 'sine', 0, Math.min(0.4, maxN / 20)]].forEach(([mul, wave, det, amp]) => {
-      const o = ctx.createOscillator(); o.type = wave; o.frequency.value = f * mul; o.detune.value = det;
-      const a = ctx.createGain(); a.gain.value = amp;
-      o.connect(a); a.connect(g); o.start(t); o.stop(t + dec + 0.05);
-    });
-    const hs = ctx.createBufferSource(); hs.buffer = noiseBuf;
-    const hf = ctx.createBiquadFilter(); hf.type = 'bandpass'; hf.frequency.value = Math.min(7000, f * 4); hf.Q.value = 0.8;
-    const hg = ctx.createGain();
-    hg.gain.setValueAtTime(0.020 * vel * vel, t); hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
-    hs.connect(hf); hf.connect(hg); hg.connect(out); hs.start(t); hs.stop(t + 0.06);
-  };
-  /* Бас-гитара. Раньше басовую линию играл тот же piano() вполсилы — то есть баса
-     как отдельного инструмента в движке просто не было. Здесь он свой: синус на
-     фундаменте, поверх — фильтрованная пила с быстрым фильтр-спадом (щипок
-     пальцем), сверху короткий призвук струны о лад. */
-  const bass = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    if (f < 20 || f > 700) return;
-    const out = ctx.createGain(); out.gain.value = 0.18 * vel;
-    out.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.12);
-    const d = clamp(dur, 0.08, 1.6);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 4.5;
-    filt.frequency.setValueAtTime(Math.min(2600, f * 12), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 2.2, 90), t + Math.min(0.22, d * 0.6));
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.55, t + Math.min(0.12, d * 0.35));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    g.connect(filt);
-    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = f;
-    const subG = ctx.createGain(); subG.gain.value = 0.85;
-    sub.connect(subG); subG.connect(g);
-    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = 5;
-    const oG = ctx.createGain(); oG.gain.value = 0.42;
-    o.connect(oG); oG.connect(g);
-    sub.start(t); sub.stop(t + d + 0.05); o.start(t); o.stop(t + d + 0.05);
-    // призвук струны о порожек — то, по чему бас-гитара и узнаётся
-    const cl = ctx.createBufferSource(); cl.buffer = noiseBuf;
-    const cf = ctx.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 1400; cf.Q.value = 1.1;
-    const cg = ctx.createGain();
-    cg.gain.setValueAtTime(0.022 * vel, t); cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
-    cl.connect(cf); cf.connect(cg); cg.connect(out); cl.start(t); cl.stop(t + 0.05);
-  };
-  // Плак для аккордовых фигур/арпеджио — короткая пила с нисходящим фильтром,
-  // подпёртая слэп-дилеем (см. echo в ensure()) вместо арфового «звона».
-  const harp = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.08 * vel;
-    const pan = panFor(midi, 0.5); out.connect(pan); pan.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.3); sendTo(out, echo, 0.3);
-    const d = Math.min(dur, 0.2);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 2.5;
-    filt.frequency.setValueAtTime(Math.min(8500, f * 8), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.5, 400), t + d);
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    g.connect(filt);
-    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
-    o.connect(g); o.start(t); o.stop(t + d + 0.05);
-  };
-  // Ретро-«колокол»: та же идея, только квадрат+пила вместо синусоидальных парциалов.
-  const bell = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.075 * (vel || 1);
-    const pan = panFor(midi, 0.45); out.connect(pan); pan.connect(chorusIn);
-    sendTo(out, verbIn, track.reverb * 0.4); sendTo(out, echo, 0.28);
-    const d = Math.min(dur, 0.5);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    g.connect(out);
-    [[1, 'square', 0.55], [2, 'sawtooth', 0.22], [1, 'sawtooth', 0.3]].forEach(([mul, wave, amp]) => {
-      const o = ctx.createOscillator(); o.type = wave; o.frequency.value = f * mul;
-      const a = ctx.createGain(); a.gain.value = amp;
-      o.connect(a); a.connect(g); o.start(t); o.stop(t + d + 0.05);
-    });
-  };
-  // Синт-медь: три пилы в унисон через ФНЧ с восходящей атакой фильтра («открывающийся»
-  // тембр classic synth-brass) — духовые стабы для военной/маршевой темы, единственный
-  // голос в движке с настоящим фанфарным характером.
-  const brass = (t, notes, dur, vel) => {
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, vel), t + 0.045);
-    g.gain.setValueAtTime(Math.max(0.0004, vel), t + Math.max(dur - 0.09, 0.05));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 4;
-    filt.frequency.setValueAtTime(480, t);
-    filt.frequency.exponentialRampToValueAtTime(3600, t + 0.07);
-    filt.frequency.exponentialRampToValueAtTime(1500, t + dur);
-    filt.connect(g); g.connect(dry);
-    sendTo(g, verbIn, track.reverb * 0.3); sendTo(g, echo, 0.12);
-    notes.forEach((midi) => {
-      [-6, 0, 6].forEach((det) => {
-        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(midi); o.detune.value = det;
-        const a = ctx.createGain(); a.gain.value = 0.38 / notes.length;
-        o.connect(a); a.connect(filt); o.start(t); o.stop(t + dur + 0.05);
-      });
-    });
-  };
-  // Синт-бас: пила + суб-осциллятор на октаву ниже через резонансный ФНЧ с щелчком атаки.
-  const cello = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.12 * vel;
-    out.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.2);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 5;
-    filt.frequency.setValueAtTime(Math.min(2400, f * 10), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 2, 90), t + Math.min(dur, 0.2));
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.008);
-    g.gain.setValueAtTime(1, t + dur * 0.55);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    g.connect(filt);
-    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = f;
-    const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = f / 2;
-    const a2 = ctx.createGain(); a2.gain.value = 0.7;
-    o1.connect(g); o2.connect(a2); a2.connect(g);
-    o1.start(t); o1.stop(t + dur + 0.05); o2.start(t); o2.stop(t + dur + 0.05);
-  };
-  // Второй синт-лид, ярче основного: пара расстроенных пил с вибрато — держит мелодию,
-  // когда в аранжировке заявлен «violin».
-  const violin = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.08 * vel;
-    const pan = panFor(midi, 0.4); out.connect(pan); pan.connect(chorusIn);
-    sendTo(out, verbIn, track.reverb * 0.4); sendTo(out, echo, 0.25);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + Math.min(0.04, dur * 0.2));
-    g.gain.setValueAtTime(1, t + dur * 0.7);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    g.connect(out);
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 5.6;
-    const lg = ctx.createGain(); lg.gain.value = 5;
-    lfo.connect(lg); lfo.start(t); lfo.stop(t + dur + 0.1);
-    [-6, 6].forEach((det) => {
-      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
-      lg.connect(o.detune);
-      const a = ctx.createGain(); a.gain.value = 0.5;
-      o.connect(a); a.connect(g); o.start(t); o.stop(t + dur + 0.1);
-    });
-  };
-  // Аналоговый пад: стек расстроенных пил/квадратов под медленный ФНЧ-свип — вместо
-  // смычковых струнных несёт длинные гармонии.
-  const strings = (t, notes, dur, level) => {
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, level), t + dur * 0.3);
-    g.gain.setValueAtTime(Math.max(0.0004, level), t + dur * 0.75);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass';
-    filt.frequency.setValueAtTime(420, t);
-    filt.frequency.linearRampToValueAtTime(1300 + 900 * intensity, t + dur * 0.5);
-    filt.Q.value = 0.6;
-    filt.connect(g); g.connect(chorusIn);
-    sendTo(g, verbIn, track.reverb * 0.6);
-    notes.forEach((midi, i) => {
-      [-9, 0, 9].forEach((det) => {
-        const o = ctx.createOscillator(); o.type = i % 2 ? 'square' : 'sawtooth'; o.frequency.value = hz(midi + 12);
-        o.detune.value = det;
-        const a = ctx.createGain(); a.gain.value = 0.5 / notes.length;
-        o.connect(a); a.connect(filt); o.start(t); o.stop(t + dur + 0.2);
-      });
-    });
-  };
-  // Яркий PWM-пад (два квадрата на голос, разведённых по detune с медленным LFO) — вместо
-  // формантного «хора» несёт верхний слой гармонии там, где заявлен «choir».
-  const choir = (t, notes, dur, level) => {
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0004, level * 0.9), t + dur * 0.35);
-    g.gain.setValueAtTime(Math.max(0.0004, level * 0.9), t + dur * 0.7);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    g.connect(chorusIn); sendTo(g, verbIn, track.reverb * 0.65);
-    notes.forEach((midi, i) => {
-      const f = hz(midi + 12);
-      const a = ctx.createGain(); a.gain.value = 0.4 / notes.length;
-      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.3 + i * 0.05;
-      const lg = ctx.createGain(); lg.gain.value = 6;
-      lfo.start(t); lfo.stop(t + dur + 0.2);
-      [-8, 8].forEach((det) => {
-        const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.detune.value = det;
-        lg.connect(o.detune); lfo.connect(lg);
-        o.connect(a); o.start(t); o.stop(t + dur + 0.2);
-      });
-      a.connect(g);
-    });
-  };
-  // Синт-том вместо литавры: короткий питч-свип синусоиды.
-  const timpani = (t, midi, vel) => {
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(hz(midi) * 2.2, t); o.frequency.exponentialRampToValueAtTime(hz(midi) * 0.9, t + 0.12);
-    g.gain.setValueAtTime(0.15 * vel, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-    o.connect(g); g.connect(dry); sendTo(g, verbIn, 0.25); o.start(t); o.stop(t + 0.35);
-  };
-  const noiseHit = (t, dur, gain, type, freq, q, bus) => {
-    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
-    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q || 1;
-    const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f); f.connect(g); g.connect(bus || dry); src.start(t); src.stop(t + dur + 0.05);
-  };
-  /* УДАРНЫЕ. Раньше это были три ноты без динамики: бочка, шум-снейр и шум-хэт,
-     всегда одной громкости. Теперь у каждого удара есть velocity, у бочки — тело и
-     щелчок колотушки, у снейра — пружина, а к набору добавились том и райд, без
-     которых не сыграть ни сбивку, ни джазовый грув. */
-  const kick = (t, vel) => {
-    const v = clamp(vel, 0.1, 1.4);
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(160, t);
-    o.frequency.exponentialRampToValueAtTime(48, t + 0.055);
-    o.frequency.exponentialRampToValueAtTime(38, t + 0.22);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.26 * v, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-    o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.38);
-    // щелчок колотушки — то, за счёт чего бочка слышна в миксе, а не только ощущается
-    noiseHit(t, 0.010, 0.055 * v, 'bandpass', 2600, 1.4);
-  };
-  const snare = (t, vel) => {
-    const v = clamp(vel, 0.05, 1.4);
-    // тело барабана — две расстроенные головки
-    [188, 242].forEach((fr, i) => {
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type = 'triangle'; o.frequency.setValueAtTime(fr, t);
-      o.frequency.exponentialRampToValueAtTime(fr * 0.82, t + 0.06);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime((i ? 0.022 : 0.034) * v, t + 0.003);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-      o.connect(g); g.connect(dry); o.start(t); o.stop(t + 0.12);
-    });
-    // пружина: два слоя шума, длинный и короткий
-    noiseHit(t, 0.11 + 0.05 * v, 0.070 * v, 'bandpass', 1900, 0.9);
-    noiseHit(t + 0.004, 0.055, 0.045 * v, 'highpass', 4200, 0.7);
-  };
-  // Том — нужен и для сбивок, и для маршевой дроби
-  const tom = (t, midi, vel) => {
-    const f = hz(midi);
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(f * 1.35, t); o.frequency.exponentialRampToValueAtTime(f * 0.88, t + 0.12);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.13 * vel, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
-    o.connect(g); g.connect(dry); sendTo(g, verbIn, track.reverb * 0.3);
-    o.start(t); o.stop(t + 0.38);
-    noiseHit(t, 0.04, 0.018 * vel, 'bandpass', 900, 0.8);
-  };
-  // Хэт с динамикой: закрытый щелчок, открытый «шшш» — и тихие призрачные удары
-  const hat = (t, open, vel) => {
-    const v = clamp(vel === undefined ? 1 : vel, 0.1, 1.4);
-    noiseHit(t, open ? 0.16 : 0.036, (open ? 0.024 : 0.028) * v, 'highpass', open ? 7200 : 8800, 1.4);
-    if (!open) noiseHit(t, 0.012, 0.010 * v, 'bandpass', 11000, 2.0);
-  };
-  // Райд: металлический звон с длинным хвостом — без него джазовый грув не собрать
-  const ride = (t, vel) => {
-    const v = clamp(vel, 0.1, 1.4);
-    noiseHit(t, 0.42, 0.011 * v, 'highpass', 6200, 0.8);
-    [3140, 4270, 5630].forEach((fr, i) => {
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type = 'square'; o.frequency.value = fr;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.006 * v / (i + 1), t + 0.003);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5 - i * 0.1);
-      o.connect(g); g.connect(dry); sendTo(g, verbIn, track.reverb * 0.25);
-      o.start(t); o.stop(t + 0.6);
-    });
-  };
-
-  /* Мягкий клиппинг для гитары и нового баса тоталитарного режима — ни один другой
-     голос в движке им не пользуется, поэтому у этих двух треков не может быть звучания,
-     похожего на остальной саундтрек. */
-  const distCurve = (() => {
-    const n = 1024; const curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(x * 3.2); }
-    return curve;
-  })();
-  // Дисторшн-гитара: пила через waveshaper с кабинетным ФНЧ и серединным пиком.
-  // power=true — режущий «пауэр-аккорд» (терция + квинта), false — сольная линия.
-  const guitar = (t, midi, dur, vel, power) => {
-    const notes = power ? [midi, midi + 7] : [midi];
-    const out = ctx.createGain(); out.gain.value = 0.10 * vel;
-    const pan = panFor(midi, 0.3); out.connect(pan); pan.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.25); sendTo(out, echo, 0.18);
-    const cab = ctx.createBiquadFilter(); cab.type = 'lowpass'; cab.frequency.value = 3200; cab.Q.value = 0.7;
-    const mid = ctx.createBiquadFilter(); mid.type = 'peaking'; mid.frequency.value = 900; mid.Q.value = 1.1; mid.gain.value = 4;
-    cab.connect(mid); mid.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.006);
-    g.gain.setValueAtTime(1, t + Math.max(0.01, dur * 0.6));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    g.connect(cab);
-    notes.forEach((m) => {
-      const shaper = ctx.createWaveShaper(); shaper.curve = distCurve; shaper.oversample = '2x';
-      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz(m);
-      const pre = ctx.createGain(); pre.gain.value = 2.6;
-      o.connect(pre); pre.connect(shaper); shaper.connect(g);
-      o.start(t); o.stop(t + dur + 0.05);
-    });
-  };
-  // Новый бас, отдельный от cello/piano-баса: суб-синус на октаву ниже плюс расстроенная
-  // пила через тот же дисторшн, что и guitar — тяжёлый, давящий низ без «щелчка» атаки.
-  const growl = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.16 * vel;
-    out.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.15);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 2;
-    filt.frequency.setValueAtTime(Math.min(900, f * 5), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.4, 70), t + Math.min(dur, 0.25));
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.01);
-    g.gain.setValueAtTime(1, t + dur * 0.6);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    g.connect(filt);
-    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.value = f / 2;
-    sub.connect(g);
-    const shaper = ctx.createWaveShaper(); shaper.curve = distCurve; shaper.oversample = '2x';
-    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
-    const pre = ctx.createGain(); pre.gain.value = 1.8;
-    const distAmt = ctx.createGain(); distAmt.gain.value = 0.6;
-    o.connect(pre); pre.connect(shaper); shaper.connect(distAmt); distAmt.connect(g);
-    sub.start(t); sub.stop(t + dur + 0.05); o.start(t); o.stop(t + dur + 0.05);
-  };
-  // Маримба: синус с треугольным «стуком» атаки и очень быстрым затуханием — тёплый
-  // деревянный щелчок, совсем другой характер, чем звонкие bell()/harp(); настоящий
-  // мэллет-тембр для джазовых и лаунж-пьес вместо синтвейвового пэда.
-  const marimba = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.11 * vel;
-    const pan = panFor(midi, 0.4); out.connect(pan); pan.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.35);
-    const d = Math.min(dur, 0.45);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    g.connect(out);
-    const o1 = ctx.createOscillator(); o1.type = 'sine'; o1.frequency.value = f;
-    const o2 = ctx.createOscillator(); o2.type = 'triangle'; o2.frequency.value = f * 4;
-    const a2 = ctx.createGain();
-    a2.gain.setValueAtTime(0.35 * vel, t); a2.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-    o1.connect(g); o2.connect(a2); a2.connect(out);
-    o1.start(t); o1.stop(t + d + 0.05); o2.start(t); o2.stop(t + 0.08);
-  };
-  // Нейлоновая гитара: щипок без дисторшна — треугольник с расстроенной пилой под
-  // быстро закрывающимся ФНЧ. Единственный «акустический», чистый щипковый голос
-  // движка — фолковый/акустический характер вместо синтвейвовых пэдов и арпеджио.
-  const nylon = (t, midi, dur, vel) => {
-    const f = hz(midi);
-    const out = ctx.createGain(); out.gain.value = 0.10 * vel;
-    const pan = panFor(midi, 0.35); out.connect(pan); pan.connect(dry);
-    sendTo(out, verbIn, track.reverb * 0.3); sendTo(out, echo, 0.1);
-    const d = Math.min(dur, 0.9);
-    const filt = ctx.createBiquadFilter(); filt.type = 'lowpass'; filt.Q.value = 1.2;
-    filt.frequency.setValueAtTime(Math.min(5200, f * 6), t);
-    filt.frequency.exponentialRampToValueAtTime(Math.max(f * 1.2, 300), t + d * 0.6);
-    filt.connect(out);
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 0.005);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-    g.connect(filt);
-    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
-    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = f; o2.detune.value = 4;
-    const a2 = ctx.createGain(); a2.gain.value = 0.3;
-    o.connect(g); o2.connect(a2); a2.connect(g);
-    o.start(t); o.stop(t + d + 0.05); o2.start(t); o2.stop(t + d + 0.05);
-  };
-
-  /* ------------------------------- СЕКВЕНСОР ------------------------------- */
-  /* Атмосферный слой: низкий гул, «ветер» и сердцебиение под музыкой */
-  let amb = null; let heartTimer = null;
-  const ensureAmb = () => {
-    if (amb || !ctx) return;
-    const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(musicBus);
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 140; f.Q.value = 0.8; f.connect(g);
-    const a1 = ctx.createOscillator(); a1.type = 'sine'; a1.frequency.value = 41.2;
-    const a2 = ctx.createOscillator(); a2.type = 'sawtooth'; a2.frequency.value = 41.2; a2.detune.value = 8;
-    const ag = ctx.createGain(); ag.gain.value = 0.5;
-    a1.connect(f); a2.connect(ag); ag.connect(f); a1.start(); a2.start();
-    const wind = ctx.createBufferSource(); wind.buffer = noiseBuf; wind.loop = true;
-    const wf = ctx.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 320;
-    const wg = ctx.createGain(); wg.gain.value = 0.22;
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07;
-    const lg = ctx.createGain(); lg.gain.value = 0.12;
-    lfo.connect(lg); lg.connect(wg.gain); lfo.start();
-    wind.connect(wf); wf.connect(wg); wg.connect(g); wind.start();
-    amb = { gain: g, filter: f, oscB: a2, wind: wf };
-  };
-  const heartbeat = () => {
-    if (!ctx || !amb) return;
-    const t = now();
-    [0, 0.26].forEach((d, i) => {
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type = 'sine'; o.frequency.setValueAtTime(58, t + d); o.frequency.exponentialRampToValueAtTime(30, t + d + 0.12);
-      g.gain.setValueAtTime(i ? 0.05 : 0.075, t + d); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.3);
-      o.connect(g); g.connect(musicBus); o.start(t + d); o.stop(t + d + 0.35);
-    });
-  };
-  const stepDur = () => 60 / (track.bpm * tempoMod) / 4;
-  const accent = (pos) => (pos === 0 ? 1 : pos % 8 === 0 ? 0.92 : pos % 4 === 0 ? 0.84 : 0.72);
-
-  const setTrack = (id) => {
-    if (!TRACKS[id]) return;
-    track = TRACKS[id]; sectionPlan = plan(track); formBars = sectionPlan.reduce((a, s) => a + s.bars, 0);
-    stepIdx = 0; notify();
-  };
-  const advancePlaylist = (forward) => {
-    const list = listOf(lockedMood || mood);
-    playlistIdx = (playlistIdx + (forward === false ? -1 : 1) + list.length) % list.length;
-    pending = list[playlistIdx];
-  };
-
-  /* Басовые фигуры. Раньше бас во всех без исключения пьесах играл одну и ту же
-     ломаную восьмыми — отсюда и ощущение однообразия сильнее всего. Теперь рисунок
-     выбирает сама пьеса: рок гонит ровные восьмые, джаз ходит четвертями по тонам
-     аккорда, баллада держит половинки, а фанк дышит синкопой. [шаг, ступень]. */
-  const BASS_LINES = {
-    drive: [[0, 0], [2, 0], [4, 7], [6, 0], [8, 0], [10, 12], [12, 7], [14, 0]],
-    walk: [[0, 0], [4, 4], [8, 7], [12, 9]],
-    root: [[0, 0], [6, 0], [8, 7], [14, 7]],
-    half: [[0, 0], [8, 7]],
-    synco: [[0, 0], [3, 0], [6, 7], [8, 12], [11, 7], [14, 0]],
-    pulse8: [[0, 0], [2, 0], [4, 0], [6, 0], [8, 0], [10, 0], [12, 0], [14, 0]],
-  };
-  // человеческая неровность: одинаковая громкость у всех ударов — первое, по чему
-  // слышно, что играет не живой барабанщик, а сетка
-  const humanVel = (base) => base * (0.86 + Math.random() * 0.2);
-
-  const scheduleStep = (idx, t) => {
-    const totalSteps = formBars * 16;
-    const i = ((idx % totalSteps) + totalSteps) % totalSteps;
-    const bar = Math.floor(i / 16); const pos = i % 16;
-    const sc = sectionPlan.find((x) => bar >= x.start && bar < x.start + x.bars) || sectionPlan[0];
-    const harmony = track[sc.h];
-    const barIn = bar - sc.start;
-    const voicing = harmony[barIn % harmony.length];
-    const melody = track[sc.mel] || [];
-    const stepIn = barIn * 16 + pos;
-    const sd = stepDur();
-    const arr = sc.arr;
-    const has = (k) => arr.indexOf(k) >= 0;
-    const dyn = sc.dyn * (0.88 + 0.18 * intensity);
-    const lastBarOfSection = barIn === sc.bars - 1;
-
-    // гармония
-    if (pos === 0) {
-      if (has('pad')) strings(t, voicing.slice(1, 3), sd * 16 * 0.96, 0.055 * dyn);
-      if (has('choir')) choir(t, voicing.slice(1), sd * 16 * 0.94, 0.05 * dyn);
-      if (has('strings')) strings(t, voicing.slice(1, 4), sd * 16 * 0.92, 0.042 * dyn);
-      if (has('timpani') && (bar % 2 === 0)) timpani(t, voicing[0] - 12, 0.8 * dyn);
-    }
-    // духовые стабы на каждую четверть — маршевое «ум-па», а не длинная педаль
-    if (has('brass') && pos % 4 === 0) brass(t, voicing.slice(0, 3), sd * 3.4, 0.1 * dyn);
-    // гитарный «чуг» на каждую четверть — тот же маршевый приём, что и духовые стабы,
-    // но режущий и жёсткий: собственный узнаваемый ритм тоталитарного саундтрека
-    if (has('guitar') && has('growl') && pos % 4 === 0) guitar(t, voicing[0], sd * 3.4, 0.11 * dyn, true);
-    // бой акустической гитары: перебор аккорда восьмыми со сменой направления
-    if (has('strum') && pos % 2 === 0) {
-      const dirDown = (pos / 2) % 2 === 0;
-      const order = dirDown ? [0, 1, 2, 3] : [3, 2, 1, 0];
-      order.forEach((k, n) => {
-        const note = voicing[k % voicing.length] + (k > 1 ? 12 : 0);
-        nylon(t + n * 0.011 + jitter() * 0.4, note, sd * 3.2, (dirDown ? 0.5 : 0.34) * dyn);
-      });
-    }
-    // бас
-    const bassFig = BASS_LINES[track.bassLine || 'drive'] || BASS_LINES.drive;
-    bassFig.forEach(([st, deg]) => {
-      if (st !== pos) return;
-      const root = voicing[0] - 12;
-      const note = root + deg;
-      const vel = (pos === 0 ? 1.0 : pos % 8 === 0 ? 0.82 : pos % 4 === 0 ? 0.7 : 0.56) * dyn;
-      const len = sd * (track.bassLine === 'walk' ? 3.6 : track.bassLine === 'half' ? 7 : 1.9);
-      if (has('growl')) growl(t, note, len, vel);
-      else if (has('cello')) cello(t, note, len, vel);
-      else if (has('bass')) bass(t + jitter() * 0.5, note, len, vel);
-    });
-    // арпеджио по аккорду шестнадцатыми — накладывается на «полные» секции без
-    // собственной арпеджио-партии в аранжировке, характерный слой синтвейва
-    if (has('pad') && !has('harp') && !has('strum')) {
-      const arpDeg = [1, 2, 3, 2][(pos / 2) % 4];
-      if (pos % 2 === 0) harp(t + jitter(), voicing[arpDeg % voicing.length] + 12, sd * 2.2, 0.3 * dyn);
-    }
-    // фигура левой руки
-    const fig = LH[sc.lh] || LH.flow;
-    fig.forEach(([st, deg]) => {
-      if (st !== pos) return;
-      const vel = (0.38 + 0.16 * accent(pos)) * dyn;
-      const note = voicing[deg % voicing.length];
-      if (has('harp')) harp(t + jitter(), note + 12, sd * 6, vel);
-      if (has('piano')) piano(t + jitter(), note, vel, track.bpm > 100 ? 0.7 : sc.lh === 'sustain' ? 1.15 : 0.95);
-      else if (has('synth')) synth(t + jitter(), note, vel, track.bpm > 100 ? 0.55 : sc.lh === 'sustain' ? 1.0 : 0.85, sc.lh === 'sustain' ? 4 : 5);
-      else if (has('nylon') && !has('strum')) nylon(t + jitter(), note + 12, sd * 4.5, vel);
-      else if (has('marimba')) marimba(t + jitter(), note + 12, sd * 3, vel * 0.9);
-      else if (has('bells') && !has('harp') && (st % 4 === 0)) bell(t, note + 12, sd * 6, 0.6 * vel);
-    });
-    // мелодия
-    melody.forEach(([st, midi, dur]) => {
-      if (st !== stepIn) return;
-      const vel = (0.78 + 0.20 * accent(pos)) * dyn;
-      if (has('violin')) violin(t, midi, sd * dur * 1.05, vel);
-      if (has('bells')) bell(t, midi, sd * dur * 1.7, vel * 0.9);
-      if (has('lead')) synth(t + jitter(), midi, vel, 1.1, 8);
-      if (has('guitar') && !has('violin') && !has('bells') && !has('lead')) guitar(t + jitter(), midi, sd * dur * 0.9, vel * 0.7, false);
-      if (has('marimba') && !has('violin') && !has('bells') && !has('guitar') && !has('lead')) marimba(t + jitter(), midi, sd * dur * 0.8, vel * 0.85);
-      if (has('nylon') && !has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('lead')) nylon(t + jitter(), midi, sd * dur * 0.9, vel * 0.8);
-      if (!has('violin') && !has('bells') && !has('guitar') && !has('marimba') && !has('nylon') && !has('lead')) {
-        piano(t + jitter(), midi, Math.min(1, vel), 1.25);
-        if (dur >= 8 && track.mood !== 'crisis') piano(t + jitter(), midi - 12, vel * 0.32, 0.9);
-      } else if (has('piano') && has('violin')) {
-        piano(t + jitter(), midi, vel * 0.5, 1.0);
-      }
-    });
-    // ударные
-    const d = sc.drums;
-    if (d) {
-      const power = (0.75 + 0.3 * intensity) * dyn;
-      // сбивка в последнем такте секции: барабанщик объявляет смену, а не молча
-      // доигрывает один и тот же такт по кругу
-      const fillBar = lastBarOfSection && sc.bars >= 4 && d.fill !== false;
-      if (fillBar && pos >= 8) {
-        const TOMS = [52, 50, 47, 43];
-        if (pos % 2 === 0) tom(t, TOMS[Math.min(3, Math.floor((pos - 8) / 2))], humanVel(power * 0.95));
-        if (pos === 15) snare(t, humanVel(power * 1.1));
-        if (pos === 8) kick(t, humanVel(power));
-      } else {
-        d.kick.forEach(([st]) => { if (st === pos) kick(t, humanVel(power)); });
-        d.snare.forEach(([st]) => { if (st === pos) snare(t, humanVel(power)); });
-        d.hat.forEach(([st, c]) => {
-          if (st !== pos) return;
-          if (c === 'r') ride(t, humanVel(power * 0.8));
-          else hat(t, c === 'O', humanVel(pos % 4 === 0 ? power : power * 0.62));
-        });
-        // призрачные удары малого между долями — то, что отличает грув от метронома
-        if (d.ghost && pos % 4 === 2 && Math.random() < 0.45) snare(t, power * 0.18);
-      }
-    }
-  };
-
-  const scheduler = () => {
-    if (!ctx || !running) return;
-    if (nextTime < now() - 0.4) nextTime = now() + 0.06;
-    let guard = 0;
-    while (nextTime < now() + 0.22 && guard++ < 24) {
-      const totalSteps = formBars * 16;
-      if (stepIdx % 16 === 0 && pending && pending !== track.id) {
-        setTrack(pending); pending = null;
-        if (musicBus) {
-          musicBus.gain.setTargetAtTime(opts.music ? 0.18 : 0, now(), 0.12);
-          musicBus.gain.setTargetAtTime(opts.music ? 0.55 : 0, now() + 0.7, 0.7);
-        }
-      }
-      if (stepIdx > 0 && stepIdx % totalSteps === 0) advancePlaylist(true);   // пьеса сыграна целиком
-      const sd = stepDur();
-      /* Свинг по характеру пьесы, а не один на всех: синтвейву и маршу нужна ровная
-         механическая сетка, а джазу и лаунжу — та самая неровность восьмых, без
-         которой они звучат как упражнение из учебника. */
-      const feelK = track.feel === 'swing' ? 1 : track.feel === 'loose' ? 0.6 : 0.3;
-      const swing = (stepIdx % 2 === 1) ? track.swing * sd * feelK : 0;
-      scheduleStep(stepIdx, nextTime + swing);
-      nextTime += sd; stepIdx += 1;
-    }
-  };
-
-  /* ---------------------------- ЗВУКИ ИНТЕРФЕЙСА ---------------------------- */
-  const tone = (freq, t0, dur, gain, wave) => {
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.type = wave || 'sine'; o.frequency.setValueAtTime(freq, t0);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(sfxBus); o.start(t0); o.stop(t0 + dur + 0.05);
-  };
-  const SFX = {
-    tick: () => tone(1250, now(), 0.035, 0.028, 'triangle'),
-    click: () => { const t = now(); tone(760, t, 0.05, 0.045, 'square'); tone(1140, t + 0.015, 0.05, 0.025, 'triangle'); },
-    tab: () => tone(560, now(), 0.06, 0.032, 'triangle'),
-    paper: () => { const t = now(); noiseHit(t, 0.28, 0.055, 'bandpass', 2600, 0.7, sfxBus); noiseHit(t + 0.09, 0.22, 0.035, 'bandpass', 3400, 0.9, sfxBus); },
-    stamp: () => {
-      const t = now(); const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type = 'sine'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.16);
-      g.gain.setValueAtTime(0.14, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-      o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.35);
-      noiseHit(t, 0.09, 0.08, 'bandpass', 1800, 0.6, sfxBus);
-    },
-    up: () => { const t = now(); [523.25, 659.25, 783.99].forEach((f, i) => tone(f, t + i * 0.075, 0.4, 0.04, 'triangle')); },
-    down: () => { const t = now(); [659.25, 523.25, 392.0].forEach((f, i) => tone(f, t + i * 0.085, 0.45, 0.04, 'triangle')); },
-    alarm: () => { const t = now(); [0, 0.22, 0.44].forEach((d) => { tone(233, t + d, 0.18, 0.06, 'square'); tone(175, t + d + 0.09, 0.18, 0.05, 'square'); }); },
-    news: () => { const t = now(); tone(1500, t, 0.04, 0.025, 'sine'); tone(2100, t + 0.05, 0.05, 0.02, 'sine'); },
-    coin: () => { const t = now(); tone(988, t, 0.09, 0.035, 'triangle'); tone(1319, t + 0.05, 0.16, 0.03, 'triangle'); },
-  };
-
-  return {
-    opts,
-    trackName: () => track.name,
-    nowPlaying: () => ({ id: track.id, name: track.name, subtitle: track.subtitle, mood: track.mood,
-      moodLabel: MOOD_LABEL[track.mood], bpm: Math.round(track.bpm * tempoMod), locked: lockedMood }),
-    playlist: () => listOf(lockedMood || mood).map((id) => ({ id, name: TRACKS[id].name, current: id === track.id })),
-    setRole(id) {
-      if (roleId === id) return;
-      roleId = id || null;
-      playlistIdx = 0;
-      if (!lockedMood) { pending = listOf(mood)[0]; notify(); }
-    },
-    onChange: (fn) => { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; },
-    skip(forward) { if (!ensure()) return; resume(); advancePlaylist(forward); if (!running) this.startMusic(); },
-    playTrack(id) { if (!ensure()) return; resume(); pending = id; const list = listOf(lockedMood || mood); const i = list.indexOf(id); if (i >= 0) playlistIdx = i; if (!running) this.startMusic(); },
-    setPlaylist(moodId) {
-      lockedMood = moodId || null;
-      const list = MOOD_PLAYLISTS[lockedMood || mood] || MOOD_PLAYLISTS.calm;
-      playlistIdx = 0; pending = list[0]; notify();
-      if (!running && opts.music) this.startMusic();
-    },
-    prime() { const c = ensure(); if (c) resume(); return !!c; },
-    // «контекст уже создан и играет» — без создания нового: до первого действия
-    // человека браузер всё равно держал бы его выключенным
-    primed: () => !!ctx && ctx.state === 'running',
-    play(name) {
-      if (!opts.sfx) return;
-      if (name === 'tick') { const t = Date.now(); if (t - lastTick < 70) return; lastTick = t; }
-      if (!ensure()) return; resume();
-      const fn = SFX[name]; if (fn) { try { fn(); } catch { /* тишина важнее падения */ } }
-    },
-    startMusic() {
-      if (!ensure()) return; resume();
-      if (running || !opts.music) return;
-      running = true; stepIdx = 0; nextTime = now() + 0.2;
-      if (musicBus) musicBus.gain.setTargetAtTime(0.55, now(), 1.5);
-      timer = setInterval(() => { try { scheduler(); } catch { /* музыка не ломает игру */ } }, 40);
-      notify();
-    },
-    stopMusic() {
-      running = false;
-      if (timer !== null) { clearInterval(timer); timer = null; }
-      if (musicBus) musicBus.gain.setTargetAtTime(0.0001, now(), 0.3);
-      notify();
-    },
-    setMusic(on) {
-      opts.music = on;
-      if (!ensure()) return;
-      if (on) { if (musicBus) musicBus.gain.setTargetAtTime(0.55, now(), 0.5); this.startMusic(); } else this.stopMusic();
-    },
-    setSfx(on) { opts.sfx = on; if (ensure() && sfxBus) sfxBus.gain.setTargetAtTime(on ? 0.9 : 0, now(), 0.1); },
-    setVolume(v) { opts.volume = v; if (ensure() && master) master.gain.setTargetAtTime(v, now(), 0.1); },
-    setAmbience(regime, k) {
-      if (!ensure()) return;
-      ensureAmb();
-      if (!amb) return;
-      const crisis = ['banking', 'debt', 'currency', 'stagflation'].indexOf(regime) >= 0;
-      const lvl = crisis ? 0.055 + 0.075 * k : regime === 'recession' ? 0.026 : regime === 'overheating' ? 0.018 : 0.005;
-      amb.gain.gain.setTargetAtTime(lvl, now(), 2.2);
-      amb.filter.frequency.setTargetAtTime(crisis ? 180 + 260 * k : 120, now(), 2.5);
-      amb.oscB.detune.setTargetAtTime(crisis ? 20 + 14 * k : 6, now(), 2.5);
-      amb.wind.frequency.setTargetAtTime(crisis ? 420 + 300 * k : 260, now(), 2.5);
-      if (crisis && k > 0.5) {
-        if (!heartTimer) heartTimer = setInterval(() => { try { heartbeat(); } catch { /* тихо */ } }, 1700);
-      } else if (heartTimer) { clearInterval(heartTimer); heartTimer = null; }
-    },
-    setMood(e) {
-      // тоталитарный режим переопределяет настроение саундтрека независимо от того,
-      // что творится с экономикой — власть куда навязчивее любого экономического цикла
-      const m = e.politicalRegime === 'totalitarian' ? 'totalitarian' : (REGIME_MOOD[e.regime] || 'calm');
-      intensity = clamp((e.inflationRisk * 0.3 + e.bankingRisk * 0.3 + e.debtRisk * 0.2 + e.recessionRisk * 0.2) / 100, 0, 1);
-      tempoMod = clamp(0.95 + (e.gdpGrowth - 2.0) * 0.012 + intensity * 0.05, 0.9, 1.1);
-      this.setAmbience(e.regime, intensity);
-      if (m !== mood) {
-        mood = m; playlistIdx = 0;
-        if (!lockedMood) { pending = listOf(m)[0]; notify(); }
-      }
-    },
-    quarterSequence({ wellbeingDelta, newCrisis, bigNews }) {
-      if (!opts.sfx) return;
-      if (!ensure()) return; resume();
-      SFX.stamp();
-      setTimeout(() => { if (bigNews) SFX.news(); }, 240);
-      setTimeout(() => {
-        if (newCrisis) SFX.alarm();
-        else if (wellbeingDelta > 0.6) SFX.up();
-        else if (wellbeingDelta < -0.6) SFX.down();
-      }, 430);
-    },
-  };
-})();
+/* Звук и саундтрек живут в src/audio/: tracks.js — пьесы и плейлисты, engine.js — движок. */
 
 /* Ни одна полноэкранная модалка (газета, достижения, карточка результата,
    график реакции и т.д.) не закрывалась по Esc — только кликом мимо или по
@@ -2516,6 +663,17 @@ export function AudioControls() {
               ))}
             </div>
           )}
+          {music && (
+            <div style={{ marginBottom: 9 }}>
+              <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Заставки событий</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {Object.values(STINGERS).map((st) => (
+                  <button key={st.id} className="ems-btn" style={{ padding: '2px 7px', fontSize: 10 }}
+                    onClick={() => Audio.stinger(st.id)}>{st.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ marginBottom: 9 }}>
             <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Что играть</div>
             <select className="ems-btn" value={np.locked || 'auto'} style={{ width: '100%', padding: '5px 8px', fontSize: 11 }}
@@ -2538,7 +696,7 @@ export function AudioControls() {
               onChange={(e) => { const v = parseFloat(e.target.value); setVol(v); Audio.setVolume(v); }} />
           </div>
           <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
-            {Object.keys(TRACKS).length} пьес в {new Set(Object.values(TRACKS).map((t) => t.mood)).size} настроениях. Каждая состоит из нескольких частей с разной оркестровкой и доигрывается до конца, прежде чем уступить место следующей.
+            {Object.keys(TRACKS).length} пьес в {new Set(Object.values(TRACKS).map((t) => t.mood)).size} настроениях. Каждая состоит из нескольких частей с разной оркестровкой, на повторах играется с вариациями, а темп дышит экономикой — при высокой инфляции музыка разгоняется. Смена настроения не обрывает пьесу: она затихает за такт и передаёт место следующей. На выборы, переворот, падение и возвращение демократии и остановленные цены звучат короткие заставки.
           </div>
         </div>
       )}
@@ -2550,7 +708,7 @@ export function AudioControls() {
    в ряд такими же квадратными иконками, что и «Газета»/«Достижения», хотя пользуются
    ими на порядок реже. Прячем их за один «⋯», оставляя на виду только то, что имеет
    самостоятельный смысл прямо по ходу партии. */
-function HeaderOverflowMenu({ items }) {
+export function HeaderOverflowMenu({ items }) {
   const DD_WIDTH = 220;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
@@ -2635,7 +793,7 @@ function NewsItem({ item, showQuarter }) {
   );
 }
 
-function NewsTerminal({ items, onOpenPaper }) {
+export function NewsTerminal({ items, onOpenPaper }) {
   const [filter, setFilter] = useState('all');
   const present = NEWS_CATEGORIES.filter((c) => items.some((i) => i.cat === c.id));
   const list = (filter === 'all' ? items : items.filter((i) => i.cat === filter)).slice(0, 60);
@@ -2704,7 +862,7 @@ function NewsTerminal({ items, onOpenPaper }) {
 
 /* Газета («Газета и хроника») подгружается лениво через React.lazy() — см.
    комментарий в начале src/newspaper.jsx. */
-const NewspaperModal = React.lazy(() => import('./newspaper.jsx').then((m) => ({ default: m.NewspaperModal })));
+export const NewspaperModal = React.lazy(() => import('./newspaper.jsx').then((m) => ({ default: m.NewspaperModal })));
 
 /* Обучение (словарь, курс из модулей, тесты и практика) подгружается лениво
    через React.lazy() — см. комментарий в начале src/tutorial.jsx. */
@@ -2726,7 +884,7 @@ const ATMOSPHERE = {
   currency: { tint: 'rgba(165,60,25,0.042)', vig: 0.30, accent: '#C2531F', breathe: 0.20, grain: 0.035, label: 'валютный кризис', urgent: true },
   deflation: { tint: 'rgba(120,150,175,0.024)', vig: 0.22, accent: '#7FA3B8', breathe: 0, grain: 0, label: 'дефляция', urgent: false },
 };
-function Atmosphere({ regime, intensity, flashKey }) {
+export function Atmosphere({ regime, intensity, flashKey }) {
   const a = ATMOSPHERE[regime] || ATMOSPHERE.normal;
   const k = clamp(intensity, 0, 1);
   const vig = a.vig * (0.6 + 0.5 * k);
@@ -2762,7 +920,7 @@ function Atmosphere({ regime, intensity, flashKey }) {
    Печать здесь и до этого жила только в газете (StateSeal/ProceduralNewspaper);
    расширяем её же мотив на сам момент перехода — «оттиск» ложится на экран и
    тут же тает, отмечая закрытие квартала, как отметка в гроссбухе. */
-function QuarterStamp({ stampKey, regime }) {
+export function QuarterStamp({ stampKey, regime }) {
   if (!stampKey) return null;
   return (
     <div key={stampKey} style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 55 }}>
@@ -2772,7 +930,7 @@ function QuarterStamp({ stampKey, regime }) {
 }
 
 /* Аварийная строка: ощущение, что вы внутри события, а не читаете отчёт о нём */
-function CrisisBar({ economy, botAction }) {
+export function CrisisBar({ economy, botAction }) {
   const regime = economy.regime;
   if (regime === 'normal' || regime === 'deflation') return null;
   const a = ATMOSPHERE[regime] || ATMOSPHERE.normal;
@@ -3130,7 +1288,7 @@ function ScoreRadar({ economy, prev, size = 190 }) {
   );
 }
 
-function ScorePanel({ economy, prev, goalDef }) {
+export function ScorePanel({ economy, prev, goalDef }) {
   return (
     <div className="ems-panel" style={{ padding: 14 }}>
       <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -3276,7 +1434,7 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
    цифры политики — сам двигает доверие и рейтинг. Отдельно от обещаний: те
    подводят итог по факту на выборах, здесь решает само слово. Не показывается
    трейдеру — у него нет мандата, за который отвечают перед прессой. */
-function PressConferencePanel({ question, answer, setAnswer }) {
+export function PressConferencePanel({ question, answer, setAnswer }) {
   if (!question) return null;
   return (
     <div className="ems-panel" style={{ padding: 13 }}>
@@ -3322,7 +1480,7 @@ const lastDirectiveWord = (last) => {
     : verdict === 'ignored' ? 'проигнорировано' : 'передано ведомству';
 };
 
-function PresidentWatchPanel({ economy, plan, last, branch }) {
+export function PresidentWatchPanel({ economy, plan, last, branch }) {
   if (!plan) return null;
   const P = plan.persona;
   const sat = clamp(Number.isFinite(economy.presidentSatisfaction) ? economy.presidentSatisfaction : 60, 0, 100);
@@ -3791,7 +1949,7 @@ const PROMISE_FMT = {
    ролям даёт партнёр по власти. met/value считаются на лету от текущей
    экономики (evaluatePromise), а не хранятся — иначе они бы не обновлялись
    при откате/загрузке сохранения. */
-function PromisesPanel({ promises, economy }) {
+export function PromisesPanel({ promises, economy }) {
   if (!promises || !promises.length) return null;
   /* Выборов нет — нет и предвыборных обещаний: при тоталитаризме панель висела
      со счётчиком «до выборов», которых не будет, и с итогом, который никто
@@ -3849,7 +2007,7 @@ function PromisesPanel({ promises, economy }) {
   );
 }
 
-function Segmented({ options, value, onChange, label, hint }) {
+export function Segmented({ options, value, onChange, label, hint }) {
   const cur = options.find((o) => o.id === value);
   return (
     <div style={{ borderBottom: `1px solid ${COLOR.hairline}`, padding: '11px 0' }}>
@@ -3902,8 +2060,8 @@ const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } cat
 // «Газета сама открывается» — настройка на устройство, а не на партию: игрок,
 // которому нравится читать сводку каждый квартал, хочет этого во всех своих играх.
 const AUTO_PAPER_KEY = 'ems-auto-paper';
-const loadAutoPaper = () => { try { return localStorage.getItem(AUTO_PAPER_KEY) === '1'; } catch { return false; } };
-const saveAutoPaper = (v) => { try { localStorage.setItem(AUTO_PAPER_KEY, v ? '1' : '0'); } catch { /* ignore */ } };
+export const loadAutoPaper = () => { try { return localStorage.getItem(AUTO_PAPER_KEY) === '1'; } catch { return false; } };
+export const saveAutoPaper = (v) => { try { localStorage.setItem(AUTO_PAPER_KEY, v ? '1' : '0'); } catch { /* ignore */ } };
 
 /* Player ID — единственное, что остаётся на клиенте: без него некому
    адресовать слоты на сервере (аккаунтов в игре нет). Сама партия — экономика,
@@ -3992,6 +2150,8 @@ const ACHIEVEMENTS = [
   { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
   { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
   { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получи экстренное финансирование МВФ вместо дефолта.' },
+  { id: 'prices_stopped', icon: Award, title: 'Цены остановлены', desc: 'Доведи стабилизационную программу до конца: верни инфляцию из гиперинфляции к цели.' },
+  { id: 'hardest_way_out', icon: Crown, title: 'Выход есть', desc: 'Сохрани демократию 16 кварталов в самом трудном сценарии — «Гиперинфляции».' },
   { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введи санкции против торгового партнёра.' },
   { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договорись о едином рынке с соседями.' },
   { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Соверши сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
@@ -4001,8 +2161,8 @@ const ACH_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));
 const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
 const loadRolesPlayed = () => { try { return JSON.parse(localStorage.getItem(ROLES_PLAYED_KEY) || '[]'); } catch { return []; } };
 const isNetworkPlayed = () => { try { return localStorage.getItem(NETWORK_PLAYED_KEY) === '1'; } catch { return false; } };
-const markNetworkPlayed = () => { try { localStorage.setItem(NETWORK_PLAYED_KEY, '1'); } catch { /* приватный режим */ } };
-const recordRolePlayed = (role) => {
+export const markNetworkPlayed = () => { try { localStorage.setItem(NETWORK_PLAYED_KEY, '1'); } catch { /* приватный режим */ } };
+export const recordRolePlayed = (role) => {
   const arr = loadRolesPlayed();
   if (!role || arr.includes(role)) return arr;
   const next = [...arr, role];
@@ -4076,7 +2236,7 @@ function survivedCrisis(history) {
   if ((last.activeCrises || []).length > 0) return false;
   return history.slice(0, -1).some((h) => (h.activeCrises || []).length > 0);
 }
-function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role, presActionsThisQuarter, isPublicRoom }) {
+export function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlayed, networkPlayed, lastEvents, role, presActionsThisQuarter, isPublicRoom }) {
   const ids = [];
   if (quarterIndex >= 1) ids.push('first_quarter');
   if (quarterIndex >= 20) ids.push('survivor_20');
@@ -4087,6 +2247,12 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
   if (role === 'ministry_finance' && economy.debtToGdp < 35) ids.push('debt_control');
   if (role === 'ministry_finance' && economy.imfActive) ids.push('imf_bailout');
   if (survivedCrisis(history)) ids.push('survived_crisis');
+  if (economy.stabilizationWon) ids.push('prices_stopped');
+  // мандат спасения задаёт только сценарий «Гиперинфляция» — по нему и узнаём
+  // сценарий, не протаскивая его отдельным полем через все экраны
+  const unfree = (h) => h.politicalRegime === 'authoritarian' || h.politicalRegime === 'totalitarian';
+  if (quarterIndex >= 16 && (economy.crisisMandateTotal || 0) > 0 && !unfree(economy)
+    && (history || []).every((h) => !unfree(h))) ids.push('hardest_way_out');
   if (economy.electionResult === 'incumbent') ids.push('won_election');
   if (rolesPlayed && ALL_ROLE_IDS.every((r) => rolesPlayed.includes(r))) ids.push('all_roles');
   if (networkPlayed) ids.push('network_played');
@@ -4105,7 +2271,7 @@ function questProgressAchievementIds({ quarterIndex, economy, history, rolesPlay
   }
   return ids;
 }
-function casinoAchievementIds({ net, casinoNet }) {
+export function casinoAchievementIds({ net, casinoNet }) {
   const ids = [];
   if (net > 0) ids.push('casino_win');
   if (net >= 30) ids.push('casino_jackpot');
@@ -4416,7 +2582,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
   );
 }
 
-function AchievementsModal({ onClose }) {
+export function AchievementsModal({ onClose }) {
   useEscapeClose(onClose);
   const unlocked = loadUnlockedAchievements();
   const count = ACHIEVEMENTS.filter((a) => unlocked[a.id]).length;
@@ -4464,7 +2630,7 @@ function AchievementsModal({ onClose }) {
    работает смена персон бота после выборов в finishQuarter — независимость
    центробанка переживает обычное поражение партии власти, а министерский
    портфель нет. */
-function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
+export function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
   // гиперинфляция — провал денежной/бюджетной политики; трейдер её не проводит и
   // повлиять на неё не может, так что и мандата за неё лишаться ему не за что
   if (role !== 'trader' && history && history.length >= 4) {
@@ -4519,7 +2685,7 @@ function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
   }
   return null;
 }
-function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, restartLabel = 'Начать заново' }) {
+export function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, onChronicle, restartLabel = 'Начать заново' }) {
   useEscapeClose(onClose);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
@@ -4530,6 +2696,7 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, on
         <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12 }}>Партия окончена на {quarterLabel(quarterIndex)} — {quarterIndex} кв. у руля.</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
           <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Поделиться</button>
+          {onChronicle && <button className="ems-btn" onClick={onChronicle}><BookOpen size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Разбор партии</button>}
           <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
           {onRollback && (
             <button className="ems-btn" style={{ borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
@@ -4542,7 +2709,80 @@ function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, on
     </div>
   );
 }
-const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLabel = 'Начать заново' }) => (
+/* Разбор партии: переломные моменты по истории кварталов (gameChronicle в
+   движке). Открывается с экрана поражения и в любой момент из меню «⋯» —
+   открытая партия может идти бесконечно, и разбор нужен не только в конце.
+   Это кабинет, а не газета: здесь пишется правда, включая честный итог
+   подтасованных выборов. */
+const CHRONICLE_TONE = { good: 'teal', bad: 'rust', neutral: 'faint' };
+export function ChronicleModal({ history, onClose }) {
+  useEscapeClose(onClose);
+  const { events, summary } = useMemo(() => gameChronicle(history), [history]);
+  const fmtSign = (v) => `${v > 0 ? '+' : ''}${fmt1(v)}`;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div className="ems-panel-raised ems-fade-in ems-scroll" role="dialog" aria-label="Разбор партии"
+        style={{ maxWidth: 620, width: '100%', maxHeight: '88vh', overflowY: 'auto', padding: 22 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+          <span className="ems-serif" style={{ fontSize: 19, color: COLOR.goldSoft, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BookOpen size={17} />Разбор партии
+          </span>
+          <button className="ems-btn ghost" style={{ padding: '4px 8px' }} onClick={onClose} aria-label="Закрыть разбор" title="Закрыть (Esc)"><X size={15} /></button>
+        </div>
+        {!summary ? (
+          <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6, marginTop: 8 }}>
+            Разбирать пока нечего: сыграйте хотя бы пару кварталов.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.6, marginBottom: 14 }}>
+              Переломные моменты партии и решения, которые им предшествовали. Соседство во времени — ещё не доказательство причины, но обычно именно здесь видно, где всё пошло не так — или так.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 18 }}>
+              {[
+                ['Кварталов у руля', String(summary.quarters)],
+                ['ВВП за партию', `${fmtSign(summary.gdpChange)}%`],
+                ['Средняя инфляция', `${fmt1(summary.avgInflation)}%`],
+                ['Кризисов', String(summary.crises)],
+                ['Выборы', summary.elections ? `${summary.electionsWon} из ${summary.elections}` : 'не было'],
+                ['Благополучие', `${Math.round(summary.wellbeingStart)} → ${Math.round(summary.wellbeingEnd)}`],
+              ].map(([k, v]) => (
+                <div key={k} className="ems-panel" style={{ padding: '8px 10px' }}>
+                  <div style={{ fontSize: 10, color: COLOR.faint, marginBottom: 2 }}>{k}</div>
+                  <div className="ems-mono" style={{ fontSize: 14, color: COLOR.text }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {events.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: COLOR.muted }}>Ровная партия: ни кризисов, ни выборов, ни резких поворотов.</div>
+            ) : (
+              <ol style={{ listStyle: 'none', margin: 0, padding: 0, position: 'relative' }}>
+                {events.map((ev, i) => {
+                  const c = COLOR[CHRONICLE_TONE[ev.tone] || 'faint'];
+                  return (
+                    <li key={`${ev.q}-${ev.kind}-${i}`} style={{ display: 'grid', gridTemplateColumns: '14px 1fr', gap: 10, paddingBottom: i === events.length - 1 ? 0 : 14 }}>
+                      <span aria-hidden style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: c, marginTop: 4, zIndex: 1 }} />
+                        {i < events.length - 1 && <span style={{ position: 'absolute', top: 16, bottom: -12, width: 1, background: COLOR.border }} />}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, letterSpacing: '0.04em' }}>{ev.label}</div>
+                        <div className="ems-serif" style={{ fontSize: 14, color: ev.tone === 'bad' ? COLOR.rust : ev.tone === 'good' ? COLOR.teal : COLOR.text, margin: '1px 0 3px' }}>{ev.title}</div>
+                        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>{ev.text}</div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLabel = 'Начать заново' }) => (
   <div style={{ borderTop: `2px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
     display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
     boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)', flexWrap: 'wrap' }}>
@@ -4571,7 +2811,7 @@ function ruPlural(n, one, few, many) {
   return many;
 }
 const countUnlockedAchievements = () => { const u = loadUnlockedAchievements(); return ACHIEVEMENTS.filter((a) => u[a.id]).length; };
-function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat, promises }) {
+export function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat, promises }) {
   const roleLabel = (ROLES.find((r) => r.id === role) || {}).short || role;
   const isTrader = role === 'trader';
   const stats = [];
@@ -4709,7 +2949,7 @@ function drawResultCard(canvas, data) {
   ctx.font = `500 14px ${FONT.sans}`;
   ctx.fillText(`🏆 Открыто ${data.unlockedCount} из ${ACHIEVEMENTS.length} достижений`, W / 2, H - 30);
 }
-function ResultCardModal({ data, onClose }) {
+export function ResultCardModal({ data, onClose }) {
   useEscapeClose(onClose);
   const canvasRef = React.useRef(null);
   const [copied, setCopied] = useState(false);
@@ -4946,6 +3186,8 @@ const SUMMARY_TABS = {
     { key: 'inflationExpectations', label: 'Ожидания', fmt: pctFmt },
     { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: (v) => v.toFixed(0),
       hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
+    { key: 'stabilizationCred', label: 'Доверие к стабилизации', fmt: (v) => (v > 0 ? `${Math.round(v * 100)} из 100` : '—'),
+      hint: 'Включается при инфляции выше цели на 8 п.п. Копится, пока реальная ставка не ниже 3 п.п., ЦБ не печатает деньги, а дефицит бюджета не больше 3% ВВП (или сокращается); управляемый курс при достаточных резервах ускоряет. Одна ставка без бюджета копит доверие втрое медленнее, ослабление денег раньше времени обрушивает его сразу. Чем выше доверие, тем быстрее падают ожидания и тем мягче рецессия.' },
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'rStar', label: 'Нейтральная ставка r*', fmt: pctFmt,
       hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
@@ -5281,7 +3523,7 @@ export function settleQuarter(book, economy) {
    выигрыш/проигрыш — через onResult(net), тем же путём, что и обычная сделка,
    поэтому сразу видны в общей стоимости портфеля и в сравнении с соперником.
 ========================================================================================= */
-const CasinoScreen = React.lazy(() => import('./casino.jsx').then((m) => ({ default: m.CasinoScreen })));
+export const CasinoScreen = React.lazy(() => import('./casino.jsx').then((m) => ({ default: m.CasinoScreen })));
 
 /* Панель ведомств для инвестора: только наблюдаемые факты и публичные заявления */
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
@@ -5385,7 +3627,7 @@ const persistChartView = (v) => {
 };
 /* Хук на три связанных значения: и в одиночной партии, и в сетевой — один и тот же
    вид графика, потому что настраивает его один и тот же человек. */
-function useChartView() {
+export function useChartView() {
   const init = React.useRef(null);
   if (!init.current) init.current = loadChartView();
   const [chartGroup, setChartGroup] = useState(init.current.group);
@@ -5438,7 +3680,7 @@ const persistPresetNames = (map) => {
 };
 // Сохранение может нести свои собственные наборы (например, сделанные до появления
 // этой возможности) — подмешиваем их к общеустройственным и заодно закрепляем там же.
-function initDashboards(savedDashboards) {
+export function initDashboards(savedDashboards) {
   const stored = loadCustomDashboards();
   const deleted = loadDeletedCustomIds();
   const extra = (savedDashboards || []).filter((d) => d && d.custom
@@ -5472,7 +3714,7 @@ const persistPinView = (pinned, activeDash) => {
 /* Закреплённые показатели: своя память на устройстве, плюс автосохранение в свой
    набор, если сейчас выбран именно он. Партия, загруженная из сохранения, важнее:
    в ней полоса была своя. */
-function usePinnedStrip(initialPins, initialDash, dashActions) {
+export function usePinnedStrip(initialPins, initialDash, dashActions) {
   const saved = React.useRef(null);
   if (!saved.current) saved.current = loadPinView();
   const [activeDash, setActiveDash] = useState(initialDash || saved.current.activeDash || 'overview');
@@ -5490,7 +3732,7 @@ function usePinnedStrip(initialPins, initialDash, dashActions) {
    настройка устройства, общая для одиночной и сетевой партии. Ниже 1241px CSS сама
    переводит сетку в адаптивный режим (см. .ems-grid) — там своя ширина и порядок не
    к месту, поэтому в этом диапазоне хук отдаёт исходный порядок и не трогает шаблон. */
-function useLayoutColumns() {
+export function useLayoutColumns() {
   const [layoutEditMode, setLayoutEditMode] = useState(false);
   const [columnOrder, setColumnOrderState] = useState(() => loadColumnOrder());
   const [columnWidths, setColumnWidthsState] = useState(() => loadColumnWidths());
@@ -5525,7 +3767,7 @@ function useLayoutColumns() {
 /* Действия над наборами одинаковы в соло- и сетевом экране, а правила хранения
    нетривиальны (свои наборы лежат целиком, у встроенных хранятся только отличия) —
    поэтому логика одна на оба экрана, а не две расходящиеся копии. */
-function makeDashboardActions(setDashboards) {
+export function makeDashboardActions(setDashboards) {
   const syncCustom = (next) => { persistCustomDashboards(next.filter((d) => d.custom)); return next; };
   return {
     saveDash: (pins, setActive) => {
@@ -5577,7 +3819,7 @@ export const haptic = (pattern) => { try { if (typeof navigator !== 'undefined' 
    а не партия: хранится напрямую в localStorage, как тема, а не в сохранении игры. */
 const LAYOUT_ORDER_KEY = 'ems-layout-order';
 const LAYOUT_WIDTHS_KEY = 'ems-layout-widths';
-const DEFAULT_COLUMN_ORDER = ['left', 'center', 'right'];
+export const DEFAULT_COLUMN_ORDER = ['left', 'center', 'right'];
 const DEFAULT_COLUMN_WIDTHS = { left: 300, right: 300 };
 const COLUMN_LABELS = { left: 'Решения', center: 'Новости и графики', right: 'Показатели' };
 const loadColumnOrder = () => {
@@ -5603,7 +3845,7 @@ const layoutIsDefault = (order, widths) => DEFAULT_COLUMN_ORDER.every((v, i) => 
    ширину не хранит — тянется тот, у кого она вообще есть. Если по обе стороны
    от границы стоят два фиксированных столбца (после перестановки), двигаются оба
    разом, как в обычном сплиттере. */
-function ColumnResizeHandle({ leftId, rightId, widths, onResize, onCommit }) {
+export function ColumnResizeHandle({ leftId, rightId, widths, onResize, onCommit }) {
   const dragRef = React.useRef(null);
   const onPointerDown = (e) => {
     e.preventDefault();
@@ -5635,7 +3877,7 @@ function ColumnResizeHandle({ leftId, rightId, widths, onResize, onCommit }) {
   );
 }
 
-function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash,
+export function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash, applyDash, saveDash, deleteDash, renameDash, resetDash,
   layoutEditMode, setLayoutEditMode, columnOrder, moveColumn, resetLayout, layoutIsDefaultNow, autoPaper, setAutoPaper }) {
   const DD_WIDTH = 250;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
@@ -5762,11 +4004,11 @@ function ViewSettings({ theme, setTheme, dense, setDense, dashboards, activeDash
 ========================================================================================= */
 const NETWORK_SEATS = ['central_bank', 'ministry_finance', 'president'];
 const TRADER_SEATS = ['trader1', 'trader2'];
-const seatsForMode = (mode) => (mode === 'trader' ? TRADER_SEATS : NETWORK_SEATS);
+export const seatsForMode = (mode) => (mode === 'trader' ? TRADER_SEATS : NETWORK_SEATS);
 // оба трейдерских места делят одну и ту же роль из ROLES (id 'trader') — нумеруем
 // их отдельно только в подписи, чтобы «Трейдер 1» и «Трейдер 2» не выглядели одним
 // и тем же местом в UI
-const seatRole = (seat) => {
+export const seatRole = (seat) => {
   if (seat === 'president') return ROLES.find((r) => r.id === 'president');
   if (seat === 'trader1' || seat === 'trader2') {
     const base = ROLES.find((r) => r.id === 'trader');
@@ -5783,8 +4025,8 @@ const seatRole = (seat) => {
    комнатах) и не терять доступ ни к одной из них. */
 const NETWORK_SLOTS_KEY = 'ems-network-slots';
 const NETWORK_SESSION_KEY_LEGACY = 'ems-network-session'; // старый формат до введения слотов
-const NETWORK_SLOT_COUNT = 3;
-const loadNetworkSlots = () => {
+export const NETWORK_SLOT_COUNT = 3;
+export const loadNetworkSlots = () => {
   let arr;
   try { arr = JSON.parse(localStorage.getItem(NETWORK_SLOTS_KEY) || '[]'); } catch { arr = []; }
   if (!Array.isArray(arr)) arr = [];
@@ -5812,7 +4054,7 @@ const writeNetworkSlots = (slots) => {
 };
 // сохраняем/обновляем сессию в слотах: та же комната+место обновляет свой слот,
 // иначе — в первый свободный, а если все заняты — вытесняем самый старый (LRU)
-const saveNetworkSlot = (net) => {
+export const saveNetworkSlot = (net) => {
   const slots = loadNetworkSlots();
   const entry = { id: net.id, seat: net.seat, token: net.token, ownerToken: net.ownerToken || null, savedAt: Date.now() };
   let idx = slots.findIndex((s) => s && s.id === net.id && s.seat === net.seat);
@@ -5824,14 +4066,14 @@ const saveNetworkSlot = (net) => {
   slots[idx] = entry;
   writeNetworkSlots(slots);
 };
-const clearNetworkSlotAt = (idx) => { const slots = loadNetworkSlots(); slots[idx] = null; writeNetworkSlots(slots); };
-const clearNetworkSlotFor = (id, seat) => writeNetworkSlots(loadNetworkSlots().map((s) => ((s && s.id === id && s.seat === seat) ? null : s)));
+export const clearNetworkSlotAt = (idx) => { const slots = loadNetworkSlots(); slots[idx] = null; writeNetworkSlots(slots); };
+export const clearNetworkSlotFor = (id, seat) => writeNetworkSlots(loadNetworkSlots().map((s) => ((s && s.id === id && s.seat === seat) ? null : s)));
 
 // квартал и режим партии по каждому запомненному месту — общий хук для лобби и
 // главного меню (см. NetworkLobby и MainMenu): комната всегда живёт на сервере,
 // так что превью не устаревает так, как устаревал локальный снимок в одиночной
 // игре — здесь только не хватало самого запроса.
-function useNetworkSlotPreviews(slots) {
+export function useNetworkSlotPreviews(slots) {
   const [slotPreviews, setSlotPreviews] = useState({});
   React.useEffect(() => {
     let cancelled = false;
@@ -5851,18 +4093,18 @@ function useNetworkSlotPreviews(slots) {
 // место, чтобы каждое место партии имело свой портфель и он пережил обновление
 // страницы.
 const netPortfolioKey = (id, seat) => `ems-net-portfolio:${id}:${seat}`;
-const loadNetworkPortfolio = (id, seat) => {
+export const loadNetworkPortfolio = (id, seat) => {
   try {
     const raw = JSON.parse(localStorage.getItem(netPortfolioKey(id, seat)) || 'null');
     return raw && typeof raw === 'object' ? raw : null;
   } catch { return null; }
 };
-const saveNetworkPortfolio = (id, seat, book) => {
+export const saveNetworkPortfolio = (id, seat, book) => {
   try { localStorage.setItem(netPortfolioKey(id, seat), JSON.stringify(book)); }
   catch { /* приватный режим/квота — не критично, портфель просто не переживёт обновление */ }
 };
 
-const roomCodeFromUrl = () => {
+export const roomCodeFromUrl = () => {
   if (typeof window === 'undefined') return '';
   return (new URLSearchParams(window.location.search).get('room') || '').toUpperCase();
 };
@@ -5870,1354 +4112,21 @@ const roomCodeFromUrl = () => {
 // краткие ярлыки кризисов для превью в браузере открытых комнат — список
 // комнат нарочно лёгкий (без полной экономики), поэтому берём готовые id
 // из activeCrises, а не CRISIS_INFO с его иногда функциональными label
-const CRISIS_SHORT = { banking: 'банковский кризис', debt: 'долговой кризис', currency: 'валютный кризис',
-  stagflation: 'стагфляция', overheating: 'перегрев', recession: 'рецессия', deflation: 'дефляция',
-  pandemic: 'пандемия', war: 'война' };
-
-function NetworkLobby({ onEnter }) {
-  const linkedCode = useMemo(roomCodeFromUrl, []);
-  const [tab, setTab] = useState(linkedCode ? 'join' : 'create');
-  const [seat, setSeat] = useState('central_bank');
-  const [name, setName] = useState('');
-  const [code, setCode] = useState(linkedCode);
-  const [difficulty, setDifficulty] = useState('medium');
-  const [mode, setMode] = useState('policy');
-  /* Те же две настройки, что и в одиночной игре: «классика» бросает характеры
-     ведомств случайно и включает президента, «настраиваемая» открывает всё это
-     руками. До этого сетевая комната всегда собиралась с одними и теми же
-     ботами и вообще без президента. */
-  const [setupMode, setSetupMode] = useState('classic');
-  const [cbPersona, setCbPersona] = useState('random');
-  const [mofPersona, setMofPersona] = useState('random');
-  const [presEnabled, setPresEnabled] = useState(true);
-  const [presPersona, setPresPersona] = useState('random');
-  // приватная (по умолчанию) — только по коду/ссылке; общедоступная попадает
-  // в браузер комнат ниже, и войти в неё можно без кода вообще
-  const [isPublicRoom, setIsPublicRoom] = useState(false);
-  const [publicRooms, setPublicRooms] = useState(null);
-  const [publicRoomsError, setPublicRoomsError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [created, setCreated] = useState(null);
-  const [createdOwnerToken, setCreatedOwnerToken] = useState(null);
-  const [linkCopied, setLinkCopied] = useState(false);
-  const [slots, setSlots] = useState(loadNetworkSlots);
-  const slotPreviews = useNetworkSlotPreviews(slots);
-  const [slotBusy, setSlotBusy] = useState(null);
-  const [roomPreview, setRoomPreview] = useState(null);
-  // если сервер не подключён к Redis (нет KV_REST_API_URL/KV_REST_API_TOKEN),
-  // комната живёт только в памяти одного serverless-вызова — партнёр или сам
-  // игрок при следующем запросе почти наверняка получит «комната не найдена».
-  // Ловим это здесь, чтобы не гадать по симптому, а сказать прямо.
-  const [storageMode, setStorageMode] = useState(null);
-
-  // подглядываем занятость мест ДО входа, чтобы не отправлять игрока на
-  // «место уже занято» после того, как он уже заполнил форму. Опрашиваем
-  // не один раз при вводе кода, а периодически, пока экран открыт: партнёр
-  // мог занять место уже ПОСЛЕ того, как код был напечатан, — иначе кнопка
-  // остаётся разблокированной до первой неудачной попытки входа
-  React.useEffect(() => {
-    const trimmed = code.trim().toUpperCase();
-    if (trimmed.length < 4) { setRoomPreview(null); return undefined; }
-    let cancelled = false;
-    const fetchPreview = async () => {
-      try {
-        const data = await fetchRoom(trimmed);
-        if (!cancelled) { setRoomPreview(data.room); setStorageMode(data.storage || null); }
-      } catch { if (!cancelled) setRoomPreview(null); }
-    };
-    const t = setTimeout(fetchPreview, 400);
-    const iv = setInterval(fetchPreview, 3000);
-    return () => { cancelled = true; clearTimeout(t); clearInterval(iv); };
-  }, [code]);
-  React.useEffect(() => {
-    if (!roomPreview) return;
-    // переключаем выбранное место, если оно занято ИЛИ вообще не существует в
-    // режиме этой комнаты (например, код привёл в «рыночную» комнату, а по
-    // умолчанию выбран ЦБ — место из другого режима)
-    const validSeats = previewSeats(roomPreview);
-    const occ = roomPreview.occupied || {};
-    if (!validSeats.includes(seat) || occ[seat]) {
-      const free = validSeats.find((sx) => !occ[sx]) || validSeats[0];
-      setSeat(free);
-    }
-  }, [roomPreview]);
-  // браузер комнат: список общедоступных партий, куда можно войти без кода —
-  // обновляем при открытии вкладки и затем периодически, пока она открыта
-  React.useEffect(() => {
-    if (tab !== 'browse') return undefined;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const rooms = await listPublicRooms();
-        if (!cancelled) { setPublicRooms(rooms); setPublicRoomsError(''); }
-      } catch (e) { if (!cancelled) setPublicRoomsError(e.message); }
-    };
-    load();
-    const iv = setInterval(load, 4000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [tab]);
-  const joinPublicRoom = (rid) => {
-    setCode(rid); setTab('join');
-  };
-  /* Место президента существует только там, где президент в комнате включён —
-     иначе его незачем и показывать. */
-  const previewSeats = (r) => seatsForMode(r ? r.mode : mode)
-    // в «классике» президент включён — значит и место за него есть
-    .filter((sx) => sx !== 'president' || !!(r ? r.president : (setupMode === 'classic' || presEnabled)));
-  const allSeatsTaken = !!(roomPreview && roomPreview.occupied
-    && previewSeats(roomPreview).every((sx) => roomPreview.occupied[sx]));
-
-  const enterSlot = async (idx) => {
-    const slot = slots[idx];
-    if (!slot) return;
-    setSlotBusy(idx); setError('');
-    try {
-      const data = await fetchRoom(slot.id, undefined, slot.seat, slot.token);
-      if (!data.room) throw new Error('Комната недоступна');
-      onEnter({ id: slot.id, seat: slot.seat, token: slot.token, ownerToken: slot.ownerToken || null, room: data.room });
-    } catch (e) {
-      setError(e.message);
-      clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
-    } finally { setSlotBusy(null); }
-  };
-  const removeSlot = (idx) => {
-    const slot = slots[idx];
-    if (slot && !window.confirm('Забыть эту партию? Ваше место освободится — партнёру вместо вас будет играть бот.')) return;
-    if (slot) leaveRoom(slot.id, slot.seat, slot.token).catch(() => {}); // освобождаем место партнёру, раз партия забыта насовсем
-    clearNetworkSlotAt(idx); setSlots(loadNetworkSlots());
-  };
-
-  const shareLink = (id) => `${window.location.origin}${window.location.pathname}?room=${id}`;
-  const copyLink = (id) => {
-    try {
-      navigator.clipboard.writeText(shareLink(id));
-      setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1800);
-    } catch { /* буфер обмена недоступен — код всё равно виден рядом */ }
-  };
-  const doCreate = async () => {
-    setBusy(true); setError('');
-    try {
-      const custom = setupMode === 'custom';
-      const asId = (v) => (v === 'random' ? undefined : v);
-      const r = await createRoom({ difficulty, mode, public: isPublicRoom,
-        cbPersona: custom ? asId(cbPersona) : undefined,
-        mofPersona: custom ? asId(mofPersona) : undefined,
-        president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined } });
-      setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
-      setSeat(seatsForMode(mode)[0]);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
-  const doJoin = async () => {
-    if (!code.trim()) { setError('Введите код комнаты.'); return; }
-    setBusy(true); setError('');
-    try {
-      const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
-      setStorageMode(r.storage || null);
-      Audio.play('stamp'); Audio.prime();
-      const trimmedCode = code.trim().toUpperCase();
-      // ownerToken есть только у того, кто сам только что создал ЭТУ комнату в этой
-      // же сессии лобби — у всех остальных, кто просто вошёл по коду/ссылке, его нет
-      const ownerToken = trimmedCode === created ? createdOwnerToken : null;
-      const net = { id: trimmedCode, seat, token: r.token, ownerToken, room: r.room };
-      saveNetworkSlot(net);
-      // убираем ?room= из адресной строки, чтобы обновление страницы не пыталось
-      // «войти по ссылке» повторно поверх уже сохранённой сессии
-      if (typeof window !== 'undefined' && window.history && window.location.search) {
-        window.history.replaceState(null, '', window.location.pathname);
-      }
-      onEnter(net);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
-
+/* Сетевая игра — лобби, вход в комнату и экран партии — вынесена в отдельный
+   чанк src/network.jsx и грузится лениво: при первом заходе на сайт человек
+   видит меню, и полторы тысячи строк сетевого экрана ему пока не нужны.
+   Помощники слотов (сохранённые сетевые партии в меню) остаются здесь. */
+const NetworkEntryScreen = React.lazy(() => import('./network.jsx').then((m) => ({ default: m.NetworkEntryScreen })));
+const NetworkGameScreen = React.lazy(() => import('./network.jsx').then((m) => ({ default: m.NetworkGameScreen })));
+// пока грузится сетевой чанк — тот же фон и тон, что у остальных заглушек
+function NetworkFallback() {
   return (
-    <div style={{ maxWidth: 640, width: '100%' }}>
-      {slots.some(Boolean) && (
-        <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }}>
-          <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>Ваши партии ({slots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {slots.map((slot, idx) => {
-              const rd = slot && seatRole(slot.seat);
-              const SlotIcon = rd && ROLE_ICON[rd.icon];
-              const preview = slotPreviews[idx];
-              return (
-                <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                  {slot ? (
-                    <>
-                      {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
-                      <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
-                        Комната <b className="ems-mono">{slot.id}</b> · {rd.short}
-                        {preview && (
-                          <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>
-                        )}
-                      </span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
-                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Входим…' : 'Войти'}</button>
-                      <button onClick={() => removeSlot(idx)} aria-label="Забыть эту партию"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
-                        <X size={12} />
-                      </button>
-                    </>
-                  ) : (
-                    <span style={{ color: COLOR.faint }}>слот {idx + 1}: пусто</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {storageMode === 'memory' && (
-        <div className="ems-panel" style={{ padding: 12, marginBottom: 16, borderColor: COLOR.rust }}>
-          <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
-            Сервер не подключён к общему хранилищу (Redis) — комната живёт только в памяти одного случайного запроса
-            и может пропасть при следующем же обращении с ошибкой «комната не найдена». Это настройка развёртывания
-            (нужны переменные окружения <b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b> —
-            подключаются через Upstash в Vercel Marketplace), а не баг в самой партии.
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
-        {[['create', 'Создать комнату'], ['join', 'Войти по коду'], ['browse', 'Открытые комнаты']].map(([id, label]) => (
-          <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
-        ))}
-      </div>
-
-      {tab === 'create' && (
-        <div className="ems-panel" style={{ padding: 18 }}>
-          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Новая сетевая партия</div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Режим партии</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[['policy', 'Политика', 'ЦБ и Минфин делят экономику'], ['trader', 'Рынок', 'два трейдера на одной экономике']].map(([id, title]) => (
-                <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
-                  borderColor: mode === id ? COLOR.gold : COLOR.border }}
-                  onClick={() => { Audio.play('click'); setMode(id); }}>{title}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
-            {mode === 'trader'
-              ? 'Оба игрока — частные инвесторы на одной и той же экономике: ставку ведёт бот-ЦБ, бюджет — бот-Минфин, а вы независимо друг от друга распределяете капитал между активами. Квартал наступает, когда готовы оба.'
-              : 'Один из вас ведёт Центральный банк, второй — Минфин, на одной и той же экономике; если включён президент — его тоже может занять живой игрок, третьим. Квартал наступает, когда решения пришлют все подключившиеся; за не занятое место временно решает бот.'}
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Сложность партии</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {DIFFICULTIES.map((d) => (
-                <button key={d.id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: difficulty === d.id ? COLOR.gold : COLOR.panelAlt, color: difficulty === d.id ? COLOR.ink : COLOR.text,
-                  borderColor: difficulty === d.id ? COLOR.gold : COLOR.border }}
-                  onClick={() => { Audio.play('click'); setDifficulty(d.id); }}>{d.title}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Доступ к комнате</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[[false, 'По коду'], [true, 'Общедоступная']].map(([val, title]) => (
-                <button key={String(val)} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: isPublicRoom === val ? COLOR.gold : COLOR.panelAlt, color: isPublicRoom === val ? COLOR.ink : COLOR.text,
-                  borderColor: isPublicRoom === val ? COLOR.gold : COLOR.border }}
-                  onClick={() => { Audio.play('click'); setIsPublicRoom(val); }}>{title}</button>
-              ))}
-            </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
-              {isPublicRoom
-                ? 'Комната появится во вкладке «Открытые комнаты» у всех — войти сможет кто угодно, без кода. Как только все места заняты, она пропадает из списка сама.'
-                : 'Войти можно только по коду комнаты или по ссылке-приглашению — как раньше.'}
-            </div>
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Как настраивать партию</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[['classic', 'Классика'], ['custom', 'Настраиваемая']].map(([id, title]) => (
-                <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: setupMode === id ? COLOR.gold : COLOR.panelAlt, color: setupMode === id ? COLOR.ink : COLOR.text,
-                  borderColor: setupMode === id ? COLOR.gold : COLOR.border }}
-                  onClick={() => { Audio.play('click'); setSetupMode(id); }}>{title}</button>
-              ))}
-            </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
-              {setupMode === 'classic'
-                ? 'Характеры ведомств бросаются случайно, президент включён — как в одиночной классике.'
-                : 'Выбрать характер каждого ведомства и президента — или обойтись без президента.'}
-            </div>
-          </div>
-
-          {setupMode === 'custom' && (
-            <div style={{ marginBottom: 14 }}>
-              {[['Характер Центрального банка', CB_PERSONAS, cbPersona, setCbPersona,
-                mode === 'trader' ? 'Ставку ведёт бот — от его характера зависит весь рынок.' : 'Действует, пока место ЦБ пустует или игрок не успел с решением.'],
-              ['Характер Минфина', MOF_PERSONAS, mofPersona, setMofPersona,
-                mode === 'trader' ? 'Бюджет тоже ведёт бот: его щедрость — ваш долговой рынок.' : 'Действует, пока место Минфина пустует или игрок не успел с решением.']]
-                .map(([title, list, value, set, note]) => (
-                  <div key={title} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 12, marginBottom: 4 }}>{title}</div>
-                    <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>{note}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {[...list, { id: 'random', name: 'Случайный' }].map((pp) => (
-                        <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
-                          background: value === pp.id ? COLOR.gold : COLOR.panelAlt, color: value === pp.id ? COLOR.ink : COLOR.text,
-                          borderColor: value === pp.id ? COLOR.gold : COLOR.border }}
-                          onClick={() => { Audio.play('click'); set(pp.id); }}>{pp.name}</button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 12 }}>Президент</span>
-                <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11,
-                  background: presEnabled ? COLOR.gold : COLOR.panelAlt, color: presEnabled ? COLOR.ink : COLOR.muted,
-                  borderColor: presEnabled ? COLOR.gold : COLOR.border }}
-                  onClick={() => { Audio.play('tick'); setPresEnabled((v) => !v); }}>
-                  {presEnabled ? 'включён' : 'выключен'}
-                </button>
-              </div>
-              <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>
-                Над обоими ведомствами стоит президент: он требует своего от каждого из вас, меняет руководителя
-                ведомства, за которым никто не сидит, и тратит политический капитал на реформы и указы.
-              </div>
-              {presEnabled && (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[...PRESIDENT_PERSONAS, { id: 'random', name: 'Случайный' }].map((pp) => (
-                    <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
-                      background: presPersona === pp.id ? COLOR.gold : COLOR.panelAlt, color: presPersona === pp.id ? COLOR.ink : COLOR.text,
-                      borderColor: presPersona === pp.id ? COLOR.gold : COLOR.border }}
-                      onClick={() => { Audio.play('click'); setPresPersona(pp.id); }}>{pp.name}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={doCreate}>
-            {busy ? 'Создаём…' : 'Создать комнату'}
-          </button>
-        </div>
-      )}
-
-      {tab === 'join' && (
-        <div className="ems-panel" style={{ padding: 18 }}>
-          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 10 }}>Войти в комнату</div>
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Код комнаты</div>
-            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="например, DA9X6"
-              className="ems-mono" style={{ width: '100%', padding: '9px 11px', fontSize: 14, letterSpacing: '0.08em',
-                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
-            {created && created === code.trim().toUpperCase() && (
-              <div style={{ marginTop: 8, fontSize: 11.5, color: COLOR.teal }}>
-                <div>Комната ваша — отправьте партнёру код выше или ссылку ниже, по ней комната откроется автоматически.</div>
-                <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6 }}>
-                  <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
-                    style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
-                  <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
-                    {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
-                    {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Ваше имя</div>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="как вас видит партнёр"
-              style={{ width: '100%', padding: '9px 11px', fontSize: 13,
-                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Ваша роль</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {previewSeats(roomPreview).map((sx) => {
-                const rd = seatRole(sx); const RoleIcon = ROLE_ICON[rd.icon];
-                const taken = !!(roomPreview && roomPreview.occupied && roomPreview.occupied[sx]);
-                return (
-                  <button key={sx} className="ems-btn" disabled={taken}
-                    style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                      background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
-                      borderColor: seat === sx ? COLOR.gold : COLOR.border, opacity: taken ? 0.4 : 1, cursor: taken ? 'not-allowed' : 'pointer' }}
-                    onClick={() => { if (taken) return; Audio.play('click'); setSeat(sx); }}>
-                    <RoleIcon size={15} />{rd.short}
-                    {taken && <span style={{ fontSize: 9, letterSpacing: '0.03em' }}>занято</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <button className="ems-btn primary" disabled={busy || allSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
-            {busy ? 'Входим…' : allSeatsTaken ? 'Все места заняты' : 'Войти в партию'}
-          </button>
-        </div>
-      )}
-
-      {tab === 'browse' && (
-        <div className="ems-panel" style={{ padding: 18 }}>
-          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 4 }}>Открытые комнаты</div>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.45 }}>
-            Партии, которые их создатели сделали общедоступными, — войти можно сразу, без кода.
-          </div>
-          {publicRoomsError && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 10 }}>{publicRoomsError}</div>}
-          {publicRooms === null ? (
-            <div style={{ fontSize: 12, color: COLOR.faint }}>Загрузка…</div>
-          ) : publicRooms.length === 0 ? (
-            <div style={{ fontSize: 12, color: COLOR.faint }}>Сейчас открытых комнат нет — создайте свою на вкладке «Создать комнату» и включите «Общедоступная».</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {publicRooms.map((r) => (
-                <div key={r.id} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px',
-                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                  <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{r.id}</span>
-                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
-                  <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
-                  <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
-                  {(r.activeCrises || []).length > 0 ? (
-                    <span style={{ color: COLOR.rust, fontSize: 10.5 }} title={r.activeCrises.map((c) => CRISIS_SHORT[c] || c).join(', ')}>
-                      ⚠ {CRISIS_SHORT[r.activeCrises[0]] || r.activeCrises[0]}{r.activeCrises.length > 1 ? ` +${r.activeCrises.length - 1}` : ''}
-                    </span>
-                  ) : (
-                    <span style={{ color: COLOR.teal, fontSize: 10.5 }}>спокойно</span>
-                  )}
-                  <span style={{ marginLeft: 'auto', color: COLOR.muted }}>{r.seatsTotal - r.seatsFree}/{r.seatsTotal}</span>
-                  <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {error && <div style={{ marginTop: 10, fontSize: 12.5, color: COLOR.rust }}>{error}</div>}
+    <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: COLOR.bg, color: COLOR.muted, fontSize: 13 }}>
+      Подключаем сетевую партию…
     </div>
   );
 }
 
-function NetworkEntryScreen({ onEnter, onBack }) {
-  return (
-    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
-      <GlobalStyle />
-      <div style={{ maxWidth: 640, width: '100%' }}>
-        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
-          onClick={() => { Audio.play('click'); onBack(); }}>
-          ← Назад в меню
-        </button>
-        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div className="ems-hero-eyebrow">Мультиплеер</div>
-          <div className="ems-hero-title small">Сетевая партия</div>
-          <div className="ems-hero-rule" />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <NetworkLobby onEnter={onEnter} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const QUARTER_TIMEOUT_MS = 5 * 60 * 1000; // держим в синхроне с QUARTER_TIMEOUT_MS в api/room.js
-
-function NetworkGameScreen({ network, theme, setTheme, onExit }) {
-  const { id, seat, token, ownerToken } = network;
-  const isOwner = !!ownerToken;
-  const [kickBusy, setKickBusy] = useState(null);
-  const [room, setRoom] = useState(network.room);
-  const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
-  const [portfolio, setPortfolio] = useState(() => loadNetworkPortfolio(id, seat) || emptyBook());
-  React.useEffect(() => { saveNetworkPortfolio(id, seat, portfolio); }, [id, seat, portfolio]);
-  const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
-  const [showAch, setShowAch] = useState(false);
-  const [showCard, setShowCard] = useState(false);
-  const [defeat, setDefeat] = useState(null);
-  const [showGameOver, setShowGameOver] = useState(false);
-  /* Откат на 3 хода назад, как в соло-игре, здесь возможен только для трейдера:
-     его портфель — локальное состояние этого клиента, а не общая с партнёром
-     серверная экономика (room.economy/history). Откатить саму экономику
-     означало бы отменить чужие уже принятые решения — для ЦБ/Минфина/президента
-     в сетевой игре это не сделать без сервера и без риска обидеть партнёра. */
-  const portfolioHistoryRef = React.useRef([]);
-  const onTrade = (instrId, amt, side, liveQuotes) => {
-    if (instrId === 'cds_sovereign') pushAch(unlockAchievements(['cds_trade']));
-    setPortfolio((b) => {
-      const nb = tradeBook(b, instrId, amt, side, room.economy, liveQuotes);
-      const instr = INSTR_BY_ID[instrId];
-      return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
-    });
-  };
-  const onCasino = (net) => {
-    const casinoNet = (portfolio.casinoNet || 0) + net;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoNet })));
-  };
-  const [marketTab, setMarketTab] = useState('market');
-  // та же временная подмена плейлиста, что и в соло-игре — см. комментарий там.
-  // room.mode напрямую, а не isTraderRoom: та объявляется ниже по компоненту
-  React.useEffect(() => {
-    if (room.mode !== 'trader' || marketTab !== 'casino') return undefined;
-    const prevLocked = Audio.nowPlaying().locked;
-    Audio.setPlaylist('casino');
-    return () => { Audio.setPlaylist(prevLocked); };
-  }, [room.mode, marketTab]);
-  // соперник должен видеть стоимость портфеля не только в момент «готов», а
-  // вскоре после каждой сделки — иначе до конца квартала список эталонов
-  // выглядит так, будто ничего не пишется, хотя сделка уже прошла
-  React.useEffect(() => {
-    if (room.mode !== 'trader') return undefined;
-    const value = bookValue(portfolio, room.economy, null);
-    const t = setTimeout(() => {
-      reportPortfolioValue(id, seat, token, value).then((r) => setRoom(r.room)).catch(() => {});
-    }, 800);
-    return () => clearTimeout(t);
-  }, [portfolio, room.mode]);
-  const [chatText, setChatText] = useState('');
-  const [nowTick, setNowTick] = useState(() => Date.now());
-  React.useEffect(() => { const iv = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(iv); }, []);
-  /* Таймер квартала отсчитывается от серверного времени, а часы на устройствах
-     расходятся на минуты: у двух игроков на экране были разные цифры, а иногда и
-     давно истёкший срок. Держим поправку «сервер минус мы» и считаем по ней. */
-  const [skew, setSkew] = useState(0);
-  React.useEffect(() => {
-    if (Number.isFinite(room.now)) setSkew(room.now - Date.now());
-  }, [room.now]);
-  const [chatBusy, setChatBusy] = useState(false);
-  const chatEndRef = React.useRef(null);
-  const [sent, setSent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [showWhy, setShowWhy] = useState(false);
-  const [showPaper, setShowPaper] = useState(false);
-  const [autoPaper, setAutoPaperState] = useState(loadAutoPaper);
-  const setAutoPaper = (v) => { saveAutoPaper(v); setAutoPaperState(v); };
-  // watchRoom подписывается один раз на монтирование (эффект ниже завязан на
-  // id/seat/token, а не на autoPaper) — обычная переменная в его колбэке
-  // навсегда осталась бы тем autoPaper, что был на момент подписки. Ref читает
-  // актуальное значение, не заставляя пересоздавать подписку на каждый тумблер.
-  const autoPaperRef = React.useRef(autoPaper);
-  React.useEffect(() => { autoPaperRef.current = autoPaper; }, [autoPaper]);
-  const [mobileCol, setMobileCol] = useState('center');
-  const [narrow, setNarrow] = useState(false);
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mq = window.matchMedia('(max-width: 860px)');
-    const upd = () => setNarrow(mq.matches);
-    upd();
-    if (mq.addEventListener) { mq.addEventListener('change', upd); return () => mq.removeEventListener('change', upd); }
-    mq.addListener(upd); return () => mq.removeListener(upd);
-  }, []);
-  const prevQuarter = React.useRef(room.quarterIndex);
-  const [stampKey, setStampKey] = useState(0);
-
-  React.useEffect(() => watchRoom(id, (r) => {
-    setRoom(r);
-    if (r.quarterIndex !== prevQuarter.current) {
-      prevQuarter.current = r.quarterIndex;
-      // в одиночной игре печать оттискивается по клику «Завершить квартал» —
-      // здесь квартал резолвит сервер асинхронно (когда все сдали решения),
-      // так что тот же переход играет по приходу нового r.quarterIndex с опроса,
-      // а не по локальному клику
-      setStampKey((k) => k + 1);
-      setSent(false);
-      setDecisions((d) => defaultDecisions(r.economy, d));
-      if (autoPaperRef.current) setShowPaper(true);
-      Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
-      markNetworkPlayed();
-      pushAch(unlockAchievements(questProgressAchievementIds({
-        quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
-        rolesPlayed: recordRolePlayed(seat), networkPlayed: true, role: seatRole(seat).id,
-        presActionsThisQuarter: presActionsRef.current, isPublicRoom: !!r.isPublic,
-      })));
-      // «Своими руками» — вернуть парламент, распущенный указом, а не тот, который
-      // распустил кризис: decreeRule ДО этого квартала (когда решение принималось)
-      // и есть признак «был распущен указом». Экономика в комнате общая и меняется
-      // на сервере, поэтому «до» берём из рефа, обновляя его сразу после проверки.
-      if (seat === 'president' && presActionsRef.current.includes('restore_parliament') && prevDecreeRuleRef.current) {
-        pushAch(unlockAchievements(['own_hands']));
-      }
-      prevDecreeRuleRef.current = r.economy.decreeRule;
-      // «Слово держат» — подводится сервером в новости квартала, где наступили
-      // выборы (см. resolveQuarter в api/room.js); достижения — локальные для
-      // игрока, поэтому разбираем ту же новость здесь, а не полагаемся на сервер
-      if (seat === 'president') {
-        const promisesMatch = r.news.find((n) => n.q === r.quarterIndex - 1 && n.headline.startsWith('ОБЕЩАНИЯ У УРНЫ'))
-          ?.headline.match(/СДЕРЖАНО (\d+) ИЗ (\d+)/);
-        if (promisesMatch && promisesMatch[1] === promisesMatch[2]) pushAch(unlockAchievements(['promises_kept']));
-      }
-      const roleForDefeat = seatRole(seat).id;
-      // расчёт по портфелю (переоценка, экспирация опционов, маржин-колл) —
-      // тем же способом, что и в соло-игре трейдера, только экономику берём
-      // из ответа сервера, а не считаем сами
-      if (r.mode === 'trader') {
-        setPortfolio((b) => {
-          const withBench = b.benchStart ? b : { ...b, benchStart: { stockIndex: r.economy.stockIndex, bondIndex: r.economy.bondIndex,
-            depositIndex: r.economy.depositIndex, priceLevel: r.economy.priceLevel } };
-          const nb = settleQuarter(withBench, r.economy);
-          const marginCalled = (nb.lastEvents || []).some((ev) => ev.kind === 'call');
-          if (marginCalled) { Audio.play('alarm'); haptic([60, 80, 60]); pushAch(unlockAchievements(['margin_call'])); }
-          const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: bookValue(nb, r.economy, null) });
-          if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
-          portfolioHistoryRef.current = [...portfolioHistoryRef.current, { quarterIndex: r.quarterIndex, book: nb }].slice(-8);
-          return nb;
-        });
-      } else {
-        const nextDefeat = checkDefeat({ role: roleForDefeat, economy: r.economy, history: r.history, bookVal: null });
-        if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
-      }
-    }
-    Audio.setMood(r.economy);
-  }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
-  // новый квартал — новый ход президента: прошлые указы уже оплачены и применены
-  React.useEffect(() => {
-    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null);
-    setPresDirective(null); setPresDirStrength(1);
-  }, [room.quarterIndex]);
-
-  const isTraderRoom = room.mode === 'trader';
-  const portfolioRollbackTarget = isTraderRoom
-    ? portfolioHistoryRef.current.find((e) => e.quarterIndex === room.quarterIndex - 3) : null;
-  const handlePortfolioRollback = () => {
-    if (!portfolioRollbackTarget) return;
-    setPortfolio(portfolioRollbackTarget.book);
-    setDefeat(null); setShowGameOver(false);
-  };
-  const roleDef = seatRole(seat);
-  const RoleIcon = ROLE_ICON[roleDef.icon];
-  /* Мест теперь может быть три: ЦБ, Минфин и президент. «Партнёр» по-прежнему один —
-     второе ведомство (для президента это ЦБ, чьи цифры и показываем рядом), но ждём
-     квартала мы от всех занятых мест, а не от одного. */
-  const roomSeats = seatsForMode(room.mode).filter((sx) => sx !== 'president' || !!room.president);
-  const isPresidentSeat = seat === 'president';
-  const DEPT_PAIR = { central_bank: 'ministry_finance', ministry_finance: 'central_bank' };
-  const otherSeat = isTraderRoom ? (roomSeats[0] === seat ? roomSeats[1] : roomSeats[0])
-    : (DEPT_PAIR[seat] || 'central_bank');
-  const otherSeats = roomSeats.filter((sx) => sx !== seat);
-  const otherRole = seatRole(otherSeat);
-  const OtherRoleIcon = ROLE_ICON[otherRole.icon];
-  const otherAccent = otherSeat === 'central_bank' ? COLOR.blue : otherSeat === 'ministry_finance' ? COLOR.teal
-    : otherSeat === 'president' ? COLOR.gold : COLOR.blue;
-  const levers = LEVERS.filter((l) => roleDef.groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
-  const economy = room.economy;
-  const prevEcon = room.history.length >= 2 ? room.history[room.history.length - 2] : economy;
-  const setLever = (id2, v) => setDecisions((d) => ({ ...d, [id2]: v }));
-  const shareKey = (lid) => (lid === 'shareHealth' ? 'health' : lid === 'shareEducation' ? 'education' : lid === 'shareScience' ? 'science' : lid === 'shareDefense' ? 'defense' : 'admin');
-  const leverDisplay = (l) => (l.subgroup === 'budget' ? economy.budgetShares[shareKey(l.id)] : economy[l.id]);
-  const { chartGroup, setChartGroup, period, setPeriod, hiddenSeries, setHiddenSeries } = useChartView();
-  const [activeTab, setActiveTab] = useState('economy');
-  // ход живого президента: указы и реформы, кадры, одно указание и его сила
-  const [presActions, setPresActions] = useState([]);
-  const [presAppointCb, setPresAppointCb] = useState(null);
-  const [presAppointMof, setPresAppointMof] = useState(null);
-  const [presDirective, setPresDirective] = useState(null);
-  const [presDirStrength, setPresDirStrength] = useState(1);
-  // watchRoom подписывается один раз (см. эффект выше, завязан на id/seat/token) —
-  // обычные переменные в его колбэке навсегда остались бы тем, чем были на момент
-  // подписки. presActionsRef — то же решение, что и autoPaperRef.
-  const presActionsRef = React.useRef(presActions);
-  React.useEffect(() => { presActionsRef.current = presActions; }, [presActions]);
-  const prevDecreeRuleRef = React.useRef(room.economy.decreeRule);
-  const [dense, setDense] = useState(false);
-  const [dashboards, setDashboards] = useState(() => initDashboards());
-  const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
-  const { pinned, setPinned, activeDash, setActiveDash } = usePinnedStrip(null, null, dashActions);
-  const layout = useLayoutColumns();
-  const togglePin = (key) => setPinned((ps) => (ps.includes(key) ? ps.filter((x) => x !== key) : (ps.length >= MAX_PINS ? ps : [...ps, key])));
-  const movePin = (key, dir) => setPinned((ps) => {
-    const i = ps.indexOf(key); const j = i + dir;
-    if (i < 0 || j < 0 || j >= ps.length) return ps;
-    const next = [...ps]; next[i] = ps[j]; next[j] = ps[i]; return next;
-  });
-  const [dragPin, setDragPin] = useState(null);
-  const reorderPin = (from, to) => setPinned((ps) => {
-    if (from === to) return ps;
-    const fromIdx = ps.indexOf(from); const toIdx = ps.indexOf(to);
-    if (fromIdx === -1 || toIdx === -1) return ps;
-    const next = [...ps]; next.splice(fromIdx, 1); next.splice(toIdx, 0, from); return next;
-  });
-  const applyDash = (did) => { const d = dashboards.find((x) => x.id === did); if (d) { setPinned(d.pins); setActiveDash(did); } };
-  const saveDash = () => dashActions.saveDash(pinned, setActiveDash);
-  const { deleteDash, renameDash, resetDash } = dashActions;
-  const kpiDelta = (key) => economy[key] - prevEcon[key];
-  const goalDef = GOALS.find((g) => g.id === room.goals[seat]);
-
-  // держим слот в актуальном состоянии (перекладывает savedAt наверх LRU) и на
-  // случай, если сюда попали в обход NetworkLobby (например, через ?room=)
-  React.useEffect(() => { saveNetworkSlot({ id, seat, token }); }, [id, seat, token]);
-  const failWithError = (e) => {
-    setError(e.message);
-    // токен отозван или комната истекла — восстанавливать в ней больше нечего
-    if (/неверный токен|не найдена/i.test(e.message || '')) clearNetworkSlotFor(id, seat);
-  };
-  const send = async () => {
-    setBusy(true); setError('');
-    try {
-      // стоимость портфеля сообщаем только в «рыночной» комнате — сервер не
-      // знает позиций трейдера (они клиентские), только текущую сумму, чтобы
-      // соперник видел её в своём списке эталонов (см. PortfolioSummary);
-      // основной канал — report_portfolio после каждой сделки (см. выше), это
-      // просто подстраховка на случай, если тот эффект ещё не успел отправиться
-      const portfolioValue = isTraderRoom ? bookValue(portfolio, room.economy, null) : undefined;
-      // президент шлёт не рычаги, а решения: сервер разберёт их тем же кодом, что и
-      // ход бота-президента в одиночной игре
-      const president = isPresidentSeat
-        ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
-          directive: presDirective, directiveStrength: presDirStrength }
-        : undefined;
-      const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
-      setRoom(r.room); setSent(true); Audio.play('stamp');
-    } catch (e) { failWithError(e); } finally { setBusy(false); }
-  };
-  const retract = async () => {
-    setBusy(true); setError('');
-    try { const r = await cancelSubmission(id, seat, token); setRoom(r.room); setSent(false); Audio.play('click'); }
-    catch (e) { failWithError(e); } finally { setBusy(false); }
-  };
-  const sendChat = async () => {
-    const text = chatText.trim();
-    if (!text) return;
-    setChatBusy(true); setError('');
-    try { const r = await sendChatMessage(id, seat, token, text); setRoom(r.room); setChatText(''); Audio.play('click'); }
-    catch (e) { failWithError(e); } finally { setChatBusy(false); }
-  };
-  React.useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }); }, [room.chat?.length]);
-
-  const pendingSeats = otherSeats.filter((sx) => room.occupied[sx] && !room.ready[sx]);
-  const waitingForOther = sent && pendingSeats.length > 0;
-  // сколько времени осталось до того, как сервер решит за отсутствующего игрока
-  // ботом (см. QUARTER_TIMEOUT_MS/maybeForceResolve в api/room.js) — держим в поле
-  // зрения, чтобы «квартал стоит» не выглядело так, будто ничего не произойдёт
-  const timeLeftMs = room.quarterStartedAt
-    ? Math.max(0, room.quarterStartedAt + QUARTER_TIMEOUT_MS - (nowTick + skew)) : null;
-  const timeLeftLabel = timeLeftMs === null ? null
-    : `${Math.floor(timeLeftMs / 60000)}:${String(Math.floor((timeLeftMs % 60000) / 1000)).padStart(2, '0')}`;
-  /* Таймер отсчитывает не «время на ход», а срок, после которого сервер решит за
-     МОЛЧАЩЕГО ПАРТНЁРА ботом. Пока второе место пустует, подгонять некого: квартал
-     считается ровно в тот момент, когда я нажму «готов», — и часы над пустой
-     комнатой только создавали ощущение, что кто-то торопит. Своего собственного
-     «ещё не отправил» таймер тоже не касается. */
-  const quarterPending = pendingSeats.length > 0;
-  /* Президент комнаты приходит с сервера «плоским» (в хранилище нельзя класть
-     объекты просьб с функциями) — собираем из него то, что ждёт панель. Чьё
-     требование «ко мне», зависит от места, за которым сижу я. */
-  const myBranch = seat === 'central_bank' ? 'monetary' : seat === 'ministry_finance' ? 'fiscal' : null;
-  const presState = room.president || null;
-  const presPlan = presState && presState.plan ? {
-    ...presState.plan,
-    persona: { name: presState.plan.personaName, title: presState.plan.personaTitle },
-    directive: presState.plan.directive
-      ? { ...presState.plan.directive, toPlayer: presState.plan.directive.branch === myBranch } : null,
-  } : null;
-  const presLast = presState && presState.last
-    ? { ...presState.last, toPlayer: presState.last.branch === myBranch } : null;
-  // требование живого президента: оно выдвинуто в прошлом квартале и исполняется
-  // в этом — у ведомства есть на него ход, а не «претензия задним числом»
-  const presDemand = presState && presState.human ? presState.demand : null;
-  const otherAction = room.lastActions ? room.lastActions[otherSeat] : null;
-  const disconnectedSeat = otherSeats.find((sx) => room.occupied[sx] && room.connected && !room.connected[sx]) || null;
-  const otherDisconnected = !!disconnectedSeat;
-  const myLastAction = room.lastActions ? room.lastActions[seat] : null;
-  const [welcomeBackDismissed, setWelcomeBackDismissed] = useState(false);
-  React.useEffect(() => { setWelcomeBackDismissed(false); }, [room.quarterIndex]);
-  // выход в меню — это не уход из комнаты: место и сохранённая сессия остаются,
-  // партия появится в лобби («Ваши партии») и в неё можно вернуться позже;
-  // насовсем комнату покидают через «Забыть эту партию» в лобби
-  const exit = () => onExit();
-  const [difficultyBusy, setDifficultyBusy] = useState(false);
-  const changeDifficulty = async (next) => {
-    if (next === room.difficulty) return;
-    setDifficultyBusy(true); setError('');
-    try { const r = await setRoomDifficulty(id, seat, token, next); setRoom(r.room); }
-    catch (e) { failWithError(e); } finally { setDifficultyBusy(false); }
-  };
-  const kickSeat = async (targetSeat) => {
-    if (!window.confirm(`Убрать ${seatRole(targetSeat).short} из комнаты? Место освободится, партнёр сможет войти заново.`)) return;
-    setKickBusy(targetSeat); setError('');
-    try { const r = await kickFromRoom(id, ownerToken, targetSeat); setRoom(r.room); Audio.play('click'); }
-    catch (e) { setError(e.message); } finally { setKickBusy(null); }
-  };
-  // владелец кикнул вас самого (или ваше место освободили как-то иначе, пока вы
-  // были в комнате) — своё же место внезапно снова «пустое» означает именно это
-  const [kickedOut, setKickedOut] = useState(false);
-  React.useEffect(() => { if (!room.occupied[seat]) setKickedOut(true); }, [room.occupied, seat]);
-
-  if (kickedOut) {
-    return (
-      <div className="ems-root" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: 24 }}>
-        <GlobalStyle />
-        <div className="ems-panel" style={{ maxWidth: 420, padding: 24, textAlign: 'center' }}>
-          <AlertTriangle size={28} color={COLOR.rust} style={{ marginBottom: 10 }} />
-          <div className="ems-serif" style={{ fontSize: 16, color: COLOR.rust, marginBottom: 8 }}>Вас убрали из комнаты</div>
-          <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 18, lineHeight: 1.5 }}>
-            Владелец лобби освободил ваше место. Вернуться в эту партию так же нельзя — при желании войдите заново по коду.
-          </div>
-          <button className="ems-btn primary" style={{ padding: '10px 20px' }}
-            onClick={() => { clearNetworkSlotFor(id, seat); onExit(); }}>В меню</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="ems-root">
-      <GlobalStyle />
-      <Atmosphere regime={economy.regime}
-        intensity={clamp((economy.inflationRisk * 0.25 + economy.bankingRisk * 0.3 + economy.debtRisk * 0.2 + economy.recessionRisk * 0.25) / 100, 0, 1)} />
-      <QuarterStamp stampKey={stampKey} regime={economy.politicalRegime} />
-      {showWhy && room.reasons && <WhyModal reasons={room.reasons} onClose={() => setShowWhy(false)} />}
-      {showPaper && (
-        <Suspense fallback={null}>
-          <NewspaperModal news={room.news} history={room.history} quarterIndex={room.quarterIndex} economy={room.economy} onClose={() => setShowPaper(false)} />
-        </Suspense>
-      )}
-      {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
-      <AchievementToast toast={achToast} leaving={achLeaving} />
-      {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
-        onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню"
-        onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />}
-      {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
-        role: seatRole(seat).id, quarterIndex: room.quarterIndex, economy: room.economy,
-        startEconomy: room.history && room.history[0], portfolio, defeat,
-      })} />}
-
-      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
-        padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <StateSeal regime={economy.politicalRegime} size={36}
-            title={(POLITICAL_REGIME_INFO[economy.politicalRegime] || {}).label} />
-          <div className="ems-card-icon" style={{ width: 40, height: 40 }}>
-            <RoleIcon size={18} color={COLOR.gold} />
-          </div>
-          <div>
-            <div className="ems-serif" style={{ fontSize: 18 }}>Сетевая партия · комната {room.id}</div>
-            <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-              вы — {roleDef.title} · {otherSeats.map((sx) => {
-                const rd = seatRole(sx);
-                const who = room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'место свободно' : 'бот');
-                return `${who} за ${rd.short}`;
-              }).join(' · ')}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', rowGap: 10 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
-            <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{room.quarterLabel}</div>
-          </div>
-          <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
-            <Gauge value={economy.wellbeing} size={68} />
-          </div>
-          <div style={{ position: 'relative' }}>
-            <select value={room.difficulty} disabled={difficultyBusy} onChange={(e) => changeDifficulty(e.target.value)}
-              title="Сложность партии" className="ems-btn"
-              style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
-              {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
-            </select>
-            <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          </div>
-          <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
-            dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
-            deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
-            layoutEditMode={layout.layoutEditMode} setLayoutEditMode={layout.setLayoutEditMode}
-            columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
-            resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
-            autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
-            <Trophy size={14} color={COLOR.gold} />
-          </button>
-          <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-            onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
-            <Newspaper size={14} />Газета
-          </button>
-          <AudioControls />
-          <HeaderOverflowMenu items={[
-            { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
-            { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => exit() },
-          ]} />
-        </div>
-      </div>
-
-      <CrisisBar economy={economy} botAction={otherAction} />
-
-      <div style={{ padding: '14px 18px 4px' }}>
-        <div className="ems-kpi-strip">
-          {pinned.map((key, idx) => {
-            const m = ALL_METRICS[key];
-            if (!m) return null;
-            const val = economy[key];
-            return (
-              <div key={key} draggable
-                onDragStart={(e) => { setDragPin(key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', key); }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
-                onDragEnd={() => setDragPin(null)}
-                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
-                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
-                <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
-                  <button onClick={() => { Audio.play('tick'); movePin(key, 1); }} aria-label="Правее"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>▶</button>
-                  <button onClick={() => { Audio.play('tick'); togglePin(key); }} aria-label={`Убрать ${m.label} с полосы`}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0 }}>
-                    <X size={10} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {pinned.length < MAX_PINS && (
-            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed' }}>
-              <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
-                <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="ems-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 10, padding: '9px 13px' }}>
-          <RiskBadge label="Инфляционный" value={economy.inflationRisk} />
-          <RiskBadge label="Банковский" value={economy.bankingRisk} />
-          <RiskBadge label="Долговой" value={economy.debtRisk} />
-          <RiskBadge label="Рецессии" value={economy.recessionRisk} />
-          <RiskBadge label="Валютный" value={economy.currencyRisk} />
-        </div>
-      </div>
-
-      <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {myLastAction && myLastAction.timedOut && !welcomeBackDismissed && (
-          <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
-            <AlertTriangle size={15} color={COLOR.gold} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div style={{ flex: 1 }}><b style={{ color: COLOR.gold }}>С возвращением.</b> <span style={{ color: COLOR.muted }}>
-              Пока вас не было, прошлый квартал за вас решал бот — вы не отправили решение вовремя. Место осталось вашим, продолжайте с этого квартала.</span></div>
-            <button onClick={() => setWelcomeBackDismissed(true)} aria-label="Закрыть"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0, flexShrink: 0 }}>
-              <X size={13} />
-            </button>
-          </div>
-        )}
-        {otherDisconnected && (
-          <div className="ems-fade-in" style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '9px 12px', fontSize: 12 }}>
-            <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div><b style={{ color: COLOR.rust }}>{(disconnectedSeat && room.names[disconnectedSeat]) || 'Партнёр'} не на связи.</b> <span style={{ color: COLOR.muted }}>
-              Больше 12 секунд нет ответа от его вкладки — возможно, партнёр закрыл игру. {isTraderRoom
-                ? 'Если решение не придёт в течение 5 минут с начала квартала, квартал наступит без него — место останется за партнёром.'
-                : 'Если решение не придёт в течение 5 минут с начала квартала, за это ведомство один раз решит бот, а место останется за партнёром.'}</span></div>
-          </div>
-        )}
-        <RegimeBanner economy={economy} />
-      </div>
-
-      {narrow && (
-        <div style={{ display: 'flex', gap: 4, padding: '10px 18px 0' }}>
-          {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 11.5,
-              background: mobileCol === id ? COLOR.gold : COLOR.panelAlt, color: mobileCol === id ? COLOR.ink : COLOR.text,
-              borderColor: mobileCol === id ? COLOR.gold : COLOR.border }}
-              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
-          ))}
-        </div>
-      )}
-
-      {(() => {
-      const leftNode = (
-        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {isTraderRoom ? (
-            <Suspense fallback={<ChartFallback height={120} />}>
-              <PortfolioSummary book={portfolio} economy={economy} live={null} goal="max_wealth"
-                prevValue={portfolio.history && portfolio.history.length > 1 ? portfolio.history[portfolio.history.length - 2] : null}
-                opponent={{ label: room.names[otherSeat] || otherRole.short, value: (room.portfolioValues || {})[otherSeat] }} />
-            </Suspense>
-          ) : isPresidentSeat ? (
-            <>
-              {/* у президента нет ни одного рычага: его ход — кадры, указания,
-                  реформы и публичная политика, ровно как в одиночной игре */}
-              <PresidentPanel economy={economy} cooldowns={room.presCooldowns || {}}
-                selected={presActions} setSelected={setPresActions}
-                cbPersonaId={(room.personas || {}).central_bank || 'pragmatic'}
-                mofPersonaId={(room.personas || {}).ministry_finance || 'technocrat'}
-                appointCb={presAppointCb} setAppointCb={setPresAppointCb}
-                appointMof={presAppointMof} setAppointMof={setPresAppointMof}
-                directive={presDirective} setDirective={setPresDirective}
-                lastDirective={presState && presState.last && presState.last.status
-                  ? { status: presState.last.status, text: `Указание «${presState.last.label}».` } : null}
-                directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
-              <PromisesPanel promises={room.promises} economy={economy} />
-              {presState && presState.demand && (
-                <div className="ems-panel" style={{ padding: 12, borderColor: COLOR.gold }}>
-                  <div style={{ fontSize: 10, color: COLOR.faint, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
-                    Требование в силе
-                  </div>
-                  <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
-                    {presState.demand.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: «{presState.demand.ask}»
-                  </div>
-                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4, lineHeight: 1.4 }}>
-                    Ведомство отвечает решениями этого квартала — итог будет в новостях, когда квартал закроется.
-                    Новое указание встанет в силу со следующего.
-                  </div>
-                </div>
-              )}
-              <div className="ems-panel" style={{ padding: 13 }}>
-                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.blue, marginBottom: 8 }}>Ведомства</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {[['Ключевая ставка', pctFmt(economy.keyRate)],
-                    ['Баланс бюджета', fmtSignedPct(economy.budgetBalancePctGdp)],
-                    ['Долг', pctFmt(economy.debtToGdp)],
-                    ['За ЦБ', room.occupied.central_bank ? (room.names.central_bank || 'игрок') : 'бот'],
-                    ['За Минфин', room.occupied.ministry_finance ? (room.names.ministry_finance || 'игрок') : 'бот']].map(([l, v]) => (
-                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-                        <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="ems-panel" style={{ padding: 14 }}>
-                <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <RoleIcon size={14} />Ваши полномочия
-                </div>
-                {['monetary', 'fiscal'].filter((g) => roleDef.groups.includes(g)).map((g) => (
-                  <React.Fragment key={g}>
-                    {['core', 'macropru', 'taxes', 'budget', 'debt'].map((sub) => {
-                      const set = levers.filter((l) => l.group === g && l.subgroup === sub);
-                      if (!set.length) return null;
-                      return (
-                        <React.Fragment key={sub}>
-                          {sub === 'debt' && (
-                            <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
-                              Дефицит финансируется сам — рынок и так занимает за вас ровно столько, сколько не хватает. Здесь — добровольное решение занять сверх этого: долг растёт сразу, а деньги идут в резерв на будущее.
-                            </div>
-                          )}
-                          {set.map((l) => (
-                            <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
-                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
-                          ))}
-                        </React.Fragment>
-                      );
-                    })}
-                    {g === 'monetary' && <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />}
-                  </React.Fragment>
-                ))}
-              </div>
-
-              {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt') && economy.imfActive && (
-                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
-                  <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
-                </div>
-              )}
-              {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt')
-                && !(economy.marketLockoutQuartersLeft > 0) && !economy.imfActive && (
-                <div className="ems-panel" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div>
-                    <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.rust }}
-                      onClick={() => {
-                        if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
-                        Audio.play('alarm'); setLever('sovereignDefault', true);
-                      }}>
-                      <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
-                    </button>
-                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
-                      Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
-                    </div>
-                  </div>
-                  <div>
-                    <button className="ems-btn" style={{ width: '100%', background: COLOR.panelAlt, color: COLOR.text, borderColor: COLOR.gold }}
-                      onClick={() => {
-                        if (!window.confirm('Запросить экстренное финансирование МВФ? Ставка по долгу и премия за риск снизятся сразу, но на два года бюджет обязан сокращать расходы и выплаты — это условие программы, отменить его будет нельзя, не разорвав саму программу.')) return;
-                        Audio.play('alarm'); setLever('imfProgram', true);
-                      }}>
-                      <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
-                    </button>
-                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
-                      Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* без этой панели игрок видел только собственные рычаги — о том, что
-                  сейчас установлено у партнёра (ставка ЦБ, налоги/бюджет Минфина),
-                  приходилось либо спрашивать в чате, либо искать по всем вкладкам
-                  «Показателей экономики»; ниже — сводка его последних решённых
-                  значений, как в соло-игре у бота-оппонента */}
-              <div className="ems-panel" style={{ padding: 13, borderLeft: `3px solid ${otherAccent}` }}>
-                <div className="ems-serif" style={{ fontSize: 13, color: otherAccent, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <OtherRoleIcon size={13} />{otherRole.title}
-                  <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {(otherSeat === 'central_bank' ? [
-                    ['Ключевая ставка', pctFmt(economy.keyRate)],
-                    ['Норма резервирования', pctFmt(economy.reserveReq)],
-                    ['Режим курса', (FX_REGIMES.find((r) => r.id === economy.fxRegime) || {}).label || economy.fxRegime],
-                  ] : [
-                    ['Баланс бюджета', fmtSignedPct(economy.budgetBalancePctGdp)],
-                    ['Долг', pctFmt(economy.debtToGdp)],
-                    ['НДС', pctFmt(economy.vatRate)],
-                    ['Налог на прибыль', pctFmt(economy.profitTaxRate)],
-                  ]).map(([l, v]) => (
-                    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-                      <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
-                    </div>
-                  ))}
-                </div>
-                {otherAction && otherAction.note && (
-                  <div style={{ marginTop: 8, fontSize: 11, color: COLOR.faint, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, lineHeight: 1.4 }}>{otherAction.note}</div>
-                )}
-              </div>
-            </>
-          )}
-
-          {presPlan && !isPresidentSeat && <PresidentWatchPanel economy={economy} plan={presPlan} last={presLast} branch={myBranch} />}
-          {presDemand && !isPresidentSeat && (
-            <div className="ems-panel" style={{ padding: 13, borderColor: presDemand.branch === myBranch ? COLOR.rust : COLOR.borderStrong }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
-                <Crown size={14} color={COLOR.gold} />
-                <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Президент</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.names.president || 'игрок'}</span>
-              </div>
-              <div style={{ fontSize: 11.5, lineHeight: 1.45, paddingLeft: 9, color: COLOR.text,
-                borderLeft: `2px solid ${presDemand.branch === myBranch ? COLOR.rust : COLOR.blue}` }}>
-                <span style={{ color: presDemand.branch === myBranch ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
-                  {presDemand.branch === myBranch ? 'Требование к вам: ' : `Указание ${presDemand.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
-                </span>
-                {presDemand.ask}
-                {presDemand.branch === myBranch && (
-                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
-                    Выполнить — значит сдвинуть свои рычаги в эту сторону в этом квартале. Отказать можно, но администрация ведёт счёт.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="ems-panel" style={{ padding: 13 }}>
-            <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
-            <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
-              {(!room.chat || room.chat.length === 0) && (
-                <div style={{ fontSize: 11.5, color: COLOR.faint }}>Пока тишина — напишите первым.</div>
-              )}
-              {(room.chat || []).map((m, i) => {
-                const mine = m.seat === seat;
-                const nm = mine ? 'вы' : (room.names[m.seat] || seatRole(m.seat).short);
-                // подряд отправленные сообщения одного собеседника сливаются в одну
-                // группу: заголовок с именем и увеличенный отступ — только перед новым
-                // отправителем, а не перед каждым сообщением
-                const grouped = i > 0 && room.chat[i - 1].seat === m.seat;
-                const time = m.at ? new Date(m.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
-                return (
-                  <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%', textAlign: mine ? 'right' : 'left', marginTop: i === 0 ? 0 : grouped ? 2 : 10 }}>
-                    {!grouped && <div style={{ fontSize: 9.5, color: mine ? COLOR.gold : COLOR.blue, marginBottom: 2 }}>{nm}</div>}
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexDirection: mine ? 'row-reverse' : 'row' }}>
-                      <div style={{ fontSize: 12, color: COLOR.text, background: COLOR.panelAlt, padding: '6px 10px', borderRadius: 3, display: 'inline-block', wordBreak: 'break-word' }}>{m.text}</div>
-                      {time && <span className="ems-mono" style={{ fontSize: 9, color: COLOR.faint, flexShrink: 0 }}>{time}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-              <div ref={chatEndRef} />
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input value={chatText} onChange={(e) => setChatText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                placeholder="написать партнёру…"
-                style={{ flex: 1, minWidth: 0, padding: '7px 9px', fontSize: 12, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
-              <button className="ems-btn" disabled={chatBusy || !chatText.trim()} onClick={sendChat} style={{ padding: '7px 12px', fontSize: 12, flexShrink: 0 }}>
-                {chatBusy ? '…' : 'Отпр.'}
-              </button>
-            </div>
-            {otherAction && otherAction.quote && (
-              <div style={{ marginTop: 8, fontSize: 11.5, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 8, color: COLOR.muted }}>
-                <span style={{ color: COLOR.faint }}>{otherRole.short} (бот): </span>«{otherAction.quote}»
-              </div>
-            )}
-          </div>
-        </div>
-      );
-      const centerNode = (
-        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-          {isTraderRoom && (
-            <>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[['market', 'Рынок', TrendingUp], ['casino', 'Казино', Dices]].map(([tid, label, Icon]) => (
-                  <span key={tid} className={`ems-tab ${marketTab === tid ? 'active' : ''}`} style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    onClick={() => { Audio.play('tab'); setMarketTab(tid); }}><Icon size={13} />{label}</span>
-                ))}
-              </div>
-              {marketTab === 'market'
-                ? <Suspense fallback={<ChartFallback />}><TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} /></Suspense>
-                : <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>}
-            </>
-          )}
-          <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
-          <Suspense fallback={<ChartFallback />}>
-            <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
-              hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
-          </Suspense>
-          <div className="ems-panel" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
-              {room.report && room.reasons && (
-                <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => setShowWhy(true)}>
-                  <Info size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Почему это произошло?
-                </button>
-              )}
-            </div>
-            {/* официальный бюллетень, но в палитре кабинета, а не полноцветной «Газеты»:
-                двойная линейка сохраняет жанр, фон и текст остаются тёмными */}
-            <div style={{ background: COLOR.panelRaised, color: COLOR.text, padding: '16px 18px',
-              borderTop: `3px double ${COLOR.gold}`, borderLeft: `1px solid ${COLOR.border}`,
-              borderRight: `1px solid ${COLOR.border}`, borderBottom: `1px solid ${COLOR.border}` }}>
-              <div className="ems-mono" style={{ fontSize: 9, color: COLOR.gold, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>Бюллетень квартала</div>
-              {room.report ? (
-                <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }}>{room.report}</div>
-              ) : (
-                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>
-                  {isTraderRoom ? 'Совершайте сделки слева и нажмите «готов» — квартал наступит, когда готовы оба трейдера.'
-                    : `Настройте свои решения слева и отправьте их — квартал наступит, когда решения пришлют ${roomSeats.length > 2 ? 'все игроки' : 'оба игрока'}.`}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-      const rightNode = (
-        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!isTraderRoom && <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />}
-          <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
-              <Users size={13} color={COLOR.blue} />
-              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.blue }}>Статус партии</span>
-              {isOwner && <span title="Вы создали эту комнату" className="ems-mono" style={{ marginLeft: 'auto', fontSize: 9.5, color: COLOR.faint, letterSpacing: '0.04em' }}>ВЛАДЕЛЕЦ</span>}
-            </div>
-            {roomSeats.map((sx) => {
-              const rd = seatRole(sx); const Icon = ROLE_ICON[rd.icon];
-              const isMe = sx === seat;
-              const canKick = isOwner && !isMe && room.occupied[sx];
-              return (
-                <div key={sx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
-                  <Icon size={13} color={isMe ? COLOR.gold : COLOR.muted} />
-                  <span style={{ flex: 1, color: isMe ? COLOR.text : COLOR.muted }}>
-                    {rd.short}{isMe ? ' (вы)' : ''} — {room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'свободно' : 'бот')}
-                  </span>
-                  <span className="ems-mono" style={{ fontSize: 10.5, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
-                    {room.ready[sx] ? 'готово' : 'думает'}
-                  </span>
-                  {canKick && (
-                    <button onClick={() => kickSeat(sx)} disabled={kickBusy === sx} title="Убрать из комнаты"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.4 }}>
-              Код комнаты для второго игрока: <b className="ems-mono" style={{ color: COLOR.text }}>{room.id}</b>
-            </div>
-          </div>
-          <div className="ems-panel" style={{ padding: 14 }}>
-            <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Показатели экономики</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 11 }} className="ems-scroll">
-              {INDICATOR_TABS.map((t) => {
-                const TabIcon = t.icon;
-                return (<span key={t.id} className={`ems-tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setActiveTab(t.id); }}>{TabIcon && <TabIcon size={12} />}{t.label}</span>);
-              })}
-            </div>
-            {(INDICATOR_TABS.find((t) => t.id === activeTab) || INDICATOR_TABS[0]).rows.map((row, i, arr) => {
-              const val = row.get ? row.get(economy) : economy[row.key];
-              const prevVal = row.get ? row.get(prevEcon) : prevEcon[row.key];
-              const delta = Number.isFinite(prevVal) && Number.isFinite(val) ? val - prevVal : 0;
-              if (row.text) {
-                return (
-                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                    <span style={{ color: COLOR.muted }}>{row.label}</span>
-                    <span className="ems-mono">{(row.map && row.map[val]) || String(val || '—')}</span>
-                  </div>
-                );
-              }
-              return (
-                <MetricRow key={row.label || row.key} row={row} delta={delta} last={i === arr.length - 1}
-                  value={Number.isFinite(val) ? row.fmt(val) : '—'}
-                  pinnable={!!ALL_METRICS[row.key]} pinned={pinned.includes(row.key)} onPin={() => togglePin(row.key)} />
-              );
-            })}
-          </div>
-        </div>
-      );
-      const nodes = {
-        left: <CabinetZone hidden={narrow && mobileCol !== 'left'}>{leftNode}</CabinetZone>,
-        center: <StateZone label="Экономический вестник" hidden={narrow && mobileCol !== 'center'}>{centerNode}</StateZone>,
-        right: <StateZone label="Показатели страны" hidden={narrow && mobileCol !== 'right'}>{rightNode}</StateZone>,
-      };
-      const order = layout.wide ? layout.columnOrder : DEFAULT_COLUMN_ORDER;
-      const colWidthFor = (id) => (id === 'center' ? 'minmax(0,1fr)' : `${layout.columnWidths[id]}px`);
-      const gridStyle = { padding: 18, ...(layout.wide ? { gridTemplateColumns: order.map(colWidthFor).join(' ') } : null) };
-      return (
-        <div className="ems-grid" style={gridStyle}>
-          {order.map((id, i) => (
-            <div key={id} style={{ position: 'relative', minWidth: 0 }}>
-              {nodes[id]}
-              {layout.wide && layout.layoutEditMode && i < order.length - 1 && (
-                <ColumnResizeHandle leftId={id} rightId={order[i + 1]} widths={layout.columnWidths}
-                  onResize={layout.setColumnWidthsLive} onCommit={layout.commitWidths} />
-              )}
-            </div>
-          ))}
-        </div>
-      );
-      })()}
-
-      {defeat ? (
-        <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
-          onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
-      ) : (
-        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
-          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
-          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
-          {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
-          {!error && (
-            <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-              {isTraderRoom
-                ? (!room.occupied[otherSeat]
-                  ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
-                  : (waitingForOther ? 'Вы готовы — ждём партнёра.' : 'Квартал наступит, когда готовы оба трейдера.'))
-                : (otherSeats.every((sx) => !room.occupied[sx])
-                  ? (otherSeats.length > 1 ? 'Остальные места свободны: за них решают боты, квартал наступит сразу после ваших решений.'
-                    : 'Второе место свободно: за него решает бот, квартал наступит сразу после ваших решений.')
-                  : (waitingForOther
-                    ? (pendingSeats.length > 1 ? 'Решения отправлены — ждём остальных.' : 'Решения отправлены — ждём партнёра.')
-                    : (otherSeats.length > 1 ? 'Квартал наступит, когда решения пришлют все игроки.' : 'Квартал наступит, когда решения пришлют оба игрока.')))}
-              {quarterPending && timeLeftLabel && (
-                <span className="ems-mono" title={isTraderRoom ? 'Если оба не будут готовы вовремя, квартал наступит сам собой' : 'Если решение не придёт вовремя, за отсутствующего один раз решит бот'}
-                  style={{ display: 'flex', alignItems: 'center', gap: 4, color: timeLeftMs < 60000 ? COLOR.rust : COLOR.muted }}>
-                  <Clock size={11} />{timeLeftLabel}
-                </span>
-              )}
-            </span>
-          )}
-          {waitingForOther ? (
-            <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
-          ) : (
-            <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
-              {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу'
-                : isPresidentSeat ? 'Подписать и завершить квартал' : 'Отправить решения квартала'}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================ ГЛАВНОЕ МЕНЮ ============================ */
-// Первый экран после запуска: выбор направления (новая партия / сеть /
-// продолжить / достижения), а не сразу детальная анкета — её показывает
-// SetupScreen отдельным шагом, только для новой одиночной партии.
-// Витринные классы (.ems-hero-*, .ems-card-btn, .ems-theme-*) определены в
-// GlobalStyle и переиспользуются на всех входных экранах (меню, новая партия,
-// обучение, сеть) — не только здесь.
 function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
@@ -7555,8 +4464,8 @@ function SetupScreen({ onStart, onBack }) {
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Как настраивать партию</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: custom ? 22 : 26 }}>
-              {[['classic', 'Классика', 'Характеры ведомств бросаются случайно, президент включён. Начать и разбираться по ходу — как и должно быть в первый раз.'],
-                ['custom', 'Настраиваемая', 'Выбрать характер каждого ведомства и президента — или отключить президента совсем.']].map(([id, title, note]) => {
+              {[['classic', 'Классика', 'Открытая партия без стартового кризиса, характеры ведомств бросаются случайно, президент включён. Начать и разбираться по ходу — как и должно быть в первый раз.'],
+                ['custom', 'Настраиваемая', 'Выбрать стартовую ситуацию — от открытой партии до гиперинфляции, — характер каждого ведомства и президента или отключить президента совсем.']].map(([id, title, note]) => {
                 const active = mode === id;
                 return (
                   <div key={id} onClick={() => { Audio.play('click'); setMode(id); }} className="ems-card-btn"
@@ -7687,14 +4596,20 @@ function SetupScreen({ onStart, onBack }) {
 
         {/* сценарий задаёт не песочницу, а другую стартовую точку той же экономики:
             переопределяет часть начальных условий движка, а не превращает партию
-            во что-то отдельное — сюжет, обучение и достижения работают как обычно */}
+            во что-то отдельное — сюжет, обучение и достижения работают как обычно.
+            Выбор сценария — часть настраиваемой партии: классика всегда начинается
+            с открытой партии, как и положено в первый раз, а кризисные старты —
+            для тех, кто уже решил, с чем хочет иметь дело. */}
+        {custom && (<>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
-          {SCENARIOS.map((sc) => {
+          {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
             const active = scenario === sc.id;
+            // от спокойного к опасному: бирюзовый → золотой → ржавый
+            const levelColor = sc.level >= 4 ? COLOR.rust : sc.level === 3 ? COLOR.gold : sc.level === 2 ? COLOR.goldSoft : COLOR.teal;
             return (
               <div key={sc.id} onClick={() => { Audio.play('click'); setScenario(sc.id); }} className="ems-card-btn"
                 style={{ padding: 13, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
@@ -7702,17 +4617,30 @@ function SetupScreen({ onStart, onBack }) {
                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setScenario(sc.id); }}>
                 {active && <Check size={12} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                 <div className="ems-serif" style={{ fontSize: 13, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
+                {sc.level && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}
+                    aria-label={`Сложность: ${sc.levelLabel}, ${sc.level} из 4`}>
+                    <span aria-hidden style={{ display: 'flex', gap: 3 }}>
+                      {[1, 2, 3, 4].map((i) => (
+                        <span key={i} style={{ width: 12, height: 4, borderRadius: 2, background: i <= sc.level ? levelColor : COLOR.borderStrong, opacity: i <= sc.level ? 1 : 0.55 }} />
+                      ))}
+                    </span>
+                    <span className="ems-mono" style={{ fontSize: 10, color: levelColor, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{sc.levelLabel}</span>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+                {sc.levelNote && <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginTop: 6 }}>{sc.levelNote}</div>}
               </div>
             );
           })}
         </div>
+        </>)}
 
         {/* сложность и приоритет — это быстрые настройки, а не решения того же веса,
             что роль: сводим в одну компактную секцию вместо двух полноразмерных
             сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>4</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{custom ? 4 : 3}</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
@@ -7751,7 +4679,9 @@ function SetupScreen({ onStart, onBack }) {
             const cbWanted = custom ? cbPersona : 'random';
             const mofWanted = custom ? mofPersona : 'random';
             const presWanted = custom ? presPersona : 'random';
-            onStart({ role, difficulty, goal, scenario,
+            // классика всегда начинается с открытой партии, даже если в
+            // настраиваемом режиме до этого успели выбрать кризисный сценарий
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox',
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
               president: { enabled: presAvailable && (custom ? presEnabled : true),
@@ -7768,7 +4698,7 @@ function SetupScreen({ onStart, onBack }) {
 const idx0 = (v) => (Number.isFinite(v) ? v.toFixed(0) : '—');
 // в узкой строке показателя полные названия реформ не помещаются
 const REFORM_SHORT = { labor: 'труд', pension: 'пенсии', courts: 'суды', deregulation: 'дерегулирование', education: 'образование' };
-const INDICATOR_TABS = [
+export const INDICATOR_TABS = [
   { id: 'economy', label: 'Выпуск', icon: TrendingUp, rows: [
     { key: 'gdp', label: 'ВВП (реальный)', fmt: fmtMoney },
     { key: 'gdpGrowth', label: 'Темп роста ВВП', fmt: fmtSignedPct },
@@ -7788,6 +4718,8 @@ const INDICATOR_TABS = [
     { key: 'inflationExpectations', label: 'Инфляционные ожидания', fmt: pctFmt },
     { key: 'cbCredibility', label: 'Доверие к ЦБ', fmt: idx0,
       hint: 'Растёт медленно, кварталами, когда инфляция держится у цели, а решения соответствуют ситуации. Падает от смены цели, экстренной эмиссии, крупных QE и любого отклонения инфляции от цели.' },
+    { key: 'stabilizationCred', label: 'Доверие к стабилизации', fmt: (v) => (v > 0 ? `${Math.round(v * 100)} из 100` : '—'),
+      hint: 'Включается при инфляции выше цели на 8 п.п. Копится, пока реальная ставка не ниже 3 п.п., ЦБ не печатает деньги, а дефицит бюджета не больше 3% ВВП (или сокращается); управляемый курс при достаточных резервах ускоряет. Одна ставка без бюджета копит доверие втрое медленнее, ослабление денег раньше времени обрушивает его сразу. Чем выше доверие, тем быстрее падают ожидания и тем мягче рецессия.' },
     { key: 'importPriceInflation', label: 'Инфляция цен импорта', fmt: pctFmt },
     { key: 'unitLaborCostGrowth', label: 'Удельные издержки труда', fmt: fmtSignedPct },
     { key: 'moneySupply', label: 'Денежная масса (индекс)', fmt: fmt1 },
@@ -7901,6 +4833,8 @@ const INDICATOR_TABS = [
     { label: 'Политический режим', get: (e) => e.politicalRegime, text: true,
       map: Object.fromEntries(Object.entries(POLITICAL_REGIME_INFO).map(([id, info]) => [id, info.label])) },
     { key: 'politicalTension', label: 'Политическое напряжение', fmt: (v) => v.toFixed(0) },
+    { key: 'crisisMandateLeft', label: 'Мандат спасения', fmt: (v) => (v > 0 ? `ещё ${v} кв.` : '—'),
+      hint: 'Кредит доверия правительству национального спасения — есть только в сценарии «Гиперинфляция». Пока он действует, рейтинг держится выше, а напряжение ниже, чем говорит экономика. Полную силу даёт, только пока стабилизационная программа работает; при бездействии — треть силы и сгорает вдвое быстрее.' },
     { label: 'Беспорядки в стране', get: (e) => !!e.unrestActive, text: true, map: { true: 'да', false: 'нет' } },
     { label: 'Парламент', get: (e) => !!e.parliamentDissolved, text: true, map: { true: 'распущен', false: 'работает' } },
     { key: 'politicalCapital', label: 'Политический капитал', fmt: (v) => v.toFixed(0) },
@@ -7946,7 +4880,7 @@ export const ALL_METRICS = (() => {
   return m;
 })();
 const DEFAULT_PINS = ['gdp', 'outputGap', 'inflation', 'unemployment', 'debtToGdp'];
-const MAX_PINS = 8;
+export const MAX_PINS = 8;
 
 function PinButton({ active, onClick }) {
   return (
@@ -7962,7 +4896,7 @@ function PinButton({ active, onClick }) {
    там был виден, а прочитать за ним было нечего. Теперь по нему (и по самому
    названию) можно нажать — подсказка раскрывается прямо под строкой, а title
    остаётся для мыши. */
-function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) {
+export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) {
   const [openHint, setOpenHint] = useState(false);
   const hint = row.hint;
   return (
@@ -8016,7 +4950,7 @@ function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   );
 }
 
-function RiskBadge({ label, value }) {
+export function RiskBadge({ label, value }) {
   const v = clamp(value || 0, 0, 100);
   const color = v >= 65 ? COLOR.rust : v >= 35 ? COLOR.gold : COLOR.teal;
   return (
@@ -8096,6 +5030,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [activeSlot, setActiveSlot] = useState(initial && Number.isFinite(initial.slotIdx) ? initial.slotIdx : null);
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
+  const [showChronicle, setShowChronicle] = useState(false);
   const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -8561,6 +5496,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       wellbeingDelta: result.economy.wellbeing - economy.wellbeing,
       newCrisis,
       bigNews: result.newsEntries.some((n) => n.priority >= 8),
+      // выборы, переворот, падение режима, остановленные цены — у каждого своя музыкальная заставка
+      stinger: stingerFor(economy, result.economy),
     });
     // без этого directiveProgress следующего квартала сравнивал бы решения с
     // тем, какими они были в САМОМ ПЕРВОМ квартале партии: базовая точка ни разу
@@ -8584,8 +5521,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
   // музыка следует за режимом экономики и уровнем рисков
   React.useEffect(() => { Audio.setMood(economy); },
-    [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.debtRisk, economy.recessionRisk, economy.gdpGrowth]);
-  React.useEffect(() => { Audio.setRole(setup.role === 'trader' ? 'trader' : null); }, [setup.role]);
+    [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.debtRisk, economy.recessionRisk, economy.gdpGrowth,
+      economy.inflation, economy.politicalRegime, economy.campaignActive, economy.stabilizationCred, economy.stabilizationWon]);
+  React.useEffect(() => {
+    Audio.setRole(setup.role === 'trader' ? 'trader' : setup.role === 'president' ? 'president' : null);
+  }, [setup.role]);
   React.useEffect(() => () => Audio.stopMusic(), []);
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const shareKey = (id) => (id === 'shareHealth' ? 'health' : id === 'shareEducation' ? 'education' : id === 'shareScience' ? 'science' : id === 'shareDefense' ? 'defense' : 'admin');
@@ -8618,7 +5558,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }}
+        onChronicle={() => { setShowGameOver(false); setShowChronicle(true); }}
         onRollback={rollbackTarget ? handleRollback : null} />}
+      {showChronicle && <ChronicleModal history={history} onClose={() => setShowChronicle(false)} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
@@ -8709,6 +5651,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <AudioControls />
           <HeaderOverflowMenu items={[
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
+            { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => {
               if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); }
             } },
@@ -8776,7 +5719,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       </div>
 
       {view === 'map' && (
-        <div style={{ padding: '0 18px 18px' }}><CountryMap economy={economy} /></div>
+        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}><CountryMap economy={economy} /></Suspense></div>
       )}
 
       {view === 'market' && (
@@ -9179,7 +6122,11 @@ export default function MacroSimulator() {
   const backToMenu = () => { setNetwork(null); setLoaded(null); setSetup(null); goMenu(); };
   const screen = (() => {
     if (network) {
-      return <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />;
+      return (
+        <Suspense fallback={<NetworkFallback />}>
+          <NetworkGameScreen network={network} theme={theme} setTheme={setTheme} onExit={() => { setNetwork(null); goMenu(); }} />
+        </Suspense>
+      );
     }
     if (!setup) {
       if (view === 'setup') {
@@ -9191,7 +6138,11 @@ export default function MacroSimulator() {
         );
       }
       if (view === 'network') {
-        return <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />;
+        return (
+          <Suspense fallback={<NetworkFallback />}>
+            <NetworkEntryScreen key={theme} onEnter={(net) => setNetwork(net)} onBack={goMenu} />
+          </Suspense>
+        );
       }
       if (view === 'tutorial') {
         return (

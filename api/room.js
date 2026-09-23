@@ -9,7 +9,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -57,15 +57,19 @@ const pickFields = (obj, ids) => { const out = {}; for (const id of ids) if (id 
    допустимого диапазона и отбрасываем всё незнакомое, чтобы NaN/Infinity
    или произвольные поля не попали в модель и не сломали комнату сразу
    для обоих игроков. Меняем только рычаги СВОЕЙ группы — иначе решение
-   второго игрока для его же рычагов теряется при слиянии (см. resolveQuarter). */
-function sanitizeDecisions(base, submitted, seat) {
+   второго игрока для его же рычагов теряется при слиянии (см. resolveQuarter).
+   Границы — те же, что игрок видит на ползунке при этой экономике (scaleLever):
+   раньше сервер резал по статичным, и в сети срезались бы и ставка выше 25%
+   при высокой инфляции, и рычаги в миллиардах, растущие вместе с ВВП. */
+function sanitizeDecisions(base, submitted, seat, economy) {
   const out = { ...base };
   if (!submitted || typeof submitted !== 'object') return out;
   const group = SEAT_GROUP[seat];
   for (const lever of LEVERS) {
     if (lever.group !== group) continue;
     const v = submitted[lever.id];
-    if (typeof v === 'number' && Number.isFinite(v)) out[lever.id] = clamp(v, lever.min, lever.max);
+    const l = economy ? scaleLever(lever, economy) : lever;
+    if (typeof v === 'number' && Number.isFinite(v)) out[lever.id] = clamp(v, l.min, l.max);
   }
   if (group === 'monetary') {
     if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
@@ -93,13 +97,18 @@ function sanitizePresident(v) {
   };
 }
 
+/* Стартовая ситуация комнаты — те же сценарии, что в одиночной игре. Любой
+   незнакомый идентификатор (или его отсутствие) — открытая партия: так же
+   себя ведёт «классика» в лобби. */
+const SCENARIO_IDS = new Set(SCENARIOS.map((sc) => sc.id));
 export function freshRoom(opts) {
-  const economy = makeInitialEconomy();
+  const scenario = SCENARIO_IDS.has(opts.scenario) ? opts.scenario : 'sandbox';
+  const economy = makeInitialEconomy(scenario);
   const mode = opts.mode === 'trader' ? 'trader' : 'policy';
   const seats = SEATS_BY_MODE[mode];
   const zip = (v) => Object.fromEntries(seats.map((sx) => [sx, v]));
   return {
-    id: opts.id, created: Date.now(), version: 1, mode,
+    id: opts.id, created: Date.now(), version: 1, mode, scenario,
     ownerToken: token(), // владелец лобби — тот, кто нажал «Создать комнату»; не привязан к месту,
     // потому что место выбирается отдельным шагом уже ПОСЛЕ создания
     // общедоступная комната видна всем в браузере комнат и не требует кода;
@@ -190,6 +199,7 @@ export const publicView = (room) => {
   const perSeat = (fn) => Object.fromEntries(SEATS.map((sx) => [sx, fn(sx)]));
   return {
     id: room.id, version: room.version, difficulty: room.difficulty, mode: room.mode === 'trader' ? 'trader' : 'policy',
+    scenario: room.scenario || 'sandbox',
     isPublic: !!room.isPublic,
     // время сервера: таймер квартала считается от него, а часы на устройствах
     // расходятся на минуты — и у двух игроков были разные цифры на экране
@@ -318,6 +328,13 @@ export function resolveQuarter(room) {
   // голоса на выборах считались бы так, будто обещаний вообще не было (то же
   // самое делает solo в MacroSimulator.jsx перед своим вызовом simulateQuarter)
   if (room.promises) eff = { ...eff, promises: room.promises };
+  /* Пресс-конференция: отвечает один голос власти (pressSpeakerSeat). Ответ
+     не того места игнорируется — сервер не доверяет клиенту в том, кто сейчас
+     говорит от имени власти. Бот на вопрос не отвечает, как и в одиночной
+     игре: пропущенная пресс-конференция просто ничего не стоит и не даёт. */
+  const speaker = pressSpeakerSeat(room.seats);
+  const speakerSub = speaker ? subs[speaker] : null;
+  eff = { ...eff, pressAnswer: speakerSub && speakerSub.pressAnswer ? speakerSub.pressAnswer : null };
   const res = simulateQuarter({
     economy: { ...room.economy, cbStance, mofStance },
     decisions: eff, pendingImpulses: extraImpulses, eventCooldowns: room.eventCooldowns,
@@ -488,6 +505,7 @@ async function handleRequest(req, res) {
           president: !!r.president, quarterIndex: r.quarterIndex, created: r.created,
           seatsTotal: seatsList.length, seatsFree: seatsList.filter((sx) => !r.seats[sx]).length,
           activeCrises: (r.economy && r.economy.activeCrises) || [],
+          scenario: r.scenario || 'sandbox',
         });
       }
       rooms.sort((a, b) => b.created - a.created);
@@ -529,7 +547,7 @@ async function handleRequest(req, res) {
     const president = body.president === null || (body.president && body.president.enabled === false)
       ? null : (body.president || {});
     const base = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof,
-      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public });
+      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public, scenario: body.scenario });
     const room = { ...base, presidentPlan: planPresident(base, base.economy, {}) };
     await setRoom(id, room);
     if (room.isPublic) await addPublicRoom(id);
@@ -567,7 +585,7 @@ async function handleRequest(req, res) {
       const seat = body.seat;
       if (!SEATS.includes(seat)) return { error: 'Неизвестная роль', status: 400 };
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
-      const decisions = sanitizeDecisions(room.decisions, body.decisions, seat);
+      const decisions = sanitizeDecisions(room.decisions, body.decisions, seat, room.economy);
       const presidentMove = seat === 'president' ? sanitizePresident(body.president) : null;
       // стоимость портфеля трейдера — сообщается им самим при готовности к
       // следующему кварталу; сервер её не считает (позиции клиентские), просто
@@ -575,7 +593,10 @@ async function handleRequest(req, res) {
       const portfolioValues = Number.isFinite(body.portfolioValue)
         ? { ...room.portfolioValues, [seat]: clamp(body.portfolioValue, 0, 1e9) } : room.portfolioValues;
       const next = { ...room,
-        submissions: { ...room.submissions, [seat]: { decisions, president: presidentMove, note: cleanString(body.note, 280) } },
+        // ответ на пресс-конференции хранится при сдаче хода, а не в decisions
+        // комнаты: иначе он переживал бы квартал и отвечал на следующий вопрос
+        submissions: { ...room.submissions, [seat]: { decisions, president: presidentMove, note: cleanString(body.note, 280),
+          pressAnswer: body.decisions && PRESS_OPTION_IDS.has(body.decisions.pressAnswer) ? body.decisions.pressAnswer : null } },
         portfolioValues, version: room.version + 1 };
       const allIn = SEATS.every((sx) => next.submissions[sx] || !next.seats[sx]);
       return allIn ? resolveQuarter(next) : next;

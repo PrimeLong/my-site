@@ -112,7 +112,7 @@ function playGame({ seed, scenario, difficulty, cbPersona, mofPersona, presPerso
       const mof = botFinanceMinistry(economy, mofPersona, difficulty);
       checkBotDecisions(cb.decisions, economy, `${ctx} ЦБ`);
       checkBotDecisions(mof.decisions, economy, `${ctx} Минфин`);
-      const plan = botPresident(economy, presPersona, eventCooldowns, difficulty);
+      const plan = botPresident(economy, presPersona, difficulty, { cooldowns: eventCooldowns });
       const merged = {
         ...decisions, ...cb.decisions, ...mof.decisions,
         presidentActive: true,
@@ -159,7 +159,7 @@ function playUnfree({ seed, regime, presPersona, scenario, quarters, onNews }) {
       const before = economy.politicalRegime;
       const cb = botCentralBank(economy, 'pragmatic', 'medium');
       const mof = botFinanceMinistry(economy, 'populist', 'medium');
-      const plan = botPresident(economy, presPersona, eventCooldowns, 'medium');
+      const plan = botPresident(economy, presPersona, 'medium', { cooldowns: eventCooldowns });
       const r = simulateQuarter({
         economy, decisions: { ...decisions, ...cb.decisions, ...mof.decisions,
           presidentActive: true, presidentActions: (plan && plan.actions) || [] },

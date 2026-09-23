@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# браузерные тесты
+test-results/
+playwright-report/

@@ -8,7 +8,7 @@ import {
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
-  presActionAvailable, applyPresidentActions,
+  presActionAvailable, applyPresidentActions, scaleLever, gameChronicle,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
   fmtMoney, fmtIndex,
@@ -282,19 +282,29 @@ describe('политический режим и пропаганда', () => {
     // двигал стрелку к авторитаризму. Здесь форсируется только устойчиво низкий капитал
     // банков (чтобы кризис не рассосался сам собой за пару кварталов) — падение
     // рейтинга, рецессия и долговой стресс дальше нарастают уже сами, без подсказок.
+    //
+    // Проверяется момент выхода из демократии, а не фиксированный квартал: после
+    // исправления двойного дефлирования дохода с капитала кризис разгоняется
+    // медленнее, а прибитый в абсолютных единицах капитал со временем перестаёт
+    // держать кризис (кредит сжимается, норматив восстанавливается сам). Шум зафиксирован.
+    let seed = 7;
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
     let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0 };
     let decisions = defaultDecisions(economy);
     let pendingImpulses = []; let eventCooldowns = {};
-    for (let q = 1; q <= 25; q++) {
+    let exit = null;
+    for (let q = 1; q <= 40 && !exit; q++) {
       const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
         difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
       economy = { ...r.economy, bankCapital: 4 }; // не даём банковскому кризису рассосаться самому
       pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
       decisions = defaultDecisions(economy, decisions);
+      if (economy.politicalRegime !== 'democracy') exit = economy;
     }
-    expect(economy.activeCrises).toContain('banking');
-    expect(economy.politicalTension).toBeGreaterThan(60);
-    expect(economy.politicalRegime).not.toBe('democracy');
+    spy.mockRestore();
+    expect(exit, 'за 40 кварталов банковский кризис так и не вывел страну из демократии').toBeTruthy();
+    expect(exit.activeCrises).toContain('banking');
+    expect(exit.politicalTension).toBeGreaterThan(60);
   });
 
   it('lets a catastrophic approval collapse trigger a coup instead of a quiet election defeat', () => {
@@ -1696,6 +1706,274 @@ describe('голос режима: подконтрольная пресса г�
       const a = pickPressQuestion(free, i); const b = pickPressQuestion(hard, i);
       expect(b.id).toBe(a.id);
       expect(b.options.map((o) => o.id)).toEqual(a.options.map((o) => o.id));
+    });
+  });
+});
+
+
+/* Потолок ключевой ставки. Отчёт о балансе (npm run balance) показал: сценарий
+   «Гиперинфляция» начинался при инфляции 34% и ставке 24% при потолке ползунка
+   25% — реальная ставка не могла стать положительной ни у бота, ни у игрока, и
+   инфляция стояла на 30+% четыре года. Потолок теперь растёт с инфляцией. */
+describe('потолок ключевой ставки растёт вместе с инфляцией', () => {
+  const KR = LEVERS.find((l) => l.id === 'keyRate');
+
+  it('в спокойной экономике потолок прежний — 25%', () => {
+    expect(scaleLever(KR, makeInitialEconomy()).max).toBe(25);
+  });
+
+  it('при высокой инфляции реальная ставка может стать положительной с запасом', () => {
+    const e = makeInitialEconomy('hyperinflation');
+    const cap = scaleLever(KR, e).max;
+    expect(cap).toBeGreaterThanOrEqual(Math.max(e.inflation, e.inflationExpectations) + 15);
+  });
+
+  it('движок не срезает ставку выше 25%, если она в пределах ползунка', () => {
+    const e = makeInitialEconomy('hyperinflation');
+    const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), keyRate: 45 },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    expect(r.economy.keyRate).toBe(45);
+  });
+
+  it('бот-ЦБ при гиперинфляции поднимает ставку выше старого потолка', () => {
+    let e = makeInitialEconomy('hyperinflation');
+    let rate = e.keyRate;
+    for (let i = 0; i < 6; i++) { rate = botCentralBank({ ...e, keyRate: rate }, 'hawk', 'medium').decisions.keyRate; }
+    expect(rate).toBeGreaterThan(25);
+  });
+});
+
+
+/* Разбор партии читает историю кварталов и находит переломные моменты. Здесь —
+   синтетические истории, где заранее известно, что должно найтись. */
+describe('разбор партии', () => {
+  const base = { ...makeInitialEconomy(), activeCrises: [], electionResult: null, politicalRegime: 'democracy' };
+  const q = (i, patch) => ({ ...base, q: i, label: `Q${i}`, ...patch });
+
+  it('к кризису привязывается решение, которое ему предшествовало', () => {
+    const hist = [q(0), q(1), q(2, { keyRate: 2.5 }), q(3, { keyRate: 2.5, activeCrises: ['overheating'] })];
+    const { events } = gameChronicle(hist);
+    const ev = events.find((e) => e.kind === 'crisis');
+    expect(ev).toBeTruthy();
+    expect(ev.text).toMatch(/За 1 кв\. до этого: ставка снижена/);
+  });
+
+  it('кризис с первого квартала — это стартовые условия, а не чьё-то решение', () => {
+    const { events } = gameChronicle([q(0), q(1, { activeCrises: ['currency'] }), q(2, { activeCrises: ['currency'] })]);
+    expect(events[0].title).toMatch(/Партия началась в кризисе/);
+  });
+
+  it('подтасованные выборы: официальная цифра и честная рядом', () => {
+    const hist = [q(0), q(1, { politicalRegime: 'authoritarian' }),
+      q(2, { politicalRegime: 'authoritarian', electionResult: 'incumbent', electionVoteShare: 6,
+        lastElection: { rigged: true, coup: false, nationalShare: 78 } })];
+    const ev = gameChronicle(hist).events.find((e) => e.kind === 'election');
+    expect(ev.title).toMatch(/официально 78/);
+    expect(ev.text).toMatch(/было бы 6/);
+  });
+
+  it('переворот после проигранных выборов не выдаётся за победу', () => {
+    const hist = [q(0), q(1), q(2, { electionResult: 'incumbent', electionVoteShare: 4, lastElection: { coup: true, rigged: false } })];
+    const ev = gameChronicle(hist).events.find((e) => e.kind === 'election');
+    expect(ev.tone).toBe('bad');
+    expect(ev.title).toMatch(/итог не признан/);
+  });
+
+  it('колебания «конфликт ↔ авторитаризм» не засоряют разбор', () => {
+    const seq = ['democracy', 'crisis', 'authoritarian', 'crisis', 'authoritarian', 'crisis', 'authoritarian', 'democracy'];
+    const hist = seq.map((r, i) => q(i, { politicalRegime: r }));
+    const regime = gameChronicle(hist).events.filter((e) => e.kind === 'regime').map((e) => e.title);
+    expect(regime).toEqual(['Режим: Конфликт парламента и президента', 'Режим: Авторитарный режим', 'Режим: Демократия']);
+  });
+
+  it('событий не больше десяти и они идут по порядку', () => {
+    const hist = [q(0)];
+    for (let i = 1; i <= 60; i++) {
+      hist.push(q(i, { activeCrises: i % 4 === 0 ? ['recession'] : [], keyRate: i % 2 ? 3 : 8,
+        politicalRegime: 'democracy', wellbeing: 40 + (i % 7) * 5 }));
+    }
+    const { events, summary } = gameChronicle(hist);
+    expect(events.length).toBeLessThanOrEqual(10);
+    for (let i = 1; i < events.length; i++) expect(events[i].q).toBeGreaterThanOrEqual(events[i - 1].q);
+    expect(summary.quarters).toBe(60);
+  });
+
+  it('пустая или однокадровая история не ломает разбор', () => {
+    expect(gameChronicle([]).events).toEqual([]);
+    expect(gameChronicle([q(0)]).summary).toBeNull();
+  });
+});
+
+/* Стабилизационная программа и мандат спасения. Без них сценарий
+   «Гиперинфляция» политически не выигрывался никакой игрой (перебор 1296
+   двухфазных стратегий — ноль); с ними выигрывается трудно, а бездействие
+   по-прежнему проигрывает. */
+describe('стабилизационная программа', () => {
+  const run = (patchFn, quarters = 4, scenario = 'hyperinflation') => {
+    let e = makeInitialEconomy(scenario); let d = defaultDecisions(e);
+    let pend = []; let cd = {}; const out = [];
+    for (let q = 1; q <= quarters; q++) {
+      const r = simulateQuarter({ economy: e, decisions: { ...d, ...patchFn(e) }, pendingImpulses: pend,
+        eventCooldowns: cd, difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; d = defaultDecisions(e, d);
+      out.push({ e, news: r.newsEntries });
+    }
+    return out;
+  };
+  const hard = (e) => ({ keyRate: Math.round(e.inflationExpectations + 8), govSpending: -6, fxRegime: 'managed' });
+
+  it('жёсткие деньги и бюджет копят доверие к программе быстрее, чем одна ставка', () => {
+    const both = run(hard, 2);
+    const moneyOnly = run((e) => ({ keyRate: Math.round(e.inflationExpectations + 8), govSpending: 6, transfers: 8 }), 2);
+    expect(both[1].e.stabilizationCred).toBeGreaterThan(moneyOnly[1].e.stabilizationCred);
+    expect(both[1].e.stabilizationCred).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('печатание денег обрушивает доверие к программе', () => {
+    const broken = run(hard, 2);
+    const e = broken[1].e;
+    const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), ...hard(e), moneySupplyOp: 4 },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'easy', quarterIndex: 3, stories: [], noEvents: true });
+    expect(r.economy.stabilizationCred).toBeLessThan(e.stabilizationCred * 0.5);
+  });
+
+  it('при поверенной программе ожидания падают быстрее, чем при той же ставке без неё', () => {
+    const credible = run(hard, 3);
+    const printing = run((e) => ({ ...hard(e), moneySupplyOp: 3 }), 3);
+    expect(credible[2].e.inflationExpectations).toBeLessThan(printing[2].e.inflationExpectations - 3);
+  });
+
+  it('мандат спасения при бездействии сгорает быстрее, чем при работающей программе', () => {
+    const acting = run(hard, 4); const idle = run(() => ({}), 4);
+    expect(idle[3].e.crisisMandateLeft).toBeLessThan(acting[3].e.crisisMandateLeft);
+  });
+
+  it('«Цены остановлены» — один раз, когда программа довела инфляцию до цели', () => {
+    const quarters = run(hard, 10);
+    const hits = quarters.flatMap((x) => x.news).filter((n) => n.headline.startsWith('ЦЕНЫ ОСТАНОВЛЕНЫ'));
+    expect(hits.length).toBe(1);
+  });
+
+  it('в спокойной партии программа не включается и ничего не меняет', () => {
+    const calm = run(() => ({}), 6, 'sandbox');
+    calm.forEach((x) => { expect(x.e.stabilizationCred).toBe(0); expect(x.e.crisisMandateLeft || 0).toBe(0); });
+  });
+});
+
+describe('сложность сценариев', () => {
+  it('у каждого сценария есть уровень и пояснение, а «Гиперинфляция» — единственный самый трудный', () => {
+    SCENARIOS.forEach((sc) => {
+      expect(sc.level).toBeGreaterThanOrEqual(1);
+      expect(sc.level).toBeLessThanOrEqual(4);
+      expect(sc.levelLabel).toBeTruthy();
+      expect(sc.levelNote).toBeTruthy();
+    });
+    const max = Math.max(...SCENARIOS.map((sc) => sc.level));
+    expect(SCENARIOS.filter((sc) => sc.level === max).map((sc) => sc.id)).toEqual(['hyperinflation']);
+  });
+});
+
+/* Боты и стабилизационная программа. До этого бот-ЦБ сдвигал ставку на 1,25–1,75
+   п.п. за квартал и не успевал довести реальную ставку до +3, пока держался
+   мандат: игрок за Минфин или президент в «Гиперинфляции» проигрывал всегда. */
+describe('боты в стабилизационной программе', () => {
+  const hyper = () => makeInitialEconomy('hyperinflation');
+
+  it('ЦБ-бот при бегстве от денег выводит реальную ставку в плюс: ястреб и прагматик сразу, голубь за два квартала', () => {
+    ['hawk', 'pragmatic'].forEach((p) => {
+      const e = hyper();
+      const r = botCentralBank(e, p, 'medium');
+      expect(r.decisions.keyRate - e.inflationExpectations, p).toBeGreaterThanOrEqual(3);
+      expect(r.decisions.moneySupplyOp, p).toBeLessThanOrEqual(0);
+    });
+    const e = hyper();
+    const first = botCentralBank(e, 'dove', 'medium').decisions.keyRate;
+    const second = botCentralBank({ ...e, keyRate: first }, 'dove', 'medium').decisions.keyRate;
+    expect(first).toBeGreaterThan(e.keyRate);
+    expect(second - e.inflationExpectations).toBeGreaterThanOrEqual(3);
+  });
+
+  it('ястреб выводит ставку выше, чем голубь', () => {
+    const e = hyper();
+    expect(botCentralBank(e, 'hawk', 'medium').decisions.keyRate)
+      .toBeGreaterThan(botCentralBank(e, 'dove', 'medium').decisions.keyRate);
+  });
+
+  it('после победы над инфляцией ЦБ-бот снижает сверхжёсткую ставку крупными шагами', () => {
+    const e = { ...makeInitialEconomy(), keyRate: 30, inflation: 2, inflationExpectations: 5, outputGap: -8 };
+    const r = botCentralBank(e, 'pragmatic', 'medium');
+    expect(e.keyRate - r.decisions.keyRate).toBeGreaterThanOrEqual(5);
+  });
+
+  it('технократ и консерватор режут расходы под программу, популист держит выплаты', () => {
+    const e = hyper();
+    const tech = botFinanceMinistry(e, 'technocrat', 'medium').decisions;
+    const aust = botFinanceMinistry(e, 'austerity', 'medium').decisions;
+    const pop = botFinanceMinistry(e, 'populist', 'medium').decisions;
+    expect(tech.govSpending).toBeLessThanOrEqual(-3);
+    expect(aust.govSpending).toBeLessThanOrEqual(-4);
+    expect(pop.transfers).toBeGreaterThan(tech.transfers);
+  });
+
+  it('в спокойной экономике боты не включают режим программы', () => {
+    const e = makeInitialEconomy();
+    const r = botCentralBank(e, 'hawk', 'medium');
+    expect(Math.abs(r.decisions.keyRate - e.keyRate)).toBeLessThan(2);
+  });
+});
+
+describe('жёсткость цен вниз', () => {
+  it('даже при огромном отрицательном разрыве выпуска дефляция не проваливается к −10%', () => {
+    let e = { ...makeInitialEconomy(), gdp: makeInitialEconomy().potentialGdp * 0.8, inflationExpectations: 0, inflation: 0 };
+    let d = defaultDecisions(e);
+    for (let q = 1; q <= 6; q++) {
+      const r = simulateQuarter({ economy: e, decisions: { ...d, keyRate: 8 }, pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      e = r.economy; d = defaultDecisions(e, d);
+      expect(e.inflation).toBeGreaterThan(-6);
+    }
+  });
+});
+
+describe('мандат спасения после победы над ценами', () => {
+  it('обновляется один раз, когда программа доводит инфляцию до цели', () => {
+    let e = makeInitialEconomy('hyperinflation'); let d = defaultDecisions(e);
+    let pend = []; let cd = {}; const refills = [];
+    for (let q = 1; q <= 12; q++) {
+      const dec = { keyRate: Math.round(Math.max(e.inflation, e.inflationExpectations) + 3), govSpending: -6 };
+      const r = simulateQuarter({ economy: e, decisions: { ...d, ...dec }, pendingImpulses: pend, eventCooldowns: cd,
+        difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      if (r.newsEntries.some((n) => n.headline.startsWith('СТРАНА ДАЁТ ВРЕМЯ'))) refills.push(q);
+      e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; d = defaultDecisions(e, d);
+    }
+    expect(refills.length).toBe(1);
+  });
+});
+
+describe('стабилизация в разборе партии', () => {
+  it('разбор отмечает, что рынок поверил программе и что цены остановлены', () => {
+    let e = makeInitialEconomy('hyperinflation'); let d = defaultDecisions(e);
+    let pend = []; let cd = {}; const hist = [{ q: 0, label: 'старт', ...e }];
+    for (let q = 1; q <= 10; q++) {
+      const dec = { keyRate: Math.round(Math.max(e.inflation, e.inflationExpectations) + 3), govSpending: -6 };
+      const r = simulateQuarter({ economy: e, decisions: { ...d, ...dec }, pendingImpulses: pend, eventCooldowns: cd,
+        difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; d = defaultDecisions(e, d);
+      hist.push({ q, label: `Q${q}`, ...e });
+    }
+    const kinds = gameChronicle(hist).events.map((ev) => ev.kind);
+    expect(kinds).toContain('stab-credible');
+    expect(kinds).toContain('prices-stopped');
+  });
+});
+
+describe('стартовый режим экономики в сценариях', () => {
+  it('совпадает с тем, что движок присвоит после первого квартала — баннер не пишет «Нормальный режим» посреди кризиса', () => {
+    SCENARIOS.forEach((sc) => {
+      const e0 = makeInitialEconomy(sc.id);
+      const r = simulateQuarter({ economy: e0, decisions: defaultDecisions(e0), pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'easy', quarterIndex: 1, stories: [], noEvents: true });
+      expect(e0.regime, sc.id).toBe(r.economy.regime);
     });
   });
 });
