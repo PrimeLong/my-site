@@ -471,8 +471,10 @@ export function resolveQuarter(room) {
       // (не отправил решение вовремя) — отличаем от «место просто пустует»,
       // чтобы при возвращении показать именно «пока вас не было» и что можно
       // продолжать, а не путать с обычным заполнением пустого места ботом
-      central_bank: cbAct ? { bot: true, timedOut: !!room.seats.central_bank, note: cbAct.note, quote: cbAct.quote } : { bot: false, note: subs.central_bank.note || null },
-      // levers — итоговые бюджетные потоки квартала (после указаний президента):
+      central_bank: { ...(cbAct ? { bot: true, timedOut: !!room.seats.central_bank, note: cbAct.note, quote: cbAct.quote }
+        : { bot: false, note: subs.central_bank.note || null }),
+      levers: { ...pickFields(eff, LEVER_IDS_BY_GROUP.monetary), fxRegime: eff.fxRegime, emergency: !!eff.emergency } },
+      // levers — итоговые решения ведомства за квартал (после указаний президента):
       // партнёр видит их теми же ползунками, что и у себя, а не только текстом новости
       ministry_finance: { ...(mofAct ? { bot: true, timedOut: !!room.seats.ministry_finance, note: mofAct.note, quote: mofAct.quote }
         : { bot: false, note: subs.ministry_finance.note || null }),

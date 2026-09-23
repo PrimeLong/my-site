@@ -1359,40 +1359,69 @@ function StanceBar({ value, leftLabel, rightLabel }) {
   );
 }
 
-/* Бюджетные потоки чужого Минфина — бота или партнёра — теми же ползунками, что и у
-   игрока за Минфин, только для чтения. Раньше карточка бота показывала лишь суммы
-   расходов в деньгах, а сами решения (закупки, выплаты, инвестиции в процентах)
-   проскакивали одной фразой в тексте, да и то если отличались от нуля: сравнить,
-   насколько бот щедрее или жёстче, чем мог бы быть, было не с чем. */
+/* Решения чужого ведомства — бота или партнёра — теми же ползунками, что у игрока
+   на этом месте, только для чтения. Раньше карточка бота показывала лишь несколько
+   итоговых показателей, а сами решения (закупки, выплаты, инвестиции у Минфина;
+   ставка, резервы, операции с деньгами, интервенции у ЦБ) проскакивали одной фразой
+   в тексте: сравнить, насколько бот жёстче или мягче, чем мог бы быть, было не с чем.
+   Пределы берутся через scaleLever — те же, что игрок видит у себя прямо сейчас. */
 const FISCAL_FLOW_IDS = ['govSpending', 'transfers', 'govInvestment'];
-export function FiscalLeverReadout({ levers, accent }) {
+const MONETARY_READOUT_IDS = ['keyRate', 'inflationTarget', 'reserveReq', 'capitalRequirement', 'moneySupplyOp', 'fxIntervention', 'liquidity'];
+export function LeverReadout({ ids, levers, economy, accent }) {
   const color = accent || COLOR.teal;
   return (
     <div>
-      {FISCAL_FLOW_IDS.map((id) => {
-        const lever = LEVERS.find((l) => l.id === id);
+      {ids.map((id) => {
+        const base = LEVERS.find((l) => l.id === id);
+        if (!base) return null;
+        const lever = economy ? scaleLever(base, economy) : base;
         const known = levers && Number.isFinite(levers[id]);
-        const value = known ? levers[id] : 0;
+        const value = known ? levers[id] : (lever.type === 'level' ? lever.min : 0);
         const pct = clamp(((value - lever.min) / (lever.max - lever.min)) * 100, 0, 100);
+        const digits = lever.step < 0.5 ? 2 : lever.step < 1 ? 1 : 0;
+        const shown = lever.type === 'level' ? `${value.toFixed(digits)}${lever.suffix}` : `${value >= 0 ? '+' : ''}${value.toFixed(digits)}${lever.suffix}`;
         return (
-          <div key={id} style={{ padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
+          <div key={id} style={{ padding: '5px 0', borderBottom: `1px solid ${COLOR.hairline}` }}
+            title={`${lever.type === 'level' ? '' : 'за квартал: '}от ${lever.min}${lever.suffix} до ${lever.max}${lever.suffix}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
               <span style={{ fontSize: 11.5 }}>{lever.label}</span>
-              <span className="ems-mono" style={{ fontSize: 12, color: known ? color : COLOR.faint, fontWeight: 600 }}>
-                {known ? `${value >= 0 ? '+' : ''}${value.toFixed(1)}${lever.suffix}` : '—'}
+              <span className="ems-mono" style={{ fontSize: 12, color: known ? color : COLOR.faint, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                {known ? shown : '—'}
               </span>
             </div>
-            <input type="range" className="ems-slider" tabIndex={-1} aria-readonly="true"
-              aria-label={`${lever.label}: ${known ? `${value}${lever.suffix}` : 'решения ещё не было'}, допустимо от ${lever.min} до ${lever.max}`}
-              min={lever.min} max={lever.max} step={lever.step} value={value} onChange={() => {}}
-              style={{ pointerEvents: 'none', marginTop: 5, opacity: known ? 1 : 0.45,
-                background: `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, ${COLOR.border} ${pct}%, ${COLOR.border} 100%)` }} />
-            <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginTop: 2 }}>
-              за квартал: от {lever.min}{lever.suffix} до {lever.max}{lever.suffix}
+            {/* пределы по краям ползунка, а не отдельной строкой: у ЦБ их семь подряд */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, minWidth: 22 }}>{lever.min}</span>
+              <input type="range" className="ems-slider" tabIndex={-1} aria-readonly="true"
+                aria-label={`${lever.label}: ${known ? `${value}${lever.suffix}` : 'решения ещё не было'}, допустимо от ${lever.min} до ${lever.max}`}
+                min={lever.min} max={lever.max} step={lever.step} value={value} onChange={() => {}}
+                style={{ pointerEvents: 'none', flex: 1, opacity: known ? 1 : 0.45,
+                  background: `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, ${COLOR.border} ${pct}%, ${COLOR.border} 100%)` }} />
+              <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, minWidth: 22, textAlign: 'right' }}>{lever.max}{lever.suffix.trim() === '%' ? '%' : ''}</span>
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+export const FiscalLeverReadout = ({ levers, accent, economy }) => (
+  <LeverReadout ids={FISCAL_FLOW_IDS} levers={levers} accent={accent} economy={economy} />
+);
+// у ЦБ кроме ползунков — режим курса и, если курс не плавает, его целевой уровень
+export function MonetaryLeverReadout({ levers, accent, economy }) {
+  const regime = levers && levers.fxRegime ? FX_REGIMES.find((r) => r.id === levers.fxRegime) : null;
+  const ids = levers && levers.fxRegime && levers.fxRegime !== 'free' ? [...MONETARY_READOUT_IDS, 'fxTarget'] : MONETARY_READOUT_IDS;
+  return (
+    <div>
+      <LeverReadout ids={ids} levers={levers} accent={accent} economy={economy} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '6px 0' }}>
+        <span>Режим курса</span>
+        <span className="ems-mono" style={{ color: regime ? (accent || COLOR.blue) : COLOR.faint, fontWeight: 600 }}>{regime ? regime.label : '—'}</span>
+      </div>
+      {levers && levers.emergency && (
+        <div style={{ fontSize: 10.5, color: COLOR.rust }}>Включена экстренная поддержка банков</div>
+      )}
     </div>
   );
 }
@@ -1441,14 +1470,15 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
         <div style={{ marginTop: 9, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
           {isCb ? (
             <>
-              {row('Ключевая ставка', pctFmt(economy.keyRate))}
-              {row('Норматив капитала банков', pctFmt(economy.capitalRequirement))}
+              <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>Решения прошлого квартала</div>
+              <MonetaryLeverReadout levers={lastAction ? lastAction.decisions : null} accent={accent} economy={economy} />
+              <div style={{ height: 7 }} />
               {row('Ликвидность банков', pctFmt(economy.bankLiquidity))}
             </>
           ) : (
             <>
               <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>Бюджетные потоки, темп роста</div>
-              <FiscalLeverReadout levers={lastAction ? lastAction.decisions : null} accent={accent} />
+              <FiscalLeverReadout levers={lastAction ? lastAction.decisions : null} accent={accent} economy={economy} />
               <div style={{ height: 7 }} />
               {row('Расходы всего', `${fmtMoney(economy.govSpendingTotal)} · ${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`)}
               {row('· госзакупки', fmtMoney(economy.govPurchasesNominal))}

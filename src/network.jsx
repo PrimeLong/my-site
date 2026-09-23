@@ -14,7 +14,7 @@ import {
   ChronicleModal, GameOverModal, Gauge, GlobalStyle, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile, LeverSlider,
   MAX_PINS, MetricRow, NETWORK_SLOT_COUNT, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel, PresidentWatchPanel,
   PressConferencePanel, PromisesPanel, QuarterStamp, ROLE_ICON, RegimeBanner, ResultCardModal, RiskBadge, ScorePanel,
-  FiscalLeverReadout, Segmented, StateSeal, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
+  FiscalLeverReadout, MonetaryLeverReadout, Segmented, StateSeal, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
   casinoAchievementIds, checkDefeat, clearNetworkSlotAt, clearNetworkSlotFor, emptyBook, haptic, initDashboards, loadAutoPaper,
   loadNetworkPortfolio, loadNetworkSlots, makeDashboardActions, markNetworkPlayed, priceOf, questProgressAchievementIds, recordRolePlayed, roomCodeFromUrl,
   saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot, seatRole, seatsForMode, settleQuarter, tradeBook, unlockAchievements,
@@ -1164,12 +1164,14 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                     </div>
                   ))}
                 </div>
-                {otherSeat === 'ministry_finance' && (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>Бюджетные потоки, темп роста</div>
-                    <FiscalLeverReadout levers={otherAction ? otherAction.levers : null} accent={otherAccent} />
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>
+                    {otherSeat === 'ministry_finance' ? 'Бюджетные потоки, темп роста' : 'Решения прошлого квартала'}
                   </div>
-                )}
+                  {otherSeat === 'ministry_finance'
+                    ? <FiscalLeverReadout levers={otherAction ? otherAction.levers : null} accent={otherAccent} economy={economy} />
+                    : <MonetaryLeverReadout levers={otherAction ? otherAction.levers : null} accent={otherAccent} economy={economy} />}
+                </div>
                 {otherAction && otherAction.note && (
                   <div style={{ marginTop: 8, fontSize: 11, color: COLOR.faint, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, lineHeight: 1.4 }}>{otherAction.note}</div>
                 )}

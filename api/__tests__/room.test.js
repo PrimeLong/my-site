@@ -180,3 +180,15 @@ describe('resolveQuarter — бюджетные потоки Минфина ви
     }
   });
 });
+
+describe('resolveQuarter — решения ЦБ видны партнёру', () => {
+  it('lastActions.central_bank несёт итоговые ставку, резервы, операции, интервенции, ликвидность и режим курса', () => {
+    const next = resolveQuarter(newRoom());
+    const lv = publicView(next).lastActions.central_bank.levers;
+    for (const id of ['keyRate', 'reserveReq', 'capitalRequirement', 'moneySupplyOp', 'fxIntervention', 'liquidity', 'inflationTarget']) {
+      expect(Number.isFinite(lv[id]), id).toBe(true);
+    }
+    expect(['free', 'managed', 'peg']).toContain(lv.fxRegime);
+    expect(typeof lv.emergency).toBe('boolean');
+  });
+});
