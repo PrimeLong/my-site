@@ -21,7 +21,7 @@ import {
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
-  scaleLever,
+  scaleLever, pressSpeakerSeat,
 } from './lib/engine.js';
 
 const THEMES = {
@@ -6499,6 +6499,10 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const economy = room.economy;
   const prevEcon = room.history.length >= 2 ? room.history[room.history.length - 2] : economy;
   const setLever = (id2, v) => setDecisions((d) => ({ ...d, [id2]: v }));
+  const pressSpeaker = isTraderRoom ? null : pressSpeakerSeat(room.occupied);
+  const pressQuestion = pressSpeaker ? pickPressQuestion(economy, room.quarterIndex) : null;
+  // карта страны в сетевой партии — отдельный вид центральной колонки
+  const [centerView, setCenterView] = useState('news');
   const shareKey = (lid) => (lid === 'shareHealth' ? 'health' : lid === 'shareEducation' ? 'education' : lid === 'shareScience' ? 'science' : lid === 'shareDefense' ? 'defense' : 'admin');
   const leverDisplay = (l) => (l.subgroup === 'budget' ? economy.budgetShares[shareKey(l.id)] : economy[l.id]);
   const { chartGroup, setChartGroup, period, setPeriod, hiddenSeries, setHiddenSeries } = useChartView();
@@ -6992,6 +6996,25 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </div>
           )}
 
+          {/* Пресс-конференция в комнате: власть отвечает одним голосом —
+              президентом, без него Минфином, без обоих ЦБ (pressSpeakerSeat).
+              Остальным вопрос виден, но отвечает не их место: так понятно, что
+              прозвучит от имени власти, и можно договориться в чате. */}
+          {!isTraderRoom && pressSpeaker && (pressSpeaker === seat
+            ? <PressConferencePanel question={pressQuestion} answer={decisions.pressAnswer}
+                setAnswer={(v) => setLever('pressAnswer', v)} />
+            : pressQuestion && (
+              <div className="ems-panel" style={{ padding: 13 }}>
+                <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Megaphone size={13} />Пресс-конференция
+                </div>
+                <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45, marginBottom: 6 }}>«{pressQuestion.prompt}»</div>
+                <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.4 }}>
+                  Отвечает {(room.names && room.names[pressSpeaker]) || seatRole(pressSpeaker).short} — {seatRole(pressSpeaker).short}: от имени власти в квартал звучит один голос.
+                </div>
+              </div>
+            ))}
+
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
             <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
@@ -7037,6 +7060,21 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       );
       const centerNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+          {/* Та же карта, что в одиночной игре: округа, их напряжение и итоги
+              последних выборов. Данные для неё уже приходят с сервера — движок
+              хранит lastElection в экономике комнаты, — не хватало только вида. */}
+          <div style={{ display: 'flex', gap: 4 }} role="tablist" aria-label="Вид центральной колонки">
+            {[['news', 'Вестник', Newspaper], ['map', 'Карта страны', MapIcon]].map(([vid, label, Icon]) => (
+              <span key={vid} role="tab" aria-selected={centerView === vid} tabIndex={0}
+                className={`ems-tab ${centerView === vid ? 'active' : ''}`}
+                style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={() => { Audio.play('tab'); setCenterView(vid); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCenterView(vid); } }}>
+                <Icon size={13} />{label}
+              </span>
+            ))}
+          </div>
+          {centerView === 'map' ? <CountryMap economy={economy} /> : (<>
           {isTraderRoom && (
             <>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -7080,6 +7118,7 @@ function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               )}
             </div>
           </div>
+          </>)}
         </div>
       );
       const rightNode = (

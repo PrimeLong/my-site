@@ -9,7 +9,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -318,6 +318,13 @@ export function resolveQuarter(room) {
   // голоса на выборах считались бы так, будто обещаний вообще не было (то же
   // самое делает solo в MacroSimulator.jsx перед своим вызовом simulateQuarter)
   if (room.promises) eff = { ...eff, promises: room.promises };
+  /* Пресс-конференция: отвечает один голос власти (pressSpeakerSeat). Ответ
+     не того места игнорируется — сервер не доверяет клиенту в том, кто сейчас
+     говорит от имени власти. Бот на вопрос не отвечает, как и в одиночной
+     игре: пропущенная пресс-конференция просто ничего не стоит и не даёт. */
+  const speaker = pressSpeakerSeat(room.seats);
+  const speakerSub = speaker ? subs[speaker] : null;
+  eff = { ...eff, pressAnswer: speakerSub && speakerSub.pressAnswer ? speakerSub.pressAnswer : null };
   const res = simulateQuarter({
     economy: { ...room.economy, cbStance, mofStance },
     decisions: eff, pendingImpulses: extraImpulses, eventCooldowns: room.eventCooldowns,
@@ -575,7 +582,10 @@ async function handleRequest(req, res) {
       const portfolioValues = Number.isFinite(body.portfolioValue)
         ? { ...room.portfolioValues, [seat]: clamp(body.portfolioValue, 0, 1e9) } : room.portfolioValues;
       const next = { ...room,
-        submissions: { ...room.submissions, [seat]: { decisions, president: presidentMove, note: cleanString(body.note, 280) } },
+        // ответ на пресс-конференции хранится при сдаче хода, а не в decisions
+        // комнаты: иначе он переживал бы квартал и отвечал на следующий вопрос
+        submissions: { ...room.submissions, [seat]: { decisions, president: presidentMove, note: cleanString(body.note, 280),
+          pressAnswer: body.decisions && PRESS_OPTION_IDS.has(body.decisions.pressAnswer) ? body.decisions.pressAnswer : null } },
         portfolioValues, version: room.version + 1 };
       const allIn = SEATS.every((sx) => next.submissions[sx] || !next.seats[sx]);
       return allIn ? resolveQuarter(next) : next;

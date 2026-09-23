@@ -2060,6 +2060,20 @@ const PRESS_QUESTIONS = [
 // без Math.random(): один и тот же (economy, quarterIndex) всегда даёт один и
 // тот же вопрос, поэтому клиентское превью перед отправкой решений и расчёт
 // внутри simulateQuarter не могут разойтись
+/* Кто отвечает на пресс-конференции в сетевой партии. В одиночной игре вопрос
+   достаётся тому, за кого играет человек, а в комнате людей может быть
+   несколько — и отвечать двумя голосами сразу власть не может. Голос власти —
+   президент, если его место занято человеком; без него — правительство
+   (Минфин); без обоих — глава ЦБ. Трейдер власти не представляет и не
+   отвечает никогда. Правило живёт в движке, потому что его одинаково должны
+   знать сервер (чей ответ брать) и клиент (кому показывать вопрос). */
+const PRESS_SPEAKER_ORDER = ['president', 'ministry_finance', 'central_bank'];
+function pressSpeakerSeat(occupied) {
+  return PRESS_SPEAKER_ORDER.find((seat) => !!(occupied && occupied[seat])) || null;
+}
+// все допустимые идентификаторы ответа — сервер отбрасывает любые другие
+const PRESS_OPTION_IDS = new Set(PRESS_QUESTIONS.flatMap((q) => q.options.map((o) => o.id)));
+
 /* Вопрос уже приходит отфильтрованным по режиму: pickPressQuestion получает
    состояние, поэтому и движок (он публикует цитату ответа новостью), и
    интерфейс (он рисует вопрос) видят одну и ту же формулировку — без
@@ -4799,7 +4813,7 @@ export {
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, roundTo,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   describeHumanCbAction, describeHumanMofAction,
-  PROMISE_POOL, pickPromises, evaluatePromise, PRESS_QUESTIONS, pickPressQuestion,
+  PROMISE_POOL, pickPromises, evaluatePromise, PRESS_QUESTIONS, pickPressQuestion, pressSpeakerSeat, PRESS_OPTION_IDS,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
   presActionAvailable, applyPresidentActions, politicalCapitalRegen, parliamentBlocksReform,
   PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext, militaryCoupRisk,

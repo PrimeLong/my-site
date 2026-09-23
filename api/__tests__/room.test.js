@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { freshRoom, planPresident, resolveQuarter, publicView } from '../room.js';
-import { personaAfterElection } from '../../src/lib/engine.js';
+import { personaAfterElection, pickPressQuestion } from '../../src/lib/engine.js';
 
 /* Комната без единого занятого места: ЦБ, Минфин и президент — боты, каждый
    submit тут же резолвит квартал (см. handleRequest/action==='submit' — allIn
@@ -106,5 +106,47 @@ describe('resolveQuarter — персоны ведомств после выбо
     expect(next.economy.electionResult).toBe('landslide');
     expect(next.mofPersona).toBe(room.mofPersona);
     expect(next.cbPersona).toBe(room.cbPersona);
+  });
+});
+
+/* Пресс-конференция в комнате: от имени власти отвечает один голос. Говорящего
+   выбирает сервер (pressSpeakerSeat), а не клиент — иначе любой игрок мог бы
+   ответить за президента, прислав pressAnswer в своих решениях. */
+describe('resolveQuarter — пресс-конференция в сетевой партии', () => {
+  const pressNews = (room) => room.news.find((n) => n.headline.startsWith('ПРЕСС-КОНФЕРЕНЦИЯ'));
+  const seated = (room, seats) => ({ ...room, seats: { ...room.seats, ...Object.fromEntries(seats.map((sx) => [sx, `tok-${sx}`])) } });
+  // настоящий ход всегда несёт полный набор решений (sanitizeDecisions
+  // накладывает рычаги игрока на room.decisions), поэтому и здесь так же
+  let base = null;
+  // ответ обязан существовать у вопроса этого квартала, иначе движок его не найдёт
+  const ANSWER = '__valid__';
+  const valid = () => pickPressQuestion(base.economy, base.quarterIndex).options[0].id;
+  const sub = (pressAnswer) => ({ decisions: { ...base.decisions }, president: null, note: '',
+    pressAnswer: pressAnswer === ANSWER ? valid() : pressAnswer });
+
+  it('без президента отвечает Минфин, и его ответ попадает в новости', () => {
+    const room = seated(newRoom({ president: null }), ['central_bank', 'ministry_finance']); base = room;
+    const next = resolveQuarter({ ...room, submissions: { central_bank: sub(null), ministry_finance: sub(ANSWER) } });
+    expect(pressNews(next)).toBeTruthy();
+  });
+
+  it('ответ не того места игнорируется: при занятом месте Минфина ЦБ не говорит за власть', () => {
+    const room = seated(newRoom({ president: null }), ['central_bank', 'ministry_finance']); base = room;
+    const next = resolveQuarter({ ...room, submissions: { central_bank: sub(ANSWER), ministry_finance: sub(null) } });
+    expect(pressNews(next)).toBeFalsy();
+  });
+
+  it('живой президент — единственный голос: его ответ идёт, ответ Минфина нет', () => {
+    const room = seated(newRoom(), ['ministry_finance', 'president']); base = room;
+    const presSub = { ...sub(ANSWER), president: { actions: [], appointCb: null, appointMof: null, directive: null, directiveStrength: 1 } };
+    const withPres = resolveQuarter({ ...room, submissions: { ministry_finance: sub(null), president: presSub } });
+    expect(pressNews(withPres)).toBeTruthy();
+    const mofOnly = resolveQuarter({ ...room, submissions: { ministry_finance: sub(ANSWER), president: { ...presSub, pressAnswer: null } } });
+    expect(pressNews(mofOnly)).toBeFalsy();
+  });
+
+  it('без людей на местах власти пресс-конференции нет — бот на вопросы не отвечает', () => {
+    const next = resolveQuarter(newRoom());
+    expect(pressNews(next)).toBeFalsy();
   });
 });
