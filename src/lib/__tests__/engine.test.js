@@ -8,7 +8,7 @@ import {
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
-  presActionAvailable, applyPresidentActions, scaleLever,
+  presActionAvailable, applyPresidentActions, scaleLever, gameChronicle,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
   fmtMoney, fmtIndex,
@@ -1730,5 +1730,66 @@ describe('потолок ключевой ставки растёт вместе
     let rate = e.keyRate;
     for (let i = 0; i < 6; i++) { rate = botCentralBank({ ...e, keyRate: rate }, 'hawk', 'medium').decisions.keyRate; }
     expect(rate).toBeGreaterThan(25);
+  });
+});
+
+
+/* Разбор партии читает историю кварталов и находит переломные моменты. Здесь —
+   синтетические истории, где заранее известно, что должно найтись. */
+describe('разбор партии', () => {
+  const base = { ...makeInitialEconomy(), activeCrises: [], electionResult: null, politicalRegime: 'democracy' };
+  const q = (i, patch) => ({ ...base, q: i, label: `Q${i}`, ...patch });
+
+  it('к кризису привязывается решение, которое ему предшествовало', () => {
+    const hist = [q(0), q(1), q(2, { keyRate: 2.5 }), q(3, { keyRate: 2.5, activeCrises: ['overheating'] })];
+    const { events } = gameChronicle(hist);
+    const ev = events.find((e) => e.kind === 'crisis');
+    expect(ev).toBeTruthy();
+    expect(ev.text).toMatch(/За 1 кв\. до этого: ставка снижена/);
+  });
+
+  it('кризис с первого квартала — это стартовые условия, а не чьё-то решение', () => {
+    const { events } = gameChronicle([q(0), q(1, { activeCrises: ['currency'] }), q(2, { activeCrises: ['currency'] })]);
+    expect(events[0].title).toMatch(/Партия началась в кризисе/);
+  });
+
+  it('подтасованные выборы: официальная цифра и честная рядом', () => {
+    const hist = [q(0), q(1, { politicalRegime: 'authoritarian' }),
+      q(2, { politicalRegime: 'authoritarian', electionResult: 'incumbent', electionVoteShare: 6,
+        lastElection: { rigged: true, coup: false, nationalShare: 78 } })];
+    const ev = gameChronicle(hist).events.find((e) => e.kind === 'election');
+    expect(ev.title).toMatch(/официально 78/);
+    expect(ev.text).toMatch(/было бы 6/);
+  });
+
+  it('переворот после проигранных выборов не выдаётся за победу', () => {
+    const hist = [q(0), q(1), q(2, { electionResult: 'incumbent', electionVoteShare: 4, lastElection: { coup: true, rigged: false } })];
+    const ev = gameChronicle(hist).events.find((e) => e.kind === 'election');
+    expect(ev.tone).toBe('bad');
+    expect(ev.title).toMatch(/итог не признан/);
+  });
+
+  it('колебания «конфликт ↔ авторитаризм» не засоряют разбор', () => {
+    const seq = ['democracy', 'crisis', 'authoritarian', 'crisis', 'authoritarian', 'crisis', 'authoritarian', 'democracy'];
+    const hist = seq.map((r, i) => q(i, { politicalRegime: r }));
+    const regime = gameChronicle(hist).events.filter((e) => e.kind === 'regime').map((e) => e.title);
+    expect(regime).toEqual(['Режим: Конфликт парламента и президента', 'Режим: Авторитарный режим', 'Режим: Демократия']);
+  });
+
+  it('событий не больше десяти и они идут по порядку', () => {
+    const hist = [q(0)];
+    for (let i = 1; i <= 60; i++) {
+      hist.push(q(i, { activeCrises: i % 4 === 0 ? ['recession'] : [], keyRate: i % 2 ? 3 : 8,
+        politicalRegime: 'democracy', wellbeing: 40 + (i % 7) * 5 }));
+    }
+    const { events, summary } = gameChronicle(hist);
+    expect(events.length).toBeLessThanOrEqual(10);
+    for (let i = 1; i < events.length; i++) expect(events[i].q).toBeGreaterThanOrEqual(events[i - 1].q);
+    expect(summary.quarters).toBe(60);
+  });
+
+  it('пустая или однокадровая история не ломает разбор', () => {
+    expect(gameChronicle([]).events).toEqual([]);
+    expect(gameChronicle([q(0)]).summary).toBeNull();
   });
 });

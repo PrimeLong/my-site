@@ -11,7 +11,7 @@ import {
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO,
+  POLITICAL_REGIME_INFO, gameChronicle,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtIndex, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
   defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
@@ -4168,7 +4168,7 @@ export function checkDefeat({ role, economy, history, bookVal, presidentActive }
   }
   return null;
 }
-export function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, restartLabel = 'Начать заново' }) {
+export function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpenAch, onShare, onRollback, onChronicle, restartLabel = 'Начать заново' }) {
   useEscapeClose(onClose);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
@@ -4179,6 +4179,7 @@ export function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpen
         <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12 }}>Партия окончена на {quarterLabel(quarterIndex)} — {quarterIndex} кв. у руля.</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
           <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Поделиться</button>
+          {onChronicle && <button className="ems-btn" onClick={onChronicle}><BookOpen size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Разбор партии</button>}
           <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
           {onRollback && (
             <button className="ems-btn" style={{ borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
@@ -4191,6 +4192,79 @@ export function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpen
     </div>
   );
 }
+/* Разбор партии: переломные моменты по истории кварталов (gameChronicle в
+   движке). Открывается с экрана поражения и в любой момент из меню «⋯» —
+   открытая партия может идти бесконечно, и разбор нужен не только в конце.
+   Это кабинет, а не газета: здесь пишется правда, включая честный итог
+   подтасованных выборов. */
+const CHRONICLE_TONE = { good: 'teal', bad: 'rust', neutral: 'faint' };
+export function ChronicleModal({ history, onClose }) {
+  useEscapeClose(onClose);
+  const { events, summary } = useMemo(() => gameChronicle(history), [history]);
+  const fmtSign = (v) => `${v > 0 ? '+' : ''}${fmt1(v)}`;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 86, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div className="ems-panel-raised ems-fade-in ems-scroll" role="dialog" aria-label="Разбор партии"
+        style={{ maxWidth: 620, width: '100%', maxHeight: '88vh', overflowY: 'auto', padding: 22 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+          <span className="ems-serif" style={{ fontSize: 19, color: COLOR.goldSoft, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BookOpen size={17} />Разбор партии
+          </span>
+          <button className="ems-btn ghost" style={{ padding: '4px 8px' }} onClick={onClose} aria-label="Закрыть разбор" title="Закрыть (Esc)"><X size={15} /></button>
+        </div>
+        {!summary ? (
+          <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6, marginTop: 8 }}>
+            Разбирать пока нечего: сыграйте хотя бы пару кварталов.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.6, marginBottom: 14 }}>
+              Переломные моменты партии и решения, которые им предшествовали. Соседство во времени — ещё не доказательство причины, но обычно именно здесь видно, где всё пошло не так — или так.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: 18 }}>
+              {[
+                ['Кварталов у руля', String(summary.quarters)],
+                ['ВВП за партию', `${fmtSign(summary.gdpChange)}%`],
+                ['Средняя инфляция', `${fmt1(summary.avgInflation)}%`],
+                ['Кризисов', String(summary.crises)],
+                ['Выборы', summary.elections ? `${summary.electionsWon} из ${summary.elections}` : 'не было'],
+                ['Благополучие', `${Math.round(summary.wellbeingStart)} → ${Math.round(summary.wellbeingEnd)}`],
+              ].map(([k, v]) => (
+                <div key={k} className="ems-panel" style={{ padding: '8px 10px' }}>
+                  <div style={{ fontSize: 10, color: COLOR.faint, marginBottom: 2 }}>{k}</div>
+                  <div className="ems-mono" style={{ fontSize: 14, color: COLOR.text }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {events.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: COLOR.muted }}>Ровная партия: ни кризисов, ни выборов, ни резких поворотов.</div>
+            ) : (
+              <ol style={{ listStyle: 'none', margin: 0, padding: 0, position: 'relative' }}>
+                {events.map((ev, i) => {
+                  const c = COLOR[CHRONICLE_TONE[ev.tone] || 'faint'];
+                  return (
+                    <li key={`${ev.q}-${ev.kind}-${i}`} style={{ display: 'grid', gridTemplateColumns: '14px 1fr', gap: 10, paddingBottom: i === events.length - 1 ? 0 : 14 }}>
+                      <span aria-hidden style={{ position: 'relative', display: 'flex', justifyContent: 'center' }}>
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: c, marginTop: 4, zIndex: 1 }} />
+                        {i < events.length - 1 && <span style={{ position: 'absolute', top: 16, bottom: -12, width: 1, background: COLOR.border }} />}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, letterSpacing: '0.04em' }}>{ev.label}</div>
+                        <div className="ems-serif" style={{ fontSize: 14, color: ev.tone === 'bad' ? COLOR.rust : ev.tone === 'good' ? COLOR.teal : COLOR.text, margin: '1px 0 3px' }}>{ev.title}</div>
+                        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>{ev.text}</div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLabel = 'Начать заново' }) => (
   <div style={{ borderTop: `2px solid ${COLOR.rust}`, background: COLOR.panel, padding: '14px 18px',
     display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
@@ -6412,6 +6486,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [activeSlot, setActiveSlot] = useState(initial && Number.isFinite(initial.slotIdx) ? initial.slotIdx : null);
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
+  const [showChronicle, setShowChronicle] = useState(false);
   const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
@@ -6934,7 +7009,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }}
+        onChronicle={() => { setShowGameOver(false); setShowChronicle(true); }}
         onRollback={rollbackTarget ? handleRollback : null} />}
+      {showChronicle && <ChronicleModal history={history} onClose={() => setShowChronicle(false)} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
@@ -7025,6 +7102,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <AudioControls />
           <HeaderOverflowMenu items={[
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
+            { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => {
               if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); }
             } },

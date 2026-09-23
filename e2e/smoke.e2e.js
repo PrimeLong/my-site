@@ -109,3 +109,25 @@ test('сетевая партия: лобби, вход, пресс-конфер
   await expect.poll(() => submitted && submitted.decisions && submitted.decisions.pressAnswer).toBeTruthy();
   expect(errors).toEqual([]);
 });
+
+test('разбор партии открывается из меню «⋯» и показывает сводку', async ({ page }) => {
+  test.setTimeout(90_000);
+  const { errors } = await openApp(page);
+  await startSoloGame(page);
+  const finish = page.getByRole('button', { name: 'Завершить квартал и применить решения' });
+  for (let i = 0; i < 3; i++) {
+    await expect(finish).toBeEnabled({ timeout: 10_000 });
+    await finish.click();
+    const close = page.getByRole('button', { name: 'Закрыть газету' });
+    if (await close.isVisible({ timeout: 2000 }).catch(() => false)) await close.click();
+  }
+  await page.getByRole('button', { name: 'Ещё действия' }).click();
+  await page.getByRole('button', { name: 'Разбор партии' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Разбор партии' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Кварталов у руля')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  expect(errors).toEqual([]);
+});

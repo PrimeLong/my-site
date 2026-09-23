@@ -4,14 +4,14 @@
    газета и торговый терминал. Общие компоненты, тема (COLOR), звук и
    помощники сохранений — те же объекты, что в MacroSimulator.jsx
    (экспортированы оттуда), а не копии. */
-import { AlertTriangle, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Star, TrendingUp, Trophy, Users, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Star, TrendingUp, Trophy, Users, X } from 'lucide-react';
 import { CB_PERSONAS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
   ALL_METRICS, AchievementToast, AchievementsModal, Atmosphere, Audio, AudioControls, COLOR, CabinetZone,
   CasinoScreen, ChartFallback, ChartPanel, ColumnResizeHandle, CountryMap, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
-  GameOverModal, Gauge, GlobalStyle, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile, LeverSlider,
+  ChronicleModal, GameOverModal, Gauge, GlobalStyle, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile, LeverSlider,
   MAX_PINS, MetricRow, NETWORK_SLOT_COUNT, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel, PresidentWatchPanel,
   PressConferencePanel, PromisesPanel, QuarterStamp, ROLE_ICON, RegimeBanner, ResultCardModal, RiskBadge, ScorePanel,
   Segmented, StateSeal, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
@@ -480,6 +480,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const { toast: achToast, leaving: achLeaving, push: pushAch } = useAchievementToasts();
   const [showAch, setShowAch] = useState(false);
   const [showCard, setShowCard] = useState(false);
+  const [showChronicle, setShowChronicle] = useState(false);
   const [defeat, setDefeat] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
   /* Откат на 3 хода назад, как в соло-игре, здесь возможен только для трейдера:
@@ -827,7 +828,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       <AchievementToast toast={achToast} leaving={achLeaving} />
       {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={room.quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={exit} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }} restartLabel="В меню"
+        onChronicle={() => { setShowGameOver(false); setShowChronicle(true); }}
         onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />}
+      {showChronicle && <ChronicleModal history={room.history} onClose={() => setShowChronicle(false)} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
         role: seatRole(seat).id, quarterIndex: room.quarterIndex, economy: room.economy,
         startEconomy: room.history && room.history[0], portfolio, defeat,
@@ -887,6 +890,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           <AudioControls />
           <HeaderOverflowMenu items={[
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
+            { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => exit() },
           ]} />
         </div>
