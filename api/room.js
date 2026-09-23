@@ -9,7 +9,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -61,6 +61,18 @@ const pickFields = (obj, ids) => { const out = {}; for (const id of ids) if (id 
    Границы — те же, что игрок видит на ползунке при этой экономике (scaleLever):
    раньше сервер резал по статичным, и в сети срезались бы и ставка выше 25%
    при высокой инфляции, и рычаги в миллиардах, растущие вместе с ВВП. */
+/* Решения на карте: стройка — только из каталога и только допустимая сейчас,
+   ответ — только один из вариантов текущего события округа. */
+export function sanitizeRegionPlan(o, economy) {
+  const src = o && typeof o === 'object' ? o : {};
+  const project = REGION_PROJECTS.find((p) => p.id === src.startProject);
+  const ev = economy && economy.regionEvent;
+  return {
+    startProject: project && economy && !projectBlocker(project, economy) ? project.id : null,
+    regionResponse: ev && (ev.options || []).some((x) => x.id === src.regionResponse) ? src.regionResponse : null,
+  };
+}
+
 function sanitizeDecisions(base, submitted, seat, economy) {
   const out = { ...base };
   if (!submitted || typeof submitted !== 'object') return out;
@@ -78,6 +90,7 @@ function sanitizeDecisions(base, submitted, seat, economy) {
   if (group === 'fiscal') {
     if (typeof submitted.sovereignDefault === 'boolean') out.sovereignDefault = submitted.sovereignDefault;
     if (typeof submitted.imfProgram === 'boolean') out.imfProgram = submitted.imfProgram;
+    Object.assign(out, sanitizeRegionPlan(submitted, economy));
   }
   return out;
 }
@@ -86,9 +99,10 @@ const PRES_ACTION_IDS = new Set(PRESIDENT_ACTIONS.map((a) => a.id));
 const REQUEST_IDS = new Set(REQUESTS.map((r) => r.id));
 /* Ход президента — это не ползунки, а набор решений: указы и реформы, назначения,
    одно указание ведомству и его сила. Всё незнакомое отбрасываем так же, как рычаги. */
-function sanitizePresident(v) {
+function sanitizePresident(v, economy) {
   const o = v && typeof v === 'object' ? v : {};
   return {
+    region: sanitizeRegionPlan(o.region, economy),
     actions: Array.isArray(o.actions) ? o.actions.filter((x) => PRES_ACTION_IDS.has(x)).slice(0, 4) : [],
     appointCb: CB_PERSONA_IDS.has(o.appointCb) ? o.appointCb : null,
     appointMof: MOF_PERSONA_IDS.has(o.appointMof) ? o.appointMof : null,
@@ -252,6 +266,10 @@ export function resolveQuarter(room) {
     emergency: 'emergency' in cbDecisions ? cbDecisions.emergency : room.decisions.emergency,
     ...pickFields(mofDecisions, LEVER_IDS_BY_GROUP.fiscal),
   };
+  // карта: живой президент решает поверх Минфина (живого или бота)
+  const presRegion = subs.president && subs.president.president ? subs.president.president.region : null;
+  eff.startProject = (presRegion && presRegion.startProject) || mofDecisions.startProject || null;
+  eff.regionResponse = (presRegion && presRegion.regionResponse) || mofDecisions.regionResponse || null;
   /* Решения президента разбираются здесь — им нужны уже посчитанные решения обоих
      ведомств. Требование к живому игроку проверяется по тому, куда он сдвинул свои
      рычаги (directiveProgress), требование к боту — по тому, согласился ли тот его
@@ -471,8 +489,14 @@ export function resolveQuarter(room) {
       // (не отправил решение вовремя) — отличаем от «место просто пустует»,
       // чтобы при возвращении показать именно «пока вас не было» и что можно
       // продолжать, а не путать с обычным заполнением пустого места ботом
-      central_bank: cbAct ? { bot: true, timedOut: !!room.seats.central_bank, note: cbAct.note, quote: cbAct.quote } : { bot: false, note: subs.central_bank.note || null },
-      ministry_finance: mofAct ? { bot: true, timedOut: !!room.seats.ministry_finance, note: mofAct.note, quote: mofAct.quote } : { bot: false, note: subs.ministry_finance.note || null },
+      central_bank: { ...(cbAct ? { bot: true, timedOut: !!room.seats.central_bank, note: cbAct.note, quote: cbAct.quote }
+        : { bot: false, note: subs.central_bank.note || null }),
+      levers: { ...pickFields(eff, LEVER_IDS_BY_GROUP.monetary), fxRegime: eff.fxRegime, emergency: !!eff.emergency } },
+      // levers — итоговые решения ведомства за квартал (после указаний президента):
+      // партнёр видит их теми же ползунками, что и у себя, а не только текстом новости
+      ministry_finance: { ...(mofAct ? { bot: true, timedOut: !!room.seats.ministry_finance, note: mofAct.note, quote: mofAct.quote }
+        : { bot: false, note: subs.ministry_finance.note || null }),
+      levers: { govSpending: eff.govSpending, transfers: eff.transfers, govInvestment: eff.govInvestment } },
     },
     version: room.version + 1,
   };
@@ -586,7 +610,7 @@ async function handleRequest(req, res) {
       if (!SEATS.includes(seat)) return { error: 'Неизвестная роль', status: 400 };
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
       const decisions = sanitizeDecisions(room.decisions, body.decisions, seat, room.economy);
-      const presidentMove = seat === 'president' ? sanitizePresident(body.president) : null;
+      const presidentMove = seat === 'president' ? sanitizePresident(body.president, room.economy) : null;
       // стоимость портфеля трейдера — сообщается им самим при готовности к
       // следующему кварталу; сервер её не считает (позиции клиентские), просто
       // хранит, чтобы соперник видел её в своём списке эталонов (см. publicView)

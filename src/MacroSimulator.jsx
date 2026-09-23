@@ -13,7 +13,7 @@ import {
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, gameChronicle,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtIndex, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
-  defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
+  defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, MAP_REGIONS,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
@@ -1359,6 +1359,73 @@ function StanceBar({ value, leftLabel, rightLabel }) {
   );
 }
 
+/* Решения чужого ведомства — бота или партнёра — теми же ползунками, что у игрока
+   на этом месте, только для чтения. Раньше карточка бота показывала лишь несколько
+   итоговых показателей, а сами решения (закупки, выплаты, инвестиции у Минфина;
+   ставка, резервы, операции с деньгами, интервенции у ЦБ) проскакивали одной фразой
+   в тексте: сравнить, насколько бот жёстче или мягче, чем мог бы быть, было не с чем.
+   Пределы берутся через scaleLever — те же, что игрок видит у себя прямо сейчас. */
+const FISCAL_FLOW_IDS = ['govSpending', 'transfers', 'govInvestment'];
+const MONETARY_READOUT_IDS = ['keyRate', 'inflationTarget', 'reserveReq', 'capitalRequirement', 'moneySupplyOp', 'fxIntervention', 'liquidity'];
+export function LeverReadout({ ids, levers, economy, accent }) {
+  const color = accent || COLOR.teal;
+  return (
+    <div>
+      {ids.map((id) => {
+        const base = LEVERS.find((l) => l.id === id);
+        if (!base) return null;
+        const lever = economy ? scaleLever(base, economy) : base;
+        const known = levers && Number.isFinite(levers[id]);
+        const value = known ? levers[id] : (lever.type === 'level' ? lever.min : 0);
+        const pct = clamp(((value - lever.min) / (lever.max - lever.min)) * 100, 0, 100);
+        const digits = lever.step < 0.5 ? 2 : lever.step < 1 ? 1 : 0;
+        const shown = lever.type === 'level' ? `${value.toFixed(digits)}${lever.suffix}` : `${value >= 0 ? '+' : ''}${value.toFixed(digits)}${lever.suffix}`;
+        return (
+          <div key={id} style={{ padding: '5px 0', borderBottom: `1px solid ${COLOR.hairline}` }}
+            title={`${lever.type === 'level' ? '' : 'за квартал: '}от ${lever.min}${lever.suffix} до ${lever.max}${lever.suffix}`}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 11.5 }}>{lever.label}</span>
+              <span className="ems-mono" style={{ fontSize: 12, color: known ? color : COLOR.faint, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                {known ? shown : '—'}
+              </span>
+            </div>
+            {/* пределы по краям ползунка, а не отдельной строкой: у ЦБ их семь подряд */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+              <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, minWidth: 22 }}>{lever.min}</span>
+              <input type="range" className="ems-slider" tabIndex={-1} aria-readonly="true"
+                aria-label={`${lever.label}: ${known ? `${value}${lever.suffix}` : 'решения ещё не было'}, допустимо от ${lever.min} до ${lever.max}`}
+                min={lever.min} max={lever.max} step={lever.step} value={value} onChange={() => {}}
+                style={{ pointerEvents: 'none', flex: 1, opacity: known ? 1 : 0.45,
+                  background: `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, ${COLOR.border} ${pct}%, ${COLOR.border} 100%)` }} />
+              <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, minWidth: 22, textAlign: 'right' }}>{lever.max}{lever.suffix.trim() === '%' ? '%' : ''}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+export const FiscalLeverReadout = ({ levers, accent, economy }) => (
+  <LeverReadout ids={FISCAL_FLOW_IDS} levers={levers} accent={accent} economy={economy} />
+);
+// у ЦБ кроме ползунков — режим курса и, если курс не плавает, его целевой уровень
+export function MonetaryLeverReadout({ levers, accent, economy }) {
+  const regime = levers && levers.fxRegime ? FX_REGIMES.find((r) => r.id === levers.fxRegime) : null;
+  const ids = levers && levers.fxRegime && levers.fxRegime !== 'free' ? [...MONETARY_READOUT_IDS, 'fxTarget'] : MONETARY_READOUT_IDS;
+  return (
+    <div>
+      <LeverReadout ids={ids} levers={levers} accent={accent} economy={economy} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '6px 0' }}>
+        <span>Режим курса</span>
+        <span className="ems-mono" style={{ color: regime ? (accent || COLOR.blue) : COLOR.faint, fontWeight: 600 }}>{regime ? regime.label : '—'}</span>
+      </div>
+      {levers && levers.emergency && (
+        <div style={{ fontSize: 10.5, color: COLOR.rust }}>Включена экстренная поддержка банков</div>
+      )}
+    </div>
+  );
+}
+
 /* Панель ведомства, которым управляет бот */
 function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
   if (!botRole) return null;
@@ -1403,12 +1470,16 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
         <div style={{ marginTop: 9, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
           {isCb ? (
             <>
-              {row('Ключевая ставка', pctFmt(economy.keyRate))}
-              {row('Норматив капитала банков', pctFmt(economy.capitalRequirement))}
+              <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>Решения прошлого квартала</div>
+              <MonetaryLeverReadout levers={lastAction ? lastAction.decisions : null} accent={accent} economy={economy} />
+              <div style={{ height: 7 }} />
               {row('Ликвидность банков', pctFmt(economy.bankLiquidity))}
             </>
           ) : (
             <>
+              <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>Бюджетные потоки, темп роста</div>
+              <FiscalLeverReadout levers={lastAction ? lastAction.decisions : null} accent={accent} economy={economy} />
+              <div style={{ height: 7 }} />
               {row('Расходы всего', `${fmtMoney(economy.govSpendingTotal)} · ${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`)}
               {row('· госзакупки', fmtMoney(economy.govPurchasesNominal))}
               {row('· выплаты', fmtMoney(economy.transfersNominal))}
@@ -4926,6 +4997,24 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
 }
 
 /* Полоса требований: то, чего от вас прямо сейчас хотят */
+/* Событие в округе поверх любого экрана: на карту заглядывают не каждый квартал,
+   а без ответа сработает «переждать». */
+export function RegionEventStrip({ event, answered, canAnswer, onOpen }) {
+  const region = MAP_REGIONS.find((r) => r.id === event.region);
+  return (
+    <div role="button" tabIndex={0} className="ems-fade-in" onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
+        borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+      <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+      <span><b style={{ color: COLOR.rust }}>{region ? region.name : 'Округ'}: {event.title.toLowerCase()}.</b>{' '}
+        <span style={{ color: COLOR.muted }}>{canAnswer
+          ? (answered ? 'Ответ выбран — применится в конце квартала.' : 'Нужен ответ правительства — откройте карту.')
+          : 'Отвечает Минфин — подробности на карте.'}</span></span>
+    </div>
+  );
+}
+
 function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   const items = [];
   if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1, 'president', economy.politicalRegime), color: COLOR.gold });
@@ -5000,6 +5089,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   // президент делит с трейдером устройство «оба ведомства — боты», но не его
   // информационную закрытость: он в кабинете и видит намерения ведомств
   const isPresident = setup.role === 'president';
+  const canPlanMap = setup.role === 'ministry_finance' || isPresident;
   const bothBots = isTrader || isPresident;
   /* Президент-бот стоит НАД ведомством игрока: он ничего не считает сам, но требует,
      назначает и тратит политический капитал. За саму роль президента его, понятно,
@@ -5095,6 +5185,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
   const [presDirStrength, setPresDirStrength] = useState(1);
+  /* Решения на карте: стройка и ответ на событие в округе. Принимают их Минфин и
+     президент; за остальных это делает бот-Минфин. Живут квартал. */
+  const [regionPlan, setRegionPlan] = useState({ startProject: null, regionResponse: null });
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -5276,6 +5369,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         }
       }
     }
+    // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
+    if (canPlanMap) {
+      eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null };
+    }
     let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
     // официальный запрос второму ведомству
     let reqResult = null;
@@ -5426,6 +5523,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
+    setRegionPlan({ startProject: null, regionResponse: null });
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -5515,7 +5613,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5710,6 +5808,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           botRole={isPresident ? 'central_bank' : botRole} economy={economy}
           president={presEnabled && presidentPlan && presidentPlan.directive && presidentPlan.directive.toPlayer ? presidentPlan : null} />}
         <RegimeBanner economy={economy} />
+        {economy.regionEvent && view !== 'map' && (
+          <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
+            onOpen={() => { Audio.play('tab'); setView('map'); }} />
+        )}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
@@ -5719,7 +5821,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       </div>
 
       {view === 'map' && (
-        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}><CountryMap economy={economy} /></Suspense></div>
+        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+          <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
+            planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`} />
+        </Suspense></div>
       )}
 
       {view === 'market' && (

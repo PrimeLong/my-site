@@ -14,7 +14,7 @@ import {
   ChronicleModal, GameOverModal, Gauge, GlobalStyle, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile, LeverSlider,
   MAX_PINS, MetricRow, NETWORK_SLOT_COUNT, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel, PresidentWatchPanel,
   PressConferencePanel, PromisesPanel, QuarterStamp, ROLE_ICON, RegimeBanner, ResultCardModal, RiskBadge, ScorePanel,
-  Segmented, StateSeal, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
+  FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip, Segmented, StateSeal, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
   casinoAchievementIds, checkDefeat, clearNetworkSlotAt, clearNetworkSlotFor, emptyBook, haptic, initDashboards, loadAutoPaper,
   loadNetworkPortfolio, loadNetworkSlots, makeDashboardActions, markNetworkPlayed, priceOf, questProgressAchievementIds, recordRolePlayed, roomCodeFromUrl,
   saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot, seatRole, seatsForMode, settleQuarter, tradeBook, unlockAchievements,
@@ -682,6 +682,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
      квартала мы от всех занятых мест, а не от одного. */
   const roomSeats = seatsForMode(room.mode).filter((sx) => sx !== 'president' || !!room.president);
   const isPresidentSeat = seat === 'president';
+  // стройки и ответы округам — дело Минфина и президента, у ЦБ и трейдера карта только показывает
+  const canPlanMap = seat === 'ministry_finance' || seat === 'president';
   const DEPT_PAIR = { central_bank: 'ministry_finance', ministry_finance: 'central_bank' };
   const otherSeat = isTraderRoom ? (roomSeats[0] === seat ? roomSeats[1] : roomSeats[0])
     : (DEPT_PAIR[seat] || 'central_bank');
@@ -759,7 +761,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       // ход бота-президента в одиночной игре
       const president = isPresidentSeat
         ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
-          directive: presDirective, directiveStrength: presDirStrength }
+          directive: presDirective, directiveStrength: presDirStrength,
+          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null } }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
       setRoom(r.room); setSent(true); Audio.play('stamp');
@@ -1007,6 +1010,10 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
         )}
         <RegimeBanner economy={economy} />
+        {economy.regionEvent && centerView !== 'map' && (
+          <RegionEventStrip event={economy.regionEvent} answered={!!decisions.regionResponse} canAnswer={canPlanMap}
+            onOpen={() => { Audio.play('tab'); setCenterView('map'); }} />
+        )}
       </div>
 
       {narrow && (
@@ -1164,6 +1171,14 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                     </div>
                   ))}
                 </div>
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>
+                    {otherSeat === 'ministry_finance' ? 'Бюджетные потоки, темп роста' : 'Решения прошлого квартала'}
+                  </div>
+                  {otherSeat === 'ministry_finance'
+                    ? <FiscalLeverReadout levers={otherAction ? otherAction.levers : null} accent={otherAccent} economy={economy} />
+                    : <MonetaryLeverReadout levers={otherAction ? otherAction.levers : null} accent={otherAccent} economy={economy} />}
+                </div>
                 {otherAction && otherAction.note && (
                   <div style={{ marginTop: 8, fontSize: 11, color: COLOR.faint, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, lineHeight: 1.4 }}>{otherAction.note}</div>
                 )}
@@ -1272,7 +1287,14 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </span>
             ))}
           </div>
-          {centerView === 'map' ? <Suspense fallback={<ChartFallback />}><CountryMap economy={economy} /></Suspense> : (<>
+          {centerView === 'map' ? <Suspense fallback={<ChartFallback />}>
+            <CountryMap economy={economy}
+              plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null }}
+              onPlan={canPlanMap && !sent ? (pl) => setDecisions((d) => ({ ...d, ...pl })) : null}
+              planner={room.president && room.president.human
+                ? `президент${room.occupied.ministry_finance ? ` и Минфин (${room.names.ministry_finance || 'игрок'})` : ' и бот-Минфин'}`
+                : room.occupied.ministry_finance ? `Минфин (${room.names.ministry_finance || 'игрок'})` : 'Минфин (бот)'} />
+          </Suspense> : (<>
           {isTraderRoom && (
             <>
               <div style={{ display: 'flex', gap: 4 }}>

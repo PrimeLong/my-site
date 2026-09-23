@@ -286,8 +286,12 @@ const LEVERS = [
   { id: 'exciseRate', group: 'fiscal', subgroup: 'taxes', label: 'Акцизы', suffix: '%', min: 0, max: 25, step: 0.5, type: 'level' },
   { id: 'capitalTaxRate', group: 'fiscal', subgroup: 'taxes', label: 'Налог на капитал', suffix: '%', min: 0, max: 35, step: 0.5, type: 'level' },
 
-  { id: 'govSpending', group: 'fiscal', subgroup: 'core', label: 'Госзакупки и содержание государства', suffix: '%', min: -10, max: 10, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — действует, пока не измените' },
-  { id: 'transfers', group: 'fiscal', subgroup: 'core', label: 'Социальные выплаты', suffix: '%', min: -12, max: 12, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — сильный эффект в кризис, слабый при перегреве' },
+  /* Три бюджетных потока ходят в одних и тех же пределах ±15% за квартал — и у
+     игрока, и у бота-Минфина (он режется по тем же границам через clampToLever).
+     Раньше у закупок было ±10%, у выплат ±12%, у инвестиций ±15%: разные потолки
+     у рычагов одного смысла выглядели случайными. */
+  { id: 'govSpending', group: 'fiscal', subgroup: 'core', label: 'Госзакупки и содержание государства', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — действует, пока не измените' },
+  { id: 'transfers', group: 'fiscal', subgroup: 'core', label: 'Социальные выплаты', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — сильный эффект в кризис, слабый при перегреве' },
   { id: 'govInvestment', group: 'fiscal', subgroup: 'core', label: 'Госинвестиции в инфраструктуру', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Единственный расход, повышающий потенциальный ВВП' },
 
   { id: 'bondIssuance', group: 'fiscal', subgroup: 'debt', label: 'Размещение облигаций', suffix: ' млрд', min: 0, max: 60, step: 5, type: 'flow', scale: 'gdp',
@@ -300,6 +304,8 @@ const LEVERS = [
   { id: 'shareAdmin', group: 'fiscal', subgroup: 'budget', label: 'Госаппарат', suffix: '%', min: 2, max: 30, step: 1, type: 'level' },
 ];
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
+// границы рычага без поправки на экономику — для потоков, у которых они постоянны
+const clampToLeverRange = (id, v) => clamp(v, LEVER_BY_ID[id].min, LEVER_BY_ID[id].max);
 
 /* Часть ползунков не статична: рычаги в миллиардах растут вместе с экономикой
    (10 млрд при ВВП 100 трлн — не тот же инструмент, что при ВВП 1 000 трлн),
@@ -362,6 +368,7 @@ function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
     moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
+    startProject: null, regionResponse: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -687,7 +694,9 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareDefense = drift(s.budgetShares.defense, P.shares.defense);
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
+  const regionPlan = botRegionPlan(s, P, consolidationNeed);
   return buildMofResult(s, P, targetDeficit, {
+    ...regionPlan,
     incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate, s),
     profitTaxRate: clampToLever('profitTaxRate', profitTaxRate, s),
     vatRate: clampToLever('vatRate', vatRate, s),
@@ -706,6 +715,7 @@ function botFinanceMinistry(s, personaId, _difficulty) {
 function buildMofResult(s, P, targetDeficit, vals) {
   const { incomeTaxRate, profitTaxRate, vatRate, exciseRate, capitalTaxRate, socialContribRate,
     govSpending, transfers, govInvestment, shareHealth, shareEducation, shareScience, shareDefense, shareAdmin } = vals;
+  const startProject = vals.startProject || null; const regionResponse = vals.regionResponse || null;
   const consolidationNeed = targetDeficit - s.budgetBalancePctGdp; // >0 => надо ужесточать
   const parts = [];
   if (Math.abs(govSpending) > 0.15) parts.push(`${govSpending > 0 ? 'нарастил' : 'сократил'} госзакупки (${fmtSigned1(govSpending)}%)`);
@@ -714,6 +724,7 @@ function buildMofResult(s, P, targetDeficit, vals) {
   if (Math.abs(vatRate - s.vatRate) > 0.05) parts.push(`изменил НДС до ${vatRate.toFixed(1)}%`);
   if (Math.abs(profitTaxRate - s.profitTaxRate) > 0.05) parts.push(`изменил налог на прибыль до ${profitTaxRate.toFixed(1)}%`);
   if (Math.abs(incomeTaxRate - s.incomeTaxRate) > 0.05) parts.push(`изменил подоходный налог до ${incomeTaxRate.toFixed(1)}%`);
+  if (startProject && PROJECT_BY_ID[startProject]) parts.push(`начал стройку «${PROJECT_BY_ID[startProject].name}»`);
   if (!parts.length) parts.push('оставил бюджетные параметры без изменений');
 
   let demand = null;
@@ -739,6 +750,7 @@ function buildMofResult(s, P, targetDeficit, vals) {
       incomeTaxRate, profitTaxRate, vatRate, exciseRate, capitalTaxRate, socialContribRate,
       govSpending, transfers, govInvestment,
       shareHealth, shareEducation, shareScience, shareDefense, shareAdmin,
+      startProject, regionResponse,
     },
     note: `Минфин (${P.name}) ${parts.join(', ')}.`,
     newsNote: `Минфин ${parts.join(', ')}.`, demand, stance, institution: 'gov',
@@ -769,6 +781,7 @@ function redescribeMofAction(s, personaId, finalDecisions) {
     govSpending: finalDecisions.govSpending, transfers: finalDecisions.transfers, govInvestment: finalDecisions.govInvestment,
     shareHealth: finalDecisions.shareHealth, shareEducation: finalDecisions.shareEducation,
     shareScience: finalDecisions.shareScience, shareDefense: finalDecisions.shareDefense, shareAdmin: finalDecisions.shareAdmin,
+    startProject: finalDecisions.startProject, regionResponse: finalDecisions.regionResponse,
   });
 }
 
@@ -799,6 +812,7 @@ function describeHumanMofAction(s, playerName, finalDecisions) {
     govSpending: finalDecisions.govSpending, transfers: finalDecisions.transfers, govInvestment: finalDecisions.govInvestment,
     shareHealth: finalDecisions.shareHealth, shareEducation: finalDecisions.shareEducation,
     shareScience: finalDecisions.shareScience, shareDefense: finalDecisions.shareDefense, shareAdmin: finalDecisions.shareAdmin,
+    startProject: finalDecisions.startProject, regionResponse: finalDecisions.regionResponse,
   });
 }
 
@@ -900,7 +914,7 @@ const REQUESTS = [
     ask: (n) => `Требуем притормозить рост расходов на ${askNum(2 * n)} п.п. и социальных выплат на ${askNum(1.5 * n)} п.п.: нынешний бюджетный импульс вынуждает нас держать ставку выше, чем требовалось бы.`,
     fit: (s) => (s.budgetBalancePctGdp < -4 ? 1.4 : 0.2) + (s.outputGap > 1 ? 0.8 : -0.3) + (s.inflation > 6 ? 0.6 : 0),
     bias: { technocrat: 0.6, austerity: 1.0, populist: -0.9 },
-    apply: (d, k) => ({ govSpending: clamp(d.govSpending - 2 * k, -10, 10), transfers: clamp(d.transfers - 1.5 * k, -12, 12) }),
+    apply: (d, k) => ({ govSpending: clampToLeverRange('govSpending', d.govSpending - 2 * k), transfers: clampToLeverRange('transfers', d.transfers - 1.5 * k) }),
     yes: 'Минфин соглашается на консолидацию: расходы будут урезаны.',
     partial: 'Минфин идёт на частичное сокращение, защитив социальные статьи.',
     no: 'Минфин отвечает, что сокращать расходы в текущей ситуации политически невозможно.' },
@@ -912,7 +926,7 @@ const REQUESTS = [
     ask: (n) => `Просим приостановить рост социальных выплат минимум на ${askNum(n)} п.п.: их рост напрямую транслируется в потребительский спрос и цены.`,
     fit: (s) => (s.inflation > 6 ? 1.3 : -0.4) + (s.unemployment > 7 ? -1.0 : 0.3),
     bias: { austerity: 1.0, technocrat: 0.3, populist: -1.4 },
-    apply: (d, k) => ({ transfers: clamp(Math.min(d.transfers, 0) - 1.0 * k, -12, 12) }),
+    apply: (d, k) => ({ transfers: clampToLeverRange('transfers', Math.min(d.transfers, 0) - 1.0 * k) }),
     yes: 'Минфин замораживает индексацию выплат до нормализации инфляции.',
     partial: 'Минфин ограничивает рост выплат, но полной заморозки не допускает.',
     no: 'Минфин отвечает, что заморозка выплат при текущем положении людей исключена.' },
@@ -2565,6 +2579,11 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     queue = queue.concat(built.impulses || []);
     news.push(mkNews('gov', `ПРЕСС-КОНФЕРЕНЦИЯ: ${pressQ.shortLabel}`, `«${pressOpt.quote}»`, { priority: 6 }));
   }
+  /* --- 1г. ОКРУГА: ответ на событие, ход строек, новое событие --- */
+  const RS = regionStep(s, decisions, difficulty, quarterIndex);
+  queue = queue.concat(RS.impulses);
+  RS.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+
   // указание ведомству разбирается на уровне интерфейса (ему нужны уже готовые
   // решения ботов), но платит за него тот же политический капитал
   let presSpent = pres.spent + Math.max(0, decisions.presidentExtraSpend || 0);
@@ -2697,7 +2716,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     - (s.regime === 'banking' || s.regime === 'debt' ? 0.35 : 0);
   const productivity = clamp(applyAnnualGrowth(s.productivity, tfpGrowth) + (d.productivity || 0) + gauss(NB.productivity * nMult), 50, 400);
 
-  const govInvShareGdp = s.govInvestmentReal / Math.max(1, s.gdp) * 100;
+  const govInvShareGdp = (s.govInvestmentReal + (s.projectReal || 0)) / Math.max(1, s.gdp) * 100;
   const baseGovInvShare = CONFIG.initial.govInvestmentReal / CONFIG.initial.gdp * 100;
   const infrastructureIndex = clamp(s.infrastructureIndex + 0.9 * (govInvShareGdp - baseGovInvShare) - 0.25 * (s.infrastructureIndex - 100) / 10
     + (d.infrastructureIndex || 0) + gauss(0.05 * nMult), 50, 220);
@@ -2738,6 +2757,10 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const govPurchasesReal = plannedPurchases * sequesterFactor;
   const transfersReal = plannedTransfers * (sequesterFactor < 1 ? Math.min(1, sequesterFactor + 0.10) : 1);
   const govInvestmentReal = plannedGovInv * (sequesterFactor < 1 ? Math.max(0.5, sequesterFactor - 0.12) : 1);
+  // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
+  // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
+  const projectReal = RS.projectPct / 100 * s.gdp;
+  const eventReal = RS.eventPct / 100 * s.gdp;
   if (sequesterFactor < 0.995) {
     news.push(mkNews('crisis', `СЕКВЕСТР БЮДЖЕТА: РАСХОДЫ УРЕЗАНЫ НА ${fmt1((1 - sequesterFactor) * 100)}%`,
       `Инвесторы отказываются финансировать дефицит больше ${fmt1(maxDeficitPct)}% ВВП при долге ${fmt1(s.debtToGdp)}% и премии за риск ${fmt1(s.riskPremium)} п.п. Правительство вынуждено резать расходы независимо от своих планов — первыми страдают госинвестиции.`,
@@ -2804,7 +2827,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const exports = Math.max(1, applyAnnualGrowth(s.exports, exportsGrowth));
   const imports = Math.max(1, applyAnnualGrowth(s.imports, importsGrowth));
 
-  const gdp = Math.max(1, consumption + businessInvestment + govPurchasesReal + govInvestmentReal + exports - imports);
+  const gdp = Math.max(1, consumption + businessInvestment + govPurchasesReal + govInvestmentReal + projectReal + eventReal + exports - imports);
   const gdpGrowth = annualizedGrowth(s.gdp, gdp);
   const outputGap = clamp((gdp - potentialGdp) / potentialGdp * 100, -25, 20);
   add('gdpGrowth', `Потребление ${fmtSigned1(consumptionGrowth)}%, инвестиции ${fmtSigned1(investmentGrowth)}%, госсектор ${fmtSigned1(govPurchasesGrowth)}%, чистый экспорт ${fmtMoneySigned(exports - imports)}`, gdpGrowth - s.gdpGrowth);
@@ -3095,9 +3118,9 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const revenuePctGdp = govRevenue / nominalGdp * 100;
   add('budget', `Налоговая база: теневая экономика ${fmt1(shadowShare)}%, собираемость подстраивается под нагрузку (налоговый клин ${fmt1(wedgeNow)})`, govRevenue - s.govRevenue);
 
-  const govPurchasesNominal = govPurchasesReal * priceLevel / 100;
+  const govPurchasesNominal = (govPurchasesReal + eventReal) * priceLevel / 100;
   const transfersNominal = transfersReal * priceLevel / 100;
-  const govInvestmentNominal = govInvestmentReal * priceLevel / 100;
+  const govInvestmentNominal = (govInvestmentReal + projectReal) * priceLevel / 100;
   const newDebtRate = 0.35 * decisions.keyRate + 0.65 * (rStar + inflationExpectations + 1.0) + riskPremium
     + C.debtLevelPremium * Math.max(0, s.debtToGdp - 60);
   const effectiveDebtRate = clamp(s.effectiveDebtRate + C.debtRollover * (newDebtRate - s.effectiveDebtRate), 0, 45);
@@ -3805,6 +3828,9 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     electionVoteShare: voteShare, promisesKept: promisesTotal ? promisesKept : null, promisesTotal: promisesTotal || null,
     politicalRegime, politicalTension, parliamentDissolved, unrestQuartersLeft, unrestActive, powerLost, noElections,
     stabilizationCred, stabilizationWon, crisisMandateLeft, crisisMandateTotal: mandateTotal,
+    projects: RS.projects, projectsBuilt: RS.projectsBuilt, regionMods: RS.regionMods, regionShock: RS.regionShock,
+    regionEvent: RS.regionEvent, regionEventCooldown: RS.regionEventCooldown, lastRegionResolution: RS.lastRegionResolution,
+    projectReal,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -4658,6 +4684,9 @@ function makeInitialEconomy(scenarioId) {
     bankProfit: 2.2, loanLosses: 4.7, bankingRisk: 24, bankingRiskValue: 24,
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
+    // округа: идущие и достроенные стройки, поправки к напряжению, текущее событие
+    projects: [], projectsBuilt: [], regionMods: {}, regionShock: {}, regionEvent: null, regionEventCooldown: 1,
+    lastRegionResolution: null, projectReal: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
@@ -5005,7 +5034,7 @@ const MAP_REGIONS = [
     weights: { bankingRisk: 0.45, debtRisk: 0.35, currencyRisk: 0.2 } },
   { id: 'mining', name: 'Шахтёрский край', short: 'Шахты', sector: 'Добыча и энергетика', icon: 'mining', lean: 2,
     weights: { inflationRisk: 0.35, recessionRisk: 0.35, bankingRisk: 0.3 } },
-  { id: 'periphery', name: 'Тихая окраина', short: 'Окраина', sector: 'Услуги и село', icon: 'periphery', lean: 7,
+  { id: 'periphery', name: 'Лесная окраина', short: 'Окраина', sector: 'Лес, село и услуги', icon: 'periphery', lean: 7,
     weights: { politicalTension: 0.2, recessionRisk: 0.3, inflationRisk: 0.2, currencyRisk: 0.3 } },
 ];
 function regionStress(region, economy) {
@@ -5019,8 +5048,311 @@ function regionStress(region, economy) {
   };
   let sum = 0; let wsum = 0;
   Object.entries(region.weights).forEach(([k, w]) => { sum += (fields[k] || 0) * w; wsum += w; });
-  return wsum > 0 ? clamp(sum / wsum, 0, 100) : 0;
+  const base = wsum > 0 ? sum / wsum : 0;
+  // поверх общенационального фона — то, что случилось именно здесь: достроенные
+  // объекты (надолго), недавние события (сходят) и работа на идущей стройке
+  const built = (economy.regionMods || {})[region.id] || 0;
+  const shock = (economy.regionShock || {})[region.id] || 0;
+  const building = (economy.projects || []).some((x) => x.region === region.id) ? -4 : 0;
+  return clamp(base + built + shock + building, 0, 100);
 }
+/* ============================ СТРОЙКИ В ОКРУГАХ ============================
+   У каждого округа — своя большая стройка, отвечающая его характеру: метро в
+   столице, глубоководный порт, электростанция в шахтёрском крае. Стройка идёт
+   несколько кварталов и всё это время стоит денег (cost — % ВВП в год: это
+   госинвестиции сверх ползунка, они входят в ВВП, дефицит и индекс
+   инфраструктуры). Пока идёт стройка, в округе есть работа — напряжение ниже.
+   Достроенная — навсегда снижает напряжение округа (relief) и даёт свой эффект
+   на экономику. Запускает стройку Минфин; живой президент — поверх него. */
+const REGION_PROJECTS = [
+  { id: 'metro', region: 'capital', name: 'Метро в столице', quarters: 8, cost: 0.35, relief: 12,
+    effect: 'Инфраструктура и доверие к власти: столица видит результат каждый день.',
+    done: (d) => [makeImpulse('infrastructureIndex', 2.5, 'Открыто столичное метро', 'fast', d, 'other'),
+      makeImpulse('approvalPush', 2.5, 'Открыто столичное метро', 'fast', d, 'other')] },
+  { id: 'deepport', region: 'port', name: 'Глубоководный порт', quarters: 6, cost: 0.3, relief: 12,
+    effect: 'Экспорт растёт: к причалам встают суда, которые раньше шли к соседям.',
+    done: (d) => [sustainedImpulse('exportsGrowth', 1.2, 4, 'Глубоководный порт принимает крупные суда'),
+      makeImpulse('infrastructureIndex', 1.5, 'Глубоководный порт', 'fast', d, 'other')] },
+  { id: 'factories', region: 'industry', name: 'Модернизация заводов', quarters: 6, cost: 0.3, relief: 12,
+    effect: 'Производительность: новые станки выпускают больше тем же числом рук.',
+    done: (d) => [makeImpulse('productivity', 1.6, 'Заводы Кузнечного пояса модернизированы', 'slow', d, 'other')] },
+  { id: 'irrigation', region: 'agri', name: 'Ирригация и элеваторы', quarters: 4, cost: 0.2, relief: 12,
+    effect: 'Дешевле продовольствие: урожай меньше зависит от погоды и доезжает до города.',
+    done: (d) => [makeImpulse('inflationSupply', -0.35, 'Ирригация Хлебородья снижает цены на продовольствие', 'slow', d, 'other')] },
+  { id: 'powerplant', region: 'mining', name: 'Новая электростанция', quarters: 8, cost: 0.4, relief: 12,
+    effect: 'Дешевле энергия для всей страны: ниже издержки и инфляция предложения.',
+    done: (d) => [makeImpulse('inflationSupply', -0.45, 'Новая электростанция удешевляет энергию', 'slow', d, 'other'),
+      makeImpulse('infrastructureIndex', 1.5, 'Новая электростанция', 'fast', d, 'other')] },
+  { id: 'techpark', region: 'finance', name: 'Технопарк при бирже', quarters: 5, cost: 0.25, relief: 10,
+    effect: 'Производительность и доверие бизнеса: деньги и идеи находят друг друга.',
+    done: (d) => [makeImpulse('productivity', 1.0, 'Открыт технопарк Златограда', 'slow', d, 'other'),
+      makeImpulse('businessConfidence', 4, 'Открыт технопарк Златограда', 'default', d, 'other')] },
+  { id: 'railway', region: 'periphery', name: 'Железная дорога на окраину', quarters: 7, cost: 0.3, relief: 14,
+    effect: 'Окраина перестаёт пустеть: работа и рынки становятся ближе.',
+    done: (d) => [makeImpulse('infrastructureIndex', 2.2, 'Железная дорога дошла до Глухова', 'fast', d, 'other'),
+      makeImpulse('laborForce', 0.25, 'Окраина перестаёт пустеть', 'slow', d, 'other')] },
+];
+const PROJECT_BY_ID = Object.fromEntries(REGION_PROJECTS.map((p) => [p.id, p]));
+const MAX_ACTIVE_PROJECTS = 3;
+// почему стройку сейчас нельзя начать — или null, если можно
+function projectBlocker(p, s) {
+  if (!p) return 'такой стройки нет';
+  if ((s.projectsBuilt || []).includes(p.id)) return 'уже построено';
+  const active = s.projects || [];
+  if (active.some((x) => x.id === p.id)) return 'уже строится';
+  if (active.length >= MAX_ACTIVE_PROJECTS) return `одновременно — не больше ${MAX_ACTIVE_PROJECTS} строек`;
+  if ((s.marketLockoutQuartersLeft || 0) > 0 || s.imfActive) return 'бюджет без доступа к рынку: большие стройки заморожены';
+  return null;
+}
+// первая и последняя очередь стройки стоят меньше полной: разворачивание и сдача
+const projectRamp = (x) => (x.left === x.total || x.left === 1 ? 0.6 : 1);
+const projectSpendPct = (projects) => (projects || []).reduce((a, x) => a + (PROJECT_BY_ID[x.id] || { cost: 0 }).cost * projectRamp(x), 0);
+
+/* ============================ СОБЫТИЯ В ОКРУГАХ ============================
+   Округ сам подбрасывает задачу: забастовку, неурожай, аварию. Событие
+   вспыхивает в конце квартала, и на следующий квартал на него надо ответить —
+   иначе срабатывает вариант «переждать» (defaultOption). Ответ стоит денег
+   (spend — % ВВП разово), двигает экономику импульсами и напряжение округа
+   (shock — сколько пунктов прибавить к его напряжению; сходит на треть за квартал).
+   tone — для ботов: щедрый, дешёвый, жёсткий или выжидательный ответ. */
+const REGION_EVENTS = [
+  { id: 'miners_strike', region: 'mining', title: 'Забастовка шахтёров',
+    text: (s) => `Горняки Рудногорска остановили добычу: при инфляции ${fmt1(s.inflation)}% зарплата не покрывает жизнь. Профсоюз требует индексации.`,
+    weight: (s) => 1 + 0.12 * Math.max(0, s.inflation - 5) + 0.3 * Math.max(0, s.unemployment - 6),
+    defaultOption: 'wait',
+    options: [
+      { id: 'pay', tone: 'generous', label: 'Проиндексировать зарплаты горнякам', spend: 0.15, shock: -12,
+        effect: 'Добыча возобновится, но индексация разгоняет цены.',
+        impulses: (s, d) => [makeImpulse('inflationSupply', 0.15, 'Индексация зарплат шахтёрам', 'slow', d, 'other'),
+          makeImpulse('approvalPush', 1, 'Требования шахтёров выполнены', 'fast', d, 'other')] },
+      { id: 'talks', tone: 'cheap', label: 'Переговоры и обещания', spend: 0.03, shock: -4,
+        effect: 'Дёшево, но обещания придётся выполнять — иначе забастовка вернётся.',
+        impulses: (s, d) => [makeImpulse('tensionPush', 1, 'Шахтёрам дали обещания', 'fast', d, 'other')] },
+      { id: 'crush', tone: 'hard', label: 'Разогнать пикеты', spend: 0, shock: -6,
+        effect: 'Шахты заработают, но страна запомнит дубинки.',
+        impulses: (s, d) => [makeImpulse('tensionPush', 4, 'Разгон забастовки шахтёров', 'fast', d, 'other'),
+          makeImpulse('approvalPush', -3, 'Разгон забастовки шахтёров', 'fast', d, 'other'),
+          makeImpulse('govTrust', -3, 'Разгон забастовки шахтёров', 'default', d, 'other')] },
+      { id: 'wait', tone: 'wait', label: 'Переждать', spend: 0, shock: 12,
+        effect: 'Добыча стоит, энергия дорожает, забастовка расползается.',
+        impulses: (s, d) => [makeImpulse('inflationSupply', 0.25, 'Шахты стоят: энергия дорожает', 'default', d, 'other'),
+          makeImpulse('exportsGrowth', -1.5, 'Шахты стоят', 'default', d, 'other'),
+          makeImpulse('tensionPush', 2.5, 'Забастовка шахтёров расползается', 'fast', d, 'other')] },
+    ] },
+  { id: 'drought', region: 'agri', title: 'Засуха и неурожай',
+    text: () => 'В Хлебородье засуха: урожай на треть ниже прошлогоднего, хозяйства просят помощи, а в городах начинают дорожать хлеб и крупа.',
+    weight: () => 1.1,
+    defaultOption: 'wait',
+    options: [
+      { id: 'import', tone: 'cheap', label: 'Закупить зерно за рубежом', spend: 0.08, shock: -5,
+        effect: 'Цены не взлетят, но деньги уйдут соседям, а не своим фермерам.',
+        impulses: (s, d) => [makeImpulse('importsGrowth', 2, 'Закупки зерна за рубежом', 'fast', d, 'other')] },
+      { id: 'subsidy', tone: 'generous', label: 'Субсидировать фермеров', spend: 0.15, shock: -12,
+        effect: 'Хозяйства переживут год, а цены вырастут умеренно.',
+        impulses: (s, d) => [makeImpulse('inflationSupply', 0.15, 'Неурожай: цены на продовольствие', 'default', d, 'other')] },
+      { id: 'wait', tone: 'wait', label: 'Пусть рынок разберётся', spend: 0, shock: 10,
+        effect: 'Продовольствие заметно дорожает, село злится.',
+        impulses: (s, d) => [makeImpulse('inflationSupply', 0.6, 'Неурожай: продовольствие дорожает', 'default', d, 'other'),
+          makeImpulse('approvalPush', -1.5, 'Неурожай и дорогой хлеб', 'fast', d, 'other')] },
+    ] },
+  { id: 'port_accident', region: 'port', title: 'Авария в порту',
+    text: () => 'В Портовске обрушился старый причал: треть терминалов закрыта, суда уходят на рейд или к соседям.',
+    weight: (s) => 0.8 + 0.01 * (s.currencyRisk || 0),
+    defaultOption: 'wait',
+    options: [
+      { id: 'repair', tone: 'generous', label: 'Срочный ремонт за счёт бюджета', spend: 0.12, shock: -7,
+        effect: 'Через квартал порт работает в полную силу.',
+        impulses: (s, d) => [makeImpulse('exportsGrowth', 0.5, 'Порт быстро восстановлен', 'fast', d, 'other')] },
+      { id: 'concession', tone: 'cheap', label: 'Отдать терминал в концессию', spend: 0, shock: 3,
+        effect: 'Ремонт за счёт инвестора: бизнес доволен, портовики — нет.',
+        impulses: (s, d) => [makeImpulse('businessConfidence', 2.5, 'Порт отдан в концессию', 'default', d, 'other'),
+          makeImpulse('fdi', 1, 'Порт отдан в концессию', 'default', d, 'other')] },
+      { id: 'wait', tone: 'wait', label: 'Чинить в плановом порядке', spend: 0, shock: 8,
+        effect: 'Экспорт проседает на несколько кварталов.',
+        impulses: (s, d) => [makeImpulse('exportsGrowth', -2.5, 'Порт работает вполсилы', 'default', d, 'other')] },
+    ] },
+  { id: 'bank_panic', region: 'finance', title: 'Паника вкладчиков в Златограде',
+    text: (s) => `У отделений местного банка очереди: слух о его проблемах разошёлся быстрее опровержения. Банковский риск по стране ${Math.round(s.bankingRisk || 0)} из 100.`,
+    weight: (s) => 0.5 + 0.03 * Math.max(0, (s.bankingRisk || 0) - 25),
+    defaultOption: 'wait',
+    options: [
+      { id: 'guarantee', tone: 'generous', label: 'Гарантировать вклады', spend: 0.1, shock: -9,
+        effect: 'Очереди расходятся, доверие к банкам цело.',
+        impulses: (s, d) => [makeImpulse('riskPremium', -0.05, 'Вклады в Златограде гарантированы', 'fast', d, 'other'),
+          makeImpulse('consumerConfidence', 1.5, 'Вклады гарантированы', 'fast', d, 'other')] },
+      { id: 'bail_in', tone: 'cheap', label: 'Санировать за счёт акционеров', spend: 0, shock: 3,
+        effect: 'Бюджет цел, но инвесторы запомнят, что держать акции банков опасно.',
+        impulses: (s, d) => [makeImpulse('stockShock', -2, 'Санация банка за счёт акционеров', 'fast', d, 'other'),
+          makeImpulse('businessConfidence', -1.5, 'Санация банка за счёт акционеров', 'default', d, 'other')] },
+      { id: 'wait', tone: 'wait', label: 'Не вмешиваться', spend: 0, shock: 10,
+        effect: 'Банк лопается, паника перекидывается на соседей.',
+        impulses: (s, d) => [makeImpulse('consumerConfidence', -3, 'Лопнул банк в Златограде', 'fast', d, 'other'),
+          makeImpulse('riskPremium', 0.12, 'Лопнул банк в Златограде', 'default', d, 'other')] },
+    ] },
+  { id: 'plant_closure', region: 'industry', title: 'Закрывается градообразующий завод',
+    text: (s) => `Кузнецкий машиностроительный объявил о закрытии: заказов нет, кредит дорог (ставка ${fmt1(s.keyRate)}%). Без работы останутся тысячи людей.`,
+    weight: (s) => 0.6 + 0.35 * Math.max(0, -(s.outputGap || 0)) + 0.05 * Math.max(0, (s.keyRate || 0) - 8),
+    defaultOption: 'wait',
+    options: [
+      { id: 'order', tone: 'generous', label: 'Дать заводу госзаказ', spend: 0.15, shock: -12,
+        effect: 'Завод работает, город спокоен — пока не кончится заказ.',
+        impulses: () => [] },
+      { id: 'retrain', tone: 'cheap', label: 'Переобучение и пособия', spend: 0.06, shock: -4,
+        effect: 'Люди переходят в новые отрасли — медленно, зато навсегда.',
+        impulses: (s, d) => [makeImpulse('productivity', 0.3, 'Переобучение рабочих Кузнецка', 'slow', d, 'other')] },
+      { id: 'wait', tone: 'wait', label: 'Не мешать рынку', spend: 0, shock: 10,
+        effect: 'Безработица в поясе растёт, рейтинг власти падает.',
+        impulses: (s, d) => [makeImpulse('unemployment', 0.25, 'Закрыт завод в Кузнецке', 'default', d, 'other'),
+          makeImpulse('approvalPush', -1, 'Закрыт завод в Кузнецке', 'fast', d, 'other')] },
+    ] },
+  { id: 'capital_rally', region: 'capital', title: 'Митинг у стен правительства',
+    // при ручном управлении пресса не пишет ни о рейтинге, ни о «десятках тысяч» —
+    // только о «несогласованной акции»
+    text: (s) => (s.politicalRegime === 'authoritarian'
+      ? `У здания правительства — несогласованная акция. Власти призывают граждан не поддаваться на провокации; напряжённость ${Math.round(s.politicalTension || 0)} из 100.`
+      : `На площади перед правительством десятки тысяч человек. Одобрение власти ${Math.round(s.approval)} из 100, напряжённость ${Math.round(s.politicalTension || 0)} из 100.`),
+    weight: (s) => 0.3 + 0.03 * Math.max(0, (s.politicalTension || 0) - 30) + 0.03 * Math.max(0, 50 - (s.approval || 50)),
+    eligible: (s) => s.politicalRegime !== 'totalitarian',
+    defaultOption: 'allow',
+    options: [
+      { id: 'meet', tone: 'generous', label: 'Выйти к людям', spend: 0, shock: -8,
+        effect: 'Разговор вместо оцепления — рейтинг растёт, если есть что сказать.',
+        impulses: (s, d) => [makeImpulse('approvalPush', 2, 'Власть вышла к митингующим', 'fast', d, 'other'),
+          makeImpulse('tensionPush', -2, 'Власть вышла к митингующим', 'fast', d, 'other')] },
+      { id: 'allow', tone: 'cheap', label: 'Разрешить и не мешать', spend: 0, shock: -2,
+        effect: 'Митинг проходит спокойно и расходится.',
+        impulses: (s, d) => [makeImpulse('tensionPush', -1, 'Митинг прошёл спокойно', 'fast', d, 'other')] },
+      { id: 'ban', tone: 'hard', label: 'Запретить митинг', spend: 0, shock: -4,
+        effect: 'Площадь пустеет, недовольство уходит внутрь.',
+        impulses: (s, d) => [makeImpulse('tensionPush', 3, 'Митинг запрещён', 'fast', d, 'other'),
+          makeImpulse('govTrust', -2, 'Митинг запрещён', 'default', d, 'other')] },
+    ] },
+  { id: 'wildfire', region: 'periphery', title: 'Лесные пожары под Глуховом',
+    text: () => 'Горят леса Лесной окраины: огонь подходит к посёлкам, дым висит над Глуховом вторую неделю.',
+    weight: (s, q) => 0.5 + ((q % 4) === 2 || (q % 4) === 3 ? 0.6 : 0),
+    defaultOption: 'regional',
+    options: [
+      { id: 'army', tone: 'generous', label: 'Бросить армию и авиацию', spend: 0.08, shock: -8,
+        effect: 'Огонь сбит за неделю, округ видит, что о нём помнят.',
+        impulses: (s, d) => [makeImpulse('approvalPush', 1, 'Пожары под Глуховом потушены', 'fast', d, 'other')] },
+      { id: 'regional', tone: 'wait', label: 'Пусть справляется округ', spend: 0, shock: 9,
+        effect: 'Посёлки горят, окраина снова чувствует себя забытой.',
+        impulses: (s, d) => [makeImpulse('approvalPush', -1.5, 'Окраину оставили один на один с пожарами', 'fast', d, 'other')] },
+    ] },
+  { id: 'youth_exodus', region: 'periphery', title: 'Молодёжь уезжает с окраины',
+    text: () => 'Школы Лесной окраины выпускают больше, чем остаётся: молодые семьи уезжают в столицу и за границу.',
+    weight: (s) => 0.3 + 0.2 * Math.max(0, (s.unemployment || 0) - 6),
+    defaultOption: 'wait',
+    options: [
+      { id: 'grants', tone: 'generous', label: 'Подъёмные и жильё для молодых', spend: 0.06, shock: -7,
+        effect: 'Часть семей остаётся — окраина стареет медленнее.',
+        impulses: () => [] },
+      { id: 'wait', tone: 'wait', label: 'Ничего не делать', spend: 0, shock: 5,
+        effect: 'Рабочих рук в стране становится чуть меньше.',
+        impulses: (s, d) => [makeImpulse('laborForce', -0.15, 'Отток с окраины', 'slow', d, 'other')] },
+    ] },
+];
+const REGION_EVENT_BY_ID = Object.fromEntries(REGION_EVENTS.map((e) => [e.id, e]));
+// то, что видит интерфейс: без функций, с текстом на момент события
+function publicRegionEvent(ev, s, q) {
+  return { id: ev.id, region: ev.region, title: ev.title, text: ev.text(s), q, defaultOption: ev.defaultOption,
+    options: ev.options.map((o) => ({ id: o.id, label: o.label, effect: o.effect, spend: o.spend, shock: o.shock, tone: o.tone })) };
+}
+
+/* Шаг округов за квартал: ответ на прошлое событие, ход строек, новое событие.
+   Возвращает импульсы, разовые расходы и новое состояние — simulateQuarter
+   вплетает это в бюджет, ВВП и ленту новостей. */
+function regionStep(s, decisions, difficulty, quarterIndex) {
+  const out = { impulses: [], news: [], eventPct: 0 };
+  // напряжение от прошлых событий сходит на треть за квартал
+  const shock = {};
+  Object.entries(s.regionShock || {}).forEach(([id, v]) => { const nv = v * 0.65; if (Math.abs(nv) >= 0.5) shock[id] = nv; });
+  // 1) ответ на событие прошлого квартала
+  let resolution = null;
+  const pend = s.regionEvent ? REGION_EVENT_BY_ID[s.regionEvent.id] : null;
+  if (pend) {
+    const chosen = pend.options.find((o) => o.id === decisions.regionResponse);
+    const opt = chosen || pend.options.find((o) => o.id === pend.defaultOption);
+    out.impulses.push(...opt.impulses(s, difficulty));
+    out.eventPct += opt.spend;
+    shock[pend.region] = (shock[pend.region] || 0) + opt.shock;
+    const region = MAP_REGIONS.find((r) => r.id === pend.region);
+    resolution = { id: pend.id, region: pend.region, title: pend.title, option: opt.id, label: opt.label, byDefault: !chosen, q: quarterIndex };
+    out.news.push(['gov', `${region.name.toUpperCase()}: ${pend.title.toUpperCase()} — ${chosen ? opt.label.toUpperCase() : 'РЕШЕНИЯ НЕ ПРИНЯЛИ'}`,
+      `${chosen ? `Ответ власти: «${opt.label}».` : `Ответа так и не дали — вышло «${opt.label.toLowerCase()}».`} ${opt.effect}${opt.spend ? ` Стоимость — около ${fmt1(opt.spend)}% ВВП.` : ''}`, 7]);
+  }
+  // 2) стройки: старт, ход, сдача
+  let projects = (s.projects || []).map((x) => ({ ...x }));
+  const built = [...(s.projectsBuilt || [])];
+  const mods = { ...s.regionMods };
+  const startP = PROJECT_BY_ID[decisions.startProject];
+  if (startP && !projectBlocker(startP, s)) {
+    projects.push({ id: startP.id, region: startP.region, left: startP.quarters, total: startP.quarters, startedQ: quarterIndex });
+    const region = MAP_REGIONS.find((r) => r.id === startP.region);
+    out.news.push(['gov', `СТАРТ СТРОЙКИ: ${startP.name.toUpperCase()}`,
+      `${region.name}: ${startP.name.toLowerCase()} — ${startP.quarters} кв. работ, около ${fmt1(startP.cost)}% ВВП в год из бюджета. ${startP.effect}`, 6]);
+  }
+  const projectPct = projectSpendPct(projects);
+  const still = [];
+  projects.forEach((x) => {
+    const left = x.left - 1;
+    if (left > 0) { still.push({ ...x, left }); return; }
+    const p = PROJECT_BY_ID[x.id];
+    built.push(x.id);
+    mods[x.region] = (mods[x.region] || 0) - p.relief;
+    out.impulses.push(...p.done(difficulty), makeImpulse('approvalPush', 1, `Сдан объект: ${p.name}`, 'fast', difficulty, 'other'));
+    const region = MAP_REGIONS.find((r) => r.id === x.region);
+    out.news.push(['gov', `ПОСТРОЕНО: ${p.name.toUpperCase()}`, `${region.name} получил ${p.name.toLowerCase()}. ${p.effect} Напряжение в округе снижается надолго.`, 8]);
+  });
+  projects = still;
+  // 3) новое событие — не каждый квартал и не раньше третьего
+  let cooldown = Math.max(0, (Number.isFinite(s.regionEventCooldown) ? s.regionEventCooldown : 1) - 1);
+  let regionEvent = null;
+  if (pend) cooldown = Math.max(cooldown, 1);
+  if (!pend && cooldown === 0 && quarterIndex >= 3) {
+    const pool = REGION_EVENTS.filter((e) => (!e.eligible || e.eligible(s)));
+    const stressOf = (id) => regionStress(MAP_REGIONS.find((r) => r.id === id), s);
+    const maxStress = Math.max(...MAP_REGIONS.map((r) => stressOf(r.id)));
+    if (pool.length && Math.random() < clamp(0.22 + 0.004 * maxStress, 0.22, 0.55)) {
+      const weights = pool.map((e) => Math.max(0.05, e.weight(s, quarterIndex)) * (1 + stressOf(e.region) / 50));
+      let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+      const ev = pool.find((e, i) => { r -= weights[i]; return r <= 0; }) || pool[pool.length - 1];
+      regionEvent = publicRegionEvent(ev, s, quarterIndex);
+      cooldown = 2;
+      const region = MAP_REGIONS.find((rg) => rg.id === ev.region);
+      out.news.push(['crisis', `${region.name.toUpperCase()}: ${ev.title.toUpperCase()}`, `${regionEvent.text} Решение — за правительством: ответ нужен в следующем квартале.`, 8]);
+    }
+  }
+  return { ...out, projects, projectsBuilt: built, regionMods: mods, regionShock: shock, regionEvent,
+    regionEventCooldown: cooldown, lastRegionResolution: resolution || s.lastRegionResolution || null, projectPct };
+}
+
+/* Бот-Минфин на карте: запускает стройку там, где хуже всего, если бюджет
+   позволяет, и отвечает на событие по характеру — популист платит, консерватор
+   экономит, технократ платит, только если округ уже на грани. */
+function botRegionPlan(s, P, consolidationNeed) {
+  const plan = { startProject: null, regionResponse: null };
+  const active = (s.projects || []).length;
+  const limit = P.investBias >= 1.2 ? 2 : 1;
+  const room = consolidationNeed < 0.5 || (s.outputGap < -2 && P.id !== 'austerity');
+  if (active < limit && room) {
+    const cands = REGION_PROJECTS.filter((p) => !projectBlocker(p, s))
+      .map((p) => ({ p, stress: regionStress(MAP_REGIONS.find((r) => r.id === p.region), s) }))
+      .sort((a, b) => b.stress - a.stress);
+    if (cands.length) plan.startProject = cands[0].p.id;
+  }
+  const ev = s.regionEvent ? REGION_EVENT_BY_ID[s.regionEvent.id] : null;
+  if (ev) {
+    const byTone = (t) => ev.options.find((o) => o.tone === t);
+    const stress = regionStress(MAP_REGIONS.find((r) => r.id === ev.region), s);
+    const pick = P.id === 'populist' ? (byTone('generous') || byTone('cheap'))
+      : P.id === 'austerity' ? (byTone('cheap') || byTone('wait'))
+        : (stress >= 45 ? byTone('generous') : byTone('cheap')) || byTone('generous');
+    plan.regionResponse = (pick || ev.options.find((o) => o.id === ev.defaultOption)).id;
+  }
+  return plan;
+}
+
 const REGION_TEXT = {
   capital: {
     calm: (e) => `Аппарат работает штатно, рейтинг власти держится на ${Math.round(e.approval)} из 100 — округу нечего обсуждать сверх обычной повестки.`,
@@ -5053,7 +5385,7 @@ const REGION_TEXT = {
     crisis: () => 'Часть добывающих мощностей встала на консервацию — дешевле переждать, чем работать в убыток.',
   },
   periphery: {
-    calm: () => 'Обычный квартал: ни ажиотажа, ни оттока — тихая окраина этим и живёт.',
+    calm: () => 'Обычный квартал: ни ажиотажа, ни оттока — лесная окраина этим и живёт.',
     tense: () => 'Отток молодёжи в столичный округ ускоряется — там хотя бы платят вовремя.',
     crisis: (e) => `При напряжённости ${Math.round(e.politicalTension)} из 100 периферия голосует не бюллетенем, а переездом.`,
   },
@@ -5296,7 +5628,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
+  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
