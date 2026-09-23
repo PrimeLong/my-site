@@ -5384,7 +5384,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     eff = { ...eff, campaignPlan: isPresident ? campaignPlan : botCampaignPlan(economy) };
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
     if (canPlanMap) {
-      eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null };
+      eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null,
+        // программа интеграции новых земель: не трогали — продолжается прошлая
+        integrate: Array.isArray(regionPlan.integrate) ? regionPlan.integrate : null };
     }
     let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
     // официальный запрос второму ведомству
@@ -5536,7 +5538,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
-    setRegionPlan({ startProject: null, regionResponse: null });
+    // стройка и ответ — на один квартал, программа интеграции действует дальше
+    setRegionPlan((p) => ({ startProject: null, regionResponse: null, integrate: p.integrate }));
     setCampaignPlan({});
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
@@ -5836,7 +5839,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
           </div>
         )}
-        {isPresident && view !== 'map' && electionForecast(economy) && (() => {
+        {isPresident && view !== 'map' && electionForecast(economy) && !electionForecast(economy).closed && (() => {
           const f = electionForecast(economy, campaignPlan);
           const used = Object.values(campaignPlan).reduce((a, b) => a + b, 0);
           const swing = f.byRegion.filter((r) => r.label === 'колеблется').length;

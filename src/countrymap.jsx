@@ -3,7 +3,8 @@
    только по нажатию вкладки «Карта», а не при первой загрузке сайта. */
 import { AlertTriangle, Anchor, Castle, CheckCircle2, Coins, Construction, Factory, Flag, Landmark, Lock, Mountain, Pickaxe, Swords, Trees, Vote, Wheat } from 'lucide-react';
 import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength,
-  CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel } from './lib/engine.js';
+  CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel,
+  regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST } from './lib/engine.js';
 import { useState } from 'react';
 import {
   Audio, COLOR, starPath,
@@ -72,7 +73,8 @@ const REGION_RING = {
   finance: ['S3', 'J10', 'E', 'S4'],
   agri: ['K', 'S5', 'S4', 'E', 'D', 'C'],
 };
-const REGION_ICON = { capital: Landmark, port: Anchor, industry: Factory, agri: Wheat, finance: Coins, mining: Pickaxe, periphery: Trees };
+const REGION_ICON = { capital: Landmark, port: Anchor, industry: Factory, agri: Wheat, finance: Coins, mining: Pickaxe, periphery: Trees,
+  pereval: Mountain, halvik: Pickaxe, nordholm: Castle };
 
 /* Изломанность берега и границ: смещение середины отрезка по нормали, по
    детерминированному хэшу координат (карта одинакова в каждой партии). Концы
@@ -130,7 +132,8 @@ function ringPath(ring) {
   return `${d} Z`;
 }
 const REGION_PATH = Object.fromEntries(Object.entries(REGION_RING).map(([id, ring]) => [id, ringPath(ring)]));
-const regionPath = (id) => REGION_PATH[id];
+// присоединённые земли рисуются по контурам целей операции (ANNEX_PATH ниже)
+const regionPath = (id) => REGION_PATH[id] || ANNEX_PATH[(regionById(id) || {}).objective];
 const edgesOfKind = (kinds) => EDGES.filter((e) => kinds.includes(e[2]))
   .map(([a, b]) => `${mv(NODES[a])}${curveTo(edgePts(a, b))}`).join(' ');
 const coastPath = edgesOfKind(['coast']);
@@ -194,7 +197,7 @@ const MOUNTAINS = clearOf([[548, 136], [592, 118], [634, 130], [676, 118], [714,
 const FORESTS = clearOf([[250, 162], [292, 140], [410, 150], [228, 226], [300, 196], [262, 272], [338, 284], [396, 196], [206, 290], [366, 300], [430, 262], [320, 320], [200, 180], [420, 196], [372, 232]], 38);
 const FIELDS = clearOf([[236, 400], [300, 420], [226, 470], [310, 470], [380, 470], [250, 540], [340, 566], [420, 520], [404, 590], [300, 622], [210, 430], [440, 450]], 40);
 // природная окраска областей — под слоем напряжения
-const TERRAIN = { periphery: 'teal', agri: 'gold', mining: 'muted' };
+const TERRAIN = { periphery: 'teal', agri: 'gold', mining: 'muted', pereval: 'muted', halvik: 'muted' };
 
 /* ------------------------------- ВОЙНА -------------------------------
    Фронт проходит вдоль той же границы, что и в движке (warFrontRegion): в
@@ -265,8 +268,11 @@ const ANNEX_PATH = {
   mines: `${mv(J1H[M_IDX])}${cont(E[1])}${cont(NB_COAST_N.slice(0, NB_Q6 + 1))}${cont(rev(E[6]))}${cont(rev(E[5]))}${cont(rev(E[2]))} Z`,
   city: `${mv(ANNEX_Q.Q3)}${cont(rev(E[3]))}${cont(E[5])}${cont(E[7])} Z`,
 };
-const ANNEX_CITIES = { city: { name: 'Нордхольм', at: [560, -64] }, mines: { name: 'Хальвик', at: [742, 30] } };
-const ANNEX_LABEL = { pass: { at: [566, 56], name: 'Перевальский р-н' }, mines: { at: [770, 64], name: 'Хальвикский край' }, city: { at: [566, -38], name: 'Нордхольмская обл.' } };
+const ANNEX_CITIES = { city: { name: 'Нордхольм', at: [560, -64] }, mines: { name: 'Хальвик', at: [742, 30] }, pass: { name: 'Перевальск', at: [624, 62] } };
+// подписи присоединённых областей — по id области
+const ANNEX_LABEL_AT = { pereval: [556, 40], halvik: [786, 66], nordholm: [566, -30] };
+const labelAt = (id) => LABEL_AT[id] || ANNEX_LABEL_AT[id];
+const ANNEX_REGION_ID = { pass: 'pereval', mines: 'halvik', city: 'nordholm' };
 // граница с учётом присоединённого: где своё с одной стороны — государственная, с двух — внутренняя
 function annexBorders(own) {
   const mine = (side) => side === 'home' || (side && own.includes(side));
@@ -298,7 +304,8 @@ const MAP_MODES = [
   { id: 'stress', label: 'Напряжение' },
   { id: 'votes', label: 'Итоги выборов' },
   // опросы есть только в последние кварталы перед голосованием
-  { id: 'polls', label: 'Опросы', when: (e) => !!electionForecast(e) },
+  // при несвободном режиме это закрытый замер: выборы рисуют, а знать правду власти нужно
+  { id: 'polls', label: (e) => (electionForecast(e) || {}).closed ? 'Закрытый замер' : 'Опросы', when: (e) => !!electionForecast(e) },
 ];
 function tierColor(tier) { return tier === 'crisis' ? COLOR.rust : tier === 'tense' ? COLOR.gold : COLOR.teal; }
 function tierLabel(tier) { return tier === 'crisis' ? 'кризис' : tier === 'tense' ? 'напряжённо' : 'спокойно'; }
@@ -341,7 +348,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
     const row = (rows || []).find((x) => x.id === id);
     return row ? row.share : null;
   };
-  const region = MAP_REGIONS.find((r) => r.id === selected) || MAP_REGIONS[0];
+  const regions = activeRegions(economy);
+  const region = regions.find((r) => r.id === selected) || MAP_REGIONS[0];
   const blurb = regionBlurb(region, economy);
   const Icon = REGION_ICON[region.icon];
   const showVotes = (mode === 'votes' && !!election) || showPolls;
@@ -374,7 +382,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               fontWeight: mode === id ? 600 : 400,
               background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
               borderColor: mode === id ? COLOR.gold : COLOR.borderStrong }}
-              onClick={() => { Audio.play('tab'); setMode(id); }}>{label}</button>
+              onClick={() => { Audio.play('tab'); setMode(id); }}>{typeof label === 'function' ? label(economy) : label}</button>
           ))}
         </div>
         <svg viewBox={`0 ${VIEW_TOP} ${VIEW_W} ${VIEW_H - VIEW_TOP}`} style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }}
@@ -436,14 +444,14 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           <text x={868} y={478} textAnchor="middle" style={{ fontSize: 12, fill: `${COLOR.blue}cc`, fontStyle: 'italic' }}>Янтарный залив</text>
 
           {/* слой 1 — области: подложка, природная окраска и цвет напряжения/выборов */}
-          {MAP_REGIONS.map((r) => {
+          {regions.map((r) => {
             const b = regionBlurb(r, economy);
             const share = voteOf(r.id);
             const color = showVotes && share != null ? voteColor(share) : tierColor(b.tier);
             const alpha = showVotes && share != null ? voteAlpha(share) : '1e';
             const terrain = TERRAIN[r.id] ? COLOR[TERRAIN[r.id]] : null;
             const aria = showPolls
-              ? `${r.name}: опрос — ${Math.round(share)}% за действующую власть, ${swingLabel(share)}`
+              ? `${r.name}: ${forecast.closed ? 'закрытый замер' : 'опрос'} — ${Math.round(share)}% за действующую власть, ${forecast.closed ? closedLabel(share) : swingLabel(share)}`
               : showVotes
               ? `${r.name}: ${share != null ? `${Math.round(share)}% за действующую власть` : 'выборы ещё не проходили'}`
               : `${r.name}, ${r.sector}: ${tierLabel(b.tier)}, ${Math.round(b.stress)} из 100`;
@@ -460,21 +468,14 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           {/* присоединённые земли — своей землёй; взятые армией, но ещё не присоединённые
               (война идёт) — золотой штриховкой «под контролем армии» */}
           <g style={{ pointerEvents: 'none' }}>
+            {/* присоединённое рисуется слоем областей выше; здесь — только взятое армией,
+                пока идёт война, и штриховка партизанского края */}
             {Object.keys(ANNEX_PATH).map((id) => {
               const own = annexed.includes(id);
               const held = !own && camp && camp.captured.includes(id);
-              if (!own && !held) return null;
-              return (
-                <g key={id}>
-                  <path d={ANNEX_PATH[id]} fill={own ? COLOR.bg : 'none'} />
-                  <path d={ANNEX_PATH[id]} fill={own ? `${COLOR.teal}26` : 'url(#map-held)'} />
-                  {/* пока идёт война, взятое обозначают флаг на цели и штриховка — без подписи */}
-                  {own && (
-                    <text x={ANNEX_LABEL[id].at[0]} y={ANNEX_LABEL[id].at[1]} textAnchor="middle" stroke={COLOR.bg} strokeWidth={3.4} paintOrder="stroke"
-                      style={{ fontSize: 11.5, fontWeight: 600, fill: COLOR.text, letterSpacing: '0.04em' }}>{ANNEX_LABEL[id].name.toUpperCase()}</text>
-                  )}
-                </g>
-              );
+              const unrest = own && annexLoyalty(economy, regionById(ANNEX_REGION_ID[id]).id) < PARTISAN_BELOW;
+              if (!held && !unrest) return null;
+              return <path key={id} d={ANNEX_PATH[id]} fill="url(#map-held)" opacity={unrest ? 0.55 : 1} />;
             })}
           </g>
           {/* слой 2 — угодья, рельеф, дороги и реки; клики проходят насквозь */}
@@ -618,26 +619,28 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
                   style={{ fontSize: c.capital ? 13.5 : 12, fill: c.capital ? COLOR.text : COLOR.muted, fontWeight: c.capital ? 600 : 400 }}>{c.name}</text>
               </g>
             ))}
-            {MAP_REGIONS.map((r) => {
+            {regions.map((r) => {
               const b = regionBlurb(r, economy);
               const share = voteOf(r.id);
               const color = showVotes && share != null ? voteColor(share) : tierColor(b.tier);
               const label = showVotes ? (share != null ? `${Math.round(share)}%` : '—') : String(Math.round(b.stress));
-              const [lx, ly] = LABEL_AT[r.id];
+              const [lx, ly] = labelAt(r.id);
               const name = r.short.toUpperCase();
-              const w = name.length * 9.6 + 18;
+              // новые земли мельче: и сами области меньше, и подпись не должна их закрывать
+              const k = r.annex ? 0.82 : 1;
+              const w = (name.length * 9.6 + 18) * k;
               return (
                 <g key={r.id}>
                   {/* подпись области — на подложке, чтобы читалась поверх любого знака */}
-                  <rect x={lx - w / 2} y={ly - 15} width={w} height={45} rx={7} fill={COLOR.bg} opacity={0.78}
+                  <rect x={lx - w / 2} y={ly - 15 * k} width={w} height={45 * k} rx={7} fill={COLOR.bg} opacity={0.78}
                     stroke={r.id === selected ? color : `${COLOR.text}22`} strokeWidth={r.id === selected ? 1.5 : 1} />
-                  <text x={lx} y={ly} textAnchor="middle" style={{ fontSize: 13, fontWeight: 600, fill: COLOR.text, letterSpacing: '0.06em' }}>{name}</text>
-                  <text x={lx} y={ly + 22} textAnchor="middle" className="ems-numeral" style={{ fontSize: 19, fontWeight: 700, fill: color }}>{label}</text>
+                  <text x={lx} y={ly} textAnchor="middle" style={{ fontSize: 13 * k, fontWeight: 600, fill: COLOR.text, letterSpacing: '0.06em' }}>{name}</text>
+                  <text x={lx} y={ly + 22 * k} textAnchor="middle" className="ems-numeral" style={{ fontSize: 19 * k, fontWeight: 700, fill: color }}>{label}</text>
                 </g>
               );
             })}
             {/* стройки: кран с долей готовности у города области; достроенное — галочка */}
-            {CITIES.map((c) => {
+            {[...CITIES, ...regions.filter((r) => r.annex).map((r) => ({ id: r.id, at: ANNEX_CITIES[r.objective].at }))].map((c) => {
               const active = (economy.projects || []).find((x) => x.region === c.id);
               const done = REGION_PROJECTS.find((p) => p.region === c.id && (economy.projectsBuilt || []).includes(p.id));
               const planned = plan && plan.startProject && REGION_PROJECTS.find((p) => p.id === plan.startProject && p.region === c.id);
@@ -658,9 +661,9 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
                 </g>
               );
             })}
-            {economy.regionEvent && LABEL_AT[economy.regionEvent.region] && (() => {
-              const [lx, ly] = LABEL_AT[economy.regionEvent.region];
-              const reg = MAP_REGIONS.find((r) => r.id === economy.regionEvent.region);
+            {economy.regionEvent && labelAt(economy.regionEvent.region) && (() => {
+              const [lx, ly] = labelAt(economy.regionEvent.region);
+              const reg = regionById(economy.regionEvent.region);
               const w = reg ? reg.short.length * 9.6 + 18 : 100;
               return (
                 <g transform={`translate(${lx + w / 2 + 4},${ly - 14})`}>
@@ -739,6 +742,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             <span className="ems-mono" style={{ color: tierColor(blurb.tier), fontWeight: 600, fontSize: 12 }}>{Math.round(blurb.stress)} · {tierLabel(blurb.tier)}</span>
           </div>
           <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55 }}>{blurb.text}</div>
+          {region.annex && <AnnexPanel region={region} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />}
           <RegionProject region={region} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />
         </div>
         {forecast && (
@@ -756,6 +760,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
    надёжную и потерянную — почти никак: решать, кого убеждать, а кого списать. */
 const SWING_ORDER = ['колеблется', 'склоняется к власти', 'склоняется к оппозиции', 'надёжная', 'потеряна'];
 function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFocus }) {
+  if (forecast.closed) return <ClosedPollPanel forecast={forecast} region={region} onFocus={onFocus} />;
   const used = Object.values(plan || {}).reduce((a, b) => a + b, 0);
   const left = CAMPAIGN_POINTS - used;
   const perPoint = fmtMoney(economy.nominalGdp * CAMPAIGN_COST / 100);
@@ -791,7 +796,7 @@ function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFoc
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {rows.map((row) => {
-          const r = MAP_REGIONS.find((x) => x.id === row.id);
+          const r = regionById(row.id);
           if (!r) return null;
           const now = (plan || {})[row.id] || 0;
           const lostCause = row.label === 'потеряна' || row.label === 'надёжная';
@@ -821,6 +826,49 @@ function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFoc
       </div>
       <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
         Проценты — уже с расставленными штабами. Вложенное копится до дня голосования; каждый следующий штаб в той же области даёт меньше предыдущего.
+      </div>
+    </div>
+  );
+}
+
+/* Закрытый замер при несвободном режиме: настоящая поддержка по областям рядом
+   с официальной цифрой. Погрешность шире — анонимность не снимает страх целиком. */
+const closedLabel = (share) => (share >= 58 ? 'опора власти' : share >= 50 ? 'держится' : share >= 42 ? 'недовольна' : 'враждебна');
+function ClosedPollPanel({ forecast, region, onFocus }) {
+  const nat = forecast.national;
+  const gap = forecast.official - nat;
+  const rows = [...forecast.byRegion].sort((a, b) => a.share - b.share);
+  return (
+    <div className="ems-panel" style={{ padding: 14 }} aria-label="Закрытый замер">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        <Lock size={15} color={COLOR.gold} />
+        <span className="ems-serif" style={{ fontSize: 13.5 }}>Закрытый замер · для служебного пользования</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: voteColor(nat), fontWeight: 600 }}>
+          {fmt1(nat)}% ±{fmt1(forecast.margin)}
+        </span>
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
+        {forecast.noElections
+          ? 'Выборов больше нет, но знать, на чём держится власть, по-прежнему нужно. '
+          : `Официально на выборах будет около ${Math.round(forecast.official)}% — эту цифру нарисуют. `}
+        Здесь — анонимные интервью с поправкой на страх отвечать: настоящая поддержка
+        {gap > 1 ? ` на ${Math.round(gap)} п.п. ниже официальной` : ''}. Где она ниже 50%, власть держится не на согласии, а на силе.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {rows.map((row) => {
+          const r = regionById(row.id);
+          if (!r) return null;
+          return (
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5,
+              color: row.id === region.id ? COLOR.text : COLOR.muted }}>
+              <button className="ems-btn" onClick={() => onFocus(row.id)} aria-label={`Показать ${r.short} на карте`}
+                style={{ width: 92, flexShrink: 0, padding: 0, border: 'none', background: 'none', textAlign: 'left', color: 'inherit',
+                  fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{r.short}</button>
+              <span className="ems-mono" style={{ width: 40, textAlign: 'right', color: voteColor(row.share), fontWeight: 600 }}>{Math.round(row.share)}%</span>
+              <span style={{ flex: 1, fontSize: 10.5, color: voteColor(row.share) }}>{closedLabel(row.share)}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -870,7 +918,7 @@ function ElectionPanel({ economy, region, election, share }) {
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {[...(election.byRegion || [])].sort((a, b) => b.share - a.share).map((row) => {
-          const r = MAP_REGIONS.find((x) => x.id === row.id);
+          const r = regionById(row.id);
           if (!r) return null;
           return (
             <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5,
@@ -945,10 +993,62 @@ function RegionProject({ region, economy, plan, onPlan, planner }) {
   );
 }
 
+/* Новая земля: лояльность, партизаны, голосует ли — и программа интеграции.
+   Программа действует, пока её не отменят (как приказ армии). */
+function AnnexPanel({ region, economy, plan, onPlan, planner }) {
+  const l = annexLoyalty(economy, region.id);
+  const integrated = (economy.annexIntegrated || []).includes(region.id);
+  const program = (plan && Array.isArray(plan.integrate)) ? plan.integrate : (economy.annexFunded || []);
+  const on = program.includes(region.id);
+  const color = l < PARTISAN_BELOW ? COLOR.rust : l < INTEGRATED_AT ? COLOR.gold : COLOR.teal;
+  const status = l < PARTISAN_BELOW ? 'партизаны и саботаж' : integrated ? 'интегрирована, голосует' : 'спокойно, но ещё не голосует';
+  const toggle = () => {
+    Audio.play('click');
+    onPlan({ ...plan, integrate: on ? program.filter((id) => id !== region.id) : [...program, region.id] });
+  };
+  return (
+    <div style={{ marginTop: 12, paddingTop: 11, borderTop: `1px solid ${COLOR.hairline}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+        <Flag size={14} color={color} />
+        <span className="ems-serif" style={{ fontSize: 13 }}>Лояльность новой земли</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color, fontWeight: 600 }}>{Math.round(l)} из 100</span>
+      </div>
+      {/* шкала с засечками: ниже первой — партизаны, со второй — область голосует */}
+      <div style={{ position: 'relative', height: 7, borderRadius: 3, background: COLOR.panelAlt, marginBottom: 4 }}>
+        <div style={{ width: `${l}%`, height: '100%', borderRadius: 3, background: color }} />
+        {[PARTISAN_BELOW, INTEGRATED_AT].map((m) => (
+          <span key={m} style={{ position: 'absolute', left: `${m}%`, top: -2, bottom: -2, width: 1.5, background: COLOR.text, opacity: 0.6 }} />
+        ))}
+      </div>
+      <div style={{ display: 'flex', fontSize: 10, color: COLOR.faint, marginBottom: 7 }}>
+        <span>{status}</span>
+        <span style={{ marginLeft: 'auto' }}>{PARTISAN_BELOW} — конец партизан · {INTEGRATED_AT} — голосует</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>
+        Программа интеграции — паспорта, пенсии, дороги и школы — прибавляет около 6 пунктов лояльности за квартал сверх того,
+        что приходит само. Стройка в области и ответы на её события тоже в счёт; напряжение в стране и война за эти земли отнимают.
+      </div>
+      {onPlan ? (
+        <button className="ems-btn" aria-pressed={on}
+          style={{ marginTop: 8, padding: '5px 10px', fontSize: 11.5, width: '100%',
+            background: on ? COLOR.gold : COLOR.panelAlt, color: on ? COLOR.ink : COLOR.text, borderColor: on ? COLOR.gold : COLOR.border }}
+          onClick={toggle}>
+          {on ? `Интеграция идёт · ~${fmtMoney(economy.nominalGdp * INTEGRATION_COST / 100)} за квартал — остановить`
+            : `Начать программу интеграции · ~${fmtMoney(economy.nominalGdp * INTEGRATION_COST / 100)} за квартал`}
+        </button>
+      ) : (
+        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6 }}>
+          {on ? 'Программа интеграции идёт' : 'Программа интеграции не финансируется'} — решает {planner || 'Минфин'}.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Событие в округе: что случилось и чем можно ответить. Без ответа сработает
    вариант по умолчанию — он подписан, чтобы молчание было осознанным выбором. */
 function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
-  const region = MAP_REGIONS.find((r) => r.id === event.region);
+  const region = regionById(event.region);
   const chosen = plan && plan.regionResponse;
   const def = event.options.find((o) => o.id === event.defaultOption);
   return (
@@ -968,7 +1068,9 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
             <>
               <span style={{ display: 'flex', gap: 8, width: '100%' }}>
                 <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? COLOR.goldSoft : COLOR.text }}>{o.label}</span>
-                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint, whiteSpace: 'nowrap' }}>{cost}</span>
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint, whiteSpace: 'nowrap' }}>
+                  {cost}{o.loyalty ? ` · лояльность ${o.loyalty > 0 ? '+' : ''}${o.loyalty}` : ''}
+                </span>
               </span>
               <span style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4 }}>{o.effect}</span>
             </>

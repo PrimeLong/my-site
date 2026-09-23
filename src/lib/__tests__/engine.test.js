@@ -12,6 +12,8 @@ import {
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
   CAMPAIGN_POINTS, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
+  activeRegions, votingRegions, annexLoyalty, sanitizeIntegration, REGION_PROJECTS, projectBlocker, REGION_EVENTS,
+  INTEGRATED_AT, INTEGRATION_COST,
   fmtMoney, fmtIndex,
 } from '../engine.js';
 
@@ -2221,11 +2223,21 @@ describe('опросы и штаб кампании', () => {
 
   it('опрос появляется только за несколько кварталов до голосования и только при выборах', () => {
     expect(electionForecast(before(POLL_WINDOW + 1))).toBe(null);
-    expect(electionForecast(before(2, { politicalRegime: 'authoritarian' }))).toBe(null);
     const f = electionForecast(before(POLL_WINDOW));
     expect(f.byRegion).toHaveLength(MAP_REGIONS.length);
     expect(f.quartersToElection).toBe(POLL_WINDOW);
     for (const r of f.byRegion) expect(r.label).toBe(swingLabel(r.base));
+  });
+
+  it('при несвободном режиме — закрытый замер каждый квартал: шире погрешность, без штабов, ниже официальной цифры', () => {
+    const auth = electionForecast(before(12, { politicalRegime: 'authoritarian', approval: 40 }));
+    expect(auth.closed).toBe(true);
+    expect(auth.margin).toBe(5);
+    expect(auth.official).toBeGreaterThan(auth.national + 10);
+    expect(electionForecast(before(12, { politicalRegime: 'totalitarian', noElections: true })).margin).toBe(8);
+    const withPlan = electionForecast(before(2, { politicalRegime: 'authoritarian' }), { agri: 4 });
+    expect(withPlan.byRegion.find((r) => r.id === 'agri').spent).toBe(0);
+    expect(botCampaignPlan(before(2, { politicalRegime: 'authoritarian' }))).toEqual({});
   });
 
   it('метки: колеблющиеся у 50%, потерянные и надёжные — далеко', () => {
@@ -2281,4 +2293,71 @@ describe('опросы и штаб кампании', () => {
     const at = (trail, id) => trail[2].lastElection.byRegion.find((r) => r.id === id).share;
     expect(at(withC, 'agri')).toBeGreaterThan(at(without, 'agri'));
   });
+});
+
+describe('новые земли как области', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const withRandom = (v, fn) => { const r = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = r; } };
+  const annexedEco = (extra) => ({ ...makeInitialEconomy(), annexed: ['pass', 'mines', 'city'], regionEventCooldown: 99, ...extra });
+
+  it('присоединённые земли — области страны; голосуют только интегрированные', () => {
+    const e = annexedEco({ annexIntegrated: ['pereval'] });
+    expect(activeRegions(e).map((r) => r.id)).toEqual(expect.arrayContaining(['pereval', 'halvik', 'nordholm']));
+    expect(activeRegions(makeInitialEconomy())).toHaveLength(MAP_REGIONS.length);
+    expect(votingRegions(e).map((r) => r.id)).toContain('pereval');
+    expect(votingRegions(e).map((r) => r.id)).not.toContain('nordholm');
+    const shares = regionVoteShares(e, 55, false);
+    expect(shares.map((r) => r.id)).toContain('pereval');
+    expect(shares.reduce((a, b) => a + b.share, 0) / shares.length).toBeCloseTo(55, 5);
+  });
+
+  it('низкая лояльность — неспокойно: напряжение новой области выше, чем у той же земли лояльной', () => {
+    const nord = activeRegions(annexedEco()).find((r) => r.id === 'nordholm');
+    expect(regionStress(nord, annexedEco({ annexLoyalty: { nordholm: 10 } })))
+      .toBeGreaterThan(regionStress(nord, annexedEco({ annexLoyalty: { nordholm: 70 } })) + 20);
+  });
+
+  it('интеграция стоит денег и поднимает лояльность; без решения программа продолжается', () => withRandom(0.99, () => {
+    const e = annexedEco({ annexLoyalty: { pereval: 40, halvik: 40, nordholm: 40 } });
+    const funded = step(e, { integrate: ['halvik'] }).economy;
+    const idle = step(e, { integrate: [] }).economy;
+    expect(funded.annexLoyalty.halvik - idle.annexLoyalty.halvik).toBeCloseTo(6, 5);
+    expect(funded.annexFunded).toEqual(['halvik']);
+    // null — не трогали: программа прошлого квартала идёт дальше
+    const cont = step(funded, { integrate: null }).economy;
+    expect(cont.annexFunded).toEqual(['halvik']);
+    expect(sanitizeIntegration(['halvik', 'moon', 'halvik', 'capital'], e)).toEqual(['halvik']);
+    expect(INTEGRATION_COST).toBeGreaterThan(0);
+  }));
+
+  it('партизаны при низкой лояльности: новость о диверсии', () => withRandom(0, () => {
+    const out = step(annexedEco({ annexLoyalty: { pereval: 60, halvik: 60, nordholm: 5 } }));
+    expect(out.newsEntries.some((n) => n.headline.includes('НОРДХОЛЬМ'))).toBe(true);
+  }));
+
+  it('дошла до порога — область интегрирована и начинает голосовать', () => withRandom(0.99, () => {
+    const out = step(annexedEco({ annexLoyalty: { pereval: INTEGRATED_AT - 1, halvik: 20, nordholm: 10 } }));
+    expect(out.economy.annexIntegrated).toContain('pereval');
+    expect(out.newsEntries.some((n) => n.headline.includes('ВПЕРВЫЕ ГОЛОСУЕТ'))).toBe(true);
+  }));
+
+  it('стройки и события новых земель — только когда земля в составе страны', () => {
+    const tunnel = REGION_PROJECTS.find((p) => p.region === 'pereval');
+    expect(projectBlocker(tunnel, makeInitialEconomy())).toMatch(/не в составе/);
+    expect(projectBlocker(tunnel, annexedEco())).toBe(null);
+    const nordEvent = REGION_EVENTS.find((ev) => ev.region === 'nordholm');
+    expect(nordEvent.eligible(makeInitialEconomy())).toBe(false);
+    expect(nordEvent.eligible(annexedEco())).toBe(true);
+  });
+
+  it('после присоединения лояльность стартует низкой', () => withRandom(0.99, () => {
+    const e = { ...makeInitialEconomy(), warQuartersLeft: 10, warType: 'offensive', warByChoice: true, regionEventCooldown: 99,
+      warCampaign: { progress: { pass: 100, mines: 0, city: 0 }, captured: ['pass'], last: null } };
+    const out = step(e, { warOrder: { target: 'mines', stance: 'ceasefire' } }).economy;
+    expect(out.annexed).toContain('pass');
+    expect(annexLoyalty(out, 'pereval')).toBeLessThan(30);
+  }));
 });

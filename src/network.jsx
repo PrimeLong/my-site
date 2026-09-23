@@ -762,7 +762,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       const president = isPresidentSeat
         ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
           directive: presDirective, directiveStrength: presDirStrength,
-          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null },
+          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null },
           warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
@@ -1290,7 +1290,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
           {centerView === 'map' ? <Suspense fallback={<ChartFallback />}>
             <CountryMap economy={economy}
-              plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null }}
+              plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null }}
               onPlan={canPlanMap && !sent ? (pl) => setDecisions((d) => ({ ...d, ...pl })) : null}
               warOrder={decisions.warOrder || null}
               onWarOrder={isPresidentSeat && !sent ? (wo) => setDecisions((d) => ({ ...d, warOrder: wo })) : null}
