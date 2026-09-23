@@ -168,3 +168,15 @@ describe('комната из сценария', () => {
     });
   });
 });
+
+describe('resolveQuarter — бюджетные потоки Минфина видны партнёру', () => {
+  it('lastActions.ministry_finance несёт итоговые ползунки закупок, выплат и инвестиций в пределах ±15%', () => {
+    const next = resolveQuarter(newRoom());
+    const lv = publicView(next).lastActions.ministry_finance.levers;
+    for (const id of ['govSpending', 'transfers', 'govInvestment']) {
+      expect(Number.isFinite(lv[id]), id).toBe(true);
+      expect(Math.abs(lv[id]), id).toBeLessThanOrEqual(15);
+      expect(lv[id]).toBe(next.decisions[id]);
+    }
+  });
+});

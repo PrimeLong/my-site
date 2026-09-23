@@ -1977,3 +1977,19 @@ describe('стартовый режим экономики в сценариях
     });
   });
 });
+
+describe('бюджетные потоки: одни пределы у игрока и у бота-Минфина', () => {
+  it('закупки, выплаты и инвестиции ходят в пределах ±15% за квартал', () => {
+    for (const id of ['govSpending', 'transfers', 'govInvestment']) {
+      const l = LEVERS.find((x) => x.id === id);
+      expect([l.min, l.max], id).toEqual([-15, 15]);
+    }
+  });
+  it('бот-Минфин любого характера не выходит за пределы ползунков даже в глубоком кризисе', () => {
+    const e = { ...makeInitialEconomy('medium'), outputGap: -9, unemployment: 14, recessionStreak: 4, budgetBalancePctGdp: 2, quartersToElection: 1 };
+    for (const p of ['technocrat', 'austerity', 'populist']) {
+      const d = botFinanceMinistry(e, p, 'medium').decisions;
+      for (const id of ['govSpending', 'transfers', 'govInvestment']) expect(Math.abs(d[id]), `${p}/${id}`).toBeLessThanOrEqual(15);
+    }
+  });
+});

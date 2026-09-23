@@ -286,8 +286,12 @@ const LEVERS = [
   { id: 'exciseRate', group: 'fiscal', subgroup: 'taxes', label: 'Акцизы', suffix: '%', min: 0, max: 25, step: 0.5, type: 'level' },
   { id: 'capitalTaxRate', group: 'fiscal', subgroup: 'taxes', label: 'Налог на капитал', suffix: '%', min: 0, max: 35, step: 0.5, type: 'level' },
 
-  { id: 'govSpending', group: 'fiscal', subgroup: 'core', label: 'Госзакупки и содержание государства', suffix: '%', min: -10, max: 10, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — действует, пока не измените' },
-  { id: 'transfers', group: 'fiscal', subgroup: 'core', label: 'Социальные выплаты', suffix: '%', min: -12, max: 12, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — сильный эффект в кризис, слабый при перегреве' },
+  /* Три бюджетных потока ходят в одних и тех же пределах ±15% за квартал — и у
+     игрока, и у бота-Минфина (он режется по тем же границам через clampToLever).
+     Раньше у закупок было ±10%, у выплат ±12%, у инвестиций ±15%: разные потолки
+     у рычагов одного смысла выглядели случайными. */
+  { id: 'govSpending', group: 'fiscal', subgroup: 'core', label: 'Госзакупки и содержание государства', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — действует, пока не измените' },
+  { id: 'transfers', group: 'fiscal', subgroup: 'core', label: 'Социальные выплаты', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Реальный темп роста — сильный эффект в кризис, слабый при перегреве' },
   { id: 'govInvestment', group: 'fiscal', subgroup: 'core', label: 'Госинвестиции в инфраструктуру', suffix: '%', min: -15, max: 15, step: 0.5, type: 'flow', persistent: true, hint: 'Единственный расход, повышающий потенциальный ВВП' },
 
   { id: 'bondIssuance', group: 'fiscal', subgroup: 'debt', label: 'Размещение облигаций', suffix: ' млрд', min: 0, max: 60, step: 5, type: 'flow', scale: 'gdp',
@@ -300,6 +304,8 @@ const LEVERS = [
   { id: 'shareAdmin', group: 'fiscal', subgroup: 'budget', label: 'Госаппарат', suffix: '%', min: 2, max: 30, step: 1, type: 'level' },
 ];
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
+// границы рычага без поправки на экономику — для потоков, у которых они постоянны
+const clampToLeverRange = (id, v) => clamp(v, LEVER_BY_ID[id].min, LEVER_BY_ID[id].max);
 
 /* Часть ползунков не статична: рычаги в миллиардах растут вместе с экономикой
    (10 млрд при ВВП 100 трлн — не тот же инструмент, что при ВВП 1 000 трлн),
@@ -900,7 +906,7 @@ const REQUESTS = [
     ask: (n) => `Требуем притормозить рост расходов на ${askNum(2 * n)} п.п. и социальных выплат на ${askNum(1.5 * n)} п.п.: нынешний бюджетный импульс вынуждает нас держать ставку выше, чем требовалось бы.`,
     fit: (s) => (s.budgetBalancePctGdp < -4 ? 1.4 : 0.2) + (s.outputGap > 1 ? 0.8 : -0.3) + (s.inflation > 6 ? 0.6 : 0),
     bias: { technocrat: 0.6, austerity: 1.0, populist: -0.9 },
-    apply: (d, k) => ({ govSpending: clamp(d.govSpending - 2 * k, -10, 10), transfers: clamp(d.transfers - 1.5 * k, -12, 12) }),
+    apply: (d, k) => ({ govSpending: clampToLeverRange('govSpending', d.govSpending - 2 * k), transfers: clampToLeverRange('transfers', d.transfers - 1.5 * k) }),
     yes: 'Минфин соглашается на консолидацию: расходы будут урезаны.',
     partial: 'Минфин идёт на частичное сокращение, защитив социальные статьи.',
     no: 'Минфин отвечает, что сокращать расходы в текущей ситуации политически невозможно.' },
@@ -912,7 +918,7 @@ const REQUESTS = [
     ask: (n) => `Просим приостановить рост социальных выплат минимум на ${askNum(n)} п.п.: их рост напрямую транслируется в потребительский спрос и цены.`,
     fit: (s) => (s.inflation > 6 ? 1.3 : -0.4) + (s.unemployment > 7 ? -1.0 : 0.3),
     bias: { austerity: 1.0, technocrat: 0.3, populist: -1.4 },
-    apply: (d, k) => ({ transfers: clamp(Math.min(d.transfers, 0) - 1.0 * k, -12, 12) }),
+    apply: (d, k) => ({ transfers: clampToLeverRange('transfers', Math.min(d.transfers, 0) - 1.0 * k) }),
     yes: 'Минфин замораживает индексацию выплат до нормализации инфляции.',
     partial: 'Минфин ограничивает рост выплат, но полной заморозки не допускает.',
     no: 'Минфин отвечает, что заморозка выплат при текущем положении людей исключена.' },

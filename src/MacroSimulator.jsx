@@ -1359,6 +1359,44 @@ function StanceBar({ value, leftLabel, rightLabel }) {
   );
 }
 
+/* Бюджетные потоки чужого Минфина — бота или партнёра — теми же ползунками, что и у
+   игрока за Минфин, только для чтения. Раньше карточка бота показывала лишь суммы
+   расходов в деньгах, а сами решения (закупки, выплаты, инвестиции в процентах)
+   проскакивали одной фразой в тексте, да и то если отличались от нуля: сравнить,
+   насколько бот щедрее или жёстче, чем мог бы быть, было не с чем. */
+const FISCAL_FLOW_IDS = ['govSpending', 'transfers', 'govInvestment'];
+export function FiscalLeverReadout({ levers, accent }) {
+  const color = accent || COLOR.teal;
+  return (
+    <div>
+      {FISCAL_FLOW_IDS.map((id) => {
+        const lever = LEVERS.find((l) => l.id === id);
+        const known = levers && Number.isFinite(levers[id]);
+        const value = known ? levers[id] : 0;
+        const pct = clamp(((value - lever.min) / (lever.max - lever.min)) * 100, 0, 100);
+        return (
+          <div key={id} style={{ padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 11.5 }}>{lever.label}</span>
+              <span className="ems-mono" style={{ fontSize: 12, color: known ? color : COLOR.faint, fontWeight: 600 }}>
+                {known ? `${value >= 0 ? '+' : ''}${value.toFixed(1)}${lever.suffix}` : '—'}
+              </span>
+            </div>
+            <input type="range" className="ems-slider" tabIndex={-1} aria-readonly="true"
+              aria-label={`${lever.label}: ${known ? `${value}${lever.suffix}` : 'решения ещё не было'}, допустимо от ${lever.min} до ${lever.max}`}
+              min={lever.min} max={lever.max} step={lever.step} value={value} onChange={() => {}}
+              style={{ pointerEvents: 'none', marginTop: 5, opacity: known ? 1 : 0.45,
+                background: `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, ${COLOR.border} ${pct}%, ${COLOR.border} 100%)` }} />
+            <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginTop: 2 }}>
+              за квартал: от {lever.min}{lever.suffix} до {lever.max}{lever.suffix}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* Панель ведомства, которым управляет бот */
 function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
   if (!botRole) return null;
@@ -1409,6 +1447,9 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
             </>
           ) : (
             <>
+              <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>Бюджетные потоки, темп роста</div>
+              <FiscalLeverReadout levers={lastAction ? lastAction.decisions : null} accent={accent} />
+              <div style={{ height: 7 }} />
               {row('Расходы всего', `${fmtMoney(economy.govSpendingTotal)} · ${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`)}
               {row('· госзакупки', fmtMoney(economy.govPurchasesNominal))}
               {row('· выплаты', fmtMoney(economy.transfersNominal))}

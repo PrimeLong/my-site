@@ -131,3 +131,18 @@ test('разбор партии открывается из меню «⋯» и 
   await expect(dialog).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test('бот-Минфин показывает свои бюджетные ползунки: закупки, выплаты, инвестиции', async ({ page, isMobile }) => {
+  const { errors } = await openApp(page);
+  await startSoloGame(page);
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  if (isMobile) await page.getByText('Решения', { exact: true }).click();
+  for (const label of ['Госзакупки и содержание государства', 'Социальные выплаты', 'Госинвестиции в инфраструктуру']) {
+    await expect(page.getByRole('slider', { name: new RegExp(`^${label}: .*от -15 до 15`) })).toBeAttached();
+  }
+  await page.getByRole('slider', { name: /^Социальные выплаты:/ }).locator('xpath=ancestor::div[contains(@class,"ems-panel")][1]')
+    .screenshot({ path: `test-results/bot-mof-${isMobile ? 'phone' : 'desktop'}.png` });
+  expect(errors).toEqual([]);
+});
