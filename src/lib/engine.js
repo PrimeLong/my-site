@@ -239,12 +239,16 @@ const SCENARIOS = [
     desc: 'Резервы уже наполовину истрачены, инфляция разогналась, ставка экстренно поднята — но доверие подорвано, и рынок ждёт девальвации.',
     overrides: { reserves: 60, inflation: 11, coreInflation: 9.5, inflationExpectations: 9, riskPremium: 3.4,
       keyRate: 15, lendingRate: 19, depositRate: 12, fxRegime: 'managed', cbCredibility: 32,
-      consumerConfidence: 32, businessConfidence: 30, approval: 38, politicalTension: 28 } },
+      consumerConfidence: 32, businessConfidence: 30, approval: 38, politicalTension: 28,
+      // режим экономики на старте — тот, что движок присвоит после первого
+      // квартала; иначе до первого хода баннер писал «Нормальный режим»
+      regime: 'currency' } },
   { id: 'housing_bubble', title: 'Ипотечный пузырь', short: 'Банки и кредит', level: 2, levelLabel: 'Средний',
     levelNote: 'Институты выдержат, но выборы проиграть легко: пузырь лопается под урну.',
     desc: 'Кредитный бум уже случился: портфель раздут, просрочка растёт, капитал банков на исходе. Вопрос не в том, лопнет ли пузырь, а когда.',
     overrides: { creditVolume: 2100, bankCapital: 85, bankNPL: 8.5, bankLiquidity: 38, financialStability: 30,
-      unemployment: 6.2, wageGrowth: 3.2, consumerConfidence: 40, businessConfidence: 38, approval: 45 } },
+      unemployment: 6.2, wageGrowth: 3.2, consumerConfidence: 40, businessConfidence: 38, approval: 45,
+      regime: 'banking' } },
   { id: 'hyperinflation', title: 'Гиперинфляция', short: 'Доверие к деньгам', level: 4, levelLabel: 'Самый трудный',
     levelNote: 'Выигрывает примерно одна стратегия из пятнадцати, бездействие проигрывает всегда. Даже верная игра стоит глубокой рецессии.',
     desc: 'Цены разгоняются на глазах, доверие к цели по инфляции разрушено, долг уже дорогой. Выход один — стабилизационная программа: жёсткая ставка вместе с бюджетом без дыры, пока у правительства держится мандат спасения. Постепенностью эту спираль не остановить.',
@@ -255,6 +259,7 @@ const SCENARIOS = [
       // (индексация), отставая на несколько пунктов; со стартовыми 6,3% модель
       // считала, что реальные зарплаты падают на 28% в год при любой политике
       wageGrowth: 26,
+      regime: 'currency',
       crisisMandateLeft: 6, crisisMandateTotal: 6 } },
 ];
 
@@ -4654,7 +4659,7 @@ function makeInitialEconomy(scenarioId) {
     interestPayment: I.govDebt * I.effectiveDebtRate / 100,
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
-    activeCrises: [], regime: 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
+    activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
     stabilizationCred: 0,
     cbStance: 0, mofStance: 0, taxWedgeValue: 0, botHeadline: null, botDemand: null,
@@ -4894,6 +4899,20 @@ function gameChronicle(history) {
       push(i, { kind: 'regime', tone: better ? 'good' : 'bad', weight: 10, title: `Режим: ${info.label || cur.politicalRegime}`,
         text: better ? 'Институты вернулись — рынки и доверие это заметят не сразу, но заметят.'
           : `Напряжение ${Math.round(cur.politicalTension || 0)} из 100 при рейтинге ${Math.round(cur.approval)} — так демократия и ломается.` });
+    }
+
+    // стабилизационная программа: рынок поверил, программа сорвана, цены остановлены
+    const sPrev = prev.stabilizationCred || 0; const sCur = cur.stabilizationCred || 0;
+    if (sPrev < 0.5 && sCur >= 0.5 && !cur.stabilizationWon) {
+      push(i, { kind: 'stab-credible', tone: 'good', weight: 7, title: 'Рынок поверил стабилизационной программе',
+        text: `Доверие к программе ${Math.round(sCur * 100)} из 100: реальная ставка ${fmtSigned1(cur.keyRate - prev.inflationExpectations)} п.п.${(cur.fiscalImpulse || 0) <= -0.3 || (prev.budgetBalancePctGdp || 0) >= -3 ? ', бюджет держит свою часть' : ''} — ожидания начали падать быстрее самих цен.` });
+    } else if (sPrev >= 0.5 && sCur < sPrev * 0.5 && !cur.stabilizationWon) {
+      push(i, { kind: 'stab-broken', tone: 'bad', weight: 8, title: 'Стабилизационная программа сорвана',
+        text: precedingMove(hist, i) || 'Денежные условия ослаблены раньше, чем инфляция побеждена.' });
+    }
+    if (cur.stabilizationWon && !prev.stabilizationWon) {
+      push(i, { kind: 'prices-stopped', tone: 'good', weight: 10, title: `Цены остановлены: инфляция ${fmt1(cur.inflation)}%`,
+        text: 'Стабилизационная программа доведена до конца. Рецессия — её цена, но страна готова простить её тем, кто вернул деньгам смысл.' });
     }
 
     // долговые пороги

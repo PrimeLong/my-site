@@ -1949,3 +1949,31 @@ describe('мандат спасения после победы над цена�
     expect(refills.length).toBe(1);
   });
 });
+
+describe('стабилизация в разборе партии', () => {
+  it('разбор отмечает, что рынок поверил программе и что цены остановлены', () => {
+    let e = makeInitialEconomy('hyperinflation'); let d = defaultDecisions(e);
+    let pend = []; let cd = {}; const hist = [{ q: 0, label: 'старт', ...e }];
+    for (let q = 1; q <= 10; q++) {
+      const dec = { keyRate: Math.round(Math.max(e.inflation, e.inflationExpectations) + 3), govSpending: -6 };
+      const r = simulateQuarter({ economy: e, decisions: { ...d, ...dec }, pendingImpulses: pend, eventCooldowns: cd,
+        difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true });
+      e = r.economy; pend = r.pendingImpulses; cd = r.eventCooldowns; d = defaultDecisions(e, d);
+      hist.push({ q, label: `Q${q}`, ...e });
+    }
+    const kinds = gameChronicle(hist).events.map((ev) => ev.kind);
+    expect(kinds).toContain('stab-credible');
+    expect(kinds).toContain('prices-stopped');
+  });
+});
+
+describe('стартовый режим экономики в сценариях', () => {
+  it('совпадает с тем, что движок присвоит после первого квартала — баннер не пишет «Нормальный режим» посреди кризиса', () => {
+    SCENARIOS.forEach((sc) => {
+      const e0 = makeInitialEconomy(sc.id);
+      const r = simulateQuarter({ economy: e0, decisions: defaultDecisions(e0), pendingImpulses: [], eventCooldowns: {},
+        difficulty: 'easy', quarterIndex: 1, stories: [], noEvents: true });
+      expect(e0.regime, sc.id).toBe(r.economy.regime);
+    });
+  });
+});

@@ -3641,6 +3641,8 @@ const ACHIEVEMENTS = [
   { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
   { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
   { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получи экстренное финансирование МВФ вместо дефолта.' },
+  { id: 'prices_stopped', icon: Award, title: 'Цены остановлены', desc: 'Доведи стабилизационную программу до конца: верни инфляцию из гиперинфляции к цели.' },
+  { id: 'hardest_way_out', icon: Crown, title: 'Выход есть', desc: 'Сохрани демократию 16 кварталов в самом трудном сценарии — «Гиперинфляции».' },
   { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введи санкции против торгового партнёра.' },
   { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договорись о едином рынке с соседями.' },
   { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Соверши сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
@@ -3736,6 +3738,12 @@ export function questProgressAchievementIds({ quarterIndex, economy, history, ro
   if (role === 'ministry_finance' && economy.debtToGdp < 35) ids.push('debt_control');
   if (role === 'ministry_finance' && economy.imfActive) ids.push('imf_bailout');
   if (survivedCrisis(history)) ids.push('survived_crisis');
+  if (economy.stabilizationWon) ids.push('prices_stopped');
+  // мандат спасения задаёт только сценарий «Гиперинфляция» — по нему и узнаём
+  // сценарий, не протаскивая его отдельным полем через все экраны
+  const unfree = (h) => h.politicalRegime === 'authoritarian' || h.politicalRegime === 'totalitarian';
+  if (quarterIndex >= 16 && (economy.crisisMandateTotal || 0) > 0 && !unfree(economy)
+    && (history || []).every((h) => !unfree(h))) ids.push('hardest_way_out');
   if (economy.electionResult === 'incumbent') ids.push('won_election');
   if (rolesPlayed && ALL_ROLE_IDS.every((r) => rolesPlayed.includes(r))) ids.push('all_roles');
   if (networkPlayed) ids.push('network_played');
