@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -64,11 +64,13 @@ const THEMES = {
     rust: '#FF6B52', rustDim: 'rgba(255,107,82,0.20)',
     blue: '#7FC2FF', blueDim: 'rgba(127,194,255,0.20)' } },
 };
-export const COLOR = { ...THEMES.ink.colors };
+export const COLOR = { ...THEMES.ink.colors, isDark: true };
 function applyTheme(id) {
   const t = THEMES[id] || THEMES.ink;
-  Object.assign(COLOR, t.colors);
+  Object.assign(COLOR, t.colors, { isDark: t.dark });
 }
+// верхний свет на поверхностях: на тёмных темах — едва заметный, на светлой — молочный
+const SHEEN = () => (COLOR.isDark ? { fill: 'rgba(255,255,255,0.03)', line: 'rgba(255,255,255,0.05)' } : { fill: 'rgba(255,255,255,0.55)', line: 'rgba(255,255,255,0.8)' });
 /* PT Serif/PT Sans/PT Mono — единственное семейство на Google Fonts, спроектированное
    ParaType специально для кириллицы (программа «Общественные шрифты РФ»): в отличие
    от системных стеков или модных латинских гарнитур типа Fraunces/IBM Plex, здесь
@@ -95,14 +97,41 @@ export const GlobalStyle = () => (
     .ems-btn.ghost:hover { background:${COLOR.panelAlt}; border-color:${COLOR.border}; color:${COLOR.text}; box-shadow:none; }
     .ems-btn.secondary { background:transparent; border-color:${COLOR.border}; color:${COLOR.text}; }
     .ems-btn.secondary:hover { background:${COLOR.panelAlt}; border-color:${COLOR.borderStrong}; }
-    .ems-panel { background:${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:8px; box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px -10px rgba(0,0,0,0.4); }
-    .ems-panel-raised { background:${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:8px; box-shadow: 0 2px 4px rgba(0,0,0,0.14), 0 14px 30px -12px rgba(0,0,0,0.55); }
+    /* Поверхности: мягкий верхний свет, тонкая светлая кромка сверху и глубокая,
+       но рассеянная тень — панель лежит на столе, а не нарисована рамкой. */
+    .ems-panel { background: linear-gradient(180deg, ${SHEEN().fill} 0%, rgba(0,0,0,0) 140px), ${COLOR.panel}; border:1px solid ${COLOR.border}; border-radius:10px;
+      box-shadow: inset 0 1px 0 ${SHEEN().line}, 0 1px 2px rgba(0,0,0,0.10), 0 12px 28px -18px rgba(0,0,0,0.6); }
+    .ems-panel-raised { background: linear-gradient(180deg, ${SHEEN().fill} 0%, rgba(0,0,0,0) 160px), ${COLOR.panelRaised}; border:1px solid ${COLOR.borderStrong}; border-radius:10px;
+      box-shadow: inset 0 1px 0 ${SHEEN().line}, 0 2px 4px rgba(0,0,0,0.14), 0 18px 36px -16px rgba(0,0,0,0.6); }
+    /* сегментированный переключатель: вкладки в одной «капсуле», выбранная — золотая таблетка */
+    .ems-seg { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:${COLOR.bg}; border:1px solid ${COLOR.border};
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.25); }
+    .ems-seg > button { font-family:${FONT.sans}; border:none; background:transparent; color:${COLOR.muted}; border-radius:8px; padding:6px 12px; font-size:12.5px;
+      display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; transition: background .15s, color .15s, box-shadow .15s; white-space:nowrap; }
+    .ems-seg > button:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
+    .ems-seg > button[aria-pressed="true"] { background:${COLOR.gold}; color:${COLOR.ink}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}, inset 0 1px 0 rgba(255,255,255,0.25); }
+    /* плашка статуса в шапке: период, выборы, благополучие — одной карточкой */
+    .ems-status { display:flex; align-items:center; gap:14px; padding:6px 14px; border-radius:12px; border:1px solid ${COLOR.border};
+      background: linear-gradient(180deg, ${SHEEN().fill}, rgba(0,0,0,0)), ${COLOR.panelAlt}; box-shadow: inset 0 1px 0 ${SHEEN().line}; }
+    .ems-status .sep { width:1px; align-self:stretch; background:${COLOR.hairline}; }
+    /* свёрнутый блок кабинета — строка с названием и сводкой; развёрнутый получает
+       язычок «свернуть» на нижней кромке */
+    .ems-fold { width:100%; display:flex; align-items:center; gap:9px; padding:11px 14px; border-radius:10px; border:1px solid ${COLOR.border}; cursor:pointer;
+      background: linear-gradient(180deg, ${SHEEN().fill}, rgba(0,0,0,0)), ${COLOR.panel}; color:${COLOR.text}; text-align:left; font-family:${FONT.sans};
+      box-shadow: inset 0 1px 0 ${SHEEN().line}; transition: border-color .15s, background .15s; }
+    .ems-fold:hover { border-color:${COLOR.borderStrong}; background:${COLOR.panelAlt}; }
+    .ems-fold-close { position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); z-index:2; display:inline-flex; align-items:center; gap:3px;
+      font-family:${FONT.sans}; font-size:10px; padding:2px 10px; border-radius:999px; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.faint}; cursor:pointer; }
+    .ems-fold-close:hover { color:${COLOR.text}; border-color:${COLOR.borderStrong}; }
+    .ems-eyebrow { font-family:${FONT.mono}; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:${COLOR.faint}; }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
-    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:7px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
+    .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:8px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; user-select:none; -webkit-user-select:none;
+      box-shadow: inset 0 1px 0 ${SHEEN().line}; }
     .ems-btn:hover { background:${COLOR.panelRaised}; border-color:${COLOR.borderStrong}; box-shadow: 0 3px 10px -4px rgba(0,0,0,0.35); }
     .ems-btn:active { transform: scale(0.98); }
-    .ems-btn.primary { background:${COLOR.gold}; color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 12px -3px ${COLOR.goldDim}; }
-    .ems-btn.primary:hover { background:${COLOR.goldSoft}; border-color:${COLOR.goldSoft}; box-shadow: 0 4px 18px -3px ${COLOR.goldDim}; }
+    .ems-btn.primary { background: linear-gradient(180deg, ${COLOR.goldSoft} -40%, ${COLOR.gold} 60%); color:${COLOR.ink}; border-color:${COLOR.gold}; font-weight:600;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 4px 16px -4px ${COLOR.gold}66; letter-spacing:0.01em; }
+    .ems-btn.primary:hover { background:${COLOR.goldSoft}; border-color:${COLOR.goldSoft}; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 6px 22px -4px ${COLOR.gold}88; }
     .ems-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }
     .ems-slider { -webkit-appearance:none; width:100%; height:4px; background:${COLOR.border}; outline:none; border-radius:2px; }
     .ems-slider::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:${COLOR.gold}; cursor:pointer; border:2.5px solid ${COLOR.bg}; box-shadow:0 0 0 1px ${COLOR.gold}; }
@@ -254,13 +283,15 @@ export const GlobalStyle = () => (
 /* =========================================================================================
    8. МЕЛКИЕ КОМПОНЕНТЫ
 ========================================================================================= */
-function DeltaTag({ value, invert, suffix = '' }) {
+function DeltaTag({ value, invert, suffix = '', pill }) {
   if (!Number.isFinite(value) || Math.abs(value) < 0.05) return <span style={{ color: COLOR.muted, fontSize: 11 }}>—</span>;
   const good = invert ? value < 0 : value > 0;
   const color = good ? COLOR.teal : COLOR.rust;
   const Icon = value > 0 ? ArrowUpRight : ArrowDownRight;
+  // в плитках — «таблеткой» на цветной подложке: изменение читается с одного взгляда
+  const pillStyle = pill ? { background: good ? COLOR.tealDim : COLOR.rustDim, padding: '1px 7px 1px 5px', borderRadius: 999, fontWeight: 600 } : null;
   return (
-    <span style={{ color, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+    <span style={{ color, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 2, ...pillStyle }}>
       <Icon size={11} />{fmtSigned1(value)}{suffix}
     </span>
   );
@@ -270,7 +301,10 @@ export function Gauge({ value, size = 110 }) {
   const v = clamp(value, 0, 100);
   const angle = -90 + (v / 100) * 180;
   const color = v >= 65 ? COLOR.teal : v >= 40 ? COLOR.gold : COLOR.rust;
-  const r = size / 2 - 8;
+  // всё в долях размера: в компактной шапке деления не обрезаются, цифра не теснится
+  const k = size / 110;
+  const stroke = Math.max(5, 8 * k);
+  const r = size / 2 - 10 * k - 1;
   const cx = size / 2; const cy = size / 2;
   const rad = (Math.PI / 180) * angle;
   const x2 = cx + r * Math.sin(rad); const y2 = cy - r * Math.cos(rad);
@@ -283,24 +317,25 @@ export function Gauge({ value, size = 110 }) {
   const ticks = [0, 25, 50, 75, 100].map((t) => {
     const a = -90 + (t / 100) * 180;
     const ra = (Math.PI / 180) * a;
-    const r1 = r + 5; const r2 = r + (t % 50 === 0 ? 9 : 7);
+    const r1 = r + 5 * k; const r2 = r + (t % 50 === 0 ? 9 : 7) * k;
     return { x1: cx + r1 * Math.sin(ra), y1: cy - r1 * Math.cos(ra), x2: cx + r2 * Math.sin(ra), y2: cy - r2 * Math.cos(ra) };
   });
   return (
     <svg width={size} height={size / 1.6} viewBox={`0 0 ${size} ${size / 1.6 + 4}`}>
       {ticks.map((t, i) => (<line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke={COLOR.faint} strokeWidth={1} />))}
-      <path d={arc(-90, 90)} stroke={COLOR.border} strokeWidth={8} fill="none" strokeLinecap="round" />
-      <path d={arc(-90, angle)} stroke={color} strokeWidth={8} fill="none" strokeLinecap="round" />
-      <line x1={cx} y1={cy} x2={x2} y2={y2} stroke={color} strokeWidth={2} />
-      <circle cx={cx} cy={cy} r={3} fill={color} />
-      <text x={cx} y={cy - 12} textAnchor="middle" fontSize={20} fontWeight={700} fill={COLOR.text} fontFamily={FONT.serif}>{Math.round(v)}</text>
+      <path d={arc(-90, 90)} stroke={COLOR.border} strokeWidth={stroke} fill="none" strokeLinecap="round" />
+      <path d={arc(-90, angle)} stroke={color} strokeWidth={stroke} fill="none" strokeLinecap="round" />
+      <line x1={cx} y1={cy} x2={x2} y2={y2} stroke={color} strokeWidth={Math.max(1.5, 2 * k)} />
+      <circle cx={cx} cy={cy} r={Math.max(2.2, 3 * k)} fill={color} />
+      <text x={cx} y={cy - 12 * k} textAnchor="middle" fontSize={Math.max(13, 20 * k)} fontWeight={700} fill={COLOR.text} fontFamily={FONT.serif}>{Math.round(v)}</text>
     </svg>
   );
 }
 
 // мини-график последних значений прямо в плитке: число говорит «сколько сейчас»,
 // а один взгляд на форму линии — «а раньше как было», без похода к графику ниже
-function Sparkline({ series, color, height = 16 }) {
+function Sparkline({ series, color, height = 16, area }) {
+  const gradId = React.useId();
   if (!series || series.length < 2) return null;
   const w = 100; // виртуальные единицы viewBox — реальную ширину задаёт CSS (width:100%),
   // поэтому плитке неважно, узкая она или широкая: переполнения по горизонтали не будет
@@ -313,6 +348,18 @@ function Sparkline({ series, color, height = 16 }) {
   });
   return (
     <svg width="100%" height={height} viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      {/* под линией — мягкая заливка, растворяющаяся книзу */}
+      {area && (
+        <>
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <polygon points={`0,${height} ${pts.join(' ')} ${w},${height}`} fill={`url(#${gradId})`} />
+        </>
+      )}
       <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" opacity={0.85} vectorEffect="non-scaling-stroke" />
     </svg>
   );
@@ -376,14 +423,26 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: hero ? COLOR.goldSoft : COLOR.muted, fontSize: hero ? 12 : SIZE.xs, marginBottom: hero ? 9 : 7 }}>
         {Icon && <Icon size={hero ? 13 : 12} />}<span>{label}</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-        <span className={hero ? 'ems-numeral ems-serif' : 'ems-mono ems-serif'} style={{ fontSize: hero ? SIZE.hero : SIZE.xl - 3, fontWeight: 600, letterSpacing: '-0.02em' }}>{value}</span>
-        <DeltaTag value={delta} invert={invert} />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap', rowGap: 2 }}>
+        {/* «2.01 трлн» переносился на две строки, и единица налезала на число:
+            единица — мельче и на той же строке */}
+        {(() => {
+          const unit = hero && typeof value === 'string' ? value.match(/^(.*\d)\s+([^\d\s][^\d]*)$/) : null;
+          return (
+            <span className={hero ? 'ems-numeral ems-serif' : 'ems-mono ems-serif'}
+              style={{ fontSize: hero ? SIZE.hero : SIZE.xl - 3, fontWeight: 600, letterSpacing: '-0.02em', whiteSpace: 'nowrap', lineHeight: 1.05 }}>
+              {unit ? <>{unit[1]}<span style={{ fontSize: '0.42em', marginLeft: '0.22em', letterSpacing: 0 }}>{unit[2]}</span></> : value}
+            </span>
+          );
+        })()}
+        <DeltaTag value={delta} invert={invert} pill />
       </div>
       {/* спарклайн — под цифрой, во всю ширину плитки: так его не приходится
           втискивать в один ряд с числом на узких мобильных плитках (2 в ряд) */}
       {series && series.length >= 2 && (
-        <div style={{ marginTop: 6 }}><Sparkline series={series} color={barColor === COLOR.border ? COLOR.faint : barColor} /></div>
+        <div style={{ marginTop: 8, marginLeft: -2, marginRight: -2 }}>
+          <Sparkline series={series} color={hero ? COLOR.gold : barColor === COLOR.border ? COLOR.faint : barColor} height={hero ? 30 : 20} area />
+        </div>
       )}
     </div>
   );
@@ -395,6 +454,63 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
    куда более рискованный рефакторинг всей темизации), а обрамляя одну и ту же
    колонку разной атмосферой снаружи: тёплый кабинетный свет слева, казённая рамка
    досье справа. */
+/* Сворачиваемый блок кабинета: справочное (решения бота, бюджетная арифметика,
+   президент) можно убрать в одну строку со сводкой — колонка перестаёт быть
+   бесконечной лентой. Состояние каждого блока запоминается в этом браузере. */
+function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) {
+  const key = `ems.fold.${id}`;
+  const [open, setOpen] = useState(() => {
+    try { const v = window.localStorage.getItem(key); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
+  });
+  const toggle = () => {
+    Audio.play('tick');
+    setOpen((o) => { const n = !o; try { window.localStorage.setItem(key, n ? '1' : '0'); } catch { /* приватный режим — просто не запоминаем */ } return n; });
+  };
+  if (!open) {
+    return (
+      <button className="ems-fold" onClick={toggle} aria-expanded={false} aria-label={`Развернуть: ${title}`}>
+        {Icon && <Icon size={14} color={COLOR.goldSoft} style={{ flexShrink: 0 }} />}
+        <span className="ems-serif" style={{ fontSize: 13.5, whiteSpace: 'nowrap' }}>{title}</span>
+        {summary && <span style={{ marginLeft: 'auto', fontSize: 11, color: COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{summary}</span>}
+        <ChevronDown size={14} color={COLOR.faint} style={{ flexShrink: 0, marginLeft: summary ? 0 : 'auto' }} />
+      </button>
+    );
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      {children}
+      <button className="ems-fold-close" onClick={toggle} aria-expanded aria-label={`Свернуть: ${title}`}>
+        <ChevronUp size={11} />свернуть
+      </button>
+    </div>
+  );
+}
+
+/* Колонка на широком экране «прилипает» при прокрутке: короткие колонки
+   (вестник, показатели) больше не оставляют пустоту рядом с длинным кабинетом.
+   Если колонка сама выше экрана, она сначала прокручивается до своего низа и
+   только потом останавливается — ничего не обрезается. 84 — место под липкой
+   панелью «Завершить квартал». */
+function StickyColumn({ enabled, children }) {
+  const ref = React.useRef(null);
+  const [top, setTop] = useState(12);
+  React.useEffect(() => {
+    if (!enabled || !ref.current || typeof ResizeObserver === 'undefined') return undefined;
+    const el = ref.current;
+    const update = () => setTop(Math.min(12, window.innerHeight - el.offsetHeight - 84));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => { ro.disconnect(); window.removeEventListener('resize', update); };
+  }, [enabled]);
+  return (
+    <div ref={ref} style={{ position: enabled ? 'sticky' : 'relative', top: enabled ? top : undefined, alignSelf: 'start', minWidth: 0 }}>
+      {children}
+    </div>
+  );
+}
+
 export function CabinetZone({ children, hidden }) {
   return (
     <div className={hidden ? 'ems-col-hidden' : ''} style={{ position: 'relative', borderRadius: 13, padding: `${SPACE[4]}px ${SPACE[3]}px ${SPACE[3]}px`,
@@ -430,8 +546,10 @@ export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) =
 // экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
 export const SocietyView = React.lazy(() => import('./society.jsx').then((m) => ({ default: m.SocietyView })));
 
-export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF }) {
+export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF, infTarget }) {
   const delta = lever.type === 'level' ? value - currentDisplay : value;
+  // кому из групп общества нравится это значение, а кому нет (см. «Общество»)
+  const groupFx = leverGroupEffects(lever.id, value, infTarget);
   const [open, setOpen] = useState(false);
   const pct = clamp(((value - lever.min) / (lever.max - lever.min)) * 100, 0, 100);
   const trackStyle = { background: `linear-gradient(90deg, ${COLOR.gold} 0%, ${COLOR.gold} ${pct}%, ${COLOR.border} ${pct}%, ${COLOR.border} 100%)` };
@@ -462,6 +580,15 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
         <span>{lever.type === 'level' ? '' : 'за квартал: '}от {lever.min}{lever.suffix} до {lever.max}{lever.suffix}</span>
         <span>шаг {lever.step}{lever.suffix}</span>
       </div>
+      {groupFx.length > 0 && (
+        <div style={{ fontSize: 10.5, marginTop: 4, color: COLOR.muted }}>
+          Группы при этом значении:{' '}
+          {groupFx.map(([g, v], i) => (
+            <span key={g}>{i ? ', ' : ''}<span style={{ color: v > 0 ? COLOR.teal : COLOR.rust }}>
+              {(SOCIAL_GROUPS.find((x) => x.id === g) || {}).name.toLowerCase()} {v > 0 ? '+' : '−'}{Math.abs(v).toFixed(1)}</span></span>
+          ))}
+        </div>
+      )}
       {Math.abs(delta) > 0.001 && (
         <div className="ems-fade-in" style={{ marginTop: 8, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '8px 9px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 6 }}>
@@ -4540,10 +4667,14 @@ function SetupScreen({ onStart, onBack }) {
                   borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setRole(r.id); }}>
                 {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 14, right: 14 }} />}
-                <div className="ems-card-icon" style={{ width: 36, height: 36, marginBottom: 10 }}>
-                  <Icon size={17} color={COLOR.gold} />
+                {/* иконка — рядом с названием, а не отдельной строкой над ним: на телефоне
+                    пять карточек растягивались на два экрана */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 7, paddingRight: 18 }}>
+                  <div className="ems-card-icon" style={{ width: 34, height: 34 }}>
+                    <Icon size={16} color={COLOR.gold} />
+                  </div>
+                  <div className="ems-serif" style={{ fontSize: 14.5, color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
                 </div>
-                <div className="ems-serif" style={{ fontSize: 14.5, marginBottom: 5, color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
                 <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>{r.desc}</div>
               </div>
             );
@@ -4695,7 +4826,7 @@ function SetupScreen({ onStart, onBack }) {
             для тех, кто уже решил, с чем хочет иметь дело. */}
         {custom && (<>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{role ? 3 : 2}</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
@@ -4994,7 +5125,7 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
   const hint = row.hint;
   return (
     <div style={{ padding: '6px 0', borderBottom: last ? 'none' : `1px solid ${COLOR.hairline}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, gap: 10 }}>
         <span style={{ color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           {pinnable && <PinButton active={pinned} onClick={onPin} />}
           {hint ? (
@@ -5006,8 +5137,8 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
             </span>
           ) : row.label}
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="ems-mono">{value}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{value}</span>
           {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
         </span>
       </div>
@@ -5414,6 +5545,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
     if (canPlanMap) {
       eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null,
+        groupResponse: regionPlan.groupResponse || null,
         // программа интеграции новых земель: не трогали — продолжается прошлая
         integrate: Array.isArray(regionPlan.integrate) ? regionPlan.integrate : null };
     }
@@ -5568,7 +5700,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     // стройка и ответ — на один квартал, программа интеграции действует дальше
-    setRegionPlan((p) => ({ startProject: null, regionResponse: null, integrate: p.integrate }));
+    setRegionPlan((p) => ({ startProject: null, regionResponse: null, groupResponse: null, integrate: p.integrate }));
     setCampaignPlan({});
     setTreatyPlan(null);
     setStories(result.stories);
@@ -5710,7 +5842,11 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
       })} />}
 
-      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+      {/* Шапка в две строки: наверху — кто вы и инструменты, ниже — статус партии и
+          переключатель экранов. Раньше всё жалось в одну строку и переносилось как придётся. */}
+      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, padding: narrow ? '12px 16px' : '14px 22px',
+        background: `linear-gradient(180deg, ${COLOR.panelRaised} 0%, ${COLOR.panel} 100%)`, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <StateSeal regime={economy.politicalRegime} size={36}
             title={(POLITICAL_REGIME_INFO[economy.politicalRegime] || {}).label} />
@@ -5732,54 +5868,28 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', rowGap: 10 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
-            <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{quarterLabel(quarterIndex)}</div>
-          </div>
-          <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: COLOR.muted, display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
-              <Flag size={11} />{economy.noElections ? 'Выборы отменены' : `Выборы через ${economy.quartersToElection} кв.`}
-            </div>
-            <div style={{ fontSize: 12, marginTop: 2 }}>
-              <span style={{ color: COLOR.muted }}>рейтинг власти </span>
-              <span className="ems-mono" style={{ color: economy.approval >= 50 ? COLOR.teal : economy.approval >= 40 ? COLOR.gold : COLOR.rust, fontWeight: 600 }}>{Math.round(economy.approval)}</span>
-            </div>
-          </div>
-          <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
-            <Gauge value={economy.wellbeing} size={74} />
-          </div>
-          <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
-            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
-              <button key={id} className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
-                background: view === id ? COLOR.gold : COLOR.panelAlt, color: view === id ? COLOR.ink : COLOR.text, borderColor: view === id ? COLOR.gold : COLOR.border }}
-                onClick={() => { Audio.play('tab'); setView(id); }}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginLeft: narrow ? 0 : 'auto' }}>
           <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
-          <span style={{ fontSize: 10.5, color: autosaveFlash ? COLOR.teal : COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4, transition: 'color 0.6s ease' }}
+          {!narrow && <span style={{ fontSize: 10.5, color: autosaveFlash ? COLOR.teal : COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4, transition: 'color 0.6s ease' }}
             title={Number.isFinite(activeSlot)
               ? `Партия в слоте ${activeSlot + 1}: каждый квартал автосохраняется туда же (и параллельно в этот браузер).`
               : 'Партия не привязана ни к одному слоту сохранений: автосохраняется только в этом браузере и пропадёт при его очистке. Сохраните вручную («Партия»), чтобы закрепить её за слотом и не потерять при смене устройства.'}>
             <Check size={11} color={autosaveFlash ? COLOR.teal : COLOR.faint} />
             {Number.isFinite(activeSlot) ? `слот ${activeSlot + 1}` : 'только в браузере'}
-          </span>
-          <div style={{ position: 'relative' }}>
+          </span>}
+          {/* на телефоне сложность, достижения и газета уходят в меню «⋯»: три ряда
+              кнопок занимали треть экрана */}
+          {!narrow && <div style={{ position: 'relative' }}>
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
               title="Сложность партии" className="ems-btn"
               style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}>
               {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
             </select>
             <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          </div>
+          </div>}
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
             deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
@@ -5787,25 +5897,74 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
             resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
             autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
-            <Trophy size={14} color={COLOR.gold} />
-          </button>
-          <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
-            <Newspaper size={14} />Газета
-          </button>
+          {!narrow && (
+            <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
+              <Trophy size={14} color={COLOR.gold} />
+            </button>
+          )}
+          {!narrow && (
+            <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
+              <Newspaper size={14} />Газета
+            </button>
+          )}
           <AudioControls />
           <HeaderOverflowMenu items={[
+            ...(narrow ? [
+              { icon: Newspaper, label: 'Газета', onClick: () => { Audio.play('paper'); setShowPaper(true); } },
+              { icon: Trophy, label: 'Достижения', onClick: () => setShowAch(true) },
+              { icon: ChevronDown, label: `Сложность: ${(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title} — сменить`, onClick: () => {
+                const i = DIFFICULTIES.findIndex((x) => x.id === difficulty);
+                setDifficulty(DIFFICULTIES[(i + 1) % DIFFICULTIES.length].id);
+              } },
+            ] : []),
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
             { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => {
               if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); }
             } },
           ]} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 10 }}>
+          {/* статус партии — одной плашкой: период, выборы и рейтинг, благополучие */}
+          <div className="ems-status" style={narrow ? { width: '100%', justifyContent: 'space-between', gap: 10, padding: '6px 12px' } : undefined}>
+            <div style={{ whiteSpace: 'nowrap' }}>
+              <div className="ems-eyebrow">Период</div>
+              <div className="ems-mono ems-serif" style={{ fontSize: narrow ? 14 : 15, fontWeight: 600, marginTop: 2 }}>{quarterLabel(quarterIndex)}</div>
+            </div>
+            <span className="sep" />
+            <div style={{ whiteSpace: 'nowrap' }}>
+              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Flag size={10} />{economy.noElections ? 'Выборов нет' : `Выборы · ${economy.quartersToElection} кв.`}
+              </div>
+              <div style={{ fontSize: 12.5, marginTop: 3 }}>
+                <span style={{ color: COLOR.muted }}>рейтинг </span>
+                <span className="ems-mono" style={{ color: economy.approval >= 50 ? COLOR.teal : economy.approval >= 40 ? COLOR.gold : COLOR.rust, fontWeight: 700 }}>{Math.round(economy.approval)}</span>
+              </div>
+            </div>
+            <span className="sep" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Благополучие: сводная оценка жизни в стране">
+              {!narrow && <div className="ems-eyebrow" style={{ lineHeight: 1.3 }}>Благо-<br />получие</div>}
+              <Gauge value={economy.wellbeing} size={narrow ? 52 : 58} />
+            </div>
+          </div>
+          {/* вкладки экрана — сегментированный переключатель; на телефоне во всю ширину */}
+          <div className="ems-seg" role="group" aria-label="Экран" style={narrow ? { width: '100%' } : { marginLeft: 'auto' }}>
+            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
+              <button key={id} aria-pressed={view === id} style={narrow ? { flex: 1, padding: '7px 4px', gap: 4, minWidth: 0 } : undefined}
+                onClick={() => { Audio.play('tab'); setView(id); }}>
+                <Icon size={14} />{label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <CrisisBar economy={economy} botAction={botAction} />
 
+      {/* на телефоне плитки показателей занимали весь первый экран и заслоняли
+          карту и общество — там они не нужны, показатели есть на «Панели» */}
+      {!(narrow && (view === 'map' || view === 'society')) && (
       <div style={{ padding: '14px 18px 4px' }}>
         <div className="ems-kpi-strip">
           {pinned.map((key, idx) => {
@@ -5818,7 +5977,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
-                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
+                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab', gridColumn: idx === 0 ? 'span 2' : undefined }}>
                 <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
@@ -5849,6 +6008,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <RiskBadge label="Валютный" value={economy.currencyRisk} />
         </div>
       </div>
+      )}
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {!isTrader && <DemandStrip botAction={botAction} botAction2={isPresident ? botAction2 : null}
@@ -5858,6 +6018,18 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         {economy.regionEvent && view !== 'map' && (
           <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
+        )}
+        {economy.groupDemand && view !== 'society' && (
+          <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('society'); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('society'); } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
+              borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+            <Users size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+            <span><b style={{ color: COLOR.rust }}>{economy.groupDemand.title}.</b>{' '}
+              <span style={{ color: COLOR.muted }}>{canPlanMap
+                ? (regionPlan.groupResponse ? 'Ответ выбран — изменить можно на вкладке «Общество».' : 'Ответьте на вкладке «Общество», иначе это сочтут отказом.')
+                : 'Отвечает Минфин — подробности на вкладке «Общество».'}</span></span>
+          </div>
         )}
         {isPresident && economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0 && view !== 'map' && (
           <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
@@ -5922,7 +6094,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       {view === 'society' && (
         <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
-          <SocietyView economy={economy} />
+          <SocietyView economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
+            planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`} />
         </Suspense></div>
       )}
       {view === 'market' && (
@@ -5937,13 +6110,16 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       )}
 
       {narrow && view === 'dash' && (
-        <div style={{ display: 'flex', gap: 4, padding: '10px 12px 0' }}>
+        /* колонки на телефоне — тем же сегментированным переключателем; прилипает к
+           верху экрана, чтобы переключаться, не пролистывая назад */
+        <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 12px', paddingBottom: 8,
+          background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
+          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
           {[['left', setup.role === 'trader' ? 'Капитал' : 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 11.5,
-              background: mobileCol === id ? COLOR.gold : COLOR.panelAlt, color: mobileCol === id ? COLOR.ink : COLOR.text,
-              borderColor: mobileCol === id ? COLOR.gold : COLOR.border }}
+            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
               onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
           ))}
+          </div>
         </div>
       )}
 
@@ -6047,7 +6223,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
               </div>
@@ -6057,7 +6233,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'macropru').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6074,7 +6250,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6083,7 +6259,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'taxes').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6092,7 +6268,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
-                    value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6103,24 +6279,41 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 </div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'debt').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
-                    onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
           </div>
           )}
-          <RequestPanel role={setup.role} botRole={botRole} pending={pendingRequest} setPending={setPendingRequest} lastResponse={lastResponse} />
-          {groups.includes('fiscal') && <FiscalMath economy={economy} decisions={decisions} />}
+          <Fold id="request" title="Запрос другому ведомству" icon={Megaphone} summary={pendingRequest ? 'запрос выбран' : 'без запроса'}>
+            <RequestPanel role={setup.role} botRole={botRole} pending={pendingRequest} setPending={setPendingRequest} lastResponse={lastResponse} />
+          </Fold>
+          {groups.includes('fiscal') && (
+            <Fold id="fiscal" title="Бюджетная арифметика" icon={Scale}
+              summary={`баланс ${fmtSigned1(economy.budgetBalancePctGdp)}% ВВП · долг ${fmt1(economy.debtToGdp)}%`}>
+              <FiscalMath economy={economy} decisions={decisions} />
+            </Fold>
+          )}
           {isTrader ? (
             <InstitutionsPanel economy={economy} cbAction={botAction} mofAction={botAction2} />
           ) : isPresident ? (
             <>
               <PromisesPanel promises={promises} economy={economy} />
-              <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
-              <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} economy={economy} />
+              <Fold id="bot-cb" title="Центральный банк · бот" icon={Landmark}
+                summary={`${getCbPersona(cbPersonaId).name} · ставка ${fmt2(economy.keyRate)}%`}>
+                <BotPanel botRole="central_bank" persona={getCbPersona(cbPersonaId)} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
+              </Fold>
+              <Fold id="bot-mof" title="Минфин · бот" icon={Coins}
+                summary={`${getMofPersona(mofPersonaId).name} · баланс ${fmtSigned1(economy.budgetBalancePctGdp)}% ВВП`}>
+                <BotPanel botRole="ministry_finance" persona={getMofPersona(mofPersonaId)} lastAction={botAction2} coordination={economy.policyCoordination} economy={economy} />
+              </Fold>
             </>
           ) : botRole ? (
-            <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
+            <Fold id={`bot-${botRole}`} title={botRole === 'central_bank' ? 'Центральный банк · бот' : 'Минфин · бот'}
+              icon={botRole === 'central_bank' ? Landmark : Coins}
+              summary={activeBotPersona ? `${activeBotPersona.name} · ${botRole === 'central_bank' ? `ставка ${fmt2(economy.keyRate)}%` : `баланс ${fmtSigned1(economy.budgetBalancePctGdp)}% ВВП`}` : ''}>
+              <BotPanel botRole={botRole} persona={activeBotPersona} lastAction={botAction} coordination={economy.policyCoordination} economy={economy} />
+            </Fold>
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
@@ -6128,7 +6321,12 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
               setAnswer={(id) => setLever('pressAnswer', id)} />
           )}
-          {presEnabled && <PresidentWatchPanel economy={economy} plan={presidentPlan} last={presidentLast} branch={playerBranch} />}
+          {presEnabled && (
+            <Fold id="president" title="Президент" icon={Crown} defaultOpen={false}
+              summary={`${getPresPersona(presPersonaId).name} · ${presidentPlan && presidentPlan.directive && presidentPlan.directive.toPlayer ? 'есть требование к вам' : 'требований к вам нет'}`}>
+              <PresidentWatchPanel economy={economy} plan={presidentPlan} last={presidentLast} branch={playerBranch} />
+            </Fold>
+          )}
         </div>
       );
       /* ЦЕНТР */
@@ -6215,13 +6413,13 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       return (
         <div className="ems-grid" style={gridStyle}>
           {order.map((id, i) => (
-            <div key={id} style={{ position: 'relative', minWidth: 0 }}>
+            <StickyColumn key={id} enabled={layout.wide}>
               {nodes[id]}
               {layout.wide && layout.layoutEditMode && i < order.length - 1 && (
                 <ColumnResizeHandle leftId={id} rightId={order[i + 1]} widths={layout.columnWidths}
                   onResize={layout.setColumnWidthsLive} onCommit={layout.commitWidths} />
               )}
-            </div>
+            </StickyColumn>
           ))}
         </div>
       );
@@ -6231,14 +6429,15 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart}
           onRollback={rollbackTarget ? handleRollback : null} />
       ) : (
-        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
-          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
-          <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: narrow ? '10px 16px' : '14px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+          zIndex: 5, boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
+          {/* на телефоне пояснение съедало половину панели и переносилось в две строки */}
+          <span className="ems-hide-narrow" style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto' }}>
             {botRole === 'both' ? 'Центральный банк и Минфин примут решения без вашего участия'
               : botRole ? `${botRole === 'central_bank' ? 'Центральный банк' : 'Минфин'} примет своё решение одновременно с вами`
                 : 'Обе ветви политики под вашим контролем'}
           </span>
-          <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy || finishCooldown > 0} onClick={finishQuarter}
+          <button className="ems-btn primary" style={{ padding: narrow ? '12px 16px' : '12px 26px', fontSize: 13.5, width: narrow ? '100%' : undefined }} disabled={busy || finishCooldown > 0} onClick={finishQuarter}
             aria-label="Завершить квартал и применить решения">
             {busy ? 'Обработка…' : finishCooldown > 0 ? `Подождите ${finishCooldown}с` : 'Завершить квартал'}
           </button>

@@ -762,7 +762,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       const president = isPresidentSeat
         ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
           directive: presDirective, directiveStrength: presDirStrength,
-          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null },
+          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null, groupResponse: decisions.groupResponse || null },
           warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null, treaty: decisions.treaty || null }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
@@ -883,7 +883,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         startEconomy: room.history && room.history[0], portfolio, defeat,
       })} />}
 
-      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: COLOR.panel,
+      <div style={{ borderTop: `2px solid ${COLOR.gold}`, borderBottom: `1px solid ${COLOR.hairline}`, background: `linear-gradient(180deg, ${COLOR.panelRaised} 0%, ${COLOR.panel} 100%)`,
         padding: '13px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <StateSeal regime={economy.politicalRegime} size={36}
@@ -903,23 +903,27 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', rowGap: 10 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 11, color: COLOR.muted }}>Текущий период</div>
-            <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600 }}>{room.quarterLabel}</div>
+          {/* статус — той же плашкой, что и в одиночной партии */}
+          <div className="ems-status" style={narrow ? { width: '100%', justifyContent: 'space-between' } : undefined}>
+            <div style={{ whiteSpace: 'nowrap' }}>
+              <div className="ems-eyebrow">Период</div>
+              <div className="ems-mono ems-serif" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{room.quarterLabel}</div>
+            </div>
+            <span className="sep" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Благополучие: сводная оценка жизни в стране">
+              <div className="ems-eyebrow" style={{ lineHeight: 1.3 }}>Благо-<br />получие</div>
+              <Gauge value={economy.wellbeing} size={58} />
+            </div>
           </div>
-          <div style={{ width: 1, height: 34, background: COLOR.hairline }} />
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 10, color: COLOR.muted, marginBottom: 2 }}>Благополучие</div>
-            <Gauge value={economy.wellbeing} size={68} />
-          </div>
-          <div style={{ position: 'relative' }}>
+          {/* на телефоне сложность, достижения и газета — в меню «⋯» */}
+          {!narrow && <div style={{ position: 'relative' }}>
             <select value={room.difficulty} disabled={difficultyBusy} onChange={(e) => changeDifficulty(e.target.value)}
               title="Сложность партии" className="ems-btn"
               style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
               {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
             </select>
             <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          </div>
+          </div>}
           <ViewSettings theme={theme} setTheme={setTheme} dense={dense} setDense={setDense}
             dashboards={dashboards} activeDash={activeDash} applyDash={applyDash} saveDash={saveDash}
             deleteDash={deleteDash} renameDash={renameDash} resetDash={resetDash}
@@ -927,15 +931,28 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             columnOrder={layout.columnOrder} moveColumn={layout.moveColumn}
             resetLayout={layout.resetLayout} layoutIsDefaultNow={layout.layoutIsDefaultNow}
             autoPaper={autoPaper} setAutoPaper={setAutoPaper} />
-          <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
-            <Trophy size={14} color={COLOR.gold} />
-          </button>
-          <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-            onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
-            <Newspaper size={14} />Газета
-          </button>
+          {!narrow && (
+            <button className="ems-btn" style={{ padding: '7px 9px' }} onClick={() => { Audio.play('click'); setShowAch(true); }} title="Коллекция достижений">
+              <Trophy size={14} color={COLOR.gold} />
+            </button>
+          )}
+          {!narrow && (
+            <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+              onClick={() => { Audio.play('paper'); setShowPaper(true); }} title="Экономический вестник">
+              <Newspaper size={14} />Газета
+            </button>
+          )}
           <AudioControls />
           <HeaderOverflowMenu items={[
+            ...(narrow ? [
+              { icon: Newspaper, label: 'Газета', onClick: () => { Audio.play('paper'); setShowPaper(true); } },
+              { icon: Trophy, label: 'Достижения', onClick: () => setShowAch(true) },
+              { icon: ChevronDown, label: `Сложность: ${(DIFFICULTIES.find((x) => x.id === room.difficulty) || {}).title} — сменить`, onClick: () => {
+                if (difficultyBusy) return;
+                const i = DIFFICULTIES.findIndex((x) => x.id === room.difficulty);
+                changeDifficulty(DIFFICULTIES[(i + 1) % DIFFICULTIES.length].id);
+              } },
+            ] : []),
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
             { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => exit() },
@@ -957,7 +974,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
                 onDragEnd={() => setDragPin(null)}
-                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab' }}>
+                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab', gridColumn: idx === 0 ? 'span 2' : undefined }}>
                 <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
                 <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
                   <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
@@ -1018,13 +1035,16 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       </div>
 
       {narrow && (
-        <div style={{ display: 'flex', gap: 4, padding: '10px 18px 0' }}>
+        /* колонки на телефоне — тем же сегментированным переключателем; прилипает к
+           верху экрана, чтобы переключаться, не пролистывая назад */
+        <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 18px', paddingBottom: 8,
+          background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
+          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
           {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 11.5,
-              background: mobileCol === id ? COLOR.gold : COLOR.panelAlt, color: mobileCol === id ? COLOR.ink : COLOR.text,
-              borderColor: mobileCol === id ? COLOR.gold : COLOR.border }}
+            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
               onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
           ))}
+          </div>
         </div>
       )}
 
@@ -1101,7 +1121,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                           )}
                           {set.map((l) => (
                             <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
-                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
+                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} infTarget={decisions.inflationTarget} />
                           ))}
                         </React.Fragment>
                       );
@@ -1288,7 +1308,11 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </span>
             ))}
           </div>
-          {centerView === 'society' ? <Suspense fallback={<ChartFallback />}><SocietyView economy={economy} /></Suspense>
+          {centerView === 'society' ? <Suspense fallback={<ChartFallback />}>
+            <SocietyView economy={economy} plan={{ groupResponse: decisions.groupResponse || null }}
+              onPlan={canPlanMap && !sent ? (pl) => setDecisions((d) => ({ ...d, groupResponse: pl.groupResponse })) : null}
+              planner={room.president && room.president.human ? 'президент' : room.occupied.ministry_finance ? `Минфин (${room.names.ministry_finance || 'игрок'})` : 'Минфин (бот)'} />
+          </Suspense>
             : centerView === 'map' ? <Suspense fallback={<ChartFallback />}>
             <CountryMap economy={economy}
               plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null }}
@@ -1443,12 +1467,15 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
           onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
       ) : (
-        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: '14px 18px',
-          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
-          boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
+        <div style={{ borderTop: `1px solid ${COLOR.hairline}`, background: COLOR.panel, padding: narrow ? '8px 16px 10px' : '14px 18px',
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: narrow ? 6 : 10, position: 'sticky', bottom: 0, zIndex: 5,
+          flexWrap: narrow ? 'wrap' : undefined, boxShadow: '0 -6px 20px -10px rgba(0,0,0,0.4)' }}>
+          {/* на телефоне статус — строкой над кнопкой, кнопка во всю ширину: иначе оба
+              переносились в три строки и панель занимала четверть экрана */}
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
-            <span style={{ fontSize: 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ fontSize: narrow ? 10.5 : 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7,
+              width: narrow ? '100%' : undefined, lineHeight: 1.35 }}>
               {isTraderRoom
                 ? (!room.occupied[otherSeat]
                   ? 'Второе место свободно: квартал наступит сразу, как только вы будете готовы.'
@@ -1468,9 +1495,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             </span>
           )}
           {waitingForOther ? (
-            <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13 }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
+            <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13, width: narrow ? '100%' : undefined }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
           ) : (
-            <button className="ems-btn primary" style={{ padding: '12px 26px', fontSize: 13.5 }} disabled={busy} onClick={send}>
+            <button className="ems-btn primary" style={{ padding: narrow ? '11px 16px' : '12px 26px', fontSize: 13.5, width: narrow ? '100%' : undefined }} disabled={busy} onClick={send}>
               {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу'
                 : isPresidentSeat ? 'Подписать и завершить квартал' : 'Отправить решения квартала'}
             </button>

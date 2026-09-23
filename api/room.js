@@ -73,6 +73,8 @@ export function sanitizeRegionPlan(o, economy) {
     regionResponse: ev && (ev.options || []).some((x) => x.id === src.regionResponse) ? src.regionResponse : null,
     // программа интеграции новых земель; null — продолжать прошлую
     integrate: Array.isArray(src.integrate) && economy ? sanitizeIntegration(src.integrate, economy) : null,
+    // ответ на требование группы — только один из предложенных вариантов
+    groupResponse: economy && economy.groupDemand && (economy.groupDemand.options || []).some((x) => x.id === src.groupResponse) ? src.groupResponse : null,
   };
 }
 
@@ -292,6 +294,7 @@ export function resolveQuarter(room) {
   eff.startProject = (presRegion && presRegion.startProject) || mofDecisions.startProject || null;
   eff.regionResponse = (presRegion && presRegion.regionResponse) || mofDecisions.regionResponse || null;
   eff.integrate = presRegion && presRegion.integrate != null ? presRegion.integrate : mofDecisions.integrate ?? null;
+  eff.groupResponse = (presRegion && presRegion.groupResponse) || mofDecisions.groupResponse || null;
   // наступательная война: приказ живого президента, иначе — бота-президента по характеру
   if (room.economy.warType === 'offensive' && (room.economy.warQuartersLeft || 0) > 0) {
     const humanOrder = subs.president && subs.president.president ? subs.president.president.warOrder : null;
