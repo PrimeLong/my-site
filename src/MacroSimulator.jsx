@@ -13,7 +13,7 @@ import {
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, gameChronicle,
   clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned, fmtIndex, fmtMln, fmtMlnSigned, romanQ, quarterLabel,
-  defaultDecisions, getCbPersona, personaAfterElection, getMofPersona,
+  defaultDecisions, getCbPersona, personaAfterElection, getMofPersona, MAP_REGIONS,
   botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction, redescribeMofAction,
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
@@ -4997,6 +4997,24 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
 }
 
 /* Полоса требований: то, чего от вас прямо сейчас хотят */
+/* Событие в округе поверх любого экрана: на карту заглядывают не каждый квартал,
+   а без ответа сработает «переждать». */
+export function RegionEventStrip({ event, answered, canAnswer, onOpen }) {
+  const region = MAP_REGIONS.find((r) => r.id === event.region);
+  return (
+    <div role="button" tabIndex={0} className="ems-fade-in" onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
+        borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+      <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+      <span><b style={{ color: COLOR.rust }}>{region ? region.name : 'Округ'}: {event.title.toLowerCase()}.</b>{' '}
+        <span style={{ color: COLOR.muted }}>{canAnswer
+          ? (answered ? 'Ответ выбран — применится в конце квартала.' : 'Нужен ответ правительства — откройте карту.')
+          : 'Отвечает Минфин — подробности на карте.'}</span></span>
+    </div>
+  );
+}
+
 function DemandStrip({ botAction, botAction2, botRole, economy, president }) {
   const items = [];
   if (president) items.push({ who: `Президент (${president.persona.name})`, text: president.directive.ask || askText(president.directive.req, 1, 'president', economy.politicalRegime), color: COLOR.gold });
@@ -5071,6 +5089,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   // президент делит с трейдером устройство «оба ведомства — боты», но не его
   // информационную закрытость: он в кабинете и видит намерения ведомств
   const isPresident = setup.role === 'president';
+  const canPlanMap = setup.role === 'ministry_finance' || isPresident;
   const bothBots = isTrader || isPresident;
   /* Президент-бот стоит НАД ведомством игрока: он ничего не считает сам, но требует,
      назначает и тратит политический капитал. За саму роль президента его, понятно,
@@ -5166,6 +5185,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
   const [presDirStrength, setPresDirStrength] = useState(1);
+  /* Решения на карте: стройка и ответ на событие в округе. Принимают их Минфин и
+     президент; за остальных это делает бот-Минфин. Живут квартал. */
+  const [regionPlan, setRegionPlan] = useState({ startProject: null, regionResponse: null });
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -5347,6 +5369,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         }
       }
     }
+    // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
+    if (canPlanMap) {
+      eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null };
+    }
     let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
     // официальный запрос второму ведомству
     let reqResult = null;
@@ -5497,6 +5523,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
+    setRegionPlan({ startProject: null, regionResponse: null });
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -5586,7 +5613,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5781,6 +5808,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           botRole={isPresident ? 'central_bank' : botRole} economy={economy}
           president={presEnabled && presidentPlan && presidentPlan.directive && presidentPlan.directive.toPlayer ? presidentPlan : null} />}
         <RegimeBanner economy={economy} />
+        {economy.regionEvent && view !== 'map' && (
+          <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
+            onOpen={() => { Audio.play('tab'); setView('map'); }} />
+        )}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
@@ -5790,7 +5821,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       </div>
 
       {view === 'map' && (
-        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}><CountryMap economy={economy} /></Suspense></div>
+        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+          <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
+            planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`} />
+        </Suspense></div>
       )}
 
       {view === 'market' && (

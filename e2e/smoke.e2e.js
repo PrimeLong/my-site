@@ -161,3 +161,22 @@ test('бот-ЦБ показывает свои ползунки, когда и�
     .screenshot({ path: `test-results/bot-cb-${isMobile ? 'phone' : 'desktop'}.png` });
   expect(errors).toEqual([]);
 });
+
+test('карта: соседние страны на месте, Минфин запускает стройку, после квартала она идёт', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await startSoloGame(page, 'Глава Министерства финансов');
+  // «Карта» — отдельный экран, а не колонка: на телефоне вкладки колонок тут не нужны
+  const openMap = () => page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await openMap();
+  const map = page.locator('svg[aria-label="Карта округов страны"]');
+  for (const nb of ['СЕВЕРНОЕ КОРОЛЕВСТВО', 'ЗАПАДНАЯ ФЕДЕРАЦИЯ', 'СТЕПНОЙ СОЮЗ']) await expect(map.getByText(nb)).toBeAttached();
+  await page.getByRole('button', { name: 'Начать стройку' }).click();
+  await expect(page.getByRole('button', { name: /Стройка начнётся в конце квартала/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  await openMap();
+  await expect(page.getByText(/^ещё \d+ кв\.$/)).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});

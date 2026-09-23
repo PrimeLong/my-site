@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { freshRoom, planPresident, resolveQuarter, publicView } from '../room.js';
+import { freshRoom, planPresident, resolveQuarter, publicView, sanitizeRegionPlan } from '../room.js';
 import { personaAfterElection, pickPressQuestion } from '../../src/lib/engine.js';
 
 /* Комната без единого занятого места: ЦБ, Минфин и президент — боты, каждый
@@ -190,5 +190,35 @@ describe('resolveQuarter — решения ЦБ видны партнёру', (
     }
     expect(['free', 'managed', 'peg']).toContain(lv.fxRegime);
     expect(typeof lv.emergency).toBe('boolean');
+  });
+});
+
+describe('округа в сетевой партии: стройки и ответы на события', () => {
+  const seat = (room, seats) => ({ ...room, seats: { ...room.seats, ...Object.fromEntries(seats.map((sx) => [sx, `tok-${sx}`])) } });
+  const mofSub = (room, extra) => ({ decisions: { ...room.decisions, ...extra }, president: null, note: '' });
+  const presSub = (room, region) => ({ decisions: { ...room.decisions }, note: '',
+    president: { actions: [], appointCb: null, appointMof: null, directive: null, directiveStrength: 1, region } });
+
+  it('живой Минфин запускает стройку', () => {
+    const room = seat(newRoom({ president: null }), ['ministry_finance']);
+    const next = resolveQuarter({ ...room, submissions: { ministry_finance: mofSub(room, { startProject: 'metro' }) } });
+    expect(next.economy.projects.map((p) => p.id)).toContain('metro');
+  });
+
+  it('живой президент решает поверх Минфина', () => {
+    const room = seat(newRoom(), ['ministry_finance', 'president']);
+    const next = resolveQuarter({ ...room, submissions: {
+      ministry_finance: mofSub(room, { startProject: 'metro' }),
+      president: presSub(room, { startProject: 'railway', regionResponse: null }) } });
+    expect(next.economy.projects.map((p) => p.id)).toEqual(['railway']);
+  });
+
+  it('сервер отбрасывает несуществующие стройки, недопустимые сейчас и чужие ответы', () => {
+    const room = newRoom();
+    const e = { ...room.economy, projectsBuilt: ['metro'],
+      regionEvent: { id: 'drought', region: 'agri', options: [{ id: 'import' }, { id: 'wait' }] } };
+    expect(sanitizeRegionPlan({ startProject: 'moonbase', regionResponse: 'import' }, e)).toEqual({ startProject: null, regionResponse: 'import' });
+    expect(sanitizeRegionPlan({ startProject: 'metro', regionResponse: 'pay' }, e)).toEqual({ startProject: null, regionResponse: null });
+    expect(sanitizeRegionPlan({ startProject: 'railway' }, { ...e, regionEvent: null })).toEqual({ startProject: 'railway', regionResponse: null });
   });
 });

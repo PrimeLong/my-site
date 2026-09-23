@@ -1993,3 +1993,90 @@ describe('бюджетные потоки: одни пределы у игрок
     }
   });
 });
+
+describe('округа: стройки и события', () => {
+  const step = (economy, decisions, q = 5) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+
+  it('стройка идёт свои кварталы, стоит денег и после сдачи надолго снижает напряжение округа', async () => {
+    const { REGION_PROJECTS, regionStress, MAP_REGIONS } = await import('../engine.js');
+    const p = REGION_PROJECTS.find((x) => x.id === 'irrigation');
+    const agri = MAP_REGIONS.find((r) => r.id === 'agri');
+    let e = { ...makeInitialEconomy(), regionEventCooldown: 99 };
+    const base = step(e, {}).economy;
+    let res = step(e, { startProject: 'irrigation' });
+    e = res.economy;
+    expect(e.projects.map((x) => x.id)).toEqual(['irrigation']);
+    expect(res.newsEntries.some((n) => n.headline.startsWith('СТАРТ СТРОЙКИ'))).toBe(true);
+    // стройка — госинвестиции сверх ползунка: в квартале старта их больше, чем без неё
+    expect(e.govInvestmentNominal).toBeGreaterThan(base.govInvestmentNominal);
+    for (let q = 1; q < p.quarters; q++) { res = step({ ...e, regionEventCooldown: 99 }, {}, 5 + q); e = res.economy; }
+    expect(e.projects).toEqual([]);
+    expect(e.projectsBuilt).toContain('irrigation');
+    expect(e.regionMods.agri).toBe(-p.relief);
+    expect(res.newsEntries.some((n) => n.headline === 'ПОСТРОЕНО: ИРРИГАЦИЯ И ЭЛЕВАТОРЫ')).toBe(true);
+    // в неспокойной стране это видно на карте: напряжение округа ниже на relief
+    const tense = { ...e, inflationRisk: 70, recessionRisk: 60, currencyRisk: 60, regionShock: {} };
+    expect(regionStress(agri, tense)).toBeCloseTo(regionStress(agri, { ...tense, regionMods: {} }) - p.relief, 5);
+  });
+
+  it('повторно ту же стройку и больше трёх одновременно начать нельзя', async () => {
+    const { projectBlocker, REGION_PROJECTS } = await import('../engine.js');
+    const e = makeInitialEconomy();
+    const P = (id) => REGION_PROJECTS.find((x) => x.id === id);
+    expect(projectBlocker(P('metro'), e)).toBe(null);
+    expect(projectBlocker(P('metro'), { ...e, projectsBuilt: ['metro'] })).toMatch(/построено/);
+    expect(projectBlocker(P('metro'), { ...e, projects: [{ id: 'metro', region: 'capital', left: 3, total: 8 }] })).toMatch(/строится/);
+    const three = ['deepport', 'railway', 'techpark'].map((id) => ({ id, region: P(id).region, left: 2, total: 5 }));
+    expect(projectBlocker(P('metro'), { ...e, projects: three })).toMatch(/не больше 3/);
+    // решение, которое движок не пропустит, не создаёт стройку
+    const res = step({ ...e, projectsBuilt: ['metro'] }, { startProject: 'metro' });
+    expect(res.economy.projects).toEqual([]);
+  });
+
+  it('на событие отвечают выбором; без ответа срабатывает «переждать»', async () => {
+    const { REGION_EVENTS } = await import('../engine.js');
+    const ev = REGION_EVENTS.find((x) => x.id === 'miners_strike');
+    const e = { ...makeInitialEconomy(), regionEventCooldown: 99,
+      regionEvent: { id: ev.id, region: ev.region, title: ev.title, text: '', q: 4, defaultOption: ev.defaultOption, options: [] } };
+    const paid = step(e, { regionResponse: 'pay' });
+    expect(paid.economy.regionEvent).toBe(null);
+    expect(paid.economy.lastRegionResolution).toMatchObject({ id: 'miners_strike', option: 'pay', byDefault: false });
+    expect(paid.economy.regionShock.mining).toBeLessThan(0);
+    const ignored = step(e, {});
+    expect(ignored.economy.lastRegionResolution).toMatchObject({ option: 'wait', byDefault: true });
+    expect(ignored.economy.regionShock.mining).toBeGreaterThan(0);
+    expect(ignored.newsEntries.some((n) => /РЕШЕНИЯ НЕ ПРИНЯЛИ/.test(n.headline))).toBe(true);
+  });
+
+  it('события вспыхивают сами: за 40 кварталов их несколько, у каждого есть вариант по умолчанию', () => {
+    const rnd = Math.random; let seed = 77;
+    Math.random = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    try {
+      let e = makeInitialEconomy(); const seen = [];
+      for (let q = 1; q <= 40; q++) {
+        const mof = botFinanceMinistry(e, 'technocrat', 'medium');
+        const res = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), ...botCentralBank(e, 'pragmatic', 'medium').decisions, ...mof.decisions },
+          pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [mof] });
+        e = res.economy;
+        if (e.regionEvent) {
+          seen.push(e.regionEvent.id);
+          expect(e.regionEvent.options.some((o) => o.id === e.regionEvent.defaultOption)).toBe(true);
+        }
+      }
+      expect(seen.length).toBeGreaterThanOrEqual(3);
+      // бот-технократ строит, пока позволяет бюджет
+      expect((e.projectsBuilt.length + e.projects.length)).toBeGreaterThan(0);
+    } finally { Math.random = rnd; }
+  });
+
+  it('бот-Минфин отвечает на событие по характеру', async () => {
+    const { REGION_EVENTS } = await import('../engine.js');
+    const ev = REGION_EVENTS.find((x) => x.id === 'drought');
+    const e = { ...makeInitialEconomy(), regionEvent: { id: ev.id, region: ev.region, title: ev.title, text: '', q: 4, defaultOption: 'wait', options: [] } };
+    expect(botFinanceMinistry(e, 'populist', 'medium').decisions.regionResponse).toBe('subsidy');
+    expect(botFinanceMinistry(e, 'austerity', 'medium').decisions.regionResponse).toBe('import');
+  });
+});
