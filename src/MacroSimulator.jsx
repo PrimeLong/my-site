@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -5188,6 +5188,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   /* Решения на карте: стройка и ответ на событие в округе. Принимают их Минфин и
      президент; за остальных это делает бот-Минфин. Живут квартал. */
   const [regionPlan, setRegionPlan] = useState({ startProject: null, regionResponse: null });
+  // приказ армии на квартал в наступательной войне — отдаёт его президент
+  const [warOrder, setWarOrder] = useState(null);
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -5369,6 +5371,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         }
       }
     }
+    // война: приказ игрока-президента или бота-президента по характеру
+    if (economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0) {
+      eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botWarOrder(economy, presPersonaId) : null };
+    }
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
     if (canPlanMap) {
       eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null };
@@ -5524,6 +5530,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     setRegionPlan({ startProject: null, regionResponse: null });
+    setWarOrder(null);
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -5613,7 +5620,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5812,6 +5819,16 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
         )}
+        {isPresident && economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0 && view !== 'map' && (
+          <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
+              borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+            <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+            <span><b style={{ color: COLOR.rust }}>Наступление на Норланд.</b>{' '}
+              <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии отдан — исполнят в конце квартала.' : 'Отдайте приказ армии на карте: цель и способ действий.'}</span></span>
+          </div>
+        )}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
             <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
@@ -5823,7 +5840,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       {view === 'map' && (
         <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}>
           <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
-            planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`} />
+            planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`}
+            warOrder={warOrder} onWarOrder={isPresident && !defeat ? setWarOrder : null}
+            warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'} />
         </Suspense></div>
       )}
 

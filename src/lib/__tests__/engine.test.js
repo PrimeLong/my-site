@@ -2094,3 +2094,55 @@ describe('война на карте', () => {
     expect(warFrontRegion({ ...e, warQuartersLeft: 3, warType: 'offensive' })).toBe('mining');
   });
 });
+
+describe('наступательная операция на карте', () => {
+  const atWar = (extra) => ({ ...makeInitialEconomy(), warQuartersLeft: 8, warType: 'offensive', warByChoice: true, regionEventCooldown: 99, ...extra });
+  const step = (economy, warOrder, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), warOrder }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+
+  it('штурм продвигает фронт сильнее осады, операция помнит приказ', () => {
+    const rnd = Math.random; Math.random = () => 0.5;
+    try {
+      const a = step(atWar(), { target: 'mines', stance: 'assault' }).economy.warCampaign;
+      const b = step(atWar(), { target: 'mines', stance: 'siege' }).economy.warCampaign;
+      expect(a.progress.mines).toBeGreaterThan(b.progress.mines);
+      expect(a.last).toMatchObject({ target: 'mines', stance: 'assault' });
+    } finally { Math.random = rnd; }
+  });
+
+  it('Нордхольм без перевала не штурмуют: приказ переходит на доступную цель', () => {
+    const rnd = Math.random; Math.random = () => 0.9;
+    try {
+      const c = step(atWar(), { target: 'city', stance: 'assault' }).economy.warCampaign;
+      expect(c.progress.city).toBe(0);
+      expect(c.last.target).not.toBe('city');
+    } finally { Math.random = rnd; }
+  });
+
+  it('взятая цель остаётся за страной; все три — капитуляция Норланда и конец войны', () => {
+    const rnd = Math.random; Math.random = () => 0.9;
+    try {
+      const almost = atWar({ warCampaign: { progress: { pass: 100, mines: 100, city: 95 }, captured: ['pass', 'mines'], last: null } });
+      const res = step(almost, { target: 'city', stance: 'assault' });
+      expect(res.economy.warQuartersLeft).toBe(0);
+      expect(res.economy.warCampaign).toBe(null);
+      expect(res.newsEntries.some((n) => n.headline === 'НОРЛАНД ПОДПИСЫВАЕТ КАПИТУЛЯЦИЮ')).toBe(true);
+    } finally { Math.random = rnd; }
+  });
+
+  it('перемирие заканчивает войну по линии фронта', () => {
+    const res = step(atWar({ warCampaign: { progress: { pass: 100, mines: 40, city: 0 }, captured: ['pass'], last: null } }), { target: null, stance: 'ceasefire' });
+    expect(res.economy.warQuartersLeft).toBe(0);
+    expect(res.newsEntries.some((n) => n.headline === 'ПЕРЕМИРИЕ С НОРЛАНДОМ' && /Ледяной перевал/.test(n.text))).toBe(true);
+  });
+
+  it('больше обороны в бюджете — сильнее армия; бот-президент командует по характеру', async () => {
+    const { warStrength, botWarOrder } = await import('../engine.js');
+    const e = atWar();
+    expect(warStrength({ ...e, budgetShares: { ...e.budgetShares, defense: 30 } })).toBeGreaterThan(warStrength(e));
+    expect(botWarOrder(e, 'strongman').stance).toBe('assault');
+    expect(botWarOrder({ ...e, approval: 20 }, 'technocrat').stance).toBe('ceasefire');
+  });
+});
