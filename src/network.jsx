@@ -20,6 +20,7 @@ import {
   saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot, seatRole, seatsForMode, settleQuarter, tradeBook, unlockAchievements,
   useAchievementToasts, useChartView, useLayoutColumns, useNetworkSlotPreviews, usePinnedStrip,
 } from './MacroSimulator.jsx';
+import { stingerFor } from './audio/engine.js';
 
 const CRISIS_SHORT = { banking: 'банковский кризис', debt: 'долговой кризис', currency: 'валютный кризис',
   stagflation: 'стагфляция', overheating: 'перегрев', recession: 'рецессия', deflation: 'дефляция',
@@ -591,6 +592,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     mq.addListener(upd); return () => mq.removeListener(upd);
   }, []);
   const prevQuarter = React.useRef(room.quarterIndex);
+  // экономика прошлого квартала — чтобы понять, какая заставка положена новому
+  const prevEconomyRef = React.useRef(room.economy);
   const [stampKey, setStampKey] = useState(0);
 
   React.useEffect(() => watchRoom(id, (r) => {
@@ -605,7 +608,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       setSent(false);
       setDecisions((d) => defaultDecisions(r.economy, d));
       if (autoPaperRef.current) setShowPaper(true);
-      Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8) });
+      Audio.quarterSequence({ wellbeingDelta: 0, newCrisis: false, bigNews: r.news.some((n) => n.priority >= 8),
+        stinger: stingerFor(prevEconomyRef.current, r.economy) });
       markNetworkPlayed();
       pushAch(unlockAchievements(questProgressAchievementIds({
         quarterIndex: r.quarterIndex, economy: r.economy, history: r.history,
@@ -649,8 +653,14 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
       }
     }
+    prevEconomyRef.current = r.economy;
     Audio.setMood(r.economy);
   }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
+  // у президентского кресла своя тема, у трейдерской комнаты — репертуар торгового зала
+  React.useEffect(() => {
+    Audio.setRole(seat === 'president' ? 'president' : room.mode === 'trader' ? 'trader' : null);
+    return () => Audio.setRole(null);
+  }, [seat, room.mode]);
   // новый квартал — новый ход президента: прошлые указы уже оплачены и применены
   React.useEffect(() => {
     setPresActions([]); setPresAppointCb(null); setPresAppointMof(null);

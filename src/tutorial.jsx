@@ -1797,7 +1797,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
 
   // музыка курса реагирует на состояние песочницы так же, как в настоящей партии
   React.useEffect(() => { Audio.setMood(economy); },
-    [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.recessionRisk]);
+    [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.recessionRisk, economy.inflation, economy.stabilizationCred]);
 
   const cur = module.steps[step];
   const kind = cur.kind || 'read';

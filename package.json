@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "balance": "node scripts/balance.mjs",
+    "loudness": "node scripts/loudness.mjs",
     "e2e": "playwright test"
   },
   "dependencies": {
