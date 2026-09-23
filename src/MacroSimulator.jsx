@@ -5947,8 +5947,8 @@ function SetupScreen({ onStart, onBack }) {
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Как настраивать партию</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: custom ? 22 : 26 }}>
-              {[['classic', 'Классика', 'Характеры ведомств бросаются случайно, президент включён. Начать и разбираться по ходу — как и должно быть в первый раз.'],
-                ['custom', 'Настраиваемая', 'Выбрать характер каждого ведомства и президента — или отключить президента совсем.']].map(([id, title, note]) => {
+              {[['classic', 'Классика', 'Открытая партия без стартового кризиса, характеры ведомств бросаются случайно, президент включён. Начать и разбираться по ходу — как и должно быть в первый раз.'],
+                ['custom', 'Настраиваемая', 'Выбрать стартовую ситуацию — от открытой партии до гиперинфляции, — характер каждого ведомства и президента или отключить президента совсем.']].map(([id, title, note]) => {
                 const active = mode === id;
                 return (
                   <div key={id} onClick={() => { Audio.play('click'); setMode(id); }} className="ems-card-btn"
@@ -6079,7 +6079,11 @@ function SetupScreen({ onStart, onBack }) {
 
         {/* сценарий задаёт не песочницу, а другую стартовую точку той же экономики:
             переопределяет часть начальных условий движка, а не превращает партию
-            во что-то отдельное — сюжет, обучение и достижения работают как обычно */}
+            во что-то отдельное — сюжет, обучение и достижения работают как обычно.
+            Выбор сценария — часть настраиваемой партии: классика всегда начинается
+            с открытой партии, как и положено в первый раз, а кризисные старты —
+            для тех, кто уже решил, с чем хочет иметь дело. */}
+        {custom && (<>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>3</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
@@ -6113,12 +6117,13 @@ function SetupScreen({ onStart, onBack }) {
             );
           })}
         </div>
+        </>)}
 
         {/* сложность и приоритет — это быстрые настройки, а не решения того же веса,
             что роль: сводим в одну компактную секцию вместо двух полноразмерных
             сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>4</span>
+          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{custom ? 4 : 3}</span>
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
@@ -6157,7 +6162,9 @@ function SetupScreen({ onStart, onBack }) {
             const cbWanted = custom ? cbPersona : 'random';
             const mofWanted = custom ? mofPersona : 'random';
             const presWanted = custom ? presPersona : 'random';
-            onStart({ role, difficulty, goal, scenario,
+            // классика всегда начинается с открытой партии, даже если в
+            // настраиваемом режиме до этого успели выбрать кризисный сценарий
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox',
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
               president: { enabled: presAvailable && (custom ? presEnabled : true),
