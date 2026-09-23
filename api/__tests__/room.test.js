@@ -222,3 +222,23 @@ describe('округа в сетевой партии: стройки и отв�
     expect(sanitizeRegionPlan({ startProject: 'railway' }, { ...e, regionEvent: null })).toEqual({ startProject: 'railway', regionResponse: null });
   });
 });
+
+describe('наступательная операция в сетевой партии', () => {
+  const seat = (room, seats) => ({ ...room, seats: { ...room.seats, ...Object.fromEntries(seats.map((sx) => [sx, `tok-${sx}`])) } });
+  const war = (room) => ({ ...room, economy: { ...room.economy, warQuartersLeft: 6, warType: 'offensive', regionEventCooldown: 99 } });
+  const presSub = (room, warOrder) => ({ decisions: { ...room.decisions }, note: '',
+    president: { actions: [], appointCb: null, appointMof: null, directive: null, directiveStrength: 1, region: {}, warOrder } });
+
+  it('приказ живого президента исполняется, недоступная цель заменяется доступной', () => {
+    const room = war(seat(newRoom(), ['president']));
+    const next = resolveQuarter({ ...room, submissions: { president: presSub(room, { target: 'mines', stance: 'assault' }) } });
+    expect(next.economy.warCampaign.last).toMatchObject({ target: 'mines', stance: 'assault' });
+    expect(next.economy.warCampaign.progress.mines).toBeGreaterThan(0);
+  });
+
+  it('за пустое президентское место командует бот по характеру', () => {
+    const room = war(newRoom({ president: { persona: 'strongman' } }));
+    const next = resolveQuarter({ ...room, submissions: {} });
+    expect(next.economy.warCampaign.last.stance).toBe('assault');
+  });
+});

@@ -180,3 +180,25 @@ test('карта: соседние страны на месте, Минфин з
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
+
+test('президент ведёт наступление на карте: цель, штурм, продвижение', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'сценарий проверяется на ширине компьютера');
+  const { errors } = await openApp(page);
+  await startSoloGame(page, 'Президент');
+  await page.getByText('Война', { exact: true }).first().click();
+  await page.getByRole('button', { name: /^Начать военную операцию/ }).click();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  await expect(page.getByText('Наступление на Норланд.')).toBeVisible();
+  await page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await page.getByRole('button', { name: /^Копи Хальвика: продвижение 0 из 100/ }).click();
+  await page.getByRole('button', { name: /^Штурм/ }).click();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  if (await close.isVisible().catch(() => false)) await close.click();
+  await page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await expect(page.getByText(/^Прошлый квартал: штурм — Копи Хальвика, \+\d+/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Копи Хальвика: (продвижение [1-9]\d* из 100|взята)/ })).toBeAttached();
+  await page.locator('svg[aria-label="Карта областей страны"]').locator('xpath=../..').screenshot({ path: 'test-results/war-operation.png' });
+  expect(errors).toEqual([]);
+});

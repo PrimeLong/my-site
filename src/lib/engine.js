@@ -368,7 +368,7 @@ function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
     moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
-    startProject: null, regionResponse: null,
+    startProject: null, regionResponse: null, warOrder: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -2583,6 +2583,10 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const RS = regionStep(s, decisions, difficulty, quarterIndex);
   queue = queue.concat(RS.impulses);
   RS.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  /* --- 1д. НАСТУПАТЕЛЬНАЯ ОПЕРАЦИЯ: приказ президента на квартал --- */
+  const WC = warCampaignStep(s, decisions, difficulty);
+  queue = queue.concat(WC.impulses);
+  WC.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
 
   // указание ведомству разбирается на уровне интерфейса (ему нужны уже готовые
   // решения ботов), но платит за него тот же политический капитал
@@ -2760,7 +2764,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
   // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
   const projectReal = RS.projectPct / 100 * s.gdp;
-  const eventReal = RS.eventPct / 100 * s.gdp;
+  const eventReal = (RS.eventPct + WC.spendPct) / 100 * s.gdp;
   if (sequesterFactor < 0.995) {
     news.push(mkNews('crisis', `СЕКВЕСТР БЮДЖЕТА: РАСХОДЫ УРЕЗАНЫ НА ${fmt1((1 - sequesterFactor) * 100)}%`,
       `Инвесторы отказываются финансировать дефицит больше ${fmt1(maxDeficitPct)}% ВВП при долге ${fmt1(s.debtToGdp)}% и премии за риск ${fmt1(s.riskPremium)} п.п. Правительство вынуждено резать расходы независимо от своих планов — первыми страдают госинвестиции.`,
@@ -3458,7 +3462,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const warEnded = !!pres.patch.endWar;
   let warQuartersLeft = warDecreed ? 10 : warTriggered ? 4 : Math.max(0, (s.warQuartersLeft || 0) - 1);
   if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
-  if (warEnded) warQuartersLeft = 0;
+  if (warEnded || WC.endWar) warQuartersLeft = 0;
+  // срок войны истёк без победы и без перемирия — фронт замирает там, где стоял
+  if (s.warCampaign && warQuartersLeft === 0 && !WC.endWar && !warEnded && !warDecreed) {
+    const kept = (WC.campaign || s.warCampaign).captured || [];
+    news.push(mkNews('gov', 'ФРОНТ ЗАМЕР: ВОЙНА С НОРЛАНДОМ ЗАКОНЧИЛАСЬ ПЕРЕМИРИЕМ', kept.length
+      ? `Боевые действия прекращены по линии фронта. За страной остаётся: ${kept.map((id) => WAR_OBJECTIVE_BY_ID[id].name).join(', ')}.`
+      : 'Боевые действия прекращены по линии фронта, ни одна из целей операции не взята.', { priority: 9 }));
+  }
   // тип войны (оборонительная/наступательная) решает исход дипломатически — помощь
   // союзников или санкции — и держится неизменным, пока идёт одна и та же война
   const warType = warDecreed ? 'offensive' : warTriggered ? warTypeRolled : (warQuartersLeft > 0 ? (s.warType || null) : null);
@@ -3831,6 +3842,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     projects: RS.projects, projectsBuilt: RS.projectsBuilt, regionMods: RS.regionMods, regionShock: RS.regionShock,
     regionEvent: RS.regionEvent, regionEventCooldown: RS.regionEventCooldown, lastRegionResolution: RS.lastRegionResolution,
     projectReal,
+    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign()) : null,
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
     inflationRisk, debtRisk, recessionRisk, currencyRisk, bankingRiskValue: bankingRisk,
@@ -4686,7 +4698,7 @@ function makeInitialEconomy(scenarioId) {
     fiscalImpulse: 0, structuralBalancePctGdp: 0,
     // округа: идущие и достроенные стройки, поправки к напряжению, текущее событие
     projects: [], projectsBuilt: [], regionMods: {}, regionShock: {}, regionEvent: null, regionEventCooldown: 1,
-    lastRegionResolution: null, projectReal: 0,
+    lastRegionResolution: null, projectReal: 0, warCampaign: null,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
@@ -5364,6 +5376,125 @@ function botRegionPlan(s, P, consolidationNeed) {
   return plan;
 }
 
+/* ======================== НАСТУПАТЕЛЬНАЯ ОПЕРАЦИЯ ========================
+   Своя война — не только счётчик кварталов и санкции. Пока страна наступает на
+   Норланд, у операции три цели, и каждый квартал президент отдаёт приказ: куда
+   бить и как. Штурм быстр, дорог и стоит жизней; осада медленнее и дешевле;
+   удержание почти не двигает фронт, зато гасит контратаки; перемирие закрывает
+   войну по линии фронта. Продвижение зависит от доли обороны в бюджете и от
+   того, насколько страна поддерживает армию. Взятые цели — не только флажок на
+   карте: копи дают экспорт, перевал открывает дорогу на Нордхольм, падение
+   Нордхольма при уже взятых остальных целях — капитуляция Норланда. */
+const WAR_OBJECTIVES = [
+  { id: 'pass', name: 'Ледяной перевал', headline: 'ВЗЯТ ЛЕДЯНОЙ ПЕРЕВАЛ', desc: 'Горный проход: без него к Нордхольму не подойти. Взятый — облегчает все следующие штурмы и гасит контратаки.' },
+  { id: 'mines', name: 'Копи Хальвика', headline: 'ВЗЯТЫ КОПИ ХАЛЬВИКА', desc: 'Рудники у самой границы. Взятые — дают стране экспорт руды и удешевляют сырьё.' },
+  { id: 'city', name: 'Нордхольм', headline: 'ВЗЯТ НОРДХОЛЬМ', desc: 'Столица Норланда. Подойти можно только через перевал; её падение при уже взятых целях — капитуляция противника.', requires: 'pass' },
+];
+const WAR_OBJECTIVE_BY_ID = Object.fromEntries(WAR_OBJECTIVES.map((o) => [o.id, o]));
+const WAR_STANCES = [
+  { id: 'assault', label: 'Штурм', spend: 0.35, desc: 'Быстрое продвижение, но большие потери и расходы.' },
+  { id: 'siege', label: 'Осада и обстрел', spend: 0.2, desc: 'Медленнее, дешевле, потерь меньше.' },
+  { id: 'hold', label: 'Держать позиции', spend: 0.1, desc: 'Фронт почти не движется, контратаки противника слабее.' },
+  { id: 'ceasefire', label: 'Предложить перемирие', spend: 0, desc: 'Закончить войну по нынешней линии фронта; взятые цели остаются за страной.' },
+];
+const newWarCampaign = () => ({ progress: { pass: 0, mines: 0, city: 0 }, captured: [], last: null });
+const warObjectiveOpen = (id, camp) => {
+  const o = WAR_OBJECTIVE_BY_ID[id];
+  return !!o && !(camp.captured || []).includes(id) && (!o.requires || (camp.captured || []).includes(o.requires));
+};
+// сила армии: доля обороны в бюджете и поддержка в обществе
+function warStrength(s) {
+  const defense = (s.budgetShares && s.budgetShares.defense) || 15;
+  return clamp(0.55 + (defense - 10) / 20 + ((s.approval || 50) - 50) / 200, 0.45, 1.5);
+}
+// приказ по умолчанию — осада первой доступной цели: армия действует по уставу
+function defaultWarOrder(camp) {
+  const target = WAR_OBJECTIVES.find((o) => warObjectiveOpen(o.id, camp));
+  return { target: target ? target.id : null, stance: 'siege' };
+}
+/* Бот-президент командует по характеру: силовик штурмует, популист штурмует,
+   пока его поддерживают, технократ и реформатор осаждают и ищут перемирие,
+   когда взято хоть что-то, а поддержка тает. */
+function botWarOrder(s, personaId) {
+  const camp = s.warCampaign || newWarCampaign();
+  const order = defaultWarOrder(camp);
+  if (!order.target) return { target: null, stance: 'ceasefire' };
+  const approval = s.approval || 50;
+  if (personaId === 'strongman') order.stance = 'assault';
+  else if (personaId === 'populist') order.stance = approval > 45 ? 'assault' : 'hold';
+  else {
+    order.stance = 'siege';
+    if ((camp.captured.length >= 1 && approval < 45) || approval < 30) order.stance = 'ceasefire';
+  }
+  // копи выгоднее перевала, если перевал уже стоит дорого, — но сначала то, что ближе к взятию
+  const best = WAR_OBJECTIVES.filter((o) => warObjectiveOpen(o.id, camp)).sort((a, b) => camp.progress[b.id] - camp.progress[a.id])[0];
+  if (best) order.target = best.id;
+  return order;
+}
+function warCampaignStep(s, decisions, difficulty) {
+  const out = { impulses: [], news: [], spendPct: 0, endWar: false, victory: false };
+  const active = (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive';
+  if (!active) return { ...out, campaign: null };
+  const camp = s.warCampaign ? { progress: { ...s.warCampaign.progress }, captured: [...(s.warCampaign.captured || [])], last: s.warCampaign.last } : newWarCampaign();
+  const raw = decisions.warOrder || {};
+  const stance = WAR_STANCES.find((x) => x.id === raw.stance) || WAR_STANCES[1];
+  let target = warObjectiveOpen(raw.target, camp) ? raw.target : defaultWarOrder(camp).target;
+  out.spendPct = stance.spend;
+  const pressFree = s.politicalRegime !== 'authoritarian' && s.politicalRegime !== 'totalitarian';
+  if (stance.id === 'ceasefire' || !target) {
+    out.endWar = true;
+    const n = camp.captured.length;
+    out.impulses.push(makeImpulse('approvalPush', n ? 2 * n : -3, 'Перемирие с Норландом', 'fast', difficulty, 'other'),
+      makeImpulse('businessConfidence', 4, 'Боевые действия прекращены', 'default', difficulty, 'other'),
+      makeImpulse('tensionPush', n ? -2 : 3, 'Перемирие с Норландом', 'fast', difficulty, 'other'));
+    out.news.push(['gov', 'ПЕРЕМИРИЕ С НОРЛАНДОМ', n
+      ? `Боевые действия остановлены по линии фронта. За страной остаётся: ${camp.captured.map((id) => WAR_OBJECTIVE_BY_ID[id].name).join(', ')}.`
+      : `Боевые действия остановлены там же, где начались.${pressFree ? ' Цели операции не достигнуты — и это понятно всем.' : ' Официально — ради сохранения жизней.'}`, 10]);
+    camp.last = { target: null, stance: 'ceasefire', gained: 0, counter: null };
+    return { ...out, campaign: camp };
+  }
+  const strength = warStrength(s);
+  const passBonus = camp.captured.includes('pass') ? 1.25 : 1;
+  const gain = stance.id === 'assault' ? strength * (16 + 18 * Math.random()) * passBonus
+    : stance.id === 'siege' ? strength * (6 + 8 * Math.random()) * passBonus : strength * 2 * Math.random();
+  camp.progress[target] = clamp(camp.progress[target] + gain, 0, 100);
+  // потери и настроение: штурм бьёт по поддержке сильнее всего
+  if (stance.id === 'assault') out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при штурме', 'fast', difficulty, 'other'),
+    makeImpulse('tensionPush', 1.5, 'Потери при штурме', 'fast', difficulty, 'other'));
+  else if (stance.id === 'siege') out.impulses.push(makeImpulse('approvalPush', -0.5, 'Затяжная осада', 'fast', difficulty, 'other'));
+  // контратака противника по недобранной цели
+  let counter = null;
+  const counterChance = (stance.id === 'hold' ? 0.1 : 0.25) * (camp.captured.includes('pass') ? 0.5 : 1);
+  if (Math.random() < counterChance) {
+    const cands = WAR_OBJECTIVES.filter((o) => !camp.captured.includes(o.id) && camp.progress[o.id] > 0);
+    if (cands.length) {
+      const o = cands[Math.floor(Math.random() * cands.length)];
+      const lost = 8 + 8 * Math.random();
+      camp.progress[o.id] = clamp(camp.progress[o.id] - lost, 0, 100);
+      counter = { target: o.id, lost: Math.round(lost) };
+      out.news.push(['crisis', `КОНТРАТАКА У ЦЕЛИ «${o.name.toUpperCase()}»`, `Противник отбил часть позиций: продвижение откатилось на ${Math.round(lost)} п.`, 7]);
+    }
+  }
+  // взятие цели
+  if (camp.progress[target] >= 100 && !camp.captured.includes(target)) {
+    camp.captured.push(target);
+    const o = WAR_OBJECTIVE_BY_ID[target];
+    if (target === 'mines') out.impulses.push(sustainedImpulse('exportsGrowth', 1.2, 8, 'Руда Хальвика идёт на экспорт'),
+      makeImpulse('inflationSupply', -0.2, 'Сырьё Хальвика дешевле', 'slow', difficulty, 'other'));
+    out.impulses.push(makeImpulse('approvalPush', target === 'city' ? 4 : 2, `Взята цель: ${o.name}`, 'fast', difficulty, 'other'));
+    out.news.push(['gov', o.headline, o.desc, 9]);
+  }
+  if (WAR_OBJECTIVES.every((o) => camp.captured.includes(o.id))) {
+    out.endWar = true; out.victory = true;
+    out.impulses.push(makeImpulse('approvalPush', 6, 'Победа над Норландом', 'fast', difficulty, 'other'),
+      makeImpulse('tensionPush', -4, 'Победа над Норландом', 'fast', difficulty, 'other'),
+      makeImpulse('businessConfidence', 3, 'Война окончена', 'default', difficulty, 'other'));
+    out.news.push(['gov', 'НОРЛАНД ПОДПИСЫВАЕТ КАПИТУЛЯЦИЮ', 'Все цели операции взяты, противник принимает условия. Санкции за войну никуда не деваются — они снимаются дольше, чем вводились.', 10]);
+  }
+  camp.last = { target, stance: stance.id, gained: Math.round(gain), counter };
+  return { ...out, campaign: camp };
+}
+
 const REGION_TEXT = {
   capital: {
     calm: (e) => `Аппарат работает штатно, рейтинг власти держится на ${Math.round(e.approval)} из 100 — столице нечего обсуждать сверх обычной повестки.`,
@@ -5639,7 +5770,7 @@ export {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, UNCERTAINTY,
   CB_PERSONAS, MOF_PERSONAS, REQUESTS, EVENTS, CHANNEL_HEADLINE, TAX_REF,
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
-  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion,
+  POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,
