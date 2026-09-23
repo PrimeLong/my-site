@@ -1849,3 +1849,16 @@ describe('стабилизационная программа', () => {
     calm.forEach((x) => { expect(x.e.stabilizationCred).toBe(0); expect(x.e.crisisMandateLeft || 0).toBe(0); });
   });
 });
+
+describe('сложность сценариев', () => {
+  it('у каждого сценария есть уровень и пояснение, а «Гиперинфляция» — единственный самый трудный', () => {
+    SCENARIOS.forEach((sc) => {
+      expect(sc.level).toBeGreaterThanOrEqual(1);
+      expect(sc.level).toBeLessThanOrEqual(4);
+      expect(sc.levelLabel).toBeTruthy();
+      expect(sc.levelNote).toBeTruthy();
+    });
+    const max = Math.max(...SCENARIOS.map((sc) => sc.level));
+    expect(SCENARIOS.filter((sc) => sc.level === max).map((sc) => sc.id)).toEqual(['hyperinflation']);
+  });
+});

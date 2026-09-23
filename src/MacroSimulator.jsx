@@ -6085,8 +6085,10 @@ function SetupScreen({ onStart, onBack }) {
           <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
-          {SCENARIOS.map((sc) => {
+          {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
             const active = scenario === sc.id;
+            // от спокойного к опасному: бирюзовый → золотой → ржавый
+            const levelColor = sc.level >= 4 ? COLOR.rust : sc.level === 3 ? COLOR.gold : sc.level === 2 ? COLOR.goldSoft : COLOR.teal;
             return (
               <div key={sc.id} onClick={() => { Audio.play('click'); setScenario(sc.id); }} className="ems-card-btn"
                 style={{ padding: 13, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
@@ -6094,7 +6096,19 @@ function SetupScreen({ onStart, onBack }) {
                 role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setScenario(sc.id); }}>
                 {active && <Check size={12} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                 <div className="ems-serif" style={{ fontSize: 13, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
+                {sc.level && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}
+                    aria-label={`Сложность: ${sc.levelLabel}, ${sc.level} из 4`}>
+                    <span aria-hidden style={{ display: 'flex', gap: 3 }}>
+                      {[1, 2, 3, 4].map((i) => (
+                        <span key={i} style={{ width: 12, height: 4, borderRadius: 2, background: i <= sc.level ? levelColor : COLOR.borderStrong, opacity: i <= sc.level ? 1 : 0.55 }} />
+                      ))}
+                    </span>
+                    <span className="ems-mono" style={{ fontSize: 10, color: levelColor, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{sc.levelLabel}</span>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+                {sc.levelNote && <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginTop: 6 }}>{sc.levelNote}</div>}
               </div>
             );
           })}
