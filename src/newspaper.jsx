@@ -233,7 +233,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
               <StateSeal regime={regimeId} size={46} title={(POLITICAL_REGIME_INFO[regimeId] || {}).label} />
-              <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose}><X size={14} /></button>
+              <button className="ems-btn" style={{ padding: '4px 7px', background: 'transparent', color: pp.paperText, borderColor: pp.paperRule }} onClick={onClose} aria-label="Закрыть газету" title="Закрыть (Esc)"><X size={14} /></button>
             </div>
           </div>
 
