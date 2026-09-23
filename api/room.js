@@ -9,7 +9,8 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder,
+  sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -70,6 +71,8 @@ export function sanitizeRegionPlan(o, economy) {
   return {
     startProject: project && economy && !projectBlocker(project, economy) ? project.id : null,
     regionResponse: ev && (ev.options || []).some((x) => x.id === src.regionResponse) ? src.regionResponse : null,
+    // программа интеграции новых земель; null — продолжать прошлую
+    integrate: Array.isArray(src.integrate) && economy ? sanitizeIntegration(src.integrate, economy) : null,
   };
 }
 
@@ -100,9 +103,17 @@ const REQUEST_IDS = new Set(REQUESTS.map((r) => r.id));
 /* Ход президента — это не ползунки, а набор решений: указы и реформы, назначения,
    одно указание ведомству и его сила. Всё незнакомое отбрасываем так же, как рычаги. */
 const WAR_STANCE_IDS = new Set(WAR_STANCES.map((x) => x.id));
+const DEFENSE_STANCE_IDS = new Set(DEFENSE_STANCES.map((x) => x.id));
 // приказ армии: только известный способ действий и только доступная сейчас цель
 function sanitizeWarOrder(o, economy) {
-  if (!o || typeof o !== 'object' || !WAR_STANCE_IDS.has(o.stance)) return null;
+  if (!o || typeof o !== 'object') return null;
+  // в войне за новые земли цель — своя присоединённая область, способы — оборонительные
+  if (economy && economy.warType === 'revanche') {
+    if (!DEFENSE_STANCE_IDS.has(o.stance)) return null;
+    const held = Object.keys((economy.revancheCampaign || {}).pressure || {}).filter((id) => !((economy.revancheCampaign || {}).lost || []).includes(id));
+    return { stance: o.stance, target: held.includes(o.target) ? o.target : null };
+  }
+  if (!WAR_STANCE_IDS.has(o.stance)) return null;
   const camp = (economy && economy.warCampaign) || { progress: {}, captured: [] };
   return { stance: o.stance, target: warObjectiveOpen(o.target, camp) ? o.target : null };
 }
@@ -111,6 +122,8 @@ function sanitizePresident(v, economy) {
   return {
     region: sanitizeRegionPlan(o.region, economy),
     warOrder: sanitizeWarOrder(o.warOrder, economy),
+    campaignPlan: sanitizeCampaignPlan(o.campaignPlan, economy),
+    treaty: economy ? sanitizeTreaty(o.treaty, economy) : null,
     actions: Array.isArray(o.actions) ? o.actions.filter((x) => PRES_ACTION_IDS.has(x)).slice(0, 4) : [],
     appointCb: CB_PERSONA_IDS.has(o.appointCb) ? o.appointCb : null,
     appointMof: MOF_PERSONA_IDS.has(o.appointMof) ? o.appointMof : null,
@@ -278,11 +291,24 @@ export function resolveQuarter(room) {
   const presRegion = subs.president && subs.president.president ? subs.president.president.region : null;
   eff.startProject = (presRegion && presRegion.startProject) || mofDecisions.startProject || null;
   eff.regionResponse = (presRegion && presRegion.regionResponse) || mofDecisions.regionResponse || null;
+  eff.integrate = presRegion && presRegion.integrate != null ? presRegion.integrate : mofDecisions.integrate ?? null;
   // наступательная война: приказ живого президента, иначе — бота-президента по характеру
   if (room.economy.warType === 'offensive' && (room.economy.warQuartersLeft || 0) > 0) {
     const humanOrder = subs.president && subs.president.president ? subs.president.president.warOrder : null;
     eff.warOrder = humanOrder || (room.president && !room.seats.president ? botWarOrder(room.economy, room.president.persona) : null);
   }
+  // война за новые земли и переговоры с Норландом: живой президент, иначе бот по характеру
+  if (room.economy.warType === 'revanche' && (room.economy.warQuartersLeft || 0) > 0) {
+    const humanOrder = subs.president && subs.president.president ? subs.president.president.warOrder : null;
+    eff.warOrder = humanOrder || (room.president && !room.seats.president ? botDefenseOrder(room.economy, room.president.persona) : null);
+  }
+  if (room.economy.peaceTalks) {
+    const humanTreaty = subs.president && subs.president.president ? subs.president.president.treaty : null;
+    eff.treaty = room.seats.president ? humanTreaty : botTreaty(room.economy, room.president ? room.president.persona : 'technocrat');
+  }
+  // кампания: штабы живого президента, иначе — штаб власти по опросам
+  const presSub = subs.president && subs.president.president;
+  eff.campaignPlan = presSub ? presSub.campaignPlan : botCampaignPlan(room.economy);
   /* Решения президента разбираются здесь — им нужны уже посчитанные решения обоих
      ведомств. Требование к живому игроку проверяется по тому, куда он сдвинул свои
      рычаги (directiveProgress), требование к боту — по тому, согласился ли тот его

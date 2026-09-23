@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -427,6 +427,8 @@ export function StateZone({ children, label, hidden }) {
 /* Карта страны вынесена в src/countrymap.jsx и грузится лениво: её открывают
    вкладкой, а геометрия округов и береговой линии первому экрану не нужна. */
 export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) => ({ default: m.CountryMap })));
+// экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
+export const SocietyView = React.lazy(() => import('./society.jsx').then((m) => ({ default: m.SocietyView })));
 
 export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF }) {
   const delta = lever.type === 'level' ? value - currentDisplay : value;
@@ -1575,7 +1577,7 @@ export function PresidentWatchPanel({ economy, plan, last, branch }) {
         <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
           <span style={{ display: 'block', width: `${clamp(economy.politicalCapital || 0, 0, 100)}%`, height: '100%', background: COLOR.gold }} />
         </span>
-        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.round(economy.politicalCapital || 0)}</span>
+        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.floor((economy.politicalCapital || 0) + 1e-9)}</span>
       </div>
       {/* у трейдера президента не за что увольнять — «отношение к вам» там не про что */}
       {branch && (
@@ -1650,8 +1652,10 @@ function CapitalBar({ value, reserved, gain }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
-        <span className="ems-mono" style={{ fontSize: 25, color: COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{Math.round(left)}</span>
-        <span style={{ fontSize: 11, color: COLOR.muted }}>из {Math.round(v)} свободно</span>
+        {/* вниз, а не до ближайшего: капитал дробный, и «26 свободно» при 25,6 обещало
+            решение за 26, которое на деле недоступно */}
+        <span className="ems-mono" style={{ fontSize: 25, color: COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{Math.floor(left + 1e-9)}</span>
+        <span style={{ fontSize: 11, color: COLOR.muted }}>из {Math.floor(v + 1e-9)} свободно</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 11, color: gain >= 0 ? COLOR.teal : COLOR.rust }}>
           {gain >= 0 ? '+' : ''}{fmt1(gain)} за квартал
         </span>
@@ -1731,6 +1735,22 @@ function RegimeLadder({ economy }) {
   );
 }
 
+/* Кто выиграет и кто проиграет от решения — группы общества (см. «Общество»):
+   они запомнят его на несколько лет. */
+function GroupStakes({ effects }) {
+  const name = (id) => (SOCIAL_GROUPS.find((g) => g.id === id) || {}).name || id;
+  const pro = Object.entries(effects).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const con = Object.entries(effects).filter(([, v]) => v < 0).sort((a, b) => a[1] - b[1]);
+  if (!pro.length && !con.length) return null;
+  return (
+    <div style={{ fontSize: 10, lineHeight: 1.45, marginTop: 4 }}>
+      {pro.length > 0 && <span style={{ color: COLOR.teal }}>За: {pro.map(([id, v]) => `${name(id).toLowerCase()} +${v}`).join(', ')}</span>}
+      {pro.length > 0 && con.length > 0 && <span style={{ color: COLOR.faint }}> · </span>}
+      {con.length > 0 && <span style={{ color: COLOR.rust }}>Против: {con.map(([id, v]) => `${name(id).toLowerCase()} −${-v}`).join(', ')}</span>}
+    </div>
+  );
+}
+
 function PresActionCard({ action, economy, cooldowns, selected, affordable, onToggle }) {
   // у выбранного решения его цена уже вычтена из свободного капитала — проверять
   // «хватает ли» по остатку без него значит объявлять нехватку на ровном месте
@@ -1757,7 +1777,8 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
   // сигналить о разнице в весе решения, а не полагаться на то, что игрок
   // дочитает описание до конца
   const severe = !!action.severe && !done;
-  const hideDesc = blockedByReq || cdLeft > 0 || done;
+  // недоступное решение не расписывает, что оно дало бы: причина и цена важнее
+  const hideDesc = blockedByReq || cdLeft > 0 || done || !canAfford;
   const selectedColor = severe ? COLOR.rust : COLOR.gold;
   const selectedDim = severe ? COLOR.rustDim : COLOR.goldDim;
   return (
@@ -1787,6 +1808,7 @@ function PresActionCard({ action, economy, cooldowns, selected, affordable, onTo
           «не хватает капитала»: на такое решение копят, и чтобы копить
           осознанно, надо знать, на что именно. */}
       {!hideDesc && <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 4 }}>{desc}</div>}
+      {!hideDesc && ACTION_GROUP_EFFECTS[action.id] && <GroupStakes effects={ACTION_GROUP_EFFECTS[action.id]} />}
       {!hideDesc && willBeBlocked && (
         <div style={{ fontSize: 10, color: COLOR.rust, marginTop: 3 }}>
           Парламент отклонит: слишком высокое напряжение или провальный рейтинг. Капитал спишется впустую.
@@ -5190,6 +5212,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   const [regionPlan, setRegionPlan] = useState({ startProject: null, regionResponse: null });
   // приказ армии на квартал в наступательной войне — отдаёт его президент
   const [warOrder, setWarOrder] = useState(null);
+  // штабы кампании по областям на этот квартал — их расставляет президент
+  const [campaignPlan, setCampaignPlan] = useState({});
+  // условия мира, которые президент предложит Норланду в этом квартале
+  const [treatyPlan, setTreatyPlan] = useState(null);
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -5375,9 +5401,21 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     if (economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0) {
       eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botWarOrder(economy, presPersonaId) : null };
     }
+    // война за новые земли: тот же приказ, только оборонительный
+    if (economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) {
+      eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botDefenseOrder(economy, presPersonaId) : null };
+    }
+    // переговоры с Норландом: условия президента-игрока, иначе — бота по характеру
+    if (economy.peaceTalks) {
+      eff = { ...eff, treaty: isPresident ? treatyPlan : botTreaty(economy, presEnabled ? presPersonaId : 'technocrat') };
+    }
+    // кампания: штабы президента-игрока, иначе — штаб власти по опросам
+    eff = { ...eff, campaignPlan: isPresident ? campaignPlan : botCampaignPlan(economy) };
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
     if (canPlanMap) {
-      eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null };
+      eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null,
+        // программа интеграции новых земель: не трогали — продолжается прошлая
+        integrate: Array.isArray(regionPlan.integrate) ? regionPlan.integrate : null };
     }
     let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
     // официальный запрос второму ведомству
@@ -5529,8 +5567,10 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
-    setRegionPlan({ startProject: null, regionResponse: null });
-    setWarOrder(null);
+    // стройка и ответ — на один квартал, программа интеграции действует дальше
+    setRegionPlan((p) => ({ startProject: null, regionResponse: null, integrate: p.integrate }));
+    setCampaignPlan({});
+    setTreatyPlan(null);
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -5620,7 +5660,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
   }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5713,7 +5753,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             <Gauge value={economy.wellbeing} size={74} />
           </div>
           <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
-            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
+            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
               <button key={id} className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
                 background: view === id ? COLOR.gold : COLOR.panelAlt, color: view === id ? COLOR.ink : COLOR.text, borderColor: view === id ? COLOR.gold : COLOR.border }}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
@@ -5826,7 +5866,37 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
             <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
             <span><b style={{ color: COLOR.rust }}>Наступление на Норланд.</b>{' '}
-              <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии отдан — исполнят в конце квартала.' : 'Отдайте приказ армии на карте: цель и способ действий.'}</span></span>
+              <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
+          </div>
+        )}
+        {isPresident && view !== 'map' && electionForecast(economy) && !electionForecast(economy).closed && (() => {
+          const f = electionForecast(economy, campaignPlan);
+          const used = Object.values(campaignPlan).reduce((a, b) => a + b, 0);
+          const swing = f.byRegion.filter((r) => r.label === 'колеблется').length;
+          return (
+            <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`,
+                borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+              <MapIcon size={15} color={COLOR.gold} style={{ flexShrink: 0 }} />
+              <span><b style={{ color: COLOR.gold }}>Выборы через {f.quartersToElection} кв.: опрос {fmt1(f.national)}% ±{fmt1(f.margin)}.</b>{' '}
+                <span style={{ color: COLOR.muted }}>Колеблющихся областей — {swing}. {used
+                  ? `Штабов расставлено: ${used} — изменить можно на карте.`
+                  : 'Штабы кампании не расставлены — сделайте это на карте, слой «Опросы».'}</span></span>
+            </div>
+          );
+        })()}
+        {isPresident && view !== 'map' && ((economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) || economy.peaceTalks) && (
+          <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: economy.peaceTalks ? COLOR.goldDim : COLOR.rustDim,
+              border: `1px solid ${economy.peaceTalks ? COLOR.gold : COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+            <MapIcon size={15} color={economy.peaceTalks ? COLOR.gold : COLOR.rust} style={{ flexShrink: 0 }} />
+            {economy.peaceTalks
+              ? <span><b style={{ color: COLOR.gold }}>Переговоры с Норландом.</b>{' '}
+                <span style={{ color: COLOR.muted }}>{treatyPlan && treatyPlan.propose ? 'Договор будет предложен в конце квартала.' : `Позиция страны ${Math.round(economy.peaceTalks.leverage)} и тает с каждым кварталом — условия мира задаются на карте.`}</span></span>
+              : <span><b style={{ color: COLOR.rust }}>Норланд наступает на новые земли.</b>{' '}
+                <span style={{ color: COLOR.muted }}>Какую область укрепить и как — на карте.</span></span>}
           </div>
         )}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
@@ -5838,14 +5908,23 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       </div>
 
       {view === 'map' && (
-        <div style={{ padding: '0 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+        <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
           <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
             planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`}
             warOrder={warOrder} onWarOrder={isPresident && !defeat ? setWarOrder : null}
-            warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'} />
+            warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'}
+            campaignPlan={campaignPlan} onCampaignPlan={isPresident && !defeat ? setCampaignPlan : null}
+            campaignPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'штаб власти'}
+            treatyPlan={treatyPlan} onTreatyPlan={isPresident && !defeat ? setTreatyPlan : null}
+            treatyPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
         </Suspense></div>
       )}
 
+      {view === 'society' && (
+        <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+          <SocietyView economy={economy} />
+        </Suspense></div>
+      )}
       {view === 'market' && (
         <MarketScreen economy={economy} prev={prevEcon} history={history}
           book={isTrader ? portfolio : null} onTrade={onTrade} />
