@@ -9,7 +9,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   makeImpulse, askText, PRES_DIRECTIVE_COST, PRES_BY_ID, PRESIDENT_ACTIONS, REQUESTS,
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
-  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS } from './_lib/engine.js';
+  CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -57,15 +57,19 @@ const pickFields = (obj, ids) => { const out = {}; for (const id of ids) if (id 
    допустимого диапазона и отбрасываем всё незнакомое, чтобы NaN/Infinity
    или произвольные поля не попали в модель и не сломали комнату сразу
    для обоих игроков. Меняем только рычаги СВОЕЙ группы — иначе решение
-   второго игрока для его же рычагов теряется при слиянии (см. resolveQuarter). */
-function sanitizeDecisions(base, submitted, seat) {
+   второго игрока для его же рычагов теряется при слиянии (см. resolveQuarter).
+   Границы — те же, что игрок видит на ползунке при этой экономике (scaleLever):
+   раньше сервер резал по статичным, и в сети срезались бы и ставка выше 25%
+   при высокой инфляции, и рычаги в миллиардах, растущие вместе с ВВП. */
+function sanitizeDecisions(base, submitted, seat, economy) {
   const out = { ...base };
   if (!submitted || typeof submitted !== 'object') return out;
   const group = SEAT_GROUP[seat];
   for (const lever of LEVERS) {
     if (lever.group !== group) continue;
     const v = submitted[lever.id];
-    if (typeof v === 'number' && Number.isFinite(v)) out[lever.id] = clamp(v, lever.min, lever.max);
+    const l = economy ? scaleLever(lever, economy) : lever;
+    if (typeof v === 'number' && Number.isFinite(v)) out[lever.id] = clamp(v, l.min, l.max);
   }
   if (group === 'monetary') {
     if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
@@ -574,7 +578,7 @@ async function handleRequest(req, res) {
       const seat = body.seat;
       if (!SEATS.includes(seat)) return { error: 'Неизвестная роль', status: 400 };
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
-      const decisions = sanitizeDecisions(room.decisions, body.decisions, seat);
+      const decisions = sanitizeDecisions(room.decisions, body.decisions, seat, room.economy);
       const presidentMove = seat === 'president' ? sanitizePresident(body.president) : null;
       // стоимость портфеля трейдера — сообщается им самим при готовности к
       // следующему кварталу; сервер её не считает (позиции клиентские), просто

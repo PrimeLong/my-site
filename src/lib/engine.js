@@ -119,6 +119,10 @@ const applyNominalGrowth = (value, realAnnualPct, inflationAnnualPct) =>
 const gauss = (sigma) => sigma * ((Math.random() + Math.random() + Math.random() - 1.5) / 1.5);
 const sign = (v) => (v > 0.0001 ? 1 : v < -0.0001 ? -1 : 0);
 const ema = (prev, next, w) => prev * (1 - w) + next * w;
+/* Насыщающийся отклик: при малом x ведёт себя как slope·x, а при большом
+   упирается в потолок slope·scale. Для реакций людей, которые растут быстро,
+   но не бесконечно (недовольство ценами, напряжение). */
+const saturating = (x, slope, scale) => slope * scale * (1 - Math.exp(-Math.max(0, x) / scale));
 
 const fmt1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '—');
 const fmt2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
@@ -279,7 +283,22 @@ const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
    а курсовой ориентир имеет смысл только вокруг текущего курса. Это правило
    живёт здесь, а не в интерфейсе, потому что «что доступно игроку» обязаны
    знать трое: сам интерфейс, боты и тесты. */
+/* Потолок ключевой ставки. 25% хватает, пока инфляция однозначная, но в
+   сценарии «Гиперинфляция» партия начиналась при инфляции 34% и ставке 24%:
+   реальная ставка не могла стать положительной ни у бота, ни у игрока, и
+   инфляция стояла на 30+% четыре года подряд, пока напряжение не сносило
+   демократию. Настоящие ЦБ в таких эпизодах поднимали ставку до 40–100%.
+   Поэтому потолок растёт вместе с инфляцией и ожиданиями — с запасом в
+   15 п.п. сверху — и возвращается к 25%, когда цены успокоятся. */
+const KEY_RATE_BASE_MAX = 25;
+function keyRateCap(e) {
+  if (!e) return KEY_RATE_BASE_MAX;
+  const pressure = Math.max(e.inflation || 0, e.inflationExpectations || 0);
+  return Math.max(KEY_RATE_BASE_MAX, Math.ceil((pressure + 15) / 5) * 5);
+}
+
 export function scaleLever(l, e) {
+  if (l.id === 'keyRate') return { ...l, max: keyRateCap(e) };
   if (l.scale === 'gdp') {
     const k = Math.max(1, e.nominalGdp / CONFIG.initial.gdp);
     const mag = Math.max(5, Math.round(l.max * k / 5) * 5);
@@ -394,7 +413,7 @@ function botCentralBank(s, personaId, _difficulty) {
   const maxStep = deepSlump ? P.maxMove * 1.6 : P.maxMove;
   const rawMove2 = clamp(smoothed - s.keyRate, -maxStep, maxStep);
   const move = Math.abs(rawMove2) < 0.25 ? 0 : roundTo(rawMove2, 0.25);
-  let keyRate = clamp(roundTo(s.keyRate + move, 0.25), 0, 25);
+  let keyRate = clamp(roundTo(s.keyRate + move, 0.25), 0, keyRateCap(s));
 
   const fxTargetCur = s.fxTarget;
   const crisis = s.bankingRisk >= CONFIG.thresholds.bankingRisk || s.bankCapitalAdequacy < 9;
@@ -867,8 +886,8 @@ const REQUESTS = [
     // округление к сетке 0,25 не должно съедать частичное согласие целиком: просьба
     // снизить на 0,25 при ответе «наполовину» давала −0,125 → та же ставка, и новость
     // «исполнено частично» выходила при неизменившейся ставке. Согласился — двигай.
-    apply: (d, k) => ({ keyRate: k <= 0 ? d.keyRate
-      : clamp(Math.min(roundTo(d.keyRate - 1 * k, 0.25), roundTo(d.keyRate, 0.25) - 0.25), 0, 25) }),
+    apply: (d, k, economy) => ({ keyRate: k <= 0 ? d.keyRate
+      : clamp(Math.min(roundTo(d.keyRate - 1 * k, 0.25), roundTo(d.keyRate, 0.25) - 0.25), 0, keyRateCap(economy)) }),
     yes: 'Центральный банк соглашается и снижает ставку — инфляционная картина это позволяет.',
     partial: 'Центральный банк снижает ставку вдвое меньше запрошенного.',
     no: 'Центральный банк отказывает: снижение ставки при текущей инфляции стоило бы доверия к цели.' },
@@ -881,8 +900,8 @@ const REQUESTS = [
     fit: (s) => (s.inflation > s.inflationTarget + 2 ? 1.4 : -1.0) + (s.inflationExpectations > s.inflationTarget + 1.5 ? 0.7 : -0.3)
       + (s.outputGap < -2 ? -0.8 : 0.2),
     bias: { hawk: 0.9, pragmatic: 0.2, dove: -0.9 },
-    apply: (d, k) => ({ keyRate: k <= 0 ? d.keyRate
-      : clamp(Math.max(roundTo(d.keyRate + 2 * k, 0.25), roundTo(d.keyRate, 0.25) + 0.25), 0, 25) }),
+    apply: (d, k, economy) => ({ keyRate: k <= 0 ? d.keyRate
+      : clamp(Math.max(roundTo(d.keyRate + 2 * k, 0.25), roundTo(d.keyRate, 0.25) + 0.25), 0, keyRateCap(economy)) }),
     yes: 'Центральный банк соглашается и повышает ставку решительнее, чем планировал.',
     partial: 'Центральный банк добавляет к своему решению половину запрошенного шага.',
     no: 'Центральный банк отказывает: он считает, что уже сделал достаточно, а переужесточение обойдётся выпуском.' },
@@ -2392,9 +2411,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      Приводим любые решения к тому, что физически может задать человек. */
   const decisions = (() => {
     let changed = false; const out = { ...rawDecisions };
-    LEVERS.forEach((l) => {
-      const v = out[l.id];
+    LEVERS.forEach((base) => {
+      const v = out[base.id];
       if (!Number.isFinite(v)) return;
+      // границы — те, что игрок видит на ползунке сейчас (потолок ставки растёт
+      // с инфляцией); рычаги в миллиардах и ориентир курса — как и раньше
+      const l = base.scale === 'gdp' || base.id === 'fxTarget' ? base : scaleLever(base, s);
       const lo = l.scale === 'gdp' ? -Infinity : l.min;
       const hi = l.scale === 'gdp' ? Infinity : l.max;
       const c = clamp(v, lo, hi);
@@ -2815,8 +2837,15 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const interestMargin = creditVolume * (lendingRate - depositRate) / 100 / QUARTERS_PER_YEAR;
   const opCost = 0.004 * creditVolume;
   const bankProfit = interestMargin - loanLosses - opCost;
-  let bankCapital = Math.max(1, s.bankCapital + bankProfit + (d.bankCapital || 0) + (decisions.emergency ? 0.12 * s.bankCapital + 25 : 0));
   const rwa = Math.max(1, creditVolume * T.riskWeight);
+  /* Экстренная поддержка банков была «+12% капитала + 25» — в абсолютных
+     единицах, одинаковых для любой экономики. На старте 25 — это ~2,4% активов,
+     взвешенных по риску (1050), но после многолетнего кредитного сжатия активы
+     падали до сотни, и те же 25 давали +25 п.п. норматива за квартал: стенд
+     длинных партий поймал норматив достаточности капитала в 102%. Теперь
+     вливание — доля самой банковской системы, как и было задумано на старте. */
+  let bankCapital = Math.max(1, s.bankCapital + bankProfit + (d.bankCapital || 0)
+    + (decisions.emergency ? 0.12 * s.bankCapital + 0.024 * rwa : 0));
   // докапитализация с рынка: в спокойные времена банки привлекают капитал, в кризис — почти нет
   const capitalTarget = (decisions.capitalRequirement + 3.5) / 100 * rwa;
   if (bankCapital < capitalTarget) {
@@ -3014,8 +3043,18 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     11 + 2.6 * Math.abs(stockReturn) + 0.5 * fxVolatility + 0.16 * bankingRisk + (activeCrisesPre.length ? 16 : 0), 0.38), 5, 100);
 
   /* --- 14б. ПОЛИТИЧЕСКИЙ ЦИКЛ: рейтинг власти и выборы как жёсткий таймер --- */
+  /* Штраф за инфляцию выше цели насыщается, а не растёт линейно без предела.
+     Около цели наклон прежний (2,2 за пункт) — в спокойной партии рейтинг от
+     этого не меняется. Но линейный штраф при инфляции 28% в одиночку давал
+     −52 и опускал рейтинг в ноль при любой политике: отчёт о балансе показал,
+     что в сценариях «Гиперинфляция» и «Валютный кризис» демократия гибла и
+     при лучшей стратегии, и при полном бездействии — примерно в те же
+     кварталы. Решения игрока политически ничего не значили. Недовольство
+     ценами растёт быстро, но не бесконечно: выше ~20 пунктов его уже
+     перекрывают безработица и падение выпуска, которые считаются отдельно. */
+  const inflationPain = saturating(Math.max(0, inflation - infTarget), 2.2, 10);
   const approvalTarget = clamp(50 + 2.4 * (wageGrowth - inflation) - 3.6 * (unemployment - nairu)
-    - 2.2 * Math.max(0, inflation - infTarget) + 0.22 * (govTrust - 55) + 0.18 * (consumerConfidence - 55)
+    - inflationPain + 0.22 * (govTrust - 55) + 0.18 * (consumerConfidence - 55)
     + 1.6 * (gdpGrowth - potentialGrowth), 0, 100);
   /* Публичные шаги власти двигают сам рейтинг, а не его «равновесие»: пенсионная
      реформа сбивает поддержку сразу и целиком, а не на 28% от заявленного, и дальше
@@ -3303,7 +3342,10 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     + (warQuartersLeft > 0 ? 12 : 0)
     + activeCrises.length * 6
     + Math.max(0, unemployment - 7.5) * 2.2
-    + Math.max(0, inflation - 8) * 1.6
+    // та же логика насыщения, что и в рейтинге: прямой вклад цен в напряжение
+    // не должен в одиночку сносить демократию — он добавляется к рейтингу,
+    // в котором инфляция уже учтена
+    + saturating(Math.max(0, inflation - 8), 1.6, 12.5)
     + Math.max(0, debtToGdp - 90) * 0.15
     + repression * 14
     - Math.max(0, approval - 55) * 0.6,

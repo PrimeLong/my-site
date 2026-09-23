@@ -8,7 +8,7 @@ import {
   processPresidentialDirective, APPOINT_COST, PRES_DIRECTIVE_COST,
   PRESIDENT_PERSONAS, botPresident, directiveProgress, directiveVerdict, presidentSatisfactionNext, PROMISE_POOL as _POOL,
   askText, REQUESTS, militaryCoupRisk, reqAmount, advanceStories, storyTriggers,
-  presActionAvailable, applyPresidentActions,
+  presActionAvailable, applyPresidentActions, scaleLever,
   SCENARIOS, PRESS_QUESTIONS, pickPressQuestion,
   MAP_REGIONS, regionStress, regionBlurb, regionVoteShares,
   fmtMoney, fmtIndex,
@@ -1697,5 +1697,38 @@ describe('голос режима: подконтрольная пресса г�
       expect(b.id).toBe(a.id);
       expect(b.options.map((o) => o.id)).toEqual(a.options.map((o) => o.id));
     });
+  });
+});
+
+
+/* Потолок ключевой ставки. Отчёт о балансе (npm run balance) показал: сценарий
+   «Гиперинфляция» начинался при инфляции 34% и ставке 24% при потолке ползунка
+   25% — реальная ставка не могла стать положительной ни у бота, ни у игрока, и
+   инфляция стояла на 30+% четыре года. Потолок теперь растёт с инфляцией. */
+describe('потолок ключевой ставки растёт вместе с инфляцией', () => {
+  const KR = LEVERS.find((l) => l.id === 'keyRate');
+
+  it('в спокойной экономике потолок прежний — 25%', () => {
+    expect(scaleLever(KR, makeInitialEconomy()).max).toBe(25);
+  });
+
+  it('при высокой инфляции реальная ставка может стать положительной с запасом', () => {
+    const e = makeInitialEconomy('hyperinflation');
+    const cap = scaleLever(KR, e).max;
+    expect(cap).toBeGreaterThanOrEqual(Math.max(e.inflation, e.inflationExpectations) + 15);
+  });
+
+  it('движок не срезает ставку выше 25%, если она в пределах ползунка', () => {
+    const e = makeInitialEconomy('hyperinflation');
+    const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), keyRate: 45 },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    expect(r.economy.keyRate).toBe(45);
+  });
+
+  it('бот-ЦБ при гиперинфляции поднимает ставку выше старого потолка', () => {
+    let e = makeInitialEconomy('hyperinflation');
+    let rate = e.keyRate;
+    for (let i = 0; i < 6; i++) { rate = botCentralBank({ ...e, keyRate: rate }, 'hawk', 'medium').decisions.keyRate; }
+    expect(rate).toBeGreaterThan(25);
   });
 });
