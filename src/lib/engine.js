@@ -368,7 +368,7 @@ function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
     moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
-    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null, treaty: null,
+    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null, treaty: null, groupResponse: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -1879,6 +1879,13 @@ const directiveVerdict = (p) => (p === null || p === undefined ? null
    и не пора ли ему поменять руководителя ведомства, которым игрок не управляет.
    Считается ДО квартала — требование должно быть видно игроку прежде, чем он
    примет решения, иначе это не требование, а претензия задним числом. */
+// на ком держится власть каждого характера бота-президента (см. SOCIAL_GROUPS)
+const BOT_CORE_GROUPS = {
+  technocrat: ['business', 'public'],
+  populist: ['pensioners', 'workers', 'regions'],
+  strongman: ['siloviki', 'pensioners'],
+  reformer: ['business', 'youth'],
+};
 function botPresident(s, personaId, difficulty, ctx) {
   const P = getPresPersona(personaId);
   const opts = ctx || {};
@@ -1908,6 +1915,17 @@ function botPresident(s, personaId, difficulty, ctx) {
   // на дне списка — то, чем можно заняться всегда: кулдаун в 16 кварталов и цена
   // сами не дадут президенту подписывать нацпроекты каждый год
   wish.push('infra_program');
+  /* Группы общества: бот бережёт свою опору и не добивает тех, кого уже теряет.
+     Потерянные силовики — прямая дорога к перевороту, поэтому их спасают первыми;
+     провалившиеся области лечат нацпроектом, забытых пенсионеров — обращением. */
+  const sup = s.groupSupport || {};
+  const low = (g, lim) => Number.isFinite(sup[g]) && sup[g] < lim;
+  const core = BOT_CORE_GROUPS[P.id] || [];
+  if (low('siloviki', 40)) wish.unshift('military_parade');
+  if (low('regions', 38)) wish.unshift('infra_program');
+  if (low('pensioners', 38) && core.includes('pensioners')) wish.unshift('address');
+  const hurtsAllies = (id) => Object.entries(ACTION_GROUP_EFFECTS[id] || {}).some(([g, v]) => v < 0
+    && ((core.includes(g) && low(g, 45)) || (v <= -10 && low(g, 35))));
   // берём по одному решению за квартал и только если капитала заметно больше цены:
   // бот, спускающий капитал в ноль, перестаёт быть силой, с которой считаются
   const actions = [];
@@ -1915,6 +1933,8 @@ function botPresident(s, personaId, difficulty, ctx) {
     const a = PRES_BY_ID[id];
     if (!a || actions.length) continue;
     if (a.cost > capital - 12) continue;
+    // силовое подавление — исключение: силовику оно и есть способ удержать власть
+    if (hurtsAllies(id) && !(id === 'crackdown' && P.id === 'strongman')) continue;
     if (!presActionAvailable(a, s, opts.cooldowns || {})) continue;
     actions.push(id);
   }
@@ -2593,6 +2613,10 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const RS = regionStep(s, decisions, difficulty, quarterIndex);
   queue = queue.concat(RS.impulses);
   RS.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  // требования лидеров групп: ответ на прошлое, новое требование
+  const GD = groupDemandStep(s, decisions, difficulty, quarterIndex);
+  queue = queue.concat(GD.impulses);
+  GD.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
   // новые земли: лояльность, интеграция, партизаны
   const AN = annexStep(s, decisions, difficulty, RS.loyaltyDelta);
   queue = queue.concat(AN.impulses);
@@ -2787,7 +2811,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
   // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
   const projectReal = RS.projectPct / 100 * s.gdp;
-  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct + AN.spendPct + RV.spendPct) / 100 * s.gdp;
+  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct + AN.spendPct + RV.spendPct + GD.spendPct) / 100 * s.gdp;
   if (sequesterFactor < 0.995) {
     news.push(mkNews('crisis', `СЕКВЕСТР БЮДЖЕТА: РАСХОДЫ УРЕЗАНЫ НА ${fmt1((1 - sequesterFactor) * 100)}%`,
       `Инвесторы отказываются финансировать дефицит больше ${fmt1(maxDeficitPct)}% ВВП при долге ${fmt1(s.debtToGdp)}% и премии за риск ${fmt1(s.riskPremium)} п.п. Правительство вынуждено резать расходы независимо от своих планов — первыми страдают госинвестиции.`,
@@ -3347,6 +3371,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     else if (tone === 'hard') groupMemoryNew.push(...groupMemoryOf({ youth: -3, siloviki: 2 }, res.title, 8));
   }
   if (sovereignDefault) groupMemoryNew.push(...groupMemoryOf({ business: -15, pensioners: -8, public: -8 }, 'Дефолт', 12));
+  groupMemoryNew.push(...GD.memory);
   if (RV.lost.length) groupMemoryNew.push(...groupMemoryOf({ siloviki: -8, pensioners: -3 }, 'Потеря новых земель', 10));
   if (PC.returned.length) groupMemoryNew.push(...groupMemoryOf({ siloviki: -10 }, 'Земли возвращены Норланду', 12));
   if (PC.treaty && PC.treaty !== s.treaty && PC.treaty.recognized) groupMemoryNew.push(...groupMemoryOf({ business: 6 }, 'Граница признана', 10));
@@ -3967,6 +3992,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     revancheCampaign: warQuartersLeft > 0 && warType === 'revanche' ? (RV.campaign || s.revancheCampaign) : null,
     norlandRevanche: RV.revanche, revancheWarned: RV.warned, peaceTalks, treaty,
     groupSupport: GS.support, groupSupportPrev: s.groupSupport || null, groupDriversNow: GS.drivers, groupUnrestCd: GE.cd,
+    groupDemand: GD.demand, groupDemandCooldown: GD.cooldown, lastGroupResolution: GD.resolution || s.lastGroupResolution || null,
     groupMemory: [...GS.memory, ...groupMemoryLate],
     politicalCapital, politicalCapitalGain, reforms, cbTenure, mofTenure, decreeRule, presidentSatisfaction,
     worldGdpGrowth, worldInflation, worldRate, commodityIndex, worldDemandIndex,
@@ -4827,6 +4853,7 @@ function makeInitialEconomy(scenarioId) {
     annexLoyalty: {}, annexIntegrated: [], annexFunded: [],
     norlandRevanche: 0, revancheWarned: false, revancheCampaign: null, peaceTalks: null, treaty: null,
     groupSupport: null, groupSupportPrev: null, groupMemory: [], groupDriversNow: null, groupUnrestCd: {},
+    groupDemand: null, groupDemandCooldown: 0, lastGroupResolution: null,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
     activeCrises: [], regime: I.regime || 'normal', recessionStreak: 0, recessionRecoverStreak: 0, regimeStreak: 1, demands: [], pandemicQuartersLeft: 0, warQuartersLeft: 0, warType: null, warByChoice: false,
     unrestActive: false, marketLockoutQuartersLeft: 0, defaultedEver: false, justDefaulted: false,
@@ -5604,6 +5631,12 @@ function botRegionPlan(s, P, consolidationNeed) {
         : (stress >= 45 ? byTone('generous') : byTone('cheap')) || byTone('generous');
     plan.regionResponse = (pick || ev.options.find((o) => o.id === ev.defaultOption)).id;
   }
+  // требование группы: популист уступает, экономный обещает, остальные уступают,
+  // только если группа уже на грани
+  if (s.groupDemand) {
+    const v = (s.groupSupport || {})[s.groupDemand.group] ?? 40;
+    plan.groupResponse = P.id === 'populist' ? 'concede' : P.id === 'austerity' ? 'promise' : v < 32 ? 'concede' : 'promise';
+  }
   // новые земли: популист интегрирует всё, экономный — только самую неспокойную,
   // остальные — пока область не стала своей, если бюджет позволяет
   const annex = activeRegions(s).filter((r) => r.annex && annexLoyalty(s, r.id) < 70)
@@ -6241,16 +6274,36 @@ function groupDrivers(id, x) {
     default: return [];
   }
 }
+/* Что ползунок при этом значении значит для групп — те же коэффициенты, что и
+   в groupDrivers, только по одному рычагу: [[группа, пункты], …]. */
+const LEVER_GROUP_SENS = {
+  transfers: (v) => [['pensioners', 0.7 * v], ['regions', 0.5 * v]],
+  govSpending: (v) => [['public', 0.8 * v]],
+  profitTaxRate: (v) => [['business', -0.8 * (v - 20)]],
+  keyRate: (v, t) => [['business', -0.7 * (v - (t + 2))]],
+  shareDefense: (v) => [['siloviki', 1.2 * (v - 15)]],
+  shareHealth: (v) => [['public', 0.5 * (v - 19)]],
+  shareEducation: (v) => [['public', 0.5 * (v - 16)]],
+};
+function leverGroupEffects(leverId, value, infTarget) {
+  const f = LEVER_GROUP_SENS[leverId];
+  if (!f || !Number.isFinite(value)) return [];
+  return f(value, Number.isFinite(infTarget) ? infTarget : CONFIG.target.inflation)
+    .map(([g, v]) => [g, Math.round(v * 10) / 10]).filter(([, v]) => Math.abs(v) >= 0.5);
+}
 function groupStep(s, ctx) {
   const base = Number.isFinite(s.approval) ? s.approval : 55;
   const prev = s.groupSupport || {};
-  const memory = [...(s.groupMemory || []).map((m) => ({ ...m, left: m.left - 1 })).filter((m) => m.left > 0), ...(ctx.newMemory || [])];
+  // запись с wait > 0 ещё не действует: так живёт невыполненное обещание — сначала
+  // благодарность, а через несколько кварталов разочарование
+  const memory = [...(s.groupMemory || []).map((m) => (m.wait > 0 ? { ...m, wait: m.wait - 1 } : { ...m, left: m.left - 1 }))
+    .filter((m) => m.left > 0), ...(ctx.newMemory || [])];
   const support = {}; const drivers = {};
   SOCIAL_GROUPS.forEach((g) => {
     const parts = groupDrivers(g.id, ctx).filter(([, v]) => Math.abs(v) >= 0.05);
     drivers[g.id] = parts.map(([k, v]) => [k, Math.round(v * 10) / 10]);
     const dev = clamp(parts.reduce((a, [, v]) => a + v, 0), -25, 25);
-    const mem = memory.filter((m) => m.group === g.id).reduce((a, m) => a + (m.amount * m.left) / m.total, 0);
+    const mem = memory.filter((m) => m.group === g.id && !(m.wait > 0)).reduce((a, m) => a + (m.amount * m.left) / m.total, 0);
     const target = clamp(ctx.approvalTarget + dev + mem, 0, 100);
     support[g.id] = clamp(ema(Number.isFinite(prev[g.id]) ? prev[g.id] : base, target, 0.28) + (ctx.push || 0), 0, 100);
   });
@@ -6332,6 +6385,77 @@ function groupEpisodes(s, support, difficulty) {
     out.news.push(['crisis', u.headline, u.text(g), 7]);
     out.cd[g.id] = 3;
   });
+  return out;
+}
+
+/* Требования лидеров групп. Когда группа уходит к оппозиции, её лидер приходит
+   с конкретным требованием — и на него надо ответить в следующем квартале, как на
+   событие в области: уступить (деньги, группа довольна надолго), пообещать (дёшево,
+   благодарность сейчас — разочарование потом), отказать (группа запомнит).
+   Отвечают Минфин и президент; без ответа — отказ. */
+const GROUP_DEMANDS = {
+  pensioners: { title: 'Пенсионеры требуют внеочередной индексации', concede: 'Проиндексировать пенсии', spend: 0.2,
+    text: (s) => `Инфляция ${fmt1(s.inflation)}%, пенсия за ценами не поспевает. Союз пенсионеров требует внеочередной индексации.` },
+  workers: { title: 'Профсоюзы требуют заказов и индексации зарплат', concede: 'Госзаказ заводам и индексация', spend: 0.15,
+    text: (s) => `Безработица ${fmt1(s.unemployment)}%. Федерация профсоюзов требует госзаказов и индексации зарплат на госпредприятиях.`,
+    extra: (d) => [makeImpulse('inflationSupply', 0.1, 'Индексация зарплат по требованию профсоюзов', 'slow', d, 'other')] },
+  business: { title: 'Бизнес требует снизить налоговую нагрузку', concede: 'Налоговые каникулы для бизнеса', spend: 0,
+    text: (s) => `Премия за риск ${fmt1(s.riskPremium)} п.п., ставка ${fmt1(s.keyRate)}%. Союз промышленников требует налоговых каникул — иначе инвестиции уйдут за границу.`,
+    extra: (d, s) => [sustainedImpulse('revenue', -(s.nominalGdp || 0) * 0.4 / 100, 6, 'Налоговые каникулы для бизнеса'),
+      makeImpulse('businessConfidence', 4, 'Налоговые каникулы', 'default', d, 'other')] },
+  siloviki: { title: 'Генштаб требует денег на перевооружение', concede: 'Выделить деньги на перевооружение', spend: 0.25,
+    text: () => 'Генштаб докладывает: техника изношена, довольствие отстаёт от цен. Требование — внеочередное финансирование перевооружения.' },
+  public: { title: 'Учителя и врачи требуют повышения зарплат', concede: 'Поднять зарплаты бюджетникам', spend: 0.2,
+    text: () => 'Профсоюз учителей и врачей грозит забастовкой: зарплаты в школах и больницах отстали от цен и от частного сектора.' },
+  youth: { title: 'Студенты требуют работы и свобод', concede: 'Молодёжная программа: рабочие места и гранты', spend: 0.08,
+    text: (s) => `Молодёжная безработица растёт вдвое быстрее общей (${fmt1(s.unemployment)}%). Студенческое движение требует программы рабочих мест${s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian' ? ' и отмены цензуры' : ''}.` },
+  regions: { title: 'Губернаторы требуют трансфертов', concede: 'Увеличить трансферты областям', spend: 0.15,
+    text: () => 'Ассоциация губернаторов: областные бюджеты пусты, зарплаты бюджетникам на местах платить нечем. Требование — трансферты из центра.' },
+};
+function publicGroupDemand(groupId, s, q) {
+  const g = SOCIAL_GROUPS.find((x) => x.id === groupId);
+  const t = GROUP_DEMANDS[groupId];
+  return { group: groupId, title: t.title, text: t.text(s), q, leader: g.leader, defaultOption: 'refuse',
+    options: [
+      { id: 'concede', tone: 'generous', label: t.concede, spend: t.spend, support: 10,
+        effect: 'Группа довольна надолго — но это стоит денег.' },
+      { id: 'promise', tone: 'cheap', label: 'Пообещать и отложить', spend: 0, support: 5,
+        effect: 'Сейчас — благодарность, через год — разочарование, если обещание так и не выполнят.' },
+      { id: 'refuse', tone: 'hard', label: 'Отказать', spend: 0, support: -7,
+        effect: 'Бюджет цел, группа запомнит отказ — и её лидер перейдёт к делу.' },
+    ] };
+}
+function groupDemandStep(s, decisions, difficulty, q) {
+  const out = { impulses: [], news: [], spendPct: 0, memory: [], demand: null, cooldown: Math.max(0, (s.groupDemandCooldown || 0) - 1), resolution: null };
+  const pend = s.groupDemand;
+  if (pend) {
+    const t = GROUP_DEMANDS[pend.group];
+    const chosen = pend.options.find((o) => o.id === decisions.groupResponse);
+    const opt = chosen || pend.options.find((o) => o.id === pend.defaultOption);
+    const g = SOCIAL_GROUPS.find((x) => x.id === pend.group);
+    out.spendPct += opt.spend || 0;
+    if (opt.id === 'concede') {
+      out.memory.push(...groupMemoryOf({ [pend.group]: 10 }, pend.title, 10));
+      if (t.extra) out.impulses.push(...t.extra(difficulty, s));
+    } else if (opt.id === 'promise') {
+      out.memory.push(...groupMemoryOf({ [pend.group]: 5 }, `Обещание: ${t.concede.toLowerCase()}`, 4));
+      out.memory.push(...groupMemoryOf({ [pend.group]: -8 }, `Обещание не выполнено: ${t.concede.toLowerCase()}`, 8).map((m) => ({ ...m, wait: 4 })));
+    } else {
+      out.memory.push(...groupMemoryOf({ [pend.group]: -7 }, `Отказ: ${pend.title.toLowerCase()}`, 8));
+      out.impulses.push(makeImpulse('tensionPush', 1, `${g.name}: требование отклонено`, 'fast', difficulty, 'other'));
+    }
+    out.resolution = { group: pend.group, title: pend.title, option: opt.id, label: opt.label, byDefault: !chosen, q };
+    out.news.push(['gov', `${g.name.toUpperCase()}: ${chosen ? opt.label.toUpperCase() : 'ОТВЕТА НЕ ДАЛИ'}`,
+      `${pend.title}. ${chosen ? `Ответ власти: «${opt.label}».` : 'Ответа так и не последовало — это читается как отказ.'} ${opt.effect}`, 7]);
+    out.cooldown = Math.max(out.cooldown, 3);
+    return out;
+  }
+  if (out.cooldown > 0 || q < 4) return out;
+  const sup = s.groupSupport || {};
+  const worst = SOCIAL_GROUPS.filter((g) => Number.isFinite(sup[g.id]) && sup[g.id] < 42).sort((a, b) => sup[a.id] - sup[b.id])[0];
+  if (!worst || Math.random() >= 0.45) return out;
+  out.demand = publicGroupDemand(worst.id, s, q);
+  out.news.push(['crisis', out.demand.title.toUpperCase(), `${worst.leader.name}, ${worst.leader.title}: ${out.demand.text} Ответ нужен в следующем квартале.`, 8]);
   return out;
 }
 
@@ -6620,7 +6744,7 @@ export {
   POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
-  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
+  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
   sanitizeTreaty, treatyCost, botTreaty, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,

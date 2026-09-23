@@ -15,7 +15,7 @@ import {
   activeRegions, votingRegions, annexLoyalty, sanitizeIntegration, REGION_PROJECTS, projectBlocker, REGION_EVENTS,
   INTEGRATED_AT, INTEGRATION_COST,
   treatyCost, sanitizeTreaty, botTreaty, revancheGrowth,
-  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, coalitionOf, groupTurnoutShift, groupStatus,
+  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, coalitionOf, groupTurnoutShift, groupStatus, leverGroupEffects,
   fmtMoney, fmtIndex,
 } from '../engine.js';
 
@@ -2529,4 +2529,52 @@ describe('общество: социальные группы', () => {
     expect(groupStatus(65)).toBe('опора власти');
     expect(groupStatus(20)).toBe('в оппозиции');
   });
+});
+
+describe('группы в решениях ботов, ползунках и требованиях', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const withRandom = (v, fn) => { const r = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = r; } };
+  const all = (v) => Object.fromEntries(SOCIAL_GROUPS.map((g) => [g.id, v]));
+  const base = (extra) => ({ ...makeInitialEconomy(), regionEventCooldown: 99, politicalCapital: 100, ...extra });
+
+  it('бот-президент при потерянных силовиках первым делом устраивает парад', () => withRandom(0.5, () => {
+    const plan = botPresident(base({ groupSupport: { ...all(55), siloviki: 30 } }), 'technocrat', 'medium', {});
+    expect(plan.actions).toEqual(['military_parade']);
+  }));
+
+  it('бот не подписывает решение, которое добивает его опору', () => withRandom(0.5, () => {
+    // при большом долге реформатор хотел бы пенсионную реформу, но пенсионеры уже в оппозиции
+    const e = base({ groupSupport: { ...all(55), pensioners: 30 }, debtToGdp: 95 });
+    const plan = botPresident(e, 'reformer', 'medium', {});
+    expect(plan.actions).not.toContain('pension');
+  }));
+
+  it('ползунок показывает, кому нравится значение: соцвыплаты — пенсионерам, высокая ставка не нравится бизнесу', () => {
+    expect(leverGroupEffects('transfers', 5)).toEqual([['pensioners', 3.5], ['regions', 2.5]]);
+    expect(leverGroupEffects('keyRate', 10, 4)).toEqual([['business', -2.8]]);
+    expect(leverGroupEffects('transfers', 0)).toEqual([]);
+    expect(leverGroupEffects('reserveReq', 10)).toEqual([]);
+  });
+
+  it('лидер потерянной группы выдвигает требование; уступка стоит денег и радует группу надолго', () => withRandom(0.1, () => {
+    const e1 = step(base({ groupSupport: { ...all(55), public: 30 } }), {}, 6).economy;
+    expect(e1.groupDemand.group).toBe('public');
+    const e2 = step(e1, { groupResponse: 'concede' }, 7).economy;
+    expect(e2.groupDemand).toBe(null);
+    expect(e2.groupMemory.some((m) => m.group === 'public' && m.amount === 10)).toBe(true);
+    expect(e2.lastGroupResolution).toMatchObject({ group: 'public', option: 'concede', byDefault: false });
+  }));
+
+  it('обещание: сейчас благодарность, разочарование — позже; молчание — отказ', () => withRandom(0.1, () => {
+    const e1 = step(base({ groupSupport: { ...all(55), workers: 30 } }), {}, 6).economy;
+    const promised = step(e1, { groupResponse: 'promise' }, 7).economy;
+    const later = promised.groupMemory.find((m) => m.group === 'workers' && m.amount < 0);
+    expect(later.wait).toBe(4);
+    const silent = step(e1, {}, 7).economy;
+    expect(silent.lastGroupResolution).toMatchObject({ option: 'refuse', byDefault: true });
+    expect(silent.groupMemory.some((m) => m.group === 'workers' && m.amount === -7)).toBe(true);
+  }));
 });

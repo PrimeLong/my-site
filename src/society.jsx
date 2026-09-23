@@ -2,15 +2,17 @@
    социальных групп (см. SOCIAL_GROUPS в движке); здесь видно, кто в коалиции,
    кто колеблется, кого уже потеряли, что каждую группу двигает сейчас и какие
    решения она помнит. Грузится лениво, как и карта. */
-import { Briefcase, HardHat, Heart, MapPin, Megaphone, Shield, Stethoscope, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1 } from './lib/engine.js';
-import { COLOR } from './MacroSimulator.jsx';
+import { AlertTriangle, Briefcase, HardHat, Heart, MapPin, Megaphone, Shield, Stethoscope, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1, fmtMoney } from './lib/engine.js';
+import { Audio, COLOR } from './MacroSimulator.jsx';
 
 const GROUP_ICON = { pensioners: Heart, workers: HardHat, business: Briefcase, siloviki: Shield, public: Stethoscope, youth: Megaphone, regions: MapPin };
 const statusColor = (v) => (v >= 50 ? COLOR.teal : v >= 35 ? COLOR.gold : COLOR.rust);
 const signed = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${fmt1(Math.abs(v))}`;
 
-export function SocietyView({ economy }) {
+/* plan/onPlan — ответ на требование группы в этом квартале ({ groupResponse });
+   без onPlan требование только показывается, отвечает planner. */
+export function SocietyView({ economy, plan, onPlan, planner }) {
   const base = Number.isFinite(economy.approval) ? economy.approval : 50;
   // до первого квартала групп ещё нет: все стартуют с общего рейтинга
   const support = economy.groupSupport || Object.fromEntries(SOCIAL_GROUPS.map((g) => [g.id, base]));
@@ -20,6 +22,13 @@ export function SocietyView({ economy }) {
   const unfree = economy.politicalRegime === 'authoritarian' || economy.politicalRegime === 'totalitarian';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {economy.groupDemand && <DemandPanel demand={economy.groupDemand} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />}
+      {!economy.groupDemand && economy.lastGroupResolution && (
+        <div style={{ fontSize: 11.5, color: COLOR.muted }}>
+          Последнее требование — {economy.lastGroupResolution.title.toLowerCase()}: {economy.lastGroupResolution.byDefault
+            ? 'ответа не было, это сочли отказом' : `ответ «${economy.lastGroupResolution.label.toLowerCase()}»`}.
+        </div>
+      )}
       <div className="ems-panel" style={{ padding: 16 }} aria-label="Коалиция власти">
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6, flexWrap: 'wrap' }}>
           <Users size={17} color={COLOR.gold} />
@@ -60,6 +69,48 @@ export function SocietyView({ economy }) {
             drivers={(economy.groupDriversNow || {})[g.id] || []}
             memory={(economy.groupMemory || []).filter((m) => m.group === g.id)} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function DemandPanel({ demand, economy, plan, onPlan, planner }) {
+  const g = SOCIAL_GROUPS.find((x) => x.id === demand.group);
+  const chosen = plan && plan.groupResponse;
+  const Icon = GROUP_ICON[demand.group] || Users;
+  return (
+    <div className="ems-panel" style={{ padding: 14, borderLeft: `3px solid ${COLOR.rust}` }} aria-label="Требование группы">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <AlertTriangle size={15} color={COLOR.rust} />
+        <span className="ems-serif" style={{ fontSize: 14.5 }}>{demand.title}</span>
+        <Icon size={14} color={COLOR.muted} style={{ marginLeft: 'auto' }} />
+        <span style={{ fontSize: 10.5, color: COLOR.faint }}>{g ? g.name : ''}</span>
+      </div>
+      <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55, marginBottom: 9 }}>
+        <b>{demand.leader.name}</b>, {demand.leader.title}: {demand.text}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(200px, 100%), 1fr))', gap: 6 }}>
+        {demand.options.map((o) => {
+          const active = chosen === o.id;
+          const cost = o.spend ? `~${fmtMoney(economy.nominalGdp * o.spend / 100)}` : 'без затрат';
+          const pick = () => { Audio.play('tick'); onPlan({ ...plan, groupResponse: active ? null : o.id }); };
+          return (
+            <div key={o.id} role={onPlan ? 'button' : undefined} tabIndex={onPlan ? 0 : undefined} aria-pressed={onPlan ? active : undefined}
+              className={onPlan ? 'ems-card-btn' : undefined}
+              onClick={onPlan ? pick : undefined} onKeyDown={onPlan ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } } : undefined}
+              style={{ padding: '7px 9px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, borderRadius: 3,
+                cursor: onPlan ? 'pointer' : 'default', border: `1px solid ${active ? COLOR.gold : COLOR.border}`, background: active ? COLOR.goldDim : COLOR.panelAlt }}>
+              <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? COLOR.goldSoft : COLOR.text }}>{o.label}</span>
+              <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint }}>
+                {cost} · {g ? g.name.toLowerCase() : 'группа'} <span style={{ color: o.support >= 0 ? COLOR.teal : COLOR.rust }}>{o.support > 0 ? '+' : '−'}{Math.abs(o.support)}</span>
+              </span>
+              <span style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4 }}>{o.effect}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8 }}>
+        {onPlan ? (chosen ? 'Ответ применится в конце квартала.' : 'Без ответа это будет отказ.') : `Отвечает ${planner || 'Минфин'}.`}
       </div>
     </div>
   );

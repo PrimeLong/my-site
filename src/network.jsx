@@ -762,7 +762,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       const president = isPresidentSeat
         ? { actions: presActions, appointCb: presAppointCb, appointMof: presAppointMof,
           directive: presDirective, directiveStrength: presDirStrength,
-          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null },
+          region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null, groupResponse: decisions.groupResponse || null },
           warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null, treaty: decisions.treaty || null }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
@@ -1101,7 +1101,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                           )}
                           {set.map((l) => (
                             <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={leverDisplay(l)} value={decisions[l.id]}
-                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} />
+                              onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, room.difficulty)} infTarget={decisions.inflationTarget} />
                           ))}
                         </React.Fragment>
                       );
@@ -1288,7 +1288,11 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </span>
             ))}
           </div>
-          {centerView === 'society' ? <Suspense fallback={<ChartFallback />}><SocietyView economy={economy} /></Suspense>
+          {centerView === 'society' ? <Suspense fallback={<ChartFallback />}>
+            <SocietyView economy={economy} plan={{ groupResponse: decisions.groupResponse || null }}
+              onPlan={canPlanMap && !sent ? (pl) => setDecisions((d) => ({ ...d, groupResponse: pl.groupResponse })) : null}
+              planner={room.president && room.president.human ? 'президент' : room.occupied.ministry_finance ? `Минфин (${room.names.ministry_finance || 'игрок'})` : 'Минфин (бот)'} />
+          </Suspense>
             : centerView === 'map' ? <Suspense fallback={<ChartFallback />}>
             <CountryMap economy={economy}
               plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null }}

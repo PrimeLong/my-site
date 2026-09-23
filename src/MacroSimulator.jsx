@@ -18,7 +18,7 @@ import {
   simulateQuarter, makeInitialEconomy, leverPreview, pickPromises, evaluatePromise, pickPressQuestion,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare, REFORM_RAMP,
   processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM, makeImpulse, askText,
-  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
+  PRESIDENT_PERSONAS, getPresPersona, botWarOrder, botCampaignPlan, electionForecast, botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident, directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform,
   scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -430,8 +430,10 @@ export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) =
 // экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
 export const SocietyView = React.lazy(() => import('./society.jsx').then((m) => ({ default: m.SocietyView })));
 
-export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF }) {
+export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF, infTarget }) {
   const delta = lever.type === 'level' ? value - currentDisplay : value;
+  // кому из групп общества нравится это значение, а кому нет (см. «Общество»)
+  const groupFx = leverGroupEffects(lever.id, value, infTarget);
   const [open, setOpen] = useState(false);
   const pct = clamp(((value - lever.min) / (lever.max - lever.min)) * 100, 0, 100);
   const trackStyle = { background: `linear-gradient(90deg, ${COLOR.gold} 0%, ${COLOR.gold} ${pct}%, ${COLOR.border} ${pct}%, ${COLOR.border} 100%)` };
@@ -462,6 +464,15 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
         <span>{lever.type === 'level' ? '' : 'за квартал: '}от {lever.min}{lever.suffix} до {lever.max}{lever.suffix}</span>
         <span>шаг {lever.step}{lever.suffix}</span>
       </div>
+      {groupFx.length > 0 && (
+        <div style={{ fontSize: 10.5, marginTop: 4, color: COLOR.muted }}>
+          Группы при этом значении:{' '}
+          {groupFx.map(([g, v], i) => (
+            <span key={g}>{i ? ', ' : ''}<span style={{ color: v > 0 ? COLOR.teal : COLOR.rust }}>
+              {(SOCIAL_GROUPS.find((x) => x.id === g) || {}).name.toLowerCase()} {v > 0 ? '+' : '−'}{Math.abs(v).toFixed(1)}</span></span>
+          ))}
+        </div>
+      )}
       {Math.abs(delta) > 0.001 && (
         <div className="ems-fade-in" style={{ marginTop: 8, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '8px 9px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 6 }}>
@@ -5414,6 +5425,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
     if (canPlanMap) {
       eff = { ...eff, startProject: regionPlan.startProject || null, regionResponse: regionPlan.regionResponse || null,
+        groupResponse: regionPlan.groupResponse || null,
         // программа интеграции новых земель: не трогали — продолжается прошлая
         integrate: Array.isArray(regionPlan.integrate) ? regionPlan.integrate : null };
     }
@@ -5568,7 +5580,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
       setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
     }
     // стройка и ответ — на один квартал, программа интеграции действует дальше
-    setRegionPlan((p) => ({ startProject: null, regionResponse: null, integrate: p.integrate }));
+    setRegionPlan((p) => ({ startProject: null, regionResponse: null, groupResponse: null, integrate: p.integrate }));
     setCampaignPlan({});
     setTreatyPlan(null);
     setStories(result.stories);
@@ -5806,6 +5818,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       <CrisisBar economy={economy} botAction={botAction} />
 
+      {/* на телефоне плитки показателей занимали весь первый экран и заслоняли
+          карту и общество — там они не нужны, показатели есть на «Панели» */}
+      {!(narrow && (view === 'map' || view === 'society')) && (
       <div style={{ padding: '14px 18px 4px' }}>
         <div className="ems-kpi-strip">
           {pinned.map((key, idx) => {
@@ -5849,6 +5864,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <RiskBadge label="Валютный" value={economy.currencyRisk} />
         </div>
       </div>
+      )}
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {!isTrader && <DemandStrip botAction={botAction} botAction2={isPresident ? botAction2 : null}
@@ -5858,6 +5874,18 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
         {economy.regionEvent && view !== 'map' && (
           <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
+        )}
+        {economy.groupDemand && view !== 'society' && (
+          <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('society'); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('society'); } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
+              borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+            <Users size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+            <span><b style={{ color: COLOR.rust }}>{economy.groupDemand.title}.</b>{' '}
+              <span style={{ color: COLOR.muted }}>{canPlanMap
+                ? (regionPlan.groupResponse ? 'Ответ выбран — изменить можно на вкладке «Общество».' : 'Ответьте на вкладке «Общество», иначе это сочтут отказом.')
+                : 'Отвечает Минфин — подробности на вкладке «Общество».'}</span></span>
+          </div>
         )}
         {isPresident && economy.warType === 'offensive' && (economy.warQuartersLeft || 0) > 0 && view !== 'map' && (
           <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
@@ -5922,7 +5950,8 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
 
       {view === 'society' && (
         <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
-          <SocietyView economy={economy} />
+          <SocietyView economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
+            planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`} />
         </Suspense></div>
       )}
       {view === 'market' && (
@@ -6047,7 +6076,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
               </div>
@@ -6057,7 +6086,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'macropru').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6074,7 +6103,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6083,7 +6112,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'taxes').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
-                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6092,7 +6121,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>Доли нормализуются к 100%. Образование и здравоохранение растят человеческий капитал, наука — производительность. Эффект — годы, не кварталы.</div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'budget').map((l) => (
                   <LeverSlider key={l.id} lever={l} currentDisplay={economy.budgetShares[shareKey(l.id)]}
-                    value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    value={decisions[l.id]} onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}
@@ -6103,7 +6132,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
                 </div>
                 {levers.filter((l) => l.group === 'fiscal' && l.subgroup === 'debt').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
-                    onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} />
+                    onChange={(v) => setLever(l.id, v)} preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
               </div>
             )}

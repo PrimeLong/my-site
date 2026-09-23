@@ -217,9 +217,9 @@ describe('округа в сетевой партии: стройки и отв�
     const room = newRoom();
     const e = { ...room.economy, projectsBuilt: ['metro'],
       regionEvent: { id: 'drought', region: 'agri', options: [{ id: 'import' }, { id: 'wait' }] } };
-    expect(sanitizeRegionPlan({ startProject: 'moonbase', regionResponse: 'import' }, e)).toEqual({ startProject: null, regionResponse: 'import', integrate: null });
-    expect(sanitizeRegionPlan({ startProject: 'metro', regionResponse: 'pay' }, e)).toEqual({ startProject: null, regionResponse: null, integrate: null });
-    expect(sanitizeRegionPlan({ startProject: 'railway' }, { ...e, regionEvent: null })).toEqual({ startProject: 'railway', regionResponse: null, integrate: null });
+    expect(sanitizeRegionPlan({ startProject: 'moonbase', regionResponse: 'import' }, e)).toEqual({ startProject: null, regionResponse: 'import', integrate: null, groupResponse: null });
+    expect(sanitizeRegionPlan({ startProject: 'metro', regionResponse: 'pay' }, e)).toEqual({ startProject: null, regionResponse: null, integrate: null, groupResponse: null });
+    expect(sanitizeRegionPlan({ startProject: 'railway' }, { ...e, regionEvent: null })).toEqual({ startProject: 'railway', regionResponse: null, integrate: null, groupResponse: null });
     // программа интеграции: только присоединённые области
     expect(sanitizeRegionPlan({ integrate: ['halvik', 'capital', 'moon'] }, { ...e, annexed: ['mines'] }).integrate).toEqual(['halvik']);
   });
