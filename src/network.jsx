@@ -699,7 +699,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   }, [seat, room.mode]);
   // новый квартал — новый ход президента: прошлые указы уже оплачены и применены
   React.useEffect(() => {
-    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null);
+    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setWarTarget(null);
     setPresDirective(null); setPresDirStrength(1);
   }, [room.quarterIndex]);
 
@@ -742,6 +742,12 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [activeTab, setActiveTab] = useState('economy');
   // ход живого президента: указы и реформы, кадры, одно указание и его сила
   const [presActions, setPresActions] = useState([]);
+  // кому объявляется война — выбирается на карте, в карточке страны
+  const [warTarget, setWarTarget] = useState(null);
+  const planWar = (t) => {
+    setWarTarget(t);
+    setPresActions((list) => (t ? (list.includes('war_start') ? list : [...list, 'war_start']) : list.filter((x) => x !== 'war_start')));
+  };
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
@@ -800,7 +806,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           directive: presDirective, directiveStrength: presDirStrength,
           region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null, groupResponse: decisions.groupResponse || null },
           warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null, treaty: decisions.treaty || null,
-          diplomacy: decisions.diplomacy || null }
+          diplomacy: decisions.diplomacy || null, warTarget }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
       setRoom(r.room); setSent(true); Audio.play('stamp');
@@ -1317,6 +1323,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               onTreatyPlan={isPresidentSeat && !sent ? (t) => setDecisions((d) => ({ ...d, treaty: t })) : null}
               treatyPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : room.president ? 'президент (бот)' : 'МИД по поручению правительства'}
               diploPlan={decisions.diplomacy || null}
+              warPlan={presActions.includes('war_start') ? (warTarget || 'north') : null}
+              onWarPlan={isPresidentSeat && !sent ? planWar : null}
               onDiploPlan={isPresidentSeat && !sent ? (t) => setDecisions((d) => ({ ...d, diplomacy: t })) : null}
               diploPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : room.president ? 'президент (бот)' : 'МИД по поручению правительства'}
               planner={room.president && room.president.human

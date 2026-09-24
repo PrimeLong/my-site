@@ -169,7 +169,7 @@ function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
     moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
-    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null, treaty: null, groupResponse: null, diplomacy: null,
+    startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null, treaty: null, groupResponse: null, diplomacy: null, warTarget: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
     exciseRate: state.exciseRate, capitalTaxRate: state.capitalTaxRate, socialContribRate: state.socialContribRate,
@@ -1109,8 +1109,8 @@ const PRESIDENT_ACTIONS = [
      нет, есть санкции. Поэтому её и не показывают как «кризис, который случился»:
      это решение, у которого есть автор. */
   { id: 'war_start', group: 'war', severe: true, label: 'Начать военную операцию', cost: 45, cooldown: 20,
-    requires: (s) => (s.warQuartersLeft || 0) <= 0 && (s.annexed || []).length < 3,
-    reqText: 'Доступно, пока страна не воюет и у Норланда ещё есть что взять',
+    requires: (s) => (s.warQuartersLeft || 0) <= 0,
+    reqText: 'Доступно, пока страна не воюет',
     desc: 'Собственная война вместо чужой. Первые кварталы рейтинг растёт на сплочении вокруг флага, а с ним открываются чрезвычайные полномочия. Дальше начинается счёт: санкции, бегство капитала, сжатие торговли и инвестиций, рост цен со стороны предложения. Из войны выходят не тогда, когда захотят, а когда смогут.',
     build: (s, difficulty) => {
       const authoritarianPress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
@@ -3348,6 +3348,9 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
      потому, что надоело, — и всегда наступательного типа, со всеми вытекающими
      санкциями. Мобилизация продлевает, мир обрывает. */
   const warDecreed = !!pres.patch.startWar;
+  // кому объявлена война: выбор президента (карта), иначе — сосед с худшими отношениями
+  const warTarget = warDecreed ? sanitizeWarTarget(decisions.warTarget, s)
+    : ((s.warQuartersLeft || 0) > 0 && s.warType === 'offensive' ? warTargetOf(s) : null);
   const warEnded = !!pres.patch.endWar;
   /* Своя наступательная война не кончается сама по себе, когда истёк какой-то срок:
      её заканчивают победа, перемирие или мир — решением, а не календарём. Счётчик
@@ -3367,7 +3370,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let annexed = [...(s.annexed || [])];
   const annexLoyaltyNext = { ...AN.loyalty };
   const groupMemoryLate = [];
-  if (s.warType === 'offensive' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0) {
+  if (s.warType === 'offensive' && warTargetOf(s) === 'north' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0) {
     const fresh = (((WC.campaign || s.warCampaign) || {}).captured || []).filter((id) => !annexed.includes(id) && ANNEX_EFFECT[id]);
     if (fresh.length) {
       annexed = [...annexed, ...fresh];
@@ -3385,7 +3388,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // срок войны истёк без победы и без перемирия — фронт замирает там, где стоял
   if (s.warCampaign && warQuartersLeft === 0 && !WC.endWar && !warEnded && !warDecreed) {
     const kept = (WC.campaign || s.warCampaign).captured || [];
-    news.push(mkNews('gov', 'ФРОНТ ЗАМЕР: ВОЙНА С НОРЛАНДОМ ЗАКОНЧИЛАСЬ ПЕРЕМИРИЕМ', kept.length
+    news.push(mkNews('gov', `ФРОНТ ЗАМЕР: ВОЙНА ${WAR_TARGETS[warTargetOf(s)].ins.toUpperCase()} ЗАКОНЧИЛАСЬ ПЕРЕМИРИЕМ`, kept.length
       ? `Боевые действия прекращены по линии фронта. За страной остаётся: ${kept.map((id) => WAR_OBJECTIVE_BY_ID[id].name).join(', ')}.`
       : 'Боевые действия прекращены по линии фронта, ни одна из целей операции не взята.', { priority: 9 }));
   }
@@ -3404,7 +3407,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let peaceTalks = PC.talks;
   let treaty = PC.treaty;
   if (RV.talks) peaceTalks = RV.talks;
-  if (s.warType === 'offensive' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0 && annexed.length) {
+  if (s.warType === 'offensive' && warTargetOf(s) === 'north' && (s.warQuartersLeft || 0) > 0 && warQuartersLeft === 0 && annexed.length) {
     const held = (((WC.campaign || s.warCampaign) || {}).captured || []).concat(annexed);
     const value = [...new Set(held)].reduce((a, id) => a + (OBJECTIVE_VALUE[id] || 0), 0);
     peaceTalks = { since: quarterIndex, leverage: Math.max(0, 15 + value + (WC.victory ? 50 : 0) - (warEnded ? 10 : 0)), attempts: 0, origin: 'offensive' };
@@ -3801,7 +3804,8 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     projectReal,
     // штабы копятся весь цикл кампании и обнуляются голосованием
     campaignSpend: quartersToElection === CONFIG.election.cycle ? {} : CP.spend,
-    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign(annexed)) : null,
+    warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign(annexed, warTarget || 'north')) : null,
+    warTarget: warQuartersLeft > 0 && warType === 'offensive' ? (warTarget || 'north') : null,
     annexed: territory.annexed, annexLoyalty: territory.annexLoyalty, annexIntegrated: territory.annexIntegrated, annexFunded: territory.annexFunded,
     revancheCampaign: warQuartersLeft > 0 && warType === 'revanche' ? (RV.campaign || s.revancheCampaign) : null,
     defenseCampaign: warQuartersLeft > 0 && warType === 'defensive' ? (DF.campaign || s.defenseCampaign || newDefenseCampaign()) : null,
@@ -5081,6 +5085,7 @@ function warFrontRegion(economy) {
   // в войне за новые земли фронт там, куда бьёт Норланд
   if (economy.warType === 'revanche') return (economy.revancheCampaign && economy.revancheCampaign.next) || null;
   if (economy.warType === 'defensive' && economy.defenseCampaign) return economy.defenseCampaign.next || economy.defenseCampaign.occupied[0] || null;
+  if (economy.warType === 'offensive') return WAR_TARGETS[warTargetOf(economy)].front;
   return WAR_FRONT_REGION[economy.warType] || WAR_FRONT_REGION.defensive;
 }
 /* ============================ СТРОЙКИ В ОКРУГАХ ============================
@@ -5476,7 +5481,43 @@ const WAR_OBJECTIVES = [
   // к столице ведут два пути: через перевал и с востока, от копей Хальвика
   { id: 'city', name: 'Нордхольм', headline: 'ВЗЯТ НОРДХОЛЬМ', desc: 'Столица Норланда. Подойти можно через перевал или со стороны копей Хальвика; её падение при уже взятых целях — капитуляция противника.', requiresAny: ['pass', 'mines'] },
 ];
-const WAR_OBJECTIVE_BY_ID = Object.fromEntries(WAR_OBJECTIVES.map((o) => [o.id, o]));
+/* Войну можно объявить любому соседу. У каждой страны свои цели операции; земли
+   присоединяются только у Норланда (горный край, который и так спорный) — у Дешта и
+   Вестравии взятое возвращается по миру, а счёт закрывают репарации. enemyK — насколько
+   трудно продвигаться: Вестравия втрое больше и лучше вооружена, Дешт держит армию. */
+const WAR_OBJECTIVES_SW = [
+  { id: 'steppe', target: 'southwest', name: 'Приграничные степи', headline: 'ВЗЯТЫ ПРИГРАНИЧНЫЕ СТЕПИ', desc: 'Равнина за Приреченской областью: без неё к нефтепромыслам не подойти.' },
+  { id: 'oil', target: 'southwest', name: 'Кумсайские нефтепромыслы', headline: 'ВЗЯТЫ КУМСАЙСКИЕ НЕФТЕПРОМЫСЛЫ', desc: 'Нефть Дешта. Взятые — дешевле топливо и дороже экспорт, пока идёт война.', requiresAny: ['steppe'] },
+  { id: 'ashkala', target: 'southwest', name: 'Ашкала', headline: 'ВЗЯТА АШКАЛА', desc: 'Столица Дешта: её падение — капитуляция и репарации.', requiresAny: ['oil'] },
+];
+const WAR_OBJECTIVES_W = [
+  { id: 'fort', target: 'west', name: 'Пограничные укрепления', headline: 'ПРОРВАНА ПОГРАНИЧНАЯ ЛИНИЯ ВЕСТРАВИИ', desc: 'Долговременная оборона вдоль границы — первое, что нужно прорвать.' },
+  { id: 'limmern', target: 'west', name: 'Лиммерн', headline: 'ВЗЯТ ЛИММЕРН', desc: 'Промышленный город на пути к столице.', requiresAny: ['fort'] },
+  { id: 'westgrad', target: 'west', name: 'Вестград', headline: 'ВЗЯТ ВЕСТГРАД', desc: 'Столица Вестравии: её падение — капитуляция и репарации.', requiresAny: ['limmern'] },
+];
+const WAR_OBJECTIVE_BY_ID = Object.fromEntries([...WAR_OBJECTIVES, ...WAR_OBJECTIVES_SW, ...WAR_OBJECTIVES_W].map((o) => [o.id, o]));
+const WAR_TARGETS = {
+  north: { name: 'Норланд', gen: 'Норланда', ins: 'с Норландом', up: 'НОРЛАНД', objectives: WAR_OBJECTIVES, enemyK: 1, front: 'mining' },
+  southwest: { name: 'Дешт', gen: 'Дешта', ins: 'с Дештом', up: 'ДЕШТ', objectives: WAR_OBJECTIVES_SW, enemyK: 0.8, front: 'agri' },
+  west: { name: 'Вестравия', gen: 'Вестравии', ins: 'с Вестравией', up: 'ВЕСТРАВИЯ', objectives: WAR_OBJECTIVES_W, enemyK: 0.5, front: 'periphery', partner: true },
+};
+const warTargetOf = (s) => (WAR_TARGETS[s && s.warTarget] ? s.warTarget : 'north');
+const warObjectivesFor = (target) => (WAR_TARGETS[target] || WAR_TARGETS.north).objectives;
+// кому можно объявить войну: у Норланда — пока ещё есть что взять
+function warTargetAvailable(s, target) {
+  if (!WAR_TARGETS[target] || (s.warQuartersLeft || 0) > 0) return false;
+  if (target === 'north') return (s.annexed || []).length < 3;
+  return true;
+}
+// бот-президент, решивший воевать, идёт на того, с кем отношения хуже всего
+function defaultWarTarget(s) {
+  const rel = relationsOf(s);
+  const ok = Object.keys(WAR_TARGETS).filter((t) => warTargetAvailable(s, t));
+  return ok.sort((a, b) => rel[a] - rel[b])[0] || 'north';
+}
+// цель не выбрана (указ из кабинета, а не с карты) — как и раньше, Норланд, пока у него есть что взять
+const sanitizeWarTarget = (t, s) => (warTargetAvailable(s, t) ? t
+  : !t && warTargetAvailable(s, 'north') ? 'north' : defaultWarTarget(s));
 const WAR_STANCES = [
   { id: 'assault', label: 'Штурм', spend: 0.35, desc: 'Быстрое продвижение, но большие потери и расходы.' },
   { id: 'siege', label: 'Осада и обстрел', spend: 0.2, desc: 'Медленнее, дешевле, потерь меньше.' },
@@ -5484,9 +5525,9 @@ const WAR_STANCES = [
   { id: 'ceasefire', label: 'Предложить перемирие', spend: 0, desc: 'Закончить войну по нынешней линии фронта; взятые цели остаются за страной.' },
 ];
 // уже присоединённое после прошлой войны считается взятым: второй раз его не штурмуют
-const newWarCampaign = (annexed) => {
-  const own = annexed || [];
-  return { progress: Object.fromEntries(WAR_OBJECTIVES.map((o) => [o.id, own.includes(o.id) ? 100 : 0])), captured: [...own], last: null };
+const newWarCampaign = (annexed, target = 'north') => {
+  const own = target === 'north' ? (annexed || []) : [];
+  return { progress: Object.fromEntries(warObjectivesFor(target).map((o) => [o.id, own.includes(o.id) ? 100 : 0])), captured: [...own], last: null };
 };
 // что даёт присоединение: люди, руда, но и сопротивление на новых землях
 const ANNEX_EFFECT = {
@@ -5510,9 +5551,9 @@ function warStrength(s) {
 /* Приказ действует, пока его не отменят: без нового приказа армия продолжает
    прошлый (та же цель, если её ещё не взяли, и тот же способ). Самый первый
    приказ по умолчанию — осада ближайшей цели, армия действует по уставу. */
-function defaultWarOrder(camp) {
+function defaultWarOrder(camp, enemy = 'north') {
   const last = camp.last && camp.last.stance !== 'ceasefire' ? camp.last : null;
-  const first = WAR_OBJECTIVES.find((o) => warObjectiveOpen(o.id, camp));
+  const first = warObjectivesFor(enemy).find((o) => warObjectiveOpen(o.id, camp));
   const target = last && warObjectiveOpen(last.target, camp) ? last.target : first ? first.id : null;
   return { target, stance: last ? last.stance : 'siege' };
 }
@@ -5520,8 +5561,9 @@ function defaultWarOrder(camp) {
    пока его поддерживают, технократ и реформатор осаждают и ищут перемирие,
    когда взято хоть что-то, а поддержка тает. */
 function botWarOrder(s, personaId) {
-  const camp = s.warCampaign || newWarCampaign(s.annexed);
-  const order = defaultWarOrder(camp);
+  const target = warTargetOf(s);
+  const camp = s.warCampaign || newWarCampaign(s.annexed, target);
+  const order = defaultWarOrder(camp, target);
   if (!order.target) return { target: null, stance: 'ceasefire' };
   const approval = s.approval || 50;
   if (personaId === 'strongman') order.stance = approval > 20 ? 'assault' : 'ceasefire';
@@ -5531,7 +5573,7 @@ function botWarOrder(s, personaId) {
     if ((camp.captured.length >= 1 && approval < 45) || approval < 30) order.stance = 'ceasefire';
   }
   // копи выгоднее перевала, если перевал уже стоит дорого, — но сначала то, что ближе к взятию
-  const best = WAR_OBJECTIVES.filter((o) => warObjectiveOpen(o.id, camp)).sort((a, b) => camp.progress[b.id] - camp.progress[a.id])[0];
+  const best = warObjectivesFor(target).filter((o) => warObjectiveOpen(o.id, camp)).sort((a, b) => camp.progress[b.id] - camp.progress[a.id])[0];
   if (best) order.target = best.id;
   return order;
 }
@@ -5539,8 +5581,11 @@ function warCampaignStep(s, decisions, difficulty) {
   const out = { impulses: [], news: [], spendPct: 0, endWar: false, victory: false };
   const active = (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive';
   if (!active) return { ...out, campaign: null };
-  const camp = s.warCampaign ? { progress: { ...s.warCampaign.progress }, captured: [...(s.warCampaign.captured || [])], last: s.warCampaign.last } : newWarCampaign(s.annexed);
-  const def = defaultWarOrder(camp);
+  const tgt = warTargetOf(s);
+  const T = WAR_TARGETS[tgt];
+  const OBJ = T.objectives;
+  const camp = s.warCampaign ? { progress: { ...s.warCampaign.progress }, captured: [...(s.warCampaign.captured || [])], last: s.warCampaign.last } : newWarCampaign(s.annexed, tgt);
+  const def = defaultWarOrder(camp, tgt);
   const raw = decisions.warOrder || {};
   const stance = WAR_STANCES.find((x) => x.id === raw.stance) || WAR_STANCES.find((x) => x.id === def.stance) || WAR_STANCES[1];
   const target = warObjectiveOpen(raw.target, camp) ? raw.target : def.target;
@@ -5549,11 +5594,15 @@ function warCampaignStep(s, decisions, difficulty) {
   if (stance.id === 'ceasefire' || !target) {
     out.endWar = true;
     const n = camp.captured.length;
-    out.impulses.push(makeImpulse('approvalPush', n ? 2 * n : -3, 'Перемирие с Норландом', 'fast', difficulty, 'other'),
+    out.impulses.push(makeImpulse('approvalPush', n ? 2 * n : -3, `Перемирие ${T.ins}`, 'fast', difficulty, 'other'),
       makeImpulse('businessConfidence', 4, 'Боевые действия прекращены', 'default', difficulty, 'other'),
-      makeImpulse('tensionPush', n ? -2 : 3, 'Перемирие с Норландом', 'fast', difficulty, 'other'));
-    out.news.push(['gov', 'ПЕРЕМИРИЕ С НОРЛАНДОМ', n
-      ? `Боевые действия остановлены по линии фронта. За страной остаётся: ${camp.captured.map((id) => WAR_OBJECTIVE_BY_ID[id].name).join(', ')}.`
+      makeImpulse('tensionPush', n ? -2 : 3, `Перемирие ${T.ins}`, 'fast', difficulty, 'other'));
+    // у Дешта и Вестравии земли не берут: взятое возвращается, а за него платят
+    if (tgt !== 'north' && n) out.impulses.push(sustainedImpulse('revenue', (s.nominalGdp || 0) * 0.25 * n / 100, 6, `Выплаты ${T.gen} по перемирию`));
+    out.news.push(['gov', `ПЕРЕМИРИЕ ${T.ins.toUpperCase()}`, n
+      ? (tgt === 'north'
+        ? `Боевые действия остановлены по линии фронта. За страной остаётся: ${camp.captured.map((id) => WAR_OBJECTIVE_BY_ID[id].name).join(', ')}.`
+        : `Боевые действия остановлены. Взятое (${camp.captured.map((id) => WAR_OBJECTIVE_BY_ID[id].name).join(', ')}) возвращается ${T.gen === 'Вестравии' ? 'Вестравии' : 'Дешту'} — в обмен на выплаты полтора года.`)
       : `Боевые действия остановлены там же, где начались.${pressFree ? ' Цели операции не достигнуты — и это понятно всем.' : ' Официально — ради сохранения жизней.'}`, 10]);
     camp.last = { target: null, stance: 'ceasefire', gained: 0, counter: null };
     return { ...out, campaign: camp };
@@ -5564,8 +5613,11 @@ function warCampaignStep(s, decisions, difficulty) {
       makeImpulse('approvalPush', -0.6, 'Усталость от затяжной войны', 'fast', difficulty, 'other'),
       makeImpulse('riskPremium', 0.04, 'Затяжная война', 'fast', difficulty));
   }
-  const strength = warStrength(s);
-  const passBonus = camp.captured.includes('pass') ? 1.25 : 1;
+  // война с главным торговым партнёром бьёт по экспорту и капиталу каждый квартал
+  if (T.partner) out.impulses.push(makeImpulse('exportsGrowth', -1.5, 'Торговля с Вестравией закрыта', 'fast', difficulty, 'other'),
+    makeImpulse('capitalFlow', -5, 'Вестравские банки отзывают кредиты', 'fast', difficulty));
+  const strength = warStrength(s) * T.enemyK;
+  const passBonus = camp.captured.includes('pass') || camp.captured.includes('steppe') || camp.captured.includes('fort') ? 1.25 : 1;
   const gain = stance.id === 'assault' ? strength * (16 + 18 * rng()) * passBonus
     : stance.id === 'siege' ? strength * (6 + 8 * rng()) * passBonus : strength * 2 * rng();
   camp.progress[target] = clamp(camp.progress[target] + gain, 0, 100);
@@ -5575,9 +5627,9 @@ function warCampaignStep(s, decisions, difficulty) {
   else if (stance.id === 'siege') out.impulses.push(makeImpulse('approvalPush', -0.5, 'Затяжная осада', 'fast', difficulty, 'other'));
   // контратака противника по недобранной цели
   let counter = null;
-  const counterChance = (stance.id === 'hold' ? 0.1 : 0.25) * (camp.captured.includes('pass') ? 0.5 : 1);
+  const counterChance = (stance.id === 'hold' ? 0.1 : 0.25) * (camp.captured.includes('pass') ? 0.5 : 1) / Math.sqrt(T.enemyK);
   if (rng() < counterChance) {
-    const cands = WAR_OBJECTIVES.filter((o) => !camp.captured.includes(o.id) && camp.progress[o.id] > 0);
+    const cands = OBJ.filter((o) => !camp.captured.includes(o.id) && camp.progress[o.id] > 0);
     if (cands.length) {
       const o = cands[Math.floor(rng() * cands.length)];
       const lost = 8 + 8 * rng();
@@ -5592,15 +5644,20 @@ function warCampaignStep(s, decisions, difficulty) {
     const o = WAR_OBJECTIVE_BY_ID[target];
     if (target === 'mines') out.impulses.push(sustainedImpulse('exportsGrowth', 1.2, 8, 'Руда Хальвика идёт на экспорт'),
       makeImpulse('inflationSupply', -0.2, 'Сырьё Хальвика дешевле', 'slow', difficulty, 'other'));
+    if (target === 'oil') out.impulses.push(sustainedImpulse('exportsGrowth', 0.8, 6, 'Нефть Кумсая'),
+      makeImpulse('inflationSupply', -0.3, 'Топливо дешевле: нефть Кумсая', 'slow', difficulty, 'other'));
     out.impulses.push(makeImpulse('approvalPush', target === 'city' ? 4 : 2, `Взята цель: ${o.name}`, 'fast', difficulty, 'other'));
     out.news.push(['gov', o.headline, o.desc, 9]);
   }
-  if (WAR_OBJECTIVES.every((o) => camp.captured.includes(o.id))) {
+  if (OBJ.every((o) => camp.captured.includes(o.id))) {
     out.endWar = true; out.victory = true;
-    out.impulses.push(makeImpulse('approvalPush', 6, 'Победа над Норландом', 'fast', difficulty, 'other'),
-      makeImpulse('tensionPush', -4, 'Победа над Норландом', 'fast', difficulty, 'other'),
+    out.impulses.push(makeImpulse('approvalPush', 6, `Победа над ${T.gen === 'Вестравии' ? 'Вестравией' : T.gen === 'Дешта' ? 'Дештом' : 'Норландом'}`, 'fast', difficulty, 'other'),
+      makeImpulse('tensionPush', -4, 'Победа в войне', 'fast', difficulty, 'other'),
       makeImpulse('businessConfidence', 3, 'Война окончена', 'default', difficulty, 'other'));
-    out.news.push(['gov', 'НОРЛАНД ПОДПИСЫВАЕТ КАПИТУЛЯЦИЮ', 'Все цели операции взяты, противник принимает условия. Санкции за войну никуда не деваются — они снимаются дольше, чем вводились.', 10]);
+    if (tgt !== 'north') out.impulses.push(sustainedImpulse('revenue', (s.nominalGdp || 0) * 0.9 / 100, 8, `Репарации ${T.gen}`));
+    out.news.push(['gov', `${T.up} ПОДПИСЫВАЕТ КАПИТУЛЯЦИЮ`, tgt === 'north'
+      ? 'Все цели операции взяты, противник принимает условия. Санкции за войну никуда не деваются — они снимаются дольше, чем вводились.'
+      : `Все цели операции взяты. Войска уходят домой, а ${T.gen === 'Дешта' ? 'Дешт' : 'Вестравия'} два года платит репарации — около 0,9% ВВП в год. Соседи этого не забудут.`, 10]);
   }
   camp.last = { target, stance: stance.id, gained: Math.round(gain), counter };
   return { ...out, campaign: camp };
@@ -5765,7 +5822,8 @@ function relationsOf(s) { return { ...RELATIONS_START, ...s.relations }; }
 // воюем ли мы с этим соседом прямо сейчас
 function atWarWith(s, c) {
   if (!((s.warQuartersLeft || 0) > 0)) return false;
-  return c === 'southwest' ? s.warType === 'defensive' : c === 'north' ? s.warType === 'offensive' || s.warType === 'revanche' : false;
+  if (s.warType === 'offensive') return warTargetOf(s) === c;
+  return c === 'southwest' ? s.warType === 'defensive' : c === 'north' ? s.warType === 'revanche' : false;
 }
 // куда отношения тянутся сами, если ничего не делать
 function relationTarget(s, c) {
@@ -7058,6 +7116,7 @@ export {
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
   SOCIAL_GROUPS, publicGroupDemand, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
   sanitizeTreaty, treatyCost, botTreaty,
+  WAR_TARGETS, warTargetOf, warObjectivesFor, warTargetAvailable, defaultWarTarget, sanitizeWarTarget,
   NEIGHBOR_IDS, RELATIONS_START, DIPLO_ACTIONS, NEIGHBOR_EVENTS, relationsOf, relationTarget, relationEffects, deshtWarMultiplier, diploActionAvailable,
   ultimatumChance, neighborEventView, botDiplomacy, sanitizeDiplomacy, diplomacyStep, atWarWith, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
   DEF_FRONT, DEF_ENEMY, defaultFrontOrder, botFrontOrder,

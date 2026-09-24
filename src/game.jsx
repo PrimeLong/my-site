@@ -17,7 +17,7 @@ import {
   evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
-  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
+  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
   directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -4133,6 +4133,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     : initial && initial.promises ? initial.promises : runSeeded(daily, 'promises', () => pickPromises(initEconomy))));
   // пакет решений президента на текущий квартал: списывается движком при завершении
   const [presActions, setPresActions] = useState(initial ? initial.presActions || [] : []);
+  // кому объявляется война (выбрано на карте, в карточке страны); без выбора — Норланду
+  const [warTarget, setWarTarget] = useState(null);
+  const planWar = (t) => {
+    setWarTarget(t);
+    setPresActions((list) => (t ? (list.includes('war_start') ? list : [...list, 'war_start']) : list.filter((x) => x !== 'war_start')));
+  };
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
@@ -4276,7 +4282,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
        ботов; стоимость и последствия возвращаются движку отдельными каналами. */
     let dirResult = null;
     if (isPresident) {
-      eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof };
+      eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof, warTarget };
       if (presDirective) {
         dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff, presDirStrength);
       }
@@ -4507,7 +4513,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       // «Своими руками» — именно вернуть парламент, распущенный указом, а не тот,
       // который распустил кризис: decreeRule до квартала как раз это и означает
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
-      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
+      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1); setWarTarget(null);
     }
     // стройка и ответ — на один квартал, программа интеграции действует дальше
     setRegionPlan((p) => ({ startProject: null, regionResponse: null, groupResponse: null, integrate: p.integrate }));
@@ -4602,7 +4608,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     setFinishCooldown(3);
   }), [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
-    presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
+    presActions, presAppointCb, presAppointMof, presDirective, presDirStrength, warTarget,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan, diploPlan,
     isPublic, canCommandDefense]);
 
@@ -4845,7 +4851,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
             <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>Наступление на Норланд.</b>{' '}
+            <span><b style={{ color: COLOR.rust }}>Наступление: {WAR_TARGETS[warTargetOf(economy)].name}.</b>{' '}
               <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
           </div>
         )}
@@ -4908,6 +4914,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             treatyPlan={treatyPlan} onTreatyPlan={isPresident && !defeat ? setTreatyPlan : null}
             treatyPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'}
             diploPlan={diploPlan} onDiploPlan={isPresident && !defeat ? setDiploPlan : null}
+            warPlan={presActions.includes('war_start') ? (warTarget || 'north') : null} onWarPlan={isPresident && !defeat ? planWar : null}
             diploPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
         </Suspense></div>
       )}

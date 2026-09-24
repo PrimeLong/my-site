@@ -245,7 +245,7 @@ test('президент ведёт наступление на карте: це
   await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
   const close = page.getByRole('button', { name: 'Закрыть газету' });
   if (await close.isVisible().catch(() => false)) await close.click();
-  await expect(page.getByText('Наступление на Норланд.')).toBeVisible();
+  await expect(page.getByText('Наступление: Норланд.')).toBeVisible();
   await page.getByRole('button', { name: 'Карта', exact: true }).click();
   await page.getByRole('button', { name: /^Копи Хальвика: продвижение 0 из 100/ }).click();
   await page.getByRole('button', { name: /^Штурм/ }).click();
@@ -476,5 +476,30 @@ test('своё дело: конкуренты — доля рынка, карт�
   await page.getByRole('button', { name: /^Купить/ }).first().click();
   await expect(page.getByText('куплен вами')).toBeVisible();
   await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('война на карте: президент объявляет войну Дешту из карточки страны', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'сценарий проверяется на ширине компьютера');
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('dialog', (d) => d.accept());
+  await page.addInitScript(() => { let x = 42; Math.random = () => { x = (x * 16807) % 2147483647; return x / 2147483647; }; });
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Партия у руля страны', { exact: true }).click();
+  await page.getByText('Президент', { exact: true }).click();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  await page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await page.getByRole('button', { name: /^Дешт/ }).first().click();
+  await page.getByRole('button', { name: /Объявить войну/ }).click();
+  await expect(page.getByText('Война будет объявлена в конце квартала.')).toBeVisible();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  await page.waitForTimeout(2500);
+  if (await close.isVisible().catch(() => false)) await close.click();
+  await page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await expect(page.getByText(/Наступление: Дешт/).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Приграничные степи: продвижение/ })).toBeAttached();
   expect(errors).toEqual([]);
 });

@@ -2,12 +2,13 @@
    из MacroSimulator.jsx в отдельный чанк и грузится лениво — карта нужна
    только по нажатию вкладки «Карта», а не при первой загрузке сайта. */
 import { AlertTriangle, Anchor, ArrowLeft, Castle, CheckCircle2, Coins, Construction, Crown, Expand, Factory, Flag, Globe2, Handshake, Landmark, Lock, Maximize2, Minimize2, Minus, Mountain, Pickaxe, Plus, Shield, Swords, Trees, Vote, Wheat } from 'lucide-react';
-import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength,
+import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_STANCES, warObjectiveOpen, warStrength,
   CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel,
   regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
   DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, sanitizeTreaty, treatyCost,
   DEF_FRONT, DEF_ENEMY, defaultFrontOrder, POLITICAL_REGIME_INFO,
-  DIPLO_ACTIONS, relationsOf, relationEffects, diploActionAvailable, ultimatumChance, neighborEventView } from './lib/engine.js';
+  DIPLO_ACTIONS, relationsOf, relationEffects, diploActionAvailable, ultimatumChance, neighborEventView,
+  WAR_TARGETS, warTargetOf, warObjectivesFor, warTargetAvailable, PRES_BY_ID } from './lib/engine.js';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Audio, COLOR, starPath } from './MacroSimulator.jsx';
@@ -256,7 +257,13 @@ const WAR_SETUP = {
     arrows: [[[70, 640], [272, 560]], [[40, 480], [236, 478]]] },
   offensive: { edge: ['J1', 'H'], neighbor: 'north', inward: false, depth: 46, labelAt: [838, -18],
     arrows: [[[598, 190], [586, 48]], [[708, 178], [736, 60]]] },
+  // наступление на Дешт и на Вестравию — фронт уходит за их границу
+  offensive_southwest: { edge: ['D', 'C'], neighbor: 'southwest', inward: false, depth: 40, labelAt: [150, 590],
+    arrows: [[[300, 560], [190, 650]], [[250, 470], [120, 540]]] },
+  offensive_west: { edge: ['K', 'A'], neighbor: 'west', inward: false, depth: 40, labelAt: [95, 200],
+    arrows: [[[250, 250], [110, 250]], [[270, 170], [140, 150]]] },
 };
+const warSetupKey = (e) => (e.warType === 'offensive' && warTargetOf(e) !== 'north' ? `offensive_${warTargetOf(e)}` : e.warType);
 const COUNTRY_CENTER = [495, 380];
 /* Фронт — плавная дуга: граница, прорежённая до опорных точек и сдвинутая в ОДНУ
    сторону (перпендикуляр к хорде участка), с глубиной, нарастающей к середине. Так
@@ -332,8 +339,11 @@ function annexBorders(own) {
 const nationalBorderNoNorth = edgesOfKind(['west', 'southwest']) + ' ' + `${mv(NODES.A)}${curveTo(edgePts('A', 'J1'))}`;
 
 // цели наступления в Норланде — там же, где их рисует карта
-const OBJECTIVE_AT = { city: [560, -64], pass: [612, 50], mines: [742, 30] };
-const OBJECTIVE_ICON = { city: Castle, pass: Mountain, mines: Pickaxe };
+const OBJECTIVE_AT = { city: [560, -64], pass: [612, 50], mines: [742, 30],
+  steppe: [205, 690], oil: [150, 950], ashkala: [-230, 900], fort: [100, 290], limmern: [-150, -120], westgrad: [-300, 170] };
+// откуда идёт удар: город у границы с этим соседом
+const WAR_FROM = { north: 'mining', southwest: 'agri', west: 'periphery' };
+const OBJECTIVE_ICON = { city: Castle, pass: Mountain, mines: Pickaxe, steppe: Wheat, oil: Factory, ashkala: Castle, fort: Shield, limmern: Factory, westgrad: Castle };
 function warGeometry(warType, depthOverride) {
   const cfg = WAR_SETUP[warType] || WAR_SETUP.defensive;
   const border = edgePts(cfg.edge[0], cfg.edge[1]);
@@ -594,9 +604,10 @@ function neighborStatus(id, e) {
 function neighborStatusLabel(id, e) {
   const atWar = (e.warQuartersLeft || 0) > 0;
   const annexed = e.annexed || [];
+  // наступление может идти на любого соседа — тому, на кого идёт, и статус войны
+  if (atWar && e.warType === 'offensive' && warTargetOf(e) === id) return { label: 'Война: наше наступление', tone: 'rust', relation: 4 };
   if (id === 'north') {
     const rev = Math.max(0, Math.round(e.norlandRevanche || 0));
-    if (atWar && e.warType === 'offensive') return { label: 'Война: наше наступление', tone: 'rust', relation: 4 };
     if (atWar && e.warType === 'revanche') return { label: 'Война: реванш Норланда', tone: 'rust', relation: 2 };
     if (e.peaceTalks) return { label: 'Переговоры о мире', tone: 'gold', relation: 30 };
     if (e.treaty && e.treaty.recognized) return { label: 'Мир, граница признана', tone: 'teal', relation: clamp(70 - rev * 0.4, 20, 80), rev };
@@ -660,6 +671,37 @@ function NeighborEventBox({ view, plan, onPlan, planner }) {
     </div>
   );
 }
+/* Объявить войну — тоже решение на карте, из карточки той страны, которой её объявляют. */
+function DeclareWar({ id, economy, warPlan, onWarPlan }) {
+  const e = economy;
+  const a = PRES_BY_ID.war_start;
+  const capital = Number.isFinite(e.politicalCapital) ? e.politicalCapital : 55;
+  const planned = warPlan === id;
+  const can = warTargetAvailable(e, id) && a.requires(e);
+  const why = (e.warQuartersLeft || 0) > 0 ? 'Страна уже воюет' : id === 'north' && !warTargetAvailable(e, id) ? 'У Норланда больше нечего взять' : capital < a.cost ? 'Не хватает политического капитала' : null;
+  if (!onWarPlan && !planned) return null;
+  return (
+    <div style={{ marginTop: 10, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 10 }}>
+      {planned ? (
+        <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
+          <Swords size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Война будет объявлена в конце квартала.
+          {onWarPlan && <button className="ems-btn ghost" style={{ padding: '0 6px', fontSize: 12 }} onClick={() => { Audio.play('tick'); onWarPlan(null); }}>Отменить</button>}
+        </div>
+      ) : (
+        <button className="ems-btn" disabled={!can || capital < a.cost} title={why || a.desc}
+          style={{ width: '100%', padding: '7px 10px', fontSize: 12, borderColor: COLOR.rust, color: COLOR.rust, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}
+          onClick={() => {
+            const extra = id === 'west' ? '\n\nВестравия — главный торговый партнёр: экспорт и кредит рухнут, а её армия втрое сильнее.' : id === 'southwest' ? '\n\nДешт держит большую армию; земли его не присоединить — только репарации.' : '';
+            if (!window.confirm(`Объявить войну: ${NEIGHBOR_INFO[id].title}?${extra}\n\nСтоит ${a.cost} политического капитала. Санкции, бегство капитала и потери начнутся сразу.`)) return;
+            Audio.play('stamp'); onWarPlan(id);
+          }}>
+          <Swords size={13} />Объявить войну · капитал {a.cost}
+        </button>
+      )}
+      {!planned && why && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 4 }}>{why}.</div>}
+    </div>
+  );
+}
 function DiplomacyBlock({ id, economy, plan, onPlan, planner }) {
   const e = economy;
   const ev = neighborEventView(e);
@@ -708,7 +750,7 @@ function DiplomacyBlock({ id, economy, plan, onPlan, planner }) {
     </div>
   );
 }
-function CountryPanel({ id, economy, onBack, diploPlan, onDiploPlan, diploPlanner }) {
+function CountryPanel({ id, economy, onBack, diploPlan, onDiploPlan, diploPlanner, warPlan, onWarPlan }) {
   const e = economy;
   if (id === 'home') {
     const regime = (POLITICAL_REGIME_INFO[e.politicalRegime] || {}).label || e.politicalRegime;
@@ -767,6 +809,7 @@ function CountryPanel({ id, economy, onBack, diploPlan, onDiploPlan, diploPlanne
       {id === 'west' && <InfoRow k="Мировой спрос на наш экспорт" v={`${Math.round(e.worldDemandIndex || 100)} (норма — 100)`} />}
       {id === 'west' && e.tradeBlocActive && <InfoRow k="Торговый блок" v="мы в едином рынке" color={COLOR.teal} />}
       <DiplomacyBlock id={id} economy={e} plan={diploPlan} onPlan={onDiploPlan} planner={diploPlanner} />
+      <DeclareWar id={id} economy={e} warPlan={warPlan} onWarPlan={onWarPlan} />
       <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55, marginTop: 10 }}>{info.about}</div>
     </div>
   );
@@ -1071,7 +1114,7 @@ const TerrainLayer = memo(function TerrainLayer({ annexKey, tunnel, halvik }) {
    campaignPlanner — кто распределяет их за игрока без права решать. */
 /* treatyPlan/onTreatyPlan — условия мира, которые президент предложит Норланду в этом квартале. */
 export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner,
-  treatyPlan, onTreatyPlan, treatyPlanner, diploPlan, onDiploPlan, diploPlanner }) {
+  treatyPlan, onTreatyPlan, treatyPlanner, diploPlan, onDiploPlan, diploPlanner, warPlan = null, onWarPlan = null }) {
   // выбранная страна (сосед или своя): вместо карточки области — карточка страны
   const [country, setCountry] = useState(null);
   const [selected, setSelectedRaw] = useState('capital');
@@ -1120,9 +1163,13 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
   else if (annexed.includes('city') && annexed.includes('mines')) annexLinks.push({ k: 'mc', a: ANNEX_CITIES.mines.at, b: ANNEX_CITIES.city.at });
   annexLinks.forEach((l) => { l.d = arcPath(l.a, l.b, 16); l.rail = !!l.viaTunnel && builtSet.has('tunnel'); });
   const atWar = (economy.warQuartersLeft || 0) > 0;
-  const camp = atWar && economy.warType === 'offensive' ? (economy.warCampaign || { progress: { pass: 0, mines: 0, city: 0 }, captured: [], last: null }) : null;
-  // фронт уходит вглубь Норланда вместе с продвижением операции
-  const push = camp ? Math.max(...WAR_OBJECTIVES.map((o) => camp.progress[o.id] || 0)) : 0;
+  const warTgt = warTargetOf(economy);
+  const warObjs = warObjectivesFor(warTgt);
+  const camp = atWar && economy.warType === 'offensive'
+    ? (economy.warCampaign || { progress: Object.fromEntries(warObjs.map((o) => [o.id, 0])), captured: [], last: null }) : null;
+  // фронт уходит вглубь страны-противника вместе с продвижением операции
+  const push = camp ? Math.max(...warObjs.map((o) => camp.progress[o.id] || 0)) : 0;
+  const northCamp = camp && warTgt === 'north';
   // война за новые земли: не линия фронта, а удары Норланда по отдельным областям
   const revCamp = atWar && economy.warType === 'revanche' ? economy.revancheCampaign : null;
   // оборонительная война с Дештом: фронт на юго-западе, давление по двум областям
@@ -1131,8 +1178,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
   const defPush = defCamp ? Math.max(...DEF_FRONT.map((id) => defCamp.pressure[id] || 0)) : 0;
   /* своя наступательная война после первой: линия фронта уходит за уже присоединённые
      земли, а сами они вырезаются из зоны боёв — иначе фронт ложился поверх своих областей */
-  const war = atWar && !revCamp ? warGeometry(economy.warType,
-    camp ? (annexed.length ? 110 : 26) + push * 0.42 : defCamp ? 40 + defPush * 0.9 : null) : null;
+  const war = atWar && !revCamp ? warGeometry(warSetupKey(economy),
+    camp ? (northCamp && annexed.length ? 110 : 26) + push * 0.42 : defCamp ? 40 + defPush * 0.9 : null) : null;
   const nbEvent = neighborEventView(economy);
   const hotNeighbor = war ? war.cfg.neighbor : revCamp ? 'north' : (economy.deshtMobilized || 0) > 0 ? 'southwest' : nbEvent ? nbEvent.country : null;
   const heldIds = defCamp ? DEF_FRONT : regions.filter((r) => r.annex).map((r) => r.id);
@@ -1143,7 +1190,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
   } : null;
   const setDefOrder = onWarOrder && frontCamp ? (patch) => onWarOrder({ ...defOrder, ...patch }) : null;
   // действующий приказ: новый, если отдан в этом квартале, иначе прошлый (см. defaultWarOrder)
-  const standing = camp ? defaultWarOrder(camp) : null;
+  const standing = camp ? defaultWarOrder(camp, warTgt) : null;
   const order = camp ? {
     target: warOrder && warObjectiveOpen(warOrder.target, camp) ? warOrder.target : standing.target,
     stance: (warOrder && warOrder.stance) || standing.stance,
@@ -1356,13 +1403,13 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           {/* слой 4 — война: зона боёв, линия фронта с зубцами, стрелки, сражения */}
           {war && (
             <g style={{ pointerEvents: 'none' }}>
-              {annexed.length > 0 && camp && (
+              {annexed.length > 0 && northCamp && (
                 <mask id="map-war-mask" maskUnits="userSpaceOnUse" x="0" y={VIEW_TOP} width={VIEW_W} height={VIEW_H - VIEW_TOP}>
                   <rect x="0" y={VIEW_TOP} width={VIEW_W} height={VIEW_H - VIEW_TOP} fill="#fff" />
                   {annexed.map((id) => <path key={id} d={ANNEX_PATH[id]} fill="#000" />)}
                 </mask>
               )}
-              <g mask={annexed.length > 0 && camp ? 'url(#map-war-mask)' : undefined}>
+              <g mask={annexed.length > 0 && northCamp ? 'url(#map-war-mask)' : undefined}>
                 <path d={war.zone} fill="url(#map-war)" />
                 <path d={war.zone} fill={COLOR.rust} opacity={0.2} />
               </g>
@@ -1460,12 +1507,17 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               замок — к цели пока не подойти; клик — выбрать цель удара */}
           {camp && (
             <g>
-              {order.target && OBJECTIVE_AT[order.target] && order.stance !== 'ceasefire' && (
-                <path d={`M${CITY_AT.mining[0] - 40},${CITY_AT.mining[1] - 30} Q${(CITY_AT.mining[0] - 40 + OBJECTIVE_AT[order.target][0]) / 2 + 30},${(CITY_AT.mining[1] + OBJECTIVE_AT[order.target][1]) / 2} ${OBJECTIVE_AT[order.target][0]},${OBJECTIVE_AT[order.target][1] + 20}`}
+              {order.target && OBJECTIVE_AT[order.target] && order.stance !== 'ceasefire' && (() => {
+                const from = CITY_AT[WAR_FROM[warTgt]];
+                const [fx, fy] = warTgt === 'north' ? [from[0] - 40, from[1] - 30] : from;
+                const [tx, ty] = OBJECTIVE_AT[order.target];
+                return (
+                <path d={`M${fx},${fy} Q${(fx + tx) / 2 + 30},${(fy + ty) / 2} ${tx},${ty + 20}`}
                   fill="none" stroke={COLOR.rust} strokeWidth={order.stance === 'assault' ? 6 : 4} strokeDasharray={order.stance === 'hold' ? '4 6' : undefined}
                   strokeLinecap="round" markerEnd="url(#map-arrow)" opacity={0.9} style={{ pointerEvents: 'none' }} />
-              )}
-              {WAR_OBJECTIVES.map((o) => {
+                );
+              })()}
+              {warObjs.map((o) => {
                 const [x, y] = OBJECTIVE_AT[o.id];
                 const taken = camp.captured.includes(o.id);
                 const open = warObjectiveOpen(o.id, camp);
@@ -1475,7 +1527,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
                 const click = setOrder && open ? () => { Audio.play('tick'); setOrder({ target: o.id, stance: order.stance === 'ceasefire' ? 'siege' : order.stance }); } : null;
                 return (
                   <g key={o.id} role={click ? 'button' : undefined} tabIndex={click ? 0 : undefined}
-                    aria-label={`${o.name}: ${taken ? 'взята' : open ? `продвижение ${Math.round(prog)} из 100` : 'недоступна, пока не взят перевал или копи'}`}
+                    aria-label={`${o.name}: ${taken ? 'взята' : open ? `продвижение ${Math.round(prog)} из 100` : `недоступна, пока не взято: ${(o.requiresAny || []).map((x) => warObjs.find((w) => w.id === x).name).join(' или ')}`}`}
                     onClick={click || undefined} onKeyDown={click ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); click(); } } : undefined}
                     style={{ cursor: click ? 'pointer' : 'default' }}>
                     {selectedT && <circle cx={x} cy={y} r={24} fill="none" stroke={COLOR.gold} strokeWidth={1.6} strokeDasharray="4 4" />}
@@ -1497,7 +1549,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           {/* слой 5 — города и подписи поверх всего */}
           <g style={{ pointerEvents: 'none' }}>
             <WorldFarLabels lk={Math.round(lk * 50) / 50} />
-            {!camp && annexed.filter((id) => ANNEX_CITIES[id]).map((id) => {
+            {!northCamp && annexed.filter((id) => ANNEX_CITIES[id]).map((id) => {
               const c = ANNEX_CITIES[id];
               return (
                 <g key={`ac${id}`} transform={lkT(c.at[0], c.at[1])}>
@@ -1667,7 +1719,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           </button>
         )}
         {country && <CountryPanel id={country} economy={economy} onBack={() => setCountry(null)}
-          diploPlan={diploPlan} onDiploPlan={onDiploPlan} diploPlanner={diploPlanner} />}
+          diploPlan={diploPlan} onDiploPlan={onDiploPlan} diploPlanner={diploPlanner} warPlan={warPlan} onWarPlan={onWarPlan} />}
         {camp && <WarOperationPanel economy={economy} camp={camp} order={order} setOrder={setOrder} planner={warPlanner} />}
         {revCamp && <DefensePanel economy={economy} camp={revCamp} order={defOrder} setOrder={setDefOrder} planner={warPlanner}
           onFocus={setSelected} />}
@@ -2290,19 +2342,21 @@ function TreatyTalks({ economy, talks, plan, onPlan, planner, held }) {
 function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
   const strength = warStrength(economy);
   const last = camp.last;
-  const nameOf = (id) => (WAR_OBJECTIVES.find((o) => o.id === id) || {}).name || '—';
+  const tgt = warTargetOf(economy);
+  const objs = warObjectivesFor(tgt);
+  const nameOf = (id) => (objs.find((o) => o.id === id) || {}).name || '—';
   return (
     <div className="ems-panel" style={{ padding: 14, borderColor: COLOR.rust, borderLeft: `3px solid ${COLOR.rust}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <Swords size={15} color={COLOR.rust} />
-        <span className="ems-serif" style={{ fontSize: 14 }}>Наступление на Норланд</span>
+        <span className="ems-serif" style={{ fontSize: 14 }}>Наступление: {WAR_TARGETS[tgt].name}</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 9 }}>
         Сила армии {Math.round(strength * 100)} из 100 — от доли обороны в бюджете и поддержки в стране.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-        {WAR_OBJECTIVES.map((o) => {
+        {objs.map((o) => {
           const taken = camp.captured.includes(o.id);
           const open = warObjectiveOpen(o.id, camp);
           const prog = camp.progress[o.id] || 0;
@@ -2318,7 +2372,7 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
                 {taken ? <Flag size={13} color={COLOR.gold} /> : open ? <Swords size={13} color={COLOR.rust} /> : <Lock size={13} color={COLOR.faint} />}
                 <span style={{ fontWeight: sel ? 600 : 400 }}>{o.name}</span>
                 <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: taken ? COLOR.goldSoft : COLOR.muted }}>
-                  {taken ? 'взята' : open ? `${Math.round(prog)} / 100` : 'сначала перевал'}
+                  {taken ? 'взята' : open ? `${Math.round(prog)} / 100` : `сначала ${(o.requiresAny || []).map((x) => nameOf(x).toLowerCase()).join(' или ')}`}
                 </span>
               </div>
               {!taken && (

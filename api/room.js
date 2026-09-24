@@ -158,6 +158,8 @@ function sanitizePresident(v, economy) {
     campaignPlan: sanitizeCampaignPlan(o.campaignPlan, economy),
     treaty: economy ? sanitizeTreaty(o.treaty, economy) : null,
     diplomacy: economy ? sanitizeDiplomacy(o.diplomacy, economy) : null,
+    // кому объявлена война — одному из соседей (проверку «можно ли» делает движок)
+    warTarget: ['north', 'west', 'southwest'].includes(o.warTarget) ? o.warTarget : null,
     actions: Array.isArray(o.actions) ? o.actions.filter((x) => PRES_ACTION_IDS.has(x)).slice(0, 4) : [],
     appointCb: CB_PERSONA_IDS.has(o.appointCb) ? o.appointCb : null,
     appointMof: MOF_PERSONA_IDS.has(o.appointMof) ? o.appointMof : null,
@@ -397,6 +399,7 @@ export function resolveQuarter(room) {
     if (humanPres) {
       if (humanPres.appointCb) eff.appointCb = humanPres.appointCb;
       if (humanPres.appointMof) eff.appointMof = humanPres.appointMof;
+      if (humanPres.warTarget) eff.warTarget = humanPres.warTarget;
     }
     if (plan.appointBot) eff[plan.appointBot.kind === 'central_bank' ? 'appointCb' : 'appointMof'] = plan.appointBot.persona;
     const dir = plan.directive;
