@@ -452,3 +452,27 @@ test('дипломатия: президент отвечает на инцид�
   await expect(page.getByText(/ПОМОЩЬ ДЕШТУ/i).first()).toBeAttached();
   expect(errors).toEqual([]);
 });
+
+test('своё дело: конкуренты — доля рынка, карточки компаний и поглощение', async ({ page }) => {
+  const T = await import('../src/lib/tycoon.js');
+  const { withSeededRandom } = await import('../src/lib/catalog.js');
+  let st = T.makeTycoon({ start: 'retail' });
+  st = withSeededRandom(3, () => T.tick(st, 60 * 7 + 20));
+  st = { ...st, cash: 500, rivals: st.rivals.map((c) => (c.id === 'kolos' ? { ...c, distress: 1 } : c)) };
+  const save = { ...T.snapshotTycoon(st), introSeen: true };
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('dialog', (d) => d.accept());
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"slots":[null,null,null,null]}' }));
+  await page.addInitScript((s) => { localStorage.setItem('ems-tycoon-v1', JSON.stringify({ ...s, savedAt: Date.now() })); }, save);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Продолжить', { exact: true }).click();
+  await page.getByRole('button', { name: 'Пауза' }).click();
+  await page.getByRole('tab', { name: 'Конкуренты' }).click();
+  await expect(page.getByText('Доля рынка')).toBeVisible();
+  await expect(page.getByText('Хлебный дом «Колос»')).toBeVisible();
+  await page.getByRole('button', { name: /^Купить/ }).first().click();
+  await expect(page.getByText('куплен вами')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});

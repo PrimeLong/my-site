@@ -2327,7 +2327,7 @@ function bizPath(a, b, salt) {
   return `M${x1},${y1} Q${c[0].toFixed(1)},${c[1].toFixed(1)} ${x2},${y2}`;
 }
 
-export function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [] }) {
+export function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [], rivals = [] }) {
   const zoom = useMapZoom(undefined);
   const reduced = useReducedMotion();
   const { lk, lkT } = labelScale(zoom.zoom);
@@ -2437,6 +2437,12 @@ export function BusinessMap({ economy, selected, onSelect, info = {}, flows = []
             return (
               <g key={`c${r.id}`}>
                 <g transform={`translate(${x},${y}) scale(${lk})`}>
+                  {/* магазины конкурентов — цветные точки слева от города, по одной на магазин */}
+                  {rivals.filter((m) => m.region === r.id).flatMap((m, mi) => Array.from({ length: Math.min(4, m.n) }, (_, k) => (
+                    <circle key={`${m.name}${k}`} cx={-14 - k * 9} cy={-10 + mi * 10} r={4.2} fill={m.color} stroke={COLOR.bg} strokeWidth={1.4}>
+                      <title>{m.name}</title>
+                    </circle>
+                  )))}
                   <circle r={r.id === 'capital' ? 7 : 5} fill={COLOR.bg} stroke={COLOR.text} strokeWidth={1.6} />
                   {cats.length > 0 && (
                     <g transform={`translate(${-(cats.length * 22) / 2},${12})`}>
