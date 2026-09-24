@@ -1362,7 +1362,12 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               const done = REGION_PROJECTS.find((p) => p.region === c.id && (economy.projectsBuilt || []).includes(p.id));
               const planned = plan && plan.startProject && REGION_PROJECTS.find((p) => p.id === plan.startProject && p.region === c.id);
               if (!active && !done && !planned) return null;
-              const [x, y] = [c.at[0] - 24, c.at[1] + 14];
+              // кран — от города в сторону центра его области: раньше он стоял слева-снизу от
+              // города, и у приграничных (Приреченск) оказывался на земле соседа
+              const lab = labelAt(c.id);
+              const vx = lab ? lab[0] - c.at[0] : -1; const vy = lab ? lab[1] - c.at[1] : 0.5;
+              const vl = Math.hypot(vx, vy) || 1;
+              const [x, y] = [c.at[0] + (vx / vl) * 30, c.at[1] + (vy / vl) * 30];
               const share = active ? 1 - (active.left - 1) / active.total : 0;
               return (
                 <g key={`pj${c.id}`}>

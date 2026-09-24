@@ -18,7 +18,7 @@ import {
   ChronicleModal, GameOverModal, Gauge, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile,
   LeverSlider, MAX_PINS, MetricRow, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel,
   PresidentWatchPanel, PressConferencePanel, PromisesPanel, QuarterStamp, RegimeBanner,
-  ResultCardModal, RiskBadge, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip,
+  ResultCardModal, RiskBadge, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip, Fold, scoreSummary,
   Segmented, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
   casinoAchievementIds, checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
   loadAutoPaper, loadNetworkPortfolio, makeDashboardActions, markNetworkPlayed, priceOf,
@@ -1272,10 +1272,13 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               президентом, без него Минфином, без обоих ЦБ (pressSpeakerSeat).
               Остальным вопрос виден, но отвечает не их место: так понятно, что
               прозвучит от имени власти, и можно договориться в чате. */}
-          {!isTraderRoom && pressSpeaker && (pressSpeaker === seat
+          {!isTraderRoom && pressSpeaker && pressQuestion && (
+            <Fold id="press" title="Пресс-конференция" icon={Megaphone}
+              summary={pressSpeaker === seat ? (decisions.pressAnswer ? 'ответ выбран' : 'ждут вашего ответа') : `отвечает ${seatRole(pressSpeaker).short}`}>
+            {pressSpeaker === seat
             ? <PressConferencePanel question={pressQuestion} answer={decisions.pressAnswer}
                 setAnswer={(v) => setLever('pressAnswer', v)} />
-            : pressQuestion && (
+            : (
               <div className="ems-panel" style={{ padding: 13 }}>
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Megaphone size={13} />Пресс-конференция
@@ -1285,7 +1288,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                   Отвечает {(room.names && room.names[pressSpeaker]) || seatRole(pressSpeaker).short} — {seatRole(pressSpeaker).short}: от имени власти в квартал звучит один голос.
                 </div>
               </div>
-            ))}
+            )}
+            </Fold>
+          )}
 
           <div className="ems-panel" style={{ padding: 13 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
@@ -1386,6 +1391,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <ChartPanel history={room.history} chartGroup={chartGroup} setChartGroup={setChartGroup}
               hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           </Suspense>
+          <Fold id="report" title="Квартальный отчёт" icon={Newspaper} summary={room.quarterLabel}>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
@@ -1411,12 +1417,17 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               )}
             </div>
           </div>
+          </Fold>
           </>)}
         </div>
       );
       const rightNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {!isTraderRoom && <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />}
+          {!isTraderRoom && (
+            <Fold id="scores" title="Пять оценок вашей политики" icon={Trophy} summary={scoreSummary(economy)}>
+              <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
+            </Fold>
+          )}
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <Users size={13} color={COLOR.blue} />

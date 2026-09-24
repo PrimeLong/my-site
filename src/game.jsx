@@ -169,7 +169,7 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
 /* Сворачиваемый блок кабинета: справочное (решения бота, бюджетная арифметика,
    президент) можно убрать в одну строку со сводкой — колонка перестаёт быть
    бесконечной лентой. Состояние каждого блока запоминается в этом браузере. */
-function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) {
+export function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) {
   const key = `ems.fold.${id}`;
   const [open, setOpen] = useState(() => {
     try { const v = window.localStorage.getItem(key); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
@@ -196,6 +196,12 @@ function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) 
       </button>
     </div>
   );
+}
+
+// сводка пяти оценок для свёрнутого блока: средний балл
+export function scoreSummary(economy) {
+  const vals = SCORE_DEFS.map((d) => economy[d.id]).filter(Number.isFinite);
+  return vals.length ? `в среднем ${Math.round(vals.reduce((a, v) => a + v, 0) / vals.length)} из 100` : '';
 }
 
 /* Колонка на широком экране «прилипает» при прокрутке: короткие колонки
@@ -3849,8 +3855,9 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
 /* Событие в округе поверх любого экрана: на карту заглядывают не каждый квартал,
    а без ответа сработает «переждать». */
 export function RegionEventStrip({ event, answered, canAnswer, onOpen }) {
-  // ответ уже выбран — напоминать не о чем: решение видно на карте
-  if (canAnswer && answered) return null;
+  // ответ уже выбран — напоминать не о чем: решение видно на карте. Тому, кто
+  // отвечать не может (ЦБ, трейдер), полоса сверху ни к чему — событие видно на карте
+  if (!canAnswer || answered) return null;
   const region = MAP_REGIONS.find((r) => r.id === event.region);
   return (
     <div role="button" tabIndex={0} className="ems-fade-in" onClick={onOpen}
@@ -4752,7 +4759,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
         )}
-        {economy.groupDemand && view !== 'society' && !(canPlanMap && regionPlan.groupResponse) && (
+        {/* требование группы — только тому, кто на него отвечает (Минфин, президент) */}
+        {economy.groupDemand && view !== 'society' && canPlanMap && !regionPlan.groupResponse && (
           <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('society'); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('society'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
@@ -5060,9 +5068,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
-          {!isPublic && (
-            <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
-              setAnswer={(id) => setLever('pressAnswer', id)} />
+          {!isPublic && pickPressQuestion(economy, quarterIndex) && (
+            <Fold id="press" title="Пресс-конференция" icon={Megaphone} summary={decisions.pressAnswer ? 'ответ выбран' : 'ждут вашего ответа'}>
+              <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
+                setAnswer={(id) => setLever('pressAnswer', id)} />
+            </Fold>
           )}
           {presEnabled && (
             <Fold id="president" title="Президент" icon={Crown} defaultOpen={false}
@@ -5079,6 +5089,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           <Suspense fallback={<ChartFallback />}>
             <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           </Suspense>
+          <Fold id="report" title="Квартальный отчёт" icon={Newspaper} summary={history[history.length - 1].label}>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
@@ -5102,12 +5113,15 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               )}
             </div>
           </div>
+          </Fold>
         </div>
       );
       /* ПРАВАЯ ПАНЕЛЬ */
       const rightNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
+          <Fold id="scores" title="Пять оценок вашей политики" icon={Trophy} summary={scoreSummary(economy)}>
+            <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
+          </Fold>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Показатели экономики</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 11 }} className="ems-scroll">
