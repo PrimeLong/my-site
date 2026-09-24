@@ -294,7 +294,9 @@ describe('политический режим и пропаганда', () => {
     // держать кризис (кредит сжимается, норматив восстанавливается сам). Шум зафиксирован.
     let seed = 7;
     const spy = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
-    let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0 };
+    // выборы отодвинуты за горизонт теста: проигранные выборы с отказом признать итог —
+    // отдельный путь из демократии (переворот у урны), а здесь проверяется напряжение
+    let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0, quartersToElection: 99 };
     let decisions = defaultDecisions(economy);
     let pendingImpulses = []; let eventCooldowns = {};
     let exit = null;
