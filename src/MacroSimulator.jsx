@@ -26,30 +26,33 @@ export const THEMES = {
   ink: { id: 'ink', name: 'Ночная канцелярия', dark: true, colors: {
     bg: '#0B0F17', bgVignette: '#0E1420', panel: '#161D2B', panelAlt: '#1B2333', panelRaised: '#202B41',
     border: '#28324A', borderStrong: '#3D4C6B', hairline: '#1F2A3D',
-    text: '#E8E6DD', muted: '#8B94A8', faint: '#7D869A',
+    text: '#E8E6DD', muted: '#A3AABB', faint: '#9199AC',
     paper: '#EDE7D6', paperText: '#22261D', paperMuted: '#6B6754', paperRule: '#C9BFA0',
     gold: '#C9A227', goldSoft: '#E8C766', goldDim: 'rgba(201,162,39,0.14)', ink: '#1B1204',
-    teal: '#4E9A82', tealDim: 'rgba(78,154,130,0.14)',
-    rust: '#B0503A', rustDim: 'rgba(176,80,58,0.14)',
-    blue: '#5B7FA6', blueDim: 'rgba(91,127,166,0.14)' } },
+    teal: '#5AAE93', tealDim: 'rgba(90,174,147,0.14)',
+    rust: '#E07A5F', rustDim: 'rgba(224,122,95,0.14)',
+    blue: '#7C9DC6', blueDim: 'rgba(124,157,198,0.14)',
+    sel: '#2E3B57', selText: '#F4F1E6', selBorder: '#56668A' } },
   slate: { id: 'slate', name: 'Холодный кабинет', dark: true, colors: {
     bg: '#0A1014', bgVignette: '#0C151B', panel: '#13202A', panelAlt: '#182833', panelRaised: '#1E3240',
     border: '#24404F', borderStrong: '#365C70', hairline: '#1B2E3A',
-    text: '#DFE8EC', muted: '#87A0AC', faint: '#718994',
+    text: '#DFE8EC', muted: '#A0B6C0', faint: '#8AA3AE',
     paper: '#E6E9E4', paperText: '#1C2428', paperMuted: '#63706F', paperRule: '#B7C2BF',
     gold: '#8FB8C9', goldSoft: '#BBDCEA', goldDim: 'rgba(143,184,201,0.14)', ink: '#08161C',
-    teal: '#57A98E', tealDim: 'rgba(87,169,142,0.14)',
-    rust: '#C06152', rustDim: 'rgba(192,97,82,0.14)',
-    blue: '#6E93C4', blueDim: 'rgba(110,147,196,0.14)' } },
+    teal: '#5FB396', tealDim: 'rgba(95,179,150,0.14)',
+    rust: '#E08472', rustDim: 'rgba(224,132,114,0.14)',
+    blue: '#82A3D0', blueDim: 'rgba(130,163,208,0.14)',
+    sel: '#29404F', selText: '#F1F6F8', selBorder: '#4F7488' } },
   chamber: { id: 'chamber', name: 'Дневная канцелярия', dark: false, colors: {
     bg: '#EFEADF', bgVignette: '#E7E1D2', panel: '#F7F3E9', panelAlt: '#EDE7D8', panelRaised: '#FFFCF4',
     border: '#D3C9B2', borderStrong: '#B5A888', hairline: '#E0D8C6',
-    text: '#221F19', muted: '#5F5A4C', faint: '#756F5F',
+    text: '#221F19', muted: '#5F5A4C', faint: '#67614F',
     paper: '#FBF7EC', paperText: '#221F19', paperMuted: '#6B6653', paperRule: '#CDC2A6',
-    gold: '#8A6D12', goldSoft: '#6F5710', goldDim: 'rgba(138,109,18,0.12)', ink: '#FBF7EC',
+    gold: '#735A0E', goldSoft: '#5E4A0B', goldDim: 'rgba(115,90,14,0.12)', ink: '#FBF7EC',
     teal: '#2F6B57', tealDim: 'rgba(47,107,87,0.12)',
     rust: '#94331F', rustDim: 'rgba(148,51,31,0.12)',
-    blue: '#2F5578', blueDim: 'rgba(47,85,120,0.12)' } },
+    blue: '#2F5578', blueDim: 'rgba(47,85,120,0.12)',
+    sel: '#FFFFFF', selText: '#15130F', selBorder: '#8C7F62' } },
   contrast: { id: 'contrast', name: 'Высокий контраст', dark: true, colors: {
     bg: '#000000', bgVignette: '#000000', panel: '#0A0A0A', panelAlt: '#141414', panelRaised: '#1C1C1C',
     border: '#6A6A6A', borderStrong: '#A8A8A8', hairline: '#4A4A4A',
@@ -58,7 +61,8 @@ export const THEMES = {
     gold: '#FFD23F', goldSoft: '#FFE485', goldDim: 'rgba(255,210,63,0.22)', ink: '#000000',
     teal: '#4DE0A8', tealDim: 'rgba(77,224,168,0.20)',
     rust: '#FF6B52', rustDim: 'rgba(255,107,82,0.20)',
-    blue: '#7FC2FF', blueDim: 'rgba(127,194,255,0.20)' } },
+    blue: '#7FC2FF', blueDim: 'rgba(127,194,255,0.20)',
+    sel: '#FFFFFF', selText: '#000000', selBorder: '#FFFFFF' } },
 };
 
 export const COLOR = { ...THEMES.ink.colors, isDark: true };
@@ -85,7 +89,7 @@ export const FONT = {
 
 export const GlobalStyle = () => (
   <style>{`
-    .ems-root { background:${COLOR.bg} radial-gradient(ellipse 1100px 620px at 50% -8%, ${COLOR.bgVignette} 0%, ${COLOR.bg} 70%); color:${COLOR.text}; font-family:${FONT.sans}; min-height:100vh; }
+    .ems-root { color-scheme:${COLOR.isDark ? 'dark' : 'light'}; background:${COLOR.bg} radial-gradient(ellipse 1100px 620px at 50% -8%, ${COLOR.bgVignette} 0%, ${COLOR.bg} 70%); color:${COLOR.text}; font-family:${FONT.sans}; min-height:100vh; }
     .ems-root * { box-sizing: border-box; }
     .ems-root :focus-visible { outline: 2px solid ${COLOR.goldSoft}; outline-offset: 2px; }
     .ems-serif { font-family:${FONT.serif}; }
@@ -104,10 +108,13 @@ export const GlobalStyle = () => (
     /* сегментированный переключатель: вкладки в одной «капсуле», выбранная — золотая таблетка */
     .ems-seg { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:${COLOR.bg}; border:1px solid ${COLOR.border};
       box-shadow: inset 0 1px 2px rgba(0,0,0,0.25); }
-    .ems-seg > button { font-family:${FONT.sans}; border:none; background:transparent; color:${COLOR.muted}; border-radius:8px; padding:6px 12px; font-size:12.5px;
+    .ems-seg > button { font-family:${FONT.sans}; border:none; background:transparent; color:${COLOR.muted}; border-radius:8px; padding:6px 12px; font-size:13px;
       display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; transition: background .15s, color .15s, box-shadow .15s; white-space:nowrap; }
     .ems-seg > button:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
-    .ems-seg > button[aria-pressed="true"] { background:${COLOR.gold}; color:${COLOR.ink}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}, inset 0 1px 0 rgba(255,255,255,0.25); }
+    /* Выбранное — нейтральной «поднятой» плашкой, не золотом: золото на экране
+       остаётся только у главного действия («Завершить квартал», «Принять…»),
+       иначе выбранный фильтр «5 лет» спорит с кнопкой хода. */
+    .ems-seg > button[aria-pressed="true"] { background:${COLOR.sel}; color:${COLOR.selText}; font-weight:700; box-shadow: inset 0 0 0 1px ${COLOR.selBorder}, 0 1px 3px rgba(0,0,0,0.25); }
     /* плашка статуса в шапке: период, выборы, благополучие — одной карточкой */
     .ems-status { display:flex; align-items:center; gap:14px; padding:6px 14px; border-radius:12px; border:1px solid ${COLOR.border};
       background: linear-gradient(180deg, ${SHEEN().fill}, rgba(0,0,0,0)), ${COLOR.panelAlt}; box-shadow: inset 0 1px 0 ${SHEEN().line}; }
@@ -119,9 +126,9 @@ export const GlobalStyle = () => (
       box-shadow: inset 0 1px 0 ${SHEEN().line}; transition: border-color .15s, background .15s; }
     .ems-fold:hover { border-color:${COLOR.borderStrong}; background:${COLOR.panelAlt}; }
     .ems-fold-close { position:absolute; left:50%; bottom:-10px; transform:translateX(-50%); z-index:2; display:inline-flex; align-items:center; gap:3px;
-      font-family:${FONT.sans}; font-size:10px; padding:2px 10px; border-radius:999px; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.faint}; cursor:pointer; }
+      font-family:${FONT.sans}; font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.faint}; cursor:pointer; }
     .ems-fold-close:hover { color:${COLOR.text}; border-color:${COLOR.borderStrong}; }
-    .ems-eyebrow { font-family:${FONT.mono}; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:${COLOR.faint}; }
+    .ems-eyebrow { font-family:${FONT.mono}; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:${COLOR.faint}; }
     .ems-hr { height:1px; background:${COLOR.hairline}; border:none; margin:0; }
     .ems-btn { font-family:${FONT.sans}; cursor:pointer; border:1px solid ${COLOR.border}; background:${COLOR.panelAlt}; color:${COLOR.text}; padding:8px 14px; border-radius:8px; font-size:13px; transition:background .15s, border-color .15s, transform .1s, box-shadow .15s; user-select:none; -webkit-user-select:none;
       box-shadow: inset 0 1px 0 ${SHEEN().line}; }
@@ -145,10 +152,20 @@ export const GlobalStyle = () => (
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background:${COLOR.border}; border-radius:4px; }
     ::-webkit-scrollbar-thumb:hover { background:${COLOR.borderStrong}; }
-    .ems-tab { padding:7px 12px; font-size:12.5px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
+    .ems-tab { font-family:${FONT.sans}; border:none; background:transparent; line-height:1.3; padding:7px 12px; font-size:13px; cursor:pointer; border-radius:7px; color:${COLOR.muted}; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:background .15s, color .15s, box-shadow .15s; user-select:none; -webkit-user-select:none; }
     .ems-tab:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
-    .ems-tab.active { color:${COLOR.ink}; background:${COLOR.gold}; font-weight:600; box-shadow: 0 2px 10px -3px ${COLOR.goldDim}; }
-    .ems-tab.active:hover { background:${COLOR.goldSoft}; color:${COLOR.ink}; }
+    .ems-tab.active { color:${COLOR.selText}; background:${COLOR.sel}; font-weight:700; box-shadow: inset 0 0 0 1px ${COLOR.selBorder}; }
+    .ems-tab.active:hover { background:${COLOR.sel}; color:${COLOR.selText}; }
+    /* Ряд вкладок: на широком экране переносится на вторую строку — все вкладки
+       видны сразу; на телефоне листается вбок, а правый край гаснет, чтобы было
+       видно, что вкладки продолжаются. */
+    .ems-tabrow { display:flex; flex-wrap:wrap; gap:2px; }
+    @media (max-width: 640px) {
+      .ems-tabrow { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding-right:24px;
+        -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); }
+      .ems-tabrow::-webkit-scrollbar { display:none; }
+      .ems-tabrow > * { flex-shrink:0; }
+    }
     .ems-fade-in { animation: emsFade .35s ease; }
     @keyframes emsFade { from { opacity:0; transform:translateY(4px);} to { opacity:1; transform:translateY(0);} }
     .ems-toast-out { animation: emsToastOut .45s ease forwards; }
@@ -172,7 +189,7 @@ export const GlobalStyle = () => (
         radial-gradient(640px 420px at 105% 8%, ${COLOR.tealDim} 0%, transparent 58%);
       opacity: 0.8;
     }
-    .ems-hero-eyebrow { font-family: ${FONT.mono}; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: ${COLOR.gold}; }
+    .ems-hero-eyebrow { font-family: ${FONT.mono}; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: ${COLOR.gold}; }
     .ems-hero-title { font-family: ${FONT.serif}; font-size: 40px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.14; margin: 12px 0 0;
       color: ${COLOR.text}; background: linear-gradient(180deg, ${COLOR.text} 0%, ${COLOR.muted} 145%);
       background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -180,7 +197,7 @@ export const GlobalStyle = () => (
     @media (max-width: 480px) { .ems-hero-title { font-size: 30px; } .ems-hero-title.small { font-size: 22px; } }
     .ems-hero-rule { width: 88px; height: 3px; margin: 18px auto 0; border-radius: 2px;
       background: linear-gradient(90deg, transparent, ${COLOR.gold}, transparent); }
-    .ems-hero-badge { display: inline-flex; align-items: center; gap: 7px; font-family: ${FONT.mono}; font-size: 11px; color: ${COLOR.muted};
+    .ems-hero-badge { display: inline-flex; align-items: center; gap: 7px; font-family: ${FONT.mono}; font-size: 12px; color: ${COLOR.muted};
       padding: 6px 13px; border: 1px solid ${COLOR.border}; border-radius: 999px; background: ${COLOR.panelAlt}; margin-top: 18px; }
     .ems-hero-lede { color: ${COLOR.muted}; font-size: 14px; margin: 16px auto 0; max-width: 560px; line-height: 1.65; }
     .ems-card-btn { position: relative; display: flex; align-items: center; gap: 15px; cursor: pointer;
@@ -199,7 +216,7 @@ export const GlobalStyle = () => (
     .ems-card-btn:hover .ems-card-chevron { transform: translateX(3px) rotate(-90deg); }
     .ems-row-hover { border-radius: 9px !important; transition: background-color .15s ease, border-color .15s ease; user-select: none; -webkit-user-select: none; }
     .ems-row-hover:hover { background: ${COLOR.panelRaised} !important; border-color: ${COLOR.borderStrong} !important; }
-    .ems-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 10.5px;
+    .ems-theme-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 13px 6px 9px; border-radius: 999px; font-size: 12px;
       cursor: pointer; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
     .ems-theme-chip:hover { transform: translateY(-1px); }
     .ems-theme-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
@@ -269,7 +286,28 @@ export const GlobalStyle = () => (
     .ems-paper-cols { column-count: 2; }
     @media (max-width: 760px) { .ems-paper-cols { column-count: 1 !important; } }
     .ems-kpi-strip { display:grid; grid-template-columns: repeat(auto-fit, minmax(158px,1fr)); gap:10px; }
-    @media (max-width: 700px) { .ems-kpi-strip { grid-template-columns: repeat(2,1fr); } }
+    .ems-kpi-cell.hero { grid-column: span 2; }
+    .ems-kpi-ctl { position:absolute; top:3px; right:3px; display:flex; gap:1px; align-items:center; transition: opacity .15s; }
+    .ems-kpi-ctl button { background:none; border:none; cursor:pointer; color:${COLOR.faint}; padding:4px 5px; line-height:1; font-size:12px; border-radius:5px; font-family:${FONT.sans}; display:inline-flex; }
+    .ems-kpi-ctl button:hover { color:${COLOR.text}; background:${COLOR.panelAlt}; }
+    @media (hover: hover) {
+      .ems-kpi-cell .ems-kpi-ctl { opacity:0; }
+      .ems-kpi-cell:hover .ems-kpi-ctl, .ems-kpi-cell:focus-within .ems-kpi-ctl, .ems-kpi-edit .ems-kpi-ctl { opacity:1; }
+    }
+    @media (hover: none) { .ems-kpi-strip:not(.ems-kpi-edit) .ems-kpi-ctl { display:none; } }
+    /* На телефоне — три узкие плитки в ряд без спарклайнов: шесть показателей
+       занимали весь первый экран, и до рычагов приходилось листать. */
+    @media (max-width: 700px) {
+      .ems-kpi-strip { grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px; }
+      .ems-kpi-cell.hero { grid-column: 1 / -1; }
+      .ems-kpi-hint { display:none !important; }
+      .ems-kpi-tile:not(.hero) { padding: 8px 8px 8px 11px !important; }
+      .ems-kpi-tile:not(.hero) .ems-kpi-spark { display:none; }
+      .ems-kpi-val { font-size: 17px !important; }
+      .ems-kpi-hero-val { font-size: 28px !important; }
+    }
+    .ems-summary-sep { width:1px; height:16px; background:${COLOR.hairline}; }
+    @media (max-width: 640px) { .ems-risk-track, .ems-summary-sep { display:none !important; } }
     /* Практика в курсе: на широком экране условие задачи слева, рабочие панели
        (рычаги, панель президента, лента новостей) справа — вместо одной длинной
        колонки посреди пустого экрана. На узком остаётся один столбец. */
@@ -426,25 +464,25 @@ export function AudioControls() {
         <div className="ems-panel-raised ems-fade-in" style={{ position: 'fixed', top: pos.top, bottom: pos.bottom, left: pos.left, width: DD_WIDTH, padding: 13, zIndex: 60, maxHeight: pos.maxHeight, overflowY: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
             <Music size={13} color={COLOR.gold} />
-            <span className="ems-serif" style={{ fontSize: 12.5, color: COLOR.goldSoft }}>Саундтрек</span>
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{np.moodLabel} · {np.bpm} BPM</span>
+            <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Саундтрек</span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>{np.moodLabel} · {np.bpm} BPM</span>
             {/* на телефоне «ткнуть мимо» — не очевидный способ закрыть панель */}
             <button className="ems-btn" style={{ padding: '3px 5px', lineHeight: 0 }} aria-label="Закрыть"
               onClick={() => { Audio.play('click'); setOpen(false); }}><X size={12} /></button>
           </div>
           <div style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '9px 10px', marginBottom: 9 }}>
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.2 }}>{np.name}</div>
-            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 2 }}>{np.subtitle}</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 2 }}>{np.subtitle}</div>
             <div style={{ display: 'flex', gap: 5, marginTop: 8 }}>
-              <button className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 10.5 }} onClick={() => { Audio.play('tick'); Audio.skip(false); }}>◀ пред.</button>
-              <button className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 10.5 }} onClick={() => { Audio.play('tick'); Audio.skip(true); }}>след. ▶</button>
+              <button className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 12 }} onClick={() => { Audio.play('tick'); Audio.skip(false); }}>◀ пред.</button>
+              <button className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 12 }} onClick={() => { Audio.play('tick'); Audio.skip(true); }}>след. ▶</button>
             </div>
           </div>
           {list.length > 1 && (
             <div style={{ marginBottom: 9, maxHeight: 116, overflowY: 'auto' }} className="ems-scroll">
               {list.map((x) => (
                 <div key={x.id} onClick={() => { Audio.play('tick'); Audio.playTrack(x.id); }}
-                  style={{ fontSize: 11, padding: '3px 6px', borderRadius: 2, cursor: 'pointer',
+                  style={{ fontSize: 12, padding: '3px 6px', borderRadius: 2, cursor: 'pointer',
                     color: x.current ? COLOR.goldSoft : COLOR.muted, background: x.current ? COLOR.goldDim : 'transparent' }}>
                   {x.current ? '♪ ' : '   '}{x.name}
                 </div>
@@ -453,18 +491,18 @@ export function AudioControls() {
           )}
           {music && (
             <div style={{ marginBottom: 9 }}>
-              <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Заставки событий</div>
+              <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>Заставки событий</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 {Object.values(STINGERS).map((st) => (
-                  <button key={st.id} className="ems-btn" style={{ padding: '2px 7px', fontSize: 10 }}
+                  <button key={st.id} className="ems-btn" style={{ padding: '2px 7px', fontSize: 12 }}
                     onClick={() => Audio.stinger(st.id)}>{st.name}</button>
                 ))}
               </div>
             </div>
           )}
           <div style={{ marginBottom: 9 }}>
-            <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Что играть</div>
-            <select className="ems-btn" value={np.locked || 'auto'} style={{ width: '100%', padding: '5px 8px', fontSize: 11 }}
+            <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>Что играть</div>
+            <select className="ems-btn" value={np.locked || 'auto'} style={{ width: '100%', padding: '5px 8px', fontSize: 12 }}
               onChange={(e) => { Audio.play('tab'); Audio.setPlaylist(e.target.value === 'auto' ? null : e.target.value); }}>
               {moods.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}
             </select>
@@ -473,17 +511,17 @@ export function AudioControls() {
             ['Интерфейс и события', sfx, (v) => { setSfx(v); Audio.setSfx(v); if (v) Audio.play('click'); }, Volume2]].map(([label, val, set, Icon]) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
                 <Icon size={12} color={val ? COLOR.gold : COLOR.faint} />
-                <span style={{ fontSize: 11.5, color: val ? COLOR.text : COLOR.muted, flex: 1 }}>{label}</span>
-                <button className="ems-btn" style={{ padding: '2px 9px', fontSize: 10.5, background: val ? COLOR.gold : COLOR.panelAlt, color: val ? COLOR.ink : COLOR.muted, borderColor: val ? COLOR.gold : COLOR.border }}
+                <span style={{ fontSize: 12, color: val ? COLOR.text : COLOR.muted, flex: 1 }}>{label}</span>
+                <button className="ems-btn" style={{ padding: '2px 9px', fontSize: 12, background: val ? COLOR.sel : COLOR.panelAlt, color: val ? COLOR.selText : COLOR.muted, borderColor: val ? COLOR.selBorder : COLOR.border }}
                   onClick={() => set(!val)}>{val ? 'вкл' : 'выкл'}</button>
               </div>
             ))}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9 }}>
-            <span style={{ fontSize: 11, color: COLOR.muted, width: 54 }}>Громкость</span>
+            <span style={{ fontSize: 12, color: COLOR.muted, width: 54 }}>Громкость</span>
             <input type="range" className="ems-slider" min={0} max={1} step={0.05} value={vol}
               onChange={(e) => { const v = parseFloat(e.target.value); setVol(v); Audio.setVolume(v); }} />
           </div>
-          <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
+          <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
             {Object.keys(TRACKS).length} пьес в {new Set(Object.values(TRACKS).map((t) => t.mood)).size} настроениях. Каждая состоит из нескольких частей с разной оркестровкой, на повторах играется с вариациями, а темп дышит экономикой — при высокой инфляции музыка разгоняется. Смена настроения не обрывает пьесу: она затихает за такт и передаёт место следующей. На выборы, переворот, падение и возвращение демократии и остановленные цены звучат короткие заставки.
           </div>
         </div>
@@ -802,7 +840,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
           <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Связать устройства</span>
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
         </div>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
           Сохранения лежат на сервере и адресуются профилем этого устройства
           (<b className="ems-mono" style={{ color: COLOR.goldSoft }}>{profileTag(playerId)}</b>). Свяжите телефон с компьютером — и
           у них будет один профиль: общие слоты сохранений, достижения и пройденные курсы.
@@ -812,11 +850,11 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
           <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.teal }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <Check size={14} color={COLOR.teal} />
-              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.teal }}>
+              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.teal }}>
                 {doneKind === 'revoked' ? 'Связка разорвана' : 'Устройства связаны'}
               </span>
             </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
               {doneKind === 'revoked'
                 ? <>Это устройство перешло на собственный профиль с копией всего, что было общим:
                   {done ? ` ${done} ${done === 1 ? 'сохранение' : done < 5 ? 'сохранения' : 'сохранений'} на месте` : ' сохранений в нём не было'},
@@ -830,21 +868,21 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
           <>
             <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
               {[['show', 'Показать код'], ['enter', 'Ввести код']].map(([id, title]) => (
-                <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} style={{ flex: 1, textAlign: 'center', padding: '8px 0', fontSize: 12.5 }}
-                  onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{title}</span>
+                <button type="button" key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} aria-pressed={tab === id} style={{ flex: 1, textAlign: 'center', padding: '8px 0', fontSize: 13 }}
+                  onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{title}</button>
               ))}
             </div>
 
             {tab === 'show' && (
               <div>
-                <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 11, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 11, lineHeight: 1.5 }}>
                   Показывайте код на том устройстве, где партии уже есть, — второе получит доступ к ним.
                   Код действует десять минут и срабатывает один раз.
                 </div>
                 {code ? (
                   <div className="ems-panel" style={{ padding: 14, textAlign: 'center', borderColor: claimed ? COLOR.teal : COLOR.gold }}>
                     <div className="ems-mono" style={{ fontSize: 30, letterSpacing: '0.12em', color: claimed ? COLOR.teal : COLOR.goldSoft }}>{pretty(code)}</div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 8, lineHeight: 1.45 }}>
+                    <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 8, lineHeight: 1.45 }}>
                       {claimed
                         ? 'Второе устройство подключено. Теперь у вас общий профиль.'
                         : <>Введите этот код на втором устройстве: меню → «Связать устройства» → «Ввести код».
@@ -867,7 +905,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
 
             {tab === 'enter' && (
               <div>
-                <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 11, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 11, lineHeight: 1.5 }}>
                   Введите код со второго устройства. Это устройство перейдёт на его профиль: сохранения станут общими,
                   достижения и курсы — объединятся. Партии, сохранённые здесь раньше, не пропадут — они останутся
                   под прежним профилем и вернутся, если устройство отвязать.
@@ -882,12 +920,12 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
               </div>
             )}
 
-            {error && <div style={{ marginTop: 10, fontSize: 11.5, color: COLOR.rust, lineHeight: 1.45 }}>{error}</div>}
+            {error && <div style={{ marginTop: 10, fontSize: 12, color: COLOR.rust, lineHeight: 1.45 }}>{error}</div>}
 
             {noStorage && (
               <div className="ems-panel" style={{ marginTop: 11, padding: 11, borderColor: COLOR.rust, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
                 <AlertTriangle size={14} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div style={{ fontSize: 11, color: COLOR.rust, lineHeight: 1.45 }}>
+                <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.45 }}>
                   Сервер не подключён к общему хранилищу — код живёт в памяти одного случайного запроса и со второго
                   устройства, скорее всего, не найдётся. Это настройка развёртывания
                   (<b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>), а не ошибка ввода.
@@ -897,7 +935,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
 
             {shared && !linkedTo && (
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${COLOR.hairline}` }}>
-                <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
+                <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
                   Профиль общий с другим устройством. Разорвать связку можно и отсюда: это устройство заберёт
                   копию профиля и сохранений себе, второе останется на прежнем — но общими они быть перестанут.
                 </div>
@@ -908,7 +946,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
 
             {linkedTo && (
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${COLOR.hairline}` }}>
-                <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
+                <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
                   Это устройство работает на общем профиле. Отвязать — значит вернуться к собственному
                   (<b className="ems-mono">{profileTag(linkedTo)}</b>) со своими прежними сохранениями.
                 </div>
@@ -916,7 +954,7 @@ function DeviceLinkModal({ playerId, onClose, onLinked }) {
                   onClick={doUnlink}>Отвязать это устройство</button>
               </div>
             )}
-            <div style={{ marginTop: 12, fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45 }}>
+            <div style={{ marginTop: 12, fontSize: 12, color: COLOR.faint, lineHeight: 1.45 }}>
               Наборы показателей на дашборде и оформление остаются у каждого устройства своими — это настройки экрана,
               а не прогресс.
             </div>
@@ -941,7 +979,7 @@ export function AchievementsModal({ onClose }) {
           <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Коллекция достижений</span>
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
         </div>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 14 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14 }}>
           Открыто {count} из {ACHIEVEMENTS.length}. Привязано к профилю, а не к сохранению партии: «Начать заново»
           коллекцию не сбрасывает, а связанные устройства делят её на двоих.
         </div>
@@ -956,8 +994,8 @@ export function AchievementsModal({ onClose }) {
                   {done ? <AchIcon size={19} color={COLOR.goldSoft} /> : <Lock size={18} color={COLOR.faint} />}
                 </span>
                 <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: done ? COLOR.goldSoft : COLOR.text }}>{a.title}</div>
-                  <div style={{ fontSize: 11, color: COLOR.muted, marginTop: 2, lineHeight: 1.4 }}>{a.desc}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: done ? COLOR.goldSoft : COLOR.text }}>{a.title}</div>
+                  <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2, lineHeight: 1.4 }}>{a.desc}</div>
                 </div>
               </div>
             );
@@ -1135,10 +1173,10 @@ export function DailyBoard({ day, data: given = null, limit = 10 }) {
     return () => { alive = false; };
   }, [day, given]);
   const data = given || fetched;
-  if (err) return <div style={{ fontSize: 11.5, color: COLOR.rust }}>{err}</div>;
-  if (!data) return <div style={{ fontSize: 11.5, color: COLOR.faint }}>Загружаем таблицу…</div>;
+  if (err) return <div style={{ fontSize: 12, color: COLOR.rust }}>{err}</div>;
+  if (!data) return <div style={{ fontSize: 12, color: COLOR.faint }}>Загружаем таблицу…</div>;
   const rows = (data.rows || []).slice(0, limit);
-  if (!rows.length) return <div style={{ fontSize: 11.5, color: COLOR.faint }}>Сегодня ещё никто не прошёл вызов — будьте первым.</div>;
+  if (!rows.length) return <div style={{ fontSize: 12, color: COLOR.faint }}>Сегодня ещё никто не прошёл вызов — будьте первым.</div>;
   const you = data.you && !rows.some((r) => r.you) ? data.you : null;
   const row = (r) => (
     <div key={`${r.rank}-${r.name}`} style={{
@@ -1151,7 +1189,7 @@ export function DailyBoard({ day, data: given = null, limit = 10 }) {
         {r.verified && (() => { const Em = emblemIcon(r.emblem); return <Em size={11} color={COLOR.gold} style={{ verticalAlign: -1, marginRight: 4 }} aria-label="профиль" />; })()}
         {r.name}{r.you ? ' (вы)' : ''}
       </span>
-      <span style={{ fontSize: 10.5, color: r.defeated ? COLOR.rust : COLOR.faint, whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 12, color: r.defeated ? COLOR.rust : COLOR.faint, whiteSpace: 'nowrap' }}>
         {r.defeated ? `поражение, кв. ${r.quarters}` : dailyRoleShort(r.role)}
       </span>
       <span className="ems-mono" style={{ color: r.you ? COLOR.gold : COLOR.text, fontWeight: 600, minWidth: 34, textAlign: 'right' }}>
@@ -1162,9 +1200,9 @@ export function DailyBoard({ day, data: given = null, limit = 10 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {rows.map(row)}
-      {you && <div style={{ textAlign: 'center', color: COLOR.faint, fontSize: 11, lineHeight: 1 }}>⋯</div>}
+      {you && <div style={{ textAlign: 'center', color: COLOR.faint, fontSize: 12, lineHeight: 1 }}>⋯</div>}
       {you && row(you)}
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 3 }}>
         Всего участников: {data.total}. В таблице — лучший результат каждого за день.
       </div>
     </div>
@@ -1190,8 +1228,8 @@ function DailyCard({ onStart }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Calendar size={16} color={COLOR.gold} style={{ flexShrink: 0 }} />
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-          <div className="ems-serif" style={{ fontSize: 14.5, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(ch.day)}</div>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 1 }}>
+          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(ch.day)}</div>
+          <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 1 }}>
             {roleTitle} · {scenario.id === 'sandbox' ? 'спокойный старт' : scenario.title.toLowerCase()} · {diff.title.toLowerCase()} · {ch.quarters} кв.
             {best ? <> · ваш лучший <b className="ems-mono" style={{ color: COLOR.gold }}>{best.score.toFixed(1).replace('.', ',')}</b></> : null}
           </div>
@@ -1207,7 +1245,7 @@ function DailyCard({ onStart }) {
       </div>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
             Одна партия на всех: тот же пост, тот же кризис и те же случайные события. Итог — пять оценок, где цель дня
             («{goal ? goal.label.toLowerCase() : '—'}») весит вдвое. Боты: {rivals}. Новый вызов через {untilNextDaily()}.
           </div>
@@ -1357,7 +1395,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         <DeviceLinkModal playerId={playerId} onClose={() => setShowLink(false)}
           onLinked={(id) => { setPlayerIdState(id); setSoloSlots(null); setSlotError(''); }} />
       )}
-      <div style={{ maxWidth: 760, width: '100%' }}>
+      {/* margin: auto по вертикали — меню стоит по центру высокого экрана, а когда
+          раскрыты сохранения и оно выше окна, просто прокручивается, не уезжая вверх */}
+      <div style={{ maxWidth: 760, width: '100%', margin: 'auto 0' }}>
         {/* шапка: печать, название и одна строка о том, что это */}
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
           <InflatiaMark size={54} />
@@ -1369,7 +1409,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         </div>
 
         {storageMode === 'memory' && (
-          <div className="ems-fade-in" style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 14, display: 'flex', gap: 8, alignItems: 'flex-start', lineHeight: 1.5 }}>
+          <div className="ems-fade-in" style={{ fontSize: 12, color: COLOR.rust, marginBottom: 14, display: 'flex', gap: 8, alignItems: 'flex-start', lineHeight: 1.5 }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
             Сервер без общего хранилища (Redis): сохранения на сервере могут пропадать. Это настройка развёртывания, не партии.
           </div>
@@ -1381,7 +1421,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') mainContinue.go(); }}>
             <div className="ems-card-icon" style={{ width: 46, height: 46, flexShrink: 0 }}><mainContinue.icon size={21} color={COLOR.gold} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить</div>
+              <div style={{ fontSize: 12, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить</div>
               <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>{mainContinue.title}</div>
               <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>{mainContinue.sub}</div>
             </div>
@@ -1407,10 +1447,10 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                   <div className="ems-card-icon" style={{ width: 38, height: 38 }}><Icon size={18} color={COLOR.gold} /></div>
                   <div style={{ minWidth: 0 }}>
                     <div className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{m.title}</div>
-                    <div style={{ fontSize: 10.5, color: COLOR.goldSoft, marginTop: 1 }}>{m.tag}</div>
+                    <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 1 }}>{m.tag}</div>
                   </div>
                 </div>
-                <div className="menu-mode-desc" style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 9 }}>{m.desc}</div>
+                <div className="menu-mode-desc" style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>
               </div>
             );
           })}
@@ -1425,7 +1465,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             <button className="menu-fold" aria-expanded={savesOpen} onClick={() => { Audio.play('tab'); setSavesOpen((v) => !v); }}>
               <Save size={14} color={COLOR.gold} />
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Все сохранения</span>
-              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{savesTotal}</span>
+              <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{savesTotal}</span>
               <ChevronDown size={14} color={COLOR.muted} style={{ marginLeft: 'auto', transform: savesOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
             </button>
             {savesOpen && (
@@ -1441,19 +1481,19 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                     <div key={idx} className="ems-row-hover menu-slot">
                       <span style={{ flex: 1, minWidth: 0 }}>
                         {slot.name && <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>}
-                        <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
+                        <span style={{ fontSize: 12, color: slot.name ? COLOR.faint : COLOR.text }}>
                           Слот {idx + 1} · {roleShort(slot.role)} · {quarterLabel(slot.quarterIndex || 1)}
                         </span>
                       </span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={slotBusy === idx}
                         onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
                       <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
                     </div>
-                  ) : null)) : <div style={{ fontSize: 11.5, color: COLOR.faint }}>Сохранённых партий на сервере нет — сохраняйте кнопкой «Партия» в игре.</div>)}
+                  ) : null)) : <div style={{ fontSize: 12, color: COLOR.faint }}>Сохранённых партий на сервере нет — сохраняйте кнопкой «Партия» в игре.</div>)}
                   {savesTab === 'tycoon' && tycoonSlots.map((slot, idx) => (slot ? (
                     <div key={idx} className="ems-row-hover menu-slot">
                       <span style={{ flex: 1, minWidth: 0 }}>Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий</span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={tycoonBusy === idx}
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={tycoonBusy === idx}
                         onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
                     </div>
                   ) : null))}
@@ -1466,13 +1506,13 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                         <span style={{ flex: 1, minWidth: 0 }}>
                           Комната <b className="ems-mono">{slot.id}</b> · {rd.short}{preview && <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>}
                         </span>
-                        <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={networkSlotBusy === idx}
+                        <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={networkSlotBusy === idx}
                           onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Войти'}</button>
                       </div>
                     );
                   })}
                 </div>
-                {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
+                {slotError && <div style={{ fontSize: 12, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
               </div>
             )}
           </div>
@@ -1483,7 +1523,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowAch(true); }}><Trophy size={13} color={COLOR.gold} />Достижения</button>
           <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowLink(true); }}><Smartphone size={13} color={COLOR.gold} />Связать устройства</button>
           <label className="menu-chip menu-theme">
-            <span style={{ fontSize: 11, color: COLOR.faint }}>Оформление</span>
+            <span style={{ fontSize: 12, color: COLOR.faint }}>Оформление</span>
             <select value={theme} onChange={(e) => { Audio.play('tab'); setTheme(e.target.value); }} aria-label="Оформление">
               {Object.values(THEMES).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -1499,15 +1539,15 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 const menuCss = () => `
   .menu-title { margin: 0; font-size: 30px; line-height: 1.05; font-weight: 700; letter-spacing: 0.02em; color: ${COLOR.goldSoft}; }
   @media (max-width: 560px) { .menu-title { font-size: 25px; } }
-  .menu-profile { display: flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 12.5px; flex-shrink: 0; max-width: 170px; }
+  .menu-profile { display: flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 13px; flex-shrink: 0; max-width: 170px; }
   .menu-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @media (max-width: 560px) { .menu-profile { padding: 7px 9px; max-width: 110px; } .menu-eyebrow { font-size: 9.5px; letter-spacing: 0.14em; } }
+  @media (max-width: 560px) { .menu-profile { padding: 7px 9px; max-width: 110px; } .menu-eyebrow { font-size: 12px; letter-spacing: 0.1em; } }
   .menu-continue { display: flex; align-items: center; gap: 14px; cursor: pointer; padding: 16px 18px; margin-bottom: 8px;
     border-radius: 14px; border: 1px solid ${COLOR.gold}; background: linear-gradient(135deg, ${COLOR.goldDim}, ${COLOR.panel} 70%);
     box-shadow: 0 16px 36px -20px rgba(0,0,0,0.7); transition: transform .18s ease, box-shadow .18s ease; }
   .menu-continue:hover, .menu-continue:focus-visible { transform: translateY(-2px); box-shadow: 0 22px 40px -18px rgba(0,0,0,0.75); outline: none; }
-  .menu-continue-alt { width: 100%; display: flex; align-items: center; gap: 6px; padding: 9px 14px; font-size: 12.5px; text-align: left; margin-bottom: 4px; }
-  .menu-section-label { font-size: 11px; color: ${COLOR.faint}; letter-spacing: 0.1em; text-transform: uppercase; margin: 20px 0 10px; }
+  .menu-continue-alt { width: 100%; display: flex; align-items: center; gap: 6px; padding: 9px 14px; font-size: 13px; text-align: left; margin-bottom: 4px; }
+  .menu-section-label { font-size: 12px; color: ${COLOR.faint}; letter-spacing: 0.1em; text-transform: uppercase; margin: 20px 0 10px; }
   .menu-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
   @media (max-width: 600px) { .menu-modes { grid-template-columns: minmax(0, 1fr); } }
   .menu-mode { flex-direction: column; align-items: stretch !important; gap: 0 !important; padding: 15px 16px; }
@@ -1571,8 +1611,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>1</span>
-          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваш пост</span>
+          <span className="ems-mono" style={{ fontSize: 13, color: COLOR.faint }}>1</span>
+          <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Ваш пост</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: 26 }}>
           {ROLES.map((r) => {
@@ -1589,9 +1629,9 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                   <div className="ems-card-icon" style={{ width: 34, height: 34 }}>
                     <Icon size={16} color={COLOR.gold} />
                   </div>
-                  <div className="ems-serif" style={{ fontSize: 14.5, color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
+                  <div className="ems-serif" style={{ fontSize: 15, color: active ? COLOR.goldSoft : COLOR.text }}>{r.title}</div>
                 </div>
-                <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>{r.desc}</div>
+                <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>{r.desc}</div>
               </div>
             );
           })}
@@ -1600,7 +1640,7 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
         {role === 'entrepreneur' && (
           <>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }} />
+              <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }} />
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваша компания</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: 10, marginBottom: 26 }}>
@@ -1612,9 +1652,9 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                       borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
                     role="button" tabIndex={0} aria-pressed={active} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSector(sc.id); }}>
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
-                    <div className="ems-serif" style={{ fontSize: 13.5, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
-                    <div style={{ fontSize: 11, color: COLOR.faint, margin: '2px 0 5px' }}>{sc.short}</div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+                    <div className="ems-serif" style={{ fontSize: 14, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
+                    <div style={{ fontSize: 12, color: COLOR.faint, margin: '2px 0 5px' }}>{sc.short}</div>
+                    <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
                   </div>
                 );
               })}
@@ -1625,8 +1665,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
         {role && (
           <>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>2</span>
-              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Как настраивать партию</span>
+              <span className="ems-mono" style={{ fontSize: 13, color: COLOR.faint }}>2</span>
+              <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Как настраивать партию</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: custom ? 22 : 26 }}>
               {[['classic', 'Классика', 'Открытая партия без стартового кризиса, характеры ведомств бросаются случайно, президент включён. Начать и разбираться по ходу — как и должно быть в первый раз.'],
@@ -1638,8 +1678,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                       borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
                     role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setMode(id); }}>
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
-                    <div className="ems-serif" style={{ fontSize: 13.5, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{title}</div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{note}</div>
+                    <div className="ems-serif" style={{ fontSize: 14, marginBottom: 4, color: active ? COLOR.goldSoft : COLOR.text }}>{title}</div>
+                    <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{note}</div>
                   </div>
                 );
               })}
@@ -1650,16 +1690,16 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
         {custom && presAvailable && (
           <>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }} />
+              <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }} />
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Президент</span>
-              <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11,
-                background: presEnabled ? COLOR.gold : COLOR.panelAlt, color: presEnabled ? COLOR.ink : COLOR.muted,
-                borderColor: presEnabled ? COLOR.gold : COLOR.border }}
+              <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 12,
+                background: presEnabled ? COLOR.sel : COLOR.panelAlt, color: presEnabled ? COLOR.selText : COLOR.muted,
+                borderColor: presEnabled ? COLOR.selBorder : COLOR.border }}
                 onClick={() => { Audio.play('tick'); setPresEnabled((v) => !v); }}>
                 {presEnabled ? 'включён' : 'выключен'}
               </button>
             </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 10, lineHeight: 1.45 }}>
               {role === 'trader' || role === 'entrepreneur'
                 ? `Президент не управляет ставкой и бюджетом, но требует своего от обоих ведомств и тратит политический капитал на реформы — для ${role === 'trader' ? 'рынка' : 'бизнеса'} это ещё один источник новостей и риска.`
                 : 'Над вашим ведомством стоит президент: он выдвигает требования, назначает руководителя соседнего ведомства и тратит политический капитал на реформы и указы. Требования можно игнорировать — но администрация ведёт счёт, и на нуле терпения следует отставка.'}
@@ -1676,10 +1716,10 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                       {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <Crown size={14} color={active ? COLOR.gold : COLOR.muted} />
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>{p.name}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>{p.name}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>{p.title}</div>
-                      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{p.desc}</div>
+                      <div style={{ fontSize: 12, color: COLOR.faint, margin: '4px 0 5px' }}>{p.title}</div>
+                      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{p.desc}</div>
                     </div>
                   );
                 })}
@@ -1693,10 +1733,10 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                       {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                         <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
-                        <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
                       </div>
-                      <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
-                      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>С кем придётся работать, выяснится уже в должности.</div>
+                      <div style={{ fontSize: 12, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
+                      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>С кем придётся работать, выяснится уже в должности.</div>
                     </div>
                   );
                 })()}
@@ -1708,10 +1748,10 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
         {custom && personaBlocks.map((blk, bi) => (
           <React.Fragment key={blk.title}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{bi === 0 ? '' : ''}</span>
+              <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{bi === 0 ? '' : ''}</span>
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>{blk.title}</span>
             </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 10 }}>
               {role === 'president'
                 ? (blk.list === CB_PERSONAS
                   ? 'С этим человеком вы начнёте срок. Сменить его можно и позже — но досрочная отставка главы ЦБ стоит доверия к денежной политике.'
@@ -1731,10 +1771,10 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Bot size={14} color={active ? COLOR.gold : COLOR.muted} />
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>{p.name}</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>{p.name}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>{p.title}</div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{p.desc}</div>
+                    <div style={{ fontSize: 12, color: COLOR.faint, margin: '4px 0 5px' }}>{p.title}</div>
+                    <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{p.desc}</div>
                   </div>
                 );
               })}
@@ -1748,10 +1788,10 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                     {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <Dices size={14} color={active ? COLOR.gold : COLOR.muted} />
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: active ? COLOR.goldSoft : COLOR.text }}>Случайный</span>
                     </div>
-                    <div style={{ fontSize: 11, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>Характер определится в момент вступления в должность — не будете знать заранее, с кем имеете дело.</div>
+                    <div style={{ fontSize: 12, color: COLOR.faint, margin: '4px 0 5px' }}>Неизвестность</div>
+                    <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>Характер определится в момент вступления в должность — не будете знать заранее, с кем имеете дело.</div>
                   </div>
                 );
               })()}
@@ -1767,8 +1807,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             для тех, кто уже решил, с чем хочет иметь дело. */}
         {custom && (<>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{role ? 3 : 2}</span>
-          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Стартовая ситуация</span>
+          <span className="ems-mono" style={{ fontSize: 13, color: COLOR.faint }}>{role ? 3 : 2}</span>
+          <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Стартовая ситуация</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
           {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
@@ -1790,11 +1830,11 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
                         <span key={i} style={{ width: 12, height: 4, borderRadius: 2, background: i <= sc.level ? levelColor : COLOR.borderStrong, opacity: i <= sc.level ? 1 : 0.55 }} />
                       ))}
                     </span>
-                    <span className="ems-mono" style={{ fontSize: 10, color: levelColor, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{sc.levelLabel}</span>
+                    <span className="ems-mono" style={{ fontSize: 12, color: levelColor, letterSpacing: '0.04em', textTransform: 'uppercase' }}>{sc.levelLabel}</span>
                   </div>
                 )}
-                <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
-                {sc.levelNote && <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginTop: 6 }}>{sc.levelNote}</div>}
+                <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+                {sc.levelNote && <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginTop: 6 }}>{sc.levelNote}</div>}
               </div>
             );
           })}
@@ -1805,8 +1845,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             что роль: сводим в одну компактную секцию вместо двух полноразмерных
             сеток карточек, чтобы «пост» на экране визуально оставался главным */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-          <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{custom ? 4 : 3}</span>
-          <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Сложность и приоритет</span>
+          <span className="ems-mono" style={{ fontSize: 13, color: COLOR.faint }}>{2 + (role ? 1 : 0) + (custom ? 1 : 0)}</span>
+          <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Сложность и приоритет</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px,1fr))', gap: 20, marginBottom: 30 }}>
           <div>
@@ -1814,19 +1854,19 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
               {DIFFICULTIES.map((dd) => {
                 const active = difficulty === dd.id;
                 return (
-                  <span key={dd.id} className={`ems-tab ${active ? 'active' : ''}`}
-                    style={{ flex: 1, textAlign: 'center', padding: '9px 0', fontSize: 12.5 }}
-                    onClick={() => { Audio.play('click'); setDifficulty(dd.id); }}>{dd.title}</span>
+                  <button type="button" key={dd.id} className={`ems-tab ${active ? 'active' : ''}`} aria-pressed={active}
+                    style={{ flex: 1, textAlign: 'center', padding: '9px 0', fontSize: 13 }}
+                    onClick={() => { Audio.play('click'); setDifficulty(dd.id); }}>{dd.title}</button>
                 );
               })}
             </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>
               {(DIFFICULTIES.find((dd) => dd.id === difficulty) || {}).desc}
             </div>
           </div>
           {role !== 'entrepreneur' && (
             <div>
-              <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 8 }}>По какой оценке подводить итог партии</div>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 8 }}>По какой оценке подводить итог партии</div>
               <div style={{ position: 'relative' }}>
                 <select value={goal} onChange={(e) => setGoal(e.target.value)} className="ems-btn"
                   style={{ width: '100%', padding: '10px 36px 10px 12px', fontSize: 13, appearance: 'none', WebkitAppearance: 'none' }}>
@@ -1880,7 +1920,7 @@ function CrashScreen({ error, onMenu }) {
           Произошла ошибка при отрисовке. Партии это не касается: сохранения лежат на сервере и никуда не делись —
           можно вернуться в меню и загрузить их заново.
         </div>
-        <div className="ems-mono" style={{ fontSize: 11, color: COLOR.faint, background: COLOR.panelAlt,
+        <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, background: COLOR.panelAlt,
           border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '9px 10px', marginBottom: 14,
           maxHeight: 120, overflow: 'auto', wordBreak: 'break-word' }}>
           {String((error && error.message) || error || 'неизвестная ошибка')}

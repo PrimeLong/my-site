@@ -188,7 +188,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
       <div className="ems-panel" style={{ padding: 10 }}>
         <BusinessMap economy={e} selected={region} onSelect={setRegion} info={mapInfo} flows={flows}
           highlight={highlight} hit={st.events.regionHit ? st.events.regionHit.region : null} routes={T.ROUTE_LINKS} />
-        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6, lineHeight: 1.45 }}>
           Нажмите на область, чтобы строить там. Золотые линии — ваши грузы между областями: чем толще, тем больше везёте
           (перевозка стоит денег, соседство цехов экономит). Наведите на здание в списке — карта покажет, где оно работает лучше.
         </div>
@@ -206,10 +206,10 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
       {showRecords && <RecordsModal st={st} onClose={() => setShowRecords(false)} />}
       <QuestCard st={st} act={act} onGo={(t) => { Audio.play('tab'); setTab(t); }} />
       {st.log[0] && (
-        <div style={{ padding: '8px 18px', fontSize: 11.5, color: COLOR.muted, borderBottom: `1px solid ${COLOR.hairline}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ padding: '8px 18px', fontSize: 12, color: COLOR.muted, borderBottom: `1px solid ${COLOR.hairline}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <ArrowRight size={12} color={COLOR.gold} style={{ flexShrink: 0 }} />
           <span style={{ minWidth: 0, flex: '1 1 240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.log[0].text}</span>
-          {nextGoal && <span style={{ fontSize: 11, color: COLOR.goldSoft, whiteSpace: 'nowrap' }}><Trophy size={11} style={{ verticalAlign: -1 }} /> следующая веха: {nextGoal.title}</span>}
+          {nextGoal && <span style={{ fontSize: 12, color: COLOR.goldSoft, whiteSpace: 'nowrap' }}><Trophy size={11} style={{ verticalAlign: -1 }} /> следующая веха: {nextGoal.title}</span>}
         </div>
       )}
       <div style={{ padding: '14px 16px 40px', maxWidth: 1500, margin: '0 auto' }}>
@@ -249,7 +249,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
 
       {!st.introSeen && !offline && (
         <Modal title="Своё дело" onClose={() => setSt((p) => ({ ...p, introSeen: true }))}>
-          <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 7 }}>
+          <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 7 }}>
             <div><b style={{ color: COLOR.text }}>Время идёт само.</b> Деньги капают каждую секунду, раз в минуту проходит квартал страны — налоги, проценты, новости. Пауза и скорость — в шапке.</div>
             <div><b style={{ color: COLOR.text }}>Цепочки.</b> Сырьё → переработка → магазин. Чем дальше по цепочке, тем дороже товар; рядом стоящие цеха экономят на перевозке.</div>
             <div><b style={{ color: COLOR.text }}>Страна живёт без вас.</b> Ставка, кризисы, выборы и война меняют спрос, цены и кредит — следите за вкладкой «Страна».</div>
@@ -340,7 +340,7 @@ function RecordsModal({ st, onClose }) {
         <span className="ems-mono" style={{ color: r.rank <= 3 ? COLOR.gold : COLOR.faint, fontWeight: 600 }}>{r.rank}</span>
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           <Em size={11} color={COLOR.gold} style={{ verticalAlign: -1, marginRight: 4 }} />{r.name}{r.you ? ' (вы)' : ''}
-          <span style={{ color: COLOR.faint, fontSize: 10.5 }}>{r.start ? ` · ${START_LABEL[r.start] || r.start}` : ''}{r.legacy ? ` · репутация ${r.legacy}` : ''}</span>
+          <span style={{ color: COLOR.faint, fontSize: 12 }}>{r.start ? ` · ${START_LABEL[r.start] || r.start}` : ''}{r.legacy ? ` · репутация ${r.legacy}` : ''}</span>
         </span>
         <span className="ems-mono" style={{ fontWeight: 600, color: r.you ? COLOR.gold : COLOR.text }}>{money(r.value)}</span>
       </div>
@@ -348,7 +348,7 @@ function RecordsModal({ st, onClose }) {
   };
   return (
     <Modal title="Рекорды «Своего дела»" onClose={onClose}>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
         Лучшая стоимость компании каждого игрока. Ваша сейчас — <b className="ems-mono" style={{ color: COLOR.text }}>{money(T.companyValue(st))}</b>.
         {account ? ' Рекорд записывается сам раз в квартал, когда растёт.' : ' Чтобы попасть в таблицу, войдите в профиль в главном меню.'}
       </div>
@@ -357,7 +357,7 @@ function RecordsModal({ st, onClose }) {
       {data && !rows.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Пока пусто — станьте первым.</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '55vh', overflowY: 'auto' }}>
         {rows.map(row)}
-        {you && <div style={{ textAlign: 'center', color: COLOR.faint, fontSize: 11, lineHeight: 1 }}>⋯</div>}
+        {you && <div style={{ textAlign: 'center', color: COLOR.faint, fontSize: 12, lineHeight: 1 }}>⋯</div>}
         {you && row(you)}
       </div>
     </Modal>
@@ -398,18 +398,18 @@ function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
         <div className="ems-card-icon" style={{ width: 38, height: 38 }}><Factory size={18} color={COLOR.gold} /></div>
         <div style={{ minWidth: 0 }}>
-          <div className="ems-serif" style={{ fontSize: 16 }}>Своё дело{st.legacy ? <span style={{ fontSize: 11, color: COLOR.gold, marginLeft: 6 }}>репутация {st.legacy}</span> : null}</div>
-          <div style={{ fontSize: 11, color: COLOR.muted }}>{quarterLabel(st.country.quarterIndex)} · {regime.label}</div>
+          <div className="ems-serif" style={{ fontSize: 16 }}>Своё дело{st.legacy ? <span style={{ fontSize: 12, color: COLOR.gold, marginLeft: 6 }}>репутация {st.legacy}</span> : null}</div>
+          <div style={{ fontSize: 12, color: COLOR.muted }}>{quarterLabel(st.country.quarterIndex)} · {regime.label}</div>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         <span className="ems-mono" style={{ fontSize: 24, fontWeight: 600, color: st.cash < 0 ? COLOR.rust : COLOR.goldSoft }} aria-label="Деньги на счёте">{money(st.cash)}</span>
         <span className="ems-mono" style={{ fontSize: 12, color: net >= 0 ? COLOR.teal : COLOR.rust }}>{moneySigned(net * 60)}/мин</span>
-        <span style={{ fontSize: 11.5, color: COLOR.muted }}>стоимость <b className="ems-mono" style={{ color: COLOR.text }}>{money(value)}</b></span>
+        <span style={{ fontSize: 12, color: COLOR.muted }}>стоимость <b className="ems-mono" style={{ color: COLOR.text }}>{money(value)}</b></span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
         <div title="До конца квартала: страна сделает ход, придут налоги и проценты" style={{ width: 90 }}>
-          <div style={{ fontSize: 10, color: COLOR.faint, marginBottom: 3 }}>квартал {Math.round(qp * 100)}%</div>
+          <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 3 }}>квартал {Math.round(qp * 100)}%</div>
           <div style={{ height: 4, background: COLOR.border, borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ width: `${qp * 100}%`, height: '100%', background: COLOR.gold, transition: 'width .5s linear' }} />
           </div>
@@ -437,16 +437,16 @@ function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
       </div>
       <div style={{ flexBasis: '100%', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {chips.map(([k, v]) => (
-          <span key={k} className="ems-mono" style={{ fontSize: 11, padding: '3px 8px', border: `1px solid ${COLOR.border}`, borderRadius: 999, color: COLOR.muted, background: COLOR.panelAlt }}>
+          <span key={k} className="ems-mono" style={{ fontSize: 12, padding: '3px 8px', border: `1px solid ${COLOR.border}`, borderRadius: 999, color: COLOR.muted, background: COLOR.panelAlt }}>
             {k} <b style={{ color: COLOR.text }}>{v}</b>
           </span>
         ))}
         {(e.activeCrises || []).length > 0 && (
-          <span style={{ fontSize: 11, padding: '3px 8px', border: `1px solid ${COLOR.rust}`, borderRadius: 999, color: COLOR.rust, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, padding: '3px 8px', border: `1px solid ${COLOR.rust}`, borderRadius: 999, color: COLOR.rust, display: 'flex', alignItems: 'center', gap: 4 }}>
             <AlertTriangle size={11} />кризис
           </span>
         )}
-        {st.paused && <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 999, background: COLOR.goldDim, color: COLOR.goldSoft }}>пауза</span>}
+        {st.paused && <span style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, background: COLOR.goldDim, color: COLOR.goldSoft }}>пауза</span>}
       </div>
     </div>
   );
@@ -477,11 +477,11 @@ function RegionPanel({ st, region, act, setHoverType }) {
     <div className="ems-panel" style={{ padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
         <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>{T.regionName(reg)} область</span>
-        <span style={{ fontSize: 11, color: COLOR.faint }}>участков {used} из {slots}</span>
-        <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 9px', fontSize: 11 }}
+        <span style={{ fontSize: 12, color: COLOR.faint }}>участков {used} из {slots}</span>
+        <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 9px', fontSize: 12 }}
           onClick={() => act((s) => T.buySlot(s, reg), 'coin')}>+ участок · {money(T.slotCost(st, reg))}</button>
       </div>
-      <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
         {info.sector} · покупателей {Math.round(info.pop * 100)}% страны · зарплаты {info.wage >= 1 ? '+' : ''}{Math.round((info.wage - 1) * 100)}% к среднему ·
         настроение <span style={{ color: info.mood < 0.9 ? COLOR.rust : info.mood > 1.05 ? COLOR.teal : COLOR.text }}>{info.mood < 0.9 ? 'тревожное' : info.mood > 1.05 ? 'хорошее' : 'обычное'}</span>
         {info.hit ? <span style={{ color: COLOR.rust }}> · {info.hit}</span> : null}
@@ -491,7 +491,7 @@ function RegionPanel({ st, region, act, setHoverType }) {
           {here.map((b) => <BuildingCard key={b.uid} st={st} b={b} act={act} compact />)}
         </div>
       )}
-      <div style={{ fontSize: 11, color: COLOR.faint, margin: '6px 0' }}>Что можно построить здесь</div>
+      <div style={{ fontSize: 12, color: COLOR.faint, margin: '6px 0' }}>Что можно построить здесь</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
         {options.map((d) => {
           const Icon = ICONS[d.icon] || Factory;
@@ -503,11 +503,11 @@ function RegionPanel({ st, region, act, setHoverType }) {
               style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '9px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <Icon size={15} color={COLOR[CAT_COLOR[d.cat]]} />
-                <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 0 }}>{d.name}</span>
-                {bonus !== 1 && <span className="ems-mono" style={{ fontSize: 10.5, color: bonus > 1 ? COLOR.teal : COLOR.rust }}>×{bonus.toFixed(2)}</span>}
+                <span style={{ fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0 }}>{d.name}</span>
+                {bonus !== 1 && <span className="ems-mono" style={{ fontSize: 12, color: bonus > 1 ? COLOR.teal : COLOR.rust }}>×{bonus.toFixed(2)}</span>}
               </div>
-              <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4, flex: 1 }}>{recipeText(d)}</div>
-              <button className="ems-btn" disabled={!!err} title={err || ''} style={{ padding: '5px 8px', fontSize: 11.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.4, flex: 1 }}>{recipeText(d)}</div>
+              <button className="ems-btn" disabled={!!err} title={err || ''} style={{ padding: '5px 8px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                 borderColor: err ? COLOR.border : COLOR.gold, color: err ? COLOR.faint : COLOR.goldSoft }}
                 onClick={() => act((s) => T.build(s, d.id, reg), 'stamp')}>
                 <Hammer size={11} />{money(d.cost)}
@@ -517,7 +517,7 @@ function RegionPanel({ st, region, act, setHoverType }) {
         })}
       </div>
       {locked.length > 0 && (
-        <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 8, display: 'flex', gap: 6, alignItems: 'flex-start', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 8, display: 'flex', gap: 6, alignItems: 'flex-start', lineHeight: 1.5 }}>
           <Lock size={11} style={{ flexShrink: 0, marginTop: 3 }} />
           <span>После исследований: {locked.map((d) => `${d.name.toLowerCase()} (${T.RSR[d.unlock].name})`).join(', ')}.</span>
         </div>
@@ -544,26 +544,26 @@ function BuildingCard({ st, b, act, compact, onLocate }) {
     <div style={{ background: COLOR.panelAlt, border: `1px solid ${bad ? `${COLOR.rust}88` : COLOR.border}`, padding: compact ? '8px 10px' : '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <Icon size={15} color={COLOR[CAT_COLOR[d.cat]]} />
-        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{d.name}</span>
-        <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.gold }}>ур. {b.level}</span>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{d.name}</span>
+        <span className="ems-mono" style={{ fontSize: 12, color: COLOR.gold }}>ур. {b.level}</span>
         {!compact && (
-          <button onClick={onLocate} style={{ background: 'none', border: 'none', padding: 0, color: COLOR.muted, fontSize: 11, cursor: 'pointer', textDecoration: 'underline dotted' }}>
+          <button onClick={onLocate} style={{ background: 'none', border: 'none', padding: 0, color: COLOR.muted, fontSize: 12, cursor: 'pointer', textDecoration: 'underline dotted' }}>
             {T.regionName(b.region)}
           </button>
         )}
-        <span style={{ fontSize: 10.5, color: bad ? COLOR.rust : COLOR.faint, marginLeft: 'auto' }}>{status}</span>
+        <span style={{ fontSize: 12, color: bad ? COLOR.rust : COLOR.faint, marginLeft: 'auto' }}>{status}</span>
       </div>
       <div className="ty-work" style={{ margin: '7px 0 5px' }}>
         {cycle > 0 && b.enabled && <span style={{ background: COLOR[CAT_COLOR[d.cat]], animationDuration: `${cycle.toFixed(2)}s` }} />}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10.5, color: COLOR.muted, flex: 1, minWidth: 140 }}>
+        <span style={{ fontSize: 12, color: COLOR.muted, flex: 1, minWidth: 140 }}>
           {d.out ? `${Object.keys(d.out).map((r) => `${T.RES[r].name}: ${perMin(d.out[r] * eff)}/мин`).join(', ')}`
             : d.sells ? `до ${perMin(d.sells * power)} покупок/мин` : d.exports ? `до ${perMin(d.exports * power)} ед./мин на экспорт`
               : d.research ? `${perMin(d.research * power)} очков/мин` : d.storage ? `склад +${Math.round(d.storage * T.levelMult(b.level))}` : ''}
           {' · '}{Math.floor(b.staff)} чел.
         </span>
-        <button className="ems-btn" disabled={b.level >= T.MAX_LEVEL || st.cash < upCost} style={{ padding: '3px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+        <button className="ems-btn" disabled={b.level >= T.MAX_LEVEL || st.cash < upCost} style={{ padding: '3px 8px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
           title="Уровень: выработка ×1,5, людей ×1,25" onClick={() => act((s) => T.upgrade(s, b.uid), 'coin')}>
           <ArrowUpCircle size={11} />{b.level >= T.MAX_LEVEL ? 'макс.' : money(upCost)}
         </button>
@@ -586,7 +586,7 @@ function ProductionTab({ st, act, setRegion }) {
   const wages = st.buildings.reduce((a, b) => a + b.staff, 0);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="ems-panel" style={{ padding: 12, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11.5, color: COLOR.muted }}>
+      <div className="ems-panel" style={{ padding: 12, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: COLOR.muted }}>
         <span>Зданий: <b style={{ color: COLOR.text }}>{st.buildings.length}</b></span>
         <span>Работников: <b style={{ color: COLOR.text }}>{Math.round(wages)}</b></span>
         <span>Выручка: <b className="ems-mono" style={{ color: COLOR.teal }}>{money(st.stats.income * 60)}/мин</b></span>
@@ -594,7 +594,7 @@ function ProductionTab({ st, act, setRegion }) {
       </div>
       {groups.map(([cat, list]) => (
         <div key={cat} className="ems-panel" style={{ padding: 12 }}>
-          <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{CAT_LABEL[cat]}</div>
+          <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{CAT_LABEL[cat]}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {list.map((b) => <BuildingCard key={b.uid} st={st} b={b} act={act} onLocate={() => setRegion(b.region)} />)}
           </div>
@@ -614,7 +614,7 @@ function StockTab({ st, act }) {
   const list = T.RESOURCES.filter((r) => produced.has(r.id) || usedInputs.has(r.id) || (st.stock[r.id] || 0) > 0.5);
   return (
     <div className="ems-panel" style={{ padding: 12 }}>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 10, lineHeight: 1.5 }}>
         Склад общий, по {Math.round(cap)} ед. каждого товара (больше — склады и исследования). Свои цеха берут сырьё первыми;
         «Продавать» отдаёт оптовикам всё сверх запаса — чем больше льёте, тем ниже цена. «Докупать» берёт недостающее на рынке с наценкой 15%.
       </div>
@@ -628,17 +628,17 @@ function StockTab({ st, act }) {
           return (
             <div key={r.id} style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '9px 11px' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{r.name}</span>
-                <span className="ems-mono" style={{ fontSize: 11.5, color: full > 0.95 ? COLOR.rust : COLOR.text }}>{units(stock)} {r.unit}</span>
-                <span className="ems-mono" style={{ fontSize: 10.5, color: net >= 0 ? COLOR.teal : COLOR.rust }}>{net >= 0 ? '+' : ''}{perMin(net)}/мин</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{r.name}</span>
+                <span className="ems-mono" style={{ fontSize: 12, color: full > 0.95 ? COLOR.rust : COLOR.text }}>{units(stock)} {r.unit}</span>
+                <span className="ems-mono" style={{ fontSize: 12, color: net >= 0 ? COLOR.teal : COLOR.rust }}>{net >= 0 ? '+' : ''}{perMin(net)}/мин</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>
                   опт: купить {money(T.buyPrice(st, r.id))} · продать {money(T.sellPrice(st, r.id))}
                 </span>
               </div>
               <div style={{ height: 3, background: COLOR.border, borderRadius: 2, overflow: 'hidden', margin: '6px 0' }}>
                 <div style={{ width: `${Math.min(100, full * 100)}%`, height: '100%', background: full > 0.95 ? COLOR.rust : COLOR.gold, transition: 'width .5s linear' }} />
               </div>
-              <div style={{ fontSize: 10.5, color: COLOR.muted, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <span>выпуск {perMin(rate.prod)}/мин</span><span>в цеха {perMin(rate.cons)}/мин</span>
                 <span>продано {perMin(rate.sold)}/мин</span>{rate.bought > 0.001 && <span>куплено {perMin(rate.bought)}/мин</span>}
               </div>
@@ -657,12 +657,12 @@ function StockTab({ st, act }) {
                   </Chip>
                 )}
                 {!r.buyOnly && (
-                  <span style={{ fontSize: 10.5, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                  <span style={{ fontSize: 12, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
                     держать запас
-                    <button className="ems-btn" style={{ padding: '1px 7px', fontSize: 11 }} aria-label="Меньше запас"
+                    <button className="ems-btn" style={{ padding: '1px 7px', fontSize: 12 }} aria-label="Меньше запас"
                       onClick={() => act((s) => T.setMap(s, 'reserve', r.id, Math.max(0, (s.reserve[r.id] || 0) - 20)), 'tick')}>−</button>
                     <span className="ems-mono" style={{ color: COLOR.text, minWidth: 26, textAlign: 'center' }}>{st.reserve[r.id] || 0}</span>
-                    <button className="ems-btn" style={{ padding: '1px 7px', fontSize: 11 }} aria-label="Больше запас"
+                    <button className="ems-btn" style={{ padding: '1px 7px', fontSize: 12 }} aria-label="Больше запас"
                       onClick={() => act((s) => T.setMap(s, 'reserve', r.id, Math.min(cap, (s.reserve[r.id] || 0) + 20)), 'tick')}>+</button>
                   </span>
                 )}
@@ -687,7 +687,7 @@ function StockTab({ st, act }) {
 function Chip({ on, onClick, children, disabled }) {
   return (
     <button className="ems-btn" aria-pressed={on} disabled={disabled} onClick={onClick}
-      style={{ padding: '3px 9px', fontSize: 11, borderRadius: 999, borderColor: on ? COLOR.gold : COLOR.border,
+      style={{ padding: '3px 9px', fontSize: 12, borderRadius: 999, borderColor: on ? COLOR.gold : COLOR.border,
         background: on ? COLOR.goldDim : 'transparent', color: on ? COLOR.goldSoft : COLOR.muted }}>
       {on && <Check size={10} style={{ verticalAlign: -1, marginRight: 3 }} />}{children}
     </button>
@@ -713,7 +713,7 @@ function LabTab({ st, act }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <FlaskConical size={15} color={COLOR.gold} />
         <span className="ems-mono" style={{ fontSize: 20, color: COLOR.goldSoft, fontWeight: 600 }}>{Math.floor(st.rp)}</span>
-        <span style={{ fontSize: 11.5, color: COLOR.muted }}>очков · +{perMin(rate)}/мин. Лаборатории ускоряют (лучше в столице). Каждое изучение дороже следующего. Дерево шире экрана — прокрутите его вбок.</span>
+        <span style={{ fontSize: 12, color: COLOR.muted }}>очков · +{perMin(rate)}/мин. Лаборатории ускоряют (лучше в столице). Каждое изучение дороже следующего. Дерево шире экрана — прокрутите его вбок.</span>
       </div>
       <div style={{ overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
         <div style={{ position: 'relative', width: W, height: H }}>
@@ -741,8 +741,8 @@ function LabTab({ st, act }) {
                   {stt === 'done' ? <Check size={13} color={COLOR.gold} /> : stt === 'locked' ? <Lock size={12} color={COLOR.faint} /> : <FlaskConical size={13} color={COLOR.teal} />}
                   {r.name}
                 </span>
-                <span style={{ fontSize: 10, color: COLOR.faint }}>{T.RESEARCH_BRANCHES[r.branch]}</span>
-                <span className="ems-mono" style={{ fontSize: 11, marginTop: 'auto', color: stt === 'done' ? COLOR.gold : can ? COLOR.teal : COLOR.muted }}>
+                <span style={{ fontSize: 12, color: COLOR.faint }}>{T.RESEARCH_BRANCHES[r.branch]}</span>
+                <span className="ems-mono" style={{ fontSize: 12, marginTop: 'auto', color: stt === 'done' ? COLOR.gold : can ? COLOR.teal : COLOR.muted }}>
                   {stt === 'done' ? 'изучено' : `${cost} очков`}
                 </span>
               </button>
@@ -754,8 +754,8 @@ function LabTab({ st, act }) {
         <div style={{ marginTop: 10, padding: '10px 12px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 220px', minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{sel.name}</div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginTop: 3 }}>{sel.desc}</div>
-            {T.reqsOf(sel).length > 0 && <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3 }}>Нужно: {T.reqsOf(sel).map((x) => T.RSR[x].name).join(', ')}</div>}
+            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginTop: 3 }}>{sel.desc}</div>
+            {T.reqsOf(sel).length > 0 && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 3 }}>Нужно: {T.reqsOf(sel).map((x) => T.RSR[x].name).join(', ')}</div>}
           </div>
           {!T.has(st, sel.id) && (
             <button className="ems-btn" disabled={!!T.canResearch(st, sel.id)} title={T.canResearch(st, sel.id) || ''}
@@ -766,7 +766,7 @@ function LabTab({ st, act }) {
           )}
         </div>
       )}
-      {!sel && <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 8 }}>Нажмите на узел, чтобы прочитать, что он даёт, и изучить. Подсвеченные бирюзовым можно изучить прямо сейчас.</div>}
+      {!sel && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 8 }}>Нажмите на узел, чтобы прочитать, что он даёт, и изучить. Подсвеченные бирюзовым можно изучить прямо сейчас.</div>}
     </div>
   );
 }
@@ -775,7 +775,7 @@ function LabTab({ st, act }) {
 function TeamTab({ st, act }) {
   return (
     <div className="ems-panel" style={{ padding: 12 }}>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
         Менеджеры сами делают рутину каждые пять секунд — и пока вкладка закрыта тоже. Зарплата растёт вместе с компанией.
         Тем, кто тратит деньги, задайте бюджет: какую долю денег на счёте можно пустить в дело за раз.
       </div>
@@ -788,24 +788,24 @@ function TeamTab({ st, act }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Users size={14} color={hired ? COLOR.gold : COLOR.muted} />
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{m.name}</span>
-                <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint }}>{money(T.managerSalaryOf(st, m.id) * 60)}/мин</span>
+                <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{money(T.managerSalaryOf(st, m.id) * 60)}/мин</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   {hired ? (
                     <>
-                      <button className="ems-btn" style={{ padding: '3px 9px', fontSize: 11 }} aria-pressed={hired.on !== false}
+                      <button className="ems-btn" style={{ padding: '3px 9px', fontSize: 12 }} aria-pressed={hired.on !== false}
                         onClick={() => act((s2) => T.setManager(s2, m.id, { on: hired.on === false }), 'tick')}>{hired.on === false ? 'В отпуске — вернуть' : 'Работает — отпуск'}</button>
-                      <button className="ems-btn" style={{ padding: '3px 9px', fontSize: 11 }}
+                      <button className="ems-btn" style={{ padding: '3px 9px', fontSize: 12 }}
                         onClick={() => { if (window.confirm(`Уволить: ${m.name}?`)) act((s2) => T.fireManager(s2, m.id)); }}>Уволить</button>
                     </>
                   ) : (
-                    <button className="ems-btn" disabled={!unlocked || st.cash < m.hire} style={{ padding: '4px 10px', fontSize: 11.5, borderColor: unlocked ? COLOR.gold : COLOR.border }}
+                    <button className="ems-btn" disabled={!unlocked || st.cash < m.hire} style={{ padding: '4px 10px', fontSize: 12, borderColor: unlocked ? COLOR.gold : COLOR.border }}
                       onClick={() => act((s2) => T.hireManager(s2, m.id), 'coin')}>
                       {unlocked ? `Нанять · ${money(m.hire)}` : <><Lock size={11} style={{ verticalAlign: -1 }} /> {T.RSR[m.unlock].name}</>}
                     </button>
                   )}
                 </span>
               </div>
-              <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45, marginTop: 5 }}>{m.desc}</div>
+              <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45, marginTop: 5 }}>{m.desc}</div>
               {hired && m.spends && (
                 <PlanSlider label="Бюджет за раз" value={hired.budget ?? 30} min={5} max={100} step={5}
                   hint="Доля денег на счёте, которую можно потратить одним решением."
@@ -830,11 +830,11 @@ function QuestCard({ st, act, onGo }) {
       <div style={{ maxWidth: 1500, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {done ? <Sparkles size={16} color={COLOR.gold} /> : <Gift size={16} color={COLOR.gold} />}
         <div style={{ flex: '1 1 260px', minWidth: 0 }}>
-          <div style={{ fontSize: 12.5 }}>
+          <div style={{ fontSize: 13 }}>
             <b style={{ color: COLOR.goldSoft }}>Задание {n} из {T.QUESTS.length}: {q.title}</b>
-            <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint, marginLeft: 8 }}>награда {money(q.reward)}</span>
+            <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, marginLeft: 8 }}>награда {money(q.reward)}</span>
           </div>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{done ? 'Готово — заберите награду.' : T.questText(st, q)}</div>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{done ? 'Готово — заберите награду.' : T.questText(st, q)}</div>
         </div>
         {done ? (
           <button className="ems-btn primary" style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => act((s2) => T.claimQuest(s2), 'coin')}>Забрать {money(q.reward)}</button>
@@ -874,21 +874,21 @@ function SavesModal({ st, onClose, onLoad, toast }) {
   };
   return (
     <Modal title="Партии «Своего дела»" onClose={onClose}>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
         Партия сама сохраняется в этом браузере каждые пять секунд. Слоты ниже — на сервере: их видно и на связанных устройствах.
       </div>
-      {err && <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 8 }}>{err}</div>}
-      {!slots && !err && <div style={{ fontSize: 11.5, color: COLOR.faint }}>Загружаем слоты…</div>}
+      {err && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 8 }}>{err}</div>}
+      {!slots && !err && <div style={{ fontSize: 12, color: COLOR.faint }}>Загружаем слоты…</div>}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {(slots || []).map((sl, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12, flexWrap: 'wrap' }}>
             <span className="ems-mono" style={{ color: COLOR.faint }}>{i + 1}</span>
             <span style={{ flex: '1 1 140px', minWidth: 0, color: sl ? COLOR.text : COLOR.faint }}>
               {sl ? `${quarterLabel(sl.quarterIndex || 1)} · ${sl.buildings} зданий · ${money(sl.cash || 0)}${sl.legacy ? ` · репутация ${sl.legacy}` : ''}` : 'пусто'}
-              {sl && <span style={{ display: 'block', fontSize: 10, color: COLOR.faint }}>{new Date(sl.savedAt).toLocaleString('ru-RU')}</span>}
+              {sl && <span style={{ display: 'block', fontSize: 12, color: COLOR.faint }}>{new Date(sl.savedAt).toLocaleString('ru-RU')}</span>}
             </span>
-            <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 11 }} onClick={() => save(i)}>{busy === i ? '…' : 'Сохранить сюда'}</button>
-            {sl && <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 11 }} onClick={() => load(i)}>Загрузить</button>}
+            <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => save(i)}>{busy === i ? '…' : 'Сохранить сюда'}</button>
+            {sl && <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => load(i)}>Загрузить</button>}
             {sl && <button onClick={() => remove(i)} aria-label="Удалить" style={{ background: 'none', border: 'none', color: COLOR.faint, cursor: 'pointer', lineHeight: 0 }}><X size={12} /></button>}
           </div>
         ))}
@@ -916,15 +916,15 @@ function MoneyTab({ st, act, onSell }) {
             ['Деньги', money(st.cash), 'на счёте'], ['Долг', money(debt), st.debtFx > 0 ? `валютный ${money(st.debtFx * e.exchangeRate / 100)}` : 'в рублях'],
             ['Ставка по долгу', `${fmt1(st.loanRate)}%`, `рынок ${fmt1(e.lendingRate)}%`], ['Банк даст ещё', money(lim), e.creditCrunch ? 'кредитное сжатие' : 'по EBITDA']].map(([k, v, sub]) => (
             <div key={k} style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '8px 10px', minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, color: COLOR.faint }}>{k}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint }}>{k}</div>
               <div className="ems-mono" style={{ fontSize: 15, fontWeight: 600, marginTop: 2 }}>{v}</div>
-              <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 2 }}>{sub}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 2 }}>{sub}</div>
             </div>
           ))}
         </div>
         {st.history.length >= 2 && (
           <div style={{ marginTop: 10 }}>
-            <div style={{ fontSize: 10.5, color: COLOR.faint, marginBottom: 3 }}>Стоимость компании по кварталам</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 3 }}>Стоимость компании по кварталам</div>
             <MiniSpark series={st.history.map((h) => h.value)} color={COLOR.gold} />
           </div>
         )}
@@ -932,7 +932,7 @@ function MoneyTab({ st, act, onSell }) {
 
       <div className="ems-panel" style={{ padding: 14 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 7 }}><Landmark size={14} />Кредит</div>
-        <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
           Проценты платятся раз в квартал. Рублёвый долг переоценивается по новой ставке постепенно, валютный дешевле
           ({fmt1(fxLoanRate(e))}% против {fmt1(e.lendingRate)}%), но растёт вместе с курсом.
         </div>
@@ -979,13 +979,13 @@ function MoneyTab({ st, act, onSell }) {
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 7 }}><Trophy size={14} />Вехи</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {T.MILESTONES.map((m) => (
-            <span key={m.id} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 999, border: `1px solid ${st.milestones[m.id] ? COLOR.gold : COLOR.border}`,
+            <span key={m.id} style={{ fontSize: 12, padding: '3px 9px', borderRadius: 999, border: `1px solid ${st.milestones[m.id] ? COLOR.gold : COLOR.border}`,
               color: st.milestones[m.id] ? COLOR.goldSoft : COLOR.faint }}>{st.milestones[m.id] ? '✓ ' : ''}{m.title}</span>
           ))}
         </div>
         <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${COLOR.hairline}` }}>
           <div style={{ fontSize: 12, color: COLOR.text, marginBottom: 4 }}>Продать компанию</div>
-          <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
             Когда компания стоит больше {money(T.SELL_MIN_VALUE)}, её можно продать и начать новое дело с репутацией:
             каждый пункт — +10% к выработке и спросу. Сейчас это дало бы +{T.legacyFor(value)}.
           </div>
@@ -1022,7 +1022,7 @@ function CountryTab({ st }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className="ems-panel" style={{ padding: 14 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 4 }}>Страна живёт сама</div>
-        <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
           Квартал — минута игрового времени. ЦБ: {getCbPersona(c.cbPersona).name}, Минфин: {getMofPersona(c.mofPersona).name}
           {c.president ? `, президент: ${getPresPersona(c.presPersona).name}` : ''}. {scen && scen.id !== 'sandbox' ? `Сценарий: ${scen.title}.` : ''}
         </div>
@@ -1030,29 +1030,29 @@ function CountryTab({ st }) {
           <div key={k} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 8, padding: '5px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12 }}>{k}</div>
-              <div style={{ fontSize: 10.5, color: COLOR.faint }}>{why}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint }}>{why}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className="ems-mono" style={{ fontSize: 13, fontWeight: 600 }}>{v}</div>
-              {Math.abs(dv) > 0.05 && <div className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint }}>{dv > 0 ? '+' : ''}{dv.toFixed(1)}</div>}
+              {Math.abs(dv) > 0.05 && <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{dv > 0 ? '+' : ''}{dv.toFixed(1)}</div>}
             </div>
           </div>
         ))}
         {hints.length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {hints.map((h) => <div key={h} style={{ fontSize: 11.5, color: COLOR.gold, display: 'flex', gap: 6 }}><AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />{h}</div>)}
+            {hints.map((h) => <div key={h} style={{ fontSize: 12, color: COLOR.gold, display: 'flex', gap: 6 }}><AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 2 }} />{h}</div>)}
           </div>
         )}
       </div>
       <div className="ems-panel" style={{ padding: 14 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}><Newspaper size={14} />Новости</div>
-        {!st.news.length && <div style={{ fontSize: 11.5, color: COLOR.faint }}>Первые новости придут в конце квартала.</div>}
+        {!st.news.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Первые новости придут в конце квартала.</div>}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {st.news.slice(0, 30).map((n) => (
             <div key={n.id} style={{ borderLeft: `2px solid ${n.own ? COLOR.gold : COLOR.border}`, paddingLeft: 9 }}>
-              <div style={{ fontSize: 10, color: COLOR.faint }}>{n.qLabel}{n.own ? ' · ваша компания' : ''}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint }}>{n.qLabel}{n.own ? ' · ваша компания' : ''}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: n.own ? COLOR.goldSoft : COLOR.text }}>{n.headline}</div>
-              {n.text && <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>{n.text}</div>}
+              {n.text && <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>{n.text}</div>}
             </div>
           ))}
         </div>

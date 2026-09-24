@@ -45,14 +45,14 @@ function CasinoBet({ amount, setAmount, cash }) {
   const setPct = (p) => setAmount(Math.max(0.01, Math.round(cash * p * 100) / 100));
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>
         <span>Ставка</span><span className="ems-mono">{fmtMln(amount)}</span>
       </div>
       <input type="range" min={0.01} max={Math.max(0.01, cash)} step={0.01} value={Math.min(amount, Math.max(0.01, cash))}
         onChange={(e) => setAmount(parseFloat(e.target.value))} style={{ width: '100%' }} />
       <div style={{ display: 'flex', gap: 5, marginTop: 5 }}>
         {[0.1, 0.25, 0.5, 1].map((p) => (
-          <button key={p} className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 10.5 }} onClick={() => setPct(p)}>
+          <button key={p} className="ems-btn" style={{ flex: 1, padding: '4px 0', fontSize: 12 }} onClick={() => setPct(p)}>
             {p === 1 ? 'макс.' : `${p * 100}%`}
           </button>
         ))}
@@ -108,16 +108,16 @@ function RouletteGame({ cash, onResult }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
       <div>
-        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Тип ставки</div>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 5 }}>Тип ставки</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
           {ROULETTE_BETS.map((b) => (
-            <span key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} style={{ padding: '4px 9px', fontSize: 11 }}
-              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></span>
+            <button type="button" key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} aria-pressed={betType === b.id} style={{ padding: '4px 9px', fontSize: 12 }}
+              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></button>
           ))}
         </div>
         {betType === 'straight' && (
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>Число (0–36)</div>
+            <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>Число (0–36)</div>
             <input type="number" min={0} max={36} value={number} onChange={(e) => setNumber(clamp(parseInt(e.target.value, 10) || 0, 0, 36))}
               style={{ width: '100%', padding: '7px 9px', fontSize: 13, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
           </div>
@@ -139,7 +139,7 @@ function RouletteGame({ cash, onResult }) {
               return (
                 <div key={n} style={{ position: 'absolute', top: '50%', left: '50%', width: 0, height: 0, transform: `rotate(${mid}deg)` }}>
                   <span style={{ position: 'absolute', left: -11, top: -(WHEEL_SIZE / 2 - 22), width: 22, textAlign: 'center',
-                    fontSize: 12.5, fontWeight: 700, color: '#F4F1E8', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>{n}</span>
+                    fontSize: 13, fontWeight: 700, color: '#F4F1E8', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>{n}</span>
                 </div>
               );
             })}
@@ -227,7 +227,7 @@ function SlotsGame({ cash, onResult }) {
         <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={anySpinning || cash <= 0} onClick={play}>
           {anySpinning ? 'Крутится…' : 'Крутить'}
         </button>
-        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9, lineHeight: 1.5 }}>
           {SLOT_SYMBOLS.map((s) => (<div key={s.id}>{s.icon}{s.icon}{s.icon} × {s.pay3}</div>))}
           <div>🍒🍒 × {SLOT_SYMBOLS[0].pay2}</div>
         </div>
@@ -281,11 +281,11 @@ function DiceGame({ cash, onResult }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
       <div>
-        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Ставка на сумму двух костей</div>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 5 }}>Ставка на сумму двух костей</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
           {DICE_BETS.map((b) => (
-            <span key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} style={{ padding: '4px 9px', fontSize: 11 }}
-              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></span>
+            <button type="button" key={b.id} className={`ems-tab ${betType === b.id ? 'active' : ''}`} aria-pressed={betType === b.id} style={{ padding: '4px 9px', fontSize: 12 }}
+              onClick={() => { Audio.play('tab'); setBetType(b.id); }}>{b.label} <span style={{ color: COLOR.faint }}>×{b.mult}</span></button>
           ))}
         </div>
         <CasinoBet amount={amount} setAmount={setAmount} cash={cash} />
@@ -467,7 +467,7 @@ function BinaryOptionGame({ cash, onResult }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 26 }} className="ems-casino-grid">
       <div>
-        <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 5 }}>Инструмент</div>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 5 }}>Инструмент</div>
         <select value={instrId} onChange={(e) => setInstrId(e.target.value)}
           style={{ width: '100%', padding: '7px 9px', fontSize: 12, marginBottom: 10, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }}>
           {INSTRUMENTS.filter((i) => i.kind === 'spot').map((i) => (<option key={i.id} value={i.id}>{i.name}</option>))}
@@ -482,7 +482,7 @@ function BinaryOptionGame({ cash, onResult }) {
         <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0' }} disabled={busy || cash <= 0} onClick={play}>
           {busy ? 'Идёт торг…' : 'Заключить пари'}
         </button>
-        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9 }}>Выплата 1.85× ставки при угадывании направления {instr ? instr.name.toLowerCase() : ''} — без плеча, без комиссии, чистое пари на монетку.</div>
+        <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9 }}>Выплата 1.85× ставки при угадывании направления {instr ? instr.name.toLowerCase() : ''} — без плеча, без комиссии, чистое пари на монетку.</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', width: '100%' }}>
         <div className={res && !busy ? (res.win ? 'ems-win-pulse' : 'ems-lose-pulse') : ''} style={{ width: '100%', maxWidth: 480, borderRadius: 10, padding: 8 }}>
@@ -514,17 +514,17 @@ export function CasinoScreen({ book, onCasino }) {
             <Dices size={13} color={COLOR.gold} />
             <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Казино</span>
           </span>
-          <span style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'baseline' }}>
+          <span style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'baseline' }}>
             <span style={{ color: COLOR.muted }}>Свободные деньги</span><span className="ems-mono" style={{ color: cash < 0.01 ? COLOR.rust : COLOR.text }}>{fmtMln(cash)}</span>
           </span>
-          <span style={{ fontSize: 10.5, color: COLOR.faint, marginLeft: 'auto' }}>
+          <span style={{ fontSize: 12, color: COLOR.faint, marginLeft: 'auto' }}>
             Матожидание отрицательное — это развлечение, а не стратегия
           </span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '9px 13px', borderBottom: `1px solid ${COLOR.border}` }}>
           {CASINO_GAMES.map((g) => (
-            <span key={g.id} className={`ems-tab ${game === g.id ? 'active' : ''}`} style={{ padding: '5px 10px', fontSize: 11.5 }}
-              onClick={() => { Audio.play('tab'); setGame(g.id); }}>{g.icon} {g.label}</span>
+            <button type="button" key={g.id} className={`ems-tab ${game === g.id ? 'active' : ''}`} aria-pressed={game === g.id} style={{ padding: '5px 10px', fontSize: 12 }}
+              onClick={() => { Audio.play('tab'); setGame(g.id); }}>{g.icon} {g.label}</button>
           ))}
         </div>
         {/* лёгкий зелёный отблеск поверх ФОНА ТЕМЫ, а не сплошной сукно-зелёный:

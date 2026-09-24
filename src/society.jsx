@@ -24,7 +24,7 @@ export function SocietyView({ economy, plan, onPlan, planner }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {economy.groupDemand && <DemandPanel demand={economy.groupDemand} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />}
       {!economy.groupDemand && economy.lastGroupResolution && (
-        <div style={{ fontSize: 11.5, color: COLOR.muted }}>
+        <div style={{ fontSize: 12, color: COLOR.muted }}>
           Последнее требование — {economy.lastGroupResolution.title.toLowerCase()}: {economy.lastGroupResolution.byDefault
             ? 'ответа не было, это сочли отказом' : `ответ «${economy.lastGroupResolution.label.toLowerCase()}»`}.
         </div>
@@ -46,11 +46,11 @@ export function SocietyView({ economy, plan, onPlan, planner }) {
             <div key={g.id} title={`${g.name}: ${Math.round(support[g.id])} — ${groupStatus(support[g.id])}`}
               style={{ width: `${g.weight * 100}%`, background: `${statusColor(support[g.id])}${support[g.id] >= 50 ? 'cc' : '55'}`,
                 borderRight: `1px solid ${COLOR.bg}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              <span style={{ fontSize: 10, color: support[g.id] >= 50 ? COLOR.ink : COLOR.text, whiteSpace: 'nowrap', padding: '0 3px' }}>{g.name}</span>
+              <span style={{ fontSize: 12, color: support[g.id] >= 50 ? COLOR.ink : COLOR.text, whiteSpace: 'nowrap', padding: '0 3px' }}>{g.name}</span>
             </div>
           ))}
         </div>
-        <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.5 }}>
           Коалиция власти: <b style={{ color: coalition.weight >= 0.5 ? COLOR.teal : COLOR.rust }}>{Math.round(coalition.weight * 100)}% политического веса</b>
           {coalition.members.length ? ` — ${coalition.members.map((id) => SOCIAL_GROUPS.find((g) => g.id === id).name.toLowerCase()).join(', ')}` : ' — ни одной группы'}.
           {coalition.weight < 0.5 && (
@@ -82,9 +82,9 @@ function DemandPanel({ demand, economy, plan, onPlan, planner }) {
     <div className="ems-panel" style={{ padding: 14, borderLeft: `3px solid ${COLOR.rust}` }} aria-label="Требование группы">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <AlertTriangle size={15} color={COLOR.rust} />
-        <span className="ems-serif" style={{ fontSize: 14.5 }}>{demand.title}</span>
+        <span className="ems-serif" style={{ fontSize: 15 }}>{demand.title}</span>
         <Icon size={14} color={COLOR.muted} style={{ marginLeft: 'auto' }} />
-        <span style={{ fontSize: 10.5, color: COLOR.faint }}>{g ? g.name : ''}</span>
+        <span style={{ fontSize: 12, color: COLOR.faint }}>{g ? g.name : ''}</span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55, marginBottom: 9 }}>
         <b>{demand.leader.name}</b>, {demand.leader.title}: {demand.text}
@@ -101,15 +101,15 @@ function DemandPanel({ demand, economy, plan, onPlan, planner }) {
               style={{ padding: '7px 9px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, borderRadius: 3,
                 cursor: onPlan ? 'pointer' : 'default', border: `1px solid ${active ? COLOR.gold : COLOR.border}`, background: active ? COLOR.goldDim : COLOR.panelAlt }}>
               <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? COLOR.goldSoft : COLOR.text }}>{o.label}</span>
-              <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint }}>
+              <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>
                 {cost} · {g ? g.name.toLowerCase() : 'группа'} <span style={{ color: o.support >= 0 ? COLOR.teal : COLOR.rust }}>{o.support > 0 ? '+' : '−'}{Math.abs(o.support)}</span>
               </span>
-              <span style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4 }}>{o.effect}</span>
+              <span style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.4 }}>{o.effect}</span>
             </div>
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 8 }}>
         {onPlan ? (chosen ? 'Ответ применится в конце квартала.' : 'Без ответа это будет отказ.') : `Отвечает ${planner || 'Минфин'}.`}
       </div>
     </div>
@@ -133,8 +133,8 @@ function GroupCard({ g, v, prevV, drivers, memory }) {
     <div className="ems-panel" style={{ padding: 14, borderLeft: `3px solid ${c}` }} aria-label={`${g.name}: ${Math.round(v)} из 100, ${groupStatus(v)}`}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <Icon size={16} color={c} />
-        <span className="ems-serif" style={{ fontSize: 14.5 }}>{g.name}</span>
-        <span style={{ fontSize: 10.5, color: COLOR.faint }}>вес {Math.round(g.weight * 100)}%</span>
+        <span className="ems-serif" style={{ fontSize: 15 }}>{g.name}</span>
+        <span style={{ fontSize: 12, color: COLOR.faint }}>вес {Math.round(g.weight * 100)}%</span>
         <span className="ems-numeral" style={{ marginLeft: 'auto', fontSize: 22, fontWeight: 700, color: c }}>{Math.round(v)}</span>
         {delta != null && Math.abs(delta) >= 0.5 && (delta > 0
           ? <TrendingUp size={14} color={COLOR.teal} aria-label={`за квартал ${signed(delta)}`} />
@@ -144,25 +144,25 @@ function GroupCard({ g, v, prevV, drivers, memory }) {
         <div style={{ width: `${v}%`, height: '100%', borderRadius: 3, background: c }} />
         {[35, 50].map((m) => <span key={m} style={{ position: 'absolute', left: `${m}%`, top: -2, bottom: -2, width: 1.5, background: COLOR.text, opacity: 0.55 }} />)}
       </div>
-      <div style={{ display: 'flex', fontSize: 10.5, marginBottom: 8 }}>
+      <div style={{ display: 'flex', fontSize: 12, marginBottom: 8 }}>
         <span style={{ color: c, fontWeight: 600 }}>{groupStatus(v)}</span>
         {delta != null && <span className="ems-mono" style={{ marginLeft: 'auto', color: COLOR.faint }}>за квартал {signed(delta)}</span>}
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.text, marginBottom: 4 }}>{g.leader.name}, <span style={{ color: COLOR.muted }}>{g.leader.title}</span></div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45, marginBottom: 8 }}>Хотят: {g.wants}</div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginBottom: 3 }}>Сейчас двигает</div>
+      <div style={{ fontSize: 12, color: COLOR.text, marginBottom: 4 }}>{g.leader.name}, <span style={{ color: COLOR.muted }}>{g.leader.title}</span></div>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45, marginBottom: 8 }}>Хотят: {g.wants}</div>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 3 }}>Сейчас двигает</div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
         {top.length ? top.map(([k, val]) => (
-          <span key={k} className="ems-mono" style={{ fontSize: 10.5, padding: '2px 6px', borderRadius: 3, border: `1px solid ${COLOR.border}`,
+          <span key={k} className="ems-mono" style={{ fontSize: 12, padding: '2px 6px', borderRadius: 3, border: `1px solid ${COLOR.border}`,
             color: val >= 0 ? COLOR.teal : COLOR.rust }}>{k} {signed(val)}</span>
-        )) : <span style={{ fontSize: 10.5, color: COLOR.faint }}>ничего сверх общего фона</span>}
+        )) : <span style={{ fontSize: 12, color: COLOR.faint }}>ничего сверх общего фона</span>}
       </div>
       {mem.length > 0 && (
         <>
-          <div style={{ fontSize: 10.5, color: COLOR.faint, marginBottom: 3 }}>Помнят</div>
+          <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 3 }}>Помнят</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
             {mem.map((m) => (
-              <div key={m.text} style={{ display: 'flex', gap: 6, fontSize: 11 }}>
+              <div key={m.text} style={{ display: 'flex', gap: 6, fontSize: 12 }}>
                 <span style={{ color: COLOR.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.text}</span>
                 <span className="ems-mono" style={{ color: m.amount >= 0 ? COLOR.teal : COLOR.rust }}>{signed(m.amount)}</span>
                 <span style={{ color: COLOR.faint }}>ещё {m.left} кв.</span>
@@ -171,7 +171,7 @@ function GroupCard({ g, v, prevV, drivers, memory }) {
           </div>
         </>
       )}
-      <div style={{ fontSize: 10.5, lineHeight: 1.45, padding: v < 35 ? '6px 8px' : 0, borderRadius: 3,
+      <div style={{ fontSize: 12, lineHeight: 1.45, padding: v < 35 ? '6px 8px' : 0, borderRadius: 3,
         background: v < 35 ? COLOR.rustDim : 'none', color: v < 35 ? COLOR.rust : COLOR.faint }}>
         {v < 35 ? 'Потеряны: ' : 'Если потерять: '}{g.lost}
       </div>
