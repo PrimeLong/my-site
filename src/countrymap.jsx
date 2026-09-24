@@ -6,7 +6,8 @@ import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, re
   CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel,
   regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
   DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, sanitizeTreaty, treatyCost,
-  DEF_FRONT, DEF_ENEMY, defaultFrontOrder, POLITICAL_REGIME_INFO } from './lib/engine.js';
+  DEF_FRONT, DEF_ENEMY, defaultFrontOrder, POLITICAL_REGIME_INFO,
+  DIPLO_ACTIONS, relationsOf, relationEffects, diploActionAvailable, ultimatumChance, neighborEventView } from './lib/engine.js';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Audio, COLOR, starPath } from './MacroSimulator.jsx';
@@ -563,6 +564,11 @@ const NEIGHBOR_INFO = {
 const HOME_INFO = { title: 'Наша страна', capital: 'Велеград', population: '45 млн' };
 
 function neighborStatus(id, e) {
+  const st = neighborStatusLabel(id, e);
+  // отношения — живая величина из партии (дипломатия, события, ходы соседей), а не константа
+  return { ...st, relation: Math.round(relationsOf(e)[id]) };
+}
+function neighborStatusLabel(id, e) {
   const atWar = (e.warQuartersLeft || 0) > 0;
   const annexed = e.annexed || [];
   if (id === 'north') {
@@ -579,10 +585,12 @@ function neighborStatus(id, e) {
       const occ = ((e.defenseCampaign || {}).occupied || []).length;
       return { label: occ ? 'Война: часть земель занята' : 'Война: Дешт наступает', tone: 'rust', relation: 3 };
     }
-    return { label: 'Мир, напряжённая граница', tone: 'gold', relation: 40 };
+    if ((e.deshtMobilized || 0) > 0) return { label: 'Войска у нашей границы', tone: 'rust', relation: 20 };
+    return relationsOf(e).southwest >= 55 ? { label: 'Мир, граница спокойна', tone: 'teal', relation: 55 } : { label: 'Мир, напряжённая граница', tone: 'gold', relation: 40 };
   }
   // Вестравия — торговый партнёр: санкции и торговый блок касаются прежде всего её
   if ((e.sanctionsQuartersLeft || 0) > 0) return { label: `Под нашими санкциями ещё ${e.sanctionsQuartersLeft} кв.`, tone: 'rust', relation: 18 };
+  if (relationsOf(e).west < 25) return { label: 'Торговая война', tone: 'rust', relation: 20 };
   if (e.tradeBlocActive) return { label: 'Партнёр по торговому блоку', tone: 'teal', relation: 86 };
   return { label: 'Торговый партнёр', tone: 'teal', relation: 66 };
 }
@@ -600,7 +608,84 @@ function InfoRow({ k, v, color }) {
 
 /* Карточка страны: соседа или своей. Открывается кликом по стране на карте или по
    её имени в строке «Страны» над картой. */
-function CountryPanel({ id, economy, onBack }) {
+/* Дипломатия в карточке соседа: что дают отношения, событие от соседа с ответом
+   и действия президента на квартал. diploPlan/onDiploPlan — решения президента
+   ({ action: { country, kind }, reply }); без onDiploPlan — только показ. */
+const DIPLO_KIND_WORD = { trade: 'торговый договор', aid: 'помощь', ultimatum: 'ультиматум', sanctions: 'санкции' };
+function NeighborEventBox({ view, plan, onPlan, planner }) {
+  const pick = (plan && plan.reply) || null;
+  return (
+    <div role="group" aria-label={`Событие от соседа: ${view.title}`} style={{ border: `1px solid ${COLOR.gold}`, borderRadius: 8, padding: 10, margin: '10px 0', background: COLOR.goldDim }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: COLOR.goldSoft, marginBottom: 3 }}>{view.title}</div>
+      <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.5, marginBottom: 8 }}>{view.text}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {view.options.map((o) => {
+          const on = pick === o.id;
+          return (
+            <button key={o.id} className={`ems-btn${on ? ' primary' : ''}`} disabled={!onPlan} aria-pressed={on}
+              style={{ textAlign: 'left', padding: '6px 9px', fontSize: 12 }}
+              onClick={() => { Audio.play('tick'); onPlan({ ...plan, reply: on ? null : o.id }); }}>
+              <b>{o.label}</b>{o.id === view.def ? <span style={{ color: COLOR.faint }}> · по умолчанию</span> : null}
+              <span style={{ display: 'block', fontSize: 10.5, color: on ? undefined : COLOR.muted, fontWeight: 400 }}>{o.note}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6 }}>
+        {onPlan ? `Срок — ${view.deadline - view.q > 1 ? `${view.deadline - view.q} квартала` : 'этот квартал'}; без ответа сработает вариант по умолчанию.` : `Отвечает ${planner || 'президент'}.`}
+      </div>
+    </div>
+  );
+}
+function DiplomacyBlock({ id, economy, plan, onPlan, planner }) {
+  const e = economy;
+  const ev = neighborEventView(e);
+  const mine = ev && ev.country === id ? ev : null;
+  const act = plan && plan.action;
+  const capital = Number.isFinite(e.politicalCapital) ? e.politicalCapital : 55;
+  const treaty = (e.diploTreaties || {})[id] || 0;
+  const sanc = (e.diploSanctions || {})[id] || 0;
+  const last = e.diploLast && e.diploLast.country === id ? e.diploLast : null;
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: COLOR.faint, marginBottom: 4 }}>Что дают отношения</div>
+      {relationEffects(e, id).map((t) => <div key={t} style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.5 }}>· {t}</div>)}
+      {treaty > 0 && <InfoRow k="Торговый договор" v={`ещё ${treaty} кв.`} color={COLOR.teal} />}
+      {sanc > 0 && <InfoRow k="Наши санкции" v={`ещё ${sanc} кв.`} color={COLOR.rust} />}
+      {last && (
+        <div style={{ fontSize: 11, color: last.ok ? COLOR.teal : COLOR.rust, marginTop: 6 }}>
+          Прошлый ход: {DIPLO_KIND_WORD[last.kind]}{last.kind === 'ultimatum' ? (last.ok ? ' — принят' : ' — отвергнут') : ''}
+        </div>
+      )}
+      {mine && <NeighborEventBox view={mine} plan={plan} onPlan={onPlan} planner={planner} />}
+      <div style={{ fontSize: 10.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: COLOR.faint, margin: '10px 0 5px' }}>
+        Дипломатия {onPlan ? `· один ход за квартал, капитал ${Math.round(capital)}` : ''}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 5 }}>
+        {DIPLO_ACTIONS.map((a) => {
+          const ok = diploActionAvailable(e, id, a.id) && a.cost <= capital;
+          const on = !!act && act.country === id && act.kind === a.id;
+          const chance = a.id === 'ultimatum' ? ` · шанс ${Math.round(ultimatumChance(e, id) * 100)}%` : '';
+          return (
+            <button key={a.id} className={`ems-btn${on ? ' primary' : ''}`} aria-pressed={on} disabled={!onPlan || (!ok && !on)}
+              title={ok ? `${a.desc}${chance}` : a.cost > capital ? 'Не хватает политического капитала' : a.why}
+              style={{ padding: '6px 8px', fontSize: 11.5, textAlign: 'left' }}
+              onClick={() => { Audio.play('tick'); onPlan({ ...plan, action: on ? null : { country: id, kind: a.id } }); }}>
+              <b>{a.label}</b>
+              <span style={{ display: 'block', fontSize: 10, fontWeight: 400, color: on ? undefined : COLOR.muted }}>капитал {a.cost}{chance}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6, lineHeight: 1.45 }}>
+        {act && act.country === id ? DIPLO_ACTIONS.find((a) => a.id === act.kind).desc
+          : act ? `В этом квартале уже выбран ход: ${DIPLO_KIND_WORD[act.kind]} (${NEIGHBOR_INFO[act.country].title}).`
+          : onPlan ? 'Отношения сами тянутся к естественному уровню: помощь и договоры надо поддерживать.' : `Дипломатию ведёт ${planner || 'президент'}.`}
+      </div>
+    </div>
+  );
+}
+function CountryPanel({ id, economy, onBack, diploPlan, onDiploPlan, diploPlanner }) {
   const e = economy;
   if (id === 'home') {
     const regime = (POLITICAL_REGIME_INFO[e.politicalRegime] || {}).label || e.politicalRegime;
@@ -658,6 +743,7 @@ function CountryPanel({ id, economy, onBack }) {
       )}
       {id === 'west' && <InfoRow k="Мировой спрос на наш экспорт" v={`${Math.round(e.worldDemandIndex || 100)} (норма — 100)`} />}
       {id === 'west' && e.tradeBlocActive && <InfoRow k="Торговый блок" v="мы в едином рынке" color={COLOR.teal} />}
+      <DiplomacyBlock id={id} economy={e} plan={diploPlan} onPlan={onDiploPlan} planner={diploPlanner} />
       <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55, marginTop: 10 }}>{info.about}</div>
     </div>
   );
@@ -867,7 +953,7 @@ function labelScale(zoom) {
    campaignPlanner — кто распределяет их за игрока без права решать. */
 /* treatyPlan/onTreatyPlan — условия мира, которые президент предложит Норланду в этом квартале. */
 export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner,
-  treatyPlan, onTreatyPlan, treatyPlanner }) {
+  treatyPlan, onTreatyPlan, treatyPlanner, diploPlan, onDiploPlan, diploPlanner }) {
   // выбранная страна (сосед или своя): вместо карточки области — карточка страны
   const [country, setCountry] = useState(null);
   const [selected, setSelectedRaw] = useState('capital');
@@ -929,7 +1015,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
      земли, а сами они вырезаются из зоны боёв — иначе фронт ложился поверх своих областей */
   const war = atWar && !revCamp ? warGeometry(economy.warType,
     camp ? (annexed.length ? 110 : 26) + push * 0.42 : defCamp ? 40 + defPush * 0.9 : null) : null;
-  const hotNeighbor = war ? war.cfg.neighbor : revCamp ? 'north' : null;
+  const nbEvent = neighborEventView(economy);
+  const hotNeighbor = war ? war.cfg.neighbor : revCamp ? 'north' : (economy.deshtMobilized || 0) > 0 ? 'southwest' : nbEvent ? nbEvent.country : null;
   const heldIds = defCamp ? DEF_FRONT : regions.filter((r) => r.annex).map((r) => r.id);
   const defStanding = revCamp ? defaultDefenseOrder(revCamp) : defCamp ? defaultFrontOrder(defCamp) : null;
   const defOrder = frontCamp ? {
@@ -1516,7 +1603,15 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
       </div>
       <div style={{ flex: full ? '1 1 340px' : 1, minWidth: 220, maxWidth: full ? 440 : undefined, display: 'flex', flexDirection: 'column', gap: 12,
         ...(full ? { maxHeight: 'calc(100vh - 28px)', overflowY: 'auto', position: 'sticky', top: 0, paddingRight: 2 } : {}) }}>
-        {country && <CountryPanel id={country} economy={economy} onBack={() => setCountry(null)} />}
+        {!country && nbEvent && (
+          <button className="ems-btn" style={{ textAlign: 'left', padding: '9px 11px', borderColor: COLOR.gold, display: 'flex', gap: 8, alignItems: 'center' }}
+            onClick={() => { Audio.play('tab'); setCountry(nbEvent.country); }}>
+            <Globe2 size={15} color={COLOR.gold} />
+            <span style={{ fontSize: 12 }}><b>{nbEvent.title}</b><span style={{ display: 'block', color: COLOR.muted, fontSize: 11 }}>{onDiploPlan ? 'Нужен ваш ответ — открыть' : 'Подробности — в карточке страны'}</span></span>
+          </button>
+        )}
+        {country && <CountryPanel id={country} economy={economy} onBack={() => setCountry(null)}
+          diploPlan={diploPlan} onDiploPlan={onDiploPlan} diploPlanner={diploPlanner} />}
         {camp && <WarOperationPanel economy={economy} camp={camp} order={order} setOrder={setOrder} planner={warPlanner} />}
         {revCamp && <DefensePanel economy={economy} camp={revCamp} order={defOrder} setOrder={setDefOrder} planner={warPlanner}
           onFocus={setSelected} />}

@@ -432,3 +432,23 @@ test('обучение: практика обороны от Дешта — ко
   await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test('дипломатия: президент отвечает на инцидент с Дештом и отправляет помощь', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  const e = { ...makeInitialEconomy(), deshtMobilized: 3, relations: { north: 50, west: 64, southwest: 18 },
+    neighborEvent: { id: 'border_incident', country: 'southwest', q: 5, deadline: 6 } };
+  const snap = { app: 'economic-panel', v: 99, setup: { role: 'president', difficulty: 'medium', goal: 'living_standards', scenario: 'sandbox', cbPersona: 'pragmatic', mofPersona: 'technocrat', president: { enabled: false, persona: 'technocrat' } },
+    economy: e, history: [{ q: 0, label: 'x', ...e }], decisions: defaultDecisions(e), quarterIndex: 5 };
+  await page.addInitScript((s) => { localStorage.setItem('ems-autosave-v1', JSON.stringify({ ...s, v: 1 })); }, snap);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText(/Пограничный инцидент с Дештом/).first().click();
+  await page.getByRole('button', { name: /Пограничный инцидент/ }).click();
+  await page.getByRole('button', { name: /Замять тихо/ }).click();
+  await page.getByRole('button', { name: /Помощь/ }).click();
+  await expect(page.getByRole('button', { name: /Помощь/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  await expect(page.getByText(/ПОМОЩЬ ДЕШТУ/i).first()).toBeAttached();
+  expect(errors).toEqual([]);
+});
