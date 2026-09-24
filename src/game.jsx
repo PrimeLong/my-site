@@ -17,7 +17,7 @@ import {
   evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
-  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
+  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
   directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -133,7 +133,7 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
         borderColor: hero ? COLOR.gold : undefined }}>
       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: hero ? 4 : 3, background: hero ? COLOR.gold : barColor }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: hero ? COLOR.goldSoft : COLOR.muted, fontSize: hero ? 12 : SIZE.xs, marginBottom: hero ? 9 : 7 }}>
-        {Icon && <Icon size={hero ? 13 : 12} />}<span>{label}</span>
+        {Icon && <Icon size={hero ? 13 : 12} />}<span className="ems-kpi-label">{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap', rowGap: 2 }}>
         {/* «2.01 трлн» переносился на две строки, и единица налезала на число:
@@ -1755,7 +1755,10 @@ export function PromisesPanel({ promises, economy }) {
       </div>
     );
   }
+  const kept = promises.filter((p) => evaluatePromise(p, economy).met).length;
   return (
+    <Fold id="promises" title="Предвыборные обещания" icon={Flag}
+      summary={`выполняется ${kept} из ${promises.length} · до выборов ${economy.quartersToElection} кв.`}>
     <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
         <Flag size={14} color={COLOR.blue} />
@@ -1792,6 +1795,7 @@ export function PromisesPanel({ promises, economy }) {
         })}
       </div>
     </div>
+    </Fold>
   );
 }
 
@@ -3656,8 +3660,8 @@ export const INDICATOR_TABS = [
     { key: 'realLendingRate', label: 'Реальная ставка по кредитам', fmt: pctFmt },
     { key: 'rStar', label: 'Нейтральная реальная ставка r*', fmt: pctFmt,
       hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
-    { key: 'rateGap', label: 'Жёсткость условий (факт − нейтраль)', fmt: (v) => `${fmtSigned1(v)} п.п.`,
-      hint: 'Насколько фактическая ставка жёстче или мягче нейтральной r*. Положительный — политика сдерживает экономику, отрицательный — стимулирует.' },
+    { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.`,
+      hint: 'Факт минус нейтраль: насколько фактическая ставка жёстче или мягче нейтральной r*. Положительный — политика сдерживает экономику, отрицательный — стимулирует.' },
     { key: 'riskPremium', label: 'Премия за риск страны', fmt: pctFmt,
       hint: 'Надбавка к стоимости займов, которую требуют кредиторы за риск. Растёт от высокого долга, дефолтов и политической нестабильности — удорожает займы не только государству, но и бизнесу.' },
   ] },
@@ -3934,8 +3938,9 @@ export function KpiStrip({ pinned, economy, history, kpiDelta, dragPin, setDragP
           if (!m) return null;
           const val = economy[key];
           return (
-            <span key={key} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 7, whiteSpace: 'nowrap' }}>
-              <span style={{ fontSize: 13, color: COLOR.muted }}>{m.label}</span>
+            // длинное название переносится внутри себя, а не растягивает страницу вправо
+            <span key={key} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap', minWidth: 0, maxWidth: '100%' }}>
+              <span style={{ fontSize: 13, color: COLOR.muted, overflowWrap: 'anywhere' }}>{m.label}</span>
               <span className="ems-mono" style={{ fontSize: 15, color: COLOR.text }}>{Number.isFinite(val) ? m.fmt(val) : '—'}</span>
               <DeltaTag value={kpiDelta(key)} invert={m.invert} />
             </span>
@@ -4128,6 +4133,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     : initial && initial.promises ? initial.promises : runSeeded(daily, 'promises', () => pickPromises(initEconomy))));
   // пакет решений президента на текущий квартал: списывается движком при завершении
   const [presActions, setPresActions] = useState(initial ? initial.presActions || [] : []);
+  // кому объявляется война (выбрано на карте, в карточке страны); без выбора — Норланду
+  const [warTarget, setWarTarget] = useState(null);
+  const planWar = (t) => {
+    setWarTarget(t);
+    setPresActions((list) => (t ? (list.includes('war_start') ? list : [...list, 'war_start']) : list.filter((x) => x !== 'war_start')));
+  };
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
@@ -4271,7 +4282,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
        ботов; стоимость и последствия возвращаются движку отдельными каналами. */
     let dirResult = null;
     if (isPresident) {
-      eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof };
+      eff = { ...eff, presidentActions: presActions, appointCb: presAppointCb, appointMof: presAppointMof, warTarget };
       if (presDirective) {
         dirResult = processPresidentialDirective(presDirective, economy, cbPersonaId, mofPersonaId, eff, presDirStrength);
       }
@@ -4502,7 +4513,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       // «Своими руками» — именно вернуть парламент, распущенный указом, а не тот,
       // который распустил кризис: decreeRule до квартала как раз это и означает
       if (presActions.includes('restore_parliament') && economy.decreeRule) pushAch(unlockAchievements(['own_hands']));
-      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1);
+      setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setPresDirective(null); setPresDirStrength(1); setWarTarget(null);
     }
     // стройка и ответ — на один квартал, программа интеграции действует дальше
     setRegionPlan((p) => ({ startProject: null, regionResponse: null, groupResponse: null, integrate: p.integrate }));
@@ -4597,7 +4608,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     setFinishCooldown(3);
   }), [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
-    presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
+    presActions, presAppointCb, presAppointMof, presDirective, presDirStrength, warTarget,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan, diploPlan,
     isPublic, canCommandDefense]);
 
@@ -4840,7 +4851,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
             <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>Наступление на Норланд.</b>{' '}
+            <span><b style={{ color: COLOR.rust }}>Наступление: {WAR_TARGETS[warTargetOf(economy)].name}.</b>{' '}
               <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
           </div>
         )}
@@ -4903,6 +4914,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             treatyPlan={treatyPlan} onTreatyPlan={isPresident && !defeat ? setTreatyPlan : null}
             treatyPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'}
             diploPlan={diploPlan} onDiploPlan={isPresident && !defeat ? setDiploPlan : null}
+            warPlan={presActions.includes('war_start') ? (warTarget || 'north') : null} onWarPlan={isPresident && !defeat ? planWar : null}
             diploPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
         </Suspense></div>
       )}
@@ -4924,19 +4936,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         </div>
       )}
 
-      {narrow && view === 'dash' && (
-        /* колонки на телефоне — тем же сегментированным переключателем; прилипает к
-           верху экрана, чтобы переключаться, не пролистывая назад */
-        <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 12px', paddingBottom: 8,
-          background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
-          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
-          {[['left', setup.role === 'trader' ? 'Капитал' : 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
-              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
-          ))}
-          </div>
-        </div>
-      )}
 
       {(() => {
       /* ЛЕВАЯ ПАНЕЛЬ */
@@ -5246,6 +5245,19 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       );
       })()}
 
+      {/* колонки на телефоне — в нижней панели над кнопкой квартала: всегда под пальцем
+          и никогда не прячутся за ней (сверху на коротком экране кнопка их закрывала) */}
+      <div style={narrow ? { position: 'sticky', bottom: 0, zIndex: 6 } : undefined}>
+      {narrow && view === 'dash' && (
+        <div style={{ padding: '8px 12px 0', background: COLOR.panel, borderTop: `1px solid ${COLOR.hairline}` }}>
+          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
+          {[['left', setup.role === 'trader' ? 'Капитал' : 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
+            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
+              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
+          ))}
+          </div>
+        </div>
+      )}
       {daily && dailyDone ? (
         <DailyBar score={dailyScore(economy, setup.goal, !!defeat)} defeat={defeat}
           onReopen={() => setShowDaily(true)} onMenu={onRestart} />
@@ -5267,6 +5279,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

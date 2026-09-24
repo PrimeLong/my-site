@@ -16,7 +16,7 @@ import {
   INTEGRATED_AT, INTEGRATION_COST,
   treatyCost, sanitizeTreaty, botTreaty, revancheGrowth,
   SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, coalitionOf, groupTurnoutShift, groupStatus, leverGroupEffects,
-  fmtMoney, fmtIndex, botFrontOrder, warObjectiveOpen,
+  fmtMoney, fmtIndex, botFrontOrder, warObjectiveOpen, warTargetAvailable, defaultWarTarget,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -2208,7 +2208,11 @@ describe('война: бессрочность, внешняя война, пр�
     const again = step({ ...res.economy, warQuartersLeft: 10, warType: 'offensive', warCampaign: null }, { warOrder: { target: 'pass', stance: 'assault' } });
     expect(again.economy.warCampaign.captured).toEqual(expect.arrayContaining(['pass', 'mines']));
     expect(again.economy.warCampaign.last.target).toBe('city');
-    expect(PRES_BY_ID.war_start.requires({ ...res.economy, annexed: ['pass', 'mines', 'city'] })).toBe(false);
+    // у Норланда брать больше нечего — ему войну не объявить, другим соседям можно
+    const allTaken = { ...res.economy, annexed: ['pass', 'mines', 'city'] };
+    expect(warTargetAvailable(allTaken, 'north')).toBe(false);
+    expect(defaultWarTarget(allTaken)).not.toBe('north');
+    expect(PRES_BY_ID.war_start.requires(allTaken)).toBe(true);
     expect(PRES_BY_ID.war_start.requires(res.economy)).toBe(true);
   });
 });

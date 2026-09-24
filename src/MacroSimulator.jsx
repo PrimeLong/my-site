@@ -1,12 +1,12 @@
 ﻿import React, { useState, Suspense } from 'react';
 import {
-  createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress, fetchRoom,
+  syncProgress, fetchRoom,
   fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
-  GraduationCap, Crown, Gavel, Hammer, Smartphone, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
+  GraduationCap, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
 } from 'lucide-react';
 import {
@@ -294,7 +294,14 @@ export const GlobalStyle = () => (
       .ems-kpi-cell .ems-kpi-ctl { opacity:0; }
       .ems-kpi-cell:hover .ems-kpi-ctl, .ems-kpi-cell:focus-within .ems-kpi-ctl, .ems-kpi-edit .ems-kpi-ctl { opacity:1; }
     }
-    @media (hover: none) { .ems-kpi-strip:not(.ems-kpi-edit) .ems-kpi-ctl { display:none; } }
+    /* на сенсорном экране нет наведения: крестик «убрать» виден всегда, стрелки — только в режиме правки */
+    @media (hover: none) {
+      .ems-kpi-cell .ems-kpi-ctl { opacity:1; }
+      .ems-kpi-strip:not(.ems-kpi-edit) .ems-kpi-ctl button:not(:last-child) { display:none; }
+      .ems-kpi-ctl button { padding:6px 7px; }
+      /* название не должно уходить под крестик */
+      .ems-kpi-cell .ems-kpi-label { padding-right: 22px; }
+    }
     /* На телефоне — три узкие плитки в ряд без спарклайнов: шесть показателей
        занимали весь первый экран, и до рычагов приходилось листать. */
     @media (max-width: 700px) {
@@ -586,14 +593,6 @@ const clearAutosave = () => { try { localStorage.removeItem(AUTOSAVE_KEY); } cat
    история, декэижны — целиком лежит на сервере, как и сетевые комнаты. */
 export const PLAYER_ID_KEY = 'ems-player-id';
 
-// собственный идентификатор устройства, отложенный при связывании: «отвязать»
-// должно возвращать сюда, а не заводить пустой профиль с нуля
-const OWN_PLAYER_ID_KEY = 'ems-own-player-id';
-
-// и снимок собственного прогресса на момент связывания — чтобы «отвязать» вернуло
-// ровно то, что было, а не общую коллекцию, собранную с двух устройств
-const OWN_PROGRESS_KEY = 'ems-own-progress';
-
 export const getPlayerId = () => {
   const fresh = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `p${Date.now()}${Math.random().toString(36).slice(2)}`;
   try {
@@ -602,45 +601,6 @@ export const getPlayerId = () => {
     return id;
   } catch { return fresh(); /* приватный режим — слоты проработают только эту вкладку */ }
 };
-
-/* Переключение профиля. При первом связывании прячем свой прежний идентификатор:
-   партии, сохранённые до связывания, никуда не деваются — они остаются под старым
-   профилем и возвращаются, если устройство отвязать. */
-const setPlayerId = (id, { keepOwn = true } = {}) => {
-  try {
-    if (keepOwn && !localStorage.getItem(OWN_PLAYER_ID_KEY)) {
-      const cur = localStorage.getItem(PLAYER_ID_KEY);
-      if (cur && cur !== id) {
-        localStorage.setItem(OWN_PLAYER_ID_KEY, cur);
-        localStorage.setItem(OWN_PROGRESS_KEY, JSON.stringify(readLocalProgress()));
-      }
-    }
-    localStorage.setItem(PLAYER_ID_KEY, id);
-  } catch { /* приватный режим */ }
-  return id;
-};
-
-const getOwnPlayerId = () => { try { return localStorage.getItem(OWN_PLAYER_ID_KEY); } catch { return null; } };
-
-const unlinkDevice = () => {
-  const own = getOwnPlayerId();
-  if (!own) return null;
-  try {
-    // возвращаем и прогресс: иначе собственный профиль устройства унаследовал бы
-    // достижения соседнего — связывание не должно оставлять следов после отмены
-    const saved = localStorage.getItem(OWN_PROGRESS_KEY);
-    if (saved) writeLocalProgress(JSON.parse(saved));
-    localStorage.setItem(PLAYER_ID_KEY, own);
-    localStorage.removeItem(OWN_PLAYER_ID_KEY);
-    localStorage.removeItem(OWN_PROGRESS_KEY);
-  } catch { /* приватный режим */ }
-  return own;
-};
-
-// профиль показываем человеку коротким «отпечатком»: полный id — это, по сути,
-// ключ от сохранений, и светить его на экране незачем
-const profileTag = (id) => (typeof id === 'string' && id.length >= 6
-  ? id.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase() : '—');
 
 /* Достижения: коллекция привязана к устройству (localStorage), а не к
    конкретному сохранению партии — открытое достижение остаётся открытым
@@ -740,236 +700,6 @@ export async function syncProfile(playerId) {
     writeLocalProgress(profile);
     return profile;
   } catch { return null; }
-}
-
-/* ============================ СВЯЗЫВАНИЕ УСТРОЙСТВ ============================
-   Аккаунтов в игре нет: профиль — это идентификатор, который лежит в localStorage
-   и адресует слоты на сервере. Связать телефон с компьютером значит дать им один
-   и тот же идентификатор: устройство, где партии уже есть, показывает одноразовый
-   код, второе его вводит. Прогресс (достижения, курсы) при этом не заменяется, а
-   объединяется — открытое на телефоне остаётся открытым. */
-function DeviceLinkModal({ playerId, onClose, onLinked }) {
-  useEscapeClose(onClose);
-  const [tab, setTab] = useState('show');      // show — показать код, enter — ввести
-  const [code, setCode] = useState(null);
-  const [expiresAt, setExpiresAt] = useState(0);
-  const [claimed, setClaimed] = useState(false);
-  const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [done, setDone] = useState(null);      // сколько партий приехало с профилем
-  const [doneKind, setDoneKind] = useState('linked'); // чем кончилось: связали или разорвали
-  const [now, setNow] = useState(Date.now());
-  // без общего хранилища (Redis) код физически не доедет до второго устройства:
-  // серверная функция держит его в памяти одного случайного вызова
-  const [noStorage, setNoStorage] = useState(false);
-  const linkedTo = getOwnPlayerId();
-  // общий ли сейчас профиль — знает сервер: отметка ставится в момент обмена кодом
-  // и видна ОБОИМ устройствам, а не только тому, которое вводило код
-  const [shared, setShared] = useState(false);
-  React.useEffect(() => {
-    let alive = true;
-    syncProfile(playerId).then((pf) => { if (alive && pf && pf.linkedAt) setShared(true); });
-    return () => { alive = false; };
-  }, [playerId]);
-
-  React.useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  // пока код на экране, спрашиваем сервер, не ввели ли его на втором устройстве:
-  // человеку важно увидеть «готово» здесь, а не бежать проверять обратно
-  React.useEffect(() => {
-    if (!code || claimed) return undefined;
-    let stop = false;
-    const tick = async () => {
-      if (stop) return;
-      try {
-        const r = await checkLinkCode(playerId, code);
-        if (stop) return;
-        if (r.claimed) { setClaimed(true); Audio.play('up'); return; }
-        if (r.expired) { setCode(null); return; }
-      } catch { /* сеть подождёт до следующей попытки */ }
-      if (!stop) setTimeout(tick, 2500);
-    };
-    const t = setTimeout(tick, 2500);
-    return () => { stop = true; clearTimeout(t); };
-  }, [code, claimed, playerId]);
-
-  const left = code && !claimed ? Math.max(0, Math.round((expiresAt - now) / 1000)) : 0;
-  React.useEffect(() => { if (code && !claimed && expiresAt && left <= 0) setCode(null); }, [left, code, claimed, expiresAt]);
-
-  const makeCode = async () => {
-    setBusy(true); setError(''); setClaimed(false);
-    try {
-      const r = await createLinkCode(playerId, readLocalProgress());
-      setCode(r.code); setExpiresAt(r.expiresAt); setNoStorage(r.storage === 'memory'); Audio.play('stamp');
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
-  const dropCode = async () => {
-    const c = code; setCode(null); setClaimed(false);
-    if (c) { try { await cancelLinkCode(playerId, c); } catch { /* код и сам протухнет */ } }
-  };
-  const submitCode = async () => {
-    setBusy(true); setError('');
-    try {
-      const r = await claimLinkCode(playerId, input, readLocalProgress());
-      setPlayerId(r.playerId);
-      writeLocalProgress(r.profile);
-      setDone((r.slots || []).filter(Boolean).length);
-      Audio.play('up');
-      onLinked(r.playerId);
-    } catch (e) { setError(e.message); Audio.play('down'); } finally { setBusy(false); }
-  };
-  const doRevoke = async () => {
-    if (!window.confirm('Разорвать связку? Это устройство продолжит с копией общего профиля — сохранения, достижения и курсы останутся при нём. Второе устройство останется на прежнем профиле со своей копией, но общими они больше не будут.')) return;
-    setBusy(true); setError('');
-    try {
-      const r = await revokeLink(playerId, readLocalProgress());
-      setPlayerId(r.playerId, { keepOwn: false });
-      writeLocalProgress(r.profile);
-      setShared(false);
-      setDoneKind('revoked');
-      setDone((r.slots || []).filter(Boolean).length);
-      Audio.play('click');
-      onLinked(r.playerId);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
-  };
-  const doUnlink = () => {
-    if (!window.confirm('Отвязать это устройство? Вернутся сохранения и прогресс, которые были на нём до связывания. Партии общего профиля останутся на другом устройстве.')) return;
-    const own = unlinkDevice();
-    if (own) { Audio.play('click'); onLinked(own); onClose(); }
-  };
-  const pretty = (c) => `${c.slice(0, 4)}-${c.slice(4)}`;
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 480, width: '100%', maxHeight: '86vh', overflow: 'auto', padding: 18 }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <Smartphone size={15} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Связать устройства</span>
-          <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
-        </div>
-        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 14, lineHeight: 1.5 }}>
-          Сохранения лежат на сервере и адресуются профилем этого устройства
-          (<b className="ems-mono" style={{ color: COLOR.goldSoft }}>{profileTag(playerId)}</b>). Свяжите телефон с компьютером — и
-          у них будет один профиль: общие слоты сохранений, достижения и пройденные курсы.
-        </div>
-
-        {done !== null ? (
-          <div className="ems-panel" style={{ padding: 13, borderColor: COLOR.teal }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <Check size={14} color={COLOR.teal} />
-              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.teal }}>
-                {doneKind === 'revoked' ? 'Связка разорвана' : 'Устройства связаны'}
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
-              {doneKind === 'revoked'
-                ? <>Это устройство перешло на собственный профиль с копией всего, что было общим:
-                  {done ? ` ${done} ${done === 1 ? 'сохранение' : done < 5 ? 'сохранения' : 'сохранений'} на месте` : ' сохранений в нём не было'},
-                  достижения и курсы тоже. Второе устройство осталось на прежнем профиле — со своей копией.</>
-                : <>Профиль теперь общий: {done ? `${done} ${done === 1 ? 'сохранение доступно' : done < 5 ? 'сохранения доступны' : 'сохранений доступно'} на этом устройстве` : 'общих сохранений пока нет'}.
-                  Достижения и курсы обоих устройств объединены.</>}
-            </div>
-            <button className="ems-btn primary" style={{ width: '100%', padding: '10px 0', marginTop: 11 }} onClick={onClose}>Готово</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-              {[['show', 'Показать код'], ['enter', 'Ввести код']].map(([id, title]) => (
-                <button type="button" key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} aria-pressed={tab === id} style={{ flex: 1, textAlign: 'center', padding: '8px 0', fontSize: 13 }}
-                  onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{title}</button>
-              ))}
-            </div>
-
-            {tab === 'show' && (
-              <div>
-                <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 11, lineHeight: 1.5 }}>
-                  Показывайте код на том устройстве, где партии уже есть, — второе получит доступ к ним.
-                  Код действует десять минут и срабатывает один раз.
-                </div>
-                {code ? (
-                  <div className="ems-panel" style={{ padding: 14, textAlign: 'center', borderColor: claimed ? COLOR.teal : COLOR.gold }}>
-                    <div className="ems-mono" style={{ fontSize: 30, letterSpacing: '0.12em', color: claimed ? COLOR.teal : COLOR.goldSoft }}>{pretty(code)}</div>
-                    <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 8, lineHeight: 1.45 }}>
-                      {claimed
-                        ? 'Второе устройство подключено. Теперь у вас общий профиль.'
-                        : <>Введите этот код на втором устройстве: меню → «Связать устройства» → «Ввести код».
-                          <span style={{ display: 'block', color: left < 60 ? COLOR.rust : COLOR.faint, marginTop: 4 }}>
-                            действует ещё {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
-                          </span></>}
-                    </div>
-                    <button className="ems-btn" style={{ width: '100%', padding: '9px 0', marginTop: 11, fontSize: 12 }}
-                      onClick={() => { Audio.play('click'); if (claimed) onClose(); else dropCode(); }}>
-                      {claimed ? 'Готово' : 'Отменить код'}
-                    </button>
-                  </div>
-                ) : (
-                  <button className="ems-btn primary" disabled={busy} style={{ width: '100%', padding: '11px 0' }} onClick={makeCode}>
-                    {busy ? 'Готовим…' : 'Показать код'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {tab === 'enter' && (
-              <div>
-                <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 11, lineHeight: 1.5 }}>
-                  Введите код со второго устройства. Это устройство перейдёт на его профиль: сохранения станут общими,
-                  достижения и курсы — объединятся. Партии, сохранённые здесь раньше, не пропадут — они останутся
-                  под прежним профилем и вернутся, если устройство отвязать.
-                </div>
-                <input value={input} onChange={(e) => setInput(e.target.value.toUpperCase())} placeholder="XXXX-XXXX"
-                  className="ems-mono" style={{ width: '100%', padding: '11px 12px', fontSize: 18, letterSpacing: '0.1em', textAlign: 'center',
-                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
-                <button className="ems-btn primary" disabled={busy || input.replace(/[^A-Z0-9]/g, '').length < 8}
-                  style={{ width: '100%', padding: '11px 0', marginTop: 10 }} onClick={submitCode}>
-                  {busy ? 'Связываем…' : 'Связать'}
-                </button>
-              </div>
-            )}
-
-            {error && <div style={{ marginTop: 10, fontSize: 12, color: COLOR.rust, lineHeight: 1.45 }}>{error}</div>}
-
-            {noStorage && (
-              <div className="ems-panel" style={{ marginTop: 11, padding: 11, borderColor: COLOR.rust, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
-                <AlertTriangle size={14} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.45 }}>
-                  Сервер не подключён к общему хранилищу — код живёт в памяти одного случайного запроса и со второго
-                  устройства, скорее всего, не найдётся. Это настройка развёртывания
-                  (<b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>), а не ошибка ввода.
-                </div>
-              </div>
-            )}
-
-            {shared && !linkedTo && (
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${COLOR.hairline}` }}>
-                <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
-                  Профиль общий с другим устройством. Разорвать связку можно и отсюда: это устройство заберёт
-                  копию профиля и сохранений себе, второе останется на прежнем — но общими они быть перестанут.
-                </div>
-                <button className="ems-btn" disabled={busy} style={{ width: '100%', padding: '9px 0', fontSize: 12, color: COLOR.rust, borderColor: COLOR.rust }}
-                  onClick={doRevoke}>Разорвать связку устройств</button>
-              </div>
-            )}
-
-            {linkedTo && (
-              <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${COLOR.hairline}` }}>
-                <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, lineHeight: 1.45 }}>
-                  Это устройство работает на общем профиле. Отвязать — значит вернуться к собственному
-                  (<b className="ems-mono">{profileTag(linkedTo)}</b>) со своими прежними сохранениями.
-                </div>
-                <button className="ems-btn" style={{ width: '100%', padding: '9px 0', fontSize: 12, color: COLOR.rust, borderColor: COLOR.rust }}
-                  onClick={doUnlink}>Отвязать это устройство</button>
-              </div>
-            )}
-            <div style={{ marginTop: 12, fontSize: 12, color: COLOR.faint, lineHeight: 1.45 }}>
-              Наборы показателей на дашборде и оформление остаются у каждого устройства своими — это настройки экрана,
-              а не прогресс.
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
 }
 
 
@@ -1274,7 +1004,6 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   const [slotError, setSlotError] = useState('');
   const [storageMode, setStorageMode] = useState(null);
   const [showAch, setShowAch] = useState(false);
-  const [showLink, setShowLink] = useState(false);
   // профиль игрока в шапке меню: вход, регистрация, статистика
   const account = useAccount();
   const [showAuth, setShowAuth] = useState(false);
@@ -1396,12 +1125,8 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
       <style>{menuCss()}</style>
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onDone={(pf, id) => switchPlayer(id)} />}
-      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} onSwitched={switchPlayer}
-        onLink={() => { setShowProfile(false); setShowLink(true); }} />}
-      {showLink && (
-        <DeviceLinkModal playerId={playerId} onClose={() => setShowLink(false)}
-          onLinked={(id) => { setPlayerIdState(id); setSoloSlots(null); setSlotError(''); }} />
-      )}
+      {/* сохранения и достижения едут за профилем — «связать устройства» кодом больше не нужно */}
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} onSwitched={switchPlayer} />}
       {/* margin: auto по вертикали — меню стоит по центру высокого экрана, а когда
           раскрыты сохранения и оно выше окна, просто прокручивается, не уезжая вверх */}
       <div style={{ maxWidth: 760, width: '100%', margin: 'auto 0' }}>
@@ -1528,7 +1253,6 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         {/* 5. Мелкое: достижения, устройства, оформление, звук */}
         <div className="menu-footer ems-fade-in">
           <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowAch(true); }}><Trophy size={13} color={COLOR.gold} />Достижения</button>
-          <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowLink(true); }}><Smartphone size={13} color={COLOR.gold} />Связать устройства</button>
           <label className="menu-chip menu-theme">
             <span style={{ fontSize: 12, color: COLOR.faint }}>Оформление</span>
             <select value={theme} onChange={(e) => { Audio.play('tab'); setTheme(e.target.value); }} aria-label="Оформление">

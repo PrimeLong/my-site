@@ -121,3 +121,36 @@ describe('живые соседи: отношения как ресурс', () =
     expect(botDiplomacy(e, 'technocrat', 0).action).toBe(null);
   });
 });
+
+describe('войну можно объявить любому соседу', () => {
+  const declare = (economy, target, seed = 3) => withSeededRandom(seed, () => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), presidentActions: ['war_start'], warTarget: target },
+    pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 4, stories: [], noEvents: true,
+  }));
+  it('объявленная Дешту война: цели в Деште, фронт от Приреченской, отношения рушатся', () => {
+    const e = { ...makeInitialEconomy(), politicalCapital: 90 };
+    const r = declare(e, 'southwest');
+    expect(r.economy.warType).toBe('offensive');
+    expect(r.economy.warTarget).toBe('southwest');
+    expect(Object.keys(r.economy.warCampaign.progress).sort()).toEqual(['ashkala', 'oil', 'steppe']);
+    // квартал войны — отношения с Дештом у дна, с Норландом война не идёт
+    const r2 = withSeededRandom(4, () => simulateQuarter({ economy: r.economy, decisions: { ...defaultDecisions(r.economy), warOrder: { target: 'steppe', stance: 'assault' } },
+      pendingImpulses: r.pendingImpulses, eventCooldowns: r.eventCooldowns, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true }));
+    expect(r2.economy.relations.southwest).toBeLessThan(35);
+    expect(r2.economy.warCampaign.progress.steppe).toBeGreaterThan(0);
+  });
+  it('без выбора цели войну объявляют Норланду, как раньше; взятому Норланду — нельзя', () => {
+    const e = { ...makeInitialEconomy(), politicalCapital: 90 };
+    expect(declare(e, null).economy.warTarget).toBe('north');
+    const full = { ...e, annexed: ['pass', 'mines', 'city'] };
+    expect(declare(full, 'north').economy.warTarget).not.toBe('north');
+  });
+  it('Вестравию брать труднее, а торговля с ней рушится каждый квартал войны', () => {
+    const base = { ...makeInitialEconomy(), politicalCapital: 90 };
+    const w = declare(base, 'west').economy;
+    const s = declare(base, 'southwest').economy;
+    const step = (e, target) => withSeededRandom(7, () => simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), warOrder: { target, stance: 'assault' } },
+      pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true })).economy;
+    expect(step(w, 'fort').warCampaign.progress.fort).toBeLessThan(step(s, 'steppe').warCampaign.progress.steppe);
+  });
+});

@@ -699,7 +699,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   }, [seat, room.mode]);
   // новый квартал — новый ход президента: прошлые указы уже оплачены и применены
   React.useEffect(() => {
-    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null);
+    setPresActions([]); setPresAppointCb(null); setPresAppointMof(null); setWarTarget(null);
     setPresDirective(null); setPresDirStrength(1);
   }, [room.quarterIndex]);
 
@@ -742,6 +742,12 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const [activeTab, setActiveTab] = useState('economy');
   // ход живого президента: указы и реформы, кадры, одно указание и его сила
   const [presActions, setPresActions] = useState([]);
+  // кому объявляется война — выбирается на карте, в карточке страны
+  const [warTarget, setWarTarget] = useState(null);
+  const planWar = (t) => {
+    setWarTarget(t);
+    setPresActions((list) => (t ? (list.includes('war_start') ? list : [...list, 'war_start']) : list.filter((x) => x !== 'war_start')));
+  };
   const [presAppointCb, setPresAppointCb] = useState(null);
   const [presAppointMof, setPresAppointMof] = useState(null);
   const [presDirective, setPresDirective] = useState(null);
@@ -800,7 +806,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           directive: presDirective, directiveStrength: presDirStrength,
           region: { startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null, groupResponse: decisions.groupResponse || null },
           warOrder: decisions.warOrder || null, campaignPlan: decisions.campaignPlan || null, treaty: decisions.treaty || null,
-          diplomacy: decisions.diplomacy || null }
+          diplomacy: decisions.diplomacy || null, warTarget }
         : undefined;
       const r = await submitDecisions(id, seat, token, decisions, null, portfolioValue, president);
       setRoom(r.room); setSent(true); Audio.play('stamp');
@@ -1032,20 +1038,6 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             onOpen={() => { Audio.play('tab'); setCenterView('map'); }} />
         )}
       </div>
-
-      {narrow && (
-        /* колонки на телефоне — тем же сегментированным переключателем; прилипает к
-           верху экрана, чтобы переключаться, не пролистывая назад */
-        <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 18px', paddingBottom: 8,
-          background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
-          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
-          {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
-              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
-          ))}
-          </div>
-        </div>
-      )}
 
       {(() => {
       const leftNode = (
@@ -1331,6 +1323,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               onTreatyPlan={isPresidentSeat && !sent ? (t) => setDecisions((d) => ({ ...d, treaty: t })) : null}
               treatyPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : room.president ? 'президент (бот)' : 'МИД по поручению правительства'}
               diploPlan={decisions.diplomacy || null}
+              warPlan={presActions.includes('war_start') ? (warTarget || 'north') : null}
+              onWarPlan={isPresidentSeat && !sent ? planWar : null}
               onDiploPlan={isPresidentSeat && !sent ? (t) => setDecisions((d) => ({ ...d, diplomacy: t })) : null}
               diploPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : room.president ? 'президент (бот)' : 'МИД по поручению правительства'}
               planner={room.president && room.president.human
@@ -1486,6 +1480,18 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       );
       })()}
 
+      {/* колонки на телефоне — в нижней панели над кнопкой: всегда под пальцем и не прячутся за ней */}
+      <div style={narrow ? { position: 'sticky', bottom: 0, zIndex: 6 } : undefined}>
+      {narrow && (
+        <div style={{ padding: '8px 12px 0', background: COLOR.panel, borderTop: `1px solid ${COLOR.hairline}` }}>
+          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
+          {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
+            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
+              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
+          ))}
+          </div>
+        </div>
+      )}
       {defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
           onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
@@ -1527,6 +1533,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

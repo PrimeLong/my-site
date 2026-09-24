@@ -109,3 +109,18 @@ describe('Своё дело: конкуренты', () => {
     expect(Number.isFinite(n.startQ)).toBe(true);
   });
 });
+
+describe('Своё дело: бюджет менеджера', () => {
+  it('за квартал управляющий тратит не больше своей доли денег и не трогает запас', () => {
+    let st = T.makeTycoon({ start: 'retail' });
+    st = run(st, 5);
+    st = { ...st, cash: 200, managers: { foreman: { on: true, budget: 20 } } };
+    const q = st.country.quarterIndex;
+    // полминуты — десятки решений управляющего внутри одного квартала
+    st = run(st, 30);
+    expect(st.country.quarterIndex).toBe(q);
+    expect(st.managers.foreman.spent || 0).toBeLessThanOrEqual(40 + 1e-6);
+    expect(st.cash).toBeGreaterThan(150);
+    expect(T.mgrBudget(st, 'foreman')).toBeLessThanOrEqual(40);
+  });
+});

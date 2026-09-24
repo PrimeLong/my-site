@@ -250,7 +250,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
               {regimeId === 'authoritarian' || regimeId === 'totalitarian'
                 ? <TickerStat pp={pp} label="Поддержка курса" value="всенародная" delta={NaN} />
                 : <TickerStat pp={pp} label="Рейтинг власти" value={Math.round(snapshot.approval)} delta={delta('approval')} />}
-              {atWar && <TickerStat pp={pp} label="До конца операции" value={`${economy.warQuartersLeft} кв.`} delta={NaN} />}
+              {atWar && <TickerStat pp={pp} label="Идёт война" value={`${economy.warElapsed || 1}-й кв.`} delta={NaN} />}
             </div>
           )}
 

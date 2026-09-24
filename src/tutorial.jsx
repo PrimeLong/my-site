@@ -1876,12 +1876,13 @@ const COURSE_CHECKS = {
       body: () => (
         <>
           <p>Республика Дешт уже продвинулась: давление на Приреченскую область 80 из 100, на Боровскую — 60. На 100 область оккупирована.</p>
-          <p>Задача — продержаться до конца войны, не отдав ни одной области. Каждый квартал выбирайте, где держать оборону и когда бить контрударом: пассивная оборона тут может и не спасти.</p>
+          <p>Срока у войны нет: она кончится, когда армия Дешта выдохнется (боевой дух дойдёт до нуля) или Ашкала сама запросит перемирия — тем вероятнее, чем дольше идут бои и чем ниже её дух. Сейчас он уже подорван: 40 из 100.</p>
+          <p>Задача — продержаться до конца войны, не отдав ни одной области. Каждый квартал выбирайте, где держать оборону и когда бить контрударом: контрудар ещё и ломает боевой дух противника.</p>
         </>
       ),
-      setup: (e) => ({ ...e, warQuartersLeft: 5, warType: 'defensive', warElapsed: 1,
-        defenseCampaign: { pressure: { agri: 80, periphery: 60 }, occupied: [], morale: 100, last: null, next: 'agri' } }),
-      levers: [], maxQuarters: 5,
+      setup: (e) => ({ ...e, warQuartersLeft: 5, warType: 'defensive', warElapsed: 3,
+        defenseCampaign: { pressure: { agri: 80, periphery: 60 }, occupied: [], morale: 40, last: null, next: 'agri' } }),
+      levers: [], maxQuarters: 6,
       panel: ({ economy, decisions, setDecisions, done }) => {
         const camp = economy.defenseCampaign;
         if (!camp || !(economy.warQuartersLeft > 0)) return null;
