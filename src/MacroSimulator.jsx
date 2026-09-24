@@ -14,6 +14,7 @@ import {
   romanQ, quarterLabel, PRESIDENT_PERSONAS, dailyChallenge, dailyKey, dailySetup, SECTORS,
 } from './lib/catalog.js';
 import { Audio } from './audio/engine.js';
+import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, emblemIcon } from './account.jsx';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
@@ -499,7 +500,7 @@ const TutorialHub = React.lazy(() => import('./tutorial.jsx').then((m) => ({ def
 export const SAVE_VERSION = 3;
 
 export function validateSnapshot(data) {
-  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение «Экономической панели».');
+  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение Inflatia.');
   if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Сохранение повреждено: не хватает состояния экономики.');
   if (data.v > SAVE_VERSION) throw new Error('Сохранение сделано в более новой версии симулятора.');
   return data;
@@ -1359,10 +1360,10 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
       <div style={{ maxWidth: 760, width: '100%' }}>
         {/* шапка: печать, название и одна строка о том, что это */}
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
-          <StateSeal regime="democracy" size={48} title="Государственная печать" />
+          <InflatiaMark size={54} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginBottom: 2 }}>Симулятор государства и бизнеса</div>
-            <div className="ems-serif menu-title">Экономическая панель государства</div>
+            <h1 className="ems-serif menu-title">Inflatia</h1>
+            <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>Симулятор государства и бизнеса</div>
           </div>
           {profileSlot}
         </div>
@@ -1496,11 +1497,11 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 
 // функция, а не строка: цвета берутся из текущей темы при каждой отрисовке
 const menuCss = () => `
-  .menu-title { font-size: 24px; line-height: 1.15; color: ${COLOR.text}; }
-  @media (max-width: 560px) { .menu-title { font-size: 19px; } }
+  .menu-title { margin: 0; font-size: 30px; line-height: 1.05; font-weight: 700; letter-spacing: 0.02em; color: ${COLOR.goldSoft}; }
+  @media (max-width: 560px) { .menu-title { font-size: 25px; } }
   .menu-profile { display: flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 12.5px; flex-shrink: 0; max-width: 170px; }
   .menu-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @media (max-width: 560px) { .menu-profile { padding: 7px 9px; max-width: 110px; } .menu-eyebrow { display: none; } }
+  @media (max-width: 560px) { .menu-profile { padding: 7px 9px; max-width: 110px; } .menu-eyebrow { font-size: 9.5px; letter-spacing: 0.14em; } }
   .menu-continue { display: flex; align-items: center; gap: 14px; cursor: pointer; padding: 16px 18px; margin-bottom: 8px;
     border-radius: 14px; border: 1px solid ${COLOR.gold}; background: linear-gradient(135deg, ${COLOR.goldDim}, ${COLOR.panel} 70%);
     box-shadow: 0 16px 36px -20px rgba(0,0,0,0.7); transition: transform .18s ease, box-shadow .18s ease; }

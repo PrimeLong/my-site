@@ -2408,7 +2408,7 @@ function drawResultCard(canvas, data) {
   ctx.textAlign = 'center';
   ctx.fillStyle = COLOR.goldSoft;
   ctx.font = `600 14px ${FONT.sans}`;
-  ctx.fillText('С Т Р А Н А   —   Э К О Н О М И Ч Е С К А Я   П А Н Е Л Ь', W / 2, 46);
+  ctx.fillText('I N F L A T I A', W / 2, 46);
 
   ctx.fillStyle = COLOR.text;
   ctx.font = `700 38px ${FONT.serif}`;
@@ -2457,13 +2457,13 @@ export function ResultCardModal({ data, onClose }) {
     const canvas = canvasRef.current; if (!canvas) return;
     const a = document.createElement('a');
     a.href = canvas.toDataURL('image/png');
-    a.download = `ekonomicheskaya-panel-${data.quarterIndex}kv.png`;
+    a.download = `inflatia-${data.quarterIndex}kv.png`;
     a.click();
     Audio.play('click');
   };
   const copyText = async () => {
     const lines = [
-      'Экономическая панель государства',
+      'Inflatia — симулятор государства и бизнеса',
       `Роль: ${data.roleLabel}`,
       `Отыграно: ${data.quarterIndex} ${data.quarterWord} (${data.years} лет)`,
       `Итог: ${data.outcome}`,

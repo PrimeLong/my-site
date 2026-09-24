@@ -2,7 +2,7 @@
   "name": "macro-simulator",
   "private": true,
   "version": "0.1.0",
-  "description": "Экономическая панель государства — симулятор государства и бизнеса (соло и мультиплеер).",
+  "description": "Inflatia — симулятор государства и бизнеса (соло и мультиплеер).",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "test": "vitest run",
     "balance": "node scripts/balance.mjs",
     "loudness": "node scripts/loudness.mjs",
+    "icons": "node scripts/icons.mjs",
     "e2e": "playwright test"
   },
   "dependencies": {

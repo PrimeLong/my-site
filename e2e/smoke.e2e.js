@@ -30,7 +30,7 @@ async function startSoloGame(page, role = 'Глава Центрального �
 
 test('меню открывается, шрифты свои, внешних запросов нет', async ({ page }) => {
   const { errors, external } = await openApp(page);
-  await expect(page.getByText('Экономическая панель')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Inflatia' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
   expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');
