@@ -236,6 +236,8 @@ test('общество: после квартала видны группы, к�
 
 test('президент ведёт наступление на карте: цель, штурм, продвижение', async ({ page, isMobile }) => {
   test.skip(isMobile, 'сценарий проверяется на ширине компьютера');
+  // жребий квартала фиксирован: случайное событие (соседи, кризис) не должно подменять проверяемый штурм
+  await page.addInitScript(() => { let x = 42; Math.random = () => { x = (x * 16807) % 2147483647; return x / 2147483647; }; });
   const { errors } = await openApp(page);
   await startSoloGame(page, 'Президент');
   await page.getByText('Война', { exact: true }).first().click();
@@ -285,7 +287,11 @@ test('своё дело: старт из меню, время идёт, стро
     await page.getByRole('tab', { name }).click();
   }
   await expect(page.getByText('Хлебозавод').first()).toBeVisible();
+  await expect(page.getByText(/автосохранение/)).toBeVisible();
   await expectNoSidewaysScroll(page);
+  // перезагрузка страницы открывает то же дело, а не меню
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.getByLabel('Деньги на счёте')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -426,5 +432,49 @@ test('обучение: практика обороны от Дешта — ко
     await btn.click();
   }
   await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('дипломатия: президент отвечает на инцидент с Дештом и отправляет помощь', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  const e = { ...makeInitialEconomy(), deshtMobilized: 3, relations: { north: 50, west: 64, southwest: 18 },
+    neighborEvent: { id: 'border_incident', country: 'southwest', q: 5, deadline: 6 } };
+  const snap = { app: 'economic-panel', v: 99, setup: { role: 'president', difficulty: 'medium', goal: 'living_standards', scenario: 'sandbox', cbPersona: 'pragmatic', mofPersona: 'technocrat', president: { enabled: false, persona: 'technocrat' } },
+    economy: e, history: [{ q: 0, label: 'x', ...e }], decisions: defaultDecisions(e), quarterIndex: 5 };
+  await page.addInitScript((s) => { localStorage.setItem('ems-autosave-v1', JSON.stringify({ ...s, v: 1 })); }, snap);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText(/Пограничный инцидент с Дештом/).first().click();
+  await page.getByRole('button', { name: /Пограничный инцидент/ }).click();
+  await page.getByRole('button', { name: /Замять тихо/ }).click();
+  await page.getByRole('button', { name: /Помощь/ }).click();
+  await expect(page.getByRole('button', { name: /Помощь/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  await expect(page.getByText(/ПОМОЩЬ ДЕШТУ/i).first()).toBeAttached();
+  expect(errors).toEqual([]);
+});
+
+test('своё дело: конкуренты — доля рынка, карточки компаний и поглощение', async ({ page }) => {
+  const T = await import('../src/lib/tycoon.js');
+  const { withSeededRandom } = await import('../src/lib/catalog.js');
+  let st = T.makeTycoon({ start: 'retail' });
+  st = withSeededRandom(3, () => T.tick(st, 60 * 7 + 20));
+  st = { ...st, cash: 500, rivals: st.rivals.map((c) => (c.id === 'kolos' ? { ...c, distress: 1 } : c)) };
+  const save = { ...T.snapshotTycoon(st), introSeen: true };
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('dialog', (d) => d.accept());
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"slots":[null,null,null,null]}' }));
+  await page.addInitScript((s) => { localStorage.setItem('ems-tycoon-v1', JSON.stringify({ ...s, savedAt: Date.now() })); }, save);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Продолжить', { exact: true }).click();
+  await page.getByRole('button', { name: 'Пауза' }).click();
+  await page.getByRole('tab', { name: 'Конкуренты' }).click();
+  await expect(page.getByText('Доля рынка')).toBeVisible();
+  await expect(page.getByText('Хлебный дом «Колос»')).toBeVisible();
+  await page.getByRole('button', { name: /^Купить/ }).first().click();
+  await expect(page.getByText('куплен вами')).toBeVisible();
+  await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

@@ -12,7 +12,8 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder,
-  sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder, botFrontOrder, DEF_FRONT } from './_lib/engine.js';
+  sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder, botFrontOrder, DEF_FRONT,
+  sanitizeDiplomacy, botDiplomacy } from './_lib/engine.js';
 
 /* Места в комнате закреплены за профилем. Вышедший игрок может вернуться только на
    своё место и не раньше чем через REJOIN_COOLDOWN; пока он не вернулся, место
@@ -156,6 +157,7 @@ function sanitizePresident(v, economy) {
     warOrder: sanitizeWarOrder(o.warOrder, economy),
     campaignPlan: sanitizeCampaignPlan(o.campaignPlan, economy),
     treaty: economy ? sanitizeTreaty(o.treaty, economy) : null,
+    diplomacy: economy ? sanitizeDiplomacy(o.diplomacy, economy) : null,
     actions: Array.isArray(o.actions) ? o.actions.filter((x) => PRES_ACTION_IDS.has(x)).slice(0, 4) : [],
     appointCb: CB_PERSONA_IDS.has(o.appointCb) ? o.appointCb : null,
     appointMof: MOF_PERSONA_IDS.has(o.appointMof) ? o.appointMof : null,
@@ -344,6 +346,12 @@ export function resolveQuarter(room) {
   if (room.economy.peaceTalks) {
     const humanTreaty = subs.president && subs.president.president ? subs.president.president.treaty : null;
     eff.treaty = room.seats.president ? humanTreaty : botTreaty(room.economy, room.president ? room.president.persona : 'technocrat');
+  }
+  // дипломатия: живой президент, иначе бот по характеру; без президента МИД только отвечает соседям
+  {
+    const humanDiplo = subs.president && subs.president.president ? subs.president.president.diplomacy : null;
+    const cap = Number.isFinite(room.economy.politicalCapital) ? room.economy.politicalCapital : 55;
+    eff.diplomacy = room.seats.president ? humanDiplo : botDiplomacy(room.economy, room.president ? room.president.persona : 'technocrat', room.president ? cap : 0);
   }
   // кампания: штабы живого президента, иначе — штаб власти по опросам
   const presSub = subs.president && subs.president.president;

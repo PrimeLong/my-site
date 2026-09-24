@@ -25,7 +25,7 @@ import { makeCountry, advanceCountry } from './autopilot.js';
 export const TYCOON_VERSION = 1;
 export const QUARTER_SEC = 60;
 export const OFFLINE_CAP_SEC = 3 * 3600;
-const WAGE_PER_SEC = 0.0005;
+const WAGE_PER_SEC = 0.0009;
 
 /* ------------------------------ РЕСУРСЫ ------------------------------
    price — оптовая цена за единицу при ценах и курсе старта; imp — доля цены,
@@ -41,8 +41,8 @@ export const RESOURCES = [
   { id: 'boards', name: 'Доски', unit: 'м³', price: 0.075, imp: 0.2, depth: 2.5, export: true, tier: 1 },
   { id: 'steel', name: 'Сталь', unit: 'т', price: 0.22, imp: 0.5, depth: 1.5, export: true, tier: 2 },
   { id: 'parts', name: 'Комплектующие', unit: 'шт', price: 0.3, imp: 1, depth: 1, buyOnly: true, tier: 2 },
-  { id: 'bread', name: 'Хлеб', unit: 'т', price: 0.15, imp: 0.05, depth: 3, consumer: 'food', demand: 6, elast: 1.2, tier: 2 },
-  { id: 'furniture', name: 'Мебель', unit: 'компл.', price: 0.45, imp: 0.15, depth: 0.6, consumer: 'housing', demand: 1.2, elast: 1.8, export: true, tier: 2 },
+  { id: 'bread', name: 'Хлеб', unit: 'т', price: 0.12, imp: 0.05, depth: 3, consumer: 'food', demand: 6, elast: 1.2, tier: 2 },
+  { id: 'furniture', name: 'Мебель', unit: 'компл.', price: 0.45, imp: 0.15, depth: 0.6, consumer: 'housing', demand: 2, elast: 1.8, export: true, tier: 2 },
   { id: 'appliances', name: 'Бытовая техника', unit: 'шт', price: 1.2, imp: 0.4, depth: 0.5, consumer: 'durable', demand: 0.8, elast: 2.2, export: true, tier: 3 },
   { id: 'machines', name: 'Станки', unit: 'шт', price: 1.4, imp: 0.5, depth: 0.4, export: true, tier: 3 },
 ];
@@ -53,34 +53,34 @@ export const RES = Object.fromEntries(RESOURCES.map((r) => [r.id, r]));
    строить и с каким бонусом к выработке (нет списка — где угодно, с бонусами из
    bonus); unlock — исследование, которое открывает здание. */
 export const BUILDINGS = [
-  { id: 'farm', name: 'Ферма', cat: 'extract', icon: 'wheat', cost: 0.8, upkeep: 0.002, workers: 4,
+  { id: 'farm', name: 'Ферма', cat: 'extract', icon: 'wheat', cost: 1.6, upkeep: 0.002, workers: 4,
     out: { grain: 1 }, regions: { agri: 1.3, periphery: 1, finance: 0.8 } },
-  { id: 'logging', name: 'Лесозаготовка', cat: 'extract', icon: 'trees', cost: 0.9, upkeep: 0.002, workers: 4,
+  { id: 'logging', name: 'Лесозаготовка', cat: 'extract', icon: 'trees', cost: 1.8, upkeep: 0.002, workers: 4,
     out: { wood: 1 }, regions: { periphery: 1.3, mining: 0.8, pereval: 1.1, halvik: 1 } },
-  { id: 'ore_mine', name: 'Рудник', cat: 'extract', icon: 'pickaxe', cost: 3, upkeep: 0.004, workers: 6,
+  { id: 'ore_mine', name: 'Рудник', cat: 'extract', icon: 'pickaxe', cost: 6, upkeep: 0.004, workers: 6,
     out: { ore: 1.2 }, regions: { mining: 1.2, halvik: 1.6, pereval: 0.9 }, unlock: 'metallurgy' },
-  { id: 'coal_mine', name: 'Угольная шахта', cat: 'extract', icon: 'mountain', cost: 2.6, upkeep: 0.004, workers: 6,
+  { id: 'coal_mine', name: 'Угольная шахта', cat: 'extract', icon: 'mountain', cost: 5, upkeep: 0.004, workers: 6,
     out: { coal: 1.2 }, regions: { mining: 1.3, industry: 0.8, halvik: 1 }, unlock: 'metallurgy' },
-  { id: 'mill', name: 'Мельница', cat: 'process', icon: 'factory', cost: 1.6, upkeep: 0.003, workers: 3,
+  { id: 'mill', name: 'Мельница', cat: 'process', icon: 'factory', cost: 3, upkeep: 0.003, workers: 3,
     in: { grain: 2 }, out: { flour: 1 }, bonus: { agri: 1.1 } },
-  { id: 'bakery', name: 'Хлебозавод', cat: 'process', icon: 'factory', cost: 2.2, upkeep: 0.004, workers: 5,
+  { id: 'bakery', name: 'Хлебозавод', cat: 'process', icon: 'factory', cost: 4, upkeep: 0.004, workers: 5,
     in: { flour: 1 }, out: { bread: 1 }, bonus: { capital: 1.05 } },
-  { id: 'sawmill', name: 'Лесопилка', cat: 'process', icon: 'factory', cost: 2, upkeep: 0.003, workers: 4,
+  { id: 'sawmill', name: 'Лесопилка', cat: 'process', icon: 'factory', cost: 3.5, upkeep: 0.003, workers: 4,
     in: { wood: 2 }, out: { boards: 1 }, bonus: { periphery: 1.1, industry: 1.1 } },
-  { id: 'furniture_plant', name: 'Мебельная фабрика', cat: 'process', icon: 'factory', cost: 6, upkeep: 0.008, workers: 8,
+  { id: 'furniture_plant', name: 'Мебельная фабрика', cat: 'process', icon: 'factory', cost: 9, upkeep: 0.008, workers: 8,
     in: { boards: 1.5 }, out: { furniture: 0.5 }, bonus: { industry: 1.15, capital: 1.05 }, unlock: 'furniture' },
-  { id: 'steelworks', name: 'Сталелитейный завод', cat: 'process', icon: 'factory', cost: 14, upkeep: 0.015, workers: 12,
+  { id: 'steelworks', name: 'Сталелитейный завод', cat: 'process', icon: 'factory', cost: 25, upkeep: 0.015, workers: 12,
     in: { ore: 1, coal: 0.5 }, out: { steel: 0.5 }, bonus: { industry: 1.25, mining: 1.1 }, unlock: 'metallurgy' },
-  { id: 'machine_plant', name: 'Станкозавод', cat: 'process', icon: 'factory', cost: 35, upkeep: 0.03, workers: 15,
+  { id: 'machine_plant', name: 'Станкозавод', cat: 'process', icon: 'factory', cost: 60, upkeep: 0.03, workers: 15,
     in: { steel: 1 }, out: { machines: 0.25 }, bonus: { industry: 1.3 }, unlock: 'machinery' },
-  { id: 'appliance_plant', name: 'Завод бытовой техники', cat: 'process', icon: 'factory', cost: 30, upkeep: 0.025, workers: 14,
+  { id: 'appliance_plant', name: 'Завод бытовой техники', cat: 'process', icon: 'factory', cost: 55, upkeep: 0.025, workers: 14,
     in: { steel: 0.667, parts: 0.333 }, out: { appliances: 0.333 }, bonus: { industry: 1.15, port: 1.1 }, unlock: 'appliances' },
-  { id: 'shop', name: 'Магазин', cat: 'sell', icon: 'store', cost: 1.2, upkeep: 0.002, workers: 3, sells: 1.5 },
-  { id: 'mall', name: 'Торговый центр', cat: 'sell', icon: 'building', cost: 25, upkeep: 0.02, workers: 12, sells: 8, unlock: 'malls' },
-  { id: 'terminal', name: 'Экспортный терминал', cat: 'sell', icon: 'anchor', cost: 16, upkeep: 0.01, workers: 6, exports: 3,
+  { id: 'shop', name: 'Магазин', cat: 'sell', icon: 'store', cost: 2.5, upkeep: 0.002, workers: 3, sells: 1.5 },
+  { id: 'mall', name: 'Торговый центр', cat: 'sell', icon: 'building', cost: 45, upkeep: 0.02, workers: 12, sells: 8, unlock: 'malls' },
+  { id: 'terminal', name: 'Экспортный терминал', cat: 'sell', icon: 'anchor', cost: 30, upkeep: 0.01, workers: 6, exports: 3,
     regions: { port: 1, nordholm: 0.8 }, unlock: 'export' },
-  { id: 'warehouse', name: 'Склад', cat: 'support', icon: 'warehouse', cost: 0.8, upkeep: 0.001, workers: 1, storage: 400 },
-  { id: 'lab', name: 'Лаборатория', cat: 'support', icon: 'flask', cost: 4, upkeep: 0.005, workers: 5, research: 0.6,
+  { id: 'warehouse', name: 'Склад', cat: 'support', icon: 'warehouse', cost: 1.5, upkeep: 0.001, workers: 1, storage: 400 },
+  { id: 'lab', name: 'Лаборатория', cat: 'support', icon: 'flask', cost: 7, upkeep: 0.005, workers: 5, research: 0.6,
     bonus: { capital: 1.3, finance: 1.2 } },
 ];
 export const BLD = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
@@ -151,12 +151,12 @@ const BASE_SLOTS = 3;
 
 /* ------------------------------ СТАРТЫ ------------------------------ */
 export const STARTS = {
-  farm: { region: 'agri', buildings: [['farm', 'agri'], ['farm', 'agri'], ['mill', 'agri']], sell: ['flour'], buy: [],
+  farm: { region: 'agri', buildings: [['farm', 'agri'], ['farm', 'agri'], ['mill', 'agri']], sell: ['flour'], buy: [], cash: 10,
     hint: 'Мука уходит на оптовый рынок. Дальше — хлебозавод и магазин, чтобы продавать хлеб людям, а не муку перекупщикам.' },
   retail: { region: 'capital', buildings: [['bakery', 'capital'], ['shop', 'capital']], sell: [], buy: ['flour'],
     hint: 'Мука покупается на рынке — это дорого. Своя мельница и поле рядом со столицей сделают хлеб выгоднее.' },
   factory: { region: 'periphery', buildings: [['logging', 'periphery'], ['logging', 'periphery'], ['sawmill', 'periphery']], sell: ['boards'], buy: [],
-    research: ['furniture'],
+    research: ['furniture'], cash: 16,
     hint: 'Доски уходят на оптовый рынок. Мебельное производство вы уже знаете: фабрика и магазин — и доски станут мебелью в разы дороже.' },
 };
 
@@ -171,7 +171,7 @@ export function makeTycoon({ start = 'farm', scenario = 'sandbox', difficulty = 
   const st = {
     v: TYCOON_VERSION, app: 'economic-panel', mode: 'tycoon', name, start, createdAt: now, savedAt: now,
     t: 0, qTime: 0, speed: 1, paused: false,
-    cash: 4, debtRub: 0, debtFx: 0, loanRate: rubLoanRate(country.economy),
+    cash: kit.cash || 8, debtRub: 0, debtFx: 0, loanRate: rubLoanRate(country.economy),
     wagePremium: 0, gr: false,
     buildings: [], slots: {},
     stock: {}, autoSell: {}, autoBuy: {}, reserve: {}, exportList: {}, markup: {},
@@ -185,6 +185,7 @@ export function makeTycoon({ start = 'farm', scenario = 'sandbox', difficulty = 
     events: { regionHit: null, strike: null, strikeCd: 0, inspectionCd: 0 },
     distress: 0, bankrupt: false,
     legacy, milestones: {},
+    rivals: makeRivals(), startQ: country.quarterIndex,
     managers: {}, mgrTimer: 0, quest: 0, introSeen: false,
     lifetime: { retail: 0, wholesale: 0, exports: 0 }, flags: {},
     setup: { start, scenario, difficulty, cbPersona, mofPersona, presPersona, president },
@@ -206,7 +207,7 @@ export function makeTycoon({ start = 'farm', scenario = 'sandbox', difficulty = 
 // сохранения прошлых версий не знают о менеджерах, заданиях и счётчиках — дополняем
 export function normalizeTycoon(st) {
   return { managers: {}, mgrTimer: 0, quest: 0, introSeen: true, lifetime: { retail: 0, wholesale: 0, exports: 0 }, flags: {},
-    startBuildings: 3, ...st };
+    startBuildings: 3, rivals: makeRivals(), startQ: st.country ? st.country.quarterIndex : 1, ...st };
 }
 
 function emptyQuarter() {
@@ -238,6 +239,7 @@ export function regionsOpen(st) {
   return REGION_IDS.filter((id) => ids.includes(id));
 }
 export const regionName = (id) => (regionById(id) || {}).short || id;
+export const regionFullName = (id) => (regionById(id) || {}).name || id;
 
 // можно ли строить здание в области и с каким бонусом (null — нельзя)
 export function siteBonus(type, region) {
@@ -247,7 +249,7 @@ export function siteBonus(type, region) {
 }
 export const slotsIn = (st, region) => BASE_SLOTS + (st.slots[region] || 0);
 export const usedIn = (st, region) => st.buildings.filter((b) => b.region === region).length;
-export const slotCost = (st, region) => 1.5 * Math.pow(2.5, st.slots[region] || 0);
+export const slotCost = (st, region) => 3 * Math.pow(2.5, st.slots[region] || 0);
 
 export function storageCap(st) {
   const extra = st.buildings.filter((b) => b.type === 'warehouse' && b.enabled)
@@ -270,7 +272,8 @@ export const buyPrice = (st, id) => marketPrice(st, id) * 1.15;
 export function sellPrice(st, id, rate = null) {
   const r = RES[id];
   const ema = rate ?? (st.stats.sellEma[id] || 0);
-  return marketPrice(st, id) * 0.8 / (1 + ema / r.depth);
+  // на оптовый рынок льют и конкуренты: чем больше их товара, тем дешевле ваш
+  return marketPrice(st, id) * 0.8 / (1 + (ema + rivalSupply(st, id)) / r.depth);
 }
 export function exportPrice(st, id, rate = null) {
   const r = RES[id]; const e = economyOf(st);
@@ -322,7 +325,7 @@ export function buildingPower(st, b) {
   if (st.events.strike && st.events.strike.uid === b.uid && st.t < st.events.strike.until) k *= 0.15;
   return k;
 }
-const wageOf = (st, region) => WAGE_PER_SEC * st.wageIdx * (REGION_WAGE[region] || 1) * (1 + st.wagePremium / 100);
+const wageOf = (st, region) => WAGE_PER_SEC * st.wageIdx * (REGION_WAGE[region] || 1) * (1 + st.wagePremium / 100) * rivalWageK(st, region);
 const upkeepOf = (st, b) => BLD[b.type].upkeep * Math.pow(1.3, b.level - 1) * priceIdx(economyOf(st))
   * (has(st, 'efficiency') ? 0.7 : 1);
 
@@ -443,8 +446,14 @@ function step1(prev, dt, offline) {
   st.buildings.forEach((b) => { const d = BLD[b.type]; if (d.sells) add(shopCap, b.region, d.sells * power[b.uid] * dt); });
   const planned = {}; const unmet = {};
   const goods = RESOURCES.filter((r) => r.consumer);
+  const rivalSold = {};
   Object.entries(shopCap).forEach(([region, c]) => {
-    const dem = goods.map((g) => [g.id, (st.stock[g.id] > 0 || prod[g.id] > 0) ? regionDemand(st, region, g.id) * dt : 0]);
+    // покупатели области делятся с конкурентами: у кого больше полок и ниже цены
+    const dem = goods.map((g) => {
+      const split = marketSplit(st, region, g.id, c / dt);
+      split.rivals.forEach((x) => { rivalSold[g.id] = rivalSold[g.id] || {}; rivalSold[g.id][x.id] = (rivalSold[g.id][x.id] || 0) + x.rate; });
+      return [g.id, (st.stock[g.id] > 0 || prod[g.id] > 0) ? regionDemand(st, region, g.id) * split.share * dt : 0];
+    });
     const total = dem.reduce((a, [, v]) => a + v, 0);
     const k = total > c ? c / total : 1;
     dem.forEach(([g, v]) => { if (v > 0) { (planned[g] = planned[g] || []).push([region, v * k]); add(unmet, g, v * (1 - k)); } });
@@ -532,7 +541,8 @@ function step1(prev, dt, offline) {
 
   // 7. исследования
   const rp = st.buildings.reduce((a, b) => a + (BLD[b.type].research ? BLD[b.type].research * power[b.uid] * dt : 0), 0);
-  st.rp += rp + 0.05 * dt;
+  // очки копятся и без лаборатории — первое изучение через несколько минут, а не через полчаса
+  st.rp += rp + 0.25 * dt;
 
   // статистика для экрана: скорости в секунду, сглаженные
   const rates = { ...st.stats.rates };
@@ -553,6 +563,20 @@ function step1(prev, dt, offline) {
   const un = {};
   goods.forEach((g) => { un[g.id] = ema(st.stats.unmet[g.id], (unmet[g.id] || 0) / dt); });
   st.stats.unmet = un;
+  // продажи конкурентов там, где торгуете и вы (и там, где вас нет, — для доли рынка)
+  liveRivals(st).forEach((c) => RIVAL[c.id].goods.forEach((g) => Object.keys(c.shops).forEach((region) => {
+    if (shopCap[region]) return;
+    marketSplit(st, region, g, 0).rivals.forEach((x) => { if (x.id === c.id) { rivalSold[g] = rivalSold[g] || {}; rivalSold[g][c.id] = (rivalSold[g][c.id] || 0) + x.rate; } });
+  })));
+  const rs = {};
+  goods.forEach((g) => {
+    const old = (st.stats.rivalSold || {})[g.id] || {};
+    const now = rivalSold[g.id] || {};
+    const ids = new Set([...Object.keys(old), ...Object.keys(now)]);
+    const m = {}; ids.forEach((id) => { const v = ema(old[id], now[id] || 0); if (v > 1e-5) m[id] = v; });
+    rs[g.id] = m;
+  });
+  st.stats.rivalSold = rs;
   const fl = {};
   const keys = new Set([...Object.keys(st.stats.flows || {}), ...Object.keys(flows)]);
   keys.forEach((k) => { const v = ema((st.stats.flows || {})[k], (flows[k] || 0) / dt); if (v > 1e-5) fl[k] = v; });
@@ -591,6 +615,10 @@ function quarterEnd(prev) {
   st.worldIdx *= 1.004;
   const bankRate = Math.max(0.5, rubLoanRate(e) - (has(st, 'finance_dept') ? 1 : 0));
   st.loanRate = st.debtRub > 0 ? st.loanRate + 0.25 * (bankRate - st.loanRate) : bankRate;
+
+  // конкуренты делают свой ход
+  st.rivals = st.rivals || makeRivals();
+  rivalsQuarter(st);
 
   // события квартала
   let fine = 0;
@@ -643,8 +671,8 @@ export const totalDebtT = (st) => st.debtRub + st.debtFx * fxRate(economyOf(st))
 export function annualEbitda(st) {
   const h = st.history.slice(-2);
   if (h.length) return (h.reduce((a, x) => a + x.ebitda, 0) / h.length) * 4;
-  // первый квартал: по текущему темпу
-  return (st.stats.income - st.stats.costs) * QUARTER_SEC * 4;
+  // первый квартал: по текущему темпу, но вполовину — рынок не верит разгону, пока нет отчётности
+  return (st.stats.income - st.stats.costs) * QUARTER_SEC * 4 * 0.5;
 }
 // банк даёт под годовую EBITDA; новичку — небольшой стартовый лимит
 export function creditLimitT(st) {
@@ -758,8 +786,9 @@ export const MILESTONES = [
   { id: 'exporter', title: 'Экспортёр', test: (st) => st.buildings.some((b) => b.type === 'terminal') },
   { id: 'ten_buildings', title: 'Десять зданий', test: (st) => st.buildings.length >= 10 },
   { id: 'level5', title: 'Флагман: здание 5-го уровня', test: (st) => st.buildings.some((b) => b.level >= 5) },
-  { id: 'value100', title: 'Компания дороже 100 млн', test: (st) => companyValue(st) >= 100 },
+  { id: 'value100', title: 'Компания дороже 250 млн', test: (st) => companyValue(st) >= 250 },
   { id: 'value1000', title: 'Миллиардер', test: (st) => companyValue(st) >= 1000 },
+  { id: 'takeover', title: 'Поглощение', test: (st) => !!(st.flags && st.flags.boughtRival) },
 ];
 export function checkMilestones(st) {
   let out = st;
@@ -775,6 +804,270 @@ export function checkMilestones(st) {
 export const SELL_MIN_VALUE = 2000;
 // репутация за проданную компанию: +10% ко всему в следующем деле за каждый пункт
 export const legacyFor = (value) => Math.floor(Math.sqrt(Math.max(0, value) / 200));
+
+/* ------------------------------ КОНКУРЕНТЫ ------------------------------
+   Вы не одни на рынке. Компании-боты делят с вами покупателей в областях (у кого
+   больше полок и ниже цены — тому больше людей), сбивают оптовые цены, переманивают
+   работников. Каждый квартал решают: расширяться, начать ценовую войну, держать цены
+   или отступать. Разорившийся уходит с рынка; ослабевшего можно купить; с любым —
+   попробовать договориться о ценах, рискуя штрафом антимонопольной службы.
+   shops — полки в области в тех же единицах, что у магазина игрока (магазин = 1,5);
+   supplies — сколько единиц в секунду конкурент продаёт на оптовый рынок. */
+export const RIVALS = [
+  { id: 'kolos', name: 'Хлебный дом «Колос»', short: 'Колос', color: 'rust', goods: ['bread'], supplies: { flour: 0.5, grain: 1 },
+    start: { agri: 1.5, finance: 1.5 }, entry: 0, cash: 6, style: 'defensive', maxCap: 12,
+    about: 'Местная пекарная сеть. Цены держит спокойные, но за свою долю хлеба будет драться.' },
+  { id: 'severoles', name: 'Северолес', short: 'Северолес', color: 'teal', goods: ['furniture'], supplies: { boards: 0.6, wood: 1 },
+    start: { periphery: 1.5, industry: 1.5 }, entry: 2, cash: 10, style: 'steady', maxCap: 12,
+    about: 'Лесопромышленный холдинг: доски на оптовом рынке и мебельные салоны по всей стране.' },
+  { id: 'stal', name: 'Стальной союз', short: 'Стальсоюз', color: 'muted', goods: [], supplies: { steel: 0.35, ore: 0.9, coal: 0.9, machines: 0.08 },
+    start: {}, entry: 3, cash: 30, style: 'steady', maxCap: 0,
+    about: 'Металлургический комбинат. Магазинов нет — зато его руда, уголь и сталь сбивают оптовые цены, если вы льёте туда же.' },
+  { id: 'westra', name: 'Вестравский ритейл', short: 'Вестра', color: 'blue', goods: ['bread', 'furniture', 'appliances'], supplies: {},
+    start: { capital: 3 }, entry: 6, cash: 40, style: 'aggressive', foreign: true, maxCap: 12,
+    about: 'Сеть гипермаркетов из Вестравии на дешёвых деньгах: заходит ценой и годами терпит убытки. Санкции против Вестравии или плохие отношения с ней её выгоняют.' },
+];
+export const RIVAL = Object.fromEntries(RIVALS.map((r) => [r.id, r]));
+const RIVAL_SHOP = 1.5;
+const RIVAL_SHOP_COST = 6;
+export const RIVAL_MODE_LABEL = { wait: 'ещё не на рынке', grow: 'расширяется', hold: 'держит цены', war: 'ценовая война', retreat: 'отступает',
+  cartel: 'сговор с вами', gone: 'ушёл с рынка', bought: 'куплен вами' };
+
+export function makeRivals() {
+  return RIVALS.map((r) => ({ id: r.id, cash: r.cash, shops: { ...r.start }, markup: 8, mode: 'wait', modeQ: 0, distress: 0,
+    alive: true, entered: false, supply: { ...r.supplies }, profitQ: 0, warned: false }));
+}
+const liveRivals = (st) => (st.rivals || []).filter((c) => c.alive && c.entered);
+const rivalCap = (c) => Object.values(c.shops || {}).reduce((a, v) => a + v, 0);
+
+// на сколько процентов цены конкурентов ниже или выше ваших — отношение привлекательности
+const priceRel = (st, c, g) => Math.pow((1 + (st.markup[g] || 0) / 100) / (1 + c.markup / 100), RES[g].elast * 1.5);
+
+/* Как делятся покупатели товара g в области: доля игрока при его полках P (единиц в
+   секунду) и полки конкурентов, взвешенные ценой. Возвращает долю игрока и по каждому
+   конкуренту — сколько единиц в секунду он продаёт. */
+export function marketSplit(st, region, g, P) {
+  const rivals = liveRivals(st).filter((c) => RIVAL[c.id].goods.includes(g) && (c.shops[region] || 0) > 0);
+  const weights = rivals.map((c) => (c.shops[region] / RIVAL[c.id].goods.length) * priceRel(st, c, g));
+  const R = weights.reduce((a, v) => a + v, 0);
+  const share = P + R > 0 ? P / (P + R) : 1;
+  // спрос, который конкурент видит по своей цене — без вашего бренда и репутации
+  const base = rawDemand(st, region, g);
+  const list = rivals.map((c, i) => {
+    const dem = base * Math.pow(1 + c.markup / 100, -RES[g].elast);
+    const want = dem * (weights[i] / Math.max(1e-9, P + R));
+    return { id: c.id, rate: Math.min(want, c.shops[region] / RIVAL[c.id].goods.length) };
+  });
+  return { share, rivals: list };
+}
+// спрос области на товар без учёта цены и бренда игрока — «рынок» как таковой
+function rawDemand(st, region, id) {
+  const r = RES[id]; const e = economyOf(st);
+  if (!r.consumer) return 0;
+  const macro = r.consumer === 'food' ? Math.pow(demandIndex('retail', e), 0.5)
+    : r.consumer === 'housing' ? demandIndex('builder', e)
+      : demandIndex('retail', e) * Math.exp(-0.03 * ((e.lendingRate ?? 7.92) - 7.92));
+  const reg = regionById(region);
+  const stress = reg ? regionStress(reg, e) : 30;
+  return r.demand * (POP[region] || 0.05) * macro * clamp(1.15 - stress / 200, 0.6, 1.15);
+}
+// сколько всего конкуренты льют на оптовый рынок этого товара
+export const rivalSupply = (st, id) => liveRivals(st).reduce((a, c) => a + ((c.supply || {})[id] || 0), 0);
+// конкуренты в области переманивают людей: зарплаты там выше
+export const rivalWageK = (st, region) => clamp(1 + 0.04 * liveRivals(st).reduce((a, c) => a + (c.shops[region] || 0), 0) / RIVAL_SHOP, 1, 1.3);
+
+// ваша доля по каждому товару, который продают и конкуренты (сглаженная, для экрана)
+export function marketShares(st) {
+  const out = {};
+  RESOURCES.filter((r) => r.consumer).forEach((r) => {
+    const mine = (st.stats.rates[r.id] || {}).sold || 0;
+    const theirs = st.stats.rivalSold ? st.stats.rivalSold[r.id] || {} : {};
+    const total = mine + Object.values(theirs).reduce((a, v) => a + v, 0);
+    if (total > 1e-6) out[r.id] = { mine: mine / total, rivals: Object.fromEntries(Object.entries(theirs).map(([k, v]) => [k, v / total])) };
+  });
+  return out;
+}
+
+// цена поглощения: полки, деньги и прибыль; в беде — дешевле, здоровый просит премию
+export function rivalPrice(st, id) {
+  const c = (st.rivals || []).find((x) => x.id === id);
+  if (!c) return Infinity;
+  const base = rivalCap(c) / RIVAL_SHOP * RIVAL_SHOP_COST * priceIdx(economyOf(st)) + Math.max(0, c.cash) + Math.max(0, c.profitQ) * 6
+    + Object.values(c.supply || {}).reduce((a, v) => a + v, 0) * 6;
+  const mood = c.distress > 0 || c.mode === 'retreat' ? 0.6 : 1.4;
+  return Math.max(2, base * mood * (RIVAL[id].foreign ? 1.6 : 1));
+}
+export function canBuyRival(st, id) {
+  const c = (st.rivals || []).find((x) => x.id === id);
+  if (!c || !c.alive) return 'Этой компании уже нет';
+  if (!c.entered) return 'Компания ещё не вышла на рынок';
+  if (RIVAL[id].foreign && c.distress === 0) return 'Вестравцы здоровую сеть не продают — только если она в беде';
+  if (st.cash < rivalPrice(st, id)) return 'Не хватает денег';
+  return null;
+}
+// поглощение: полки конкурента становятся вашими магазинами (с участками под них)
+export function buyRival(st, id) {
+  const err = canBuyRival(st, id);
+  if (err) return { error: err };
+  const price = rivalPrice(st, id);
+  const c = st.rivals.find((x) => x.id === id);
+  const buildings = [...st.buildings]; const slots = { ...st.slots };
+  const open = regionsOpen(st);
+  Object.entries(c.shops).forEach(([region, cap]) => {
+    if (!open.includes(region)) return;
+    const n = Math.max(1, Math.round(cap / RIVAL_SHOP));
+    for (let i = 0; i < n; i++) buildings.push({ uid: newUid(), type: 'shop', region, level: 1, staff: requiredStaff(st, { type: 'shop', level: 1 }), enabled: true });
+    const over = buildings.filter((b) => b.region === region).length - slotsIn(st, region);
+    if (over > 0) slots[region] = (slots[region] || 0) + over;
+  });
+  const next = { ...st, cash: st.cash - price, buildings, slots,
+    rivals: st.rivals.map((x) => (x.id === id ? { ...x, alive: false, mode: 'bought', shops: {}, supply: {} } : x)),
+    milestones: { ...st.milestones } };
+  pushNews(next, `ВЫ КУПИЛИ «${RIVAL[id].short.toUpperCase()}»`, `Сделка на ${price.toFixed(1)} млн: магазины конкурента теперь ваши, его покупатели — тоже.`);
+  return { st: checkMilestones({ ...next, flags: { ...next.flags, boughtRival: true } }) };
+}
+// сговор о ценах: оба держат цены высокими, но антимонопольная служба может заметить
+export function cartelChance(st, id) {
+  const c = (st.rivals || []).find((x) => x.id === id);
+  if (!c) return 0;
+  const st0 = RIVAL[id].style;
+  return clamp((st0 === 'defensive' ? 0.6 : st0 === 'steady' ? 0.45 : 0.15) + (c.distress > 0 ? 0.25 : 0) + (c.mode === 'war' ? 0.1 : 0), 0.05, 0.9);
+}
+export const cartelFineRisk = (st) => {
+  const reg = economyOf(st).politicalRegime;
+  return (hardRegime(reg) ? 0.08 : 0.22) * (st.gr ? 0.6 : 1);
+};
+export function proposeCartel(st, id) {
+  const c = (st.rivals || []).find((x) => x.id === id);
+  if (!c || !c.alive || !c.entered) return { error: 'Не с кем договариваться' };
+  if (!RIVAL[id].goods.length) return { error: 'Этот конкурент торгует оптом — о розничных ценах с ним не договориться' };
+  if (c.mode === 'cartel') return { error: 'Договорённость уже действует' };
+  if ((st.events.cartelCd || 0) > 0) return { error: 'После прошлого отказа вас не станут слушать ещё квартал' };
+  const ok = rng() < cartelChance(st, id);
+  const next = { ...st, events: { ...st.events },
+    rivals: st.rivals.map((x) => (x.id === id && ok ? { ...x, mode: 'cartel', modeQ: 4, markup: 15 } : x)) };
+  if (ok) {
+    pushNews(next, `ТИХАЯ ДОГОВОРЁННОСТЬ С «${RIVAL[id].short.toUpperCase()}»`, 'Год обе компании держат цены высокими. Опустите свои ниже рынка — договорённость рухнет, а антимонопольная служба может заинтересоваться в любой квартал.');
+  } else {
+    next.events.cartelCd = 1;
+    pushNews(next, `«${RIVAL[id].short.toUpperCase()}» ОТВЕРГ ПРЕДЛОЖЕНИЕ`, 'Конкурент не стал договариваться о ценах — и теперь знает, что вам тесно.');
+  }
+  return { st: next, ok };
+}
+
+/* Квартал конкурентов: выход на рынок, прибыль, решение, что делать дальше. */
+function rivalsQuarter(st) {
+  const e = economyOf(st);
+  const age = st.country.quarterIndex - (st.startQ || 1);
+  const pIdx = priceIdx(e);
+  const playerCap = {};
+  st.buildings.forEach((b) => { const d = BLD[b.type]; if (d.sells) playerCap[b.region] = (playerCap[b.region] || 0) + d.sells * buildingPower(st, b); });
+  const shares = marketShares(st);
+  const westHostile = (e.sanctionsQuartersLeft || 0) > 0 || ((e.relations || {}).west ?? 64) < 25;
+  const open = regionsOpen(st);
+  st.rivals = (st.rivals || makeRivals()).map((c0) => {
+    const def = RIVAL[c0.id];
+    const c = { ...c0, shops: { ...c0.shops }, supply: { ...c0.supply } };
+    if (!c.alive) return c;
+    if (!c.entered) {
+      if (age < def.entry || (def.foreign && westHostile)) return c;
+      c.entered = true; c.mode = 'grow';
+      pushNews(st, `НА РЫНОК ВЫХОДИТ «${def.short.toUpperCase()}»`, `${def.about}${def.goods.length ? ` Первые магазины: ${Object.keys(c.shops).map(regionName).join(', ')}.` : ''}`);
+      return c;
+    }
+    if (def.foreign && westHostile) {
+      c.alive = false; c.mode = 'gone'; c.shops = {};
+      pushNews(st, `«${def.short.toUpperCase()}» УХОДИТ ИЗ СТРАНЫ`, 'Отношения с Вестравией испорчены — сеть закрывает магазины. Её покупатели ищут, где купить.');
+      return c;
+    }
+    // прибыль квартала: розница (наценка над оптом) и опт, минус содержание полок
+    let sales = 0;
+    def.goods.forEach((g) => open.forEach((region) => {
+      if (!(c.shops[region] > 0)) return;
+      const split = marketSplit(st, region, g, playerCap[region] || 0);
+      const mine = split.rivals.find((x) => x.id === c.id);
+      if (mine) sales += mine.rate * marketPrice(st, g) * (0.15 + c.markup / 100);
+    }));
+    Object.entries(c.supply).forEach(([r, v]) => { sales += v * sellPrice(st, r) * 0.12; });
+    const upkeep = rivalCap(c) / RIVAL_SHOP * 0.1 * pIdx;
+    c.profitQ = sales * QUARTER_SEC - upkeep + (def.foreign ? 0.4 : 0);
+    // сверх запаса на развитие владельцы забирают дивидендами — конкурент не копит сотни миллионов
+    c.cash = Math.min(c.cash + c.profitQ, (def.foreign ? 30 : 12) + rivalCap(c) * 3);
+    c.distress = c.cash < 0 ? c.distress + 1 : 0;
+    // оптовики отходят, когда вы льёте на рынок больше них, и подтягиваются, когда рынок пуст
+    Object.keys(c.supply).forEach((r) => {
+      const mine = st.stats.sellEma[r] || 0;
+      c.supply[r] = clamp(c.supply[r] * (mine > c.supply[r] ? 0.85 : 1.06), 0.05, (def.supplies[r] || 0.1) * 2.5);
+    });
+    const share = def.goods.length ? Math.max(0, ...def.goods.map((g) => (shares[g] ? shares[g].mine : 0))) : 0;
+    const warAt = def.style === 'aggressive' ? 0.35 : def.style === 'defensive' ? 0.55 : 0.65;
+    const baseMarkup = def.style === 'aggressive' ? 0 : 8;
+    if (c.distress >= 3 || c.cash < -8) {
+      c.alive = false; c.mode = 'gone'; c.shops = {}; c.supply = {};
+      pushNews(st, `«${def.short.toUpperCase()}» УШЁЛ С РЫНКА`, 'Конкурент не выдержал: магазины закрыты, его покупатели теперь ищут, где купить.');
+      return c;
+    }
+    if (c.mode === 'cartel') {
+      c.modeQ -= 1; c.markup = 15;
+      // вы нарушили договорённость — цены ниже рынка
+      const broke = def.goods.some((g) => (st.markup[g] || 0) < 5);
+      if (broke || c.modeQ <= 0) {
+        c.mode = broke ? 'war' : 'hold'; c.modeQ = broke ? 3 : 0;
+        pushNews(st, broke ? `«${def.short.toUpperCase()}»: ВЫ НАРУШИЛИ ДОГОВОР` : `ДОГОВОРЁННОСТЬ С «${def.short.toUpperCase()}» ИСТЕКЛА`,
+          broke ? 'Вы опустили цены — конкурент отвечает ценовой войной.' : 'Год прошёл, каждый снова сам по себе.');
+      }
+      return c;
+    }
+    if (c.distress >= 1) {
+      c.mode = 'retreat'; c.markup = baseMarkup + 6;
+      const worst = Object.keys(c.shops).sort((a, b) => (POP[a] || 0) - (POP[b] || 0))[0];
+      if (worst && c.shops[worst] > 0) { c.shops[worst] = Math.max(0, c.shops[worst] - RIVAL_SHOP); if (!c.shops[worst]) delete c.shops[worst]; }
+      if (!c.warned) { c.warned = true; pushNews(st, `«${def.short.toUpperCase()}» В ДОЛГАХ`, 'Конкурент закрывает магазины. Сейчас его можно купить дешевле обычного.'); }
+      return c;
+    }
+    c.warned = false;
+    if (c.mode === 'war' && c.modeQ > 0) {
+      c.modeQ -= 1;
+      if (c.modeQ <= 0) c.mode = 'hold';
+      return c;
+    }
+    if (def.goods.length && share > warAt && c.cash > 3) {
+      c.mode = 'war'; c.modeQ = 3; c.markup = def.style === 'aggressive' ? -20 : def.style === 'defensive' ? -12 : -8;
+      pushNews(st, `«${def.short.toUpperCase()}» НАЧИНАЕТ ЦЕНОВУЮ ВОЙНУ`, `Ваша доля рынка ${Math.round(share * 100)}% — конкурент снижает цены на ${Math.abs(c.markup)}% ниже рынка. Можно ответить ценой, переждать или договориться.`);
+      return c;
+    }
+    const cost = RIVAL_SHOP_COST * pIdx;
+    /* расширяться — только в прибыли, до своего размера, и туда, где рынок ещё не насыщен:
+       полок (ваших и всех конкурентов) меньше, чем покупателей */
+    const perRegion = def.style === 'aggressive' ? 6 : 4.5;
+    const shelves = (rg) => (playerCap[rg] || 0) + liveRivals(st).reduce((a, x) => a + (x.shops[rg] || 0), 0);
+    const hungry = (rg) => shelves(rg) < def.goods.reduce((a, g) => a + rawDemand(st, rg, g), 0) * 1.3;
+    if (def.goods.length && c.cash > cost * 2 && c.profitQ > 0.3 && rivalCap(c) < def.maxCap && rng() < 0.6) {
+      // агрессивный идёт туда, где сильнее всего вы; остальные — где людей больше, а их меньше
+      const cand = open.filter((rg) => (POP[rg] || 0) > 0.04 && (c.shops[rg] || 0) < perRegion && hungry(rg));
+      const pick = def.style === 'aggressive'
+        ? cand.sort((a, b) => (playerCap[b] || 0) - (playerCap[a] || 0) || (POP[b] - POP[a]))[0]
+        : cand.sort((a, b) => (POP[b] / (1 + (c.shops[b] || 0))) - (POP[a] / (1 + (c.shops[a] || 0))))[0];
+      if (pick) {
+        c.shops[pick] = (c.shops[pick] || 0) + RIVAL_SHOP; c.cash -= cost; c.mode = 'grow';
+        pushNews(st, `«${def.short.toUpperCase()}» ОТКРЫЛ МАГАЗИН: ${regionName(pick).toUpperCase()}`,
+          (playerCap[pick] || 0) > 0 ? 'Прямо рядом с вашими — покупателей там станет меньше.' : 'Область, где вас пока нет.');
+      }
+      return c;
+    }
+    c.mode = 'hold';
+    c.markup += 0.5 * (baseMarkup - c.markup);
+    return c;
+  });
+  // сговор: штраф может прийти в любой квартал, пока договорённость действует
+  if (st.rivals.some((c) => c.mode === 'cartel') && rng() < cartelFineRisk(st)) {
+    const fine = Math.max(0.5, Math.max(0, st.cash) * 0.15);
+    st.cash -= fine;
+    st.rivals = st.rivals.map((c) => (c.mode === 'cartel' ? { ...c, mode: 'hold', modeQ: 0 } : c));
+    pushNews(st, 'АНТИМОНОПОЛЬНАЯ СЛУЖБА: ШТРАФ ЗА СГОВОР', `Переписка с конкурентом попала к регулятору. Штраф ${fine.toFixed(1)} млн, договорённость разорвана.`);
+  }
+  st.events.cartelCd = Math.max(0, (st.events.cartelCd || 0) - 1);
+}
 
 /* ------------------------------ ОФЛАЙН ------------------------------
    Пока вкладка закрыта, страна стоит на паузе, а предприятия работают без присмотра —

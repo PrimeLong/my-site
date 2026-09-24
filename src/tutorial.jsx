@@ -2490,7 +2490,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                 </div>
               </div>
             )}
-      {sandbox === 'president' && (
+      {/* кабинет президента — рабочий инструмент практики; под теорией и тестом он
+          только отвлекал и путал, что сейчас надо делать */}
+      {sandbox === 'president' && kind === 'practice' && (
               <div style={{ marginBottom: 14 }}>
                 <PresidentPanel economy={economy} cooldowns={eventCooldowns}
                   selected={presActions} setSelected={setPresActions}

@@ -6,7 +6,7 @@ import {
   botCentralBank, botFinanceMinistry, botPresident, processPresidentialDirective, redescribeCbAction,
   redescribeMofAction, botWarOrder, botDefenseOrder, botTreaty, botCampaignPlan, simulateQuarter,
   defaultDecisions, makeImpulse, clamp, PRES_DIRECTIVE_COST, personaAfterElection, getCbPersona, getMofPersona,
-  quarterLabel, makeInitialEconomy,
+  quarterLabel, makeInitialEconomy, botDiplomacy,
 } from './engine.js';
 
 export function makeCountry({ scenario = 'sandbox', difficulty = 'medium', cbPersona = 'pragmatic',
@@ -63,6 +63,9 @@ export function advanceCountry(country) {
   }
   if (economy.peaceTalks) eff = { ...eff, treaty: botTreaty(economy, country.president ? country.presPersona : 'technocrat') };
   eff = { ...eff, campaignPlan: botCampaignPlan(economy) };
+  // соседи: дипломатию ведёт президент-бот, без президента МИД только отвечает на события
+  eff = { ...eff, diplomacy: botDiplomacy(economy, country.president ? country.presPersona : 'technocrat',
+    country.president ? (Number.isFinite(economy.politicalCapital) ? economy.politicalCapital : 55) : 0) };
 
   const cbStance = clamp((eff.keyRate - economy.inflationExpectations - economy.rStar) / 3, -1, 1);
   const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6

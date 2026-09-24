@@ -560,6 +560,13 @@ export function loadTycoonSave() {
     return d && d.mode === 'tycoon' && d.country && d.country.economy && Array.isArray(d.buildings) ? d : null;
   } catch { return null; }
 }
+/* Какой экран был открыт на вкладке — чтобы после перезагрузки страницы «Своё дело»
+   открывалось само, как одиночная партия, а не бросало в меню (или, хуже, в старую
+   партию за государство, у которой тоже есть автосохранение). */
+const LAST_SCREEN_KEY = 'ems-last-screen';
+function tycoonWasOpen() {
+  try { return localStorage.getItem(LAST_SCREEN_KEY) === 'tycoon'; } catch { return false; }
+}
 export function loadTycoonMeta() {
   try { return JSON.parse(localStorage.getItem(TYCOON_META_KEY) || 'null') || {}; } catch { return {}; }
 }
@@ -1957,8 +1964,10 @@ export default function MacroSimulator() {
   // партия из автосохранения открывается сама, минуя меню — но только если
   // в адресе нет приглашения в сетевую комнату: оно важнее того, что было
   // открыто на этой вкладке раньше
-  const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() ? null : loadAutosave()));
-  const [setup, setSetup] = useState(() => (roomCodeFromUrl() ? null : (loadAutosave() || {}).setup || null));
+  // до ухода со страницы было открыто «Своё дело» — открываем его, а не партию за государство
+  const [resumeTycoon] = useState(() => (!roomCodeFromUrl() && tycoonWasOpen() ? loadTycoonSave() : null));
+  const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : loadAutosave()));
+  const [setup, setSetup] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : (loadAutosave() || {}).setup || null));
   const [nonce, setNonce] = useState(0);
   const [theme, setThemeState] = useState('ink');
   const [network, setNetwork] = useState(null);
@@ -1967,7 +1976,10 @@ export default function MacroSimulator() {
   // ведёт сразу в лобби, минуя меню.
   const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
   // «Своё дело»: { initial } — продолжить сохранённое, { setupNew } — новое дело
-  const [tycoon, setTycoon] = useState(null);
+  const [tycoon, setTycoon] = useState(() => (resumeTycoon ? { initial: resumeTycoon } : null));
+  React.useEffect(() => {
+    try { if (tycoon) localStorage.setItem(LAST_SCREEN_KEY, 'tycoon'); else localStorage.removeItem(LAST_SCREEN_KEY); } catch { /* приватный режим */ }
+  }, [tycoon]);
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };

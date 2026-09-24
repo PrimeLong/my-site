@@ -17,7 +17,7 @@ import {
   evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
-  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
+  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
   directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -169,7 +169,7 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
 /* Сворачиваемый блок кабинета: справочное (решения бота, бюджетная арифметика,
    президент) можно убрать в одну строку со сводкой — колонка перестаёт быть
    бесконечной лентой. Состояние каждого блока запоминается в этом браузере. */
-function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) {
+export function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) {
   const key = `ems.fold.${id}`;
   const [open, setOpen] = useState(() => {
     try { const v = window.localStorage.getItem(key); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
@@ -196,6 +196,12 @@ function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) 
       </button>
     </div>
   );
+}
+
+// сводка пяти оценок для свёрнутого блока: средний балл
+export function scoreSummary(economy) {
+  const vals = SCORE_DEFS.map((d) => economy[d.id]).filter(Number.isFinite);
+  return vals.length ? `в среднем ${Math.round(vals.reduce((a, v) => a + v, 0) / vals.length)} из 100` : '';
 }
 
 /* Колонка на широком экране «прилипает» при прокрутке: короткие колонки
@@ -3849,8 +3855,9 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
 /* Событие в округе поверх любого экрана: на карту заглядывают не каждый квартал,
    а без ответа сработает «переждать». */
 export function RegionEventStrip({ event, answered, canAnswer, onOpen }) {
-  // ответ уже выбран — напоминать не о чем: решение видно на карте
-  if (canAnswer && answered) return null;
+  // ответ уже выбран — напоминать не о чем: решение видно на карте. Тому, кто
+  // отвечать не может (ЦБ, трейдер), полоса сверху ни к чему — событие видно на карте
+  if (!canAnswer || answered) return null;
   const region = MAP_REGIONS.find((r) => r.id === event.region);
   return (
     <div role="button" tabIndex={0} className="ems-fade-in" onClick={onOpen}
@@ -4134,6 +4141,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [campaignPlan, setCampaignPlan] = useState({});
   // условия мира, которые президент предложит Норланду в этом квартале
   const [treatyPlan, setTreatyPlan] = useState(null);
+  // дипломатия на квартал: действие президента и ответ на событие соседа
+  const [diploPlan, setDiploPlan] = useState(null);
   const [lastDirective, setLastDirective] = useState(initial ? initial.lastDirective || null : null);
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
@@ -4333,6 +4342,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     if (economy.peaceTalks) {
       eff = { ...eff, treaty: isPresident ? treatyPlan : botTreaty(economy, presEnabled ? presPersonaId : 'technocrat') };
     }
+    // соседи: решения президента-игрока, иначе — бота по характеру; без президента МИД только отвечает
+    eff = { ...eff, diplomacy: isPresident ? diploPlan
+      : botDiplomacy(economy, presEnabled ? presPersonaId : 'technocrat', presEnabled ? (Number.isFinite(economy.politicalCapital) ? economy.politicalCapital : 55) : 0) };
     // кампания: штабы президента-игрока, иначе — штаб власти по опросам
     eff = { ...eff, campaignPlan: isPresident ? campaignPlan : botCampaignPlan(economy) };
     // карта: игрок за Минфин или президент решает сам — поверх бота-Минфина
@@ -4496,6 +4508,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     setRegionPlan((p) => ({ startProject: null, regionResponse: null, groupResponse: null, integrate: p.integrate }));
     setCampaignPlan({});
     setTreatyPlan(null);
+    setDiploPlan(null);
     setStories(result.stories);
     setNewsFeed((f) => [...result.newsEntries, ...f].slice(0, 220));
     // после проигранных выборов новая власть меняет руководство ведомства
@@ -4585,7 +4598,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   }), [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan,
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan, diploPlan,
     isPublic, canCommandDefense]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
@@ -4793,7 +4806,23 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
         )}
-        {economy.groupDemand && view !== 'society' && !(canPlanMap && regionPlan.groupResponse) && (
+        {/* событие от соседа — напоминание только президенту: отвечает он */}
+        {isPresident && economy.neighborEvent && view !== 'map' && !(diploPlan && diploPlan.reply) && (() => {
+          const ev = neighborEventView(economy);
+          if (!ev) return null;
+          return (
+            <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`,
+                borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+              <Globe2 size={15} color={COLOR.gold} style={{ flexShrink: 0 }} />
+              <span><b style={{ color: COLOR.goldSoft }}>{ev.title}.</b>{' '}
+                <span style={{ color: COLOR.muted }}>{ev.deadline - quarterIndex > 1 ? 'Срок ответа — до следующего квартала.' : 'Ответьте в этом квартале'} — на карте, в карточке страны.</span></span>
+            </div>
+          );
+        })()}
+        {/* требование группы — только тому, кто на него отвечает (Минфин, президент) */}
+        {economy.groupDemand && view !== 'society' && canPlanMap && !regionPlan.groupResponse && (
           <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('society'); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('society'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
@@ -4872,7 +4901,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             campaignPlan={campaignPlan} onCampaignPlan={isPresident && !defeat ? setCampaignPlan : null}
             campaignPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'штаб власти'}
             treatyPlan={treatyPlan} onTreatyPlan={isPresident && !defeat ? setTreatyPlan : null}
-            treatyPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
+            treatyPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'}
+            diploPlan={diploPlan} onDiploPlan={isPresident && !defeat ? setDiploPlan : null}
+            diploPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
         </Suspense></div>
       )}
 
@@ -5101,9 +5132,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
-          {!isPublic && (
-            <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
-              setAnswer={(id) => setLever('pressAnswer', id)} />
+          {!isPublic && pickPressQuestion(economy, quarterIndex) && (
+            <Fold id="press" title="Пресс-конференция" icon={Megaphone} summary={decisions.pressAnswer ? 'ответ выбран' : 'ждут вашего ответа'}>
+              <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
+                setAnswer={(id) => setLever('pressAnswer', id)} />
+            </Fold>
           )}
           {presEnabled && (
             <Fold id="president" title="Президент" icon={Crown} defaultOpen={false}
@@ -5120,6 +5153,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           <Suspense fallback={<ChartFallback />}>
             <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           </Suspense>
+          <Fold id="report" title="Квартальный отчёт" icon={Newspaper} summary={history[history.length - 1].label}>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
@@ -5143,12 +5177,15 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               )}
             </div>
           </div>
+          </Fold>
         </div>
       );
       /* ПРАВАЯ ПАНЕЛЬ */
       const rightNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
+          <Fold id="scores" title="Пять оценок вашей политики" icon={Trophy} summary={scoreSummary(economy)}>
+            <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
+          </Fold>
           <div className="ems-panel" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Показатели экономики</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 11 }} className="ems-scroll">

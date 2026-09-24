@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Wheat, Trees, Pickaxe, Mountain, Factory, Store, Building2, Anchor, Warehouse, FlaskConical, Pause, Play,
   FastForward, Landmark, Coins, Newspaper, ArrowRight, Hammer, ArrowUpCircle, Power, Trash2, Handshake,
-  Globe2, AlertTriangle, TrendingUp, X, Map as MapIcon, Boxes, Lock, Check, Trophy, DoorOpen, Save, Users, Gift, Sparkles,
+  Globe2, AlertTriangle, TrendingUp, X, Map as MapIcon, Boxes, Lock, Check, Trophy, DoorOpen, Save, Users, Gift, Sparkles, Swords,
 } from 'lucide-react';
 import {
   COLOR, Audio, AudioControls, GlobalStyle, ACHIEVEMENTS, ACHIEVEMENTS_KEY, loadUnlockedAchievements, TYCOON_SAVE_KEY,
@@ -50,8 +50,9 @@ const TY_CSS = `
   @media (prefers-reduced-motion: reduce) { .ty-work > span, .ty-pulse, .ty-toast { animation: none; } }
 `;
 
+// возвращает время сохранения — или 0, если браузер не дал записать
 function saveLocal(st) {
-  try { localStorage.setItem(TYCOON_SAVE_KEY, JSON.stringify(T.snapshotTycoon(st))); } catch { /* квота или приватный режим */ }
+  try { const snap = T.snapshotTycoon(st); localStorage.setItem(TYCOON_SAVE_KEY, JSON.stringify(snap)); return snap.savedAt; } catch { return 0; /* квота или приватный режим */ }
 }
 function saveMeta(meta) {
   try { localStorage.setItem(TYCOON_META_KEY, JSON.stringify(meta)); } catch { /* см. выше */ }
@@ -102,6 +103,9 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   const [toasts, setToasts] = useState([]);
   const stRef = useRef(st);
   stRef.current = st;
+  // когда партия в последний раз легла в браузер — видно в шапке, чтобы не гадать, сохраняется ли она
+  const discarded = useRef(false);
+  const [savedAt, setSavedAt] = useState(() => (initial && Number(initial.savedAt)) || 0);
 
   const toast = (text, tone = 'info') => {
     const id = `${Date.now()}${Math.random()}`;
@@ -120,13 +124,16 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     }, 500);
     return () => clearInterval(id);
   }, []);
-  // автосохранение: каждые пять секунд и при уходе со страницы
+  // автосохранение: сразу при входе, каждые пять секунд и при уходе со страницы
   useEffect(() => {
-    const id = setInterval(() => saveLocal(stRef.current), 5000);
-    const onHide = () => saveLocal(stRef.current);
+    const save = () => { if (discarded.current) return; const t = saveLocal(stRef.current); if (t) setSavedAt(t); };
+    save();
+    const id = setInterval(save, 5000);
+    const onHide = () => { if (!discarded.current) saveLocal(stRef.current); };
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
-    return () => { clearInterval(id); window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onHide); saveLocal(stRef.current); };
+    // партию, выброшенную после банкротства, при закрытии экрана не записываем обратно
+    return () => { clearInterval(id); window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onHide); if (!discarded.current) saveLocal(stRef.current); };
   }, []);
   useEffect(() => { Audio.setRole('trader'); return () => Audio.setRole(null); }, []);
 
@@ -145,6 +152,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     if (st.setup.scenario !== 'sandbox' && st.history.length >= 12 && !st.bankrupt) ids.push('biz_survivor');
     unlockAch(ids).forEach((a) => { Audio.play('coin'); toast(`Достижение: ${a.title}`, 'gold'); });
     sendRecord(st);
+    // смена квартала — веха: сохраняемся сразу, не дожидаясь пятисекундного таймера
+    { const t = saveLocal(st); if (t) setSavedAt(t); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
@@ -173,6 +182,9 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     .filter(([, , v]) => v > 0.002).sort((x, y) => y[2] - x[2]).slice(0, 12),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [flowsKey]);
+  // где стоят магазины конкурентов — цветные метки у городов на карте
+  const rivalMarks = (st.rivals || []).filter((c) => c.alive && c.entered)
+    .flatMap((c) => Object.entries(c.shops).filter(([, v]) => v > 0).map(([region, v]) => ({ region, color: COLOR[T.RIVAL[c.id].color], n: Math.round(v / 1.5), name: T.RIVAL[c.id].short })));
   const highlight = useMemo(() => {
     if (!hoverType) return null;
     const h = {};
@@ -182,12 +194,12 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   }, [hoverType, e.annexed && e.annexed.length]);
 
   const tabs = [['build', 'Карта и стройка', MapIcon], ['prod', 'Производство', Factory], ['stock', 'Склад и рынок', Boxes],
-    ['lab', 'Исследования', FlaskConical], ['team', 'Команда', Users], ['money', 'Финансы', Coins], ['country', 'Страна', Landmark]];
+    ['rivals', 'Конкуренты', Swords], ['lab', 'Исследования', FlaskConical], ['team', 'Команда', Users], ['money', 'Финансы', Coins], ['country', 'Страна', Landmark]];
   const mapPanel = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className="ems-panel" style={{ padding: 10 }}>
         <BusinessMap economy={e} selected={region} onSelect={setRegion} info={mapInfo} flows={flows}
-          highlight={highlight} hit={st.events.regionHit ? st.events.regionHit.region : null} routes={T.ROUTE_LINKS} />
+          highlight={highlight} hit={st.events.regionHit ? st.events.regionHit.region : null} routes={T.ROUTE_LINKS} rivals={rivalMarks} />
         <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6, lineHeight: 1.45 }}>
           Нажмите на область, чтобы строить там. Золотые линии — ваши грузы между областями: чем толще, тем больше везёте
           (перевозка стоит денег, соседство цехов экономит). Наведите на здание в списке — карта покажет, где оно работает лучше.
@@ -201,7 +213,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     <div className="ems-root" style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
       <GlobalStyle />
       <style>{TY_CSS}</style>
-      <TyHeader st={st} setSt={setSt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
+      <TyHeader st={st} setSt={setSt} savedAt={savedAt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
         onRecords={() => { Audio.play('click'); setShowRecords(true); }} />
       {showRecords && <RecordsModal st={st} onClose={() => setShowRecords(false)} />}
       <QuestCard st={st} act={act} onGo={(t) => { Audio.play('tab'); setTab(t); }} />
@@ -228,6 +240,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
             {tab === 'build' && mapPanel}
             {tab === 'prod' && <ProductionTab st={st} act={act} setRegion={setRegion} />}
             {tab === 'stock' && <StockTab st={st} act={act} />}
+            {tab === 'rivals' && <RivalsTab st={st} act={act} onRegion={(r) => { setRegion(r); if (narrow) setTab('build'); }} />}
             {tab === 'lab' && <LabTab st={st} act={act} />}
             {tab === 'team' && <TeamTab st={st} act={act} />}
             {tab === 'money' && <MoneyTab st={st} act={act} onSell={() => {
@@ -252,6 +265,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
           <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 7 }}>
             <div><b style={{ color: COLOR.text }}>Время идёт само.</b> Деньги капают каждую секунду, раз в минуту проходит квартал страны — налоги, проценты, новости. Пауза и скорость — в шапке.</div>
             <div><b style={{ color: COLOR.text }}>Цепочки.</b> Сырьё → переработка → магазин. Чем дальше по цепочке, тем дороже товар; рядом стоящие цеха экономят на перевозке.</div>
+            <div><b style={{ color: COLOR.text }}>Вы не одни.</b> «Колос», «Северолес», «Стальной союз», а позже вестравские гипермаркеты делят с вами покупателей и оптовый рынок. Сидеть на месте — терять долю. Их можно пережить, купить или договориться с ними — вкладка «Конкуренты».</div>
             <div><b style={{ color: COLOR.text }}>Страна живёт без вас.</b> Ставка, кризисы, выборы и война меняют спрос, цены и кредит — следите за вкладкой «Страна».</div>
             <div><b style={{ color: COLOR.text }}>Задания</b> вверху экрана проведут по первым шагам и дадут денег на рост.</div>
           </div>
@@ -287,7 +301,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
               const fresh = T.makeTycoon({ ...st.setup, legacy: loadTycoonMeta().legacy || 0 });
               setSt(fresh); setRegion(fresh.buildings[0].region);
             }}>Начать заново</button>
-            <button className="ems-btn" style={{ flex: 1 }} onClick={() => { try { localStorage.removeItem(TYCOON_SAVE_KEY); } catch { /* нет */ } onExit(); }}>В меню</button>
+            <button className="ems-btn" style={{ flex: 1 }} onClick={() => { discarded.current = true; try { localStorage.removeItem(TYCOON_SAVE_KEY); } catch { /* нет */ } onExit(); }}>В меню</button>
           </div>
         </Modal>
       )}
@@ -381,7 +395,11 @@ function Modal({ title, children, onClose, tone }) {
 }
 
 /* ------------------------------ ШАПКА ------------------------------ */
-function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
+function savedAgo(t) {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  return s < 5 ? 'только что' : s < 60 ? `${s} с назад` : `${Math.round(s / 60)} мин назад`;
+}
+function TyHeader({ st, setSt, savedAt, onExit, onSaves, onRecords }) {
   const e = st.country.economy;
   const net = st.stats.income - st.stats.costs;
   const value = T.companyValue(st);
@@ -447,6 +465,10 @@ function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
           </span>
         )}
         {st.paused && <span style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, background: COLOR.goldDim, color: COLOR.goldSoft }}>пауза</span>}
+        <span aria-live="off" title="Партия сама сохраняется в этом браузере каждые пять секунд, в конце квартала и при закрытии вкладки; после перезагрузки страницы она откроется с того же места"
+          style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 8px', borderRadius: 999, color: savedAt ? COLOR.teal : COLOR.rust, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Save size={11} />{savedAt ? `автосохранение · ${savedAgo(savedAt)}` : 'браузер не даёт сохранять'}
+        </span>
       </div>
     </div>
   );
@@ -476,7 +498,7 @@ function RegionPanel({ st, region, act, setHoverType }) {
   return (
     <div className="ems-panel" style={{ padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-        <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>{T.regionName(reg)} область</span>
+        <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>{T.regionFullName(reg)}</span>
         <span style={{ fontSize: 12, color: COLOR.faint }}>участков {used} из {slots}</span>
         <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 9px', fontSize: 12 }}
           onClick={() => act((s) => T.buySlot(s, reg), 'coin')}>+ участок · {money(T.slotCost(st, reg))}</button>
@@ -486,6 +508,20 @@ function RegionPanel({ st, region, act, setHoverType }) {
         настроение <span style={{ color: info.mood < 0.9 ? COLOR.rust : info.mood > 1.05 ? COLOR.teal : COLOR.text }}>{info.mood < 0.9 ? 'тревожное' : info.mood > 1.05 ? 'хорошее' : 'обычное'}</span>
         {info.hit ? <span style={{ color: COLOR.rust }}> · {info.hit}</span> : null}
       </div>
+      {(() => {
+        const here2 = (st.rivals || []).filter((c) => c.alive && c.entered && (c.shops[reg] || 0) > 0);
+        if (!here2.length) return null;
+        return (
+          <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 4, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Swords size={11} color={COLOR.rust} />Конкуренты здесь:
+            {here2.map((c) => (
+              <span key={c.id} style={{ color: COLOR[T.RIVAL[c.id].color] }}>
+                {T.RIVAL[c.id].short} — {Math.round(c.shops[reg] / 1.5)} маг.{c.markup < -1 ? `, цены ${Math.round(c.markup)}%` : ''}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
       {here.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '8px 0 12px' }}>
           {here.map((b) => <BuildingCard key={b.uid} st={st} b={b} act={act} compact />)}
@@ -680,6 +716,102 @@ function StockTab({ st, act }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* Конкуренты: доли рынка по товарам, карточки компаний с их положением и что с ними
+   можно сделать — купить или договориться о ценах. */
+const RIVAL_TONE = { grow: 'gold', hold: 'muted', war: 'rust', retreat: 'teal', cartel: 'blue', wait: 'faint', gone: 'faint', bought: 'teal' };
+function RivalsTab({ st, act, onRegion }) {
+  const shares = T.marketShares(st);
+  const goods = T.RESOURCES.filter((r) => r.consumer && (shares[r.id] || (st.stats.rates[r.id] || {}).sold > 0));
+  const risk = Math.round(T.cartelFineRisk(st) * 100);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="ems-panel" style={{ padding: 14 }}>
+        <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 4 }}>Доля рынка</div>
+        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+          Покупатели области делятся между магазинами: у кого больше полок и ниже цены — тому больше людей.
+          Цены в магазинах задаются во вкладке «Склад и рынок».
+        </div>
+        {goods.length === 0 && <div style={{ fontSize: 12, color: COLOR.faint }}>Вы пока не продаёте людям — делить нечего.</div>}
+        {goods.map((g) => {
+          const sh = shares[g.id] || { mine: 1, rivals: {} };
+          const parts = [['you', sh.mine, COLOR.gold, 'вы'], ...Object.entries(sh.rivals).map(([id, v]) => [id, v, COLOR[T.RIVAL[id].color], T.RIVAL[id].short])];
+          return (
+            <div key={g.id} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                <b>{g.name}</b><span className="ems-mono" style={{ color: COLOR.goldSoft }}>вы {Math.round(sh.mine * 100)}%</span>
+              </div>
+              <div role="img" aria-label={`${g.name}: ${parts.map(([, v, , n]) => `${n} ${Math.round(v * 100)}%`).join(', ')}`}
+                style={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', background: COLOR.panelAlt }}>
+                {parts.map(([id, v, c]) => <div key={id} style={{ width: `${v * 100}%`, background: c, transition: 'width .6s ease' }} />)}
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: COLOR.muted, marginTop: 3 }}>
+                {parts.slice(1).map(([id, v, c, n]) => <span key={id}><span style={{ color: c }}>●</span> {n} {Math.round(v * 100)}%</span>)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {(st.rivals || []).map((c) => {
+        const def = T.RIVAL[c.id];
+        const tone = COLOR[RIVAL_TONE[c.alive ? c.mode : c.mode] || 'muted'];
+        const shops = Object.entries(c.shops || {}).filter(([, v]) => v > 0);
+        const price = T.rivalPrice(st, c.id);
+        const buyErr = T.canBuyRival(st, c.id);
+        const live = c.alive && c.entered;
+        const supplies = Object.entries(c.supply || {}).filter(([, v]) => v > 0.02);
+        return (
+          <div key={c.id} className="ems-panel" style={{ padding: 14, borderLeft: `3px solid ${COLOR[def.color]}`, opacity: c.alive ? 1 : 0.6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span className="ems-serif" style={{ fontSize: 15 }}>{def.name}</span>
+              <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999, border: `1px solid ${tone}`, color: tone }}>
+                {T.RIVAL_MODE_LABEL[c.mode] || c.mode}{c.mode === 'war' || c.mode === 'cartel' ? ` · ещё ${c.modeQ} кв.` : ''}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, margin: '5px 0 8px' }}>{def.about}</div>
+            {live && (
+              <>
+                {def.goods.length > 0 && <Row k="Цены" v={c.markup >= 0 ? `+${Math.round(c.markup)}% к рынку` : `${Math.round(c.markup)}% к рынку`} />}
+                {shops.length > 0 && (
+                  <div style={{ fontSize: 12, margin: '4px 0', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ color: COLOR.faint }}>Магазины:</span>
+                    {shops.map(([r, v]) => (
+                      <button key={r} className="ems-btn ghost" style={{ padding: '0 4px', fontSize: 12 }} onClick={() => onRegion(r)}>
+                        {T.regionName(r)} ×{Math.round(v / 1.5)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {supplies.length > 0 && <Row k="Льёт на оптовый рынок" v={supplies.map(([r]) => T.RES[r].name.toLowerCase()).join(', ')} />}
+                <Row k="Положение" v={c.distress > 0 ? 'в долгах' : c.profitQ > 1 ? 'прибыльна' : c.profitQ > 0 ? 'еле в плюсе' : 'в убытке'} />
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                  <button className="ems-btn" disabled={!!buyErr} title={buyErr || 'Её магазины станут вашими'}
+                    style={{ padding: '6px 10px', fontSize: 12 }}
+                    onClick={() => { if (window.confirm(`Купить «${def.short}» за ${money(price)}?`)) act((s) => T.buyRival(s, c.id), 'stamp'); }}>
+                    Купить · {money(price)}
+                  </button>
+                  {def.goods.length > 0 && c.mode !== 'cartel' && (
+                    <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12 }}
+                      title={`Согласится с вероятностью около ${Math.round(T.cartelChance(st, c.id) * 100)}%. Пока договорённость действует, каждый квартал ${risk}% риска штрафа 15% денег.`}
+                      onClick={() => act((s) => T.proposeCartel(s, c.id))}>
+                      Договориться о ценах · шанс {Math.round(T.cartelChance(st, c.id) * 100)}%
+                    </button>
+                  )}
+                </div>
+                {c.mode === 'cartel' && (
+                  <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 6 }}>
+                    Держите свои цены не ниже +5% — иначе договор рухнет. Риск штрафа антимонопольной службы — {risk}% в квартал.
+                  </div>
+                )}
+              </>
+            )}
+            {!c.entered && c.alive && <div style={{ fontSize: 12, color: COLOR.faint }}>Выйдет на рынок позже{def.foreign ? ' — если с Вестравией всё будет в порядке' : ''}.</div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
