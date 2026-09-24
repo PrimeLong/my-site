@@ -99,3 +99,20 @@ export async function setSoloSlots(playerId, slots) {
   mem.set(`solo:${playerId}`, slots);
   return true;
 }
+
+/* Таблица вызова дня: хэш daily:<день>, поле — playerId, значение — лучший результат
+   игрока за этот день. Живёт месяц: вчерашнюю таблицу ещё смотрят, прошлогоднюю — нет. */
+const DAILY_TTL = 60 * 60 * 24 * 31;
+export async function getDailyBoard(day) {
+  if (redis) return (await redis.hgetall(`daily:${day}`)) || {};
+  return { ...mem.get(`daily:${day}`) };
+}
+export async function setDailyEntry(day, playerId, entry) {
+  if (redis) {
+    await redis.hset(`daily:${day}`, { [playerId]: entry });
+    await redis.expire(`daily:${day}`, DAILY_TTL);
+    return true;
+  }
+  mem.set(`daily:${day}`, { ...mem.get(`daily:${day}`), [playerId]: entry });
+  return true;
+}

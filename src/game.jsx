@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, Suspense } from 'react';
-import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot } from './lib/client.js';
+import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
+import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS } from './lib/catalog.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight, X, Check,
@@ -25,6 +26,7 @@ import {
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
   GlobalStyle, THEMES, StateSeal, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
   isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown,
+  DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel,
 } from './MacroSimulator.jsx';
 
 /* Экран партии (одиночная игра): панели ролей, показатели, новости, карта,
@@ -2167,6 +2169,116 @@ export const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLa
   </div>
 );
 
+/* ============================ ВЫЗОВ ДНЯ: ИТОГ ============================
+   Жребий движка в вызове дня берётся из зерна дня, причём заново на каждый квартал
+   (зерно + номер квартала) — см. dailyChallenge в lib/catalog.js. */
+function runSeeded(daily, salt, fn) {
+  return daily ? withSeededRandom(hashSeed(`${daily.seed}:${salt}`), fn) : fn();
+}
+
+const dailyPlayed = (daily, quarterIndex) => Math.max(0, Math.min(daily.quarters, quarterIndex - 1));
+const dailyScoreFmt = (v) => v.toFixed(1).replace('.', ',');
+
+function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, board, setBoard, onClose, onMenu }) {
+  useEscapeClose(onClose);
+  const score = dailyScore(economy, goalId, !!defeat);
+  const played = dailyPlayed(daily, quarterIndex);
+  const goal = GOALS.find((g) => g.id === goalId);
+  const [name, setName] = useState(() => loadDailyName() || `Игрок ${getPlayerId().slice(-4).toUpperCase()}`);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState('');
+  const send = React.useCallback(async (nm) => {
+    setSending(true); setErr('');
+    try {
+      const scores = {};
+      DAILY_SCORE_KEYS.forEach((k) => { scores[k] = economy[`score${k.charAt(0).toUpperCase()}${k.slice(1)}`]; });
+      const res = await submitDailyResult({ playerId: getPlayerId(), day: daily.day, name: nm, score, role,
+        quarters: played, defeated: !!defeat, scores });
+      setBoard(res);
+    } catch (e) { setErr(e.message || 'Не удалось отправить результат'); }
+    setSending(false);
+  }, [daily.day, economy, score, role, played, defeat, setBoard]);
+  // результат уходит в таблицу сам, как только партия закончилась: имя можно
+  // поменять и отправить ещё раз — сервер заменит подпись, а балл оставит лучший
+  React.useEffect(() => {
+    recordDailyBest(daily.day, score, !!defeat);
+    if (!board) send(name);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.85)', zIndex: 85, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16, overflowY: 'auto' }} onClick={onClose}>
+      <div className="ems-panel-raised ems-fade-in" role="dialog" aria-label="Итог вызова дня"
+        style={{ maxWidth: 480, width: '100%', padding: 22, marginTop: 24, borderColor: defeat ? COLOR.rust : COLOR.gold }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Trophy size={16} color={COLOR.gold} />
+          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(daily.day)}</span>
+          <button onClick={onClose} aria-label="Закрыть" style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, lineHeight: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+        {defeat && (
+          <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5, marginBottom: 10 }}>
+            <b>{defeat.title}.</b> {defeat.text} Партия оборвалась на {played}-м квартале из {daily.quarters} — итог делится пополам.
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+          <span className="ems-mono" style={{ fontSize: 40, color: defeat ? COLOR.rust : COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{dailyScoreFmt(score)}</span>
+          <span style={{ fontSize: 12, color: COLOR.muted }}>баллов из 100{!defeat ? ` · ${daily.quarters} кварталов пройдено` : ''}</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+          {SCORE_DEFS.map((dd) => {
+            const v = clamp(economy[dd.id] || 0, 0, 100);
+            const isGoal = goal && `score${goal.score.charAt(0).toUpperCase()}${goal.score.slice(1)}` === dd.id;
+            return (
+              <div key={dd.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5 }}>
+                <span style={{ width: 122, whiteSpace: 'nowrap', color: isGoal ? COLOR.goldSoft : COLOR.muted, fontWeight: isGoal ? 600 : 400 }}>{dd.short}{isGoal ? ' ★×2' : ''}</span>
+                <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+                  <span style={{ display: 'block', width: `${v}%`, height: '100%', background: dd.color }} />
+                </span>
+                <span className="ems-mono" style={{ width: 24, textAlign: 'right', color: dd.color, fontWeight: 600 }}>{Math.round(v)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <label style={{ display: 'block', fontSize: 11, color: COLOR.faint, marginBottom: 4 }} htmlFor="daily-name">Имя в таблице</label>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <input id="daily-name" className="ems-input" value={name} maxLength={24}
+            onChange={(e) => setName(e.target.value)}
+            style={{ flex: 1, minWidth: 0, padding: '7px 9px', fontSize: 12.5, background: COLOR.panelAlt, color: COLOR.text, border: `1px solid ${COLOR.border}` }} />
+          <button className="ems-btn" disabled={sending || !name.trim()} style={{ padding: '7px 12px', fontSize: 12 }}
+            onClick={() => { saveDailyName(name.trim()); send(name.trim()); }}>
+            {sending ? 'Отправляем…' : board ? 'Обновить' : 'Отправить'}
+          </button>
+        </div>
+        {err && <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 8 }}>{err}</div>}
+        {board && board.you && (
+          <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 8 }}>
+            Ваше место: <b style={{ color: COLOR.gold }}>{board.you.rank}</b> из {board.total}
+            {board.improved === false ? ` · в таблице остаётся ваш лучший результат (${dailyScoreFmt(board.you.score)})` : ''}
+          </div>
+        )}
+        {board ? <DailyBoard day={daily.day} data={board} /> : !err && <div style={{ fontSize: 11.5, color: COLOR.faint }}>Отправляем результат…</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16, flexWrap: 'wrap' }}>
+          <button className="ems-btn" onClick={onClose}>Посмотреть партию</button>
+          <button className="ems-btn primary" onClick={onMenu}>В меню</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const DailyBar = ({ score, defeat, onReopen, onMenu }) => (
+  <div style={{ borderTop: `2px solid ${defeat ? COLOR.rust : COLOR.gold}`, background: COLOR.panel, padding: '14px 18px',
+    display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, position: 'sticky', bottom: 0,
+    boxShadow: '0 -6px 20px -8px rgba(0,0,0,0.45)', flexWrap: 'wrap' }}>
+    <span style={{ fontSize: 12, color: defeat ? COLOR.rust : COLOR.goldSoft, marginRight: 'auto', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 7 }}>
+      <Trophy size={14} />Вызов дня завершён: {dailyScoreFmt(score)} баллов{defeat ? ` (${defeat.title.toLowerCase()})` : ''}
+    </span>
+    <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 12.5 }} onClick={onReopen}>Итоги и таблица</button>
+    <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 12.5 }} onClick={onMenu}>В меню</button>
+  </div>
+);
+
 /* Карточка результата: не только на конце партии (поражение), но и в любой
    момент по кнопке в шапке — так шансов поделиться и позвать друга в сеть
    больше, чем ждать финала. Рисуется на canvas и скачивается/копируется как
@@ -3817,8 +3929,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     && (setup.role === 'central_bank' || setup.role === 'ministry_finance' || setup.role === 'trader');
   const playerBranch = setup.role === 'central_bank' ? 'monetary' : setup.role === 'ministry_finance' ? 'fiscal' : null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
+  // вызов дня: общий для всех жребий, фиксированная длина, итог в таблицу
+  const daily = setup.daily || null;
 
-  const initEconomy = useMemo(() => (initial ? initial.economy : makeInitialEconomy(setup.scenario)), []);
+  const initEconomy = useMemo(() => (initial ? initial.economy
+    : runSeeded(daily, 'start', () => makeInitialEconomy(setup.scenario))), []);
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
   // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
@@ -3884,8 +3999,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     || ((setup.president && setup.president.persona) || 'technocrat'));
   // план президента на ближайший квартал: требование должно быть видно ДО решений
   const [presidentPlan, setPresidentPlan] = useState(() => (presEnabled
-    ? botPresident(initEconomy, presPersonaId, setup.difficulty,
-      { playerBranch, cooldowns: {}, cbPersonaId: setup.cbPersona, mofPersonaId: setup.mofPersona })
+    ? runSeeded(daily, `plan${initial ? initial.quarterIndex : 1}`, () => botPresident(initEconomy, presPersonaId, setup.difficulty,
+      { playerBranch, cooldowns: {}, cbPersonaId: setup.cbPersona, mofPersonaId: setup.mofPersona }))
     : null));
   const [presidentLast, setPresidentLast] = useState(initial ? initial.presidentLast || null : null);
   // сколько кварталов назад президент требовал в прошлый раз и чего именно —
@@ -3897,7 +4012,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // предвыборные обещания — у премьера и президента: у них нет бота-оппонента
   // с требованиями, и это единственные роли без встречного давления по политике
   const [promises, setPromises] = useState(() => (setup.role !== 'full_control' && setup.role !== 'president' ? null
-    : initial && initial.promises ? initial.promises : pickPromises(initEconomy)));
+    : initial && initial.promises ? initial.promises : runSeeded(daily, 'promises', () => pickPromises(initEconomy))));
   // пакет решений президента на текущий квартал: списывается движком при завершении
   const [presActions, setPresActions] = useState(initial ? initial.presActions || [] : []);
   const [presAppointCb, setPresAppointCb] = useState(null);
@@ -3990,7 +4105,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quarterIndex]);
-  const rollbackTarget = rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
+  // в вызове дня отката нет: иначе итог в таблице ничего бы не значил
+  const rollbackTarget = daily ? null : rollbackHistoryRef.current.find((e) => e.quarterIndex === quarterIndex - 3);
   const handleRollback = () => { if (rollbackTarget) onLoadState(rollbackTarget.snap); };
   const [autoPaper, setAutoPaperState] = useState(loadAutoPaper);
   const setAutoPaper = (v) => { saveAutoPaper(v); setAutoPaperState(v); };
@@ -4022,8 +4138,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const crisisActive = (economy.activeCrises || []).includes('banking') || economy.bankingRisk > 60;
   const debtCrisisActive = (economy.activeCrises || []).includes('debt') && !(economy.marketLockoutQuartersLeft > 0);
 
-  const finishQuarter = useCallback(() => {
+  const finishQuarter = useCallback(() => runSeeded(setup.daily, `q${quarterIndex}`, () => {
     if (defeat) return;
+    if (setup.daily && quarterIndex > setup.daily.quarters) return;
     setBusy(true);
     let eff = { ...decisions };
     let extraImpulses = [];
@@ -4355,7 +4472,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     setStampKey((k) => k + 1);
     setBusy(false);
     setFinishCooldown(3);
-  }, [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
+  }), [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan]);
@@ -4370,6 +4487,16 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     Audio.setRole(setup.role === 'trader' ? 'trader' : setup.role === 'president' ? 'president' : null);
   }, [setup.role]);
   React.useEffect(() => () => Audio.stopMusic(), []);
+  // вызов дня окончен: пройдены все кварталы или партия оборвалась поражением
+  const dailyDone = !!daily && (quarterIndex > daily.quarters || !!defeat);
+  const [showDaily, setShowDaily] = useState(false);
+  const [dailyBoard, setDailyBoard] = useState(null);
+  React.useEffect(() => {
+    if (!dailyDone) return;
+    setShowDaily(true);
+    if (!defeat) pushAch(unlockAchievements(['daily_done']));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyDone]);
   const kpiDelta = (key) => economy[key] - prevEcon[key];
   const shareKey = (id) => (id === 'shareHealth' ? 'health' : id === 'shareEducation' ? 'education' : id === 'shareScience' ? 'science' : id === 'shareDefense' ? 'defense' : 'admin');
 
@@ -4399,7 +4526,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} onSaved={setActiveSlot} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
-      {defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
+      {daily && dailyDone && showDaily && (
+        <DailyResultModal daily={daily} goalId={setup.goal} economy={economy} defeat={defeat} quarterIndex={quarterIndex}
+          role={setup.role} board={dailyBoard} setBoard={setDailyBoard}
+          onClose={() => setShowDaily(false)} onMenu={onRestart} />
+      )}
+      {!daily && defeat && showGameOver && <GameOverModal defeat={defeat} quarterIndex={quarterIndex} onClose={() => setShowGameOver(false)}
         onRestart={onRestart} onOpenAch={() => setShowAch(true)} onShare={() => { setShowGameOver(false); setShowCard(true); }}
         onChronicle={() => { setShowGameOver(false); setShowChronicle(true); }}
         onRollback={rollbackTarget ? handleRollback : null} />}
@@ -4432,6 +4564,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                 : isPresident ? ` · ЦБ: ${getCbPersona(cbPersonaId).name} (бот) · Минфин: ${getMofPersona(mofPersonaId).name} (бот)`
                   : setup.role === 'trader' ? '' : ' · без ботов'}
             </div>
+            {daily && (
+              <div style={{ fontSize: 11.5, color: COLOR.gold, marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Trophy size={11} />Вызов дня · {dailyDateLabel(daily.day)} · квартал {Math.min(quarterIndex, daily.quarters)} из {daily.quarters}
+              </div>
+            )}
           </div>
         </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginLeft: narrow ? 0 : 'auto' }}>
@@ -4450,7 +4587,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               кнопок занимали треть экрана */}
           {!narrow && <div style={{ position: 'relative' }}>
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
-              title="Сложность партии" className="ems-btn"
+              disabled={!!daily} title={daily ? 'В вызове дня сложность у всех одна' : 'Сложность партии'} className="ems-btn"
               style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}>
               {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
             </select>
@@ -4478,10 +4615,10 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             ...(narrow ? [
               { icon: Newspaper, label: 'Газета', onClick: () => { Audio.play('paper'); setShowPaper(true); } },
               { icon: Trophy, label: 'Достижения', onClick: () => setShowAch(true) },
-              { icon: ChevronDown, label: `Сложность: ${(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title} — сменить`, onClick: () => {
+              ...(daily ? [] : [{ icon: ChevronDown, label: `Сложность: ${(DIFFICULTIES.find((x) => x.id === difficulty) || {}).title} — сменить`, onClick: () => {
                 const i = DIFFICULTIES.findIndex((x) => x.id === difficulty);
                 setDifficulty(DIFFICULTIES[(i + 1) % DIFFICULTIES.length].id);
-              } },
+              } }]),
             ] : []),
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
             { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
@@ -4993,7 +5130,10 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       );
       })()}
 
-      {defeat ? (
+      {daily && dailyDone ? (
+        <DailyBar score={dailyScore(economy, setup.goal, !!defeat)} defeat={defeat}
+          onReopen={() => setShowDaily(true)} onMenu={onRestart} />
+      ) : defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={onRestart}
           onRollback={rollbackTarget ? handleRollback : null} />
       ) : (

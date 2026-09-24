@@ -1,7 +1,7 @@
 ﻿import React, { useState, Suspense } from 'react';
 import {
   createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress, fetchRoom,
-  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot,
+  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
-  romanQ, quarterLabel, PRESIDENT_PERSONAS,
+  romanQ, quarterLabel, PRESIDENT_PERSONAS, dailyChallenge, dailyKey, dailySetup,
 } from './lib/catalog.js';
 import { Audio } from './audio/engine.js';
 import { TRACKS, MOOD_LABEL, STINGERS } from './audio/tracks.js';
@@ -591,6 +591,7 @@ export const NETWORK_PLAYED_KEY = 'ems-network-played';
 
 export const ACHIEVEMENTS = [
   { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
+  { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройди вызов дня до конца, не проиграв.' },
   { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
   { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
   { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
@@ -1060,7 +1061,149 @@ function NetworkFallback() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork }) {
+/* ============================ ВЫЗОВ ДНЯ ============================
+   Карточка в меню, таблица результатов и то, что помнит само устройство: имя для
+   таблицы и лучший свой балл за сегодня (чтобы карточка показывала его сразу, без
+   запроса к серверу). Сам итог партии считает и отправляет экран партии. */
+const DAILY_NAME_KEY = 'ems.daily.name';
+const DAILY_BEST_KEY = 'ems.daily.best';
+export function loadDailyName() {
+  try { return localStorage.getItem(DAILY_NAME_KEY) || ''; } catch { return ''; }
+}
+export function saveDailyName(name) {
+  try { localStorage.setItem(DAILY_NAME_KEY, name); } catch { /* приватный режим — имя просто не запомнится */ }
+}
+function loadDailyBest(day) {
+  try {
+    const v = JSON.parse(localStorage.getItem(DAILY_BEST_KEY) || 'null');
+    return v && v.day === day && Number.isFinite(v.score) ? v : null;
+  } catch { return null; }
+}
+export function recordDailyBest(day, score, defeated) {
+  const prev = loadDailyBest(day);
+  if (prev && prev.score >= score) return;
+  try { localStorage.setItem(DAILY_BEST_KEY, JSON.stringify({ day, score, defeated: !!defeated })); } catch { /* см. выше */ }
+}
+export const dailyDateLabel = (day) => new Date(`${day}T12:00:00Z`)
+  .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+// до полуночи по Москве — когда сменится вызов
+function untilNextDaily(now = Date.now()) {
+  const msk = now + 3 * 3600 * 1000;
+  const left = 86400000 - (msk % 86400000);
+  const h = Math.floor(left / 3600000); const m = Math.floor((left % 3600000) / 60000);
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+}
+const dailyRoleShort = (id) => (ROLES.find((r) => r.id === id) || {}).short || id;
+
+/* Таблица дня. Если данные уже есть (ответ на отправку результата), показывает их,
+   иначе запрашивает сама. playerId наружу не уходит — сервер помечает свою строку. */
+export function DailyBoard({ day, data: given = null, limit = 10 }) {
+  const [fetched, setFetched] = useState(null);
+  const [err, setErr] = useState('');
+  React.useEffect(() => {
+    if (given) return undefined;
+    let alive = true;
+    setErr('');
+    fetchDailyBoard(day, getPlayerId())
+      .then((d) => { if (alive) setFetched(d); })
+      .catch((e) => { if (alive) setErr(e.message || 'Таблица недоступна'); });
+    return () => { alive = false; };
+  }, [day, given]);
+  const data = given || fetched;
+  if (err) return <div style={{ fontSize: 11.5, color: COLOR.rust }}>{err}</div>;
+  if (!data) return <div style={{ fontSize: 11.5, color: COLOR.faint }}>Загружаем таблицу…</div>;
+  const rows = (data.rows || []).slice(0, limit);
+  if (!rows.length) return <div style={{ fontSize: 11.5, color: COLOR.faint }}>Сегодня ещё никто не прошёл вызов — будьте первым.</div>;
+  const you = data.you && !rows.some((r) => r.you) ? data.you : null;
+  const row = (r) => (
+    <div key={`${r.rank}-${r.name}`} style={{
+      display: 'grid', gridTemplateColumns: '26px minmax(0,1fr) auto auto', alignItems: 'center', gap: 8, padding: '6px 9px',
+      background: r.you ? COLOR.goldDim : COLOR.panelAlt,
+      border: `1px solid ${r.you ? COLOR.gold : COLOR.border}`, fontSize: 12 }}>
+      <span className="ems-mono" style={{ color: r.rank <= 3 ? COLOR.gold : COLOR.faint, fontWeight: 600 }}>{r.rank}</span>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: r.you ? COLOR.goldSoft : COLOR.text }}>
+        {r.name}{r.you ? ' (вы)' : ''}
+      </span>
+      <span style={{ fontSize: 10.5, color: r.defeated ? COLOR.rust : COLOR.faint, whiteSpace: 'nowrap' }}>
+        {r.defeated ? `поражение, кв. ${r.quarters}` : dailyRoleShort(r.role)}
+      </span>
+      <span className="ems-mono" style={{ color: r.you ? COLOR.gold : COLOR.text, fontWeight: 600, minWidth: 34, textAlign: 'right' }}>
+        {r.score.toFixed(1).replace('.', ',')}
+      </span>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {rows.map(row)}
+      {you && <div style={{ textAlign: 'center', color: COLOR.faint, fontSize: 11, lineHeight: 1 }}>⋯</div>}
+      {you && row(you)}
+      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3 }}>
+        Всего участников: {data.total}. В таблице — лучший результат каждого за день.
+      </div>
+    </div>
+  );
+}
+
+function DailyCard({ onStart }) {
+  const ch = React.useMemo(() => dailyChallenge(dailyKey()), []);
+  const [showBoard, setShowBoard] = useState(false);
+  const best = loadDailyBest(ch.day);
+  const scenario = SCENARIOS.find((x) => x.id === ch.scenario) || SCENARIOS[0];
+  const diff = DIFFICULTIES.find((x) => x.id === ch.difficulty) || DIFFICULTIES[1];
+  const goal = GOALS.find((g) => g.id === ch.goal);
+  const cbName = (CB_PERSONAS.find((x) => x.id === ch.cbPersona) || {}).name;
+  const mofName = (MOF_PERSONAS.find((x) => x.id === ch.mofPersona) || {}).name;
+  const presName = (PRESIDENT_PERSONAS.find((x) => x.id === ch.presPersona) || {}).name;
+  const rivals = ch.role === 'central_bank' ? `Минфин: ${mofName} · президент: ${presName}`
+    : ch.role === 'ministry_finance' ? `ЦБ: ${cbName} · президент: ${presName}`
+      : ch.role === 'president' ? `ЦБ: ${cbName} · Минфин: ${mofName}` : 'обе ветви в ваших руках';
+  const facts = [
+    ['Пост', (ROLES.find((r) => r.id === ch.role) || {}).title],
+    ['Сценарий', scenario.id === 'sandbox' ? 'спокойный старт' : scenario.title],
+    ['Сложность', diff.title],
+    ['Цель', goal ? goal.label : '—'],
+    ['Боты', rivals],
+  ];
+  return (
+    <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20, borderColor: COLOR.gold }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        <Calendar size={14} color={COLOR.gold} />
+        <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(ch.day)}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>новый через {untilNextDaily()}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+        Одна партия на всех: тот же пост, тот же кризис и те же случайные события. {ch.quarters} кварталов —
+        и итоговый балл по пяти оценкам, где цель дня весит вдвое.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', gap: '4px 12px', fontSize: 12, marginBottom: 12 }}>
+        {facts.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <span style={{ color: COLOR.faint }}>{k}</span>
+            <span style={{ color: COLOR.text, minWidth: 0 }}>{v}</span>
+          </React.Fragment>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="ems-btn primary" style={{ padding: '8px 16px', fontSize: 12.5 }}
+          onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart(ch); }}>
+          {best ? 'Попробовать ещё раз' : 'Принять вызов'}
+        </button>
+        <button className="ems-btn" style={{ padding: '8px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+          aria-expanded={showBoard} onClick={() => { Audio.play('tab'); setShowBoard((v) => !v); }}>
+          <Trophy size={13} />Таблица дня
+        </button>
+        {best && (
+          <span style={{ fontSize: 11.5, color: COLOR.muted }}>
+            ваш лучший: <b className="ems-mono" style={{ color: COLOR.gold }}>{best.score.toFixed(1).replace('.', ',')}</b>
+          </span>
+        )}
+      </div>
+      {showBoard && <div style={{ marginTop: 12 }}><DailyBoard day={ch.day} /></div>}
+    </div>
+  );
+}
+
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1281,6 +1424,8 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             </div>
           </div>
         )}
+
+        {onDaily && <DailyCard onStart={onDaily} />}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginBottom: 30 }}>
           {MENU_ITEMS.map((item, i) => {
@@ -1753,6 +1898,7 @@ export default function MacroSimulator() {
           onTutorial={() => setView('tutorial')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
+          onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
         />
       );
     }

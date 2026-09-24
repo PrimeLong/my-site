@@ -217,3 +217,15 @@ test('президент ведёт наступление на карте: це
   await page.locator('svg[aria-label="Карта областей страны"]').locator('xpath=../..').screenshot({ path: 'test-results/war-operation.png' });
   expect(errors).toEqual([]);
 });
+
+test('вызов дня: карточка в меню, общий старт и счётчик кварталов', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await expect(page.getByText(/Вызов дня ·/)).toBeVisible();
+  await page.getByRole('button', { name: 'Таблица дня' }).click();
+  await expect(page.getByText('Сегодня ещё никто не прошёл вызов — будьте первым.')).toBeVisible();
+  await page.getByRole('button', { name: 'Принять вызов' }).click();
+  await expect(page.getByText(/квартал 1 из 12/)).toBeVisible();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  await expect(page.getByText(/квартал 2 из 12/)).toBeVisible();
+  expect(errors).toEqual([]);
+});

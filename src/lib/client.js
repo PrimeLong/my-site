@@ -90,3 +90,15 @@ export const revokeLink = (playerId, progress) => post({ action: 'link_revoke', 
 // слияние прогресса всегда двустороннее: отправляем своё, получаем общее
 export const syncProgress = (playerId, progress) =>
   post({ action: 'progress', playerId, progress }, SOLO_API).then((d) => d.profile);
+
+/* Вызов дня: таблица результатов за сутки и отправка своего итога. */
+const DAILY_API = '/api/daily';
+export async function fetchDailyBoard(day, playerId) {
+  const params = new URLSearchParams({ day });
+  if (playerId) params.set('playerId', playerId);
+  const r = await fetch(`${DAILY_API}?${params.toString()}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Таблица недоступна');
+  return data; // { day, total, rows, you }
+}
+export const submitDailyResult = (payload) => post(payload, DAILY_API);

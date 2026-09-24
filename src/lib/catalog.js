@@ -268,3 +268,93 @@ export const POLITICAL_REGIME_INFO = {
   authoritarian: { label: 'Авторитарный режим', color: 'rust', text: 'Парламент распущен или обессилен, выборы формальны, независимые голоса вытесняются.' },
   totalitarian: { label: 'Тоталитарный режим', color: 'rust', text: 'Полный государственный контроль над институтами и прессой; несогласие приравнено к угрозе государству.' },
 };
+
+/* =========================================================================================
+   ВЫЗОВ ДНЯ: одна и та же партия для всех в течение суток
+   Из даты (по Москве) выводится зерно, из зерна — пост, сценарий, сложность, цель и
+   характеры ботов. Случайность движка на время вызова берётся из того же зерна, причём
+   заново на каждый квартал (зерно + номер квартала): решения одного квартала не сдвигают
+   жребий всех следующих, и шоки, выпавшие одному игроку, выпадут и другому.
+========================================================================================= */
+export const DAILY_QUARTERS = 12;
+const MSK_OFFSET_MS = 3 * 3600 * 1000;
+
+// сутки по Москве: вызов меняется в полночь для всех одновременно, а не по поясу устройства
+export function dailyKey(date = new Date()) {
+  return new Date(date.getTime() + MSK_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+// FNV-1a: строку в 32-битное зерно
+export function hashSeed(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+
+// mulberry32 — короткий и достаточно ровный генератор для игровых бросков
+export function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* Источник случайности движка. По умолчанию это Math.random (через обёртку — чтобы
+   тесты могли подменять Math.random как раньше), а на время вызова дня —
+   генератор из зерна. Звук, конфетти и прочий интерфейс берут Math.random напрямую
+   и жребий движка не сдвигают. */
+let currentRandom = () => Math.random();
+export const rng = () => currentRandom();
+export function withSeededRandom(seed, fn) {
+  const prev = currentRandom;
+  currentRandom = mulberry32(seed);
+  try { return fn(); } finally { currentRandom = prev; }
+}
+
+const DAILY_ROLES = ['central_bank', 'ministry_finance', 'president', 'full_control'];
+export function dailyChallenge(day = dailyKey()) {
+  const seed = hashSeed(`ems-daily:${day}`);
+  const r = mulberry32(seed);
+  const pick = (list) => list[Math.floor(r() * list.length)];
+  // пост идёт по кругу, чтобы четыре дня подряд не выпал один и тот же
+  const dayNum = Math.floor(Date.parse(`${day}T00:00:00Z`) / 86400000);
+  const role = DAILY_ROLES[((dayNum % DAILY_ROLES.length) + DAILY_ROLES.length) % DAILY_ROLES.length];
+  // чаще всего — кризис: ради него и собираются сравнить, кто справился лучше
+  const scenario = r() < 0.25 ? 'sandbox' : pick(SCENARIOS.filter((s) => s.id !== 'sandbox')).id;
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+  const difficulty = weekday === 0 || weekday === 6 ? 'hard' : 'medium';
+  const goal = pick(GOALS.filter((g) => !g.trader)).id;
+  return {
+    day, seed, role, scenario, difficulty, goal, quarters: DAILY_QUARTERS,
+    cbPersona: pick(CB_PERSONAS).id,
+    mofPersona: pick(MOF_PERSONAS).id,
+    presPersona: pick(PRESIDENT_PERSONAS).id,
+  };
+}
+
+// setup партии в том же виде, что собирает экран новой партии
+export function dailySetup(ch) {
+  return {
+    role: ch.role, difficulty: ch.difficulty, goal: ch.goal, scenario: ch.scenario,
+    cbPersona: ch.cbPersona, mofPersona: ch.mofPersona,
+    president: { enabled: ch.role === 'central_bank' || ch.role === 'ministry_finance', persona: ch.presPersona },
+    daily: { day: ch.day, seed: ch.seed, quarters: ch.quarters },
+  };
+}
+
+export const DAILY_SCORE_KEYS = ['stability', 'welfare', 'financial', 'fiscal', 'potential'];
+/* Итог вызова — среднее пяти оценок политики, где оценка по цели дня считается
+   дважды. Поражение до срока обрывает партию и делит итог пополам: дотянуть до
+   конца с посредственными цифрами лучше, чем блестяще рухнуть. */
+export function dailyScore(economy, goalId, defeated) {
+  const goal = GOALS.find((g) => g.id === goalId);
+  const val = (k) => clamp(Number(economy[`score${k.charAt(0).toUpperCase()}${k.slice(1)}`]) || 0, 0, 100);
+  let sum = 0; let w = 0;
+  DAILY_SCORE_KEYS.forEach((k) => { const ww = goal && goal.score === k ? 2 : 1; sum += val(k) * ww; w += ww; });
+  const raw = sum / w;
+  return Math.round((defeated ? raw * 0.5 : raw) * 10) / 10;
+}

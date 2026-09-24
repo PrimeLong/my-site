@@ -1,4 +1,4 @@
-import { clamp, ROLES, quarterLabel, CONFIG, romanQ, POLITICAL_REGIME_INFO, GOALS, DIFFICULTIES, SCENARIOS, PRESIDENT_PERSONAS, MOF_PERSONAS, CB_PERSONAS } from './catalog.js';
+import { clamp, ROLES, quarterLabel, CONFIG, romanQ, POLITICAL_REGIME_INFO, GOALS, DIFFICULTIES, SCENARIOS, PRESIDENT_PERSONAS, MOF_PERSONAS, CB_PERSONAS, rng } from './catalog.js';
 
 
 /* ============================ УТИЛИТЫ ============================ */
@@ -12,7 +12,7 @@ const annualizedGrowth = (from, to) => (from > 0 && Number.isFinite(from) && Num
   : 0;
 const applyNominalGrowth = (value, realAnnualPct, inflationAnnualPct) =>
   value * annualToQuarterlyFactor(realAnnualPct) * annualToQuarterlyFactor(inflationAnnualPct);
-const gauss = (sigma) => sigma * ((Math.random() + Math.random() + Math.random() - 1.5) / 1.5);
+const gauss = (sigma) => sigma * ((rng() + rng() + rng() - 1.5) / 1.5);
 const sign = (v) => (v > 0.0001 ? 1 : v < -0.0001 ? -1 : 0);
 const ema = (prev, next, w) => prev * (1 - w) + next * w;
 /* Насыщающийся отклик: при малом x ведёт себя как slope·x, а при большом
@@ -1732,7 +1732,7 @@ function botPresident(s, personaId, difficulty, ctx) {
   const avoidLast = dirAgo <= 2;
   const notLast = (list) => (avoidLast ? list.filter((x) => x.req.id !== opts.lastReqId) : list);
   const shortlist = notLast(band(0.5)).length ? notLast(band(0.5)) : notLast(band(1.2));
-  const best = shortlist.length ? shortlist[Math.floor(Math.random() * shortlist.length)] : null;
+  const best = shortlist.length ? shortlist[Math.floor(rng() * shortlist.length)] : null;
   // после только что выданного требования планка выше: иначе давление идёт каждый
   // квартал и довольство рушится быстрее, чем игрок успевает что-то показать
   const threshold = 1.5 - P.pressure * 1.2 + (sat > 70 ? 0.4 : 0)
@@ -1845,7 +1845,7 @@ function pickPromises(startEconomy, count = 3) {
   const pool = [...PROMISE_POOL];
   const picked = [];
   while (picked.length < count && pool.length) {
-    const i = Math.floor(Math.random() * pool.length);
+    const i = Math.floor(rng() * pool.length);
     picked.push(pool.splice(i, 1)[0]);
   }
   return picked.map((p) => {
@@ -1871,7 +1871,7 @@ function evaluatePromise(promise, economy) {
    Отдельно от обещаний: обещания подводят итог на выборах по факту, здесь же
    решает сам выбор ответа, а не то, что происходит с экономикой дальше.
    Вопрос выбирается детерминированно от (economy, quarterIndex) — без
-   Math.random() — чтобы превью в интерфейсе перед отправкой решений и сам
+   rng() — чтобы превью в интерфейсе перед отправкой решений и сам
    расчёт квартала внутри simulateQuarter всегда сходились на одном и том же
    вопросе без необходимости протаскивать его id через decisions отдельно. */
 const PRESS_QUESTIONS = [
@@ -1966,7 +1966,7 @@ const PRESS_QUESTIONS = [
     ] },
 ];
 
-// без Math.random(): один и тот же (economy, quarterIndex) всегда даёт один и
+// без rng(): один и тот же (economy, quarterIndex) всегда даёт один и
 // тот же вопрос, поэтому клиентское превью перед отправкой решений и расчёт
 // внутри simulateQuarter не могут разойтись
 /* Кто отвечает на пресс-конференции в сетевой партии. В одиночной игре вопрос
@@ -2171,7 +2171,7 @@ function pickEvent(state, eventCooldowns) {
   const weights = pool.map((e) => (e.weightFn ? e.weightFn(state) : e.weight));
   const total = weights.reduce((a, b) => a + b, 0);
   if (total <= 0) return null;
-  let r = Math.random() * total;
+  let r = rng() * total;
   for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) return pool[i]; }
   return pool[pool.length - 1];
 }
@@ -2338,7 +2338,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let pandemicTriggered = false;
   let warTriggered = false;
   let warTypeRolled = null;
-  if (!noEvents && Math.random() < CONFIG.eventProbability[difficulty]) {
+  if (!noEvents && rng() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
@@ -3220,7 +3220,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
       const priorTension = clamp(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, 0, 100);
       const coupChance = clamp(Math.pow(severity, 1.6) * 0.6 + (priorTension / 100) * 0.25, 0, 0.75);
-      coup = Math.random() < coupChance;
+      coup = rng() < coupChance;
     }
     electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (voteShare < 42 ? 'landslide' : 'opposition'));
     /* Результат по округам считаем по состоянию НА ДЕНЬ ГОЛОСОВАНИЯ, то есть по
@@ -3551,7 +3551,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         `Взаимные вето и угроза импичмента парализуют принятие решений. Рейтинг власти ${Math.round(approval)} из 100 — почвы для компромисса всё меньше.`,
         { priority: 9, chain: ['Низкий рейтинг', 'Паралич власти', 'Конфликт ветвей власти'] }));
     } else if (politicalRegime === 'crisis') {
-      if (politicalTension >= 70 && Math.random() < 0.4) {
+      if (politicalTension >= 70 && rng() < 0.4) {
         politicalRegime = 'authoritarian'; parliamentDissolved = true;
         cooldowns['political:transition'] = 4;
         nextQueue.push(makeImpulse('businessConfidence', -10, 'Роспуск парламента: институты слабеют', 'default', difficulty, 'other'));
@@ -3565,7 +3565,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         news.push(mkNews('gov', 'ПОЛИТИЧЕСКИЙ КРИЗИС ИСЧЕРПАН', 'Стороны нашли компромисс, парламент возвращается к обычной работе.', { priority: 7 }));
       }
     } else if (politicalRegime === 'authoritarian') {
-      if (politicalTension >= 80 && Math.random() < 0.38) {
+      if (politicalTension >= 80 && rng() < 0.38) {
         politicalRegime = 'totalitarian';
         cooldowns['political:transition'] = 6;
         nextQueue.push(makeImpulse('businessConfidence', -14, 'Установление тоталитарного контроля', 'default', difficulty, 'other'));
@@ -3574,7 +3574,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         news.push(mkNews('gov', 'ВЛАСТЬ УСТАНАВЛИВАЕТ ПОЛНЫЙ КОНТРОЛЬ',
           'Оставшиеся независимые институты и медиа переходят под прямое управление. Несогласие приравнено к угрозе государству, выборы отменены без назначения новой даты.',
           { priority: 10, chain: ['Авторитарный поворот', 'Подавление институтов', 'Тоталитарный режим'] }));
-      } else if (politicalTension <= 25 && !decreeRule && Math.random() < 0.25) {
+      } else if (politicalTension <= 25 && !decreeRule && rng() < 0.25) {
         // Возврат к демократии «сам собой» — это про режим, который вводился как
         // временная мера в кризис: обстоятельства отпали, чрезвычайное положение
         // сняли. Президент, распустивший парламент собственным указом (decreeRule),
@@ -3585,7 +3585,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
           'Обстоятельства, которыми объясняли особый режим, отпали, и удерживать его дальше стало дороже, чем вернуть обычную процедуру. Объявлены свободные выборы.', { priority: 8 }));
       }
     } else if (politicalRegime === 'totalitarian') {
-      if (politicalTension >= 92 && Math.random() < 0.12) {
+      if (politicalTension >= 92 && rng() < 0.12) {
         politicalRegime = 'crisis'; parliamentDissolved = false;
         cooldowns['political:transition'] = 5;
         powerLost = 'uprising';
@@ -3602,7 +3602,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let unrestTriggered = false;
   if (unrestCooldown <= 0 && politicalTension >= 55) {
     const chance = 0.05 + politicalTension / 400 + (warQuartersLeft > 0 ? 0.08 : 0) + repression * 0.06;
-    if (Math.random() < chance) {
+    if (rng() < chance) {
       unrestTriggered = true;
       cooldowns['political:unrest'] = 2;
       nextQueue.push(makeImpulse('consumption', -1.2, 'Беспорядки: перебои в повседневной жизни', 'default', difficulty));
@@ -3634,14 +3634,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     else {
       const chance = militaryCoupRisk({ politicalTension, unemployment, nairu, inflation,
         activeCrises, approval, unrestActive, politicalCapital: Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55 });
-      if (chance > 0 && Math.random() < chance) {
+      if (chance > 0 && rng() < chance) {
         /* Выступить — не значит победить. Власть, которую поддерживает большинство,
            переворот переживает: люди выходят на улицу за неё, а не против, и
            заговорщиков арестовывают к утру. Чем ниже рейтинг и выше напряжение,
            тем меньше желающих её защищать. */
         const legitimacy = clamp((approval - 35) / 40, 0, 1) * 0.6 + clamp((45 - politicalTension) / 45, 0, 1) * 0.4;
         cooldowns['political:military'] = 8;
-        if (Math.random() < legitimacy) {
+        if (rng() < legitimacy) {
           nextQueue.push(makeImpulse('approvalPush', 6, 'Попытка переворота провалилась: власть защитили', 'fast', difficulty, 'other'));
           nextQueue.push(makeImpulse('tensionPush', 9, 'Раскол в силовых структурах', 'fast', difficulty, 'other'));
           nextQueue.push(makeImpulse('businessConfidence', -7, 'Попытка переворота: страна на грани', 'default', difficulty, 'other'));
@@ -5348,9 +5348,9 @@ function regionStep(s, decisions, difficulty, quarterIndex) {
     const pool = REGION_EVENTS.filter((e) => (!e.eligible || e.eligible(s)));
     const stressOf = (id) => regionStress(regionById(id), s);
     const maxStress = Math.max(...activeRegions(s).map((r) => stressOf(r.id)));
-    if (pool.length && Math.random() < clamp(0.22 + 0.004 * maxStress, 0.22, 0.55)) {
+    if (pool.length && rng() < clamp(0.22 + 0.004 * maxStress, 0.22, 0.55)) {
       const weights = pool.map((e) => Math.max(0.05, e.weight(s, quarterIndex)) * (1 + stressOf(e.region) / 50));
-      let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+      let r = rng() * weights.reduce((a, b) => a + b, 0);
       const ev = pool.find((e, i) => { r -= weights[i]; return r <= 0; }) || pool[pool.length - 1];
       regionEvent = publicRegionEvent(ev, s, quarterIndex);
       cooldown = 2;
@@ -5503,8 +5503,8 @@ function warCampaignStep(s, decisions, difficulty) {
   }
   const strength = warStrength(s);
   const passBonus = camp.captured.includes('pass') ? 1.25 : 1;
-  const gain = stance.id === 'assault' ? strength * (16 + 18 * Math.random()) * passBonus
-    : stance.id === 'siege' ? strength * (6 + 8 * Math.random()) * passBonus : strength * 2 * Math.random();
+  const gain = stance.id === 'assault' ? strength * (16 + 18 * rng()) * passBonus
+    : stance.id === 'siege' ? strength * (6 + 8 * rng()) * passBonus : strength * 2 * rng();
   camp.progress[target] = clamp(camp.progress[target] + gain, 0, 100);
   // потери и настроение: штурм бьёт по поддержке сильнее всего
   if (stance.id === 'assault') out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при штурме', 'fast', difficulty, 'other'),
@@ -5513,11 +5513,11 @@ function warCampaignStep(s, decisions, difficulty) {
   // контратака противника по недобранной цели
   let counter = null;
   const counterChance = (stance.id === 'hold' ? 0.1 : 0.25) * (camp.captured.includes('pass') ? 0.5 : 1);
-  if (Math.random() < counterChance) {
+  if (rng() < counterChance) {
     const cands = WAR_OBJECTIVES.filter((o) => !camp.captured.includes(o.id) && camp.progress[o.id] > 0);
     if (cands.length) {
-      const o = cands[Math.floor(Math.random() * cands.length)];
-      const lost = 8 + 8 * Math.random();
+      const o = cands[Math.floor(rng() * cands.length)];
+      const lost = 8 + 8 * rng();
       camp.progress[o.id] = clamp(camp.progress[o.id] - lost, 0, 100);
       counter = { target: o.id, lost: Math.round(lost) };
       out.news.push(['crisis', `КОНТРАТАКА У ЦЕЛИ «${o.name.toUpperCase()}»`, `Противник отбил часть позиций: продвижение откатилось на ${Math.round(lost)} п.`, 7]);
@@ -5593,7 +5593,7 @@ function annexStep(s, decisions, difficulty, loyaltyDelta) {
     if (underAttack) d -= 3;
     if ((s.politicalTension || 0) > 45) d -= (s.politicalTension - 45) * 0.06;
     l = clamp(l + d, 0, 100);
-    if (l < PARTISAN_BELOW && Math.random() < 0.15 + ((PARTISAN_BELOW - l) / PARTISAN_BELOW) * 0.45) {
+    if (l < PARTISAN_BELOW && rng() < 0.15 + ((PARTISAN_BELOW - l) / PARTISAN_BELOW) * 0.45) {
       const inc = PARTISAN_INCIDENTS[r.id];
       out.impulses.push(...inc.impulses(difficulty));
       out.spendPct += 0.03;
@@ -5822,18 +5822,18 @@ function revancheStep(s, decisions, difficulty, q, blockStart) {
   // разведка ошибается: примерно каждый третий удар приходится не туда, куда ждали
   const planned = held.includes(camp.next) ? camp.next : revancheTarget(s, camp);
   const others = held.filter((id) => id !== planned);
-  const feint = others.length > 0 && Math.random() < 0.3;
-  const hit = feint ? others[Math.floor(Math.random() * others.length)] : planned;
+  const feint = others.length > 0 && rng() < 0.3;
+  const hit = feint ? others[Math.floor(rng() * others.length)] : planned;
   const nStr = 0.5 + camp.morale / 200;
   const loyal = 1 + Math.max(0, 50 - annexLoyalty(s, hit)) / 100;
-  let gain = (12 + 10 * Math.random()) * nStr * loyal / warStrength(s);
+  let gain = (12 + 10 * rng()) * nStr * loyal / warStrength(s);
   if (target === hit) gain *= stance.id === 'defend' ? 0.3 : 0.6;
   camp.pressure[hit] = clamp((camp.pressure[hit] || 0) + gain, 0, 100);
   let pushed = 0;
   if (stance.id === 'counter') {
-    pushed = warStrength(s) * (10 + 12 * Math.random());
+    pushed = warStrength(s) * (10 + 12 * rng());
     camp.pressure[target] = clamp((camp.pressure[target] || 0) - pushed, 0, 100);
-    camp.morale -= 6 + 6 * Math.random();
+    camp.morale -= 6 + 6 * rng();
     out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при контрударе', 'fast', difficulty, 'other'),
       makeImpulse('tensionPush', 1, 'Потери при контрударе', 'fast', difficulty, 'other'));
   }
@@ -6133,7 +6133,7 @@ function groupEpisodes(s, support, difficulty) {
   const out = { impulses: [], news: [], cd: {} };
   Object.entries(s.groupUnrestCd || {}).forEach(([id, v]) => { if (v > 1) out.cd[id] = v - 1; });
   SOCIAL_GROUPS.forEach((g) => {
-    if (support[g.id] >= 35 || out.cd[g.id] || Math.random() >= 0.35) return;
+    if (support[g.id] >= 35 || out.cd[g.id] || rng() >= 0.35) return;
     const u = GROUP_UNREST[g.id];
     out.impulses.push(...u.impulses(difficulty));
     out.news.push(['crisis', u.headline, u.text(g), 7]);
@@ -6207,7 +6207,7 @@ function groupDemandStep(s, decisions, difficulty, q) {
   if (out.cooldown > 0 || q < 4) return out;
   const sup = s.groupSupport || {};
   const worst = SOCIAL_GROUPS.filter((g) => Number.isFinite(sup[g.id]) && sup[g.id] < 42).sort((a, b) => sup[a.id] - sup[b.id])[0];
-  if (!worst || Math.random() >= 0.45) return out;
+  if (!worst || rng() >= 0.45) return out;
   out.demand = publicGroupDemand(worst.id, s, q);
   out.news.push(['crisis', out.demand.title.toUpperCase(), `${worst.leader.name}, ${worst.leader.title}: ${out.demand.text} Ответ нужен в следующем квартале.`, 8]);
   return out;
@@ -6266,7 +6266,7 @@ function regionBlurb(region, economy) {
    возвращает среднее по округам ровно к национальному результату — иначе
    сумма по карте не сходилась бы с цифрой в новостях.
 
-   Без Math.random(): один и тот же квартал всегда даёт одну и ту же карту.
+   Без rng(): один и тот же квартал всегда даёт одну и ту же карту.
    При сфальсифицированных выборах (авторитаризм/тоталитаризм) рисуется не
    этот расчёт, а «официальный результат» — почти ровный по всей стране,
    потому что рисуют его в одном кабинете, а не считают по участкам. */
