@@ -462,7 +462,10 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareHealth = drift(s.budgetShares.health, P.shares.health);
   const shareEducation = drift(s.budgetShares.education, P.shares.education);
   const shareScience = drift(s.budgetShares.science, P.shares.science);
-  const shareDefense = drift(s.budgetShares.defense, P.shares.defense);
+  // оборона: не ниже взятого обязательства, а в войне — военный бюджет сверх обычного
+  const defenseTarget = Math.max(P.shares.defense + ((s.warQuartersLeft || 0) > 0 ? 5 : 0),
+    s.defenseCommit ? s.defenseCommit.share : 0);
+  const shareDefense = drift(s.budgetShares.defense, defenseTarget);
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
   const regionPlan = botRegionPlan(s, P, consolidationNeed);
@@ -740,7 +743,8 @@ const REQUESTS = [
     yes: 'Минфин соглашается не расширять бюджетный импульс дальше.',
     partial: 'Минфин частично сдерживает рост расходов, но не отказывается от него полностью.',
     no: 'Минфин отвечает, что взятые бюджетные обязательства снижать не намерен.' },
-  { id: 'defense_up', from: 'central_bank', label: 'Нарастить военные расходы',
+  // военные расходы — не дело Центробанка: эту просьбу к Минфину отдаёт только президент
+  { id: 'defense_up', from: 'central_bank', presidentOnly: true, label: 'Нарастить военные расходы',
     scale: { base: 3, min: 1, max: 6, step: 1, unit: ' п.п. бюджета' },
     ask: (n) => `Просим увеличить долю военных расходов в бюджете на ${askNum(n)} п.п.: недофинансированная оборона в нынешней обстановке — риск дороже, чем строчка в бюджете.`,
     // вне войны эта просьба почти не имеет смысла для ЦБ — а во время войны
@@ -750,7 +754,7 @@ const REQUESTS = [
     bias: { technocrat: -0.1, austerity: -0.4, populist: 0.1 },
     // множитель должен совпадать с scale.base (3), как и у infra_up
     apply: (d, k) => ({ shareDefense: clamp(d.shareDefense + 3 * k, 2, 40) }),
-    yes: 'Минфин соглашается нарастить долю военных расходов за счёт остальных статей.',
+    yes: 'Минфин соглашается нарастить долю военных расходов за счёт остальных статей и держать её два года.',
     partial: 'Минфин идёт на скромное увеличение военной доли бюджета.',
     no: 'Минфин отказывает: перекраивать бюджет в пользу обороны сейчас не готовы.' },
   { id: 'rate_cut', from: 'ministry_finance', label: 'Снизить ключевую ставку',
@@ -2483,6 +2487,13 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const shareBase = sum5 + otherRaw;
   const ns = (x) => (x / shareBase) * 100;
   const budgetShares = { health: ns(rawShares.health), education: ns(rawShares.education), science: ns(rawShares.science), defense: ns(rawShares.defense), admin: ns(rawShares.admin), other: ns(otherRaw) };
+  /* Обязательство по обороне: принятое увеличение военной доли (по просьбе, указу или
+     решению) держится два года — бот-Минфин не откатывает его через квартал к доле
+     своего характера. Потом доля возвращается постепенно, по пункту за квартал. */
+  const prevCommit = s.defenseCommit || null;
+  const defenseCommit = budgetShares.defense > (s.budgetShares ? s.budgetShares.defense : 0) + 0.5
+    ? { share: Math.round(budgetShares.defense), left: 8 }
+    : prevCommit && prevCommit.left > 1 ? { ...prevCommit, left: prevCommit.left - 1 } : null;
 
   /* --- 4. ДЕНЕЖНАЯ ТРАНСМИССИЯ: ключевая ставка -> рыночные ставки --- */
   const rStarTarget = 1.55 + 0.55 * (s.potentialGrowth - 2.3) + 0.30 * (worldRate - worldInflation) + 0.25 * (s.riskPremium - 1.4) + (d.rStar || 0);
@@ -3746,7 +3757,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     shadowShare, taxWedgeValue: wedgeNow, revenueParts, govRevenue, revenuePctGdp,
     govPurchasesNominal, transfersNominal, govInvestmentNominal, govSpendingTotal, interestPayment, interestToRevenue,
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
-    govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
+    govDebt, debtToGdp, effectiveDebtRate, budgetShares, defenseCommit, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     imfQuartersLeft, imfActive, imfStarted,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,

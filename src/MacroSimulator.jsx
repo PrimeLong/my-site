@@ -7,7 +7,7 @@ import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, Crown, Gavel, Hammer, Smartphone, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
-  Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat,
+  Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -1165,7 +1165,7 @@ export function DailyBoard({ day, data: given = null, limit = 10 }) {
 
 function DailyCard({ onStart }) {
   const ch = React.useMemo(() => dailyChallenge(dailyKey()), []);
-  const [showBoard, setShowBoard] = useState(false);
+  const [open, setOpen] = useState(false);
   const best = loadDailyBest(ch.day);
   const scenario = SCENARIOS.find((x) => x.id === ch.scenario) || SCENARIOS[0];
   const diff = DIFFICULTIES.find((x) => x.id === ch.difficulty) || DIFFICULTIES[1];
@@ -1176,48 +1176,36 @@ function DailyCard({ onStart }) {
   const rivals = ch.role === 'central_bank' ? `Минфин: ${mofName} · президент: ${presName}`
     : ch.role === 'ministry_finance' ? `ЦБ: ${cbName} · президент: ${presName}`
       : ch.role === 'president' ? `ЦБ: ${cbName} · Минфин: ${mofName}` : 'обе ветви в ваших руках';
-  const facts = [
-    ['Пост', (ROLES.find((r) => r.id === ch.role) || {}).title],
-    ['Сценарий', scenario.id === 'sandbox' ? 'спокойный старт' : scenario.title],
-    ['Сложность', diff.title],
-    ['Цель', goal ? goal.label : '—'],
-    ['Боты', rivals],
-  ];
+  const roleTitle = (ROLES.find((r) => r.id === ch.role) || {}).short;
   return (
-    <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20, borderColor: COLOR.gold }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-        <Calendar size={14} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(ch.day)}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>новый через {untilNextDaily()}</span>
-      </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
-        Одна партия на всех: тот же пост, тот же кризис и те же случайные события. {ch.quarters} кварталов —
-        и итоговый балл по пяти оценкам, где цель дня весит вдвое.
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0,1fr)', gap: '4px 12px', fontSize: 12, marginBottom: 12 }}>
-        {facts.map(([k, v]) => (
-          <React.Fragment key={k}>
-            <span style={{ color: COLOR.faint }}>{k}</span>
-            <span style={{ color: COLOR.text, minWidth: 0 }}>{v}</span>
-          </React.Fragment>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="ems-btn primary" style={{ padding: '8px 16px', fontSize: 12.5 }}
+    <div className="ems-panel ems-fade-in" style={{ padding: '13px 15px', marginBottom: 18, borderColor: `${COLOR.gold}88` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <Calendar size={16} color={COLOR.gold} style={{ flexShrink: 0 }} />
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <div className="ems-serif" style={{ fontSize: 14.5, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(ch.day)}</div>
+          <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 1 }}>
+            {roleTitle} · {scenario.id === 'sandbox' ? 'спокойный старт' : scenario.title.toLowerCase()} · {diff.title.toLowerCase()} · {ch.quarters} кв.
+            {best ? <> · ваш лучший <b className="ems-mono" style={{ color: COLOR.gold }}>{best.score.toFixed(1).replace('.', ',')}</b></> : null}
+          </div>
+        </div>
+        <button className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 12 }}
           onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart(ch); }}>
-          {best ? 'Попробовать ещё раз' : 'Принять вызов'}
+          {best ? 'Ещё раз' : 'Принять вызов'}
         </button>
-        <button className="ems-btn" style={{ padding: '8px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-          aria-expanded={showBoard} onClick={() => { Audio.play('tab'); setShowBoard((v) => !v); }}>
+        <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
+          aria-expanded={open} onClick={() => { Audio.play('tab'); setOpen((v) => !v); }}>
           <Trophy size={13} />Таблица дня
         </button>
-        {best && (
-          <span style={{ fontSize: 11.5, color: COLOR.muted }}>
-            ваш лучший: <b className="ems-mono" style={{ color: COLOR.gold }}>{best.score.toFixed(1).replace('.', ',')}</b>
-          </span>
-        )}
       </div>
-      {showBoard && <div style={{ marginTop: 12 }}><DailyBoard day={ch.day} /></div>}
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+            Одна партия на всех: тот же пост, тот же кризис и те же случайные события. Итог — пять оценок, где цель дня
+            («{goal ? goal.label.toLowerCase() : '—'}») весит вдвое. Боты: {rivals}. Новый вызов через {untilNextDaily()}.
+          </div>
+          <DailyBoard day={ch.day} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1234,12 +1222,14 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   const [storageMode, setStorageMode] = useState(null);
   const [showAch, setShowAch] = useState(false);
   const [showLink, setShowLink] = useState(false);
+  // место под профиль игрока в шапке меню (см. ProfileChip)
+  const profileSlot = null;
   // партия из автосохранения обычно открывается сама, минуя меню (см. App()) —
   // сюда игрок попадает с ней «на руках» только если разбирался с крашем
   // («Вернуться в меню» не трогает автосохранение) или пришёл по ссылке-
   // приглашению в сетевую комнату. Карточка здесь — и подстраховка на этот
   // случай, и просто видимое подтверждение того, что автосохранение вообще есть.
-  const [autosave, setAutosaveState] = useState(loadAutosave);
+  const [autosave] = useState(loadAutosave);
   // сетевая партия ничего не теряет при случайном закрытии вкладки (комната
   // живёт на сервере), но раньше, чтобы в неё вернуться, нужно было ещё
   // знать, что для этого нужно зайти в «Игра по сети» → «Ваши партии» —
@@ -1302,225 +1292,217 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   const [tycoonSave] = useState(loadTycoonSave);
   const [tycoonSlots, setTycoonSlots] = useState([]);
   const [tycoonBusy, setTycoonBusy] = useState(null);
+  const [savesOpen, setSavesOpen] = useState(false);
+  const [savesTab, setSavesTab] = useState('solo');
   const enterTycoonSlot = async (idx) => {
     setTycoonBusy(idx);
     try { const snap = await fetchTycoonSlot(playerId, idx); Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onTycoon(snap); }
     catch (e) { setSlotError(e.message); setTycoonBusy(null); }
   };
-  const MENU_ITEMS = [
-    { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
+  const roleShort = (id) => (ROLES.find((r) => r.id === id) || {}).short || id;
+  const moneyShort = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)} млрд` : v >= 1 ? `${v.toFixed(1)} млн` : `${Math.round(v * 1000)} тыс`);
+
+  /* «Продолжить» — одна главная кнопка вместо трёх карточек с сохранениями подряд:
+     самое свежее из одиночной партии и «Своего дела»; второе — строкой под ней. */
+  const soloTime = autosave ? Date.parse(autosave.savedAt || 0) || 0 : 0;
+  const tycoonTime = tycoonSave ? Number(tycoonSave.savedAt) || 0 : 0;
+  const continues = [
+    autosave && { id: 'solo', time: soloTime, icon: ROLE_ICON[(ROLES.find((r) => r.id === autosave.setup.role) || {}).icon] || Flag,
+      title: roleShort(autosave.setup.role), sub: `${quarterLabel(autosave.quarterIndex || 1)}${autosave.setup.daily ? ' · вызов дня' : ''}`,
+      go: () => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onLoad(autosave); } },
+    tycoonSave && onTycoon && { id: 'tycoon', time: tycoonTime, icon: Factory, title: 'Своё дело',
+      sub: `${tycoonSave.buildings.length} зданий · на счёте ${moneyShort(tycoonSave.cash || 0)}`,
+      go: () => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onTycoon(tycoonSave); } },
+  ].filter(Boolean).sort((x, y) => y.time - x.time);
+  const mainContinue = continues[0] || null;
+  const savesCount = { solo: (soloSlots || []).filter(Boolean).length, tycoon: tycoonSlots.filter(Boolean).length, network: networkSlots.filter(Boolean).length };
+  const savesTotal = savesCount.solo + savesCount.tycoon + savesCount.network;
+
+  const MODES = [
+    { id: 'new', icon: Landmark, title: 'Партия у руля страны', tag: 'ЦБ · Минфин · президент · премьер · трейдер',
+      desc: 'Выберите пост и проведите страну через кризисы, выборы и войны. Второй ветвью власти управляет бот со своим характером.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
-    ...(onTycoon ? [{ id: 'tycoon', icon: Factory, title: tycoonSave ? 'Своё дело — продолжить' : 'Своё дело',
-      desc: tycoonSave
-        ? `Ваша компания ждёт: ${tycoonSave.buildings.length} зданий, на счёте ${tycoonSave.cash >= 1 ? `${tycoonSave.cash.toFixed(1)} млн` : `${Math.round(tycoonSave.cash * 1000)} тыс`}. Пока вас не было, предприятия работали.`
-        : 'Предприниматель: цепочки производства по всей стране в реальном времени. Экономика живёт сама — вы строите бизнес внутри неё.',
+    ...(onTycoon ? [{ id: 'tycoon', icon: Factory, title: 'Своё дело', tag: 'тайкун в реальном времени',
+      desc: 'Фермы, заводы, магазины и экспорт по всей стране. Экономика живёт сама — вы строите бизнес внутри неё.',
       action: () => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onTycoon(tycoonSave); } }] : []),
-    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Три курса с тестами, практикой и экзаменами: политика, инвестор, президент.',
-      action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
-    { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
+    { id: 'network', icon: Users, title: 'По сети', tag: 'вдвоём или втроём',
+      desc: 'ЦБ, Минфин и президент — разные люди на одной экономике. Комната по коду или из списка открытых.',
       action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
-    { id: 'achievements', icon: Trophy, title: 'Достижения', desc: 'Коллекция наград, открытых за все ваши партии в этом профиле.',
-      action: () => { Audio.play('click'); setShowAch(true); } },
-    { id: 'link', icon: Smartphone, title: 'Связать устройства', desc: 'Один профиль на телефоне и компьютере: общие сохранения, достижения и курсы.',
-      action: () => { Audio.play('click'); setShowLink(true); } },
+    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', tag: 'курсы с практикой',
+      desc: 'Как работают ставка, бюджет, рынок и власть — короткими уроками с тестами и экзаменами.',
+      action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
   ];
 
   return (
-    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '56px 16px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '36px 16px 48px' }}>
       <GlobalStyle />
+      <style>{menuCss()}</style>
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       {showLink && (
         <DeviceLinkModal playerId={playerId} onClose={() => setShowLink(false)}
           onLinked={(id) => { setPlayerIdState(id); setSoloSlots(null); setSlotError(''); }} />
       )}
-      <div style={{ maxWidth: 640, width: '100%' }}>
-        <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 40 }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-            <StateSeal regime="democracy" size={52} title="Государственная печать" />
+      <div style={{ maxWidth: 760, width: '100%' }}>
+        {/* шапка: печать, название и одна строка о том, что это */}
+        <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
+          <StateSeal regime="democracy" size={48} title="Государственная печать" />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="ems-hero-eyebrow" style={{ textAlign: 'left', marginBottom: 2 }}>Симулятор макроэкономической политики</div>
+            <div className="ems-serif menu-title">Экономическая панель государства</div>
           </div>
-          <div className="ems-hero-eyebrow">Симулятор макроэкономической политики</div>
-          <div className="ems-hero-title">Экономическая панель государства</div>
-          <div className="ems-hero-rule" />
-          <span className="ems-hero-badge"><Clock size={11} color={COLOR.gold} />{romanQ(1)} кв. {CONFIG.startYear} · вступление в должность</span>
-          <div className="ems-hero-lede">
-            Ставка → кредит → спрос → выпуск → занятость → цены → ожидания. Управляйте центральным банком, Минфином
-            или обоими сразу — соло против ботов со своим характером или вдвоём по сети.
-          </div>
+          {profileSlot}
         </div>
 
         {storageMode === 'memory' && (
-          <div className="ems-panel ems-fade-in" style={{ padding: 13, marginBottom: 16, borderColor: COLOR.rust, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0, marginTop: 1 }} />
-            <div style={{ fontSize: 12, color: COLOR.rust, lineHeight: 1.5 }}>
-              Сервер не подключён к общему хранилищу (Redis) — сохранения живут только в памяти одного случайного
-              запроса и могут пропасть между обращениями. Это настройка развёртывания
-              (переменные окружения <b className="ems-mono">KV_REST_API_URL</b>/<b className="ems-mono">KV_REST_API_TOKEN</b>),
-              не баг в самой партии.
-            </div>
+          <div className="ems-fade-in" style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 14, display: 'flex', gap: 8, alignItems: 'flex-start', lineHeight: 1.5 }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+            Сервер без общего хранилища (Redis): сохранения на сервере могут пропадать. Это настройка развёртывания, не партии.
           </div>
         )}
 
-        {/* Партия, у которой уже есть свой слот, автосохраняется прямо в него
-            (см. GameScreen) — она и так видна ниже в списке «Продолжить», и
-            карточка здесь только дублировала бы её. Показываем карточку только
-            для партии без слота: новая игра, которую ещё ни разу не сохраняли
-            вручную и не открывали через «Продолжить». */}
-        {autosave && autosave.slotIdx == null && (
-          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20, borderColor: COLOR.gold }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-              <Clock size={13} color={COLOR.gold} />
-              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Автосохранение</span>
+        {/* 1. Продолжить */}
+        {mainContinue && (
+          <div className="ems-fade-in menu-continue" role="button" tabIndex={0} onClick={mainContinue.go}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') mainContinue.go(); }}>
+            <div className="ems-card-icon" style={{ width: 46, height: 46, flexShrink: 0 }}><mainContinue.icon size={21} color={COLOR.gold} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить</div>
+              <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>{mainContinue.title}</div>
+              <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>{mainContinue.sub}</div>
             </div>
-            <div className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-              background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-              <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
-                {(ROLES.find((r) => r.id === autosave.setup.role) || {}).short || autosave.setup.role} · {quarterLabel(autosave.quarterIndex || 1)}
-              </span>
-              <button className="ems-btn primary" style={{ padding: '4px 9px', fontSize: 11 }}
-                onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onLoad(autosave); }}>Играть</button>
-              <button onClick={() => { clearAutosave(); setAutosaveState(null); }} aria-label="Скрыть автосохранение"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
-                <X size={12} />
-              </button>
-            </div>
+            <Play size={22} color={COLOR.gold} style={{ flexShrink: 0 }} />
           </div>
         )}
-
-        {hasSaves && (
-          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-              <Clock size={13} color={COLOR.teal} />
-              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
-                Продолжить ({soloSlots.filter(Boolean).length} из {SOLO_SLOT_COUNT})
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {soloSlots.map((slot, idx) => {
-                if (!slot) return null;
-                const roleTitle = (ROLES.find((r) => r.id === slot.role) || {}).short || slot.role;
-                return (
-                  <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                    <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
-                      {slot.name && (
-                        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>
-                      )}
-                      <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
-                        {/* quarterIndex в сохранении — это уже тот квартал, на который партия
-                            откроется при загрузке (см. setQuarterIndex(q => q + 1) в finishQuarter),
-                            а не последний сыгранный. Вычитание кварта здесь показывало метку на
-                            квартал раньше того, что игрок реально увидит после «Играть». */}
-                        {roleTitle} · {quarterLabel(slot.quarterIndex || 1)}
-                      </span>
-                    </span>
-                    <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
-                      onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
-                    <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
-                      <X size={12} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
-          </div>
+        {continues[1] && (
+          <button className="ems-btn menu-continue-alt ems-fade-in" onClick={continues[1].go}>
+            <span style={{ color: COLOR.faint }}>или</span> {continues[1].title} · <span style={{ color: COLOR.muted }}>{continues[1].sub}</span>
+            <ChevronDown size={13} style={{ transform: 'rotate(-90deg)', marginLeft: 'auto' }} />
+          </button>
         )}
 
-        {tycoonSlots.some(Boolean) && (
-          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-              <Factory size={13} color={COLOR.gold} />
-              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Своё дело — сохранения</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {tycoonSlots.map((slot, idx) => (slot ? (
-                <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                  <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
-                    Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий
-                  </span>
-                  <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={tycoonBusy === idx}
-                    onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
-                </div>
-              ) : null))}
-            </div>
-          </div>
-        )}
-
-        {networkSlots.some(Boolean) && (
-          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-              <Users size={13} color={COLOR.teal} />
-              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>
-                Сетевые партии ({networkSlots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})
-              </span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {networkSlots.map((slot, idx) => {
-                if (!slot) return null;
-                const rd = seatRole(slot.seat);
-                const SlotIcon = ROLE_ICON[rd.icon];
-                const preview = networkSlotPreviews[idx];
-                return (
-                  <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
-                    background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
-                    {SlotIcon && <SlotIcon size={14} color={COLOR.muted} />}
-                    <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
-                      Комната <b className="ems-mono">{slot.id}</b> · {rd.short}
-                      {preview && <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>}
-                    </span>
-                    <button className="ems-btn primary" style={{ padding: '4px 9px', fontSize: 11 }} disabled={networkSlotBusy === idx}
-                      onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Играть'}</button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {onDaily && <DailyCard onStart={onDaily} />}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginBottom: 30 }}>
-          {MENU_ITEMS.map((item, i) => {
-            const Icon = item.icon;
+        {/* 2. Режимы */}
+        <div className="menu-section-label">{mainContinue ? 'Или начните новое' : 'Во что сыграть'}</div>
+        <div className="menu-modes">
+          {MODES.map((m, i) => {
+            const Icon = m.icon;
             return (
-              <div key={item.id} onClick={item.action} className="ems-card-btn ems-fade-in"
-                style={{ padding: '17px 20px', animationDelay: `${80 + i * 55}ms` }}
-                role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') item.action(); }}>
-                <div className="ems-card-icon">
-                  <Icon size={19} color={COLOR.gold} />
+              <div key={m.id} className="ems-card-btn ems-fade-in menu-mode" style={{ animationDelay: `${60 + i * 50}ms` }}
+                role="button" tabIndex={0} onClick={m.action} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') m.action(); }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                  <div className="ems-card-icon" style={{ width: 38, height: 38 }}><Icon size={18} color={COLOR.gold} /></div>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{m.title}</div>
+                    <div style={{ fontSize: 10.5, color: COLOR.goldSoft, marginTop: 1 }}>{m.tag}</div>
+                  </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{item.title}</div>
-                  <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{item.desc}</div>
-                </div>
-                <ChevronDown className="ems-card-chevron" size={14} color={COLOR.faint} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
+                <div className="menu-mode-desc" style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45, marginTop: 9 }}>{m.desc}</div>
               </div>
             );
           })}
         </div>
 
-        <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
-          <AudioControls />
-        </div>
+        {/* 3. Вызов дня */}
+        {onDaily && <DailyCard onStart={onDaily} />}
 
-        <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10.5, color: COLOR.faint, marginRight: 2 }}>Оформление:</span>
-          {Object.values(THEMES).map((t) => (
-            <button key={t.id} className="ems-theme-chip" style={{
-              background: theme === t.id ? COLOR.gold : COLOR.panelAlt, color: theme === t.id ? COLOR.ink : COLOR.muted,
-              border: `1px solid ${theme === t.id ? COLOR.gold : COLOR.border}` }}
-              onClick={() => { Audio.play('tab'); setTheme(t.id); }}>
-              <span className="ems-theme-dot" style={{ background: t.colors.gold }} />
-              {t.name}
+        {/* 4. Все сохранения — свёрнуты, чтобы не заслонять главное */}
+        {savesTotal > 0 && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 0, marginBottom: 18, overflow: 'hidden' }}>
+            <button className="menu-fold" aria-expanded={savesOpen} onClick={() => { Audio.play('tab'); setSavesOpen((v) => !v); }}>
+              <Save size={14} color={COLOR.gold} />
+              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Все сохранения</span>
+              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>{savesTotal}</span>
+              <ChevronDown size={14} color={COLOR.muted} style={{ marginLeft: 'auto', transform: savesOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
             </button>
-          ))}
+            {savesOpen && (
+              <div style={{ padding: '0 14px 14px' }}>
+                <div className="ems-seg" role="tablist" style={{ display: 'flex', marginBottom: 10 }}>
+                  {[['solo', 'Партии'], ['tycoon', 'Своё дело'], ['network', 'По сети']].filter(([id]) => savesCount[id] > 0 || id === 'solo').map(([id, label]) => (
+                    <button key={id} role="tab" aria-pressed={savesTab === id} style={{ flex: 1, padding: '6px 8px', fontSize: 12 }}
+                      onClick={() => setSavesTab(id)}>{label} · {savesCount[id]}</button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {savesTab === 'solo' && (hasSaves ? soloSlots.map((slot, idx) => (slot ? (
+                    <div key={idx} className="ems-row-hover menu-slot">
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        {slot.name && <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{slot.name}</span>}
+                        <span style={{ fontSize: slot.name ? 10.5 : 12, color: slot.name ? COLOR.faint : COLOR.text }}>
+                          Слот {idx + 1} · {roleShort(slot.role)} · {quarterLabel(slot.quarterIndex || 1)}
+                        </span>
+                      </span>
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                      <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
+                    </div>
+                  ) : null)) : <div style={{ fontSize: 11.5, color: COLOR.faint }}>Сохранённых партий на сервере нет — сохраняйте кнопкой «Партия» в игре.</div>)}
+                  {savesTab === 'tycoon' && tycoonSlots.map((slot, idx) => (slot ? (
+                    <div key={idx} className="ems-row-hover menu-slot">
+                      <span style={{ flex: 1, minWidth: 0 }}>Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий</span>
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={tycoonBusy === idx}
+                        onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                    </div>
+                  ) : null))}
+                  {savesTab === 'network' && networkSlots.map((slot, idx) => {
+                    if (!slot) return null;
+                    const rd = seatRole(slot.seat);
+                    const preview = networkSlotPreviews[idx];
+                    return (
+                      <div key={idx} className="ems-row-hover menu-slot">
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          Комната <b className="ems-mono">{slot.id}</b> · {rd.short}{preview && <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>}
+                        </span>
+                        <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={networkSlotBusy === idx}
+                          onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Войти'}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. Мелкое: достижения, устройства, оформление, звук */}
+        <div className="menu-footer ems-fade-in">
+          <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowAch(true); }}><Trophy size={13} color={COLOR.gold} />Достижения</button>
+          <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowLink(true); }}><Smartphone size={13} color={COLOR.gold} />Связать устройства</button>
+          <label className="menu-chip menu-theme">
+            <span style={{ fontSize: 11, color: COLOR.faint }}>Оформление</span>
+            <select value={theme} onChange={(e) => { Audio.play('tab'); setTheme(e.target.value); }} aria-label="Оформление">
+              {Object.values(THEMES).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </label>
+          <AudioControls />
         </div>
       </div>
     </div>
   );
 }
+
+// функция, а не строка: цвета берутся из текущей темы при каждой отрисовке
+const menuCss = () => `
+  .menu-title { font-size: 24px; line-height: 1.15; color: ${COLOR.text}; }
+  @media (max-width: 560px) { .menu-title { font-size: 19px; } }
+  .menu-continue { display: flex; align-items: center; gap: 14px; cursor: pointer; padding: 16px 18px; margin-bottom: 8px;
+    border-radius: 14px; border: 1px solid ${COLOR.gold}; background: linear-gradient(135deg, ${COLOR.goldDim}, ${COLOR.panel} 70%);
+    box-shadow: 0 16px 36px -20px rgba(0,0,0,0.7); transition: transform .18s ease, box-shadow .18s ease; }
+  .menu-continue:hover, .menu-continue:focus-visible { transform: translateY(-2px); box-shadow: 0 22px 40px -18px rgba(0,0,0,0.75); outline: none; }
+  .menu-continue-alt { width: 100%; display: flex; align-items: center; gap: 6px; padding: 9px 14px; font-size: 12.5px; text-align: left; margin-bottom: 4px; }
+  .menu-section-label { font-size: 11px; color: ${COLOR.faint}; letter-spacing: 0.1em; text-transform: uppercase; margin: 20px 0 10px; }
+  .menu-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+  @media (max-width: 600px) { .menu-modes { grid-template-columns: minmax(0, 1fr); } }
+  .menu-mode { flex-direction: column; align-items: stretch !important; gap: 0 !important; padding: 15px 16px; }
+  @media (max-width: 600px) { .menu-mode-desc { display: none; } .menu-mode { padding: 12px 14px; } }
+  .menu-fold { width: 100%; display: flex; align-items: center; gap: 8px; padding: 13px 15px; background: none; border: none; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+  .menu-slot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: ${COLOR.panelAlt}; border: 1px solid ${COLOR.border}; font-size: 12px; color: ${COLOR.text}; }
+  .menu-x { background: none; border: none; cursor: pointer; color: ${COLOR.faint}; padding: 2px; line-height: 0; }
+  .menu-footer { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .menu-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; font-size: 12px; border-radius: 999px; }
+  .menu-theme { border: 1px solid ${COLOR.border}; background: ${COLOR.panelAlt}; }
+  .menu-theme select { background: transparent; color: ${COLOR.text}; border: none; font: inherit; font-size: 12px; cursor: pointer; }
+  .menu-theme select option { background: ${COLOR.panel}; color: ${COLOR.text}; }
+`;
 
 /* ============================ ЭКРАН ВЫБОРА ============================ */
 function SetupScreen({ onStart, onBack, initialRole = null }) {

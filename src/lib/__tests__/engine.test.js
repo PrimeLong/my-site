@@ -2661,3 +2661,32 @@ describe('оборонительная война, штурм Нордхольм
     expect(n.text).not.toMatch(/прямое следствие принятого решения/);
   });
 });
+
+describe('обязательство по обороне', () => {
+  it('принятое увеличение военной доли бот-Минфин держит два года, потом отпускает постепенно', () => {
+    let e = makeInitialEconomy();
+    const base = e.budgetShares.defense;
+    const dec = { ...defaultDecisions(e), shareDefense: e.budgetShares.defense + 6 };
+    const run = (economy, decisions) => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [] });
+    e = run(e, dec).economy;
+    expect(e.defenseCommit).toMatchObject({ left: 8 });
+    const raised = e.budgetShares.defense;
+    expect(raised).toBeGreaterThan(base + 3);
+    for (let i = 0; i < 6; i++) {
+      const bot = botFinanceMinistry(e, 'austerity', 'medium');
+      e = run(e, { ...defaultDecisions(e), ...bot.decisions }).economy;
+    }
+    expect(e.budgetShares.defense).toBeGreaterThan(raised - 1.5);
+    for (let i = 0; i < 6; i++) {
+      const bot = botFinanceMinistry(e, 'austerity', 'medium');
+      e = run(e, { ...defaultDecisions(e), ...bot.decisions }).economy;
+    }
+    expect(e.defenseCommit).toBe(null);
+    expect(e.budgetShares.defense).toBeLessThan(raised);
+  });
+
+  it('просьбу о военных расходах ЦБ отправить не может — это указ президента', () => {
+    const req = REQUESTS.find((r) => r.id === 'defense_up');
+    expect(req.presidentOnly).toBe(true);
+  });
+});

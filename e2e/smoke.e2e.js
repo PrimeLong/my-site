@@ -22,7 +22,7 @@ async function expectNoSidewaysScroll(page) {
 }
 
 async function startSoloGame(page, role = 'Глава Центрального банка') {
-  await page.getByText('Новая партия', { exact: true }).click();
+  await page.getByText('Партия у руля страны', { exact: true }).click();
   await page.getByText(role, { exact: true }).click();
   await page.getByRole('button', { name: 'Принять полномочия' }).click();
   await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
@@ -286,7 +286,7 @@ test('своё дело: дерево технологий, команда и с
   const save = { ...snapshotTycoon(makeTycoon({ start: 'farm' })), introSeen: true };
   await page.addInitScript((s) => { localStorage.setItem('ems-tycoon-v1', JSON.stringify({ ...s, savedAt: Date.now() })); }, save);
   await page.goto('/', { waitUntil: 'networkidle' });
-  await page.getByText('Своё дело — продолжить', { exact: true }).click();
+  await page.getByText('Продолжить', { exact: true }).click();
   await expect(page.getByText(/Задание 1 из/)).toBeVisible();
   await page.getByRole('tab', { name: 'Исследования' }).click();
   await page.getByRole('button', { name: /Кадровое агентство/ }).click();

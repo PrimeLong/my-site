@@ -3085,7 +3085,7 @@ function InstitutionsPanel({ economy, cbAction, mofAction }) {
 /* ============================ МЕЖВЕДОМСТВЕННЫЕ ЗАПРОСЫ ============================ */
 function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
   if (!botRole || botRole === 'both') return null;
-  const options = REQUESTS.filter((r) => r.from === role);
+  const options = REQUESTS.filter((r) => r.from === role && !r.presidentOnly);
   if (!options.length) return null;
   const cur = options.find((r) => r.id === pending);
   const target = botRole === 'central_bank' ? 'Центральному банку' : 'Минфину';
