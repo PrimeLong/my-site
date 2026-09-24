@@ -17,7 +17,7 @@ import {
   evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
-  botDefenseOrder, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
+  botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
   directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
@@ -1170,6 +1170,7 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
               <div style={{ height: 7 }} />
               {row('Расходы всего', `${fmtMoney(economy.govSpendingTotal)} · ${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`)}
               {row('· госзакупки', fmtMoney(economy.govPurchasesNominal))}
+              {row('   из них оборона', `${fmtMoney(economy.govPurchasesNominal * (economy.budgetShares.defense || 0) / 100)} · ${fmt1(economy.budgetShares.defense || 0)}%`)}
               {row('· выплаты', fmtMoney(economy.transfersNominal))}
               {row('· инвестиции', fmtMoney(economy.govInvestmentNominal))}
               {row('· обслуживание долга', `${fmtMoney(economy.interestPayment)} · ставка ${fmt1(economy.effectiveDebtRate)}%`)}
@@ -2644,6 +2645,7 @@ function FiscalMath({ economy, decisions }) {
     ['Доходы бюджета', fmtMoney(economy.govRevenue), `${fmt1(economy.revenuePctGdp)}% ВВП`],
     ['Расходы всего', fmtMoney(economy.govSpendingTotal), `${fmt1(economy.govSpendingTotal / economy.nominalGdp * 100)}% ВВП`],
     ['· госзакупки', fmtMoney(economy.govPurchasesNominal), growth(economy.govPurchasesGrowth)],
+    ['   из них оборона', fmtMoney(economy.govPurchasesNominal * (economy.budgetShares.defense || 0) / 100), `${fmt1(economy.budgetShares.defense || 0)}% закупок`],
     ['· выплаты', fmtMoney(economy.transfersNominal), growth(economy.transfersGrowth)],
     ['· инвестиции', fmtMoney(economy.govInvestmentNominal), growth(economy.govInvestmentGrowth)],
     ['· обслуживание долга', fmtMoney(economy.interestPayment), `ставка ${fmt1(economy.effectiveDebtRate)}%`],
@@ -2720,6 +2722,10 @@ const SUMMARY_TABS = {
     { label: 'Доля образования', get: (e) => e.budgetShares.education, fmt: pctFmt },
     { label: 'Доля науки', get: (e) => e.budgetShares.science, fmt: pctFmt },
     { label: 'Доля здравоохранения', get: (e) => e.budgetShares.health, fmt: pctFmt },
+    { label: 'Доля обороны', get: (e) => e.budgetShares.defense, fmt: pctFmt,
+      hint: 'Сила армии в войне и то, насколько тяжёлым будет удар, если война придёт извне.' },
+    { label: 'Расходы на оборону', get: (e) => (e.govPurchasesNominal || 0) * (e.budgetShares.defense || 0) / 100, fmt: fmtMoney },
+    { label: 'Доля госуправления', get: (e) => e.budgetShares.admin, fmt: pctFmt },
   ] },
 };
 
@@ -3834,6 +3840,8 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
 /* Событие в округе поверх любого экрана: на карту заглядывают не каждый квартал,
    а без ответа сработает «переждать». */
 export function RegionEventStrip({ event, answered, canAnswer, onOpen }) {
+  // ответ уже выбран — напоминать не о чем: решение видно на карте
+  if (canAnswer && answered) return null;
   const region = MAP_REGIONS.find((r) => r.id === event.region);
   return (
     <div role="button" tabIndex={0} className="ems-fade-in" onClick={onOpen}
@@ -3925,6 +3933,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // трейдер видит экономику снаружи: без кабинета и его закрытых сводок
   const isPublic = isTrader;
   const canPlanMap = setup.role === 'ministry_finance' || isPresident;
+  // оборону приказывает президент, а там, где его нет (премьер — вся власть целиком), — премьер
+  const canCommandDefense = isPresident || setup.role === 'full_control';
   const bothBots = isTrader || isPresident;
   /* Президент-бот стоит НАД ведомством игрока: он ничего не считает сам, но требует,
      назначает и тратит политический капитал. За саму роль президента его, понятно,
@@ -4221,7 +4231,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     }
     // война за новые земли: тот же приказ, только оборонительный
     if (economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) {
-      eff = { ...eff, warOrder: isPresident ? warOrder : presEnabled ? botDefenseOrder(economy, presPersonaId) : null };
+      eff = { ...eff, warOrder: canCommandDefense ? warOrder : presEnabled ? botDefenseOrder(economy, presPersonaId) : null };
+    }
+    // оборонительная война с Дештом: тот же приказ, фронт — юго-запад страны
+    if (economy.warType === 'defensive' && (economy.warQuartersLeft || 0) > 0) {
+      eff = { ...eff, warOrder: canCommandDefense ? warOrder : botFrontOrder(economy, presEnabled ? presPersonaId : 'technocrat') };
     }
     // переговоры с Норландом: условия президента-игрока, иначе — бота по характеру
     if (economy.peaceTalks) {
@@ -4480,7 +4494,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan,
-    isPublic]);
+    isPublic, canCommandDefense]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -4729,7 +4743,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
         )}
-        {economy.groupDemand && view !== 'society' && (
+        {economy.groupDemand && view !== 'society' && !(canPlanMap && regionPlan.groupResponse) && (
           <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('society'); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('society'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
@@ -4768,7 +4782,17 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             </div>
           );
         })()}
-        {isPresident && view !== 'map' && ((economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) || economy.peaceTalks) && (
+        {canCommandDefense && view !== 'map' && economy.warType === 'defensive' && (economy.warQuartersLeft || 0) > 0 && (
+          <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
+              borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
+            <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
+            <span><b style={{ color: COLOR.rust }}>{DEF_ENEMY} наступает{economy.defenseCampaign && economy.defenseCampaign.occupied.length ? ' — часть страны под оккупацией' : ''}.</b>{' '}
+              <span style={{ color: COLOR.muted }}>Где держать оборону, куда нанести контрудар или просить перемирия — на карте.</span></span>
+          </div>
+        )}
+        {canCommandDefense && view !== 'map' && ((economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) || (isPresident && economy.peaceTalks)) && (
           <div role="button" tabIndex={0} className="ems-fade-in" onClick={() => { Audio.play('tab'); setView('map'); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: economy.peaceTalks ? COLOR.goldDim : COLOR.rustDim,
@@ -4793,7 +4817,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
           <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
             planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`}
-            warOrder={warOrder} onWarOrder={isPresident && !defeat ? setWarOrder : null}
+            warOrder={warOrder} onWarOrder={!defeat && (isPresident || (canCommandDefense && economy.warType !== 'offensive')) ? setWarOrder : null}
             warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'}
             campaignPlan={campaignPlan} onCampaignPlan={isPresident && !defeat ? setCampaignPlan : null}
             campaignPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'штаб власти'}

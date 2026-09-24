@@ -10,7 +10,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   quarterLabel, clamp, LEVERS, FX_REGIMES, DIFFICULTIES, GOALS, fmt1,
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder,
-  sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder } from './_lib/engine.js';
+  sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder, botFrontOrder, DEF_FRONT } from './_lib/engine.js';
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -114,6 +114,11 @@ function sanitizeWarOrder(o, economy) {
     if (!DEFENSE_STANCE_IDS.has(o.stance)) return null;
     const held = Object.keys((economy.revancheCampaign || {}).pressure || {}).filter((id) => !((economy.revancheCampaign || {}).lost || []).includes(id));
     return { stance: o.stance, target: held.includes(o.target) ? o.target : null };
+  }
+  // оборонительная война с Дештом: цель — одна из фронтовых областей
+  if (economy && economy.warType === 'defensive') {
+    if (!DEFENSE_STANCE_IDS.has(o.stance)) return null;
+    return { stance: o.stance, target: DEF_FRONT.includes(o.target) ? o.target : null };
   }
   if (!WAR_STANCE_IDS.has(o.stance)) return null;
   const camp = (economy && economy.warCampaign) || { progress: {}, captured: [] };
@@ -304,6 +309,10 @@ export function resolveQuarter(room) {
   if (room.economy.warType === 'revanche' && (room.economy.warQuartersLeft || 0) > 0) {
     const humanOrder = subs.president && subs.president.president ? subs.president.president.warOrder : null;
     eff.warOrder = humanOrder || (room.president && !room.seats.president ? botDefenseOrder(room.economy, room.president.persona) : null);
+  }
+  if (room.economy.warType === 'defensive' && (room.economy.warQuartersLeft || 0) > 0) {
+    const humanOrder = subs.president && subs.president.president ? subs.president.president.warOrder : null;
+    eff.warOrder = humanOrder || (room.seats.president ? null : botFrontOrder(room.economy, room.president ? room.president.persona : 'technocrat'));
   }
   if (room.economy.peaceTalks) {
     const humanTreaty = subs.president && subs.president.president ? subs.president.president.treaty : null;

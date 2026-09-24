@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { freshRoom, resolveQuarter, publicView } from '../api/room.js';
+import { makeInitialEconomy, defaultDecisions } from '../src/lib/engine.js';
 
 /* Общая подготовка каждой страницы: серверные функции подменены, внешние
    запросы и ошибки страницы собираются — тест падает, если сайт полез за
@@ -245,5 +246,23 @@ test('своё дело: старт из меню, время идёт, стро
   }
   await expect(page.getByText('Хлебозавод').first()).toBeVisible();
   await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('оборонительная война: фронт на карте и приказ армии', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  const e = { ...makeInitialEconomy(), warQuartersLeft: 3, warType: 'defensive', warElapsed: 2, activeCrises: ['war'], regime: 'war',
+    defenseCampaign: { pressure: { agri: 72, periphery: 30 }, occupied: [], morale: 70, next: 'agri', last: { target: 'periphery', stance: 'defend', hit: 'agri', gain: 14, pushed: 0 } } };
+  const snap = { app: 'economic-panel', v: 99, setup: { role: 'president', difficulty: 'medium', goal: 'living_standards', scenario: 'sandbox', cbPersona: 'pragmatic', mofPersona: 'technocrat', president: { enabled: false, persona: 'technocrat' } },
+    economy: e, history: [{ q: 0, label: 'x', ...e }], decisions: defaultDecisions(e), quarterIndex: 5 };
+  await page.addInitScript((s) => { localStorage.setItem('ems-autosave-v1', JSON.stringify({ ...s, v: 1 })); }, snap);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await expect(page.getByText(/Республика Дешт наступает/).first()).toBeVisible();
+  await page.getByText(/Республика Дешт наступает/).first().click();
+  await expect(page.getByLabel('Оборонительная война')).toBeVisible();
+  await page.getByLabel('Оборонительная война').getByRole('button', { name: /Контрудар/ }).click();
+  await expect(page.getByLabel('Оборонительная война').getByRole('button', { name: /Контрудар/ })).toHaveCSS('color', /./);
   expect(errors).toEqual([]);
 });
