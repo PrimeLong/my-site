@@ -462,7 +462,10 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareHealth = drift(s.budgetShares.health, P.shares.health);
   const shareEducation = drift(s.budgetShares.education, P.shares.education);
   const shareScience = drift(s.budgetShares.science, P.shares.science);
-  const shareDefense = drift(s.budgetShares.defense, P.shares.defense);
+  // оборона: не ниже взятого обязательства, а в войне — военный бюджет сверх обычного
+  const defenseTarget = Math.max(P.shares.defense + ((s.warQuartersLeft || 0) > 0 ? 5 : 0),
+    s.defenseCommit ? s.defenseCommit.share : 0);
+  const shareDefense = drift(s.budgetShares.defense, defenseTarget);
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
   const regionPlan = botRegionPlan(s, P, consolidationNeed);
@@ -740,7 +743,8 @@ const REQUESTS = [
     yes: 'Минфин соглашается не расширять бюджетный импульс дальше.',
     partial: 'Минфин частично сдерживает рост расходов, но не отказывается от него полностью.',
     no: 'Минфин отвечает, что взятые бюджетные обязательства снижать не намерен.' },
-  { id: 'defense_up', from: 'central_bank', label: 'Нарастить военные расходы',
+  // военные расходы — не дело Центробанка: эту просьбу к Минфину отдаёт только президент
+  { id: 'defense_up', from: 'central_bank', presidentOnly: true, label: 'Нарастить военные расходы',
     scale: { base: 3, min: 1, max: 6, step: 1, unit: ' п.п. бюджета' },
     ask: (n) => `Просим увеличить долю военных расходов в бюджете на ${askNum(n)} п.п.: недофинансированная оборона в нынешней обстановке — риск дороже, чем строчка в бюджете.`,
     // вне войны эта просьба почти не имеет смысла для ЦБ — а во время войны
@@ -750,7 +754,7 @@ const REQUESTS = [
     bias: { technocrat: -0.1, austerity: -0.4, populist: 0.1 },
     // множитель должен совпадать с scale.base (3), как и у infra_up
     apply: (d, k) => ({ shareDefense: clamp(d.shareDefense + 3 * k, 2, 40) }),
-    yes: 'Минфин соглашается нарастить долю военных расходов за счёт остальных статей.',
+    yes: 'Минфин соглашается нарастить долю военных расходов за счёт остальных статей и держать её два года.',
     partial: 'Минфин идёт на скромное увеличение военной доли бюджета.',
     no: 'Минфин отказывает: перекраивать бюджет в пользу обороны сейчас не готовы.' },
   { id: 'rate_cut', from: 'ministry_finance', label: 'Снизить ключевую ставку',
@@ -1428,10 +1432,16 @@ function militaryCoupRisk(x) {
   // непопулярности): нет её — армии не за что зацепиться, экономика бы ни была.
   /* Силовики — те, кто на самом деле выводит танки: лояльные почти исключают
      переворот, потерянные делают его возможным и при терпимом рейтинге. */
-  const sil = x.groupSupport && Number.isFinite(x.groupSupport.siloviki) ? x.groupSupport.siloviki : 50;
-  const silMult = sil >= 60 ? 0.35 : sil < 35 ? 1 + (35 - sil) / 15 : 1;
-  const vulnerability = clamp(Math.max(pressure, weakness, sil < 30 ? 0.3 : 0) * 2, 0, 1);
-  const grudge = sil < 30 ? (30 - sil) / 30 * 0.05 : 0;
+  /* Считается не абсолютная поддержка силовиков, а их отставание от страны в целом:
+     в кризисе, когда власть непопулярна у всех, армия недовольна ровно как все, и это
+     уже учтено через рейтинг (weakness). Отдельный риск — когда силовиков обидели
+     особо: урезали оборону, не слушают, а остальным живётся терпимо. */
+  const sil = x.groupSupport && Number.isFinite(x.groupSupport.siloviki) ? x.groupSupport.siloviki : null;
+  const silGap = sil === null ? 0 : sil - (x.approval || 0);
+  const silMult = sil === null ? 1 : sil >= 60 ? 0.35 : silGap < -6 ? 1 + Math.min(1.5, (-6 - silGap) / 10) : silGap > 8 ? 0.75 : 1;
+  const silAngry = sil !== null && sil < 35 && silGap < -6;
+  const vulnerability = clamp(Math.max(pressure, weakness, silAngry ? 0.3 : 0) * 2, 0, 1);
+  const grudge = silAngry ? Math.min(1, (-6 - silGap) / 24) * 0.05 : 0;
   const trouble = pressure * 0.11 + weakness * 0.045 + grudge + (misery * 0.055 + crisisLoad * 0.055) * vulnerability;
   return clamp(trouble * silMult * (1 + naked * 0.8) * (x.unrestActive ? 1.7 : 1), 0, 0.28);
 }
@@ -1523,7 +1533,9 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   // независимость ЦБ — не декларация, а то, насколько заметно он выполняет
   // политические указания; рынок это видит и переоценивает якорь ожиданий
   const credibilityHit = toCb && k > 0 ? -7 * k : 0;
-  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions;
+  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy),
+    // согласие на военные расходы — обязательство на два года (см. defenseCommit)
+    ...(req.id === 'defense_up' ? { defensePledge: true } : {}) } : decisions;
   const ownNote = byOwn ? (status === 'accepted'
     ? 'Ведомство и без указания шло в ту же сторону — решение совпало с требованием. '
     : 'Шаг в ту же сторону ведомство сделало по своим причинам, но меньше, чем требовали. ') : '';
@@ -2483,6 +2495,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const shareBase = sum5 + otherRaw;
   const ns = (x) => (x / shareBase) * 100;
   const budgetShares = { health: ns(rawShares.health), education: ns(rawShares.education), science: ns(rawShares.science), defense: ns(rawShares.defense), admin: ns(rawShares.admin), other: ns(otherRaw) };
+  /* Обязательство по обороне: увеличение военной доли, на которое Минфин согласился
+     по просьбе президента (decisions.defensePledge), держится два года — бот-Минфин
+     не откатывает его через квартал к доле своего характера. Собственный рост доли
+     у бота (например, на время войны) обязательством не считается. */
+  const prevCommit = s.defenseCommit || null;
+  const defenseCommit = decisions.defensePledge && budgetShares.defense > (s.budgetShares ? s.budgetShares.defense : 0) + 0.5
+    ? { share: Math.round(budgetShares.defense), left: 8 }
+    : prevCommit && prevCommit.left > 1 ? { ...prevCommit, left: prevCommit.left - 1 } : null;
 
   /* --- 4. ДЕНЕЖНАЯ ТРАНСМИССИЯ: ключевая ставка -> рыночные ставки --- */
   const rStarTarget = 1.55 + 0.55 * (s.potentialGrowth - 2.3) + 0.30 * (worldRate - worldInflation) + 0.25 * (s.riskPremium - 1.4) + (d.rStar || 0);
@@ -3644,8 +3664,11 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   if (!powerLost && !regimeJustChanged && (politicalRegime === 'authoritarian' || politicalRegime === 'totalitarian')) {
     if (coupCooldown > 0) cooldowns['political:military'] = coupCooldown - 1;
     else {
+      // та же формула, что показывает интерфейс: поддержку силовиков раньше сюда не
+      // передавали, и риск на экране расходился с настоящим
       const chance = militaryCoupRisk({ politicalTension, unemployment, nairu, inflation,
-        activeCrises, approval, unrestActive, politicalCapital: Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55 });
+        activeCrises, approval, unrestActive, politicalCapital: Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55,
+        groupSupport: GS.support });
       if (chance > 0 && rng() < chance) {
         /* Выступить — не значит победить. Власть, которую поддерживает большинство,
            переворот переживает: люди выходят на улицу за неё, а не против, и
@@ -3746,7 +3769,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     shadowShare, taxWedgeValue: wedgeNow, revenueParts, govRevenue, revenuePctGdp,
     govPurchasesNominal, transfersNominal, govInvestmentNominal, govSpendingTotal, interestPayment, interestToRevenue,
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
-    govDebt, debtToGdp, effectiveDebtRate, budgetShares, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
+    govDebt, debtToGdp, effectiveDebtRate, budgetShares, defenseCommit, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     imfQuartersLeft, imfActive, imfStarted,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
@@ -6187,18 +6210,28 @@ function groupStep(s, ctx) {
   const memory = [...(s.groupMemory || []).map((m) => (m.wait > 0 ? { ...m, wait: m.wait - 1 } : { ...m, left: m.left - 1 }))
     .filter((m) => m.left > 0), ...(ctx.newMemory || [])];
   const support = {}; const drivers = {};
+  const meanDev = SOCIAL_GROUPS.reduce((acc, g) => acc + g.weight
+    * clamp(groupDrivers(g.id, ctx).reduce((x, [, v]) => x + v, 0), -25, 25), 0);
   SOCIAL_GROUPS.forEach((g) => {
     const parts = groupDrivers(g.id, ctx).filter(([, v]) => Math.abs(v) >= 0.05);
     drivers[g.id] = parts.map(([k, v]) => [k, Math.round(v * 10) / 10]);
-    const dev = clamp(parts.reduce((a, [, v]) => a + v, 0), -25, 25);
+    // интересы групп в основном перераспределяют поддержку, а не опускают её всем
+    // сразу: цены и безработица уже сидят в общем рейтинге (approvalTarget), и без
+    // центрирования в кризисе они учитывались дважды — каждая группа тонула ещё и
+    // по своим поводам. 80% среднего отклонения вычитаем; остаток — то, насколько
+    // политика нравится обществу в целом сверх базового рейтинга
+    const dev = clamp(parts.reduce((a, [, v]) => a + v, 0) - 0.8 * meanDev, -25, 25);
     const mem = memory.filter((m) => m.group === g.id && !(m.wait > 0)).reduce((a, m) => a + (m.amount * m.left) / m.total, 0);
     const target = clamp(ctx.approvalTarget + dev + mem, 0, 100);
     support[g.id] = clamp(ema(Number.isFinite(prev[g.id]) ? prev[g.id] : base, target, 0.28) + (ctx.push || 0), 0, 100);
   });
   const approval = clamp(SOCIAL_GROUPS.reduce((a, g) => a + g.weight * support[g.id], 0), 0, 100);
-  // потерянные группы добавляют напряжённости сверх той, что даёт низкий рейтинг:
-  // расколотое общество неспокойнее ровно недовольного
-  const unrest = SOCIAL_GROUPS.reduce((a, g) => a + g.weight * Math.max(0, 40 - support[g.id]), 0) * 0.9;
+  // группы, отставшие от среднего по стране, добавляют напряжённости сверх той, что
+  // даёт низкий рейтинг: расколотое общество неспокойнее ровно недовольного. Раньше
+  // здесь считался просто уровень (40 − поддержка), и в кризисе, когда недовольны
+  // все, общее недовольство учитывалось дважды — через рейтинг и ещё раз здесь:
+  // в «Валютном кризисе» переворот случался почти в каждой партии
+  const unrest = SOCIAL_GROUPS.reduce((a, g) => a + g.weight * Math.max(0, approval - 8 - support[g.id]), 0) * 1.2;
   return { support, memory, drivers, approval, unrest };
 }
 const groupStatus = (v) => (v >= 60 ? 'опора власти' : v >= 50 ? 'лояльны' : v >= 35 ? 'колеблются' : 'в оппозиции');
@@ -6266,13 +6299,18 @@ const GROUP_UNREST = {
 function groupEpisodes(s, support, difficulty) {
   const out = { impulses: [], news: [], cd: {} };
   Object.entries(s.groupUnrestCd || {}).forEach(([id, v]) => { if (v > 1) out.cd[id] = v - 1; });
-  SOCIAL_GROUPS.forEach((g) => {
-    if (support[g.id] >= 35 || out.cd[g.id] || rng() >= 0.35) return;
+  /* Не больше одного выступления за квартал — от самой обиженной группы. Раньше каждая
+     группа в оппозиции выходила сама по себе, и в глубоком кризисе, когда в оппозиции
+     почти все, их толчки напряжения складывались (плюс пачка одинаковых заголовков
+     в газете) — это и доводило кризисные сценарии до переворота почти всегда. */
+  const angry = SOCIAL_GROUPS.filter((g) => support[g.id] < 35 && !out.cd[g.id]).sort((a, b) => support[a.id] - support[b.id]);
+  const g = angry[0];
+  if (g && rng() < 0.5) {
     const u = GROUP_UNREST[g.id];
     out.impulses.push(...u.impulses(difficulty));
     out.news.push(['crisis', u.headline, u.text(g), 7]);
     out.cd[g.id] = 3;
-  });
+  }
   return out;
 }
 
@@ -6632,7 +6670,7 @@ export {
   POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
-  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
+  SOCIAL_GROUPS, publicGroupDemand, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
   sanitizeTreaty, treatyCost, botTreaty, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
   DEF_FRONT, DEF_ENEMY, defaultFrontOrder, botFrontOrder,
   QUARTERS_PER_YEAR,

@@ -127,3 +127,56 @@ export async function setTycoonSlots(playerId, slots) {
   mem.set(`tycoon:${playerId}`, slots);
   return true;
 }
+
+/* Профили игроков (регистрация) и их сессии. Пользователь — по логину, сессия —
+   случайный токен на устройстве. Сессия живёт полгода, как и соло-сохранения. */
+export async function getUser(login) {
+  if (redis) return (await redis.get(`user:${login}`)) || null;
+  return mem.get(`user:${login}`) || null;
+}
+export async function setUser(login, user) {
+  if (redis) return redis.set(`user:${login}`, user);
+  mem.set(`user:${login}`, user);
+  return true;
+}
+export async function getSession(token) {
+  if (redis) return (await redis.get(`session:${token}`)) || null;
+  return mem.get(`session:${token}`) || null;
+}
+export async function setSession(token, login) {
+  if (redis) return redis.set(`session:${token}`, login, { ex: SOLO_TTL });
+  mem.set(`session:${token}`, login);
+  return true;
+}
+export async function delSession(token) {
+  if (redis) return redis.del(`session:${token}`);
+  mem.delete(`session:${token}`);
+  return true;
+}
+
+/* Счётчик попыток в окне ttl секунд (лимит регистраций и восстановлений с одного
+   адреса). Возвращает число попыток в текущем окне, включая эту. */
+export async function hit(key, ttlSeconds) {
+  if (redis) {
+    const n = await redis.incr(`hit:${key}`);
+    if (n === 1) await redis.expire(`hit:${key}`, ttlSeconds);
+    return n;
+  }
+  const now = Date.now();
+  const cur = mem.get(`hit:${key}`);
+  const next = cur && cur.until > now ? { n: cur.n + 1, until: cur.until } : { n: 1, until: now + ttlSeconds * 1000 };
+  mem.set(`hit:${key}`, next);
+  return next.n;
+}
+
+/* Таблицы рекордов (пока одна — «Своё дело»): хэш records:<вид>, поле — логин
+   профиля, значение — лучший результат. Бессрочные: рекорд на то и рекорд. */
+export async function getRecords(kind) {
+  if (redis) return (await redis.hgetall(`records:${kind}`)) || {};
+  return { ...mem.get(`records:${kind}`) };
+}
+export async function setRecord(kind, key, entry) {
+  if (redis) { await redis.hset(`records:${kind}`, { [key]: entry }); return true; }
+  mem.set(`records:${kind}`, { ...mem.get(`records:${kind}`), [key]: entry });
+  return true;
+}

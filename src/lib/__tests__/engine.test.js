@@ -294,7 +294,9 @@ describe('политический режим и пропаганда', () => {
     // держать кризис (кредит сжимается, норматив восстанавливается сам). Шум зафиксирован.
     let seed = 7;
     const spy = vi.spyOn(Math, 'random').mockImplementation(() => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; });
-    let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0 };
+    // выборы отодвинуты за горизонт теста: проигранные выборы с отказом признать итог —
+    // отдельный путь из демократии (переворот у урны), а здесь проверяется напряжение
+    let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0, quartersToElection: 99 };
     let decisions = defaultDecisions(economy);
     let pendingImpulses = []; let eventCooldowns = {};
     let exit = null;
@@ -2659,5 +2661,53 @@ describe('оборонительная война, штурм Нордхольм
     expect(n).toBeTruthy();
     expect(n.headline).toMatch(/СПЛОТИЛАСЬ/);
     expect(n.text).not.toMatch(/прямое следствие принятого решения/);
+  });
+});
+
+describe('обязательство по обороне', () => {
+  it('принятое увеличение военной доли бот-Минфин держит два года, потом отпускает постепенно', () => {
+    let e = makeInitialEconomy();
+    const base = e.budgetShares.defense;
+    const dec = { ...defaultDecisions(e), shareDefense: e.budgetShares.defense + 6, defensePledge: true };
+    // без случайных событий: начавшаяся война сама двигала бы военную долю бота
+    const run = (economy, decisions) => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
+    e = run(e, dec).economy;
+    expect(e.defenseCommit).toMatchObject({ left: 8 });
+    const raised = e.budgetShares.defense;
+    expect(raised).toBeGreaterThan(base + 3);
+    for (let i = 0; i < 6; i++) {
+      const bot = botFinanceMinistry(e, 'austerity', 'medium');
+      e = run(e, { ...defaultDecisions(e), ...bot.decisions }).economy;
+    }
+    expect(e.budgetShares.defense).toBeGreaterThan(raised - 1.5);
+    for (let i = 0; i < 6; i++) {
+      const bot = botFinanceMinistry(e, 'austerity', 'medium');
+      e = run(e, { ...defaultDecisions(e), ...bot.decisions }).economy;
+    }
+    expect(e.defenseCommit).toBe(null);
+    expect(e.budgetShares.defense).toBeLessThan(raised);
+  });
+
+  it('собственный рост военной доли у бота (война) обязательством не считается', () => {
+    const e = makeInitialEconomy();
+    const run = (economy, decisions) => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [] });
+    const next = run(e, { ...defaultDecisions(e), shareDefense: e.budgetShares.defense + 6 }).economy;
+    expect(next.budgetShares.defense).toBeGreaterThan(e.budgetShares.defense + 3);
+    expect(next.defenseCommit).toBe(null);
+  });
+
+  it('согласие Минфина на указ о военных расходах несёт обязательство', () => {
+    const e = { ...makeInitialEconomy(), warQuartersLeft: 3 };
+    let seen = false;
+    for (let i = 0; i < 40 && !seen; i++) {
+      const r = processPresidentialDirective('defense_up', e, 'pragmatic', 'populist', defaultDecisions(e), 1);
+      if (r && r.decisions.defensePledge) seen = true;
+    }
+    expect(seen).toBe(true);
+  });
+
+  it('просьбу о военных расходах ЦБ отправить не может — это указ президента', () => {
+    const req = REQUESTS.find((r) => r.id === 'defense_up');
+    expect(req.presidentOnly).toBe(true);
   });
 });

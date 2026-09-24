@@ -64,7 +64,11 @@ function playGame({ seed, scenario, difficulty, cb, mof, pres }) {
       history: [{ q: 0, label: 'старт', ...economy0 }] };
     room = { ...room, presidentPlan: planPresident(room, room.economy, {}) };
     const out = { lostElection: false, landslide: false, defaulted: false, imf: false, hyper: false,
-      hyperEnd: false, unfree: false, crisisQuarters: 0, wellbeingSum: 0, quarters: 0, personaChanged: false };
+      hyperEnd: false, unfree: false, crisisQuarters: 0, wellbeingSum: 0, quarters: 0, personaChanged: false,
+      // общество и войны: механики, добавленные после первого отчёта
+      offWar: false, defWar: false, revWar: false, annexed: false, recognized: false, occupied: false,
+      coup: false, uprising: false, silovikiOpp: 0, oppGroups: 0, demands: 0, commit: false };
+    let prevDemand = null;
     for (let q = 1; q <= QUARTERS; q++) {
       room = resolveQuarter(room);
       const e = room.economy;
@@ -77,6 +81,20 @@ function playGame({ seed, scenario, difficulty, cb, mof, pres }) {
       if (e.politicalRegime === 'authoritarian' || e.politicalRegime === 'totalitarian') out.unfree = true;
       if ((e.activeCrises || []).length) out.crisisQuarters += 1;
       if (room.cbPersona !== cb || room.mofPersona !== mof) out.personaChanged = true;
+      if (e.warType === 'offensive') out.offWar = true;
+      if (e.warType === 'defensive') out.defWar = true;
+      if (e.warType === 'revanche') out.revWar = true;
+      if ((e.annexed || []).length) out.annexed = true;
+      if (e.treaty && e.treaty.recognized) out.recognized = true;
+      if (e.defenseCampaign && (e.defenseCampaign.occupied || []).length) out.occupied = true;
+      if (e.powerLost === 'military') out.coup = true;
+      else if (e.powerLost) out.uprising = true;
+      const sup = e.groupSupport || {};
+      if (Number.isFinite(sup.siloviki) && sup.siloviki < 35) out.silovikiOpp += 1;
+      out.oppGroups += Object.values(sup).filter((v) => v < 35).length;
+      if (e.groupDemand && e.groupDemand !== prevDemand) out.demands += 1;
+      prevDemand = e.groupDemand || null;
+      if (e.defenseCommit) out.commit = true;
       out.wellbeingSum += e.wellbeing;
     }
     out.wellbeing = out.wellbeingSum / out.quarters;
@@ -101,8 +119,15 @@ function summarize(games) {
     hyper: pct('hyper'), hyperEnd: pct('hyperEnd'), unfree: pct('unfree'),
     crisisShare: Math.round(avg('crisisQuarters') / QUARTERS * 100),
     wellbeing: Math.round(avg('wellbeing')), finalDebt: Math.round(avg('finalDebt')),
+    offWar: pct('offWar'), defWar: pct('defWar'), revWar: pct('revWar'), annexed: pct('annexed'),
+    recognized: pct('recognized'), occupied: pct('occupied'), coup: pct('coup'), uprising: pct('uprising'),
+    silovikiOpp: Math.round(avg('silovikiOpp') / QUARTERS * 100), oppGroups: Math.round(avg('oppGroups') / QUARTERS * 10) / 10,
+    demands: Math.round(avg('demands') * 10) / 10, commit: pct('commit'),
   };
 }
+const HEAD2 = '| наступление | оборона от Дешта | реванш Норланда | новые земли | граница признана | оккупация | переворот | восстание | силовики в оппозиции, % кв. | групп в оппозиции (ср.) | требований лидеров | обязательство по обороне |';
+const SEP2 = '|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|';
+const row2 = (s) => `| ${s.offWar}% | ${s.defWar}% | ${s.revWar}% | ${s.annexed}% | ${s.recognized}% | ${s.occupied}% | ${s.coup}% | ${s.uprising}% | ${s.silovikiOpp}% | ${s.oppGroups} | ${s.demands} | ${s.commit}% |`;
 
 const HEAD = '| проиграны выборы | разгром | дефолт | МВФ | гиперинфл. когда-либо | гиперинфл. в конце | авторит. | кварталов в кризисе | благополучие | долг в конце |';
 const SEP = '|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|';
@@ -159,6 +184,15 @@ if (JSON_OUT) {
   table('По паре персон: ЦБ + Минфин (все сценарии и сложности)', report.byPair.map((r) => ({ ...r, label: pairLabel(r.key) })), 'пара');
   table('По паре персон — открытая партия, средняя сложность', report.byPairSandboxMedium.map((r) => ({ ...r, label: pairLabel(r.key) })), 'пара');
   table('По характеру президента (открытая партия, Прагматик + Технократ)', report.byPresident.map((r) => ({ ...r, label: name(PRESIDENT_PERSONAS, r.key) })), 'президент');
+  const table2 = (title, rows, label) => {
+    console.log(`\n### ${title}\n`);
+    console.log(`| ${label} ${HEAD2}`);
+    console.log(`|---${SEP2}`);
+    rows.forEach((r) => console.log(`| ${r.label} ${row2(r)}`));
+  };
+  table2('Общество и войны — по сложности', report.byDifficulty.map((r) => ({ ...r, label: name(DIFFICULTIES, r.key) })), 'сложность');
+  table2('Общество и войны — по сценарию', report.byScenario.map((r) => ({ ...r, label: name(SCENARIOS, r.key) })), 'сценарий');
+  table2('Общество и войны — по характеру президента', report.byPresident.map((r) => ({ ...r, label: name(PRESIDENT_PERSONAS, r.key) })), 'президент');
 }
 
 /* --- Выигрываемость кризисных сценариев перебором стратегий ---

@@ -22,7 +22,7 @@ async function expectNoSidewaysScroll(page) {
 }
 
 async function startSoloGame(page, role = 'Глава Центрального банка') {
-  await page.getByText('Новая партия', { exact: true }).click();
+  await page.getByText('Партия у руля страны', { exact: true }).click();
   await page.getByText(role, { exact: true }).click();
   await page.getByRole('button', { name: 'Принять полномочия' }).click();
   await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
@@ -30,7 +30,7 @@ async function startSoloGame(page, role = 'Глава Центрального �
 
 test('меню открывается, шрифты свои, внешних запросов нет', async ({ page }) => {
   const { errors, external } = await openApp(page);
-  await expect(page.getByText('Экономическая панель')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Inflatia' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
   expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');
@@ -67,9 +67,18 @@ test('одиночная партия: квартал проходит, газе
 test('обучение: хаб и программа курса открываются', async ({ page }) => {
   const { errors } = await openApp(page);
   await page.getByText('Обучение', { exact: true }).click();
-  await expect(page.getByText('Три курса')).toBeVisible();
+  await expect(page.getByText('Четыре курса')).toBeVisible();
   await page.getByText('Экономическая политика', { exact: true }).first().click();
   await expect(page.getByText('ПРОГРАММА КУРСА', { exact: false })).toBeVisible();
+  await expect(page.getByText('Общество: семь групп вместо одного рейтинга', { exact: true })).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  // режимы игры открыты в любом порядке: сразу в «Своё дело», пройти тест
+  await page.getByRole('button', { name: /Ко всем курсам/ }).click();
+  await page.getByText('Режимы игры', { exact: true }).click();
+  await page.getByText('Своё дело', { exact: true }).click();
+  await expect(page.getByText('Другая игра на той же экономике')).toBeVisible();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Тест: своё дело')).toBeVisible();
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
@@ -86,12 +95,27 @@ test('сетевая партия: лобби, вход, пресс-конфер
   let joined = false; let submitted = null;
   const { errors } = await openApp(page, '/?room=E2E', (req) => {
     let body = null; try { body = req.postDataJSON(); } catch { body = null; }
-    if (body && body.action === 'join') { joined = true; return JSON.stringify({ token: 'tok', seat: 'ministry_finance', storage: 'memory', room }); }
+    if (body && body.action === 'register') {
+      return JSON.stringify({ token: 'sess', profile: { login: body.login, name: body.name, emblem: 'star', playerId: body.playerId, stats: {} } });
+    }
+    if (body && body.action === 'join') {
+      if (body.session !== 'sess') return JSON.stringify({ error: 'нет сессии' });
+      joined = true; return JSON.stringify({ token: 'tok', seat: 'ministry_finance', storage: 'memory', room });
+    }
     if (body && body.action === 'submit') submitted = body;
     return JSON.stringify({ room: joined ? room : lobby, storage: 'memory' });
   });
 
   await page.getByText('Минфин', { exact: true }).first().click();
+  // по сети — только с профилем: без него кнопка ведёт в регистрацию
+  await page.getByRole('button', { name: 'Войти в профиль и в партию' }).click();
+  const auth = page.getByRole('dialog', { name: 'Профиль игрока' });
+  await auth.getByLabel('Логин').fill('boris');
+  await auth.getByLabel('Пароль').fill('secret1');
+  await auth.getByLabel('Имя в игре').fill('Борис');
+  await auth.getByRole('button', { name: 'Создать профиль' }).click();
+  await expect(auth).toBeHidden();
+  await expect(page.getByText('@boris')).toBeVisible();
   await page.getByRole('button', { name: 'Войти в партию' }).click();
 
   // на телефоне колонки переключаются вкладками: решения — в первой
@@ -286,8 +310,13 @@ test('своё дело: дерево технологий, команда и с
   const save = { ...snapshotTycoon(makeTycoon({ start: 'farm' })), introSeen: true };
   await page.addInitScript((s) => { localStorage.setItem('ems-tycoon-v1', JSON.stringify({ ...s, savedAt: Date.now() })); }, save);
   await page.goto('/', { waitUntil: 'networkidle' });
-  await page.getByText('Своё дело — продолжить', { exact: true }).click();
+  await page.getByText('Продолжить', { exact: true }).click();
   await expect(page.getByText(/Задание 1 из/)).toBeVisible();
+  // таблица рекордов открывается и зовёт войти в профиль
+  await page.getByRole('button', { name: 'Рекорды' }).click();
+  const recs = page.getByRole('dialog', { name: 'Рекорды «Своего дела»' });
+  await expect(recs.getByText(/войдите в профиль/)).toBeVisible();
+  await recs.getByRole('button', { name: 'Закрыть' }).click();
   await page.getByRole('tab', { name: 'Исследования' }).click();
   await page.getByRole('button', { name: /Кадровое агентство/ }).click();
   await expect(page.getByText('Люди на новые здания набираются вдвое быстрее.')).toBeVisible();
@@ -297,5 +326,92 @@ test('своё дело: дерево технологий, команда и с
   await page.getByRole('button', { name: 'Сохранить сюда' }).first().click();
   await expect.poll(() => saved && saved.kind).toBe('tycoon');
   await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('профиль: регистрация из меню, профиль со статистикой и выход', async ({ page }) => {
+  const { errors } = await openApp(page, '/', (req) => {
+    let body = null; try { body = req.postDataJSON(); } catch { body = null; }
+    const profile = { login: 'anna', name: 'Анна', emblem: 'star', playerId: 'p1', createdAt: Date.now(), stats: { rooms: 3, quarters: 12, leaves: 1 } };
+    if (body && body.action === 'register') return JSON.stringify({ token: 'sess', profile, recoveryCode: 'ABCD-EFGH-JKMN' });
+    if (body && body.action === 'recover') return JSON.stringify({ token: 'sess2', profile, recoveryCode: 'PQRS-TUVW-XYZ2' });
+    if (body && body.action === 'login') return JSON.stringify({ token: 'sess', profile });
+    if (body && body.action === 'me') return JSON.stringify({ profile });
+    if (body && body.action === 'update') return JSON.stringify({ profile: { ...profile, emblem: body.emblem || 'star' } });
+    return '{}';
+  });
+  await page.getByRole('button', { name: 'Войти в профиль' }).click();
+  const auth = page.getByRole('dialog', { name: 'Профиль игрока' });
+  await auth.getByLabel('Логин').fill('anna');
+  await auth.getByLabel('Пароль').fill('secret1');
+  await auth.getByRole('button', { name: 'Создать профиль' }).click();
+  // почты нет — код восстановления показывается один раз, до закрытия окна
+  await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
+  await page.getByRole('button', { name: 'Я сохранил код' }).click();
+  await page.getByRole('button', { name: 'Профиль: Анна' }).click();
+  const prof = page.getByRole('dialog', { name: 'Профиль' });
+  await expect(prof.getByText('Кварталов по сети')).toBeVisible();
+  await expect(prof.getByText('12', { exact: true })).toBeVisible();
+  await prof.getByRole('button', { name: 'Корона' }).click();
+  await expect(prof.getByText('Сохранено')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  await prof.getByRole('button', { name: 'Выйти' }).click();
+  await expect(page.getByRole('button', { name: 'Войти в профиль' })).toBeVisible();
+
+  // забыли пароль: логин, код и новый пароль → новый код
+  await page.getByRole('button', { name: 'Войти в профиль' }).click();
+  await auth.getByRole('tab', { name: 'У меня есть профиль' }).click();
+  await auth.getByRole('button', { name: 'Забыли пароль?' }).click();
+  await auth.getByLabel('Логин').fill('anna');
+  await auth.getByLabel('Код восстановления').fill('abcd-efgh-jkmn');
+  await auth.getByLabel('Новый пароль').fill('fresh12');
+  await auth.getByRole('button', { name: 'Задать новый пароль' }).click();
+  await expect(page.getByTestId('recovery-code')).toHaveText('PQRS-TUVW-XYZ2');
+  await page.getByRole('button', { name: 'Я сохранил код' }).click();
+  await expect(page.getByRole('button', { name: 'Профиль: Анна' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('обучение: практика «требование пенсионеров» решается уступкой', async ({ page }) => {
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.addInitScript(() => localStorage.setItem('ems-course-progress', JSON.stringify({ basics: true, budget: true, fx: true, expectations: true, crisis: true, stabilization: true, pr_capital: true, pr_reforms: true, pr_regime: true })));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Экономическая политика', { exact: true }).first().click();
+  await page.getByText('Общество: семь групп вместо одного рейтинга', { exact: true }).click();
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Тест: общество')).toBeVisible();
+  // ответы теста перемешаны — отвечаем по тексту верного варианта
+  for (const t of ['Силовики в оппозиции', 'Сначала поддержка немного подрастёт', 'Бизнес: дорогой кредит']) await page.getByText(t, { exact: false }).first().click();
+  await page.getByRole('button', { name: 'Проверить ответы' }).click();
+  await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Практика: требование пенсионеров')).toBeVisible();
+  await page.getByRole('button', { name: /Проиндексировать пенсии/ }).click();
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Завершить квартал' }).click();
+  await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('обучение: практика обороны от Дешта — контрудар удерживает фронт', async ({ page }) => {
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.addInitScript(() => localStorage.setItem('ems-course-progress', JSON.stringify({ pr_capital: true, society: true, pr_reforms: true, pr_regime: true })));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Президент', { exact: true }).first().click();
+  await page.getByText('Война, мир и реванш', { exact: true }).click();
+  for (let i = 0; i < 5; i++) await page.getByRole('button', { name: /^Далее/ }).click();
+  for (const t of ['Сначала нужно взять Ледяной перевал', 'Действуют партизаны', 'Признание новой границы', 'Доля обороны держится на новом уровне']) await page.getByText(t, { exact: false }).first().click();
+  await page.getByRole('button', { name: 'Проверить ответы' }).click();
+  await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Практика: отбить наступление Дешта')).toBeVisible();
+  await page.getByRole('button', { name: /Контрудар/ }).click();
+  for (let i = 0; i < 5; i++) {
+    const btn = page.getByRole('button', { name: 'Завершить квартал' });
+    if (!(await btn.isVisible())) break;
+    await btn.click();
+  }
+  await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
   expect(errors).toEqual([]);
 });

@@ -25,7 +25,7 @@ import {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
   GlobalStyle, THEMES, StateSeal, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
-  isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown,
+  isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount,
   DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel,
 } from './MacroSimulator.jsx';
 
@@ -2188,6 +2188,8 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
   const played = dailyPlayed(daily, quarterIndex);
   const goal = GOALS.find((g) => g.id === goalId);
   const [name, setName] = useState(() => loadDailyName() || `Игрок ${getPlayerId().slice(-4).toUpperCase()}`);
+  // с профилем таблица подписывается его именем — поле ввода не нужно
+  const account = useAccount();
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
   const send = React.useCallback(async (nm) => {
@@ -2196,11 +2198,11 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
       const scores = {};
       DAILY_SCORE_KEYS.forEach((k) => { scores[k] = economy[`score${k.charAt(0).toUpperCase()}${k.slice(1)}`]; });
       const res = await submitDailyResult({ playerId: getPlayerId(), day: daily.day, name: nm, score, role,
-        quarters: played, defeated: !!defeat, scores });
+        quarters: played, defeated: !!defeat, scores, session: account ? account.token : undefined });
       setBoard(res);
     } catch (e) { setErr(e.message || 'Не удалось отправить результат'); }
     setSending(false);
-  }, [daily.day, economy, score, role, played, defeat, setBoard]);
+  }, [daily.day, economy, score, role, played, defeat, setBoard, account]);
   // результат уходит в таблицу сам, как только партия закончилась: имя можно
   // поменять и отправить ещё раз — сервер заменит подпись, а балл оставит лучший
   React.useEffect(() => {
@@ -2243,8 +2245,13 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
             );
           })}
         </div>
+        {account ? (
+          <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12 }}>
+            В таблице — под профилем <b style={{ color: COLOR.text }}>{account.name}</b>.
+          </div>
+        ) : (<>
         <label style={{ display: 'block', fontSize: 11, color: COLOR.faint, marginBottom: 4 }} htmlFor="daily-name">Имя в таблице</label>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
           <input id="daily-name" className="ems-input" value={name} maxLength={24}
             onChange={(e) => setName(e.target.value)}
             style={{ flex: 1, minWidth: 0, padding: '7px 9px', fontSize: 12.5, background: COLOR.panelAlt, color: COLOR.text, border: `1px solid ${COLOR.border}` }} />
@@ -2253,6 +2260,8 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
             {sending ? 'Отправляем…' : board ? 'Обновить' : 'Отправить'}
           </button>
         </div>
+        <div style={{ fontSize: 10.5, color: COLOR.faint, marginBottom: 12 }}>Войдите в профиль в главном меню — и результат запишется под вашим именем со значком.</div>
+        </>)}
         {err && <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 8 }}>{err}</div>}
         {board && board.you && (
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 8 }}>
@@ -2399,7 +2408,7 @@ function drawResultCard(canvas, data) {
   ctx.textAlign = 'center';
   ctx.fillStyle = COLOR.goldSoft;
   ctx.font = `600 14px ${FONT.sans}`;
-  ctx.fillText('С Т Р А Н А   —   Э К О Н О М И Ч Е С К А Я   П А Н Е Л Ь', W / 2, 46);
+  ctx.fillText('I N F L A T I A', W / 2, 46);
 
   ctx.fillStyle = COLOR.text;
   ctx.font = `700 38px ${FONT.serif}`;
@@ -2448,13 +2457,13 @@ export function ResultCardModal({ data, onClose }) {
     const canvas = canvasRef.current; if (!canvas) return;
     const a = document.createElement('a');
     a.href = canvas.toDataURL('image/png');
-    a.download = `ekonomicheskaya-panel-${data.quarterIndex}kv.png`;
+    a.download = `inflatia-${data.quarterIndex}kv.png`;
     a.click();
     Audio.play('click');
   };
   const copyText = async () => {
     const lines = [
-      'Экономическая панель государства',
+      'Inflatia — симулятор государства и бизнеса',
       `Роль: ${data.roleLabel}`,
       `Отыграно: ${data.quarterIndex} ${data.quarterWord} (${data.years} лет)`,
       `Итог: ${data.outcome}`,
@@ -3085,7 +3094,7 @@ function InstitutionsPanel({ economy, cbAction, mofAction }) {
 /* ============================ МЕЖВЕДОМСТВЕННЫЕ ЗАПРОСЫ ============================ */
 function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
   if (!botRole || botRole === 'both') return null;
-  const options = REQUESTS.filter((r) => r.from === role);
+  const options = REQUESTS.filter((r) => r.from === role && !r.presidentOnly);
   if (!options.length) return null;
   const cur = options.find((r) => r.id === pending);
   const target = botRole === 'central_bank' ? 'Центральному банку' : 'Минфину';
