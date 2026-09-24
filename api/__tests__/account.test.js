@@ -162,3 +162,18 @@ describe('места в сетевой комнате закреплены за 
     expect(me.data.profile.stats).toMatchObject({ rooms: 1, leaves: 1 });
   });
 });
+
+describe('рекорды «Своего дела»', () => {
+  it('записывают только из профиля; хранится лучший результат, имя из профиля', async () => {
+    const { default: records } = await import('../records.js');
+    const rec = (body) => call(records, body);
+    expect((await rec({ kind: 'tycoon', value: 500 })).status).toBe(401);
+    const reg = await acc({ action: 'register', login: uniq('tyc'), password: 'secret1', name: 'Магнат' });
+    const a = await rec({ kind: 'tycoon', session: reg.data.token, value: 500, start: 'farm', quarters: 12 });
+    expect(a.data.you).toMatchObject({ name: 'Магнат', value: 500, start: 'farm' });
+    const b = await rec({ kind: 'tycoon', session: reg.data.token, value: 300 });
+    expect(b.data.you.value).toBe(500);
+    expect(b.data.improved).toBe(false);
+    expect((await rec({ kind: 'tycoon', session: reg.data.token, value: 1e9 })).status).toBe(400);
+  });
+});

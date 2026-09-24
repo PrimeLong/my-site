@@ -531,6 +531,17 @@ const QUARTER_TIMEOUT_MS = 5 * 60 * 1000; // держим в синхроне с
 export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const { id, seat, token, ownerToken } = network;
   const isOwner = !!ownerToken;
+  // приглашение: на телефоне — системное «Поделиться», иначе ссылка в буфер
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const inviteFriend = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?room=${id}`;
+    Audio.play('click');
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Сетевая партия', text: `Заходи в мою партию, комната ${id}`, url }); return; }
+      await navigator.clipboard.writeText(url);
+      setInviteCopied(true); setTimeout(() => setInviteCopied(false), 1800);
+    } catch { /* отменили «Поделиться» или буфер недоступен — код комнаты виден в шапке */ }
+  };
   const [kickBusy, setKickBusy] = useState(null);
   const [room, setRoom] = useState(network.room);
   const [decisions, setDecisions] = useState(() => defaultDecisions(network.room.economy));
@@ -1420,7 +1431,10 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 <div key={sx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '6px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
                   <Icon size={13} color={isMe ? COLOR.gold : COLOR.muted} />
                   <span style={{ flex: 1, color: isMe ? COLOR.text : COLOR.muted }}>
-                    {rd.short}{isMe ? ' (вы)' : ''} — {room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'свободно' : 'бот')}
+                    {rd.short}{isMe ? ' (вы)' : ''} — {room.occupied[sx] && (room.emblems || {})[sx] && (() => {
+                      const Em = emblemIcon(room.emblems[sx]);
+                      return <Em size={11} color={COLOR.gold} style={{ verticalAlign: -1, marginRight: 3 }} aria-label="профиль" />;
+                    })()}{room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'свободно' : 'бот')}
                   </span>
                   <span className="ems-mono" style={{ fontSize: 10.5, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
                     {room.ready[sx] ? 'готово' : 'думает'}
@@ -1434,6 +1448,13 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 </div>
               );
             })}
+            {/* свободное место — позвать друга: ссылка открывает эту комнату сразу */}
+            {roomSeats.some((sx) => !room.occupied[sx]) && (
+              <button className="ems-btn" style={{ marginTop: 9, width: '100%', padding: '7px 0', fontSize: 12 }} onClick={inviteFriend}>
+                {inviteCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 5 }} /> : <Share2 size={12} style={{ verticalAlign: -2, marginRight: 5 }} />}
+                {inviteCopied ? 'Ссылка скопирована' : 'Пригласить друга'}
+              </button>
+            )}
             <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.4 }}>
               Код комнаты для второго игрока: <b className="ems-mono" style={{ color: COLOR.text }}>{room.id}</b>
             </div>

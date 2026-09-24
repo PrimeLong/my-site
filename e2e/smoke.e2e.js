@@ -312,6 +312,11 @@ test('своё дело: дерево технологий, команда и с
   await page.goto('/', { waitUntil: 'networkidle' });
   await page.getByText('Продолжить', { exact: true }).click();
   await expect(page.getByText(/Задание 1 из/)).toBeVisible();
+  // таблица рекордов открывается и зовёт войти в профиль
+  await page.getByRole('button', { name: 'Рекорды' }).click();
+  const recs = page.getByRole('dialog', { name: 'Рекорды «Своего дела»' });
+  await expect(recs.getByText(/войдите в профиль/)).toBeVisible();
+  await recs.getByRole('button', { name: 'Закрыть' }).click();
   await page.getByRole('tab', { name: 'Исследования' }).click();
   await page.getByRole('button', { name: /Кадровое агентство/ }).click();
   await expect(page.getByText('Люди на новые здания набираются вдвое быстрее.')).toBeVisible();

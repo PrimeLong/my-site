@@ -132,3 +132,15 @@ export const accountPassword = (token, oldPassword, newPassword) => post({ actio
 export const accountLogout = (token) => post({ action: 'logout', token }, ACCOUNT_API);
 export const accountRecover = (login, code, newPassword) => post({ action: 'recover', login, code, newPassword }, ACCOUNT_API);
 export const accountRecoveryNew = (token, password) => post({ action: 'recovery_new', token, password }, ACCOUNT_API);
+
+/* Таблица рекордов «Своего дела» (api/records.js): записаться можно только из профиля. */
+const RECORDS_API = '/api/records';
+export async function fetchRecords(kind = 'tycoon', login) {
+  const params = new URLSearchParams({ kind });
+  if (login) params.set('login', login);
+  const r = await fetch(`${RECORDS_API}?${params.toString()}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Таблица рекордов недоступна');
+  return data;
+}
+export const submitRecord = (session, payload) => post({ kind: 'tycoon', session, ...payload }, RECORDS_API);

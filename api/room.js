@@ -275,6 +275,8 @@ export const publicView = (room) => {
     economy: room.economy, history: room.history, news: room.news.slice(0, 120),
     report: room.report, reasons: room.reasons, stories: room.stories,
     names: room.names,
+    // значок профиля на месте — партнёр видит, что за местом живой игрок с профилем
+    emblems: room.emblems || {},
     ready: perSeat((sx) => !!room.submissions[sx]),
     occupied: perSeat((sx) => !!room.seats[sx]),
     connected: perSeat(isConnected),
@@ -673,6 +675,7 @@ async function handleRequest(req, res) {
       const t = token();
       const next = { ...room, seats: { ...room.seats, [seat]: t },
         names: { ...room.names, [seat]: user.name },
+        emblems: { ...room.emblems, [seat]: user.emblem || 'star' },
         accounts: { ...room.accounts, [seat]: user.login }, left,
         everJoined: firstTime ? [...(room.everJoined || []), user.login].slice(-20) : room.everJoined,
         version: room.version + 1, __token: t };
@@ -789,7 +792,7 @@ async function handleRequest(req, res) {
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
       leaver = (room.accounts || {})[seat] || null;
       const accounts = { ...room.accounts }; delete accounts[seat];
-      return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
+      return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null }, emblems: { ...room.emblems, [seat]: null },
         submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
         accounts, left: leaver ? { ...room.left, [leaver]: { seat, at: Date.now() } } : room.left,
         version: room.version + 1 };
@@ -811,7 +814,7 @@ async function handleRequest(req, res) {
       // выгнанному место не держится, но и вернуться сразу он не может
       const kicked = (room.accounts || {})[seat] || null;
       const accounts = { ...room.accounts }; delete accounts[seat];
-      return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
+      return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null }, emblems: { ...room.emblems, [seat]: null },
         submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
         accounts, left: kicked ? { ...room.left, [kicked]: { seat, at: Date.now(), kicked: true } } : room.left,
         version: room.version + 1 };

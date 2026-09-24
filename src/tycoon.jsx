@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import {
   COLOR, Audio, AudioControls, GlobalStyle, ACHIEVEMENTS, ACHIEVEMENTS_KEY, loadUnlockedAchievements, TYCOON_SAVE_KEY,
-  TYCOON_META_KEY, loadTycoonMeta, getPlayerId,
+  TYCOON_META_KEY, loadTycoonMeta, getPlayerId, loadAccount, emblemIcon,
 } from './MacroSimulator.jsx';
-import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot } from './lib/client.js';
+import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot, fetchRecords, submitRecord } from './lib/client.js';
 import { BusinessMap } from './countrymap.jsx';
 import { PlanSlider, Toggle, Row, MiniSpark } from './business.jsx';
 import { fmtMln, fmt1, fmtSigned1, quarterLabel, getCbPersona, getMofPersona, getPresPersona, POLITICAL_REGIME_INFO, SCENARIOS } from './lib/engine.js';
@@ -98,6 +98,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   const [region, setRegion] = useState(() => (boot.st.buildings[0] ? boot.st.buildings[0].region : 'capital'));
   const [hoverType, setHoverType] = useState(null);
   const [showSaves, setShowSaves] = useState(false);
+  const [showRecords, setShowRecords] = useState(false);
   const [toasts, setToasts] = useState([]);
   const stRef = useRef(st);
   stRef.current = st;
@@ -143,6 +144,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     if (st.history.length >= 4 && T.ownerWealth(st) >= 3 * Math.max(1, st.value0 || 1)) ids.push('biz_triple');
     if (st.setup.scenario !== 'sandbox' && st.history.length >= 12 && !st.bankrupt) ids.push('biz_survivor');
     unlockAch(ids).forEach((a) => { Audio.play('coin'); toast(`Достижение: ${a.title}`, 'gold'); });
+    sendRecord(st);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
@@ -199,7 +201,9 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     <div className="ems-root" style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
       <GlobalStyle />
       <style>{TY_CSS}</style>
-      <TyHeader st={st} setSt={setSt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }} />
+      <TyHeader st={st} setSt={setSt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
+        onRecords={() => { Audio.play('click'); setShowRecords(true); }} />
+      {showRecords && <RecordsModal st={st} onClose={() => setShowRecords(false)} />}
       <QuestCard st={st} act={act} onGo={(t) => { Audio.play('tab'); setTab(t); }} />
       {st.log[0] && (
         <div style={{ padding: '8px 18px', fontSize: 11.5, color: COLOR.muted, borderBottom: `1px solid ${COLOR.hairline}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -298,6 +302,68 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   );
 }
 
+/* Рекорд уходит в общую таблицу раз в квартал страны и только если вырос заметно
+   (на 2%): таблица — про лучший результат, а не про каждую минуту игры. */
+const RECORD_SENT_KEY = 'ems-tycoon-record-sent';
+function sendRecord(st) {
+  const account = loadAccount();
+  if (!account) return;
+  const value = T.companyValue(st);
+  let sent = 0;
+  try { sent = Number(localStorage.getItem(RECORD_SENT_KEY)) || 0; } catch { /* приватный режим */ }
+  if (!(value > 0) || value <= sent * 1.02) return;
+  try { localStorage.setItem(RECORD_SENT_KEY, String(value)); } catch { /* приватный режим */ }
+  submitRecord(account.token, { value, start: st.setup.start, quarters: st.history.length, legacy: st.legacy || 0 }).catch(() => {
+    try { localStorage.setItem(RECORD_SENT_KEY, String(sent)); } catch { /* повторим в следующем квартале */ }
+  });
+}
+
+const START_LABEL = { farm: 'ферма', retail: 'лавка', factory: 'лесопилка' };
+function RecordsModal({ st, onClose }) {
+  const account = loadAccount();
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let alive = true;
+    fetchRecords('tycoon', account ? account.login : undefined)
+      .then((d) => { if (alive) setData(d); }).catch((e) => { if (alive) setErr(e.message); });
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const rows = (data && data.rows) || [];
+  const you = data && data.you && !rows.some((r) => r.you) ? data.you : null;
+  const row = (r) => {
+    const Em = emblemIcon(r.emblem);
+    return (
+      <div key={r.login} style={{ display: 'grid', gridTemplateColumns: '24px minmax(0,1fr) auto', gap: 8, alignItems: 'center', padding: '6px 9px', fontSize: 12,
+        background: r.you ? COLOR.goldDim : COLOR.panelAlt, border: `1px solid ${r.you ? COLOR.gold : COLOR.border}` }}>
+        <span className="ems-mono" style={{ color: r.rank <= 3 ? COLOR.gold : COLOR.faint, fontWeight: 600 }}>{r.rank}</span>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Em size={11} color={COLOR.gold} style={{ verticalAlign: -1, marginRight: 4 }} />{r.name}{r.you ? ' (вы)' : ''}
+          <span style={{ color: COLOR.faint, fontSize: 10.5 }}>{r.start ? ` · ${START_LABEL[r.start] || r.start}` : ''}{r.legacy ? ` · репутация ${r.legacy}` : ''}</span>
+        </span>
+        <span className="ems-mono" style={{ fontWeight: 600, color: r.you ? COLOR.gold : COLOR.text }}>{money(r.value)}</span>
+      </div>
+    );
+  };
+  return (
+    <Modal title="Рекорды «Своего дела»" onClose={onClose}>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+        Лучшая стоимость компании каждого игрока. Ваша сейчас — <b className="ems-mono" style={{ color: COLOR.text }}>{money(T.companyValue(st))}</b>.
+        {account ? ' Рекорд записывается сам раз в квартал, когда растёт.' : ' Чтобы попасть в таблицу, войдите в профиль в главном меню.'}
+      </div>
+      {err && <div style={{ fontSize: 12, color: COLOR.rust }}>{err}</div>}
+      {!data && !err && <div style={{ fontSize: 12, color: COLOR.faint }}>Загружаем…</div>}
+      {data && !rows.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Пока пусто — станьте первым.</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '55vh', overflowY: 'auto' }}>
+        {rows.map(row)}
+        {you && <div style={{ textAlign: 'center', color: COLOR.faint, fontSize: 11, lineHeight: 1 }}>⋯</div>}
+        {you && row(you)}
+      </div>
+    </Modal>
+  );
+}
+
 function Modal({ title, children, onClose, tone }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.82)', zIndex: 85, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
@@ -315,7 +381,7 @@ function Modal({ title, children, onClose, tone }) {
 }
 
 /* ------------------------------ ШАПКА ------------------------------ */
-function TyHeader({ st, setSt, onExit, onSaves }) {
+function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
   const e = st.country.economy;
   const net = st.stats.income - st.stats.costs;
   const value = T.companyValue(st);
@@ -359,6 +425,9 @@ function TyHeader({ st, setSt, onExit, onSaves }) {
           ))}
         </div>
         <AudioControls />
+        <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }} onClick={onRecords}>
+          <Trophy size={13} />Рекорды
+        </button>
         <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }} onClick={onSaves}>
           <Save size={13} />Партии
         </button>

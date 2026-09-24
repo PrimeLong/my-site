@@ -168,3 +168,15 @@ export async function hit(key, ttlSeconds) {
   mem.set(`hit:${key}`, next);
   return next.n;
 }
+
+/* Таблицы рекордов (пока одна — «Своё дело»): хэш records:<вид>, поле — логин
+   профиля, значение — лучший результат. Бессрочные: рекорд на то и рекорд. */
+export async function getRecords(kind) {
+  if (redis) return (await redis.hgetall(`records:${kind}`)) || {};
+  return { ...mem.get(`records:${kind}`) };
+}
+export async function setRecord(kind, key, entry) {
+  if (redis) { await redis.hset(`records:${kind}`, { [key]: entry }); return true; }
+  mem.set(`records:${kind}`, { ...mem.get(`records:${kind}`), [key]: entry });
+  return true;
+}
