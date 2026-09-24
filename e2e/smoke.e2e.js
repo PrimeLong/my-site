@@ -67,6 +67,12 @@ test('одиночная партия: квартал проходит, газе
     await expect(page.getByText('Карта открыта во весь экран.')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'Развернуть карту на весь экран' })).toBeVisible();
+    // мир больше листа: карту можно отдалить до всего мира и вернуться к своей стране
+    await page.getByRole('button', { name: 'Отдалить карту' }).click();
+    await page.getByRole('button', { name: 'Отдалить карту' }).click();
+    await expect(page.getByRole('button', { name: 'Отдалить карту' })).toBeDisabled();
+    await page.getByRole('button', { name: 'Вернуться к нашей стране' }).click();
+    await expect(page.getByRole('button', { name: 'Вернуться к нашей стране' })).toBeHidden();
   }
   expect(errors).toEqual([]);
 });
