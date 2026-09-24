@@ -238,6 +238,7 @@ export function regionsOpen(st) {
   return REGION_IDS.filter((id) => ids.includes(id));
 }
 export const regionName = (id) => (regionById(id) || {}).short || id;
+export const regionFullName = (id) => (regionById(id) || {}).name || id;
 
 // можно ли строить здание в области и с каким бонусом (null — нельзя)
 export function siteBonus(type, region) {

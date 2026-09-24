@@ -285,7 +285,11 @@ test('своё дело: старт из меню, время идёт, стро
     await page.getByRole('tab', { name }).click();
   }
   await expect(page.getByText('Хлебозавод').first()).toBeVisible();
+  await expect(page.getByText(/автосохранение/)).toBeVisible();
   await expectNoSidewaysScroll(page);
+  // перезагрузка страницы открывает то же дело, а не меню
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.getByLabel('Деньги на счёте')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

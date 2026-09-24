@@ -50,8 +50,9 @@ const TY_CSS = `
   @media (prefers-reduced-motion: reduce) { .ty-work > span, .ty-pulse, .ty-toast { animation: none; } }
 `;
 
+// возвращает время сохранения — или 0, если браузер не дал записать
 function saveLocal(st) {
-  try { localStorage.setItem(TYCOON_SAVE_KEY, JSON.stringify(T.snapshotTycoon(st))); } catch { /* квота или приватный режим */ }
+  try { const snap = T.snapshotTycoon(st); localStorage.setItem(TYCOON_SAVE_KEY, JSON.stringify(snap)); return snap.savedAt; } catch { return 0; /* квота или приватный режим */ }
 }
 function saveMeta(meta) {
   try { localStorage.setItem(TYCOON_META_KEY, JSON.stringify(meta)); } catch { /* см. выше */ }
@@ -102,6 +103,9 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   const [toasts, setToasts] = useState([]);
   const stRef = useRef(st);
   stRef.current = st;
+  // когда партия в последний раз легла в браузер — видно в шапке, чтобы не гадать, сохраняется ли она
+  const discarded = useRef(false);
+  const [savedAt, setSavedAt] = useState(() => (initial && Number(initial.savedAt)) || 0);
 
   const toast = (text, tone = 'info') => {
     const id = `${Date.now()}${Math.random()}`;
@@ -120,13 +124,16 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     }, 500);
     return () => clearInterval(id);
   }, []);
-  // автосохранение: каждые пять секунд и при уходе со страницы
+  // автосохранение: сразу при входе, каждые пять секунд и при уходе со страницы
   useEffect(() => {
-    const id = setInterval(() => saveLocal(stRef.current), 5000);
-    const onHide = () => saveLocal(stRef.current);
+    const save = () => { if (discarded.current) return; const t = saveLocal(stRef.current); if (t) setSavedAt(t); };
+    save();
+    const id = setInterval(save, 5000);
+    const onHide = () => { if (!discarded.current) saveLocal(stRef.current); };
     window.addEventListener('pagehide', onHide);
     document.addEventListener('visibilitychange', onHide);
-    return () => { clearInterval(id); window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onHide); saveLocal(stRef.current); };
+    // партию, выброшенную после банкротства, при закрытии экрана не записываем обратно
+    return () => { clearInterval(id); window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onHide); if (!discarded.current) saveLocal(stRef.current); };
   }, []);
   useEffect(() => { Audio.setRole('trader'); return () => Audio.setRole(null); }, []);
 
@@ -145,6 +152,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     if (st.setup.scenario !== 'sandbox' && st.history.length >= 12 && !st.bankrupt) ids.push('biz_survivor');
     unlockAch(ids).forEach((a) => { Audio.play('coin'); toast(`Достижение: ${a.title}`, 'gold'); });
     sendRecord(st);
+    // смена квартала — веха: сохраняемся сразу, не дожидаясь пятисекундного таймера
+    { const t = saveLocal(st); if (t) setSavedAt(t); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
@@ -201,7 +210,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     <div className="ems-root" style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
       <GlobalStyle />
       <style>{TY_CSS}</style>
-      <TyHeader st={st} setSt={setSt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
+      <TyHeader st={st} setSt={setSt} savedAt={savedAt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
         onRecords={() => { Audio.play('click'); setShowRecords(true); }} />
       {showRecords && <RecordsModal st={st} onClose={() => setShowRecords(false)} />}
       <QuestCard st={st} act={act} onGo={(t) => { Audio.play('tab'); setTab(t); }} />
@@ -287,7 +296,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
               const fresh = T.makeTycoon({ ...st.setup, legacy: loadTycoonMeta().legacy || 0 });
               setSt(fresh); setRegion(fresh.buildings[0].region);
             }}>Начать заново</button>
-            <button className="ems-btn" style={{ flex: 1 }} onClick={() => { try { localStorage.removeItem(TYCOON_SAVE_KEY); } catch { /* нет */ } onExit(); }}>В меню</button>
+            <button className="ems-btn" style={{ flex: 1 }} onClick={() => { discarded.current = true; try { localStorage.removeItem(TYCOON_SAVE_KEY); } catch { /* нет */ } onExit(); }}>В меню</button>
           </div>
         </Modal>
       )}
@@ -381,7 +390,11 @@ function Modal({ title, children, onClose, tone }) {
 }
 
 /* ------------------------------ ШАПКА ------------------------------ */
-function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
+function savedAgo(t) {
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  return s < 5 ? 'только что' : s < 60 ? `${s} с назад` : `${Math.round(s / 60)} мин назад`;
+}
+function TyHeader({ st, setSt, savedAt, onExit, onSaves, onRecords }) {
   const e = st.country.economy;
   const net = st.stats.income - st.stats.costs;
   const value = T.companyValue(st);
@@ -447,6 +460,10 @@ function TyHeader({ st, setSt, onExit, onSaves, onRecords }) {
           </span>
         )}
         {st.paused && <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 999, background: COLOR.goldDim, color: COLOR.goldSoft }}>пауза</span>}
+        <span aria-live="off" title="Партия сама сохраняется в этом браузере каждые пять секунд, в конце квартала и при закрытии вкладки; после перезагрузки страницы она откроется с того же места"
+          style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 8px', borderRadius: 999, color: savedAt ? COLOR.teal : COLOR.rust, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <Save size={11} />{savedAt ? `автосохранение · ${savedAgo(savedAt)}` : 'браузер не даёт сохранять'}
+        </span>
       </div>
     </div>
   );
@@ -476,7 +493,7 @@ function RegionPanel({ st, region, act, setHoverType }) {
   return (
     <div className="ems-panel" style={{ padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-        <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>{T.regionName(reg)} область</span>
+        <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>{T.regionFullName(reg)}</span>
         <span style={{ fontSize: 11, color: COLOR.faint }}>участков {used} из {slots}</span>
         <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 9px', fontSize: 11 }}
           onClick={() => act((s) => T.buySlot(s, reg), 'coin')}>+ участок · {money(T.slotCost(st, reg))}</button>
