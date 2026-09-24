@@ -3218,7 +3218,7 @@ export function ResultCardModal({ data, onClose }) {
 
 // столько же, сколько в api/solo.js: слоты хранятся на сервере, клиент только рисует
 const SOLO_SLOT_COUNT = 4;
-function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
+function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved, activeSlot }) {
   useEscapeClose(onClose);
   const [tab, setTab] = useState(mode || 'save');
   const [error, setError] = useState('');
@@ -3244,7 +3244,8 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
   };
   const saveToSlot = async (idx) => {
     if (!snapshot) return;
-    if (slots[idx] && !window.confirm(`Перезаписать «${slots[idx].name || `слот ${idx + 1}`}»?`)) return;
+    // в свой же слот — это просто сохранить текущую партию, спрашивать не о чем
+    if (slots[idx] && idx !== activeSlot && !window.confirm(`Перезаписать «${slots[idx].name || `слот ${idx + 1}`}»?`)) return;
     setBusyIdx(idx); setError('');
     try {
       validateSnapshot(snapshot);
@@ -3300,6 +3301,14 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
             ? `Партия хранится на сервере — как и сетевые комнаты. ${SOLO_SLOT_COUNT} слота на это устройство, каждому можно дать своё название.`
             : 'Выберите слот, чтобы вернуться в сохранённую партию. Текущая партия будет заменена.'}
         </div>
+        {/* где вы сейчас играете: раньше слот текущей партии ничем не выделялся */}
+        {slots !== null && (
+          <div style={{ fontSize: 11.5, marginBottom: 10, lineHeight: 1.45, color: Number.isFinite(activeSlot) ? COLOR.teal : COLOR.gold }}>
+            {Number.isFinite(activeSlot)
+              ? `Сейчас вы играете в слоте ${activeSlot + 1}${slots[activeSlot] && slots[activeSlot].name ? ` — «${slots[activeSlot].name}»` : ''}: каждый квартал он обновляется сам.`
+              : 'Текущая партия ещё не привязана к слоту: сохраните её, чтобы она не пропала при очистке браузера.'}
+          </div>
+        )}
         {storageMode === 'memory' && (
           <div style={{ fontSize: 11, color: COLOR.rust, marginBottom: 10, lineHeight: 1.4 }}>
             Сервер не подключён к общему хранилищу — сохранение может пропасть между запросами.
@@ -3310,14 +3319,20 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
           <div style={{ fontSize: 12, color: COLOR.muted }}>Загружаем слоты…</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {slots.map((slot, idx) => (
-              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px',
-                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12 }}>
+            {slots.map((slot, idx) => {
+              const current = idx === activeSlot;
+              return (
+              <div key={idx} aria-current={current ? 'true' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                background: current ? COLOR.goldDim : COLOR.panelAlt, border: `1px solid ${current ? COLOR.gold : COLOR.border}`, borderRadius: 8, fontSize: 12 }}>
                 <span style={{ flex: 1, minWidth: 0, color: slot ? COLOR.text : COLOR.faint }}>
                   {slot ? (
                     <>
-                      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {slot.name || `Слот ${idx + 1}`}
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{slot.name || `Слот ${idx + 1}`}</span>
+                        {current && (
+                          <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em', color: COLOR.ink, background: COLOR.gold,
+                            borderRadius: 999, padding: '1px 7px' }}>СЕЙЧАС ИГРАЕТЕ</span>
+                        )}
                       </span>
                       <span style={{ fontSize: 10.5, color: COLOR.faint }}>{slotLabel(slot)}</span>
                     </>
@@ -3330,7 +3345,7 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
                 )}
                 {tab === 'save' && snapshot && (
                   <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 10.5 }} disabled={busyIdx === idx} onClick={() => saveToSlot(idx)}>
-                    {busyIdx === idx ? 'Сохраняем…' : (slot ? 'Перезаписать' : 'Сохранить')}
+                    {busyIdx === idx ? 'Сохраняем…' : current ? 'Сохранить' : (slot ? 'Перезаписать' : 'Сохранить')}
                   </button>
                 )}
                 {tab === 'load' && slot && (
@@ -3345,7 +3360,8 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved }) {
                   </>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {error && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 10 }}>{error}</div>}
@@ -5103,7 +5119,8 @@ export const ALL_METRICS = (() => {
     });
   return m;
 })();
-const DEFAULT_PINS = ['gdp', 'outputGap', 'inflation', 'unemployment', 'debtToGdp'];
+// шесть: главная плитка на две ячейки + пять — ровные ряды и на компьютере, и на телефоне (2 в ряд)
+const DEFAULT_PINS = ['gdp', 'outputGap', 'inflation', 'unemployment', 'keyRate', 'debtToGdp'];
 export const MAX_PINS = 8;
 
 function PinButton({ active, onClick }) {
@@ -5829,7 +5846,7 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
           <NewspaperModal news={newsFeed} history={history} quarterIndex={quarterIndex} economy={economy} onClose={() => setShowPaper(false)} />
         </Suspense>
       )}
-      {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} onClose={() => setSaveModal(null)}
+      {saveModal && <SaveLoadModal mode={saveModal} snapshot={snapshot()} activeSlot={activeSlot} onClose={() => setSaveModal(null)}
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} onSaved={setActiveSlot} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
@@ -5993,7 +6010,9 @@ function GameScreen({ setup, initial, onRestart, onLoadState, theme, setTheme })
             );
           })}
           {pinned.length < MAX_PINS && (
-            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed' }}>
+            /* подсказка растягивается до конца ряда: главная плитка занимает две ячейки,
+               и без этого последний ряд оставался с дыркой */
+            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed', gridColumn: 'auto / -1', minHeight: 64 }}>
               <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
                 <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
               </span>

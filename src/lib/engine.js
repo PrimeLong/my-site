@@ -1737,16 +1737,29 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   const score = req.fit(economy) + (req.bias[persona.id] || 0) + authority
     + clamp((economy.approval - 50) / 55, -0.9, 0.9)
     - (str - 1) * 0.8;
-  const status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
-  const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
+  let status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
+  /* Ведомство могло и само идти в ту же сторону: ЦБ снижает ставку по своим
+     причинам, а президент как раз этого и требует. Раньше в ленте стояло
+     «ОТКАЗ» — и следующей строкой «ЦБ снизил ставку». Теперь собственное решение
+     ведомства засчитывается: совпало с требованием — исполнено, шаг в ту же
+     сторону, но меньше — частично. Уступки сверх своего решения тут нет, поэтому
+     и удара по независимости ЦБ тоже нет. */
+  const own = directiveProgress(reqId, economy, decisions, economy, str);
+  let byOwn = false;
+  if (Number.isFinite(own) && own >= 0.9 && status !== 'accepted') { status = 'accepted'; byOwn = true; }
+  else if (Number.isFinite(own) && own >= 0.3 && status === 'rejected') { status = 'partial'; byOwn = true; }
+  const k = byOwn ? 0 : status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
   // независимость ЦБ — не декларация, а то, насколько заметно он выполняет
   // политические указания; рынок это видит и переоценивает якорь ожиданий
-  const credibilityHit = toCb ? -7 * k : 0;
+  const credibilityHit = toCb && k > 0 ? -7 * k : 0;
   const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions;
+  const ownNote = byOwn ? (status === 'accepted'
+    ? 'Ведомство и без указания шло в ту же сторону — решение совпало с требованием. '
+    : 'Шаг в ту же сторону ведомство сделало по своим причинам, но меньше, чем требовали. ') : '';
   return {
     req, status, score, toCb, persona, strength: str, ask: askText(req, str, 'president', regime),
-    decisions: finalDecisions,
-    text: requestOutcomeText(req, status, economy, finalDecisions),
+    decisions: finalDecisions, byOwn,
+    text: ownNote + requestOutcomeText(req, status, economy, finalDecisions),
     credibilityHit,
     tension: status === 'rejected' ? 5 : 0,
     coordination: status === 'accepted' ? 5 : status === 'partial' ? 2 : -6,
@@ -5279,42 +5292,42 @@ function warFrontRegion(economy) {
    Достроенная — навсегда снижает напряжение округа (relief) и даёт свой эффект
    на экономику. Запускает стройку Минфин; живой президент — поверх него. */
 const REGION_PROJECTS = [
-  { id: 'metro', region: 'capital', name: 'Велеградское метро', quarters: 8, cost: 0.35, relief: 12,
+  { id: 'metro', region: 'capital', name: 'Велеградское метро', doneHeadline: 'ОТКРЫТО ВЕЛЕГРАДСКОЕ МЕТРО', quarters: 8, cost: 0.35, relief: 12,
     effect: 'Инфраструктура и доверие к власти: столица видит результат каждый день.',
     done: (d) => [makeImpulse('infrastructureIndex', 2.5, 'Открыто велеградское метро', 'fast', d, 'other'),
       makeImpulse('approvalPush', 2.5, 'Открыто велеградское метро', 'fast', d, 'other')] },
-  { id: 'deepport', region: 'port', name: 'Глубоководный порт', quarters: 6, cost: 0.3, relief: 12,
+  { id: 'deepport', region: 'port', name: 'Глубоководный порт', doneHeadline: 'ОТКРЫТ ГЛУБОКОВОДНЫЙ ПОРТ В ЯНТАРСКЕ', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Экспорт растёт: к причалам встают суда, которые раньше шли к соседям.',
     done: (d) => [sustainedImpulse('exportsGrowth', 1.2, 4, 'Глубоководный порт принимает крупные суда'),
       makeImpulse('infrastructureIndex', 1.5, 'Глубоководный порт', 'fast', d, 'other')] },
-  { id: 'factories', region: 'industry', name: 'Модернизация заводов', quarters: 6, cost: 0.3, relief: 12,
+  { id: 'factories', region: 'industry', name: 'Модернизация заводов', doneHeadline: 'ЗАВОДЫ КУЗНЕЦКА МОДЕРНИЗИРОВАНЫ', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Производительность: новые станки выпускают больше тем же числом рук.',
     done: (d) => [makeImpulse('productivity', 1.6, 'Заводы Кузнецкой области модернизированы', 'slow', d, 'other')] },
-  { id: 'irrigation', region: 'agri', name: 'Ирригация и элеваторы', quarters: 4, cost: 0.2, relief: 12,
+  { id: 'irrigation', region: 'agri', name: 'Ирригация и элеваторы', doneHeadline: 'ИРРИГАЦИЯ И ЭЛЕВАТОРЫ ПРИРЕЧЬЯ ГОТОВЫ', quarters: 4, cost: 0.2, relief: 12,
     effect: 'Дешевле продовольствие: урожай меньше зависит от погоды и доезжает до города.',
     done: (d) => [makeImpulse('inflationSupply', -0.35, 'Ирригация Приреченской области снижает цены на продовольствие', 'slow', d, 'other')] },
-  { id: 'powerplant', region: 'mining', name: 'Новая электростанция', quarters: 8, cost: 0.4, relief: 12,
+  { id: 'powerplant', region: 'mining', name: 'Новая электростанция', doneHeadline: 'НОВАЯ ЭЛЕКТРОСТАНЦИЯ ДАЛА ТОК', quarters: 8, cost: 0.4, relief: 12,
     effect: 'Дешевле энергия для всей страны: ниже издержки и инфляция предложения.',
     done: (d) => [makeImpulse('inflationSupply', -0.45, 'Новая электростанция удешевляет энергию', 'slow', d, 'other'),
       makeImpulse('infrastructureIndex', 1.5, 'Новая электростанция', 'fast', d, 'other')] },
-  { id: 'techpark', region: 'finance', name: 'Технопарк при бирже', quarters: 5, cost: 0.25, relief: 10,
+  { id: 'techpark', region: 'finance', name: 'Технопарк при бирже', doneHeadline: 'ОТКРЫТ ТЕХНОПАРК ЗЛАТОГРАДА', quarters: 5, cost: 0.25, relief: 10,
     effect: 'Производительность и доверие бизнеса: деньги и идеи находят друг друга.',
     done: (d) => [makeImpulse('productivity', 1.0, 'Открыт технопарк Златограда', 'slow', d, 'other'),
       makeImpulse('businessConfidence', 4, 'Открыт технопарк Златограда', 'default', d, 'other')] },
-  { id: 'railway', region: 'periphery', name: 'Железная дорога на Боровец', quarters: 7, cost: 0.3, relief: 14,
+  { id: 'railway', region: 'periphery', name: 'Железная дорога на Боровец', doneHeadline: 'ЖЕЛЕЗНАЯ ДОРОГА ДОШЛА ДО БОРОВЦА', quarters: 7, cost: 0.3, relief: 14,
     effect: 'Боровская область перестаёт пустеть: работа и рынки становятся ближе.',
     done: (d) => [makeImpulse('infrastructureIndex', 2.2, 'Железная дорога дошла до Боровца', 'fast', d, 'other'),
       makeImpulse('laborForce', 0.25, 'Боровская область перестаёт пустеть', 'slow', d, 'other')] },
   // новые земли: стройка там ещё и поднимает лояльность (см. annexStep и regionStep)
-  { id: 'tunnel', region: 'pereval', name: 'Тоннель под перевалом', quarters: 6, cost: 0.3, relief: 12,
+  { id: 'tunnel', region: 'pereval', name: 'Тоннель под перевалом', doneHeadline: 'ОТКРЫТ ТОННЕЛЬ ПОД ПЕРЕВАЛОМ', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Перевал проходим круглый год: транзит и экспорт, а район — часть страны не только на карте.',
     done: (d) => [makeImpulse('infrastructureIndex', 1.5, 'Открыт тоннель под перевалом', 'fast', d, 'other'),
       sustainedImpulse('exportsGrowth', 0.8, 4, 'Транзит через тоннель')] },
-  { id: 'halvik_mines', region: 'halvik', name: 'Модернизация Хальвикских копей', quarters: 5, cost: 0.3, relief: 10,
+  { id: 'halvik_mines', region: 'halvik', name: 'Модернизация Хальвикских копей', doneHeadline: 'ХАЛЬВИКСКИЕ КОПИ МОДЕРНИЗИРОВАНЫ', quarters: 5, cost: 0.3, relief: 10,
     effect: 'Новые шахты и обогатительная фабрика: больше руды на экспорт и работа для края.',
     done: (d) => [sustainedImpulse('exportsGrowth', 1.0, 6, 'Модернизированные копи Хальвика'),
       makeImpulse('inflationSupply', -0.2, 'Руда Хальвика дешевеет', 'slow', d, 'other')] },
-  { id: 'nordholm_rebuild', region: 'nordholm', name: 'Восстановление Нордхольма', quarters: 8, cost: 0.4, relief: 14,
+  { id: 'nordholm_rebuild', region: 'nordholm', name: 'Восстановление Нордхольма', doneHeadline: 'НОРДХОЛЬМ ВОССТАНОВЛЕН', quarters: 8, cost: 0.4, relief: 14,
     effect: 'Город отстраивают после войны: лучший довод для тех, кто ещё ждёт возвращения Норланда.',
     done: (d) => [makeImpulse('approvalPush', 1, 'Нордхольм восстановлен', 'fast', d, 'other'),
       makeImpulse('laborForce', 0.2, 'Нордхольм снова живёт', 'slow', d, 'other')] },
@@ -5325,7 +5338,7 @@ const MAX_ACTIVE_PROJECTS = 3;
 function projectBlocker(p, s) {
   if (!p) return 'такой стройки нет';
   if (!activeRegions(s).some((r) => r.id === p.region)) return 'эта земля не в составе страны';
-  if ((s.projectsBuilt || []).includes(p.id)) return 'уже построено';
+  if ((s.projectsBuilt || []).includes(p.id)) return 'уже завершено';
   const active = s.projects || [];
   if (active.some((x) => x.id === p.id)) return 'уже строится';
   if (active.length >= MAX_ACTIVE_PROJECTS) return `одновременно — не больше ${MAX_ACTIVE_PROJECTS} строек`;
@@ -5583,7 +5596,8 @@ function regionStep(s, decisions, difficulty, quarterIndex) {
     const region = regionById(x.region);
     // на новой земле построенное — лучший довод, что она теперь своя
     if (region.annex) out.loyaltyDelta[x.region] = (out.loyaltyDelta[x.region] || 0) + 15;
-    out.news.push(['gov', `ПОСТРОЕНО: ${p.name.toUpperCase()}`, `${region.name}: сдан объект «${p.name}». ${p.effect} Напряжение в области снижается надолго.`, 8]);
+    // у каждой стройки свой глагол: метро открывают, копи модернизируют, город восстанавливают
+    out.news.push(['gov', p.doneHeadline || `ЗАВЕРШЕНО: ${p.name.toUpperCase()}`, `${region.name}: работы завершены — «${p.name}». ${p.effect} Напряжение в области снижается надолго.`, 8]);
   });
   projects = still;
   // 3) новое событие — не каждый квартал и не раньше третьего

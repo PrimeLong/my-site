@@ -2025,7 +2025,7 @@ describe('округа: стройки и события', () => {
     expect(e.projects).toEqual([]);
     expect(e.projectsBuilt).toContain('irrigation');
     expect(e.regionMods.agri).toBe(-p.relief);
-    expect(res.newsEntries.some((n) => n.headline === 'ПОСТРОЕНО: ИРРИГАЦИЯ И ЭЛЕВАТОРЫ')).toBe(true);
+    expect(res.newsEntries.some((n) => n.headline === 'ИРРИГАЦИЯ И ЭЛЕВАТОРЫ ПРИРЕЧЬЯ ГОТОВЫ')).toBe(true);
     // в неспокойной стране это видно на карте: напряжение округа ниже на relief
     const tense = { ...e, inflationRisk: 70, recessionRisk: 60, currencyRisk: 60, regionShock: {} };
     expect(regionStress(agri, tense)).toBeCloseTo(regionStress(agri, { ...tense, regionMods: {} }) - p.relief, 5);
@@ -2036,7 +2036,7 @@ describe('округа: стройки и события', () => {
     const e = makeInitialEconomy();
     const P = (id) => REGION_PROJECTS.find((x) => x.id === id);
     expect(projectBlocker(P('metro'), e)).toBe(null);
-    expect(projectBlocker(P('metro'), { ...e, projectsBuilt: ['metro'] })).toMatch(/построено/);
+    expect(projectBlocker(P('metro'), { ...e, projectsBuilt: ['metro'] })).toMatch(/завершено/);
     expect(projectBlocker(P('metro'), { ...e, projects: [{ id: 'metro', region: 'capital', left: 3, total: 8 }] })).toMatch(/строится/);
     const three = ['deepport', 'railway', 'techpark'].map((id) => ({ id, region: P(id).region, left: 2, total: 5 }));
     expect(projectBlocker(P('metro'), { ...e, projects: three })).toMatch(/не больше 3/);
@@ -2577,4 +2577,22 @@ describe('группы в решениях ботов, ползунках и т�
     expect(silent.lastGroupResolution).toMatchObject({ option: 'refuse', byDefault: true });
     expect(silent.groupMemory.some((m) => m.group === 'workers' && m.amount === -7)).toBe(true);
   }));
+});
+
+describe('указание президента боту и собственное решение бота', () => {
+  it('ЦБ и сам снижает ставку — это не «отказ»', () => {
+    const e = { ...makeInitialEconomy(), keyRate: 18, inflation: 6, politicalRegime: 'democracy', approval: 20 };
+    const own = { ...defaultDecisions(e), keyRate: 16.75 };
+    const r = processPresidentialDirective('rate_cut', e, 'hawk', 'balanced', own, 1);
+    expect(r.status).not.toBe('rejected');
+    expect(r.credibilityHit).toBe(0);
+    expect(r.decisions.keyRate).toBe(16.75);
+  });
+
+  it('ЦБ держит ставку — отказ остаётся отказом', () => {
+    const e = { ...makeInitialEconomy(), keyRate: 18, inflation: 20, politicalRegime: 'democracy', approval: 10 };
+    const own = { ...defaultDecisions(e), keyRate: 18 };
+    const r = processPresidentialDirective('rate_cut', e, 'hawk', 'balanced', own, 3);
+    expect(r.byOwn).toBe(false);
+  });
 });

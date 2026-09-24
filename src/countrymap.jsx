@@ -1,12 +1,12 @@
 /* Карта страны: округа, их напряжение и итоги выборов по округам. Вынесена
    из MacroSimulator.jsx в отдельный чанк и грузится лениво — карта нужна
    только по нажатию вкладки «Карта», а не при первой загрузке сайта. */
-import { AlertTriangle, Anchor, Castle, CheckCircle2, Coins, Construction, Factory, Flag, Handshake, Landmark, Lock, Mountain, Pickaxe, Shield, Swords, Trees, Vote, Wheat } from 'lucide-react';
+import { AlertTriangle, Anchor, Castle, CheckCircle2, Coins, Construction, Factory, Flag, Handshake, Landmark, Lock, Maximize2, Minus, Mountain, Pickaxe, Plus, Shield, Swords, Trees, Vote, Wheat } from 'lucide-react';
 import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength,
   CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel,
   regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
   DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, sanitizeTreaty, treatyCost } from './lib/engine.js';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Audio, COLOR, starPath,
 } from './MacroSimulator.jsx';
@@ -327,6 +327,129 @@ function voteAlpha(share) {
   return `0${Math.round(20 + margin * 45).toString(16)}`.slice(-2);
 }
 
+/* ------------------------------ ПРИБЛИЖЕНИЕ ------------------------------
+   Карта приближается колёсиком, щипком двумя пальцами, двойным кликом и кнопками;
+   приближённую — перетаскивают. Всё это — смена viewBox, геометрия не меняется.
+   Перетаскивание начинается только после сдвига на несколько пикселей, и только
+   тогда захватывается указатель: иначе обычный клик по области превращался бы
+   в «начало перетаскивания» и область не выбиралась. На телефоне без приближения
+   карта не мешает листать страницу (touch-action: pan-y), а щипок всё равно ловится. */
+const BASE_VB = { x: 0, y: VIEW_TOP, w: VIEW_W, h: VIEW_H - VIEW_TOP };
+const MAX_ZOOM = 4;
+function clampVb(v) {
+  const w = clamp(v.w, BASE_VB.w / MAX_ZOOM, BASE_VB.w);
+  const h = w * BASE_VB.h / BASE_VB.w;
+  return { w, h, x: clamp(v.x, BASE_VB.x, BASE_VB.x + BASE_VB.w - w), y: clamp(v.y, BASE_VB.y, BASE_VB.y + BASE_VB.h - h) };
+}
+function useMapZoom() {
+  const ref = useRef(null);
+  const [vb, setVbState] = useState(BASE_VB);
+  const vbRef = useRef(BASE_VB);
+  const raf = useRef(0);
+  const pointers = useRef(new Map());
+  const drag = useRef(null);
+  const pinch = useRef(null);
+  const moved = useRef(false);
+  const setVb = (v) => { vbRef.current = v; setVbState(v); };
+  const animateTo = (target) => {
+    cancelAnimationFrame(raf.current);
+    const from = vbRef.current; const t0 = performance.now(); const dur = 360;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / dur); const e = 1 - Math.pow(1 - k, 3);
+      setVb({ x: from.x + (target.x - from.x) * e, y: from.y + (target.y - from.y) * e, w: from.w + (target.w - from.w) * e, h: from.h + (target.h - from.h) * e });
+      if (k < 1) raf.current = requestAnimationFrame(step);
+    };
+    raf.current = requestAnimationFrame(step);
+  };
+  const toSvg = (cx, cy) => {
+    const r = ref.current.getBoundingClientRect(); const v = vbRef.current;
+    return { x: v.x + ((cx - r.left) / r.width) * v.w, y: v.y + ((cy - r.top) / r.height) * v.h };
+  };
+  const zoomAt = (factor, px, py, animate) => {
+    const v = vbRef.current; const w = v.w / factor;
+    const target = clampVb({ w, x: px - (px - v.x) * (w / v.w), y: py - (py - v.y) * (w / v.w) });
+    if (animate) animateTo(target); else { cancelAnimationFrame(raf.current); setVb(target); }
+  };
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const p = toSvg(e.clientX, e.clientY);
+      zoomAt(Math.exp(-e.deltaY * 0.0018), p.x, p.y, false);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => { el.removeEventListener('wheel', onWheel); cancelAnimationFrame(raf.current); };
+  }, []);
+  const onPointerDown = (e) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) {
+      moved.current = false;
+      drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, vb: vbRef.current, active: false };
+    } else if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, vb: vbRef.current, mid: toSvg((a.x + b.x) / 2, (a.y + b.y) / 2) };
+      drag.current = null; moved.current = true;
+    }
+  };
+  const onPointerMove = (e) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const f = Math.hypot(a.x - b.x, a.y - b.y) / pinch.current.d;
+      const v0 = pinch.current.vb; const m = pinch.current.mid; const w = v0.w / f;
+      setVb(clampVb({ w, x: m.x - (m.x - v0.x) * (w / v0.w), y: m.y - (m.y - v0.y) * (w / v0.w) }));
+      return;
+    }
+    const dg = drag.current;
+    if (!dg || dg.id !== e.pointerId) return;
+    const dx = e.clientX - dg.x; const dy = e.clientY - dg.y;
+    if (!dg.active) {
+      if (Math.hypot(dx, dy) < 5 || vbRef.current.w >= BASE_VB.w - 0.5) return;
+      dg.active = true; moved.current = true;
+      try { ref.current.setPointerCapture(e.pointerId); } catch { /* указатель уже отпущен */ }
+    }
+    const r = ref.current.getBoundingClientRect();
+    setVb(clampVb({ w: dg.vb.w, x: dg.vb.x - (dx / r.width) * dg.vb.w, y: dg.vb.y - (dy / r.height) * dg.vb.h }));
+  };
+  const onPointerUp = (e) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (drag.current && drag.current.id === e.pointerId) drag.current = null;
+  };
+  const center = () => ({ x: vbRef.current.x + vbRef.current.w / 2, y: vbRef.current.y + vbRef.current.h / 2 });
+  return {
+    ref, vb, zoom: BASE_VB.w / vb.w,
+    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp,
+      onDoubleClick: (e) => { const p = toSvg(e.clientX, e.clientY); zoomAt(1.8, p.x, p.y, true); } },
+    zoomIn: () => { const c = center(); zoomAt(1.6, c.x, c.y, true); },
+    zoomOut: () => { const c = center(); zoomAt(1 / 1.6, c.x, c.y, true); },
+    reset: () => animateTo(BASE_VB),
+    // клик после перетаскивания — не выбор области
+    wasDrag: () => moved.current,
+  };
+}
+const MAP_CSS = `
+  .map-enter { animation: mapIn .6s cubic-bezier(.2,.7,.3,1); }
+  @keyframes mapIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+  .map-region { outline: none; }
+  .map-region .tint { transition: fill .55s ease; }
+  .map-region .hover { opacity: 0; transition: opacity .18s ease; }
+  .map-region:hover .hover, .map-region:focus-visible .hover { opacity: 1; }
+  .map-sel-glow { animation: mapSelPulse 2.6s ease-in-out infinite; }
+  @keyframes mapSelPulse { 0%, 100% { stroke-opacity: .30; } 50% { stroke-opacity: .75; } }
+  .map-sel-line { stroke-dasharray: 9 7; animation: mapSelMarch 1.8s linear infinite; }
+  @keyframes mapSelMarch { to { stroke-dashoffset: -32; } }
+  .map-flow { stroke-dasharray: 14 9; animation: mapFlow 1.1s linear infinite; }
+  @keyframes mapFlow { to { stroke-dashoffset: -23; } }
+  .map-zoom-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 8px; }
+  @media (prefers-reduced-motion: reduce) {
+    .map-enter, .map-sel-glow, .map-sel-line, .map-flow { animation: none; }
+    .map-region .tint, .map-region .hover { transition: none; }
+  }
+`;
+
 /* plan — решения игрока на карте в этом квартале ({ startProject, regionResponse });
    onPlan — как их менять (нет — карта только показывает); planner — кто решает за
    игрока без права решать («Минфин (бот)»), чтобы было видно, чьё это решение. */
@@ -338,6 +461,9 @@ function voteAlpha(share) {
 export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner,
   treatyPlan, onTreatyPlan, treatyPlanner }) {
   const [selected, setSelected] = useState('capital');
+  const zoom = useMapZoom();
+  // подписи при приближении растут, но медленнее карты: читаются и не заслоняют её
+  const lk = 1 / Math.sqrt(zoom.zoom);
   const [picked, setMode] = useState('stress');
   // слой, который пропал (опросы после выборов), не остаётся выбранным невидимкой
   const modes = MAP_MODES.filter((m) => !m.when || m.when(economy));
@@ -398,9 +524,15 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               onClick={() => { Audio.play('tab'); setMode(id); }}>{typeof label === 'function' ? label(economy) : label}</button>
           ))}
         </div>
-        <svg viewBox={`0 ${VIEW_TOP} ${VIEW_W} ${VIEW_H - VIEW_TOP}`} style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6 }}
+        <style>{MAP_CSS}</style>
+        <div style={{ position: 'relative' }}>
+        <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className="map-enter"
+          style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: zoom.zoom > 1.01 ? 'none' : 'pan-y',
+            cursor: zoom.zoom > 1.01 ? 'grab' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}
+          {...zoom.handlers}
           role="img" aria-label="Карта областей страны">
           <defs>
+            <filter id="map-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" /></filter>
             {/* волны на море, пашня на равнине, кварталы в городах — условные знаки
                 физической карты, по которым область узнаётся без подписи */}
             <pattern id="map-waves" width="46" height="22" patternUnits="userSpaceOnUse">
@@ -469,12 +601,14 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               ? `${r.name}: ${share != null ? `${Math.round(share)}% за действующую власть` : 'выборы ещё не проходили'}`
               : `${r.name}, ${r.sector}: ${tierLabel(b.tier)}, ${Math.round(b.stress)} из 100`;
             return (
-              <g key={r.id} role="button" tabIndex={0} aria-label={aria} style={{ cursor: 'pointer' }}
-                onClick={() => { Audio.play('tab'); setSelected(r.id); }}
+              <g key={r.id} role="button" tabIndex={0} aria-label={aria} aria-pressed={r.id === selected} className="map-region" style={{ cursor: 'pointer' }}
+                onClick={() => { if (zoom.wasDrag()) return; Audio.play('tab'); setSelected(r.id); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Audio.play('tab'); setSelected(r.id); } }}>
                 <path d={regionPath(r.id)} fill={COLOR.bg} />
                 {terrain && <path d={regionPath(r.id)} fill={`${terrain}1c`} />}
-                <path d={regionPath(r.id)} fill={`${color}${r.id === selected ? '44' : alpha}`} />
+                {/* цвет — через style: так он плавно перетекает при смене слоя карты */}
+                <path d={regionPath(r.id)} className="tint" style={{ fill: `${color}${r.id === selected ? '44' : alpha}` }} />
+                <path d={regionPath(r.id)} className="hover" fill={`${COLOR.text}0f`} />
               </g>
             );
           })}
@@ -537,8 +671,13 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             <path d={coastPath} fill="none" stroke={`${COLOR.text}99`} strokeWidth={2.4} strokeLinecap="round" />
             {annexed.length > 0 && <path d={borders.inner} fill="none" stroke={`${COLOR.text}66`} strokeWidth={1.3} strokeDasharray="4 4" />}
             <path d={annexed.length > 0 ? `${nationalBorderNoNorth} ${borders.national}` : nationalBorderPath} fill="none" stroke={COLOR.rust} strokeOpacity={0.75} strokeWidth={3} strokeDasharray="14 5 3 5" />
+            {/* выбранная область: мягкое свечение, чёткий контур и «бегущий» пунктир —
+                вместо белого квадрата фокуса, который браузер рисовал вокруг области */}
             <path d={regionPath(selected)} fill="none" stroke={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)}
-              strokeWidth={3.2} strokeLinejoin="round" />
+              strokeWidth={10} strokeLinejoin="round" className="map-sel-glow" filter="url(#map-glow)" />
+            <path d={regionPath(selected)} fill="none" stroke={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)}
+              strokeWidth={2.8} strokeLinejoin="round" />
+            <path d={regionPath(selected)} fill="none" stroke={COLOR.text} strokeOpacity={0.6} strokeWidth={1.1} strokeLinejoin="round" className="map-sel-line" />
           </g>
           {/* слой 4 — война: зона боёв, линия фронта с зубцами, стрелки, сражения */}
           {war && (
@@ -550,7 +689,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               <path d={war.teeth} fill={COLOR.rust} />
               {(camp ? [] : war.cfg.arrows).map(([[x1, y1], [x2, y2]], i) => (
                 <path key={i} d={`M${x1},${y1} Q${(x1 + x2) / 2 + (i ? 14 : -14)},${(y1 + y2) / 2 - 10} ${x2},${y2}`} fill="none"
-                  stroke={COLOR.rust} strokeWidth={5} strokeLinecap="round" markerEnd="url(#map-arrow)" opacity={0.85} />
+                  stroke={COLOR.rust} strokeWidth={5} strokeLinecap="round" markerEnd="url(#map-arrow)" opacity={0.85} className="map-flow" />
               ))}
               {war.battles.map(([x, y], i) => (
                 <g key={i} transform={`translate(${x},${y})`}>
@@ -641,7 +780,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             {!camp && annexed.filter((id) => ANNEX_CITIES[id]).map((id) => {
               const c = ANNEX_CITIES[id];
               return (
-                <g key={`ac${id}`}>
+                <g key={`ac${id}`} transform={lk < 0.999 ? `translate(${c.at[0]} ${c.at[1]}) scale(${lk}) translate(${-c.at[0]} ${-c.at[1]})` : undefined}>
                   <circle cx={c.at[0]} cy={c.at[1]} r={5} fill={COLOR.bg} stroke={COLOR.text} strokeWidth={1.6} />
                   <circle cx={c.at[0]} cy={c.at[1]} r={1.8} fill={COLOR.text} />
                   <text x={c.at[0] + 9} y={c.at[1] - 6} stroke={COLOR.bg} strokeWidth={3} paintOrder="stroke" style={{ fontSize: 12, fill: COLOR.muted }}>{c.name}</text>
@@ -649,14 +788,14 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               );
             })}
             {TOWNS.map((t) => (
-              <g key={t.name}>
+              <g key={t.name} transform={lk < 0.999 ? `translate(${t.at[0]} ${t.at[1]}) scale(${lk}) translate(${-t.at[0]} ${-t.at[1]})` : undefined}>
                 <circle cx={t.at[0]} cy={t.at[1]} r={2.4} fill={COLOR.muted} />
                 <text x={t.at[0] + 5} y={t.at[1] - 4} stroke={COLOR.bg} strokeWidth={2.6} paintOrder="stroke"
                   style={{ fontSize: 10, fill: COLOR.faint }}>{t.name}</text>
               </g>
             ))}
             {CITIES.map((c) => (
-              <g key={c.id}>
+              <g key={c.id} transform={lk < 0.999 ? `translate(${c.at[0]} ${c.at[1]}) scale(${lk}) translate(${-c.at[0]} ${-c.at[1]})` : undefined}>
                 {c.capital
                   ? <path d={starPath(c.at[0], c.at[1], 11, 4.6)} fill={COLOR.gold} stroke={COLOR.ink} strokeWidth={0.8} />
                   : (
@@ -680,7 +819,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               const k = r.annex ? 0.82 : 1;
               const w = (name.length * 9.6 + 18) * k;
               return (
-                <g key={r.id}>
+                <g key={r.id} transform={lk < 0.999 ? `translate(${lx} ${ly}) scale(${lk}) translate(${-lx} ${-ly})` : undefined}>
                   {/* подпись области — на подложке, чтобы читалась поверх любого знака */}
                   <rect x={lx - w / 2} y={ly - 15 * k} width={w} height={45 * k} rx={7} fill={COLOR.bg} opacity={0.78}
                     stroke={r.id === selected ? color : `${COLOR.text}22`} strokeWidth={r.id === selected ? 1.5 : 1} />
@@ -745,6 +884,24 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             </g>
           </g>
         </svg>
+        {/* приближение: кнопки — главный способ на телефоне, колёсико и щипок — быстрый */}
+        <div style={{ position: 'absolute', right: 10, top: 64, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <button className="ems-btn map-zoom-btn" aria-label="Приблизить карту" title="Приблизить (колёсико, щипок, двойной клик)"
+            disabled={zoom.zoom >= MAX_ZOOM - 0.01} onClick={() => { Audio.play('tick'); zoom.zoomIn(); }}><Plus size={15} /></button>
+          <button className="ems-btn map-zoom-btn" aria-label="Отдалить карту" title="Отдалить"
+            disabled={zoom.zoom <= 1.01} onClick={() => { Audio.play('tick'); zoom.zoomOut(); }}><Minus size={15} /></button>
+          {zoom.zoom > 1.01 && (
+            <button className="ems-btn map-zoom-btn" aria-label="Показать всю карту" title="Вся карта"
+              onClick={() => { Audio.play('tick'); zoom.reset(); }}><Maximize2 size={14} /></button>
+          )}
+        </div>
+        {zoom.zoom > 1.01 && (
+          <div className="ems-mono" style={{ position: 'absolute', left: 10, bottom: 10, fontSize: 10.5, color: COLOR.muted, background: `${COLOR.bg}cc`,
+            border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: '2px 7px', pointerEvents: 'none' }}>
+            ×{zoom.zoom.toFixed(1)} · перетащите, чтобы сдвинуть
+          </div>
+        )}
+        </div>
       </div>
       <div style={{ flex: 1, minWidth: 220, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {camp && <WarOperationPanel economy={economy} camp={camp} order={order} setOrder={setOrder} planner={warPlanner} />}
@@ -1017,7 +1174,7 @@ function RegionProject({ region, economy, plan, onPlan, planner }) {
         {built ? <CheckCircle2 size={14} color={COLOR.teal} /> : <Construction size={14} color={COLOR.gold} />}
         <span className="ems-serif" style={{ fontSize: 13 }}>{p.name}</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>
-          {built ? 'построено' : active ? `ещё ${active.left} кв.` : `${p.quarters} кв.`}
+          {built ? 'завершено' : active ? `ещё ${active.left} кв.` : `${p.quarters} кв.`}
         </span>
       </div>
       <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>{p.effect}</div>

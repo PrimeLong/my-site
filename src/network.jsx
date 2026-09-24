@@ -990,7 +990,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             );
           })}
           {pinned.length < MAX_PINS && (
-            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed' }}>
+            /* подсказка растягивается до конца ряда: главная плитка занимает две ячейки,
+               и без этого последний ряд оставался с дыркой */
+            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed', gridColumn: 'auto / -1', minHeight: 64 }}>
               <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
                 <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
               </span>
