@@ -16,7 +16,7 @@ import {
   INTEGRATED_AT, INTEGRATION_COST,
   treatyCost, sanitizeTreaty, botTreaty, revancheGrowth,
   SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, coalitionOf, groupTurnoutShift, groupStatus, leverGroupEffects,
-  fmtMoney, fmtIndex,
+  fmtMoney, fmtIndex, botFrontOrder, warObjectiveOpen,
 } from '../engine.js';
 
 function assertFiniteEconomy(economy, label) {
@@ -2025,7 +2025,7 @@ describe('округа: стройки и события', () => {
     expect(e.projects).toEqual([]);
     expect(e.projectsBuilt).toContain('irrigation');
     expect(e.regionMods.agri).toBe(-p.relief);
-    expect(res.newsEntries.some((n) => n.headline === 'ПОСТРОЕНО: ИРРИГАЦИЯ И ЭЛЕВАТОРЫ')).toBe(true);
+    expect(res.newsEntries.some((n) => n.headline === 'ИРРИГАЦИЯ И ЭЛЕВАТОРЫ ПРИРЕЧЬЯ ГОТОВЫ')).toBe(true);
     // в неспокойной стране это видно на карте: напряжение округа ниже на relief
     const tense = { ...e, inflationRisk: 70, recessionRisk: 60, currencyRisk: 60, regionShock: {} };
     expect(regionStress(agri, tense)).toBeCloseTo(regionStress(agri, { ...tense, regionMods: {} }) - p.relief, 5);
@@ -2036,7 +2036,7 @@ describe('округа: стройки и события', () => {
     const e = makeInitialEconomy();
     const P = (id) => REGION_PROJECTS.find((x) => x.id === id);
     expect(projectBlocker(P('metro'), e)).toBe(null);
-    expect(projectBlocker(P('metro'), { ...e, projectsBuilt: ['metro'] })).toMatch(/построено/);
+    expect(projectBlocker(P('metro'), { ...e, projectsBuilt: ['metro'] })).toMatch(/завершено/);
     expect(projectBlocker(P('metro'), { ...e, projects: [{ id: 'metro', region: 'capital', left: 3, total: 8 }] })).toMatch(/строится/);
     const three = ['deepport', 'railway', 'techpark'].map((id) => ({ id, region: P(id).region, left: 2, total: 5 }));
     expect(projectBlocker(P('metro'), { ...e, projects: three })).toMatch(/не больше 3/);
@@ -2577,4 +2577,87 @@ describe('группы в решениях ботов, ползунках и т�
     expect(silent.lastGroupResolution).toMatchObject({ option: 'refuse', byDefault: true });
     expect(silent.groupMemory.some((m) => m.group === 'workers' && m.amount === -7)).toBe(true);
   }));
+});
+
+describe('указание президента боту и собственное решение бота', () => {
+  it('ЦБ и сам снижает ставку — это не «отказ»', () => {
+    const e = { ...makeInitialEconomy(), keyRate: 18, inflation: 6, politicalRegime: 'democracy', approval: 20 };
+    const own = { ...defaultDecisions(e), keyRate: 16.75 };
+    const r = processPresidentialDirective('rate_cut', e, 'hawk', 'balanced', own, 1);
+    expect(r.status).not.toBe('rejected');
+    expect(r.credibilityHit).toBe(0);
+    expect(r.decisions.keyRate).toBe(16.75);
+  });
+
+  it('ЦБ держит ставку — отказ остаётся отказом', () => {
+    const e = { ...makeInitialEconomy(), keyRate: 18, inflation: 20, politicalRegime: 'democracy', approval: 10 };
+    const own = { ...defaultDecisions(e), keyRate: 18 };
+    const r = processPresidentialDirective('rate_cut', e, 'hawk', 'balanced', own, 3);
+    expect(r.byOwn).toBe(false);
+  });
+});
+
+describe('оборонительная война, штурм Нордхольма, интеграция, военное положение', () => {
+  const step = (economy, decisions = {}, q = 6) => simulateQuarter({
+    economy, decisions: { ...defaultDecisions(economy), ...decisions }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'medium', quarterIndex: q, stories: [], botAction: null, botActions: [],
+  });
+  const defWar = (camp, extra) => ({ ...makeInitialEconomy(), warQuartersLeft: 4, warType: 'defensive', warElapsed: 1, regionEventCooldown: 99,
+    defenseCampaign: { pressure: { agri: 0, periphery: 0 }, occupied: [], morale: 100, last: null, next: 'agri', ...camp }, ...extra });
+  const withRandom = (v, fn) => { const r = Math.random; Math.random = () => v; try { return fn(); } finally { Math.random = r; } };
+
+  it('в обороне укреплённая область почти не сдаёт, не укреплённая — сдаёт', () => {
+    const held = withRandom(0.9, () => step(defWar(), { warOrder: { target: 'agri', stance: 'defend' } }).economy.defenseCampaign);
+    const open = withRandom(0.9, () => step(defWar(), { warOrder: { target: 'periphery', stance: 'defend' } }).economy.defenseCampaign);
+    expect(held.pressure.agri).toBeLessThan(open.pressure.agri);
+    expect(held.last).toMatchObject({ target: 'agri', stance: 'defend', hit: 'agri' });
+  });
+
+  it('давление 100 — оккупация, контрудар ниже 60 — освобождение', () => {
+    const lost = withRandom(0.9, () => step(defWar({ pressure: { agri: 95, periphery: 0 } }), { warOrder: { target: 'periphery', stance: 'defend' } }));
+    expect(lost.economy.defenseCampaign.occupied).toContain('agri');
+    expect(lost.newsEntries.some((n) => /ФРОНТ ПРОРВАН/.test(n.headline))).toBe(true);
+    const freed = withRandom(0.9, () => step(defWar({ pressure: { agri: 65, periphery: 0 }, occupied: ['agri'], next: 'periphery' }),
+      { warOrder: { target: 'agri', stance: 'counter' } }));
+    expect(freed.economy.defenseCampaign.occupied).not.toContain('agri');
+    expect(freed.newsEntries.some((n) => /ОСВОБОЖДЕНА/.test(n.headline))).toBe(true);
+  });
+
+  it('перемирие заканчивает войну, выдохшийся противник отступает сам', () => {
+    const talks = step(defWar(), { warOrder: { target: 'agri', stance: 'talks' } });
+    expect(talks.economy.warQuartersLeft).toBe(0);
+    expect(talks.economy.defenseCampaign).toBe(null);
+    const tired = withRandom(0.5, () => step(defWar({ morale: 6 }), { warOrder: { target: 'agri', stance: 'counter' } }));
+    expect(tired.economy.warQuartersLeft).toBe(0);
+    expect(tired.newsEntries.some((n) => /ОТСТУПАЕТ/.test(n.headline))).toBe(true);
+  });
+
+  it('бот командует обороной по характеру', () => {
+    const e = defWar({ occupied: ['agri'], next: 'periphery' });
+    expect(botFrontOrder(e, 'strongman')).toMatchObject({ target: 'agri', stance: 'counter' });
+    expect(botFrontOrder(defWar(), 'technocrat')).toMatchObject({ target: 'agri', stance: 'defend' });
+  });
+
+  it('к Нордхольму можно идти и от копей, без перевала', () => {
+    const camp = { progress: { pass: 0, mines: 100, city: 0 }, captured: ['mines'] };
+    expect(warObjectiveOpen('city', camp)).toBe(true);
+    expect(warObjectiveOpen('city', { progress: {}, captured: [] })).toBe(false);
+  });
+
+  it('интеграция закрывается сама на 100 лояльности', () => {
+    const e = { ...makeInitialEconomy(), annexed: ['pass'], annexLoyalty: { pereval: 98 }, annexIntegrated: ['pereval'], annexFunded: ['pereval'], regionEventCooldown: 99 };
+    const res = withRandom(0.9, () => step(e, { integrate: ['pereval'] }));
+    expect(res.economy.annexLoyalty.pereval).toBe(100);
+    expect(res.economy.annexFunded).not.toContain('pereval');
+    expect(sanitizeIntegration(['pereval'], res.economy)).toEqual([]);
+  });
+
+  it('при тоталитаризме военное положение объявляют языком пропаганды', () => {
+    const base = { ...makeInitialEconomy(), regionEventCooldown: 99, politicalRegime: 'totalitarian', politicalCapital: 100 };
+    const res = step(base, { presidentActions: ['war_start'], presidentActive: true });
+    const n = res.newsEntries.find((x) => /ВОЕННОЕ ПОЛОЖЕНИЕ/.test(x.headline));
+    expect(n).toBeTruthy();
+    expect(n.headline).toMatch(/СПЛОТИЛАСЬ/);
+    expect(n.text).not.toMatch(/прямое следствие принятого решения/);
+  });
 });

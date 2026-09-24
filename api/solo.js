@@ -3,7 +3,7 @@
    что остаётся локальным, потому что войти без аккаунта иначе некому).
    Сама партия — экономика, история, декэижны — целиком лежит на сервере,
    как и у сетевых комнат (тот же _lib/store.js). */
-import { getSoloSlots, setSoloSlots, getProfile, setProfile, getLink, setLink, delLink, hasKv } from './_lib/store.js';
+import { getSoloSlots, setSoloSlots, getProfile, setProfile, getLink, setLink, delLink, hasKv, getTycoonSlots, setTycoonSlots } from './_lib/store.js';
 import { randomInt, randomUUID } from 'node:crypto';
 
 const SLOT_COUNT = 4;
@@ -131,6 +131,26 @@ function trimSnapshot(snap) {
   return { ...snap, history, newsFeed };
 }
 
+/* «Своё дело» хранится в тех же четырёх слотах, но отдельно (kind: 'tycoon'): у него
+   своё состояние — здания, склад, страна-автопилот, — а не партия за ведомство. */
+const validTycoon = (snap) => snap && typeof snap === 'object' && snap.mode === 'tycoon'
+  && snap.country && snap.country.economy && Array.isArray(snap.buildings);
+function trimTycoon(snap) {
+  return { ...snap, news: Array.isArray(snap.news) ? snap.news.slice(0, 30) : [],
+    history: Array.isArray(snap.history) ? snap.history.slice(-40) : [],
+    country: { ...snap.country, prev: undefined, stories: Array.isArray(snap.country.stories) ? snap.country.stories.slice(-10) : [] } };
+}
+function summarizeTycoon(slot) {
+  if (!slot) return null;
+  const snap = slot.snapshot || {};
+  return { savedAt: slot.savedAt, name: slot.name || null, start: snap.start, cash: snap.cash,
+    buildings: Array.isArray(snap.buildings) ? snap.buildings.length : 0,
+    quarterIndex: snap.country && snap.country.quarterIndex, legacy: snap.legacy || 0 };
+}
+const slotApi = (kind) => (kind === 'tycoon'
+  ? { get: getTycoonSlots, set: setTycoonSlots, valid: validTycoon, trim: trimTycoon, summarize: summarizeTycoon }
+  : { get: getSoloSlots, set: setSoloSlots, valid: (x) => validSnapshot(x), trim: (x) => trimSnapshot(x), summarize: (x) => summarize(x) });
+
 const validPlayerId = (id) => typeof id === 'string' && id.length > 0 && id.length <= MAX_PLAYER_ID_LEN;
 const validSlotIndex = (v) => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n < SLOT_COUNT ? n : null; };
 const validSnapshot = (snap) => snap && typeof snap === 'object' && snap.app === 'economic-panel'
@@ -140,7 +160,8 @@ async function handleRequest(req, res) {
   if (req.method === 'GET') {
     const { playerId, slot } = req.query;
     if (!validPlayerId(playerId)) return res.status(400).json({ error: 'Некорректный идентификатор' });
-    const slots = normalizeSlots(await getSoloSlots(playerId));
+    const api = slotApi(req.query.kind);
+    const slots = normalizeSlots(await api.get(playerId));
     if (slot !== undefined) {
       const idx = validSlotIndex(slot);
       if (idx === null) return res.status(400).json({ error: 'Некорректный слот' });
@@ -148,7 +169,7 @@ async function handleRequest(req, res) {
       if (!s) return res.status(404).json({ error: 'Слот пуст' });
       return res.status(200).json({ snapshot: s.snapshot });
     }
-    return res.status(200).json({ slots: slots.map(summarize), storage: hasKv() ? 'kv' : 'memory' });
+    return res.status(200).json({ slots: slots.map(api.summarize), storage: hasKv() ? 'kv' : 'memory' });
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Только GET и POST' });
 
@@ -162,14 +183,17 @@ async function handleRequest(req, res) {
   if (!validPlayerId(playerId)) return res.status(400).json({ error: 'Некорректный идентификатор' });
   const idx = validSlotIndex(body.slot);
   if (idx === null) return res.status(400).json({ error: 'Некорректный слот' });
-  const slots = normalizeSlots(await getSoloSlots(playerId));
+  const api = slotApi(body.kind);
+  const summarize = api.summarize;
+  const setSoloSlots = api.set;
+  const slots = normalizeSlots(await api.get(playerId));
 
   if (action === 'save') {
-    if (!validSnapshot(body.snapshot)) return res.status(400).json({ error: 'Некорректное сохранение' });
+    if (!api.valid(body.snapshot)) return res.status(400).json({ error: 'Некорректное сохранение' });
     // имя сохранения переживает перезапись: игрок назвал слот «перед выборами» —
     // значит и после дозаписи в него это по-прежнему тот же слот
     const name = cleanName(body.name) || (slots[idx] && slots[idx].name) || null;
-    slots[idx] = { savedAt: new Date().toISOString(), name, snapshot: trimSnapshot(body.snapshot) };
+    slots[idx] = { savedAt: new Date().toISOString(), name, snapshot: api.trim(body.snapshot) };
     await setSoloSlots(playerId, slots);
     return res.status(200).json({ slots: slots.map(summarize) });
   }
@@ -246,6 +270,7 @@ async function handleProfileAction(body, res) {
     const fresh = randomUUID();
     await setProfile(fresh, { ...mergeProgress(profile, body.progress), linkedAt: null });
     await setSoloSlots(fresh, slots);
+    await setTycoonSlots(fresh, normalizeSlots(await getTycoonSlots(playerId)));
     return res.status(200).json({ playerId: fresh, profile: await getProfile(fresh),
       slots: slots.map(summarize), storage: hasKv() ? 'kv' : 'memory' });
   }

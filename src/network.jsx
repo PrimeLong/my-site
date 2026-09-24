@@ -9,17 +9,23 @@ import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PE
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
-  ALL_METRICS, AchievementToast, AchievementsModal, Atmosphere, Audio, AudioControls, COLOR, CabinetZone,
-  CasinoScreen, ChartFallback, ChartPanel, ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
-  ChronicleModal, GameOverModal, Gauge, GlobalStyle, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile, LeverSlider,
-  MAX_PINS, MetricRow, NETWORK_SLOT_COUNT, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel, PresidentWatchPanel,
-  PressConferencePanel, PromisesPanel, QuarterStamp, ROLE_ICON, RegimeBanner, ResultCardModal, RiskBadge, ScorePanel,
-  FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip, Segmented, StateSeal, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
-  casinoAchievementIds, checkDefeat, clearNetworkSlotAt, clearNetworkSlotFor, emptyBook, haptic, initDashboards, loadAutoPaper,
-  loadNetworkPortfolio, loadNetworkSlots, makeDashboardActions, markNetworkPlayed, priceOf, questProgressAchievementIds, recordRolePlayed, roomCodeFromUrl,
-  saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot, seatRole, seatsForMode, settleQuarter, tradeBook, unlockAchievements,
-  useAchievementToasts, useChartView, useLayoutColumns, useNetworkSlotPreviews, usePinnedStrip,
+  AchievementsModal, Audio, AudioControls, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
+  StateSeal, clearNetworkSlotAt, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
+import {
+  ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, CasinoScreen, ChartFallback, ChartPanel,
+  ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
+  ChronicleModal, GameOverModal, Gauge, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile,
+  LeverSlider, MAX_PINS, MetricRow, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel,
+  PresidentWatchPanel, PressConferencePanel, PromisesPanel, QuarterStamp, RegimeBanner,
+  ResultCardModal, RiskBadge, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip,
+  Segmented, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
+  casinoAchievementIds, checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
+  loadAutoPaper, loadNetworkPortfolio, makeDashboardActions, markNetworkPlayed, priceOf,
+  questProgressAchievementIds, recordRolePlayed, saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot,
+  seatsForMode, settleQuarter, tradeBook, unlockAchievements, useAchievementToasts, useChartView,
+  useLayoutColumns, usePinnedStrip,
+} from './game.jsx';
 import { stingerFor } from './audio/engine.js';
 
 const CRISIS_SHORT = { banking: 'банковский кризис', debt: 'долговой кризис', currency: 'валютный кризис',
@@ -990,7 +996,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             );
           })}
           {pinned.length < MAX_PINS && (
-            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed' }}>
+            /* подсказка растягивается до конца ряда: главная плитка занимает две ячейки,
+               и без этого последний ряд оставался с дыркой */
+            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed', gridColumn: 'auto / -1', minHeight: 64 }}>
               <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
                 <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
               </span>

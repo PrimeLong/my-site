@@ -7,7 +7,8 @@
 import React, { useState } from 'react';
 import { ArrowUpRight, ArrowDownRight, Dices } from 'lucide-react';
 import { clamp, fmtMln, fmtMlnSigned } from './lib/engine.js';
-import { COLOR, Audio, INSTRUMENTS, INSTR_BY_ID } from './MacroSimulator.jsx';
+import { COLOR, Audio } from './MacroSimulator.jsx';
+import { INSTRUMENTS, INSTR_BY_ID } from './game.jsx';
 
 const CASINO_GAMES = [
   { id: 'roulette', label: 'Рулетка', icon: '🎡' },

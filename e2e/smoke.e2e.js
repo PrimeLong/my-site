@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { freshRoom, resolveQuarter, publicView } from '../api/room.js';
+import { makeInitialEconomy, defaultDecisions } from '../src/lib/engine.js';
 
 /* Общая подготовка каждой страницы: серверные функции подменены, внешние
    запросы и ошибки страницы собираются — тест падает, если сайт полез за
@@ -215,5 +216,86 @@ test('президент ведёт наступление на карте: це
   await expect(page.getByText(/^Прошлый квартал: штурм — Копи Хальвика, \+\d+/)).toBeVisible();
   await expect(page.getByRole('button', { name: /^Копи Хальвика: (продвижение [1-9]\d* из 100|взята)/ })).toBeAttached();
   await page.locator('svg[aria-label="Карта областей страны"]').locator('xpath=../..').screenshot({ path: 'test-results/war-operation.png' });
+  expect(errors).toEqual([]);
+});
+
+test('вызов дня: карточка в меню, общий старт и счётчик кварталов', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await expect(page.getByText(/Вызов дня ·/)).toBeVisible();
+  await page.getByRole('button', { name: 'Таблица дня' }).click();
+  await expect(page.getByText('Сегодня ещё никто не прошёл вызов — будьте первым.')).toBeVisible();
+  await page.getByRole('button', { name: 'Принять вызов' }).click();
+  await expect(page.getByText(/квартал 1 из 12/)).toBeVisible();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  await expect(page.getByText(/квартал 2 из 12/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('своё дело: старт из меню, время идёт, стройка, склад и вкладки', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Своё дело', { exact: true }).click();
+  await page.getByText('Лавка', { exact: true }).click();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  const cash = page.getByLabel('Деньги на счёте');
+  await expect(cash).toBeVisible();
+  // первый запуск — короткое вступление
+  await page.getByRole('dialog', { name: 'Своё дело' }).getByRole('button', { name: 'Начать' }).click();
+  await expect(page.getByText(/Задание 1 из/)).toBeVisible();
+  await page.getByRole('button', { name: 'Скорость 4×' }).click();
+  const before = await cash.textContent();
+  await expect.poll(async () => cash.textContent(), { timeout: 10000 }).not.toBe(before);
+  for (const name of ['Склад и рынок', 'Исследования', 'Финансы', 'Страна', 'Производство']) {
+    await page.getByRole('tab', { name }).click();
+  }
+  await expect(page.getByText('Хлебозавод').first()).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('оборонительная война: фронт на карте и приказ армии', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  const e = { ...makeInitialEconomy(), warQuartersLeft: 3, warType: 'defensive', warElapsed: 2, activeCrises: ['war'], regime: 'war',
+    defenseCampaign: { pressure: { agri: 72, periphery: 30 }, occupied: [], morale: 70, next: 'agri', last: { target: 'periphery', stance: 'defend', hit: 'agri', gain: 14, pushed: 0 } } };
+  const snap = { app: 'economic-panel', v: 99, setup: { role: 'president', difficulty: 'medium', goal: 'living_standards', scenario: 'sandbox', cbPersona: 'pragmatic', mofPersona: 'technocrat', president: { enabled: false, persona: 'technocrat' } },
+    economy: e, history: [{ q: 0, label: 'x', ...e }], decisions: defaultDecisions(e), quarterIndex: 5 };
+  await page.addInitScript((s) => { localStorage.setItem('ems-autosave-v1', JSON.stringify({ ...s, v: 1 })); }, snap);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await expect(page.getByText(/Республика Дешт наступает/).first()).toBeVisible();
+  await page.getByText(/Республика Дешт наступает/).first().click();
+  await expect(page.getByLabel('Оборонительная война')).toBeVisible();
+  await page.getByLabel('Оборонительная война').getByRole('button', { name: /Контрудар/ }).click();
+  await expect(page.getByLabel('Оборонительная война').getByRole('button', { name: /Контрудар/ })).toHaveCSS('color', /./);
+  expect(errors).toEqual([]);
+});
+
+test('своё дело: дерево технологий, команда и сохранение в слот на сервере', async ({ page }) => {
+  const { makeTycoon, snapshotTycoon } = await import('../src/lib/tycoon.js');
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  let saved = null;
+  await page.route('**/api/**', (r) => {
+    const req = r.request();
+    if (req.url().includes('/api/solo') && req.method() === 'POST') {
+      saved = JSON.parse(req.postData());
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ slots: [{ savedAt: new Date().toISOString(), buildings: 3, cash: 4, quarterIndex: 1 }, null, null, null] }) });
+    }
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ slots: [null, null, null, null] }) });
+  });
+  const save = { ...snapshotTycoon(makeTycoon({ start: 'farm' })), introSeen: true };
+  await page.addInitScript((s) => { localStorage.setItem('ems-tycoon-v1', JSON.stringify({ ...s, savedAt: Date.now() })); }, save);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Своё дело — продолжить', { exact: true }).click();
+  await expect(page.getByText(/Задание 1 из/)).toBeVisible();
+  await page.getByRole('tab', { name: 'Исследования' }).click();
+  await page.getByRole('button', { name: /Кадровое агентство/ }).click();
+  await expect(page.getByText('Люди на новые здания набираются вдвое быстрее.')).toBeVisible();
+  await page.getByRole('tab', { name: 'Команда' }).click();
+  await expect(page.getByText('Управляющий производством')).toBeVisible();
+  await page.getByRole('button', { name: 'Партии' }).click();
+  await page.getByRole('button', { name: 'Сохранить сюда' }).first().click();
+  await expect.poll(() => saved && saved.kind).toBe('tycoon');
+  await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

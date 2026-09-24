@@ -1,113 +1,9 @@
-/* =========================================================================================
-   ЯДРО МОДЕЛИ «Экономическая панель государства» — чистые функции, без React и DOM.
-   Единственный источник истины: импортируется и клиентом (src/MacroSimulator.jsx, для
-   соло-игры), и сервером (api/_lib/engine.js, для мультиплеера). Не дублировать — иначе
-   у игроков разойдутся случайные шоки и результаты кварталов.
-========================================================================================= */
-const CONFIG = {
-  population: 45,
-  startYear: 2032,
-  target: {
-    inflation: 4.0,
-    nairu: 5.0,
-    foreignRate: 3.0,
-    worldInflation: 3.0,
-    neutralConfidence: 55,
-    neutralStability: 70,
-    neutralTrust: 55,
-    minCapitalRatio: 10.5,
-    riskWeight: 0.75,
-    lgd: 0.45,
-  },
-  prod: { alpha: 0.32, depreciation: 5.0, tfpBase: 1.55 },
-  shares: { wageBill: 0.47, profits: 0.21, capitalIncome: 0.055, nonTaxRevenue: 0.075 },
-  initial: {
-    gdp: 2000, priceLevel: 100,
-    consumption: 1155, businessInvestment: 380, govPurchasesReal: 405, govInvestmentReal: 60,
-    exports: 480, imports: 480, transfersReal: 175,
-    capitalStock: 6000, laborForce: 100,
-    unemployment: 5.0, nairu: 5.0, wageGrowth: 6.3,
-    productivity: 100, humanCapitalIndex: 100, infrastructureIndex: 100,
-    inflation: 4.0, coreInflation: 4.0, inflationExpectations: 4.0, cbCredibility: 60,
-    keyRate: 5.5, reserveReq: 6.0, capitalRequirement: 10.5, fxRegime: 'free',
-    lendingRate: 7.92, depositRate: 4.3, rStar: 1.55, riskPremium: 1.4,
-    moneySupply: 100, exchangeRate: 100, realExchangeRate: 100,
-    inflationTarget: 4.0, fxTarget: 100,
-    incomeTaxRate: 15, profitTaxRate: 20, vatRate: 18, exciseRate: 8, capitalTaxRate: 13, socialContribRate: 22,
-    shadowShare: 14,
-    budgetShares: { health: 19, education: 16, science: 4, defense: 15, admin: 12, other: 34 },
-    govDebt: 1200, effectiveDebtRate: 6.5, sovereignFund: 0,
-    creditVolume: 1400, bankCapital: 147, bankNPL: 3.0, bankLiquidity: 70,
-    reserves: 300, fdi: 40,
-    consumerConfidence: 55, businessConfidence: 55, financialStability: 70, govTrust: 55,
-    approval: 55, quartersToElection: 16, term: 1, mandate: null, governmentLine: 'centrist',
-    politicalRegime: 'democracy', politicalTension: 8, parliamentDissolved: false, unrestQuartersLeft: 0,
-    politicalCapital: 55, cbTenure: 0, mofTenure: 0, presidentSatisfaction: 60,
-    worldGdpGrowth: 2.5, worldInflation: 3.0, worldRate: 3.0, commodityIndex: 100, worldDemandIndex: 100,
-    policyCoordination: 70,
-  },
-  /* Коэффициенты причинных связей. Всё, что относится к «силе» канала, собрано здесь. */
-  coef: {
-    // денежная трансмиссия
-    termPremium: 0.8,
-    bankSpreadBase: 1.2,
-    lendingPassthrough: { easy: 0.9, medium: 0.62, hard: 0.45 },
-    depositSpread: 0.8,
-    // кредит
-    creditDemandBase: 6.0,
-    creditRateSens: 1.15,
-    creditConfSens: 0.5,
-    creditAccelerator: 0.45,
-    creditReserveSens: 0.35,
-    creditImpulseToDemand: 0.16,
-    // IS
-    consInertia: 0.30, consIncome: 0.55, consRate: 0.30, consConf: 0.22, consCredit: 0.55,
-    invInertia: 0.28, invAccelerator: 0.42, invRate: 1.25, invConf: 0.35, invCredit: 0.75,
-    invCrowdIn: 0.35, invProfitTax: 0.45,
-    capacityDrag: 0.30,
-    // внешний сектор
-    exportWorld: 0.55, exportRer: 0.09, importIncome: 0.95, importRer: 0.07,
-    // труд
-    okun: 0.45, uAdjust: 0.34, nairuHysteresis: 0.020,
-    wageTightness: 0.80, wageExpect: 1.0, wageSocial: 0.30,
-    // цены
-    phillipsLinear: 0.15, phillipsConvex: 0.022,
-    ulcPass: 0.28, fxPass: 0.085, commodityPass: 0.012, worldInflPass: 0.10, vatPass: 0.35,
-    expAdaptMin: 0.16, expAdaptMax: 0.42,
-    // банки
-    nplRate: 0.55, nplUnemp: 0.35, nplGap: 0.40, nplCreditBoom: 0.75, nplAdjust: 0.20,
-    // бюджет
-    multPurchases: [0.55, 0.60], multTransfers: [0.30, 0.50], multInvestment: [0.60, 0.55], multTax: [0.45, 0.40],
-    // платёжный баланс
-    capitalFlowCarry: 11.0, capitalFlowConf: 0.9, capitalFlowStab: 0.55,
-    fxBop: 1.25, fxCarry: 0.30,
-    // долг
-    debtRollover: 0.12, debtLevelPremium: 0.035,
-  },
-  noiseBase: {
-    consumption: 0.30, investment: 0.70, exports: 0.70, imports: 0.70,
-    inflation: 0.22, exchangeRate: 0.9, financialStability: 1.0,
-    consumerConfidence: 1.1, businessConfidence: 1.1, reserves: 3, fdi: 4,
-    unemployment: 0.07, wageGrowth: 0.16, bankNPL: 0.09, productivity: 0.05,
-    worldGdpGrowth: 0.20, worldInflation: 0.15, worldRate: 0.10, commodityIndex: 2.0, worldDemandIndex: 1.2,
-    capitalFlow: 5.0,
-  },
-  noiseMult: { easy: 0.55, medium: 1.0, hard: 1.55 },
-  lagSpread: { easy: [1], medium: [0.55, 0.45], hard: [0.3, 0.4, 0.3] },
-  slowSpread: { easy: [0.4, 0.6], medium: [0.25, 0.4, 0.35], hard: [0.15, 0.3, 0.35, 0.2] },
-  eventProbability: { easy: 0.09, medium: 0.14, hard: 0.20 },
-  election: { cycle: 16, campaign: 3 },
-  thresholds: {
-    bankingRisk: 70, debtRisk: 75, recessionGapQuarters: 2, recessionGap: -2.0, recessionGapExit: -0.8,
-    overheatGap: 3.5, stagflationInflation: 6.5, stagflationGap: -1.0,
-    currencyMovePct: 11, deflation: 0.5, carCrunch: 10.5,
-  },
-};
+import { clamp, ROLES, quarterLabel, CONFIG, romanQ, POLITICAL_REGIME_INFO, GOALS, DIFFICULTIES, SCENARIOS, PRESIDENT_PERSONAS, MOF_PERSONAS, CB_PERSONAS, rng } from './catalog.js';
+
 
 /* ============================ УТИЛИТЫ ============================ */
 let __uid = 1;
 const uid = () => `x${__uid++}`;
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const QUARTERS_PER_YEAR = 4;
 const annualToQuarterlyFactor = (annualPct) => Math.pow(1 + annualPct / 100, 1 / QUARTERS_PER_YEAR);
 const applyAnnualGrowth = (value, annualPct) => value * annualToQuarterlyFactor(annualPct);
@@ -116,7 +12,7 @@ const annualizedGrowth = (from, to) => (from > 0 && Number.isFinite(from) && Num
   : 0;
 const applyNominalGrowth = (value, realAnnualPct, inflationAnnualPct) =>
   value * annualToQuarterlyFactor(realAnnualPct) * annualToQuarterlyFactor(inflationAnnualPct);
-const gauss = (sigma) => sigma * ((Math.random() + Math.random() + Math.random() - 1.5) / 1.5);
+const gauss = (sigma) => sigma * ((rng() + rng() + rng() - 1.5) / 1.5);
 const sign = (v) => (v > 0.0001 ? 1 : v < -0.0001 ? -1 : 0);
 const ema = (prev, next, w) => prev * (1 - w) + next * w;
 /* Насыщающийся отклик: при малом x ведёт себя как slope·x, а при большом
@@ -167,101 +63,6 @@ const mlnScale = (mln) => {
 };
 const fmtMln = (mln) => { const s = mlnScale(mln); return s.unit ? `${s.v} ${s.unit}` : s.v; };
 const fmtMlnSigned = (mln) => ((Number.isFinite(mln) && mln >= 0 ? '+' : '') + fmtMln(mln));
-const romanQ = (n) => ['I', 'II', 'III', 'IV'][n - 1] || String(n);
-const quarterLabel = (qIndex) => {
-  const year = CONFIG.startYear + Math.floor((qIndex - 1) / 4);
-  const q = ((qIndex - 1) % 4) + 1;
-  return `${romanQ(q)} кв. ${year}`;
-};
-
-/* ============================ РОЛИ, ЦЕЛИ, РЫЧАГИ ============================ */
-const ROLES = [
-  { id: 'central_bank', icon: 'landmark', title: 'Глава Центрального банка', short: 'Центральный банк',
-    desc: 'Ставка, норматив капитала банков, ликвидность, курс. Бюджетом управляет бот-Минфин.',
-    groups: ['monetary'], botRole: 'ministry_finance' },
-  { id: 'ministry_finance', icon: 'coins', title: 'Глава Министерства финансов', short: 'Минфин',
-    desc: 'Налоги, расходы, выплаты и госинвестиции. Ставкой управляет бот-Центробанк.',
-    groups: ['fiscal'], botRole: 'central_bank' },
-  { id: 'full_control', icon: 'globe', title: 'Премьер-министр', short: 'Премьер',
-    desc: 'Оба кабинета в одних руках: и ставка, и бюджет. Ботов нет — и оправдываться не на кого.',
-    groups: ['monetary', 'fiscal'], botRole: null },
-  /* Президент — не «глава государства» из старой роли: он не двигает ни одного
-     ползунка. ЦБ и Минфин здесь два бота, а власть проявляется через людей,
-     указания и реформы — политический капитал вместо процентных пунктов. */
-  { id: 'president', icon: 'crown', title: 'Президент', short: 'Президент',
-    desc: 'Ни ставки, ни бюджета: ими заняты два бота — ЦБ и Минфин. У вас другие рычаги — кадры, указания ведомствам, структурные реформы и публичная политика. Ресурс один: политический капитал.',
-    groups: [], botRole: 'both' },
-  { id: 'trader', icon: 'chart', title: 'Частный инвестор', short: 'Трейдер',
-    desc: 'Вы не управляете экономикой — вы живёте в ней. Ставку ведёт бот-ЦБ, бюджет бот-Минфин, а вы распределяете капитал между активами и отвечаете за результат.',
-    groups: [], botRole: 'both' },
-];
-
-const DIFFICULTIES = [
-  { id: 'easy', title: 'Лёгкий', desc: 'Быстрая трансмиссия, мягкие шоки, терпеливые ожидания.' },
-  { id: 'medium', title: 'Средний', desc: 'Реалистичные лаги: решение действует 2–3 квартала.' },
-  { id: 'hard', title: 'Сложный', desc: 'Длинные лаги, срыв ожиданий, банковские и долговые спирали.' },
-];
-
-const GOALS = [
-  { id: 'max_growth', label: 'Максимальный рост ВВП', score: 'potential' },
-  { id: 'min_inflation', label: 'Минимальная инфляция', score: 'stability' },
-  { id: 'min_unemployment', label: 'Минимальная безработица', score: 'welfare' },
-  { id: 'debt_reduction', label: 'Снижение государственного долга', score: 'fiscal' },
-  { id: 'stable_currency', label: 'Стабильный курс валюты', score: 'financial' },
-  { id: 'living_standards', label: 'Повышение уровня жизни', score: 'welfare' },
-  { id: 'balanced_budget', label: 'Сбалансированный бюджет', score: 'fiscal' },
-  { id: 'max_wealth', label: 'Приумножить капитал', score: 'financial', trader: true },
-  { id: 'beat_index', label: 'Обогнать индекс акций', score: 'financial', trader: true },
-  { id: 'beat_inflation', label: 'Сохранить покупательную способность', score: 'financial', trader: true },
-  { id: 'survive', label: 'Пройти цикл без маржин-колла', score: 'financial', trader: true },
-];
-
-/* Сценарии — не отдельная песочница, а другая стартовая точка того же движка:
-   переопределяют часть CONFIG.initial перед расчётом makeInitialEconomy, а не
-   правят его — иначе baseline-сравнения в остальном коде (валютный порог
-   резервов, доля потребления/инвестиций «как в нормальной экономике») сами
-   поехали бы вместе со стартом и потеряли смысл как ориентир. */
-/* Сложность сценария — не на глаз, а по отчёту о балансе (npm run balance --
-   --scenarios): перебор 2592 двухфазных стратегий игрока (с МВФ и без), доля
-   тех, что удерживают демократию четыре года. Открытая партия и ипотечный
-   пузырь — 100%, валютный кризис — около 88%, гиперинфляция — около 7%.
-   Ипотечный пузырь всё же «средний», а не «лёгкий»: демократия в нём цела,
-   но выборы проиграть легко — пузырь лопается под урну. Валютный кризис —
-   «трудный»: демократию удержать можно, но выборы в нём боты проигрывают в
-   трёх партиях из четырёх, и одна ошибка первого года стоит мандата.
-   level — от 1 до 4, levelNote объясняет цифру игроку. */
-const SCENARIOS = [
-  { id: 'sandbox', title: 'Открытая партия', short: 'Песочница', level: 1, levelLabel: 'Лёгкий',
-    levelNote: 'Без стартового кризиса: ошибки видны, но исправимы.',
-    desc: 'Стабильная экономика без стартового кризиса — учиться или экспериментировать без давления времени.', overrides: null },
-  { id: 'currency_crisis', title: 'Валютный кризис', short: 'Курс и резервы', level: 3, levelLabel: 'Трудный',
-    levelNote: 'Демократию удержать можно, но выборы проиграть легко: ошибки первого года стоят мандата.',
-    desc: 'Резервы уже наполовину истрачены, инфляция разогналась, ставка экстренно поднята — но доверие подорвано, и рынок ждёт девальвации.',
-    overrides: { reserves: 60, inflation: 11, coreInflation: 9.5, inflationExpectations: 9, riskPremium: 3.4,
-      keyRate: 15, lendingRate: 19, depositRate: 12, fxRegime: 'managed', cbCredibility: 32,
-      consumerConfidence: 32, businessConfidence: 30, approval: 38, politicalTension: 28,
-      // режим экономики на старте — тот, что движок присвоит после первого
-      // квартала; иначе до первого хода баннер писал «Нормальный режим»
-      regime: 'currency' } },
-  { id: 'housing_bubble', title: 'Ипотечный пузырь', short: 'Банки и кредит', level: 2, levelLabel: 'Средний',
-    levelNote: 'Институты выдержат, но выборы проиграть легко: пузырь лопается под урну.',
-    desc: 'Кредитный бум уже случился: портфель раздут, просрочка растёт, капитал банков на исходе. Вопрос не в том, лопнет ли пузырь, а когда.',
-    overrides: { creditVolume: 2100, bankCapital: 85, bankNPL: 8.5, bankLiquidity: 38, financialStability: 30,
-      unemployment: 6.2, wageGrowth: 3.2, consumerConfidence: 40, businessConfidence: 38, approval: 45,
-      regime: 'banking' } },
-  { id: 'hyperinflation', title: 'Гиперинфляция', short: 'Доверие к деньгам', level: 4, levelLabel: 'Самый трудный',
-    levelNote: 'Выигрывает примерно одна стратегия из пятнадцати, бездействие проигрывает всегда. Даже верная игра стоит глубокой рецессии.',
-    desc: 'Цены разгоняются на глазах, доверие к цели по инфляции разрушено, долг уже дорогой. Выход один — стабилизационная программа: жёсткая ставка вместе с бюджетом без дыры, пока у правительства держится мандат спасения. Постепенностью эту спираль не остановить.',
-    overrides: { inflation: 34, coreInflation: 30, inflationExpectations: 27, cbCredibility: 18, keyRate: 24,
-      lendingRate: 30, depositRate: 22, govDebt: 1700, effectiveDebtRate: 13, riskPremium: 4.2,
-      consumerConfidence: 25, businessConfidence: 28, approval: 33, politicalTension: 34,
-      // при гиперинфляции номинальные зарплаты растут почти вровень с ценами
-      // (индексация), отставая на несколько пунктов; со стартовыми 6,3% модель
-      // считала, что реальные зарплаты падают на 28% в год при любой политике
-      wageGrowth: 26,
-      regime: 'currency',
-      crisisMandateLeft: 6, crisisMandateTotal: 6 } },
-];
 
 const FX_REGIMES = [
   { id: 'free', label: 'Плавающий', hint: 'Курс определяется платёжным балансом. Резервы не тратятся, но инфляция импортируется быстрее.' },
@@ -380,36 +181,6 @@ function defaultDecisions(state, prevDecisions) {
     shareAdmin: state.budgetShares.admin,
   };
 }
-
-/* =========================================================================================
-   БОТЫ: ведомство, которым вы не управляете, ведёт собственную политику
-========================================================================================= */
-const CB_PERSONAS = [
-  { id: 'hawk', name: 'Ястреб', title: 'Бескомпромиссный инфляционный таргетёр',
-    infl: 2.1, gap: 0.25, smooth: 0.70, maxMove: 1.75, tolerance: 0.7, fiscalLean: 0.35, macropru: 1.0,
-    desc: 'Ставит цель по инфляции выше занятости. Жёстко реагирует на бюджетную экспансию.' },
-  { id: 'pragmatic', name: 'Прагматик', title: 'Гибкое таргетирование инфляции',
-    infl: 1.5, gap: 0.60, smooth: 0.74, maxMove: 1.25, tolerance: 1.2, fiscalLean: 0.20, macropru: 0.6,
-    desc: 'Балансирует инфляцию и выпуск, сглаживает траекторию ставки.' },
-  { id: 'dove', name: 'Голубь', title: 'Приоритет занятости и роста',
-    infl: 1.05, gap: 1.00, smooth: 0.82, maxMove: 0.75, tolerance: 2.2, fiscalLean: 0.05, macropru: 0.3,
-    desc: 'Терпит инфляцию ради роста. Рискует потерей доверия и срывом ожиданий.' },
-];
-
-const MOF_PERSONAS = [
-  { id: 'technocrat', name: 'Технократ', title: 'Бюджетное правило и инвестиции',
-    anchor: -2.0, cyclical: 0.55, taxWill: 0.6, debtLimit: 75, transferBias: 0.8, investBias: 1.4,
-    shares: { health: 19, education: 20, science: 7, defense: 13, admin: 10 },
-    desc: 'Держит дефицит у правила, в кризис умеренно стимулирует, вкладывается в образование и науку.' },
-  { id: 'austerity', name: 'Консерватор', title: 'Жёсткая бюджетная дисциплина',
-    anchor: -0.5, cyclical: 0.22, taxWill: 0.3, debtLimit: 60, transferBias: 0.4, investBias: 0.6,
-    shares: { health: 16, education: 13, science: 3, defense: 18, admin: 12 },
-    desc: 'Сокращает дефицит любой ценой. Усиливает рецессии, зато долг под контролем.' },
-  { id: 'populist', name: 'Популист', title: 'Социальные расходы прежде всего',
-    anchor: -4.5, cyclical: 0.95, taxWill: 0.75, debtLimit: 105, transferBias: 2.2, investBias: 0.9,
-    shares: { health: 24, education: 17, science: 2, defense: 14, admin: 13 },
-    desc: 'Наращивает выплаты и расходы, налоги повышает на бизнес. Источник инфляции и долга.' },
-];
 
 const getCbPersona = (id) => CB_PERSONAS.find((p) => p.id === id) || CB_PERSONAS[1];
 // какой характер получает ведомство, назначенное новой властью
@@ -1737,16 +1508,29 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   const score = req.fit(economy) + (req.bias[persona.id] || 0) + authority
     + clamp((economy.approval - 50) / 55, -0.9, 0.9)
     - (str - 1) * 0.8;
-  const status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
-  const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
+  let status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
+  /* Ведомство могло и само идти в ту же сторону: ЦБ снижает ставку по своим
+     причинам, а президент как раз этого и требует. Раньше в ленте стояло
+     «ОТКАЗ» — и следующей строкой «ЦБ снизил ставку». Теперь собственное решение
+     ведомства засчитывается: совпало с требованием — исполнено, шаг в ту же
+     сторону, но меньше — частично. Уступки сверх своего решения тут нет, поэтому
+     и удара по независимости ЦБ тоже нет. */
+  const own = directiveProgress(reqId, economy, decisions, economy, str);
+  let byOwn = false;
+  if (Number.isFinite(own) && own >= 0.9 && status !== 'accepted') { status = 'accepted'; byOwn = true; }
+  else if (Number.isFinite(own) && own >= 0.3 && status === 'rejected') { status = 'partial'; byOwn = true; }
+  const k = byOwn ? 0 : status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
   // независимость ЦБ — не декларация, а то, насколько заметно он выполняет
   // политические указания; рынок это видит и переоценивает якорь ожиданий
-  const credibilityHit = toCb ? -7 * k : 0;
+  const credibilityHit = toCb && k > 0 ? -7 * k : 0;
   const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions;
+  const ownNote = byOwn ? (status === 'accepted'
+    ? 'Ведомство и без указания шло в ту же сторону — решение совпало с требованием. '
+    : 'Шаг в ту же сторону ведомство сделало по своим причинам, но меньше, чем требовали. ') : '';
   return {
     req, status, score, toCb, persona, strength: str, ask: askText(req, str, 'president', regime),
-    decisions: finalDecisions,
-    text: requestOutcomeText(req, status, economy, finalDecisions),
+    decisions: finalDecisions, byOwn,
+    text: ownNote + requestOutcomeText(req, status, economy, finalDecisions),
     credibilityHit,
     tension: status === 'rejected' ? 5 : 0,
     coordination: status === 'accepted' ? 5 : status === 'partial' ? 2 : -6,
@@ -1788,30 +1572,6 @@ function appointmentEffects(kind, s, difficulty, persona) {
   };
   return { impulses, news, cost: APPOINT_COST[kind] };
 }
-
-/* ============================ ПРЕЗИДЕНТ КАК ТРЕТЬЕ ЛИЦО ============================
-   За ЦБ и Минфин игрок и раньше имел дело с ботом соседнего ведомства. Президент —
-   другой уровень: он ничего не считает сам, но может требовать, назначать и тратить
-   политический капитал на то, до чего у ведомств руки не доходят. Работает он тем же
-   кодом, что и роль президента (PRESIDENT_ACTIONS, processPresidentialDirective) —
-   отличается только тем, что решения принимает характер, а не человек.
-
-   Главное следствие для игрока: у требований президента есть последствия. Он не
-   может отменить решение ЦБ, но может перестать терпеть его главу. */
-const PRESIDENT_PERSONAS = [
-  { id: 'technocrat', name: 'Технократ', title: 'Не мешает ведомствам работать',
-    pressure: 0.30, populism: -0.5, reform: 0.9, power: 0.05, patience: 1.35,
-    desc: 'Вмешивается редко и по делу, вкладывается в структурные реформы, требований почти не выдвигает. Работать с ним спокойно — но и помощи ждать не стоит.' },
-  { id: 'populist', name: 'Популист', title: 'Рейтинг важнее цифр',
-    pressure: 0.85, populism: 1.0, reform: -0.35, power: 0.35, patience: 0.7,
-    desc: 'Требует дешёвых денег и щедрого бюджета, реформы считает вредными для рейтинга. Отказ читает как личную нелояльность.' },
-  { id: 'strongman', name: 'Силовик', title: 'Власть должна быть вертикальной',
-    pressure: 0.90, populism: 0.25, reform: 0.15, power: 1.0, patience: 0.55,
-    desc: 'Указания не обсуждаются. Легко идёт на роспуск парламента и разгон протеста — вместе с ними приходят премия за риск и отток капитала.' },
-  { id: 'reformer', name: 'Реформатор', title: 'Считает на два срока вперёд',
-    pressure: 0.40, populism: -0.4, reform: 1.0, power: -0.2, patience: 1.1,
-    desc: 'Тратит капитал на реформы, даже когда они стоят рейтинга. Требовать будет дисциплины, а не щедрости.' },
-];
 const getPresPersona = (id) => PRESIDENT_PERSONAS.find((p) => p.id === id) || PRESIDENT_PERSONAS[0];
 
 /* Наклон каждой просьбы: насколько она «популистская» и насколько «реформаторская».
@@ -1972,7 +1732,7 @@ function botPresident(s, personaId, difficulty, ctx) {
   const avoidLast = dirAgo <= 2;
   const notLast = (list) => (avoidLast ? list.filter((x) => x.req.id !== opts.lastReqId) : list);
   const shortlist = notLast(band(0.5)).length ? notLast(band(0.5)) : notLast(band(1.2));
-  const best = shortlist.length ? shortlist[Math.floor(Math.random() * shortlist.length)] : null;
+  const best = shortlist.length ? shortlist[Math.floor(rng() * shortlist.length)] : null;
   // после только что выданного требования планка выше: иначе давление идёт каждый
   // квартал и довольство рушится быстрее, чем игрок успевает что-то показать
   const threshold = 1.5 - P.pressure * 1.2 + (sat > 70 ? 0.4 : 0)
@@ -2085,7 +1845,7 @@ function pickPromises(startEconomy, count = 3) {
   const pool = [...PROMISE_POOL];
   const picked = [];
   while (picked.length < count && pool.length) {
-    const i = Math.floor(Math.random() * pool.length);
+    const i = Math.floor(rng() * pool.length);
     picked.push(pool.splice(i, 1)[0]);
   }
   return picked.map((p) => {
@@ -2111,7 +1871,7 @@ function evaluatePromise(promise, economy) {
    Отдельно от обещаний: обещания подводят итог на выборах по факту, здесь же
    решает сам выбор ответа, а не то, что происходит с экономикой дальше.
    Вопрос выбирается детерминированно от (economy, quarterIndex) — без
-   Math.random() — чтобы превью в интерфейсе перед отправкой решений и сам
+   rng() — чтобы превью в интерфейсе перед отправкой решений и сам
    расчёт квартала внутри simulateQuarter всегда сходились на одном и том же
    вопросе без необходимости протаскивать его id через decisions отдельно. */
 const PRESS_QUESTIONS = [
@@ -2206,7 +1966,7 @@ const PRESS_QUESTIONS = [
     ] },
 ];
 
-// без Math.random(): один и тот же (economy, quarterIndex) всегда даёт один и
+// без rng(): один и тот же (economy, quarterIndex) всегда даёт один и
 // тот же вопрос, поэтому клиентское превью перед отправкой решений и расчёт
 // внутри simulateQuarter не могут разойтись
 /* Кто отвечает на пресс-конференции в сетевой партии. В одиночной игре вопрос
@@ -2411,7 +2171,7 @@ function pickEvent(state, eventCooldowns) {
   const weights = pool.map((e) => (e.weightFn ? e.weightFn(state) : e.weight));
   const total = weights.reduce((a, b) => a + b, 0);
   if (total <= 0) return null;
-  let r = Math.random() * total;
+  let r = rng() * total;
   for (let i = 0; i < pool.length; i++) { r -= weights[i]; if (r <= 0) return pool[i]; }
   return pool[pool.length - 1];
 }
@@ -2578,7 +2338,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let pandemicTriggered = false;
   let warTriggered = false;
   let warTypeRolled = null;
-  if (!noEvents && Math.random() < CONFIG.eventProbability[difficulty]) {
+  if (!noEvents && rng() < CONFIG.eventProbability[difficulty]) {
     const evt = pickEvent(s, cooldowns);
     if (evt) {
       if (evt.id === 'pandemic') pandemicTriggered = true;
@@ -2631,6 +2391,11 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const RV = revancheStep(s, decisions, difficulty, quarterIndex, !!pres.patch.startWar);
   queue = queue.concat(RV.impulses);
   RV.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  /* --- 1ж. ОБОРОНИТЕЛЬНАЯ ВОЙНА: фронт на юго-западе --- */
+  const DF = defenseStep(s, decisions, difficulty, quarterIndex, warTriggered && warTypeRolled === 'defensive');
+  queue = queue.concat(DF.impulses);
+  DF.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  Object.entries(DF.shock).forEach(([id, v]) => { RS.regionShock[id] = (RS.regionShock[id] || 0) + v; });
   const PC = peaceStep(s, decisions, difficulty, quarterIndex);
   queue = queue.concat(PC.impulses);
   PC.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
@@ -2811,7 +2576,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
   // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
   const projectReal = RS.projectPct / 100 * s.gdp;
-  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct + AN.spendPct + RV.spendPct + GD.spendPct) / 100 * s.gdp;
+  const eventReal = (RS.eventPct + WC.spendPct + CP.spendPct + AN.spendPct + RV.spendPct + DF.spendPct + GD.spendPct) / 100 * s.gdp;
   if (sequesterFactor < 0.995) {
     news.push(mkNews('crisis', `СЕКВЕСТР БЮДЖЕТА: РАСХОДЫ УРЕЗАНЫ НА ${fmt1((1 - sequesterFactor) * 100)}%`,
       `Инвесторы отказываются финансировать дефицит больше ${fmt1(maxDeficitPct)}% ВВП при долге ${fmt1(s.debtToGdp)}% и премии за риск ${fmt1(s.riskPremium)} п.п. Правительство вынуждено резать расходы независимо от своих планов — первыми страдают госинвестиции.`,
@@ -3460,7 +3225,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
       const priorTension = clamp(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, 0, 100);
       const coupChance = clamp(Math.pow(severity, 1.6) * 0.6 + (priorTension / 100) * 0.25, 0, 0.75);
-      coup = Math.random() < coupChance;
+      coup = rng() < coupChance;
     }
     electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (voteShare < 42 ? 'landslide' : 'opposition'));
     /* Результат по округам считаем по состоянию НА ДЕНЬ ГОЛОСОВАНИЯ, то есть по
@@ -3556,7 +3321,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let warQuartersLeft = warDecreed ? 10 : revancheStart ? 10 : warTriggered ? 4
     : offensiveOngoing ? s.warQuartersLeft : Math.max(0, (s.warQuartersLeft || 0) - 1);
   if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
-  if (warEnded || WC.endWar || RV.endWar) warQuartersLeft = 0;
+  if (warEnded || WC.endWar || RV.endWar || DF.endWar) warQuartersLeft = 0;
   /* Как бы ни кончилась своя война — победой, перемирием или миром, — взятое
      остаётся за страной и становится её территорией: граница на карте сдвигается,
      в экономику приходят люди и руда, а на новых землях первое время неспокойно. */
@@ -3687,9 +3452,16 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
       // Случайно начавшаяся война и пандемия сюда не попадают: обеим уже
       // объявляет первый эпизод их сюжетной цепочки (см. STORY_TEMPLATES) —
       // второй текст о том же самом только повторял его другими словами.
-      news.push(mkNews('gov', 'СТРАНА ПЕРЕХОДИТ НА ВОЕННОЕ ПОЛОЖЕНИЕ',
-        'Торговля, инвестиции и доверие сжимаются одновременно — это не стихия, а прямое следствие принятого решения. Расходы на оборону, сделанные до войны, определяют, насколько тяжёлым будет первый год. Чрезвычайные полномочия с этого момента доступны власти в полном объёме.',
-        { priority: 10, chain: ['Решение о войне', 'Санкции', 'Торговля ↓', 'Военное положение'] }));
+      // при авторитаризме и тоталитаризме пресса не признаёт, что война — чьё-то
+      // решение с ценой: это «ответ на угрозу» и «сплочение», а не сжатие экономики
+      const statePress = s.politicalRegime === 'authoritarian' || s.politicalRegime === 'totalitarian';
+      news.push(mkNews('gov', statePress ? 'ВВЕДЕНО ВОЕННОЕ ПОЛОЖЕНИЕ: СТРАНА СПЛОТИЛАСЬ' : 'СТРАНА ПЕРЕХОДИТ НА ВОЕННОЕ ПОЛОЖЕНИЕ',
+        statePress
+          ? (s.politicalRegime === 'totalitarian'
+            ? 'Обращение к народу: враг у ворот, и народ как один встаёт на защиту Родины. Экономика переводится на нужды фронта, предприятия получают оборонный заказ. Попытки сеять панику и распространять слухи о трудностях пресекаются по законам военного времени.'
+            : 'Официальное сообщение: в ответ на угрозу безопасности вводится военное положение. Промышленность получает оборонный заказ, правительство берёт экономику под особый контроль. Трудности временные — страна справится.')
+          : 'Торговля, инвестиции и доверие сжимаются одновременно — это не стихия, а прямое следствие принятого решения. Расходы на оборону, сделанные до войны, определяют, насколько тяжёлым будет первый год. Чрезвычайные полномочия с этого момента доступны власти в полном объёме.',
+        { priority: 10, chain: statePress ? ['Угроза', 'Военное положение', 'Оборонный заказ'] : ['Решение о войне', 'Санкции', 'Торговля ↓', 'Военное положение'] }));
     }
   });
   // окончание войны/пандемии тоже должно попасть в новости — раньше они молча
@@ -3791,7 +3563,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         `Взаимные вето и угроза импичмента парализуют принятие решений. Рейтинг власти ${Math.round(approval)} из 100 — почвы для компромисса всё меньше.`,
         { priority: 9, chain: ['Низкий рейтинг', 'Паралич власти', 'Конфликт ветвей власти'] }));
     } else if (politicalRegime === 'crisis') {
-      if (politicalTension >= 70 && Math.random() < 0.4) {
+      if (politicalTension >= 70 && rng() < 0.4) {
         politicalRegime = 'authoritarian'; parliamentDissolved = true;
         cooldowns['political:transition'] = 4;
         nextQueue.push(makeImpulse('businessConfidence', -10, 'Роспуск парламента: институты слабеют', 'default', difficulty, 'other'));
@@ -3805,7 +3577,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         news.push(mkNews('gov', 'ПОЛИТИЧЕСКИЙ КРИЗИС ИСЧЕРПАН', 'Стороны нашли компромисс, парламент возвращается к обычной работе.', { priority: 7 }));
       }
     } else if (politicalRegime === 'authoritarian') {
-      if (politicalTension >= 80 && Math.random() < 0.38) {
+      if (politicalTension >= 80 && rng() < 0.38) {
         politicalRegime = 'totalitarian';
         cooldowns['political:transition'] = 6;
         nextQueue.push(makeImpulse('businessConfidence', -14, 'Установление тоталитарного контроля', 'default', difficulty, 'other'));
@@ -3814,7 +3586,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
         news.push(mkNews('gov', 'ВЛАСТЬ УСТАНАВЛИВАЕТ ПОЛНЫЙ КОНТРОЛЬ',
           'Оставшиеся независимые институты и медиа переходят под прямое управление. Несогласие приравнено к угрозе государству, выборы отменены без назначения новой даты.',
           { priority: 10, chain: ['Авторитарный поворот', 'Подавление институтов', 'Тоталитарный режим'] }));
-      } else if (politicalTension <= 25 && !decreeRule && Math.random() < 0.25) {
+      } else if (politicalTension <= 25 && !decreeRule && rng() < 0.25) {
         // Возврат к демократии «сам собой» — это про режим, который вводился как
         // временная мера в кризис: обстоятельства отпали, чрезвычайное положение
         // сняли. Президент, распустивший парламент собственным указом (decreeRule),
@@ -3825,7 +3597,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
           'Обстоятельства, которыми объясняли особый режим, отпали, и удерживать его дальше стало дороже, чем вернуть обычную процедуру. Объявлены свободные выборы.', { priority: 8 }));
       }
     } else if (politicalRegime === 'totalitarian') {
-      if (politicalTension >= 92 && Math.random() < 0.12) {
+      if (politicalTension >= 92 && rng() < 0.12) {
         politicalRegime = 'crisis'; parliamentDissolved = false;
         cooldowns['political:transition'] = 5;
         powerLost = 'uprising';
@@ -3842,7 +3614,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   let unrestTriggered = false;
   if (unrestCooldown <= 0 && politicalTension >= 55) {
     const chance = 0.05 + politicalTension / 400 + (warQuartersLeft > 0 ? 0.08 : 0) + repression * 0.06;
-    if (Math.random() < chance) {
+    if (rng() < chance) {
       unrestTriggered = true;
       cooldowns['political:unrest'] = 2;
       nextQueue.push(makeImpulse('consumption', -1.2, 'Беспорядки: перебои в повседневной жизни', 'default', difficulty));
@@ -3874,14 +3646,14 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     else {
       const chance = militaryCoupRisk({ politicalTension, unemployment, nairu, inflation,
         activeCrises, approval, unrestActive, politicalCapital: Number.isFinite(s.politicalCapital) ? s.politicalCapital : 55 });
-      if (chance > 0 && Math.random() < chance) {
+      if (chance > 0 && rng() < chance) {
         /* Выступить — не значит победить. Власть, которую поддерживает большинство,
            переворот переживает: люди выходят на улицу за неё, а не против, и
            заговорщиков арестовывают к утру. Чем ниже рейтинг и выше напряжение,
            тем меньше желающих её защищать. */
         const legitimacy = clamp((approval - 35) / 40, 0, 1) * 0.6 + clamp((45 - politicalTension) / 45, 0, 1) * 0.4;
         cooldowns['political:military'] = 8;
-        if (Math.random() < legitimacy) {
+        if (rng() < legitimacy) {
           nextQueue.push(makeImpulse('approvalPush', 6, 'Попытка переворота провалилась: власть защитили', 'fast', difficulty, 'other'));
           nextQueue.push(makeImpulse('tensionPush', 9, 'Раскол в силовых структурах', 'fast', difficulty, 'other'));
           nextQueue.push(makeImpulse('businessConfidence', -7, 'Попытка переворота: страна на грани', 'default', difficulty, 'other'));
@@ -3990,6 +3762,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     warCampaign: warQuartersLeft > 0 && warType === 'offensive' ? (WC.campaign || newWarCampaign(annexed)) : null,
     annexed: territory.annexed, annexLoyalty: territory.annexLoyalty, annexIntegrated: territory.annexIntegrated, annexFunded: territory.annexFunded,
     revancheCampaign: warQuartersLeft > 0 && warType === 'revanche' ? (RV.campaign || s.revancheCampaign) : null,
+    defenseCampaign: warQuartersLeft > 0 && warType === 'defensive' ? (DF.campaign || s.defenseCampaign || newDefenseCampaign()) : null,
     norlandRevanche: RV.revanche, revancheWarned: RV.warned, peaceTalks, treaty,
     groupSupport: GS.support, groupSupportPrev: s.groupSupport || null, groupDriversNow: GS.drivers, groupUnrestCd: GE.cd,
     groupDemand: GD.demand, groupDemandCooldown: GD.cooldown, lastGroupResolution: GD.resolution || s.lastGroupResolution || null,
@@ -4851,7 +4624,7 @@ function makeInitialEconomy(scenarioId) {
     projects: [], projectsBuilt: [], regionMods: {}, regionShock: {}, regionEvent: null, regionEventCooldown: 1,
     lastRegionResolution: null, projectReal: 0, warCampaign: null, annexed: [], campaignSpend: {},
     annexLoyalty: {}, annexIntegrated: [], annexFunded: [],
-    norlandRevanche: 0, revancheWarned: false, revancheCampaign: null, peaceTalks: null, treaty: null,
+    norlandRevanche: 0, revancheWarned: false, revancheCampaign: null, defenseCampaign: null, peaceTalks: null, treaty: null,
     groupSupport: null, groupSupportPrev: null, groupMemory: [], groupDriversNow: null, groupUnrestCd: {},
     groupDemand: null, groupDemandCooldown: 0, lastGroupResolution: null,
     inflationRisk: 14, debtRisk: 24, recessionRisk: 12, currencyRisk: 20,
@@ -5168,13 +4941,6 @@ function gameChronicle(history) {
   return { events: top, summary };
 }
 
-const POLITICAL_REGIME_INFO = {
-  democracy: { label: 'Демократия', color: 'teal', text: 'Парламент работает, выборы решают исход, пресса независима.' },
-  crisis: { label: 'Конфликт парламента и президента', color: 'gold', text: 'Взаимные вето и угроза импичмента парализуют принятие решений — институты ещё держатся, но компромисса всё меньше.' },
-  authoritarian: { label: 'Авторитарный режим', color: 'rust', text: 'Парламент распущен или обессилен, выборы формальны, независимые голоса вытесняются.' },
-  totalitarian: { label: 'Тоталитарный режим', color: 'rust', text: 'Полный государственный контроль над институтами и прессой; несогласие приравнено к угрозе государству.' },
-};
-
 /* Карта страны — семь округов правильным шестиугольным кластером (центр и
    кольцо из шести): осевые координаты гарантируют, что фигуры точно
    стыкуются без наложений и дыр, без ручной подгонки полигонов. Экономику
@@ -5268,6 +5034,7 @@ function warFrontRegion(economy) {
   if (!((economy.warQuartersLeft || 0) > 0)) return null;
   // в войне за новые земли фронт там, куда бьёт Норланд
   if (economy.warType === 'revanche') return (economy.revancheCampaign && economy.revancheCampaign.next) || null;
+  if (economy.warType === 'defensive' && economy.defenseCampaign) return economy.defenseCampaign.next || economy.defenseCampaign.occupied[0] || null;
   return WAR_FRONT_REGION[economy.warType] || WAR_FRONT_REGION.defensive;
 }
 /* ============================ СТРОЙКИ В ОКРУГАХ ============================
@@ -5279,42 +5046,42 @@ function warFrontRegion(economy) {
    Достроенная — навсегда снижает напряжение округа (relief) и даёт свой эффект
    на экономику. Запускает стройку Минфин; живой президент — поверх него. */
 const REGION_PROJECTS = [
-  { id: 'metro', region: 'capital', name: 'Велеградское метро', quarters: 8, cost: 0.35, relief: 12,
+  { id: 'metro', region: 'capital', name: 'Велеградское метро', doneHeadline: 'ОТКРЫТО ВЕЛЕГРАДСКОЕ МЕТРО', quarters: 8, cost: 0.35, relief: 12,
     effect: 'Инфраструктура и доверие к власти: столица видит результат каждый день.',
     done: (d) => [makeImpulse('infrastructureIndex', 2.5, 'Открыто велеградское метро', 'fast', d, 'other'),
       makeImpulse('approvalPush', 2.5, 'Открыто велеградское метро', 'fast', d, 'other')] },
-  { id: 'deepport', region: 'port', name: 'Глубоководный порт', quarters: 6, cost: 0.3, relief: 12,
+  { id: 'deepport', region: 'port', name: 'Глубоководный порт', doneHeadline: 'ОТКРЫТ ГЛУБОКОВОДНЫЙ ПОРТ В ЯНТАРСКЕ', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Экспорт растёт: к причалам встают суда, которые раньше шли к соседям.',
     done: (d) => [sustainedImpulse('exportsGrowth', 1.2, 4, 'Глубоководный порт принимает крупные суда'),
       makeImpulse('infrastructureIndex', 1.5, 'Глубоководный порт', 'fast', d, 'other')] },
-  { id: 'factories', region: 'industry', name: 'Модернизация заводов', quarters: 6, cost: 0.3, relief: 12,
+  { id: 'factories', region: 'industry', name: 'Модернизация заводов', doneHeadline: 'ЗАВОДЫ КУЗНЕЦКА МОДЕРНИЗИРОВАНЫ', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Производительность: новые станки выпускают больше тем же числом рук.',
     done: (d) => [makeImpulse('productivity', 1.6, 'Заводы Кузнецкой области модернизированы', 'slow', d, 'other')] },
-  { id: 'irrigation', region: 'agri', name: 'Ирригация и элеваторы', quarters: 4, cost: 0.2, relief: 12,
+  { id: 'irrigation', region: 'agri', name: 'Ирригация и элеваторы', doneHeadline: 'ИРРИГАЦИЯ И ЭЛЕВАТОРЫ ПРИРЕЧЬЯ ГОТОВЫ', quarters: 4, cost: 0.2, relief: 12,
     effect: 'Дешевле продовольствие: урожай меньше зависит от погоды и доезжает до города.',
     done: (d) => [makeImpulse('inflationSupply', -0.35, 'Ирригация Приреченской области снижает цены на продовольствие', 'slow', d, 'other')] },
-  { id: 'powerplant', region: 'mining', name: 'Новая электростанция', quarters: 8, cost: 0.4, relief: 12,
+  { id: 'powerplant', region: 'mining', name: 'Новая электростанция', doneHeadline: 'НОВАЯ ЭЛЕКТРОСТАНЦИЯ ДАЛА ТОК', quarters: 8, cost: 0.4, relief: 12,
     effect: 'Дешевле энергия для всей страны: ниже издержки и инфляция предложения.',
     done: (d) => [makeImpulse('inflationSupply', -0.45, 'Новая электростанция удешевляет энергию', 'slow', d, 'other'),
       makeImpulse('infrastructureIndex', 1.5, 'Новая электростанция', 'fast', d, 'other')] },
-  { id: 'techpark', region: 'finance', name: 'Технопарк при бирже', quarters: 5, cost: 0.25, relief: 10,
+  { id: 'techpark', region: 'finance', name: 'Технопарк при бирже', doneHeadline: 'ОТКРЫТ ТЕХНОПАРК ЗЛАТОГРАДА', quarters: 5, cost: 0.25, relief: 10,
     effect: 'Производительность и доверие бизнеса: деньги и идеи находят друг друга.',
     done: (d) => [makeImpulse('productivity', 1.0, 'Открыт технопарк Златограда', 'slow', d, 'other'),
       makeImpulse('businessConfidence', 4, 'Открыт технопарк Златограда', 'default', d, 'other')] },
-  { id: 'railway', region: 'periphery', name: 'Железная дорога на Боровец', quarters: 7, cost: 0.3, relief: 14,
+  { id: 'railway', region: 'periphery', name: 'Железная дорога на Боровец', doneHeadline: 'ЖЕЛЕЗНАЯ ДОРОГА ДОШЛА ДО БОРОВЦА', quarters: 7, cost: 0.3, relief: 14,
     effect: 'Боровская область перестаёт пустеть: работа и рынки становятся ближе.',
     done: (d) => [makeImpulse('infrastructureIndex', 2.2, 'Железная дорога дошла до Боровца', 'fast', d, 'other'),
       makeImpulse('laborForce', 0.25, 'Боровская область перестаёт пустеть', 'slow', d, 'other')] },
   // новые земли: стройка там ещё и поднимает лояльность (см. annexStep и regionStep)
-  { id: 'tunnel', region: 'pereval', name: 'Тоннель под перевалом', quarters: 6, cost: 0.3, relief: 12,
+  { id: 'tunnel', region: 'pereval', name: 'Тоннель под перевалом', doneHeadline: 'ОТКРЫТ ТОННЕЛЬ ПОД ПЕРЕВАЛОМ', quarters: 6, cost: 0.3, relief: 12,
     effect: 'Перевал проходим круглый год: транзит и экспорт, а район — часть страны не только на карте.',
     done: (d) => [makeImpulse('infrastructureIndex', 1.5, 'Открыт тоннель под перевалом', 'fast', d, 'other'),
       sustainedImpulse('exportsGrowth', 0.8, 4, 'Транзит через тоннель')] },
-  { id: 'halvik_mines', region: 'halvik', name: 'Модернизация Хальвикских копей', quarters: 5, cost: 0.3, relief: 10,
+  { id: 'halvik_mines', region: 'halvik', name: 'Модернизация Хальвикских копей', doneHeadline: 'ХАЛЬВИКСКИЕ КОПИ МОДЕРНИЗИРОВАНЫ', quarters: 5, cost: 0.3, relief: 10,
     effect: 'Новые шахты и обогатительная фабрика: больше руды на экспорт и работа для края.',
     done: (d) => [sustainedImpulse('exportsGrowth', 1.0, 6, 'Модернизированные копи Хальвика'),
       makeImpulse('inflationSupply', -0.2, 'Руда Хальвика дешевеет', 'slow', d, 'other')] },
-  { id: 'nordholm_rebuild', region: 'nordholm', name: 'Восстановление Нордхольма', quarters: 8, cost: 0.4, relief: 14,
+  { id: 'nordholm_rebuild', region: 'nordholm', name: 'Восстановление Нордхольма', doneHeadline: 'НОРДХОЛЬМ ВОССТАНОВЛЕН', quarters: 8, cost: 0.4, relief: 14,
     effect: 'Город отстраивают после войны: лучший довод для тех, кто ещё ждёт возвращения Норланда.',
     done: (d) => [makeImpulse('approvalPush', 1, 'Нордхольм восстановлен', 'fast', d, 'other'),
       makeImpulse('laborForce', 0.2, 'Нордхольм снова живёт', 'slow', d, 'other')] },
@@ -5325,7 +5092,7 @@ const MAX_ACTIVE_PROJECTS = 3;
 function projectBlocker(p, s) {
   if (!p) return 'такой стройки нет';
   if (!activeRegions(s).some((r) => r.id === p.region)) return 'эта земля не в составе страны';
-  if ((s.projectsBuilt || []).includes(p.id)) return 'уже построено';
+  if ((s.projectsBuilt || []).includes(p.id)) return 'уже завершено';
   const active = s.projects || [];
   if (active.some((x) => x.id === p.id)) return 'уже строится';
   if (active.length >= MAX_ACTIVE_PROJECTS) return `одновременно — не больше ${MAX_ACTIVE_PROJECTS} строек`;
@@ -5583,7 +5350,8 @@ function regionStep(s, decisions, difficulty, quarterIndex) {
     const region = regionById(x.region);
     // на новой земле построенное — лучший довод, что она теперь своя
     if (region.annex) out.loyaltyDelta[x.region] = (out.loyaltyDelta[x.region] || 0) + 15;
-    out.news.push(['gov', `ПОСТРОЕНО: ${p.name.toUpperCase()}`, `${region.name}: сдан объект «${p.name}». ${p.effect} Напряжение в области снижается надолго.`, 8]);
+    // у каждой стройки свой глагол: метро открывают, копи модернизируют, город восстанавливают
+    out.news.push(['gov', p.doneHeadline || `ЗАВЕРШЕНО: ${p.name.toUpperCase()}`, `${region.name}: работы завершены — «${p.name}». ${p.effect} Напряжение в области снижается надолго.`, 8]);
   });
   projects = still;
   // 3) новое событие — не каждый квартал и не раньше третьего
@@ -5594,9 +5362,9 @@ function regionStep(s, decisions, difficulty, quarterIndex) {
     const pool = REGION_EVENTS.filter((e) => (!e.eligible || e.eligible(s)));
     const stressOf = (id) => regionStress(regionById(id), s);
     const maxStress = Math.max(...activeRegions(s).map((r) => stressOf(r.id)));
-    if (pool.length && Math.random() < clamp(0.22 + 0.004 * maxStress, 0.22, 0.55)) {
+    if (pool.length && rng() < clamp(0.22 + 0.004 * maxStress, 0.22, 0.55)) {
       const weights = pool.map((e) => Math.max(0.05, e.weight(s, quarterIndex)) * (1 + stressOf(e.region) / 50));
-      let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+      let r = rng() * weights.reduce((a, b) => a + b, 0);
       const ev = pool.find((e, i) => { r -= weights[i]; return r <= 0; }) || pool[pool.length - 1];
       regionEvent = publicRegionEvent(ev, s, quarterIndex);
       cooldown = 2;
@@ -5659,7 +5427,8 @@ function botRegionPlan(s, P, consolidationNeed) {
 const WAR_OBJECTIVES = [
   { id: 'pass', name: 'Ледяной перевал', headline: 'ВЗЯТ ЛЕДЯНОЙ ПЕРЕВАЛ', desc: 'Горный проход: без него к Нордхольму не подойти. Взятый — облегчает все следующие штурмы и гасит контратаки.' },
   { id: 'mines', name: 'Копи Хальвика', headline: 'ВЗЯТЫ КОПИ ХАЛЬВИКА', desc: 'Рудники у самой границы. Взятые — дают стране экспорт руды и удешевляют сырьё.' },
-  { id: 'city', name: 'Нордхольм', headline: 'ВЗЯТ НОРДХОЛЬМ', desc: 'Столица Норланда. Подойти можно только через перевал; её падение при уже взятых целях — капитуляция противника.', requires: 'pass' },
+  // к столице ведут два пути: через перевал и с востока, от копей Хальвика
+  { id: 'city', name: 'Нордхольм', headline: 'ВЗЯТ НОРДХОЛЬМ', desc: 'Столица Норланда. Подойти можно через перевал или со стороны копей Хальвика; её падение при уже взятых целях — капитуляция противника.', requiresAny: ['pass', 'mines'] },
 ];
 const WAR_OBJECTIVE_BY_ID = Object.fromEntries(WAR_OBJECTIVES.map((o) => [o.id, o]));
 const WAR_STANCES = [
@@ -5683,7 +5452,9 @@ const ANNEX_EFFECT = {
 };
 const warObjectiveOpen = (id, camp) => {
   const o = WAR_OBJECTIVE_BY_ID[id];
-  return !!o && !(camp.captured || []).includes(id) && (!o.requires || (camp.captured || []).includes(o.requires));
+  const cap = camp.captured || [];
+  return !!o && !cap.includes(id) && (!o.requires || cap.includes(o.requires))
+    && (!o.requiresAny || o.requiresAny.some((x) => cap.includes(x)));
 };
 // сила армии: доля обороны в бюджете и поддержка в обществе
 function warStrength(s) {
@@ -5749,8 +5520,8 @@ function warCampaignStep(s, decisions, difficulty) {
   }
   const strength = warStrength(s);
   const passBonus = camp.captured.includes('pass') ? 1.25 : 1;
-  const gain = stance.id === 'assault' ? strength * (16 + 18 * Math.random()) * passBonus
-    : stance.id === 'siege' ? strength * (6 + 8 * Math.random()) * passBonus : strength * 2 * Math.random();
+  const gain = stance.id === 'assault' ? strength * (16 + 18 * rng()) * passBonus
+    : stance.id === 'siege' ? strength * (6 + 8 * rng()) * passBonus : strength * 2 * rng();
   camp.progress[target] = clamp(camp.progress[target] + gain, 0, 100);
   // потери и настроение: штурм бьёт по поддержке сильнее всего
   if (stance.id === 'assault') out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при штурме', 'fast', difficulty, 'other'),
@@ -5759,11 +5530,11 @@ function warCampaignStep(s, decisions, difficulty) {
   // контратака противника по недобранной цели
   let counter = null;
   const counterChance = (stance.id === 'hold' ? 0.1 : 0.25) * (camp.captured.includes('pass') ? 0.5 : 1);
-  if (Math.random() < counterChance) {
+  if (rng() < counterChance) {
     const cands = WAR_OBJECTIVES.filter((o) => !camp.captured.includes(o.id) && camp.progress[o.id] > 0);
     if (cands.length) {
-      const o = cands[Math.floor(Math.random() * cands.length)];
-      const lost = 8 + 8 * Math.random();
+      const o = cands[Math.floor(rng() * cands.length)];
+      const lost = 8 + 8 * rng();
       camp.progress[o.id] = clamp(camp.progress[o.id] - lost, 0, 100);
       counter = { target: o.id, lost: Math.round(lost) };
       out.news.push(['crisis', `КОНТРАТАКА У ЦЕЛИ «${o.name.toUpperCase()}»`, `Противник отбил часть позиций: продвижение откатилось на ${Math.round(lost)} п.`, 7]);
@@ -5813,8 +5584,10 @@ const PARTISAN_INCIDENTS = {
       makeImpulse('govTrust', -1, 'Подполье в Нордхольме', 'default', d, 'other')] },
 };
 // только присоединённые области и без повторов
+// программа интеграции области с полной лояльностью закрывается сама — платить больше не за что
+const INTEGRATION_DONE = 100;
 function sanitizeIntegration(list, s) {
-  const own = activeRegions(s).filter((r) => r.annex).map((r) => r.id);
+  const own = activeRegions(s).filter((r) => r.annex && annexLoyalty(s, r.id) < INTEGRATION_DONE).map((r) => r.id);
   return Array.isArray(list) ? [...new Set(list.filter((id) => own.includes(id)))] : [];
 }
 function annexBlurb(region, s) {
@@ -5834,12 +5607,18 @@ function annexStep(s, decisions, difficulty, loyaltyDelta) {
   regions.forEach((r) => {
     let l = annexLoyalty(s, r.id);
     let d = 1 + ((loyaltyDelta || {})[r.id] || 0);
+    const wasFunded = (s.annexFunded || []).includes(r.id);
     if (plan.has(r.id)) { d += 6; out.spendPct += INTEGRATION_COST; out.funded.push(r.id); }
     if ((s.projects || []).some((x) => x.region === r.id)) d += 2;
     if (underAttack) d -= 3;
     if ((s.politicalTension || 0) > 45) d -= (s.politicalTension - 45) * 0.06;
     l = clamp(l + d, 0, 100);
-    if (l < PARTISAN_BELOW && Math.random() < 0.15 + ((PARTISAN_BELOW - l) / PARTISAN_BELOW) * 0.45) {
+    if (l >= INTEGRATION_DONE && (plan.has(r.id) || wasFunded)) {
+      out.funded = out.funded.filter((id) => id !== r.id);
+      out.news.push(['gov', `${r.name.toUpperCase()}: ПРОГРАММА ИНТЕГРАЦИИ ВЫПОЛНЕНА`,
+        `Лояльность ${r.gen} достигла 100 из 100 — деньги на интеграцию больше не нужны, программа закрыта.`, 6]);
+    }
+    if (l < PARTISAN_BELOW && rng() < 0.15 + ((PARTISAN_BELOW - l) / PARTISAN_BELOW) * 0.45) {
       const inc = PARTISAN_INCIDENTS[r.id];
       out.impulses.push(...inc.impulses(difficulty));
       out.spendPct += 0.03;
@@ -6068,18 +5847,18 @@ function revancheStep(s, decisions, difficulty, q, blockStart) {
   // разведка ошибается: примерно каждый третий удар приходится не туда, куда ждали
   const planned = held.includes(camp.next) ? camp.next : revancheTarget(s, camp);
   const others = held.filter((id) => id !== planned);
-  const feint = others.length > 0 && Math.random() < 0.3;
-  const hit = feint ? others[Math.floor(Math.random() * others.length)] : planned;
+  const feint = others.length > 0 && rng() < 0.3;
+  const hit = feint ? others[Math.floor(rng() * others.length)] : planned;
   const nStr = 0.5 + camp.morale / 200;
   const loyal = 1 + Math.max(0, 50 - annexLoyalty(s, hit)) / 100;
-  let gain = (12 + 10 * Math.random()) * nStr * loyal / warStrength(s);
+  let gain = (12 + 10 * rng()) * nStr * loyal / warStrength(s);
   if (target === hit) gain *= stance.id === 'defend' ? 0.3 : 0.6;
   camp.pressure[hit] = clamp((camp.pressure[hit] || 0) + gain, 0, 100);
   let pushed = 0;
   if (stance.id === 'counter') {
-    pushed = warStrength(s) * (10 + 12 * Math.random());
+    pushed = warStrength(s) * (10 + 12 * rng());
     camp.pressure[target] = clamp((camp.pressure[target] || 0) - pushed, 0, 100);
-    camp.morale -= 6 + 6 * Math.random();
+    camp.morale -= 6 + 6 * rng();
     out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при контрударе', 'fast', difficulty, 'other'),
       makeImpulse('tensionPush', 1, 'Потери при контрударе', 'fast', difficulty, 'other'));
   }
@@ -6107,6 +5886,115 @@ function revancheStep(s, decisions, difficulty, q, blockStart) {
   }
   camp.last = { target, stance: stance.id, hit, gain: Math.round(gain), pushed: Math.round(pushed), feint };
   camp.next = stillHeld.length ? revancheTarget(s, camp) : null;
+  out.campaign = camp;
+  return out;
+}
+
+/* ======================= ОБОРОНИТЕЛЬНАЯ ВОЙНА =======================
+   На страну напала Республика Дешт — с юго-запада, по равнинам Приреченской и
+   лесам Боровской области. Раньше такая война просто шла четыре квартала, а
+   игроку оставалось только капитулировать. Теперь это фронт: каждый квартал
+   противник давит на одну из двух областей (разведка иногда ошибается), президент
+   или премьер отдаёт приказ — держать оборону там, где ждут удара, контрударом
+   отбросить противника или просить перемирия. Область, где давление дошло до 100,
+   оккупирована: там рушатся напряжение, потребление и потенциал, пока её не отобьют
+   (давление ниже 60). Выдохшийся противник уходит сам, срок войны — прежний. */
+const DEF_FRONT = ['agri', 'periphery'];
+const DEF_ENEMY = 'Республика Дешт';
+function newDefenseCampaign() {
+  return { pressure: { agri: 0, periphery: 0 }, occupied: [], morale: 100, last: null, next: 'agri' };
+}
+function defenseTarget(camp) {
+  const free = DEF_FRONT.filter((id) => !camp.occupied.includes(id));
+  return free.sort((a, b) => (camp.pressure[b] || 0) - (camp.pressure[a] || 0))[0] || null;
+}
+function defaultFrontOrder(camp) {
+  const last = camp.last && camp.last.stance !== 'talks' ? camp.last : null;
+  return { target: (last && last.stance === 'counter' && camp.occupied.includes(last.target)) ? last.target : camp.next || DEF_FRONT[0],
+    stance: last ? last.stance : 'defend' };
+}
+function botFrontOrder(s, personaId) {
+  const camp = s.defenseCampaign;
+  if (!camp) return null;
+  const occ = camp.occupied[0];
+  if (personaId === 'strongman') return occ ? { target: occ, stance: 'counter' } : { target: camp.next, stance: 'defend' };
+  if (occ && warStrength(s) >= 0.85) return { target: occ, stance: 'counter' };
+  if (personaId === 'populist' && (s.approval || 50) < 30) return { target: camp.next, stance: 'talks' };
+  if (camp.occupied.length >= 2) return { target: camp.next, stance: 'talks' };
+  return { target: camp.next || DEF_FRONT[0], stance: 'defend' };
+}
+function defenseStep(s, decisions, difficulty, q, starting) {
+  const out = { impulses: [], news: [], spendPct: 0, endWar: false, campaign: null, shock: {} };
+  if (starting) { out.campaign = newDefenseCampaign(); return out; }
+  if (!((s.warQuartersLeft || 0) > 0 && s.warType === 'defensive')) return out;
+  const prev = s.defenseCampaign || newDefenseCampaign();
+  const camp = { ...prev, pressure: { ...prev.pressure }, occupied: [...(prev.occupied || [])] };
+  const raw = decisions.warOrder || {};
+  const def = defaultFrontOrder(camp);
+  const stance = DEFENSE_STANCES.find((x) => x.id === raw.stance) || DEFENSE_STANCES.find((x) => x.id === def.stance) || DEFENSE_STANCES[0];
+  const target = DEF_FRONT.includes(raw.target) ? raw.target : def.target;
+  const nameOf = (id) => regionById(id);
+  out.spendPct = stance.spend;
+  if (stance.id === 'talks') {
+    out.endWar = true;
+    const lost = camp.occupied.length;
+    out.impulses.push(makeImpulse('approvalPush', -2 - 3 * lost, 'Перемирие с Дештом', 'fast', difficulty, 'other'),
+      makeImpulse('businessConfidence', 4, 'Бои прекращены', 'default', difficulty, 'other'));
+    out.news.push(['gov', `ПЕРЕМИРИЕ: ${DEF_ENEMY.toUpperCase()} ОСТАНАВЛИВАЕТ НАСТУПЛЕНИЕ`, lost
+      ? `Стрельба прекращена. Занятые районы ${camp.occupied.map((id) => nameOf(id).gen).join(' и ')} возвращаются по соглашению — ценой уступок, которые оппозиция назовёт капитуляцией.`
+      : 'Стрельба прекращена, фронт удержан. Мир дороже войны, но его цену ещё будут вспоминать.', 9]);
+    camp.last = { target, stance: 'talks', hit: null, gain: 0, pushed: 0 };
+    out.campaign = camp;
+    return out;
+  }
+  // удар противника: туда, где он уже продвинулся; примерно каждый четвёртый — не туда
+  const free = DEF_FRONT.filter((id) => !camp.occupied.includes(id));
+  const planned = free.includes(camp.next) ? camp.next : defenseTarget(camp);
+  const others = free.filter((id) => id !== planned);
+  const feint = !!planned && others.length > 0 && rng() < 0.25;
+  const hit = feint ? others[Math.floor(rng() * others.length)] : planned;
+  let gain = 0;
+  if (hit) {
+    const nStr = 0.5 + camp.morale / 200;
+    gain = (11 + 9 * rng()) * nStr / warStrength(s);
+    if (target === hit) gain *= stance.id === 'defend' ? 0.3 : 0.6;
+    camp.pressure[hit] = clamp((camp.pressure[hit] || 0) + gain, 0, 100);
+    if (camp.pressure[hit] >= 100 && !camp.occupied.includes(hit)) {
+      camp.occupied.push(hit);
+      out.impulses.push(makeImpulse('approvalPush', -4, `Оккупирована ${nameOf(hit).name}`, 'fast', difficulty, 'other'),
+        makeImpulse('tensionPush', 4, `Оккупирована ${nameOf(hit).name}`, 'fast', difficulty, 'other'));
+      out.news.push(['crisis', `ФРОНТ ПРОРВАН: ЗАНЯТА ${nameOf(hit).name.toUpperCase()}`, `Войска Дешта вошли в ${nameOf(hit).city}. Пока область под оккупацией, её хозяйство стоит, а люди бегут в тыл. Отбить её можно только контрударом.`, 10]);
+    }
+  }
+  let pushed = 0;
+  if (stance.id === 'counter') {
+    pushed = warStrength(s) * (10 + 12 * rng());
+    camp.pressure[target] = clamp((camp.pressure[target] || 0) - pushed, 0, 100);
+    camp.morale -= 6 + 6 * rng();
+    out.impulses.push(makeImpulse('approvalPush', -1.5, 'Потери при контрударе', 'fast', difficulty, 'other'));
+    if (camp.occupied.includes(target) && camp.pressure[target] < 60) {
+      camp.occupied = camp.occupied.filter((id) => id !== target);
+      out.impulses.push(makeImpulse('approvalPush', 4, `Освобождена ${nameOf(target).name}`, 'fast', difficulty, 'other'));
+      out.news.push(['gov', `ОСВОБОЖДЕНА ${nameOf(target).name.toUpperCase()}`, `Контрудар отбросил противника: ${nameOf(target).city} снова под контролем страны.`, 10]);
+    }
+  }
+  if (hit && target === hit && stance.id === 'defend') camp.morale -= 5;
+  camp.morale = Math.max(0, camp.morale - 4);
+  if (feint) out.news.push(['crisis', 'РАЗВЕДКА ОШИБЛАСЬ', `${DEF_ENEMY} ударила не там, где её ждали: бои идут в ${nameOf(hit).loc}.`, 7]);
+  // оккупация: область живёт без хозяйства, пока её не отобьют
+  camp.occupied.forEach((id) => {
+    out.shock[id] = 25;
+    out.impulses.push(makeImpulse('potentialShock', -0.25, `Оккупация: ${nameOf(id).name}`, 'fast', difficulty),
+      makeImpulse('consumption', -0.8, `Оккупация: ${nameOf(id).name}`, 'fast', difficulty),
+      makeImpulse('approvalPush', -1.2, `Оккупация: ${nameOf(id).name}`, 'fast', difficulty, 'other'));
+  });
+  if (camp.morale <= 0) {
+    out.endWar = true;
+    out.impulses.push(makeImpulse('approvalPush', 5, `${DEF_ENEMY} отступила`, 'fast', difficulty, 'other'));
+    out.news.push(['gov', `${DEF_ENEMY.toUpperCase()} ОТСТУПАЕТ`, 'Наступление захлебнулось: армия противника выдохлась и уходит за границу. Занятые районы освобождены.', 10]);
+  }
+  camp.last = { target, stance: stance.id, hit, gain: Math.round(gain), pushed: Math.round(pushed), feint };
+  camp.next = defenseTarget(camp);
   out.campaign = camp;
   return out;
 }
@@ -6379,7 +6267,7 @@ function groupEpisodes(s, support, difficulty) {
   const out = { impulses: [], news: [], cd: {} };
   Object.entries(s.groupUnrestCd || {}).forEach(([id, v]) => { if (v > 1) out.cd[id] = v - 1; });
   SOCIAL_GROUPS.forEach((g) => {
-    if (support[g.id] >= 35 || out.cd[g.id] || Math.random() >= 0.35) return;
+    if (support[g.id] >= 35 || out.cd[g.id] || rng() >= 0.35) return;
     const u = GROUP_UNREST[g.id];
     out.impulses.push(...u.impulses(difficulty));
     out.news.push(['crisis', u.headline, u.text(g), 7]);
@@ -6453,7 +6341,7 @@ function groupDemandStep(s, decisions, difficulty, q) {
   if (out.cooldown > 0 || q < 4) return out;
   const sup = s.groupSupport || {};
   const worst = SOCIAL_GROUPS.filter((g) => Number.isFinite(sup[g.id]) && sup[g.id] < 42).sort((a, b) => sup[a.id] - sup[b.id])[0];
-  if (!worst || Math.random() >= 0.45) return out;
+  if (!worst || rng() >= 0.45) return out;
   out.demand = publicGroupDemand(worst.id, s, q);
   out.news.push(['crisis', out.demand.title.toUpperCase(), `${worst.leader.name}, ${worst.leader.title}: ${out.demand.text} Ответ нужен в следующем квартале.`, 8]);
   return out;
@@ -6512,7 +6400,7 @@ function regionBlurb(region, economy) {
    возвращает среднее по округам ровно к национальному результату — иначе
    сумма по карте не сходилась бы с цифрой в новостях.
 
-   Без Math.random(): один и тот же квартал всегда даёт одну и ту же карту.
+   Без rng(): один и тот же квартал всегда даёт одну и ту же карту.
    При сфальсифицированных выборах (авторитаризм/тоталитаризм) рисуется не
    этот расчёт, а «официальный результат» — почти ровный по всей стране,
    потому что рисуют его в одном кабинете, а не считают по участкам. */
@@ -6743,9 +6631,10 @@ export {
   STOCK_NORM, TFP_SCALE, STORY_TEMPLATES, REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel,
   POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
-  PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
+  PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
   SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
   sanitizeTreaty, treatyCost, botTreaty, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
+  DEF_FRONT, DEF_ENEMY, defaultFrontOrder, botFrontOrder,
   QUARTERS_PER_YEAR,
   uid, clamp, annualToQuarterlyFactor, applyAnnualGrowth, annualizedGrowth, applyNominalGrowth,
   gauss, sign, ema,

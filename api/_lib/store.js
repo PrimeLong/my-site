@@ -99,3 +99,31 @@ export async function setSoloSlots(playerId, slots) {
   mem.set(`solo:${playerId}`, slots);
   return true;
 }
+
+/* Таблица вызова дня: хэш daily:<день>, поле — playerId, значение — лучший результат
+   игрока за этот день. Живёт месяц: вчерашнюю таблицу ещё смотрят, прошлогоднюю — нет. */
+const DAILY_TTL = 60 * 60 * 24 * 31;
+export async function getDailyBoard(day) {
+  if (redis) return (await redis.hgetall(`daily:${day}`)) || {};
+  return { ...mem.get(`daily:${day}`) };
+}
+export async function setDailyEntry(day, playerId, entry) {
+  if (redis) {
+    await redis.hset(`daily:${day}`, { [playerId]: entry });
+    await redis.expire(`daily:${day}`, DAILY_TTL);
+    return true;
+  }
+  mem.set(`daily:${day}`, { ...mem.get(`daily:${day}`), [playerId]: entry });
+  return true;
+}
+
+// «Своё дело» (тайкун предпринимателя): свои слоты сохранений рядом с обычными
+export async function getTycoonSlots(playerId) {
+  if (redis) return (await redis.get(`tycoon:${playerId}`)) || null;
+  return mem.get(`tycoon:${playerId}`) || null;
+}
+export async function setTycoonSlots(playerId, slots) {
+  if (redis) return redis.set(`tycoon:${playerId}`, slots, { ex: SOLO_TTL });
+  mem.set(`tycoon:${playerId}`, slots);
+  return true;
+}

@@ -18,11 +18,14 @@ import {
   processPresidentialDirective, PRES_DIRECTIVE_COST, simulateQuarter, makeInitialEconomy,
 } from './lib/engine.js';
 import {
-  COLOR, Audio, AudioControls, GlobalStyle, KpiTile, PresidentPanel, RegimeBanner, TradingTerminal,
-  AchievementToast, ALL_METRICS, INSTR_BY_ID, getPlayerId, syncProfile, unlockAchievements, useAchievementToasts,
-  COURSE_PROGRESS_KEY, loadCourseProgress, MODULE_STATE_KEY, loadModuleState,
-  emptyBook, priceOf, bookValue, tradeBook, settleQuarter, scaleLever, haptic, useEscapeClose,
+  COLOR, Audio, AudioControls, GlobalStyle, getPlayerId, syncProfile, COURSE_PROGRESS_KEY,
+  loadCourseProgress, MODULE_STATE_KEY, loadModuleState, useEscapeClose,
 } from './MacroSimulator.jsx';
+import {
+  KpiTile, PresidentPanel, RegimeBanner, TradingTerminal, AchievementToast, ALL_METRICS, INSTR_BY_ID,
+  unlockAchievements, useAchievementToasts, emptyBook, priceOf, bookValue, tradeBook, settleQuarter,
+  scaleLever, haptic,
+} from './game.jsx';
 
 /* ================================ СЛОВАРЬ ТЕРМИНОВ ================================
    Курс объясняет механику, но пользуется словами, которых человек мог никогда не
