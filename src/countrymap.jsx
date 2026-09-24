@@ -1392,7 +1392,7 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
    приказ на квартал — какую область укрепить и как. */
 /* front — области фронта в оборонительной войне с Дештом (там нет лояльности, зато
    область можно потерять и отбить); без front — война Норланда за новые земли. */
-function DefensePanel({ economy, camp, order, setOrder, planner, onFocus, front = null, enemy = 'Норланд' }) {
+export function DefensePanel({ economy, camp, order, setOrder, planner, onFocus = () => {}, front = null, enemy = 'Норланд' }) {
   const held = front ? front.map((id) => regionById(id)) : activeRegions(economy).filter((r) => r.annex);
   const occupied = camp.occupied || [];
   const last = camp.last;

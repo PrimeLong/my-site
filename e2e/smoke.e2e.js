@@ -366,3 +366,47 @@ test('профиль: регистрация из меню, профиль со 
   await expect(page.getByRole('button', { name: 'Профиль: Анна' })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('обучение: практика «требование пенсионеров» решается уступкой', async ({ page }) => {
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.addInitScript(() => localStorage.setItem('ems-course-progress', JSON.stringify({ basics: true, budget: true, fx: true, expectations: true, crisis: true, stabilization: true, pr_capital: true, pr_reforms: true, pr_regime: true })));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Экономическая политика', { exact: true }).first().click();
+  await page.getByText('Общество: семь групп вместо одного рейтинга', { exact: true }).click();
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Тест: общество')).toBeVisible();
+  // ответы теста перемешаны — отвечаем по тексту верного варианта
+  for (const t of ['Силовики в оппозиции', 'Сначала поддержка немного подрастёт', 'Бизнес: дорогой кредит']) await page.getByText(t, { exact: false }).first().click();
+  await page.getByRole('button', { name: 'Проверить ответы' }).click();
+  await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Практика: требование пенсионеров')).toBeVisible();
+  await page.getByRole('button', { name: /Проиндексировать пенсии/ }).click();
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Завершить квартал' }).click();
+  await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('обучение: практика обороны от Дешта — контрудар удерживает фронт', async ({ page }) => {
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.addInitScript(() => localStorage.setItem('ems-course-progress', JSON.stringify({ pr_capital: true, society: true, pr_reforms: true, pr_regime: true })));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Президент', { exact: true }).first().click();
+  await page.getByText('Война, мир и реванш', { exact: true }).click();
+  for (let i = 0; i < 5; i++) await page.getByRole('button', { name: /^Далее/ }).click();
+  for (const t of ['Сначала нужно взять Ледяной перевал', 'Действуют партизаны', 'Признание новой границы', 'Доля обороны держится на новом уровне']) await page.getByText(t, { exact: false }).first().click();
+  await page.getByRole('button', { name: 'Проверить ответы' }).click();
+  await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Практика: отбить наступление Дешта')).toBeVisible();
+  await page.getByRole('button', { name: /Контрудар/ }).click();
+  for (let i = 0; i < 5; i++) {
+    const btn = page.getByRole('button', { name: 'Завершить квартал' });
+    if (!(await btn.isVisible())) break;
+    await btn.click();
+  }
+  await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
+  expect(errors).toEqual([]);
+});

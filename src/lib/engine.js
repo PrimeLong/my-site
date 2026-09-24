@@ -6670,7 +6670,7 @@ export {
   POLITICAL_REGIME_INFO, propagandaEditorial, gameChronicle, MAP_REGIONS, regionStress, regionBlurb, regionVoteShares, REGION_PROJECTS, REGION_EVENTS, projectBlocker, projectSpendPct, warFrontRegion, defaultWarOrder, WAR_OBJECTIVES, WAR_STANCES, warObjectiveOpen, warStrength, botWarOrder, ANNEX_EFFECT, CAMPAIGN_POINTS, CAMPAIGN_COST, POLL_WINDOW, electionForecast, sanitizeCampaignPlan, botCampaignPlan, swingLabel,
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
-  SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
+  SOCIAL_GROUPS, publicGroupDemand, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
   sanitizeTreaty, treatyCost, botTreaty, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
   DEF_FRONT, DEF_ENEMY, defaultFrontOrder, botFrontOrder,
   QUARTERS_PER_YEAR,

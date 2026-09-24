@@ -17,8 +17,10 @@ import {
   fmt1, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMln, quarterLabel,
   defaultDecisions, botCentralBank, botFinanceMinistry, redescribeCbAction, redescribeMofAction,
   processPresidentialDirective, PRES_DIRECTIVE_COST, simulateQuarter, makeInitialEconomy,
+  publicGroupDemand, DEF_FRONT,
 } from './lib/engine.js';
 import { DAILY_QUARTERS } from './lib/catalog.js';
+import { DefensePanel } from './countrymap.jsx';
 import {
   COLOR, Audio, AudioControls, GlobalStyle, getPlayerId, syncProfile, COURSE_PROGRESS_KEY,
   loadCourseProgress, MODULE_STATE_KEY, loadModuleState, useEscapeClose,
@@ -865,6 +867,60 @@ const TUTORIAL_MODULES = [
    потом задача, где это понимание надо применить руками. */
 const q = (question, options, answer, explain) => ({ q: question, options, answer, explain });
 
+/* Рабочие панели практики. Требование лидера группы — те же три ответа, что в
+   настоящей партии на вкладке «Общество»; приказ на фронте — та же панель, что на
+   карте (DefensePanel). */
+const GROUP_LABEL = { pensioners: 'Пенсионеры', workers: 'Рабочие', business: 'Бизнес', siloviki: 'Силовики',
+  public: 'Бюджетники', youth: 'Молодёжь', regions: 'Регионы' };
+function DemandPractice({ economy, decisions, setDecisions, done, focus }) {
+  const dem = economy.groupDemand;
+  const sup = economy.groupSupport || {};
+  const res = economy.lastGroupResolution;
+  return (
+    <div className="ems-panel" style={{ padding: 14 }}>
+      <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 8 }}>Общество</div>
+      {Object.keys(GROUP_LABEL).map((id) => {
+        const v = sup[id] ?? 50;
+        const col = v < 35 ? COLOR.rust : v >= 50 ? COLOR.teal : COLOR.gold;
+        return (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, marginBottom: 4, fontWeight: id === focus ? 600 : 400 }}>
+            <span style={{ width: 90, color: id === focus ? COLOR.text : COLOR.muted }}>{GROUP_LABEL[id]}</span>
+            <span style={{ flex: 1, height: 5, borderRadius: 3, background: COLOR.border, overflow: 'hidden' }}>
+              <span style={{ display: 'block', width: `${v}%`, height: '100%', background: col }} />
+            </span>
+            <span className="ems-mono" style={{ width: 26, textAlign: 'right', color: col }}>{Math.round(v)}</span>
+          </div>
+        );
+      })}
+      {dem ? (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLOR.hairline}` }}>
+          <div style={{ fontSize: 12.5, color: COLOR.text, fontWeight: 600, marginBottom: 3 }}>{dem.title}</div>
+          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45, marginBottom: 8 }}>{dem.leader.name}, {dem.leader.title}: {dem.text}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {dem.options.map((o) => {
+              const on = decisions.groupResponse === o.id;
+              return (
+                <button key={o.id} className="ems-btn" disabled={done} aria-pressed={on}
+                  onClick={() => { Audio.play('click'); setDecisions((d) => ({ ...d, groupResponse: o.id })); }}
+                  style={{ textAlign: 'left', padding: '7px 9px', fontSize: 11.5, lineHeight: 1.35,
+                    background: on ? COLOR.gold : COLOR.panelAlt, color: on ? COLOR.ink : COLOR.text, borderColor: on ? COLOR.gold : COLOR.border }}>
+                  <b>{o.label}</b>{o.spend ? ` · ${o.spend}% ВВП` : ''}<br /><span style={{ opacity: 0.85 }}>{o.effect}</span>
+                </button>
+              );
+            })}
+          </div>
+          {!decisions.groupResponse && <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6 }}>Без ответа требование сочтут отклонённым.</div>}
+        </div>
+      ) : res ? (
+        <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 10, lineHeight: 1.45 }}>
+          Ответ дан: «{res.label}». Дальше смотрите, как меняется поддержка группы квартал за кварталом.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
 const MODULE_CHECKS = {
   basics: {
     quiz: {
@@ -1158,6 +1214,26 @@ const MODULE_CHECKS = {
             'Никто: общество реагирует только на решения президента', 'Только силовики', 'Только молодёжь'], 0,
           'Общество отвечает на цифры любой ветви власти. Высокая ставка злит бизнес, а победа над инфляцией радует пенсионеров и бюджетников — ровно такие компромиссы и видны на вкладке «Общество».'),
       ],
+    },
+    practice: {
+      kind: 'practice', title: 'Практика: требование пенсионеров',
+      goalLabel: 'Через шесть кварталов пенсионеры — не ниже 40',
+      body: () => (
+        <>
+          <p>Инфляция съела пенсии, и пенсионеры ушли в оппозицию: поддержка 29. Лидер Союза пенсионеров пришёл с требованием, и ответить на него нужно в этом квартале.</p>
+          <p>Задача — чтобы через шесть кварталов поддержка пенсионеров была не ниже 40. Проверяется именно конец срока: что бывает с обещаниями, которые не выполняют, видно не сразу.</p>
+        </>
+      ),
+      setup: (e) => {
+        const x = { ...e, inflation: 9.5, coreInflation: 9, inflationExpectations: 8,
+          groupSupport: { pensioners: 29, workers: 48, business: 50, siloviki: 50, public: 42, youth: 47, regions: 44 } };
+        return { ...x, groupDemand: publicGroupDemand('pensioners', x, 1), groupDemandCooldown: 0 };
+      },
+      levers: [], maxQuarters: 6,
+      panel: (p) => <DemandPractice {...p} focus="pensioners" />,
+      goal: (c) => c.used >= 6 && shown0((c.economy.groupSupport || {}).pensioners || 0) >= 40,
+      goalText: (c) => `Пенсионеры: ${Math.round((c.economy.groupSupport || {}).pensioners || 0)}. Рейтинг ${Math.round(c.economy.approval)}.`,
+      hint: 'Обещание дешевле и сразу успокаивает, но через год невыполненное обещание группа вспомнит — и спросит строже. Уступка стоит бюджетных денег, зато благодарность долгая.',
     },
   },
 };
@@ -1794,6 +1870,39 @@ const COURSE_CHECKS = {
           'Согласие — это обязательство на восемь кварталов: бот Минфина держит новую долю обороны и не откатывает её к своему обычному уровню. Попросить об этом может только президент.'),
       ],
     },
+    practice: {
+      kind: 'practice', title: 'Практика: отбить наступление Дешта',
+      goalLabel: 'Довести оборонительную войну до конца, не отдав ни одной области',
+      body: () => (
+        <>
+          <p>Республика Дешт уже продвинулась: давление на Приреченскую область 80 из 100, на Боровскую — 60. На 100 область оккупирована.</p>
+          <p>Задача — продержаться до конца войны, не отдав ни одной области. Каждый квартал выбирайте, где держать оборону и когда бить контрударом: пассивная оборона тут может и не спасти.</p>
+        </>
+      ),
+      setup: (e) => ({ ...e, warQuartersLeft: 5, warType: 'defensive', warElapsed: 1,
+        defenseCampaign: { pressure: { agri: 80, periphery: 60 }, occupied: [], morale: 100, last: null, next: 'agri' } }),
+      levers: [], maxQuarters: 5,
+      panel: ({ economy, decisions, setDecisions, done }) => {
+        const camp = economy.defenseCampaign;
+        if (!camp || !(economy.warQuartersLeft > 0)) return null;
+        // без нового приказа действует прежний способ — так же считает и движок
+        const lastStance = camp.last && camp.last.stance !== 'talks' ? camp.last.stance : 'defend';
+        const order = { target: camp.next || DEF_FRONT[0], stance: lastStance, ...decisions.warOrder };
+        return (
+          <DefensePanel economy={economy} camp={camp} order={order} front={DEF_FRONT} enemy="Республика Дешт"
+            setOrder={done ? null : (patch) => setDecisions((d) => ({ ...d, warOrder: { ...order, ...patch } }))} />
+        );
+      },
+      goal: (c) => !(c.economy.warQuartersLeft > 0)
+        && c.history.every((h) => !(h.defenseCampaign && (h.defenseCampaign.occupied || []).length)),
+      goalText: (c) => {
+        const camp = c.economy.defenseCampaign;
+        const lost = c.history.some((h) => h.defenseCampaign && (h.defenseCampaign.occupied || []).length);
+        return camp ? `Давление: Приреченская ${Math.round(camp.pressure.agri || 0)}, Боровская ${Math.round(camp.pressure.periphery || 0)}. Боевой дух противника ${Math.round(camp.morale)}.${lost ? ' Одна из областей уже была оккупирована — задачу придётся начать заново.' : ''}`
+          : (lost ? 'Война окончена, но одну из областей противник успел занять.' : 'Война окончена.');
+      },
+      hint: 'Там, где давление подбирается к 100, одной обороны мало: контрудар дороже, зато отбрасывает противника и ломает его боевой дух. Разведка иногда ошибается — не оставляйте вторую область совсем без внимания.',
+    },
   },
 
   md_daily: {
@@ -1859,7 +1968,7 @@ const EXAM_MODULES = [
   {
     id: 'policy_exam', depth: 'deep', icon: GraduationCap, isExam: true,
     title: 'Экзамен: экономическая политика',
-    summary: 'Шесть вопросов по всему курсу и стагфляция напоследок.',
+    summary: 'Семь вопросов по всему курсу и стагфляция напоследок.',
     pins: ['inflation', 'unemployment', 'gdpGrowth', 'debtToGdp'],
     steps: [
       {
@@ -1867,7 +1976,7 @@ const EXAM_MODULES = [
         lever: null, runsQuarter: false,
         body: () => (
           <>
-            <p>Шесть вопросов по всем шести модулям сразу, а после них — задача, в которой ни один рычаг не работает в одну сторону.</p>
+            <p>Семь вопросов по всем модулям курса сразу, а после них — задача, в которой ни один рычаг не работает в одну сторону.</p>
             <p>Как и в тестах модулей, ошибиться не страшно: разбор появится под каждым вопросом, а задачу можно перезапустить.</p>
           </>
         ),
@@ -1875,6 +1984,11 @@ const EXAM_MODULES = [
       {
         kind: 'quiz', title: 'Теория: весь курс',
         questions: [
+          q('Инфляция 11%, рейтинг 30, и почти все группы общества в оппозиции. Что опаснее всего для власти?',
+            ['Затяжная полоса: раскол групп добавляет напряжения, а потерянные силовики делают возможным переворот',
+              'Ничего особенного: общество реагирует только на решения президента',
+              'Только проигрыш ближайших выборов', 'Рост безработицы'], 0,
+            'Рейтинг — это сумма групп. Каждая потерянная группа действует по-своему: пенсионеры протестуют и голосуют, рабочие бастуют, бизнес выводит капитал. А силовики, обиженные сильнее остальных, делают переворот вероятнее даже при терпимом рейтинге.'),
           q('Экономика перегрета, инфляция 9%, бюджет в дефиците 6% ВВП. Какая пара решений последовательна?',
             ['Поднять ставку и сократить темп госрасходов',
               'Снизить ставку и нарастить выплаты',
@@ -1998,17 +2112,21 @@ const EXAM_MODULES = [
   {
     id: 'pr_exam', depth: 'deep', icon: GraduationCap, isExam: true, sandbox: 'president',
     title: 'Экзамен: президент',
-    summary: 'Теория по трём модулям и страна, которую надо вытащить чужими руками.',
+    summary: 'Теория по всем модулям курса и страна, которую надо вытащить чужими руками.',
     pins: ['politicalCapital', 'approval', 'politicalTension', 'inflation'],
     steps: [
       {
         title: 'Экзамен',
         lever: null, runsQuarter: false,
-        body: () => <p>Четыре вопроса и одна задача. В задаче у вас по-прежнему нет ни одного ползунка — только люди, указания и реформы.</p>,
+        body: () => <p>Пять вопросов и одна задача. В задаче у вас по-прежнему нет ни одного ползунка — только люди, указания и реформы.</p>,
       },
       {
         kind: 'quiz', title: 'Теория: капитал, реформы, режим',
         questions: [
+          q('Война кончилась, новые земли у вас, граница не признана. Что будет, если тянуть с договором?',
+            ['Экспорт и инвестиции страдают каждый квартал, реваншизм Норланда растёт, а позиция страны за столом тает',
+              'Ничего: земли уже ваши', 'Норланд признает границу сам через год', 'Репарации растут сами'], 0,
+            'Непризнанная граница — постоянный налог на экономику и топливо для реванша. Признание почти гасит реваншизм, поэтому его обычно выгоднее выторговать, пока позиция сильна.'),
           q('Кризис, беспорядки, рейтинг 25. Что происходит с политическим капиталом?',
             ['Он уходит в минус и быстро обнуляется', 'Он растёт: в кризис власть концентрируется',
               'Он не меняется', 'Он превращается в рейтинг'], 0,
@@ -2280,7 +2398,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
     const out = runQuarter();
     const used = (practice ? practice.used : 0) + 1;
     setPractice((pr) => (pr ? { ...pr, used } : pr));
-    const nextCtx = { ...out, start: startEconomy, startBook,
+    const nextCtx = { ...out, start: startEconomy, startBook, used,
       value: bookValue(out.book, out.economy, null), startValue: ctx.startValue };
     if (cur.goal(nextCtx)) { setPassed((s2) => ({ ...s2, [step]: true })); Audio.play('up'); }
   };
@@ -2341,6 +2459,10 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
   /* Рабочие панели практики: на широком экране уходят во второй столбец. */
   const sideBlocks = (
     <>
+      {/* собственная рабочая панель задачи: ответ лидеру группы, приказ на фронте */}
+      {kind === 'practice' && cur.panel && (
+        <div style={{ marginBottom: 14 }}>{cur.panel({ economy, decisions, setDecisions, done: practicePassed || practiceFailed })}</div>
+      )}
       {newsLog.length > 0 && (
               <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
