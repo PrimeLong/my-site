@@ -9,11 +9,11 @@
 import React, { useState, useMemo, Suspense } from 'react';
 import { Coins, TrendingUp } from 'lucide-react';
 import { GOALS, clamp, fmt1, fmt2, fmtSigned1, fmtMoney, mlnScale, fmtMln, fmtMlnSigned, quarterLabel } from './lib/engine.js';
+import { COLOR, Audio } from './MacroSimulator.jsx';
 import {
-  COLOR, Audio, ChartFallback, MemoChart, InstrumentChart,
-  INSTRUMENTS, INSTR_BY_ID, GOV_BOND_INVESTOR_SHARE, MAINTENANCE, BORROW_FEE,
-  bookParts, impliedVol, optionValue, priceOf, useLiveQuotes,
-} from './MacroSimulator.jsx';
+  ChartFallback, MemoChart, InstrumentChart, INSTRUMENTS, INSTR_BY_ID, GOV_BOND_INVESTOR_SHARE,
+  MAINTENANCE, BORROW_FEE, bookParts, impliedVol, optionValue, priceOf, useLiveQuotes,
+} from './game.jsx';
 
 /* Эталоны сравнения: индекс, облигации, депозит и просто сохранённая покупательная способность */
 const BENCHMARKS = [

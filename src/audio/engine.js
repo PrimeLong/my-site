@@ -6,7 +6,7 @@
    а для измерений создаётся второй поверх OfflineAudioContext (см. renderTrackOffline) —
    так громкость и пики каждой пьесы можно измерить честно, отрендерив её, а не на слух.
 ========================================================================================= */
-import { clamp } from '../lib/engine.js';
+import { clamp } from '../lib/catalog.js';
 import { hz, LH, BASS_LINES, TRACKS, MOOD_PLAYLISTS, ROLE_PLAYLISTS, MOOD_LABEL, REGIME_MOOD, STINGERS } from './tracks.js';
 import { TRACK_GAIN_DB, STINGER_GAIN_DB } from './loudness.js';
 

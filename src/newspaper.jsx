@@ -9,7 +9,8 @@
 import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { clamp, pctFmt, fmt1, fmtIndex, fmtSignedPct, fmtSigned1, quarterLabel, REGIME_INFO, regimeInfoText, POLITICAL_REGIME_INFO } from './lib/engine.js';
-import { COLOR, Audio, NEWS_CATEGORIES, catOf, ChainTrail, StateSeal, useEscapeClose } from './MacroSimulator.jsx';
+import { COLOR, Audio, StateSeal, useEscapeClose } from './MacroSimulator.jsx';
+import { NEWS_CATEGORIES, catOf, ChainTrail } from './game.jsx';
 
 /* Политический режим красит газету: чем дальше от демократии, тем холоднее и темнее
    бумага — это должно читаться раньше, чем игрок разберёт хоть одно слово текста. */

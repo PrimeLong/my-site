@@ -7,9 +7,7 @@ import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, re
   regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST,
   DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, sanitizeTreaty, treatyCost } from './lib/engine.js';
 import { useEffect, useRef, useState } from 'react';
-import {
-  Audio, COLOR, starPath,
-} from './MacroSimulator.jsx';
+import { Audio, COLOR, starPath } from './MacroSimulator.jsx';
 
 /* ------------------------------ КАРТА СТРАНЫ ------------------------------
    Страна безымянная, но карта у неё должна читаться как карта государства, а не
