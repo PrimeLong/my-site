@@ -1569,3 +1569,172 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
     </div>
   );
 }
+
+/* ------------------------------ КАРТА БИЗНЕСА ------------------------------
+   Та же страна, но глазами предпринимателя (тайкун «Своё дело»): области светятся
+   тем ярче, чем больше там ваших предприятий, по дорогам бегут грузы между
+   областями (толщина — сколько везёте), у городов — значки ваших зданий. В режиме
+   стройки (highlight) видно, где здание можно поставить и с каким бонусом.
+   info: { [regionId]: { count, extract, process, sell, support } };
+   flows: [[from, to, value]]; highlight: { [regionId]: бонус } | null; hit — область под ударом. */
+const BIZ_CAT_ICON = { extract: Pickaxe, process: Factory, sell: Coins, support: Construction };
+const BIZ_CAT_COLOR = { extract: 'teal', process: 'gold', sell: 'blue', support: 'muted' };
+function bizPoint(id) {
+  if (CITY_AT[id]) return CITY_AT[id];
+  const r = regionById(id);
+  return r && ANNEX_CITIES[r.objective] ? ANNEX_CITIES[r.objective].at : COUNTRY_CENTER;
+}
+function bizPath(a, b, salt) {
+  const [x1, y1] = bizPoint(a); const [x2, y2] = bizPoint(b);
+  const mx = (x1 + x2) / 2; const my = (y1 + y2) / 2; const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+  const k = (hash01(mx, my, salt) - 0.5) * 0.28 * len;
+  const c = [mx - ((y2 - y1) / len) * k, my + ((x2 - x1) / len) * k];
+  return `M${x1},${y1} Q${c[0].toFixed(1)},${c[1].toFixed(1)} ${x2},${y2}`;
+}
+
+export function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [] }) {
+  const zoom = useMapZoom();
+  const lk = 1 / Math.sqrt(zoom.zoom);
+  const regions = activeRegions(economy);
+  const annexed = economy.annexed || [];
+  const maxCount = Math.max(1, ...Object.values(info).map((x) => x.count || 0));
+  const maxFlow = Math.max(1e-6, ...flows.map((f) => f[2]));
+  const labelAt = (r) => LABEL_AT[r.id] || ANNEX_LABEL_AT[r.id] || bizPoint(r.id);
+  return (
+    <div style={{ position: 'relative' }}>
+      <style>{MAP_CSS}</style>
+      <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className="map-enter"
+        style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: zoom.zoom > 1.01 ? 'none' : 'pan-y',
+          cursor: zoom.zoom > 1.01 ? 'grab' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}
+        {...zoom.handlers} role="img" aria-label="Карта ваших предприятий">
+        <defs>
+          <filter id="biz-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" /></filter>
+          <pattern id="biz-waves" width="46" height="22" patternUnits="userSpaceOnUse">
+            <path d="M2,12 q5,-5 10,0 t10,0" fill="none" stroke={`${COLOR.blue}40`} strokeWidth={1} />
+          </pattern>
+          <pattern id="biz-can" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+            <line x1="0" y1="0" x2="0" y2="10" stroke={COLOR.teal} strokeOpacity={0.45} strokeWidth={3} />
+          </pattern>
+          <clipPath id="biz-country"><path d={countryPath} /></clipPath>
+        </defs>
+        <rect x="0" y={VIEW_TOP} width={VIEW_W} height={VIEW_H - VIEW_TOP} fill={`${COLOR.blue}1c`} />
+        <rect x="0" y={VIEW_TOP} width={VIEW_W} height={VIEW_H - VIEW_TOP} fill="url(#biz-waves)" />
+        <path d={coastPath} fill="none" stroke={`${COLOR.blue}26`} strokeWidth={30} strokeLinejoin="round" />
+        {NEIGHBORS.map((n) => <path key={n.id} d={n.path} fill={COLOR.panelAlt} />)}
+        {NEIGHBORS.map((n) => (
+          <text key={`t${n.id}`} x={n.label[0]} y={n.label[1]} textAnchor="middle" transform={n.rotate ? `rotate(${n.rotate} ${n.label[0]} ${n.label[1]})` : undefined}
+            style={{ fontSize: 14, letterSpacing: '0.26em', fill: COLOR.faint, fontStyle: 'italic' }}>{n.name}</text>
+        ))}
+        {/* области: чем больше своих зданий, тем ярче золото; в режиме стройки — где можно */}
+        {regions.map((r) => {
+          const n = (info[r.id] && info[r.id].count) || 0;
+          const terrain = TERRAIN[r.id] ? COLOR[TERRAIN[r.id]] : null;
+          const can = highlight ? highlight[r.id] : undefined;
+          const alpha = Math.round(10 + (n / maxCount) * 60).toString(16).padStart(2, '0');
+          return (
+            <g key={r.id} role="button" tabIndex={0} aria-pressed={r.id === selected} className="map-region" style={{ cursor: 'pointer' }}
+              aria-label={`${r.name}: ${n ? `ваших зданий ${n}` : 'ваших зданий нет'}${highlight ? (can != null ? `, строить можно, выработка ×${can.toFixed(2)}` : ', строить нельзя') : ''}`}
+              onClick={() => { if (zoom.wasDrag()) return; Audio.play('tab'); onSelect(r.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Audio.play('tab'); onSelect(r.id); } }}>
+              <path d={regionPath(r.id)} fill={COLOR.bg} />
+              {terrain && <path d={regionPath(r.id)} fill={`${terrain}1c`} />}
+              <path d={regionPath(r.id)} className="tint" style={{ fill: highlight ? (can != null ? `${COLOR.teal}${can > 1.05 ? '55' : '30'}` : `${COLOR.bg}aa`) : n ? `${COLOR.gold}${alpha}` : 'transparent' }} />
+              {highlight && can != null && <path d={regionPath(r.id)} fill="url(#biz-can)" opacity={can > 1.05 ? 0.9 : 0.4} />}
+              {hit === r.id && <path d={regionPath(r.id)} fill={`${COLOR.rust}33`} className="map-sel-glow" stroke={COLOR.rust} strokeWidth={2} />}
+              <path d={regionPath(r.id)} className="hover" fill={`${COLOR.text}0f`} />
+            </g>
+          );
+        })}
+        <g style={{ pointerEvents: 'none' }}>
+          {MOUNTAINS.map(([x, y]) => (
+            <path key={`m${x},${y}`} d={`M${x - 14},${y + 9} L${x},${y - 11} L${x + 14},${y + 9} Z`} fill={`${COLOR.muted}22`} stroke={`${COLOR.text}55`} strokeWidth={1} strokeLinejoin="round" />
+          ))}
+          {FORESTS.map(([x, y]) => (
+            <path key={`t${x},${y}`} d={`M${x},${y - 11} L${x + 7},${y + 2} L${x - 7},${y + 2} Z`} fill={`${COLOR.teal}33`} stroke={`${COLOR.teal}77`} strokeWidth={1} />
+          ))}
+          {FIELDS.map(([x, y]) => (
+            <path key={`f${x},${y}`} d={`M${x - 9},${y} h18 M${x - 7},${y + 5} h14`} stroke={`${COLOR.gold}55`} strokeWidth={1.4} />
+          ))}
+          <path d={`${mv(RIVER[0])}${curveTo(RIVER)}`} fill="none" stroke={`${COLOR.blue}aa`} strokeWidth={3} strokeLinecap="round" />
+          {/* дороги: железные и шоссе, по которым идут ваши грузы */}
+          <g clipPath={annexed.length ? undefined : 'url(#biz-country)'}>
+            {routes.map(([a, b], i) => (
+              <path key={`r${i}`} d={bizPath(a, b, i)} fill="none" stroke={`${COLOR.text}30`} strokeWidth={2} strokeDasharray="6 5" />
+            ))}
+          </g>
+          <path d={innerBorderPath} fill="none" stroke={`${COLOR.text}55`} strokeWidth={1.2} strokeDasharray="4 4" />
+          <path d={coastPath} fill="none" stroke={`${COLOR.text}88`} strokeWidth={2.2} />
+          <path d={nationalBorderPath} fill="none" stroke={COLOR.rust} strokeOpacity={0.6} strokeWidth={2.6} strokeDasharray="14 5 3 5" />
+        </g>
+        {/* потоки грузов: бегущий пунктир от источника к потребителю */}
+        <g style={{ pointerEvents: 'none' }}>
+          {flows.map(([a, b, v], i) => {
+            const w = 2 + 7 * Math.sqrt(v / maxFlow);
+            const d = bizPath(a, b, i + 11);
+            return (
+              <g key={`${a}>${b}`}>
+                <path d={d} fill="none" stroke={COLOR.bg} strokeWidth={w + 3} strokeLinecap="round" opacity={0.6} />
+                <path d={d} fill="none" stroke={COLOR.gold} strokeWidth={w} strokeLinecap="round" className="map-flow" opacity={0.9} />
+              </g>
+            );
+          })}
+        </g>
+        {/* выбранная область */}
+        {selected && regionPath(selected) && (
+          <g style={{ pointerEvents: 'none' }}>
+            <path d={regionPath(selected)} fill="none" stroke={COLOR.gold} strokeWidth={10} className="map-sel-glow" filter="url(#biz-glow)" />
+            <path d={regionPath(selected)} fill="none" stroke={COLOR.gold} strokeWidth={2.6} />
+            <path d={regionPath(selected)} fill="none" stroke={COLOR.text} strokeOpacity={0.6} strokeWidth={1.1} className="map-sel-line" />
+          </g>
+        )}
+        {/* города, подписи и значки ваших зданий */}
+        <g style={{ pointerEvents: 'none' }}>
+          {regions.map((r) => {
+            const [x, y] = bizPoint(r.id);
+            const [lx, ly] = labelAt(r);
+            const inf = info[r.id];
+            const cats = inf ? ['extract', 'process', 'sell', 'support'].filter((c) => inf[c] > 0) : [];
+            return (
+              <g key={`c${r.id}`}>
+                <g transform={`translate(${x},${y}) scale(${lk})`}>
+                  <circle r={r.id === 'capital' ? 7 : 5} fill={COLOR.bg} stroke={COLOR.text} strokeWidth={1.6} />
+                  {cats.length > 0 && (
+                    <g transform={`translate(${-(cats.length * 22) / 2},${12})`}>
+                      <rect x={-4} y={-2} width={cats.length * 22 + 8} height={24} rx={7} fill={COLOR.panelRaised} stroke={COLOR.gold} strokeWidth={1.2} />
+                      {cats.map((c, i) => {
+                        const I = BIZ_CAT_ICON[c];
+                        return <I key={c} x={i * 22 + 2} y={2} width={16} height={16} color={COLOR[BIZ_CAT_COLOR[c]]} />;
+                      })}
+                    </g>
+                  )}
+                </g>
+                <g transform={`translate(${lx},${ly}) scale(${lk})`}>
+                  <text textAnchor="middle" style={{ fontSize: 13, fill: COLOR.text, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>{r.short}</text>
+                  {inf && inf.count > 0 && (
+                    <text y={15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.goldSoft, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
+                      {inf.count} {inf.count === 1 ? 'здание' : inf.count < 5 ? 'здания' : 'зданий'}
+                    </text>
+                  )}
+                  {highlight && highlight[r.id] != null && (
+                    <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.teal, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
+                      ×{highlight[r.id].toFixed(2)}
+                    </text>
+                  )}
+                </g>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+      <div style={{ position: 'absolute', right: 10, top: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <button className="ems-btn map-zoom-btn" aria-label="Приблизить карту" disabled={zoom.zoom >= MAX_ZOOM - 0.01}
+          onClick={() => { Audio.play('tick'); zoom.zoomIn(); }}><Plus size={15} /></button>
+        <button className="ems-btn map-zoom-btn" aria-label="Отдалить карту" disabled={zoom.zoom <= 1.01}
+          onClick={() => { Audio.play('tick'); zoom.zoomOut(); }}><Minus size={15} /></button>
+        {zoom.zoom > 1.01 && (
+          <button className="ems-btn map-zoom-btn" aria-label="Показать всю карту" onClick={() => { Audio.play('tick'); zoom.reset(); }}><Maximize2 size={14} /></button>
+        )}
+      </div>
+    </div>
+  );
+}

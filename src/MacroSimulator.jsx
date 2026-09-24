@@ -7,7 +7,7 @@ import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, Crown, Gavel, Hammer, Smartphone, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
-  Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory,
+  Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -508,6 +508,19 @@ export function validateSnapshot(data) {
    того же вида, что и ручное сохранение, и перезаписывается на каждый квартал —
    при следующем открытии страница просто открывает партию с того же места. */
 export const AUTOSAVE_KEY = 'ems-autosave-v1';
+/* «Своё дело» (тайкун предпринимателя) хранится отдельно: это другая игра со своим
+   состоянием. Репутация от проданных компаний — в мета-записи, она переживает партии. */
+export const TYCOON_SAVE_KEY = 'ems-tycoon-v1';
+export const TYCOON_META_KEY = 'ems-tycoon-meta';
+export function loadTycoonSave() {
+  try {
+    const d = JSON.parse(localStorage.getItem(TYCOON_SAVE_KEY) || 'null');
+    return d && d.mode === 'tycoon' && d.country && d.country.economy && Array.isArray(d.buildings) ? d : null;
+  } catch { return null; }
+}
+export function loadTycoonMeta() {
+  try { return JSON.parse(localStorage.getItem(TYCOON_META_KEY) || 'null') || {}; } catch { return {}; }
+}
 
 const loadAutosave = () => {
   try {
@@ -592,8 +605,10 @@ export const NETWORK_PLAYED_KEY = 'ems-network-played';
 export const ACHIEVEMENTS = [
   { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
   { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройди вызов дня до конца, не проиграв.' },
-  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'Играя предпринимателем, утрой состояние владельца.' },
+  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'В «Своём деле» утрой стоимость компании против стартовой.' },
   { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'Проведи компанию через три года кризисного сценария без банкротства.' },
+  { id: 'tycoon_chain', icon: Wheat, title: 'От поля до полки', desc: 'Собери свою хлебную цепочку: ферма, мельница, хлебозавод и магазин.' },
+  { id: 'tycoon_billion', icon: Crown, title: 'Миллиардер', desc: 'Доведи стоимость своей компании до миллиарда.' },
   { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
   { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
   { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
@@ -1042,6 +1057,8 @@ const NetworkGameScreen = React.lazy(() => import('./network.jsx').then((m) => (
    лениво: меню и экран новой партии не ждут его. Пока человек выбирает роль,
    чанк успевает подтянуться заранее — см. preloadGame. */
 const loadGame = () => import('./game.jsx');
+// «Своё дело» — отдельная игра и отдельный чанк
+const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ default: m.TycoonScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
 export function preloadGame() { loadGame().catch(() => {}); }
@@ -1205,7 +1222,7 @@ function DailyCard({ onStart }) {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1281,9 +1298,15 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   };
   const hasSaves = !!(soloSlots && soloSlots.some(Boolean));
 
+  const [tycoonSave] = useState(loadTycoonSave);
   const MENU_ITEMS = [
     { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
+    ...(onTycoon ? [{ id: 'tycoon', icon: Factory, title: tycoonSave ? 'Своё дело — продолжить' : 'Своё дело',
+      desc: tycoonSave
+        ? `Ваша компания ждёт: ${tycoonSave.buildings.length} зданий, на счёте ${tycoonSave.cash >= 1 ? `${tycoonSave.cash.toFixed(1)} млн` : `${Math.round(tycoonSave.cash * 1000)} тыс`}. Пока вас не было, предприятия работали.`
+        : 'Предприниматель: цепочки производства по всей стране в реальном времени. Экономика живёт сама — вы строите бизнес внутри неё.',
+      action: () => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onTycoon(tycoonSave); } }] : []),
     { id: 'tutorial', icon: GraduationCap, title: 'Обучение', desc: 'Три курса с тестами, практикой и экзаменами: политика, инвестор, президент.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
     { id: 'network', icon: Users, title: 'Игра по сети — вдвоём', desc: 'ЦБ и Минфин (или два трейдера) — разные игроки на одной экономике.',
@@ -1471,15 +1494,15 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 }
 
 /* ============================ ЭКРАН ВЫБОРА ============================ */
-function SetupScreen({ onStart, onBack }) {
+function SetupScreen({ onStart, onBack, initialRole = null }) {
   React.useEffect(preloadGame, []);
-  const [role, setRole] = useState(null);
+  const [role, setRole] = useState(initialRole);
   const [difficulty, setDifficulty] = useState('medium');
   const [goal, setGoalRaw] = useState('living_standards');
   const setGoal = (g) => setGoalRaw(g);
   React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : role === 'entrepreneur' ? 'company_value' : 'living_standards'); }, [role]);
   // отрасль компании — только для предпринимателя
-  const [sector, setSector] = useState('factory');
+  const [sector, setSector] = useState('farm');
   const [scenario, setScenario] = useState('sandbox');
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
@@ -1772,16 +1795,18 @@ function SetupScreen({ onStart, onBack }) {
               {(DIFFICULTIES.find((dd) => dd.id === difficulty) || {}).desc}
             </div>
           </div>
-          <div>
-            <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 8 }}>По какой оценке подводить итог партии</div>
-            <div style={{ position: 'relative' }}>
-              <select value={goal} onChange={(e) => setGoal(e.target.value)} className="ems-btn"
-                style={{ width: '100%', padding: '10px 36px 10px 12px', fontSize: 13, appearance: 'none', WebkitAppearance: 'none' }}>
-                {GOALS.filter((g) => (role === 'trader' ? g.trader : role === 'entrepreneur' ? g.entrepreneur : !g.trader && !g.entrepreneur)).map((g) => (<option key={g.id} value={g.id}>{g.label}</option>))}
-              </select>
-              <ChevronDown size={14} color={COLOR.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          {role !== 'entrepreneur' && (
+            <div>
+              <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 8 }}>По какой оценке подводить итог партии</div>
+              <div style={{ position: 'relative' }}>
+                <select value={goal} onChange={(e) => setGoal(e.target.value)} className="ems-btn"
+                  style={{ width: '100%', padding: '10px 36px 10px 12px', fontSize: 13, appearance: 'none', WebkitAppearance: 'none' }}>
+                  {GOALS.filter((g) => (role === 'trader' ? g.trader : role === 'entrepreneur' ? g.entrepreneur : !g.trader && !g.entrepreneur)).map((g) => (<option key={g.id} value={g.id}>{g.label}</option>))}
+                </select>
+                <ChevronDown size={14} color={COLOR.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
@@ -1872,6 +1897,8 @@ export default function MacroSimulator() {
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
   // ведёт сразу в лобби, минуя меню.
   const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
+  // «Своё дело»: { initial } — продолжить сохранённое, { setupNew } — новое дело
+  const [tycoon, setTycoon] = useState(null);
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
@@ -1879,11 +1906,24 @@ export default function MacroSimulator() {
   // переключение между меню/анкетой/сетью/игрой не перезагружает страницу,
   // поэтому без явного сброса скролл оставался там, где был на предыдущем
   // экране — короткий новый экран открывался уже наполовину прокрученным
-  const screenKey = network ? 'network-game' : setup ? 'game' : view;
+  const screenKey = network ? 'network-game' : tycoon ? 'tycoon' : setup ? 'game' : view;
   React.useEffect(() => { window.scrollTo(0, 0); }, [screenKey]);
 
   const backToMenu = () => { setNetwork(null); setLoaded(null); setSetup(null); goMenu(); };
+  const startTycoon = (x) => {
+    if (loadTycoonSave() && !window.confirm('Начать новое дело? Сохранённая компания будет потеряна (репутация останется).')) return;
+    setTycoon({ setupNew: { start: x.sector || 'farm', scenario: x.scenario, difficulty: x.difficulty, cbPersona: x.cbPersona,
+      mofPersona: x.mofPersona, presPersona: x.president && x.president.persona, president: !!(x.president && x.president.enabled) } });
+  };
   const screen = (() => {
+    if (tycoon) {
+      return (
+        <Suspense fallback={<GameFallback />}>
+          <TycoonScreen key={tycoon.initial ? 'load' : JSON.stringify(tycoon.setupNew)} initial={tycoon.initial} setupNew={tycoon.setupNew}
+            onExit={() => { setTycoon(null); goMenu(); }} />
+        </Suspense>
+      );
+    }
     if (network) {
       return (
         <Suspense fallback={<NetworkFallback />}>
@@ -1892,10 +1932,10 @@ export default function MacroSimulator() {
       );
     }
     if (!setup) {
-      if (view === 'setup') {
+      if (view === 'setup' || view === 'setup-biz') {
         return (
-          <SetupScreen key={theme}
-            onStart={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }}
+          <SetupScreen key={`${theme}${view}`} initialRole={view === 'setup-biz' ? 'entrepreneur' : null}
+            onStart={(x) => { if (x.role === 'entrepreneur') { startTycoon(x); return; } clearAutosave(); setLoaded(null); setSetup(x); }}
             onBack={goMenu}
           />
         );
@@ -1929,6 +1969,7 @@ export default function MacroSimulator() {
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
           onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
+          onTycoon={(save) => (save ? setTycoon({ initial: save }) : setView('setup-biz'))}
         />
       );
     }

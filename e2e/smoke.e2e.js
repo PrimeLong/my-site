@@ -230,17 +230,20 @@ test('вызов дня: карточка в меню, общий старт и 
   expect(errors).toEqual([]);
 });
 
-test('предприниматель: отрасль на старте, решения компании и отчёт за квартал', async ({ page }, info) => {
+test('своё дело: старт из меню, время идёт, стройка, склад и вкладки', async ({ page }) => {
   const { errors } = await openApp(page);
-  await page.getByText('Новая партия', { exact: true }).click();
-  await page.getByText('Предприниматель', { exact: true }).click();
-  await page.getByText('Девелопер', { exact: true }).click();
+  await page.getByText('Своё дело', { exact: true }).click();
+  await page.getByText('Лавка', { exact: true }).click();
   await page.getByRole('button', { name: 'Принять полномочия' }).click();
-  await expect(page.getByText('Девелопер: решения на квартал')).toBeVisible();
-  await expect(page.getByText('Прогноз квартала при нынешней экономике')).toBeVisible();
-  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
-  if (info.project.name === 'phone') await page.getByRole('button', { name: 'Новости и графики' }).click();
-  await expect(page.getByText('Итоги прошлого квартала')).toBeVisible();
+  const cash = page.getByLabel('Деньги на счёте');
+  await expect(cash).toBeVisible();
+  await page.getByRole('button', { name: '4×' }).click();
+  const before = await cash.textContent();
+  await expect.poll(async () => cash.textContent(), { timeout: 10000 }).not.toBe(before);
+  for (const name of ['Склад и рынок', 'Исследования', 'Финансы', 'Страна', 'Производство']) {
+    await page.getByRole('tab', { name }).click();
+  }
+  await expect(page.getByText('Хлебозавод').first()).toBeVisible();
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

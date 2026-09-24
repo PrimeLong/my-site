@@ -30,7 +30,7 @@ const P = {
 };
 
 // спрос на рынке компании относительно стартовой экономики — у каждой отрасли свой «мотор»
-function demandIndex(sector, e) {
+export function demandIndex(sector, e) {
   const g = Math.max(0.2, (e.gdp || 2000) / 2000);
   const cc = clamp((e.consumerConfidence ?? 55) / 55, 0.3, 1.8);
   const bc = clamp((e.businessConfidence ?? 55) / 55, 0.3, 1.8);
@@ -41,7 +41,7 @@ function demandIndex(sector, e) {
 }
 
 // внешний спрос: слабая валюта делает экспорт дешевле для покупателя, санкции закрывают рынки
-function exportIndex(e) {
+export function exportIndex(e) {
   const fx = clamp((e.exchangeRate || 100) / 100, 0.3, 4);
   const sanc = (e.sanctionsQuartersLeft || 0) > 0 ? 0.45 : 1;
   const war = (e.warQuartersLeft || 0) > 0 && e.warType === 'offensive' ? 0.7 : 1;
@@ -108,16 +108,16 @@ export function defaultPlan(company) {
   };
 }
 
-const fxRate = (e) => clamp((e.exchangeRate || 100) / 100, 0.1, 20);
-const priceIdx = (e) => Math.max(0.05, (e.priceLevel || 100) / 100);
-const fxLoanRate = (e) => clamp((e.worldRate ?? 3) + (e.riskPremium ?? 1.4) + 2.5, 1, 40);
-const rubLoanRate = (e) => clamp(e.lendingRate ?? 7.92, 0.5, 80);
+export const fxRate = (e) => clamp((e.exchangeRate || 100) / 100, 0.1, 20);
+export const priceIdx = (e) => Math.max(0.05, (e.priceLevel || 100) / 100);
+export const fxLoanRate = (e) => clamp((e.worldRate ?? 3) + (e.riskPremium ?? 1.4) + 2.5, 1, 40);
+export const rubLoanRate = (e) => clamp(e.lendingRate ?? 7.92, 0.5, 80);
 
 // долг в местной валюте по текущему курсу
 export const totalDebt = (c, e) => c.debtRub + c.debtFx * fxRate(e);
 
 // мультипликатор EV/EBITDA следует за оценкой рынка акций
-const evMultiple = (e) => clamp(0.55 * (e.stockPE || 11.5), 2.5, 12);
+export const evMultiple = (e) => clamp(0.55 * (e.stockPE || 11.5), 2.5, 12);
 
 // средняя EBITDA за последние кварталы — одна удачная четверть не делает компанию дорогой
 function ebitdaRun(c) {
@@ -143,13 +143,30 @@ export function ownerWealth(c, e) {
 /* Сколько банки готовы дать ещё. Потолок — 3,5 годовой EBITDA, а при кредитном
    сжатии и больных банках он складывается: в кризис кредит пропадает первым
    именно для бизнеса. */
-export function creditLimit(c, e) {
-  const annual = Math.max(0, ebitdaRun(c)) * Q;
+export function creditMultiple(e) {
   let k = 3.5;
   if (e.creditCrunch) k *= 0.4;
   k *= clamp(1.25 - (e.bankingRisk ?? 24) / 100, 0.35, 1.1);
   if (e.regime === 'banking') k *= 0.6;
-  return Math.max(0, annual * k - totalDebt(c, e));
+  return k;
+}
+export function creditLimit(c, e) {
+  const annual = Math.max(0, ebitdaRun(c)) * Q;
+  return Math.max(0, annual * creditMultiple(e) - totalDebt(c, e));
+}
+
+/* Риски, общие для любой частной компании в этой стране. Забастовка — когда
+   зарплату урезают при низкой безработице (уйти есть куда, терпеть незачем).
+   Проверка — всегда возможна, но при авторитаризме и тоталитаризме она частая и
+   растёт с размером бизнеса; связи во власти (GR) её заметно реже зовут. */
+export const hardRegime = (regime) => regime === 'authoritarian' || regime === 'totalitarian';
+export function strikeChance(wagePremium, unemployment) {
+  if (!(wagePremium < 0) || !((unemployment ?? 5) < 6.5)) return 0;
+  return 0.18 + (-wagePremium) * 0.02;
+}
+export function inspectionChance(regime, sizeBn, gr) {
+  const hard = hardRegime(regime);
+  return (hard ? 0.1 + sizeBn * 0.04 : 0.03) * (gr ? (hard ? 0.3 : 0.6) : 1);
 }
 
 const maxHirePct = (e) => clamp(25 * ((e.unemployment ?? 5) - 2) / 5, 5, 25);
@@ -187,16 +204,13 @@ function runQuarter(c, plan, e, { events = true, regime } = {}) {
   // события квартала
   let strike = false; let fine = 0; let govOrder = 1;
   if (events) {
-    const realWageSqueeze = plan.wagePremium < 0 && (e.unemployment ?? 5) < 6.5;
-    if (realWageSqueeze && c.strikeCd <= 0 && rng() < 0.18 + (-plan.wagePremium) * 0.02) {
+    if (c.strikeCd <= 0 && rng() < strikeChance(plan.wagePremium, e.unemployment)) {
       strike = true; output *= 0.7;
       log.push('Забастовка: цеха стояли почти месяц — выпуск упал на треть.');
       news.push({ headline: 'ЗАБАСТОВКА НА ПРЕДПРИЯТИИ', text: 'Работники остановили производство, требуя индексации зарплат. Выпуск за квартал сократился примерно на треть.' });
     }
-    const hard = regime === 'authoritarian' || regime === 'totalitarian';
-    const size = companyValue(c, e) / 1000;
-    const inspChance = (hard ? 0.1 + size * 0.04 : 0.03) * (plan.gr ? (hard ? 0.3 : 0.6) : 1);
-    if (c.inspectionCd <= 0 && rng() < inspChance) {
+    const hard = hardRegime(regime);
+    if (c.inspectionCd <= 0 && rng() < inspectionChance(regime, companyValue(c, e) / 1000, plan.gr)) {
       fine = Math.max(5, c.cash * (hard ? 0.18 : 0.07));
       log.push(hard ? `«Внеплановая проверка» закончилась «добровольным взносом» ${fine.toFixed(0)} млн.`
         : `Налоговая проверка: доначисления и штраф ${fine.toFixed(0)} млн.`);
