@@ -236,6 +236,8 @@ test('общество: после квартала видны группы, к�
 
 test('президент ведёт наступление на карте: цель, штурм, продвижение', async ({ page, isMobile }) => {
   test.skip(isMobile, 'сценарий проверяется на ширине компьютера');
+  // жребий квартала фиксирован: случайное событие (соседи, кризис) не должно подменять проверяемый штурм
+  await page.addInitScript(() => { let x = 42; Math.random = () => { x = (x * 16807) % 2147483647; return x / 2147483647; }; });
   const { errors } = await openApp(page);
   await startSoloGame(page, 'Президент');
   await page.getByText('Война', { exact: true }).first().click();

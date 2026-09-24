@@ -109,7 +109,7 @@ function ModalShell({ title, icon: Icon, onClose, children, label }) {
 // предупреждение, когда сервер работает без общего хранилища: профиль там не выживет
 function StorageWarning() {
   return (
-    <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 11.5, color: COLOR.rust, lineHeight: 1.5, marginBottom: 10 }}>
+    <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 12, color: COLOR.rust, lineHeight: 1.5, marginBottom: 10 }}>
       <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} />
       Сервер работает без общего хранилища (Redis): профили и сессии могут пропадать. Это настройка развёртывания —
       нужны переменные KV_REST_API_URL и KV_REST_API_TOKEN.
@@ -126,7 +126,7 @@ function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохранил ко�
   };
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55, marginBottom: 10 }}>
+      <div style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.55, marginBottom: 10 }}>
         Это код восстановления. Если забудете пароль, по нему можно задать новый. Сохраните его где-нибудь вне игры:
         показываем его только сейчас.
       </div>
@@ -137,7 +137,7 @@ function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохранил ко�
           {copied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 5 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 5 }} />}
           {copied ? 'Скопировано' : 'Копировать'}
         </button>
-        <button type="button" className="ems-btn primary" style={{ flex: 1, padding: '9px 0', fontSize: 12.5 }} onClick={onDone}>{doneLabel}</button>
+        <button type="button" className="ems-btn primary" style={{ flex: 1, padding: '9px 0', fontSize: 13 }} onClick={onDone}>{doneLabel}</button>
       </div>
     </div>
   );
@@ -195,7 +195,7 @@ export function AuthModal({ onClose, onDone, reason }) {
         </div>
       )}
       {tab === 'recover' && (
-        <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 12 }}>
           Введите логин, код восстановления, который вы получили при регистрации, и новый пароль. Все прежние входы в профиль
           на других устройствах закроются.
         </div>
@@ -223,7 +223,7 @@ export function AuthModal({ onClose, onDone, reason }) {
           </label>
         )}
         {tab === 'register' && (
-          <div style={{ fontSize: 11, color: COLOR.faint, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5 }}>
             Сохранения, достижения и пройденные курсы с этого устройства перейдут в профиль — войдите с ним на другом
             устройстве, и они будут там.
           </div>
@@ -233,11 +233,11 @@ export function AuthModal({ onClose, onDone, reason }) {
           {busy ? 'Минутку…' : tab === 'register' ? 'Создать профиль' : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
         </button>
         {tab === 'login' && (
-          <button type="button" className="ems-btn ghost" style={{ padding: '6px 0', fontSize: 11.5, background: 'none', border: 'none', color: COLOR.muted }}
+          <button type="button" className="ems-btn ghost" style={{ padding: '6px 0', fontSize: 12, background: 'none', border: 'none', color: COLOR.muted }}
             onClick={() => { setTab('recover'); setError(''); setPassword(''); }}>Забыли пароль?</button>
         )}
         {tab === 'recover' && (
-          <button type="button" className="ems-btn ghost" style={{ padding: '6px 0', fontSize: 11.5, background: 'none', border: 'none', color: COLOR.muted }}
+          <button type="button" className="ems-btn ghost" style={{ padding: '6px 0', fontSize: 12, background: 'none', border: 'none', color: COLOR.muted }}
             onClick={() => { setTab('login'); setError(''); }}>← Ко входу</button>
         )}
       </form>
@@ -318,7 +318,7 @@ export function ProfileModal({ onClose, onSwitched, onLink }) {
         <div className="ems-card-icon" style={{ width: 50, height: 50 }}><Icon size={24} color={COLOR.gold} /></div>
         <div style={{ minWidth: 0 }}>
           <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text }}>{account.name}</div>
-          <div className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }}>@{account.login}
+          <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>@{account.login}
             {profile && profile.createdAt ? ` · с ${new Date(profile.createdAt).toLocaleDateString('ru-RU')}` : ''}</div>
         </div>
       </div>
@@ -326,12 +326,12 @@ export function ProfileModal({ onClose, onSwitched, onLink }) {
         {[['Комнат', st && st.rooms], ['Кварталов по сети', st && st.quarters], ['Выходов из партий', st && st.leaves]].map(([lbl, v]) => (
           <div key={lbl} style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '8px 6px', textAlign: 'center' }}>
             <div className="ems-mono" style={{ fontSize: 17, color: COLOR.goldSoft }}>{v == null ? '—' : v}</div>
-            <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 2 }}>{lbl}</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 2 }}>{lbl}</div>
           </div>
         ))}
       </div>
       {profile && !profile.hasRecovery && (
-        <div style={{ fontSize: 11.5, color: COLOR.goldSoft, lineHeight: 1.5, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: COLOR.goldSoft, lineHeight: 1.5, marginBottom: 12 }}>
           У профиля нет кода восстановления — без него забытый пароль не вернуть. Получите его кнопкой «Код восстановления» ниже.
         </div>
       )}
@@ -361,7 +361,7 @@ export function ProfileModal({ onClose, onSwitched, onLink }) {
       )}
       {panel === 'recovery' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>Новый код заменит прежний. Для этого нужен пароль.</div>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>Новый код заменит прежний. Для этого нужен пароль.</div>
           <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" style={fieldStyle()} />
           <button className="ems-btn" disabled={busy || !oldPw} style={{ padding: '7px 0', fontSize: 12 }} onClick={newCode}>Получить новый код</button>
         </div>

@@ -119,8 +119,8 @@ const NEWS_SECTION_ORDER = ['gov', 'cb', 'markets', 'business', 'households', 'w
 function TickerStat({ label, value, delta, pp }) {
   const arrow = !Number.isFinite(delta) || Math.abs(delta) < 1e-9 ? null : delta > 0 ? '▲' : '▼';
   return (
-    <span className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
-      {label} <b style={{ color: pp.paperText }}>{value}</b>{arrow && <span style={{ fontSize: 8.5 }}>{arrow}</span>}
+    <span className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'baseline', gap: 4 }}>
+      {label} <b style={{ color: pp.paperText }}>{value}</b>{arrow && <span style={{ fontSize: 12 }}>{arrow}</span>}
     </span>
   );
 }
@@ -211,7 +211,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                   и уменьшения кегля здесь крестик просто выталкивало за край экрана —
                   не пропадал из DOM, но становился недостижимым. */}
               <div className="ems-serif" style={{ fontSize: 'clamp(20px, 7vw, 30px)', fontWeight: 700, letterSpacing: '0.02em', lineHeight: 1.1 }}>ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
-              <div className="ems-mono" style={{ fontSize: 10, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
+              <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, marginTop: 6, letterSpacing: '0.08em' }}>
                 ЕЖЕКВАРТАЛЬНОЕ ИЗДАНИЕ · {latest ? latest[1][0].qLabel : quarterLabel(quarterIndex)} · ВЫПУСК № {latest ? latest[0] : 0}
               </div>
               {/* Газета не объявляет режим, в котором выходит: «АВТОРИТАРНЫЙ РЕЖИМ» в
@@ -221,13 +221,13 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                   тогда, когда свободу прессы уже отняли: контраст виден только если
                   показать обе стороны. */}
               {(regimeId === 'totalitarian' || regimeId === 'authoritarian') ? (
-                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted, fontWeight: 700 }}>
+                <div className="ems-mono" style={{ fontSize: 12, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted, fontWeight: 700 }}>
                   {regimeId === 'totalitarian'
                     ? '⚑ ГОСУДАРСТВЕННОЕ ИЗДАНИЕ · РАСПРОСТРАНЯЕТСЯ ПО ПОДПИСКЕ ОБЯЗАТЕЛЬНО'
                     : 'ВЫХОДИТ ПО РАЗРЕШЕНИЮ · МАТЕРИАЛЫ СОГЛАСОВАНЫ'}
                 </div>
               ) : (
-                <div className="ems-mono" style={{ fontSize: 9.5, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted }}>
+                <div className="ems-mono" style={{ fontSize: 12, marginTop: 5, letterSpacing: '0.1em', color: pp.paperMuted }}>
                   НЕЗАВИСИМОЕ ИЗДАНИЕ · РЕДАКЦИЯ НЕ СОГЛАСОВЫВАЕТ МАТЕРИАЛЫ С ВЛАСТЬЮ
                 </div>
               )}
@@ -266,11 +266,11 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
               {!lead && <div className="ems-serif" style={{ fontSize: 13, color: pp.paperMuted }}>Первый выпуск выйдет после завершения квартала.</div>}
               {lead && (
                 <div style={{ borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 14, marginBottom: 14, borderLeft: `4px solid ${pp.paperText}`, paddingLeft: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
+                  <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>
                     {catOf(lead.cat).icon} {catOf(lead.cat).label.toUpperCase()} · ГЛАВНАЯ ТЕМА
                   </div>
                   <div className="ems-serif" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, marginBottom: 8 }}>{lead.headline}</div>
-                  <div className="ems-serif" style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+                  <div className="ems-serif" style={{ fontSize: 14, lineHeight: 1.6 }}>
                     <span style={{ float: 'left', fontSize: 40, lineHeight: 0.8, fontWeight: 700, padding: '4px 6px 0 0' }}>{lead.text.charAt(0)}</span>
                     {lead.text.slice(1)}
                   </div>
@@ -280,26 +280,26 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
 
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
                 <div style={{ flex: '1 1 260px', border: `1px solid ${pp.paperRule}`, padding: '10px 12px' }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 13 }}>{weatherIcon}</span> СОСТОЯНИЕ ЭКОНОМИКИ
                   </div>
                   {snapshot && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 16px' }}>
                       {[['ВВП', fmtSignedPct(snapshot.gdpGrowth)], ['Инфляция', pctFmt(snapshot.inflation)], ['Безработица', pctFmt(snapshot.unemployment)],
                         ['Ставка', pctFmt(snapshot.keyRate)], ['Курс', fmt1(snapshot.exchangeRate)], ['Долг/ВВП', pctFmt(snapshot.debtToGdp)]].map(([k, v]) => (
-                          <span key={k} className="ems-mono" style={{ fontSize: 10.5, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
+                          <span key={k} className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted }}>{k}: <b style={{ color: pp.paperText }}>{v}</b></span>
                         ))}
                     </div>
                   )}
                   {econRegimeId && econRegimeId !== 'normal' && (
-                    <div className="ems-serif" style={{ fontSize: 11, color: pp.paperMuted, marginTop: 7, lineHeight: 1.4 }}>{regimeInfoText(weatherInfo, economy)}</div>
+                    <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, marginTop: 7, lineHeight: 1.4 }}>{regimeInfoText(weatherInfo, economy)}</div>
                   )}
                 </div>
               </div>
 
               {urgentItems.length > 0 && (
                 <div style={{ border: `2px solid ${pp.paperText}`, padding: '10px 12px', marginBottom: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', marginBottom: 7, fontWeight: 700 }}>⚠ ТРЕВОГА НОМЕРА</div>
+                  <div className="ems-mono" style={{ fontSize: 12, letterSpacing: '0.12em', marginBottom: 7, fontWeight: 700 }}>⚠ ТРЕВОГА НОМЕРА</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                     {urgentItems.map((n) => (
                       <div key={n.id}>
@@ -313,7 +313,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
 
               {sections.map((s) => (
                 <div key={s.cat} style={{ marginBottom: 16 }}>
-                  <div className="ems-mono" style={{ fontSize: 10, letterSpacing: '0.1em', borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 4, marginBottom: 10, color: pp.paperText, fontWeight: 700 }}>
+                  <div className="ems-mono" style={{ fontSize: 12, letterSpacing: '0.1em', borderBottom: `1px solid ${pp.paperRule}`, paddingBottom: 4, marginBottom: 10, color: pp.paperText, fontWeight: 700 }}>
                     {s.label}
                   </div>
                   <div style={{ columnCount: s.items.length > 1 ? 2 : 1, columnGap: 22, columnRule: `1px solid ${pp.paperRule}` }} className="ems-paper-cols">
@@ -321,7 +321,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                       <div key={n.id} style={{ breakInside: 'avoid', marginBottom: 14 }}>
                         <div className="ems-serif" style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>{n.headline}</div>
                         <div className="ems-serif" style={{ fontSize: 12, lineHeight: 1.55 }}>{n.text}</div>
-                        {n.storyTitle && <div style={{ fontSize: 10, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
+                        {n.storyTitle && <div style={{ fontSize: 12, color: pp.paperMuted, marginTop: 4 }}>Сюжет «{n.storyTitle}», часть {n.step} из {n.steps}</div>}
                       </div>
                     ))}
                   </div>
@@ -330,7 +330,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
 
               {opinionItem && (
                 <div style={{ borderTop: `1px solid ${pp.paperRule}`, borderBottom: `1px solid ${pp.paperRule}`, padding: '12px 4px', marginBottom: 14 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>{catOf('opinion').icon} КОЛОНКА МНЕНИЙ</div>
+                  <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 6 }}>{catOf('opinion').icon} КОЛОНКА МНЕНИЙ</div>
                   <div className="ems-serif" style={{ fontSize: 17, fontStyle: 'italic', fontWeight: 700, lineHeight: 1.35, marginBottom: 6 }}>{opinionItem.headline}</div>
                   <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.5 }}>{opinionItem.text}</div>
                 </div>
@@ -338,8 +338,8 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
 
               {editorial && (
                 <div style={{ borderTop: `3px double ${pp.paperRule}`, marginTop: 6, paddingTop: 12 }}>
-                  <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
-                  <div className="ems-serif" style={{ fontSize: 12.5, lineHeight: 1.65 }}>{editorial.text}</div>
+                  <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, letterSpacing: '0.1em', marginBottom: 5 }}>ОТ РЕДАКЦИИ · СВОДКА КВАРТАЛА</div>
+                  <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }}>{editorial.text}</div>
                 </div>
               )}
             </div>
@@ -355,11 +355,11 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                     style={{ flex: '1 1 180px', padding: '5px 9px', fontSize: 12, background: 'transparent', color: pp.paperText, border: `1px solid ${pp.paperRule}` }} />
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     <span onClick={() => { setChronicleFilter('all'); setChronicleShown(8); }} className="ems-mono"
-                      style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === 'all' ? 700 : 400,
+                      style={{ cursor: 'pointer', fontSize: 12, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === 'all' ? 700 : 400,
                         background: chronicleFilter === 'all' ? pp.paperRule : 'transparent', color: pp.paperText }}>ВСЁ</span>
                     {chronicleCats.map((c) => (
                       <span key={c.id} onClick={() => { setChronicleFilter(c.id); setChronicleShown(8); }} className="ems-mono"
-                        style={{ cursor: 'pointer', fontSize: 10, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === c.id ? 700 : 400,
+                        style={{ cursor: 'pointer', fontSize: 12, padding: '3px 8px', border: `1px solid ${pp.paperRule}`, fontWeight: chronicleFilter === c.id ? 700 : 400,
                           background: chronicleFilter === c.id ? pp.paperRule : 'transparent', color: pp.paperText }}>{c.icon} {c.short.toUpperCase()}</span>
                     ))}
                   </div>
@@ -377,7 +377,7 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                       <div style={{ width: 92, flexShrink: 0 }}>
                         <div className="ems-mono ems-serif" style={{ fontSize: 12, fontWeight: 700 }}>{list[0].qLabel}</div>
                         {snap && (
-                          <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
+                          <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.5, marginTop: 3 }}>
                             ВВП {fmtSigned1(snap.gdpGrowth)}%<br />инфл. {fmt1(snap.inflation)}%<br />безр. {fmt1(snap.unemployment)}%<br />ставка {fmt1(snap.keyRate)}%
                           </div>
                         )}
@@ -385,9 +385,9 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {top.map((n) => (
                           <div key={n.id}>
-                            <span style={{ fontSize: 10 }}>{catOf(n.cat).icon} </span>
-                            <span className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700 }}>{n.headline}</span>
-                            <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
+                            <span style={{ fontSize: 12 }}>{catOf(n.cat).icon} </span>
+                            <span className="ems-serif" style={{ fontSize: 13, fontWeight: 700 }}>{n.headline}</span>
+                            <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.45 }}>{n.text}</div>
                           </div>
                         ))}
                       </div>
@@ -419,20 +419,20 @@ export function NewspaperModal({ news, history, quarterIndex, onClose, economy }
                           <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: i < done ? pp.paperText : 'transparent', border: `1px solid ${pp.paperRule}`, display: 'inline-block' }} />
                         ))}
                       </div>
-                      {done < total && <span className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted }}>продолжение следует</span>}
+                      {done < total && <span className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted }}>продолжение следует</span>}
                     </div>
-                    <div className="ems-mono" style={{ fontSize: 9.5, color: pp.paperMuted, marginBottom: 8 }}>
+                    <div className="ems-mono" style={{ fontSize: 12, color: pp.paperMuted, marginBottom: 8 }}>
                       {st.steps[0].qLabel} — {st.steps[st.steps.length - 1].qLabel} · {done} из {total} частей
                     </div>
                     {st.steps.map((n, i) => (
                       <div key={n.id} style={{ display: 'flex', gap: 10, marginBottom: 9 }}>
                         <div style={{ width: 74, flexShrink: 0 }} className="ems-mono">
-                          <div style={{ fontSize: 9.5, color: pp.paperMuted }}>{n.qLabel}</div>
-                          <div style={{ fontSize: 9, color: pp.paperMuted }}>часть {i + 1}</div>
+                          <div style={{ fontSize: 12, color: pp.paperMuted }}>{n.qLabel}</div>
+                          <div style={{ fontSize: 12, color: pp.paperMuted }}>часть {i + 1}</div>
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div className="ems-serif" style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
-                          <div className="ems-serif" style={{ fontSize: 11.5, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
+                          <div className="ems-serif" style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>{n.headline}</div>
+                          <div className="ems-serif" style={{ fontSize: 12, color: pp.paperMuted, lineHeight: 1.5 }}>{n.text}</div>
                         </div>
                       </div>
                     ))}

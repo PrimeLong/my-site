@@ -83,7 +83,7 @@ function Term({ k, children }) {
         style={{ borderBottom: `1px dashed ${COLOR.gold}`, cursor: 'help', color: COLOR.goldSoft }}>{children}</span>
       {open && (
         <span style={{ display: 'block', margin: '7px 0', padding: '9px 11px', background: COLOR.panelAlt,
-          border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 11.5, lineHeight: 1.55, color: COLOR.muted }}>
+          border: `1px solid ${COLOR.border}`, borderRadius: 3, fontSize: 12, lineHeight: 1.55, color: COLOR.muted }}>
           <b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}
         </span>
       )}
@@ -111,8 +111,8 @@ function GlossaryModal({ onClose }) {
             background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
         {list.map((g) => (
           <div key={g.title} className="ems-panel" style={{ padding: '10px 12px', marginBottom: 7 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: COLOR.goldSoft, marginBottom: 3 }}>{g.title}</div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.55 }}>{g.text}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: COLOR.goldSoft, marginBottom: 3 }}>{g.title}</div>
+            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.55 }}>{g.text}</div>
           </div>
         ))}
         {!list.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Ничего не нашлось.</div>}
@@ -195,8 +195,8 @@ function QuizStep({ questions, onPass, passed }) {
         return (
           <div key={q.q} className="ems-panel" style={{ padding: 14, marginBottom: 10 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 9 }}>
-              <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint, flexShrink: 0 }}>{qi + 1} / {questions.length}</span>
-              <span style={{ fontSize: 13.5, lineHeight: 1.5, color: COLOR.text }}>{q.q}</span>
+              <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, flexShrink: 0 }}>{qi + 1} / {questions.length}</span>
+              <span style={{ fontSize: 14, lineHeight: 1.5, color: COLOR.text }}>{q.q}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               {orders[qi].map((srcIdx, oi) => {
@@ -210,10 +210,10 @@ function QuizStep({ questions, onPass, passed }) {
                 const color = !mark ? (chosen ? COLOR.gold : COLOR.border) : right ? COLOR.teal : COLOR.rust;
                 return (
                   <button key={opt} className="ems-btn" onClick={() => pick(qi, oi)} disabled={passed}
-                    style={{ textAlign: 'left', padding: '8px 11px', fontSize: 12.5, lineHeight: 1.45, display: 'flex', gap: 9, alignItems: 'flex-start',
+                    style={{ textAlign: 'left', padding: '8px 11px', fontSize: 13, lineHeight: 1.45, display: 'flex', gap: 9, alignItems: 'flex-start',
                       borderColor: color, background: chosen ? COLOR.goldDim : COLOR.panelAlt,
                       color: COLOR.text, cursor: passed ? 'default' : 'pointer' }}>
-                    <span className="ems-mono" style={{ fontSize: 10.5, color, flexShrink: 0, marginTop: 1 }}>
+                    <span className="ems-mono" style={{ fontSize: 12, color, flexShrink: 0, marginTop: 1 }}>
                       {mark ? (right ? '✓' : '✕') : String.fromCharCode(1040 + oi)}
                     </span>
                     <span>{opt}</span>
@@ -222,7 +222,7 @@ function QuizStep({ questions, onPass, passed }) {
               })}
             </div>
             {showVerdict && (
-              <div style={{ marginTop: 9, fontSize: 11.5, lineHeight: 1.5, paddingLeft: 10,
+              <div style={{ marginTop: 9, fontSize: 12, lineHeight: 1.5, paddingLeft: 10,
                 borderLeft: `2px solid ${isRight(qi) ? COLOR.teal : COLOR.rust}`, color: COLOR.muted }}>
                 <b style={{ color: isRight(qi) ? COLOR.teal : COLOR.rust }}>{isRight(qi) ? 'Верно. ' : 'Неверно. '}</b>{q.explain}
               </div>
@@ -236,7 +236,7 @@ function QuizStep({ questions, onPass, passed }) {
             onClick={check}>
             {checked && wrongCount > 0 ? 'Проверить ещё раз' : 'Проверить ответы'}
           </button>
-          <div style={{ fontSize: 11, color: checked && wrongCount ? COLOR.rust : COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
+          <div style={{ fontSize: 12, color: checked && wrongCount ? COLOR.rust : COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
             {checked && wrongCount > 0
               ? `Ошибок: ${wrongCount}. Разбор под каждым вопросом — исправьте ответы и проверьте снова, попытки не считаются.`
               : allAnswered ? 'Дальше пустит только полностью верный ответ — но переотвечать можно сколько угодно.'
@@ -245,7 +245,7 @@ function QuizStep({ questions, onPass, passed }) {
         </>
       )}
       {passed && (
-        <div style={{ fontSize: 12.5, color: COLOR.teal, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <div style={{ fontSize: 13, color: COLOR.teal, display: 'flex', alignItems: 'center', gap: 7 }}>
           <Check size={14} />Тест пройден.
         </div>
       )}
@@ -260,17 +260,17 @@ function PracticeStatus({ step, ctx, quartersUsed, passed, failed }) {
   return (
     <div className="ems-panel" style={{ padding: '11px 14px', marginBottom: 12, borderColor: tone }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10, letterSpacing: '0.07em', textTransform: 'uppercase', color: tone }}>
+        <span style={{ fontSize: 12, letterSpacing: '0.07em', textTransform: 'uppercase', color: tone }}>
           {passed ? 'Задача решена' : failed ? 'Задача не решена' : 'Задача'}
         </span>
-        <span style={{ fontSize: 12.5, color: COLOR.text, flex: 1, minWidth: 180 }}>{step.goalLabel}</span>
-        <span className="ems-mono" style={{ fontSize: 11, color: left <= 1 && !passed ? COLOR.rust : COLOR.faint }}>
+        <span style={{ fontSize: 13, color: COLOR.text, flex: 1, minWidth: 180 }}>{step.goalLabel}</span>
+        <span className="ems-mono" style={{ fontSize: 12, color: left <= 1 && !passed ? COLOR.rust : COLOR.faint }}>
           {passed ? `${quartersUsed} кв. потрачено` : `осталось ${left} кв. из ${step.maxQuarters}`}
         </span>
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>{step.goalText(ctx)}</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>{step.goalText(ctx)}</div>
       {failed && step.hint && (
-        <div style={{ fontSize: 11.5, color: COLOR.goldSoft, marginTop: 6, lineHeight: 1.45 }}>Подсказка: {step.hint}</div>
+        <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 6, lineHeight: 1.45 }}>Подсказка: {step.hint}</div>
       )}
     </div>
   );
@@ -883,7 +883,7 @@ function DemandPractice({ economy, decisions, setDecisions, done, focus }) {
         const v = sup[id] ?? 50;
         const col = v < 35 ? COLOR.rust : v >= 50 ? COLOR.teal : COLOR.gold;
         return (
-          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, marginBottom: 4, fontWeight: id === focus ? 600 : 400 }}>
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 4, fontWeight: id === focus ? 600 : 400 }}>
             <span style={{ width: 90, color: id === focus ? COLOR.text : COLOR.muted }}>{GROUP_LABEL[id]}</span>
             <span style={{ flex: 1, height: 5, borderRadius: 3, background: COLOR.border, overflow: 'hidden' }}>
               <span style={{ display: 'block', width: `${v}%`, height: '100%', background: col }} />
@@ -894,25 +894,25 @@ function DemandPractice({ economy, decisions, setDecisions, done, focus }) {
       })}
       {dem ? (
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLOR.hairline}` }}>
-          <div style={{ fontSize: 12.5, color: COLOR.text, fontWeight: 600, marginBottom: 3 }}>{dem.title}</div>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45, marginBottom: 8 }}>{dem.leader.name}, {dem.leader.title}: {dem.text}</div>
+          <div style={{ fontSize: 13, color: COLOR.text, fontWeight: 600, marginBottom: 3 }}>{dem.title}</div>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45, marginBottom: 8 }}>{dem.leader.name}, {dem.leader.title}: {dem.text}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {dem.options.map((o) => {
               const on = decisions.groupResponse === o.id;
               return (
                 <button key={o.id} className="ems-btn" disabled={done} aria-pressed={on}
                   onClick={() => { Audio.play('click'); setDecisions((d) => ({ ...d, groupResponse: o.id })); }}
-                  style={{ textAlign: 'left', padding: '7px 9px', fontSize: 11.5, lineHeight: 1.35,
-                    background: on ? COLOR.gold : COLOR.panelAlt, color: on ? COLOR.ink : COLOR.text, borderColor: on ? COLOR.gold : COLOR.border }}>
+                  style={{ textAlign: 'left', padding: '7px 9px', fontSize: 12, lineHeight: 1.35,
+                    background: on ? COLOR.sel : COLOR.panelAlt, color: on ? COLOR.selText : COLOR.text, borderColor: on ? COLOR.selBorder : COLOR.border }}>
                   <b>{o.label}</b>{o.spend ? ` · ${o.spend}% ВВП` : ''}<br /><span style={{ opacity: 0.85 }}>{o.effect}</span>
                 </button>
               );
             })}
           </div>
-          {!decisions.groupResponse && <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6 }}>Без ответа требование сочтут отклонённым.</div>}
+          {!decisions.groupResponse && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6 }}>Без ответа требование сочтут отклонённым.</div>}
         </div>
       ) : res ? (
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 10, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 10, lineHeight: 1.45 }}>
           Ответ дан: «{res.label}». Дальше смотрите, как меняется поддержка группы квартал за кварталом.
         </div>
       ) : null}
@@ -2465,7 +2465,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
       )}
       {newsLog.length > 0 && (
               <div className="ems-panel" style={{ padding: 12, marginBottom: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: COLOR.faint,
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: COLOR.faint,
                   letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 7 }}>
                   <Newspaper size={11} />Что происходило по кварталам
                   <span style={{ marginLeft: 'auto', textTransform: 'none', letterSpacing: 0 }}>
@@ -2477,9 +2477,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                 <div style={{ maxHeight: 240, overflowY: 'auto' }}>
             {newsLog.map((qn) => (
                     <div key={qn.q} style={{ marginBottom: 8 }}>
-                      <div className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint, marginBottom: 4 }}>{qn.label}</div>
+                      <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, marginBottom: 4 }}>{qn.label}</div>
                       {qn.items.map((n) => (
-                        <div key={n.id} style={{ fontSize: 11.5, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
+                        <div key={n.id} style={{ fontSize: 12, lineHeight: 1.45, marginBottom: 6, paddingLeft: 9,
                           borderLeft: `2px solid ${n.priority >= 8 ? COLOR.gold : COLOR.border}` }}>
                           <div style={{ color: COLOR.text }}>{n.headline}</div>
                           <div style={{ color: COLOR.muted }}>{n.text}</div>
@@ -2520,7 +2520,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
               );
             })}
             {lever && (
-              <div style={{ fontSize: 11, color: canAdvance ? COLOR.teal : COLOR.faint }}>
+              <div style={{ fontSize: 12, color: canAdvance ? COLOR.teal : COLOR.faint }}>
                 Изменение: {fmtSigned1(delta)}{lever.suffix} — нужно не меньше +{cur.minDelta}{lever.suffix}
               </div>
             )}
@@ -2552,7 +2552,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               {kind === 'quiz' && <span className="ems-hero-badge" style={{ marginTop: 0 }}>теория</span>}
               {kind === 'practice' && <span className="ems-hero-badge" style={{ marginTop: 0 }}>практика</span>}
-              <button className="ems-btn" style={{ padding: '4px 10px', fontSize: 11 }}
+              <button className="ems-btn" style={{ padding: '4px 10px', fontSize: 12 }}
                 title="Содержание модуля: можно вернуться и перечитать пройденное"
                 onClick={() => { Audio.play('tab'); setShowToc((v) => !v); }}>
                 шаг {step + 1} из {module.steps.length} <ChevronDown size={11} style={{ verticalAlign: -1 }} />
@@ -2571,12 +2571,12 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                 <div key={st.title} role="button" tabIndex={reached ? 0 : -1}
                   onClick={() => goStep(i)} onKeyDown={(e) => { if (e.key === 'Enter') goStep(i); }}
                   className={reached ? 'ems-row-hover' : ''}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, fontSize: 11.5,
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 7px', borderRadius: 4, fontSize: 12,
                     cursor: reached ? 'pointer' : 'default', opacity: reached ? 1 : 0.45,
                     background: i === step ? COLOR.goldDim : 'transparent' }}>
-                  <span className="ems-mono" style={{ fontSize: 10, color: COLOR.faint, width: 16 }}>{i + 1}</span>
+                  <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, width: 16 }}>{i + 1}</span>
                   <span style={{ flex: 1, color: i === step ? COLOR.goldSoft : COLOR.text }}>{st.title}</span>
-                  {k !== 'read' && <span style={{ fontSize: 9.5, color: COLOR.faint }}>{k === 'quiz' ? 'тест' : 'практика'}</span>}
+                  {k !== 'read' && <span style={{ fontSize: 12, color: COLOR.faint }}>{k === 'quiz' ? 'тест' : 'практика'}</span>}
                   {passed[i] && <Check size={11} color={COLOR.teal} />}
                   {!reached && <Lock size={10} color={COLOR.faint} />}
                 </div>
@@ -2619,7 +2619,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
         <div className={twoCol ? 'ems-tut-cols' : undefined}>
           <div style={{ minWidth: 0 }}>
             {cur.body && (
-              <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 13.5, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
+              <div className="ems-panel" style={{ padding: '16px 18px', fontSize: 14, lineHeight: 1.65, color: COLOR.text, marginBottom: 18 }}>
                 {cur.body({ economy, history, decisions, book, ctx })}
               </div>
             )}
@@ -2655,11 +2655,11 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
         {twoCol ? null : sideBlocks}
         {kind === 'practice' && !practicePassed && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-            <button className="ems-btn primary" disabled={practiceFailed} style={{ flex: 1, minWidth: 200, padding: '12px 0', fontSize: 13.5 }}
+            <button className="ems-btn primary" disabled={practiceFailed} style={{ flex: 1, minWidth: 200, padding: '12px 0', fontSize: 14 }}
               onClick={runPracticeQuarter}>
               Завершить квартал
             </button>
-            <button className="ems-btn" style={{ padding: '12px 18px', fontSize: 12.5 }} onClick={resetPractice}>
+            <button className="ems-btn" style={{ padding: '12px 18px', fontSize: 13 }} onClick={resetPractice}>
               <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Начать задачу заново
             </button>
           </div>
@@ -2693,7 +2693,7 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
               </button>
             </div>
             {!canAdvance && (kind === 'quiz' || kind === 'practice') && (
-              <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 7, textAlign: 'center' }}>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 7, textAlign: 'center' }}>
                 {kind === 'quiz' ? 'Следующий шаг откроется после верных ответов на все вопросы.'
                   : 'Следующий шаг откроется, когда задача будет решена.'}
               </div>
@@ -2843,12 +2843,12 @@ export function TutorialHub({ onBack, onStartRealGame }) {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{c.title}</span>
-                      <span className="ems-mono" style={{ fontSize: 10, color: complete ? COLOR.teal : COLOR.faint }}>
+                      <span className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{c.title}</span>
+                      <span className="ems-mono" style={{ fontSize: 12, color: complete ? COLOR.teal : COLOR.faint }}>
                         {done} / {c.modules.length}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{c.lede}</div>
+                    <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>{c.lede}</div>
                     <div style={{ marginTop: 7, height: 3, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
                       <span style={{ display: 'block', width: `${done / c.modules.length * 100}%`, height: '100%',
                         background: complete ? COLOR.teal : COLOR.gold }} />
@@ -2883,22 +2883,22 @@ export function TutorialHub({ onBack, onStartRealGame }) {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span className="ems-serif" style={{ fontSize: 15.5, color: COLOR.text }}>{mod.title}</span>
-                      <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999,
+                      <span className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{mod.title}</span>
+                      <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999,
                         color: depthColor, border: `1px solid ${depthDim}`, background: depthDim }}>{label}</span>
                       {nChecks > 0 && (
-                        <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint }}>
+                        <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>
                           {mod.steps.some((st) => st.kind === 'quiz') ? 'тест' : ''}
                           {mod.steps.some((st) => st.kind === 'quiz') && mod.steps.some((st) => st.kind === 'practice') ? ' + ' : ''}
                           {mod.steps.some((st) => st.kind === 'practice') ? 'практика' : ''}
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
+                    <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 3, lineHeight: 1.45 }}>
                       {unlocked ? mod.summary : `Сначала пройдите «${course.modules[i - 1].title}»`}
                     </div>
                     {unlocked && !done && moduleState[mod.id] && moduleState[mod.id].step > 0 && (
-                      <div style={{ fontSize: 10.5, color: COLOR.goldSoft, marginTop: 3 }}>
+                      <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 3 }}>
                         Начат — продолжить с шага {(moduleState[mod.id].at ?? moduleState[mod.id].step) + 1} из {mod.steps.length}
                       </div>
                     )}

@@ -11,10 +11,10 @@ export function PlanSlider({ label, hint, value, min, max, step, onChange, forma
   return (
     <div style={{ borderBottom: `1px solid ${COLOR.hairline}`, padding: '10px 0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontSize: 12.5 }}>{label}</span>
-        <span className="ems-mono" style={{ fontSize: 12.5, color: COLOR.goldSoft, fontWeight: 600 }}>{format(value)}</span>
+        <span style={{ fontSize: 13 }}>{label}</span>
+        <span className="ems-mono" style={{ fontSize: 13, color: COLOR.goldSoft, fontWeight: 600 }}>{format(value)}</span>
       </div>
-      {hint && <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 1, lineHeight: 1.4 }}>{hint}</div>}
+      {hint && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 1, lineHeight: 1.4 }}>{hint}</div>}
       <input type="range" className="ems-slider" style={{ ...track, width: '100%', marginTop: 7 }} min={min} max={max} step={step}
         value={value} disabled={disabled} aria-label={`${label}: ${format(value)}`}
         onChange={(e) => { Audio.play('tick'); onChange(parseFloat(e.target.value)); }} />
@@ -30,7 +30,7 @@ export function Toggle({ on, onClick, icon: Icon, label, hint, disabled }) {
       <Icon size={14} color={on ? COLOR.gold : COLOR.muted} style={{ flexShrink: 0, marginTop: 1 }} />
       <span style={{ minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 12, color: on ? COLOR.goldSoft : COLOR.text }}>{label}</span>
-        <span style={{ display: 'block', fontSize: 10.5, color: COLOR.faint, marginTop: 2, lineHeight: 1.4 }}>{hint}</span>
+        <span style={{ display: 'block', fontSize: 12, color: COLOR.faint, marginTop: 2, lineHeight: 1.4 }}>{hint}</span>
       </span>
     </button>
   );
@@ -38,7 +38,7 @@ export function Toggle({ on, onClick, icon: Icon, label, hint, disabled }) {
 
 export function Row({ k, v, color, strong }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11.5, padding: '2px 0' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, padding: '2px 0' }}>
       <span style={{ color: COLOR.muted }}>{k}</span>
       <span className="ems-mono" style={{ color: color || COLOR.text, fontWeight: strong ? 600 : 400 }}>{v}</span>
     </div>

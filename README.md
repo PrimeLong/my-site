@@ -44,7 +44,7 @@ npm run test       # vitest — тесты на инварианты модел�
   `api/_lib/engine.js` (тонкий реэкспорт), чтобы соло-игра и мультиплеер
   считали кварталы одинаково. **Не копировать эту логику в другое место.**
 - `src/MacroSimulator.jsx` — вся презентационная часть (UI, графики, звук).
-- `src/components/MultiplayerPanel.jsx`, `src/lib/client.js` — клиент комнаты.
+- `src/network.jsx` (лобби и сетевая партия), `src/lib/client.js` — клиент комнаты.
 - `api/room.js`, `api/_lib/store.js` — serverless-эндпоинт комнаты и хранилище.
 
 ## Известные ограничения
