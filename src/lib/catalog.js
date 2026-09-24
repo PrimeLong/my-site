@@ -139,6 +139,22 @@ export const ROLES = [
   { id: 'trader', icon: 'chart', title: 'Частный инвестор', short: 'Трейдер',
     desc: 'Вы не управляете экономикой — вы живёте в ней. Ставку ведёт бот-ЦБ, бюджет бот-Минфин, а вы распределяете капитал между активами и отвечаете за результат.',
     groups: [], botRole: 'both' },
+  /* Предприниматель тоже «живёт в экономике», но не на бирже, а в цеху: своя
+     компания, свои цены, зарплаты, кредиты и стройки. Макрополитика приходит к нему
+     спросом, курсом, ставкой и налогами — и проверками, когда режим ужесточается. */
+  { id: 'entrepreneur', icon: 'factory', title: 'Предприниматель', short: 'Предприниматель',
+    desc: 'Своя компания: цены, найм, зарплаты, кредиты и расширение. Ставку ведёт бот-ЦБ, бюджет бот-Минфин — а вы решаете, как вашему бизнесу пережить их решения.',
+    groups: [], botRole: 'both' },
+];
+
+/* Отрасли для предпринимателя: у каждой свой главный макропоказатель. */
+export const SECTORS = [
+  { id: 'factory', title: 'Завод', short: 'Производство и экспорт',
+    desc: 'Выпускает технику для страны и на экспорт. Слабая валюта — выше экспортная выручка, но дороже импортные комплектующие.' },
+  { id: 'retail', title: 'Розничная сеть', short: 'Магазины',
+    desc: 'Живёт доверием и доходами покупателей. Маржа тонкая, конкуренция жёсткая, половина товара — импорт.' },
+  { id: 'builder', title: 'Девелопер', short: 'Жильё',
+    desc: 'Квартиры покупают в ипотеку: ставка ЦБ бьёт по спросу сильнее всего. Капиталоёмкий бизнес на заёмных деньгах.' },
 ];
 
 export const DIFFICULTIES = [
@@ -159,6 +175,8 @@ export const GOALS = [
   { id: 'beat_index', label: 'Обогнать индекс акций', score: 'financial', trader: true },
   { id: 'beat_inflation', label: 'Сохранить покупательную способность', score: 'financial', trader: true },
   { id: 'survive', label: 'Пройти цикл без маржин-колла', score: 'financial', trader: true },
+  { id: 'company_value', label: 'Приумножить состояние владельца', score: 'financial', entrepreneur: true },
+  { id: 'market_share', label: 'Стать лидером рынка', score: 'potential', entrepreneur: true },
 ];
 
 /* Сценарии — не отдельная песочница, а другая стартовая точка того же движка:
@@ -327,7 +345,7 @@ export function dailyChallenge(day = dailyKey()) {
   const scenario = r() < 0.25 ? 'sandbox' : pick(SCENARIOS.filter((s) => s.id !== 'sandbox')).id;
   const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
   const difficulty = weekday === 0 || weekday === 6 ? 'hard' : 'medium';
-  const goal = pick(GOALS.filter((g) => !g.trader)).id;
+  const goal = pick(GOALS.filter((g) => !g.trader && !g.entrepreneur)).id;
   return {
     day, seed, role, scenario, difficulty, goal, quarters: DAILY_QUARTERS,
     cbPersona: pick(CB_PERSONAS).id,

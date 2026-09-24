@@ -229,3 +229,18 @@ test('вызов дня: карточка в меню, общий старт и 
   await expect(page.getByText(/квартал 2 из 12/)).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('предприниматель: отрасль на старте, решения компании и отчёт за квартал', async ({ page }, info) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Новая партия', { exact: true }).click();
+  await page.getByText('Предприниматель', { exact: true }).click();
+  await page.getByText('Девелопер', { exact: true }).click();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  await expect(page.getByText('Девелопер: решения на квартал')).toBeVisible();
+  await expect(page.getByText('Прогноз квартала при нынешней экономике')).toBeVisible();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  if (info.project.name === 'phone') await page.getByRole('button', { name: 'Новости и графики' }).click();
+  await expect(page.getByText('Итоги прошлого квартала')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});

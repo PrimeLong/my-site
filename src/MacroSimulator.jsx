@@ -7,11 +7,11 @@ import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, Crown, Gavel, Hammer, Smartphone, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
-  Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen,
+  Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
-  romanQ, quarterLabel, PRESIDENT_PERSONAS, dailyChallenge, dailyKey, dailySetup,
+  romanQ, quarterLabel, PRESIDENT_PERSONAS, dailyChallenge, dailyKey, dailySetup, SECTORS,
 } from './lib/catalog.js';
 import { Audio } from './audio/engine.js';
 import { TRACKS, MOOD_LABEL, STINGERS } from './audio/tracks.js';
@@ -322,7 +322,7 @@ export function StateSeal({ regime = 'democracy', size = 40, title }) {
   );
 }
 
-export const ROLE_ICON = { landmark: Landmark, coins: Coins, globe: Globe2, chart: TrendingUp, crown: Crown };
+export const ROLE_ICON = { landmark: Landmark, coins: Coins, globe: Globe2, chart: TrendingUp, crown: Crown, factory: Factory };
 
 /* Звук и саундтрек живут в src/audio/: tracks.js — пьесы и плейлисты, engine.js — движок. */
 
@@ -592,6 +592,8 @@ export const NETWORK_PLAYED_KEY = 'ems-network-played';
 export const ACHIEVEMENTS = [
   { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
   { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройди вызов дня до конца, не проиграв.' },
+  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'Играя предпринимателем, утрой состояние владельца.' },
+  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'Проведи компанию через три года кризисного сценария без банкротства.' },
   { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
   { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
   { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
@@ -1475,7 +1477,9 @@ function SetupScreen({ onStart, onBack }) {
   const [difficulty, setDifficulty] = useState('medium');
   const [goal, setGoalRaw] = useState('living_standards');
   const setGoal = (g) => setGoalRaw(g);
-  React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : 'living_standards'); }, [role]);
+  React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : role === 'entrepreneur' ? 'company_value' : 'living_standards'); }, [role]);
+  // отрасль компании — только для предпринимателя
+  const [sector, setSector] = useState('factory');
   const [scenario, setScenario] = useState('sandbox');
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
@@ -1489,7 +1493,7 @@ function SetupScreen({ onStart, onBack }) {
   const roleDef = ROLES.find((r) => r.id === role);
   const botRole = roleDef ? roleDef.botRole : null;
   // президент-бот имеет смысл только там, где над игроком вообще кто-то стоит
-  const presAvailable = role === 'central_bank' || role === 'ministry_finance' || role === 'trader';
+  const presAvailable = role === 'central_bank' || role === 'ministry_finance' || role === 'trader' || role === 'entrepreneur';
   const custom = mode === 'custom';
   const personaBlocks = botRole === 'central_bank' ? [{ list: CB_PERSONAS, value: cbPersona, set: setCbPersona, title: 'Характер Центрального банка' }]
     : botRole === 'ministry_finance' ? [{ list: MOF_PERSONAS, value: mofPersona, set: setMofPersona, title: 'Характер Минфина' }]
@@ -1541,6 +1545,31 @@ function SetupScreen({ onStart, onBack }) {
           })}
         </div>
 
+        {role === 'entrepreneur' && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+              <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint }} />
+              <span className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft }}>Ваша компания</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px,1fr))', gap: 10, marginBottom: 26 }}>
+              {SECTORS.map((sc) => {
+                const active = sector === sc.id;
+                return (
+                  <div key={sc.id} onClick={() => { Audio.play('click'); setSector(sc.id); }} className="ems-card-btn"
+                    style={{ padding: 14, flexDirection: 'column', alignItems: 'flex-start', gap: 0,
+                      borderColor: active ? COLOR.gold : COLOR.border, background: active ? COLOR.panelRaised : COLOR.panel }}
+                    role="button" tabIndex={0} aria-pressed={active} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSector(sc.id); }}>
+                    {active && <Check size={13} color={COLOR.gold} style={{ position: 'absolute', top: 12, right: 12 }} />}
+                    <div className="ems-serif" style={{ fontSize: 13.5, color: active ? COLOR.goldSoft : COLOR.text }}>{sc.title}</div>
+                    <div style={{ fontSize: 11, color: COLOR.faint, margin: '2px 0 5px' }}>{sc.short}</div>
+                    <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{sc.desc}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         {role && (
           <>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
@@ -1579,8 +1608,8 @@ function SetupScreen({ onStart, onBack }) {
               </button>
             </div>
             <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10, lineHeight: 1.45 }}>
-              {role === 'trader'
-                ? 'Президент не управляет ставкой и бюджетом, но требует своего от обоих ведомств и тратит политический капитал на реформы — для рынка это ещё один источник новостей и риска.'
+              {role === 'trader' || role === 'entrepreneur'
+                ? `Президент не управляет ставкой и бюджетом, но требует своего от обоих ведомств и тратит политический капитал на реформы — для ${role === 'trader' ? 'рынка' : 'бизнеса'} это ещё один источник новостей и риска.`
                 : 'Над вашим ведомством стоит президент: он выдвигает требования, назначает руководителя соседнего ведомства и тратит политический капитал на реформы и указы. Требования можно игнорировать — но администрация ведёт счёт, и на нуле терпения следует отставка.'}
             </div>
             {presEnabled && (
@@ -1748,7 +1777,7 @@ function SetupScreen({ onStart, onBack }) {
             <div style={{ position: 'relative' }}>
               <select value={goal} onChange={(e) => setGoal(e.target.value)} className="ems-btn"
                 style={{ width: '100%', padding: '10px 36px 10px 12px', fontSize: 13, appearance: 'none', WebkitAppearance: 'none' }}>
-                {GOALS.filter((g) => (role === 'trader' ? g.trader : !g.trader)).map((g) => (<option key={g.id} value={g.id}>{g.label}</option>))}
+                {GOALS.filter((g) => (role === 'trader' ? g.trader : role === 'entrepreneur' ? g.entrepreneur : !g.trader && !g.entrepreneur)).map((g) => (<option key={g.id} value={g.id}>{g.label}</option>))}
               </select>
               <ChevronDown size={14} color={COLOR.muted} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
             </div>
@@ -1766,6 +1795,7 @@ function SetupScreen({ onStart, onBack }) {
             // классика всегда начинается с открытой партии, даже если в
             // настраиваемом режиме до этого успели выбрать кризисный сценарий
             onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox',
+              ...(role === 'entrepreneur' ? { sector } : {}),
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
               president: { enabled: presAvailable && (custom ? presEnabled : true),

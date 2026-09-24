@@ -2,6 +2,9 @@ import React, { useState, useMemo, useCallback, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
 import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS } from './lib/catalog.js';
 import {
+  makeCompany, defaultPlan as defaultCompanyPlan, settleCompany, ownerWealth, companyValue, sectorLabel,
+} from './lib/business.js';
+import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight, X, Check,
   AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Save, Copy, Star, Flag, Megaphone, Sliders,
@@ -93,7 +96,7 @@ export function Gauge({ value, size = 110 }) {
 
 // мини-график последних значений прямо в плитке: число говорит «сколько сейчас»,
 // а один взгляд на форму линии — «а раньше как было», без похода к графику ниже
-function Sparkline({ series, color, height = 16, area }) {
+export function Sparkline({ series, color, height = 16, area }) {
   const gradId = React.useId();
   if (!series || series.length < 2) return null;
   const w = 100; // виртуальные единицы viewBox — реальную ширину задаёт CSS (width:100%),
@@ -552,6 +555,9 @@ export const NewspaperModal = React.lazy(() => import('./newspaper.jsx').then((m
 
 /* Торговый терминал и сводка портфеля подгружаются лениво через React.lazy() —
    см. комментарий в начале src/trading.jsx. */
+/* Кабинет предпринимателя — отдельный маленький чанк, нужен только этой роли. */
+const CompanyPanel = React.lazy(() => import('./business.jsx').then((m) => ({ default: m.CompanyPanel })));
+const CompanyReport = React.lazy(() => import('./business.jsx').then((m) => ({ default: m.CompanyReport })));
 export const TradingTerminal = React.lazy(() => import('./trading.jsx').then((m) => ({ default: m.TradingTerminal })));
 
 export const PortfolioSummary = React.lazy(() => import('./trading.jsx').then((m) => ({ default: m.PortfolioSummary })));
@@ -1997,10 +2003,17 @@ export const AchievementToast = ({ toast, leaving }) => {
    работает смена персон бота после выборов в finishQuarter — независимость
    центробанка переживает обычное поражение партии власти, а министерский
    портфель нет. */
-export function checkDefeat({ role, economy, history, bookVal, presidentActive }) {
+export function checkDefeat({ role, economy, history, bookVal, presidentActive, company }) {
+  // трейдер и предприниматель — не власть: гиперинфляция, переворот и выборы их не
+  // снимают с должности, у них своё поражение — банкротство
+  const privateRole = role === 'trader' || role === 'entrepreneur';
+  if (role === 'entrepreneur' && company && company.bankrupt) {
+    return { id: 'bankruptcy', title: 'Банкротство компании',
+      text: 'Второй квартал подряд денег не хватает даже с кредитом: поставщики на предоплате, зарплаты задержаны, банки отказали. Кредиторы подают иск, суд вводит внешнее управление — компания больше не ваша. Выплаченные дивиденды остаются при вас.' };
+  }
   // гиперинфляция — провал денежной/бюджетной политики; трейдер её не проводит и
   // повлиять на неё не может, так что и мандата за неё лишаться ему не за что
-  if (role !== 'trader' && history && history.length >= 4) {
+  if (!privateRole && history && history.length >= 4) {
     const last4 = history.slice(-4);
     if (last4.every((h) => h.inflation != null && h.inflation >= 40)) {
       return { id: 'hyperinflation', title: 'Гиперинфляционный коллапс',
@@ -2032,7 +2045,7 @@ export function checkDefeat({ role, economy, history, bookVal, presidentActive }
   /* Потеря власти не у урны: восстание или армия. При тоталитарном режиме выборов
      нет вовсе, и это единственный способ проиграть — зато настоящий. Трейдера это
      не касается: он не власть. */
-  if (role !== 'trader' && economy.powerLost) {
+  if (!privateRole && economy.powerLost) {
     return economy.powerLost === 'military'
       ? { id: 'military_coup', title: 'Военный переворот',
         text: `Армия заняла правительственные здания при напряжённости ${Math.round(economy.politicalTension || 0)} из 100 и рейтинге ${Math.round(economy.approval)}. Власть, отменившую выборы, снимают с должности не голосованием — и не спрашивая.` }
@@ -2283,7 +2296,7 @@ const DailyBar = ({ score, defeat, onReopen, onMenu }) => (
    момент по кнопке в шапке — так шансов поделиться и позвать друга в сеть
    больше, чем ждать финала. Рисуется на canvas и скачивается/копируется как
    текст: ни бэкенда, ни аккаунтов для «шаринга» этой игре не требуется. */
-const RESULT_CARD_EMOJI = { central_bank: '🏛️', ministry_finance: '💰', full_control: '👑', president: '🎖️', trader: '📈' };
+const RESULT_CARD_EMOJI = { central_bank: '🏛️', ministry_finance: '💰', full_control: '👑', president: '🎖️', trader: '📈', entrepreneur: '🏭' };
 
 function ruPlural(n, one, few, many) {
   const n10 = n % 10; const n100 = n % 100;
@@ -2294,11 +2307,18 @@ function ruPlural(n, one, few, many) {
 
 const countUnlockedAchievements = () => { const u = loadUnlockedAchievements(); return ACHIEVEMENTS.filter((a) => u[a.id]).length; };
 
-export function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat, promises }) {
+export function buildResultCard({ role, quarterIndex, economy, startEconomy, portfolio, defeat, promises, company }) {
   const roleLabel = (ROLES.find((r) => r.id === role) || {}).short || role;
   const isTrader = role === 'trader';
   const stats = [];
-  if (isTrader && portfolio) {
+  if (role === 'entrepreneur' && company) {
+    const w = ownerWealth(company, economy);
+    const growth = company.wealth0 > 0 ? (w / company.wealth0 - 1) * 100 : null;
+    stats.push(['Состояние владельца', fmtMln(w)]);
+    stats.push(['Рост состояния', growth != null ? `${growth >= 0 ? '+' : ''}${growth.toFixed(0)}%` : '—']);
+    stats.push(['Стоимость компании', fmtMln(companyValue(company, economy))]);
+    stats.push(['Штат', `${company.staff} чел.`]);
+  } else if (isTrader && portfolio) {
     const val = bookValue(portfolio, economy, null);
     const start = portfolio.startValue || 10;
     const ret = ((val / start) - 1) * 100;
@@ -3920,13 +3940,16 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // президент делит с трейдером устройство «оба ведомства — боты», но не его
   // информационную закрытость: он в кабинете и видит намерения ведомств
   const isPresident = setup.role === 'president';
+  // предприниматель, как и трейдер, видит экономику снаружи: без кабинета и его закрытых сводок
+  const isBiz = setup.role === 'entrepreneur';
+  const isPublic = isTrader || isBiz;
   const canPlanMap = setup.role === 'ministry_finance' || isPresident;
-  const bothBots = isTrader || isPresident;
+  const bothBots = isTrader || isPresident || isBiz;
   /* Президент-бот стоит НАД ведомством игрока: он ничего не считает сам, но требует,
      назначает и тратит политический капитал. За саму роль президента его, понятно,
      нет, а у премьера игрок и так вся власть целиком. */
   const presEnabled = !!(setup.president && setup.president.enabled)
-    && (setup.role === 'central_bank' || setup.role === 'ministry_finance' || setup.role === 'trader');
+    && (setup.role === 'central_bank' || setup.role === 'ministry_finance' || setup.role === 'trader' || isBiz);
   const playerBranch = setup.role === 'central_bank' ? 'monetary' : setup.role === 'ministry_finance' ? 'fiscal' : null;
   const [difficulty, setDifficulty] = useState(setup.difficulty);
   // вызов дня: общий для всех жребий, фиксированная длина, итог в таблицу
@@ -3935,6 +3958,10 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const initEconomy = useMemo(() => (initial ? initial.economy
     : runSeeded(daily, 'start', () => makeInitialEconomy(setup.scenario))), []);
   const [economy, setEconomy] = useState(initEconomy);
+  // компания предпринимателя и её решения на текущий квартал
+  const [company, setCompany] = useState(() => (isBiz
+    ? (initial && initial.company) || makeCompany(setup.sector || 'factory', initEconomy) : null));
+  const [bizPlan, setBizPlan] = useState(() => (company ? { ...defaultCompanyPlan(company), ...(initial && initial.bizPlan) } : null));
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
   // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
   // (например, «Размещение облигаций»/дефолт/МВФ) — без подстраховки открытие
@@ -3974,7 +4001,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [stampKey, setStampKey] = useState(0);
   const [dense, setDense] = useState(initial ? !!initial.dense : false);
   const [irf, setIrf] = useState(null);
-  const [mobileCol, setMobileCol] = useState('center');
+  const [mobileCol, setMobileCol] = useState(isBiz ? 'left' : 'center');
   const [narrow, setNarrow] = useState(false);
   const [dashboards, setDashboards] = useState(() => initDashboards(initial && initial.dashboards));
   const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
@@ -4080,7 +4107,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
-    presPersonaId, presidentLast, slotIdx: activeSlot });
+    presPersonaId, presidentLast, slotIdx: activeSlot, company, bizPlan });
   // история снимков для отката после поражения: три хода назад решение ещё можно
   // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
   // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
@@ -4260,7 +4287,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       decisions: eff, pendingImpulses: extraImpulses.length ? [...pendingImpulses, ...extraImpulses] : pendingImpulses,
       eventCooldowns,
       difficulty, quarterIndex, stories, botAction: action,
-      botActions: bothBots ? [mofAction] : [], publicMode: isTrader,
+      botActions: bothBots ? [mofAction] : [], publicMode: isPublic,
     });
     if (dirResult) {
       const who = dirResult.toCb ? 'ПРЕЗИДЕНТ → ЦБ' : 'ПРЕЗИДЕНТ → МИНФИН';
@@ -4305,6 +4332,22 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       setPortfolio(nb);
       bookVal = bookValue(nb, result.economy, null);
     }
+    let nextCompany = null;
+    if (isBiz && company) {
+      const settled = settleCompany(company, bizPlan, result.economy, quarterIndex);
+      nextCompany = settled.company;
+      settled.news.forEach((n, i) => {
+        result.newsEntries.unshift({ id: `biz${quarterIndex}_${i}`, cat: 'business', priority: 7, q: quarterIndex,
+          qLabel: quarterLabel(quarterIndex), headline: n.headline, text: n.text });
+      });
+      setCompany(nextCompany);
+      setBizPlan(defaultCompanyPlan(nextCompany));
+      const startW = company.wealth0;
+      const achIds = [];
+      if (Number.isFinite(startW) && startW > 0 && ownerWealth(nextCompany, result.economy) >= startW * 3) achIds.push('biz_triple');
+      if (setup.scenario && setup.scenario !== 'sandbox' && quarterIndex >= 12 && !nextCompany.bankrupt) achIds.push('biz_survivor');
+      if (achIds.length) pushAch(unlockAchievements(achIds));
+    }
     setEconomy(result.economy);
     const newHistory = [...history, { q: quarterIndex, label: quarterLabel(quarterIndex), ...result.economy }];
     setHistory(newHistory);
@@ -4314,7 +4357,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       presActionsThisQuarter: presActions,
     })));
     const nextDefeat = checkDefeat({ role: setup.role, economy: result.economy, history: newHistory, bookVal,
-      presidentActive: presEnabled });
+      presidentActive: presEnabled, company: nextCompany });
     if (nextDefeat) { setDefeat(nextDefeat); setShowGameOver(true); }
     setPendingImpulses(result.pendingImpulses);
     setEventCooldowns(result.eventCooldowns);
@@ -4475,7 +4518,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   }), [economy, decisions, pendingImpulses, eventCooldowns, setup, quarterIndex, botRole, stories, cbPersonaId, mofPersonaId,
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength,
-    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan]);
+    presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan,
+    isBiz, isPublic, company, bizPlan]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -4484,7 +4528,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     [economy.regime, economy.inflationRisk, economy.bankingRisk, economy.debtRisk, economy.recessionRisk, economy.gdpGrowth,
       economy.inflation, economy.politicalRegime, economy.campaignActive, economy.stabilizationCred, economy.stabilizationWon]);
   React.useEffect(() => {
-    Audio.setRole(setup.role === 'trader' ? 'trader' : setup.role === 'president' ? 'president' : null);
+    Audio.setRole(setup.role === 'trader' || setup.role === 'entrepreneur' ? 'trader' : setup.role === 'president' ? 'president' : null);
   }, [setup.role]);
   React.useEffect(() => () => Audio.stopMusic(), []);
   // вызов дня окончен: пройдены все кварталы или партия оборвалась поражением
@@ -4537,7 +4581,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         onRollback={rollbackTarget ? handleRollback : null} />}
       {showChronicle && <ChronicleModal history={history} onClose={() => setShowChronicle(false)} />}
       {showCard && <ResultCardModal onClose={() => setShowCard(false)} data={buildResultCard({
-        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises,
+        role: setup.role, quarterIndex, economy, startEconomy: history[0], portfolio, defeat, promises, company,
       })} />}
 
       {/* Шапка в две строки: наверху — кто вы и инструменты, ниже — статус партии и
@@ -4562,7 +4606,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               {setup.scenario && setup.scenario !== 'sandbox' ? ` · сценарий: ${(SCENARIOS.find((sc) => sc.id === setup.scenario) || {}).title}` : ''}
               {activeBotPersona ? ` · вторая ветвь: ${activeBotPersona.name} (бот)`
                 : isPresident ? ` · ЦБ: ${getCbPersona(cbPersonaId).name} (бот) · Минфин: ${getMofPersona(mofPersonaId).name} (бот)`
-                  : setup.role === 'trader' ? '' : ' · без ботов'}
+                  : isBiz ? ` · ${sectorLabel(company.sector).toLowerCase()}` : setup.role === 'trader' ? '' : ' · без ботов'}
             </div>
             {daily && (
               <div style={{ fontSize: 11.5, color: COLOR.gold, marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -4716,7 +4760,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       )}
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {!isTrader && <DemandStrip botAction={botAction} botAction2={isPresident ? botAction2 : null}
+        {!isPublic && <DemandStrip botAction={botAction} botAction2={isPresident ? botAction2 : null}
           botRole={isPresident ? 'central_bank' : botRole} economy={economy}
           president={presEnabled && presidentPlan && presidentPlan.directive && presidentPlan.directive.toPlayer ? presidentPlan : null} />}
         <RegimeBanner economy={economy} />
@@ -4820,7 +4864,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 12px', paddingBottom: 8,
           background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
           <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
-          {[['left', setup.role === 'trader' ? 'Капитал' : 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
+          {[['left', setup.role === 'trader' ? 'Капитал' : isBiz ? 'Компания' : 'Решения'], ['center', 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
             <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
               onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
           ))}
@@ -4832,6 +4876,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       /* ЛЕВАЯ ПАНЕЛЬ */
       const leftNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {isBiz && company && (
+            <Suspense fallback={<ChartFallback height={220} />}>
+              <CompanyPanel company={company} plan={bizPlan} setPlan={setBizPlan} economy={economy}
+                goalLabel={goalDef.label} disabled={!!defeat} />
+            </Suspense>
+          )}
           {isTrader && (
             <Suspense fallback={<ChartFallback height={120} />}>
               <PortfolioSummary book={portfolio} economy={economy} live={null} goal={setup.goal}
@@ -4861,7 +4911,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               </div>
             </>
           )}
-          {!isTrader && !isPresident && (
+          {!isPublic && !isPresident && (
           <div className="ems-panel" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
               <RoleIcon size={14} />Ваши полномочия
@@ -4999,7 +5049,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               <FiscalMath economy={economy} decisions={decisions} />
             </Fold>
           )}
-          {isTrader ? (
+          {isPublic ? (
             <InstitutionsPanel economy={economy} cbAction={botAction} mofAction={botAction2} />
           ) : isPresident ? (
             <>
@@ -5022,7 +5072,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           ) : (
             <PromisesPanel promises={promises} economy={economy} />
           )}
-          {!isTrader && (
+          {!isPublic && (
             <PressConferencePanel question={pickPressQuestion(economy, quarterIndex)} answer={decisions.pressAnswer}
               setAnswer={(id) => setLever('pressAnswer', id)} />
           )}
@@ -5037,6 +5087,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       /* ЦЕНТР */
       const centerNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+          {isBiz && company && (
+            <Suspense fallback={<ChartFallback height={200} />}>
+              <CompanyReport company={company} economy={economy} />
+            </Suspense>
+          )}
           <NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} />
           <Suspense fallback={<ChartFallback />}>
             <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
@@ -5103,7 +5158,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               })}
             </div>
           </div>
-          {!isTrader && <DemandsPanel demands={economy.demands} />}
+          {!isPublic && <DemandsPanel demands={economy.demands} />}
         </div>
       );
       const nodes = {
