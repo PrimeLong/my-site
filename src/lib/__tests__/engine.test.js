@@ -2666,8 +2666,9 @@ describe('обязательство по обороне', () => {
   it('принятое увеличение военной доли бот-Минфин держит два года, потом отпускает постепенно', () => {
     let e = makeInitialEconomy();
     const base = e.budgetShares.defense;
-    const dec = { ...defaultDecisions(e), shareDefense: e.budgetShares.defense + 6 };
-    const run = (economy, decisions) => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [] });
+    const dec = { ...defaultDecisions(e), shareDefense: e.budgetShares.defense + 6, defensePledge: true };
+    // без случайных событий: начавшаяся война сама двигала бы военную долю бота
+    const run = (economy, decisions) => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true });
     e = run(e, dec).economy;
     expect(e.defenseCommit).toMatchObject({ left: 8 });
     const raised = e.budgetShares.defense;
@@ -2683,6 +2684,24 @@ describe('обязательство по обороне', () => {
     }
     expect(e.defenseCommit).toBe(null);
     expect(e.budgetShares.defense).toBeLessThan(raised);
+  });
+
+  it('собственный рост военной доли у бота (война) обязательством не считается', () => {
+    const e = makeInitialEconomy();
+    const run = (economy, decisions) => simulateQuarter({ economy, decisions, pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [] });
+    const next = run(e, { ...defaultDecisions(e), shareDefense: e.budgetShares.defense + 6 }).economy;
+    expect(next.budgetShares.defense).toBeGreaterThan(e.budgetShares.defense + 3);
+    expect(next.defenseCommit).toBe(null);
+  });
+
+  it('согласие Минфина на указ о военных расходах несёт обязательство', () => {
+    const e = { ...makeInitialEconomy(), warQuartersLeft: 3 };
+    let seen = false;
+    for (let i = 0; i < 40 && !seen; i++) {
+      const r = processPresidentialDirective('defense_up', e, 'pragmatic', 'populist', defaultDecisions(e), 1);
+      if (r && r.decisions.defensePledge) seen = true;
+    }
+    expect(seen).toBe(true);
   });
 
   it('просьбу о военных расходах ЦБ отправить не может — это указ президента', () => {

@@ -1527,7 +1527,9 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   // независимость ЦБ — не декларация, а то, насколько заметно он выполняет
   // политические указания; рынок это видит и переоценивает якорь ожиданий
   const credibilityHit = toCb && k > 0 ? -7 * k : 0;
-  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy) } : decisions;
+  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy),
+    // согласие на военные расходы — обязательство на два года (см. defenseCommit)
+    ...(req.id === 'defense_up' ? { defensePledge: true } : {}) } : decisions;
   const ownNote = byOwn ? (status === 'accepted'
     ? 'Ведомство и без указания шло в ту же сторону — решение совпало с требованием. '
     : 'Шаг в ту же сторону ведомство сделало по своим причинам, но меньше, чем требовали. ') : '';
@@ -2487,11 +2489,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const shareBase = sum5 + otherRaw;
   const ns = (x) => (x / shareBase) * 100;
   const budgetShares = { health: ns(rawShares.health), education: ns(rawShares.education), science: ns(rawShares.science), defense: ns(rawShares.defense), admin: ns(rawShares.admin), other: ns(otherRaw) };
-  /* Обязательство по обороне: принятое увеличение военной доли (по просьбе, указу или
-     решению) держится два года — бот-Минфин не откатывает его через квартал к доле
-     своего характера. Потом доля возвращается постепенно, по пункту за квартал. */
+  /* Обязательство по обороне: увеличение военной доли, на которое Минфин согласился
+     по просьбе президента (decisions.defensePledge), держится два года — бот-Минфин
+     не откатывает его через квартал к доле своего характера. Собственный рост доли
+     у бота (например, на время войны) обязательством не считается. */
   const prevCommit = s.defenseCommit || null;
-  const defenseCommit = budgetShares.defense > (s.budgetShares ? s.budgetShares.defense : 0) + 0.5
+  const defenseCommit = decisions.defensePledge && budgetShares.defense > (s.budgetShares ? s.budgetShares.defense : 0) + 0.5
     ? { share: Math.round(budgetShares.defense), left: 8 }
     : prevCommit && prevCommit.left > 1 ? { ...prevCommit, left: prevCommit.left - 1 } : null;
 
