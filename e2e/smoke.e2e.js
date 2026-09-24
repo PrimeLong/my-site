@@ -60,6 +60,13 @@ test('одиночная партия: квартал проходит, газе
     await page.getByRole('button', { name: 'Карта', exact: true }).click();
     await expect(page.locator('svg path').first()).toBeVisible();
     expect(await page.locator('svg path').count()).toBeGreaterThan(50);
+    // соседняя страна открывает свою карточку; карта разворачивается во весь экран и сворачивается по Esc
+    await page.getByRole('button', { name: 'Вестравия', exact: true }).click();
+    await expect(page.getByText('Вестравская Республика', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Развернуть карту на весь экран' }).click();
+    await expect(page.getByText('Карта открыта во весь экран.')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Развернуть карту на весь экран' })).toBeVisible();
   }
   expect(errors).toEqual([]);
 });
