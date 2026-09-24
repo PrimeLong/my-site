@@ -607,12 +607,12 @@ function CountryPanel({ id, economy, onBack }) {
     const annexed = activeRegions(e).filter((r) => r.annex);
     return (
       <div className="ems-panel ems-fade-in" style={{ padding: 14 }}>
-        <button className="ems-btn ghost" style={{ padding: '2px 0', fontSize: 11.5, marginBottom: 6 }} onClick={onBack}><ArrowLeft size={12} style={{ verticalAlign: -2, marginRight: 4 }} />К областям</button>
+        <button className="ems-btn ghost" style={{ padding: '2px 0', fontSize: 12, marginBottom: 6 }} onClick={onBack}><ArrowLeft size={12} style={{ verticalAlign: -2, marginRight: 4 }} />К областям</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 }}>
           <Landmark size={17} color={COLOR.gold} />
           <span className="ems-serif" style={{ fontSize: 16 }}>{HOME_INFO.title}</span>
         </div>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 10 }}>Столица — {HOME_INFO.capital} · {regime}</div>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 10 }}>Столица — {HOME_INFO.capital} · {regime}</div>
         <InfoRow k="Население" v={HOME_INFO.population} />
         <InfoRow k="Областей" v={`${activeRegions(e).length}${annexed.length ? ` (новых земель: ${annexed.length})` : ''}`} />
         <InfoRow k="ВВП" v={fmtMoney(e.nominalGdp)} />
@@ -632,13 +632,13 @@ function CountryPanel({ id, economy, onBack }) {
   const capital = id === 'north' && (e.annexed || []).includes('city') ? 'Эльвборг (Нордхольм потерян)' : info.capital;
   return (
     <div className="ems-panel ems-fade-in" style={{ padding: 14, borderLeft: `3px solid ${tone}` }}>
-      <button className="ems-btn ghost" style={{ padding: '2px 0', fontSize: 11.5, marginBottom: 6 }} onClick={onBack}><ArrowLeft size={12} style={{ verticalAlign: -2, marginRight: 4 }} />К областям</button>
+      <button className="ems-btn ghost" style={{ padding: '2px 0', fontSize: 12, marginBottom: 6 }} onClick={onBack}><ArrowLeft size={12} style={{ verticalAlign: -2, marginRight: 4 }} />К областям</button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 }}>
         {id === 'north' ? <Crown size={17} color={tone} /> : <Globe2 size={17} color={tone} />}
         <span className="ems-serif" style={{ fontSize: 16 }}>{info.title}</span>
       </div>
       <div style={{ fontSize: 12, color: tone, fontWeight: 600, marginBottom: 8 }}>{st.label}</div>
-      <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>Отношения: {relationWord(st.relation)}</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>Отношения: {relationWord(st.relation)}</div>
       <div style={{ height: 6, borderRadius: 3, background: COLOR.panelAlt, overflow: 'hidden', marginBottom: 12 }}>
         <div style={{ width: `${Math.max(3, st.relation)}%`, height: '100%', background: tone, transition: 'width .6s ease' }} />
       </div>
@@ -816,12 +816,12 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
         <div role="tablist" aria-label="Слой карты"
           style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '4px 0 10px', padding: '7px 9px',
             background: COLOR.panel, border: `1px solid ${COLOR.borderStrong}`, borderRadius: 6 }}>
-          <span style={{ fontSize: 11, color: COLOR.muted, marginRight: 4 }}>Слой карты:</span>
+          <span style={{ fontSize: 12, color: COLOR.muted, marginRight: 4 }}>Слой карты:</span>
           {modes.map(({ id, label }) => (
             <button key={id} role="tab" aria-selected={mode === id} className="ems-btn" style={{ padding: '6px 12px', fontSize: 12,
               fontWeight: mode === id ? 600 : 400,
-              background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
-              borderColor: mode === id ? COLOR.gold : COLOR.borderStrong }}
+              background: mode === id ? COLOR.sel : COLOR.panelAlt, color: mode === id ? COLOR.selText : COLOR.text,
+              borderColor: mode === id ? COLOR.selBorder : COLOR.borderStrong }}
               onClick={() => { Audio.play('tab'); setMode(id); }}>{typeof label === 'function' ? label(economy) : label}</button>
           ))}
           <button className="ems-btn map-chip" style={{ marginLeft: 'auto' }} onClick={() => { Audio.play('click'); setFull((v) => !v); }}
@@ -831,7 +831,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
         </div>
         {/* страны: своя и соседи — открывают карточку страны вместо карточки области */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 10px' }}>
-          <span style={{ fontSize: 11, color: COLOR.muted, marginRight: 2 }}>Страны:</span>
+          <span style={{ fontSize: 12, color: COLOR.muted, marginRight: 2 }}>Страны:</span>
           {[['home', 'Наша страна'], ...NEIGHBORS.map((n) => [n.id, n.short])].map(([id, label]) => {
             const on = country === id;
             const st = id === 'home' ? null : neighborStatus(id, economy);
@@ -1425,7 +1425,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           )}
         </div>
         {/* легенда текущего слоя */}
-        <div style={{ position: 'absolute', left: 10, bottom: 10, display: 'flex', gap: 9, flexWrap: 'wrap', fontSize: 10.5, color: COLOR.muted,
+        <div style={{ position: 'absolute', left: 10, bottom: 10, display: 'flex', gap: 9, flexWrap: 'wrap', fontSize: 12, color: COLOR.muted,
           background: `${COLOR.bg}d9`, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: '3px 8px', pointerEvents: 'none' }}>
           {legend.map(([c, l]) => (
             <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -1434,7 +1434,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           ))}
         </div>
         {Math.abs(zoom.zoom - 1) > 0.01 && (
-          <div className="ems-mono" style={{ position: 'absolute', right: 10, bottom: 10, fontSize: 10.5, color: COLOR.muted, background: `${COLOR.bg}cc`,
+          <div className="ems-mono" style={{ position: 'absolute', right: 10, bottom: 10, fontSize: 12, color: COLOR.muted, background: `${COLOR.bg}cc`,
             border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: '2px 7px', pointerEvents: 'none' }}>
             ×{zoom.zoom.toFixed(1)} · перетащите, чтобы сдвинуть
           </div>
@@ -1462,7 +1462,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <Swords size={15} color={COLOR.rust} />
                 <span className="ems-serif" style={{ fontSize: 14 }}>Война с {nb ? nb.gen : 'соседом'}</span>
-                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>ещё {economy.warQuartersLeft} кв.</span>
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>ещё {economy.warQuartersLeft} кв.</span>
               </div>
               <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55 }}>
                 {war.cfg.inward
@@ -1477,7 +1477,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             onFocus={() => setSelected(economy.regionEvent.region)} />
         )}
         {!economy.regionEvent && economy.lastRegionResolution && (
-          <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45 }}>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>
             Последнее событие — {economy.lastRegionResolution.title.toLowerCase()}: {economy.lastRegionResolution.byDefault
               ? `ответа не было, вышло «${economy.lastRegionResolution.label.toLowerCase()}»` : `решили «${economy.lastRegionResolution.label.toLowerCase()}»`}.
           </div>
@@ -1487,7 +1487,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             {Icon && <Icon size={16} color={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)} />}
             <span className="ems-serif" style={{ fontSize: 15 }}>{region.name}</span>
           </div>
-          <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 10 }}>{region.sector}</div>
+          <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 10 }}>{region.sector}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ position: 'relative', width: 100, height: 5, borderRadius: 3, flexShrink: 0,
               background: `linear-gradient(90deg, ${COLOR.tealDim} 0%, ${COLOR.tealDim} 35%, ${COLOR.goldDim} 35%, ${COLOR.goldDim} 65%, ${COLOR.rustDim} 65%, ${COLOR.rustDim} 100%)` }}>
@@ -1495,7 +1495,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             </span>
             <span className="ems-mono" style={{ color: tierColor(blurb.tier), fontWeight: 600, fontSize: 12 }}>{Math.round(blurb.stress)} · {tierLabel(blurb.tier)}</span>
           </div>
-          <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55 }}>{blurb.text}</div>
+          <div style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.55 }}>{blurb.text}</div>
           {region.annex && <AnnexPanel region={region} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />}
           <RegionProject region={region} economy={economy} plan={plan} onPlan={onPlan} planner={planner} />
         </div>}
@@ -1512,7 +1512,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
   // и position: fixed внутри них встал бы не по окну, а по родителю
   return (
     <>
-      <div style={{ padding: 24, textAlign: 'center', fontSize: 12.5, color: COLOR.muted }}>
+      <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: COLOR.muted }}>
         Карта открыта во весь экран.{' '}
         <button className="ems-btn map-chip" onClick={() => setFull(false)}><Minimize2 size={13} />Свернуть</button>
       </div>
@@ -1547,15 +1547,15 @@ function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFoc
     <div className="ems-panel" style={{ padding: 14 }} aria-label="Штаб кампании">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
         <Flag size={15} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 13.5 }}>Штаб кампании · до выборов {forecast.quartersToElection} кв.</span>
+        <span className="ems-serif" style={{ fontSize: 14 }}>Штаб кампании · до выборов {forecast.quartersToElection} кв.</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: voteColor(nat), fontWeight: 600 }}>
           {fmt1(nat)}% ±{fmt1(forecast.margin)}
         </span>
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 9, lineHeight: 1.45 }}>
         Опрос: {verdict}. Штаб в колеблющейся области сдвигает её сильнее всего, в надёжной или потерянной — почти ничего.
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.text, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: COLOR.text, marginBottom: 8 }}>
         {onPlan
           ? <>Штабов на этот квартал: <b className="ems-mono" style={{ color: left > 0 ? COLOR.gold : COLOR.muted }}>{left} из {CAMPAIGN_POINTS}</b> · {perPoint} каждый</>
           : <>Штабы распределяет {planner || 'штаб власти'}: {used} из {CAMPAIGN_POINTS} в этом квартале.</>}
@@ -1567,13 +1567,13 @@ function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFoc
           const now = (plan || {})[row.id] || 0;
           const lostCause = row.label === 'потеряна' || row.label === 'надёжная';
           return (
-            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5,
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12,
               color: row.id === region.id ? COLOR.text : COLOR.muted }}>
               <button className="ems-btn" onClick={() => onFocus(row.id)} aria-label={`Показать ${r.short} на карте`}
                 style={{ width: 92, flexShrink: 0, padding: 0, border: 'none', background: 'none', textAlign: 'left', color: 'inherit',
-                  fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{r.short}</button>
+                  fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{r.short}</button>
               <span className="ems-mono" style={{ width: 40, textAlign: 'right', color: voteColor(row.share), fontWeight: 600 }}>{Math.round(row.share)}%</span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 10.5, color: lostCause ? COLOR.faint : voteColor(row.base),
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: lostCause ? COLOR.faint : voteColor(row.base),
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {row.label}{row.spent - now > 0 ? ` · штабов ${row.spent - now}` : ''}
               </span>
@@ -1590,7 +1590,7 @@ function CampaignPanel({ economy, forecast, region, plan, onPlan, planner, onFoc
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
         Проценты — уже с расставленными штабами. Вложенное копится до дня голосования; каждый следующий штаб в той же области даёт меньше предыдущего.
       </div>
     </div>
@@ -1608,12 +1608,12 @@ function ClosedPollPanel({ forecast, region, onFocus }) {
     <div className="ems-panel" style={{ padding: 14 }} aria-label="Закрытый замер">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
         <Lock size={15} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 13.5 }}>Закрытый замер · для служебного пользования</span>
+        <span className="ems-serif" style={{ fontSize: 14 }}>Закрытый замер · для служебного пользования</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: voteColor(nat), fontWeight: 600 }}>
           {fmt1(nat)}% ±{fmt1(forecast.margin)}
         </span>
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 9, lineHeight: 1.5 }}>
         {forecast.noElections
           ? 'Выборов больше нет, но знать, на чём держится власть, по-прежнему нужно. '
           : `Официально на выборах будет около ${Math.round(forecast.official)}% — эту цифру нарисуют. `}
@@ -1625,13 +1625,13 @@ function ClosedPollPanel({ forecast, region, onFocus }) {
           const r = regionById(row.id);
           if (!r) return null;
           return (
-            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5,
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12,
               color: row.id === region.id ? COLOR.text : COLOR.muted }}>
               <button className="ems-btn" onClick={() => onFocus(row.id)} aria-label={`Показать ${r.short} на карте`}
                 style={{ width: 92, flexShrink: 0, padding: 0, border: 'none', background: 'none', textAlign: 'left', color: 'inherit',
-                  fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{r.short}</button>
+                  fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}>{r.short}</button>
               <span className="ems-mono" style={{ width: 40, textAlign: 'right', color: voteColor(row.share), fontWeight: 600 }}>{Math.round(row.share)}%</span>
-              <span style={{ flex: 1, fontSize: 10.5, color: voteColor(row.share) }}>{closedLabel(row.share)}</span>
+              <span style={{ flex: 1, fontSize: 12, color: voteColor(row.share) }}>{closedLabel(row.share)}</span>
             </div>
           );
         })}
@@ -1645,7 +1645,7 @@ function ElectionPanel({ economy, region, election, share }) {
     return (
       <div className="ems-panel" style={{ padding: 14, fontSize: 12, color: COLOR.muted, lineHeight: 1.55 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-          <Vote size={15} color={COLOR.faint} /><span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.text }}>Выборы по областям</span>
+          <Vote size={15} color={COLOR.faint} /><span className="ems-serif" style={{ fontSize: 14, color: COLOR.text }}>Выборы по областям</span>
         </div>
         {economy.noElections
           ? 'Выборы больше не проводятся: распределять по областям нечего.'
@@ -1659,24 +1659,24 @@ function ElectionPanel({ economy, region, election, share }) {
     <div className="ems-panel" style={{ padding: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
         <Vote size={15} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 13.5 }}>Выборы · {election.qLabel}</span>
+        <span className="ems-serif" style={{ fontSize: 14 }}>Выборы · {election.qLabel}</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: voteColor(nat), fontWeight: 600 }}>{fmt1(nat)}% по стране</span>
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 9 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 9 }}>
         {ELECTION_OUTCOME[election.result] || 'итог не объявлен'}
       </div>
       {election.rigged && (
-        <div style={{ fontSize: 11, color: COLOR.rust, marginBottom: 8, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 8, lineHeight: 1.45 }}>
           Официальные результаты. Наблюдатели на участки не допущены — разброс по областям такой же нарисованный, как и итог.
         </div>
       )}
       {election.coup && (
-        <div style={{ fontSize: 11, color: COLOR.rust, marginBottom: 8, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 8, lineHeight: 1.45 }}>
           Результат аннулирован: власть не признала поражение и объявила чрезвычайное положение.
         </div>
       )}
       {share != null && (
-        <div style={{ fontSize: 12.5, color: COLOR.text, lineHeight: 1.55, marginBottom: 10 }}>
+        <div style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.55, marginBottom: 10 }}>
           <b style={{ color: voteColor(share) }}>{region.name}: {fmt1(share)}%</b> за действующую власть — это{' '}
           {Math.abs(margin) < 0.5 ? 'ровно как в среднем по стране'
             : `на ${fmt1(Math.abs(margin))} п.п. ${margin > 0 ? 'больше' : 'меньше'}, чем в среднем по стране`}.
@@ -1687,7 +1687,7 @@ function ElectionPanel({ economy, region, election, share }) {
           const r = regionById(row.id);
           if (!r) return null;
           return (
-            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5,
+            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
               color: row.id === region.id ? COLOR.text : COLOR.muted }}>
               <span style={{ width: 96, flexShrink: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.short}</span>
               {/* полоса отсчитывается ОТ СЕРЕДИНЫ, а не от левого края: при
@@ -1705,7 +1705,7 @@ function ElectionPanel({ economy, region, election, share }) {
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
         Доля голосов за действующую власть. Засечка посередине полосы — 50%: всё, что левее, область отдала оппозиции.
       </div>
     </div>
@@ -1727,13 +1727,13 @@ function RegionProject({ region, economy, plan, onPlan, planner }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
         {built ? <CheckCircle2 size={14} color={COLOR.teal} /> : <Construction size={14} color={COLOR.gold} />}
         <span className="ems-serif" style={{ fontSize: 13 }}>{p.name}</span>
-        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>
           {built ? 'завершено' : active ? `ещё ${active.left} кв.` : `${p.quarters} кв.`}
         </span>
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>{p.effect}</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>{p.effect}</div>
       {!built && (
-        <div className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5 }}>
+        <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, marginTop: 5 }}>
           ≈{fmt1(p.cost)}% ВВП в год · ~{perQuarter} за квартал · напряжение области −{p.relief} навсегда
         </div>
       )}
@@ -1745,14 +1745,14 @@ function RegionProject({ region, economy, plan, onPlan, planner }) {
       {!built && !active && (
         onPlan ? (
           <button className="ems-btn" disabled={!!blocker && !planned}
-            style={{ marginTop: 8, padding: '5px 10px', fontSize: 11.5, width: '100%',
-              background: planned ? COLOR.gold : COLOR.panelAlt, color: planned ? COLOR.ink : COLOR.text,
-              borderColor: planned ? COLOR.gold : COLOR.border, opacity: blocker && !planned ? 0.55 : 1 }}
+            style={{ marginTop: 8, padding: '5px 10px', fontSize: 12, width: '100%',
+              background: planned ? COLOR.sel : COLOR.panelAlt, color: planned ? COLOR.selText : COLOR.text,
+              borderColor: planned ? COLOR.selBorder : COLOR.border, opacity: blocker && !planned ? 0.55 : 1 }}
             onClick={() => { Audio.play('click'); onPlan({ ...plan, startProject: planned ? null : p.id }); }}>
             {planned ? 'Стройка начнётся в конце квартала — отменить' : blocker ? `Нельзя: ${blocker}` : 'Начать стройку'}
           </button>
         ) : (
-          <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6 }}>Стройки запускает {planner || 'Минфин'}.</div>
+          <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6 }}>Стройки запускает {planner || 'Минфин'}.</div>
         )
       )}
     </div>
@@ -1786,28 +1786,28 @@ function AnnexPanel({ region, economy, plan, onPlan, planner }) {
           <span key={m} style={{ position: 'absolute', left: `${m}%`, top: -2, bottom: -2, width: 1.5, background: COLOR.text, opacity: 0.6 }} />
         ))}
       </div>
-      <div style={{ display: 'flex', fontSize: 10, color: COLOR.faint, marginBottom: 7 }}>
+      <div style={{ display: 'flex', fontSize: 12, color: COLOR.faint, marginBottom: 7 }}>
         <span>{status}</span>
         <span style={{ marginLeft: 'auto' }}>{PARTISAN_BELOW} — конец партизан · {INTEGRATED_AT} — голосует</span>
       </div>
-      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
         Программа интеграции — паспорта, пенсии, дороги и школы — прибавляет около 6 пунктов лояльности за квартал сверх того,
         что приходит само. Стройка в области и ответы на её события тоже в счёт; напряжение в стране и война за эти земли отнимают.
       </div>
       {l >= INTEGRATION_DONE ? (
-        <div style={{ fontSize: 11, color: COLOR.teal, marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ fontSize: 12, color: COLOR.teal, marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
           <CheckCircle2 size={13} />Лояльность 100 из 100 — программа интеграции выполнена и закрыта.
         </div>
       ) : onPlan ? (
         <button className="ems-btn" aria-pressed={on}
-          style={{ marginTop: 8, padding: '5px 10px', fontSize: 11.5, width: '100%',
-            background: on ? COLOR.gold : COLOR.panelAlt, color: on ? COLOR.ink : COLOR.text, borderColor: on ? COLOR.gold : COLOR.border }}
+          style={{ marginTop: 8, padding: '5px 10px', fontSize: 12, width: '100%',
+            background: on ? COLOR.sel : COLOR.panelAlt, color: on ? COLOR.selText : COLOR.text, borderColor: on ? COLOR.selBorder : COLOR.border }}
           onClick={toggle}>
           {on ? `Интеграция идёт · ~${fmtMoney(economy.nominalGdp * INTEGRATION_COST / 100)} за квартал — остановить`
             : `Начать программу интеграции · ~${fmtMoney(economy.nominalGdp * INTEGRATION_COST / 100)} за квартал`}
         </button>
       ) : (
-        <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6 }}>
           {on ? 'Программа интеграции идёт' : 'Программа интеграции не финансируется'} — решает {planner || 'Минфин'}.
         </div>
       )}
@@ -1827,7 +1827,7 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
         style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer' }}>
         <AlertTriangle size={15} color={COLOR.rust} />
         <span className="ems-serif" style={{ fontSize: 14 }}>{event.title}</span>
-        <span style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>{region ? region.name : ''}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>{region ? region.name : ''}</span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55, marginBottom: 9 }}>{event.text}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1838,11 +1838,11 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
             <>
               <span style={{ display: 'flex', gap: 8, width: '100%' }}>
                 <span style={{ fontSize: 12, fontWeight: active ? 600 : 400, color: active ? COLOR.goldSoft : COLOR.text }}>{o.label}</span>
-                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint, whiteSpace: 'nowrap' }}>
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint, whiteSpace: 'nowrap' }}>
                   {cost}{o.loyalty ? ` · лояльность ${o.loyalty > 0 ? '+' : ''}${o.loyalty}` : ''}
                 </span>
               </span>
-              <span style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.4 }}>{o.effect}</span>
+              <span style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.4 }}>{o.effect}</span>
             </>
           );
           return onPlan ? (
@@ -1858,7 +1858,7 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 8, lineHeight: 1.45 }}>
         {onPlan
           ? (chosen ? 'Ответ применится в конце квартала.' : `Без ответа: «${def ? def.label.toLowerCase() : 'переждать'}».`)
           : `Отвечает ${planner || 'Минфин'} — решение станет известно в конце квартала.`}
@@ -1882,14 +1882,14 @@ export function DefensePanel({ economy, camp, order, setOrder, planner, onFocus 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <Shield size={15} color={COLOR.rust} />
         <span className="ems-serif" style={{ fontSize: 14 }}>{enemy} наступает</span>
-        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
       </div>
       {next && (
-        <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 6, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 6, lineHeight: 1.45 }}>
           Разведка: {enemy === 'Норланд' ? 'Норланд стягивает' : `${enemy} стягивает`} силы для удара в {next.loc}.
         </div>
       )}
-      <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 4 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>
         Боевой дух противника {Math.round(camp.morale)} из 100 — на нуле он сам отступит. Сила вашей армии {Math.round(warStrength(economy) * 100)} из 100.
         {front ? ` До конца войны по счёту — ${economy.warQuartersLeft} кв.` : ''}
       </div>
@@ -1910,9 +1910,9 @@ export function DefensePanel({ economy, camp, order, setOrder, planner, onFocus 
                 {sel ? <Shield size={13} color={COLOR.gold} /> : camp.next === r.id ? <Swords size={13} color={COLOR.rust} /> : <Flag size={13} color={occ ? COLOR.rust : COLOR.muted} />}
                 <span style={{ fontWeight: sel ? 600 : 400 }}>{r.short}</span>
                 {front
-                  ? occ && <span style={{ fontSize: 10, color: COLOR.rust, fontWeight: 600 }}>оккупирована — отбить контрударом</span>
-                  : <span style={{ fontSize: 10, color: COLOR.faint }}>лояльность {Math.round(annexLoyalty(economy, r.id))}</span>}
-                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 11, color: p >= 60 ? COLOR.rust : COLOR.muted }}>{Math.round(p)} / 100</span>
+                  ? occ && <span style={{ fontSize: 12, color: COLOR.rust, fontWeight: 600 }}>оккупирована — отбить контрударом</span>
+                  : <span style={{ fontSize: 12, color: COLOR.faint }}>лояльность {Math.round(annexLoyalty(economy, r.id))}</span>}
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: p >= 60 ? COLOR.rust : COLOR.muted }}>{Math.round(p)} / 100</span>
               </div>
               <div style={{ marginTop: 5, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
                 <div style={{ width: `${p}%`, height: '100%', background: COLOR.rust }} />
@@ -1921,28 +1921,28 @@ export function DefensePanel({ economy, camp, order, setOrder, planner, onFocus 
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Приказ на квартал{order.stance !== 'talks' && order.target ? ` — ${nameOf(order.target)}` : ''}</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>Приказ на квартал{order.stance !== 'talks' && order.target ? ` — ${nameOf(order.target)}` : ''}</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
         {DEFENSE_STANCES.map((st) => {
           const active = order.stance === st.id;
           return (
             <button key={st.id} className="ems-btn" disabled={!setOrder} title={st.desc}
               onClick={setOrder ? () => { Audio.play('click'); setOrder({ stance: st.id }); } : undefined}
-              style={{ padding: '6px 6px', fontSize: 11, textAlign: 'left', lineHeight: 1.3,
-                background: active ? (st.id === 'talks' ? COLOR.teal : COLOR.gold) : COLOR.panelAlt,
-                color: active ? COLOR.ink : COLOR.text, borderColor: active ? COLOR.gold : COLOR.border, opacity: setOrder || active ? 1 : 0.55 }}>
+              style={{ padding: '6px 6px', fontSize: 12, textAlign: 'left', lineHeight: 1.3,
+                background: active ? (st.id === 'talks' ? COLOR.teal : COLOR.sel) : COLOR.panelAlt,
+                color: active ? (st.id === 'talks' ? COLOR.ink : COLOR.selText) : COLOR.text, borderColor: active ? (st.id === 'talks' ? COLOR.teal : COLOR.selBorder) : COLOR.border, opacity: setOrder || active ? 1 : 0.55 }}>
               <b>{st.label}</b><br />
-              <span style={{ fontSize: 9.5, opacity: 0.85 }}>{st.spend ? `~${fmtMoney(economy.nominalGdp * st.spend / 100)} за кв.` : 'без затрат'}</span>
+              <span style={{ fontSize: 12, opacity: 0.85 }}>{st.spend ? `~${fmtMoney(economy.nominalGdp * st.spend / 100)} за кв.` : 'без затрат'}</span>
             </button>
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
         {(DEFENSE_STANCES.find((x) => x.id === order.stance) || {}).desc}{' '}
         {setOrder ? `Приказ действует, пока вы его не смените. Область, куда целит противник, выгоднее укрепить заранее${front ? '; занятую отбивают контрударом — давление ниже 60' : ''}.` : `Приказы отдаёт ${planner || 'президент'}.`}
       </div>
       {last && last.hit && (
-        <div style={{ fontSize: 11, color: COLOR.muted, marginTop: 8, paddingTop: 7, borderTop: `1px solid ${COLOR.hairline}`, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 8, paddingTop: 7, borderTop: `1px solid ${COLOR.hairline}`, lineHeight: 1.45 }}>
           Прошлый квартал: {enemy} {enemy === 'Норланд' ? 'ударил' : 'ударила'} — {nameOf(last.hit)}{last.feint ? ' (разведка ошиблась)' : ''}, +{last.gain}
           {last.stance === 'counter' ? `; контрудар — ${nameOf(last.target)}, −${last.pushed}` : last.target === last.hit ? '; удар пришёлся на укреплённую область' : ''}.
         </div>
@@ -1964,11 +1964,11 @@ function NorlandPanel({ economy, plan, onPlan, planner }) {
     <div className="ems-panel" style={{ padding: 14 }} aria-label="Отношения с Норландом">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <Handshake size={15} color={talks ? COLOR.gold : COLOR.muted} />
-        <span className="ems-serif" style={{ fontSize: 13.5 }}>Норланд{talks ? ' · переговоры о мире' : ''}</span>
+        <span className="ems-serif" style={{ fontSize: 14 }}>Норланд{talks ? ' · переговоры о мире' : ''}</span>
       </div>
       {held.length > 0 && (
         <>
-          <div style={{ display: 'flex', fontSize: 11.5, marginBottom: 4 }}>
+          <div style={{ display: 'flex', fontSize: 12, marginBottom: 4 }}>
             <span style={{ color: COLOR.muted }}>Реваншизм Норланда</span>
             <span className="ems-mono" style={{ marginLeft: 'auto', color: rev >= REVANCHE_WARN ? COLOR.rust : COLOR.text, fontWeight: 600 }}>
               {Math.round(rev)} из 100 {growth > 0 ? `· +${fmt1(growth)} за кв.` : ''}
@@ -1978,13 +1978,13 @@ function NorlandPanel({ economy, plan, onPlan, planner }) {
             <div style={{ width: `${rev}%`, height: '100%', borderRadius: 3, background: rev >= REVANCHE_WARN ? COLOR.rust : COLOR.gold }} />
             <span style={{ position: 'absolute', left: `${REVANCHE_WARN}%`, top: -2, bottom: -2, width: 1.5, background: COLOR.text, opacity: 0.6 }} />
           </div>
-          <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 9 }}>
+          <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginBottom: 9 }}>
             На 100 Норланд нападает, чтобы вернуть свои земли. Быстрее растёт, когда граница не признана и земель у вас много;
             медленнее — после договора и особенно после признания границы. Сильная армия сдерживает, кризисы в стране подогревают.
           </div>
         </>
       )}
-      <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.5, marginBottom: talks ? 10 : 0 }}>
+      <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.5, marginBottom: talks ? 10 : 0 }}>
         {t ? (
           <>Договор подписан: граница {t.recognized ? <b style={{ color: COLOR.teal }}>признана</b> : <b style={{ color: COLOR.rust }}>не признана</b>}
             {t.sanctions ? ', санкции сняты' : ''}{t.reparations === 'receive' ? ', Норланд платит репарации' : t.reparations === 'pay' ? ', страна платит репарации' : ''}.
@@ -2009,11 +2009,11 @@ function TreatyTalks({ economy, talks, plan, onPlan, planner, held }) {
     - treatyCost(sanitizeTreaty({ ...TERMS_OFF, returned: terms.returned }, economy), economy);
   const Term = ({ active, onClick, label, price }) => (
     <button className="ems-btn" aria-pressed={active} disabled={!onPlan} onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 9px', fontSize: 11.5, textAlign: 'left',
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 9px', fontSize: 12, textAlign: 'left',
         background: active ? COLOR.goldDim : COLOR.panelAlt, borderColor: active ? COLOR.gold : COLOR.border, color: COLOR.text }}>
       <span style={{ width: 12, height: 12, borderRadius: 2, border: `1.5px solid ${active ? COLOR.gold : COLOR.faint}`, background: active ? COLOR.gold : 'none', flexShrink: 0 }} />
       <span style={{ flex: 1 }}>{label}</span>
-      <span className="ems-mono" style={{ fontSize: 10.5, color: price < 0 ? COLOR.teal : COLOR.muted }}>{price > 0 ? `цена ${price}` : `уступка ${-price}`}</span>
+      <span className="ems-mono" style={{ fontSize: 12, color: price < 0 ? COLOR.teal : COLOR.muted }}>{price > 0 ? `цена ${price}` : `уступка ${-price}`}</span>
     </button>
   );
   return (
@@ -2033,28 +2033,28 @@ function TreatyTalks({ economy, talks, plan, onPlan, planner, held }) {
             label={`Вернуть Норланду: ${r.name}`} price={treatyCost(sanitizeTreaty({ ...TERMS_OFF, returned: [r.id] }, economy), economy)} />
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 4 }}>
         <span style={{ color: COLOR.muted }}>Позиция страны {Math.round(talks.leverage)} · цена требований {Math.round(cost)}</span>
         <b style={{ marginLeft: 'auto', color: ok ? COLOR.teal : COLOR.rust }}>{ok ? 'Норланд согласится' : 'Норланд откажет'}</b>
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.45, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginBottom: 8 }}>
         Позиция тает на 2 в квартал, пока тянут время.{talks.refused ? ` В прошлый раз Норланд отверг условия ценой ${talks.refused.cost}.` : ''}
       </div>
       {onPlan ? (
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="ems-btn" style={{ flex: 1, padding: '6px 8px', fontSize: 11.5,
-            background: terms.propose ? COLOR.gold : COLOR.panelAlt, color: terms.propose ? COLOR.ink : COLOR.text, borderColor: terms.propose ? COLOR.gold : COLOR.border }}
+          <button className="ems-btn" style={{ flex: 1, padding: '6px 8px', fontSize: 12,
+            background: terms.propose ? COLOR.sel : COLOR.panelAlt, color: terms.propose ? COLOR.selText : COLOR.text, borderColor: terms.propose ? COLOR.selBorder : COLOR.border }}
             onClick={() => set({ propose: !terms.propose })}>
             {terms.propose ? 'Договор будет предложен — отменить' : 'Предложить договор'}
           </button>
-          <button className="ems-btn" style={{ padding: '6px 8px', fontSize: 11.5,
+          <button className="ems-btn" style={{ padding: '6px 8px', fontSize: 12,
             background: terms.walkAway ? COLOR.rust : COLOR.panelAlt, color: terms.walkAway ? COLOR.ink : COLOR.text, borderColor: terms.walkAway ? COLOR.rust : COLOR.border }}
             onClick={() => { Audio.play('tick'); onPlan({ ...terms, propose: false, walkAway: !terms.walkAway }); }}>
             {terms.walkAway ? 'Выход из переговоров — отменить' : 'Прервать переговоры'}
           </button>
         </div>
       ) : (
-        <div style={{ fontSize: 10.5, color: COLOR.faint }}>Переговоры ведёт {planner || 'президент'}.</div>
+        <div style={{ fontSize: 12, color: COLOR.faint }}>Переговоры ведёт {planner || 'президент'}.</div>
       )}
     </div>
   );
@@ -2071,9 +2071,9 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <Swords size={15} color={COLOR.rust} />
         <span className="ems-serif" style={{ fontSize: 14 }}>Наступление на Норланд</span>
-        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 10.5, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>идёт {economy.warElapsed || 1}-й кв.</span>
       </div>
-      <div style={{ fontSize: 11, color: COLOR.muted, marginBottom: 9 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 9 }}>
         Сила армии {Math.round(strength * 100)} из 100 — от доли обороны в бюджете и поддержки в стране.
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
@@ -2092,7 +2092,7 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
                 {taken ? <Flag size={13} color={COLOR.gold} /> : open ? <Swords size={13} color={COLOR.rust} /> : <Lock size={13} color={COLOR.faint} />}
                 <span style={{ fontWeight: sel ? 600 : 400 }}>{o.name}</span>
-                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 11, color: taken ? COLOR.goldSoft : COLOR.muted }}>
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: taken ? COLOR.goldSoft : COLOR.muted }}>
                   {taken ? 'взята' : open ? `${Math.round(prog)} / 100` : 'сначала перевал'}
                 </span>
               </div>
@@ -2105,7 +2105,7 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 4 }}>Приказ на квартал{order.target && order.stance !== 'ceasefire' ? ` — цель: ${nameOf(order.target)}` : ''}</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>Приказ на квартал{order.target && order.stance !== 'ceasefire' ? ` — цель: ${nameOf(order.target)}` : ''}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
         {WAR_STANCES.map((st) => {
           const active = order.stance === st.id;
@@ -2113,21 +2113,21 @@ function WarOperationPanel({ economy, camp, order, setOrder, planner }) {
             <button key={st.id} className="ems-btn" disabled={!setOrder}
               onClick={setOrder ? () => { Audio.play('click'); setOrder({ stance: st.id }); } : undefined}
               title={st.desc}
-              style={{ padding: '6px 6px', fontSize: 11, textAlign: 'left', lineHeight: 1.3,
-                background: active ? (st.id === 'ceasefire' ? COLOR.teal : COLOR.gold) : COLOR.panelAlt,
-                color: active ? COLOR.ink : COLOR.text, borderColor: active ? COLOR.gold : COLOR.border, opacity: setOrder || active ? 1 : 0.55 }}>
+              style={{ padding: '6px 6px', fontSize: 12, textAlign: 'left', lineHeight: 1.3,
+                background: active ? (st.id === 'ceasefire' ? COLOR.teal : COLOR.sel) : COLOR.panelAlt,
+                color: active ? (st.id === 'ceasefire' ? COLOR.ink : COLOR.selText) : COLOR.text, borderColor: active ? (st.id === 'ceasefire' ? COLOR.teal : COLOR.selBorder) : COLOR.border, opacity: setOrder || active ? 1 : 0.55 }}>
               <b>{st.label}</b><br />
-              <span style={{ fontSize: 9.5, opacity: 0.85 }}>{st.spend ? `~${fmtMoney(economy.nominalGdp * st.spend / 100)} за квартал` : 'без затрат'}</span>
+              <span style={{ fontSize: 12, opacity: 0.85 }}>{st.spend ? `~${fmtMoney(economy.nominalGdp * st.spend / 100)} за квартал` : 'без затрат'}</span>
             </button>
           );
         })}
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
         {(WAR_STANCES.find((x) => x.id === order.stance) || {}).desc}{' '}
         {setOrder ? 'Приказ действует, пока вы его не смените: армия продолжит его и в следующих кварталах.' : `Приказы отдаёт ${planner || 'президент'}.`}
       </div>
       {last && (
-        <div style={{ fontSize: 11, color: COLOR.muted, marginTop: 8, paddingTop: 7, borderTop: `1px solid ${COLOR.hairline}`, lineHeight: 1.45 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 8, paddingTop: 7, borderTop: `1px solid ${COLOR.hairline}`, lineHeight: 1.45 }}>
           Прошлый квартал: {last.stance === 'ceasefire' ? 'предложено перемирие'
             : `${(WAR_STANCES.find((x) => x.id === last.stance) || {}).label.toLowerCase()} — ${nameOf(last.target)}, +${last.gained}`}
           {last.counter ? `; контратака у цели «${nameOf(last.counter.target)}», −${last.counter.lost}` : ''}.

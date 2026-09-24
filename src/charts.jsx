@@ -131,16 +131,16 @@ function CompareBadge({ compare, onReset }) {
   return (
     <div className="ems-panel" style={{ padding: '9px 11px', marginTop: 8, background: COLOR.panelAlt, userSelect: 'text' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, color: COLOR.text }}>
+        <span style={{ fontSize: 12, color: COLOR.text }}>
           <b style={{ color: COLOR.goldSoft }}>{compare.labelA}</b> → <b style={{ color: COLOR.goldSoft }}>{compare.labelB}</b>
         </span>
-        {compare.quarters != null && <span style={{ fontSize: 10, color: COLOR.faint }}>{compare.quarters} кв.</span>}
-        <button className="ems-btn" style={{ marginLeft: 'auto', padding: '2px 7px', fontSize: 10 }}
+        {compare.quarters != null && <span style={{ fontSize: 12, color: COLOR.faint }}>{compare.quarters} кв.</span>}
+        <button className="ems-btn" style={{ marginLeft: 'auto', padding: '2px 7px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); onReset(); }}>Сбросить</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {compare.rows.map((r) => (
-          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             {r.color && <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.color, flexShrink: 0 }} />}
             <span style={{ color: COLOR.muted, flex: 1, minWidth: 0 }}>{r.label}</span>
             {r.delta === null ? <span style={{ color: COLOR.faint }}>нет данных</span> : (
@@ -270,23 +270,23 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
         <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>График экономики</span>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: forecast ? COLOR.gold : COLOR.panelAlt,
-            color: forecast ? COLOR.ink : COLOR.text, borderColor: forecast ? COLOR.gold : COLOR.border }}
+          <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12, background: forecast ? COLOR.sel : COLOR.panelAlt,
+            color: forecast ? COLOR.selText : COLOR.text, borderColor: forecast ? COLOR.selBorder : COLOR.border }}
             onClick={() => { Audio.play('tab'); setForecast((f) => !f); }}
             title="Дорисовать к графику 8 кварталов вперёд: пунктир — куда показатель придёт сам собой, если ничего не менять, заливка — насколько эта оценка неточна">
             {forecast ? 'скрыть прогноз' : 'прогноз на 8 кв.'}
           </button>
           {PERIODS.map((p) => (
-            <button key={p.id} onClick={() => { Audio.play('tab'); setPeriod(p.id); }} className="ems-btn" style={{ padding: '4px 9px', fontSize: 11, background: period === p.id ? COLOR.gold : COLOR.panelAlt, color: period === p.id ? COLOR.ink : COLOR.text, borderColor: period === p.id ? COLOR.gold : COLOR.border }}>
+            <button key={p.id} onClick={() => { Audio.play('tab'); setPeriod(p.id); }} className="ems-btn" style={{ padding: '4px 9px', fontSize: 12, background: period === p.id ? COLOR.sel : COLOR.panelAlt, color: period === p.id ? COLOR.selText : COLOR.text, borderColor: period === p.id ? COLOR.selBorder : COLOR.border }}>
               {p.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="ems-scroll" style={{ display: 'flex', gap: 2, borderBottom: `1px solid ${COLOR.border}`, marginBottom: 10, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div className="ems-tabrow" style={{ borderBottom: `1px solid ${COLOR.border}`, paddingBottom: 4, marginBottom: 10 }}>
         {CHART_GROUPS.map((g) => (
-          <span key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} style={{ flexShrink: 0 }} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</span>
+          <button type="button" key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} aria-pressed={chartGroup === g.id} style={{ flexShrink: 0 }} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</button>
         ))}
       </div>
 
@@ -295,7 +295,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
           const active = !hiddenSeries.includes(s.id);
           return (
             <button key={s.id} onClick={() => { Audio.play('tick'); toggleSeries(s.id); }} className="ems-btn"
-              style={{ padding: '4px 10px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, background: active ? COLOR.panelAlt : 'transparent', borderColor: active ? s.color : COLOR.border, color: active ? COLOR.text : COLOR.muted, opacity: active ? 1 : 0.5 }}>
+              style={{ padding: '4px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, background: active ? COLOR.panelAlt : 'transparent', borderColor: active ? s.color : COLOR.border, color: active ? COLOR.text : COLOR.muted, opacity: active ? 1 : 0.5 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />{s.label}
             </button>
           );
@@ -307,10 +307,10 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
           <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}
             onMouseDown={onChartMouseDown} onMouseMove={onChartMouseMove} onMouseUp={onChartMouseUp} onMouseLeave={onChartMouseUp}>
             <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" />
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: COLOR.muted }} interval="preserveStartEnd" />
-            <YAxis yAxisId="left" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')}
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLOR.muted }} interval="preserveStartEnd" />
+            <YAxis yAxisId="left" tick={{ fontSize: 12, fill: COLOR.muted }} width={50} tickFormatter={axisTick(leftDef ? leftDef.fmt : 'pct')}
               domain={axisDomainFor('left')} />
-            {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)}
+            {rightDef && <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12, fill: COLOR.muted }} width={50} tickFormatter={axisTick(rightDef.fmt)}
               domain={axisDomainFor('right')} />}
             <Tooltip contentStyle={{ background: COLOR.panel, border: `1px solid ${COLOR.border}`, fontSize: 12 }} labelStyle={{ color: COLOR.goldSoft }}
               formatter={(value, name, props) => {
@@ -324,14 +324,14 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
                 if (Array.isArray(value)) return [`${fmtFn(value[0])} – ${fmtFn(value[1])}`, name];
                 return [fmtFn(value), name];
               }} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
             {dragRange && (
               <ReferenceArea yAxisId="left" x1={dragRange.from} x2={dragRange.to}
                 stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.1} />
             )}
             {forecast && nowLabel && (
               <ReferenceLine yAxisId="left" x={nowLabel} stroke={COLOR.faint} strokeDasharray="3 3"
-                label={{ value: 'сейчас', position: 'insideTop', fontSize: 9.5, fill: COLOR.muted }} />
+                label={{ value: 'сейчас', position: 'insideTop', fontSize: 12, fill: COLOR.muted }} />
             )}
             {forecast && visible[0] && (
               <Area yAxisId={visible[0].axis} type="monotone" dataKey="fanInner" name="68% интервал"
@@ -348,7 +348,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
         </ResponsiveContainer>
       </div>
       <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
-      <div style={{ fontSize: 10.5, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
           ? <>Пунктир справа от отметки «сейчас» продолжает каждую включённую линию туда, куда она идёт <b style={{ color: COLOR.text }}>сама собой</b>,
             если вы больше ничего не меняете: движение последних кварталов затухает, и показатель постепенно подтягивается к своему якорю
@@ -404,7 +404,7 @@ function MiniChart({ data, color, height = 46, label, fmt, marks }) {
         <ResponsiveContainer>
           <LineChart data={rows} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
-            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11, padding: '4px 8px' }}
+            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 12, padding: '4px 8px' }}
               labelFormatter={(i) => `${(marks && marks.label) || ''}${pointLabel(i)}`}
               formatter={(v) => [fmt ? fmt(v) : fmt1(v), label || 'значение']} />
             {dragRange && <ReferenceArea x1={dragRange.from} x2={dragRange.to} stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.12} />}
@@ -469,16 +469,16 @@ function InstrumentChartBase({ rows, color, avg, marks, benchLabel, benchColor, 
           <LineChart data={rows} margin={{ top: 8, right: 6, left: -14, bottom: 0 }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
             <CartesianGrid stroke={COLOR.border} strokeDasharray="2 4" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 9.5, fill: COLOR.faint }} interval="preserveStartEnd" minTickGap={22} />
-            <YAxis tick={{ fontSize: 9.5, fill: COLOR.muted }} width={52} domain={['auto', 'auto']}
+            <XAxis dataKey="label" tick={{ fontSize: 12, fill: COLOR.faint }} interval="preserveStartEnd" minTickGap={22} />
+            <YAxis tick={{ fontSize: 12, fill: COLOR.muted }} width={52} domain={['auto', 'auto']}
               tickFormatter={(v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru-RU') : fmt1(v))} />
-            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11.5, padding: '5px 9px' }}
+            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 12, padding: '5px 9px' }}
               labelStyle={{ color: COLOR.goldSoft }}
               formatter={(v, name) => [fmt1(v), name]} />
             {dragRange && <ReferenceArea x1={dragRange.from} x2={dragRange.to} stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.1} />}
             {Number.isFinite(avg) && avg > 0 && (
               <ReferenceLine y={avg} stroke={COLOR.goldSoft} strokeDasharray="4 4" strokeWidth={1.2}
-                label={{ value: `ваша средняя ${fmt1(avg)}`, position: 'insideTopRight', fontSize: 9.5, fill: COLOR.goldSoft }} />
+                label={{ value: `ваша средняя ${fmt1(avg)}`, position: 'insideTopRight', fontSize: 12, fill: COLOR.goldSoft }} />
             )}
             {benchLabel && (
               <Line type="monotone" dataKey="bench" name={benchLabel} stroke={benchColor || COLOR.faint}
@@ -567,7 +567,7 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
           <span className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Реакция экономики: {lever.label}</span>
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose} aria-label="Закрыть"><X size={13} /></button>
         </div>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 12, lineHeight: 1.5 }}>
           Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(decisions[lever.id])}{lever.suffix})
           и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий. На графике — разница между этими двумя мирами,
           то есть чистый эффект именно вашего решения.
@@ -577,12 +577,12 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
             <LineChart data={data} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}
               onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
               <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
-              <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border}
-                label={{ value: 'кварталов после решения', fill: COLOR.faint, fontSize: 10, position: 'insideBottom', offset: -2 }} />
-              <YAxis tick={{ fill: COLOR.faint, fontSize: 10 }} stroke={COLOR.border} />
-              <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 11 }}
+              <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border}
+                label={{ value: 'кварталов после решения', fill: COLOR.faint, fontSize: 12, position: 'insideBottom', offset: -2 }} />
+              <YAxis tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} />
+              <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 12 }}
                 labelFormatter={(v) => `${v}-й квартал`} formatter={(v, n) => [fmtSigned1(v), n]} />
-              <Legend wrapperStyle={{ fontSize: 10.5 }} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
               {dragRange && (
                 <ReferenceArea x1={dragRange.from} x2={dragRange.to} stroke={COLOR.goldSoft} strokeOpacity={0.5} fill={COLOR.gold} fillOpacity={0.1} />
               )}
@@ -598,14 +598,14 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
             const pk = peak(sr.key);
             return (
               <div key={sr.key} className="ems-panel" style={{ padding: 9 }}>
-                <div style={{ fontSize: 10.5, color: COLOR.muted }}>{sr.label}</div>
+                <div style={{ fontSize: 12, color: COLOR.muted }}>{sr.label}</div>
                 <div className="ems-mono" style={{ fontSize: 15, color: sr.color }}>{fmtSigned1(pk.v)}{sr.unit}</div>
-                <div style={{ fontSize: 10, color: COLOR.faint }}>{pk.q ? `пик через ${pk.q} кв.` : 'без заметного эффекта'}</div>
+                <div style={{ fontSize: 12, color: COLOR.faint }}>{pk.q ? `пик через ${pk.q} кв.` : 'без заметного эффекта'}</div>
               </div>
             );
           })}
         </div>
-        <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 12, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 12, lineHeight: 1.5 }}>
           Это контрфактический расчёт: «что было бы, если бы». Реальная траектория будет отличаться — в ней будут шоки,
           решения второго ведомства и накопленные ожидания. Но знак, форма и задержка эффекта останутся теми же.
         </div>

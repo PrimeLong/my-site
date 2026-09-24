@@ -92,7 +92,7 @@ function InstrumentPrimer({ instr, economy, prev, amt }) {
       <span className="ems-mono" style={{ color: tone || COLOR.text, textAlign: 'right' }}>{v}</span>
     </div>
   );
-  const box = { fontSize: 10.5, lineHeight: 1.5, background: COLOR.panelAlt,
+  const box = { fontSize: 12, lineHeight: 1.5, background: COLOR.panelAlt,
     border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '8px 10px' };
 
   if (instr.kind === 'fut') {
@@ -265,23 +265,23 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
           ['Деньги', fmtMln(book.cash), book.cash < 0 ? COLOR.rust : COLOR.text],
           ['Экспозиция', fmtMln(parts.gross), COLOR.text],
           ['Зафиксировано', fmtMlnSigned(book.realized), book.realized >= 0 ? COLOR.teal : COLOR.rust]].map(([l, v, c]) => (
-            <span key={l} style={{ fontSize: 11.5, display: 'flex', gap: 5, alignItems: 'baseline' }}>
+            <span key={l} style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'baseline' }}>
               <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono" style={{ color: c }}>{v}</span>
             </span>
           ))}
         <span style={{ display: 'flex', alignItems: 'center', gap: 7, marginLeft: 'auto', minWidth: 190 }}>
-          <span style={{ fontSize: 11, color: COLOR.muted }}>Обеспечение</span>
+          <span style={{ fontSize: 12, color: COLOR.muted }}>Обеспечение</span>
           <span style={{ flex: 1, height: 5, background: COLOR.border, borderRadius: 2, overflow: 'hidden', minWidth: 60 }}>
             <span style={{ display: 'block', height: '100%', width: `${clamp(lvl / 1.2 * 100, 0, 100)}%`,
               background: lvl < MAINTENANCE ? COLOR.rust : lvl < 0.45 ? COLOR.gold : COLOR.teal }} />
           </span>
-          <span className="ems-mono" style={{ fontSize: 11.5, color: lvl < MAINTENANCE ? COLOR.rust : lvl < 0.45 ? COLOR.gold : COLOR.teal }}>
+          <span className="ems-mono" style={{ fontSize: 12, color: lvl < MAINTENANCE ? COLOR.rust : lvl < 0.45 ? COLOR.gold : COLOR.teal }}>
             {parts.gross > 0.01 ? `${Math.round(lvl * 100)}%` : '—'}
           </span>
         </span>
       </div>
       {parts.gross > 0.01 && lvl < 0.45 && (
-        <div style={{ padding: '6px 13px', fontSize: 11.5, background: lvl < MAINTENANCE ? COLOR.rustDim : COLOR.goldDim,
+        <div style={{ padding: '6px 13px', fontSize: 12, background: lvl < MAINTENANCE ? COLOR.rustDim : COLOR.goldDim,
           color: lvl < MAINTENANCE ? COLOR.rust : COLOR.goldSoft, borderBottom: `1px solid ${COLOR.border}` }}>
           {lvl < MAINTENANCE
             ? `Уровень обеспечения ниже ${MAINTENANCE * 100}%: в конце квартала брокер принудительно закроет часть позиций по рынку.`
@@ -291,11 +291,11 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
       {movers.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 13px', flexWrap: 'wrap',
           borderBottom: `1px solid ${COLOR.border}`, background: COLOR.panel }}>
-          <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.blue, letterSpacing: '0.08em' }}>ДВИЖЕНИЕ КВАРТАЛА</span>
+          <span className="ems-mono" style={{ fontSize: 12, color: COLOR.blue, letterSpacing: '0.08em' }}>ДВИЖЕНИЕ КВАРТАЛА</span>
           {movers.map((r) => (
             <span key={r.i.id} onClick={() => { Audio.play('tick'); setSel(r.i.id); setAmount(1); setSide('buy'); }}
               title={r.i.name}
-              style={{ display: 'flex', gap: 5, alignItems: 'baseline', cursor: 'pointer', fontSize: 11 }}>
+              style={{ display: 'flex', gap: 5, alignItems: 'baseline', cursor: 'pointer', fontSize: 12 }}>
               <span className="ems-mono" style={{ color: r.i.color }}>{r.i.ticker}</span>
               <span className="ems-mono" style={{ color: r.chgQ >= 0 ? COLOR.teal : COLOR.rust }}>{fmtSigned1(r.chgQ)}%</span>
             </span>
@@ -309,31 +309,31 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
             <div style={{ display: 'flex', gap: 5, marginBottom: 6 }}>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск: тикер или название" aria-label="Поиск инструмента"
                 style={{ flex: 1, minWidth: 0, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 4,
-                  color: COLOR.text, fontSize: 11, padding: '5px 8px', outline: 'none', fontFamily: 'inherit' }} />
+                  color: COLOR.text, fontSize: 12, padding: '5px 8px', outline: 'none', fontFamily: 'inherit' }} />
               <button className="ems-btn" title="Показать только инструменты, где у вас есть позиция"
-                style={{ padding: '3px 9px', fontSize: 10.5, whiteSpace: 'nowrap',
-                  background: onlyMine ? COLOR.gold : COLOR.panelAlt, color: onlyMine ? COLOR.ink : COLOR.muted,
-                  borderColor: onlyMine ? COLOR.gold : COLOR.border }}
+                style={{ padding: '3px 9px', fontSize: 12, whiteSpace: 'nowrap',
+                  background: onlyMine ? COLOR.sel : COLOR.panelAlt, color: onlyMine ? COLOR.selText : COLOR.muted,
+                  borderColor: onlyMine ? COLOR.selBorder : COLOR.border }}
                 onClick={() => { Audio.play('tick'); setOnlyMine((v) => !v); }}>мои {openCount > 0 ? `· ${openCount}` : ''}</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-              <span className={`ems-tab ${activeGroup === 'all' ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
-                onClick={() => { Audio.play('tab'); setActiveGroup('all'); }}>Все</span>
+              <button type="button" className={`ems-tab ${activeGroup === 'all' ? 'active' : ''}`} aria-pressed={activeGroup === 'all'} style={{ padding: '3px 8px', fontSize: 12 }}
+                onClick={() => { Audio.play('tab'); setActiveGroup('all'); }}>Все</button>
               {[...new Set(INSTRUMENTS.map((i) => i.group))].map((g) => (
-                <span key={g} className={`ems-tab ${activeGroup === g ? 'active' : ''}`} style={{ padding: '3px 8px', fontSize: 10.5 }}
-                  onClick={() => { Audio.play('tab'); setActiveGroup(g); }}>{g}</span>
+                <button type="button" key={g} className={`ems-tab ${activeGroup === g ? 'active' : ''}`} aria-pressed={activeGroup === g} style={{ padding: '3px 8px', fontSize: 12 }}
+                  onClick={() => { Audio.play('tab'); setActiveGroup(g); }}>{g}</button>
               ))}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-              <span style={{ fontSize: 9.5, color: COLOR.faint, letterSpacing: '0.06em' }}>СОРТИРОВКА</span>
+              <span style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '0.06em' }}>СОРТИРОВКА</span>
               {[['group', 'по группам'], ['chg', 'по движению'], ['pnl', 'по результату']].map(([id, label]) => (
-                <span key={id} className={`ems-tab ${sortBy === id ? 'active' : ''}`} style={{ padding: '2px 7px', fontSize: 10 }}
-                  onClick={() => { Audio.play('tab'); setSortBy(id); }}>{label}</span>
+                <button type="button" key={id} className={`ems-tab ${sortBy === id ? 'active' : ''}`} aria-pressed={sortBy === id} style={{ padding: '2px 7px', fontSize: 12 }}
+                  onClick={() => { Audio.play('tab'); setSortBy(id); }}>{label}</button>
               ))}
             </div>
           </div>
           {visibleRows.length === 0 && (
-            <div style={{ padding: '14px 12px', fontSize: 11.5, color: COLOR.faint }}>
+            <div style={{ padding: '14px 12px', fontSize: 12, color: COLOR.faint }}>
               {onlyMine ? 'Открытых позиций нет — снимите фильтр «мои», чтобы увидеть весь список.' : 'Ничего не найдено по этому запросу.'}
             </div>
           )}
@@ -344,32 +344,32 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
             return (
               <React.Fragment key={i.id}>
                 {groupHeader && (
-                  <div style={{ padding: '7px 12px 3px', fontSize: 9.5, color: COLOR.blue, letterSpacing: '0.08em' }}>{i.group.toUpperCase()}</div>
+                  <div style={{ padding: '7px 12px 3px', fontSize: 12, color: COLOR.blue, letterSpacing: '0.08em' }}>{i.group.toUpperCase()}</div>
                 )}
                 <div onClick={() => { Audio.play('tick'); setSel(i.id); setAmount(1); setSide('buy'); }}
                   className="ems-row-hover"
                   style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', cursor: 'pointer',
                     background: active ? COLOR.goldDim : 'transparent',
                     borderLeft: `2px solid ${active ? COLOR.gold : has ? i.color : 'transparent'}` }}>
-                  <span className="ems-mono" style={{ fontSize: 10, color: i.color, width: 44, flexShrink: 0 }}>{i.ticker}</span>
+                  <span className="ems-mono" style={{ fontSize: 12, color: i.color, width: 44, flexShrink: 0 }}>{i.ticker}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 11.5, color: active ? COLOR.text : COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
+                    <div style={{ fontSize: 12, color: active ? COLOR.text : COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.name}</div>
                     {has && (
-                      <div style={{ fontSize: 10, color: q < 0 ? COLOR.rust : COLOR.faint }}>
+                      <div style={{ fontSize: 12, color: q < 0 ? COLOR.rust : COLOR.faint }}>
                         {i.kind === 'opt' ? `${myLots.length} серии · ${fmtMln(value)}`
                           : `${q < 0 ? 'шорт' : 'лонг'} ${fmtMln(Math.abs(value))}${i.kind === 'fut' ? ' номинала' : ''}`}
                       </div>
                     )}
-                    {i.kind === 'fut' && !has && <div style={{ fontSize: 10, color: COLOR.faint }}>плечо {i.lev}:1</div>}
+                    {i.kind === 'fut' && !has && <div style={{ fontSize: 12, color: COLOR.faint }}>плечо {i.lev}:1</div>}
                   </span>
                   <span style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div><PriceCell value={pr} size={11.5} /></div>
-                    <div className="ems-mono" style={{ fontSize: 10, color: chgQ > 0.01 ? COLOR.teal : chgQ < -0.01 ? COLOR.rust : COLOR.faint }}>
+                    <div><PriceCell value={pr} size={12} /></div>
+                    <div className="ems-mono" style={{ fontSize: 12, color: chgQ > 0.01 ? COLOR.teal : chgQ < -0.01 ? COLOR.rust : COLOR.faint }}>
                       {chgQ > 0.01 ? '▲' : chgQ < -0.01 ? '▼' : '·'} {fmtSigned1(chgQ)}%
                     </div>
                   </span>
                   {has && (
-                    <span className="ems-mono" style={{ fontSize: 10.5, width: 62, textAlign: 'right', flexShrink: 0,
+                    <span className="ems-mono" style={{ fontSize: 12, width: 62, textAlign: 'right', flexShrink: 0,
                       color: pnl > 0.0005 ? COLOR.teal : pnl < -0.0005 ? COLOR.rust : COLOR.faint }}>
                       {Math.abs(pnl) > 0.0005 ? fmtMlnSigned(pnl) : '—'}
                     </span>
@@ -389,11 +389,11 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
               <div style={{ fontSize: 13, color: COLOR.text }}>
                 <span className="ems-mono" style={{ color: instr.color, marginRight: 7 }}>{instr.ticker}</span>{instr.name}
               </div>
-              <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3, maxWidth: 340, lineHeight: 1.4 }}>{instr.note}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 3, maxWidth: 340, lineHeight: 1.4 }}>{instr.note}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <PriceCell value={price} size={21} bold />
-              <div className="ems-mono" style={{ fontSize: 11, color: chg >= 0 ? COLOR.teal : COLOR.rust }}>{fmtSigned1(chg)}% за квартал</div>
+              <div className="ems-mono" style={{ fontSize: 12, color: chg >= 0 ? COLOR.teal : COLOR.rust }}>{fmtSigned1(chg)}% за квартал</div>
             </div>
           </div>
 
@@ -401,21 +401,21 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
                 {[[8, '2 года'], [20, '5 лет'], [1000, 'всё время']].map(([q, label]) => (
-                  <span key={label} className={`ems-tab ${chartRange === q ? 'active' : ''}`} style={{ padding: '2px 8px', fontSize: 10 }}
-                    onClick={() => { Audio.play('tab'); setChartRange(q); }}>{label}</span>
+                  <button type="button" key={label} className={`ems-tab ${chartRange === q ? 'active' : ''}`} aria-pressed={chartRange === q} style={{ padding: '2px 8px', fontSize: 12 }}
+                    onClick={() => { Audio.play('tab'); setChartRange(q); }}>{label}</button>
                 ))}
-                <span className={`ems-tab ${showBench ? 'active' : ''}`} style={{ padding: '2px 8px', fontSize: 10, marginLeft: 'auto' }}
+                <button type="button" className={`ems-tab ${showBench ? 'active' : ''}`} aria-pressed={showBench} style={{ padding: '2px 8px', fontSize: 12, marginLeft: 'auto' }}
                   title="Наложить сводный индекс, приведённый к той же стартовой точке: видно, обгоняет инструмент рынок или отстаёт"
                   onClick={() => { Audio.play('tab'); setShowBench((v) => !v); }}>
                   {showBench ? 'скрыть индекс' : 'сравнить с индексом'}
-                </span>
+                </button>
               </div>
               <Suspense fallback={<ChartFallback height={190} />}>
                 <InstrumentChart rows={chartRows} color={instr.color} avg={instr.kind === 'opt' ? null : avg}
                   marks={marks} benchLabel={showBench && instr.key !== 'stockIndex' ? 'сводный индекс' : null}
                   benchColor={COLOR.faint} height={190} />
               </Suspense>
-              <div style={{ fontSize: 10, color: COLOR.faint, marginTop: -2, lineHeight: 1.4 }}>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginTop: -2, lineHeight: 1.4 }}>
                 {marks.length > 0 && <><span style={{ color: COLOR.teal }}>B</span> — ваши покупки, <span style={{ color: COLOR.rust }}>S</span> — продажи. </>}
                 {showBench && instr.key !== 'stockIndex' && 'Индекс приведён к стартовой цене инструмента: расхождение линий — это опережение или отставание от рынка. '}
                 {Number.isFinite(avg) && instr.kind !== 'opt' && 'Пунктир с подписью «ваша средняя» — ваша средняя цена входа.'}
@@ -432,7 +432,7 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
                   : Math.abs(held) > 0.001 ? fmtMln(Math.abs(heldValue)) : '—'],
               ['Прибыль', Math.abs(unreal) > 0.0005 ? fmtMlnSigned(unreal) : '—']].map(([l, v], idx) => (
                 <div key={l}>
-                  <div style={{ fontSize: 10, color: COLOR.muted }}>{l}</div>
+                  <div style={{ fontSize: 12, color: COLOR.muted }}>{l}</div>
                   <div className="ems-mono" style={{ fontSize: 12, color: idx === 3 && Math.abs(unreal) > 0.0005 ? (unreal >= 0 ? COLOR.teal : COLOR.rust) : COLOR.text }}>{v}</div>
                 </div>
               ))}
@@ -440,7 +440,7 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
           <InstrumentPrimer instr={instr} economy={economy} prev={prev} amt={amt} />
 
           {instr.kind === 'opt' && lots.length > 0 && (
-            <div style={{ fontSize: 10.5, color: COLOR.muted, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
               {lots.map((l, i) => (
                 <div key={l.id}>серия {i + 1}: страйк {l.strike.toFixed(0)}, до экспирации {l.left} кв., премия {fmtMln(l.premium * l.qty / 1000)}, сейчас {fmtMln(optionValue(l.type, price, l.strike, vol, l.left) * l.qty / 1000)}</div>
               ))}
@@ -457,10 +457,10 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
             ))}
           </div>
           {(book.trades || []).length > 0 && (
-            <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, fontSize: 10.5 }}>
+            <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, fontSize: 12 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 3 }}>
                 <span style={{ color: COLOR.blue }}>Исполнено</span>
-                <span className="ems-mono" style={{ fontSize: 9.5, color: COLOR.faint }}>{book.trades.length} сделок за партию</span>
+                <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{book.trades.length} сделок за партию</span>
               </div>
               {/* журнал прокручивается внутри себя: раньше он рос вместе с числом
                   сделок и растягивал карточку, а с ней и всю страницу */}
@@ -477,7 +477,7 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
                   return (
                     <React.Fragment key={`${t.q}-${k}`}>
                       {showQ && (
-                        <div className="ems-mono" style={{ fontSize: 9, color: COLOR.faint, letterSpacing: '0.05em',
+                        <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '0.05em',
                           padding: '4px 0 2px', borderTop: k === 0 ? 'none' : `1px solid ${COLOR.hairline}`,
                           marginTop: k === 0 ? 0 : 2 }}>
                           {(t.label || quarterLabel(t.q)).toUpperCase()}
@@ -504,40 +504,40 @@ export function TradingTerminal({ economy, prev, book, onTrade, history }) {
           )}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
-              <span style={{ fontSize: 11, color: COLOR.muted }}>
+              <span style={{ fontSize: 12, color: COLOR.muted }}>
                 {instr.kind === 'fut' ? 'Гарантийное обеспечение' : instr.kind === 'opt' ? 'Премия' : 'Сумма сделки'}
               </span>
-              <span className="ems-mono" style={{ fontSize: 14 }}>{mlnScale(amt).v} <span style={{ fontSize: 10, color: COLOR.faint }}>{mlnScale(amt).unit}</span></span>
+              <span className="ems-mono" style={{ fontSize: 14 }}>{mlnScale(amt).v} <span style={{ fontSize: 12, color: COLOR.faint }}>{mlnScale(amt).unit}</span></span>
             </div>
             <input type="range" className="ems-slider" min={0} max={Math.max(0.1, Math.round(maxAmount * 100) / 100)} step={0.05}
               aria-label="Сумма сделки" value={amt} onChange={(e) => { Audio.play('tick'); setAmount(parseFloat(e.target.value)); }} />
             <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
               {[[0.25, '25%'], [0.5, '50%'], [0.75, '75%'], [1, 'макс.']].map(([p, l]) => (
-                <button key={l} className="ems-btn" style={{ flex: 1, padding: '3px 0', fontSize: 10.5 }} onClick={() => setPct(p)}>{l}</button>
+                <button key={l} className="ems-btn" style={{ flex: 1, padding: '3px 0', fontSize: 12 }} onClick={() => setPct(p)}>{l}</button>
               ))}
             </div>
             {instr.kind === 'spot' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <button className="ems-btn" style={{ padding: '3px 10px', fontSize: 10.5,
+                <button className="ems-btn" style={{ padding: '3px 10px', fontSize: 12,
                   background: useMargin ? COLOR.rust : COLOR.panelAlt, color: useMargin ? COLOR.ink : COLOR.muted,
                   borderColor: useMargin ? COLOR.rust : COLOR.border }}
                   onClick={() => { Audio.play('tick'); setUseMargin((m) => !m); setAmount(1); }}>
                   {useMargin ? 'кредитное плечо включено' : 'торговать в кредит'}
                 </button>
-                <span style={{ fontSize: 10, color: COLOR.faint, flex: 1, lineHeight: 1.35 }}>
+                <span style={{ fontSize: 12, color: COLOR.faint, flex: 1, lineHeight: 1.35 }}>
                   {useMargin ? `Доступно ${fmtMln(maxBuy)}, из них ${fmtMln(Math.max(0, maxBuy - Math.max(0, book.cash)))} заёмных под ${fmt1(economy.lendingRate)}% годовых.`
                     : `Сделки только на свои: доступно ${fmtMln(Math.max(0, book.cash))}.`}
                 </span>
               </div>
             )}
             {instr.id === 'bond_gov' && side === 'buy' && (
-              <div style={{ fontSize: 10, color: COLOR.faint, marginTop: 6, lineHeight: 1.35 }}>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6, lineHeight: 1.35 }}>
                 Гособлигации — не бездонный инструмент: рынок ограничен размером госдолга ({fmtMoney(economy.govDebt)}), и один инвестор не может выкупить больше {Math.round(GOV_BOND_INVESTOR_SHARE * 100)}% от него. Свободно ещё {fmtMln(govBondRoom)}.
               </div>
             )}
           </div>
 
-          <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.5, borderLeft: `2px solid ${side === 'buy' ? COLOR.teal : COLOR.rust}`, paddingLeft: 9 }}>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, borderLeft: `2px solid ${side === 'buy' ? COLOR.teal : COLOR.rust}`, paddingLeft: 9 }}>
             {amt <= 0.001 ? 'Выберите сумму сделки.' : instr.kind === 'opt' ? (
               side === 'buy'
                 ? <>Покупка <b className="ems-mono" style={{ color: COLOR.text }}>{qty.toFixed(1)}</b> контрактов со страйком {price.toFixed(0)} и экспирацией через {instr.life} кв.
@@ -622,15 +622,15 @@ export function PortfolioSummary({ book, economy, live, prevValue, goal, opponen
       </div>
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: 9, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 10.5, color: COLOR.muted }}>Стоимость</div>
-          <div className="ems-mono" style={{ fontSize: 22 }}>{mlnScale(equity).v}<span style={{ fontSize: 11, color: COLOR.faint }}> {mlnScale(equity).unit}</span></div>
+          <div style={{ fontSize: 12, color: COLOR.muted }}>Стоимость</div>
+          <div className="ems-mono" style={{ fontSize: 22 }}>{mlnScale(equity).v}<span style={{ fontSize: 12, color: COLOR.faint }}> {mlnScale(equity).unit}</span></div>
         </div>
         <div>
-          <div style={{ fontSize: 10.5, color: COLOR.muted }}>В ценах старта</div>
+          <div style={{ fontSize: 12, color: COLOR.muted }}>В ценах старта</div>
           <div className="ems-mono" style={{ fontSize: 15, color: real >= start ? COLOR.teal : COLOR.rust }}>{mlnScale(real).v}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10.5, color: COLOR.muted }}>За квартал</div>
+          <div style={{ fontSize: 12, color: COLOR.muted }}>За квартал</div>
           <div className="ems-mono" style={{ fontSize: 15, color: qRet >= 0 ? COLOR.teal : COLOR.rust }}>{fmtSigned1(qRet)}%</div>
         </div>
       </div>
@@ -641,13 +641,13 @@ export function PortfolioSummary({ book, economy, live, prevValue, goal, opponen
       )}
       {bench && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
-          <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 4 }}>Против эталонов</div>
+          <div style={{ fontSize: 12, color: COLOR.blue, marginBottom: 4 }}>Против эталонов</div>
           {[{ id: 'me', label: 'Ваш портфель', v: equity, color: COLOR.gold }]
             .concat(BENCHMARKS.map((b) => ({ id: b.id, label: b.label, v: bench[b.id], color: b.color })))
             .concat(opponent && Number.isFinite(opponent.value) ? [{ id: 'opponent', label: opponent.label, v: opponent.value, color: COLOR.rust }] : [])
             .sort((a, b) => b.v - a.v)
             .map((r, idx) => (
-              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, padding: '2px 0',
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, padding: '2px 0',
                 color: r.id === 'me' ? COLOR.text : COLOR.muted, fontWeight: r.id === 'me' ? 600 : 400 }}>
                 <span className="ems-mono" style={{ width: 14, color: COLOR.faint }}>{idx + 1}</span>
                 <span style={{ width: 8, height: 8, background: r.color, borderRadius: 1, flexShrink: 0 }} />
@@ -659,18 +659,18 @@ export function PortfolioSummary({ book, economy, live, prevValue, goal, opponen
               </div>
             ))}
           {opponent && !Number.isFinite(opponent.value) && (
-            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3 }}>{opponent.label} ещё не выходил на рынок в этой партии.</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 3 }}>{opponent.label} ещё не выходил на рынок в этой партии.</div>
           )}
         </div>
       )}
       {alloc.length > 0 && (
         <div style={{ marginTop: 8, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
-          <div style={{ fontSize: 11, color: COLOR.blue, marginBottom: 6 }}>Портфель по отраслям</div>
+          <div style={{ fontSize: 12, color: COLOR.blue, marginBottom: 6 }}>Портфель по отраслям</div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <AllocationDonut rows={alloc} />
             <div style={{ flex: 1, minWidth: 165 }}>
               {alloc.map((r) => (
-                <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '1.5px 0' }}>
+                <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '1.5px 0' }}>
                   <span style={{ width: 8, height: 8, background: r.color, borderRadius: 1, flexShrink: 0, opacity: r.short ? 0.5 : 1 }} />
                   <span style={{ flex: 1, minWidth: 0, color: COLOR.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {r.label}{r.short ? ' · шорт' : ''}
@@ -684,24 +684,24 @@ export function PortfolioSummary({ book, economy, live, prevValue, goal, opponen
             </div>
           </div>
           {Math.abs(optVal) > 0.005 && (
-            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5 }}>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5 }}>
               Опционы учтены по текущей оценке, фьючерсы — по номиналу позиции, шорты — по модулю: диаграмма показывает риск, а не вложенные деньги.
             </div>
           )}
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, padding: '4px 0 0', color: COLOR.muted }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0 0', color: COLOR.muted }}>
         <span>Свободные деньги</span>
         <span className="ems-mono" style={{ color: book.cash < 0 ? COLOR.rust : COLOR.text }}>{fmtMln(book.cash)}</span>
       </div>
-      <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
+      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
         <b style={{ color: COLOR.goldSoft }}>Ваша цель: {goalDef ? goalDef.label.toLowerCase() : 'приумножить капитал'}.</b> {goalLine()}
         {' '}Инфляция за квартал забирает {fmt1(economy.inflation / 4)}% номинальной стоимости, поэтому «ничего не делать» — это тоже ставка, и обычно проигрышная.
       </div>
       {(book.lastEvents || []).length > 0 && (
         <div style={{ marginTop: 8 }}>
           {book.lastEvents.map((ev, i) => (
-            <div key={i} style={{ fontSize: 11, lineHeight: 1.45, color: ev.kind === 'call' ? COLOR.rust : ev.kind === 'ok' ? COLOR.teal : COLOR.muted,
+            <div key={i} style={{ fontSize: 12, lineHeight: 1.45, color: ev.kind === 'call' ? COLOR.rust : ev.kind === 'ok' ? COLOR.teal : COLOR.muted,
               borderLeft: `2px solid ${ev.kind === 'call' ? COLOR.rust : COLOR.border}`, paddingLeft: 8, marginTop: 4 }}>
               {ev.text}
             </div>

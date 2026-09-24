@@ -4,7 +4,7 @@
    газета и торговый терминал. Общие компоненты, тема (COLOR), звук и
    помощники сохранений — те же объекты, что в MacroSimulator.jsx
    (экспортированы оттуда), а не копии. */
-import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Star, TrendingUp, Trophy, Users, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, TrendingUp, Trophy, Users, X } from 'lucide-react';
 import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
@@ -15,10 +15,10 @@ import {
 import {
   ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, CasinoScreen, ChartFallback, ChartPanel,
   ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
-  ChronicleModal, GameOverModal, Gauge, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID, KpiTile,
+  ChronicleModal, GameOverModal, Gauge, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID,
   LeverSlider, MAX_PINS, MetricRow, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel,
   PresidentWatchPanel, PressConferencePanel, PromisesPanel, QuarterStamp, RegimeBanner,
-  ResultCardModal, RiskBadge, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip,
+  ResultCardModal, KpiStrip, SummaryBar, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip,
   Segmented, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
   casinoAchievementIds, checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
   loadAutoPaper, loadNetworkPortfolio, makeDashboardActions, markNetworkPlayed, priceOf,
@@ -203,7 +203,7 @@ function NetworkLobby({ onEnter }) {
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} reason="Сетевая партия — только с профилем: так место в комнате остаётся за вами, а выйти и тут же зайти другим игроком нельзя." />}
       {slots.some(Boolean) && (
         <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }}>
-          <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>Ваши партии ({slots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})</div>
+          <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Ваши партии ({slots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {slots.map((slot, idx) => {
               const rd = slot && seatRole(slot.seat);
@@ -221,7 +221,7 @@ function NetworkLobby({ onEnter }) {
                           <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>
                         )}
                       </span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={slotBusy === idx}
+                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={slotBusy === idx}
                         onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Входим…' : 'Войти'}</button>
                       <button onClick={() => removeSlot(idx)} aria-label="Забыть эту партию"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 2, lineHeight: 0 }}>
@@ -251,7 +251,7 @@ function NetworkLobby({ onEnter }) {
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>
         {[['create', 'Создать комнату'], ['join', 'Войти по коду'], ['browse', 'Открытые комнаты']].map(([id, label]) => (
-          <span key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</span>
+          <button type="button" key={id} className={`ems-tab ${tab === id ? 'active' : ''}`} aria-pressed={tab === id} onClick={() => { Audio.play('tab'); setTab(id); setError(''); }}>{label}</button>
         ))}
       </div>
 
@@ -263,8 +263,8 @@ function NetworkLobby({ onEnter }) {
             <div style={{ display: 'flex', gap: 8 }}>
               {[['policy', 'Политика', 'ЦБ и Минфин делят экономику'], ['trader', 'Рынок', 'два трейдера на одной экономике']].map(([id, title]) => (
                 <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: mode === id ? COLOR.gold : COLOR.panelAlt, color: mode === id ? COLOR.ink : COLOR.text,
-                  borderColor: mode === id ? COLOR.gold : COLOR.border }}
+                  background: mode === id ? COLOR.sel : COLOR.panelAlt, color: mode === id ? COLOR.selText : COLOR.text,
+                  borderColor: mode === id ? COLOR.selBorder : COLOR.border }}
                   onClick={() => { Audio.play('click'); setMode(id); }}>{title}</button>
               ))}
             </div>
@@ -279,8 +279,8 @@ function NetworkLobby({ onEnter }) {
             <div style={{ display: 'flex', gap: 8 }}>
               {DIFFICULTIES.map((d) => (
                 <button key={d.id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: difficulty === d.id ? COLOR.gold : COLOR.panelAlt, color: difficulty === d.id ? COLOR.ink : COLOR.text,
-                  borderColor: difficulty === d.id ? COLOR.gold : COLOR.border }}
+                  background: difficulty === d.id ? COLOR.sel : COLOR.panelAlt, color: difficulty === d.id ? COLOR.selText : COLOR.text,
+                  borderColor: difficulty === d.id ? COLOR.selBorder : COLOR.border }}
                   onClick={() => { Audio.play('click'); setDifficulty(d.id); }}>{d.title}</button>
               ))}
             </div>
@@ -290,12 +290,12 @@ function NetworkLobby({ onEnter }) {
             <div style={{ display: 'flex', gap: 8 }}>
               {[[false, 'По коду'], [true, 'Общедоступная']].map(([val, title]) => (
                 <button key={String(val)} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: isPublicRoom === val ? COLOR.gold : COLOR.panelAlt, color: isPublicRoom === val ? COLOR.ink : COLOR.text,
-                  borderColor: isPublicRoom === val ? COLOR.gold : COLOR.border }}
+                  background: isPublicRoom === val ? COLOR.sel : COLOR.panelAlt, color: isPublicRoom === val ? COLOR.selText : COLOR.text,
+                  borderColor: isPublicRoom === val ? COLOR.selBorder : COLOR.border }}
                   onClick={() => { Audio.play('click'); setIsPublicRoom(val); }}>{title}</button>
               ))}
             </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
               {isPublicRoom
                 ? 'Комната появится во вкладке «Открытые комнаты» у всех — войти сможет кто угодно, без кода. Как только все места заняты, она пропадает из списка сама.'
                 : 'Войти можно только по коду комнаты или по ссылке-приглашению — как раньше.'}
@@ -306,12 +306,12 @@ function NetworkLobby({ onEnter }) {
             <div style={{ display: 'flex', gap: 8 }}>
               {[['classic', 'Классика'], ['custom', 'Настраиваемая']].map(([id, title]) => (
                 <button key={id} className="ems-btn" style={{ flex: 1, padding: '8px 0', fontSize: 12,
-                  background: setupMode === id ? COLOR.gold : COLOR.panelAlt, color: setupMode === id ? COLOR.ink : COLOR.text,
-                  borderColor: setupMode === id ? COLOR.gold : COLOR.border }}
+                  background: setupMode === id ? COLOR.sel : COLOR.panelAlt, color: setupMode === id ? COLOR.selText : COLOR.text,
+                  borderColor: setupMode === id ? COLOR.selBorder : COLOR.border }}
                   onClick={() => { Audio.play('click'); setSetupMode(id); }}>{title}</button>
               ))}
             </div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 6, lineHeight: 1.45 }}>
               {setupMode === 'classic'
                 ? 'Открытая партия без стартового кризиса, характеры ведомств бросаются случайно, президент включён — как в одиночной классике.'
                 : 'Выбрать стартовую ситуацию, характер каждого ведомства и президента — или обойтись без президента.'}
@@ -338,13 +338,13 @@ function NetworkLobby({ onEnter }) {
                             <span key={i} style={{ width: 9, height: 3, borderRadius: 2, background: i <= sc.level ? levelColor : COLOR.borderStrong, opacity: i <= sc.level ? 1 : 0.55 }} />
                           ))}
                         </span>
-                        <span className="ems-mono" style={{ fontSize: 9.5, color: levelColor, textTransform: 'uppercase', minWidth: 92, textAlign: 'right' }}>{sc.levelLabel}</span>
+                        <span className="ems-mono" style={{ fontSize: 12, color: levelColor, textTransform: 'uppercase', minWidth: 92, textAlign: 'right' }}>{sc.levelLabel}</span>
                       </button>
                     );
                   })}
                 </div>
                 {(() => { const sc = SCENARIOS.find((x) => x.id === netScenario); return sc && sc.levelNote
-                  ? <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 6, lineHeight: 1.4 }}>{sc.levelNote}</div> : null; })()}
+                  ? <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6, lineHeight: 1.4 }}>{sc.levelNote}</div> : null; })()}
               </div>
               {[['Характер Центрального банка', CB_PERSONAS, cbPersona, setCbPersona,
                 mode === 'trader' ? 'Ставку ведёт бот — от его характера зависит весь рынок.' : 'Действует, пока место ЦБ пустует или игрок не успел с решением.'],
@@ -353,12 +353,12 @@ function NetworkLobby({ onEnter }) {
                 .map(([title, list, value, set, note]) => (
                   <div key={title} style={{ marginBottom: 10 }}>
                     <div style={{ fontSize: 12, marginBottom: 4 }}>{title}</div>
-                    <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>{note}</div>
+                    <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>{note}</div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {[...list, { id: 'random', name: 'Случайный' }].map((pp) => (
-                        <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
-                          background: value === pp.id ? COLOR.gold : COLOR.panelAlt, color: value === pp.id ? COLOR.ink : COLOR.text,
-                          borderColor: value === pp.id ? COLOR.gold : COLOR.border }}
+                        <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 12,
+                          background: value === pp.id ? COLOR.sel : COLOR.panelAlt, color: value === pp.id ? COLOR.selText : COLOR.text,
+                          borderColor: value === pp.id ? COLOR.selBorder : COLOR.border }}
                           onClick={() => { Audio.play('click'); set(pp.id); }}>{pp.name}</button>
                       ))}
                     </div>
@@ -366,23 +366,23 @@ function NetworkLobby({ onEnter }) {
                 ))}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 12 }}>Президент</span>
-                <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11,
-                  background: presEnabled ? COLOR.gold : COLOR.panelAlt, color: presEnabled ? COLOR.ink : COLOR.muted,
-                  borderColor: presEnabled ? COLOR.gold : COLOR.border }}
+                <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 12,
+                  background: presEnabled ? COLOR.sel : COLOR.panelAlt, color: presEnabled ? COLOR.selText : COLOR.muted,
+                  borderColor: presEnabled ? COLOR.selBorder : COLOR.border }}
                   onClick={() => { Audio.play('tick'); setPresEnabled((v) => !v); }}>
                   {presEnabled ? 'включён' : 'выключен'}
                 </button>
               </div>
-              <div style={{ fontSize: 11, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>
+              <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 6, lineHeight: 1.4 }}>
                 Над обоими ведомствами стоит президент: он требует своего от каждого из вас, меняет руководителя
                 ведомства, за которым никто не сидит, и тратит политический капитал на реформы и указы.
               </div>
               {presEnabled && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {[...PRESIDENT_PERSONAS, { id: 'random', name: 'Случайный' }].map((pp) => (
-                    <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 11.5,
-                      background: presPersona === pp.id ? COLOR.gold : COLOR.panelAlt, color: presPersona === pp.id ? COLOR.ink : COLOR.text,
-                      borderColor: presPersona === pp.id ? COLOR.gold : COLOR.border }}
+                    <button key={pp.id} className="ems-btn" style={{ flex: '1 1 30%', padding: '7px 0', fontSize: 12,
+                      background: presPersona === pp.id ? COLOR.sel : COLOR.panelAlt, color: presPersona === pp.id ? COLOR.selText : COLOR.text,
+                      borderColor: presPersona === pp.id ? COLOR.selBorder : COLOR.border }}
                       onClick={() => { Audio.play('click'); setPresPersona(pp.id); }}>{pp.name}</button>
                   ))}
                 </div>
@@ -405,12 +405,12 @@ function NetworkLobby({ onEnter }) {
               className="ems-mono" style={{ width: '100%', padding: '9px 11px', fontSize: 14, letterSpacing: '0.08em',
                 background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
             {created && created === code.trim().toUpperCase() && (
-              <div style={{ marginTop: 8, fontSize: 11.5, color: COLOR.teal }}>
+              <div style={{ marginTop: 8, fontSize: 12, color: COLOR.teal }}>
                 <div>Комната ваша — отправьте партнёру код выше или ссылку ниже, по ней комната откроется автоматически.</div>
                 <div style={{ display: 'flex', gap: 7, alignItems: 'center', marginTop: 6 }}>
                   <input readOnly value={shareLink(created)} className="ems-mono" onClick={(e) => e.target.select()}
-                    style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 11, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
-                  <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 11, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
+                    style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 12, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.muted }} />
+                  <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, whiteSpace: 'nowrap' }} onClick={() => copyLink(created)}>
                     {linkCopied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 4 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
                     {linkCopied ? 'Скопировано' : 'Копировать ссылку'}
                   </button>
@@ -425,7 +425,7 @@ function NetworkLobby({ onEnter }) {
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 11px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 13 }}>
                   <Emb size={15} color={COLOR.gold} /><span style={{ color: COLOR.text }}>{account.name}</span>
-                  <span className="ems-mono" style={{ color: COLOR.faint, fontSize: 11 }}>@{account.login}</span>
+                  <span className="ems-mono" style={{ color: COLOR.faint, fontSize: 12 }}>@{account.login}</span>
                 </div>
               );
             })() : (
@@ -444,11 +444,11 @@ function NetworkLobby({ onEnter }) {
                 return (
                   <button key={sx} className="ems-btn" disabled={taken}
                     style={{ flex: 1, padding: '10px 6px', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
-                      background: seat === sx ? COLOR.gold : COLOR.panelAlt, color: seat === sx ? COLOR.ink : COLOR.text,
-                      borderColor: seat === sx ? COLOR.gold : COLOR.border, opacity: taken ? 0.4 : 1, cursor: taken ? 'not-allowed' : 'pointer' }}
+                      background: seat === sx ? COLOR.sel : COLOR.panelAlt, color: seat === sx ? COLOR.selText : COLOR.text,
+                      borderColor: seat === sx ? COLOR.selBorder : COLOR.border, opacity: taken ? 0.4 : 1, cursor: taken ? 'not-allowed' : 'pointer' }}
                     onClick={() => { if (taken) return; Audio.play('click'); setSeat(sx); }}>
                     <RoleIcon size={15} />{rd.short}
-                    {taken && <span style={{ fontSize: 9, letterSpacing: '0.03em' }}>занято</span>}
+                    {taken && <span style={{ fontSize: 12, letterSpacing: '0.03em' }}>занято</span>}
                   </button>
                 );
               })}
@@ -463,7 +463,7 @@ function NetworkLobby({ onEnter }) {
       {tab === 'browse' && (
         <div className="ems-panel" style={{ padding: 18 }}>
           <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft, marginBottom: 4 }}>Открытые комнаты</div>
-          <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 12, lineHeight: 1.45 }}>
+          <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 12, lineHeight: 1.45 }}>
             Партии, которые их создатели сделали общедоступными, — войти можно сразу, без кода.
           </div>
           {publicRoomsError && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 10 }}>{publicRoomsError}</div>}
@@ -485,21 +485,21 @@ function NetworkLobby({ onEnter }) {
                   <span style={{ color: COLOR.faint }}>{DIFFICULTIES.find((d) => d.id === r.difficulty)?.title || r.difficulty}</span>
                   <span style={{ color: COLOR.faint }}>{quarterLabel(r.quarterIndex)}</span>
                   {(r.activeCrises || []).length > 0 ? (
-                    <span style={{ color: COLOR.rust, fontSize: 10.5 }} title={r.activeCrises.map((c) => CRISIS_SHORT[c] || c).join(', ')}>
+                    <span style={{ color: COLOR.rust, fontSize: 12 }} title={r.activeCrises.map((c) => CRISIS_SHORT[c] || c).join(', ')}>
                       ⚠ {CRISIS_SHORT[r.activeCrises[0]] || r.activeCrises[0]}{r.activeCrises.length > 1 ? ` +${r.activeCrises.length - 1}` : ''}
                     </span>
                   ) : (
-                    <span style={{ color: COLOR.teal, fontSize: 10.5 }}>спокойно</span>
+                    <span style={{ color: COLOR.teal, fontSize: 12 }}>спокойно</span>
                   )}
                   <span style={{ marginLeft: 'auto', color: COLOR.muted }}>{r.seatsTotal - r.seatsFree}/{r.seatsTotal}</span>
-                  <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 11.5 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
+                  <button className="ems-btn" style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => joinPublicRoom(r.id)}>Войти</button>
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
-      {error && <div style={{ marginTop: 10, fontSize: 12.5, color: COLOR.rust }}>{error}</div>}
+      {error && <div style={{ marginTop: 10, fontSize: 13, color: COLOR.rust }}>{error}</div>}
     </div>
   );
 }
@@ -955,7 +955,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           {!narrow && <div style={{ position: 'relative' }}>
             <select value={room.difficulty} disabled={difficultyBusy} onChange={(e) => changeDifficulty(e.target.value)}
               title="Сложность партии" className="ems-btn"
-              style={{ padding: '7px 26px 7px 9px', fontSize: 11.5, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
+              style={{ padding: '7px 26px 7px 9px', fontSize: 12, appearance: 'none', WebkitAppearance: 'none', cursor: difficultyBusy ? 'wait' : 'pointer' }}>
               {DIFFICULTIES.map((d) => (<option key={d.id} value={d.id}>{d.title}</option>))}
             </select>
             <ChevronDown size={12} color={COLOR.muted} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
@@ -998,50 +998,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
 
       <CrisisBar economy={economy} botAction={otherAction} />
 
-      <div style={{ padding: '14px 18px 4px' }}>
-        <div className="ems-kpi-strip">
-          {pinned.map((key, idx) => {
-            const m = ALL_METRICS[key];
-            if (!m) return null;
-            const val = economy[key];
-            return (
-              <div key={key} draggable
-                onDragStart={(e) => { setDragPin(key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', key); }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
-                onDragEnd={() => setDragPin(null)}
-                style={{ position: 'relative', opacity: dragPin === key ? 0.4 : 1, cursor: 'grab', gridColumn: idx === 0 ? 'span 2' : undefined }}>
-                <KpiTile label={m.label} value={Number.isFinite(val) ? m.fmt(val) : '—'} delta={kpiDelta(key)} invert={m.invert} series={room.history.slice(-8).map((h) => h[key]).filter(Number.isFinite)} hero={idx === 0} />
-                <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <button onClick={() => { Audio.play('tick'); movePin(key, -1); }} aria-label="Левее"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>◀</button>
-                  <button onClick={() => { Audio.play('tick'); movePin(key, 1); }} aria-label="Правее"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0, fontSize: 10 }}>▶</button>
-                  <button onClick={() => { Audio.play('tick'); togglePin(key); }} aria-label={`Убрать ${m.label} с полосы`}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, padding: 1, lineHeight: 0 }}>
-                    <X size={10} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {pinned.length < MAX_PINS && (
-            /* подсказка растягивается до конца ряда: главная плитка занимает две ячейки,
-               и без этого последний ряд оставался с дыркой */
-            <div className="ems-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed', gridColumn: 'auto / -1', minHeight: 64 }}>
-              <span style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
-                <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="ems-panel" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: 10, padding: '9px 13px' }}>
-          <RiskBadge label="Инфляционный" value={economy.inflationRisk} />
-          <RiskBadge label="Банковский" value={economy.bankingRisk} />
-          <RiskBadge label="Долговой" value={economy.debtRisk} />
-          <RiskBadge label="Рецессии" value={economy.recessionRisk} />
-          <RiskBadge label="Валютный" value={economy.currencyRisk} />
-        </div>
+      <div style={{ padding: '12px 18px 0' }}>
+        <KpiStrip pinned={pinned} economy={economy} history={room.history} kpiDelta={kpiDelta} dragPin={dragPin} setDragPin={setDragPin}
+          reorderPin={reorderPin} movePin={movePin} togglePin={togglePin} maxPins={MAX_PINS} />
       </div>
 
       <div style={{ margin: '10px 18px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1065,7 +1024,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 : 'Если решение не придёт в течение 5 минут с начала квартала, за это ведомство один раз решит бот, а место останется за партнёром.'}</span></div>
           </div>
         )}
-        <RegimeBanner economy={economy} />
+        <SummaryBar economy={economy} />
+        <RegimeBanner economy={economy} crisisOnly />
         {economy.regionEvent && centerView !== 'map' && (
           <RegionEventStrip event={economy.regionEvent} answered={!!decisions.regionResponse} canAnswer={canPlanMap}
             onOpen={() => { Audio.play('tab'); setCenterView('map'); }} />
@@ -1112,13 +1072,13 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               <PromisesPanel promises={room.promises} economy={economy} />
               {presState && presState.demand && (
                 <div className="ems-panel" style={{ padding: 12, borderColor: COLOR.gold }}>
-                  <div style={{ fontSize: 10, color: COLOR.faint, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
+                  <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5 }}>
                     Требование в силе
                   </div>
-                  <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                  <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.45 }}>
                     {presState.demand.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: «{presState.demand.ask}»
                   </div>
-                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4, lineHeight: 1.4 }}>
+                  <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 4, lineHeight: 1.4 }}>
                     Ведомство отвечает решениями этого квартала — итог будет в новостях, когда квартал закроется.
                     Новое указание встанет в силу со следующего.
                   </div>
@@ -1132,7 +1092,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                     ['Долг', pctFmt(economy.debtToGdp)],
                     ['За ЦБ', room.occupied.central_bank ? (room.names.central_bank || 'игрок') : 'бот'],
                     ['За Минфин', room.occupied.ministry_finance ? (room.names.ministry_finance || 'игрок') : 'бот']].map(([l, v]) => (
-                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                         <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
                       </div>
                     ))}
@@ -1153,7 +1113,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                       return (
                         <React.Fragment key={sub}>
                           {sub === 'debt' && (
-                            <div style={{ fontSize: 10.5, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
+                            <div style={{ fontSize: 12, color: COLOR.faint, margin: '2px 0 8px', lineHeight: 1.4 }}>
                               Дефицит финансируется сам — рынок и так занимает за вас ровно столько, сколько не хватает. Здесь — добровольное решение занять сверх этого: долг растёт сразу, а деньги идут в резерв на будущее.
                             </div>
                           )}
@@ -1170,7 +1130,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </div>
 
               {roleDef.groups.includes('fiscal') && (economy.activeCrises || []).includes('debt') && economy.imfActive && (
-                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 11.5, color: COLOR.text, lineHeight: 1.45 }}>
+                <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 12, color: COLOR.text, lineHeight: 1.45 }}>
                   <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
                 </div>
               )}
@@ -1185,7 +1145,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                       }}>
                       <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
                     </button>
-                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
                       Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
                     </div>
                   </div>
@@ -1197,7 +1157,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                       }}>
                       <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
                     </button>
-                    <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
                       Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
                     </div>
                   </div>
@@ -1212,7 +1172,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               <div className="ems-panel" style={{ padding: 13, borderLeft: `3px solid ${otherAccent}` }}>
                 <div className="ems-serif" style={{ fontSize: 13, color: otherAccent, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <OtherRoleIcon size={13} />{otherRole.title}
-                  <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>{room.occupied[otherSeat] ? (room.names[otherSeat] || 'игрок') : 'бот'}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {(otherSeat === 'central_bank' ? [
@@ -1225,13 +1185,13 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                     ['НДС', pctFmt(economy.vatRate)],
                     ['Налог на прибыль', pctFmt(economy.profitTaxRate)],
                   ]).map(([l, v]) => (
-                    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
+                    <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                       <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
                     </div>
                   ))}
                 </div>
                 <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 10.5, color: COLOR.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 2 }}>
                     {otherSeat === 'ministry_finance' ? 'Бюджетные потоки, темп роста' : 'Решения прошлого квартала'}
                   </div>
                   {otherSeat === 'ministry_finance'
@@ -1239,7 +1199,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                     : <MonetaryLeverReadout levers={otherAction ? otherAction.levers : null} accent={otherAccent} economy={economy} />}
                 </div>
                 {otherAction && otherAction.note && (
-                  <div style={{ marginTop: 8, fontSize: 11, color: COLOR.faint, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, lineHeight: 1.4 }}>{otherAction.note}</div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: COLOR.faint, borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7, lineHeight: 1.4 }}>{otherAction.note}</div>
                 )}
               </div>
             </>
@@ -1250,17 +1210,17 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div className="ems-panel" style={{ padding: 13, borderColor: presDemand.branch === myBranch ? COLOR.rust : COLOR.borderStrong }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
                 <Crown size={14} color={COLOR.gold} />
-                <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Президент</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: COLOR.faint }}>{room.names.president || 'игрок'}</span>
+                <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Президент</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>{room.names.president || 'игрок'}</span>
               </div>
-              <div style={{ fontSize: 11.5, lineHeight: 1.45, paddingLeft: 9, color: COLOR.text,
+              <div style={{ fontSize: 12, lineHeight: 1.45, paddingLeft: 9, color: COLOR.text,
                 borderLeft: `2px solid ${presDemand.branch === myBranch ? COLOR.rust : COLOR.blue}` }}>
                 <span style={{ color: presDemand.branch === myBranch ? COLOR.rust : COLOR.blue, fontWeight: 600 }}>
                   {presDemand.branch === myBranch ? 'Требование к вам: ' : `Указание ${presDemand.branch === 'monetary' ? 'ЦБ' : 'Минфину'}: `}
                 </span>
                 {presDemand.ask}
                 {presDemand.branch === myBranch && (
-                  <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 4 }}>
                     Выполнить — значит сдвинуть свои рычаги в эту сторону в этом квартале. Отказать можно, но администрация ведёт счёт.
                   </div>
                 )}
@@ -1280,8 +1240,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Megaphone size={13} />Пресс-конференция
                 </div>
-                <div style={{ fontSize: 11.5, color: COLOR.text, lineHeight: 1.45, marginBottom: 6 }}>«{pressQuestion.prompt}»</div>
-                <div style={{ fontSize: 10.5, color: COLOR.faint, lineHeight: 1.4 }}>
+                <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.45, marginBottom: 6 }}>«{pressQuestion.prompt}»</div>
+                <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.4 }}>
                   Отвечает {(room.names && room.names[pressSpeaker]) || seatRole(pressSpeaker).short} — {seatRole(pressSpeaker).short}: от имени власти в квартал звучит один голос.
                 </div>
               </div>
@@ -1291,7 +1251,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7 }}>Чат с партнёром</div>
             <div className="ems-scroll" style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0, marginBottom: 8 }}>
               {(!room.chat || room.chat.length === 0) && (
-                <div style={{ fontSize: 11.5, color: COLOR.faint }}>Пока тишина — напишите первым.</div>
+                <div style={{ fontSize: 12, color: COLOR.faint }}>Пока тишина — напишите первым.</div>
               )}
               {(room.chat || []).map((m, i) => {
                 const mine = m.seat === seat;
@@ -1303,10 +1263,10 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 const time = m.at ? new Date(m.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
                 return (
                   <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '88%', textAlign: mine ? 'right' : 'left', marginTop: i === 0 ? 0 : grouped ? 2 : 10 }}>
-                    {!grouped && <div style={{ fontSize: 9.5, color: mine ? COLOR.gold : COLOR.blue, marginBottom: 2 }}>{nm}</div>}
+                    {!grouped && <div style={{ fontSize: 12, color: mine ? COLOR.gold : COLOR.blue, marginBottom: 2 }}>{nm}</div>}
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexDirection: mine ? 'row-reverse' : 'row' }}>
                       <div style={{ fontSize: 12, color: COLOR.text, background: COLOR.panelAlt, padding: '6px 10px', borderRadius: 3, display: 'inline-block', wordBreak: 'break-word' }}>{m.text}</div>
-                      {time && <span className="ems-mono" style={{ fontSize: 9, color: COLOR.faint, flexShrink: 0 }}>{time}</span>}
+                      {time && <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint, flexShrink: 0 }}>{time}</span>}
                     </div>
                   </div>
                 );
@@ -1323,7 +1283,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               </button>
             </div>
             {otherAction && otherAction.quote && (
-              <div style={{ marginTop: 8, fontSize: 11.5, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 8, color: COLOR.muted }}>
+              <div style={{ marginTop: 8, fontSize: 12, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 8, color: COLOR.muted }}>
                 <span style={{ color: COLOR.faint }}>{otherRole.short} (бот): </span>«{otherAction.quote}»
               </div>
             )}
@@ -1372,8 +1332,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <>
               <div style={{ display: 'flex', gap: 4 }}>
                 {[['market', 'Рынок', TrendingUp], ['casino', 'Казино', Dices]].map(([tid, label, Icon]) => (
-                  <span key={tid} className={`ems-tab ${marketTab === tid ? 'active' : ''}`} style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    onClick={() => { Audio.play('tab'); setMarketTab(tid); }}><Icon size={13} />{label}</span>
+                  <button type="button" key={tid} className={`ems-tab ${marketTab === tid ? 'active' : ''}`} aria-pressed={marketTab === tid} style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                    onClick={() => { Audio.play('tab'); setMarketTab(tid); }}><Icon size={13} />{label}</button>
                 ))}
               </div>
               {marketTab === 'market'
@@ -1390,7 +1350,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
               {room.report && room.reasons && (
-                <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 11 }} onClick={() => setShowWhy(true)}>
+                <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => setShowWhy(true)}>
                   <Info size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Почему это произошло?
                 </button>
               )}
@@ -1400,7 +1360,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ background: COLOR.panelRaised, color: COLOR.text, padding: '16px 18px',
               borderTop: `3px double ${COLOR.gold}`, borderLeft: `1px solid ${COLOR.border}`,
               borderRight: `1px solid ${COLOR.border}`, borderBottom: `1px solid ${COLOR.border}` }}>
-              <div className="ems-mono" style={{ fontSize: 9, color: COLOR.gold, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>Бюллетень квартала</div>
+              <div className="ems-mono" style={{ fontSize: 12, color: COLOR.gold, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>Бюллетень квартала</div>
               {room.report ? (
                 <div className="ems-serif" style={{ fontSize: 13, lineHeight: 1.65 }}>{room.report}</div>
               ) : (
@@ -1421,7 +1381,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
               <Users size={13} color={COLOR.blue} />
               <span className="ems-serif" style={{ fontSize: 13, color: COLOR.blue }}>Статус партии</span>
-              {isOwner && <span title="Вы создали эту комнату" className="ems-mono" style={{ marginLeft: 'auto', fontSize: 9.5, color: COLOR.faint, letterSpacing: '0.04em' }}>ВЛАДЕЛЕЦ</span>}
+              {isOwner && <span title="Вы создали эту комнату" className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint, letterSpacing: '0.04em' }}>ВЛАДЕЛЕЦ</span>}
             </div>
             {roomSeats.map((sx) => {
               const rd = seatRole(sx); const Icon = ROLE_ICON[rd.icon];
@@ -1436,7 +1396,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                       return <Em size={11} color={COLOR.gold} style={{ verticalAlign: -1, marginRight: 3 }} aria-label="профиль" />;
                     })()}{room.occupied[sx] ? (room.names[sx] || 'игрок') : (isTraderRoom ? 'свободно' : 'бот')}
                   </span>
-                  <span className="ems-mono" style={{ fontSize: 10.5, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
+                  <span className="ems-mono" style={{ fontSize: 12, color: room.ready[sx] ? COLOR.teal : COLOR.faint }}>
                     {room.ready[sx] ? 'готово' : 'думает'}
                   </span>
                   {canKick && (
@@ -1455,7 +1415,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
                 {inviteCopied ? 'Ссылка скопирована' : 'Пригласить друга'}
               </button>
             )}
-            <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 8, lineHeight: 1.4 }}>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 8, lineHeight: 1.4 }}>
               Код комнаты для второго игрока: <b className="ems-mono" style={{ color: COLOR.text }}>{room.id}</b>
             </div>
           </div>
@@ -1464,7 +1424,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 11 }} className="ems-scroll">
               {INDICATOR_TABS.map((t) => {
                 const TabIcon = t.icon;
-                return (<span key={t.id} className={`ems-tab ${activeTab === t.id ? 'active' : ''}`} onClick={() => { Audio.play('tab'); setActiveTab(t.id); }}>{TabIcon && <TabIcon size={12} />}{t.label}</span>);
+                return (<button type="button" key={t.id} className={`ems-tab ${activeTab === t.id ? 'active' : ''}`} aria-pressed={activeTab === t.id} onClick={() => { Audio.play('tab'); setActiveTab(t.id); }}>{TabIcon && <TabIcon size={12} />}{t.label}</button>);
               })}
             </div>
             {(INDICATOR_TABS.find((t) => t.id === activeTab) || INDICATOR_TABS[0]).rows.map((row, i, arr) => {
@@ -1522,7 +1482,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
               переносились в три строки и панель занимала четверть экрана */}
           {error && <span style={{ color: COLOR.rust, fontSize: 12, marginRight: 'auto' }}>{error}</span>}
           {!error && (
-            <span style={{ fontSize: narrow ? 10.5 : 11.5, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7,
+            <span style={{ fontSize: 12, color: COLOR.faint, marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 7,
               width: narrow ? '100%' : undefined, lineHeight: 1.35 }}>
               {isTraderRoom
                 ? (!room.occupied[otherSeat]
@@ -1545,7 +1505,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           {waitingForOther ? (
             <button className="ems-btn" style={{ padding: '12px 22px', fontSize: 13, width: narrow ? '100%' : undefined }} disabled={busy} onClick={retract}>{isTraderRoom ? 'Отменить готовность' : 'Отозвать решения'}</button>
           ) : (
-            <button className="ems-btn primary" style={{ padding: narrow ? '11px 16px' : '12px 26px', fontSize: 13.5, width: narrow ? '100%' : undefined }} disabled={busy} onClick={send}>
+            <button className="ems-btn primary" style={{ padding: narrow ? '11px 16px' : '12px 26px', fontSize: 14, width: narrow ? '100%' : undefined }} disabled={busy} onClick={send}>
               {busy ? 'Отправка…' : isTraderRoom ? 'Готов к следующему кварталу'
                 : isPresidentSeat ? 'Подписать и завершить квартал' : 'Отправить решения квартала'}
             </button>
