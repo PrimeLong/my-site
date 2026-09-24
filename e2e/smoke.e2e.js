@@ -67,9 +67,18 @@ test('одиночная партия: квартал проходит, газе
 test('обучение: хаб и программа курса открываются', async ({ page }) => {
   const { errors } = await openApp(page);
   await page.getByText('Обучение', { exact: true }).click();
-  await expect(page.getByText('Три курса')).toBeVisible();
+  await expect(page.getByText('Четыре курса')).toBeVisible();
   await page.getByText('Экономическая политика', { exact: true }).first().click();
   await expect(page.getByText('ПРОГРАММА КУРСА', { exact: false })).toBeVisible();
+  await expect(page.getByText('Общество: семь групп вместо одного рейтинга', { exact: true })).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  // режимы игры открыты в любом порядке: сразу в «Своё дело», пройти тест
+  await page.getByRole('button', { name: /Ко всем курсам/ }).click();
+  await page.getByText('Режимы игры', { exact: true }).click();
+  await page.getByText('Своё дело', { exact: true }).click();
+  await expect(page.getByText('Другая игра на той же экономике')).toBeVisible();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: /^Далее/ }).click();
+  await expect(page.getByText('Тест: своё дело')).toBeVisible();
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
