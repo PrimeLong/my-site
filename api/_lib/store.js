@@ -153,3 +153,18 @@ export async function delSession(token) {
   mem.delete(`session:${token}`);
   return true;
 }
+
+/* Счётчик попыток в окне ttl секунд (лимит регистраций и восстановлений с одного
+   адреса). Возвращает число попыток в текущем окне, включая эту. */
+export async function hit(key, ttlSeconds) {
+  if (redis) {
+    const n = await redis.incr(`hit:${key}`);
+    if (n === 1) await redis.expire(`hit:${key}`, ttlSeconds);
+    return n;
+  }
+  const now = Date.now();
+  const cur = mem.get(`hit:${key}`);
+  const next = cur && cur.until > now ? { n: cur.n + 1, until: cur.until } : { n: 1, until: now + ttlSeconds * 1000 };
+  mem.set(`hit:${key}`, next);
+  return next.n;
+}

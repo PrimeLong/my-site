@@ -328,7 +328,9 @@ test('профиль: регистрация из меню, профиль со 
   const { errors } = await openApp(page, '/', (req) => {
     let body = null; try { body = req.postDataJSON(); } catch { body = null; }
     const profile = { login: 'anna', name: 'Анна', emblem: 'star', playerId: 'p1', createdAt: Date.now(), stats: { rooms: 3, quarters: 12, leaves: 1 } };
-    if (body && (body.action === 'register' || body.action === 'login')) return JSON.stringify({ token: 'sess', profile });
+    if (body && body.action === 'register') return JSON.stringify({ token: 'sess', profile, recoveryCode: 'ABCD-EFGH-JKMN' });
+    if (body && body.action === 'recover') return JSON.stringify({ token: 'sess2', profile, recoveryCode: 'PQRS-TUVW-XYZ2' });
+    if (body && body.action === 'login') return JSON.stringify({ token: 'sess', profile });
     if (body && body.action === 'me') return JSON.stringify({ profile });
     if (body && body.action === 'update') return JSON.stringify({ profile: { ...profile, emblem: body.emblem || 'star' } });
     return '{}';
@@ -338,6 +340,9 @@ test('профиль: регистрация из меню, профиль со 
   await auth.getByLabel('Логин').fill('anna');
   await auth.getByLabel('Пароль').fill('secret1');
   await auth.getByRole('button', { name: 'Создать профиль' }).click();
+  // почты нет — код восстановления показывается один раз, до закрытия окна
+  await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
+  await page.getByRole('button', { name: 'Я сохранил код' }).click();
   await page.getByRole('button', { name: 'Профиль: Анна' }).click();
   const prof = page.getByRole('dialog', { name: 'Профиль' });
   await expect(prof.getByText('Кварталов по сети')).toBeVisible();
@@ -347,5 +352,17 @@ test('профиль: регистрация из меню, профиль со 
   await expectNoSidewaysScroll(page);
   await prof.getByRole('button', { name: 'Выйти' }).click();
   await expect(page.getByRole('button', { name: 'Войти в профиль' })).toBeVisible();
+
+  // забыли пароль: логин, код и новый пароль → новый код
+  await page.getByRole('button', { name: 'Войти в профиль' }).click();
+  await auth.getByRole('tab', { name: 'У меня есть профиль' }).click();
+  await auth.getByRole('button', { name: 'Забыли пароль?' }).click();
+  await auth.getByLabel('Логин').fill('anna');
+  await auth.getByLabel('Код восстановления').fill('abcd-efgh-jkmn');
+  await auth.getByLabel('Новый пароль').fill('fresh12');
+  await auth.getByRole('button', { name: 'Задать новый пароль' }).click();
+  await expect(page.getByTestId('recovery-code')).toHaveText('PQRS-TUVW-XYZ2');
+  await page.getByRole('button', { name: 'Я сохранил код' }).click();
+  await expect(page.getByRole('button', { name: 'Профиль: Анна' })).toBeVisible();
   expect(errors).toEqual([]);
 });

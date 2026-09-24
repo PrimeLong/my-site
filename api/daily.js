@@ -1,13 +1,16 @@
 /* Таблица вызова дня. Сама партия идёт у игрока (как соло), сюда приходит только
-   итог: балл, пост, дошёл ли до конца. Аккаунтов нет — строка таблицы привязана к
-   playerId, а имя игрок вводит сам. У каждого в таблице одна строка: лучший
-   результат за день, повторная попытка с меньшим баллом её не затирает.
+   итог: балл, пост, дошёл ли до конца. С профилем строка привязана к нему: имя и
+   значок берутся из профиля, строка помечена как подтверждённая. Гость по-прежнему
+   может записаться под своим playerId и любым именем, но чужое подтверждённое имя
+   ему не достанется — к нему припишется «(гость)». У каждого в таблице одна строка:
+   лучший результат за день, повторная попытка с меньшим баллом её не затирает.
 
    Балл считает клиент, и сервер не может его перепроверить, не переиграв всю
    партию, — поэтому здесь только границы правдоподобия (0–100, известный пост,
    день — сегодня или вчера по Москве, чтобы партия, начатая до полуночи, успела
    записаться). Для таблицы друзей этого достаточно. */
 import { getDailyBoard, setDailyEntry, hasKv } from './_lib/store.js';
+import { userBySession } from './_lib/accounts.js';
 import { dailyKey, DAILY_QUARTERS } from '../src/lib/catalog.js';
 
 const MAX_PLAYER_ID_LEN = 64;
@@ -61,7 +64,15 @@ export function rankBoard(board) {
 
 // наружу playerId не отдаём — это ключ к чужим сохранениям; своя строка помечается флагом
 const publicRow = (e, i, me) => ({ rank: i + 1, name: e.name, score: e.score, role: e.role,
-  quarters: e.quarters, defeated: e.defeated, scores: e.scores || {}, you: e.playerId === me });
+  quarters: e.quarters, defeated: e.defeated, scores: e.scores || {}, you: e.playerId === me,
+  verified: !!e.verified, emblem: e.verified ? e.emblem || 'star' : null });
+
+// гость не может подписаться именем, которое в этой таблице уже стоит за профилем
+export function guestName(name, board, playerId) {
+  const taken = rankBoard(board).some((e) => e.verified && e.playerId !== playerId
+    && String(e.name).toLowerCase() === String(name).toLowerCase());
+  return taken ? `${name} (гость)`.slice(0, MAX_NAME_LEN + 8) : name;
+}
 
 async function handleRequest(req, res) {
   if (req.method === 'GET') {
@@ -79,17 +90,23 @@ async function handleRequest(req, res) {
   try { body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); }
   catch { return res.status(400).json({ error: 'Некорректный JSON' }); }
   if (!body || typeof body !== 'object') return res.status(400).json({ error: 'Некорректное тело запроса' });
-  const { playerId, day } = body;
+  const { day } = body;
+  const user = body.session ? await userBySession(body.session) : null;
+  // с профилем строка — за профилем, а не за устройством
+  const playerId = user ? user.playerId : body.playerId;
   if (!validPlayerId(playerId)) return res.status(400).json({ error: 'Некорректный идентификатор' });
   if (!validDay(day) || !openDays().includes(day)) return res.status(400).json({ error: 'Приём результатов за этот день закрыт' });
   const entry = sanitizeEntry(body);
   if (!entry) return res.status(400).json({ error: 'Некорректный результат' });
 
   const board = await getDailyBoard(day);
+  if (user) Object.assign(entry, { name: user.name, verified: true, emblem: user.emblem || 'star' });
+  else entry.name = guestName(entry.name, board, playerId);
   const prevRaw = board[playerId];
   const prev = prevRaw ? (typeof prevRaw === 'string' ? JSON.parse(prevRaw) : prevRaw) : null;
   // худший повтор не затирает лучший результат, но новое имя применяется всегда
-  const next = prev && prev.score >= entry.score ? { ...prev, name: entry.name } : entry;
+  const next = prev && prev.score >= entry.score
+    ? { ...prev, name: entry.name, verified: entry.verified || false, emblem: entry.emblem } : entry;
   await setDailyEntry(day, playerId, next);
   const ranked = rankBoard({ ...board, [playerId]: next });
   const myIdx = ranked.findIndex((e) => e.playerId === playerId);

@@ -16,19 +16,41 @@ export function checkPassword(password, user) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 export const newToken = () => randomBytes(24).toString('hex');
+// код восстановления: 12 знаков без похожих друг на друга (0/O, 1/I/L), по четыре
+const REC_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export function newRecoveryCode() {
+  const bytes = randomBytes(12);
+  const raw = Array.from(bytes, (b) => REC_ALPHABET[b % REC_ALPHABET.length]).join('');
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8)}`;
+}
+export const normRecoveryCode = (v) => (typeof v === 'string' ? v.toUpperCase().replace(/[^A-Z0-9]/g, '') : '');
+export function hashRecovery(code) {
+  const { salt, hash } = hashPassword(normRecoveryCode(code));
+  return { recSalt: salt, recHash: hash };
+}
+export function checkRecovery(code, user) {
+  if (!user || !user.recSalt || !user.recHash) return false;
+  return checkPassword(normRecoveryCode(code), { salt: user.recSalt, hash: user.recHash });
+}
+// сессия хранит эпоху пароля: смена пароля или восстановление её сдвигает, и
+// все прежние сессии (в том числе чужие, если пароль утёк) перестают работать
+export const sessionValue = (user) => `${user.login}:${user.epoch || 0}`;
 export const emptyStats = () => ({ rooms: 0, quarters: 0, leaves: 0, lastRoom: null });
 
 // то, что можно показать о профиле: без хэша, соли и счётчика неудачных входов
 export function publicProfile(user) {
   if (!user) return null;
   return { login: user.login, name: user.name, emblem: user.emblem || 'star', playerId: user.playerId,
-    createdAt: user.createdAt, stats: { ...emptyStats(), ...user.stats } };
+    createdAt: user.createdAt, stats: { ...emptyStats(), ...user.stats }, hasRecovery: !!user.recHash };
 }
 
 export async function userBySession(token) {
   if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
-  const login = await getSession(token);
-  return login ? getUser(login) : null;
+  const value = await getSession(token);
+  if (!value) return null;
+  const [login, epoch = '0'] = String(value).split(':');
+  const user = await getUser(login);
+  return user && String(user.epoch || 0) === epoch ? user : null;
 }
 
 // статистика меняется только на сервере — клиент не может её себе нарисовать

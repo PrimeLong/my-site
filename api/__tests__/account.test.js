@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import accountHandler from '../account.js';
 import roomHandler, { seatAccessError } from '../room.js';
+import dailyHandler from '../daily.js';
+import { dailyKey } from '../../src/lib/catalog.js';
 
-const call = (handler, body) => new Promise((resolve) => {
+let ipN = 0;
+// у каждого запроса свой адрес — иначе в тестах сработал бы лимит регистраций
+const call = (handler, body, ip = `10.0.0.${ipN++}`) => new Promise((resolve) => {
   const res = { code: 200, status(c) { this.code = c; return this; }, json(d) { resolve({ status: this.code, data: d }); return this; } };
-  handler({ method: 'POST', query: {}, body }, res);
+  handler({ method: 'POST', query: {}, headers: { 'x-forwarded-for': ip }, body }, res);
 });
 const acc = (body) => call(accountHandler, body);
 const room = (body) => call(roomHandler, body);
@@ -57,6 +61,60 @@ describe('профиль: регистрация и вход', () => {
     expect((await acc({ action: 'login', login, password: 'newpass1' })).status).toBe(200);
     await acc({ action: 'logout', token });
     expect((await acc({ action: 'me', token })).status).toBe(401);
+  });
+});
+
+describe('профиль: восстановление доступа и сессии', () => {
+  it('при регистрации выдаётся код восстановления; по нему задаётся новый пароль, старые сессии гаснут', async () => {
+    const login = uniq('fedor');
+    const reg = await acc({ action: 'register', login, password: 'secret1' });
+    expect(reg.data.recoveryCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(reg.data.profile.hasRecovery).toBe(true);
+    const old = reg.data.token;
+    expect((await acc({ action: 'recover', login, code: 'AAAA-BBBB-CCCC', newPassword: 'fresh12' })).status).toBe(401);
+    const rec = await acc({ action: 'recover', login, code: reg.data.recoveryCode.toLowerCase(), newPassword: 'fresh12' });
+    expect(rec.status).toBe(200);
+    expect(rec.data.recoveryCode).not.toBe(reg.data.recoveryCode);
+    expect((await acc({ action: 'me', token: old })).status).toBe(401);
+    expect((await acc({ action: 'me', token: rec.data.token })).status).toBe(200);
+    expect((await acc({ action: 'login', login, password: 'fresh12' })).status).toBe(200);
+    // старый код одноразовый
+    expect((await acc({ action: 'recover', login, code: reg.data.recoveryCode, newPassword: 'again12' })).status).toBe(401);
+  });
+
+  it('смена пароля закрывает другие сессии, а этому устройству выдаёт новую', async () => {
+    const login = uniq('gleb');
+    const a = await acc({ action: 'register', login, password: 'secret1' });
+    const b = await acc({ action: 'login', login, password: 'secret1' });
+    const ch = await acc({ action: 'password', token: a.data.token, oldPassword: 'secret1', newPassword: 'newpass1' });
+    expect(ch.data.token).toBeTruthy();
+    expect((await acc({ action: 'me', token: b.data.token })).status).toBe(401);
+    expect((await acc({ action: 'me', token: ch.data.token })).status).toBe(200);
+  });
+
+  it('новый код восстановления — только по паролю', async () => {
+    const { data: { token } } = await acc({ action: 'register', login: uniq('hana'), password: 'secret1' });
+    expect((await acc({ action: 'recovery_new', token, password: 'wrong11' })).status).toBe(403);
+    expect((await acc({ action: 'recovery_new', token, password: 'secret1' })).data.recoveryCode).toBeTruthy();
+  });
+
+  it('с одного адреса — не больше пяти регистраций в час', async () => {
+    const ip = '203.0.113.7';
+    for (let i = 0; i < 5; i++) expect((await call(accountHandler, { action: 'register', login: uniq('bot'), password: 'secret1' }, ip)).status).toBe(200);
+    expect((await call(accountHandler, { action: 'register', login: uniq('bot'), password: 'secret1' }, ip)).status).toBe(429);
+  });
+});
+
+describe('вызов дня за профилем', () => {
+  const entry = (extra) => ({ day: dailyKey(), score: 70, role: 'central_bank', quarters: 12, ...extra });
+  it('строка из профиля подписана его именем и значком; гость чужое имя не займёт', async () => {
+    const reg = await acc({ action: 'register', login: uniq('ira'), password: 'secret1', name: 'Ирина Штерн', playerId: uniq('dev') });
+    await acc({ action: 'update', token: reg.data.token, emblem: 'crown' });
+    const r = await call(dailyHandler, entry({ playerId: 'whatever', name: 'Подмена', session: reg.data.token }));
+    expect(r.data.you).toMatchObject({ name: 'Ирина Штерн', verified: true, emblem: 'crown' });
+    const g = await call(dailyHandler, entry({ playerId: uniq('guest'), name: 'ирина штерн', score: 90 }));
+    expect(g.data.you.name).toBe('ирина штерн (гость)');
+    expect(g.data.you.verified).toBe(false);
   });
 });
 

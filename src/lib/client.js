@@ -130,3 +130,5 @@ export const accountMe = (token) => post({ action: 'me', token }, ACCOUNT_API);
 export const accountUpdate = (token, patch) => post({ action: 'update', token, ...patch }, ACCOUNT_API);
 export const accountPassword = (token, oldPassword, newPassword) => post({ action: 'password', token, oldPassword, newPassword }, ACCOUNT_API);
 export const accountLogout = (token) => post({ action: 'logout', token }, ACCOUNT_API);
+export const accountRecover = (login, code, newPassword) => post({ action: 'recover', login, code, newPassword }, ACCOUNT_API);
+export const accountRecoveryNew = (token, password) => post({ action: 'recovery_new', token, password }, ACCOUNT_API);
