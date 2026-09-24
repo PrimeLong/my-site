@@ -9,8 +9,8 @@ import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PE
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
-  AchievementsModal, Audio, AudioControls, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
-  StateSeal, clearNetworkSlotAt, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
+  AchievementsModal, Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
+  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
 import {
   ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, CasinoScreen, ChartFallback, ChartPanel,
@@ -36,7 +36,10 @@ function NetworkLobby({ onEnter }) {
   const linkedCode = useMemo(roomCodeFromUrl, []);
   const [tab, setTab] = useState(linkedCode ? 'join' : 'create');
   const [seat, setSeat] = useState('central_bank');
-  const [name, setName] = useState('');
+  // по сети играют только с профилем: место в комнате закрепляется за ним,
+  // и выйти, чтобы тут же зайти «другим игроком», не выйдет (см. api/room.js)
+  const account = useAccount();
+  const [showAuth, setShowAuth] = useState(false);
   const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
   const [mode, setMode] = useState('policy');
@@ -171,9 +174,10 @@ function NetworkLobby({ onEnter }) {
   };
   const doJoin = async () => {
     if (!code.trim()) { setError('Введите код комнаты.'); return; }
+    if (!account) { setShowAuth(true); return; }
     setBusy(true); setError('');
     try {
-      const r = await joinRoom(code.trim().toUpperCase(), seat, name.trim() || 'игрок');
+      const r = await joinRoom(code.trim().toUpperCase(), seat, account.name, account.token);
       setStorageMode(r.storage || null);
       Audio.play('stamp'); Audio.prime();
       const trimmedCode = code.trim().toUpperCase();
@@ -188,11 +192,15 @@ function NetworkLobby({ onEnter }) {
         window.history.replaceState(null, '', window.location.pathname);
       }
       onEnter(net);
-    } catch (e) { setError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      setError(e.message);
+      if (/войдите в профиль/i.test(e.message)) { forgetAccount(); setShowAuth(true); }
+    } finally { setBusy(false); }
   };
 
   return (
     <div style={{ maxWidth: 640, width: '100%' }}>
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} reason="Сетевая партия — только с профилем: так место в комнате остаётся за вами, а выйти и тут же зайти другим игроком нельзя." />}
       {slots.some(Boolean) && (
         <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }}>
           <div className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft, marginBottom: 9 }}>Ваши партии ({slots.filter(Boolean).length}/{NETWORK_SLOT_COUNT})</div>
@@ -411,10 +419,21 @@ function NetworkLobby({ onEnter }) {
             )}
           </div>
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, marginBottom: 6 }}>Ваше имя</div>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="как вас видит партнёр"
-              style={{ width: '100%', padding: '9px 11px', fontSize: 13,
-                background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
+            <div style={{ fontSize: 12, marginBottom: 6 }}>Вы играете как</div>
+            {account ? (() => {
+              const Emb = emblemIcon(account.emblem);
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 11px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 13 }}>
+                  <Emb size={15} color={COLOR.gold} /><span style={{ color: COLOR.text }}>{account.name}</span>
+                  <span className="ems-mono" style={{ color: COLOR.faint, fontSize: 11 }}>@{account.login}</span>
+                </div>
+              );
+            })() : (
+              <div style={{ padding: '10px 11px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12, lineHeight: 1.5 }}>
+                <div style={{ color: COLOR.text, marginBottom: 8 }}>Для игры по сети нужен профиль: место в комнате закрепляется за ним, партнёры видят ваше имя.</div>
+                <button className="ems-btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => { Audio.play('click'); setShowAuth(true); }}>Войти или зарегистрироваться</button>
+              </div>
+            )}
           </div>
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, marginBottom: 6 }}>Ваша роль</div>
@@ -436,7 +455,7 @@ function NetworkLobby({ onEnter }) {
             </div>
           </div>
           <button className="ems-btn primary" disabled={busy || allSeatsTaken} style={{ width: '100%', padding: '11px 0' }} onClick={doJoin}>
-            {busy ? 'Входим…' : allSeatsTaken ? 'Все места заняты' : 'Войти в партию'}
+            {busy ? 'Входим…' : allSeatsTaken ? 'Все места заняты' : account ? 'Войти в партию' : 'Войти в профиль и в партию'}
           </button>
         </div>
       )}

@@ -3,6 +3,8 @@
    Модель считается ТОЛЬКО здесь: иначе у игроков разойдутся случайные шоки. */
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getRoom, setRoom, withRoom, hasKv, addPublicRoom, removePublicRoom, listPublicRoomIds } from './_lib/store.js';
+import { userBySession, bumpStats } from './_lib/accounts.js';
+
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
   describeHumanCbAction, describeHumanMofAction, redescribeCbAction, redescribeMofAction,
   botPresident, getPresPersona, processPresidentialDirective, directiveProgress, directiveVerdict,
@@ -11,6 +13,29 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder,
   sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder, botFrontOrder, DEF_FRONT } from './_lib/engine.js';
+
+/* Места в комнате закреплены за профилем. Вышедший игрок может вернуться только на
+   своё место и не раньше чем через REJOIN_COOLDOWN; пока он не вернулся, место
+   RESERVE_MS держится за ним — другой игрок его не займёт, а играет за него бот. */
+const REJOIN_COOLDOWN_MS = 60 * 1000;
+const RESERVE_MS = 10 * 60 * 1000;
+export function seatAccessError(room, seat, login, now = Date.now()) {
+  const accounts = room.accounts || {};
+  const left = room.left || {};
+  const mine = Object.entries(accounts).find(([sx, l]) => l === login && room.seats[sx]);
+  if (mine) return mine[0] === seat ? 'Вы уже на этом месте' : 'Вы уже сидите в этой комнате на другом месте';
+  const myLeft = left[login];
+  // выгнанного создателем комнаты обратно не пускаем: иначе кнопка «выгнать» ничего не значит
+  if (myLeft && myLeft.kicked) return 'Создатель комнаты убрал вас из этой партии';
+  if (myLeft) {
+    const wait = myLeft.at + REJOIN_COOLDOWN_MS - now;
+    if (wait > 0) return `Вы только что вышли — вернуться можно через ${Math.ceil(wait / 1000)} с`;
+    if (myLeft.seat !== seat && !room.seats[myLeft.seat] && now - myLeft.at < RESERVE_MS) return 'Вернуться можно только на своё прежнее место';
+  }
+  const holder = Object.entries(left).find(([l, x]) => l !== login && x.seat === seat && now - x.at < RESERVE_MS && !x.kicked);
+  if (holder) return `Место держится за вышедшим игроком ещё ${Math.ceil((holder[1].at + RESERVE_MS - now) / 60000)} мин`;
+  return null;
+}
 
 // «политика» (ЦБ vs Минфин) и «рынок» (трейдер vs трейдер) — два независимых
 // режима комнаты с разными парами мест; SEATS — объединение обеих пар для общей
@@ -633,13 +658,23 @@ async function handleRequest(req, res) {
     const id = String(body.id || '').toUpperCase();
     const seat = body.seat;
     if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    // по сети играют только с профилем: место закрепляется за ним
+    const user = await userBySession(body.session);
+    if (!user) return res.status(401).json({ error: 'Для игры по сети войдите в профиль' });
+    let firstTime = false;
     const out = await withRoom(id, (room) => {
       if (!seatsFor(room).includes(seat)) return { error: 'Эта роль недоступна в этом режиме партии', status: 400 };
       if (seat === 'president' && !room.president) return { error: 'В этой комнате президента нет', status: 400 };
       if (room.seats[seat]) return { error: 'Место уже занято', status: 409 };
+      const denied = seatAccessError(room, seat, user.login);
+      if (denied) return { error: denied, status: 409 };
+      firstTime = !(room.everJoined || []).includes(user.login);
+      const left = { ...room.left }; delete left[user.login];
       const t = token();
       const next = { ...room, seats: { ...room.seats, [seat]: t },
-        names: { ...room.names, [seat]: cleanString(body.name, 40) || 'игрок' },
+        names: { ...room.names, [seat]: user.name },
+        accounts: { ...room.accounts, [seat]: user.login }, left,
+        everJoined: firstTime ? [...(room.everJoined || []), user.login].slice(-20) : room.everJoined,
         version: room.version + 1, __token: t };
       // требование президента адресуется живому игроку — пересчитываем план, как
       // только становится известно, кто вообще сидит за пультом
@@ -651,6 +686,7 @@ async function handleRequest(req, res) {
     // заполненную общедоступную комнату незачем предлагать в браузере комнат —
     // всё равно ни одно место не занять; освобождённое место возвращает её обратно
     if (out.room.isPublic && seatsFor(out.room).every((sx) => out.room.seats[sx])) await removePublicRoom(id);
+    if (firstTime) await bumpStats(user.login, { rooms: 1, lastRoom: id });
     return res.status(200).json({ token: t, seat, storage: hasKv() ? 'kv' : 'memory', room: publicView(out.room) });
   }
 
@@ -677,6 +713,14 @@ async function handleRequest(req, res) {
       return allIn ? resolveQuarter(next) : next;
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    // квартал сыгран — каждому сидящему профилю в статистику
+    if (out.room.accounts) {
+      const resolved = SEATS.every((sx) => !out.room.submissions[sx]);
+      if (resolved) {
+        await Promise.all(SEATS.filter((sx) => out.room.seats[sx] && out.room.accounts[sx])
+          .map((sx) => bumpStats(out.room.accounts[sx], { quarters: 1 })));
+      }
+    }
     return res.status(200).json({ room: publicView(out.room) });
   }
 
@@ -740,13 +784,18 @@ async function handleRequest(req, res) {
     const id = String(body.id || '').toUpperCase();
     const seat = body.seat;
     if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
+    let leaver = null;
     const out = await withRoom(id, (room) => {
       if (room.seats[seat] && room.seats[seat] !== body.token) return { error: 'Неверный токен', status: 403 };
+      leaver = (room.accounts || {})[seat] || null;
+      const accounts = { ...room.accounts }; delete accounts[seat];
       return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
         submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
+        accounts, left: leaver ? { ...room.left, [leaver]: { seat, at: Date.now() } } : room.left,
         version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });
+    if (leaver) await bumpStats(leaver, { leaves: 1 });
     // освободившееся место в общедоступной комнате возвращает её в браузер комнат
     if (out.room.isPublic) await addPublicRoom(id);
     return res.status(200).json({ room: publicView(out.room) });
@@ -758,9 +807,13 @@ async function handleRequest(req, res) {
     if (!SEATS.includes(seat)) return res.status(400).json({ error: 'Неизвестная роль' });
     const out = await withRoom(id, (room) => {
       if (room.ownerToken !== body.ownerToken) return { error: 'Только владелец лобби может кикать', status: 403 };
-      // владелец может «кикнуть» и собственное место — считаем это уходом, не ошибкой
+      // владелец может «кикнуть» и собственное место — считаем это уходом, не ошибкой;
+      // выгнанному место не держится, но и вернуться сразу он не может
+      const kicked = (room.accounts || {})[seat] || null;
+      const accounts = { ...room.accounts }; delete accounts[seat];
       return { ...room, seats: { ...room.seats, [seat]: null }, names: { ...room.names, [seat]: null },
         submissions: { ...room.submissions, [seat]: null }, lastSeen: { ...room.lastSeen, [seat]: null },
+        accounts, left: kicked ? { ...room.left, [kicked]: { seat, at: Date.now(), kicked: true } } : room.left,
         version: room.version + 1 };
     });
     if (out.error) return res.status(out.status || 400).json({ error: out.error });

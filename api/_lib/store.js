@@ -127,3 +127,29 @@ export async function setTycoonSlots(playerId, slots) {
   mem.set(`tycoon:${playerId}`, slots);
   return true;
 }
+
+/* Профили игроков (регистрация) и их сессии. Пользователь — по логину, сессия —
+   случайный токен на устройстве. Сессия живёт полгода, как и соло-сохранения. */
+export async function getUser(login) {
+  if (redis) return (await redis.get(`user:${login}`)) || null;
+  return mem.get(`user:${login}`) || null;
+}
+export async function setUser(login, user) {
+  if (redis) return redis.set(`user:${login}`, user);
+  mem.set(`user:${login}`, user);
+  return true;
+}
+export async function getSession(token) {
+  if (redis) return (await redis.get(`session:${token}`)) || null;
+  return mem.get(`session:${token}`) || null;
+}
+export async function setSession(token, login) {
+  if (redis) return redis.set(`session:${token}`, login, { ex: SOLO_TTL });
+  mem.set(`session:${token}`, login);
+  return true;
+}
+export async function delSession(token) {
+  if (redis) return redis.del(`session:${token}`);
+  mem.delete(`session:${token}`);
+  return true;
+}

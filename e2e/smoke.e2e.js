@@ -86,12 +86,27 @@ test('сетевая партия: лобби, вход, пресс-конфер
   let joined = false; let submitted = null;
   const { errors } = await openApp(page, '/?room=E2E', (req) => {
     let body = null; try { body = req.postDataJSON(); } catch { body = null; }
-    if (body && body.action === 'join') { joined = true; return JSON.stringify({ token: 'tok', seat: 'ministry_finance', storage: 'memory', room }); }
+    if (body && body.action === 'register') {
+      return JSON.stringify({ token: 'sess', profile: { login: body.login, name: body.name, emblem: 'star', playerId: body.playerId, stats: {} } });
+    }
+    if (body && body.action === 'join') {
+      if (body.session !== 'sess') return JSON.stringify({ error: 'нет сессии' });
+      joined = true; return JSON.stringify({ token: 'tok', seat: 'ministry_finance', storage: 'memory', room });
+    }
     if (body && body.action === 'submit') submitted = body;
     return JSON.stringify({ room: joined ? room : lobby, storage: 'memory' });
   });
 
   await page.getByText('Минфин', { exact: true }).first().click();
+  // по сети — только с профилем: без него кнопка ведёт в регистрацию
+  await page.getByRole('button', { name: 'Войти в профиль и в партию' }).click();
+  const auth = page.getByRole('dialog', { name: 'Профиль игрока' });
+  await auth.getByLabel('Логин').fill('boris');
+  await auth.getByLabel('Пароль').fill('secret1');
+  await auth.getByLabel('Имя в игре').fill('Борис');
+  await auth.getByRole('button', { name: 'Создать профиль' }).click();
+  await expect(auth).toBeHidden();
+  await expect(page.getByText('@boris')).toBeVisible();
   await page.getByRole('button', { name: 'Войти в партию' }).click();
 
   // на телефоне колонки переключаются вкладками: решения — в первой
@@ -297,5 +312,31 @@ test('своё дело: дерево технологий, команда и с
   await page.getByRole('button', { name: 'Сохранить сюда' }).first().click();
   await expect.poll(() => saved && saved.kind).toBe('tycoon');
   await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('профиль: регистрация из меню, профиль со статистикой и выход', async ({ page }) => {
+  const { errors } = await openApp(page, '/', (req) => {
+    let body = null; try { body = req.postDataJSON(); } catch { body = null; }
+    const profile = { login: 'anna', name: 'Анна', emblem: 'star', playerId: 'p1', createdAt: Date.now(), stats: { rooms: 3, quarters: 12, leaves: 1 } };
+    if (body && (body.action === 'register' || body.action === 'login')) return JSON.stringify({ token: 'sess', profile });
+    if (body && body.action === 'me') return JSON.stringify({ profile });
+    if (body && body.action === 'update') return JSON.stringify({ profile: { ...profile, emblem: body.emblem || 'star' } });
+    return '{}';
+  });
+  await page.getByRole('button', { name: 'Войти в профиль' }).click();
+  const auth = page.getByRole('dialog', { name: 'Профиль игрока' });
+  await auth.getByLabel('Логин').fill('anna');
+  await auth.getByLabel('Пароль').fill('secret1');
+  await auth.getByRole('button', { name: 'Создать профиль' }).click();
+  await page.getByRole('button', { name: 'Профиль: Анна' }).click();
+  const prof = page.getByRole('dialog', { name: 'Профиль' });
+  await expect(prof.getByText('Кварталов по сети')).toBeVisible();
+  await expect(prof.getByText('12', { exact: true })).toBeVisible();
+  await prof.getByRole('button', { name: 'Корона' }).click();
+  await expect(prof.getByText('Сохранено')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  await prof.getByRole('button', { name: 'Выйти' }).click();
+  await expect(page.getByRole('button', { name: 'Войти в профиль' })).toBeVisible();
   expect(errors).toEqual([]);
 });
