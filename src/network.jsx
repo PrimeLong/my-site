@@ -1033,20 +1033,6 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         )}
       </div>
 
-      {narrow && (
-        /* колонки на телефоне — тем же сегментированным переключателем; прилипает к
-           верху экрана, чтобы переключаться, не пролистывая назад */
-        <div style={{ position: 'sticky', top: 0, zIndex: 6, padding: '10px 18px', paddingBottom: 8,
-          background: `linear-gradient(180deg, ${COLOR.bg} 70%, rgba(0,0,0,0))` }}>
-          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
-          {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
-            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
-              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
-          ))}
-          </div>
-        </div>
-      )}
-
       {(() => {
       const leftNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1486,6 +1472,18 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       );
       })()}
 
+      {/* колонки на телефоне — в нижней панели над кнопкой: всегда под пальцем и не прячутся за ней */}
+      <div style={narrow ? { position: 'sticky', bottom: 0, zIndex: 6 } : undefined}>
+      {narrow && (
+        <div style={{ padding: '8px 12px 0', background: COLOR.panel, borderTop: `1px solid ${COLOR.hairline}` }}>
+          <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
+          {[['left', isTraderRoom ? 'Капитал' : 'Решения'], ['center', isTraderRoom ? 'Рынок и новости' : 'Новости и графики'], ['right', 'Показатели']].map(([id, label]) => (
+            <button key={id} aria-pressed={mobileCol === id} style={{ flex: 1, padding: '8px 4px', fontSize: 12 }}
+              onClick={() => { Audio.play('tab'); setMobileCol(id); }}>{label}</button>
+          ))}
+          </div>
+        </div>
+      )}
       {defeat ? (
         <GameOverBar defeat={defeat} onReopen={() => setShowGameOver(true)} onRestart={exit} restartLabel="В меню"
           onRollback={portfolioRollbackTarget ? handlePortfolioRollback : null} />
@@ -1527,6 +1525,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

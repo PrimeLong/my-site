@@ -2,7 +2,7 @@
    в шапке меню. Вынесено из MacroSimulator.jsx; общие вещи (тема, звук, playerId
    устройства и синхронизация прогресса) — оттуда же, те же объекты. */
 import React, { useState } from 'react';
-import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, Smartphone, X, Copy, Check, AlertTriangle } from 'lucide-react';
+import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle } from 'lucide-react';
 import {
   accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew,
 } from './lib/client.js';
@@ -246,7 +246,7 @@ export function AuthModal({ onClose, onDone, reason }) {
 }
 
 /* Профиль: значок, имя, статистика сетевых партий, пароль, код восстановления и выход. */
-export function ProfileModal({ onClose, onSwitched, onLink }) {
+export function ProfileModal({ onClose, onSwitched }) {
   const account = useAccount();
   const [profile, setProfile] = useState(null);
   const [storageMemory, setStorageMemory] = useState(false);
@@ -373,7 +373,6 @@ export function ProfileModal({ onClose, onSwitched, onLink }) {
           onClick={() => { setOldPw(''); setPanel(panel === 'password' ? null : 'password'); }}><KeyRound size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Пароль</button>
         <button className="ems-btn" aria-pressed={panel === 'recovery'} style={{ padding: '6px 10px', fontSize: 12 }}
           onClick={() => { setOldPw(''); setPanel(panel === 'recovery' ? null : 'recovery'); }}>Код восстановления</button>
-        <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12 }} onClick={onLink}><Smartphone size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Связать устройства</button>
         <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, marginLeft: 'auto' }} onClick={logout}><LogOut size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Выйти</button>
       </div>
     </ModalShell>

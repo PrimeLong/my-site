@@ -26,6 +26,8 @@ export const TYCOON_VERSION = 1;
 export const QUARTER_SEC = 60;
 export const OFFLINE_CAP_SEC = 3 * 3600;
 const WAGE_PER_SEC = 0.0009;
+// очки исследований в секунду и без лаборатории
+export const RP_BASE = 0.25;
 
 /* ------------------------------ РЕСУРСЫ ------------------------------
    price — оптовая цена за единицу при ценах и курсе старта; imp — доля цены,
@@ -542,7 +544,7 @@ function step1(prev, dt, offline) {
   // 7. исследования
   const rp = st.buildings.reduce((a, b) => a + (BLD[b.type].research ? BLD[b.type].research * power[b.uid] * dt : 0), 0);
   // очки копятся и без лаборатории — первое изучение через несколько минут, а не через полчаса
-  st.rp += rp + 0.25 * dt;
+  st.rp += rp + RP_BASE * dt;
 
   // статистика для экрана: скорости в секунду, сглаженные
   const rates = { ...st.stats.rates };
@@ -1127,7 +1129,25 @@ export const fireManager = (st, id) => {
 };
 export const setManager = (st, id, patch) => ({ st: { ...st, managers: { ...st.managers, [id]: { ...st.managers[id], ...patch } } } });
 const mgrOn = (st, id) => !!(st.managers && st.managers[id] && st.managers[id].on !== false);
-const mgrBudget = (st, id) => Math.max(0, st.cash) * clamp((st.managers[id].budget ?? 30), 0, 100) / 100;
+/* Бюджет менеджера — на квартал, а не на одно решение: иначе 20% «за раз» при каждом
+   решении раз за разом сводили счёт к нулю. Лимит считается от денег на момент первой
+   траты в квартале, и два квартала расходов менеджер не трогает никогда. */
+export function mgrBudget(st, id) {
+  const m = st.managers[id];
+  const q = st.country.quarterIndex;
+  const fresh = m.q !== q;
+  const limit = fresh ? Math.max(0, st.cash) * clamp((m.budget ?? 30), 0, 100) / 100 : m.limit;
+  const spent = fresh ? 0 : m.spent || 0;
+  const floor = Math.max(0, st.stats.costs) * QUARTER_SEC * 2;
+  return Math.max(0, Math.min(limit - spent, st.cash - floor));
+}
+function mgrSpend(st, id, amount) {
+  const m = st.managers[id];
+  const q = st.country.quarterIndex;
+  const fresh = m.q !== q;
+  const limit = fresh ? Math.max(0, st.cash + amount) * clamp((m.budget ?? 30), 0, 100) / 100 : m.limit;
+  return { ...st, managers: { ...st.managers, [id]: { ...m, q, limit, spent: (fresh ? 0 : m.spent || 0) + amount } } };
+}
 
 function runManagers(prev) {
   let st = prev;
@@ -1166,8 +1186,9 @@ function runManagers(prev) {
       && (!BLD[b.type].out || (st.stats.runK && (st.stats.runK[b.uid] ?? 0) >= 0.9)))
       .sort((a, b) => upgradeCost(a) - upgradeCost(b))[0];
     if (cand && upgradeCost(cand) <= budget) {
+      const cost = upgradeCost(cand);
       const r = upgrade(st, cand.uid);
-      if (r.st) { st = r.st; log(`Управляющий улучшил: ${BLD[cand.type].name} (${regionName(cand.region)}) до ${cand.level + 1}-го уровня.`); }
+      if (r.st) { st = mgrSpend(r.st, 'foreman', cost); log(`Управляющий улучшил: ${BLD[cand.type].name} (${regionName(cand.region)}) до ${cand.level + 1}-го уровня.`); }
     }
   }
   // директор по развитию: сырьё, которого не хватает, и магазины под спрос
@@ -1188,7 +1209,7 @@ function runManagers(prev) {
       if (needSlot) st = buySlot(st, rg).st;
       const r = build(st, type, rg);
       if (!r.st) return false;
-      st = r.st; log(`Директор по развитию построил: ${d.name} (${regionName(rg)}).`);
+      st = mgrSpend(r.st, 'developer', cost); log(`Директор по развитию построил: ${d.name} (${regionName(rg)}).`);
       return true;
     };
     let done = false;
@@ -1207,9 +1228,10 @@ function runManagers(prev) {
         const rg = open.slice().sort((a, b) => regionDemand(st, b, g.id) - regionDemand(st, a, g.id))
           .find((x) => usedIn(st, x) < slotsIn(st, x) || slotCost(st, x) + BLD[shopType].cost <= budget);
         if (rg && BLD[shopType].cost <= budget) {
-          if (usedIn(st, rg) >= slotsIn(st, rg)) st = buySlot(st, rg).st;
+          let cost = BLD[shopType].cost;
+          if (usedIn(st, rg) >= slotsIn(st, rg)) { cost += slotCost(st, rg); if (cost > budget) return st; st = buySlot(st, rg).st; }
           const r = build(st, shopType, rg);
-          if (r.st) { st = r.st; log(`Директор по развитию открыл: ${BLD[shopType].name} (${regionName(rg)}).`); }
+          if (r.st) { st = mgrSpend(r.st, 'developer', cost); log(`Директор по развитию открыл: ${BLD[shopType].name} (${regionName(rg)}).`); }
         }
       }
     }

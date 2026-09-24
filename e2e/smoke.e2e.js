@@ -426,7 +426,7 @@ test('обучение: практика обороны от Дешта — ко
   await page.getByRole('button', { name: /^Далее/ }).click();
   await expect(page.getByText('Практика: отбить наступление Дешта')).toBeVisible();
   await page.getByRole('button', { name: /Контрудар/ }).click();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     const btn = page.getByRole('button', { name: 'Завершить квартал' });
     if (!(await btn.isVisible())) break;
     await btn.click();

@@ -3355,7 +3355,8 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   /* Война за новые земли (реванш Норланда) тоже бессрочная: её кончают перемирие,
      выдохшийся Норланд или потеря всех земель. */
   const revancheStart = RV.start;
-  const offensiveOngoing = (s.warQuartersLeft || 0) > 0 && (s.warType === 'offensive' || s.warType === 'revanche');
+  // ни одна война не идёт по календарю: её кончают победа, перемирие, мир или выдохшийся противник
+  const offensiveOngoing = (s.warQuartersLeft || 0) > 0 && (s.warType === 'offensive' || s.warType === 'revanche' || s.warType === 'defensive');
   let warQuartersLeft = warDecreed ? 10 : revancheStart ? 10 : warTriggered ? 4
     : offensiveOngoing ? s.warQuartersLeft : Math.max(0, (s.warQuartersLeft || 0) - 1);
   if (pres.patch.warExtend && warQuartersLeft > 0) warQuartersLeft += pres.patch.warExtend;
@@ -6385,6 +6386,21 @@ function defenseStep(s, decisions, difficulty, q, starting) {
     out.endWar = true;
     out.impulses.push(makeImpulse('approvalPush', 5, `${DEF_ENEMY} отступила`, 'fast', difficulty, 'other'));
     out.news.push(['gov', `${DEF_ENEMY.toUpperCase()} ОТСТУПАЕТ`, 'Наступление захлебнулось: армия противника выдохлась и уходит за границу. Занятые районы освобождены.', 10]);
+  } else {
+    /* Срока у войны нет: никто не знает заранее, когда она кончится. Дешт сам идёт на
+       перемирие — тем вероятнее, чем дольше война и чем ниже боевой дух его армии;
+       занятое он при этом возвращает не даром — это перемирие, а не победа. */
+    const elapsed = (s.warElapsed || 1);
+    const pStop = clamp(0.04 + 0.035 * elapsed + (100 - camp.morale) / 350, 0, 0.55);
+    if (rng() < pStop) {
+      out.endWar = true;
+      const lost = camp.occupied.length;
+      out.impulses.push(makeImpulse('approvalPush', lost ? 1 : 3, `${DEF_ENEMY} согласилась на перемирие`, 'fast', difficulty, 'other'),
+        makeImpulse('businessConfidence', 4, 'Бои прекращены', 'default', difficulty, 'other'));
+      out.news.push(['gov', `${DEF_ENEMY.toUpperCase()} ПРЕДЛАГАЕТ ПЕРЕМИРИЕ`, lost
+        ? `Армия противника устала: Ашкала соглашается остановить бои и вывести войска из ${camp.occupied.map((id) => nameOf(id).gen).join(' и ')} в обмен на прекращение огня.`
+        : 'Армия противника устала: Ашкала соглашается остановить бои по линии границы.', 10]);
+    }
   }
   camp.last = { target, stance: stance.id, hit, gain: Math.round(gain), pushed: Math.round(pushed), feint };
   camp.next = defenseTarget(camp);

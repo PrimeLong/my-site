@@ -40,14 +40,25 @@ export function SocietyView({ economy, plan, onPlan, planner }) {
           а группы помнят решения кварталами. Выборы, протесты и перевороты вырастают из того, кого вы потеряли.
           {unfree && ' При несвободном режиме это закрытые данные: публичные опросы о них молчат.'}
         </div>
-        {/* полоса коалиции: ширина — вес группы, цвет — её отношение к власти */}
+        {/* полоса коалиции: ширина — вес группы, цвет — её отношение к власти. На узком
+            экране подписи в сегменты не помещаются и налезают друг на друга — там их нет,
+            названия идут строкой ниже */}
+        <style>{'.soc-seg-label { overflow: hidden; text-overflow: ellipsis; max-width: 100%; } .soc-legend { display: none; } @media (max-width: 720px) { .soc-seg-label { display: none; } .soc-legend { display: flex; } }'}</style>
         <div style={{ display: 'flex', height: 22, borderRadius: 4, overflow: 'hidden', border: `1px solid ${COLOR.border}`, marginBottom: 6 }}>
           {SOCIAL_GROUPS.map((g) => (
             <div key={g.id} title={`${g.name}: ${Math.round(support[g.id])} — ${groupStatus(support[g.id])}`}
               style={{ width: `${g.weight * 100}%`, background: `${statusColor(support[g.id])}${support[g.id] >= 50 ? 'cc' : '55'}`,
                 borderRight: `1px solid ${COLOR.bg}`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              <span style={{ fontSize: 12, color: support[g.id] >= 50 ? COLOR.ink : COLOR.text, whiteSpace: 'nowrap', padding: '0 3px' }}>{g.name}</span>
+              <span className="soc-seg-label" style={{ fontSize: 12, color: support[g.id] >= 50 ? COLOR.ink : COLOR.text, whiteSpace: 'nowrap', padding: '0 3px' }}>{g.name}</span>
             </div>
+          ))}
+        </div>
+        <div className="soc-legend" style={{ flexWrap: 'wrap', gap: '4px 12px', fontSize: 12, marginBottom: 8 }}>
+          {SOCIAL_GROUPS.map((g) => (
+            <span key={g.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: COLOR.muted }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: statusColor(support[g.id]) }} />
+              {g.name} <b className="ems-mono" style={{ color: COLOR.text }}>{Math.round(support[g.id])}</b>
+            </span>
           ))}
         </div>
         <div style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.5 }}>

@@ -98,7 +98,9 @@ export function createAudioEngine(options = {}) {
     else {
       const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
       if (!AC) return null;
-      try { ctx = new AC(); } catch { return null; }
+      /* «playback» — буфер побольше: на телефоне тяжёлый кадр игры (квартал, карта)
+         иначе успевал опустошить звуковой буфер, и музыка щёлкала */
+      try { ctx = new AC({ latencyHint: 'playback' }); } catch { try { ctx = new AC(); } catch { return null; } }
     }
     master = ctx.createGain(); master.gain.value = opts.volume;
     try {
@@ -884,6 +886,7 @@ export function createAudioEngine(options = {}) {
     return len;
   };
 
+  const MUSIC_AHEAD = 1.0;
   const scheduler = () => {
     if (!ctx || !running) return;
     if (stingerUntil) {
@@ -900,7 +903,10 @@ export function createAudioEngine(options = {}) {
     }
     if (nextTime < now() - 0.4) nextTime = now() + 0.06;
     let guard = 0;
-    while (nextTime < now() + 0.22 && guard++ < 24) {
+    /* Ноты расставляются на секунду вперёд: пока главный поток занят (квартал,
+       перерисовка карты), звук уже лежит в очереди и не прерывается. При запасе в
+       0,22 с любая заминка дольше этого давала пропуск нот — «музыка лагает». */
+    while (nextTime < now() + MUSIC_AHEAD && guard++ < 64) {
       const totalSteps = formBars * 16;
       if (stepIdx % 16 === 0) {
         // темп подтягивается к целевому потактово, а не скачком посреди фразы
@@ -1016,7 +1022,7 @@ export function createAudioEngine(options = {}) {
       if (musicBus) musicBus.gain.setTargetAtTime(0.55, now(), 1.5);
       timer = setInterval(() => {
         try { scheduler(); } catch (err) { if (import.meta.env && import.meta.env.DEV) console.error(err); /* музыка не ломает игру */ }
-      }, 40);
+      }, 120);
       notify();
     },
     stopMusic() {

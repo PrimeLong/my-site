@@ -8,7 +8,7 @@ import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, re
   DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, sanitizeTreaty, treatyCost,
   DEF_FRONT, DEF_ENEMY, defaultFrontOrder, POLITICAL_REGIME_INFO,
   DIPLO_ACTIONS, relationsOf, relationEffects, diploActionAvailable, ultimatumChance, neighborEventView } from './lib/engine.js';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Audio, COLOR, starPath } from './MacroSimulator.jsx';
 
@@ -376,8 +376,9 @@ function voteAlpha(share) {
    приближённую — перетаскивают. Всё это — смена viewBox, геометрия не меняется.
    Перетаскивание начинается только после сдвига на несколько пикселей, и только
    тогда захватывается указатель: иначе обычный клик по области превращался бы
-   в «начало перетаскивания» и область не выбиралась. На телефоне без приближения
-   карта не мешает листать страницу (touch-action: pan-y), а щипок всё равно ловится. */
+   в «начало перетаскивания» и область не выбиралась. Мир шире листа, поэтому карту
+   двигают и без приближения: все жесты над картой — её (touch-action: none), иначе
+   движение пальцем вверх-вниз, начатое на подписи или области, листало страницу. */
 const BASE_VB = { x: 0, y: VIEW_TOP, w: VIEW_W, h: VIEW_H - VIEW_TOP };
 const MAX_ZOOM = 4;
 // отдалить можно до всего мира, приблизить — в MAX_ZOOM раз от домашнего вида
@@ -397,7 +398,24 @@ function useMapZoom(mountKey, bounds = WORLD) {
   const drag = useRef(null);
   const pinch = useRef(null);
   const moved = useRef(false);
-  const setVb = (v) => { vbRef.current = v; setVbState(v); };
+  /* Пока карту тянут или приближают, её анимации (поезда, корабли, волны, облака)
+     стоят: каждая из них перерисовывала бы всю карту поверх и без того тяжёлых кадров
+     жеста. Через четверть секунды покоя всё оживает снова. */
+  const idleT = useRef(0);
+  const markBusy = () => {
+    const el = ref.current;
+    if (!el) return;
+    if (!el.classList.contains('map-busy')) {
+      el.classList.add('map-busy');
+      try { el.pauseAnimations(); } catch { /* не SVG-анимации */ }
+    }
+    clearTimeout(idleT.current);
+    idleT.current = setTimeout(() => {
+      el.classList.remove('map-busy');
+      try { el.unpauseAnimations(); } catch { /* см. выше */ }
+    }, 260);
+  };
+  const setVb = (v) => { markBusy(); vbRef.current = v; setVbState(v); };
   const clampB = (v) => clampVb(v, bounds);
   const animateTo = (target) => {
     cancelAnimationFrame(raf.current);
@@ -516,30 +534,35 @@ const MAP_CSS = `
   .map-nb { outline: none; cursor: pointer; }
   .map-nb .nb-hover { opacity: 0; transition: opacity .2s ease; }
   .map-nb:hover .nb-hover, .map-nb:focus-visible .nb-hover { opacity: 1; }
-  .map-sel-glow { animation: mapSelPulse 2.6s ease-in-out infinite; }
-  @keyframes mapSelPulse { 0%, 100% { stroke-opacity: .30; } 50% { stroke-opacity: .75; } }
-  .map-sel-line { stroke-dasharray: 9 7; animation: mapSelMarch 1.8s linear infinite; }
+  /* Любая анимация внутри SVG перерисовывает всю карту. Поэтому медленные (волны,
+     облака, пульс выделения) идут ступеньками — несколько раз в секунду, а не 60:
+     глазу почти не видно, а процессору и батарее телефона — в разы легче. */
+  .map-sel-glow { animation: mapSelPulse 2.6s steps(12) infinite; }
+  @keyframes mapSelPulse { 0%, 100% { stroke-opacity: .12; } 50% { stroke-opacity: .32; } }
+  .map-sel-line { stroke-dasharray: 9 7; animation: mapSelMarch 1.8s steps(16) infinite; }
   @keyframes mapSelMarch { to { stroke-dashoffset: -32; } }
-  .map-flow { stroke-dasharray: 14 9; animation: mapFlow 1.1s linear infinite; }
+  .map-flow { stroke-dasharray: 14 9; animation: mapFlow 1.1s steps(9) infinite; }
   @keyframes mapFlow { to { stroke-dashoffset: -23; } }
   /* море: волны медленно дрейфуют, течение реки бежит к заливу */
-  .map-waves { animation: mapWaves 9s linear infinite; }
+  .map-waves { animation: mapWaves 9s steps(23) infinite; }
   @keyframes mapWaves { to { transform: translateX(-46px); } }
-  .map-river-flow { stroke-dasharray: 3 16; animation: mapRiver 2.4s linear infinite; }
+  .map-river-flow { stroke-dasharray: 3 16; animation: mapRiver 2.4s steps(14) infinite; }
   @keyframes mapRiver { to { stroke-dashoffset: -38; } }
-  .map-cloud { animation: mapCloud var(--dur, 80s) linear infinite; animation-delay: var(--delay, 0s); }
+  .map-cloud { animation: mapCloud var(--dur, 80s) steps(480) infinite; animation-delay: var(--delay, 0s); }
   @keyframes mapCloud { from { transform: translateX(-980px); } to { transform: translateX(1980px); } }
-  .map-capital-glow { animation: mapCapital 3.2s ease-in-out infinite; }
+  .map-capital-glow { animation: mapCapital 3.2s steps(12) infinite; }
   @keyframes mapCapital { 0%, 100% { opacity: .15; } 50% { opacity: .45; } }
   /* квартал сменился: где напряжение заметно выросло или упало — всплеск и цифра */
   .map-delta-ring { animation: mapDeltaRing 1.6s ease-out 3 both; transform-box: fill-box; transform-origin: center; }
   @keyframes mapDeltaRing { from { transform: scale(.4); opacity: .8; } to { transform: scale(2.4); opacity: 0; } }
   .map-delta-num { animation: mapDeltaNum 3.2s ease-out both; }
   @keyframes mapDeltaNum { 0% { opacity: 0; transform: translateY(6px); } 15% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-16px); } }
+  .map-busy, .map-busy * { animation-play-state: paused !important; }
   .map-zoom-btn { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; padding: 0; border-radius: 8px; }
   .map-full { position: fixed; inset: 0; z-index: 90; min-height: 0; overflow: auto; animation: mapFullIn .25s ease-out; }
   @keyframes mapFullIn { from { opacity: 0; } to { opacity: 1; } }
   .map-chip { padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+  @media (max-width: 560px) { .map-full-label { display: none; } .map-full-btn { padding: 7px 9px; } }
   @media (prefers-reduced-motion: reduce) {
     .map-enter, .map-sel-glow, .map-sel-line, .map-flow, .map-waves, .map-river-flow, .map-cloud, .map-capital-glow,
     .map-region-in, .map-delta-ring, .map-delta-num, .map-full { animation: none; }
@@ -800,7 +823,7 @@ const CLOUDS = [
    Море, дальние земли соседей, облака и подписи глубины — общие для карты страны
    и карты «Своего дела». p — приставка id узоров, чтобы две карты на одной
    странице не делили друг с другом определения. */
-function WorldSea({ p, reduced }) {
+function WorldSeaRaw({ p, reduced }) {
   return (
     <g style={{ pointerEvents: 'none' }}>
       <defs>
@@ -827,7 +850,7 @@ function WorldSea({ p, reduced }) {
   );
 }
 // подложка соседней страны: земля, приглушённый оттенок страны, косая штриховка
-function NeighborFill({ n, p, strong = false }) {
+function NeighborFillRaw({ n, p, strong = false }) {
   const info = NEIGHBOR_INFO[n.id];
   return (
     <>
@@ -838,7 +861,7 @@ function NeighborFill({ n, p, strong = false }) {
     </>
   );
 }
-function NeighborPattern({ p }) {
+function NeighborPatternRaw({ p }) {
   return (
     <defs>
       <pattern id={`${p}-neighbor`} width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
@@ -848,7 +871,7 @@ function NeighborPattern({ p }) {
   );
 }
 // глубь соседних стран: реки, горы, леса; за морем — острова Сольвейн; границы соседей
-function WorldFar() {
+function WorldFarRaw() {
   return (
     <g style={{ pointerEvents: 'none' }}>
       {FAR_RIVERS.map((pts, i) => (
@@ -874,7 +897,7 @@ function WorldFar() {
     </g>
   );
 }
-function SeaLabels() {
+function SeaLabelsRaw() {
   return (
     <g style={{ pointerEvents: 'none' }}>
       <text x={905} y={560} textAnchor="middle" style={{ fontSize: 16, letterSpacing: '0.3em', fill: `${COLOR.blue}cc`, fontStyle: 'italic' }}>ЛАЗУРНОЕ</text>
@@ -884,21 +907,24 @@ function SeaLabels() {
   );
 }
 // тень вдоль границы и берега изнутри — страна «поднимается» над морем и соседями
-function CountryShade({ p }) {
+function CountryShadeRaw({ p }) {
   return (
     <g style={{ pointerEvents: 'none' }}>
       <defs>
         <clipPath id={`${p}-shade-clip`}><path d={countryPath} /></clipPath>
-        <filter id={`${p}-soft`} x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="9" /></filter>
       </defs>
+      {/* мягкая тень — стопкой полупрозрачных обводок, а не фильтром размытия: фильтр
+          пересчитывался бы на каждом кадре любой анимации карты и тормозил её */}
       <g clipPath={`url(#${p}-shade-clip)`}>
-        <path d={countryPath} fill="none" stroke="#000" strokeOpacity={COLOR.isDark ? 0.32 : 0.1} strokeWidth={30} filter={`url(#${p}-soft)`} />
+        {[44, 30, 18, 8].map((w) => (
+          <path key={w} d={countryPath} fill="none" stroke="#000" strokeOpacity={(COLOR.isDark ? 0.08 : 0.025)} strokeWidth={w} strokeLinejoin="round" />
+        ))}
       </g>
     </g>
   );
 }
 // облака медленно плывут над картой — градиентом, без фильтра размытия: фильтр тормозил бы телефон
-function WorldClouds({ p, reduced }) {
+function WorldCloudsRaw({ p, reduced }) {
   if (reduced) return null;
   return (
     <g style={{ pointerEvents: 'none' }}>
@@ -918,7 +944,8 @@ function WorldClouds({ p, reduced }) {
   );
 }
 // названия и города в глубине соседних стран — для отдалённого вида
-function WorldFarLabels({ lkT }) {
+function WorldFarLabelsRaw({ lk }) {
+  const lkT = (x, y) => (Math.abs(lk - 1) > 0.001 ? `translate(${x} ${y}) scale(${lk}) translate(${-x} ${-y})` : undefined);
   return (
     <g style={{ pointerEvents: 'none' }}>
       {FAR_LABELS.map((l) => (
@@ -937,12 +964,103 @@ function WorldFarLabels({ lkT }) {
     </g>
   );
 }
+// фон карты не зависит ни от выбора, ни от экономики — перерисовывать его на каждый кадр незачем
+const WorldSea = memo(WorldSeaRaw);
+const NeighborFill = memo(NeighborFillRaw);
+const NeighborPattern = memo(NeighborPatternRaw);
+const WorldFar = memo(WorldFarRaw);
+const SeaLabels = memo(SeaLabelsRaw);
+const CountryShade = memo(CountryShadeRaw);
+const WorldClouds = memo(WorldCloudsRaw);
+// подписи глубины зависят только от масштаба — округляем его, чтобы не перерисовывать на каждый пиксель
+const WorldFarLabels = memo(WorldFarLabelsRaw);
 // подписи при приближении растут, но медленнее карты: читаются и не заслоняют её;
 // при отдалении растут, но не бесконечно — иначе области закроются подписями
 function labelScale(zoom) {
   const lk = zoom >= 1 ? 1 / Math.sqrt(zoom) : Math.min(1.35, 1 / Math.sqrt(zoom));
   return { lk, lkT: (x, y) => (Math.abs(lk - 1) > 0.001 ? `translate(${x} ${y}) scale(${lk}) translate(${-x} ${-y})` : undefined) };
 }
+
+/* Слой 2 — угодья, рельеф, дороги и реки. Он не меняется ни от приближения, ни от
+   выбора области, поэтому запоминается: меняется только с новыми землями и стройками.
+   Раньше вся эта графика пересчитывалась на каждом кадре перетаскивания карты. */
+const TerrainLayer = memo(function TerrainLayer({ annexKey, tunnel, halvik }) {
+  const annexed = annexKey ? annexKey.split(',') : [];
+  const builtSet = new Set([tunnel && 'tunnel', halvik && 'halvik_mines'].filter(Boolean));
+  const annexLinks = [];
+  if (annexed.includes('pass')) annexLinks.push({ k: 'mp', a: CITY_AT.mining, b: ANNEX_CITIES.pass.at, viaTunnel: true });
+  if (annexed.includes('mines')) annexLinks.push({ k: 'mm', a: CITY_AT.mining, b: ANNEX_CITIES.mines.at });
+  if (annexed.includes('city') && annexed.includes('pass')) annexLinks.push({ k: 'pc', a: ANNEX_CITIES.pass.at, b: ANNEX_CITIES.city.at, viaTunnel: true });
+  else if (annexed.includes('city') && annexed.includes('mines')) annexLinks.push({ k: 'mc', a: ANNEX_CITIES.mines.at, b: ANNEX_CITIES.city.at });
+  annexLinks.forEach((l) => { l.d = arcPath(l.a, l.b, 16); l.rail = !!l.viaTunnel && builtSet.has('tunnel'); });
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <path d={regionPath('agri')} fill="url(#map-fields)" />
+      <path d={regionPath('capital')} fill="url(#map-blocks)" opacity={0.8} />
+      <path d={regionPath('finance')} fill="url(#map-blocks)" opacity={0.45} />
+      <path d={regionPath('industry')} fill="url(#map-blocks)" opacity={0.3} />
+      <path d={regionPath('mining')} fill="url(#map-relief)" />
+      {FIELDS.map(([x, y]) => (
+        <path key={`f${x},${y}`} d={`M${x - 9},${y} h18 M${x - 7},${y + 5} h14`} stroke={`${COLOR.gold}66`} strokeWidth={1.4} />
+      ))}
+      {MOUNTAINS.map(([x, y]) => (
+        <g key={`m${x},${y}`}>
+          <path d={`M${x - 14},${y + 9} L${x},${y - 11} L${x + 14},${y + 9} Z`} fill={`${COLOR.muted}33`} stroke={`${COLOR.text}88`} strokeWidth={1.2} strokeLinejoin="round" />
+          <path d={`M${x},${y - 11} L${x + 14},${y + 9} L${x + 3},${y + 9} Z`} fill={`${COLOR.ink}40`} />
+          <path d={`M${x - 4},${y - 5} L${x},${y - 11} L${x + 4},${y - 5}`} fill="none" stroke={`${COLOR.text}dd`} strokeWidth={1.5} />
+        </g>
+      ))}
+      {FORESTS.map(([x, y]) => (
+        <g key={`t${x},${y}`}>
+          <path d={`M${x},${y - 11} L${x + 7},${y + 2} L${x - 7},${y + 2} Z`} fill={`${COLOR.teal}55`} stroke={`${COLOR.teal}aa`} strokeWidth={1} strokeLinejoin="round" />
+          <line x1={x} y1={y + 2} x2={x} y2={y + 7} stroke={`${COLOR.teal}aa`} strokeWidth={1.4} />
+        </g>
+      ))}
+      <g clipPath="url(#map-country)">
+        {ROAD_NET.map(([a, b], i) => (
+          <path key={`r${i}`} d={bentPath(a, b, i + 3)} fill="none" stroke={`${COLOR.text}38`} strokeWidth={1.4} strokeDasharray="5 4" />
+        ))}
+        {/* железная дорога — классическим «шпальным» пунктиром */}
+        {RAIL_NET.map(([a, b], i) => (
+          <g key={`w${i}`}>
+            <path d={bentPath(a, b, i)} fill="none" stroke={`${COLOR.text}50`} strokeWidth={2.6} />
+            <path d={bentPath(a, b, i)} fill="none" stroke={COLOR.bg} strokeWidth={1.2} strokeDasharray="6 6" />
+          </g>
+        ))}
+      </g>
+      {/* новые земли: после присоединения к их городам ведёт дорога; достроенный
+          тоннель под перевалом превращает её в железную дорогу */}
+      {annexLinks.map(({ k, d, rail }) => (rail ? (
+        <g key={k}>
+          <path d={d} fill="none" stroke={`${COLOR.text}50`} strokeWidth={2.6} />
+          <path d={d} fill="none" stroke={COLOR.bg} strokeWidth={1.2} strokeDasharray="6 6" />
+        </g>
+      ) : (
+        <path key={k} d={d} fill="none" stroke={`${COLOR.text}45`} strokeWidth={1.5} strokeDasharray="5 4" />
+      )))}
+      {builtSet.has('tunnel') && annexed.includes('pass') && (() => {
+        const [x, y] = [(CITY_AT.mining[0] + ANNEX_CITIES.pass.at[0]) / 2 + 6, (CITY_AT.mining[1] + ANNEX_CITIES.pass.at[1]) / 2 + 6];
+        return <path d={`M${x - 7},${y + 5} v-5 a7,7 0 0 1 14,0 v5 Z`} fill={COLOR.bg} stroke={COLOR.gold} strokeWidth={1.6} />;
+      })()}
+      {/* модернизированные копи Хальвика — новые шахты вокруг города */}
+      {builtSet.has('halvik_mines') && annexed.includes('mines') && [[-24, 16], [20, 18], [2, -20]].map(([dx, dy]) => {
+        const [x, y] = [ANNEX_CITIES.mines.at[0] + dx, ANNEX_CITIES.mines.at[1] + dy];
+        return (
+          <g key={`hm${dx}`}>
+            <circle cx={x} cy={y} r={7} fill={COLOR.bg} stroke={COLOR.gold} strokeWidth={1.2} />
+            <Pickaxe x={x - 5} y={y - 5} width={10} height={10} color={COLOR.gold} />
+          </g>
+        );
+      })}
+      <path d={`${mv(TRIBUTARY[0])}${curveTo(TRIBUTARY)}`} fill="none" stroke={`${COLOR.blue}aa`} strokeWidth={2} strokeLinecap="round" />
+      <path d={`${mv(RIVER[0])}${curveTo(RIVER)}`} fill="none" stroke={`${COLOR.blue}cc`} strokeWidth={3.4} strokeLinecap="round" />
+      {/* течение: светлые блики бегут вниз по реке к заливу */}
+      <path d={`${mv(TRIBUTARY[0])}${curveTo(TRIBUTARY)}`} fill="none" stroke="#ffffff" strokeOpacity={0.45} strokeWidth={1.2} strokeLinecap="round" className="map-river-flow" />
+      <path d={`${mv(RIVER[0])}${curveTo(RIVER)}`} fill="none" stroke="#ffffff" strokeOpacity={0.55} strokeWidth={1.6} strokeLinecap="round" className="map-river-flow" />
+      <text x={548} y={242} transform="rotate(-62 548 242)" style={{ fontSize: 11, fill: `${COLOR.blue}dd`, fontStyle: 'italic' }}>р. Велья</text>
+    </g>
+  );
+});
 
 /* plan — решения игрока на карте в этом квартале ({ startProject, regionResponse });
    onPlan — как их менять (нет — карта только показывает); planner — кто решает за
@@ -970,7 +1088,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow; };
   }, [full]);
   const zoom = useMapZoom(full);
-  const { lkT } = labelScale(zoom.zoom);
+  const { lk, lkT } = labelScale(zoom.zoom);
   const [picked, setMode] = useState('stress');
   // слой, который пропал (опросы после выборов), не остаётся выбранным невидимкой
   const modes = MAP_MODES.filter((m) => !m.when || m.when(economy));
@@ -1056,9 +1174,10 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               borderColor: mode === id ? COLOR.selBorder : COLOR.borderStrong }}
               onClick={() => { Audio.play('tab'); setMode(id); }}>{typeof label === 'function' ? label(economy) : label}</button>
           ))}
-          <button className="ems-btn map-chip" style={{ marginLeft: 'auto' }} onClick={() => { Audio.play('click'); setFull((v) => !v); }}
+          {/* на узком экране — только значок: с подписью кнопка уезжала отдельной строкой вправо */}
+          <button className="ems-btn map-chip map-full-btn" style={{ marginLeft: 'auto' }} onClick={() => { Audio.play('click'); setFull((v) => !v); }}
             aria-label={full ? 'Свернуть карту' : 'Развернуть карту на весь экран'} title={full ? 'Свернуть (Esc)' : 'Во весь экран'}>
-            {full ? <Minimize2 size={13} /> : <Expand size={13} />}{full ? 'Свернуть' : 'Во весь экран'}
+            {full ? <Minimize2 size={13} /> : <Expand size={13} />}<span className="map-full-label">{full ? 'Свернуть' : 'Во весь экран'}</span>
           </button>
         </div>
         {/* страны: своя и соседи — открывают карточку страны вместо карточки области */}
@@ -1079,14 +1198,15 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
         <style>{MAP_CSS}</style>
         <div style={{ position: 'relative' }}>
         <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className="map-enter"
-          style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: Math.abs(zoom.zoom - 1) > 0.01 ? 'none' : 'pan-y',
+          style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: 'none',
             // во весь экран карта растёт, пока помещается по высоте; пропорции — строго как у viewBox
             maxWidth: full ? `calc((100vh - 130px) * ${VIEW_W} / ${VIEW_H - VIEW_TOP})` : undefined, margin: '0 auto',
             cursor: Math.abs(zoom.zoom - 1) > 0.01 ? 'grab' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}
           {...zoom.handlers}
           role="img" aria-label="Карта областей страны">
           <defs>
-            <filter id="map-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" /></filter>
+            {/* свечение столицы — градиентом, без фильтра размытия */}
+            <radialGradient id="map-capital-g"><stop offset="0" stopColor={COLOR.gold} stopOpacity="0.9" /><stop offset="1" stopColor={COLOR.gold} stopOpacity="0" /></radialGradient>
             {/* волны на море, пашня на равнине, кварталы в городах — условные знаки
                 физической карты, по которым область узнаётся без подписи */}
             <pattern id="map-fields" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(28)">
@@ -1175,71 +1295,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           </g>
           <CountryShade p="map" />
           {/* слой 2 — угодья, рельеф, дороги и реки; клики проходят насквозь */}
-          <g style={{ pointerEvents: 'none' }}>
-            <path d={regionPath('agri')} fill="url(#map-fields)" />
-            <path d={regionPath('capital')} fill="url(#map-blocks)" opacity={0.8} />
-            <path d={regionPath('finance')} fill="url(#map-blocks)" opacity={0.45} />
-            <path d={regionPath('industry')} fill="url(#map-blocks)" opacity={0.3} />
-            <path d={regionPath('mining')} fill="url(#map-relief)" />
-            {FIELDS.map(([x, y]) => (
-              <path key={`f${x},${y}`} d={`M${x - 9},${y} h18 M${x - 7},${y + 5} h14`} stroke={`${COLOR.gold}66`} strokeWidth={1.4} />
-            ))}
-            {MOUNTAINS.map(([x, y]) => (
-              <g key={`m${x},${y}`}>
-                <path d={`M${x - 14},${y + 9} L${x},${y - 11} L${x + 14},${y + 9} Z`} fill={`${COLOR.muted}33`} stroke={`${COLOR.text}88`} strokeWidth={1.2} strokeLinejoin="round" />
-                <path d={`M${x},${y - 11} L${x + 14},${y + 9} L${x + 3},${y + 9} Z`} fill={`${COLOR.ink}40`} />
-                <path d={`M${x - 4},${y - 5} L${x},${y - 11} L${x + 4},${y - 5}`} fill="none" stroke={`${COLOR.text}dd`} strokeWidth={1.5} />
-              </g>
-            ))}
-            {FORESTS.map(([x, y]) => (
-              <g key={`t${x},${y}`}>
-                <path d={`M${x},${y - 11} L${x + 7},${y + 2} L${x - 7},${y + 2} Z`} fill={`${COLOR.teal}55`} stroke={`${COLOR.teal}aa`} strokeWidth={1} strokeLinejoin="round" />
-                <line x1={x} y1={y + 2} x2={x} y2={y + 7} stroke={`${COLOR.teal}aa`} strokeWidth={1.4} />
-              </g>
-            ))}
-            <g clipPath="url(#map-country)">
-              {ROAD_NET.map(([a, b], i) => (
-                <path key={`r${i}`} d={bentPath(a, b, i + 3)} fill="none" stroke={`${COLOR.text}38`} strokeWidth={1.4} strokeDasharray="5 4" />
-              ))}
-              {/* железная дорога — классическим «шпальным» пунктиром */}
-              {RAIL_NET.map(([a, b], i) => (
-                <g key={`w${i}`}>
-                  <path d={bentPath(a, b, i)} fill="none" stroke={`${COLOR.text}50`} strokeWidth={2.6} />
-                  <path d={bentPath(a, b, i)} fill="none" stroke={COLOR.bg} strokeWidth={1.2} strokeDasharray="6 6" />
-                </g>
-              ))}
-            </g>
-            {/* новые земли: после присоединения к их городам ведёт дорога; достроенный
-                тоннель под перевалом превращает её в железную дорогу */}
-            {annexLinks.map(({ k, d, rail }) => (rail ? (
-              <g key={k}>
-                <path d={d} fill="none" stroke={`${COLOR.text}50`} strokeWidth={2.6} />
-                <path d={d} fill="none" stroke={COLOR.bg} strokeWidth={1.2} strokeDasharray="6 6" />
-              </g>
-            ) : (
-              <path key={k} d={d} fill="none" stroke={`${COLOR.text}45`} strokeWidth={1.5} strokeDasharray="5 4" />
-            )))}
-            {builtSet.has('tunnel') && annexed.includes('pass') && (() => {
-              const [x, y] = [(CITY_AT.mining[0] + ANNEX_CITIES.pass.at[0]) / 2 + 6, (CITY_AT.mining[1] + ANNEX_CITIES.pass.at[1]) / 2 + 6];
-              return <path d={`M${x - 7},${y + 5} v-5 a7,7 0 0 1 14,0 v5 Z`} fill={COLOR.bg} stroke={COLOR.gold} strokeWidth={1.6} />;
-            })()}
-            {/* модернизированные копи Хальвика — новые шахты вокруг города */}
-            {builtSet.has('halvik_mines') && annexed.includes('mines') && [[-24, 16], [20, 18], [2, -20]].map(([dx, dy]) => {
-              const [x, y] = [ANNEX_CITIES.mines.at[0] + dx, ANNEX_CITIES.mines.at[1] + dy];
-              return (
-                <g key={`hm${dx}`}>
-                  <circle cx={x} cy={y} r={7} fill={COLOR.bg} stroke={COLOR.gold} strokeWidth={1.2} />
-                  <Pickaxe x={x - 5} y={y - 5} width={10} height={10} color={COLOR.gold} />
-                </g>
-              );
-            })}
-            <path d={`${mv(TRIBUTARY[0])}${curveTo(TRIBUTARY)}`} fill="none" stroke={`${COLOR.blue}aa`} strokeWidth={2} strokeLinecap="round" />
-            <path d={`${mv(RIVER[0])}${curveTo(RIVER)}`} fill="none" stroke={`${COLOR.blue}cc`} strokeWidth={3.4} strokeLinecap="round" />
-            {/* течение: светлые блики бегут вниз по реке к заливу */}
-            <path d={`${mv(TRIBUTARY[0])}${curveTo(TRIBUTARY)}`} fill="none" stroke="#ffffff" strokeOpacity={0.45} strokeWidth={1.2} strokeLinecap="round" className="map-river-flow" />
-            <path d={`${mv(RIVER[0])}${curveTo(RIVER)}`} fill="none" stroke="#ffffff" strokeOpacity={0.55} strokeWidth={1.6} strokeLinecap="round" className="map-river-flow" />
-            <text x={548} y={242} transform="rotate(-62 548 242)" style={{ fontSize: 11, fill: `${COLOR.blue}dd`, fontStyle: 'italic' }}>р. Велья</text>
-          </g>
+          <TerrainLayer annexKey={annexed.join(',')} tunnel={builtSet.has('tunnel')} halvik={builtSet.has('halvik_mines')} />
           {/* живой слой: поезда на железных дорогах и суда из порта; их число и скорость
               зависят от экономики. При «уменьшить движение» не рисуются вовсе */}
           {!reduced && (
@@ -1279,7 +1335,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             {!country && (
               <>
                 <path d={regionPath(selected)} fill="none" stroke={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)}
-                  strokeWidth={10} strokeLinejoin="round" className="map-sel-glow" filter="url(#map-glow)" />
+                  strokeWidth={12} strokeLinejoin="round" className="map-sel-glow" />
                 <path d={regionPath(selected)} fill="none" stroke={showVotes && sel != null ? voteColor(sel) : tierColor(blurb.tier)}
                   strokeWidth={2.8} strokeLinejoin="round" />
                 <path d={regionPath(selected)} fill="none" stroke={COLOR.text} strokeOpacity={0.6} strokeWidth={1.1} strokeLinejoin="round" className="map-sel-line" />
@@ -1291,7 +1347,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               if (!d) return null;
               return (
                 <>
-                  <path d={d} fill="none" stroke={COLOR.gold} strokeWidth={12} strokeLinejoin="round" className="map-sel-glow" filter="url(#map-glow)" />
+                  <path d={d} fill="none" stroke={COLOR.gold} strokeWidth={14} strokeLinejoin="round" className="map-sel-glow" />
                   <path d={d} fill="none" stroke={COLOR.gold} strokeWidth={2.4} strokeLinejoin="round" className="map-sel-line" />
                 </>
               );
@@ -1440,7 +1496,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           <WorldClouds p="map" reduced={reduced} />
           {/* слой 5 — города и подписи поверх всего */}
           <g style={{ pointerEvents: 'none' }}>
-            <WorldFarLabels lkT={lkT} />
+            <WorldFarLabels lk={Math.round(lk * 50) / 50} />
             {!camp && annexed.filter((id) => ANNEX_CITIES[id]).map((id) => {
               const c = ANNEX_CITIES[id];
               return (
@@ -1464,7 +1520,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             ))}
             {CITIES.map((c) => (
               <g key={c.id} transform={lkT(c.at[0], c.at[1])}>
-                {c.capital && <circle cx={c.at[0]} cy={c.at[1]} r={17} fill={COLOR.gold} className="map-capital-glow" filter="url(#map-glow)" />}
+                {c.capital && <circle cx={c.at[0]} cy={c.at[1]} r={20} fill="url(#map-capital-g)" className="map-capital-glow" />}
                 {c.capital
                   ? <path d={starPath(c.at[0], c.at[1], 11, 4.6)} fill={COLOR.gold} stroke={COLOR.ink} strokeWidth={0.8} />
                   : (
@@ -1630,7 +1686,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <Swords size={15} color={COLOR.rust} />
                 <span className="ems-serif" style={{ fontSize: 14 }}>Война с {nb ? nb.gen : 'соседом'}</span>
-                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>ещё {economy.warQuartersLeft} кв.</span>
+                {/* срок войны заранее не известен никому — показываем, сколько она уже идёт */}
+                <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>{economy.warElapsed || 1}-й квартал</span>
               </div>
               <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.55 }}>
                 {war.cfg.inward
@@ -2059,7 +2116,7 @@ export function DefensePanel({ economy, camp, order, setOrder, planner, onFocus 
       )}
       <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 4 }}>
         Боевой дух противника {Math.round(camp.morale)} из 100 — на нуле он сам отступит. Сила вашей армии {Math.round(warStrength(economy) * 100)} из 100.
-        {front ? ` До конца войны по счёту — ${economy.warQuartersLeft} кв.` : ''}
+        {' Сколько продлится война, не знает никто: чем дольше она идёт и чем ниже дух противника, тем вероятнее, что он запросит перемирия.'}
       </div>
       <div style={{ height: 5, borderRadius: 3, background: COLOR.panelAlt, overflow: 'hidden', marginBottom: 10 }}>
         <div style={{ width: `${camp.morale}%`, height: '100%', background: COLOR.rust }} />
@@ -2327,10 +2384,11 @@ function bizPath(a, b, salt) {
   return `M${x1},${y1} Q${c[0].toFixed(1)},${c[1].toFixed(1)} ${x2},${y2}`;
 }
 
-export function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [], rivals = [] }) {
+// «Своё дело» перерисовывается дважды в секунду — карта только тогда, когда меняются её данные
+export const BusinessMap = memo(function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [], rivals = [] }) {
   const zoom = useMapZoom(undefined);
   const reduced = useReducedMotion();
-  const { lk, lkT } = labelScale(zoom.zoom);
+  const { lk } = labelScale(zoom.zoom);
   const regions = activeRegions(economy);
   const annexed = economy.annexed || [];
   const maxCount = Math.max(1, ...Object.values(info).map((x) => x.count || 0));
@@ -2340,11 +2398,10 @@ export function BusinessMap({ economy, selected, onSelect, info = {}, flows = []
     <div style={{ position: 'relative' }}>
       <style>{MAP_CSS}</style>
       <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className="map-enter"
-        style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: Math.abs(zoom.zoom - 1) > 0.01 ? 'none' : 'pan-y',
+        style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: 'none',
           cursor: Math.abs(zoom.zoom - 1) > 0.01 ? 'grab' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}
         {...zoom.handlers} role="img" aria-label="Карта ваших предприятий">
         <defs>
-          <filter id="biz-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" /></filter>
           <pattern id="biz-can" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
             <line x1="0" y1="0" x2="0" y2="10" stroke={COLOR.teal} strokeOpacity={0.45} strokeWidth={3} />
           </pattern>
@@ -2420,13 +2477,13 @@ export function BusinessMap({ economy, selected, onSelect, info = {}, flows = []
         {/* выбранная область */}
         {selected && regionPath(selected) && (
           <g style={{ pointerEvents: 'none' }}>
-            <path d={regionPath(selected)} fill="none" stroke={COLOR.gold} strokeWidth={10} className="map-sel-glow" filter="url(#biz-glow)" />
+            <path d={regionPath(selected)} fill="none" stroke={COLOR.gold} strokeWidth={12} strokeLinejoin="round" className="map-sel-glow" />
             <path d={regionPath(selected)} fill="none" stroke={COLOR.gold} strokeWidth={2.6} />
             <path d={regionPath(selected)} fill="none" stroke={COLOR.text} strokeOpacity={0.6} strokeWidth={1.1} className="map-sel-line" />
           </g>
         )}
         <WorldClouds p="biz" reduced={reduced} />
-        <WorldFarLabels lkT={lkT} />
+        <WorldFarLabels lk={Math.round(lk * 50) / 50} />
         {/* города, подписи и значки ваших зданий */}
         <g style={{ pointerEvents: 'none' }}>
           {regions.map((r) => {
@@ -2483,4 +2540,4 @@ export function BusinessMap({ economy, selected, onSelect, info = {}, flows = []
       </div>
     </div>
   );
-}
+});

@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Wheat, Trees, Pickaxe, Mountain, Factory, Store, Building2, Anchor, Warehouse, FlaskConical, Pause, Play,
   FastForward, Landmark, Coins, Newspaper, ArrowRight, Hammer, ArrowUpCircle, Power, Trash2, Handshake,
-  Globe2, AlertTriangle, TrendingUp, X, Map as MapIcon, Boxes, Lock, Check, Trophy, DoorOpen, Save, Users, Gift, Sparkles, Swords,
+  Globe2, AlertTriangle, TrendingUp, X, Map as MapIcon, Boxes, Lock, Check, Trophy, DoorOpen, Save, Users, Gift, Sparkles, Swords, ChevronDown,
 } from 'lucide-react';
 import {
   COLOR, Audio, AudioControls, GlobalStyle, ACHIEVEMENTS, ACHIEVEMENTS_KEY, loadUnlockedAchievements, TYCOON_SAVE_KEY,
@@ -47,6 +47,8 @@ const TY_CSS = `
   .ty-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
   .ty-head { position: sticky; top: 0; }
   @media (max-width: 1000px) { .ty-grid { grid-template-columns: minmax(0, 1fr); } .ty-head { position: relative; } }
+  /* пауза — цеха и грузовики на карте тоже замирают */
+  .ty-paused .ty-work > span, .ty-paused .map-flow { animation-play-state: paused; }
   @media (prefers-reduced-motion: reduce) { .ty-work > span, .ty-pulse, .ty-toast { animation: none; } }
 `;
 
@@ -183,8 +185,11 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   [flowsKey]);
   // где стоят магазины конкурентов — цветные метки у городов на карте
-  const rivalMarks = (st.rivals || []).filter((c) => c.alive && c.entered)
-    .flatMap((c) => Object.entries(c.shops).filter(([, v]) => v > 0).map(([region, v]) => ({ region, color: COLOR[T.RIVAL[c.id].color], n: Math.round(v / 1.5), name: T.RIVAL[c.id].short })));
+  const rivalKey = (st.rivals || []).map((c) => `${c.id}${c.alive && c.entered ? JSON.stringify(c.shops) : ''}`).join('|');
+  const rivalMarks = useMemo(() => (st.rivals || []).filter((c) => c.alive && c.entered)
+    .flatMap((c) => Object.entries(c.shops).filter(([, v]) => v > 0).map(([region, v]) => ({ region, color: COLOR[T.RIVAL[c.id].color], n: Math.round(v / 1.5), name: T.RIVAL[c.id].short }))),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [rivalKey]);
   const highlight = useMemo(() => {
     if (!hoverType) return null;
     const h = {};
@@ -210,7 +215,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   );
 
   return (
-    <div className="ems-root" style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
+    <div className={`ems-root${st.paused || st.bankrupt ? ' ty-paused' : ''}`} style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
       <GlobalStyle />
       <style>{TY_CSS}</style>
       <TyHeader st={st} setSt={setSt} savedAt={savedAt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
@@ -641,6 +646,25 @@ function ProductionTab({ st, act, setRegion }) {
 }
 
 /* ------------------------------ СКЛАД И РЫНОК ------------------------------ */
+/* Сворачиваемая строка внутри карточки: заголовок со сводкой, по нажатию — содержимое.
+   Положение помнится между заходами (как у панелей партии за государство). */
+function FoldRow({ id, title, summary, children }) {
+  const key = `ems.fold.${id}`;
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch { return false; } });
+  const toggle = () => { const v = !open; setOpen(v); try { localStorage.setItem(key, v ? '1' : '0'); } catch { /* приватный режим */ } };
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button className="ems-btn ghost" aria-expanded={open} onClick={toggle}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', fontSize: 12, textAlign: 'left' }}>
+        <ChevronDown size={13} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .2s ease', flexShrink: 0 }} />
+        <span style={{ color: COLOR.text }}>{title}</span>
+        <span className="ems-mono" style={{ marginLeft: 'auto', color: COLOR.goldSoft }}>{summary}</span>
+      </button>
+      {open && <div style={{ marginTop: 2 }}>{children}</div>}
+    </div>
+  );
+}
+
 function StockTab({ st, act }) {
   const cap = T.storageCap(st);
   const usedInputs = new Set(); const produced = new Set();
@@ -704,13 +728,14 @@ function StockTab({ st, act }) {
                 )}
               </div>
               {r.consumer && (
-                <div style={{ marginTop: 4 }}>
+                <FoldRow id={`price.${r.id}`} title={`Цена в магазинах: ${money(T.retailPrice(st, r.id))}`}
+                  summary={`${(st.markup[r.id] || 0) > 0 ? '+' : ''}${st.markup[r.id] || 0}% к рынку`}>
                   <PlanSlider label={`Цена в магазинах: ${money(T.retailPrice(st, r.id))}`} value={st.markup[r.id] || 0} min={-20} max={40} step={1}
                     hint={hasShops
                       ? `Дешевле рынка — больше покупателей, дороже — выше маржа. Не хватило товара или полок: ${perMin(st.stats.unmet[r.id] || 0)}/мин.`
                       : 'Нужен магазин: без него товар идёт только оптом.'}
                     format={(v) => `${v > 0 ? '+' : ''}${v}% к рынку`} onChange={(v) => act((s) => T.setMap(s, 'markup', r.id, v), null)} />
-                </div>
+                </FoldRow>
               )}
             </div>
           );
@@ -830,8 +855,32 @@ function Chip({ on, onClick, children, disabled }) {
    Узлы стоят по колонкам (tier) и строкам-веткам (row), линии — зависимости. На узком
    экране дерево прокручивается вбок внутри своей рамки, страница — нет. */
 const NODE_W = 176; const NODE_H = 92; const GAP_X = 44; const GAP_Y = 18;
+/* Широкое дерево листается не только полосой прокрутки: его можно тянуть пальцем или
+   мышью за любую точку. Вертикаль остаётся странице (touch-action: pan-y), горизонталь
+   ведём сами; клик после перетаскивания не открывает узел. */
+function useDragScroll() {
+  const ref = useRef(null);
+  const d = useRef(null);
+  const handlers = {
+    onPointerDown: (e) => { if (e.button && e.button !== 0) return; d.current = { x: e.clientX, left: ref.current.scrollLeft, moved: false, id: e.pointerId }; },
+    onPointerMove: (e) => {
+      const g = d.current;
+      if (!g || g.id !== e.pointerId) return;
+      const dx = e.clientX - g.x;
+      if (!g.moved && Math.abs(dx) < 6) return;
+      if (!g.moved) { g.moved = true; try { ref.current.setPointerCapture(e.pointerId); } catch { /* уже отпущен */ } }
+      ref.current.scrollLeft = g.left - dx;
+    },
+    onPointerUp: () => { setTimeout(() => { d.current = null; }, 0); },
+    onPointerCancel: () => { d.current = null; },
+  };
+  const onClickCapture = (e) => { if (d.current && d.current.moved) { e.stopPropagation(); e.preventDefault(); } };
+  return { ref, handlers, onClickCapture };
+}
+
 function LabTab({ st, act }) {
-  const rate = st.buildings.reduce((a, b) => a + (T.BLD[b.type].research ? T.BLD[b.type].research * T.buildingPower(st, b) : 0), 0) + 0.02;
+  const drag = useDragScroll();
+  const rate = st.buildings.reduce((a, b) => a + (T.BLD[b.type].research ? T.BLD[b.type].research * T.buildingPower(st, b) : 0), 0) + T.RP_BASE;
   const [picked, setPicked] = useState(null);
   const tiers = Math.max(...T.RESEARCH.map((r) => r.tier)) + 1;
   const rows = Math.max(...T.RESEARCH.map((r) => r.row)) + 1;
@@ -847,7 +896,8 @@ function LabTab({ st, act }) {
         <span className="ems-mono" style={{ fontSize: 20, color: COLOR.goldSoft, fontWeight: 600 }}>{Math.floor(st.rp)}</span>
         <span style={{ fontSize: 12, color: COLOR.muted }}>очков · +{perMin(rate)}/мин. Лаборатории ускоряют (лучше в столице). Каждое изучение дороже следующего. Дерево шире экрана — прокрутите его вбок.</span>
       </div>
-      <div style={{ overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
+      <div ref={drag.ref} {...drag.handlers} onClickCapture={drag.onClickCapture}
+        style={{ overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', paddingBottom: 4, touchAction: 'pan-y', cursor: 'grab' }}>
         <div style={{ position: 'relative', width: W, height: H }}>
           <svg width={W} height={H} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden="true">
             {T.RESEARCH.flatMap((r) => T.reqsOf(r).map((q) => {
@@ -939,8 +989,8 @@ function TeamTab({ st, act }) {
               </div>
               <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.45, marginTop: 5 }}>{m.desc}</div>
               {hired && m.spends && (
-                <PlanSlider label="Бюджет за раз" value={hired.budget ?? 30} min={5} max={100} step={5}
-                  hint="Доля денег на счёте, которую можно потратить одним решением."
+                <PlanSlider label="Бюджет на квартал" value={hired.budget ?? 30} min={5} max={100} step={5}
+                  hint={`Сколько денег со счёта можно потратить за квартал (всего, а не на каждое решение). Запас на два квартала расходов менеджер не трогает. Осталось в этом квартале: ${money(T.mgrBudget(st, m.id))}.`}
                   format={(v) => `${v}% денег`} onChange={(v) => act((s2) => T.setManager(s2, m.id, { budget: v }), null)} />
               )}
             </div>
