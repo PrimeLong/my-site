@@ -7,12 +7,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Wheat, Trees, Pickaxe, Mountain, Factory, Store, Building2, Anchor, Warehouse, FlaskConical, Pause, Play,
   FastForward, Landmark, Coins, Newspaper, ArrowRight, Hammer, ArrowUpCircle, Power, Trash2, Handshake,
-  Globe2, AlertTriangle, TrendingUp, X, Map as MapIcon, Boxes, Lock, Check, Trophy, DoorOpen,
+  Globe2, AlertTriangle, TrendingUp, X, Map as MapIcon, Boxes, Lock, Check, Trophy, DoorOpen, Save, Users, Gift, Sparkles,
 } from 'lucide-react';
 import {
   COLOR, Audio, AudioControls, GlobalStyle, ACHIEVEMENTS, ACHIEVEMENTS_KEY, loadUnlockedAchievements, TYCOON_SAVE_KEY,
-  TYCOON_META_KEY, loadTycoonMeta,
+  TYCOON_META_KEY, loadTycoonMeta, getPlayerId,
 } from './MacroSimulator.jsx';
+import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot } from './lib/client.js';
 import { BusinessMap } from './countrymap.jsx';
 import { PlanSlider, Toggle, Row, MiniSpark } from './business.jsx';
 import { fmtMln, fmt1, fmtSigned1, quarterLabel, getCbPersona, getMofPersona, getPresPersona, POLITICAL_REGIME_INFO, SCENARIOS } from './lib/engine.js';
@@ -84,7 +85,7 @@ function useNarrow() {
 /* ------------------------------ ЭКРАН ------------------------------ */
 export function TycoonScreen({ initial, setupNew, onExit }) {
   const [boot] = useState(() => {
-    if (initial) return T.catchUp(initial);
+    if (initial) return T.catchUp(T.normalizeTycoon(initial));
     const meta = loadTycoonMeta();
     return { st: T.makeTycoon({ ...setupNew, legacy: meta.legacy || 0 }), away: 0, earned: 0 };
   });
@@ -96,6 +97,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   const tab = tabPicked === 'build' && !narrow ? 'prod' : tabPicked || (narrow ? 'build' : 'prod');
   const [region, setRegion] = useState(() => (boot.st.buildings[0] ? boot.st.buildings[0].region : 'capital'));
   const [hoverType, setHoverType] = useState(null);
+  const [showSaves, setShowSaves] = useState(false);
   const [toasts, setToasts] = useState([]);
   const stRef = useRef(st);
   stRef.current = st;
@@ -178,7 +180,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   }, [hoverType, e.annexed && e.annexed.length]);
 
   const tabs = [['build', 'Карта и стройка', MapIcon], ['prod', 'Производство', Factory], ['stock', 'Склад и рынок', Boxes],
-    ['lab', 'Исследования', FlaskConical], ['money', 'Финансы', Coins], ['country', 'Страна', Landmark]];
+    ['lab', 'Исследования', FlaskConical], ['team', 'Команда', Users], ['money', 'Финансы', Coins], ['country', 'Страна', Landmark]];
   const mapPanel = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className="ems-panel" style={{ padding: 10 }}>
@@ -197,7 +199,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     <div className="ems-root" style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
       <GlobalStyle />
       <style>{TY_CSS}</style>
-      <TyHeader st={st} setSt={setSt} onExit={() => { saveLocal(stRef.current); onExit(); }} />
+      <TyHeader st={st} setSt={setSt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }} />
+      <QuestCard st={st} act={act} onGo={(t) => { Audio.play('tab'); setTab(t); }} />
       {st.log[0] && (
         <div style={{ padding: '8px 18px', fontSize: 11.5, color: COLOR.muted, borderBottom: `1px solid ${COLOR.hairline}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <ArrowRight size={12} color={COLOR.gold} style={{ flexShrink: 0 }} />
@@ -222,6 +225,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
             {tab === 'prod' && <ProductionTab st={st} act={act} setRegion={setRegion} />}
             {tab === 'stock' && <StockTab st={st} act={act} />}
             {tab === 'lab' && <LabTab st={st} act={act} />}
+            {tab === 'team' && <TeamTab st={st} act={act} />}
             {tab === 'money' && <MoneyTab st={st} act={act} onSell={() => {
               const value = T.companyValue(stRef.current);
               const gain = T.legacyFor(value);
@@ -239,6 +243,23 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
         </div>
       </div>
 
+      {!st.introSeen && !offline && (
+        <Modal title="Своё дело" onClose={() => setSt((p) => ({ ...p, introSeen: true }))}>
+          <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div><b style={{ color: COLOR.text }}>Время идёт само.</b> Деньги капают каждую секунду, раз в минуту проходит квартал страны — налоги, проценты, новости. Пауза и скорость — в шапке.</div>
+            <div><b style={{ color: COLOR.text }}>Цепочки.</b> Сырьё → переработка → магазин. Чем дальше по цепочке, тем дороже товар; рядом стоящие цеха экономят на перевозке.</div>
+            <div><b style={{ color: COLOR.text }}>Страна живёт без вас.</b> Ставка, кризисы, выборы и война меняют спрос, цены и кредит — следите за вкладкой «Страна».</div>
+            <div><b style={{ color: COLOR.text }}>Задания</b> вверху экрана проведут по первым шагам и дадут денег на рост.</div>
+          </div>
+          <button className="ems-btn primary" style={{ width: '100%', marginTop: 14 }} onClick={() => { Audio.play('stamp'); setSt((p) => ({ ...p, introSeen: true })); }}>Начать</button>
+        </Modal>
+      )}
+      {showSaves && <SavesModal st={st} onClose={() => setShowSaves(false)} onLoad={(snap) => {
+        const r = T.catchUp(T.normalizeTycoon(snap));
+        setSt(r.st); setShowSaves(false); setRegion(r.st.buildings[0] ? r.st.buildings[0].region : 'capital');
+        if (r.away > 0) setOffline(r);
+        toast('Партия загружена', 'gold');
+      }} toast={toast} />}
       {offline && (
         <Modal onClose={() => setOffline(null)} title="Пока вас не было">
           <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.55 }}>
@@ -294,7 +315,7 @@ function Modal({ title, children, onClose, tone }) {
 }
 
 /* ------------------------------ ШАПКА ------------------------------ */
-function TyHeader({ st, setSt, onExit }) {
+function TyHeader({ st, setSt, onExit, onSaves }) {
   const e = st.country.economy;
   const net = st.stats.income - st.stats.costs;
   const value = T.companyValue(st);
@@ -331,13 +352,16 @@ function TyHeader({ st, setSt, onExit }) {
           <button aria-pressed={st.paused} aria-label="Пауза" style={{ padding: '6px 9px' }} onClick={() => setSpeed(st.speed, !st.paused)}>
             {st.paused ? <Play size={13} /> : <Pause size={13} />}
           </button>
-          {[1, 2, 4].map((s) => (
-            <button key={s} aria-pressed={!st.paused && st.speed === s} style={{ padding: '6px 9px', fontSize: 12 }} onClick={() => setSpeed(s)}>
-              {s === 4 ? <><FastForward size={12} style={{ verticalAlign: -2 }} />4×</> : `${s}×`}
+          {[0.5, 1, 2, 4].map((s) => (
+            <button key={s} aria-pressed={!st.paused && st.speed === s} aria-label={`Скорость ${s === 0.5 ? '0,5' : s}×`} style={{ padding: '6px 8px', fontSize: 12 }} onClick={() => setSpeed(s)}>
+              {s === 4 ? <><FastForward size={12} style={{ verticalAlign: -2 }} />4×</> : s === 0.5 ? '½×' : `${s}×`}
             </button>
           ))}
         </div>
         <AudioControls />
+        <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }} onClick={onSaves}>
+          <Save size={13} />Партии
+        </button>
         <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }} onClick={onExit}>
           <DoorOpen size={13} />Меню
         </button>
@@ -601,42 +625,206 @@ function Chip({ on, onClick, children, disabled }) {
   );
 }
 
-/* ------------------------------ ИССЛЕДОВАНИЯ ------------------------------ */
+/* ------------------------------ ИССЛЕДОВАНИЯ: ДЕРЕВО ------------------------------
+   Узлы стоят по колонкам (tier) и строкам-веткам (row), линии — зависимости. На узком
+   экране дерево прокручивается вбок внутри своей рамки, страница — нет. */
+const NODE_W = 176; const NODE_H = 92; const GAP_X = 44; const GAP_Y = 18;
 function LabTab({ st, act }) {
   const rate = st.buildings.reduce((a, b) => a + (T.BLD[b.type].research ? T.BLD[b.type].research * T.buildingPower(st, b) : 0), 0) + 0.02;
+  const [picked, setPicked] = useState(null);
+  const tiers = Math.max(...T.RESEARCH.map((r) => r.tier)) + 1;
+  const rows = Math.max(...T.RESEARCH.map((r) => r.row)) + 1;
+  const W = tiers * NODE_W + (tiers - 1) * GAP_X + 24;
+  const H = rows * NODE_H + (rows - 1) * GAP_Y + 24;
+  const pos = (r) => ({ x: 12 + r.tier * (NODE_W + GAP_X), y: 12 + r.row * (NODE_H + GAP_Y) });
+  const sel = picked ? T.RSR[picked] : null;
+  const state = (r) => (T.has(st, r.id) ? 'done' : T.reqsOf(r).every((x) => T.has(st, x)) ? 'open' : 'locked');
   return (
     <div className="ems-panel" style={{ padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <FlaskConical size={15} color={COLOR.gold} />
         <span className="ems-mono" style={{ fontSize: 20, color: COLOR.goldSoft, fontWeight: 600 }}>{Math.floor(st.rp)}</span>
-        <span style={{ fontSize: 11.5, color: COLOR.muted }}>очков исследований · +{perMin(rate)}/мин. Больше — лаборатории (лучше всего в столице).</span>
+        <span style={{ fontSize: 11.5, color: COLOR.muted }}>очков · +{perMin(rate)}/мин. Лаборатории ускоряют (лучше в столице). Каждое изучение дороже следующего. Дерево шире экрана — прокрутите его вбок.</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-        {T.RESEARCH.map((r) => {
-          const done = T.has(st, r.id);
-          const err = T.canResearch(st, r.id);
-          const cost = T.researchCost(st, r.id);
-          const blocked = r.req && !T.has(st, r.req);
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
+        <div style={{ position: 'relative', width: W, height: H }}>
+          <svg width={W} height={H} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden="true">
+            {T.RESEARCH.flatMap((r) => T.reqsOf(r).map((q) => {
+              const a = pos(T.RSR[q]); const b = pos(r);
+              const x1 = a.x + NODE_W; const y1 = a.y + NODE_H / 2; const x2 = b.x; const y2 = b.y + NODE_H / 2;
+              const done = T.has(st, q);
+              return <path key={`${q}>${r.id}`} d={`M${x1},${y1} C${x1 + GAP_X / 2},${y1} ${x2 - GAP_X / 2},${y2} ${x2},${y2}`}
+                fill="none" stroke={done ? COLOR.gold : COLOR.border} strokeWidth={done ? 2 : 1.4} strokeDasharray={done ? undefined : '4 4'} />;
+            }))}
+          </svg>
+          {T.RESEARCH.map((r) => {
+            const p = pos(r); const stt = state(r);
+            const cost = T.researchCost(st, r.id);
+            const can = !T.canResearch(st, r.id);
+            return (
+              <button key={r.id} onClick={() => { Audio.play('tick'); setPicked(r.id); }} aria-pressed={picked === r.id}
+                style={{ position: 'absolute', left: p.x, top: p.y, width: NODE_W, height: NODE_H, textAlign: 'left', cursor: 'pointer', padding: '8px 10px',
+                  borderRadius: 8, font: 'inherit', color: COLOR.text, display: 'flex', flexDirection: 'column', gap: 4,
+                  background: stt === 'done' ? COLOR.goldDim : COLOR.panelAlt,
+                  border: `1.5px solid ${picked === r.id ? COLOR.goldSoft : stt === 'done' ? COLOR.gold : can ? COLOR.teal : COLOR.border}`,
+                  opacity: stt === 'locked' ? 0.55 : 1, boxShadow: can ? `0 0 0 3px ${COLOR.tealDim}` : 'none', transition: 'box-shadow .3s, border-color .3s' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, lineHeight: 1.2 }}>
+                  {stt === 'done' ? <Check size={13} color={COLOR.gold} /> : stt === 'locked' ? <Lock size={12} color={COLOR.faint} /> : <FlaskConical size={13} color={COLOR.teal} />}
+                  {r.name}
+                </span>
+                <span style={{ fontSize: 10, color: COLOR.faint }}>{T.RESEARCH_BRANCHES[r.branch]}</span>
+                <span className="ems-mono" style={{ fontSize: 11, marginTop: 'auto', color: stt === 'done' ? COLOR.gold : can ? COLOR.teal : COLOR.muted }}>
+                  {stt === 'done' ? 'изучено' : `${cost} очков`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {sel && (
+        <div style={{ marginTop: 10, padding: '10px 12px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{sel.name}</div>
+            <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginTop: 3 }}>{sel.desc}</div>
+            {T.reqsOf(sel).length > 0 && <div style={{ fontSize: 10.5, color: COLOR.faint, marginTop: 3 }}>Нужно: {T.reqsOf(sel).map((x) => T.RSR[x].name).join(', ')}</div>}
+          </div>
+          {!T.has(st, sel.id) && (
+            <button className="ems-btn" disabled={!!T.canResearch(st, sel.id)} title={T.canResearch(st, sel.id) || ''}
+              style={{ padding: '7px 12px', fontSize: 12, borderColor: COLOR.teal, color: COLOR.teal }}
+              onClick={() => act((s2) => T.research(s2, sel.id), 'stamp')}>
+              {T.canResearch(st, sel.id) || `Изучить · ${T.researchCost(st, sel.id)}`}
+            </button>
+          )}
+        </div>
+      )}
+      {!sel && <div style={{ fontSize: 11, color: COLOR.faint, marginTop: 8 }}>Нажмите на узел, чтобы прочитать, что он даёт, и изучить. Подсвеченные бирюзовым можно изучить прямо сейчас.</div>}
+    </div>
+  );
+}
+
+/* ------------------------------ КОМАНДА: МЕНЕДЖЕРЫ ------------------------------ */
+function TeamTab({ st, act }) {
+  return (
+    <div className="ems-panel" style={{ padding: 12 }}>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+        Менеджеры сами делают рутину каждые пять секунд — и пока вкладка закрыта тоже. Зарплата растёт вместе с компанией.
+        Тем, кто тратит деньги, задайте бюджет: какую долю денег на счёте можно пустить в дело за раз.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {T.MANAGERS.map((m) => {
+          const hired = st.managers && st.managers[m.id];
+          const unlocked = T.has(st, m.unlock);
           return (
-            <div key={r.id} style={{ background: done ? COLOR.goldDim : COLOR.panelAlt, border: `1px solid ${done ? COLOR.gold : COLOR.border}`, padding: '10px 11px',
-              opacity: blocked ? 0.55 : 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {done ? <Check size={13} color={COLOR.gold} /> : blocked ? <Lock size={12} color={COLOR.faint} /> : <FlaskConical size={13} color={COLOR.teal} />}
-                <span style={{ fontSize: 12.5, fontWeight: 600 }}>{r.name}</span>
+            <div key={m.id} style={{ background: hired ? COLOR.goldDim : COLOR.panelAlt, border: `1px solid ${hired ? COLOR.gold : COLOR.border}`, padding: '10px 12px', opacity: unlocked || hired ? 1 : 0.6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Users size={14} color={hired ? COLOR.gold : COLOR.muted} />
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{m.name}</span>
+                <span className="ems-mono" style={{ fontSize: 10.5, color: COLOR.faint }}>{money(T.managerSalaryOf(st, m.id) * 60)}/мин</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  {hired ? (
+                    <>
+                      <button className="ems-btn" style={{ padding: '3px 9px', fontSize: 11 }} aria-pressed={hired.on !== false}
+                        onClick={() => act((s2) => T.setManager(s2, m.id, { on: hired.on === false }), 'tick')}>{hired.on === false ? 'В отпуске — вернуть' : 'Работает — отпуск'}</button>
+                      <button className="ems-btn" style={{ padding: '3px 9px', fontSize: 11 }}
+                        onClick={() => { if (window.confirm(`Уволить: ${m.name}?`)) act((s2) => T.fireManager(s2, m.id)); }}>Уволить</button>
+                    </>
+                  ) : (
+                    <button className="ems-btn" disabled={!unlocked || st.cash < m.hire} style={{ padding: '4px 10px', fontSize: 11.5, borderColor: unlocked ? COLOR.gold : COLOR.border }}
+                      onClick={() => act((s2) => T.hireManager(s2, m.id), 'coin')}>
+                      {unlocked ? `Нанять · ${money(m.hire)}` : <><Lock size={11} style={{ verticalAlign: -1 }} /> {T.RSR[m.unlock].name}</>}
+                    </button>
+                  )}
+                </span>
               </div>
-              <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45, flex: 1 }}>{r.desc}</div>
-              {!done && (
-                <button className="ems-btn" disabled={!!err} title={err || ''} style={{ padding: '5px 8px', fontSize: 11.5,
-                  borderColor: err ? COLOR.border : COLOR.teal, color: err ? COLOR.faint : COLOR.teal }}
-                  onClick={() => act((s) => T.research(s, r.id), 'stamp')}>
-                  {blocked ? `после «${T.RSR[r.req].name}»` : `Изучить · ${cost}`}
-                </button>
+              <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.45, marginTop: 5 }}>{m.desc}</div>
+              {hired && m.spends && (
+                <PlanSlider label="Бюджет за раз" value={hired.budget ?? 30} min={5} max={100} step={5}
+                  hint="Доля денег на счёте, которую можно потратить одним решением."
+                  format={(v) => `${v}% денег`} onChange={(v) => act((s2) => T.setManager(s2, m.id, { budget: v }), null)} />
               )}
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------ ЗАДАНИЯ ------------------------------ */
+function QuestCard({ st, act, onGo }) {
+  const q = T.currentQuest(st);
+  if (!q) return null;
+  const done = q.test(st);
+  const n = (st.quest || 0) + 1;
+  return (
+    <div style={{ padding: '10px 16px', borderBottom: `1px solid ${COLOR.hairline}`, background: done ? COLOR.goldDim : 'transparent' }}>
+      <div style={{ maxWidth: 1500, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        {done ? <Sparkles size={16} color={COLOR.gold} /> : <Gift size={16} color={COLOR.gold} />}
+        <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+          <div style={{ fontSize: 12.5 }}>
+            <b style={{ color: COLOR.goldSoft }}>Задание {n} из {T.QUESTS.length}: {q.title}</b>
+            <span className="ems-mono" style={{ fontSize: 11, color: COLOR.faint, marginLeft: 8 }}>награда {money(q.reward)}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.45 }}>{done ? 'Готово — заберите награду.' : T.questText(st, q)}</div>
+        </div>
+        {done ? (
+          <button className="ems-btn primary" style={{ padding: '6px 14px', fontSize: 12 }} onClick={() => act((s2) => T.claimQuest(s2), 'coin')}>Забрать {money(q.reward)}</button>
+        ) : (
+          <button className="ems-btn" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => onGo(q.tab)}>Где это? <ArrowRight size={12} style={{ verticalAlign: -2 }} /></button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ СОХРАНЕНИЯ ------------------------------
+   Автосохранение живёт в браузере; четыре слота — на сервере, общие для связанных
+   устройств (как у обычных партий). */
+function SavesModal({ st, onClose, onLoad, toast }) {
+  const [slots, setSlots] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState('');
+  const pid = getPlayerId();
+  useEffect(() => {
+    fetchTycoonSlots(pid).then((d) => setSlots(d.slots)).catch((e2) => setErr(e2.message || 'Хранилище недоступно'));
+  }, [pid]);
+  const save = async (i) => {
+    if (slots && slots[i] && !window.confirm('Перезаписать этот слот?')) return;
+    setBusy(i); setErr('');
+    try { setSlots(await saveTycoonSlot(pid, i, T.snapshotTycoon(st))); Audio.play('stamp'); toast('Сохранено', 'gold'); } catch (e2) { setErr(e2.message); }
+    setBusy(null);
+  };
+  const load = async (i) => {
+    if (!window.confirm('Загрузить? Текущая партия останется только в автосохранении, если её не сохранить.')) return;
+    setBusy(i); setErr('');
+    try { onLoad(await fetchTycoonSlot(pid, i)); } catch (e2) { setErr(e2.message); setBusy(null); }
+  };
+  const remove = async (i) => {
+    if (!window.confirm('Удалить сохранение?')) return;
+    try { setSlots(await deleteTycoonSlot(pid, i)); } catch (e2) { setErr(e2.message); }
+  };
+  return (
+    <Modal title="Партии «Своего дела»" onClose={onClose}>
+      <div style={{ fontSize: 11.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 10 }}>
+        Партия сама сохраняется в этом браузере каждые пять секунд. Слоты ниже — на сервере: их видно и на связанных устройствах.
+      </div>
+      {err && <div style={{ fontSize: 11.5, color: COLOR.rust, marginBottom: 8 }}>{err}</div>}
+      {!slots && !err && <div style={{ fontSize: 11.5, color: COLOR.faint }}>Загружаем слоты…</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {(slots || []).map((sl, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12, flexWrap: 'wrap' }}>
+            <span className="ems-mono" style={{ color: COLOR.faint }}>{i + 1}</span>
+            <span style={{ flex: '1 1 140px', minWidth: 0, color: sl ? COLOR.text : COLOR.faint }}>
+              {sl ? `${quarterLabel(sl.quarterIndex || 1)} · ${sl.buildings} зданий · ${money(sl.cash || 0)}${sl.legacy ? ` · репутация ${sl.legacy}` : ''}` : 'пусто'}
+              {sl && <span style={{ display: 'block', fontSize: 10, color: COLOR.faint }}>{new Date(sl.savedAt).toLocaleString('ru-RU')}</span>}
+            </span>
+            <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 11 }} onClick={() => save(i)}>{busy === i ? '…' : 'Сохранить сюда'}</button>
+            {sl && <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 11 }} onClick={() => load(i)}>Загрузить</button>}
+            {sl && <button onClick={() => remove(i)} aria-label="Удалить" style={{ background: 'none', border: 'none', color: COLOR.faint, cursor: 'pointer', lineHeight: 0 }}><X size={12} /></button>}
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }
 

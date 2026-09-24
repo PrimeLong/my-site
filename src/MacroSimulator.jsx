@@ -1,7 +1,7 @@
 ﻿import React, { useState, Suspense } from 'react';
 import {
   createLinkCode, checkLinkCode, cancelLinkCode, claimLinkCode, revokeLink, syncProgress, fetchRoom,
-  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard,
+  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
@@ -1264,6 +1264,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   React.useEffect(() => {
     fetchSoloSlots(playerId).then((d) => { setSoloSlots(d.slots); setStorageMode(d.storage || null); })
       .catch(() => setSoloSlots(Array(SOLO_SLOT_COUNT).fill(null)));
+    if (onTycoon) fetchTycoonSlots(playerId).then((d) => setTycoonSlots(d.slots || [])).catch(() => setTycoonSlots([]));
     // заодно подтягиваем общий прогресс: со связанного устройства могли прийти
     // новые достижения и пройденные модули
     syncProfile(playerId);
@@ -1299,6 +1300,13 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   const hasSaves = !!(soloSlots && soloSlots.some(Boolean));
 
   const [tycoonSave] = useState(loadTycoonSave);
+  const [tycoonSlots, setTycoonSlots] = useState([]);
+  const [tycoonBusy, setTycoonBusy] = useState(null);
+  const enterTycoonSlot = async (idx) => {
+    setTycoonBusy(idx);
+    try { const snap = await fetchTycoonSlot(playerId, idx); Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onTycoon(snap); }
+    catch (e) { setSlotError(e.message); setTycoonBusy(null); }
+  };
   const MENU_ITEMS = [
     { id: 'new', icon: Flag, title: 'Новая партия', desc: 'Пост, характер оппонента, сложность — и первый квартал у руля.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
@@ -1416,6 +1424,27 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
               })}
             </div>
             {slotError && <div style={{ fontSize: 11.5, color: COLOR.rust, marginTop: 8 }}>{slotError}</div>}
+          </div>
+        )}
+
+        {tycoonSlots.some(Boolean) && (
+          <div className="ems-panel ems-fade-in" style={{ padding: 15, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+              <Factory size={13} color={COLOR.gold} />
+              <span className="ems-serif" style={{ fontSize: 13.5, color: COLOR.goldSoft }}>Своё дело — сохранения</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {tycoonSlots.map((slot, idx) => (slot ? (
+                <div key={idx} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                  background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
+                  <span style={{ flex: 1, minWidth: 0, color: COLOR.text }}>
+                    Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий
+                  </span>
+                  <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 11 }} disabled={tycoonBusy === idx}
+                    onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                </div>
+              ) : null))}
+            </div>
           </div>
         )}
 

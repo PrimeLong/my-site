@@ -102,3 +102,21 @@ export async function fetchDailyBoard(day, playerId) {
   return data; // { day, total, rows, you }
 }
 export const submitDailyResult = (payload) => post(payload, DAILY_API);
+
+/* «Своё дело»: те же слоты на сервере, но свои (kind: 'tycoon'). */
+export async function fetchTycoonSlots(playerId) {
+  const r = await fetch(`${SOLO_API}?${new URLSearchParams({ playerId, kind: 'tycoon' })}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Хранилище недоступно');
+  return data;
+}
+export async function fetchTycoonSlot(playerId, slot) {
+  const r = await fetch(`${SOLO_API}?${new URLSearchParams({ playerId, slot, kind: 'tycoon' })}`);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Не удалось загрузить сохранение');
+  return data.snapshot;
+}
+export const saveTycoonSlot = (playerId, slot, snapshot, name) =>
+  post({ action: 'save', kind: 'tycoon', playerId, slot, snapshot, name }, SOLO_API).then((d) => d.slots);
+export const deleteTycoonSlot = (playerId, slot) =>
+  post({ action: 'delete', kind: 'tycoon', playerId, slot }, SOLO_API).then((d) => d.slots);

@@ -80,29 +80,45 @@ export const BUILDINGS = [
   { id: 'terminal', name: 'Экспортный терминал', cat: 'sell', icon: 'anchor', cost: 16, upkeep: 0.01, workers: 6, exports: 3,
     regions: { port: 1, nordholm: 0.8 }, unlock: 'export' },
   { id: 'warehouse', name: 'Склад', cat: 'support', icon: 'warehouse', cost: 0.8, upkeep: 0.001, workers: 1, storage: 400 },
-  { id: 'lab', name: 'Лаборатория', cat: 'support', icon: 'flask', cost: 4, upkeep: 0.005, workers: 5, research: 0.35,
+  { id: 'lab', name: 'Лаборатория', cat: 'support', icon: 'flask', cost: 4, upkeep: 0.005, workers: 5, research: 0.6,
     bonus: { capital: 1.3, finance: 1.2 } },
 ];
 export const BLD = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));
 
-/* ------------------------------ ИССЛЕДОВАНИЯ ------------------------------ */
+/* ------------------------------ ИССЛЕДОВАНИЯ: ДЕРЕВО ------------------------------
+   tier — колонка дерева (чем правее, тем дальше), row — строка; req — что нужно
+   изучить раньше (одно или несколько). Ветки: производство, торговля, металл,
+   управление. Каждое следующее изучение дороже (researchCost). */
 export const RESEARCH = [
-  { id: 'mechanization', name: 'Механизация', cost: 150, desc: 'Фермы и лесозаготовки дают в полтора раза больше.' },
-  { id: 'storage', name: 'Складская логистика', cost: 225, desc: 'Вместимость склада вдвое больше.' },
-  { id: 'furniture', name: 'Мебельное производство', cost: 125, desc: 'Открывает мебельную фабрику: доски превращаются в мебель для магазинов.' },
-  { id: 'logistics1', name: 'Логистика', cost: 150, desc: 'Перевозки между областями дешевле на 40%.' },
-  { id: 'metallurgy', name: 'Металлургия', cost: 200, desc: 'Открывает рудники, угольные шахты и сталелитейный завод.' },
-  { id: 'branding', name: 'Бренд', cost: 300, desc: 'Спрос в ваших магазинах выше на четверть.' },
-  { id: 'export', name: 'Внешняя торговля', cost: 300, desc: 'Открывает экспортный терминал в порту: продажи в валюте по мировым ценам.' },
-  { id: 'malls', name: 'Торговые центры', cost: 375, desc: 'Открывает торговый центр — в пять раз больше покупателей, чем у магазина.' },
-  { id: 'automation1', name: 'Автоматизация', cost: 375, desc: 'Зданиям нужно на четверть меньше работников.' },
-  { id: 'efficiency', name: 'Бережливое производство', cost: 500, desc: 'Расходы на содержание зданий ниже на 30%.' },
-  { id: 'logistics2', name: 'Своя транспортная сеть', cost: 500, req: 'logistics1', desc: 'Перевозки дешевле ещё вдвое, склад больше на половину.' },
-  { id: 'machinery', name: 'Станкостроение', cost: 625, req: 'metallurgy', desc: 'Открывает станкозавод — дорогой товар для экспорта и оптового рынка.' },
-  { id: 'appliances', name: 'Бытовая техника', cost: 750, req: 'metallurgy', desc: 'Открывает завод бытовой техники: сталь и импортные комплектующие.' },
-  { id: 'automation2', name: 'Роботизация', cost: 1250, req: 'automation1', desc: 'Работников нужно вдвое меньше, чем без автоматизации.' },
-  { id: 'megabrand', name: 'Национальный бренд', cost: 2000, req: 'branding', desc: 'Спрос в магазинах выше ещё на треть, экспорт дороже на 10%.' },
+  // производство
+  { id: 'mechanization', name: 'Механизация', cost: 150, tier: 0, row: 0, branch: 'prod', desc: 'Фермы и лесозаготовки дают в полтора раза больше.' },
+  { id: 'agronomy', name: 'Селекция', cost: 260, tier: 1, row: 0, branch: 'prod', req: ['mechanization'], desc: 'Фермы и лесозаготовки — ещё +40%.' },
+  { id: 'automation1', name: 'Автоматизация', cost: 375, tier: 2, row: 0, branch: 'prod', req: ['mechanization'], desc: 'Зданиям нужно на четверть меньше работников.' },
+  { id: 'efficiency', name: 'Бережливое производство', cost: 500, tier: 3, row: 0, branch: 'prod', req: ['automation1'], desc: 'Расходы на содержание зданий ниже на 30%.' },
+  { id: 'automation2', name: 'Роботизация', cost: 1250, tier: 4, row: 0, branch: 'prod', req: ['automation1', 'efficiency'], desc: 'Работников нужно вдвое меньше, чем без автоматизации.' },
+  // торговля и логистика
+  { id: 'storage', name: 'Складская логистика', cost: 225, tier: 0, row: 1, branch: 'trade', desc: 'Вместимость склада вдвое больше.' },
+  { id: 'logistics1', name: 'Логистика', cost: 150, tier: 1, row: 1, branch: 'trade', req: ['storage'], desc: 'Перевозки между областями дешевле на 40%.' },
+  { id: 'export', name: 'Внешняя торговля', cost: 300, tier: 2, row: 1, branch: 'trade', req: ['logistics1'], desc: 'Открывает экспортный терминал в порту: продажи в валюте по мировым ценам.' },
+  { id: 'logistics2', name: 'Своя транспортная сеть', cost: 500, tier: 3, row: 1, branch: 'trade', req: ['logistics1'], desc: 'Перевозки дешевле ещё вдвое, склад больше на половину.' },
+  // товары и бренд
+  { id: 'furniture', name: 'Мебельное производство', cost: 125, tier: 0, row: 2, branch: 'goods', desc: 'Открывает мебельную фабрику: доски превращаются в мебель для магазинов.' },
+  { id: 'branding', name: 'Бренд', cost: 300, tier: 1, row: 2, branch: 'goods', req: ['furniture'], desc: 'Спрос в ваших магазинах выше на четверть.' },
+  { id: 'malls', name: 'Торговые центры', cost: 375, tier: 2, row: 2, branch: 'goods', req: ['branding'], desc: 'Открывает торговый центр — в пять раз больше покупателей, чем у магазина.' },
+  { id: 'megabrand', name: 'Национальный бренд', cost: 2000, tier: 4, row: 2, branch: 'goods', req: ['malls', 'export'], desc: 'Спрос в магазинах выше ещё на треть, экспорт дороже на 10%.' },
+  // металл и машины
+  { id: 'metallurgy', name: 'Металлургия', cost: 200, tier: 1, row: 3, branch: 'metal', req: ['mechanization'], desc: 'Открывает рудники, угольные шахты и сталелитейный завод.' },
+  { id: 'machinery', name: 'Станкостроение', cost: 625, tier: 2, row: 3, branch: 'metal', req: ['metallurgy'], desc: 'Открывает станкозавод — дорогой товар для экспорта и оптового рынка.' },
+  { id: 'appliances', name: 'Бытовая техника', cost: 750, tier: 3, row: 3, branch: 'metal', req: ['machinery', 'branding'], desc: 'Открывает завод бытовой техники: сталь и импортные комплектующие.' },
+  // управление: люди, менеджеры, деньги
+  { id: 'hr', name: 'Кадровое агентство', cost: 80, tier: 0, row: 4, branch: 'mgmt', desc: 'Люди на новые здания набираются вдвое быстрее.' },
+  { id: 'management', name: 'Школа управленцев', cost: 180, tier: 1, row: 4, branch: 'mgmt', req: ['hr'], desc: 'Можно нанимать менеджеров: управляющего производством, коммерческого директора и главного технолога.' },
+  { id: 'finance_dept', name: 'Финансовый отдел', cost: 280, tier: 2, row: 4, branch: 'mgmt', req: ['management'], desc: 'Банки дают вдвое больше, проценты ниже на пункт.' },
+  { id: 'board', name: 'Совет директоров', cost: 700, tier: 3, row: 4, branch: 'mgmt', req: ['management', 'finance_dept'], desc: 'Можно нанять директора по развитию и финансового директора — они строят и занимают сами.' },
 ];
+export const RESEARCH_BRANCHES = { prod: 'Производство', trade: 'Торговля и логистика', goods: 'Товары и бренд', metal: 'Металл и машины', mgmt: 'Управление' };
+const reqsOf = (r) => (Array.isArray(r.req) ? r.req : r.req ? [r.req] : []);
+export { reqsOf };
 export const RSR = Object.fromEntries(RESEARCH.map((r) => [r.id, r]));
 
 /* ------------------------------ ГЕОГРАФИЯ ------------------------------
@@ -140,7 +156,8 @@ export const STARTS = {
   retail: { region: 'capital', buildings: [['bakery', 'capital'], ['shop', 'capital']], sell: [], buy: ['flour'],
     hint: 'Мука покупается на рынке — это дорого. Своя мельница и поле рядом со столицей сделают хлеб выгоднее.' },
   factory: { region: 'periphery', buildings: [['logging', 'periphery'], ['logging', 'periphery'], ['sawmill', 'periphery']], sell: ['boards'], buy: [],
-    hint: 'Доски уходят на оптовый рынок. Изучите мебельное производство — мебель в магазинах стоит в разы дороже досок.' },
+    research: ['furniture'],
+    hint: 'Доски уходят на оптовый рынок. Мебельное производство вы уже знаете: фабрика и магазин — и доски станут мебелью в разы дороже.' },
 };
 
 let uidSeq = 1;
@@ -168,18 +185,28 @@ export function makeTycoon({ start = 'farm', scenario = 'sandbox', difficulty = 
     events: { regionHit: null, strike: null, strikeCd: 0, inspectionCd: 0 },
     distress: 0, bankrupt: false,
     legacy, milestones: {},
+    managers: {}, mgrTimer: 0, quest: 0, introSeen: false,
+    lifetime: { retail: 0, wholesale: 0, exports: 0 }, flags: {},
     setup: { start, scenario, difficulty, cbPersona, mofPersona, presPersona, president },
   };
   kit.buildings.forEach(([type, region]) => {
     st.buildings.push({ uid: newUid(), type, region, level: 1, staff: requiredStaff(st, { type, level: 1 }), enabled: true });
   });
   kit.sell.forEach((r) => { st.autoSell[r] = true; });
+  (kit.research || []).forEach((r) => { st.research[r] = true; });
   kit.buy.forEach((r) => { st.autoBuy[r] = true; });
   st.autoBuy.parts = true;
   RESOURCES.forEach((r) => { st.stock[r.id] = 0; st.reserve[r.id] = 0; });
   pushLog(st, kit.hint);
   st.value0 = companyValue(st);
+  st.startBuildings = st.buildings.length;
   return st;
+}
+
+// сохранения прошлых версий не знают о менеджерах, заданиях и счётчиках — дополняем
+export function normalizeTycoon(st) {
+  return { managers: {}, mgrTimer: 0, quest: 0, introSeen: true, lifetime: { retail: 0, wholesale: 0, exports: 0 }, flags: {},
+    startBuildings: 3, ...st };
 }
 
 function emptyQuarter() {
@@ -290,6 +317,7 @@ export function buildingPower(st, b) {
   const staffK = clamp((b.staff || 0) / need, 0, 1);
   let k = levelMult(b.level) * (siteBonus(b.type, b.region) || 0) * staffK * legacyMult(st);
   if (d.cat === 'extract' && has(st, 'mechanization')) k *= 1.5;
+  if (d.cat === 'extract' && has(st, 'agronomy')) k *= 1.4;
   if (st.events.regionHit && st.events.regionHit.region === b.region) k *= 0.6;
   if (st.events.strike && st.events.strike.uid === b.uid && st.t < st.events.strike.until) k *= 0.15;
   return k;
@@ -307,6 +335,7 @@ export function tick(prev, dt, { offline = false } = {}) {
   while (left > 1e-9 && !st.bankrupt) {
     const step = Math.min(left, 1);
     st = step1(st, step, offline);
+    if (st.mgrTimer >= 5) st = runManagers({ ...st, mgrTimer: 0 });
     left -= step;
     if (!offline && st.qTime >= QUARTER_SEC) st = quarterEnd(st);
   }
@@ -327,7 +356,7 @@ function step1(prev, dt, offline) {
   const flow = (from, to, value) => { if (from !== to && value > 0) add(flows, `${from}>${to}`, value); };
 
   // штат: люди приходят постепенно — быстрее при высокой безработице и хорошей зарплате
-  const labor = clamp(((e.unemployment ?? 5) - 2) / 5, 0.15, 1.3) * (1 + st.wagePremium / 50);
+  const labor = clamp(((e.unemployment ?? 5) - 2) / 5, 0.15, 1.3) * (1 + st.wagePremium / 50) * (has(st, 'hr') ? 2 : 1);
   st.buildings = st.buildings.map((b) => {
     const need = requiredStaff(st, b);
     if (b.staff >= need) return b.staff > need ? { ...b, staff: need } : b;
@@ -489,10 +518,21 @@ function step1(prev, dt, offline) {
   cash += revenue - wages - upkeep;
   costs += wages + upkeep;
   st.quarter.revenue += revenue; st.quarter.wages += wages; st.quarter.upkeep += upkeep;
+  if (st.lifetime) {
+    st.lifetime = { retail: st.lifetime.retail + (st.quarter.retail - prev.quarter.retail),
+      wholesale: st.lifetime.wholesale + (st.quarter.wholesale - prev.quarter.wholesale),
+      exports: st.lifetime.exports + (st.quarter.exports - prev.quarter.exports) };
+  }
+  // менеджеры — каждые пять секунд игрового времени, и пока вкладка закрыта тоже
+  if (st.managers && Object.keys(st.managers).length) {
+    const salary = managerSalary(st) * dt;
+    cash -= salary; costs += salary; st.quarter.wages += salary;
+    st.mgrTimer = (st.mgrTimer || 0) + dt;
+  }
 
   // 7. исследования
   const rp = st.buildings.reduce((a, b) => a + (BLD[b.type].research ? BLD[b.type].research * power[b.uid] * dt : 0), 0);
-  st.rp += rp + 0.02 * dt;
+  st.rp += rp + 0.05 * dt;
 
   // статистика для экрана: скорости в секунду, сглаженные
   const rates = { ...st.stats.rates };
@@ -549,7 +589,8 @@ function quarterEnd(prev) {
   st.news = [...news.map((n) => ({ ...n, id: `c${qi}${n.id}` })), ...st.news].slice(0, 80);
   st.wageIdx *= Math.pow(1 + (e.wageGrowth ?? 6) / 100, 0.25);
   st.worldIdx *= 1.004;
-  st.loanRate = st.debtRub > 0 ? st.loanRate + 0.25 * (rubLoanRate(e) - st.loanRate) : rubLoanRate(e);
+  const bankRate = Math.max(0.5, rubLoanRate(e) - (has(st, 'finance_dept') ? 1 : 0));
+  st.loanRate = st.debtRub > 0 ? st.loanRate + 0.25 * (bankRate - st.loanRate) : bankRate;
 
   // события квартала
   let fine = 0;
@@ -608,7 +649,7 @@ export function annualEbitda(st) {
 // банк даёт под годовую EBITDA; новичку — небольшой стартовый лимит
 export function creditLimitT(st) {
   const e = economyOf(st);
-  const k = creditMultiple(e);
+  const k = creditMultiple(e) * (has(st, 'finance_dept') ? 2 : 1);
   return Math.max(0, Math.max(0, annualEbitda(st)) * k + 3 * k / 3.5 - totalDebtT(st));
 }
 export function companyValue(st) {
@@ -668,7 +709,8 @@ export function canResearch(st, id) {
   const r = RSR[id];
   if (!r) return 'Нет такого исследования';
   if (has(st, id)) return 'Уже изучено';
-  if (r.req && !has(st, r.req)) return `Сначала «${RSR[r.req].name}»`;
+  const missing = reqsOf(r).filter((x) => !has(st, x));
+  if (missing.length) return `Сначала «${missing.map((x) => RSR[x].name).join('» и «')}»`;
   if (st.rp < researchCost(st, id)) return 'Не хватает очков исследований';
   return null;
 }
@@ -704,7 +746,8 @@ export function repay(st, amount) {
   return { st: next };
 }
 export const setField = (st, patch) => ({ st: { ...st, ...patch } });
-export const setMap = (st, field, id, value) => ({ st: { ...st, [field]: { ...st[field], [id]: value } } });
+export const setMap = (st, field, id, value) => ({ st: { ...st, [field]: { ...st[field], [id]: value },
+  flags: { ...st.flags, [`touched_${field}`]: true } } });
 
 /* ------------------------------ ВЕХИ И РЕПУТАЦИЯ ------------------------------ */
 export const MILESTONES = [
@@ -751,4 +794,189 @@ export function snapshotTycoon(st) {
 }
 export function validateTycoon(data) {
   return !!(data && data.mode === 'tycoon' && data.country && data.country.economy && Array.isArray(data.buildings));
+}
+
+/* ------------------------------ МЕНЕДЖЕРЫ ------------------------------
+   Инкрементальная автоматизация: нанятый менеджер каждые пять секунд делает то, что
+   игрок делал бы руками. У каждого — зарплата (растёт вместе с компанией и рыночными
+   зарплатами) и бюджет: какую долю денег на счёте ему можно тратить за раз. */
+export const MANAGERS = [
+  { id: 'foreman', name: 'Управляющий производством', unlock: 'management', hire: 5, salary: 0.004, spends: true,
+    desc: 'Улучшает здания, которые работают в полную силу, — самое дешёвое улучшение в пределах бюджета.' },
+  { id: 'trader', name: 'Коммерческий директор', unlock: 'management', hire: 4, salary: 0.003,
+    desc: 'Ведёт склад и цены: продаёт то, что копится, докупает, чего не хватает цехам, отправляет на экспорт, когда там дороже, двигает цены в магазинах по спросу.' },
+  { id: 'scientist', name: 'Главный технолог', unlock: 'management', hire: 6, salary: 0.003,
+    desc: 'Изучает самое дешёвое из доступных исследований, как только хватает очков.' },
+  { id: 'developer', name: 'Директор по развитию', unlock: 'board', hire: 25, salary: 0.012, spends: true,
+    desc: 'Строит: производство сырья, которого не хватает цехам, и магазины там, где спрос не обслужен; докупает участки.' },
+  { id: 'cfo', name: 'Финансовый директор', unlock: 'board', hire: 20, salary: 0.008,
+    desc: 'Гасит долг из лишних денег, не даёт урезать зарплаты до забастовки, включает работу с властями при жёстком режиме.' },
+];
+export const MGR = Object.fromEntries(MANAGERS.map((m) => [m.id, m]));
+const salaryOf = (st, m) => m.salary * (1 + st.buildings.length / 8) * st.wageIdx;
+export function managerSalary(st) {
+  return Object.entries(st.managers || {}).reduce((a, [id, x]) => a + (x && x.on !== false && MGR[id] ? salaryOf(st, MGR[id]) : 0), 0);
+}
+export const managerSalaryOf = (st, id) => salaryOf(st, MGR[id]);
+export function hireManager(st, id) {
+  const m = MGR[id];
+  if (!m) return { error: 'Нет такой должности' };
+  if (st.managers && st.managers[id]) return { error: 'Уже нанят' };
+  if (!has(st, m.unlock)) return { error: `Нужно исследование «${RSR[m.unlock].name}»` };
+  if (st.cash < m.hire) return { error: 'Не хватает денег на подбор' };
+  const next = { ...st, cash: st.cash - m.hire, managers: { ...st.managers, [id]: { on: true, budget: 30 } } };
+  pushLog(next, `Нанят: ${m.name}.`);
+  return { st: next };
+}
+export const fireManager = (st, id) => {
+  const m = { ...st.managers }; delete m[id];
+  return { st: { ...st, managers: m } };
+};
+export const setManager = (st, id, patch) => ({ st: { ...st, managers: { ...st.managers, [id]: { ...st.managers[id], ...patch } } } });
+const mgrOn = (st, id) => !!(st.managers && st.managers[id] && st.managers[id].on !== false);
+const mgrBudget = (st, id) => Math.max(0, st.cash) * clamp((st.managers[id].budget ?? 30), 0, 100) / 100;
+
+function runManagers(prev) {
+  let st = prev;
+  const log = (text) => { st = { ...st }; pushLog(st, text); };
+  // коммерческий директор: склад, закупки, экспорт, цены
+  if (mgrOn(st, 'trader')) {
+    const cap = storageCap(st);
+    const inputs = new Set(); const outputs = new Set();
+    st.buildings.forEach((b) => { const d = BLD[b.type]; if (d.in) Object.keys(d.in).forEach((r) => inputs.add(r)); if (d.out) Object.keys(d.out).forEach((r) => outputs.add(r)); });
+    const hasTerm = st.buildings.some((b) => BLD[b.type].exports);
+    const autoSell = { ...st.autoSell }; const autoBuy = { ...st.autoBuy }; const exportList = { ...st.exportList }; const markup = { ...st.markup };
+    RESOURCES.forEach((r) => {
+      const rate = st.stats.rates[r.id] || { prod: 0, cons: 0, sold: 0, bought: 0 };
+      const stock = st.stock[r.id] || 0;
+      if (outputs.has(r.id) && !r.buyOnly && stock > cap * 0.5) autoSell[r.id] = true;
+      if (inputs.has(r.id) && !r.buyOnly) autoBuy[r.id] = rate.prod < rate.cons * 0.95 || stock < 1;
+      if (hasTerm && r.export) exportList[r.id] = exportPrice(st, r.id) > sellPrice(st, r.id) * 1.05;
+      if (r.consumer) {
+        const unmet = st.stats.unmet[r.id] || 0;
+        const m = markup[r.id] || 0;
+        if (unmet > rate.sold * 0.15 && stock < cap * 0.2) markup[r.id] = Math.min(30, m + 2);
+        else if (stock > cap * 0.5 && unmet < 0.01) markup[r.id] = Math.max(-10, m - 2);
+      }
+    });
+    st = { ...st, autoSell, autoBuy, exportList, markup };
+  }
+  // главный технолог: самое дешёвое из доступного
+  if (mgrOn(st, 'scientist')) {
+    const avail = RESEARCH.filter((r) => !canResearch(st, r.id)).sort((a, b) => researchCost(st, a.id) - researchCost(st, b.id));
+    if (avail[0]) { const r = research(st, avail[0].id); if (r.st) st = r.st; }
+  }
+  // управляющий: самое дешёвое улучшение работающего здания
+  if (mgrOn(st, 'foreman')) {
+    const budget = mgrBudget(st, 'foreman');
+    const cand = st.buildings.filter((b) => b.enabled && b.level < MAX_LEVEL && (b.staff || 0) >= requiredStaff(st, b) - 0.5
+      && (!BLD[b.type].out || (st.stats.runK && (st.stats.runK[b.uid] ?? 0) >= 0.9)))
+      .sort((a, b) => upgradeCost(a) - upgradeCost(b))[0];
+    if (cand && upgradeCost(cand) <= budget) {
+      const r = upgrade(st, cand.uid);
+      if (r.st) { st = r.st; log(`Управляющий улучшил: ${BLD[cand.type].name} (${regionName(cand.region)}) до ${cand.level + 1}-го уровня.`); }
+    }
+  }
+  // директор по развитию: сырьё, которого не хватает, и магазины под спрос
+  if (mgrOn(st, 'developer')) {
+    const budget = mgrBudget(st, 'developer');
+    const open = regionsOpen(st);
+    const bestSite = (type) => open.filter((rg) => siteBonus(type, rg) != null)
+      .sort((a, b) => (siteBonus(type, b) - siteBonus(type, a)) || (usedIn(st, a) - usedIn(st, b)))[0];
+    const place = (type) => {
+      const d = BLD[type];
+      if (d.unlock && !has(st, d.unlock)) return false;
+      const rg = bestSite(type);
+      if (!rg) return false;
+      let cost = d.cost;
+      const needSlot = usedIn(st, rg) >= slotsIn(st, rg);
+      if (needSlot) cost += slotCost(st, rg);
+      if (cost > budget) return false;
+      if (needSlot) st = buySlot(st, rg).st;
+      const r = build(st, type, rg);
+      if (!r.st) return false;
+      st = r.st; log(`Директор по развитию построил: ${d.name} (${regionName(rg)}).`);
+      return true;
+    };
+    let done = false;
+    // 1) цехам не хватает сырья — своё производство вместо закупок
+    const short = RESOURCES.filter((r) => !r.buyOnly && (st.stats.rates[r.id] || {}).bought > 0.2)
+      .sort((a, b) => (st.stats.rates[b.id].bought) - (st.stats.rates[a.id].bought))[0];
+    if (short) {
+      const producer = BUILDINGS.find((d) => d.out && d.out[short.id] && (!d.unlock || has(st, d.unlock)));
+      if (producer) done = place(producer.id);
+    }
+    // 2) спрос в магазинах не обслужен, а товар есть
+    if (!done) {
+      const g = RESOURCES.filter((r) => r.consumer && (st.stats.unmet[r.id] || 0) > 0.3 && (st.stock[r.id] || 0) > 20)[0];
+      if (g) {
+        const shopType = has(st, 'malls') && budget > BLD.mall.cost * 2 ? 'mall' : 'shop';
+        const rg = open.slice().sort((a, b) => regionDemand(st, b, g.id) - regionDemand(st, a, g.id))
+          .find((x) => usedIn(st, x) < slotsIn(st, x) || slotCost(st, x) + BLD[shopType].cost <= budget);
+        if (rg && BLD[shopType].cost <= budget) {
+          if (usedIn(st, rg) >= slotsIn(st, rg)) st = buySlot(st, rg).st;
+          const r = build(st, shopType, rg);
+          if (r.st) { st = r.st; log(`Директор по развитию открыл: ${BLD[shopType].name} (${regionName(rg)}).`); }
+        }
+      }
+    }
+  }
+  // финансовый директор: долг, зарплаты, связи во власти
+  if (mgrOn(st, 'cfo')) {
+    const e = economyOf(st);
+    const costsQ = st.stats.costs * QUARTER_SEC;
+    const spare = st.cash - Math.max(3, costsQ * 2);
+    if (spare > 1 && totalDebtT(st) > 0.01) { const r = repay(st, spare * 0.5); if (r.st) st = r.st; }
+    if ((e.unemployment ?? 5) < 6.5 && st.wagePremium < 0) st = { ...st, wagePremium: 0 };
+    if (hardRegime(e.politicalRegime) && !st.gr) { st = { ...st, gr: true }; log('Финансовый директор включил работу с властями: режим ужесточился.'); }
+  }
+  return st;
+}
+
+/* ------------------------------ ЗАДАНИЯ-ОБУЧЕНИЕ ------------------------------
+   Цепочка первых шагов с наградой: по одному за раз, с подсказкой, где это
+   делается (tab — вкладка, которую подсветить). */
+const soldToPeople = (st) => (st.lifetime ? st.lifetime.retail : 0) > 0;
+export const QUESTS = [
+  { id: 'build', title: 'Первая стройка', tab: 'build', reward: 1,
+    text: 'Постройте любое новое здание: выберите область на карте, внизу — «Что можно построить здесь».',
+    test: (st) => st.buildings.length > (st.startBuildings || 3) },
+  { id: 'market', title: 'Склад и рынок', tab: 'stock', reward: 1,
+    text: 'Загляните в «Склад и рынок» и настройте хотя бы один товар: продажу излишков, докупку или запас.',
+    test: (st) => !!(st.flags && (st.flags.touched_autoSell || st.flags.touched_autoBuy || st.flags.touched_reserve || st.flags.touched_markup)) },
+  { id: 'people', title: 'Продать людям', tab: 'build', reward: 1.5,
+    text: (st) => (st.start === 'factory'
+      ? 'Продайте мебель людям: постройте мебельную фабрику (лучше в Кузнецкой) и магазин — розница платит в разы больше, чем оптовики за доски.'
+      : st.start === 'retail' ? 'Ваш магазин уже торгует хлебом — дождитесь первых продаж.'
+        : 'Продайте хлеб людям: постройте хлебозавод и магазин (в столице больше всего покупателей) — розница платит больше оптовиков.'),
+    test: soldToPeople },
+  { id: 'research', title: 'Первое исследование', tab: 'lab', reward: 2,
+    text: 'Изучите что-нибудь во вкладке «Исследования». Очки копятся сами, лаборатория (лучше в столице) ускоряет их в десятки раз.',
+    test: (st) => Object.keys(st.research).length >= 1 },
+  { id: 'upgrade', title: 'Улучшение', tab: 'prod', reward: 3,
+    text: 'Улучшите любое здание до 2-го уровня: выработка ×1,5, людей нужно больше.',
+    test: (st) => st.buildings.some((b) => b.level >= 2) },
+  { id: 'chain', title: 'Своя цепочка', tab: 'build', reward: 5,
+    text: 'Соберите цепочку от сырья до полки: ферма → мельница → хлебозавод → магазин или лес → лесопилка → мебель → магазин.',
+    test: (st) => ['farm', 'mill', 'bakery', 'shop'].every((t) => st.buildings.some((b) => b.type === t))
+      || ['logging', 'sawmill', 'furniture_plant', 'shop'].every((t) => st.buildings.some((b) => b.type === t)) },
+  { id: 'regions', title: 'Три области', tab: 'build', reward: 6,
+    text: 'Работайте в трёх областях: у каждой свои бонусы и свои покупатели. Сырьё ставьте рядом с переработкой — перевозка стоит денег.',
+    test: (st) => new Set(st.buildings.map((b) => b.region)).size >= 3 },
+  { id: 'manager', title: 'Первый менеджер', tab: 'money', reward: 8,
+    text: 'Изучите «Кадровое агентство» и «Школу управленцев», затем наймите менеджера во вкладке «Финансы» — он возьмёт рутину на себя.',
+    test: (st) => Object.keys(st.managers || {}).length >= 1 },
+  { id: 'value', title: 'Компания на 500 млн', tab: 'money', reward: 25,
+    text: 'Доведите стоимость компании до 500 млн. Дальше — металл, экспорт и продажа компании за репутацию.',
+    test: (st) => companyValue(st) >= 500 },
+];
+export const currentQuest = (st) => QUESTS[st.quest || 0] || null;
+export const questText = (st, q) => (typeof q.text === 'function' ? q.text(st) : q.text);
+export function claimQuest(st) {
+  const q = currentQuest(st);
+  if (!q) return { error: 'Все задания выполнены' };
+  if (!q.test(st)) return { error: 'Задание ещё не выполнено' };
+  const next = { ...st, cash: st.cash + q.reward, quest: (st.quest || 0) + 1 };
+  pushLog(next, `Задание «${q.title}» выполнено: +${q.reward} млн.`);
+  return { st: next };
 }

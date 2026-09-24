@@ -116,3 +116,14 @@ export async function setDailyEntry(day, playerId, entry) {
   mem.set(`daily:${day}`, { ...mem.get(`daily:${day}`), [playerId]: entry });
   return true;
 }
+
+// «Своё дело» (тайкун предпринимателя): свои слоты сохранений рядом с обычными
+export async function getTycoonSlots(playerId) {
+  if (redis) return (await redis.get(`tycoon:${playerId}`)) || null;
+  return mem.get(`tycoon:${playerId}`) || null;
+}
+export async function setTycoonSlots(playerId, slots) {
+  if (redis) return redis.set(`tycoon:${playerId}`, slots, { ex: SOLO_TTL });
+  mem.set(`tycoon:${playerId}`, slots);
+  return true;
+}

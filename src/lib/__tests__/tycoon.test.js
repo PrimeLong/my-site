@@ -147,4 +147,74 @@ describe('Своё дело', () => {
     expect(T.validateTycoon({ mode: 'tycoon' })).toBe(false);
     expect(run(snap, 10).t).toBeGreaterThan(snap.t);
   });
+
+  it('дерево технологий: несколько требований, у каждого узла место в дереве', () => {
+    let st = { ...fresh(), rp: 1e6 };
+    expect(T.canResearch(st, 'board')).toMatch(/Сначала/);
+    for (const id of ['hr', 'management', 'finance_dept']) st = T.research(st, id).st;
+    expect(T.canResearch(st, 'board')).toBeNull();
+    const cells = new Set(T.RESEARCH.map((r) => `${r.tier}:${r.row}`));
+    expect(cells.size).toBe(T.RESEARCH.length);
+    T.RESEARCH.forEach((r) => T.reqsOf(r).forEach((q) => expect(T.RSR[q].tier).toBeLessThan(r.tier)));
+  });
+
+  it('менеджера нельзя нанять без исследования; нанятый получает зарплату', () => {
+    let st = { ...fresh(), cash: 100 };
+    expect(T.hireManager(st, 'foreman').error).toMatch(/Школа управленцев/);
+    st = { ...st, research: { hr: true, management: true } };
+    st = T.hireManager(st, 'foreman').st;
+    expect(st.cash).toBeCloseTo(95, 5);
+    expect(T.managerSalary(st)).toBeGreaterThan(0);
+    expect(T.hireManager(st, 'foreman').error).toMatch(/Уже/);
+  });
+
+  it('управляющий сам улучшает работающие здания, технолог сам изучает', () => {
+    let st = { ...fresh(), cash: 200, rp: 1000, research: { hr: true, management: true } };
+    st = T.hireManager(st, 'foreman').st;
+    st = T.hireManager(st, 'scientist').st;
+    st = T.setManager(st, 'foreman', { budget: 100 }).st;
+    st = run(st, 30);
+    expect(st.buildings.some((b) => b.level >= 2)).toBe(true);
+    expect(Object.keys(st.research).length).toBeGreaterThan(2);
+  });
+
+  it('коммерческий директор включает докупку, когда своего сырья не хватает', () => {
+    let st = { ...T.makeTycoon({ start: 'retail' }), cash: 50, autoBuy: {}, research: { hr: true, management: true } };
+    st = T.hireManager(st, 'trader').st;
+    st = run(st, 12);
+    expect(st.autoBuy.flour).toBe(true);
+    expect(st.stats.rates.bread.sold).toBeGreaterThan(0.3);
+  });
+
+  it('директор по развитию строит производство сырья, которое приходится покупать', () => {
+    let st = { ...T.makeTycoon({ start: 'retail' }), cash: 200, research: { hr: true, management: true, finance_dept: true, board: true } };
+    st = T.hireManager(st, 'developer').st;
+    st = T.setManager(st, 'developer', { budget: 100 }).st;
+    const n0 = st.buildings.length;
+    st = run(st, 30);
+    expect(st.buildings.length).toBeGreaterThan(n0);
+    expect(st.buildings.some((b) => b.type === 'mill')).toBe(true);
+  });
+
+  it('задания идут по одному, награду нельзя забрать раньше времени', () => {
+    let st = { ...fresh(), cash: 10 };
+    expect(T.currentQuest(st).id).toBe('build');
+    expect(T.claimQuest(st).error).toBeTruthy();
+    st = T.build(st, 'shop', 'capital').st;
+    const c0 = st.cash;
+    st = T.claimQuest(st).st;
+    expect(st.cash).toBeCloseTo(c0 + T.QUESTS[0].reward, 5);
+    expect(T.currentQuest(st).id).toBe('market');
+    st = T.setMap(st, 'autoSell', 'grain', true).st;
+    expect(T.currentQuest(st).test(st)).toBe(true);
+  });
+
+  it('старое сохранение дополняется новыми полями', () => {
+    const old = { ...fresh() }; delete old.managers; delete old.quest; delete old.lifetime;
+    const n = T.normalizeTycoon(old);
+    expect(n.managers).toEqual({});
+    expect(n.quest).toBe(0);
+    expect(run(n, 5).t).toBeGreaterThan(0);
+  });
 });
+

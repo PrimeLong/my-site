@@ -238,7 +238,10 @@ test('своё дело: старт из меню, время идёт, стро
   await page.getByRole('button', { name: 'Принять полномочия' }).click();
   const cash = page.getByLabel('Деньги на счёте');
   await expect(cash).toBeVisible();
-  await page.getByRole('button', { name: '4×' }).click();
+  // первый запуск — короткое вступление
+  await page.getByRole('dialog', { name: 'Своё дело' }).getByRole('button', { name: 'Начать' }).click();
+  await expect(page.getByText(/Задание 1 из/)).toBeVisible();
+  await page.getByRole('button', { name: 'Скорость 4×' }).click();
   const before = await cash.textContent();
   await expect.poll(async () => cash.textContent(), { timeout: 10000 }).not.toBe(before);
   for (const name of ['Склад и рынок', 'Исследования', 'Финансы', 'Страна', 'Производство']) {
@@ -264,5 +267,35 @@ test('оборонительная война: фронт на карте и п�
   await expect(page.getByLabel('Оборонительная война')).toBeVisible();
   await page.getByLabel('Оборонительная война').getByRole('button', { name: /Контрудар/ }).click();
   await expect(page.getByLabel('Оборонительная война').getByRole('button', { name: /Контрудар/ })).toHaveCSS('color', /./);
+  expect(errors).toEqual([]);
+});
+
+test('своё дело: дерево технологий, команда и сохранение в слот на сервере', async ({ page }) => {
+  const { makeTycoon, snapshotTycoon } = await import('../src/lib/tycoon.js');
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  let saved = null;
+  await page.route('**/api/**', (r) => {
+    const req = r.request();
+    if (req.url().includes('/api/solo') && req.method() === 'POST') {
+      saved = JSON.parse(req.postData());
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ slots: [{ savedAt: new Date().toISOString(), buildings: 3, cash: 4, quarterIndex: 1 }, null, null, null] }) });
+    }
+    return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ slots: [null, null, null, null] }) });
+  });
+  const save = { ...snapshotTycoon(makeTycoon({ start: 'farm' })), introSeen: true };
+  await page.addInitScript((s) => { localStorage.setItem('ems-tycoon-v1', JSON.stringify({ ...s, savedAt: Date.now() })); }, save);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Своё дело — продолжить', { exact: true }).click();
+  await expect(page.getByText(/Задание 1 из/)).toBeVisible();
+  await page.getByRole('tab', { name: 'Исследования' }).click();
+  await page.getByRole('button', { name: /Кадровое агентство/ }).click();
+  await expect(page.getByText('Люди на новые здания набираются вдвое быстрее.')).toBeVisible();
+  await page.getByRole('tab', { name: 'Команда' }).click();
+  await expect(page.getByText('Управляющий производством')).toBeVisible();
+  await page.getByRole('button', { name: 'Партии' }).click();
+  await page.getByRole('button', { name: 'Сохранить сюда' }).first().click();
+  await expect.poll(() => saved && saved.kind).toBe('tycoon');
+  await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
