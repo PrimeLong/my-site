@@ -263,3 +263,16 @@ describe('предыстория партии', () => {
     expect(quarterLabel(0)).toBe('IV кв. 2031');
   });
 });
+
+describe('компания и экономика — в обе стороны', () => {
+  it('крупная компания двигает свою страну: след растёт с размером и попадает в автопилот', () => {
+    const small = T.makeTycoon({ start: 'retail' });
+    expect(T.firmFootprint(small).k).toBeLessThan(0.05);
+    const big = { ...small, cash: 4000, quarter: { ...small.quarter, capex: 50, revenue: 100, exports: 40 } };
+    const f = T.firmFootprint(big);
+    expect(f.k).toBeGreaterThan(0.3);
+    expect(f.investment).toBeGreaterThan(0);
+    expect(f.exports).toBeGreaterThan(0);
+    expect(Object.values(f.regions).some((v) => v > 0)).toBe(true);
+  });
+});

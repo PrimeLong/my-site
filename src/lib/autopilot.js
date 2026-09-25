@@ -22,14 +22,21 @@ export function makeCountry({ scenario = 'sandbox', difficulty = 'medium', cbPer
 
 /* Один квартал. Возвращает новое состояние страны и новости квартала (уже с
    решениями ботов), чтобы тайкун мог показать их в своей ленте. */
-export function advanceCountry(country, { noEvents = false } = {}) {
-  const { economy, difficulty, quarterIndex } = country;
+export function advanceCountry(country, { noEvents = false, firm = null } = {}) {
+  const { difficulty, quarterIndex } = country;
+  // компания игрока из «Своего дела»: области с её заводами спокойнее (см. regionStress)
+  const economy = firm ? { ...country.economy, firmBoost: firm.regions } : country.economy;
   let { cbPersona, mofPersona } = country;
   const cbAction0 = botCentralBank(economy, cbPersona, difficulty);
   const mofAction0 = botFinanceMinistry(economy, mofPersona, difficulty);
   let cbAction = cbAction0; let mofAction = mofAction0;
   let eff = { ...country.decisions, ...cbAction.decisions, ...mofAction.decisions };
   const extraImpulses = [];
+  if (firm && firm.k > 0.01) {
+    if (firm.investment) extraImpulses.push(makeImpulse('investment', firm.investment, 'Ваша компания строится', 'default', difficulty));
+    if (firm.exports) extraImpulses.push(makeImpulse('exportsGrowth', firm.exports, 'Экспорт вашей компании', 'default', difficulty));
+    if (firm.jobs) extraImpulses.push(makeImpulse('unemployment', -firm.jobs, 'Рабочие места в вашей компании', 'default', difficulty));
+  }
 
   // президент-бот: указы, реформы, назначения — движком, указание ведомству — здесь
   let plan = null;

@@ -3,7 +3,7 @@
    кто колеблется, кого уже потеряли, что каждую группу двигает сейчас и какие
    решения она помнит. Грузится лениво, как и карта. */
 import { AlertTriangle, Briefcase, HardHat, Heart, MapPin, Megaphone, Shield, Stethoscope, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1, fmtMoney, QUINTILES } from './lib/engine.js';
+import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1, fmtMoney, QUINTILES, FIRMS, FIRM_MODE_LABEL } from './lib/engine.js';
 import { Audio, COLOR } from './MacroSimulator.jsx';
 
 const GROUP_ICON = { pensioners: Heart, workers: HardHat, business: Briefcase, siloviki: Shield, public: Stethoscope, youth: Megaphone, regions: MapPin };
@@ -82,6 +82,7 @@ export function SocietyView({ economy, plan, onPlan, planner }) {
         ))}
       </div>
       <IncomePanel economy={economy} />
+      <FirmsPanel economy={economy} />
     </div>
   );
 }
@@ -238,5 +239,37 @@ function Row({ name, q, maxTax }) {
         <span className="ems-mono" style={{ color: COLOR.muted, minWidth: 30, textAlign: 'right' }}>{Math.round(q.taxBurden)}</span>
       </span>
     </>
+  );
+}
+
+/* Крупный бизнес: те же компании, что в «Своём деле». Их здоровье — от ставки, налога
+   на прибыль, спроса, курса и мирового рынка; сокращают людей — неспокойно в их областях. */
+function FirmsPanel({ economy }) {
+  const firms = economy.firms;
+  if (!firms) return null;
+  return (
+    <div className="ems-panel" style={{ padding: 16 }} aria-label="Крупный бизнес">
+      <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 4 }}>Крупный бизнес</div>
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 10 }}>
+        Дорогой кредит и высокий налог на прибыль давят на всех, слабый курс помогает экспортёрам и бьёт по ритейлу.
+        Ниже 30 компания сокращает людей, выше 70 — расширяется.
+      </div>
+      {FIRMS.map((f) => {
+        const x = firms[f.id] || { health: 60, mode: 'steady' };
+        const tone = x.mode === 'gone' ? COLOR.faint : x.health < 30 ? COLOR.rust : x.health > 70 ? COLOR.teal : COLOR.gold;
+        return (
+          <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(60px,1fr) auto', gap: 10, alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13 }}>{f.name}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint }}>{f.sector}</div>
+            </div>
+            <span style={{ height: 5, borderRadius: 3, background: COLOR.border, overflow: 'hidden' }}>
+              <span style={{ display: 'block', height: '100%', width: `${x.health}%`, background: tone }} />
+            </span>
+            <span style={{ fontSize: 12, color: tone, whiteSpace: 'nowrap' }}>{FIRM_MODE_LABEL[x.mode] || x.mode}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }

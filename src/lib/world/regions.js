@@ -87,7 +87,10 @@ export function regionStress(region, economy) {
   const war = atWar ? (warFrontRegion(economy) === region.id ? 22 : 5) : 0;
   // новые земли: чем ниже лояльность, тем неспокойнее
   const unrest = region.annex ? Math.max(0, 60 - annexLoyalty(economy, region.id)) * 0.75 : 0;
-  return clamp(base + built + shock + building + war + unrest, 0, 100);
+  // крупные компании области: сокращают людей — неспокойно, расширяются — спокойнее;
+  // firmBoost — компания игрока из «Своего дела» (заводы и рабочие места в области)
+  const firms = ((economy.firmStress || {})[region.id] || 0) - ((economy.firmBoost || {})[region.id] || 0);
+  return clamp(base + built + shock + building + war + unrest + firms, 0, 100);
 }
 /* Где проходит фронт. В обороне противник заходит со степной границы на юго-западе
    (Приреченская область), в наступлении страна сама бьёт на север, из Рудногорской

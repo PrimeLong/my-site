@@ -4,6 +4,7 @@ import { CHANNEL_HEADLINE, EVENTS, buildEventImpulses, headlineFor, makeImpulse,
 import { STORY_TEMPLATES, advanceStories, buildDecisionImpulses, bumpNewsId, generateNews, mkNews, rf1, rf2, rfs, ru, storyConflicts, storyStartWait, storyTriggers } from './content/news.js';
 import { PRESS_OPTION_IDS, PRESS_QUESTIONS, pickPressQuestion, pressSpeakerSeat } from './content/press.js';
 import { GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceStep, guidanceBreach } from './model/guidance.js';
+import { FIRMS, FIRM_MODE_LABEL, firmsStep, initialFirms } from './model/firms.js';
 import { QUINTILES, distributionStep, giniOf, groupRealIncome, initialDistribution } from './model/distribution.js';
 import { STOCK_NORM, TAX_REF, TFP_SCALE, complianceFor, computeRevenue, computeScores, potentialFrom, taxBases, taxWedge } from './model/fiscal.js';
 import { CAMPAIGN_COST, CAMPAIGN_POINTS, POLL_WINDOW, PROMISE_POOL, botCampaignPlan, campaignBonus, campaignStep, electionForecast, evaluatePromise, pickPromises, sanitizeCampaignPlan, swingLabel } from './politics/elections.js';
@@ -1783,6 +1784,19 @@ function simulateQuarter(input, { skip = [] } = {}) {
   // явно комментировала санкции/блок, а не молчала о решении, которое бьёт
   // прямо по её мандату
   const sanctionsQuartersLeft = pres.patch.sanctionsStart || DP.sanctionsWest ? 10 : Math.max(0, (s.sanctionsQuartersLeft || 0) - 1);
+  /* Крупный бизнес (model/firms.js): те же компании, что в «Своём деле». Их решения —
+     сокращения и расширения — идут импульсами в следующий квартал и напряжением в их области. */
+  const FIRMS_Q = firmsStep(s.firms, { gdpGrowth, lendingRate, profitTaxRate: decisions.profitTaxRate, fxDeprAnnual,
+    exportsGrowth, sanctions: sanctionsQuartersLeft > 0, atWar: (s.warQuartersLeft || 0) > 0 });
+  if (FIRMS_Q.unemploymentPush) nextQueue.push(makeImpulse('unemployment', FIRMS_Q.unemploymentPush, 'Крупные компании сокращают людей', 'default', difficulty));
+  if (FIRMS_Q.investmentPush) nextQueue.push(makeImpulse('investment', FIRMS_Q.investmentPush, 'Крупные компании расширяются', 'default', difficulty));
+  FIRMS_Q.events.forEach(({ firm, kind }) => {
+    const where = firm.regions.map((r) => (regionById(r) || {}).short || r).join(', ');
+    if (kind === 'cutting') news.push(mkNews('business', `${firm.name.toUpperCase()}: СОКРАЩЕНИЯ`, `${firm.name} (${firm.sector.toLowerCase()}) сокращает людей: дорогой кредит, налоги или слабый спрос. Неспокойно в областях: ${where}.`, { priority: 6 }));
+    else if (kind === 'expanding') news.push(mkNews('business', `${firm.name.toUpperCase()} РАСШИРЯЕТСЯ`, `${firm.sector}: новые мощности и рабочие места (${where}). Бизнес голосует деньгами за нынешнюю политику.`, { priority: 5 }));
+    else if (kind === 'gone') news.push(mkNews('business', `${firm.name.toUpperCase()} УХОДИТ ИЗ СТРАНЫ`, 'Санкции Вестравии: иностранная сеть закрывает магазины, покупатели и работники ищут, куда идти.', { priority: 6 }));
+    else if (kind === 'back') news.push(mkNews('business', `${firm.name.toUpperCase()} ВОЗВРАЩАЕТСЯ`, 'Санкции сняты — сеть снова открывает магазины.', { priority: 5 }));
+  });
   const tradeBlocQuartersLeft = pres.patch.tradeBlocJoin ? 6 : Math.max(0, (s.tradeBlocQuartersLeft || 0) - 1);
   const tradeBlocActive = !!pres.patch.tradeBlocJoin || !!s.tradeBlocActive;
   const activeCrises = [];
@@ -2131,6 +2145,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
     // настройка партии «Только экономика» живёт в состоянии и переходит из квартала в квартал
     ...(s.economyOnly ? { economyOnly: true } : {}),
     distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate, guidance: GUID.next,
+    firms: FIRMS_Q.firms, firmStress: FIRMS_Q.regionShift, ...(s.firmBoost ? { firmBoost: s.firmBoost } : {}),
     gdp, nominalGdp, priceLevel, gdpGrowth, potentialGdp, potentialGrowth, outputGap,
     gdpPerCapita: gdp * 1000 / CONFIG.population,
     consumption, businessInvestment, govPurchasesReal, govInvestmentReal, transfersReal,
@@ -2239,7 +2254,7 @@ function makeInitialEconomy(scenarioId) {
   const dist0 = initialDistribution();
   const base = {
     ...I,
-    distribution: dist0, gini: dist0.gini, povertyRate: dist0.povertyRate,
+    distribution: dist0, gini: dist0.gini, povertyRate: dist0.povertyRate, firms: initialFirms(),
     gdp: I.gdp, nominalGdp, potentialGdp, potentialGrowth: 2.3, outputGap: (I.gdp - potentialGdp) / potentialGdp * 100,
     gdpGrowth: 2.3, gdpPerCapita: I.gdp * 1000 / CONFIG.population,
     consumptionGrowth: 2.3, investmentGrowth: 2.3, govPurchasesGrowth: 2.3, transfersGrowth: 2.3, govInvestmentGrowth: 2.3,
@@ -2511,7 +2526,7 @@ export {
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
-  simulateQuarter, SKIPPABLE_STEPS, QUINTILES, giniOf, groupRealIncome, GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceBreach,
+  simulateQuarter, SKIPPABLE_STEPS, FIRMS, FIRM_MODE_LABEL, QUINTILES, giniOf, groupRealIncome, GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceBreach,
   mkNews, advanceStories, storyTriggers, generateNews, buildDecisionImpulses,
   makeInitialEconomy, buildReport, leverPreview,
 };

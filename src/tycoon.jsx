@@ -1345,6 +1345,30 @@ function MoneyTab({ st, act, onSell }) {
 }
 
 /* ------------------------------ СТРАНА ------------------------------ */
+/* Связь в обратную сторону: компания — часть своей экономики. Чем она больше, тем
+   заметнее её стройки (инвестиции), терминалы (экспорт) и штат (занятость), а области
+   с её заводами спокойнее. */
+function FootprintPanel({ st }) {
+  const f = T.firmFootprint(st);
+  const pct = Math.round(f.k * 100);
+  const regions = Object.entries(f.regions).filter(([, v]) => v >= 0.1).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="ems-panel" style={{ padding: 14 }}>
+      <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 4 }}>Ваш след в экономике</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
+        {pct < 3 ? 'Пока компания слишком мала, чтобы страна её заметила. С ростом её стройки, экспорт и рабочие места начнут двигать экономику.'
+          : `Вес компании в экономике — ${pct} из 100. Каждый квартал: стройки добавляют инвестиций, терминалы — экспорта, штат снижает безработицу.`}
+      </div>
+      {pct >= 3 && (
+        <div style={{ fontSize: 12, color: COLOR.text, marginTop: 6, lineHeight: 1.6 }}>
+          Инвестиции +{fmt1(f.investment)} п.п. · экспорт +{fmt1(f.exports)} п.п. · безработица −{fmt1(f.jobs)} п.п.
+          {regions.length > 0 && <div style={{ color: COLOR.muted }}>Спокойнее в областях: {regions.map(([r, v]) => `${T.regionName(r)} (−${fmt1(v)})`).join(', ')}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CountryTab({ st }) {
   const c = st.country; const e = c.economy; const p = c.prev || e;
   const d = (k) => (e[k] ?? 0) - (p[k] ?? 0);
@@ -1390,6 +1414,7 @@ function CountryTab({ st }) {
           </div>
         )}
       </div>
+      <FootprintPanel st={st} />
       <div className="ems-panel" style={{ padding: 14 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}><Newspaper size={14} />Новости</div>
         {!st.news.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Первые новости придут в конце квартала.</div>}

@@ -213,7 +213,7 @@ export function normalizeTycoon(st) {
 }
 
 function emptyQuarter() {
-  return { revenue: 0, retail: 0, wholesale: 0, exports: 0, wages: 0, upkeep: 0, purchases: 0, transport: 0 };
+  return { revenue: 0, retail: 0, wholesale: 0, exports: 0, wages: 0, upkeep: 0, purchases: 0, transport: 0, capex: 0 };
 }
 function pushLog(st, text) {
   st.log = [{ t: st.t, q: st.country.quarterIndex, text }, ...st.log].slice(0, 40);
@@ -597,6 +597,23 @@ function step1(prev, dt, offline) {
 /* ------------------------------ КОНЕЦ КВАРТАЛА ------------------------------
    Страна делает ход, компания платит проценты и налог, случаются проверки,
    забастовки и беды в областях, банк пересчитывает лимит. */
+/* След компании в экономике страны. Сила — от размера компании (стоимость v / (v + 3000)):
+   небольшая лавка стране незаметна, концерн — заметен. Стройки — инвестиции, терминалы —
+   экспорт, штат — занятость, а области с вашими заводами спокойнее. */
+export function firmFootprint(st) {
+  const v = Math.max(0, companyValue(st));
+  const k = v / (v + 3000);
+  const q = st.quarter || {};
+  const byRegion = {};
+  st.buildings.forEach((b) => { byRegion[b.region] = (byRegion[b.region] || 0) + 1; });
+  const n = Math.max(1, st.buildings.length);
+  const exportShare = q.revenue > 0 ? (q.exports || 0) / q.revenue : 0;
+  return {
+    k, investment: (q.capex || 0) > 0 ? 0.5 * k : 0, exports: 0.6 * k * exportShare, jobs: 0.2 * k,
+    regions: Object.fromEntries(Object.entries(byRegion).map(([r, c]) => [r, Math.round(8 * k * (c / n) * 10) / 10])),
+  };
+}
+
 // тело кредита гасится каждый квартал: 5% долга (кредит на ~5 лет), а не только проценты
 export const AMORT_Q = 0.05;
 function quarterEnd(prev, offline = false) {
@@ -621,7 +638,8 @@ function quarterEnd(prev, offline = false) {
 
   // страна: квартал экономики (офлайн страна стоит на паузе)
   if (!offline) {
-    const { country, news } = advanceCountry(st.country);
+    // компания игрока — часть своей экономики: стройки, экспорт и рабочие места идут в страну
+    const { country, news } = advanceCountry(st.country, { firm: firmFootprint(st) });
     st.country = country;
     st.news = [...news.map((n) => ({ ...n, id: `c${qi}${n.id}` })), ...st.news].slice(0, 80);
   }
@@ -723,7 +741,7 @@ export function build(st, type, region) {
   const err = canBuild(st, type, region);
   if (err) return { error: err };
   const d = BLD[type];
-  const next = { ...st, cash: st.cash - d.cost,
+  const next = { ...st, cash: st.cash - d.cost, quarter: { ...st.quarter, capex: (st.quarter.capex || 0) + d.cost },
     buildings: [...st.buildings, { uid: newUid(), type, region, level: 1, staff: 0, enabled: true }] };
   return { st: checkMilestones(next) };
 }
@@ -733,7 +751,8 @@ export function upgrade(st, uid) {
   if (b.level >= MAX_LEVEL) return { error: 'Максимальный уровень' };
   const c = upgradeCost(b);
   if (st.cash < c) return { error: 'Не хватает денег' };
-  return { st: checkMilestones({ ...st, cash: st.cash - c, buildings: st.buildings.map((x) => (x.uid === uid ? { ...x, level: x.level + 1 } : x)) }) };
+  return { st: checkMilestones({ ...st, cash: st.cash - c, quarter: { ...st.quarter, capex: (st.quarter.capex || 0) + c },
+    buildings: st.buildings.map((x) => (x.uid === uid ? { ...x, level: x.level + 1 } : x)) }) };
 }
 // продажа здания возвращает треть вложенного
 export function demolish(st, uid) {
