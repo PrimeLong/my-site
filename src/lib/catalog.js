@@ -272,7 +272,7 @@ export const SCENARIOS = [
       unemployment: [4.9, 5.3, 5.8, 5.4, 5.2, 5.8, 6.0, 5.6, 5.4, 5.4],
       gdpGrowth: [0.9, 0.2, -2.8, -4.5, -3.7, -3.2, -1.2, -0.6, -0.4, 0.3] },
     overrides: { inflation: 8, coreInflation: 7.5, inflationExpectations: 8, keyRate: 9.5, lendingRate: 13, depositRate: 8,
-      riskPremium: 4.5, reserves: 90, cbCredibility: 45, consumerConfidence: 34, businessConfidence: 36,
+      riskPremium: 5, reserves: 70, cbCredibility: 42, fxDeprAnnual: 25, consumerConfidence: 34, businessConfidence: 36,
       exportsGrowthShock: -4, approval: 60, politicalTension: 18, regime: 'currency' } },
 ];
 
