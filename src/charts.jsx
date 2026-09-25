@@ -14,6 +14,7 @@ import {
 import { Activity, X } from 'lucide-react';
 import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
 import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
+import { YOY_KEYS, yoyFromAnnualized } from './lib/model/measures.js';
 
 // вкладки, которые видны всегда; остальные — в списке «ещё»
 const MAIN_GROUPS = ['output', 'prices', 'money', 'labor', 'government'];
@@ -176,8 +177,12 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   React.useEffect(() => { setDragRange(null); }, [chartGroup, period, forecast, setDragRange]);
   const data = useMemo(() => {
     const p = PERIODS.find((x) => x.id === period);
-    const hist = history.slice(-p.q).map((h) => {
+    // с исторической тенью темпы модели переводятся в «год к году» — как в реальных рядах
+    const yoy = shadow ? Object.fromEntries(YOY_KEYS.filter((k) => Array.isArray(shadow[k]))
+      .map((k) => [k, yoyFromAnnualized(history.map((h) => h[k])).slice(-p.q)])) : {};
+    const hist = history.slice(-p.q).map((h, i) => {
       const row = { ...h, deficitPctGdp: -h.budgetBalancePctGdp, interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0 };
+      Object.keys(yoy).forEach((k) => { if (Number.isFinite(yoy[k][i])) row[k] = yoy[k][i]; });
       if (shadow && Number.isFinite(h.q) && h.q >= 0) {
         Object.keys(shadow).forEach((k) => { if (Array.isArray(shadow[k]) && Number.isFinite(shadow[k][h.q])) row[`${k}__hist`] = shadow[k][h.q]; });
       }
@@ -374,7 +379,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
                 stroke={s.color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
             ))}
             {visible.map((s) => (
-              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={s.label} stroke={s.color} strokeWidth={2} dot={false} />
+              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={shadow && YOY_KEYS.includes(s.id) && Array.isArray(shadow[s.id]) ? `${s.label}, г/г` : s.label} stroke={s.color} strokeWidth={2} dot={false} />
             ))}
             {/* историческая тень: как было на самом деле — пунктир тем же цветом */}
             {shadow && visible.filter((s) => Array.isArray(shadow[s.id])).map((s) => (
@@ -388,7 +393,9 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
       <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
       {shadow && (
         <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 6, lineHeight: 1.5 }}>
-          Пунктир с точками — {shadow.name}: как шёл реальный эпизод с {shadow.from}, квартал к кварталу. Ваши линии — ваша политика.
+          Пунктир с точками — {shadow.name}: как шёл реальный эпизод с {shadow.from}, по кварталам. Ваши линии — ваша политика.
+          Рост ВВП и инфляция и там и тут — год к году (к тому же кварталу год назад), как в официальной статистике;
+          в обычной партии эти графики показывают темп за квартал в годовом выражении.
         </div>
       )}
       <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
