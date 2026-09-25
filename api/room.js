@@ -117,6 +117,8 @@ function sanitizeDecisions(base, submitted, seat, economy) {
   if (group === 'monetary') {
     if (FX_REGIME_IDS.has(submitted.fxRegime)) out.fxRegime = submitted.fxRegime;
     if (typeof submitted.emergency === 'boolean') out.emergency = submitted.emergency;
+    // обещание о пути ставки — одно из объявленных вариантов (см. model/guidance.js)
+    out.guidance = ['none', 'cut', 'hold', 'hike'].includes(submitted.guidance) ? submitted.guidance : null;
   }
   if (group === 'fiscal') {
     if (typeof submitted.sovereignDefault === 'boolean') out.sovereignDefault = submitted.sovereignDefault;

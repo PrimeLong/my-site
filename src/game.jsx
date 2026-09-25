@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import {
   ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, CB_PERSONAS, MOF_PERSONAS, REQUESTS,
-  REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, regimeInfoText, regimeInfoLabel, POLITICAL_REGIME_INFO,
+  REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceBreach, regimeInfoText, regimeInfoLabel, POLITICAL_REGIME_INFO,
   gameChronicle, clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned,
   fmtIndex, fmtMln, fmtMlnSigned, quarterLabel, defaultDecisions, getCbPersona, personaAfterElection,
   getMofPersona, MAP_REGIONS, botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
@@ -4069,6 +4069,42 @@ export function PhoneKpiBar({ economy, kpiDelta }) {
   );
 }
 
+/* Обещание о пути ставки: объявляется на пресс-конференции ЦБ, рынок закладывает его
+   сразу, нарушение бьёт по доверию (см. model/guidance.js). */
+export function GuidancePicker({ economy, value, onChange, keyRate }) {
+  const cur = economy.guidance && economy.guidance.left > 0 ? economy.guidance : null;
+  const pick = value || null;
+  // что сейчас будет нарушением: подсветка прямо под ставкой, пока ползунок ещё можно вернуть
+  const breach = cur ? guidanceBreach(cur.dir, keyRate - economy.keyRate) : 0;
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${COLOR.hairline}` }}>
+      <div className="row-between" style={{ alignItems: 'baseline' }}>
+        <span style={{ fontSize: 13 }}>Путь ставки — обещание рынку</span>
+        {cur && <span className="fs-12 t-muted">действует: {GUIDANCE_LABEL[cur.dir]}, ещё {cur.left} кв.</span>}
+      </div>
+      <div className="note" style={{ marginTop: 2 }}>
+        Объявляется на пресс-конференции. Рынок верит на {Math.round(economy.cbCredibility)} из 100 и сразу двигает ставки по кредитам и облигациям.
+        Сделаете не то, что обещали, — доверие к ЦБ упадёт, тем сильнее, чем больше отклонение.
+      </div>
+      <div role="group" aria-label="Путь ставки" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 7 }}>
+        {GUIDANCE_OPTIONS.map((o) => {
+          const on = pick === o.id;
+          return (
+            <button key={o.id} type="button" className="ems-btn" aria-pressed={on} title={o.hint}
+              onClick={() => { Audio.play('tick'); onChange(on ? null : o.id); }}
+              style={{ padding: '4px 8px', fontSize: 12, borderColor: on ? COLOR.gold : COLOR.border, color: on ? COLOR.goldSoft : COLOR.muted }}>{o.label}</button>
+          );
+        })}
+      </div>
+      {breach > 0 && (
+        <div role="alert" style={{ fontSize: 12, color: COLOR.rust, marginTop: 6, lineHeight: 1.45 }}>
+          Эта ставка нарушает обещание «{GUIDANCE_LABEL[cur.dir]}»: доверие к ЦБ упадёт примерно на {Math.round(Math.min(12, 5 * breach))} пунктов.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* Свободное место в полосе — не пустая плитка с текстом, а маленькая кнопка «+»:
    пояснение, как закрепить показатель, открывается по нажатию. */
 function KpiAddHint() {
@@ -5180,6 +5216,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
+                <GuidancePicker economy={economy} value={decisions.guidance} onChange={(v) => setLever('guidance', v)} keyRate={decisions.keyRate} />
                 <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
               </div>
             )}

@@ -2775,3 +2775,22 @@ describe('«Только экономика» и пропуск шагов кв�
     expect(r.economy.warQuartersLeft || 0).toBe(0);
   });
 });
+
+describe('обещание ЦБ о пути ставки', () => {
+  const step = (e, d, q = 1) => simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), ...d }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true }).economy;
+
+  it('рынок закладывает объявленный путь сразу: «будем повышать» дорожит кредит уже сейчас', () => {
+    const e = makeInitialEconomy();
+    const plain = step(e, {}); const hawk = step(e, { guidance: 'hike' });
+    expect(hawk.guidance && hawk.guidance.dir).toBe('hike');
+    expect(hawk.lendingRate).toBeGreaterThan(plain.lendingRate);
+  });
+
+  it('нарушение обещания бьёт по доверию к ЦБ сильнее, чем выполнение', () => {
+    const e0 = step(makeInitialEconomy(), { guidance: 'hold' });
+    const kept = step(e0, { keyRate: e0.keyRate }, 2);
+    const broke = step(e0, { keyRate: e0.keyRate + 2 }, 2);
+    expect(broke.cbCredibility).toBeLessThan(kept.cbCredibility - 5);
+  });
+});

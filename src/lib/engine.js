@@ -3,6 +3,7 @@ import { gameChronicle } from './content/chronicle.js';
 import { CHANNEL_HEADLINE, EVENTS, buildEventImpulses, headlineFor, makeImpulse, pickEvent, spreadOf, sustainedImpulse, tickImpulses } from './content/events.js';
 import { STORY_TEMPLATES, advanceStories, buildDecisionImpulses, bumpNewsId, generateNews, mkNews, rf1, rf2, rfs, ru, storyConflicts, storyStartWait, storyTriggers } from './content/news.js';
 import { PRESS_OPTION_IDS, PRESS_QUESTIONS, pickPressQuestion, pressSpeakerSeat } from './content/press.js';
+import { GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceStep, guidanceBreach } from './model/guidance.js';
 import { QUINTILES, distributionStep, giniOf, groupRealIncome, initialDistribution } from './model/distribution.js';
 import { STOCK_NORM, TAX_REF, TFP_SCALE, complianceFor, computeRevenue, computeScores, potentialFrom, taxBases, taxWedge } from './model/fiscal.js';
 import { CAMPAIGN_COST, CAMPAIGN_POINTS, POLL_WINDOW, PROMISE_POOL, botCampaignPlan, campaignBonus, campaignStep, electionForecast, evaluatePromise, pickPromises, sanitizeCampaignPlan, swingLabel } from './politics/elections.js';
@@ -180,7 +181,7 @@ const UNCERTAINTY = {
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
-    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null,
+    moneySupplyOp: 0, fxIntervention: 0, liquidity: 0, bondIssuance: 0, fxRegime: state.fxRegime, emergency: false, sovereignDefault: false, imfProgram: false, pressAnswer: null, guidance: null,
     startProject: null, regionResponse: null, warOrder: null, campaignPlan: null, integrate: null, treaty: null, groupResponse: null, diplomacy: null, warTarget: null,
     inflationTarget: state.inflationTarget, fxTarget: state.fxTarget,
     incomeTaxRate: state.incomeTaxRate, profitTaxRate: state.profitTaxRate, vatRate: state.vatRate,
@@ -875,7 +876,11 @@ function simulateQuarter(input, { skip = [] } = {}) {
 
   const bankSpread = C.bankSpreadBase + 0.35 * clamp(s.bankNPL - 3, 0, 10) + 0.25 * clamp(12 - s.bankCapitalAdequacy, 0, 8)
     + 0.02 * Math.max(0, 60 - s.bankLiquidity) + 0.15 * Math.max(0, decisions.reserveReq - 6) + 0.1 * Math.max(0, decisions.capitalRequirement - 10.5);
-  const lendingTarget = decisions.keyRate + C.termPremium + bankSpread + 0.3 * riskPremium;
+  /* обещание о пути ставки (см. model/guidance.js): рынок закладывает объявленный
+     путь сразу, насколько верит ЦБ; нарушение прошлого обещания бьёт по доверию */
+  const GUID = guidanceStep(s, decisions.keyRate, decisions.guidance);
+  GUID.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
+  const lendingTarget = decisions.keyRate + C.termPremium + bankSpread + 0.3 * riskPremium + 0.6 * GUID.bias;
   const lendingRate = clamp(ema(s.lendingRate, lendingTarget, C.lendingPassthrough[difficulty]), 0, 40);
   const depositRate = clamp(decisions.keyRate - C.depositSpread + 0.05 * Math.max(0, 55 - s.bankLiquidity), -2, 35);
   const realLendingRate = lendingRate - s.inflationExpectations;
@@ -1228,7 +1233,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
     + (activeCrisesPre.indexOf('currency') >= 0 ? 0.5 : 0) + (activeCrisesPre.indexOf('banking') >= 0 ? 0.25 : 0)
     + (decisions.emergency ? 0.5 : 0) + 0.25 * Math.max(0, inflation - s.inflation - 1)
     + (Math.abs(targetChange) > 0.01 ? targetChange * 0.6 : 0)
-    - (s.cbCredibility > 75 ? 0.2 : 0) - (s.cbCredibility > 88 ? 0.1 : 0), -0.8, 2.4)
+    - (s.cbCredibility > 75 ? 0.2 : 0) - (s.cbCredibility > 88 ? 0.1 : 0) + GUID.expDelta, -0.8, 2.4)
     // заголовки пугают меньше, когда люди верят программе
     * (1 - 0.5 * stabilizationCred);
   const inflationExpectations = clamp(s.inflationExpectations + adaptSpeed * (expTarget - s.inflationExpectations)
@@ -1242,7 +1247,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
     + (stanceCorrect ? 0.30 : -0.35) - (decisions.emergency ? 0.7 : 0)
     - (decisions.moneySupplyOp > 3 ? 0.8 : 0) - (s.cbCredibility - 60) * 0.02;
   const cbCredibility = clamp(s.cbCredibility + credDrift * 0.55 - Math.abs(targetChange) * 9
-    + (d.cbCredibilityPush || 0) + gauss(0.5 * nMult), 0, 100);
+    + (d.cbCredibilityPush || 0) + GUID.credDelta + gauss(0.5 * nMult), 0, 100);
 
   const priceLevel = Math.max(10, applyAnnualGrowth(s.priceLevel, inflation));
   const nominalGdp = Math.max(1, gdp * priceLevel / 100);
@@ -1383,7 +1388,8 @@ function simulateQuarter(input, { skip = [] } = {}) {
   // ожидания по ставке: чем длиннее горизонт, тем ближе к нейтральной
   const yieldAt = (h) => {
     const w = clamp(h / 5, 0, 1);
-    return clamp(decisions.keyRate * (1 - w) + neutralNominal * w
+    // объявленный путь ставки сдвигает короткий и средний конец кривой сильнее длинного
+    return clamp(decisions.keyRate * (1 - w) + neutralNominal * w + GUID.bias * Math.min(1, h) * (1 - w)
       + 0.25 * Math.sqrt(h) + riskPremium * (0.10 + 0.07 * h) + sovereignExtra * (0.2 + 0.08 * h), -2, 60);
   };
   const yield3m = yieldAt(0.25); const yield1y = yieldAt(1); const yield2y = yieldAt(2);
@@ -2124,7 +2130,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
   const newEconomy = {
     // настройка партии «Только экономика» живёт в состоянии и переходит из квартала в квартал
     ...(s.economyOnly ? { economyOnly: true } : {}),
-    distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate,
+    distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate, guidance: GUID.next,
     gdp, nominalGdp, priceLevel, gdpGrowth, potentialGdp, potentialGrowth, outputGap,
     gdpPerCapita: gdp * 1000 / CONFIG.population,
     consumption, businessInvestment, govPurchasesReal, govInvestmentReal, transfersReal,
@@ -2505,7 +2511,7 @@ export {
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
-  simulateQuarter, SKIPPABLE_STEPS, QUINTILES, giniOf, groupRealIncome,
+  simulateQuarter, SKIPPABLE_STEPS, QUINTILES, giniOf, groupRealIncome, GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceBreach,
   mkNews, advanceStories, storyTriggers, generateNews, buildDecisionImpulses,
   makeInitialEconomy, buildReport, leverPreview,
 };
