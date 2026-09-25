@@ -131,6 +131,9 @@ const PRE_KEYS = ['gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGro
   'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow', 'bankNPL', 'bankCapitalAdequacy', 'creditGap',
   'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex', 'approval', 'wellbeing', 'regime', 'politicalRegime', 'gini', 'povertyRate',
   'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
+const PRE_RESET = ['projects', 'projectsBuilt', 'regionMods', 'regionShock', 'regionEvent', 'groupDemand', 'lastGroupResolution',
+  'groupMemory', 'reforms', 'neighborEvent', 'diploTreaties', 'diploSanctions', 'diploCooldown', 'sanctionsQuartersLeft',
+  'tradeBlocQuartersLeft', 'deshtMobilized', 'deshtCalm', 'relations', 'annexed', 'guidance', 'firms'];
 const preEntry = (e, q) => ({ ...Object.fromEntries(PRE_KEYS.filter((k) => e[k] !== undefined).map((k) => [k, e[k]])), q, label: quarterLabel(q), pre: true });
 export function makePrehistory({ quarters = 12, scenario = 'sandbox', difficulty = 'medium', cbPersona = 'pragmatic',
   mofPersona = 'technocrat', presPersona = 'technocrat' } = {}) {
@@ -148,7 +151,10 @@ export function makePrehistory({ quarters = 12, scenario = 'sandbox', difficulty
   }
   const e = country.economy;
   const { economyOnly: _frozen, ...rest } = e;
-  const economy = { ...rest, quartersToElection: start.quartersToElection, politicalCapital: start.politicalCapital,
+  // предыстория даёт только макро-фон: стройки, события, требования групп, дипломатия и
+  // реформы начинаются с чистого листа — иначе стартовая карта каждый раз была бы разной
+  const story = Object.fromEntries(PRE_RESET.map((k) => [k, start[k]]));
+  const economy = { ...rest, ...story, quartersToElection: start.quartersToElection, politicalCapital: start.politicalCapital,
     electionResult: null, lastElection: null, campaignActive: false };
   return { economy, prehistory: history.slice(0, -1), news: news.slice(0, 24),
     pendingImpulses: country.pendingImpulses, eventCooldowns: country.eventCooldowns, stories: country.stories };

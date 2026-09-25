@@ -68,8 +68,11 @@ export function distributionStep(prev, x) {
     const taxChange = old.taxBurden ? tax - old.taxBurden : 0;
     const income = old.income * (1 + (nominal * k - taxChange) / 100);
     const real = old.real * (1 + ((nominal - personal) * k - taxChange) / 100);
-    const hist = [...(old.hist || []), real].slice(-4);
-    return { id: q.id, income, real, hist, realYoY: hist.length >= 4 ? (real / hist[0] - 1) * 100 : 0,
+    const hist = [...(old.hist || []), real].slice(-5);
+    // за год, а пока истории меньше года — годовой темп по тем кварталам, что есть
+    const realYoY = hist.length >= 5 ? (real / hist[0] - 1) * 100
+      : hist.length >= 2 ? (Math.pow(real / hist[0], 4 / (hist.length - 1)) - 1) * 100 : 0;
+    return { id: q.id, income, real, hist, realYoY,
       inflation: personal, taxBurden: tax };
   });
   // располагаемые доли: после налогов

@@ -246,7 +246,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     if (!list.length) return ['auto', 'auto'];
     const vals = [];
     data.forEach((row) => {
-      list.forEach((x) => { [row[x.id], row[`${x.id}__f`]].forEach((v) => { if (Number.isFinite(v)) vals.push(v); }); });
+      list.forEach((x) => { [row[x.id], row[`${x.id}__f`], row[`${x.id}__hist`]].forEach((v) => { if (Number.isFinite(v)) vals.push(v); }); });
       if (Array.isArray(row.fanInner) && visible[0] && visible[0].axis === axis) row.fanInner.forEach((v) => { if (Number.isFinite(v)) vals.push(v); });
     });
     if (!vals.length) return ['auto', 'auto'];

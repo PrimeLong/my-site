@@ -1842,6 +1842,16 @@ function makeSnapshot(state) {
   return { app: 'economic-panel', v: SAVE_VERSION, savedAt: new Date().toISOString(), ...state, history: slim };
 }
 
+// какие рычаги принадлежат игроку этой роли — только они попадают в журнал решений
+const ROLE_GROUPS = { central_bank: ['monetary'], ministry_finance: ['fiscal'], full_control: ['monetary', 'fiscal'] };
+export function logEntry(role, q, decisions, presActions) {
+  const groups = ROLE_GROUPS[role] || [];
+  const d = {};
+  LEVERS.forEach((l) => { if (groups.includes(l.group) && Number.isFinite(decisions[l.id])) d[l.id] = Math.round(decisions[l.id] * 100) / 100; });
+  if (groups.includes('monetary')) { d.fxRegime = decisions.fxRegime; if (decisions.guidance) d.guidance = decisions.guidance; }
+  return { q, d, ...(presActions && presActions.length ? { pres: presActions } : {}) };
+}
+
 /* Автосохранение в браузер. Каждый квартал истории — вся экономика (~5 КБ), и в
    длинной партии запись однажды молча упиралась в квоту хранилища: ошибка
    глоталась, а игрок думал, что всё сохранено. Теперь последние 40 кварталов
@@ -4204,17 +4214,21 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
   }, []);
   const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : null));
+  /* Журнал решений игрока — только его рычаги, по кварталам. Хранится в сохранении и
+     нужен стенду баланса (scripts/replay-balance.mjs): прогнать живые стратегии, а не
+     только ботов против ботов. */
+  const [decisionLog, setDecisionLog] = useState(() => (initial && Array.isArray(initial.decisionLog) ? initial.decisionLog : []));
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
   // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
   // (например, «Размещение облигаций»/дефолт/МВФ) — без подстраховки открытие
   // вкладки с новым рычагом падало на undefined.toFixed()
   const [decisions, setDecisions] = useState(initial ? { ...defaultDecisions(initEconomy), ...initial.decisions } : defaultDecisions(initEconomy));
-  const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : pre ? pre.pendingImpulses : []);
+  const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : []);
   const [eventCooldowns, setEventCooldowns] = useState(initial ? initial.eventCooldowns || {} : pre ? pre.eventCooldowns : {});
   const [quarterIndex, setQuarterIndex] = useState(initial ? initial.quarterIndex : 1);
   const [newsFeed, setNewsFeed] = useState(initial ? initial.newsFeed || [] : pre ? pre.news : []);
-  const [stories, setStories] = useState(initial ? initial.stories || [] : pre ? pre.stories : []);
+  const [stories, setStories] = useState(initial ? initial.stories || [] : []);
   const [showPaper, setShowPaper] = useState(false);
   const [saveModal, setSaveModal] = useState(null);
   // слот, с которым сейчас связана партия: пришла из «Продолжить», была
@@ -4364,7 +4378,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
-    presPersonaId, presidentLast, slotIdx: activeSlot, prehistory });
+    presPersonaId, presidentLast, slotIdx: activeSlot, prehistory, decisionLog });
   // история снимков для отката после поражения: три хода назад решение ещё можно
   // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
   // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
@@ -4759,6 +4773,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     // уже само по себе считалось «движением», а свежее совпадало с базой и
     // засчитывалось как отказ, даже при максимальном ответе на директиву
     const nextDecisions = defaultDecisions(result.economy, decisions);
+    setDecisionLog((log) => [...log, logEntry(setup.role, quarterIndex, decisions, isPresident ? presActions : null)].slice(-80));
     setDecisions(nextDecisions);
     setDecisionsBaseline(nextDecisions);
     setQuarterIndex((q) => q + 1);
