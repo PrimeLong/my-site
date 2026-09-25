@@ -658,7 +658,10 @@ function quarterEnd(prev, offline = false) {
   // события квартала
   let fine = 0;
   st.events.regionHit = null;
-  const rev = e.regionEvent;
+  /* Событие области бьёт по компании один её квартал. Офлайн страна стоит, и её
+     последнее событие оставалось «текущим» — раньше оно повторялось каждый офлайн-
+     квартал: 77 новостей «под ударом» из 80, здания вполсилы все три часа. */
+  const rev = offline ? null : e.regionEvent;
   if (rev && rev.region && st.buildings.some((b) => b.region === rev.region)) {
     st.events.regionHit = { region: rev.region, title: rev.title, untilQ: e.quarterIndex };
     pushNews(st, `${(rev.title || 'Событие').toUpperCase()}: ВАШИ ПРЕДПРИЯТИЯ ПОД УДАРОМ`,
@@ -693,13 +696,35 @@ function quarterEnd(prev, offline = false) {
   if (st.distress >= 2) { st.bankrupt = true; pushNews(st, 'КОМПАНИЯ ПРИЗНАНА БАНКРОТОМ', 'Суд ввёл внешнее управление.'); }
 
   const profit = pretax - tax - fine;
-  st.history = [...st.history, { q: qi, label: quarterLabel(qi), revenue: q.revenue, retail: q.retail, wholesale: q.wholesale,
+  const row = { q: qi, label: quarterLabel(qi), revenue: q.revenue, retail: q.retail, wholesale: q.wholesale,
     exports: q.exports, wages: q.wages, upkeep: q.upkeep, purchases: q.purchases, transport: q.transport,
-    ebitda, interest, principal, tax, fine, profit, cash: st.cash, debt: totalDebtT(st), value: 0, offline: offline || undefined }].slice(-60);
+    ebitda, interest, principal, tax, fine, profit, cash: st.cash, debt: totalDebtT(st), value: 0 };
+  st.history = pushHistory(st.history, row, offline);
   st.quarter = emptyQuarter();
   st.history[st.history.length - 1].value = companyValue(st);
   return st;
 }
+
+/* Офлайн-кварталы (до 60 за три часа) раньше ложились в историю отдельными строками с
+   одной и той же подписью квартала — страна же стоит — и вытесняли всю онлайн-историю.
+   Теперь офлайн сворачивается в одну строку: потоки — в среднем за квартал (чтобы
+   графики и оценка EBITDA банком не видели пика), остатки — на конец, quarters — сколько
+   кварталов в ней. */
+const HISTORY_FLOWS = ['revenue', 'retail', 'wholesale', 'exports', 'wages', 'upkeep', 'purchases', 'transport',
+  'ebitda', 'interest', 'principal', 'tax', 'fine', 'profit'];
+export function pushHistory(history, row, offline) {
+  const last = history[history.length - 1];
+  if (!offline) return [...history, row].slice(-60);
+  if (!last || !last.offline) {
+    return [...history, { ...row, offline: true, quarters: 1, label: 'Офлайн · 1 кв.' }].slice(-60);
+  }
+  const n = (last.quarters || 1) + 1;
+  const merged = { ...row, offline: true, quarters: n, label: `Офлайн · ${n} кв.` };
+  HISTORY_FLOWS.forEach((k) => { merged[k] = ((last[k] || 0) * (n - 1) + (row[k] || 0)) / n; });
+  return [...history.slice(0, -1), merged];
+}
+// сколько кварталов прожила компания: свёрнутая офлайн-строка считается за все свои кварталы
+export const quartersPlayed = (st) => st.history.reduce((a, h) => a + (h.quarters || 1), 0);
 
 /* ------------------------------ ФИНАНСЫ ------------------------------ */
 export const totalDebtT = (st) => st.debtRub + st.debtFx * fxRate(economyOf(st));

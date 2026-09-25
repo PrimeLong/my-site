@@ -156,8 +156,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     const ids = [];
     if (st.milestones.chain_bread) ids.push('tycoon_chain');
     if (T.companyValue(st) >= 1000) ids.push('tycoon_billion');
-    if (st.history.length >= 4 && T.ownerWealth(st) >= 3 * Math.max(1, st.value0 || 1)) ids.push('biz_triple');
-    if (st.setup.scenario !== 'sandbox' && st.history.length >= 12 && !st.bankrupt) ids.push('biz_survivor');
+    if (T.quartersPlayed(st) >= 4 && T.ownerWealth(st) >= 3 * Math.max(1, st.value0 || 1)) ids.push('biz_triple');
+    if (st.setup.scenario !== 'sandbox' && T.quartersPlayed(st) >= 12 && !st.bankrupt) ids.push('biz_survivor');
     unlockAch(ids).forEach((a) => { Audio.play('coin'); toast(`Достижение: ${a.title}`, 'gold'); });
     sendRecord(st);
     // смена квартала — веха: сохраняемся сразу, не дожидаясь пятисекундного таймера
@@ -358,7 +358,7 @@ function sendRecord(st) {
   try { sent = Number(localStorage.getItem(RECORD_SENT_KEY)) || 0; } catch { /* приватный режим */ }
   if (!(value > 0) || value <= sent * 1.02) return;
   try { localStorage.setItem(RECORD_SENT_KEY, String(value)); } catch { /* приватный режим */ }
-  submitRecord(account.token, { value, start: st.setup.start, quarters: st.history.length, legacy: st.legacy || 0 }).catch(() => {
+  submitRecord(account.token, { value, start: st.setup.start, quarters: T.quartersPlayed(st), legacy: st.legacy || 0 }).catch(() => {
     try { localStorage.setItem(RECORD_SENT_KEY, String(sent)); } catch { /* повторим в следующем квартале */ }
   });
 }
@@ -499,8 +499,8 @@ function TyHeader({ st, setSt, savedAt, onExit, onSaves, onRecords }) {
         {/* прогресс к «Выжить в кризис» — видно, что считается и сколько осталось */}
         {st.setup.scenario !== 'sandbox' && !st.bankrupt && (
           <span title="Достижение «Выжить в кризис»: 12 кварталов кризисного сценария без банкротства"
-            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, border: `1px solid ${COLOR.border}`, color: st.history.length >= 12 ? COLOR.teal : COLOR.muted }}>
-            кризис: {Math.min(12, st.history.length)} из 12 кв.
+            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, border: `1px solid ${COLOR.border}`, color: T.quartersPlayed(st) >= 12 ? COLOR.teal : COLOR.muted }}>
+            кризис: {Math.min(12, T.quartersPlayed(st))} из 12 кв.
           </span>
         )}
         <span aria-live="off" title="Партия сама сохраняется в этом браузере каждые пять секунд, в конце квартала и при закрытии вкладки; после перезагрузки страницы она откроется с того же места"

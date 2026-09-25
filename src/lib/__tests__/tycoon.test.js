@@ -237,8 +237,34 @@ describe('Своё дело: кредит, офлайн и рынок', () => {
     const { st: after } = withSeededRandom(5, () => T.catchUp(saved, Date.now()));
     expect(after.country.quarterIndex).toBe(q0);
     const off = after.history.filter((h) => h.offline);
-    expect(off.length).toBeGreaterThan(10);
-    expect(off.reduce((a, h) => a + h.interest, 0)).toBeGreaterThan(0);
+    // офлайн свёрнут в одну строку, но кварталы в ней все
+    expect(off.length).toBe(1);
+    expect(off[0].quarters).toBeGreaterThan(10);
+    expect(off[0].interest).toBeGreaterThan(0);
+  });
+
+  it('три часа офлайна с событием в области: история цела, событие не растягивается', () => {
+    let st = withSeededRandom(8, () => T.tick(T.makeTycoon({ start: 'farm' }), 5 * T.QUARTER_SEC + 10));
+    const online = st.history.map((h) => h.label);
+    expect(online.length).toBe(5);
+    const region = st.buildings[0].region;
+    // вкладку закрыли прямо во время события в области с заводами
+    st = { ...st, events: { ...st.events, regionHit: { region, title: 'Паводок', untilQ: st.country.quarterIndex } },
+      country: { ...st.country, economy: { ...st.country.economy, regionEvent: { region, title: 'Паводок' } } } };
+    const hits0 = st.news.filter((n) => /ПОД УДАРОМ/.test(n.title || n.headline || '')).length;
+    const saved = { ...T.snapshotTycoon(st), savedAt: Date.now() - 3 * 3600 * 1000 };
+    const { st: after, away } = withSeededRandom(9, () => T.catchUp(saved, Date.now()));
+    expect(away).toBe(T.OFFLINE_CAP_SEC);
+    // онлайн-история на месте, офлайн — одна строка на все 180 кварталов
+    expect(after.history.slice(0, 5).map((h) => h.label)).toEqual(online);
+    expect(after.history.length).toBe(6);
+    expect(after.history[5].quarters).toBe(T.OFFLINE_CAP_SEC / T.QUARTER_SEC);
+    expect(T.quartersPlayed(after)).toBe(5 + T.OFFLINE_CAP_SEC / T.QUARTER_SEC);
+    // событие не повторялось каждый квартал и снято
+    const hits = after.news.filter((n) => /ПОД УДАРОМ/.test(n.title || n.headline || '')).length;
+    expect(hits - hits0).toBe(0);
+    expect(after.events.regionHit).toBe(null);
+    expect(after.bankrupt).toBe(false);
   });
 
   it('подсказка «где торговать» ранжирует области и считает экспортную выгоду', () => {
