@@ -73,4 +73,13 @@ describe('общий прогресс связанных устройств', ()
     const n = normalizeProgress({ achievements: many });
     expect(Object.keys(n.achievements).length).toBeLessThanOrEqual(300);
   });
+
+  it('свёрнутые блоки: побеждает то положение, которое выставили позже', () => {
+    const pc = { folds: { press: [0, 200], report: [1, 50] } };
+    const phone = { folds: { press: [1, 100], report: [0, 90], scores: [0, 10] } };
+    const m = mergeProgress(pc, phone);
+    expect(m.folds).toEqual({ press: [0, 200], report: [0, 90], scores: [0, 10] });
+    expect(mergeProgress(phone, pc).folds).toEqual(m.folds);
+    expect(normalizeProgress({ folds: { a: 'x', b: [1, 'нет'], c: [5, 3] } }).folds).toEqual({ c: [1, 3] });
+  });
 });

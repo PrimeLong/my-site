@@ -458,6 +458,14 @@ function botFinanceMinistry(s, personaId, _difficulty) {
     else profitTaxRate = clamp(profitTaxRate - taxStep, 0, 45);
   }
 
+  // обещание не повышать налоги (taxCommit) держит каждую ставку не выше обещанной
+  const caps = s.taxCommit && s.taxCommit.caps;
+  if (caps) {
+    const cap = (v, k) => (Number.isFinite(caps[k]) ? Math.min(v, caps[k]) : v);
+    incomeTaxRate = cap(incomeTaxRate, 'incomeTaxRate'); vatRate = cap(vatRate, 'vatRate'); profitTaxRate = cap(profitTaxRate, 'profitTaxRate');
+    capitalTaxRate = cap(capitalTaxRate, 'capitalTaxRate'); socialContribRate = cap(socialContribRate, 'socialContribRate'); exciseRate = cap(exciseRate, 'exciseRate');
+  }
+
   const drift = (cur, tgt) => (Math.abs(tgt - cur) < 1 ? cur : clamp(Math.round(cur + clamp(tgt - cur, -1, 1)), 0, 45));
   const shareHealth = drift(s.budgetShares.health, P.shares.health);
   const shareEducation = drift(s.budgetShares.education, P.shares.education);
@@ -664,6 +672,28 @@ function requestOutcomeText(req, status, economyBefore, after) {
 // в неразличимую на глаз поправку — «исполнено», а по факту ничего не изменилось.
 const gdpLeverScale = (s) => Math.max(1, (s && s.nominalGdp ? s.nominalGdp : CONFIG.initial.gdp) / CONFIG.initial.gdp);
 
+/* Налоги, которые население чувствует напрямую: подоходный выше 28% или НДС выше
+   23% — и появляется требование «налоговая нагрузка невыносима» (см. раздел 16). */
+const TAX_DEMAND_CAP = { incomeTaxRate: 28, vatRate: 23 };
+const TAX_KEYS = ['incomeTaxRate', 'vatRate', 'socialContribRate', 'profitTaxRate', 'exciseRate', 'capitalTaxRate'];
+const taxSum = (d) => TAX_KEYS.reduce((a, k) => a + (Number.isFinite(d[k]) ? d[k] : 0), 0);
+/* Общая просьба «снизить налоги»: какие именно — решает Минфин. Снижает по шагу
+   ползунка (0,5 п.п.) тот налог, что сейчас «больнее всего»: сначала те, из-за
+   которых протестует население, потом — самые завышенные против стартовых ставок. */
+function taxCutPlan(d, total) {
+  const out = {};
+  TAX_KEYS.forEach((k) => { out[k] = d[k]; });
+  const start = CONFIG.initial;
+  const pain = (k) => (TAX_DEMAND_CAP[k] && out[k] > TAX_DEMAND_CAP[k] ? 100 + out[k] - TAX_DEMAND_CAP[k] : 0)
+    + (out[k] - (start[k] || 0)) / Math.max(5, start[k] || 5);
+  for (let left = Math.round(total / 0.5); left > 0; left--) {
+    const k = TAX_KEYS.filter((x) => Number.isFinite(out[x]) && out[x] >= 0.5).sort((a, b) => pain(b) - pain(a))[0];
+    if (!k) break;
+    out[k] = roundTo(out[k] - 0.5, 0.5);
+  }
+  return out;
+}
+
 const REQUESTS = [
   { id: 'infra_up', from: 'central_bank', label: 'Нарастить госинвестиции',
     scale: { base: 1.5, min: 0.5, max: 3, step: 0.5, unit: '% ВВП' },
@@ -704,7 +734,26 @@ const REQUESTS = [
     yes: 'Минфин замораживает индексацию выплат до нормализации инфляции.',
     partial: 'Минфин ограничивает рост выплат, но полной заморозки не допускает.',
     no: 'Минфин отвечает, что заморозка выплат при текущем положении людей исключена.' },
-  { id: 'tax_relief_business', from: 'central_bank', label: 'Снизить налог на прибыль',
+  /* Одна просьба на все налоги вместо отдельных «снизить НДС» и «снизить налог на
+     прибыль»: президент и ЦБ говорят, насколько снизить нагрузку, а какие налоги —
+     решает Минфин. Согласие — обязательство: полтора года бот-Минфин не поднимает
+     эти налоги обратно (см. taxCommit). Раньше Минфин снижал НДС по просьбе и через
+     квартал повышал снова — требование населения висело десятки кварталов. */
+  { id: 'tax_cut', from: 'central_bank', label: 'Снизить налоги',
+    scale: { base: 2, min: 1, max: 5, step: 0.5, unit: ' п.п.' },
+    ask: (n) => `Просим снизить налоговую нагрузку — в сумме на ${askNum(n)} п.п. ставок и не повышать их полтора года. Какие налоги снижать, решает Минфин.`,
+    fit: (s) => ((s.incomeTaxRate > TAX_DEMAND_CAP.incomeTaxRate || s.vatRate > TAX_DEMAND_CAP.vatRate) ? 1.2 : -0.3)
+      + (s.budgetBalancePctGdp > -3 ? 0.4 : s.budgetBalancePctGdp < -6 ? -1.0 : -0.4) + (s.outputGap < -1 ? 0.3 : 0),
+    bias: { technocrat: 0.2, austerity: -0.6, populist: 0.9 },
+    apply: (d, k) => taxCutPlan(d, 2 * k),
+    // засчитывается снижение суммы ставок — неважно, какие именно налоги снизили
+    progress: (base, fin, str) => clamp((taxSum(base) - taxSum(fin)) / Math.max(0.5, roundTo(2 * (str || 1), 0.5)), 0, 1),
+    yes: 'Минфин снижает налоги и обещает не поднимать их полтора года.',
+    partial: 'Минфин снижает налоги вдвое меньше запрошенного — и тоже обещает их не поднимать.',
+    no: 'Минфин отказывается: выпадающие доходы бюджета нечем закрыть.' },
+  // retired: старые просьбы по одному налогу — вместо них tax_cut. Остаются для
+  // старых сохранений и сетевых комнат, но в списках и у ботов их больше нет
+  { id: 'tax_relief_business', retired: true, from: 'central_bank', label: 'Снизить налог на прибыль',
     scale: { base: 2, min: 0.5, max: 4, step: 0.5, unit: ' п.п.' },
     // раньше текст не называл величину вовсе («снизить налог на прибыль», без
     // числа) — игрок не мог понять, сколько нужно сдвинуть ползунок, чтобы
@@ -716,7 +765,7 @@ const REQUESTS = [
     yes: 'Минфин снижает налог на прибыль, рассчитывая вернуть выпадающие доходы ростом базы.',
     partial: 'Минфин идёт на символическое снижение ставки.',
     no: 'Минфин отказывается: выпадающие доходы нечем закрыть.' },
-  { id: 'vat_relief', from: 'central_bank', label: 'Снизить НДС',
+  { id: 'vat_relief', retired: true, from: 'central_bank', label: 'Снизить НДС',
     scale: { base: 1.5, min: 0.5, max: 3, step: 0.5, unit: ' п.п.' },
     ask: (n) => `Просим снизить НДС на ${askNum(n)} п.п.: налоговая нагрузка бьёт по спросу населения раньше, чем по цифрам роста.`,
     fit: (s) => (s.vatRate > 20 ? 1.3 : -0.5) + (s.budgetBalancePctGdp > -3 ? 0.4 : -1.0),
@@ -848,7 +897,7 @@ function processRequest(reqId, economy, botKind, personaId, decisions) {
     + (economy.policyCoordination > 70 ? 0.3 : economy.policyCoordination < 35 ? -0.4 : 0);
   const status = score >= 1.0 ? 'accepted' : score >= 0.1 ? 'partial' : 'rejected';
   const k = status === 'accepted' ? 1 : status === 'partial' ? 0.5 : 0;
-  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k, economy) } : decisions;
+  const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k, economy), ...(req.id === 'tax_cut' ? { taxPledge: true } : {}) } : decisions;
   return {
     req, status, score, ask: askText(req, 1),
     decisions: finalDecisions,
@@ -1535,7 +1584,9 @@ function processPresidentialDirective(reqId, economy, cbPersonaId, mofPersonaId,
   const credibilityHit = toCb && k > 0 ? -7 * k : 0;
   const finalDecisions = k > 0 ? { ...decisions, ...req.apply(decisions, k * str, economy),
     // согласие на военные расходы — обязательство на два года (см. defenseCommit)
-    ...(req.id === 'defense_up' ? { defensePledge: true } : {}) } : decisions;
+    ...(req.id === 'defense_up' ? { defensePledge: true } : {}),
+    // снижение налогов — тоже обязательство: полтора года их не поднимают (см. taxCommit)
+    ...(req.id === 'tax_cut' ? { taxPledge: true } : {}) } : decisions;
   const ownNote = byOwn ? (status === 'accepted'
     ? 'Ведомство и без указания шло в ту же сторону — решение совпало с требованием. '
     : 'Шаг в ту же сторону ведомство сделало по своим причинам, но меньше, чем требовали. ') : '';
@@ -1593,7 +1644,7 @@ const PRES_REQ_LEAN = {
   rate_cut: { pop: 1.0, ref: -0.3 }, rate_hike: { pop: -1.0, ref: 0.5 }, rate_hold: { pop: 0.5, ref: -0.1 },
   liquidity_help: { pop: 0.3, ref: 0.1 }, capreq_ease: { pop: 0.4, ref: -0.2 }, fx_support: { pop: 0.5, ref: -0.1 },
   infra_up: { pop: 0.6, ref: 0.6 }, deficit_cut: { pop: -1.0, ref: 0.6 }, transfers_freeze: { pop: -1.0, ref: 0.4 },
-  tax_relief_business: { pop: -0.2, ref: 0.6 }, fiscal_hold: { pop: -0.6, ref: 0.4 }, defense_up: { pop: 0.4, ref: -0.2 },
+  tax_relief_business: { pop: -0.2, ref: 0.6 }, tax_cut: { pop: 0.8, ref: 0.2 }, fiscal_hold: { pop: -0.6, ref: 0.4 }, defense_up: { pop: 0.4, ref: -0.2 },
 };
 
 /* Насколько выполнено требование — доля от 0 до 1, а не «да/нет». Раньше снижение
@@ -1628,6 +1679,7 @@ function directiveProgress(reqId, baseDecisions, finalDecisions, economy, streng
     });
     return worst;
   }
+  if (req.progress) return req.progress(baseDecisions, finalDecisions, strength);
   const want = req.apply(baseDecisions, strength || 1, economy || baseDecisions);
   let total = 0; let sum = 0;
   Object.keys(want).forEach((k) => {
@@ -1727,7 +1779,7 @@ function botPresident(s, personaId, difficulty, ctx) {
       // равных к игроку», а не «к игроку всегда»
       + (playerBranch && branchOf(req) === playerBranch ? 0.6 : 0);
   };
-  const pool = REQUESTS;
+  const pool = REQUESTS.filter((r) => !r.retired);
   /* Выбираем не строго лучшее, а случайное из близких по смыслу: президент, который
      двенадцать кварталов подряд требует одно и то же слово в слово, читается как
      сломанный, а не как упрямый. Прошлое требование при прочих равных пропускаем. */
@@ -2521,6 +2573,16 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
   const defenseCommit = decisions.defensePledge && budgetShares.defense > (s.budgetShares ? s.budgetShares.defense : 0) + 0.5
     ? { share: Math.round(budgetShares.defense), left: 8 }
     : prevCommit && prevCommit.left > 1 ? { ...prevCommit, left: prevCommit.left - 1 } : null;
+  /* Налоговое обещание: снижение налогов по просьбе (decisions.taxPledge) держится
+     полтора года — бот-Минфин не поднимает ставки выше достигнутых. Если Минфин
+     сам снижает дальше, обещанный потолок опускается вместе с ним. */
+  const prevTax = s.taxCommit || null;
+  const taxNow = Object.fromEntries(TAX_KEYS.map((k) => [k, decisions[k]]));
+  const taxCommit = decisions.taxPledge && taxSum(decisions) < taxSum(s) - 0.25
+    ? { caps: taxNow, left: 6 }
+    : prevTax && prevTax.left > 1
+      ? { caps: Object.fromEntries(TAX_KEYS.map((k) => [k, Math.min(prevTax.caps[k] ?? 99, decisions[k] ?? 99)])), left: prevTax.left - 1 }
+      : null;
 
   /* --- 4. ДЕНЕЖНАЯ ТРАНСМИССИЯ: ключевая ставка -> рыночные ставки --- */
   const rStarTarget = 1.55 + 0.55 * (s.potentialGrowth - 2.3) + 0.30 * (worldRate - worldInflation) + 0.25 * (s.riskPremium - 1.4) + (d.rStar || 0);
@@ -3744,7 +3806,12 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
 
   /* --- 16. ПОЛИТИЧЕСКОЕ ДАВЛЕНИЕ --- */
   const demandCandidates = [];
-  if (decisions.incomeTaxRate > 28 || decisions.vatRate > 23) demandCandidates.push({ id: 'tax_cut', actor: 'Население', text: 'Налоговая нагрузка невыносима — требуют снижения налогов.' });
+  if (decisions.incomeTaxRate > TAX_DEMAND_CAP.incomeTaxRate || decisions.vatRate > TAX_DEMAND_CAP.vatRate) {
+    // называем, что именно давит и до какого уровня снизить — иначе требование не выполнить
+    const over = [decisions.incomeTaxRate > TAX_DEMAND_CAP.incomeTaxRate && `подоходный ${rf1(decisions.incomeTaxRate)}% (терпимо до ${TAX_DEMAND_CAP.incomeTaxRate}%)`,
+      decisions.vatRate > TAX_DEMAND_CAP.vatRate && `НДС ${rf1(decisions.vatRate)}% (терпимо до ${TAX_DEMAND_CAP.vatRate}%)`].filter(Boolean).join(', ');
+    demandCandidates.push({ id: 'tax_cut', actor: 'Население', text: `Налоговая нагрузка невыносима — требуют снижения налогов: ${over}.` });
+  }
   if (lendingRate - inflation > 6 && businessConfidence < 50) demandCandidates.push({ id: 'rate_cut', actor: 'Бизнес', text: 'Реальная стоимость кредита душит инвестиции — требуют снизить ставку.' });
   if (debtToGdp > 85) demandCandidates.push({ id: 'debt_cut', actor: 'Инвесторы', text: 'Долговая нагрузка выше комфортного уровня — требуют бюджетной консолидации.' });
   if (unemployment > 7.5) demandCandidates.push({ id: 'social_up', actor: 'Парламент', text: 'Безработица высока — требуют расширить социальные выплаты.' });
@@ -3791,7 +3858,7 @@ function simulateQuarter({ economy, decisions: rawDecisions, pendingImpulses, ev
     shadowShare, taxWedgeValue: wedgeNow, revenueParts, govRevenue, revenuePctGdp,
     govPurchasesNominal, transfersNominal, govInvestmentNominal, govSpendingTotal, interestPayment, interestToRevenue,
     budgetBalance, budgetBalancePctGdp, structuralBalancePctGdp, primaryBalance, fiscalImpulse,
-    govDebt, debtToGdp, effectiveDebtRate, budgetShares, defenseCommit, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
+    govDebt, debtToGdp, effectiveDebtRate, budgetShares, defenseCommit, taxCommit, sovereignFund, fundPctGdp, netDebtToGdp, fundIncome,
     marketLockoutQuartersLeft, defaultedEver, justDefaulted: sovereignDefault,
     imfQuartersLeft, imfActive, imfStarted,
     consumerConfidence, businessConfidence, govTrust, policyCoordination,
@@ -4062,7 +4129,7 @@ const STORY_TEMPLATES = {
         `Достаточность капитала ${rf1(s.bankCapitalAdequacy)}% — запас прочности выдержал. Кредитный цикл прошёл без срыва.`, { priority: 5 })) },
   ] },
   debt_spiral: { id: 'debt_spiral', title: 'Долговая спираль', steps: [
-    { make: (s) => mkNews('gov', `ГОСДОЛГ ПРЕВЫСИЛ ${Math.round(s.debtToGdp / 5) * 5}% ВВП`,
+    { make: (s) => mkNews('gov', `ГОСДОЛГ ПРЕВЫСИЛ ${Math.floor(s.debtToGdp / 5) * 5}% ВВП`,
       `Обслуживание забирает ${rf1(s.interestToRevenue)}% доходов бюджета при ставке ${rf1(s.effectiveDebtRate)}%. Пока номинальный рост экономики выше ставки, долг стабилизируется сам; если нет — начинается спираль.`, { priority: 8,
         chain: ['Долг ↑', 'Премия за риск ↑', 'Ставка по долгу ↑', 'Процентные расходы ↑', 'Дефицит ↑'] }) },
     { gap: 2, make: (s) => mkNews('markets', `ИНВЕСТОРЫ ТРЕБУЮТ ПРЕМИЮ: ${rf1(s.riskPremium)} П.П.`,
@@ -5926,7 +5993,7 @@ const NEIGHBOR_EVENTS = [
     ] },
   { id: 'west_deal', weight: 2, countries: ['west'], when: (s) => relationsOf(s).west >= 45 && (s.sanctionsQuartersLeft || 0) <= 0, days: 2, def: 'pass',
     title: () => 'Вестравия предлагает контракт',
-    text: () => 'Концерны Вестравии готовы закупать нашу продукцию по долгому контракту — если ответим в течение двух кварталов. Взамен просят открыть рынок для своих станков.',
+    text: () => 'Концерны Вестравии готовы закупать нашу продукцию по контракту на два года — если ответим в течение двух кварталов. Взамен просят открыть рынок для своих станков.',
     options: [
       { id: 'sign', label: 'Подписать', note: 'экспорт ↑ на два года, отношения +6; свой бизнес поворчит', rel: 6, deal: 'west' },
       { id: 'pass', label: 'Отказаться', note: 'отношения −3', rel: -3 },
@@ -6023,6 +6090,10 @@ function diplomacyStep(s, decisions, difficulty, q, capitalLeft, noEvents, presA
           sustainedImpulse('transfersPressure', 0.25, 4, 'Расходы на размещение беженцев'),
           makeImpulse('tensionPush', 2, 'Беженцы: часть общества против', 'fast', difficulty, 'other'));
       }
+      // подписанный контракт не предлагают заново, пока он действует (плюс год
+      // тишины): раньше то же предложение приходило через пару кварталов после подписи
+      if (o.deal === 'west') cooldown['ev:west_deal'] = 12;
+      if (o.deal === 'southwest') cooldown['ev:desht_deal'] = 8;
       if (o.deal === 'west') {
         push(sustainedImpulse('exportsGrowth', 0.5, 8, 'Долгий контракт с концернами Вестравии'),
           makeImpulse('businessConfidence', 2, 'Контракт с Вестравией', 'default', difficulty, 'other'),

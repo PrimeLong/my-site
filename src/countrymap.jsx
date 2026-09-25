@@ -1,7 +1,7 @@
 /* Карта страны: округа, их напряжение и итоги выборов по округам. Вынесена
    из MacroSimulator.jsx в отдельный чанк и грузится лениво — карта нужна
    только по нажатию вкладки «Карта», а не при первой загрузке сайта. */
-import { AlertTriangle, Anchor, ArrowLeft, Castle, CheckCircle2, Coins, Construction, Crown, Expand, Factory, Flag, Globe2, Handshake, Landmark, Lock, Maximize2, Minimize2, Minus, Mountain, Pickaxe, Plus, Shield, Swords, Trees, Vote, Wheat } from 'lucide-react';
+import { AlertTriangle, Anchor, ArrowLeft, Castle, CheckCircle2, Coins, Construction, Crown, Expand, Factory, Flag, Globe2, Handshake, Landmark, Lock, Maximize2, Minimize2, Minus, Mountain, Pickaxe, Plus, Shield, Swords, Trees, Vote, Wheat, Wind } from 'lucide-react';
 import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, regionBlurb, warFrontRegion, defaultWarOrder, WAR_STANCES, warObjectiveOpen, warStrength,
   CAMPAIGN_POINTS, CAMPAIGN_COST, electionForecast, swingLabel,
   regionById, activeRegions, annexLoyalty, PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
@@ -9,7 +9,7 @@ import { MAP_REGIONS, REGION_PROJECTS, clamp, fmt1, fmtMoney, projectBlocker, re
   DEF_FRONT, DEF_ENEMY, defaultFrontOrder, POLITICAL_REGIME_INFO,
   DIPLO_ACTIONS, relationsOf, relationEffects, diploActionAvailable, ultimatumChance, neighborEventView,
   WAR_TARGETS, warTargetOf, warObjectivesFor, warTargetAvailable, PRES_BY_ID } from './lib/engine.js';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Audio, COLOR, starPath } from './MacroSimulator.jsx';
 
@@ -573,6 +573,10 @@ const MAP_CSS = `
   @keyframes mapFullIn { from { opacity: 0; } to { opacity: 1; } }
   .map-chip { padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
   @media (max-width: 560px) { .map-full-label { display: none; } .map-full-btn { padding: 7px 9px; } }
+  /* облегчённая карта (см. useMapMotion): всё декоративное движение стоит */
+  .map-still .map-sel-glow, .map-still .map-sel-line, .map-still .map-flow, .map-still .map-waves, .map-still .map-river-flow,
+  .map-still .map-capital-glow, .map-still .map-region-in { animation: none; }
+  .map-still .map-region .tint, .map-still .map-region .hover, .map-still .map-nb .nb-hover { transition: none; }
   @media (prefers-reduced-motion: reduce) {
     .map-enter, .map-sel-glow, .map-sel-line, .map-flow, .map-waves, .map-river-flow, .map-cloud, .map-capital-glow,
     .map-region-in, .map-delta-ring, .map-delta-num, .map-full { animation: none; }
@@ -827,6 +831,79 @@ function useReducedMotion() {
     return () => { if (mq.removeEventListener) mq.removeEventListener('change', on); else mq.removeListener(on); };
   }, []);
   return reduced;
+}
+
+/* Адаптивная анимация карты. Любое движение внутри svg (облака, волны, поезда,
+   пульсация столицы) заставляет браузер перерисовывать всю карту — на телефоне это
+   и был тот самый «лаг», даже когда карту никто не трогает. Режим «авто»: на
+   телефоне и слабом железе декоративное движение сразу выключено, на остальных
+   карта сама замеряет кадры и выключает его, если не успевает. Выбор игрока
+   («вкл»/«выкл») запоминается и действует на обе карты — страны и «Своего дела». */
+const MOTION_KEY = 'ems.mapMotion';
+const SLOW_KEY = 'ems.mapSlow';
+const motion = { pref: 'auto', slow: false, subs: new Set() };
+try {
+  const v = localStorage.getItem(MOTION_KEY);
+  if (v === 'on' || v === 'off') motion.pref = v;
+  motion.slow = sessionStorage.getItem(SLOW_KEY) === '1';
+} catch { /* приватный режим — просто «авто» */ }
+const notifyMotion = () => motion.subs.forEach((f) => f());
+const setMotionPref = (pref) => {
+  motion.pref = pref;
+  try { if (pref === 'auto') localStorage.removeItem(MOTION_KEY); else localStorage.setItem(MOTION_KEY, pref); } catch { /* см. выше */ }
+  notifyMotion();
+};
+const weakDevice = () => {
+  try {
+    const n = navigator;
+    const phone = window.matchMedia && window.matchMedia('(pointer: coarse)').matches && Math.min(window.innerWidth, window.innerHeight) < 700;
+    return phone || (n.deviceMemory && n.deviceMemory <= 4) || (n.hardwareConcurrency && n.hardwareConcurrency <= 4) || !!(n.connection && n.connection.saveData);
+  } catch { return false; }
+};
+function useMapMotion() {
+  const reduced = useReducedMotion();
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((x) => x + 1);
+    motion.subs.add(f);
+    return () => { motion.subs.delete(f); };
+  }, []);
+  const weak = useMemo(weakDevice, []);
+  const still = reduced || motion.pref === 'off' || (motion.pref === 'auto' && (weak || motion.slow));
+  // замер кадров: треть кадров длиннее 40 мс — карта не успевает, движение выключаем до конца сеанса
+  useEffect(() => {
+    if (still || motion.pref !== 'auto') return undefined;
+    let raf = 0; let last = 0; let n = 0; let slow = 0; let stop = false;
+    const start = setTimeout(() => {
+      const tick = (t) => {
+        if (stop) return;
+        if (document.visibilityState === 'visible' && last) { n += 1; if (t - last > 40) slow += 1; }
+        last = t;
+        if (n < 120) { raf = requestAnimationFrame(tick); return; }
+        if (slow / n > 0.33) {
+          motion.slow = true;
+          try { sessionStorage.setItem(SLOW_KEY, '1'); } catch { /* см. выше */ }
+          notifyMotion();
+        }
+      };
+      raf = requestAnimationFrame(tick);
+    }, 1200); // первые кадры после открытия всегда тяжёлые — их не считаем
+    return () => { stop = true; clearTimeout(start); cancelAnimationFrame(raf); };
+  }, [still]);
+  const cycle = () => setMotionPref(motion.pref === 'auto' ? (still ? 'on' : 'off') : motion.pref === 'on' ? 'off' : 'auto');
+  return { still, reduced, pref: motion.pref, cycle };
+}
+// переключатель рядом с «во весь экран»: авто / вкл / выкл
+function MotionChip({ m }) {
+  const label = m.pref === 'auto' ? `авто${m.still ? ' · выкл' : ''}` : m.pref === 'on' ? 'вкл' : 'выкл';
+  if (m.reduced) return null; // системное «уменьшить движение» главнее
+  return (
+    <button className="ems-btn map-chip map-full-btn" onClick={() => { Audio.play('click'); m.cycle(); }}
+      aria-label={`Анимация карты: ${label}. Нажмите, чтобы переключить`}
+      title="Облака, волны, поезда и суда. «Авто» выключает их на телефоне и там, где карта не успевает">
+      <Wind size={13} /><span className="map-full-label">Анимация: {label}</span>
+    </button>
+  );
 }
 
 /* Всплески смены квартала: где напряжение изменилось заметно (на 6+ пунктов), там
@@ -1121,7 +1198,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
   const setSelected = (id) => { setSelectedRaw(id); setCountry(null); };
   // карта во весь экран: больше места и карте, и панелям рядом с ней
   const [full, setFull] = useState(false);
-  const reduced = useReducedMotion();
+  const mm = useMapMotion();
+  const reduced = mm.still;
   useEffect(() => {
     if (!full) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setFull(false); };
@@ -1130,6 +1208,13 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
     document.body.style.overflow = 'hidden';
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow; };
   }, [full]);
+  const [host] = useState(() => (typeof document !== 'undefined' ? document.createElement('div') : null));
+  const slotRef = useRef(null);
+  useLayoutEffect(() => {
+    const target = full ? document.body : slotRef.current;
+    if (host && target && host.parentNode !== target) target.appendChild(host);
+  }, [full, host]);
+  useEffect(() => () => { if (host) host.remove(); }, [host]);
   const zoom = useMapZoom(full);
   const { lk, lkT } = labelScale(zoom.zoom);
   const [picked, setMode] = useState('stress');
@@ -1222,7 +1307,9 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               onClick={() => { Audio.play('tab'); setMode(id); }}>{typeof label === 'function' ? label(economy) : label}</button>
           ))}
           {/* на узком экране — только значок: с подписью кнопка уезжала отдельной строкой вправо */}
-          <button className="ems-btn map-chip map-full-btn" style={{ marginLeft: 'auto' }} onClick={() => { Audio.play('click'); setFull((v) => !v); }}
+          <span style={{ marginLeft: 'auto' }} />
+          <MotionChip m={mm} />
+          <button className="ems-btn map-chip map-full-btn" onClick={() => { Audio.play('click'); setFull((v) => !v); }}
             aria-label={full ? 'Свернуть карту' : 'Развернуть карту на весь экран'} title={full ? 'Свернуть (Esc)' : 'Во весь экран'}>
             {full ? <Minimize2 size={13} /> : <Expand size={13} />}<span className="map-full-label">{full ? 'Свернуть' : 'Во весь экран'}</span>
           </button>
@@ -1244,7 +1331,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
         </div>
         <style>{MAP_CSS}</style>
         <div style={{ position: 'relative' }}>
-        <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className="map-enter"
+        <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className={reduced ? 'map-still' : 'map-enter'}
           style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: 'none',
             // во весь экран карта растёт, пока помещается по высоте; пропорции — строго как у viewBox
             maxWidth: full ? `calc((100vh - 130px) * ${VIEW_W} / ${VIEW_H - VIEW_TOP})` : undefined, margin: '0 auto',
@@ -1784,16 +1871,22 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
       </div>
     </div>
   );
-  if (!full) return content;
-  // во весь экран — порталом в body: у предков карты бывают transform-анимации,
-  // и position: fixed внутри них встал бы не по окну, а по родителю
+  /* Во весь экран — в body: у предков карты бывают transform-анимации, и position:
+     fixed внутри них встал бы не по окну, а по родителю. Раньше карта при этом
+     рендерилась порталом заново — открытие и закрытие полноэкранного режима
+     пересоздавало весь svg. Теперь карта всегда живёт в одном и том же контейнере,
+     а переезжает сам контейнер: из места на странице в body и обратно — React
+     ничего не перестраивает. */
   return (
     <>
-      <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: COLOR.muted }}>
-        Карта открыта во весь экран.{' '}
-        <button className="ems-btn map-chip" onClick={() => setFull(false)}><Minimize2 size={13} />Свернуть</button>
-      </div>
-      {createPortal(content, document.body)}
+      {full && (
+        <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: COLOR.muted }}>
+          Карта открыта во весь экран.{' '}
+          <button className="ems-btn map-chip" onClick={() => setFull(false)}><Minimize2 size={13} />Свернуть</button>
+        </div>
+      )}
+      <div ref={slotRef} />
+      {host && createPortal(content, host)}
     </>
   );
 }
@@ -2441,7 +2534,7 @@ function bizPath(a, b, salt) {
 // «Своё дело» перерисовывается дважды в секунду — карта только тогда, когда меняются её данные
 export const BusinessMap = memo(function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [], rivals = [] }) {
   const zoom = useMapZoom(undefined);
-  const reduced = useReducedMotion();
+  const reduced = useMapMotion().still;
   const { lk } = labelScale(zoom.zoom);
   const regions = activeRegions(economy);
   const annexed = economy.annexed || [];
@@ -2451,7 +2544,7 @@ export const BusinessMap = memo(function BusinessMap({ economy, selected, onSele
   return (
     <div style={{ position: 'relative' }}>
       <style>{MAP_CSS}</style>
-      <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className="map-enter"
+      <svg ref={zoom.ref} viewBox={`${zoom.vb.x} ${zoom.vb.y} ${zoom.vb.w} ${zoom.vb.h}`} className={reduced ? 'map-still' : 'map-enter'}
         style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 10, touchAction: 'none',
           cursor: Math.abs(zoom.zoom - 1) > 0.01 ? 'grab' : undefined, userSelect: 'none', WebkitUserSelect: 'none' }}
         {...zoom.handlers} role="img" aria-label="Карта ваших предприятий">
