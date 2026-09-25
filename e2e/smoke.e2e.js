@@ -601,3 +601,28 @@ test('модель и учебник: восемь идей со ссылкой 
   await expect(page.getByRole('button', { name: 'Госинвестиции в инфраструктуру' })).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
 });
+
+test('задача на 10 минут: цель на экране, прогноз записывается, в конце разбор', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'восемь кварталов подряд — достаточно одного экрана');
+  test.setTimeout(120_000);
+  const { errors } = await openApp(page);
+  await page.getByText('Задачи на 10 минут', { exact: true }).first().click();
+  await page.getByTestId('drills').getByRole('button', { name: 'Начать' }).first().click();
+  await expect(page.getByTestId('drill-banner')).toContainText('Инфляция с 12% до 4%');
+  await page.getByRole('textbox', { name: 'Прогноз инфляции через четыре квартала' }).fill('8');
+  const finish = page.getByRole('button', { name: 'Завершить квартал и применить решения' });
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  for (let q = 1; q <= 8; q++) {
+    await expect(finish).toBeEnabled({ timeout: 10_000 });
+    await finish.click();
+    if (await close.isVisible().catch(() => false)) await close.click();
+    if (q === 1) await expect(page.getByTestId('forecast')).toContainText('Ждут проверки: 1');
+  }
+  const result = page.getByTestId('drill-result');
+  await expect(result).toBeVisible();
+  await expect(result).toContainText('Инфляция с 12% до 4%');
+  await expect(result).toContainText('Слепой прогноз');
+  await result.getByRole('button', { name: 'Посмотреть графики' }).click();
+  await expect(page.getByRole('button', { name: 'Разбор' })).toBeVisible();
+  expect(errors).toEqual([]);
+});

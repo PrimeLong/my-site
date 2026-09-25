@@ -1,13 +1,15 @@
 /* ТРЕНАЖЁР: экраны вне партии, которые учат читать модель, а не выигрывать.
    • Лаборатория — импульсный отклик одного рычага (src/lib/lab.js);
-   • Модель и учебник — «игра ↔ учебник» и чем модель не похожа на настоящую.
+   • Модель и учебник — «игра ↔ учебник» и чем модель не похожа на настоящую;
+   • Задачи на 10 минут — список задач (сама партия идёт в обычном экране игры).
    Отдельный ленивый чанк: в меню и в партии этот код не нужен. */
 import React, { useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { FlaskConical, BookOpenText } from 'lucide-react';
+import { FlaskConical, BookOpenText, Target } from 'lucide-react';
 import { COLOR, Audio, GlobalStyle } from './MacroSimulator.jsx';
 import { SCENARIOS, fmt1, fmtSigned1 } from './lib/engine.js';
 import { impulseResponse, peakOf, LAB_LEVERS, LAB_METRICS, defaultLabMode } from './lib/lab.js';
+import { DRILLS, drillSetup, loadDrillRecords } from './lib/drills.js';
 
 /* Общая рамка страницы тренажёра: кнопка назад, заголовок, вводный абзац. */
 export function TrainerPage({ eyebrow, title, lede, onBack, children, icon: Icon = FlaskConical, wide = false }) {
@@ -285,6 +287,39 @@ export function ModelScreen({ onBack, onOpenLab, initialTab = 'textbook' }) {
           options={[{ id: 'textbook', label: 'Игра ↔ учебник' }, { id: 'limits', label: 'Чем модель не похожа на настоящую' }]} />
       </div>
       {tab === 'textbook' ? <TextbookTab onOpenLab={onOpenLab} /> : <LimitsTab />}
+    </TrainerPage>
+  );
+}
+
+/* ---------------- ЗАДАЧИ НА 10 МИНУТ ---------------- */
+const ROLE_NAME = { central_bank: 'Центральный банк', ministry_finance: 'Минфин' };
+export function DrillsScreen({ onBack, onStart }) {
+  const records = useMemo(loadDrillRecords, []);
+  return (
+    <TrainerPage eyebrow="Тренажёр" title="Задачи на 10 минут" icon={Target} onBack={onBack}
+      lede="Одна цель, несколько кварталов, никаких случайных событий. Соседнее ведомство ведёт бот, у каждой задачи своё зерно — попытки можно сравнивать. Перед каждым ходом можно записать слепой прогноз инфляции: он проверится через четыре квартала. В конце — разбор.">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="drills">
+        {DRILLS.map((d) => {
+          const rec = records[d.id];
+          return (
+            <div key={d.id} className="ems-panel" style={{ padding: 14 }}>
+              <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+                <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>{d.title}</span>
+                <span style={{ fontSize: 12, color: COLOR.muted }}>{ROLE_NAME[d.role]} · {d.quarters} кварталов
+                  {rec ? <> · {rec.passed ? <b style={{ color: COLOR.teal }}>выполнено</b> : 'не выполнено'}, попыток {rec.tries}</> : null}</span>
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.55, margin: '6px 0' }}>{d.brief}</div>
+              <ul style={{ margin: '0 0 10px', paddingLeft: 18, fontSize: 12, color: COLOR.muted }}>
+                {d.goals.map((g) => <li key={g.key + g.when}>{g.label}</li>)}
+              </ul>
+              <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }}
+                onClick={() => { Audio.prime(); Audio.play('stamp'); onStart(drillSetup(d)); }}>
+                {rec ? 'Ещё раз' : 'Начать'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </TrainerPage>
   );
 }

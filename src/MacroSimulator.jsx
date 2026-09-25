@@ -912,6 +912,7 @@ const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ defa
 // тренажёр: лаборатория, учебник и ограничения модели — отдельный чанк
 const LabScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.LabScreen })));
 const ModelScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.ModelScreen })));
+const DrillsScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.DrillsScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
 export function preloadGame() { loadGame().catch(() => {}); }
@@ -1129,7 +1130,7 @@ function MenuTicker() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onModel }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onModel, onDrills }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1256,6 +1257,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     ...(onLab ? [{ id: 'lab', icon: FlaskConical, title: 'Лаборатория', tag: 'один рычаг — два мира',
       desc: 'Меняете один рычаг, шоки выключены: графики показывают чистый эффект на инфляцию, выпуск, безработицу и курс за 12 кварталов.',
       action: () => { Audio.prime(); Audio.play('tab'); onLab(); } }] : []),
+    ...(onDrills ? [{ id: 'drills', icon: Target, title: 'Задачи на 10 минут', tag: 'цель · кварталы · разбор',
+      desc: 'Короткая партия с одной целью — например, инфляцию с 12% до 4% за восемь кварталов без рецессии. В конце — разбор и слепой прогноз.',
+      action: () => { Audio.prime(); Audio.play('tab'); onDrills(); } }] : []),
     ...(onModel ? [{ id: 'model', icon: BookOpenText, title: 'Модель и учебник', tag: 'Фишер, Оукен, Филлипс…',
       desc: 'Где в игре работают формулы из учебника — и чем эта модель честно не похожа на настоящую экономику.',
       action: () => { Audio.prime(); Audio.play('tab'); onModel(); } }] : []),
@@ -1951,6 +1955,13 @@ export default function MacroSimulator() {
           </Suspense>
         );
       }
+      if (view === 'drills') {
+        return (
+          <Suspense fallback={<GameFallback />}>
+            <DrillsScreen key={theme} onBack={goMenu} onStart={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }} />
+          </Suspense>
+        );
+      }
       if (view === 'model') {
         return (
           <Suspense fallback={<GameFallback />}>
@@ -1979,6 +1990,7 @@ export default function MacroSimulator() {
           onTutorial={() => setView('tutorial')}
           onLab={() => { setLabLever('keyRate'); setView('lab'); }}
           onModel={() => setView('model')}
+          onDrills={() => setView('drills')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
           onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
@@ -1990,7 +2002,8 @@ export default function MacroSimulator() {
       <Suspense fallback={<GameFallback />}>
         <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
           theme={theme} setTheme={setTheme}
-          onRestart={() => { clearAutosave(); setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
+          onRestart={() => { const wasDrill = !!setup.drill; clearAutosave(); setLoaded(null); setSetup(null); setView(wasDrill ? 'drills' : 'menu'); }} onLoadState={startLoaded}
+          onReplay={setup.drill ? () => { clearAutosave(); setLoaded(null); setNonce((n) => n + 1); } : null} />
       </Suspense>
     );
   })();

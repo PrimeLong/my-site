@@ -2279,9 +2279,10 @@ function simulateQuarter(input, { skip = [] } = {}) {
 /* =========================================================================================
    НАЧАЛЬНОЕ СОСТОЯНИЕ
 ========================================================================================= */
-function makeInitialEconomy(scenarioId) {
+// extra — поверх сценария: стартовые условия задач тренажёра (lib/drills.js)
+function makeInitialEconomy(scenarioId, extra = null) {
   const scenario = SCENARIOS.find((sc) => sc.id === scenarioId);
-  const I = { ...CONFIG.initial, ...(scenario && scenario.overrides) };
+  const I = { ...CONFIG.initial, ...(scenario && scenario.overrides), ...extra };
   const potentialGdp = potentialFrom(I.capitalStock, I.laborForce, I.nairu, I.humanCapitalIndex, I.productivity, I.infrastructureIndex, TFP_SCALE, 0);
   const nominalGdp = I.gdp * I.priceLevel / 100;
   const dist0 = initialDistribution({ vatRate: I.vatRate, incomeTaxRate: I.incomeTaxRate, capitalTaxRate: I.capitalTaxRate });
