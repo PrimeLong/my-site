@@ -2715,3 +2715,41 @@ describe('обязательство по обороне', () => {
     expect(req.presidentOnly).toBe(true);
   });
 });
+
+describe('общая просьба «снизить налоги»', () => {
+  const heavy = () => ({ ...makeInitialEconomy(), incomeTaxRate: 31, vatRate: 25, politicalRegime: 'totalitarian', budgetBalancePctGdp: -5, debtToGdp: 90 });
+
+  it('Минфин сам выбирает налоги: сначала те, из-за которых протестует население', () => {
+    const economy = heavy();
+    const decisions = defaultDecisions(economy);
+    const res = processPresidentialDirective('tax_cut', economy, 'pragmatic', 'austerity', decisions, 1);
+    expect(res.status).toBe('accepted');
+    const d = res.decisions;
+    const sum = (x) => ['incomeTaxRate', 'vatRate', 'socialContribRate', 'profitTaxRate', 'exciseRate', 'capitalTaxRate'].reduce((a, k) => a + x[k], 0);
+    expect(sum(decisions) - sum(d)).toBeCloseTo(2, 5);
+    expect(d.incomeTaxRate + d.vatRate).toBeCloseTo(economy.incomeTaxRate + economy.vatRate - 2, 5);
+    expect(d.taxPledge).toBe(true);
+    expect(directiveProgress('tax_cut', decisions, d, economy, 1)).toBeCloseTo(1, 5);
+  });
+
+  it('снижение держится: бот-Минфин полтора года не поднимает налоги выше обещанного', () => {
+    let economy = heavy();
+    const dir = processPresidentialDirective('tax_cut', economy, 'pragmatic', 'austerity', defaultDecisions(economy), 1);
+    const r = simulateQuarter({ economy, decisions: dir.decisions, pendingImpulses: [], eventCooldowns: {},
+      difficulty: 'medium', quarterIndex: 1, stories: [], noEvents: true });
+    economy = r.economy;
+    expect(economy.taxCommit && economy.taxCommit.left).toBe(6);
+    // дефицит большой — без обещания консерватор поднял бы НДС и подоходный
+    const tight = { ...economy, budgetBalancePctGdp: -9 };
+    const bot = botFinanceMinistry(tight, 'austerity', 'medium');
+    expect(bot.decisions.vatRate).toBeLessThanOrEqual(economy.taxCommit.caps.vatRate);
+    expect(bot.decisions.incomeTaxRate).toBeLessThanOrEqual(economy.taxCommit.caps.incomeTaxRate);
+    const free = botFinanceMinistry({ ...tight, taxCommit: null }, 'austerity', 'medium');
+    expect(free.decisions.vatRate).toBeGreaterThan(economy.taxCommit.caps.vatRate);
+  });
+
+  it('старые просьбы по одному налогу больше не предлагаются', () => {
+    expect(REQUESTS.find((r) => r.id === 'vat_relief').retired).toBe(true);
+    expect(REQUESTS.find((r) => r.id === 'tax_relief_business').retired).toBe(true);
+  });
+});

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import {
   COLOR, Audio, AudioControls, GlobalStyle, ACHIEVEMENTS, ACHIEVEMENTS_KEY, loadUnlockedAchievements, TYCOON_SAVE_KEY,
-  TYCOON_META_KEY, loadTycoonMeta, getPlayerId, loadAccount, emblemIcon,
+  TYCOON_META_KEY, loadTycoonMeta, getPlayerId, loadAccount, emblemIcon, loadFold, saveFold,
 } from './MacroSimulator.jsx';
 import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot, fetchRecords, submitRecord } from './lib/client.js';
 import { BusinessMap } from './countrymap.jsx';
@@ -115,6 +115,11 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     setTimeout(() => setToasts((l) => l.filter((x) => x.id !== id)), 3700);
   };
 
+  // пока игрок читает вводные правила или сводку «пока вас не было», время стоит:
+  // раньше деньги копились и квартал шёл, пока окно было открыто
+  const held = !st.introSeen || !!offline;
+  const heldRef = useRef(held);
+  heldRef.current = held;
   // главный цикл: полсекунды реального времени — полсекунды игрового на скорость
   useEffect(() => {
     let last = performance.now();
@@ -122,6 +127,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
       const now = performance.now();
       const dt = Math.min(5, (now - last) / 1000);
       last = now;
+      if (heldRef.current) return;
       setSt((prev) => (prev.paused || prev.bankrupt ? prev : T.tick(prev, dt * prev.speed)));
     }, 500);
     return () => clearInterval(id);
@@ -215,7 +221,7 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   );
 
   return (
-    <div className={`ems-root${st.paused || st.bankrupt ? ' ty-paused' : ''}`} style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
+    <div className={`ems-root${st.paused || st.bankrupt || held ? ' ty-paused' : ''}`} style={{ minHeight: '100vh', '--ty-track': COLOR.border }}>
       <GlobalStyle />
       <style>{TY_CSS}</style>
       <TyHeader st={st} setSt={setSt} savedAt={savedAt} onExit={() => { saveLocal(stRef.current); onExit(); }} onSaves={() => { Audio.play('click'); setShowSaves(true); }}
@@ -470,6 +476,13 @@ function TyHeader({ st, setSt, savedAt, onExit, onSaves, onRecords }) {
           </span>
         )}
         {st.paused && <span style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, background: COLOR.goldDim, color: COLOR.goldSoft }}>пауза</span>}
+        {/* прогресс к «Выжить в кризис» — видно, что считается и сколько осталось */}
+        {st.setup.scenario !== 'sandbox' && !st.bankrupt && (
+          <span title="Достижение «Выжить в кризис»: 12 кварталов кризисного сценария без банкротства"
+            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, border: `1px solid ${COLOR.border}`, color: st.history.length >= 12 ? COLOR.teal : COLOR.muted }}>
+            кризис: {Math.min(12, st.history.length)} из 12 кв.
+          </span>
+        )}
         <span aria-live="off" title="Партия сама сохраняется в этом браузере каждые пять секунд, в конце квартала и при закрытии вкладки; после перезагрузки страницы она откроется с того же места"
           style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 8px', borderRadius: 999, color: savedAt ? COLOR.teal : COLOR.rust, display: 'flex', alignItems: 'center', gap: 4 }}>
           <Save size={11} />{savedAt ? `автосохранение · ${savedAgo(savedAt)}` : 'браузер не даёт сохранять'}
@@ -567,20 +580,26 @@ function RegionPanel({ st, region, act, setHoverType }) {
   );
 }
 
+// что происходит со зданием — одной строкой; «плохо» — всё, кроме работы и набора людей
+function buildingStatus(st, b) {
+  const d = T.BLD[b.type];
+  const run = st.stats.runK && st.stats.runK[b.uid] != null ? st.stats.runK[b.uid] : (d.out ? 0 : 1);
+  const need = T.requiredStaff(st, b);
+  const struck = st.events.strike && st.events.strike.uid === b.uid && st.t < st.events.strike.until;
+  const status = !b.enabled ? 'остановлено' : struck ? 'забастовка' : b.staff < need - 0.5 ? `набор людей ${Math.floor(b.staff)}/${need}`
+    : d.out && run < 0.95 ? (run < 0.05 ? 'нет сырья или места на складе' : `простаивает ${Math.round((1 - run) * 100)}%`) : 'работает';
+  return { run, need, status, bad: status !== 'работает' && !status.startsWith('набор') };
+}
+
 function BuildingCard({ st, b, act, compact, onLocate }) {
   const d = T.BLD[b.type];
   const Icon = ICONS[d.icon] || Factory;
   const power = T.buildingPower(st, b);
-  const run = st.stats.runK && st.stats.runK[b.uid] != null ? st.stats.runK[b.uid] : (d.out ? 0 : 1);
-  const need = T.requiredStaff(st, b);
+  const { run, status, bad } = buildingStatus(st, b);
   const eff = power * (d.out ? run : 1);
   const mainRate = d.out ? Object.values(d.out)[0] * eff : d.sells ? d.sells * power : d.exports ? d.exports * power : d.research ? d.research * power : 0;
   const cycle = mainRate > 0.01 ? Math.min(8, 1 / mainRate) : 0;
   const upCost = T.upgradeCost(b);
-  const struck = st.events.strike && st.events.strike.uid === b.uid && st.t < st.events.strike.until;
-  const status = !b.enabled ? 'остановлено' : struck ? 'забастовка' : b.staff < need - 0.5 ? `набор людей ${Math.floor(b.staff)}/${need}`
-    : d.out && run < 0.95 ? (run < 0.05 ? 'нет сырья или места на складе' : `простаивает ${Math.round((1 - run) * 100)}%`) : 'работает';
-  const bad = status !== 'работает' && !status.startsWith('набор');
   return (
     <div style={{ background: COLOR.panelAlt, border: `1px solid ${bad ? `${COLOR.rust}88` : COLOR.border}`, padding: compact ? '8px 10px' : '10px 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -622,9 +641,33 @@ function BuildingCard({ st, b, act, compact, onLocate }) {
 }
 
 /* ------------------------------ ПРОИЗВОДСТВО ------------------------------ */
+/* К середине партии зданий десятки, и все шли одной лентой — до нужного приходилось
+   долго листать. Теперь сверху фильтры (отрасль, область, «только проблемные»), а
+   одинаковые здания собраны в сворачиваемую строку «Ферма ×6» со сводкой. Фильтры
+   помнятся в этом браузере. */
+const PROD_FILTER_KEY = 'ems.ty.prodFilter';
+const loadProdFilter = () => {
+  try { const v = JSON.parse(localStorage.getItem(PROD_FILTER_KEY) || '{}'); return { cat: v.cat || 'all', region: v.region || 'all', bad: !!v.bad }; } catch { return { cat: 'all', region: 'all', bad: false }; }
+};
+
 function ProductionTab({ st, act, setRegion }) {
-  const groups = ['extract', 'process', 'sell', 'support'].map((c) => [c, st.buildings.filter((b) => T.BLD[b.type].cat === c)]).filter(([, l]) => l.length);
+  const [filter, setFilterRaw] = useState(loadProdFilter);
+  const setFilter = (patch) => setFilterRaw((f) => {
+    const n = { ...f, ...patch };
+    try { localStorage.setItem(PROD_FILTER_KEY, JSON.stringify(n)); } catch { /* приватный режим */ }
+    return n;
+  });
+  const statuses = Object.fromEntries(st.buildings.map((b) => [b.uid, buildingStatus(st, b)]));
+  const regions = Array.from(new Set(st.buildings.map((b) => b.region)));
+  // область из фильтра могла опустеть (здание снесли) — тогда показываем все
+  const region = filter.region !== 'all' && regions.includes(filter.region) ? filter.region : 'all';
+  const badCount = st.buildings.filter((b) => statuses[b.uid].bad).length;
+  const shown = st.buildings.filter((b) => (filter.cat === 'all' || T.BLD[b.type].cat === filter.cat)
+    && (region === 'all' || b.region === region) && (!filter.bad || statuses[b.uid].bad));
+  const cats = ['extract', 'process', 'sell', 'support'].filter((c) => st.buildings.some((b) => T.BLD[b.type].cat === c));
+  const groups = cats.map((c) => [c, shown.filter((b) => T.BLD[b.type].cat === c)]).filter(([, l]) => l.length);
   const wages = st.buildings.reduce((a, b) => a + b.staff, 0);
+  const chip = (on) => ({ padding: '4px 10px', fontSize: 12, borderRadius: 999, borderColor: on ? COLOR.gold : COLOR.border, color: on ? COLOR.goldSoft : COLOR.muted });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className="ems-panel" style={{ padding: 12, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: COLOR.muted }}>
@@ -633,14 +676,57 @@ function ProductionTab({ st, act, setRegion }) {
         <span>Выручка: <b className="ems-mono" style={{ color: COLOR.teal }}>{money(st.stats.income * 60)}/мин</b></span>
         <span>Расходы: <b className="ems-mono" style={{ color: COLOR.rust }}>{money(st.stats.costs * 60)}/мин</b></span>
       </div>
-      {groups.map(([cat, list]) => (
-        <div key={cat} className="ems-panel" style={{ padding: 12 }}>
-          <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{CAT_LABEL[cat]}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {list.map((b) => <BuildingCard key={b.uid} st={st} b={b} act={act} onLocate={() => setRegion(b.region)} />)}
-          </div>
+      {st.buildings.length > 3 && (
+        <div role="group" aria-label="Фильтры зданий" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="ems-btn" aria-pressed={filter.cat === 'all'} style={chip(filter.cat === 'all')} onClick={() => setFilter({ cat: 'all' })}>Все</button>
+          {cats.map((c) => (
+            <button key={c} className="ems-btn" aria-pressed={filter.cat === c} style={chip(filter.cat === c)} onClick={() => setFilter({ cat: filter.cat === c ? 'all' : c })}>
+              {CAT_LABEL[c]} <span className="ems-mono" style={{ color: COLOR.faint }}>{st.buildings.filter((b) => T.BLD[b.type].cat === c).length}</span>
+            </button>
+          ))}
+          {badCount > 0 && (
+            <button className="ems-btn" aria-pressed={filter.bad} onClick={() => setFilter({ bad: !filter.bad })}
+              style={{ ...chip(filter.bad), borderColor: filter.bad ? COLOR.rust : COLOR.border, color: filter.bad ? COLOR.rust : COLOR.muted }}>
+              <AlertTriangle size={11} style={{ verticalAlign: -1, marginRight: 4 }} />с проблемами {badCount}
+            </button>
+          )}
+          {regions.length > 1 && (
+            <select className="ems-btn" aria-label="Область" value={region} onChange={(e) => setFilter({ region: e.target.value })}
+              style={{ ...chip(region !== 'all'), marginLeft: 'auto', maxWidth: '100%' }}>
+              <option value="all">Все области</option>
+              {regions.map((r) => <option key={r} value={r}>{T.regionName(r)} ({st.buildings.filter((b) => b.region === r).length})</option>)}
+            </select>
+          )}
         </div>
-      ))}
+      )}
+      {groups.length === 0 && (
+        <div className="ems-panel" style={{ padding: 12, fontSize: 12, color: COLOR.muted }}>
+          {filter.bad ? 'Под эти фильтры проблемных зданий нет — всё работает.' : 'Под эти фильтры зданий нет.'}{' '}
+          <button className="ems-btn ghost" style={{ fontSize: 12, padding: '2px 6px' }} onClick={() => setFilter({ cat: 'all', region: 'all', bad: false })}>Сбросить фильтры</button>
+        </div>
+      )}
+      {groups.map(([cat, list]) => {
+        const byType = [];
+        list.forEach((b) => { const g = byType.find((x) => x[0] === b.type); if (g) g[1].push(b); else byType.push([b.type, [b]]); });
+        return (
+          <div key={cat} className="ems-panel" style={{ padding: 12 }}>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{CAT_LABEL[cat]}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {byType.map(([type, same]) => {
+                const cards = same.map((b) => <BuildingCard key={b.uid} st={st} b={b} act={act} onLocate={() => setRegion(b.region)} />);
+                if (same.length < 3) return <React.Fragment key={type}>{cards}</React.Fragment>;
+                const bad = same.filter((b) => statuses[b.uid].bad).length;
+                return (
+                  <FoldRow key={type} id={`prod.${type}`} title={`${T.BLD[type].name} ×${same.length}`}
+                    summary={<span style={{ color: bad ? COLOR.rust : COLOR.faint }}>{bad ? `с проблемами: ${bad}` : 'все в порядке'}</span>}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{cards}</div>
+                  </FoldRow>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -649,9 +735,8 @@ function ProductionTab({ st, act, setRegion }) {
 /* Сворачиваемая строка внутри карточки: заголовок со сводкой, по нажатию — содержимое.
    Положение помнится между заходами (как у панелей партии за государство). */
 function FoldRow({ id, title, summary, children }) {
-  const key = `ems.fold.${id}`;
-  const [open, setOpen] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch { return false; } });
-  const toggle = () => { const v = !open; setOpen(v); try { localStorage.setItem(key, v ? '1' : '0'); } catch { /* приватный режим */ } };
+  const [open, setOpen] = useState(() => loadFold(id, false));
+  const toggle = () => { const v = !open; setOpen(v); saveFold(id, v); };
   return (
     <div style={{ marginTop: 6 }}>
       <button className="ems-btn ghost" aria-expanded={open} onClick={toggle}

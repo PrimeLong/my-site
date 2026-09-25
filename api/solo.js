@@ -77,8 +77,14 @@ function normalizeProgress(p) {
       passed: cleanMap(st.passed),
     };
   });
+  // свёрнутые блоки интерфейса: id → [открыт 0/1, когда меняли]
+  const folds = {};
+  Object.entries(cleanMap(src.folds)).forEach(([id, v]) => {
+    if (Array.isArray(v) && Number.isFinite(v[1])) folds[id] = [v[0] ? 1 : 0, v[1]];
+  });
   return {
     achievements,
+    folds,
     roles: cleanIdList(src.roles),
     network: !!src.network,
     courses: cleanMap(src.courses),
@@ -104,8 +110,12 @@ function mergeProgress(a, b) {
     modules[id] = cur ? { step: Math.max(cur.step, st.step), at: Math.max(cur.at, st.at),
       passed: { ...cur.passed, ...st.passed } } : st;
   });
+  const folds = { ...x.folds };
+  // положение блока — то, которое выставили позже, на каком бы устройстве это ни было
+  Object.entries(y.folds).forEach(([id, v]) => { if (!folds[id] || v[1] >= folds[id][1]) folds[id] = v; });
   return {
     achievements,
+    folds,
     roles: Array.from(new Set([...x.roles, ...y.roles])).slice(0, 64),
     network: x.network || y.network,
     courses: { ...x.courses, ...y.courses },

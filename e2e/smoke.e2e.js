@@ -240,11 +240,16 @@ test('президент ведёт наступление на карте: це
   await page.addInitScript(() => { let x = 42; Math.random = () => { x = (x * 16807) % 2147483647; return x / 2147483647; }; });
   const { errors } = await openApp(page);
   await startSoloGame(page, 'Президент');
-  await page.getByText('Война', { exact: true }).first().click();
-  await page.getByRole('button', { name: /^Начать военную операцию/ }).click();
+  // войну объявляют на карте — из карточки Норланда
+  page.on('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await page.getByRole('button', { name: /^Норланд/ }).first().click();
+  await page.getByRole('button', { name: /Объявить войну/ }).click();
   await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
   const close = page.getByRole('button', { name: 'Закрыть газету' });
   if (await close.isVisible().catch(() => false)) await close.click();
+  // полоса войны — на «Панели»: на вкладке карты операция видна в самой карте
+  await page.getByRole('button', { name: 'Панель', exact: true }).click();
   await expect(page.getByText('Наступление: Норланд.')).toBeVisible();
   await page.getByRole('button', { name: 'Карта', exact: true }).click();
   await page.getByRole('button', { name: /^Копи Хальвика: продвижение 0 из 100/ }).click();
@@ -451,6 +456,10 @@ test('дипломатия: президент отвечает на инцид�
   await page.getByRole('button', { name: /Помощь/ }).click();
   await expect(page.getByRole('button', { name: /Помощь/ })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  // скрытая панель не перерисовывается, пока открыта карта: новости — после возврата на неё
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  await page.getByRole('button', { name: 'Панель', exact: true }).click();
   await expect(page.getByText(/ПОМОЩЬ ДЕШТУ/i).first()).toBeAttached();
   expect(errors).toEqual([]);
 });

@@ -615,7 +615,7 @@ export const ACHIEVEMENTS = [
   { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
   { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройди вызов дня до конца, не проиграв.' },
   { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'В «Своём деле» утрой стоимость компании против стартовой.' },
-  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'Проведи компанию через три года кризисного сценария без банкротства.' },
+  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'В «Своём деле» выбери при старте кризисный сценарий (валютный кризис, ипотечный пузырь или гиперинфляцию — не открытую партию) и продержи компанию 12 кварталов без банкротства.' },
   { id: 'tycoon_chain', icon: Wheat, title: 'От поля до полки', desc: 'Собери свою хлебную цепочку: ферма, мельница, хлебозавод и магазин.' },
   { id: 'tycoon_billion', icon: Crown, title: 'Миллиардер', desc: 'Доведи стоимость своей компании до миллиарда.' },
   { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
@@ -671,12 +671,53 @@ export const loadModuleState = () => { try { return JSON.parse(localStorage.getI
 /* Весь прогресс устройства одним объектом: достижения, сыгранные роли, сетевая
    партия, пройденные курсы и незаконченные модули. Это то, что переезжает вместе
    с профилем при связывании устройств, — слоты сохранений и так лежат на сервере. */
+/* Свёрнутые блоки. Само положение лежит в ems.fold.<id> ('1' — открыт), а в
+   ems.foldAt — когда его меняли: по этой отметке профиль понимает, какое из двух
+   устройств свернуло блок позже, и на обоих он остаётся таким, каким его оставили. */
+const FOLD_PREFIX = 'ems.fold.';
+const FOLD_AT_KEY = 'ems.foldAt';
+const readFoldAt = () => { try { return JSON.parse(localStorage.getItem(FOLD_AT_KEY) || '{}') || {}; } catch { return {}; } };
+export const loadFold = (id, fallback) => {
+  try { const v = localStorage.getItem(FOLD_PREFIX + id); return v == null ? fallback : v === '1'; } catch { return fallback; }
+};
+export const saveFold = (id, open) => {
+  try {
+    localStorage.setItem(FOLD_PREFIX + id, open ? '1' : '0');
+    localStorage.setItem(FOLD_AT_KEY, JSON.stringify({ ...readFoldAt(), [id]: Date.now() }));
+  } catch { /* приватный режим — просто не запоминаем */ }
+};
+const loadFolds = () => {
+  const at = readFoldAt();
+  const out = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(FOLD_PREFIX)) continue;
+      const id = k.slice(FOLD_PREFIX.length);
+      out[id] = [localStorage.getItem(k) === '1' ? 1 : 0, Number(at[id]) || 0];
+    }
+  } catch { /* приватный режим */ }
+  return out;
+};
+const writeFolds = (folds) => {
+  if (!folds || typeof folds !== 'object') return;
+  const at = readFoldAt();
+  let changed = false;
+  Object.entries(folds).forEach(([id, v]) => {
+    if (!Array.isArray(v) || (v[1] || 0) <= (Number(at[id]) || 0)) return;
+    localStorage.setItem(FOLD_PREFIX + id, v[0] ? '1' : '0');
+    at[id] = v[1]; changed = true;
+  });
+  if (changed) localStorage.setItem(FOLD_AT_KEY, JSON.stringify(at));
+};
+
 export const readLocalProgress = () => ({
   achievements: loadUnlockedAchievements(),
   roles: loadRolesPlayed(),
   network: isNetworkPlayed(),
   courses: loadCourseProgress(),
   modules: loadModuleState(),
+  folds: loadFolds(),
 });
 
 export const writeLocalProgress = (profile) => {
@@ -688,6 +729,7 @@ export const writeLocalProgress = (profile) => {
     else localStorage.removeItem(NETWORK_PLAYED_KEY);
     if (profile.courses) localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(profile.courses));
     if (profile.modules) localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(profile.modules));
+    writeFolds(profile.folds);
   } catch { /* приватный режим */ }
 };
 

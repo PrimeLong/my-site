@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, Suspense } from 'react';
+import React, { useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
 import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS } from './lib/catalog.js';
 import {
@@ -26,7 +26,7 @@ import {
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
   GlobalStyle, THEMES, StateSeal, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
   isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount,
-  DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel,
+  DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel, loadFold, saveFold,
 } from './MacroSimulator.jsx';
 
 /* Экран партии (одиночная игра): панели ролей, показатели, новости, карта,
@@ -168,15 +168,12 @@ export function KpiTile({ label, value, delta, invert, icon: Icon, series, hero 
    досье справа. */
 /* Сворачиваемый блок кабинета: справочное (решения бота, бюджетная арифметика,
    президент) можно убрать в одну строку со сводкой — колонка перестаёт быть
-   бесконечной лентой. Состояние каждого блока запоминается в этом браузере. */
+   бесконечной лентой. Состояние каждого блока запоминается и переезжает с профилем. */
 export function Fold({ id, title, icon: Icon, summary, defaultOpen = true, children }) {
-  const key = `ems.fold.${id}`;
-  const [open, setOpen] = useState(() => {
-    try { const v = window.localStorage.getItem(key); return v == null ? defaultOpen : v === '1'; } catch { return defaultOpen; }
-  });
+  const [open, setOpen] = useState(() => loadFold(id, defaultOpen));
   const toggle = () => {
     Audio.play('tick');
-    setOpen((o) => { const n = !o; try { window.localStorage.setItem(key, n ? '1' : '0'); } catch { /* приватный режим — просто не запоминаем */ } return n; });
+    setOpen((o) => { const n = !o; saveFold(id, n); return n; });
   };
   if (!open) {
     return (
@@ -196,6 +193,19 @@ export function Fold({ id, title, icon: Icon, summary, defaultOpen = true, child
       </button>
     </div>
   );
+}
+
+/* Однажды открытая вкладка (карта) остаётся смонтированной и просто прячется.
+   Раньше каждое открытие карты строило весь svg с нуля, а закрытие — разбирало его:
+   на телефоне это и были подвисания «открыл карту — закрыл карту». Пока вкладка
+   скрыта, отдаём React тот же самый элемент, что и в прошлый раз, — он узнаёт его и
+   не перерисовывает скрытую карту на каждое движение ползунка; свежие данные она
+   получит, когда её снова откроют. */
+export function KeepAlive({ active, style, children }) {
+  const last = useRef(null);
+  if (active) last.current = children;
+  if (!last.current) return null;
+  return <div style={{ ...style, display: active ? undefined : 'none' }}>{last.current}</div>;
 }
 
 // сводка пяти оценок для свёрнутого блока: средний балл
@@ -1583,7 +1593,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
     );
   };
 
-  const directiveList = (toCb) => REQUESTS.filter((r) => (r.from === 'ministry_finance') === toCb);
+  const directiveList = (toCb) => REQUESTS.filter((r) => !r.retired && (r.from === 'ministry_finance') === toCb);
   const canDirective = free + (directive ? PRES_DIRECTIVE_COST : 0) >= PRES_DIRECTIVE_COST;
 
   return (
@@ -1628,7 +1638,13 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
             чрезвычайные полномочия становятся доступны, газеты меняют язык. Платят за это торговля,
             инвестиции, капитал и люди — и платят дольше, чем идёт сама война.
           </div>
-          {PRESIDENT_ACTIONS.filter((a) => a.group === 'war').map((a) => (
+          {/* войну объявляют только на карте — из карточки страны, которой её объявляют */}
+          {!((economy.warQuartersLeft || 0) > 0) && (
+            <div style={{ fontSize: 12, color: COLOR.text, lineHeight: 1.45, marginBottom: 9, padding: '8px 10px', border: `1px dashed ${COLOR.rust}`, borderRadius: 4 }}>
+              Объявить войну можно на вкладке «Карта»: выберите страну — Норланд, Вестравию или Дешт — и нажмите «Объявить войну» в её карточке.
+            </div>
+          )}
+          {PRESIDENT_ACTIONS.filter((a) => a.group === 'war' && a.id !== 'war_start').map((a) => (
             <PresActionCard key={a.id} action={a} economy={economy} cooldowns={cooldowns}
               selected={selected.includes(a.id)} affordable={free >= a.cost}
               onToggle={() => toggle(a.id)} />
@@ -3104,7 +3120,7 @@ function InstitutionsPanel({ economy, cbAction, mofAction }) {
 /* ============================ МЕЖВЕДОМСТВЕННЫЕ ЗАПРОСЫ ============================ */
 function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
   if (!botRole || botRole === 'both') return null;
-  const options = REQUESTS.filter((r) => r.from === role && !r.presidentOnly);
+  const options = REQUESTS.filter((r) => r.from === role && !r.presidentOnly && !r.retired);
   if (!options.length) return null;
   const cur = options.find((r) => r.id === pending);
   const target = botRole === 'central_bank' ? 'Центральному банку' : 'Минфину';
@@ -4765,15 +4781,18 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 10 }}>
           {/* статус партии — одной плашкой: период, выборы и рейтинг, благополучие */}
-          <div className="ems-status" style={narrow ? { width: '100%', justifyContent: 'space-between', gap: 10, padding: '6px 12px' } : undefined}>
-            <div style={{ whiteSpace: 'nowrap' }}>
-              <div className="ems-eyebrow">Период</div>
-              <div className="ems-mono ems-serif" style={{ fontSize: narrow ? 14 : 15, fontWeight: 600, marginTop: 2 }}>{quarterLabel(quarterIndex)}</div>
+          {/* на телефоне колонки плашки сжимаются (minWidth 0), а шкала — нет: раньше на
+              узком экране благополучие выталкивалось за правый край */}
+          <div className="ems-status" style={narrow ? { width: '100%', boxSizing: 'border-box', justifyContent: 'space-between', gap: 8, padding: '6px 10px', minWidth: 0 } : undefined}>
+            <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
+              <div className="ems-eyebrow" style={narrow ? { letterSpacing: '0.04em', fontSize: 11 } : undefined}>Период</div>
+              <div className="ems-mono ems-serif" style={{ fontSize: narrow ? 13 : 15, fontWeight: 600, marginTop: 2, ...(narrow ? { letterSpacing: '-0.02em' } : {}) }}>{quarterLabel(quarterIndex)}</div>
             </div>
             <span className="sep" />
-            <div style={{ whiteSpace: 'nowrap' }}>
-              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <Flag size={10} />{economy.noElections ? 'Выборов нет' : `Выборы · ${economy.quartersToElection} кв.`}
+            <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
+              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5, ...(narrow ? { letterSpacing: '0.04em', fontSize: 11 } : {}) }}>
+                <Flag size={10} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{economy.noElections ? 'Выборов нет' : `Выборы${narrow ? '' : ' ·'} ${economy.quartersToElection} кв.`}</span>
               </div>
               <div style={{ fontSize: 13, marginTop: 3 }}>
                 <span style={{ color: COLOR.muted }}>рейтинг </span>
@@ -4781,9 +4800,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               </div>
             </div>
             <span className="sep" />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Благополучие: сводная оценка жизни в стране">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }} title="Благополучие: сводная оценка жизни в стране">
               {!narrow && <div className="ems-eyebrow" style={{ lineHeight: 1.3 }}>Благо-<br />получие</div>}
-              <Gauge value={economy.wellbeing} size={narrow ? 52 : 58} />
+              <Gauge value={economy.wellbeing} size={narrow ? 48 : 58} />
             </div>
           </div>
           {/* вкладки экрана — сегментированный переключатель; на телефоне во всю ширину */}
@@ -4903,8 +4922,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         ))}
       </div>
 
-      {view === 'map' && (
-        <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
+      <KeepAlive active={view === 'map'} style={{ padding: '14px 18px 18px' }}>
+        <Suspense fallback={<ChartFallback />}>
           <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
             planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`}
             warOrder={warOrder} onWarOrder={!defeat && (isPresident || (canCommandDefense && economy.warType !== 'offensive')) ? setWarOrder : null}
@@ -4916,8 +4935,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             diploPlan={diploPlan} onDiploPlan={isPresident && !defeat ? setDiploPlan : null}
             warPlan={presActions.includes('war_start') ? (warTarget || 'north') : null} onWarPlan={isPresident && !defeat ? planWar : null}
             diploPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'МИД по поручению правительства'} />
-        </Suspense></div>
-      )}
+        </Suspense>
+      </KeepAlive>
 
       {view === 'society' && (
         <div style={{ padding: '14px 18px 18px' }}><Suspense fallback={<ChartFallback />}>
@@ -5228,9 +5247,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       };
       const order = layout.wide ? layout.columnOrder : DEFAULT_COLUMN_ORDER;
       const colWidthFor = (id) => (id === 'center' ? 'minmax(0,1fr)' : `${layout.columnWidths[id]}px`);
-      const gridStyle = { padding: 18, display: view === 'dash' ? undefined : 'none',
+      const gridStyle = { padding: 18,
         ...(layout.wide ? { gridTemplateColumns: order.map(colWidthFor).join(' ') } : null) };
+      // пока открыта карта или другая вкладка, спрятанная панель не перерисовывается (см. KeepAlive)
       return (
+        <KeepAlive active={view === 'dash'}>
         <div className="ems-grid" style={gridStyle}>
           {order.map((id, i) => (
             <StickyColumn key={id} enabled={layout.wide}>
@@ -5242,6 +5263,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             </StickyColumn>
           ))}
         </div>
+        </KeepAlive>
       );
       })()}
 
