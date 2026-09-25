@@ -2532,7 +2532,9 @@ function bizPath(a, b, salt) {
 }
 
 // «Своё дело» перерисовывается дважды в секунду — карта только тогда, когда меняются её данные
-export const BusinessMap = memo(function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [], rivals = [] }) {
+/* demand — слой «где торговать»: { [regionId]: { k: 0..1, label } } — насколько выгоден
+   там новый магазин; область подсвечивается тем ярче, чем больше выручки он принесёт. */
+export const BusinessMap = memo(function BusinessMap({ economy, selected, onSelect, info = {}, flows = [], highlight = null, hit = null, routes = [], rivals = [], demand = null }) {
   const zoom = useMapZoom(undefined);
   const reduced = useMapMotion().still;
   const { lk } = labelScale(zoom.zoom);
@@ -2577,7 +2579,9 @@ export const BusinessMap = memo(function BusinessMap({ economy, selected, onSele
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Audio.play('tab'); onSelect(r.id); } }}>
               <path d={regionPath(r.id)} fill={COLOR.bg} />
               {terrain && <path d={regionPath(r.id)} fill={`${terrain}1c`} />}
-              <path d={regionPath(r.id)} className="tint" style={{ fill: highlight ? (can != null ? `${COLOR.teal}${can > 1.05 ? '55' : '30'}` : `${COLOR.bg}aa`) : n ? `${COLOR.gold}${alpha}` : 'transparent' }} />
+              <path d={regionPath(r.id)} className="tint" style={{ fill: highlight ? (can != null ? `${COLOR.teal}${can > 1.05 ? '55' : '30'}` : `${COLOR.bg}aa`)
+                : demand ? (demand[r.id] ? `${COLOR.blue}${Math.round(20 + 150 * demand[r.id].k).toString(16).padStart(2, '0')}` : `${COLOR.bg}aa`)
+                  : n ? `${COLOR.gold}${alpha}` : 'transparent' }} />
               {highlight && can != null && <path d={regionPath(r.id)} fill="url(#biz-can)" opacity={can > 1.05 ? 0.9 : 0.4} />}
               {hit === r.id && <path d={regionPath(r.id)} fill={`${COLOR.rust}33`} className="map-sel-glow" stroke={COLOR.rust} strokeWidth={2} />}
               <path d={regionPath(r.id)} className="hover" fill={`${COLOR.text}0f`} />
@@ -2668,6 +2672,11 @@ export const BusinessMap = memo(function BusinessMap({ economy, selected, onSele
                   {highlight && highlight[r.id] != null && (
                     <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.teal, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
                       ×{highlight[r.id].toFixed(2)}
+                    </text>
+                  )}
+                  {!highlight && demand && demand[r.id] && (
+                    <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.blue, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
+                      {demand[r.id].label}
                     </text>
                   )}
                 </g>

@@ -333,7 +333,10 @@ const upkeepOf = (st, b) => BLD[b.type].upkeep * Math.pow(1.3, b.level - 1) * pr
 
 /* ------------------------------ ТАКТ ------------------------------
    dt — секунды игрового времени. Большие промежутки режутся на секунды, внутри —
-   кварталы страны, если пришло их время (offline — страна стоит, кварталов нет). */
+   кварталы, если пришло их время. offline — страна стоит (её кварталы не идут), но
+   кварталы компании идут: проценты, погашение, налог, проверки, ход конкурентов.
+   Раньше офлайн их пропускал целиком — можно было взять максимальный кредит,
+   закрыть вкладку и три часа (180 кварталов) не платить ни процентов, ни налога. */
 export function tick(prev, dt, { offline = false } = {}) {
   let st = prev;
   let left = Math.max(0, dt);
@@ -342,7 +345,7 @@ export function tick(prev, dt, { offline = false } = {}) {
     st = step1(st, step, offline);
     if (st.mgrTimer >= 5) st = runManagers({ ...st, mgrTimer: 0 });
     left -= step;
-    if (!offline && st.qTime >= QUARTER_SEC) st = quarterEnd(st);
+    if (st.qTime >= QUARTER_SEC) st = quarterEnd(st, offline);
   }
   return st;
 }
@@ -587,14 +590,16 @@ function step1(prev, dt, offline) {
 
   st.cash = cash;
   st.t += dt;
-  if (!offline) st.qTime += dt;
+  st.qTime += dt;
   return st;
 }
 
 /* ------------------------------ КОНЕЦ КВАРТАЛА ------------------------------
    Страна делает ход, компания платит проценты и налог, случаются проверки,
    забастовки и беды в областях, банк пересчитывает лимит. */
-function quarterEnd(prev) {
+// тело кредита гасится каждый квартал: 5% долга (кредит на ~5 лет), а не только проценты
+export const AMORT_Q = 0.05;
+function quarterEnd(prev, offline = false) {
   const st = { ...prev, events: { ...prev.events }, milestones: { ...prev.milestones } };
   st.qTime -= QUARTER_SEC;
   const before = economyOf(st);
@@ -607,14 +612,24 @@ function quarterEnd(prev) {
   const pretax = ebitda - interest;
   const tax = Math.max(0, pretax) * clamp(before.profitTaxRate ?? 20, 0, 60) / 100;
   st.cash -= interest + tax;
+  // погашение тела: раньше долг висел вечно, сколько ни плати проценты
+  const principal = (st.debtRub + st.debtFx * fxRate(before)) * AMORT_Q;
+  if (principal > 0.005) {
+    st.cash -= principal;
+    st.debtRub *= 1 - AMORT_Q; st.debtFx *= 1 - AMORT_Q;
+  }
 
-  // страна: квартал экономики
-  const { country, news } = advanceCountry(st.country);
-  st.country = country;
-  const e = country.economy;
-  st.news = [...news.map((n) => ({ ...n, id: `c${qi}${n.id}` })), ...st.news].slice(0, 80);
-  st.wageIdx *= Math.pow(1 + (e.wageGrowth ?? 6) / 100, 0.25);
-  st.worldIdx *= 1.004;
+  // страна: квартал экономики (офлайн страна стоит на паузе)
+  if (!offline) {
+    const { country, news } = advanceCountry(st.country);
+    st.country = country;
+    st.news = [...news.map((n) => ({ ...n, id: `c${qi}${n.id}` })), ...st.news].slice(0, 80);
+  }
+  const e = st.country.economy;
+  if (!offline) {
+    st.wageIdx *= Math.pow(1 + (e.wageGrowth ?? 6) / 100, 0.25);
+    st.worldIdx *= 1.004;
+  }
   const bankRate = Math.max(0.5, rubLoanRate(e) - (has(st, 'finance_dept') ? 1 : 0));
   st.loanRate = st.debtRub > 0 ? st.loanRate + 0.25 * (bankRate - st.loanRate) : bankRate;
 
@@ -662,7 +677,7 @@ function quarterEnd(prev) {
   const profit = pretax - tax - fine;
   st.history = [...st.history, { q: qi, label: quarterLabel(qi), revenue: q.revenue, retail: q.retail, wholesale: q.wholesale,
     exports: q.exports, wages: q.wages, upkeep: q.upkeep, purchases: q.purchases, transport: q.transport,
-    ebitda, interest, tax, fine, profit, cash: st.cash, debt: totalDebtT(st), value: 0 }].slice(-60);
+    ebitda, interest, principal, tax, fine, profit, cash: st.cash, debt: totalDebtT(st), value: 0, offline: offline || undefined }].slice(-60);
   st.quarter = emptyQuarter();
   st.history[st.history.length - 1].value = companyValue(st);
   return st;
@@ -873,6 +888,47 @@ function rawDemand(st, region, id) {
   const stress = reg ? regionStress(reg, e) : 30;
   return r.demand * (POP[region] || 0.05) * macro * clamp(1.15 - stress / 200, 0.6, 1.15);
 }
+/* Где торговать. Для каждой области — сколько выручки в минуту принёс бы ещё один
+   магазин: покупатели области, доля, которую отдадут конкуренты, и полки, которые у
+   вас там уже стоят. Раньше этого не было видно вовсе: магазины ставились наугад. */
+const shopRevenue = (st, region, P, goods) => {
+  if (P <= 0) return 0;
+  const rows = goods.map((g) => {
+    const d = regionDemand(st, region, g.id) * marketSplit(st, region, g.id, P).share;
+    return [d, retailPrice(st, g.id)];
+  });
+  const units = rows.reduce((a, [d]) => a + d, 0);
+  const k = units > P ? P / units : 1; // полок меньше, чем покупателей, — продаётся столько, сколько влезет
+  return rows.reduce((a, [d, p]) => a + d * p * k, 0);
+};
+export function shopOpportunities(st) {
+  const cap = {};
+  st.buildings.forEach((b) => { const d = BLD[b.type]; if (d.sells) cap[b.region] = (cap[b.region] || 0) + d.sells * buildingPower(st, b); });
+  const one = BLD.shop.sells;
+  // считаем по товарам, которые у вас есть или производятся; нет ни одного — по всем
+  const made = new Set(st.buildings.flatMap((b) => Object.keys(BLD[b.type].out || {})));
+  const all = RESOURCES.filter((r) => r.consumer);
+  const own = all.filter((g) => made.has(g.id) || (st.stock[g.id] || 0) > 0.5);
+  const goods = own.length ? own : all;
+  return regionsOpen(st).map((region) => {
+    const P = cap[region] || 0;
+    const now = shopRevenue(st, region, P, goods);
+    const gain = shopRevenue(st, region, P + one, goods) - now;
+    const buyers = RESOURCES.filter((r) => r.consumer).reduce((a, g) => a + rawDemand(st, region, g.id), 0);
+    const rivalShelves = liveRivals(st).reduce((a, c) => a + (c.shops[region] || 0), 0);
+    return { region, gain: Math.max(0, gain) * 60, now: now * 60, buyers: buyers * 60, mine: P, rivals: rivalShelves, goods: goods.map((g) => g.name) };
+  }).sort((a, b) => b.gain - a.gain);
+}
+/* Экспорт: по каждому экспортному товару — мировая цена по курсу против оптовой внутри
+   страны. Разница и есть смысл терминала; санкции и война её съедают. */
+export function exportOpportunities(st) {
+  const ports = regionsOpen(st).filter((r) => siteBonus('terminal', r) != null);
+  return RESOURCES.filter((r) => r.export).map((r) => {
+    const world = exportPrice(st, r.id); const home = sellPrice(st, r.id);
+    return { id: r.id, name: r.name, world, home, edge: home > 0 ? world / home - 1 : 0, have: (st.stock[r.id] || 0) > 0.5 };
+  }).sort((a, b) => b.edge - a.edge).map((x) => ({ ...x, ports }));
+}
+
 // сколько всего конкуренты льют на оптовый рынок этого товара
 export const rivalSupply = (st, id) => liveRivals(st).reduce((a, c) => a + ((c.supply || {})[id] || 0), 0);
 // конкуренты в области переманивают людей: зарплаты там выше
@@ -1028,12 +1084,24 @@ function rivalsQuarter(st) {
       return c;
     }
     c.warned = false;
+    // запас на войну: три квартала содержания полок и ещё немного — в убыток торговать дорого
+    const warChest = 3 * upkeep + 3;
     if (c.mode === 'war' && c.modeQ > 0) {
       c.modeQ -= 1;
+      // деньги кончаются раньше срока — война сворачивается, а не доводит конкурента до долгов
+      if (c.cash < warChest / 3 && c.profitQ < 0) {
+        c.mode = 'hold'; c.modeQ = 0; c.markup = baseMarkup;
+        pushNews(st, `«${def.short.toUpperCase()}» СВОРАЧИВАЕТ ЦЕНОВУЮ ВОЙНУ`, 'Торговать в убыток дальше конкуренту не на что — цены возвращаются к рыночным.');
+        return c;
+      }
       if (c.modeQ <= 0) c.mode = 'hold';
       return c;
     }
-    if (def.goods.length && share > warAt && c.cash > 3) {
+    /* Ценовую войну объявляет только тот, кому есть чем её оплатить: заметная прибыль
+       и запас денег на три квартала торговли в убыток. Раньше хватало трёх миллионов
+       на счёте — и войну начинала сеть, которая сама еле сводила концы с концами. */
+    const comfy = c.profitQ > Math.max(0.5, upkeep * 0.5);
+    if (def.goods.length && share > warAt && comfy && c.cash > warChest) {
       c.mode = 'war'; c.modeQ = 3; c.markup = def.style === 'aggressive' ? -20 : def.style === 'defensive' ? -12 : -8;
       pushNews(st, `«${def.short.toUpperCase()}» НАЧИНАЕТ ЦЕНОВУЮ ВОЙНУ`, `Ваша доля рынка ${Math.round(share * 100)}% — конкурент снижает цены на ${Math.abs(c.markup)}% ниже рынка. Можно ответить ценой, переждать или договориться.`);
       return c;

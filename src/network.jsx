@@ -567,10 +567,11 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
     });
   };
-  const onCasino = (net) => {
-    const casinoNet = (portfolio.casinoNet || 0) + net;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoNet })));
+  const onCasino = (net, bet = 0, ev = 0) => {
+    const casinoBets = (portfolio.casinoBets || 0) + 1;
+    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
+      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
+    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
   };
   const [marketTab, setMarketTab] = useState('market');
   // та же временная подмена плейлиста, что и в соло-игре — см. комментарий там.
@@ -632,6 +633,10 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const prevEconomyRef = React.useRef(room.economy);
   const [stampKey, setStampKey] = useState(0);
 
+  // частота опроса по фазе: отправили решения — ждём партнёра и смотрим часто (2,5 с);
+  // свой ход не сделан — квартал без нас не сдвинется, хватит раза в 5 с (чат и присутствие)
+  const sentRef = React.useRef(sent);
+  sentRef.current = sent;
   React.useEffect(() => watchRoom(id, (r) => {
     setRoom(r);
     if (r.quarterIndex !== prevQuarter.current) {
@@ -691,7 +696,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     }
     prevEconomyRef.current = r.economy;
     Audio.setMood(r.economy);
-  }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
+  }, (e) => failWithError(e), () => (sentRef.current ? 2500 : 5000), seat, token), [id, seat, token]);
   // у президентского кресла своя тема, у трейдерской комнаты — репертуар торгового зала
   React.useEffect(() => {
     Audio.setRole(seat === 'president' ? 'president' : room.mode === 'trader' ? 'trader' : null);

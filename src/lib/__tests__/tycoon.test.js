@@ -218,3 +218,35 @@ describe('Своё дело', () => {
   });
 });
 
+
+describe('Своё дело: кредит, офлайн и рынок', () => {
+  it('долг гасится сам: каждый квартал банк списывает 5% тела', () => {
+    let st = T.makeTycoon({ start: 'retail' });
+    st = T.borrow(st, 5).st;
+    const d0 = T.totalDebtT(st);
+    st = withSeededRandom(4, () => T.tick({ ...st, cash: st.cash + 50 }, T.QUARTER_SEC * 4 + 1));
+    expect(T.totalDebtT(st)).toBeLessThan(d0 * 0.9);
+    expect(st.history[st.history.length - 1].principal).toBeGreaterThan(0);
+  });
+
+  it('офлайн компания платит проценты и налог, а страна стоит', () => {
+    let st = T.makeTycoon({ start: 'retail' });
+    st = T.borrow(st, T.creditLimitT(st)).st;
+    const q0 = st.country.quarterIndex;
+    const saved = { ...T.snapshotTycoon(st), savedAt: Date.now() - 3600 * 1000 };
+    const { st: after } = withSeededRandom(5, () => T.catchUp(saved, Date.now()));
+    expect(after.country.quarterIndex).toBe(q0);
+    const off = after.history.filter((h) => h.offline);
+    expect(off.length).toBeGreaterThan(10);
+    expect(off.reduce((a, h) => a + h.interest, 0)).toBeGreaterThan(0);
+  });
+
+  it('подсказка «где торговать» ранжирует области и считает экспортную выгоду', () => {
+    const st = withSeededRandom(6, () => T.tick(T.makeTycoon({ start: 'retail' }), 120));
+    const opp = T.shopOpportunities(st);
+    expect(opp.length).toBeGreaterThan(3);
+    expect(opp[0].gain).toBeGreaterThanOrEqual(opp[opp.length - 1].gain);
+    const exp = T.exportOpportunities(st);
+    expect(exp.every((x) => Number.isFinite(x.edge))).toBe(true);
+  });
+});

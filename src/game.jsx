@@ -1841,7 +1841,35 @@ function makeSnapshot(state) {
   return { app: 'economic-panel', v: SAVE_VERSION, savedAt: new Date().toISOString(), ...state, history: slim };
 }
 
-const saveAutosave = (data) => { try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(data)); } catch { /* квота или приватный режим — просто не автосохраняем */ } };
+/* Автосохранение в браузер. Каждый квартал истории — вся экономика (~5 КБ), и в
+   длинной партии запись однажды молча упиралась в квоту хранилища: ошибка
+   глоталась, а игрок думал, что всё сохранено. Теперь последние 40 кварталов
+   хранятся целиком (как на сервере), более старые — только показатели графиков и
+   разбора, новости — последние 40. Не влезло и так — пробуем без старой истории,
+   а если и это не вышло, возвращаем false, и в шапке видно, что сохранения нет. */
+const AUTOSAVE_HISTORY_FULL = 40;
+const AUTOSAVE_NEWS = 40;
+const HISTORY_LITE_KEYS = ['q', 'label', 'gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGrowth', 'consumptionGrowth', 'investmentGrowth',
+  'wageGrowth', 'inflation', 'coreInflation', 'inflationExpectations', 'cbCredibility', 'keyRate', 'lendingRate', 'realLendingRate', 'rStar',
+  'unemployment', 'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare',
+  'debtToGdp', 'budgetBalancePctGdp', 'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow',
+  'bankNPL', 'bankCapitalAdequacy', 'creditGap', 'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex',
+  'approval', 'wellbeing', 'regime', 'politicalRegime', 'electionResult', 'activeCrises',
+  'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
+const liteEntry = (h) => Object.fromEntries(HISTORY_LITE_KEYS.filter((k) => h[k] !== undefined).map((k) => [k, h[k]]));
+const trimForBrowser = (data, keepOld = true) => {
+  const hist = Array.isArray(data.history) ? data.history : [];
+  const cut = Math.max(0, hist.length - AUTOSAVE_HISTORY_FULL);
+  return { ...data,
+    history: [...(keepOld ? hist.slice(0, cut).map(liteEntry) : []), ...hist.slice(cut)],
+    newsFeed: Array.isArray(data.newsFeed) ? data.newsFeed.slice(0, AUTOSAVE_NEWS) : data.newsFeed };
+};
+const saveAutosave = (data) => {
+  for (const keepOld of [true, false]) {
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(trimForBrowser(data, keepOld))); return true; } catch { /* пробуем короче */ }
+  }
+  return false;
+};
 
 // «Газета сама открывается» — настройка на устройство, а не на партию: игрок,
 // которому нравится читать сводку каждый квартал, хочет этого во всех своих играх.
@@ -1931,11 +1959,13 @@ export function questProgressAchievementIds({ quarterIndex, economy, history, ro
   return ids;
 }
 
-export function casinoAchievementIds({ net, casinoNet }) {
+/* Достижения казино учат не охоте за кушем, а закону больших чисел: чем больше
+   ставок, тем ближе итог к матожиданию — то есть к проигрышу. */
+export function casinoAchievementIds({ net, casinoBets = 0 }) {
   const ids = [];
   if (net > 0) ids.push('casino_win');
-  if (net >= 30) ids.push('casino_jackpot');
-  if (casinoNet >= 50) ids.push('casino_ahead');
+  if (casinoBets >= 30) ids.push('casino_jackpot');
+  if (casinoBets >= 100) ids.push('casino_ahead');
   return ids;
 }
 
@@ -4253,10 +4283,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
     });
   };
-  const onCasino = (net) => {
-    const casinoNet = (portfolio.casinoNet || 0) + net;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoNet })));
+  const onCasino = (net, bet = 0, ev = 0) => {
+    const casinoBets = (portfolio.casinoBets || 0) + 1;
+    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
+      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
+    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
   };
   const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
   const groups = roleDef.groups;
@@ -4288,10 +4319,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // автосохранение вообще происходит: раньше оно было полностью незаметным,
   // и со стороны выглядело так, будто его нет вовсе
   const [autosaveFlash, setAutosaveFlash] = useState(false);
+  const [autosaveFailed, setAutosaveFailed] = useState(false);
   React.useEffect(() => {
     const snap = snapshot();
     rollbackHistoryRef.current = [...rollbackHistoryRef.current, { quarterIndex, snap }].slice(-8);
-    saveAutosave(snap);
+    setAutosaveFailed(!saveAutosave(snap));
     // партия, у которой уже есть свой слот (пришла из «Продолжить» или была
     // сохранена вручную), автосохраняется прямо в него на сервере — иначе слот
     // застревал на моменте последнего ручного сохранения, а свежий прогресс
@@ -4789,6 +4821,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             onClick={() => { Audio.play('click'); setSaveModal('save'); }} title="Сохранить или загрузить партию">
             <Save size={14} />Партия
           </button>
+          {autosaveFailed && !Number.isFinite(activeSlot) && (
+            <span role="alert" style={{ fontSize: 12, color: COLOR.rust, display: 'flex', alignItems: 'center', gap: 4 }}
+              title="Браузер не принял автосохранение (закончилось место или приватный режим). Сохраните партию вручную кнопкой «Партия» — в слот на сервере.">
+              <AlertTriangle size={11} />не сохранено
+            </span>
+          )}
           {!narrow && <span style={{ fontSize: 12, color: autosaveFlash ? COLOR.teal : COLOR.faint, display: 'flex', alignItems: 'center', gap: 4, marginRight: 4, transition: 'color 0.6s ease' }}
             title={Number.isFinite(activeSlot)
               ? `Партия в слоте ${activeSlot + 1}: каждый квартал автосохраняется туда же (и параллельно в этот браузер).`
