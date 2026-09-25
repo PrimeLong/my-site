@@ -79,6 +79,10 @@ const CHART_GROUPS = [
     { id: 'yield3m', label: 'Доходность 3 месяца', axis: 'right', color: '#8E7CC3', fmt: 'pct' },
     { id: 'volatilityIndex', label: 'Индекс страха', axis: 'right', color: COLOR.rust, fmt: 'idx' },
   ] },
+  { id: 'inequality', label: 'Неравенство', series: [
+    { id: 'gini', label: 'Джини', axis: 'left', color: COLOR.gold, fmt: 'idx3' },
+    { id: 'povertyRate', label: 'Бедность', axis: 'right', color: COLOR.rust, fmt: 'pct' },
+  ] },
   { id: 'scores', label: 'Оценки', series: [
     { id: 'scoreStability', label: 'Стабильность', axis: 'left', color: COLOR.gold, fmt: 'idx' },
     { id: 'scoreWelfare', label: 'Благосостояние', axis: 'left', color: COLOR.teal, fmt: 'idx' },
@@ -91,8 +95,11 @@ const PERIODS = [{ id: '1y', label: '1 год', q: 4 }, { id: '5y', label: '5 л
 /* На узком диапазоне (например разрыв выпуска от -1.2 до 0) округление до целых
    даёт подряд «0% 0% -1% -1%» — десятая доля появляется только когда она нужна. */
 const pctTick = (v) => `${Math.abs(v) < 10 ? Number(v.toFixed(1)) : Math.round(v)}%`;
-const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v) : pctTick);
-const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v) : (v) => `${fmt1(v)}%`);
+// idx3 — индекс с тремя знаками (коэффициент Джини от 0 до 1)
+const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v)
+  : fmtType === 'idx3' ? (v) => v.toFixed(2) : pctTick);
+const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v)
+  : fmtType === 'idx3' ? (v) => v.toFixed(3) : (v) => `${fmt1(v)}%`);
 
 const FORECAST_ANCHORS = {
   inflation: (e) => e.inflationTarget, coreInflation: (e) => e.inflationTarget,
@@ -240,7 +247,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     if (!vals.length) return ['auto', 'auto'];
     let lo = Math.min(...vals); let hi = Math.max(...vals);
     const level = list[0].fmt === 'money' || list[0].fmt === 'idx';
-    const minSpan = level ? Math.max(Math.abs((lo + hi) / 2) * 0.06, 1) : 2;
+    const minSpan = list[0].fmt === 'idx3' ? 0.03 : level ? Math.max(Math.abs((lo + hi) / 2) * 0.06, 1) : 2;
     if (hi - lo < minSpan) { const mid = (lo + hi) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
     const pad = (hi - lo) * 0.08;
     lo -= pad; hi += pad;

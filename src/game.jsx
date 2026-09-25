@@ -1855,7 +1855,7 @@ const HISTORY_LITE_KEYS = ['q', 'label', 'gdp', 'potentialGdp', 'outputGap', 'gd
   'unemployment', 'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare',
   'debtToGdp', 'budgetBalancePctGdp', 'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow',
   'bankNPL', 'bankCapitalAdequacy', 'creditGap', 'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex',
-  'approval', 'wellbeing', 'regime', 'politicalRegime', 'electionResult', 'activeCrises',
+  'approval', 'wellbeing', 'regime', 'politicalRegime', 'electionResult', 'activeCrises', 'gini', 'povertyRate',
   'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
 const liteEntry = (h) => Object.fromEntries(HISTORY_LITE_KEYS.filter((k) => h[k] !== undefined).map((k) => [k, h[k]]));
 const trimForBrowser = (data, keepOld = true) => {
@@ -3760,6 +3760,10 @@ export const INDICATOR_TABS = [
     { key: 'vacancyRate', label: 'Доля вакансий', fmt: pctFmt },
     { key: 'wageGrowth', label: 'Рост зарплат', fmt: fmtSignedPct },
     { key: 'employment', label: 'Занятость', fmt: pctFmt },
+    // распределение доходов (см. model/distribution.js и «Общество» → «Доходы по слоям»)
+    { key: 'gini', label: 'Неравенство (Джини)', fmt: (v) => v.toFixed(3), invert: true,
+      hint: 'От 0 (все получают поровну) до 1 (всё у одного). Растёт, когда доходы низа отстают: инфляция в еде, безработица, урезанные трансферты.' },
+    { key: 'povertyRate', label: 'За чертой бедности', fmt: pctFmt, invert: true },
   ] },
   { id: 'external', label: 'Внешний сектор', icon: Globe2, rows: [
     { key: 'exports', label: 'Экспорт', fmt: fmtMoney },

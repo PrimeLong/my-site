@@ -1,4 +1,5 @@
 /* Выделено из engine.js: politics/groups.js. Точка входа по-прежнему engine.js — он всё реэкспортирует. */
+import { groupRealIncome } from '../model/distribution.js';
 import { CONFIG, clamp, rng } from '../catalog.js';
 import { REGIME_INFO, ema, fmt1, fmtSigned1, regimeInfoLabel, regimeInfoText } from '../engine.js';
 import { makeImpulse, sustainedImpulse } from '../content/events.js';
@@ -79,6 +80,13 @@ export function groupDrivers(id, x) {
   const d = x.decisions || {};
   const sh = x.budgetShares || {};
   const num = (v, def) => (Number.isFinite(v) ? v : def);
+  // реальные доходы «своего» квинтиля за год (см. model/distribution.js): у групп
+  // теперь свой кошелёк, а не средняя зарплата по стране
+  const inc = groupRealIncome(x.distribution, id);
+  const income = Number.isFinite(inc) ? [['Доходы слоя', clamp(0.45 * inc, -6, 6)]] : [];
+  return [...groupDriversBase(id, x, infGap, uGap, d, sh, num), ...income];
+}
+function groupDriversBase(id, x, infGap, uGap, d, sh, num) {
   switch (id) {
     case 'pensioners': return [['Цены', -1.2 * infGap], ['Соцвыплаты', 0.7 * num(d.transfers, 0)]];
     case 'workers': return [['Безработица', -1.8 * uGap], ['Реальные зарплаты', 1.2 * (x.wageGrowth - x.inflation - 2)]];

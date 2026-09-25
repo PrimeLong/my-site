@@ -3,6 +3,7 @@ import { gameChronicle } from './content/chronicle.js';
 import { CHANNEL_HEADLINE, EVENTS, buildEventImpulses, headlineFor, makeImpulse, pickEvent, spreadOf, sustainedImpulse, tickImpulses } from './content/events.js';
 import { STORY_TEMPLATES, advanceStories, buildDecisionImpulses, bumpNewsId, generateNews, mkNews, rf1, rf2, rfs, ru, storyConflicts, storyStartWait, storyTriggers } from './content/news.js';
 import { PRESS_OPTION_IDS, PRESS_QUESTIONS, pickPressQuestion, pressSpeakerSeat } from './content/press.js';
+import { QUINTILES, distributionStep, giniOf, groupRealIncome, initialDistribution } from './model/distribution.js';
 import { STOCK_NORM, TAX_REF, TFP_SCALE, complianceFor, computeRevenue, computeScores, potentialFrom, taxBases, taxWedge } from './model/fiscal.js';
 import { CAMPAIGN_COST, CAMPAIGN_POINTS, POLL_WINDOW, PROMISE_POOL, botCampaignPlan, campaignBonus, campaignStep, electionForecast, evaluatePromise, pickPromises, sanitizeCampaignPlan, swingLabel } from './politics/elections.js';
 import { ACTION_GROUP_EFFECTS, SOCIAL_GROUPS, buildReport, coalitionOf, groupDemandStep, groupEpisodes, groupMemoryOf, groupStatus, groupStep, groupTurnoutShift, leverGroupEffects, propagandaEditorial, publicGroupDemand, regionBlurb, regionGroupSupport, regionVoteShares } from './politics/groups.js';
@@ -1515,7 +1516,16 @@ function simulateQuarter(input, { skip = [] } = {}) {
   if (PC.returned.length) groupMemoryNew.push(...groupMemoryOf({ siloviki: -10 }, 'Земли возвращены Норланду', 12));
   if (PC.treaty && PC.treaty !== s.treaty && PC.treaty.recognized) groupMemoryNew.push(...groupMemoryOf({ business: 6 }, 'Граница признана', 10));
   const groupStress = activeRegions(s).map((r) => regionStress(r, s));
+  /* Распределение доходов по пяти квинтилям — надстройка над посчитанным кварталом
+     (см. model/distribution.js): личная инфляция, налоговая нагрузка, реальные доходы,
+     Джини. Соцгруппы смотрят на доходы «своего» слоя. */
+  const DIST = distributionStep(s.distribution, {
+    wageGrowth, unemployment, prevUnemployment: s.unemployment, transfersRealGrowth: actualGrowthTr, inflation, coreInflation,
+    gdpGrowth, stockGrowth: stockReturn, keyRate: decisions.keyRate, vatRate: decisions.vatRate,
+    incomeTaxRate: decisions.incomeTaxRate, capitalTaxRate: decisions.capitalTaxRate,
+  });
   const GS = groupStep(s, {
+    distribution: DIST,
     approvalTarget, push: (d.approvalPush || 0) + stabilizationBonus, newMemory: groupMemoryNew,
     inflation, infTarget, unemployment, nairu, wageGrowth, decisions, budgetShares: s.budgetShares,
     businessConfidence, offensiveWar: (s.warQuartersLeft || 0) > 0 && s.warType === 'offensive', atWar: (s.warQuartersLeft || 0) > 0,
@@ -2114,6 +2124,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
   const newEconomy = {
     // настройка партии «Только экономика» живёт в состоянии и переходит из квартала в квартал
     ...(s.economyOnly ? { economyOnly: true } : {}),
+    distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate,
     gdp, nominalGdp, priceLevel, gdpGrowth, potentialGdp, potentialGrowth, outputGap,
     gdpPerCapita: gdp * 1000 / CONFIG.population,
     consumption, businessInvestment, govPurchasesReal, govInvestmentReal, transfersReal,
@@ -2219,8 +2230,10 @@ function makeInitialEconomy(scenarioId) {
   const I = { ...CONFIG.initial, ...(scenario && scenario.overrides) };
   const potentialGdp = potentialFrom(I.capitalStock, I.laborForce, I.nairu, I.humanCapitalIndex, I.productivity, I.infrastructureIndex, TFP_SCALE, 0);
   const nominalGdp = I.gdp * I.priceLevel / 100;
+  const dist0 = initialDistribution();
   const base = {
     ...I,
+    distribution: dist0, gini: dist0.gini, povertyRate: dist0.povertyRate,
     gdp: I.gdp, nominalGdp, potentialGdp, potentialGrowth: 2.3, outputGap: (I.gdp - potentialGdp) / potentialGdp * 100,
     gdpGrowth: 2.3, gdpPerCapita: I.gdp * 1000 / CONFIG.population,
     consumptionGrowth: 2.3, investmentGrowth: 2.3, govPurchasesGrowth: 2.3, transfersGrowth: 2.3, govInvestmentGrowth: 2.3,
@@ -2492,7 +2505,7 @@ export {
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,
   headlineFor, spreadOf, makeImpulse, pickEvent, buildEventImpulses, tickImpulses,
   complianceFor, taxBases, computeRevenue, taxWedge, potentialFrom, computeScores,
-  simulateQuarter, SKIPPABLE_STEPS,
+  simulateQuarter, SKIPPABLE_STEPS, QUINTILES, giniOf, groupRealIncome,
   mkNews, advanceStories, storyTriggers, generateNews, buildDecisionImpulses,
   makeInitialEconomy, buildReport, leverPreview,
 };

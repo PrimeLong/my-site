@@ -122,7 +122,7 @@ const PRE_KEYS = ['gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGro
   'inflation', 'coreInflation', 'inflationExpectations', 'cbCredibility', 'keyRate', 'lendingRate', 'realLendingRate', 'rStar', 'unemployment',
   'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare', 'debtToGdp', 'budgetBalancePctGdp',
   'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow', 'bankNPL', 'bankCapitalAdequacy', 'creditGap',
-  'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex', 'approval', 'wellbeing', 'regime', 'politicalRegime',
+  'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex', 'approval', 'wellbeing', 'regime', 'politicalRegime', 'gini', 'povertyRate',
   'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
 const preEntry = (e, q) => ({ ...Object.fromEntries(PRE_KEYS.filter((k) => e[k] !== undefined).map((k) => [k, e[k]])), q, label: quarterLabel(q), pre: true });
 export function makePrehistory({ quarters = 12, scenario = 'sandbox', difficulty = 'medium', cbPersona = 'pragmatic',
