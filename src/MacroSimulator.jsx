@@ -1448,6 +1448,11 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
   // отрасль компании — только для предпринимателя
   const [sector, setSector] = useState('farm');
   const [scenario, setScenario] = useState('sandbox');
+  // сценарий, где роли нет (Греция в валютном союзе — без своего ЦБ), сбрасывается при смене роли
+  React.useEffect(() => {
+    const sc = SCENARIOS.find((x) => x.id === scenario);
+    if (sc && (sc.noRoles || []).includes(role)) setScenario('sandbox');
+  }, [role, scenario]);
   // обучение по экрану партии: у тех, кто ещё не играл ни одной ролью, включено само
   const [tour, setTour] = useState(() => loadRolesPlayed().length === 0);
   // «Только экономика»: война заморожена — ни нападений, ни указов о ней, ни кнопок на карте
@@ -1693,7 +1698,7 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
           <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Стартовая ситуация</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
-          {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
+          {[...SCENARIOS].filter((sc) => !(sc.noRoles || []).includes(role)).sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
             const active = scenario === sc.id;
             // от спокойного к опасному: бирюзовый → золотой → ржавый
             const levelColor = sc.level >= 4 ? COLOR.rust : sc.level === 3 ? COLOR.gold : sc.level === 2 ? COLOR.goldSoft : COLOR.teal;

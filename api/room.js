@@ -173,7 +173,8 @@ function sanitizePresident(v, economy) {
 /* Стартовая ситуация комнаты — те же сценарии, что в одиночной игре. Любой
    незнакомый идентификатор (или его отсутствие) — открытая партия: так же
    себя ведёт «классика» в лобби. */
-const SCENARIO_IDS = new Set(SCENARIOS.map((sc) => sc.id));
+// в сетевой партии всегда есть место ЦБ — сценарии без него (валютный союз) только для одиночной
+const SCENARIO_IDS = new Set(SCENARIOS.filter((sc) => !sc.noRoles).map((sc) => sc.id));
 export function freshRoom(opts) {
   const scenario = SCENARIO_IDS.has(opts.scenario) ? opts.scenario : 'sandbox';
   const economy = makeInitialEconomy(scenario);

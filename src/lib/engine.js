@@ -179,6 +179,16 @@ const UNCERTAINTY = {
   shareHealth: 'высокая', shareEducation: 'высокая', shareScience: 'высокая', shareDefense: 'низкая', shareAdmin: 'низкая',
 };
 
+/* ВАЛЮТНЫЙ СОЮЗ (Греция в еврозоне): своей валюты и своей ставки у страны нет.
+   Курс к внешнему миру не движется, ставку задаёт внешний ЦБ по своему пути,
+   интервенций и эмиссии нет — роль ЦБ в такой партии недоступна. Остаётся бюджет. */
+// u.q — сколько кварталов союза прошло: путь ставки идёт по нему, после конца пути — последнее значение
+export function currencyUnionRate(state) {
+  const u = state && state.currencyUnion;
+  if (!u || !Array.isArray(u.ratePath) || !u.ratePath.length) return null;
+  return u.ratePath[clamp(u.q || 0, 0, u.ratePath.length - 1)];
+}
+
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
@@ -293,8 +303,10 @@ function botCentralBank(s, personaId, _difficulty) {
      его сам, только если резервов хватает на защиту; после программы
      возвращает тот режим, что был. */
   const reservesOk = s.reserves >= 0.5 * CONFIG.initial.reserves;
-  const fxRegime = stabMode && reservesOk && s.fxRegime === 'free' ? 'managed' : s.fxRegime;
+  let fxRegime = stabMode && reservesOk && s.fxRegime === 'free' ? 'managed' : s.fxRegime;
   if (s.regime === 'currency' && s.reserves > 120) fxIntervention = -10;
+  // в валютном союзе ставку задаёт внешний ЦБ, остальное национальному банку недоступно
+  if (s.currencyUnion) { keyRate = currencyUnionRate(s); moneySupplyOp = 0; fxIntervention = 0; fxRegime = 'union'; }
 
   let capitalRequirement = s.capitalRequirement;
   if (s.creditGap > 6) capitalRequirement = clamp(s.capitalRequirement + 0.5 * P.macropru, 8, 18);
@@ -387,7 +399,7 @@ function buildCbResult(s, P, vals) {
       `ставка ${keyRate.toFixed(2)}% (реальная ${fmtSigned1(keyRate - s.inflationExpectations)}% при нейтральной ${fmt1(s.rStar)}%)`,
       `цель по инфляции ${cbTarget.toFixed(2)}%, фактическая ${fmt1(s.inflation)}%`,
       `норма резервирования ${reserveReq.toFixed(1)}%, норматив капитала ${capitalRequirement.toFixed(1)}%`,
-      `ликвидность банкам ${liquidity ? `+${liquidity} млрд` : 'не предоставлялась'}, режим курса ${fxRegime === 'free' ? 'плавающий' : fxRegime === 'managed' ? 'управляемый' : 'фиксированный'}`,
+      `ликвидность банкам ${liquidity ? `+${liquidity} млрд` : 'не предоставлялась'}, режим курса ${fxRegime === 'free' ? 'плавающий' : fxRegime === 'managed' ? 'управляемый' : fxRegime === 'union' ? 'валютный союз' : 'фиксированный'}`,
     ],
     // note идёт в панель ведомства, где характер бота — полезная информация;
     // newsNote — в ленту новостей, где «Центральный банк (Голубь)» выглядит так,
@@ -658,6 +670,12 @@ function simulateQuarter(input, { skip = [] } = {}) {
       const c = clamp(v, lo, hi);
       if (c !== v) { out[l.id] = c; changed = true; }
     });
+    // в валютном союзе денежную политику ведёт внешний ЦБ, что бы ни пришло в решениях
+    if (s.currencyUnion) {
+      Object.assign(out, { keyRate: currencyUnionRate(s), fxIntervention: 0, moneySupplyOp: 0,
+        fxRegime: 'union', fxTarget: s.exchangeRate, guidance: undefined });
+      changed = true;
+    }
     return changed ? out : rawDecisions;
   })();
   const C = CONFIG.coef;
@@ -1075,7 +1093,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
      курс вроде 100.38, которого игрок выставить не может (нашёл стенд длинных
      партий). Сам диапазон при этом шире ползунка: рынок имеет право уйти
      дальше, чем защищает интервенциями любой центробанк. */
-  const fxTarget = decisions.fxRegime === 'free'
+  const fxTarget = decisions.fxRegime === 'free' || decisions.fxRegime === 'union'
     ? roundTo(clamp(s.exchangeRate, 20, 1200), 1)
     : clamp(decisions.fxTarget || s.exchangeRate, 20, 1200);
   const marketDepr = rawPressure + gauss(NB.exchangeRate * nMult);           // что сделал бы свободный курс
@@ -1094,16 +1112,19 @@ function simulateQuarter(input, { skip = [] } = {}) {
     unfundedPct = (defenseIntervention - feasible) / (Math.max(1, s.nominalGdp) / 100 / C.fxBop);
     defenseIntervention = feasible;
   }
-  let depreciationPct = desiredDepr - unfundedPct
+  const inUnion = decisions.fxRegime === 'union';
+  if (inUnion) defenseIntervention = 0;
+  // в валютном союзе номинального курса у страны нет — он не двигается совсем
+  let depreciationPct = inUnion ? 0 : desiredDepr - unfundedPct
     + decisions.fxIntervention / Math.max(1, s.nominalGdp) * 100 * 2.5;
   let reserves = Math.max(0, s.reserves + decisions.fxIntervention + defenseIntervention / QUARTERS_PER_YEAR
     + reserveYield + (d.reserves || 0) + gauss(NB.reserves * nMult * 0.3));
   let fxBreak = false;
-  if (decisions.fxRegime !== 'free' && reserves < 0.22 * CONFIG.initial.reserves) {
+  if (decisions.fxRegime !== 'free' && !inUnion && reserves < 0.22 * CONFIG.initial.reserves) {
     fxBreak = true; depreciationPct += 22; reserves = Math.max(reserves, 0.25 * CONFIG.initial.reserves);
     news.push(mkNews('crisis', 'СРЫВ ВАЛЮТНОГО РЕЖИМА: ДЕВАЛЬВАЦИЯ', 'Резервы исчерпаны — удержать курс не удалось. Валюта резко девальвирована, импортная инфляция придёт в ближайшие кварталы.', { priority: 10, chain: ['Резервы ↓', 'Защита курса невозможна', 'Девальвация', 'Импортные цены ↑', 'Инфляция ↑'] }));
   }
-  const exchangeRate = clamp(applyAnnualGrowth(s.exchangeRate, depreciationPct), 20, 1200);
+  const exchangeRate = inUnion ? s.exchangeRate : clamp(applyAnnualGrowth(s.exchangeRate, depreciationPct), 20, 1200);
   const fxDeprAnnual = annualizedGrowth(s.exchangeRate, exchangeRate);
   const importPriceInflation = worldInflation + fxDeprAnnual;
   const fxPressureInfl = C.fxPass * fxDeprAnnual + C.worldInflPass * (worldInflation - T.worldInflation);
@@ -2144,6 +2165,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
   const newEconomy = {
     // настройка партии «Только экономика» живёт в состоянии и переходит из квартала в квартал
     ...(s.economyOnly ? { economyOnly: true } : {}),
+    ...(s.currencyUnion ? { currencyUnion: { ...s.currencyUnion, q: (s.currencyUnion.q || 0) + 1 } } : {}),
     distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate, guidance: GUID.next,
     firms: FIRMS_Q.firms, firmStress: FIRMS_Q.regionShift, ...(s.firmBoost ? { firmBoost: s.firmBoost } : {}),
     gdp, nominalGdp, priceLevel, gdpGrowth, potentialGdp, potentialGrowth, outputGap,

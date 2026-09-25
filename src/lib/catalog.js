@@ -253,7 +253,9 @@ export const SCENARIOS = [
       lendingRate: 21, depositRate: 16, wageGrowth: 18, unemployment: 11.5, nairu: 10.8, riskPremium: 3.6, reserves: 110,
       consumerConfidence: 36, businessConfidence: 44, approval: 42, politicalTension: 26, regime: 'currency' } },
   { id: 'greece2010', title: 'Вы против Афин', short: 'Греция, 2010–2013', level: 3, levelLabel: 'Трудный', historical: true,
-    levelNote: 'Долг под 130% ВВП, дефицит 15%, рынок закрыт. Реальная Греция прошла через жёсткую экономию: ВВП −25%, безработица 27%.',
+    // своего ЦБ у страны в валютном союзе нет — играть за него нечем
+    noRoles: ['central_bank'],
+    levelNote: 'Долг под 130% ВВП, дефицит 15%, рынок закрыт. Валютный союз: курс и ставку не выбрать, роль ЦБ недоступна. Реальная Греция прошла через жёсткую экономию: ВВП −25%, безработица 27%.',
     desc: 'Весна 2010-го: долг 130% ВВП, дефицит двузначный, инвесторы требуют 10% за риск. Своей ставки нет — только бюджет. Реальная экономия обвалила экономику на четверть. Найдёте путь мягче?',
     shadow: { name: 'Греция', from: 'I кв. 2010',
       unemployment: [11.6, 12.3, 12.6, 14.2, 15.9, 16.7, 18.4, 20.7, 22.1, 23.8, 24.9, 26.0, 27.0, 27.2, 27.5, 27.4],
@@ -262,7 +264,10 @@ export const SCENARIOS = [
       debtToGdp: [130, 138, 143, 146, 151, 157, 165, 172, 160, 158, 162, 157, 165, 173, 176, 178] },
     overrides: { govDebt: 2600, effectiveDebtRate: 7.5, riskPremium: 9, budgetBalancePctGdp: -13, unemployment: 11.6, nairu: 11,
       inflation: 3, coreInflation: 2.5, inflationExpectations: 3, consumerConfidence: 24, businessConfidence: 26,
-      approval: 36, politicalTension: 38, fxRegime: 'fixed' } },
+      approval: 36, politicalTension: 38,
+      // евро: своего курса и своей ставки нет, ставку ведёт ЕЦБ (реальный путь 2010–2013)
+      keyRate: 1, fxRegime: 'union',
+      currencyUnion: { name: 'ЕЦБ', ratePath: [1, 1, 1, 1, 1, 1.25, 1.5, 1.25, 1, 1, 0.75, 0.75, 0.75, 0.5, 0.5, 0.25] } } },
   { id: 'russia2014', title: 'Вы против декабря 2014-го', short: 'Россия, 2014–2016', level: 3, levelLabel: 'Трудный', historical: true,
     levelNote: 'Нефть упала вдвое, санкции закрыли рынки, рубль падает. 16 декабря ЦБ поднял ставку с 10,5% до 17% за ночь.',
     desc: 'Осень 2014-го: нефть дешевеет, санкции, отток капитала, рубль теряет треть. Реальный ЦБ отпустил курс и поднял ставку до 17%. Инфляция всё равно дошла до 17%, ВВП ушёл в минус.',

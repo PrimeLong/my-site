@@ -19,7 +19,7 @@ import {
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
   botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
-  directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever,
+  directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever, currencyUnionRate,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
 import {
@@ -916,7 +916,7 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             </Suspense>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 14px', fontSize: 12 }}>
-            {[['Режим', economy.fxRegime === 'free' ? 'плавающий' : economy.fxRegime === 'managed' ? 'управляемый' : 'фиксированный'],
+            {[['Режим', economy.fxRegime === 'free' ? 'плавающий' : economy.fxRegime === 'managed' ? 'управляемый' : economy.fxRegime === 'union' ? 'валютный союз' : 'фиксированный'],
               ['Ориентир', economy.fxRegime === 'free' ? '—' : fmt1(economy.fxTarget)],
               ['Резервы', fmtMoney(economy.reserves)], ['Интервенции', fmtMoneySigned(economy.defenseIntervention || 0)],
               ['Волатильность', fmt1(economy.fxVolatility)], ['Текущий счёт', fmtMoneySigned(economy.currentAccount)]].map(([a, b]) => (
@@ -1070,6 +1070,7 @@ function StanceBar({ value, leftLabel, rightLabel }) {
    Пределы берутся через scaleLever — те же, что игрок видит у себя прямо сейчас. */
 const FISCAL_FLOW_IDS = ['govSpending', 'transfers', 'govInvestment'];
 
+const UNION_LOCKED = new Set(['keyRate', 'moneySupplyOp', 'fxIntervention', 'fxTarget']);
 const MONETARY_READOUT_IDS = ['keyRate', 'inflationTarget', 'reserveReq', 'capitalRequirement', 'moneySupplyOp', 'fxIntervention', 'liquidity'];
 
 export function LeverReadout({ ids, levers, economy, accent }) {
@@ -1118,7 +1119,7 @@ export const FiscalLeverReadout = ({ levers, accent, economy }) => (
 // у ЦБ кроме ползунков — режим курса и, если курс не плавает, его целевой уровень
 export function MonetaryLeverReadout({ levers, accent, economy }) {
   const regime = levers && levers.fxRegime ? FX_REGIMES.find((r) => r.id === levers.fxRegime) : null;
-  const ids = levers && levers.fxRegime && levers.fxRegime !== 'free' ? [...MONETARY_READOUT_IDS, 'fxTarget'] : MONETARY_READOUT_IDS;
+  const ids = levers && levers.fxRegime && levers.fxRegime !== 'free' && levers.fxRegime !== 'union' ? [...MONETARY_READOUT_IDS, 'fxTarget'] : MONETARY_READOUT_IDS;
   return (
     <div>
       <LeverReadout ids={ids} levers={levers} accent={accent} economy={economy} />
@@ -2786,7 +2787,7 @@ const SUMMARY_TABS = {
     { key: 'creditGrowth', label: 'Рост кредитования', fmt: fmtSignedPct },
     { key: 'bankCapitalAdequacy', label: 'Достаточность капитала', fmt: pctFmt },
     { key: 'reserves', label: 'Резервы', fmt: fmtMoney },
-    { label: 'Режим курса', get: (e) => e.fxRegime, text: true, map: { free: 'плавающий', managed: 'управляемый', peg: 'фиксированный' } },
+    { label: 'Режим курса', get: (e) => e.fxRegime, text: true, map: { free: 'плавающий', managed: 'управляемый', peg: 'фиксированный', union: 'валютный союз' } },
   ] },
   ministry_finance: { id: 'summary_mof', label: 'Сводка Минфина', icon: Coins, rows: [
     { key: 'govRevenue', label: 'Доходы бюджета', fmt: fmtMoney },
@@ -4361,7 +4362,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // график видит и предысторию (три года до игрока), остальная логика — только партию
   const chartHistory = useMemo(() => (prehistory ? [...prehistory, ...history] : history), [prehistory, history]);
   const groups = roleDef.groups;
-  const levers = LEVERS.filter((l) => groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
+  const levers = LEVERS.filter((l) => groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions))
+    // в валютном союзе ставку, эмиссию и курс ведёт внешний ЦБ — этих рычагов у игрока нет
+    .filter((l) => !economy.currencyUnion || !UNION_LOCKED.has(l.id));
   // «Ваши полномочия» разбиты на вкладки по подгруппам, а не одним длинным списком:
   // при роли «оба ведомства» все ~22 ползунка подряд растягивали левую колонку
   // намного выше центральной и правой, оставляя под ними пустое место на странице
@@ -5231,8 +5234,15 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
                     preview={leverPreview(l.id, decisions[l.id], economy, difficulty)} infTarget={decisions.inflationTarget} />
                 ))}
-                <GuidancePicker economy={economy} value={decisions.guidance} onChange={(v) => setLever('guidance', v)} keyRate={decisions.keyRate} />
-                <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
+                {economy.currencyUnion ? (
+                  <div className="t-muted" style={{ fontSize: 12, lineHeight: 1.5, padding: '8px 0' }}>
+                    Валютный союз: ставку задаёт {economy.currencyUnion.name} — в этом квартале {fmt1(currencyUnionRate(economy))}%, курс не двигается.
+                    Своих рычагов ставки, эмиссии и курса нет: остаются нормативы для банков и бюджет.
+                  </div>
+                ) : (<>
+                  <GuidancePicker economy={economy} value={decisions.guidance} onChange={(v) => setLever('guidance', v)} keyRate={decisions.keyRate} />
+                  <Segmented label="Режим валютного курса" options={FX_REGIMES} value={decisions.fxRegime} onChange={(v) => setLever('fxRegime', v)} />
+                </>)}
               </div>
             )}
             {levTab === 'monetary-macropru' && (

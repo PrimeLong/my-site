@@ -2807,3 +2807,32 @@ describe('историческая тень', () => {
     });
   });
 });
+
+describe('валютный союз (Греция 2010)', () => {
+  it('курс не двигается, ставку ведёт внешний ЦБ, что бы ни решали в стране', async () => {
+    const { withSeededRandom } = await import('../catalog.js');
+    const sc = SCENARIOS.find((x) => x.id === 'greece2010');
+    expect(sc.noRoles).toContain('central_bank');
+    const path = sc.overrides.currencyUnion.ratePath;
+    withSeededRandom(2010, () => {
+      let e = makeInitialEconomy('greece2010');
+      const fx0 = e.exchangeRate;
+      expect(e.fxRegime).toBe('union');
+      let pending = []; let cd = {}; let stories = [];
+      for (let q = 1; q <= 16; q++) {
+        const cb = botCentralBank(e, 'hawk', 'medium');
+        expect(cb.decisions.keyRate).toBe(path[q - 1]);
+        const mof = botFinanceMinistry(e, 'austerity', 'medium');
+        // даже если в решения пришли своя ставка, эмиссия и интервенции — союз их не пропускает
+        const d = { ...defaultDecisions(e), ...cb.decisions, ...mof.decisions, keyRate: 20, moneySupplyOp: 30, fxIntervention: -40, fxRegime: 'free' };
+        const r = simulateQuarter({ economy: e, decisions: d, pendingImpulses: pending, eventCooldowns: cd, difficulty: 'medium',
+          quarterIndex: q, stories, botAction: cb, botActions: [mof] });
+        e = r.economy; pending = r.pendingImpulses; cd = r.eventCooldowns; stories = r.stories;
+        expect(e.exchangeRate).toBe(fx0);
+        expect(e.fxDeprAnnual).toBe(0);
+        expect(e.keyRate).toBe(path[q - 1]);
+        expect(e.fxRegime).toBe('union');
+      }
+    });
+  });
+});
