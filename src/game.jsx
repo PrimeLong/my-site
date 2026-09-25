@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
 import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS } from './lib/catalog.js';
+import { makePrehistory } from './lib/autopilot.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight, X, Check,
@@ -1607,7 +1608,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
       <RegimeLadder economy={economy} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, margin: '12px 0 10px' }}>
-        {PRES_TABS.map((t) => (
+        {PRES_TABS.filter((t) => !(t.id === 'war' && economy.economyOnly)).map((t) => (
           <button type="button" key={t.id} className={`ems-tab ${tab === t.id ? 'active' : ''}`} aria-pressed={tab === t.id} style={{ fontSize: 12, padding: '4px 9px' }}
             onClick={() => { Audio.play('tab'); setTab(t.id); }}>{t.label}</button>
         ))}
@@ -4149,19 +4150,31 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // вызов дня: общий для всех жребий, фиксированная длина, итог в таблицу
   const daily = setup.daily || null;
 
-  const initEconomy = useMemo(() => (initial ? initial.economy
-    : runSeeded(daily, 'start', () => makeInitialEconomy(setup.scenario))), []);
+  /* Предыстория: в открытой партии три года до игрока страну ведут боты (см.
+     makePrehistory) — на графике и в ленте с первого квартала видно, куда шла
+     экономика. Кризисные сценарии и вызов дня начинаются как раньше, со своей завязки. */
+  const pre = useMemo(() => (!initial && !daily && (setup.scenario || 'sandbox') === 'sandbox'
+    ? makePrehistory({ difficulty: setup.difficulty, cbPersona: setup.cbPersona, mofPersona: setup.mofPersona,
+      presPersona: (setup.president && setup.president.persona) || 'technocrat' })
+    : null), []);
+  const initEconomy = useMemo(() => {
+    if (initial) return initial.economy;
+    const e0 = pre ? pre.economy : runSeeded(daily, 'start', () => makeInitialEconomy(setup.scenario));
+    // «Только экономика» — настройка партии: война заморожена (см. simulateQuarter)
+    return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
+  }, []);
+  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : null));
   const [economy, setEconomy] = useState(initEconomy);
   const [history, setHistory] = useState(initial ? initial.history : [{ q: 0, label: quarterLabel(1) + ' (старт)', ...initEconomy }]);
   // сохранения из прошлых версий игры не знают о рычагах, добавленных позже
   // (например, «Размещение облигаций»/дефолт/МВФ) — без подстраховки открытие
   // вкладки с новым рычагом падало на undefined.toFixed()
   const [decisions, setDecisions] = useState(initial ? { ...defaultDecisions(initEconomy), ...initial.decisions } : defaultDecisions(initEconomy));
-  const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : []);
-  const [eventCooldowns, setEventCooldowns] = useState(initial ? initial.eventCooldowns || {} : {});
+  const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : pre ? pre.pendingImpulses : []);
+  const [eventCooldowns, setEventCooldowns] = useState(initial ? initial.eventCooldowns || {} : pre ? pre.eventCooldowns : {});
   const [quarterIndex, setQuarterIndex] = useState(initial ? initial.quarterIndex : 1);
-  const [newsFeed, setNewsFeed] = useState(initial ? initial.newsFeed || [] : []);
-  const [stories, setStories] = useState(initial ? initial.stories || [] : []);
+  const [newsFeed, setNewsFeed] = useState(initial ? initial.newsFeed || [] : pre ? pre.news : []);
+  const [stories, setStories] = useState(initial ? initial.stories || [] : pre ? pre.stories : []);
   const [showPaper, setShowPaper] = useState(false);
   const [saveModal, setSaveModal] = useState(null);
   // слот, с которым сейчас связана партия: пришла из «Продолжить», была
@@ -4289,7 +4302,10 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
     pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
   };
-  const prevEcon = history.length >= 2 ? history[history.length - 2] : initEconomy;
+  const prevEcon = history.length >= 2 ? history[history.length - 2]
+    : prehistory && prehistory.length ? { ...initEconomy, ...prehistory[prehistory.length - 1] } : initEconomy;
+  // график видит и предысторию (три года до игрока), остальная логика — только партию
+  const chartHistory = useMemo(() => (prehistory ? [...prehistory, ...history] : history), [prehistory, history]);
   const groups = roleDef.groups;
   const levers = LEVERS.filter((l) => groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
   // «Ваши полномочия» разбиты на вкладки по подгруппам, а не одним длинным списком:
@@ -4308,7 +4324,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
-    presPersonaId, presidentLast, slotIdx: activeSlot });
+    presPersonaId, presidentLast, slotIdx: activeSlot, prehistory });
   // история снимков для отката после поражения: три хода назад решение ещё можно
   // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
   // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
@@ -5273,7 +5289,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <div data-tour="news"><NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} /></div>
           <div data-tour="chart"><Suspense fallback={<ChartFallback />}>
-            <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+            <ChartPanel history={chartHistory} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           </Suspense></div>
           <Fold id="report" title="Квартальный отчёт" icon={Newspaper} summary={history[history.length - 1].label}>
           <div className="ems-panel p-14">

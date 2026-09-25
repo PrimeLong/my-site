@@ -250,3 +250,16 @@ describe('Своё дело: кредит, офлайн и рынок', () => {
     expect(exp.every((x) => Number.isFinite(x.edge))).toBe(true);
   });
 });
+
+describe('предыстория партии', () => {
+  it('три года ботами: история для графика, новости и полный срок до выборов', async () => {
+    const { makePrehistory } = await import('../autopilot.js');
+    const { makeInitialEconomy, quarterLabel } = await import('../engine.js');
+    const p = withSeededRandom(7, () => makePrehistory({}));
+    expect(p.prehistory.length).toBe(12);
+    expect(p.prehistory.every((h) => h.pre && Number.isFinite(h.inflation) && !/0 кв/.test(h.label))).toBe(true);
+    expect(p.news.length).toBeGreaterThan(5);
+    expect(p.economy.quartersToElection).toBe(makeInitialEconomy('sandbox').quartersToElection);
+    expect(quarterLabel(0)).toBe('IV кв. 2031');
+  });
+});

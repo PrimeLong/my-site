@@ -2753,3 +2753,25 @@ describe('общая просьба «снизить налоги»', () => {
     expect(REQUESTS.find((r) => r.id === 'tax_relief_business').retired).toBe(true);
   });
 });
+
+describe('«Только экономика» и пропуск шагов квартала', () => {
+  it('флаг партии держится и замораживает войну: ни нападений, ни указа о ней', () => {
+    let e = { ...makeInitialEconomy(), economyOnly: true, relations: { north: 50, west: 60, southwest: 3 }, deshtMobilized: 6, politicalCapital: 90 };
+    let cd = {};
+    for (let q = 1; q <= 30; q++) {
+      const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), presidentActions: ['war_start'] }, pendingImpulses: [],
+        eventCooldowns: cd, difficulty: 'hard', quarterIndex: q, stories: [] });
+      e = r.economy; cd = r.eventCooldowns;
+      expect(e.warQuartersLeft || 0).toBe(0);
+    }
+    expect(e.economyOnly).toBe(true);
+    expect(presActionAvailable(PRES_BY_ID.war_start, e, {})).toBe(false);
+  });
+
+  it('skip: ["war"] работает и без флага в состоянии', () => {
+    const e = { ...makeInitialEconomy(), relations: { north: 50, west: 60, southwest: 2 }, deshtMobilized: 6 };
+    const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), presidentActions: ['war_start'] }, pendingImpulses: [],
+      eventCooldowns: {}, difficulty: 'hard', quarterIndex: 1, stories: [] }, { skip: ['war'] });
+    expect(r.economy.warQuartersLeft || 0).toBe(0);
+  });
+});

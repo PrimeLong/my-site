@@ -22,7 +22,7 @@ export function makeCountry({ scenario = 'sandbox', difficulty = 'medium', cbPer
 
 /* Один квартал. Возвращает новое состояние страны и новости квартала (уже с
    решениями ботов), чтобы тайкун мог показать их в своей ленте. */
-export function advanceCountry(country) {
+export function advanceCountry(country, { noEvents = false } = {}) {
   const { economy, difficulty, quarterIndex } = country;
   let { cbPersona, mofPersona } = country;
   const cbAction0 = botCentralBank(economy, cbPersona, difficulty);
@@ -75,7 +75,7 @@ export function advanceCountry(country) {
     decisions: eff,
     pendingImpulses: extraImpulses.length ? [...country.pendingImpulses, ...extraImpulses] : country.pendingImpulses,
     eventCooldowns: country.eventCooldowns, difficulty, quarterIndex, stories: country.stories,
-    botAction: cbAction, botActions: [mofAction], publicMode: true,
+    botAction: cbAction, botActions: [mofAction], publicMode: true, noEvents,
   });
 
   // кадры: назначения президента и смена руководства после проигранных выборов
@@ -111,4 +111,38 @@ export function advanceCountry(country) {
     },
     news: result.newsEntries,
   };
+}
+
+/* Предыстория партии: три года до того, как игрок получает управление, страну ведут
+   боты. Первый квартал больше не играется вслепую: на графике уже видно, куда шла
+   экономика, в ленте — что происходило. Случайных потрясений в предыстории нет — это
+   фон, а не сюжет. Счётчик до выборов и политический капитал возвращаются к
+   стартовым: партия начинается с полного срока, как и раньше. */
+const PRE_KEYS = ['gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGrowth', 'consumptionGrowth', 'investmentGrowth', 'wageGrowth',
+  'inflation', 'coreInflation', 'inflationExpectations', 'cbCredibility', 'keyRate', 'lendingRate', 'realLendingRate', 'rStar', 'unemployment',
+  'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare', 'debtToGdp', 'budgetBalancePctGdp',
+  'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow', 'bankNPL', 'bankCapitalAdequacy', 'creditGap',
+  'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex', 'approval', 'wellbeing', 'regime', 'politicalRegime',
+  'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
+const preEntry = (e, q) => ({ ...Object.fromEntries(PRE_KEYS.filter((k) => e[k] !== undefined).map((k) => [k, e[k]])), q, label: quarterLabel(q), pre: true });
+export function makePrehistory({ quarters = 12, scenario = 'sandbox', difficulty = 'medium', cbPersona = 'pragmatic',
+  mofPersona = 'technocrat', presPersona = 'technocrat' } = {}) {
+  let country = { ...makeCountry({ scenario, difficulty, cbPersona, mofPersona, presPersona, president: true }), quarterIndex: 1 - quarters };
+  // в предыстории войн не бывает: это фон, а не сюжет
+  country = { ...country, economy: { ...country.economy, economyOnly: true } };
+  const start = country.economy;
+  const history = [preEntry(start, 1 - quarters - 1)];
+  let news = [];
+  for (let i = 0; i < quarters; i++) {
+    const res = advanceCountry(country, { noEvents: true });
+    country = res.country;
+    history.push(preEntry(country.economy, country.quarterIndex - 1));
+    news = [...res.news.map((n) => ({ ...n, pre: true })), ...news];
+  }
+  const e = country.economy;
+  const { economyOnly: _frozen, ...rest } = e;
+  const economy = { ...rest, quartersToElection: start.quartersToElection, politicalCapital: start.politicalCapital,
+    electionResult: null, lastElection: null, campaignActive: false };
+  return { economy, prehistory: history.slice(0, -1), news: news.slice(0, 24),
+    pendingImpulses: country.pendingImpulses, eventCooldowns: country.eventCooldowns, stories: country.stories };
 }

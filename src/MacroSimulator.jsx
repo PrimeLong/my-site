@@ -1450,6 +1450,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
   const [scenario, setScenario] = useState('sandbox');
   // обучение по экрану партии: у тех, кто ещё не играл ни одной ролью, включено само
   const [tour, setTour] = useState(() => loadRolesPlayed().length === 0);
+  // «Только экономика»: война заморожена — ни нападений, ни указов о ней, ни кнопок на карте
+  const [economyOnly, setEconomyOnly] = useState(false);
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -1771,6 +1773,19 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             </span>
           </label>
         )}
+        {role !== 'entrepreneur' && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px', marginBottom: 12, borderRadius: 10,
+            border: `1px solid ${economyOnly ? COLOR.gold : COLOR.border}`, background: economyOnly ? COLOR.goldDim : 'transparent', cursor: 'pointer' }}>
+            <input type="checkbox" checked={economyOnly} onChange={(e) => { Audio.play('tick'); setEconomyOnly(e.target.checked); }}
+              style={{ marginTop: 3, accentColor: COLOR.gold }} />
+            <span>
+              <span style={{ fontSize: 13, color: COLOR.text, fontWeight: 600 }}>Только экономика</span>
+              <span style={{ display: 'block', fontSize: 12, color: COLOR.muted, marginTop: 2, lineHeight: 1.45 }}>
+                Без войн: соседи не нападают, военных указов и кнопок нет. Выборы, общество, дипломатия и торговля — как обычно.
+              </span>
+            </span>
+          </label>
+        )}
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
           onClick={() => {
             if (!role) return;
@@ -1781,7 +1796,7 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             const presWanted = custom ? presPersona : 'random';
             // классика всегда начинается с открытой партии, даже если в
             // настраиваемом режиме до этого успели выбрать кризисный сценарий
-            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour,
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour, economyOnly,
               ...(role === 'entrepreneur' ? { sector } : {}),
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,

@@ -681,6 +681,8 @@ function DeclareWar({ id, economy, warPlan, onWarPlan }) {
   const a = PRES_BY_ID.war_start;
   const capital = Number.isFinite(e.politicalCapital) ? e.politicalCapital : 55;
   const planned = warPlan === id;
+  // «Только экономика»: войны в партии нет — кнопки тоже
+  if (e.economyOnly) return null;
   const can = warTargetAvailable(e, id) && a.requires(e);
   const why = (e.warQuartersLeft || 0) > 0 ? 'Страна уже воюет' : id === 'north' && !warTargetAvailable(e, id) ? 'У Норланда больше нечего взять' : capital < a.cost ? 'Не хватает политического капитала' : null;
   if (!onWarPlan && !planned) return null;

@@ -115,7 +115,8 @@ export const romanQ = (n) => ['I', 'II', 'III', 'IV'][n - 1] || String(n);
 
 export const quarterLabel = (qIndex) => {
   const year = CONFIG.startYear + Math.floor((qIndex - 1) / 4);
-  const q = ((qIndex - 1) % 4) + 1;
+  // кварталы до старта (предыстория партии) — с честным модулем, без «0 кв.»
+  const q = ((((qIndex - 1) % 4) + 4) % 4) + 1;
   return `${romanQ(q)} кв. ${year}`;
 };
 
