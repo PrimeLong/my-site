@@ -81,7 +81,7 @@ const CHART_GROUPS = [
   ] },
   { id: 'inequality', label: 'Неравенство', series: [
     { id: 'gini', label: 'Джини', axis: 'left', color: COLOR.gold, fmt: 'idx3' },
-    { id: 'povertyRate', label: 'Бедность', axis: 'right', color: COLOR.rust, fmt: 'pct' },
+    { id: 'povertyRate', label: 'Бедность (<60% медианы)', axis: 'right', color: COLOR.rust, fmt: 'pct' },
   ] },
   { id: 'scores', label: 'Оценки', series: [
     { id: 'scoreStability', label: 'Стабильность', axis: 'left', color: COLOR.gold, fmt: 'idx' },

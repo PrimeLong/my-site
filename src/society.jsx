@@ -205,7 +205,7 @@ function IncomePanel({ economy }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
         <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Доходы по слоям</span>
         <span style={{ fontSize: 12, color: COLOR.muted }}>неравенство (Джини) <b className="ems-mono" style={{ color: giniTone }}>{d.gini.toFixed(3).replace('.', ',')}</b></span>
-        <span style={{ fontSize: 12, color: COLOR.muted }}>за чертой бедности <b className="ems-mono" style={{ color: COLOR.text }}>{fmt1(d.povertyRate)}%</b></span>
+        <span style={{ fontSize: 12, color: COLOR.muted }}>бедность (ниже 60% медианы) <b className="ems-mono" style={{ color: COLOR.text }}>{fmt1(d.povertyRate)}%</b></span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 10 }}>
         Пять групп по 20% населения. Инфляция у бедных выше — в их корзине больше еды и коммуналки. НДС ложится на тех, кто тратит весь доход,

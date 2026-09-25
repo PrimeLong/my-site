@@ -3774,7 +3774,7 @@ export const INDICATOR_TABS = [
     // распределение доходов (см. model/distribution.js и «Общество» → «Доходы по слоям»)
     { key: 'gini', label: 'Неравенство (Джини)', fmt: (v) => v.toFixed(3), invert: true,
       hint: 'От 0 (все получают поровну) до 1 (всё у одного). Растёт, когда доходы низа отстают: инфляция в еде, безработица, урезанные трансферты.' },
-    { key: 'povertyRate', label: 'За чертой бедности', fmt: pctFmt, invert: true },
+    { key: 'povertyRate', label: 'Бедность (ниже 60% медианы)', fmt: pctFmt, invert: true },
   ] },
   { id: 'external', label: 'Внешний сектор', icon: Globe2, rows: [
     { key: 'exports', label: 'Экспорт', fmt: fmtMoney },

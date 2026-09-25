@@ -38,9 +38,42 @@ export function giniOf(shares) {
   return clamp(1 - area, 0, 1);
 }
 
-export function initialDistribution() {
-  const quintiles = QUINTILES.map((q) => ({ id: q.id, income: q.share0 * 100, real: 100, realYoY: 0, inflation: 0, taxBurden: 0 }));
-  return { quintiles, gini: giniOf(QUINTILES.map((q) => q.share0)), povertyRate: 13 };
+/* ОТНОСИТЕЛЬНАЯ БЕДНОСТЬ, как в ЕС: доля населения с доходом ниже 60% медианы.
+   Раньше бедность считалась от «реальных доходов низа» без якоря: в спокойной партии
+   сползала к нижней границе, в кризисе росла тридцать лет. Относительная мера
+   стоит на месте, когда все богатеют одинаково, и двигается, только когда низ
+   отстаёт от середины или догоняет её.
+   По пяти средним доходам квинтилей строим кривую квантилей: границы между
+   соседними квинтилями — среднее геометрическое их средних, хвосты — с запасом;
+   между точками — линейно. Медиана — точка 50%, порог — 60% от неё. */
+export function relativePoverty(incomes) {
+  const m = incomes.map((v) => Math.max(1e-6, v));
+  const pts = [[0, m[0] * 0.35], [0.2, Math.sqrt(m[0] * m[1])], [0.4, Math.sqrt(m[1] * m[2])],
+    [0.6, Math.sqrt(m[2] * m[3])], [0.8, Math.sqrt(m[3] * m[4])], [1, m[4] * 2]];
+  const median = (pts[2][1] + pts[3][1]) / 2;
+  const line = 0.6 * median;
+  for (let i = 1; i < pts.length; i++) {
+    const [p0, v0] = pts[i - 1]; const [p1, v1] = pts[i];
+    if (line <= v1) return clamp((p0 + (p1 - p0) * (line - v0) / Math.max(1e-9, v1 - v0)) * 100, 0, 100);
+  }
+  return 100;
+}
+
+// налоги, которые платит квинтиль, в % его дохода
+function taxBurdenOf(q, x) {
+  return (x.vatRate / (100 + x.vatRate)) * q.cons * 100
+    + x.incomeTaxRate * q.taxable * q.src.wage
+    + x.capitalTaxRate * q.src.capital;
+}
+
+/* taxes — стартовые ставки (vatRate, incomeTaxRate, capitalTaxRate): Джини и бедность
+   считаются по располагаемым доходам, как и в каждом следующем квартале — иначе на
+   первом ходу был бы скачок от «до налогов» к «после». */
+export function initialDistribution(taxes) {
+  const quintiles = QUINTILES.map((q) => ({ id: q.id, income: q.share0 * 100, real: 100, realYoY: 0, inflation: 0,
+    taxBurden: taxes ? taxBurdenOf(q, taxes) : 0 }));
+  const disp = quintiles.map((q) => q.income * (1 - q.taxBurden / 100));
+  return { quintiles, gini: giniOf(disp), povertyRate: relativePoverty(disp) };
 }
 
 /* Один квартал. x — уже посчитанные величины квартала:
@@ -61,10 +94,7 @@ export function distributionStep(prev, x) {
     const nominal = q.src.wage * wage + q.src.transfer * transfer + q.src.capital * capital + q.src.informal * informal;
     // личная инфляция: корзина с большей долей еды и коммуналки чувствует разрыв «общая − базовая» сильнее
     const personal = x.coreInflation + foodGap * (q.food / AVG_FOOD);
-    // налоги, которые платит квинтиль, в % его дохода
-    const tax = (x.vatRate / (100 + x.vatRate)) * q.cons * 100
-      + x.incomeTaxRate * q.taxable * q.src.wage
-      + x.capitalTaxRate * q.src.capital;
+    const tax = taxBurdenOf(q, x);
     const taxChange = old.taxBurden ? tax - old.taxBurden : 0;
     const income = old.income * (1 + (nominal * k - taxChange) / 100);
     const real = old.real * (1 + ((nominal - personal) * k - taxChange) / 100);
@@ -78,9 +108,8 @@ export function distributionStep(prev, x) {
   // располагаемые доли: после налогов
   const disp = quintiles.map((q) => q.income * (1 - q.taxBurden / 100));
   const gini = giniOf(disp);
-  // бедность: доля населения ниже порога — растёт, когда реальные доходы низа падают
-  const lowReal = (quintiles[0].real + quintiles[1].real * 0.5) / 1.5;
-  const povertyRate = clamp(13 + (100 - lowReal) * 0.45 + (gini - 0.33) * 60, 2, 60);
+  // бедность — относительная: ниже 60% медианного располагаемого дохода
+  const povertyRate = relativePoverty(disp);
   return { quintiles, gini, povertyRate };
 }
 

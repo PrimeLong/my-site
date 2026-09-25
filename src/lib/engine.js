@@ -1807,10 +1807,10 @@ function simulateQuarter(input, { skip = [] } = {}) {
   const sanctionsQuartersLeft = pres.patch.sanctionsStart || DP.sanctionsWest ? 10 : Math.max(0, (s.sanctionsQuartersLeft || 0) - 1);
   /* Крупный бизнес (model/firms.js): те же компании, что в «Своём деле». Их решения —
      сокращения и расширения — идут импульсами в следующий квартал и напряжением в их области. */
-  const FIRMS_Q = firmsStep(s.firms, { gdpGrowth, lendingRate, profitTaxRate: decisions.profitTaxRate, fxDeprAnnual,
+  const FIRMS_Q = firmsStep(s.firms, { gdpGrowth, rateGap, profitTaxRate: decisions.profitTaxRate, fxDeprAnnual,
     exportsGrowth, sanctions: sanctionsQuartersLeft > 0, atWar: (s.warQuartersLeft || 0) > 0 });
-  if (FIRMS_Q.unemploymentPush) nextQueue.push(makeImpulse('unemployment', FIRMS_Q.unemploymentPush, 'Крупные компании сокращают людей', 'default', difficulty));
-  if (FIRMS_Q.investmentPush) nextQueue.push(makeImpulse('investment', FIRMS_Q.investmentPush, 'Крупные компании расширяются', 'default', difficulty));
+  if (FIRMS_Q.investmentPush) nextQueue.push(makeImpulse('investment', FIRMS_Q.investmentPush,
+    FIRMS_Q.investmentPush > 0 ? 'Крупные компании расширяются' : 'Крупные компании откладывают инвестиции', 'default', difficulty));
   FIRMS_Q.events.forEach(({ firm, kind }) => {
     const where = firm.regions.map((r) => (regionById(r) || {}).short || r).join(', ');
     if (kind === 'cutting') news.push(mkNews('business', `${firm.name.toUpperCase()}: СОКРАЩЕНИЯ`, `${firm.name} (${firm.sector.toLowerCase()}) сокращает людей: дорогой кредит, налоги или слабый спрос. Неспокойно в областях: ${where}.`, { priority: 6 }));
@@ -2273,7 +2273,7 @@ function makeInitialEconomy(scenarioId) {
   const I = { ...CONFIG.initial, ...(scenario && scenario.overrides) };
   const potentialGdp = potentialFrom(I.capitalStock, I.laborForce, I.nairu, I.humanCapitalIndex, I.productivity, I.infrastructureIndex, TFP_SCALE, 0);
   const nominalGdp = I.gdp * I.priceLevel / 100;
-  const dist0 = initialDistribution();
+  const dist0 = initialDistribution({ vatRate: I.vatRate, incomeTaxRate: I.incomeTaxRate, capitalTaxRate: I.capitalTaxRate });
   const base = {
     ...I,
     distribution: dist0, gini: dist0.gini, povertyRate: dist0.povertyRate, firms: initialFirms(),
