@@ -189,6 +189,16 @@ export function currencyUnionRate(state) {
   return u.ratePath[clamp(u.q || 0, 0, u.ratePath.length - 1)];
 }
 
+/* ПРАВИЛО ТЕЙЛОРА (1993) в учебном виде: i = r* + π + 0,5·(π − π*) + 0,5·(разрыв выпуска).
+   Не то, что делает бот ЦБ (у него ожидания, сглаживание и характер), а ориентир из
+   учебника: где «должна» стоять ставка при нынешних инфляции и разрыве выпуска. */
+export function taylorRate(e) {
+  if (!e) return null;
+  const target = Number.isFinite(e.inflationTarget) ? e.inflationTarget : CONFIG.target.inflation;
+  const v = (e.rStar ?? 2) + e.inflation + 0.5 * (e.inflation - target) + 0.5 * (e.outputGap || 0);
+  return Number.isFinite(v) ? Math.max(0, v) : null;
+}
+
 function defaultDecisions(state, prevDecisions) {
   return {
     keyRate: state.keyRate, reserveReq: state.reserveReq, capitalRequirement: state.capitalRequirement,
@@ -2230,6 +2240,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
     botHeadline2: (botActions && botActions[0]) ? botActions[0].headline : null,
     botDemand2: (botActions && botActions[0]) ? botActions[0].demand : null,
   };
+  newEconomy.taylorRate = taylorRate(newEconomy);
 
   const byHeadline = (h) => log.filter((c) => c.headline === h).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)).slice(0, 6);
   // разрыв выпуска — это фактический рост против потенциального, а не отдельная
@@ -2341,6 +2352,7 @@ function makeInitialEconomy(scenarioId) {
   base.bondShortIndex = 1000; base.linkerIndex = 1000; base.moneyMarketIndex = 1000; base.worldEquityIndex = 1000;
   base.reforms = {}; base.politicalCapitalGain = 0; base.decreeRule = false;
   Object.assign(base, computeScores({ ...base, capitalRequirement: base.capitalRequirement }));
+  base.taylorRate = taylorRate(base);
   return base;
 }
 

@@ -12,7 +12,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
-import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
+import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter, taylorRate } from './lib/engine.js';
 import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
 import { YOY_KEYS, yoyFromAnnualized } from './lib/model/measures.js';
 
@@ -39,9 +39,11 @@ const CHART_GROUPS = [
   ] },
   { id: 'money', label: 'Ставки', series: [
     { id: 'keyRate', label: 'Ключевая ставка', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'lendingRate', label: 'Ставка по кредитам', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'realLendingRate', label: 'Реальная ставка', axis: 'left', color: COLOR.blue, fmt: 'pct' },
+    // правило Тейлора — ориентир из учебника, пунктиром: где «должна» стоять ставка
+    { id: 'taylorRate', label: 'Правило Тейлора', axis: 'left', color: COLOR.goldSoft, fmt: 'pct', dash: '6 4' },
+    { id: 'realPolicyRate', label: 'Реальная ключевая', axis: 'left', color: COLOR.blue, fmt: 'pct' },
     { id: 'rStar', label: 'Нейтральная ставка r*', axis: 'left', color: COLOR.teal, fmt: 'pct' },
+    { id: 'lendingRate', label: 'Ставка по кредитам', axis: 'left', color: COLOR.rust, fmt: 'pct' },
   ] },
   { id: 'labor', label: 'Труд', series: [
     { id: 'unemployment', label: 'Безработица', axis: 'left', color: COLOR.rust, fmt: 'pct' },
@@ -181,7 +183,9 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     const yoy = shadow ? Object.fromEntries(YOY_KEYS.filter((k) => Array.isArray(shadow[k]))
       .map((k) => [k, yoyFromAnnualized(history.map((h) => h[k])).slice(-p.q)])) : {};
     const hist = history.slice(-p.q).map((h, i) => {
-      const row = { ...h, deficitPctGdp: -h.budgetBalancePctGdp, interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0 };
+      const row = { ...h, deficitPctGdp: -h.budgetBalancePctGdp, interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
+        taylorRate: Number.isFinite(h.taylorRate) ? h.taylorRate : taylorRate(h),
+        realPolicyRate: Number.isFinite(h.realPolicyRate) ? h.realPolicyRate : h.keyRate - h.inflationExpectations };
       Object.keys(yoy).forEach((k) => { if (Number.isFinite(yoy[k][i])) row[k] = yoy[k][i]; });
       if (shadow && Number.isFinite(h.q) && h.q >= 0) {
         Object.keys(shadow).forEach((k) => { if (Array.isArray(shadow[k]) && Number.isFinite(shadow[k][h.q])) row[`${k}__hist`] = shadow[k][h.q]; });
@@ -379,7 +383,8 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
                 stroke={s.color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
             ))}
             {visible.map((s) => (
-              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={shadow && YOY_KEYS.includes(s.id) && Array.isArray(shadow[s.id]) ? `${s.label}, г/г` : s.label} stroke={s.color} strokeWidth={2} dot={false} />
+              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={shadow && YOY_KEYS.includes(s.id) && Array.isArray(shadow[s.id]) ? `${s.label}, г/г` : s.label} stroke={s.color}
+                strokeWidth={s.dash ? 1.6 : 2} strokeDasharray={s.dash} dot={false} />
             ))}
             {/* историческая тень: как было на самом деле — пунктир тем же цветом */}
             {shadow && visible.filter((s) => Array.isArray(shadow[s.id])).map((s) => (

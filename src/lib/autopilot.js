@@ -130,6 +130,7 @@ const PRE_KEYS = ['gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGro
   'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare', 'debtToGdp', 'budgetBalancePctGdp',
   'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow', 'bankNPL', 'bankCapitalAdequacy', 'creditGap',
   'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex', 'approval', 'wellbeing', 'regime', 'politicalRegime', 'gini', 'povertyRate',
+  'inflationTarget', 'realPolicyRate', 'taylorRate',
   'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
 const PRE_RESET = ['projects', 'projectsBuilt', 'regionMods', 'regionShock', 'regionEvent', 'groupDemand', 'lastGroupResolution',
   'groupMemory', 'reforms', 'neighborEvent', 'diploTreaties', 'diploSanctions', 'diploCooldown', 'sanctionsQuartersLeft',

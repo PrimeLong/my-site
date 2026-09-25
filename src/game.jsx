@@ -19,7 +19,7 @@ import {
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
   botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
-  directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever, currencyUnionRate,
+  directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever, currencyUnionRate, taylorRate,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
 import {
@@ -1862,7 +1862,8 @@ export function logEntry(role, q, decisions, presActions) {
 const AUTOSAVE_HISTORY_FULL = 40;
 const AUTOSAVE_NEWS = 40;
 const HISTORY_LITE_KEYS = ['q', 'label', 'gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGrowth', 'consumptionGrowth', 'investmentGrowth',
-  'wageGrowth', 'inflation', 'coreInflation', 'inflationExpectations', 'cbCredibility', 'keyRate', 'lendingRate', 'realLendingRate', 'rStar',
+  'wageGrowth', 'inflation', 'coreInflation', 'inflationExpectations', 'inflationTarget', 'cbCredibility', 'keyRate', 'lendingRate', 'realLendingRate', 'rStar',
+  'realPolicyRate', 'taylorRate',
   'unemployment', 'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare',
   'debtToGdp', 'budgetBalancePctGdp', 'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow',
   'bankNPL', 'bankCapitalAdequacy', 'creditGap', 'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex',
@@ -3724,6 +3725,10 @@ export const INDICATOR_TABS = [
     { key: 'lendingRate', label: 'Ставка по кредитам', fmt: pctFmt },
     { key: 'depositRate', label: 'Ставка по депозитам', fmt: pctFmt },
     { key: 'realLendingRate', label: 'Реальная ставка по кредитам', fmt: pctFmt },
+    { key: 'realPolicyRate', label: 'Реальная ключевая ставка', fmt: pctFmt,
+      hint: 'Ключевая ставка минус ожидаемая инфляция. Именно она, а не номинальная, решает, дорог ли кредит: 15% при ожиданиях 12% мягче, чем 8% при ожиданиях 2%.' },
+    { key: 'taylorRate', label: 'Ставка по правилу Тейлора', fmt: pctFmt,
+      hint: 'Ориентир из учебника: r* + инфляция + 0,5·(инфляция − цель) + 0,5·(разрыв выпуска). Если ключевая заметно ниже — политика мягче правила, выше — жёстче.' },
     { key: 'rStar', label: 'Нейтральная реальная ставка r*', fmt: pctFmt,
       hint: 'Условный уровень реальной ставки, при котором экономика растёт ровно на потенциал — не разгоняясь и не тормозя. Ориентир для сравнения, а не рычаг.' },
     { key: 'rateGap', label: 'Жёсткость условий', fmt: (v) => `${fmtSigned1(v)} п.п.`,
@@ -4082,6 +4087,43 @@ export function PhoneKpiBar({ economy, kpiDelta }) {
 
 /* Обещание о пути ставки: объявляется на пресс-конференции ЦБ, рынок закладывает его
    сразу, нарушение бьёт по доверию (см. model/guidance.js). */
+/* Компас ставки: реальная ставка после решения игрока против нейтральной r* и против
+   правила Тейлора. Номинальная ставка сама по себе ничего не говорит — 15% при ожиданиях
+   12% мягче, чем 8% при ожиданиях 2%. В валютном союзе — та же картина для ставки
+   внешнего ЦБ: видно, насколько она не подходит именно этой стране. */
+export function RateCompass({ economy, keyRate }) {
+  const exp = economy.inflationExpectations;
+  const real = keyRate - exp;
+  const realNow = economy.keyRate - exp;
+  const rStar = economy.rStar;
+  const taylor = taylorRate(economy);
+  const vsNeutral = real - rStar;
+  const vsTaylor = Number.isFinite(taylor) ? keyRate - taylor : null;
+  const union = !!economy.currencyUnion;
+  const pp = (v) => `${fmt1(Math.abs(v))} п.п.`;
+  const row = (label, value, note, color) => (
+    <div className="row-between" style={{ gap: 10, fontSize: 12, padding: '3px 0' }}>
+      <span className="t-muted">{label}</span>
+      <span style={{ textAlign: 'right' }}><b className="ems-mono" style={{ color: color || COLOR.text }}>{value}</b>
+        {note && <span className="t-muted"> · {note}</span>}</span>
+    </div>
+  );
+  return (
+    <div className="ems-panel" data-testid="rate-compass" style={{ padding: '10px 12px', margin: '4px 0 10px' }}>
+      <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 4 }}>Компас ставки</div>
+      {row(union ? 'Реальная ставка (ЕЦБ − ожидания)' : 'Реальная ставка после решения', `${fmtSigned1(real)}%`,
+        Math.abs(real - realNow) > 0.05 ? `сейчас ${fmtSigned1(realNow)}%` : `ожидания ${fmt1(exp)}%`)}
+      {row('Нейтральная r*', `${fmt1(rStar)}%`, Math.abs(vsNeutral) < 0.25 ? 'политика нейтральна'
+        : `${vsNeutral > 0 ? 'жёстче' : 'мягче'} нейтральной на ${pp(vsNeutral)}`, Math.abs(vsNeutral) < 0.25 ? COLOR.text : vsNeutral > 0 ? COLOR.blue : COLOR.rust)}
+      {Number.isFinite(taylor) && row('Правило Тейлора', `${fmt1(taylor)}%`, Math.abs(vsTaylor) < 0.25 ? 'ставка по правилу'
+        : `${union ? 'ставка ЕЦБ' : 'ваша ставка'} ${vsTaylor > 0 ? 'выше' : 'ниже'} на ${pp(vsTaylor)}`)}
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginTop: 4 }}>
+        Тейлор: r* + инфляция + 0.5·(инфляция − цель) + 0.5·(разрыв выпуска) = {fmt1(rStar)} + {fmt1(economy.inflation)} + 0.5·({fmtSigned1(economy.inflation - (economy.inflationTarget ?? 4))}) + 0.5·({fmtSigned1(economy.outputGap || 0)}). Ориентир, а не закон: в игре ЦБ может отступать от него — на графике «Ставки» видно, насколько.
+      </div>
+    </div>
+  );
+}
+
 export function GuidancePicker({ economy, value, onChange, keyRate }) {
   const cur = economy.guidance && economy.guidance.left > 0 ? economy.guidance : null;
   const pick = value || null;
@@ -5229,6 +5271,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
 
             {levTab === 'monetary-core' && (
               <div>
+                <RateCompass economy={economy} keyRate={economy.currencyUnion ? currencyUnionRate(economy) : decisions.keyRate} />
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}

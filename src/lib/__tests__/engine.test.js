@@ -2836,3 +2836,19 @@ describe('валютный союз (Греция 2010)', () => {
     });
   });
 });
+
+describe('правило Тейлора и реальная ставка', () => {
+  it('учебная формула: r* + π + 0,5·(π − π*) + 0,5·разрыв', async () => {
+    const { taylorRate } = await import('../engine.js');
+    expect(taylorRate({ rStar: 2, inflation: 4, inflationTarget: 4, outputGap: 0 })).toBeCloseTo(6, 9);
+    expect(taylorRate({ rStar: 2, inflation: 8, inflationTarget: 4, outputGap: -2 })).toBeCloseTo(2 + 8 + 2 - 1, 9);
+    // ставка не уходит ниже нуля
+    expect(taylorRate({ rStar: 0, inflation: -3, inflationTarget: 4, outputGap: -6 })).toBe(0);
+  });
+  it('в каждом квартале экономика несёт ставку по Тейлору и реальную ключевую', () => {
+    const e = runQuarters(3);
+    expect(Number.isFinite(e.taylorRate)).toBe(true);
+    expect(Number.isFinite(e.realPolicyRate)).toBe(true);
+    expect(Number.isFinite(makeInitialEconomy().taylorRate)).toBe(true);
+  });
+});
