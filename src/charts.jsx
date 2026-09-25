@@ -165,7 +165,10 @@ function CompareBadge({ compare, onReset }) {
   );
 }
 
-export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod }) {
+/* shadow — «историческая тень» сценария (SCENARIOS[].shadow): как шёл реальный
+   эпизод поквартально. Рисуется пунктиром поверх ваших линий — ровно до текущего
+   квартала, без подсказок о будущем. */
+export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod, shadow = null }) {
   const group = CHART_GROUPS.find((g) => g.id === chartGroup);
   const [forecast, setForecast] = useState(false);
   const panelCls = 'ems-panel ems-visual';
@@ -173,11 +176,13 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   React.useEffect(() => { setDragRange(null); }, [chartGroup, period, forecast, setDragRange]);
   const data = useMemo(() => {
     const p = PERIODS.find((x) => x.id === period);
-    const hist = history.slice(-p.q).map((h) => ({
-      ...h,
-      deficitPctGdp: -h.budgetBalancePctGdp,
-      interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
-    }));
+    const hist = history.slice(-p.q).map((h) => {
+      const row = { ...h, deficitPctGdp: -h.budgetBalancePctGdp, interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0 };
+      if (shadow && Number.isFinite(h.q) && h.q >= 0) {
+        Object.keys(shadow).forEach((k) => { if (Array.isArray(shadow[k]) && Number.isFinite(shadow[k][h.q])) row[`${k}__hist`] = shadow[k][h.q]; });
+      }
+      return row;
+    });
     if (!forecast || !hist.length) return hist;
     const last = hist[hist.length - 1];
     const vis = group.series.filter((x) => !hiddenSeries.includes(x.id));
@@ -221,7 +226,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     vis.forEach((sx) => { joint[`${sx.id}__f`] = last[sx.id]; });
     out[hist.length - 1] = joint;
     return out;
-  }, [history, period, forecast, chartGroup, hiddenSeries]);
+  }, [history, period, forecast, chartGroup, hiddenSeries, shadow]);
 
   // граница факта и прогноза: последняя точка реальной истории
   const nowLabel = useMemo(() => {
@@ -371,11 +376,21 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
             {visible.map((s) => (
               <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={s.label} stroke={s.color} strokeWidth={2} dot={false} />
             ))}
+            {/* историческая тень: как было на самом деле — пунктир тем же цветом */}
+            {shadow && visible.filter((s) => Array.isArray(shadow[s.id])).map((s) => (
+              <Line key={`${s.id}__hist`} yAxisId={s.axis} type="monotone" dataKey={`${s.id}__hist`} name={`${s.label}: ${shadow.name}`}
+                stroke={s.color} strokeWidth={1.4} strokeDasharray="2 4" strokeOpacity={0.8} dot={{ r: 2 }} connectNulls isAnimationActive={false} />
+            ))}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
       )}
       <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
+      {shadow && (
+        <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 6, lineHeight: 1.5 }}>
+          Пунктир с точками — {shadow.name}: как шёл реальный эпизод с {shadow.from}, квартал к кварталу. Ваши линии — ваша политика.
+        </div>
+      )}
       <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
           ? <>Пунктир справа от отметки «сейчас» продолжает каждую включённую линию туда, куда она идёт <b style={{ color: COLOR.text }}>сама собой</b>,

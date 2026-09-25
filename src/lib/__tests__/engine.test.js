@@ -2794,3 +2794,16 @@ describe('обещание ЦБ о пути ставки', () => {
     expect(broke.cbCredibility).toBeLessThan(kept.cbCredibility - 5);
   });
 });
+
+describe('историческая тень', () => {
+  it('у исторических сценариев есть реальные ряды по кварталам и они не попадают в вызов дня', () => {
+    const hist = SCENARIOS.filter((sc) => sc.historical);
+    expect(hist.map((sc) => sc.id).sort()).toEqual(['greece2010', 'russia2014', 'turkey2021', 'volcker']);
+    hist.forEach((sc) => {
+      expect(sc.shadow.name).toBeTruthy();
+      const series = Object.entries(sc.shadow).filter(([, v]) => Array.isArray(v));
+      expect(series.length).toBeGreaterThanOrEqual(3);
+      series.forEach(([, v]) => { expect(v.length).toBeGreaterThanOrEqual(8); expect(v.every(Number.isFinite)).toBe(true); });
+    });
+  });
+});

@@ -5330,7 +5330,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
           <div data-tour="news"><NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} /></div>
           <div data-tour="chart"><Suspense fallback={<ChartFallback />}>
-            <ChartPanel history={chartHistory} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
+            <ChartPanel history={chartHistory} shadow={(SCENARIOS.find((x) => x.id === setup.scenario) || {}).shadow || null} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
           </Suspense></div>
           <Fold id="report" title="Квартальный отчёт" icon={Newspaper} summary={history[history.length - 1].label}>
           <div className="ems-panel p-14">
