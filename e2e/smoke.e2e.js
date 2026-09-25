@@ -24,6 +24,7 @@ async function expectNoSidewaysScroll(page) {
 async function startSoloGame(page, role = 'Глава Центрального банка') {
   await page.getByText('Партия у руля страны', { exact: true }).click();
   await page.getByText(role, { exact: true }).click();
+  await page.getByRole('checkbox', { name: /Обучение по экрану/ }).uncheck();
   await page.getByRole('button', { name: 'Принять полномочия' }).click();
   await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
 }
@@ -498,6 +499,7 @@ test('война на карте: президент объявляет войн
   await page.goto('/', { waitUntil: 'networkidle' });
   await page.getByText('Партия у руля страны', { exact: true }).click();
   await page.getByText('Президент', { exact: true }).click();
+  await page.getByRole('checkbox', { name: /Обучение по экрану/ }).uncheck();
   await page.getByRole('button', { name: 'Принять полномочия' }).click();
   await page.getByRole('button', { name: 'Карта', exact: true }).click();
   await page.getByRole('button', { name: /^Дешт/ }).first().click();
@@ -510,5 +512,28 @@ test('война на карте: президент объявляет войн
   await page.getByRole('button', { name: 'Карта', exact: true }).click();
   await expect(page.getByText(/Наступление: Дешт/).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /^Приграничные степи: продвижение/ })).toBeAttached();
+  expect(errors).toEqual([]);
+});
+
+test('обучение по экрану: включено в первой партии, проходит все шаги и повторяется из меню', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Партия у руля страны', { exact: true }).click();
+  await page.getByText('Глава Центрального банка', { exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: /Обучение по экрану/ })).toBeChecked();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  const tour = page.getByRole('dialog', { name: /Обучение/ });
+  await expect(tour).toBeVisible();
+  await expect(tour.getByText('Первая партия')).toBeVisible();
+  for (let i = 0; i < 20; i++) {
+    const done = tour.getByRole('button', { name: 'Понятно, играть' });
+    if (await done.isVisible().catch(() => false)) { await done.click(); break; }
+    await tour.getByRole('button', { name: 'Далее' }).click();
+  }
+  await expect(tour).toBeHidden();
+  await page.getByRole('button', { name: 'Ещё действия' }).click();
+  await page.getByText('Обучение по экрану').click();
+  await expect(page.getByRole('dialog', { name: /Обучение/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: /Обучение/ })).toBeHidden();
   expect(errors).toEqual([]);
 });

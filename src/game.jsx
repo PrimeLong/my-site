@@ -5,7 +5,7 @@ import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight, X, Check,
   AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Save, Copy, Star, Flag, Megaphone, Sliders,
-  Dices, Trophy, Share2, Download, Crown, Gavel, Hammer, BookOpen, Map as MapIcon,
+  Dices, Trophy, Share2, Download, Crown, Gavel, Hammer, BookOpen, Map as MapIcon, Plus, GraduationCap,
 } from 'lucide-react';
 import {
   ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, CB_PERSONAS, MOF_PERSONAS, REQUESTS,
@@ -178,7 +178,7 @@ export function Fold({ id, title, icon: Icon, summary, defaultOpen = true, child
   if (!open) {
     return (
       <button className="ems-fold" onClick={toggle} aria-expanded={false} aria-label={`Развернуть: ${title}`}>
-        {Icon && <Icon size={14} color={COLOR.goldSoft} style={{ flexShrink: 0 }} />}
+        {Icon && <Icon size={14} color={COLOR.goldSoft} className="shrink-0" />}
         <span className="ems-serif" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>{title}</span>
         {summary && <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{summary}</span>}
         <ChevronDown size={14} color={COLOR.faint} style={{ flexShrink: 0, marginLeft: summary ? 0 : 'auto' }} />
@@ -186,7 +186,7 @@ export function Fold({ id, title, icon: Icon, summary, defaultOpen = true, child
     );
   }
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="rel">
       {children}
       <button className="ems-fold-close" onClick={toggle} aria-expanded aria-label={`Свернуть: ${title}`}>
         <ChevronUp size={11} />свернуть
@@ -247,7 +247,7 @@ export function CabinetZone({ children, hidden }) {
       <div className="ems-hero-eyebrow" style={{ marginBottom: SPACE[3], display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ width: 5, height: 5, borderRadius: '50%', background: COLOR.gold, display: 'inline-block' }} />Кабинет
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
+      <div className="col-12">{children}</div>
     </div>
   );
 }
@@ -271,6 +271,8 @@ export function StateZone({ children, label, hidden }) {
 
 /* Карта страны вынесена в src/countrymap.jsx и грузится лениво: её открывают
    вкладкой, а геометрия округов и береговой линии первому экрану не нужна. */
+// обучение по экрану — своим чанком: нужно один раз, в первой партии
+const GameTour = React.lazy(() => import('./tour.jsx').then((m) => ({ default: m.GameTour })));
 export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) => ({ default: m.CountryMap })));
 
 // экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
@@ -288,10 +290,10 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 13 }}>{lever.label}</span>
         {lever.type === 'level' && (
-          <span className="ems-mono" style={{ fontSize: 12, color: COLOR.muted }}>{currentDisplay.toFixed(2)}{lever.suffix}</span>
+          <span className="ems-mono fs-12 t-muted">{currentDisplay.toFixed(2)}{lever.suffix}</span>
         )}
         {lever.type === 'flow' && !lever.persistent && (
-          <span className="ems-mono" style={{ fontSize: 12, color: COLOR.muted }}>тек. 0{lever.suffix}</span>
+          <span className="ems-mono fs-12 t-muted">тек. 0{lever.suffix}</span>
         )}
       </div>
       {lever.hint && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 1 }}>{lever.hint}</div>}
@@ -323,12 +325,12 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
         <div className="ems-fade-in" style={{ marginTop: 8, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, padding: '8px 9px' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginBottom: 6 }}>
             {preview.items.map((it, i) => (
-              <span key={i} style={{ fontSize: 12 }}><span style={{ color: COLOR.muted }}>{it.label}:</span> <span className="ems-mono">{it.text}</span></span>
+              <span key={i} className="fs-12"><span className="t-muted">{it.label}:</span> <span className="ems-mono">{it.text}</span></span>
             ))}
           </div>
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
             <button className="ems-btn" style={{ padding: '3px 8px', fontSize: 12 }} onClick={() => setOpen((o) => !o)}>
-              {open ? 'Скрыть детали' : 'Плюсы и минусы'} {open ? <ChevronUp size={11} style={{ verticalAlign: -1 }} /> : <ChevronDown size={11} style={{ verticalAlign: -1 }} />}
+              {open ? 'Скрыть детали' : 'Плюсы и минусы'} {open ? <ChevronUp size={11} className="va-1" /> : <ChevronDown size={11} className="va-1" />}
             </button>
             {onIRF && (
               <button className="ems-btn" style={{ padding: '3px 8px', fontSize: 12, borderColor: COLOR.blue, color: COLOR.blue }}
@@ -411,7 +413,7 @@ export function HeaderOverflowMenu({ items }) {
   const DD_WIDTH = 220;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="rel">
       <button ref={btnRef} className="ems-btn ghost" style={{ padding: '7px 10px', fontSize: 16, lineHeight: 1 }}
         title="Ещё" aria-label="Ещё действия" onClick={() => { Audio.play('click'); toggle(); }}>⋯</button>
       {open && (
@@ -470,9 +472,9 @@ function NewsItem({ item, showQuarter }) {
   return (
     <div style={{ borderLeft: `2px solid ${c.color}`, paddingLeft: 10, paddingBottom: 2 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12 }}>{c.icon}</span>
+        <span className="fs-12">{c.icon}</span>
         <span style={{ fontSize: 12, color: c.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{c.short}</span>
-        {showQuarter && item.qLabel && <span className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{item.qLabel}</span>}
+        {showQuarter && item.qLabel && <span className="ems-mono fs-12 t-faint">{item.qLabel}</span>}
         {item.storyTitle && (
           <span style={{ fontSize: 12, color: COLOR.faint, border: `1px solid ${COLOR.border}`, borderRadius: 2, padding: '0 4px' }}>
             сюжет «{item.storyTitle}» · {item.step}/{item.steps}
@@ -486,7 +488,7 @@ function NewsItem({ item, showQuarter }) {
       {hasChain && (
         <>
           <button className="ems-btn" style={{ padding: '2px 7px', fontSize: 12, marginTop: 6 }} onClick={() => { Audio.play('tick'); setOpen((o) => !o); }}>
-            {open ? 'Скрыть цепочку' : 'Цепочка последствий'} {open ? <ChevronUp size={10} style={{ verticalAlign: -1 }} /> : <ChevronDown size={10} style={{ verticalAlign: -1 }} />}
+            {open ? 'Скрыть цепочку' : 'Цепочка последствий'} {open ? <ChevronUp size={10} className="va-1" /> : <ChevronDown size={10} className="va-1" />}
           </button>
           {open && <ChainTrail chain={item.chain} />}
         </>
@@ -520,10 +522,10 @@ export function NewsTerminal({ items, onOpenPaper }) {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [filter]);
   return (
-    <div className="ems-panel" style={{ padding: 12 }}>
+    <div className="ems-panel p-12">
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 9 }}>
         <Newspaper size={14} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Экономический терминал</span>
+        <span className="ems-serif fs-14 t-goldsoft">Экономический терминал</span>
         <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: 12 }} onClick={() => { Audio.play('paper'); onOpenPaper(); }}>
           Газета и хроника
         </button>
@@ -539,7 +541,7 @@ export function NewsTerminal({ items, onOpenPaper }) {
         </div>
       )}
       <div ref={scrollRef} className="ems-scroll" style={{ maxHeight: 430, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 13 }}>
-        {list.length === 0 && <div style={{ fontSize: 12, color: COLOR.muted }}>Лента пуста — завершите первый квартал, и экономика начнёт рассказывать о себе сама.</div>}
+        {list.length === 0 && <div className="fs-12 t-muted">Лента пуста — завершите первый квартал, и экономика начнёт рассказывать о себе сама.</div>}
         {/* новости шли сплошным потоком без границы между кварталами — метка
             квартала в каждой строке терялась среди заголовков и не читалась
             как раздел. Заголовок раздела перед первой новостью нового квартала
@@ -649,12 +651,12 @@ export function CrisisBar({ economy, botAction }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span className={a.urgent ? 'ems-blink' : ''} style={{ width: 7, height: 7, borderRadius: '50%', background: a.accent, display: 'inline-block' }} />
         <span className="ems-mono" style={{ fontSize: 12, color: a.accent, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{regimeInfoLabel(info, economy)}</span>
-        <span style={{ fontSize: 12, color: COLOR.faint }}>{economy.regimeStreak}-й квартал</span>
+        <span className="fs-12 t-faint">{economy.regimeStreak}-й квартал</span>
       </span>
       {metrics.map(([l, v]) => (
         <span key={l} style={{ fontSize: 12, display: 'flex', gap: 5, alignItems: 'baseline' }}>
-          <span style={{ color: COLOR.muted }}>{l}</span>
-          <span className="ems-mono" style={{ color: COLOR.text }}>{v}</span>
+          <span className="t-muted">{l}</span>
+          <span className="ems-mono t-text">{v}</span>
         </span>
       ))}
       {botAction && botAction.demand && (
@@ -688,7 +690,7 @@ function Quote({ label, value, change, unit, color, big }) {
     <div style={{ minWidth: 0 }}>
       <div style={{ fontSize: 12, color: COLOR.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
       <div className="ems-mono" style={{ fontSize: big ? 21 : 14, color: color || COLOR.text, lineHeight: 1.15, marginTop: 1 }}>
-        {value}{unit ? <span style={{ fontSize: 12, color: COLOR.faint }}>{unit}</span> : null}
+        {value}{unit ? <span className="fs-12 t-faint">{unit}</span> : null}
       </div>
       {change !== undefined && (
         <div className="ems-mono" style={{ fontSize: 12, color: c }}>{change > 0 ? '▲' : change < 0 ? '▼' : '■'} {fmtSigned1(change)}%</div>
@@ -744,8 +746,8 @@ function LiveTicker({ economy, prev }) {
         <span className="ems-mono" style={{ fontSize: 12, color: COLOR.gold, letterSpacing: '0.1em' }}>ТОРГИ</span>
         {items.map(([label, val, ch, dec]) => (
           <span key={label} className="ems-mono" style={{ fontSize: 12, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-            <span style={{ color: COLOR.faint }}>{label}</span>
-            <span style={{ color: COLOR.text }}>{Number.isFinite(val) ? val.toFixed(dec) : '—'}</span>
+            <span className="t-faint">{label}</span>
+            <span className="t-text">{Number.isFinite(val) ? val.toFixed(dec) : '—'}</span>
             <span style={{ color: ch > 0.01 ? COLOR.teal : ch < -0.01 ? COLOR.rust : COLOR.faint, fontSize: 12 }}>
               {ch > 0.01 ? '▲' : ch < -0.01 ? '▼' : '·'}{Math.abs(ch) > 0.01 ? `${Math.abs(ch).toFixed(1)}%` : ''}
             </span>
@@ -769,7 +771,7 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
   const ser = (k) => seriesCache[k] || hist.map((h) => h[k]);
   const chg = (k) => (prev && prev[k] ? (economy[k] / prev[k] - 1) * 100 : 0);
   const Panel = ({ title, icon: Icon, children, accent }) => (
-    <div className="ems-panel" style={{ padding: 13 }}>
+    <div className="ems-panel p-13">
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
         {Icon && <Icon size={13} color={accent || COLOR.goldSoft} />}
         <span className="ems-serif" style={{ fontSize: 13, color: accent || COLOR.goldSoft }}>{title}</span>
@@ -801,9 +803,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 10 }}>
             <Quote label="Сводный индекс" value={fmtIndex(q('stockIndex'))} change={chg('stockIndex')} big />
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 12, color: COLOR.muted }}>Капитализация</div>
+              <div className="fs-12 t-muted">Капитализация</div>
               <div className="ems-mono" style={{ fontSize: 14 }}>{fmtMoney(economy.marketCap)}</div>
-              <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>{fmt1(economy.marketCapPctGdp)}% ВВП</div>
+              <div className="ems-mono fs-12 t-faint">{fmt1(economy.marketCapPctGdp)}% ВВП</div>
             </div>
           </div>
           <div style={{ margin: '6px 0 4px' }}>
@@ -816,7 +818,7 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
               ['Потребительский', 'sectorConsumer', COLOR.goldSoft], ['Сырьевой', 'sectorResources', '#8E7CC3']].map(([label, key, col]) => (
                 <div key={key}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                    <span style={{ color: COLOR.muted }}>{label}</span>
+                    <span className="t-muted">{label}</span>
                     <span className="ems-mono" style={{ color: chg(key) >= 0 ? COLOR.teal : COLOR.rust }}>{fmtSigned1(chg(key))}%</span>
                   </div>
                   <Spark data={ser(key)} color={col} height={22} />
@@ -824,9 +826,9 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
               ))}
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 9, fontSize: 12, color: COLOR.muted, flexWrap: 'wrap' }}>
-            <span>P/E <b className="ems-mono" style={{ color: COLOR.text }}>{fmt1(economy.stockPE)}</b></span>
-            <span>справедливый <b className="ems-mono" style={{ color: COLOR.text }}>{fmt1(economy.fairPE)}</b></span>
-            <span>премия за риск акций <b className="ems-mono" style={{ color: COLOR.text }}>{fmt1(economy.equityRiskPremium)}%</b></span>
+            <span>P/E <b className="ems-mono t-text">{fmt1(economy.stockPE)}</b></span>
+            <span>справедливый <b className="ems-mono t-text">{fmt1(economy.fairPE)}</b></span>
+            <span>премия за риск акций <b className="ems-mono t-text">{fmt1(economy.equityRiskPremium)}%</b></span>
           </div>
         </Panel>
 
@@ -890,8 +892,8 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
             {[['Процентная маржа', `${fmt2(economy.netInterestMargin)} п.п.`], ['Просрочка', pctFmt(economy.bankNPL)],
               ['Достаточность капитала', pctFmt(economy.bankCapitalAdequacy)], ['Норматив', pctFmt(economy.capitalRequirement)],
               ['Кредитный портфель', fmtMoney(economy.creditVolume)], ['Рост кредита', fmtSignedPct(economy.creditGrowth)]].map(([a, b]) => (
-                <div key={a} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ color: COLOR.muted }}>{a}</span><span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{b}</span>
+                <div key={a} className="row-between">
+                  <span className="t-muted">{a}</span><span className="ems-mono nowrap">{b}</span>
                 </div>
               ))}
           </div>
@@ -917,8 +919,8 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
               ['Ориентир', economy.fxRegime === 'free' ? '—' : fmt1(economy.fxTarget)],
               ['Резервы', fmtMoney(economy.reserves)], ['Интервенции', fmtMoneySigned(economy.defenseIntervention || 0)],
               ['Волатильность', fmt1(economy.fxVolatility)], ['Текущий счёт', fmtMoneySigned(economy.currentAccount)]].map(([a, b]) => (
-                <div key={a} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ color: COLOR.muted }}>{a}</span><span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{b}</span>
+                <div key={a} className="row-between">
+                  <span className="t-muted">{a}</span><span className="ems-mono nowrap">{b}</span>
                 </div>
               ))}
           </div>
@@ -940,8 +942,8 @@ function MarketScreen({ economy, prev, history, book, onTrade }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 14px', marginTop: 10, fontSize: 12 }}>
             {[['Ставка дисконтирования', `${fmt1(economy.discountRate)}%`], ['Премия за риск акций', `${fmt1(economy.equityRiskPremium)}%`],
               ['Прибыль корпораций', fmtMoney(economy.earnings)], ['Доходность облигаций 2 года', `${fmt2(economy.yield2y)}%`]].map(([a, b]) => (
-                <div key={a} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ color: COLOR.muted }}>{a}</span><span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{b}</span>
+                <div key={a} className="row-between">
+                  <span className="t-muted">{a}</span><span className="ems-mono nowrap">{b}</span>
                 </div>
               ))}
           </div>
@@ -990,7 +992,7 @@ function ScoreRadar({ economy, prev, size = 190 }) {
 
 export function ScorePanel({ economy, prev, goalDef }) {
   return (
-    <div className="ems-panel" style={{ padding: 14 }}>
+    <div className="ems-panel p-14">
       <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 7 }}>
         <Target size={14} />Пять оценок вашей политики
       </div>
@@ -1003,7 +1005,7 @@ export function ScorePanel({ economy, prev, goalDef }) {
           return (
             <div key={dd.id} title={dd.hint} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
               <span style={{ color: isGoal ? COLOR.goldSoft : COLOR.muted, width: 92, fontWeight: isGoal ? 600 : 400 }}>{dd.short}{isGoal ? ' ★' : ''}</span>
-              <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+              <span className="bar-track">
                 <span style={{ display: 'block', width: `${v}%`, height: '100%', background: dd.color }} />
               </span>
               <span className="ems-mono" style={{ width: 22, textAlign: 'right', color: dd.color, fontWeight: 600 }}>{Math.round(v)}</span>
@@ -1039,7 +1041,7 @@ export function RegimeBanner({ economy, crisisOnly = false }) {
       border: `1px solid ${c}`, borderLeft: `${isCrisis ? 4 : 1}px solid ${c}`, borderRadius: 3,
       padding: isCrisis ? '11px 14px' : '9px 12px', fontSize: 12 }}>
       <Activity size={isCrisis ? 17 : 15} color={c} style={{ flexShrink: 0, marginTop: 1 }} />
-      <div><b style={{ color: c, fontSize: isCrisis ? 13 : 12 }}>Режим экономики: {regimeInfoLabel(info, economy)}.</b> <span style={{ color: COLOR.muted }}>{regimeInfoText(info, economy)}</span></div>
+      <div><b style={{ color: c, fontSize: isCrisis ? 13 : 12 }}>Режим экономики: {regimeInfoLabel(info, economy)}.</b> <span className="t-muted">{regimeInfoText(info, economy)}</span></div>
     </div>
   );
 }
@@ -1086,7 +1088,7 @@ export function LeverReadout({ ids, levers, economy, accent }) {
           <div key={id} style={{ padding: '5px 0', borderBottom: `1px solid ${COLOR.hairline}` }}
             title={`${lever.type === 'level' ? '' : 'за квартал: '}от ${lever.min}${lever.suffix} до ${lever.max}${lever.suffix}`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-              <span style={{ fontSize: 12 }}>{lever.label}</span>
+              <span className="fs-12">{lever.label}</span>
               <span className="ems-mono" style={{ fontSize: 12, color: known ? color : COLOR.faint, fontWeight: 600, whiteSpace: 'nowrap' }}>
                 {known ? shown : '—'}
               </span>
@@ -1152,7 +1154,7 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
         <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={11} />бот</span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 7 }}>
-        <b style={{ color: COLOR.text }}>{persona.name}</b> · {persona.title}
+        <b className="t-text">{persona.name}</b> · {persona.title}
       </div>
       <StanceBar value={lastAction ? lastAction.stance : 0} leftLabel={isCb ? 'мягкая политика' : 'консолидация'} rightLabel={isCb ? 'жёсткая политика' : 'стимулирование'} />
       {lastAction && (
@@ -1197,7 +1199,7 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
       )}
       <div style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: COLOR.muted }}>
         <span>Согласованность политики</span>
-        <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+        <span className="bar-track">
           <span style={{ display: 'block', width: `${clamp(coordination, 0, 100)}%`, height: '100%', background: coordination > 60 ? COLOR.teal : coordination > 35 ? COLOR.gold : COLOR.rust }} />
         </span>
         <span className="ems-mono">{Math.round(coordination)}</span>
@@ -1213,7 +1215,7 @@ function BotPanel({ botRole, persona, lastAction, coordination, economy }) {
 export function PressConferencePanel({ question, answer, setAnswer }) {
   if (!question) return null;
   return (
-    <div className="ems-panel" style={{ padding: 13 }}>
+    <div className="ems-panel p-13">
       <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Megaphone size={13} />Пресс-конференция
       </div>
@@ -1267,26 +1269,26 @@ export function PresidentWatchPanel({ economy, plan, last, branch }) {
     <div className="ems-panel" style={{ padding: 13, borderColor: sat < 25 ? COLOR.rust : COLOR.borderStrong }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
         <Crown size={14} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Президент</span>
+        <span className="ems-serif fs-14 t-goldsoft">Президент</span>
         <span style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint, display: 'flex', alignItems: 'center', gap: 4 }}><Bot size={11} />бот</span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 7 }}>
-        <b style={{ color: COLOR.text }}>{P.name}</b> · {P.title}
+        <b className="t-text">{P.name}</b> · {P.title}
       </div>
       {/* его капитал виден и вам: и требование, и указ, и реформа стоят денег,
           а без счётчика казалось, что президент тратит из воздуха */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: COLOR.muted, marginBottom: 6 }}>
         <span>Политический капитал</span>
-        <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+        <span className="bar-track">
           <span style={{ display: 'block', width: `${clamp(economy.politicalCapital || 0, 0, 100)}%`, height: '100%', background: COLOR.gold }} />
         </span>
-        <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{Math.floor((economy.politicalCapital || 0) + 1e-9)}</span>
+        <span className="ems-mono t-goldsoft">{Math.floor((economy.politicalCapital || 0) + 1e-9)}</span>
       </div>
       {/* у трейдера президента не за что увольнять — «отношение к вам» там не про что */}
       {branch && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, color: COLOR.muted, marginBottom: 8 }}>
         <span>Отношение к вам</span>
-        <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+        <span className="bar-track">
           <span style={{ display: 'block', width: `${sat}%`, height: '100%', background: satColor }} />
         </span>
         <span className="ems-mono" style={{ color: satColor }}>{plan.mood}</span>
@@ -1359,7 +1361,7 @@ function CapitalBar({ value, reserved, gain }) {
         {/* вниз, а не до ближайшего: капитал дробный, и «26 свободно» при 25,6 обещало
             решение за 26, которое на деле недоступно */}
         <span className="ems-mono" style={{ fontSize: 25, color: COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{Math.floor(left + 1e-9)}</span>
-        <span style={{ fontSize: 12, color: COLOR.muted }}>из {Math.floor(v + 1e-9)} свободно</span>
+        <span className="fs-12 t-muted">из {Math.floor(v + 1e-9)} свободно</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: gain >= 0 ? COLOR.teal : COLOR.rust }}>
           {gain >= 0 ? '+' : ''}{fmt1(gain)} за квартал
         </span>
@@ -1395,11 +1397,11 @@ function RegimeLadder({ economy }) {
   return (
     <div style={{ marginTop: 10, paddingTop: 9, borderTop: `1px solid ${COLOR.hairline}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 12, marginBottom: 5 }}>
-        <span style={{ color: COLOR.muted }}>Режим</span>
+        <span className="t-muted">Режим</span>
         {/* ярлыки авторитаризма и тоталитаризма сами заканчиваются на «режим»
             («Авторитарный режим») — рядом с меткой поля получалась тавтология
             «Режим: Авторитарный режим» */}
-        <span style={{ color: COLOR.text }}>{(info.label || regime).replace(/\s*режим$/i, '')}</span>
+        <span className="t-text">{(info.label || regime).replace(/\s*режим$/i, '')}</span>
         <span className="ems-mono" style={{ marginLeft: 'auto', color: tension >= 62 ? COLOR.rust : tension >= 40 ? COLOR.gold : COLOR.teal }}>
           напряжённость {tension}
         </span>
@@ -1423,7 +1425,7 @@ function RegimeLadder({ economy }) {
         const color = pct >= 8 ? COLOR.rust : COLOR.gold;
         return (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, fontSize: 12, marginTop: 6 }}>
-            <span style={{ color: COLOR.muted }}>Риск военного переворота</span>
+            <span className="t-muted">Риск военного переворота</span>
             <span style={{ marginLeft: 'auto', color }} className="ems-mono">
               {pct >= 8 ? 'высокий' : 'заметный'} · {pct}% за квартал
             </span>
@@ -1432,7 +1434,7 @@ function RegimeLadder({ economy }) {
       })()}
       <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.45 }}>
         {next
-          ? <>Следующая ступень — <b style={{ color: COLOR.muted }}>{next.label}</b>: {next.need}. Напряжённость растёт от низкого рейтинга, кризисов, безработицы и инфляции.</>
+          ? <>Следующая ступень — <b className="t-muted">{next.label}</b>: {next.need}. Напряжённость растёт от низкого рейтинга, кризисов, безработицы и инфляции.</>
           : 'Дальше по этой лестнице идти некуда: выборов нет, голосованием власть не сменить. Остаётся армия — чем выше напряжённость, безработица и инфляция, тем вероятнее переворот. Спуститься можно только так или вернуть парламент по своей воле.'}
       </div>
     </div>
@@ -1449,8 +1451,8 @@ function GroupStakes({ effects }) {
   return (
     <div style={{ fontSize: 12, lineHeight: 1.45, marginTop: 4 }}>
       {pro.length > 0 && <span style={{ color: COLOR.teal }}>За: {pro.map(([id, v]) => `${name(id).toLowerCase()} +${v}`).join(', ')}</span>}
-      {pro.length > 0 && con.length > 0 && <span style={{ color: COLOR.faint }}> · </span>}
-      {con.length > 0 && <span style={{ color: COLOR.rust }}>Против: {con.map(([id, v]) => `${name(id).toLowerCase()} −${-v}`).join(', ')}</span>}
+      {pro.length > 0 && con.length > 0 && <span className="t-faint"> · </span>}
+      {con.length > 0 && <span className="t-rust">Против: {con.map(([id, v]) => `${name(id).toLowerCase()} −${-v}`).join(', ')}</span>}
     </div>
   );
 }
@@ -1554,7 +1556,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
           <span className="ems-mono" style={{ marginLeft: 'auto', fontSize: 12, color: COLOR.faint }}>{cost} ПК за смену</span>
         </div>
         <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 6, lineHeight: 1.45 }}>
-          Действующий — <b style={{ color: COLOR.text }}>{current.name}</b>, {tenure} кв. в должности.
+          Действующий — <b className="t-text">{current.name}</b>, {tenure} кв. в должности.
           {kind === 'central_bank' && (early
             ? ` Полный срок — ${CB_FULL_TERM} кв.: досрочная отставка обойдётся доверием к ЦБ и премией за риск тем дороже, чем раньше она случится.`
             : ' Срок отработан полностью — смена будет выглядеть плановой.')}
@@ -1597,7 +1599,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
   const canDirective = free + (directive ? PRES_DIRECTIVE_COST : 0) >= PRES_DIRECTIVE_COST;
 
   return (
-    <div className="ems-panel" style={{ padding: 14 }}>
+    <div className="ems-panel p-14">
       <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
         <Crown size={14} />Политический капитал
       </div>
@@ -1707,8 +1709,8 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
                     {isSel && r.scale && (
                       <div style={{ marginTop: 7 }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
-                          <span style={{ color: COLOR.muted }}>Насколько</span>
-                          <span className="ems-mono" style={{ color: COLOR.goldSoft }}>
+                          <span className="t-muted">Насколько</span>
+                          <span className="ems-mono t-goldsoft">
                             {fmt2(r.scale.base * (directiveStrength || 1))}{r.scale.unit}
                           </span>
                         </div>
@@ -1730,7 +1732,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
             <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.45, paddingLeft: 9,
               borderLeft: `2px solid ${lastDirective.status === 'rejected' ? COLOR.rust : lastDirective.status === 'partial' ? COLOR.gold : COLOR.teal}`,
               color: COLOR.muted }}>
-              <span style={{ color: COLOR.faint }}>Ответ на прошлое указание: </span>{lastDirective.text}
+              <span className="t-faint">Ответ на прошлое указание: </span>{lastDirective.text}
             </div>
           )}
         </div>
@@ -1794,7 +1796,7 @@ export function PromisesPanel({ promises, economy }) {
             <div key={p.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               {met ? <Check size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} /> : <AlertTriangle size={13} color={color} style={{ marginTop: 2, flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <div className="row-between">
                   <span style={{ fontSize: 12, fontWeight: 600, color: met ? COLOR.text : COLOR.muted }}>{p.label}</span>
                   {/* «36.2% / 35.3%» без подписей читалось наоборот: игрок
                       принимал вторую цифру за текущую и не понимал, почему
@@ -1804,7 +1806,7 @@ export function PromisesPanel({ promises, economy }) {
                     сейчас {fmtFn(value)} · надо {direction === 'above' ? '≥' : '≤'} {fmtFn(p.target)}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: COLOR.faint }}>{p.text}</div>
+                <div className="fs-12 t-faint">{p.text}</div>
               </div>
             </div>
           );
@@ -1828,7 +1830,7 @@ export function Segmented({ options, value, onChange, label, hint }) {
           </button>
         ))}
       </div>
-      <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>{cur ? cur.hint : hint}</div>
+      <div className="note">{cur ? cur.hint : hint}</div>
     </div>
   );
 }
@@ -1995,9 +1997,14 @@ export const AchievementToast = ({ toast, leaving }) => {
   const pieces = useConfettiPieces(toast ? toast.id : null);
   if (!toast) return null;
   const ToastIcon = toast.icon;
+  /* Сверху по центру, над шапкой: в правом нижнем углу плашка закрывала строки
+     таблицы показателей ровно тогда, когда игрок смотрел на итоги квартала.
+     Положение задаёт обёртка — у самой плашки анимация появления со своим transform. */
   return (
-    <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} style={{ position: 'fixed', bottom: 'calc(92px + env(safe-area-inset-bottom, 0px))', right: 18, zIndex: 90, maxWidth: 'min(350px, calc(100vw - 36px))',
-      padding: '13px 17px', display: 'flex', alignItems: 'center', gap: 12, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
+    <div style={{ position: 'fixed', top: 'calc(10px + env(safe-area-inset-top, 0px))', left: 0, right: 0, zIndex: 90,
+      display: 'flex', justifyContent: 'center', pointerEvents: 'none', padding: '0 12px' }}>
+    <div className={`ems-panel-raised ${leaving ? 'ems-toast-out' : 'ems-fade-in'}`} role="status" style={{ maxWidth: 'min(350px, calc(100vw - 24px))',
+      padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 12, borderColor: COLOR.gold, boxShadow: '0 6px 20px rgba(0,0,0,0.4)', overflow: 'visible' }}>
       <span style={{ position: 'relative', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         <ToastIcon size={26} color={COLOR.gold} />
         {!leaving && pieces.map((p) => (
@@ -2011,6 +2018,7 @@ export const AchievementToast = ({ toast, leaving }) => {
         <div style={{ fontSize: 12, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Достижение открыто</div>
         <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginTop: 2 }}>{toast.title}</div>
       </div>
+    </div>
     </div>
   );
 };
@@ -2092,12 +2100,12 @@ export function GameOverModal({ defeat, quarterIndex, onClose, onRestart, onOpen
         <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.6 }}>{defeat.text}</div>
         <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 12 }}>Партия окончена на {quarterLabel(quarterIndex)} — {quarterIndex} кв. у руля.</div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
-          <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Поделиться</button>
-          {onChronicle && <button className="ems-btn" onClick={onChronicle}><BookOpen size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Разбор партии</button>}
-          <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} style={{ verticalAlign: -2, marginRight: 5 }} />Коллекция</button>
+          <button className="ems-btn" onClick={onShare}><Share2 size={13} color={COLOR.gold} className="va-2 mr-5" />Поделиться</button>
+          {onChronicle && <button className="ems-btn" onClick={onChronicle}><BookOpen size={13} color={COLOR.gold} className="va-2 mr-5" />Разбор партии</button>}
+          <button className="ems-btn" onClick={onOpenAch}><Trophy size={13} color={COLOR.gold} className="va-2 mr-5" />Коллекция</button>
           {onRollback && (
             <button className="ems-btn" style={{ borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
-              <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Откатить на 3 хода назад
+              <RotateCcw size={13} className="va-2 mr-5" />Откатить на 3 хода назад
             </button>
           )}
           <button className="ems-btn primary" onClick={onRestart}>{restartLabel}</button>
@@ -2191,7 +2199,7 @@ export const GameOverBar = ({ defeat, onReopen, onRestart, onRollback, restartLa
     <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 13 }} onClick={onReopen}>Подробнее</button>
     {onRollback && (
       <button className="ems-btn" style={{ padding: '10px 16px', fontSize: 13, borderColor: COLOR.teal, color: COLOR.teal }} onClick={onRollback}>
-        <RotateCcw size={13} style={{ verticalAlign: -2, marginRight: 5 }} />Откатить на 3 хода назад
+        <RotateCcw size={13} className="va-2 mr-5" />Откатить на 3 хода назад
       </button>
     )}
     <button className="ems-btn primary" style={{ padding: '10px 20px', fontSize: 13 }} onClick={onRestart}>{restartLabel}</button>
@@ -2242,7 +2250,7 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
         style={{ maxWidth: 480, width: '100%', padding: 22, marginTop: 24, borderColor: defeat ? COLOR.rust : COLOR.gold }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <Trophy size={16} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(daily.day)}</span>
+          <span className="ems-serif fs-16 t-goldsoft">Вызов дня · {dailyDateLabel(daily.day)}</span>
           <button onClick={onClose} aria-label="Закрыть" style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: COLOR.faint, lineHeight: 0 }}>
             <X size={16} />
           </button>
@@ -2254,7 +2262,7 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
         )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
           <span className="ems-mono" style={{ fontSize: 40, color: defeat ? COLOR.rust : COLOR.gold, fontWeight: 600, lineHeight: 1 }}>{dailyScoreFmt(score)}</span>
-          <span style={{ fontSize: 12, color: COLOR.muted }}>баллов из 100{!defeat ? ` · ${daily.quarters} кварталов пройдено` : ''}</span>
+          <span className="fs-12 t-muted">баллов из 100{!defeat ? ` · ${daily.quarters} кварталов пройдено` : ''}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
           {SCORE_DEFS.map((dd) => {
@@ -2263,7 +2271,7 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
             return (
               <div key={dd.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
                 <span style={{ width: 122, whiteSpace: 'nowrap', color: isGoal ? COLOR.goldSoft : COLOR.muted, fontWeight: isGoal ? 600 : 400 }}>{dd.short}{isGoal ? ' ★×2' : ''}</span>
-                <span style={{ flex: 1, height: 4, borderRadius: 2, background: COLOR.border, overflow: 'hidden' }}>
+                <span className="bar-track">
                   <span style={{ display: 'block', width: `${v}%`, height: '100%', background: dd.color }} />
                 </span>
                 <span className="ems-mono" style={{ width: 24, textAlign: 'right', color: dd.color, fontWeight: 600 }}>{Math.round(v)}</span>
@@ -2273,7 +2281,7 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
         </div>
         {account ? (
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 12 }}>
-            В таблице — под профилем <b style={{ color: COLOR.text }}>{account.name}</b>.
+            В таблице — под профилем <b className="t-text">{account.name}</b>.
           </div>
         ) : (<>
         <label style={{ display: 'block', fontSize: 12, color: COLOR.faint, marginBottom: 4 }} htmlFor="daily-name">Имя в таблице</label>
@@ -2291,11 +2299,11 @@ function DailyResultModal({ daily, goalId, economy, defeat, quarterIndex, role, 
         {err && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 8 }}>{err}</div>}
         {board && board.you && (
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 8 }}>
-            Ваше место: <b style={{ color: COLOR.gold }}>{board.you.rank}</b> из {board.total}
+            Ваше место: <b className="t-gold">{board.you.rank}</b> из {board.total}
             {board.improved === false ? ` · в таблице остаётся ваш лучший результат (${dailyScoreFmt(board.you.score)})` : ''}
           </div>
         )}
-        {board ? <DailyBoard day={daily.day} data={board} /> : !err && <div style={{ fontSize: 12, color: COLOR.faint }}>Отправляем результат…</div>}
+        {board ? <DailyBoard day={daily.day} data={board} /> : !err && <div className="fs-12 t-faint">Отправляем результат…</div>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16, flexWrap: 'wrap' }}>
           <button className="ems-btn" onClick={onClose}>Посмотреть партию</button>
           <button className="ems-btn primary" onClick={onMenu}>В меню</button>
@@ -2504,7 +2512,7 @@ export function ResultCardModal({ data, onClose }) {
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 620, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <Share2 size={15} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Карточка результата</span>
+          <span className="ems-serif fs-16 t-goldsoft">Карточка результата</span>
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
         </div>
         <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 6, border: `1px solid ${COLOR.border}` }} />
@@ -2591,7 +2599,7 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved, activeSlot })
       <div className="ems-panel-raised ems-fade-in" style={{ maxWidth: 480, width: '100%', padding: 18 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <Save size={15} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Сохранения</span>
+          <span className="ems-serif fs-16 t-goldsoft">Сохранения</span>
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
         </div>
         <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
@@ -2619,7 +2627,7 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved, activeSlot })
         )}
 
         {slots === null ? (
-          <div style={{ fontSize: 12, color: COLOR.muted }}>Загружаем слоты…</div>
+          <div className="fs-12 t-muted">Загружаем слоты…</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {slots.map((slot, idx) => {
@@ -2637,7 +2645,7 @@ function SaveLoadModal({ mode, snapshot, onClose, onLoad, onSaved, activeSlot })
                             borderRadius: 999, padding: '1px 7px' }}>СЕЙЧАС ИГРАЕТЕ</span>
                         )}
                       </span>
-                      <span style={{ fontSize: 12, color: COLOR.faint }}>{slotLabel(slot)}</span>
+                      <span className="fs-12 t-faint">{slotLabel(slot)}</span>
                     </>
                   ) : `Слот ${idx + 1}: пусто`}
                 </span>
@@ -2689,7 +2697,7 @@ function FiscalMath({ economy, decisions }) {
   const limit = economy.maxDeficitPct;
   const plan = decisions.govSpending * 0.62 + decisions.transfers * 0.27 + decisions.govInvestment * 0.11;
   return (
-    <div className="ems-panel" style={{ padding: 12 }}>
+    <div className="ems-panel p-12">
       <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 7, display: 'flex', alignItems: 'center', gap: 6 }}>
         <Scale size={13} />Бюджетная арифметика
       </div>
@@ -2707,9 +2715,9 @@ function FiscalMath({ economy, decisions }) {
         <span className="ems-mono" style={{ color: bal >= 0 ? COLOR.teal : COLOR.rust, fontWeight: 600 }}>{fmtSigned1(bal)}% ВВП</span>
       </div>
       <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 7, lineHeight: 1.45 }}>
-        Рычаги задают <b style={{ color: COLOR.muted }}>реальный рост сверх тренда</b>: ноль означает, что расходы растут вместе с экономикой, а не заморожены. Ваш текущий набор решений — {growth(plan)} к тренду.
+        Рычаги задают <b className="t-muted">реальный рост сверх тренда</b>: ноль означает, что расходы растут вместе с экономикой, а не заморожены. Ваш текущий набор решений — {growth(plan)} к тренду.
         {Number.isFinite(limit) && <> Рынок готов финансировать дефицит до {fmt1(limit)}% ВВП; сверх этого начинается секвестр.</>}
-        {economy.sequesterFactor < 0.995 && <span style={{ color: COLOR.rust }}> Сейчас расходы принудительно урезаны на {fmt1((1 - economy.sequesterFactor) * 100)}%.</span>}
+        {economy.sequesterFactor < 0.995 && <span className="t-rust"> Сейчас расходы принудительно урезаны на {fmt1((1 - economy.sequesterFactor) * 100)}%.</span>}
       </div>
     </div>
   );
@@ -3088,11 +3096,11 @@ export const CasinoScreen = React.lazy(() => import('./casino.jsx').then((m) => 
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
   const row = (l, v) => (
     <div key={l} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
-      <span style={{ color: COLOR.muted }}>{l}</span><span className="ems-mono">{v}</span>
+      <span className="t-muted">{l}</span><span className="ems-mono">{v}</span>
     </div>
   );
   return (
-    <div className="ems-panel" style={{ padding: 13 }}>
+    <div className="ems-panel p-13">
       <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}>
         <Landmark size={13} />Что видно со стороны
       </div>
@@ -3110,7 +3118,7 @@ function InstitutionsPanel({ economy, cbAction, mofAction }) {
       {row('НДС / прибыль', `${fmt1(economy.vatRate)}% / ${fmt1(economy.profitTaxRate)}%`)}
       {[['Заявление ЦБ', cbAction], ['Заявление Минфина', mofAction]].map(([title, act]) => (act && act.quote ? (
         <div key={title} style={{ marginTop: 9, fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.border}`, paddingLeft: 9, color: COLOR.muted }}>
-          <span style={{ color: COLOR.faint }}>{title}: </span>«{act.quote}»
+          <span className="t-faint">{title}: </span>«{act.quote}»
         </div>
       ) : null))}
     </div>
@@ -3125,7 +3133,7 @@ function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
   const cur = options.find((r) => r.id === pending);
   const target = botRole === 'central_bank' ? 'Центральному банку' : 'Минфину';
   return (
-    <div className="ems-panel" style={{ padding: 13 }}>
+    <div className="ems-panel p-13">
       <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 7 }}>
         <Megaphone size={13} />Официальный запрос {target}
       </div>
@@ -3148,7 +3156,7 @@ function RequestPanel({ role, botRole, pending, setPending, lastResponse }) {
           <span style={{ color: lastResponse.status === 'accepted' ? COLOR.teal : lastResponse.status === 'partial' ? COLOR.gold : COLOR.rust, fontWeight: 600 }}>
             {lastResponse.status === 'accepted' ? 'Запрос удовлетворён: ' : lastResponse.status === 'partial' ? 'Частично удовлетворён: ' : 'Отказано: '}
           </span>
-          <span style={{ color: COLOR.muted }}>{lastResponse.text}</span>
+          <span className="t-muted">{lastResponse.text}</span>
         </div>
       )}
     </div>
@@ -3471,7 +3479,7 @@ export function ViewSettings({ theme, setTheme, dense, setDense, dashboards, act
   const DD_WIDTH = 250;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="rel">
       <button ref={btnRef} className="ems-btn" style={{ padding: '7px 9px' }} title="Вид, тема и доступность" aria-label="Настройки вида"
         onClick={() => { Audio.play('click'); toggle(); }}>
         <Sliders size={14} />
@@ -3824,7 +3832,10 @@ export const ALL_METRICS = (() => {
 })();
 
 // шесть: главная плитка на две ячейки + пять — ровные ряды и на компьютере, и на телефоне (2 в ряд)
-const DEFAULT_PINS = ['gdp', 'outputGap', 'inflation', 'unemployment', 'keyRate', 'debtToGdp'];
+// по умолчанию полоса заполнена целиком: пустая плитка-подсказка стояла на самом
+// видном месте, а рейтинг и благополучие — то, на что игрок смотрит чаще всего
+// семь: главная плитка занимает две ячейки, и 2 + 6 ровно заполняют ряд из восьми
+const DEFAULT_PINS = ['gdp', 'inflation', 'unemployment', 'approval', 'keyRate', 'wellbeing', 'debtToGdp'];
 
 export const MAX_PINS = 8;
 
@@ -3860,7 +3871,7 @@ export function MetricRow({ row, value, delta, pinnable, pinned, onPin, last }) 
           ) : row.label}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <span className="ems-mono" style={{ whiteSpace: 'nowrap' }}>{value}</span>
+          <span className="ems-mono nowrap">{value}</span>
           {row.noDelta ? <span style={{ width: 34 }} /> : <DeltaTag value={delta} invert={METRIC_INVERT.has(row.key)} />}
         </span>
       </div>
@@ -3884,9 +3895,9 @@ export function RegionEventStrip({ event, answered, canAnswer, onOpen }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
       style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
         borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-      <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-      <span><b style={{ color: COLOR.rust }}>{region ? region.name : 'Округ'}: {event.title.toLowerCase()}.</b>{' '}
-        <span style={{ color: COLOR.muted }}>{canAnswer
+      <MapIcon size={15} color={COLOR.rust} className="shrink-0" />
+      <span><b className="t-rust">{region ? region.name : 'Округ'}: {event.title.toLowerCase()}.</b>{' '}
+        <span className="t-muted">{canAnswer
           ? (answered ? 'Ответ выбран — применится в конце квартала.' : 'Нужен ответ правительства — откройте карту.')
           : 'Отвечает Минфин — подробности на карте.'}</span></span>
     </div>
@@ -3932,7 +3943,7 @@ export function SummaryBar({ economy, demands = [] }) {
           {demands.map((it, i) => (
             <span key={i} style={{ fontSize: 13, lineHeight: 1.45 }}>
               <span style={{ color: it.color, fontWeight: 700 }}>{it.who}:</span>{' '}
-              <span style={{ color: COLOR.muted }}>{it.text}</span>
+              <span className="t-muted">{it.text}</span>
             </span>
           ))}
         </div>
@@ -3948,7 +3959,7 @@ export function SummaryBar({ economy, demands = [] }) {
 export function KpiStrip({ pinned, economy, history, kpiDelta, dragPin, setDragPin, reorderPin, movePin, togglePin, maxPins, editMode, ticker }) {
   if (ticker) {
     return (
-      <div className="ems-panel ems-kpi-ticker" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '6px 22px', padding: '9px 14px' }}>
+      <div className="ems-panel ems-kpi-ticker" data-tour="kpi" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '6px 22px', padding: '9px 14px' }}>
         {pinned.map((key) => {
           const m = ALL_METRICS[key];
           if (!m) return null;
@@ -3966,13 +3977,14 @@ export function KpiStrip({ pinned, economy, history, kpiDelta, dragPin, setDragP
     );
   }
   return (
-    <div className={`ems-kpi-strip${editMode ? ' ems-kpi-edit' : ''}`}>
+    <div className={`ems-kpi-strip${editMode ? ' ems-kpi-edit' : ''}`} data-tour="kpi">
       {pinned.map((key, idx) => {
         const m = ALL_METRICS[key];
         if (!m) return null;
         const val = economy[key];
         return (
           <div key={key} draggable className={`ems-kpi-cell${idx === 0 ? ' hero' : ''}`}
+            title="Набор показателей меняется звёздочкой в таблице «Показатели страны», порядок — перетаскиванием"
             onDragStart={(e) => { setDragPin(key); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', key); }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); const from = e.dataTransfer.getData('text/plain'); if (from) reorderPin(from, key); setDragPin(null); }}
@@ -3988,13 +4000,54 @@ export function KpiStrip({ pinned, economy, history, kpiDelta, dragPin, setDragP
           </div>
         );
       })}
-      {pinned.length < maxPins && (
-        /* подсказка растягивается до конца ряда: главная плитка занимает две ячейки,
-           и без этого последний ряд оставался с дыркой */
-        <div className="ems-panel ems-kpi-hint" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10, borderStyle: 'dashed', gridColumn: 'auto / -1', minHeight: 64 }}>
-          <span style={{ fontSize: 12, color: COLOR.faint, textAlign: 'center', lineHeight: 1.4 }}>
-            <Star size={12} style={{ verticalAlign: -2 }} /> закрепите любой показатель<br />звёздочкой в таблице справа
-          </span>
+      {/* кнопка «+» с пояснением — только в режиме настройки макета: в обычном виде она ломала ряд плиток */}
+      {editMode && pinned.length < maxPins && <KpiAddHint />}
+    </div>
+  );
+}
+
+/* Телефон: четыре главных числа прилипают к верху экрана. Шапка на телефоне высокая,
+   и плитки показателей уезжали под неё при первой же прокрутке — теперь ВВП, инфляция,
+   безработица и ставка видны всегда, как строка-тикер на карте на компьютере. */
+const PHONE_KPIS = [['gdp', 'ВВП'], ['inflation', 'ИПЦ'], ['unemployment', 'безраб.'], ['keyRate', 'ставка']];
+export function PhoneKpiBar({ economy, kpiDelta }) {
+  return (
+    <div className="ems-phone-kpi" role="group" aria-label="Главные показатели"
+      style={{ position: 'sticky', top: 0, zIndex: 7, display: 'flex', justifyContent: 'space-between', gap: 6, padding: '7px 12px',
+        background: COLOR.panel, borderBottom: `1px solid ${COLOR.hairline}`, boxShadow: '0 6px 14px -10px rgba(0,0,0,0.5)' }}>
+      {PHONE_KPIS.map(([key, label]) => {
+        const m = ALL_METRICS[key];
+        const v = economy[key];
+        const d = kpiDelta(key);
+        const good = m && m.invert ? d < 0 : d > 0;
+        return (
+          <div key={key} style={{ minWidth: 0, textAlign: 'center', flex: '1 1 0' }}>
+            <div style={{ fontSize: 11, color: COLOR.faint, whiteSpace: 'nowrap' }}>{label}</div>
+            <div className="ems-mono" style={{ fontSize: 13, color: COLOR.text, whiteSpace: 'nowrap' }}>
+              {m && Number.isFinite(v) ? m.fmt(v) : '—'}
+              {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 10, marginLeft: 2, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Свободное место в полосе — не пустая плитка с текстом, а маленькая кнопка «+»:
+   пояснение, как закрепить показатель, открывается по нажатию. */
+function KpiAddHint() {
+  const [open, setOpen] = useState(false);
+  const text = 'Закрепите любой показатель звёздочкой в таблице «Показатели страны» — он появится здесь.';
+  return (
+    <div className="ems-panel ems-kpi-hint" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', minHeight: 44 }}>
+      <button type="button" className="ems-btn ghost" aria-expanded={open} aria-label="Как добавить показатель" title={text}
+        onClick={() => setOpen((o) => !o)} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, fontSize: 12, color: COLOR.faint }}>
+        <Plus size={13} /><Star size={11} />
+      </button>
+      {open && (
+        <div role="note" className="ems-panel-raised" style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 20, width: 220, padding: '8px 10px', fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>
+          {text}
         </div>
       )}
     </div>
@@ -4022,17 +4075,17 @@ export function RiskBadge({ label, value }) {
 function DemandsPanel({ demands }) {
   if (!demands || demands.length === 0) return null;
   return (
-    <div className="ems-panel" style={{ padding: 12 }}>
+    <div className="ems-panel p-12">
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 9 }}>
         <Users size={14} color={COLOR.gold} />
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Общественное давление</span>
+        <span className="ems-serif fs-14 t-goldsoft">Общественное давление</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
         {demands.map((dd) => (
           <div key={dd.id} style={{ fontSize: 12, lineHeight: 1.45, borderLeft: `2px solid ${COLOR.rust}`, paddingLeft: 9 }}>
             <span style={{ color: COLOR.rust, fontWeight: 600 }}>{dd.actor}: </span>
-            <span style={{ color: COLOR.text }}>{dd.text}</span>
-            {dd.quartersActive >= 3 && <span style={{ color: COLOR.faint }}> ({dd.quartersActive}-й квартал подряд)</span>}
+            <span className="t-text">{dd.text}</span>
+            {dd.quartersActive >= 3 && <span className="t-faint"> ({dd.quartersActive}-й квартал подряд)</span>}
           </div>
         ))}
       </div>
@@ -4109,6 +4162,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [dense, setDense] = useState(initial ? !!initial.dense : false);
   const [irf, setIrf] = useState(null);
   const [mobileCol, setMobileCol] = useState('center');
+  // обучение по экрану: включается галочкой при создании партии, повторяется из меню «⋯»
+  const [tourOn, setTourOn] = useState(() => !initial && !!setup.tour);
   const [narrow, setNarrow] = useState(false);
   const [dashboards, setDashboards] = useState(() => initDashboards(initial && initial.dashboards));
   const dashActions = useMemo(() => makeDashboardActions(setDashboards), []);
@@ -4677,6 +4732,13 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         onLoad={(d) => { setSaveModal(null); onLoadState(d); }} onSaved={setActiveSlot} />}
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
       <AchievementToast toast={achToast} leaving={achLeaving} />
+      {tourOn && (
+        <Suspense fallback={null}>
+          <GameTour role={setup.role} goalLabel={goalDef ? goalDef.label : ''}
+            onStep={(st) => { if (st.target !== 'screens') setView('dash'); if (st.col) setMobileCol(st.col); }}
+            onClose={() => setTourOn(false)} />
+        </Suspense>
+      )}
       {daily && dailyDone && showDaily && (
         <DailyResultModal daily={daily} goalId={setup.goal} economy={economy} defeat={defeat} quarterIndex={quarterIndex}
           role={setup.role} board={dailyBoard} setBoard={setDailyBoard}
@@ -4736,7 +4798,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           </span>}
           {/* на телефоне сложность, достижения и газета уходят в меню «⋯»: три ряда
               кнопок занимали треть экрана */}
-          {!narrow && <div style={{ position: 'relative' }}>
+          {!narrow && <div className="rel">
             <select value={difficulty} onChange={(e) => { Audio.play('tab'); setDifficulty(e.target.value); }}
               disabled={!!daily} title={daily ? 'В вызове дня сложность у всех одна' : 'Сложность партии'} className="ems-btn"
               style={{ padding: '7px 26px 7px 9px', fontSize: 12, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' }}>
@@ -4773,6 +4835,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             ] : []),
             { icon: Share2, label: 'Карточка результата', onClick: () => setShowCard(true) },
             { icon: BookOpen, label: 'Разбор партии', onClick: () => setShowChronicle(true) },
+            { icon: GraduationCap, label: 'Обучение по экрану', onClick: () => { setView('dash'); setTourOn(true); } },
             { icon: RotateCcw, label: 'Выйти в меню', danger: true, onClick: () => {
               if (window.confirm('Выйти в меню? Несохранённый прогресс партии будет потерян — при необходимости сохраните её кнопкой «Партия».')) { Audio.play('click'); onRestart(); }
             } },
@@ -4783,7 +4846,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           {/* статус партии — одной плашкой: период, выборы и рейтинг, благополучие */}
           {/* на телефоне колонки плашки сжимаются (minWidth 0), а шкала — нет: раньше на
               узком экране благополучие выталкивалось за правый край */}
-          <div className="ems-status" style={narrow ? { width: '100%', boxSizing: 'border-box', justifyContent: 'space-between', gap: 8, padding: '6px 10px', minWidth: 0 } : undefined}>
+          <div className="ems-status" data-tour="status" style={narrow ? { width: '100%', boxSizing: 'border-box', justifyContent: 'space-between', gap: 8, padding: '6px 10px', minWidth: 0 } : undefined}>
             <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
               <div className="ems-eyebrow" style={narrow ? { letterSpacing: '0.04em', fontSize: 11 } : undefined}>Период</div>
               <div className="ems-mono ems-serif" style={{ fontSize: narrow ? 13 : 15, fontWeight: 600, marginTop: 2, ...(narrow ? { letterSpacing: '-0.02em' } : {}) }}>{quarterLabel(quarterIndex)}</div>
@@ -4791,11 +4854,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             <span className="sep" />
             <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
               <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5, ...(narrow ? { letterSpacing: '0.04em', fontSize: 11 } : {}) }}>
-                <Flag size={10} style={{ flexShrink: 0 }} />
+                <Flag size={10} className="shrink-0" />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{economy.noElections ? 'Выборов нет' : `Выборы${narrow ? '' : ' ·'} ${economy.quartersToElection} кв.`}</span>
               </div>
               <div style={{ fontSize: 13, marginTop: 3 }}>
-                <span style={{ color: COLOR.muted }}>рейтинг </span>
+                <span className="t-muted">рейтинг </span>
                 <span className="ems-mono" style={{ color: economy.approval >= 50 ? COLOR.teal : economy.approval >= 40 ? COLOR.gold : COLOR.rust, fontWeight: 700 }}>{Math.round(economy.approval)}</span>
               </div>
             </div>
@@ -4806,7 +4869,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             </div>
           </div>
           {/* вкладки экрана — сегментированный переключатель; на телефоне во всю ширину */}
-          <div className="ems-seg" role="group" aria-label="Экран" style={narrow ? { width: '100%' } : { marginLeft: 'auto' }}>
+          <div className="ems-seg" role="group" aria-label="Экран" data-tour="screens" style={narrow ? { width: '100%' } : { marginLeft: 'auto' }}>
             {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
               <button key={id} aria-pressed={view === id} style={narrow ? { flex: 1, padding: '7px 4px', gap: 4, minWidth: 0 } : undefined}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
@@ -4817,6 +4880,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         </div>
       </div>
 
+      {narrow && <PhoneKpiBar economy={economy} kpiDelta={kpiDelta} />}
       <CrisisBar economy={economy} botAction={botAction} />
 
       {/* Показатели: на «Панели» — плитки, на остальных вкладках — строка-тикер,
@@ -4845,9 +4909,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
               style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`,
                 borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-              <Globe2 size={15} color={COLOR.gold} style={{ flexShrink: 0 }} />
-              <span><b style={{ color: COLOR.goldSoft }}>{ev.title}.</b>{' '}
-                <span style={{ color: COLOR.muted }}>{ev.deadline - quarterIndex > 1 ? 'Срок ответа — до следующего квартала.' : 'Ответьте в этом квартале'} — на карте, в карточке страны.</span></span>
+              <Globe2 size={15} color={COLOR.gold} className="shrink-0" />
+              <span><b className="t-goldsoft">{ev.title}.</b>{' '}
+                <span className="t-muted">{ev.deadline - quarterIndex > 1 ? 'Срок ответа — до следующего квартала.' : 'Ответьте в этом квартале'} — на карте, в карточке страны.</span></span>
             </div>
           );
         })()}
@@ -4857,9 +4921,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('society'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-            <Users size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>{economy.groupDemand.title}.</b>{' '}
-              <span style={{ color: COLOR.muted }}>{canPlanMap
+            <Users size={15} color={COLOR.rust} className="shrink-0" />
+            <span><b className="t-rust">{economy.groupDemand.title}.</b>{' '}
+              <span className="t-muted">{canPlanMap
                 ? (regionPlan.groupResponse ? 'Ответ выбран — изменить можно на вкладке «Общество».' : 'Ответьте на вкладке «Общество», иначе это сочтут отказом.')
                 : 'Отвечает Минфин — подробности на вкладке «Общество».'}</span></span>
           </div>
@@ -4869,9 +4933,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-            <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>Наступление: {WAR_TARGETS[warTargetOf(economy)].name}.</b>{' '}
-              <span style={{ color: COLOR.muted }}>{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
+            <MapIcon size={15} color={COLOR.rust} className="shrink-0" />
+            <span><b className="t-rust">Наступление: {WAR_TARGETS[warTargetOf(economy)].name}.</b>{' '}
+              <span className="t-muted">{warOrder ? 'Приказ армии действует — его можно сменить на карте.' : economy.warCampaign && economy.warCampaign.last ? 'Армия выполняет прошлый приказ — сменить его можно на карте.' : 'Отдайте первый приказ армии на карте: цель и способ действий.'}</span></span>
           </div>
         )}
         {isPresident && view !== 'map' && electionForecast(economy) && !electionForecast(economy).closed && (() => {
@@ -4883,9 +4947,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
               style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.goldDim, border: `1px solid ${COLOR.gold}`,
                 borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-              <MapIcon size={15} color={COLOR.gold} style={{ flexShrink: 0 }} />
-              <span><b style={{ color: COLOR.gold }}>Выборы через {f.quartersToElection} кв.: опрос {fmt1(f.national)}% ±{fmt1(f.margin)}.</b>{' '}
-                <span style={{ color: COLOR.muted }}>Колеблющихся областей — {swing}. {used
+              <MapIcon size={15} color={COLOR.gold} className="shrink-0" />
+              <span><b className="t-gold">Выборы через {f.quartersToElection} кв.: опрос {fmt1(f.national)}% ±{fmt1(f.margin)}.</b>{' '}
+                <span className="t-muted">Колеблющихся областей — {swing}. {used
                   ? `Штабов расставлено: ${used} — изменить можно на карте.`
                   : 'Штабы кампании не расставлены — сделайте это на карте, слой «Опросы».'}</span></span>
             </div>
@@ -4896,9 +4960,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`,
               borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-            <MapIcon size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>{DEF_ENEMY} наступает{economy.defenseCampaign && economy.defenseCampaign.occupied.length ? ' — часть страны под оккупацией' : ''}.</b>{' '}
-              <span style={{ color: COLOR.muted }}>Где держать оборону, куда нанести контрудар или просить перемирия — на карте.</span></span>
+            <MapIcon size={15} color={COLOR.rust} className="shrink-0" />
+            <span><b className="t-rust">{DEF_ENEMY} наступает{economy.defenseCampaign && economy.defenseCampaign.occupied.length ? ' — часть страны под оккупацией' : ''}.</b>{' '}
+              <span className="t-muted">Где держать оборону, куда нанести контрудар или просить перемирия — на карте.</span></span>
           </div>
         )}
         {canCommandDefense && view !== 'map' && ((economy.warType === 'revanche' && (economy.warQuartersLeft || 0) > 0) || (isPresident && economy.peaceTalks)) && (
@@ -4906,18 +4970,18 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setView('map'); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, background: economy.peaceTalks ? COLOR.goldDim : COLOR.rustDim,
               border: `1px solid ${economy.peaceTalks ? COLOR.gold : COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12, cursor: 'pointer' }}>
-            <MapIcon size={15} color={economy.peaceTalks ? COLOR.gold : COLOR.rust} style={{ flexShrink: 0 }} />
+            <MapIcon size={15} color={economy.peaceTalks ? COLOR.gold : COLOR.rust} className="shrink-0" />
             {economy.peaceTalks
-              ? <span><b style={{ color: COLOR.gold }}>Переговоры с Норландом.</b>{' '}
-                <span style={{ color: COLOR.muted }}>{treatyPlan && treatyPlan.propose ? 'Договор будет предложен в конце квартала.' : `Позиция страны ${Math.round(economy.peaceTalks.leverage)} и тает с каждым кварталом — условия мира задаются на карте.`}</span></span>
-              : <span><b style={{ color: COLOR.rust }}>Норланд наступает на новые земли.</b>{' '}
-                <span style={{ color: COLOR.muted }}>Какую область укрепить и как — на карте.</span></span>}
+              ? <span><b className="t-gold">Переговоры с Норландом.</b>{' '}
+                <span className="t-muted">{treatyPlan && treatyPlan.propose ? 'Договор будет предложен в конце квартала.' : `Позиция страны ${Math.round(economy.peaceTalks.leverage)} и тает с каждым кварталом — условия мира задаются на карте.`}</span></span>
+              : <span><b className="t-rust">Норланд наступает на новые земли.</b>{' '}
+                <span className="t-muted">Какую область укрепить и как — на карте.</span></span>}
           </div>
         )}
         {(economy.activeCrises || []).filter((c) => c !== economy.regime).map((c) => (
           <div key={c} className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, background: COLOR.rustDim, border: `1px solid ${COLOR.rust}`, borderRadius: 3, padding: '8px 11px', fontSize: 12 }}>
-            <AlertTriangle size={15} color={COLOR.rust} style={{ flexShrink: 0 }} />
-            <span><b style={{ color: COLOR.rust }}>{CRISIS_INFO[c] ? regimeInfoLabel(CRISIS_INFO[c], economy) : c}.</b> <span style={{ color: COLOR.muted }}>{CRISIS_INFO[c] ? regimeInfoText(CRISIS_INFO[c], economy) : ''}</span></span>
+            <AlertTriangle size={15} color={COLOR.rust} className="shrink-0" />
+            <span><b className="t-rust">{CRISIS_INFO[c] ? regimeInfoLabel(CRISIS_INFO[c], economy) : c}.</b> <span className="t-muted">{CRISIS_INFO[c] ? regimeInfoText(CRISIS_INFO[c], economy) : ''}</span></span>
           </div>
         ))}
       </div>
@@ -4959,7 +5023,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       {(() => {
       /* ЛЕВАЯ ПАНЕЛЬ */
       const leftNode = (
-        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div data-tour="left" className="col-12">
           {isTrader && (
             <Suspense fallback={<ChartFallback height={120} />}>
               <PortfolioSummary book={portfolio} economy={economy} live={null} goal={setup.goal}
@@ -4968,7 +5032,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           )}
           {isTrader && (
             <div className="ems-panel" style={{ padding: 12, fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
-              Торговля идёт на вкладке <b style={{ color: COLOR.text }}>«Рынок»</b>: там терминал с ценами, которые
+              Торговля идёт на вкладке <b className="t-text">«Рынок»</b>: там терминал с ценами, которые
               меняются в реальном времени. Сделки исполняются мгновенно по текущей котировке, плечо ограничено 60% капитала
               и стоит ставку по кредитам.
             </div>
@@ -4983,14 +5047,14 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                 directive={presDirective} setDirective={setPresDirective} lastDirective={lastDirective}
                 directiveStrength={presDirStrength} setDirectiveStrength={setPresDirStrength} />
               <div className="ems-panel" style={{ padding: 12, fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
-                Приоритет: <b style={{ color: COLOR.text }}>{goalDef.label}</b>. Ставку ведёт бот-ЦБ, бюджет — бот-Минфин;
+                Приоритет: <b className="t-text">{goalDef.label}</b>. Ставку ведёт бот-ЦБ, бюджет — бот-Минфин;
                 их решения и заявления ниже. Вы влияете на экономику только через людей, которых назначаете, указания,
                 которые они могут не выполнить, и реформы, которые окупятся уже при следующем президенте.
               </div>
             </>
           )}
           {!isPublic && !isPresident && (
-          <div className="ems-panel" style={{ padding: 14 }}>
+          <div className="ems-panel" data-tour="levers" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 7 }}>
               <RoleIcon size={14} />Ваши полномочия
             </div>
@@ -5000,16 +5064,16 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               <div style={{ paddingBottom: 10 }}>
                 <button className="ems-btn" style={{ width: '100%', background: decisions.emergency ? COLOR.rust : COLOR.panelAlt, color: decisions.emergency ? '#fff' : COLOR.text, borderColor: COLOR.rust }}
                   onClick={() => { Audio.play(decisions.emergency ? 'click' : 'alarm'); setLever('emergency', !decisions.emergency); }}>
-                  {decisions.emergency ? <Check size={13} style={{ verticalAlign: -2 }} /> : <ShieldAlert size={13} style={{ verticalAlign: -2 }} />} Экстренная поддержка банков
+                  {decisions.emergency ? <Check size={13} className="va-2" /> : <ShieldAlert size={13} className="va-2" />} Экстренная поддержка банков
                 </button>
-                <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>Спасёт капитал банков, но ударит по доверию к ЦБ и добавит инфляции.</div>
+                <div className="note">Спасёт капитал банков, но ударит по доверию к ЦБ и добавит инфляции.</div>
               </div>
             )}
 
             {groups.includes('fiscal') && economy.imfActive && (
               <div style={{ paddingBottom: 10 }}>
                 <div className="ems-panel" style={{ padding: '9px 11px', borderColor: COLOR.gold, fontSize: 12, color: COLOR.text, lineHeight: 1.45 }}>
-                  <b style={{ color: COLOR.goldSoft }}>Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
+                  <b className="t-goldsoft">Программа МВФ действует ещё {economy.imfQuartersLeft} кв.</b> Расходы и выплаты обязаны сокращаться — это условие программы, не ваше решение на этот квартал.
                 </div>
               </div>
             )}
@@ -5021,9 +5085,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                       if (!window.confirm('Объявить дефолт по государственному долгу? Часть долга спишется разом, но рынок закроется для новых займов на несколько кварталов, а доверие резко упадёт. Отменить это решение будет нельзя.')) return;
                       Audio.play('alarm'); setLever('sovereignDefault', true);
                     }}>
-                    <AlertTriangle size={13} style={{ verticalAlign: -2 }} /> Объявить дефолт по госдолгу
+                    <AlertTriangle size={13} className="va-2" /> Объявить дефолт по госдолгу
                   </button>
-                  <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                  <div className="note">
                     Спишет часть долга разом вместо очередного секвестра, но закроет рынок для новых займов на несколько кварталов и сильно ударит по доверию. Разовое и необратимое решение.
                   </div>
                 </div>
@@ -5033,9 +5097,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                       if (!window.confirm('Запросить экстренное финансирование МВФ? Ставка по долгу и премия за риск снизятся сразу, но на два года бюджет обязан сокращать расходы и выплаты — это условие программы, отменить его будет нельзя, не разорвав саму программу.')) return;
                       Audio.play('alarm'); setLever('imfProgram', true);
                     }}>
-                    <ShieldAlert size={13} style={{ verticalAlign: -2 }} /> Запросить помощь МВФ
+                    <ShieldAlert size={13} className="va-2" /> Запросить помощь МВФ
                   </button>
-                  <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 5, lineHeight: 1.4 }}>
+                  <div className="note">
                     Альтернатива дефолту: долг не списывается, доступ к рынкам не закрывается, ставка сразу дешевле. Взамен — обязательная консолидация на два года, которую нельзя будет отменить по своему усмотрению.
                   </div>
                 </div>
@@ -5118,9 +5182,11 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
             )}
           </div>
           )}
+          <div data-tour="request">
           <Fold id="request" title="Запрос другому ведомству" icon={Megaphone} summary={pendingRequest ? 'запрос выбран' : 'без запроса'}>
             <RequestPanel role={setup.role} botRole={botRole} pending={pendingRequest} setPending={setPendingRequest} lastResponse={lastResponse} />
           </Fold>
+          </div>
           {groups.includes('fiscal') && (
             <Fold id="fiscal" title="Бюджетная арифметика" icon={Scale}
               summary={`баланс ${fmtSigned1(economy.budgetBalancePctGdp)}% ВВП · долг ${fmt1(economy.debtToGdp)}%`}>
@@ -5167,14 +5233,14 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       /* ЦЕНТР */
       const centerNode = (
         <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-          <NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} />
-          <Suspense fallback={<ChartFallback />}>
+          <div data-tour="news"><NewsTerminal items={newsFeed} onOpenPaper={() => setShowPaper(true)} /></div>
+          <div data-tour="chart"><Suspense fallback={<ChartFallback />}>
             <ChartPanel history={history} chartGroup={chartGroup} setChartGroup={setChartGroup} hiddenSeries={hiddenSeries} setHiddenSeries={setHiddenSeries} period={period} setPeriod={setPeriod} />
-          </Suspense>
+          </Suspense></div>
           <Fold id="report" title="Квартальный отчёт" icon={Newspaper} summary={history[history.length - 1].label}>
-          <div className="ems-panel" style={{ padding: 14 }}>
+          <div className="ems-panel p-14">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Квартальный отчёт</span>
+              <span className="ems-serif fs-14 t-goldsoft">Квартальный отчёт</span>
               {lastReport && <button className="ems-btn" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => { Audio.play('click'); setShowWhy(true); }}><Info size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Почему это произошло?</button>}
             </div>
             {/* официальный бюллетень, но в палитре кабинета, а не полноцветной «Газеты»:
@@ -5200,11 +5266,13 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       );
       /* ПРАВАЯ ПАНЕЛЬ */
       const rightNode = (
-        <div className="" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="col-12">
+          <div data-tour="scores">
           <Fold id="scores" title="Пять оценок вашей политики" icon={Trophy} summary={scoreSummary(economy)}>
             <ScorePanel economy={economy} prev={prevEcon} goalDef={goalDef} />
           </Fold>
-          <div className="ems-panel" style={{ padding: 14 }}>
+          </div>
+          <div className="ems-panel" data-tour="table" style={{ padding: 14 }}>
             <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 9 }}>Показатели экономики</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 11 }} className="ems-scroll">
               {tabs.map((t) => {
@@ -5224,7 +5292,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                 if (row.text) {
                   return (
                     <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 0', borderBottom: i < arr.length - 1 ? `1px solid ${COLOR.hairline}` : 'none' }}>
-                      <span style={{ color: COLOR.muted }}>{row.label}</span>
+                      <span className="t-muted">{row.label}</span>
                       <span className="ems-mono">{(row.map && row.map[val]) || String(val || '—')}</span>
                     </div>
                   );
@@ -5296,7 +5364,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                 : 'Обе ветви политики под вашим контролем'}
           </span>
           <button className="ems-btn primary" style={{ padding: narrow ? '12px 16px' : '12px 26px', fontSize: 14, width: narrow ? '100%' : undefined }} disabled={busy || finishCooldown > 0} onClick={finishQuarter}
-            aria-label="Завершить квартал и применить решения">
+            aria-label="Завершить квартал и применить решения" data-tour="finish">
             {busy ? 'Обработка…' : finishCooldown > 0 ? `Подождите ${finishCooldown}с` : 'Завершить квартал'}
           </button>
         </div>

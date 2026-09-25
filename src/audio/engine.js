@@ -92,9 +92,11 @@ export function createAudioEngine(options = {}) {
     return buf;
   };
 
+  let adopted = null; // контекст, созданный заранее лёгкой обёрткой (см. lazy.js)
   const ensure = () => {
     if (ctx) return ctx;
     if (options.context) ctx = options.context;
+    else if (adopted) ctx = adopted;
     else {
       const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
       if (!AC) return null;
@@ -1006,6 +1008,11 @@ export function createAudioEngine(options = {}) {
       if (!running && opts.music) this.startMusic();
     },
     prime() { const c = ensure(); if (c) resume(); return !!c; },
+    /* Принять уже созданный AudioContext. Меню грузит движок только после первого
+       клика, а браузер (особенно Safari на iPhone) разрешает звук лишь контексту,
+       запущенному прямо внутри жеста, — поэтому обёртка создаёт его сразу, а движок
+       подхватывает, когда догрузится. */
+    adopt(c) { if (!ctx && c) adopted = c; },
     // «контекст уже создан и играет» — без создания нового: до первого действия
     // человека браузер всё равно держал бы его выключенным
     primed: () => !!ctx && ctx.state === 'running',

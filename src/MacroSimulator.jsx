@@ -1,4 +1,4 @@
-﻿import React, { useState, Suspense } from 'react';
+﻿import React, { useState, useEffect, Suspense } from 'react';
 import {
   syncProgress, fetchRoom,
   fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot,
@@ -13,12 +13,12 @@ import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
   romanQ, quarterLabel, PRESIDENT_PERSONAS, dailyChallenge, dailyKey, dailySetup, SECTORS,
 } from './lib/catalog.js';
-import { Audio } from './audio/engine.js';
+// звуковой движок подгружается по первому клику — в стартовом файле только обёртка
+import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, emblemIcon } from './account.jsx';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
-import { TRACKS, MOOD_LABEL, STINGERS } from './audio/tracks.js';
 
 export { Audio };
 
@@ -87,8 +87,32 @@ export const FONT = {
   numeral: "'Fragment Mono','PT Mono','SFMono-Regular',Consolas,Menlo,monospace",
 };
 
+/* Цвета темы — CSS-переменными на корне (--c-text, --c-muted, --c-gold…): новые
+   стили пишутся через них и через служебные классы ниже, а не через style={{…}}
+   с COLOR.x в каждом элементе. Смена темы — одна замена переменных. */
+const kebab = (k) => k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+const themeVars = () => Object.entries(COLOR).filter(([, v]) => typeof v === 'string').map(([k, v]) => `--c-${kebab(k)}:${v};`).join('');
+/* Служебные классы для самых частых повторов оформления. Двойной селектор
+   (.ems-root .x) — чтобы класс весил больше обычных правил кнопок и панелей и
+   вёл себя как прежний inline-стиль. */
+const UTILITY_CSS = `
+  .ems-root .t-text { color: var(--c-text); } .ems-root .t-muted { color: var(--c-muted); } .ems-root .t-faint { color: var(--c-faint); }
+  .ems-root .t-gold { color: var(--c-gold); } .ems-root .t-goldsoft { color: var(--c-gold-soft); } .ems-root .t-rust { color: var(--c-rust); }
+  .ems-root .t-teal { color: var(--c-teal); }
+  .ems-root .fs-12 { font-size: 12px; } .ems-root .fs-13 { font-size: 13px; } .ems-root .fs-14 { font-size: 14px; } .ems-root .fs-16 { font-size: 16px; }
+  .ems-root .p-12 { padding: 12px; } .ems-root .p-13 { padding: 13px; } .ems-root .p-14 { padding: 14px; }
+  .ems-root .shrink-0 { flex-shrink: 0; } .ems-root .nowrap { white-space: nowrap; } .ems-root .rel { position: relative; }
+  .ems-root .va-1 { vertical-align: -1px; } .ems-root .va-2 { vertical-align: -2px; } .ems-root .mr-5 { margin-right: 5px; }
+  .ems-root .row-between { display: flex; justify-content: space-between; gap: 8px; }
+  .ems-root .col-12 { display: flex; flex-direction: column; gap: 12px; }
+  .ems-root .note { font-size: 12px; color: var(--c-faint); margin-top: 5px; line-height: 1.4; }
+  .ems-root .bar-track { flex: 1; height: 4px; border-radius: 2px; background: var(--c-border); overflow: hidden; }
+`;
+
 export const GlobalStyle = () => (
   <style>{`
+    .ems-root { ${themeVars()} }
+    ${UTILITY_CSS}
     .ems-root { color-scheme:${COLOR.isDark ? 'dark' : 'light'}; background:${COLOR.bg} radial-gradient(ellipse 1100px 620px at 50% -8%, ${COLOR.bgVignette} 0%, ${COLOR.bg} 70%); color:${COLOR.text}; font-family:${FONT.sans}; min-height:100vh; }
     .ems-root * { box-sizing: border-box; }
     .ems-root :focus-visible { outline: 2px solid ${COLOR.goldSoft}; outline-offset: 2px; }
@@ -459,6 +483,8 @@ export function AudioControls() {
   const anyOn = music || sfx;
   const np = Audio.nowPlaying();
   const list = Audio.playlist();
+  // названия пьес и заставок приезжают вместе с движком (см. audio/lazy.js)
+  const { TRACKS = {}, STINGERS = {}, MOOD_LABEL = {} } = Audio.meta() || {};
   const moods = [['auto', 'По режиму экономики'], ['calm', MOOD_LABEL.calm], ['boom', MOOD_LABEL.boom],
     ['slump', MOOD_LABEL.slump], ['stag', MOOD_LABEL.stag], ['crisis', MOOD_LABEL.crisis], ['frost', MOOD_LABEL.frost], ['war', MOOD_LABEL.war]];
   return (
@@ -1035,6 +1061,70 @@ function DailyCard({ onStart }) {
   );
 }
 
+/* Живая строка над меню: пустовавшая треть экрана стала биржевым табло страны.
+   Числа — не из движка (меню не грузит его ради украшения), а лёгкое случайное
+   блуждание вокруг стартовых значений партии: инфляция, ставка, рост, курс, индекс
+   биржи и заголовки из жизни Инфлатии и соседей. Мини-график — инфляция за
+   последние «кварталы» табло. При «уменьшить движение» строка стоит на месте. */
+const TICKER_HEADLINES = ['ЦБ сохранил ключевую ставку', 'Минфин разместил облигации на 40 млрд', 'Норланд наращивает рыбный экспорт',
+  'Вестравия зовёт в торговый блок', 'Урожай в Приреченской выше ожиданий', 'Дешт снизил цены на нефть', 'Стройка метро в Велеграде идёт по графику',
+  'Профсоюзы требуют индексации зарплат', 'Рудногорские копи увеличили добычу'];
+const TICKER_BASE = [
+  { id: 'inf', label: 'Инфляция', v: 4.0, step: 0.12, unit: '%', dec: 1, bad: true },
+  { id: 'rate', label: 'Ставка ЦБ', v: 5.5, step: 0.05, unit: '%', dec: 2, grid: 0.25 },
+  { id: 'gdp', label: 'Рост ВВП', v: 2.3, step: 0.1, unit: '%', dec: 1 },
+  { id: 'unemp', label: 'Безработица', v: 5.0, step: 0.06, unit: '%', dec: 1, bad: true },
+  { id: 'fx', label: 'Курс', v: 100, step: 0.4, unit: '', dec: 1, bad: true },
+  { id: 'idx', label: 'Индекс ВБ', v: 1000, step: 6, unit: '', dec: 0 },
+];
+function MenuTicker() {
+  const [rows, setRows] = useState(() => TICKER_BASE.map((r) => ({ ...r, prev: r.v })));
+  const [infHist, setInfHist] = useState(() => Array.from({ length: 16 }, (_, i) => 4 + Math.sin(i / 2.3) * 0.5));
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setRows((list) => list.map((r) => {
+        const base = TICKER_BASE.find((b) => b.id === r.id).v;
+        // шаг к стартовому значению плюс шум: табло живое, но не уходит в абсурд
+        let v = r.v + (base - r.v) * 0.08 + (Math.random() - 0.5) * 2 * r.step;
+        if (r.grid) v = Math.round(v / r.grid) * r.grid;
+        return { ...r, prev: r.v, v };
+      }));
+      setInfHist((h) => [...h.slice(1), h[h.length - 1] + (4 - h[h.length - 1]) * 0.1 + (Math.random() - 0.5) * 0.3]);
+    }, 3500);
+    return () => clearInterval(id);
+  }, []);
+  const lo = Math.min(...infHist) - 0.2; const hi = Math.max(...infHist) + 0.2;
+  const pts = infHist.map((v, i) => `${(i / (infHist.length - 1)) * 120},${34 - ((v - lo) / (hi - lo)) * 30}`).join(' ');
+  const cells = rows.map((r) => {
+    const d = r.v - r.prev;
+    const up = d > 1e-9; const down = d < -1e-9;
+    const tone = !up && !down ? COLOR.faint : (up !== !!r.bad) ? COLOR.teal : COLOR.rust;
+    return (
+      <span key={r.id} className="menu-tick-cell">
+        <span style={{ color: COLOR.muted }}>{r.label}</span>{' '}
+        <span className="ems-mono" style={{ color: COLOR.text }}>{r.v.toFixed(r.dec).replace('.', ',')}{r.unit}</span>{' '}
+        <span style={{ color: tone, fontSize: 10 }}>{up ? '▲' : down ? '▼' : '•'}</span>
+      </span>
+    );
+  });
+  const news = TICKER_HEADLINES.map((h) => <span key={h} className="menu-tick-cell" style={{ color: COLOR.goldSoft }}>◆ {h}</span>);
+  return (
+    <div className="ems-fade-in menu-ticker" aria-hidden="true">
+      <div className="menu-ticker-spark">
+        <div style={{ fontSize: 11, color: COLOR.faint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Инфляция, 4 года</div>
+        <svg width="120" height="36" viewBox="0 0 120 36" style={{ display: 'block' }}>
+          <polyline points={pts} fill="none" stroke={COLOR.gold} strokeWidth="1.6" strokeLinejoin="round" />
+          <circle cx="120" cy={34 - ((infHist[infHist.length - 1] - lo) / (hi - lo)) * 30} r="2.4" fill={COLOR.goldSoft} />
+        </svg>
+      </div>
+      <div className="menu-ticker-band">
+        <div className="menu-ticker-track">{cells}{news}{cells.map((c) => React.cloneElement(c, { key: `${c.key}b` }))}{news.map((c) => React.cloneElement(c, { key: `${c.key}b` }))}</div>
+      </div>
+    </div>
+  );
+}
+
 function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
@@ -1172,6 +1262,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
       {/* margin: auto по вертикали — меню стоит по центру высокого экрана, а когда
           раскрыты сохранения и оно выше окна, просто прокручивается, не уезжая вверх */}
       <div style={{ maxWidth: 760, width: '100%', margin: 'auto 0' }}>
+        <MenuTicker />
         {/* шапка: печать, название и одна строка о том, что это */}
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
           <InflatiaMark size={54} />
@@ -1310,6 +1401,16 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 
 // функция, а не строка: цвета берутся из текущей темы при каждой отрисовке
 const menuCss = () => `
+  .menu-ticker { display: flex; align-items: center; gap: 14px; margin-bottom: 30px; padding: 10px 14px; border: 1px solid ${COLOR.border};
+    border-radius: 12px; background: ${COLOR.panel}cc; overflow: hidden; }
+  .menu-ticker-spark { flex-shrink: 0; padding-right: 14px; border-right: 1px solid ${COLOR.hairline}; }
+  .menu-ticker-band { flex: 1; min-width: 0; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 3%, #000 94%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 3%, #000 94%, transparent); }
+  .menu-ticker-track { display: inline-flex; white-space: nowrap; animation: menuTicker 70s linear infinite; }
+  .menu-tick-cell { padding: 0 16px; font-size: 13px; }
+  @keyframes menuTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  @media (max-width: 560px) { .menu-ticker-spark { display: none; } .menu-ticker { margin-bottom: 22px; padding: 8px 10px; } }
+  @media (prefers-reduced-motion: reduce) { .menu-ticker-track { animation: none; } }
   .menu-title { margin: 0; font-size: 30px; line-height: 1.05; font-weight: 700; letter-spacing: 0.02em; color: ${COLOR.goldSoft}; }
   @media (max-width: 560px) { .menu-title { font-size: 25px; } }
   .menu-profile { display: flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 13px; flex-shrink: 0; max-width: 170px; }
@@ -1346,6 +1447,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
   // отрасль компании — только для предпринимателя
   const [sector, setSector] = useState('farm');
   const [scenario, setScenario] = useState('sandbox');
+  // обучение по экрану партии: у тех, кто ещё не играл ни одной ролью, включено само
+  const [tour, setTour] = useState(() => loadRolesPlayed().length === 0);
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -1388,7 +1491,10 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
           <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Ваш пост</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px,1fr))', gap: 10, marginBottom: 26 }}>
-          {ROLES.map((r) => {
+          {/* «Своё дело» — отдельная игра со своим входом в меню: среди постов «Партии у
+              руля страны» предприниматель только путал. И наоборот, из меню «Своего дела»
+              государственные посты не предлагаются. */}
+          {ROLES.filter((r) => (initialRole === 'entrepreneur') === (r.id === 'entrepreneur')).map((r) => {
             const Icon = ROLE_ICON[r.icon]; const active = role === r.id;
             return (
               <div key={r.id} onClick={() => { Audio.prime(); Audio.play('click'); setRole(r.id); }} className="ems-card-btn"
@@ -1651,6 +1757,19 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
           )}
         </div>
 
+        {role !== 'entrepreneur' && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px', marginBottom: 12, borderRadius: 10,
+            border: `1px solid ${tour ? COLOR.gold : COLOR.border}`, background: tour ? COLOR.goldDim : 'transparent', cursor: 'pointer' }}>
+            <input type="checkbox" checked={tour} onChange={(e) => { Audio.play('tick'); setTour(e.target.checked); }}
+              style={{ marginTop: 3, accentColor: COLOR.gold }} />
+            <span>
+              <span style={{ fontSize: 13, color: COLOR.text, fontWeight: 600 }}>Обучение по экрану партии</span>
+              <span style={{ display: 'block', fontSize: 12, color: COLOR.muted, marginTop: 2, lineHeight: 1.45 }}>
+                Для первой партии: по шагам покажем, где рычаги, показатели, график, оценки и кнопка квартала. Всё доступно сразу — обучение ничего не прячет. Повторить можно из меню «⋯».
+              </span>
+            </span>
+          </label>
+        )}
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
           onClick={() => {
             if (!role) return;
@@ -1661,7 +1780,7 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             const presWanted = custom ? presPersona : 'random';
             // классика всегда начинается с открытой партии, даже если в
             // настраиваемом режиме до этого успели выбрать кризисный сценарий
-            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox',
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour,
               ...(role === 'entrepreneur' ? { sector } : {}),
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
