@@ -585,3 +585,19 @@ test('после квартала: «а если бы вы ничего не д�
   await expect(card).toContainText('ваш вклад');
   expect(errors).toEqual([]);
 });
+
+test('модель и учебник: восемь идей со ссылкой в лабораторию и страница ограничений', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Модель и учебник', { exact: true }).first().click();
+  const book = page.getByTestId('textbook');
+  await expect(book.getByText('Закон Оукена', { exact: true })).toBeVisible();
+  await expect(book.getByRole('button', { name: 'Открыть в Лаборатории' })).toHaveCount(8);
+  await expectNoSidewaysScroll(page);
+  await page.getByRole('button', { name: 'Чем модель не похожа на настоящую' }).click();
+  await expect(page.getByTestId('limits').getByText('Адаптивные ожидания', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Игра ↔ учебник' }).click();
+  await page.getByTestId('textbook').getByRole('button', { name: 'Открыть в Лаборатории' }).nth(3).click();
+  await expect(page.getByTestId('lab-charts')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Госинвестиции в инфраструктуру' })).toHaveAttribute('aria-pressed', 'true');
+  expect(errors).toEqual([]);
+});

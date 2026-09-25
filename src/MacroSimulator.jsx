@@ -6,7 +6,7 @@ import {
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
-  GraduationCap, FlaskConical, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
+  GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
 } from 'lucide-react';
 import {
@@ -911,6 +911,7 @@ const loadGame = () => import('./game.jsx');
 const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ default: m.TycoonScreen })));
 // тренажёр: лаборатория, учебник и ограничения модели — отдельный чанк
 const LabScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.LabScreen })));
+const ModelScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.ModelScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
 export function preloadGame() { loadGame().catch(() => {}); }
@@ -1128,7 +1129,7 @@ function MenuTicker() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onModel }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1255,6 +1256,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     ...(onLab ? [{ id: 'lab', icon: FlaskConical, title: 'Лаборатория', tag: 'один рычаг — два мира',
       desc: 'Меняете один рычаг, шоки выключены: графики показывают чистый эффект на инфляцию, выпуск, безработицу и курс за 12 кварталов.',
       action: () => { Audio.prime(); Audio.play('tab'); onLab(); } }] : []),
+    ...(onModel ? [{ id: 'model', icon: BookOpenText, title: 'Модель и учебник', tag: 'Фишер, Оукен, Филлипс…',
+      desc: 'Где в игре работают формулы из учебника — и чем эта модель честно не похожа на настоящую экономику.',
+      action: () => { Audio.prime(); Audio.play('tab'); onModel(); } }] : []),
   ];
 
   return (
@@ -1886,6 +1890,7 @@ export default function MacroSimulator() {
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
   // ведёт сразу в лобби, минуя меню.
   const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
+  const [labLever, setLabLever] = useState('keyRate');
   // «Своё дело»: { initial } — продолжить сохранённое, { setupNew } — новое дело
   const [tycoon, setTycoon] = useState(() => (resumeTycoon ? { initial: resumeTycoon } : null));
   React.useEffect(() => {
@@ -1942,7 +1947,14 @@ export default function MacroSimulator() {
       if (view === 'lab') {
         return (
           <Suspense fallback={<GameFallback />}>
-            <LabScreen key={theme} onBack={goMenu} />
+            <LabScreen key={`${theme}:${labLever}`} initialLever={labLever} onBack={goMenu} />
+          </Suspense>
+        );
+      }
+      if (view === 'model') {
+        return (
+          <Suspense fallback={<GameFallback />}>
+            <ModelScreen key={theme} onBack={goMenu} onOpenLab={(id) => { setLabLever(id); setView('lab'); }} />
           </Suspense>
         );
       }
@@ -1965,7 +1977,8 @@ export default function MacroSimulator() {
           onNewGame={() => setView('setup')}
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
-          onLab={() => setView('lab')}
+          onLab={() => { setLabLever('keyRate'); setView('lab'); }}
+          onModel={() => setView('model')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
           onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
