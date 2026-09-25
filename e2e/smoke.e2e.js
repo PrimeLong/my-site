@@ -568,3 +568,20 @@ test('лаборатория: один рычаг, четыре графика �
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
+
+test('после квартала: «а если бы вы ничего не делали» показывает вклад решения', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'рычаги на телефоне в отдельной вкладке — логика та же');
+  const { errors } = await openApp(page);
+  await startSoloGame(page);
+  const slider = page.getByRole('slider', { name: /^Ключевая ставка, текущее значение/ });
+  await slider.focus();
+  for (let i = 0; i < 4; i++) await slider.press('ArrowRight');
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  const card = page.getByTestId('counterfactual');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('Вы изменили: ключевая ставка');
+  await expect(card).toContainText('ваш вклад');
+  expect(errors).toEqual([]);
+});

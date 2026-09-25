@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
-import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS } from './lib/catalog.js';
+import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS, rng } from './lib/catalog.js';
+import { passiveDecisions, changedLevers, policyContribution } from './lib/counterfactual.js';
 import { makePrehistory } from './lib/autopilot.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
@@ -4091,6 +4092,45 @@ export function PhoneKpiBar({ economy, kpiDelta }) {
    правила Тейлора. Номинальная ставка сама по себе ничего не говорит — 15% при ожиданиях
    12% мягче, чем 8% при ожиданиях 2%. В валютном союзе — та же картина для ставки
    внешнего ЦБ: видно, насколько она не подходит именно этой стране. */
+/* «А если бы вы ничего не делали»: тот же квартал с теми же шоками без решений игрока.
+   Разница — вклад политики; то, что пришло бы и так, — шоки и чужие решения. */
+export function CounterfactualCard({ cf }) {
+  const shown = cf.rows.filter((r) => r.key !== 'approval' || Math.abs(r.diff) >= 0.05);
+  const fmtVal = (r, v) => (r.key === 'exchangeRate' ? fmt1(v) : `${fmt1(v)}${r.unit === 'п.п.' ? '%' : ''}`);
+  return (
+    <div data-testid="counterfactual" style={{ marginTop: 12, padding: '12px 14px', border: `1px solid ${COLOR.border}`, background: COLOR.panelAlt }}>
+      <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 4 }}>А если бы вы ничего не делали</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+        {cf.changed.length
+          ? <>Вы изменили: {cf.changed.map((c) => `${c.label.toLowerCase()} ${c.from.toFixed(c.digits || 1)} → ${c.to.toFixed(c.digits || 1)}${c.suffix}`).join('; ')}. </>
+          : <>В этом квартале вы не трогали рычаги — всё, что произошло, сделали шоки, соседи и накопленные решения прошлых кварталов. </>}
+        Тот же {cf.label} посчитан второй раз — с теми же шоками и решениями соседей, но с вашими рычагами на прежних местах.
+      </div>
+      {cf.changed.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) repeat(3, minmax(0,1fr))', gap: '3px 10px', fontSize: 12 }}>
+          <span className="t-muted" /><span className="t-muted" style={{ textAlign: 'right' }}>без вас</span>
+          <span className="t-muted" style={{ textAlign: 'right' }}>с вами</span><span className="t-muted" style={{ textAlign: 'right' }}>ваш вклад</span>
+          {shown.map((r) => {
+            const tone = Math.abs(r.diff) < 0.05 || !r.good ? COLOR.text : r.diff * r.good > 0 ? COLOR.teal : COLOR.rust;
+            return (
+              <React.Fragment key={r.key}>
+                <span style={{ overflowWrap: 'anywhere' }}>{r.label}</span>
+                <span className="ems-mono" style={{ textAlign: 'right', color: COLOR.muted }}>{fmtVal(r, r.passive)}</span>
+                <span className="ems-mono" style={{ textAlign: 'right' }}>{fmtVal(r, r.actual)}</span>
+                <b className="ems-mono" style={{ textAlign: 'right', color: tone }}>{Math.abs(r.diff) < 0.05 ? '0' : `${fmtSigned1(r.diff)} ${r.unit}`}</b>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginTop: 8 }}>
+        Здесь только то, что успело случиться сразу. Ставка и налоги действуют с лагом в несколько кварталов —
+        полную траекторию одного решения показывает «Лаборатория» в главном меню или кнопка отклика у ползунка.
+      </div>
+    </div>
+  );
+}
+
 export function RateCompass({ economy, keyRate }) {
   const exp = economy.inflationExpectations;
   const real = keyRate - exp;
@@ -4369,6 +4409,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [lastReasons, setLastReasons] = useState(initial && initial.lastReasons ? initial.lastReasons
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
   const [lastReport, setLastReport] = useState(initial ? initial.lastReport || '' : '');
+  const [lastCf, setLastCf] = useState(initial ? initial.lastCf || null : null);
   const [botAction, setBotAction] = useState(initial ? initial.botAction || null : null);
   const [showWhy, setShowWhy] = useState(false);
   const [activeTab, setActiveTab] = useState('economy');
@@ -4421,7 +4462,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
   const tabs = useMemo(() => tabsForBotRole(botRole), [botRole]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
-    quarterIndex, newsFeed, stories, lastReport, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
+    quarterIndex, newsFeed, stories, lastReport, lastCf, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
     presPersonaId, presidentLast, slotIdx: activeSlot, prehistory, decisionLog });
   // история снимков для отката после поражения: три хода назад решение ещё можно
@@ -4605,14 +4646,29 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     // обещания считает движок в момент голосования: от них зависит доля голосов,
     // а не только строчка в новостях постфактум
     if (promises) eff = { ...eff, promises };
-    const result = simulateQuarter({
+    const quarterInput = {
       economy: { ...economy, cbStance, mofStance,
         policyCoordination: clamp(economy.policyCoordination + (reqResult ? reqResult.coordination : 0), 0, 100) },
       decisions: eff, pendingImpulses: extraImpulses.length ? [...pendingImpulses, ...extraImpulses] : pendingImpulses,
       eventCooldowns,
       difficulty, quarterIndex, stories, botAction: action,
       botActions: bothBots ? [mofAction] : [], publicMode: isPublic,
-    });
+    };
+    /* Квартал считается на своём зерне — чтобы его можно было повторить с теми же шоками
+       без решений игрока: «а если бы вы ничего не делали» (lib/counterfactual.js). */
+    const qSeed = Math.floor(rng() * 2147483647);
+    const result = withSeededRandom(qSeed, () => simulateQuarter(quarterInput));
+    const myGroups = (roleDef.groups || []).filter((g) => g === 'monetary' || g === 'fiscal');
+    let cf = null;
+    if (myGroups.length) {
+      try {
+        const passive = passiveDecisions(eff, decisionsBaseline, myGroups);
+        const alt = withSeededRandom(qSeed, () => simulateQuarter({ ...quarterInput, decisions: passive }));
+        cf = { q: quarterIndex, label: quarterLabel(quarterIndex), rows: policyContribution(result.economy, alt.economy),
+          changed: changedLevers(eff, decisionsBaseline, myGroups) };
+      } catch { cf = null; }
+    }
+    setLastCf(cf);
     if (dirResult) {
       const who = dirResult.toCb ? 'ПРЕЗИДЕНТ → ЦБ' : 'ПРЕЗИДЕНТ → МИНФИН';
       result.newsEntries.unshift({ id: `dir${quarterIndex}`, cat: 'gov', priority: 9, q: quarterIndex, qLabel: quarterLabel(quarterIndex),
@@ -4829,7 +4885,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength, warTarget,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan, diploPlan,
-    isPublic, canCommandDefense]);
+    isPublic, canCommandDefense, roleDef]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5423,6 +5479,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>Настройте политику слева и завершите первый квартал. Помните: между решением и результатом стоит цепочка — ставка меняет стоимость кредита, кредит меняет спрос, спрос меняет цены.</div>
               )}
             </div>
+            {lastCf && <CounterfactualCard cf={lastCf} />}
           </div>
           </Fold>
         </div>
