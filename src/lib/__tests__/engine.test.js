@@ -2753,3 +2753,102 @@ describe('общая просьба «снизить налоги»', () => {
     expect(REQUESTS.find((r) => r.id === 'tax_relief_business').retired).toBe(true);
   });
 });
+
+describe('«Только экономика» и пропуск шагов квартала', () => {
+  it('флаг партии держится и замораживает войну: ни нападений, ни указа о ней', () => {
+    let e = { ...makeInitialEconomy(), economyOnly: true, relations: { north: 50, west: 60, southwest: 3 }, deshtMobilized: 6, politicalCapital: 90 };
+    let cd = {};
+    for (let q = 1; q <= 30; q++) {
+      const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), presidentActions: ['war_start'] }, pendingImpulses: [],
+        eventCooldowns: cd, difficulty: 'hard', quarterIndex: q, stories: [] });
+      e = r.economy; cd = r.eventCooldowns;
+      expect(e.warQuartersLeft || 0).toBe(0);
+    }
+    expect(e.economyOnly).toBe(true);
+    expect(presActionAvailable(PRES_BY_ID.war_start, e, {})).toBe(false);
+  });
+
+  it('skip: ["war"] работает и без флага в состоянии', () => {
+    const e = { ...makeInitialEconomy(), relations: { north: 50, west: 60, southwest: 2 }, deshtMobilized: 6 };
+    const r = simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), presidentActions: ['war_start'] }, pendingImpulses: [],
+      eventCooldowns: {}, difficulty: 'hard', quarterIndex: 1, stories: [] }, { skip: ['war'] });
+    expect(r.economy.warQuartersLeft || 0).toBe(0);
+  });
+});
+
+describe('обещание ЦБ о пути ставки', () => {
+  const step = (e, d, q = 1) => simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), ...d }, pendingImpulses: [], eventCooldowns: {},
+    difficulty: 'easy', quarterIndex: q, stories: [], noEvents: true }).economy;
+
+  it('рынок закладывает объявленный путь сразу: «будем повышать» дорожит кредит уже сейчас', () => {
+    const e = makeInitialEconomy();
+    const plain = step(e, {}); const hawk = step(e, { guidance: 'hike' });
+    expect(hawk.guidance && hawk.guidance.dir).toBe('hike');
+    expect(hawk.lendingRate).toBeGreaterThan(plain.lendingRate);
+  });
+
+  it('нарушение обещания бьёт по доверию к ЦБ сильнее, чем выполнение', () => {
+    const e0 = step(makeInitialEconomy(), { guidance: 'hold' });
+    const kept = step(e0, { keyRate: e0.keyRate }, 2);
+    const broke = step(e0, { keyRate: e0.keyRate + 2 }, 2);
+    expect(broke.cbCredibility).toBeLessThan(kept.cbCredibility - 5);
+  });
+});
+
+describe('историческая тень', () => {
+  it('у исторических сценариев есть реальные ряды по кварталам и они не попадают в вызов дня', () => {
+    const hist = SCENARIOS.filter((sc) => sc.historical);
+    expect(hist.map((sc) => sc.id).sort()).toEqual(['greece2010', 'russia2014', 'turkey2021', 'volcker']);
+    hist.forEach((sc) => {
+      expect(sc.shadow.name).toBeTruthy();
+      const series = Object.entries(sc.shadow).filter(([, v]) => Array.isArray(v));
+      expect(series.length).toBeGreaterThanOrEqual(3);
+      series.forEach(([, v]) => { expect(v.length).toBeGreaterThanOrEqual(8); expect(v.every(Number.isFinite)).toBe(true); });
+    });
+  });
+});
+
+describe('валютный союз (Греция 2010)', () => {
+  it('курс не двигается, ставку ведёт внешний ЦБ, что бы ни решали в стране', async () => {
+    const { withSeededRandom } = await import('../catalog.js');
+    const sc = SCENARIOS.find((x) => x.id === 'greece2010');
+    expect(sc.noRoles).toContain('central_bank');
+    const path = sc.overrides.currencyUnion.ratePath;
+    withSeededRandom(2010, () => {
+      let e = makeInitialEconomy('greece2010');
+      const fx0 = e.exchangeRate;
+      expect(e.fxRegime).toBe('union');
+      let pending = []; let cd = {}; let stories = [];
+      for (let q = 1; q <= 16; q++) {
+        const cb = botCentralBank(e, 'hawk', 'medium');
+        expect(cb.decisions.keyRate).toBe(path[q - 1]);
+        const mof = botFinanceMinistry(e, 'austerity', 'medium');
+        // даже если в решения пришли своя ставка, эмиссия и интервенции — союз их не пропускает
+        const d = { ...defaultDecisions(e), ...cb.decisions, ...mof.decisions, keyRate: 20, moneySupplyOp: 30, fxIntervention: -40, fxRegime: 'free' };
+        const r = simulateQuarter({ economy: e, decisions: d, pendingImpulses: pending, eventCooldowns: cd, difficulty: 'medium',
+          quarterIndex: q, stories, botAction: cb, botActions: [mof] });
+        e = r.economy; pending = r.pendingImpulses; cd = r.eventCooldowns; stories = r.stories;
+        expect(e.exchangeRate).toBe(fx0);
+        expect(e.fxDeprAnnual).toBe(0);
+        expect(e.keyRate).toBe(path[q - 1]);
+        expect(e.fxRegime).toBe('union');
+      }
+    });
+  });
+});
+
+describe('правило Тейлора и реальная ставка', () => {
+  it('учебная формула: r* + π + 0,5·(π − π*) + 0,5·разрыв', async () => {
+    const { taylorRate } = await import('../engine.js');
+    expect(taylorRate({ rStar: 2, inflation: 4, inflationTarget: 4, outputGap: 0 })).toBeCloseTo(6, 9);
+    expect(taylorRate({ rStar: 2, inflation: 8, inflationTarget: 4, outputGap: -2 })).toBeCloseTo(2 + 8 + 2 - 1, 9);
+    // ставка не уходит ниже нуля
+    expect(taylorRate({ rStar: 0, inflation: -3, inflationTarget: 4, outputGap: -6 })).toBe(0);
+  });
+  it('в каждом квартале экономика несёт ставку по Тейлору и реальную ключевую', () => {
+    const e = runQuarters(3);
+    expect(Number.isFinite(e.taylorRate)).toBe(true);
+    expect(Number.isFinite(e.realPolicyRate)).toBe(true);
+    expect(Number.isFinite(makeInitialEconomy().taylorRate)).toBe(true);
+  });
+});

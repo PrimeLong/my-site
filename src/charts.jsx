@@ -12,8 +12,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
-import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
+import { fmt1, fmtMoney, fmtSigned1, taylorRate } from './lib/engine.js';
 import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
+import { YOY_KEYS, yoyFromAnnualized } from './lib/model/measures.js';
+import { impulseResponse } from './lib/lab.js';
 
 // вкладки, которые видны всегда; остальные — в списке «ещё»
 const MAIN_GROUPS = ['output', 'prices', 'money', 'labor', 'government'];
@@ -38,9 +40,11 @@ const CHART_GROUPS = [
   ] },
   { id: 'money', label: 'Ставки', series: [
     { id: 'keyRate', label: 'Ключевая ставка', axis: 'left', color: COLOR.gold, fmt: 'pct' },
-    { id: 'lendingRate', label: 'Ставка по кредитам', axis: 'left', color: COLOR.rust, fmt: 'pct' },
-    { id: 'realLendingRate', label: 'Реальная ставка', axis: 'left', color: COLOR.blue, fmt: 'pct' },
+    // правило Тейлора — ориентир из учебника, пунктиром: где «должна» стоять ставка
+    { id: 'taylorRate', label: 'Правило Тейлора', axis: 'left', color: COLOR.goldSoft, fmt: 'pct', dash: '6 4' },
+    { id: 'realPolicyRate', label: 'Реальная ключевая', axis: 'left', color: COLOR.blue, fmt: 'pct' },
     { id: 'rStar', label: 'Нейтральная ставка r*', axis: 'left', color: COLOR.teal, fmt: 'pct' },
+    { id: 'lendingRate', label: 'Ставка по кредитам', axis: 'left', color: COLOR.rust, fmt: 'pct' },
   ] },
   { id: 'labor', label: 'Труд', series: [
     { id: 'unemployment', label: 'Безработица', axis: 'left', color: COLOR.rust, fmt: 'pct' },
@@ -79,6 +83,10 @@ const CHART_GROUPS = [
     { id: 'yield3m', label: 'Доходность 3 месяца', axis: 'right', color: '#8E7CC3', fmt: 'pct' },
     { id: 'volatilityIndex', label: 'Индекс страха', axis: 'right', color: COLOR.rust, fmt: 'idx' },
   ] },
+  { id: 'inequality', label: 'Неравенство', series: [
+    { id: 'gini', label: 'Джини', axis: 'left', color: COLOR.gold, fmt: 'idx3' },
+    { id: 'povertyRate', label: 'Бедность (<60% медианы)', axis: 'right', color: COLOR.rust, fmt: 'pct' },
+  ] },
   { id: 'scores', label: 'Оценки', series: [
     { id: 'scoreStability', label: 'Стабильность', axis: 'left', color: COLOR.gold, fmt: 'idx' },
     { id: 'scoreWelfare', label: 'Благосостояние', axis: 'left', color: COLOR.teal, fmt: 'idx' },
@@ -91,8 +99,11 @@ const PERIODS = [{ id: '1y', label: '1 год', q: 4 }, { id: '5y', label: '5 л
 /* На узком диапазоне (например разрыв выпуска от -1.2 до 0) округление до целых
    даёт подряд «0% 0% -1% -1%» — десятая доля появляется только когда она нужна. */
 const pctTick = (v) => `${Math.abs(v) < 10 ? Number(v.toFixed(1)) : Math.round(v)}%`;
-const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v) : pctTick);
-const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v) : (v) => `${fmt1(v)}%`);
+// idx3 — индекс с тремя знаками (коэффициент Джини от 0 до 1)
+const axisTick = (fmtType) => (fmtType === 'money' ? (v) => Math.round(v).toLocaleString('ru-RU') : fmtType === 'idx' ? (v) => Math.round(v)
+  : fmtType === 'idx3' ? (v) => v.toFixed(2) : pctTick);
+const tooltipVal = (fmtType) => (fmtType === 'money' ? (v) => fmtMoney(v) : fmtType === 'idx' ? (v) => fmt1(v)
+  : fmtType === 'idx3' ? (v) => v.toFixed(3) : (v) => `${fmt1(v)}%`);
 
 const FORECAST_ANCHORS = {
   inflation: (e) => e.inflationTarget, coreInflation: (e) => e.inflationTarget,
@@ -158,7 +169,10 @@ function CompareBadge({ compare, onReset }) {
   );
 }
 
-export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod }) {
+/* shadow — «историческая тень» сценария (SCENARIOS[].shadow): как шёл реальный
+   эпизод поквартально. Рисуется пунктиром поверх ваших линий — ровно до текущего
+   квартала, без подсказок о будущем. */
+export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, setHiddenSeries, period, setPeriod, shadow = null }) {
   const group = CHART_GROUPS.find((g) => g.id === chartGroup);
   const [forecast, setForecast] = useState(false);
   const panelCls = 'ems-panel ems-visual';
@@ -166,11 +180,19 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
   React.useEffect(() => { setDragRange(null); }, [chartGroup, period, forecast, setDragRange]);
   const data = useMemo(() => {
     const p = PERIODS.find((x) => x.id === period);
-    const hist = history.slice(-p.q).map((h) => ({
-      ...h,
-      deficitPctGdp: -h.budgetBalancePctGdp,
-      interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
-    }));
+    // с исторической тенью темпы модели переводятся в «год к году» — как в реальных рядах
+    const yoy = shadow ? Object.fromEntries(YOY_KEYS.filter((k) => Array.isArray(shadow[k]))
+      .map((k) => [k, yoyFromAnnualized(history.map((h) => h[k])).slice(-p.q)])) : {};
+    const hist = history.slice(-p.q).map((h, i) => {
+      const row = { ...h, deficitPctGdp: -h.budgetBalancePctGdp, interestPctGdp: h.gdp ? (h.interestPayment / h.gdp) * 100 : 0,
+        taylorRate: Number.isFinite(h.taylorRate) ? h.taylorRate : taylorRate(h),
+        realPolicyRate: Number.isFinite(h.realPolicyRate) ? h.realPolicyRate : h.keyRate - h.inflationExpectations };
+      Object.keys(yoy).forEach((k) => { if (Number.isFinite(yoy[k][i])) row[k] = yoy[k][i]; });
+      if (shadow && Number.isFinite(h.q) && h.q >= 0) {
+        Object.keys(shadow).forEach((k) => { if (Array.isArray(shadow[k]) && Number.isFinite(shadow[k][h.q])) row[`${k}__hist`] = shadow[k][h.q]; });
+      }
+      return row;
+    });
     if (!forecast || !hist.length) return hist;
     const last = hist[hist.length - 1];
     const vis = group.series.filter((x) => !hiddenSeries.includes(x.id));
@@ -214,7 +236,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     vis.forEach((sx) => { joint[`${sx.id}__f`] = last[sx.id]; });
     out[hist.length - 1] = joint;
     return out;
-  }, [history, period, forecast, chartGroup, hiddenSeries]);
+  }, [history, period, forecast, chartGroup, hiddenSeries, shadow]);
 
   // граница факта и прогноза: последняя точка реальной истории
   const nowLabel = useMemo(() => {
@@ -234,13 +256,13 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
     if (!list.length) return ['auto', 'auto'];
     const vals = [];
     data.forEach((row) => {
-      list.forEach((x) => { [row[x.id], row[`${x.id}__f`]].forEach((v) => { if (Number.isFinite(v)) vals.push(v); }); });
+      list.forEach((x) => { [row[x.id], row[`${x.id}__f`], row[`${x.id}__hist`]].forEach((v) => { if (Number.isFinite(v)) vals.push(v); }); });
       if (Array.isArray(row.fanInner) && visible[0] && visible[0].axis === axis) row.fanInner.forEach((v) => { if (Number.isFinite(v)) vals.push(v); });
     });
     if (!vals.length) return ['auto', 'auto'];
     let lo = Math.min(...vals); let hi = Math.max(...vals);
     const level = list[0].fmt === 'money' || list[0].fmt === 'idx';
-    const minSpan = level ? Math.max(Math.abs((lo + hi) / 2) * 0.06, 1) : 2;
+    const minSpan = list[0].fmt === 'idx3' ? 0.03 : level ? Math.max(Math.abs((lo + hi) / 2) * 0.06, 1) : 2;
     if (hi - lo < minSpan) { const mid = (lo + hi) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
     const pad = (hi - lo) * 0.08;
     lo -= pad; hi += pad;
@@ -362,13 +384,26 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
                 stroke={s.color} strokeWidth={1.6} strokeDasharray="4 3" dot={false} isAnimationActive={false} legendType="none" />
             ))}
             {visible.map((s) => (
-              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={s.label} stroke={s.color} strokeWidth={2} dot={false} />
+              <Line key={s.id} yAxisId={s.axis} type="monotone" dataKey={s.id} name={shadow && YOY_KEYS.includes(s.id) && Array.isArray(shadow[s.id]) ? `${s.label}, г/г` : s.label} stroke={s.color}
+                strokeWidth={s.dash ? 1.6 : 2} strokeDasharray={s.dash} dot={false} />
+            ))}
+            {/* историческая тень: как было на самом деле — пунктир тем же цветом */}
+            {shadow && visible.filter((s) => Array.isArray(shadow[s.id])).map((s) => (
+              <Line key={`${s.id}__hist`} yAxisId={s.axis} type="monotone" dataKey={`${s.id}__hist`} name={`${s.label}: ${shadow.name}`}
+                stroke={s.color} strokeWidth={1.4} strokeDasharray="2 4" strokeOpacity={0.8} dot={{ r: 2 }} connectNulls isAnimationActive={false} />
             ))}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
       )}
       <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
+      {shadow && (
+        <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 6, lineHeight: 1.5 }}>
+          Пунктир с точками — {shadow.name}: как шёл реальный эпизод с {shadow.from}, по кварталам. Ваши линии — ваша политика.
+          Рост ВВП и инфляция и там и тут — год к году (к тому же кварталу год назад), как в официальной статистике;
+          в обычной партии эти графики показывают темп за квартал в годовом выражении.
+        </div>
+      )}
       <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
           ? <>Пунктир справа от отметки «сейчас» продолжает каждую включённую линию туда, куда она идёт <b style={{ color: COLOR.text }}>сама собой</b>,
@@ -516,41 +551,13 @@ function InstrumentChartBase({ rows, color, avg, marks, benchLabel, benchColor, 
 }
 export const InstrumentChart = React.memo(InstrumentChartBase);
 
+// тот же расчёт, что в «Лаборатории»: шоки выключены, зерно одно, меняется один рычаг
 function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
-  const H = horizon || 12;
-  const noiseSave = CONFIG.noiseMult[difficulty];
-  const evSave = CONFIG.eventProbability[difficulty];
-  CONFIG.noiseMult[difficulty] = 0; CONFIG.eventProbability[difficulty] = 0;
-  const run = (val) => {
-    let e = economy; let d = { ...decisions, [leverId]: val };
-    let pend = []; let cds = {}; let st = []; const out = [];
-    for (let q = 1; q <= H; q++) {
-      const r = simulateQuarter({ economy: e, decisions: d, pendingImpulses: pend, eventCooldowns: cds,
-        difficulty, quarterIndex: q, stories: st });
-      e = r.economy; pend = r.pendingImpulses; cds = r.eventCooldowns; st = r.stories;
-      d = { ...defaultDecisions(e, d), [leverId]: val };
-      out.push(e);
-    }
-    return out;
-  };
-  let res = [];
   try {
-    const base = run(baseValue);
-    const alt = run(newValue);
-    res = base.map((b, i) => ({
-      q: i + 1,
-      gdpGrowth: alt[i].gdpGrowth - b.gdpGrowth,
-      inflation: alt[i].inflation - b.inflation,
-      unemployment: alt[i].unemployment - b.unemployment,
-      outputGap: alt[i].outputGap - b.outputGap,
-      debtToGdp: alt[i].debtToGdp - b.debtToGdp,
-      stockIndex: (alt[i].stockIndex / b.stockIndex - 1) * 100,
-      baseGdp: b.gdpGrowth, altGdp: alt[i].gdpGrowth,
-      baseInfl: b.inflation, altInfl: alt[i].inflation,
-    }));
-  } catch { res = []; }
-  CONFIG.noiseMult[difficulty] = noiseSave; CONFIG.eventProbability[difficulty] = evSave;
-  return res;
+    const r = impulseResponse({ economy, decisions, leverId, baseValue, value: newValue, difficulty, horizon: horizon || 12 });
+    return r.diff.map((x, i) => ({ ...x, baseGdp: r.base[i].gdpGrowth, altGdp: r.alt[i].gdpGrowth,
+      baseInfl: r.base[i].inflation, altInfl: r.alt[i].inflation }));
+  } catch { return []; }
 }
 const IRF_SERIES = [
   { key: 'gdpGrowth', label: 'Рост ВВП', color: COLOR.gold, unit: ' п.п.' },
@@ -589,8 +596,8 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose} aria-label="Закрыть"><X size={13} /></button>
         </div>
         <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 12, lineHeight: 1.5 }}>
-          Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(decisions[lever.id])}{lever.suffix})
-          и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий. На графике — разница между этими двумя мирами,
+          Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(baseValue)}{lever.suffix})
+          и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий, с одним и тем же случайным зерном. На графике — разница между этими двумя мирами,
           то есть чистый эффект именно вашего решения.
         </div>
         <div className="ems-visual" style={{ height: 230, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>

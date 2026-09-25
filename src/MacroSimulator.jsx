@@ -6,7 +6,7 @@ import {
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
-  GraduationCap, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
+  GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
 } from 'lucide-react';
 import {
@@ -655,8 +655,9 @@ export const ACHIEVEMENTS = [
   { id: 'all_roles', icon: Layers, title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
   { id: 'network_played', icon: Share2, title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
   { id: 'casino_win', icon: Dices, title: 'Дебют в казино', desc: 'Выиграй свою первую ставку в казино.' },
-  { id: 'casino_jackpot', icon: Coins, title: 'Куш', desc: 'Выиграй разом от 30 млн в одной игре казино.' },
-  { id: 'casino_ahead', icon: PartyPopper, title: 'Дом не всегда выигрывает', desc: 'Уйди из казино в плюс на 50 млн суммарно за партию.' },
+  // id прежние (открытые достижения сохраняются), смысл — закон больших чисел, а не куш
+  { id: 'casino_jackpot', icon: Coins, title: 'Закон больших чисел', desc: 'Сделай 30 ставок в казино и сравни итог со счётчиком матожидания.' },
+  { id: 'casino_ahead', icon: PartyPopper, title: 'Дом всегда выигрывает', desc: 'Сто ставок в казино: на такой дистанции итог почти наверняка сходится к ожидаемому проигрышу.' },
   { id: 'margin_call', icon: AlertTriangle, title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
   { id: 'tutorial_done', icon: GraduationCap, title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
   { id: 'tutorial_course_done', icon: Award, title: 'Экономист', desc: 'Пройди базовый курс целиком, вместе с экзаменом.' },
@@ -908,6 +909,10 @@ const NetworkGameScreen = React.lazy(() => import('./network.jsx').then((m) => (
 const loadGame = () => import('./game.jsx');
 // «Своё дело» — отдельная игра и отдельный чанк
 const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ default: m.TycoonScreen })));
+// тренажёр: лаборатория, учебник и ограничения модели — отдельный чанк
+const LabScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.LabScreen })));
+const ModelScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.ModelScreen })));
+const DrillsScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.DrillsScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
 export function preloadGame() { loadGame().catch(() => {}); }
@@ -1125,7 +1130,7 @@ function MenuTicker() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onModel, onDrills }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1249,6 +1254,15 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     { id: 'tutorial', icon: GraduationCap, title: 'Обучение', tag: 'курсы с практикой',
       desc: 'Как работают ставка, бюджет, рынок и власть — короткими уроками с тестами и экзаменами.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
+    ...(onLab ? [{ id: 'lab', icon: FlaskConical, title: 'Лаборатория', tag: 'один рычаг — два мира',
+      desc: 'Меняете один рычаг, шоки выключены: графики показывают чистый эффект на инфляцию, выпуск, безработицу и курс за 12 кварталов.',
+      action: () => { Audio.prime(); Audio.play('tab'); onLab(); } }] : []),
+    ...(onDrills ? [{ id: 'drills', icon: Target, title: 'Задачи на 10 минут', tag: 'цель · кварталы · разбор',
+      desc: 'Короткая партия с одной целью — например, инфляцию с 12% до 4% за восемь кварталов без рецессии. В конце — разбор и слепой прогноз.',
+      action: () => { Audio.prime(); Audio.play('tab'); onDrills(); } }] : []),
+    ...(onModel ? [{ id: 'model', icon: BookOpenText, title: 'Модель и учебник', tag: 'Фишер, Оукен, Филлипс…',
+      desc: 'Где в игре работают формулы из учебника — и чем эта модель честно не похожа на настоящую экономику.',
+      action: () => { Audio.prime(); Audio.play('tab'); onModel(); } }] : []),
   ];
 
   return (
@@ -1447,8 +1461,15 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
   // отрасль компании — только для предпринимателя
   const [sector, setSector] = useState('farm');
   const [scenario, setScenario] = useState('sandbox');
+  // сценарий, где роли нет (Греция в валютном союзе — без своего ЦБ), сбрасывается при смене роли
+  React.useEffect(() => {
+    const sc = SCENARIOS.find((x) => x.id === scenario);
+    if (sc && (sc.noRoles || []).includes(role)) setScenario('sandbox');
+  }, [role, scenario]);
   // обучение по экрану партии: у тех, кто ещё не играл ни одной ролью, включено само
   const [tour, setTour] = useState(() => loadRolesPlayed().length === 0);
+  // «Только экономика»: война заморожена — ни нападений, ни указов о ней, ни кнопок на карте
+  const [economyOnly, setEconomyOnly] = useState(false);
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -1690,7 +1711,7 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
           <span className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft }}>Стартовая ситуация</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px,1fr))', gap: 10, marginBottom: 26 }}>
-          {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
+          {[...SCENARIOS].filter((sc) => !(sc.noRoles || []).includes(role)).sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
             const active = scenario === sc.id;
             // от спокойного к опасному: бирюзовый → золотой → ржавый
             const levelColor = sc.level >= 4 ? COLOR.rust : sc.level === 3 ? COLOR.gold : sc.level === 2 ? COLOR.goldSoft : COLOR.teal;
@@ -1770,6 +1791,19 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             </span>
           </label>
         )}
+        {role !== 'entrepreneur' && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px', marginBottom: 12, borderRadius: 10,
+            border: `1px solid ${economyOnly ? COLOR.gold : COLOR.border}`, background: economyOnly ? COLOR.goldDim : 'transparent', cursor: 'pointer' }}>
+            <input type="checkbox" checked={economyOnly} onChange={(e) => { Audio.play('tick'); setEconomyOnly(e.target.checked); }}
+              style={{ marginTop: 3, accentColor: COLOR.gold }} />
+            <span>
+              <span style={{ fontSize: 13, color: COLOR.text, fontWeight: 600 }}>Только экономика</span>
+              <span style={{ display: 'block', fontSize: 12, color: COLOR.muted, marginTop: 2, lineHeight: 1.45 }}>
+                Без войн: соседи не нападают, военных указов и кнопок нет. Выборы, общество, дипломатия и торговля — как обычно.
+              </span>
+            </span>
+          </label>
+        )}
         <button disabled={!role} className="ems-btn primary" style={{ width: '100%', padding: '13px 0', fontSize: 14 }}
           onClick={() => {
             if (!role) return;
@@ -1780,7 +1814,7 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
             const presWanted = custom ? presPersona : 'random';
             // классика всегда начинается с открытой партии, даже если в
             // настраиваемом режиме до этого успели выбрать кризисный сценарий
-            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour,
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour, economyOnly,
               ...(role === 'entrepreneur' ? { sector } : {}),
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
@@ -1860,6 +1894,7 @@ export default function MacroSimulator() {
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
   // ведёт сразу в лобби, минуя меню.
   const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
+  const [labLever, setLabLever] = useState('keyRate');
   // «Своё дело»: { initial } — продолжить сохранённое, { setupNew } — новое дело
   const [tycoon, setTycoon] = useState(() => (resumeTycoon ? { initial: resumeTycoon } : null));
   React.useEffect(() => {
@@ -1913,6 +1948,27 @@ export default function MacroSimulator() {
           </Suspense>
         );
       }
+      if (view === 'lab') {
+        return (
+          <Suspense fallback={<GameFallback />}>
+            <LabScreen key={`${theme}:${labLever}`} initialLever={labLever} onBack={goMenu} />
+          </Suspense>
+        );
+      }
+      if (view === 'drills') {
+        return (
+          <Suspense fallback={<GameFallback />}>
+            <DrillsScreen key={theme} onBack={goMenu} onStart={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }} />
+          </Suspense>
+        );
+      }
+      if (view === 'model') {
+        return (
+          <Suspense fallback={<GameFallback />}>
+            <ModelScreen key={theme} onBack={goMenu} onOpenLab={(id) => { setLabLever(id); setView('lab'); }} />
+          </Suspense>
+        );
+      }
       if (view === 'tutorial') {
         return (
           <Suspense fallback={(
@@ -1932,6 +1988,9 @@ export default function MacroSimulator() {
           onNewGame={() => setView('setup')}
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
+          onLab={() => { setLabLever('keyRate'); setView('lab'); }}
+          onModel={() => setView('model')}
+          onDrills={() => setView('drills')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
           onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
@@ -1943,7 +2002,8 @@ export default function MacroSimulator() {
       <Suspense fallback={<GameFallback />}>
         <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
           theme={theme} setTheme={setTheme}
-          onRestart={() => { clearAutosave(); setLoaded(null); setSetup(null); goMenu(); }} onLoadState={startLoaded} />
+          onRestart={() => { const wasDrill = !!setup.drill; clearAutosave(); setLoaded(null); setSetup(null); setView(wasDrill ? 'drills' : 'menu'); }} onLoadState={startLoaded}
+          onReplay={setup.drill ? () => { clearAutosave(); setLoaded(null); setNonce((n) => n + 1); } : null} />
       </Suspense>
     );
   })();

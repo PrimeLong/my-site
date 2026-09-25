@@ -537,3 +537,92 @@ test('обучение по экрану: включено в первой па�
   await expect(page.getByRole('dialog', { name: /Обучение/ })).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+// кнопка квартала всегда под рукой: закреплена внизу экрана, листать к ней не нужно
+test('кнопка квартала закреплена внизу экрана', async ({ page }) => {
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Партия у руля страны', { exact: true }).click();
+  await page.getByText('Глава Центрального банка', { exact: true }).click();
+  await page.getByRole('checkbox', { name: /Обучение по экрану/ }).uncheck();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  const btn = page.getByRole('button', { name: 'Завершить квартал и применить решения' });
+  await expect(btn).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
+  const box = await btn.boundingBox();
+  const vh = page.viewportSize().height;
+  expect(box.y + box.height).toBeLessThanOrEqual(vh + 1);
+  expect(box.y).toBeGreaterThan(vh - 140);
+});
+
+test('лаборатория: один рычаг, четыре графика разницы с базой', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Лаборатория', { exact: true }).first().click();
+  const charts = page.getByTestId('lab-charts');
+  await expect(charts).toBeVisible();
+  await expect(charts.locator('.recharts-line')).toHaveCount(4);
+  await expect(page.getByText(/пик .* на \d+-м кв\./).first()).toBeVisible();
+  await page.getByRole('button', { name: 'НДС', exact: true }).click();
+  await expect(page.getByText(/НДС сразу поднимает уровень цен/)).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('после квартала: «а если бы вы ничего не делали» показывает вклад решения', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'рычаги на телефоне в отдельной вкладке — логика та же');
+  const { errors } = await openApp(page);
+  await startSoloGame(page);
+  const slider = page.getByRole('slider', { name: /^Ключевая ставка, текущее значение/ });
+  await slider.focus();
+  for (let i = 0; i < 4; i++) await slider.press('ArrowRight');
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (await close.isVisible().catch(() => false)) await close.click();
+  const card = page.getByTestId('counterfactual');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('Вы изменили: ключевая ставка');
+  await expect(card).toContainText('ваш вклад');
+  expect(errors).toEqual([]);
+});
+
+test('модель и учебник: восемь идей со ссылкой в лабораторию и страница ограничений', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Модель и учебник', { exact: true }).first().click();
+  const book = page.getByTestId('textbook');
+  await expect(book.getByText('Закон Оукена', { exact: true })).toBeVisible();
+  await expect(book.getByRole('button', { name: 'Открыть в Лаборатории' })).toHaveCount(8);
+  await expectNoSidewaysScroll(page);
+  await page.getByRole('button', { name: 'Чем модель не похожа на настоящую' }).click();
+  await expect(page.getByTestId('limits').getByText('Адаптивные ожидания', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Игра ↔ учебник' }).click();
+  await page.getByTestId('textbook').getByRole('button', { name: 'Открыть в Лаборатории' }).nth(3).click();
+  await expect(page.getByTestId('lab-charts')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Госинвестиции в инфраструктуру' })).toHaveAttribute('aria-pressed', 'true');
+  expect(errors).toEqual([]);
+});
+
+test('задача на 10 минут: цель на экране, прогноз записывается, в конце разбор', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'восемь кварталов подряд — достаточно одного экрана');
+  test.setTimeout(120_000);
+  const { errors } = await openApp(page);
+  await page.getByText('Задачи на 10 минут', { exact: true }).first().click();
+  await page.getByTestId('drills').getByRole('button', { name: 'Начать' }).first().click();
+  await expect(page.getByTestId('drill-banner')).toContainText('Инфляция с 12% до 4%');
+  await page.getByRole('textbox', { name: 'Прогноз инфляции через четыре квартала' }).fill('8');
+  const finish = page.getByRole('button', { name: 'Завершить квартал и применить решения' });
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  for (let q = 1; q <= 8; q++) {
+    await expect(finish).toBeEnabled({ timeout: 10_000 });
+    await finish.click();
+    if (await close.isVisible().catch(() => false)) await close.click();
+    if (q === 1) await expect(page.getByTestId('forecast')).toContainText('Ждут проверки: 1');
+  }
+  const result = page.getByTestId('drill-result');
+  await expect(result).toBeVisible();
+  await expect(result).toContainText('Инфляция с 12% до 4%');
+  await expect(result).toContainText('Слепой прогноз');
+  await result.getByRole('button', { name: 'Посмотреть графики' }).click();
+  await expect(page.getByRole('button', { name: 'Разбор' })).toBeVisible();
+  expect(errors).toEqual([]);
+});

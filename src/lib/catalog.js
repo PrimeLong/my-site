@@ -115,7 +115,8 @@ export const romanQ = (n) => ['I', 'II', 'III', 'IV'][n - 1] || String(n);
 
 export const quarterLabel = (qIndex) => {
   const year = CONFIG.startYear + Math.floor((qIndex - 1) / 4);
-  const q = ((qIndex - 1) % 4) + 1;
+  // кварталы до старта (предыстория партии) — с честным модулем, без «0 кв.»
+  const q = ((((qIndex - 1) % 4) + 4) % 4) + 1;
   return `${romanQ(q)} кв. ${year}`;
 };
 
@@ -224,6 +225,60 @@ export const SCENARIOS = [
       wageGrowth: 26,
       regime: 'currency',
       crisisMandateLeft: 6, crisisMandateTotal: 6 } },
+  /* ИСТОРИЧЕСКАЯ ТЕНЬ. Старт — положение страны в начале реального эпизода (в
+     масштабах модели), а shadow — как всё шло на самом деле, поквартально: индекс 0 —
+     старт, дальше кварталы партии. На графике это пунктир «как было»: вы против
+     Волкера, против Анкары, против Афин и против Москвы-2014. Данные округлены до
+     десятых (годовые темпы, % — по открытым рядам ФРС, TurkStat, ELSTAT, ЦБ РФ и Росстата). */
+  { id: 'volcker', title: 'Вы против Волкера', short: 'США, 1979–1982', level: 3, levelLabel: 'Трудный', historical: true,
+    levelNote: 'Инфляция двузначная и въелась в ожидания. Волкер задавил её ставкой под 20% — ценой двух рецессий и безработицы выше 10%.',
+    desc: 'Конец 1970-х: инфляция 12% и растёт, ожидания отвязаны, доверия к ЦБ почти нет. Реальный ФРС поднял ставку до 19% и держал, пока цены не сломались. Сможете дешевле?',
+    shadow: { name: 'ФРС при Волкере', from: 'III кв. 1979',
+      inflation: [11.8, 12.7, 14.2, 14.4, 12.9, 12.6, 11.1, 9.6, 10.8, 9.6, 7.6, 6.8, 5.8, 4.5, 3.6, 3.3],
+      keyRate: [10.9, 13.6, 15.1, 12.7, 9.8, 15.9, 16.6, 17.8, 17.6, 13.6, 14.2, 14.5, 11.0, 9.3, 8.7, 8.8],
+      unemployment: [5.9, 6.0, 6.3, 7.3, 7.7, 7.4, 7.4, 7.4, 7.4, 8.2, 8.8, 9.4, 9.9, 10.7, 10.4, 10.1],
+      gdpGrowth: [1.5, 1.3, 1.4, -0.8, -1.1, 0.0, 1.2, 2.6, 4.3, 1.3, -1.6, -2.2, -2.3, -1.4, 0.6, 2.8] },
+    overrides: { inflation: 11.8, coreInflation: 10.5, inflationExpectations: 10, cbCredibility: 28, keyRate: 10.9,
+      lendingRate: 13.5, depositRate: 9, wageGrowth: 9.5, unemployment: 5.9, consumerConfidence: 38, businessConfidence: 42,
+      approval: 40, politicalTension: 22 } },
+  { id: 'turkey2021', title: 'Вы против Анкары', short: 'Турция, 2021–2023', level: 3, levelLabel: 'Трудный', historical: true,
+    levelNote: 'Инфляция под 20%, а президент требует снижать ставку. В реальности ставку снизили с 19% до 8,5% — инфляция ушла за 80%, лира обвалилась.',
+    desc: 'Осень 2021-го: инфляция 20%, президент считает, что высокая ставка разгоняет цены, и требует снижения. Реальный ЦБ послушался. Удержите цены — или хотя бы не повторите 85%?',
+    shadow: { name: 'ЦБ Турции', from: 'III кв. 2021',
+      inflation: [19.6, 36.1, 61.1, 78.6, 83.5, 64.3, 50.5, 38.2, 61.5, 64.8],
+      keyRate: [18, 14, 14, 14, 12, 9, 8.5, 15, 30, 42.5],
+      unemployment: [11.5, 11.2, 11.3, 10.3, 10.1, 10.2, 10.0, 9.5, 9.2, 8.8],
+      gdpGrowth: [7.9, 9.6, 7.5, 7.7, 3.9, 3.5, 4.0, 3.9, 6.1, 4.0] },
+    overrides: { inflation: 19.6, coreInflation: 17, inflationExpectations: 17, cbCredibility: 30, keyRate: 18,
+      lendingRate: 21, depositRate: 16, wageGrowth: 18, unemployment: 11.5, nairu: 10.8, riskPremium: 3.6, reserves: 110,
+      consumerConfidence: 36, businessConfidence: 44, approval: 42, politicalTension: 26, regime: 'currency' } },
+  { id: 'greece2010', title: 'Вы против Афин', short: 'Греция, 2010–2013', level: 3, levelLabel: 'Трудный', historical: true,
+    // своего ЦБ у страны в валютном союзе нет — играть за него нечем
+    noRoles: ['central_bank'],
+    levelNote: 'Долг под 130% ВВП, дефицит 15%, рынок закрыт. Валютный союз: курс и ставку не выбрать, роль ЦБ недоступна. Реальная Греция прошла через жёсткую экономию: ВВП −25%, безработица 27%.',
+    desc: 'Весна 2010-го: долг 130% ВВП, дефицит двузначный, инвесторы требуют 10% за риск. Своей ставки нет — только бюджет. Реальная экономия обвалила экономику на четверть. Найдёте путь мягче?',
+    shadow: { name: 'Греция', from: 'I кв. 2010',
+      unemployment: [11.6, 12.3, 12.6, 14.2, 15.9, 16.7, 18.4, 20.7, 22.1, 23.8, 24.9, 26.0, 27.0, 27.2, 27.5, 27.4],
+      gdpGrowth: [-2.5, -4.5, -6.5, -8.0, -8.2, -7.0, -9.8, -11.3, -8.0, -7.1, -6.8, -5.8, -5.5, -3.6, -2.9, -1.2],
+      inflation: [3.0, 5.0, 5.6, 5.1, 4.5, 3.3, 2.0, 2.2, 1.6, 1.0, 0.6, 0.3, -0.4, -0.3, -1.0, -2.0],
+      debtToGdp: [130, 138, 143, 146, 151, 157, 165, 172, 160, 158, 162, 157, 165, 173, 176, 178] },
+    overrides: { govDebt: 2600, effectiveDebtRate: 7.5, riskPremium: 9, budgetBalancePctGdp: -13, unemployment: 11.6, nairu: 11,
+      inflation: 3, coreInflation: 2.5, inflationExpectations: 3, consumerConfidence: 24, businessConfidence: 26,
+      approval: 36, politicalTension: 38,
+      // евро: своего курса и своей ставки нет, ставку ведёт ЕЦБ (реальный путь 2010–2013)
+      keyRate: 1, fxRegime: 'union',
+      currencyUnion: { name: 'ЕЦБ', ratePath: [1, 1, 1, 1, 1, 1.25, 1.5, 1.25, 1, 1, 0.75, 0.75, 0.75, 0.5, 0.5, 0.25] } } },
+  { id: 'russia2014', title: 'Вы против декабря 2014-го', short: 'Россия, 2014–2016', level: 3, levelLabel: 'Трудный', historical: true,
+    levelNote: 'Нефть упала вдвое, санкции закрыли рынки, рубль падает. 16 декабря ЦБ поднял ставку с 10,5% до 17% за ночь.',
+    desc: 'Осень 2014-го: нефть дешевеет, санкции, отток капитала, рубль теряет треть. Реальный ЦБ отпустил курс и поднял ставку до 17%. Инфляция всё равно дошла до 17%, ВВП ушёл в минус.',
+    shadow: { name: 'ЦБ России', from: 'III кв. 2014',
+      inflation: [8.0, 11.4, 16.9, 15.3, 15.7, 12.9, 7.3, 7.5, 6.4, 5.4],
+      keyRate: [8.0, 17.0, 14.0, 11.5, 11.0, 11.0, 11.0, 10.5, 10.0, 10.0],
+      unemployment: [4.9, 5.3, 5.8, 5.4, 5.2, 5.8, 6.0, 5.6, 5.4, 5.4],
+      gdpGrowth: [0.9, 0.2, -2.8, -4.5, -3.7, -3.2, -1.2, -0.6, -0.4, 0.3] },
+    overrides: { inflation: 8, coreInflation: 7.5, inflationExpectations: 8, keyRate: 9.5, lendingRate: 13, depositRate: 8,
+      riskPremium: 5, reserves: 70, cbCredibility: 42, fxDeprAnnual: 25, consumerConfidence: 34, businessConfidence: 36,
+      exportsGrowthShock: -4, approval: 60, politicalTension: 18, regime: 'currency' } },
 ];
 
 /* =========================================================================================
@@ -342,7 +397,7 @@ export function dailyChallenge(day = dailyKey()) {
   const dayNum = Math.floor(Date.parse(`${day}T00:00:00Z`) / 86400000);
   const role = DAILY_ROLES[((dayNum % DAILY_ROLES.length) + DAILY_ROLES.length) % DAILY_ROLES.length];
   // чаще всего — кризис: ради него и собираются сравнить, кто справился лучше
-  const scenario = r() < 0.25 ? 'sandbox' : pick(SCENARIOS.filter((s) => s.id !== 'sandbox')).id;
+  const scenario = r() < 0.25 ? 'sandbox' : pick(SCENARIOS.filter((s) => s.id !== 'sandbox' && !s.historical)).id; // исторические — только по выбору игрока
   const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
   const difficulty = weekday === 0 || weekday === 6 ? 'hard' : 'medium';
   const goal = pick(GOALS.filter((g) => !g.trader && !g.entrepreneur)).id;
