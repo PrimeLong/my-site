@@ -15,6 +15,8 @@ import { Activity, X } from 'lucide-react';
 import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter } from './lib/engine.js';
 import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
 
+// вкладки, которые видны всегда; остальные — в списке «ещё»
+const MAIN_GROUPS = ['output', 'prices', 'money', 'labor', 'government'];
 const CHART_GROUPS = [
   { id: 'output', label: 'Выпуск', series: [
     { id: 'gdp', label: 'ВВП', axis: 'left', color: COLOR.gold, fmt: 'money' },
@@ -284,10 +286,19 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
         </div>
       </div>
 
-      <div className="ems-tabrow" style={{ borderBottom: `1px solid ${COLOR.border}`, paddingBottom: 4, marginBottom: 10 }}>
-        {CHART_GROUPS.map((g) => (
+      {/* пять главных вкладок и «ещё ▾» с остальными: одиннадцать вкладок переносились на вторую строку */}
+      <div className="ems-tabrow" style={{ borderBottom: `1px solid ${COLOR.border}`, paddingBottom: 4, marginBottom: 10, alignItems: 'center' }}>
+        {CHART_GROUPS.filter((g) => MAIN_GROUPS.includes(g.id)).map((g) => (
           <button type="button" key={g.id} className={`ems-tab ${chartGroup === g.id ? 'active' : ''}`} aria-pressed={chartGroup === g.id} style={{ flexShrink: 0 }} onClick={() => { Audio.play('tab'); setChartGroup(g.id); }}>{g.label}</button>
         ))}
+        <select className={`ems-tab ${MAIN_GROUPS.includes(chartGroup) ? '' : 'active'}`} aria-label="Другие графики"
+          value={MAIN_GROUPS.includes(chartGroup) ? '' : chartGroup}
+          onChange={(e) => { if (!e.target.value) return; Audio.play('tab'); setChartGroup(e.target.value); }}
+          style={{ flexShrink: 0, width: 'auto', appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none', background: MAIN_GROUPS.includes(chartGroup) ? 'transparent' : undefined,
+            color: MAIN_GROUPS.includes(chartGroup) ? COLOR.muted : undefined, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit' }}>
+          <option value="">ещё ▾</option>
+          {CHART_GROUPS.filter((g) => !MAIN_GROUPS.includes(g.id)).map((g) => <option key={g.id} value={g.id}>{g.label}{chartGroup === g.id ? ' ▾' : ''}</option>)}
+        </select>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
@@ -302,6 +313,15 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
         })}
       </div>
 
+      {/* из одной точки линии не получается — на старте вместо пустых осей честная подпись */}
+      {history.length < 2 ? (
+        <div style={{ height: 250, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6,
+          border: `1px dashed ${COLOR.border}`, borderRadius: 6, color: COLOR.muted, fontSize: 13, textAlign: 'center', padding: 16 }}>
+          <Activity size={20} color={COLOR.faint} />
+          График появится после первого квартала.
+          <span style={{ fontSize: 12, color: COLOR.faint }}>Каждый завершённый квартал добавит точку — и станет видно, куда движется экономика.</span>
+        </div>
+      ) : (
       <div className="ems-visual" style={{ width: '100%', height: 250, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>
         <ResponsiveContainer>
           <ComposedChart data={data} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}
@@ -347,6 +367,7 @@ export function ChartPanel({ history, chartGroup, setChartGroup, hiddenSeries, s
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      )}
       <CompareBadge compare={compare} onReset={() => setDragRange(null)} />
       <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 4, lineHeight: 1.5 }}>
         {forecast
