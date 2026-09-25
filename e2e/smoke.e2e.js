@@ -555,3 +555,16 @@ test('кнопка квартала закреплена внизу экрана
   expect(box.y + box.height).toBeLessThanOrEqual(vh + 1);
   expect(box.y).toBeGreaterThan(vh - 140);
 });
+
+test('лаборатория: один рычаг, четыре графика разницы с базой', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Лаборатория', { exact: true }).first().click();
+  const charts = page.getByTestId('lab-charts');
+  await expect(charts).toBeVisible();
+  await expect(charts.locator('.recharts-line')).toHaveCount(4);
+  await expect(page.getByText(/пик .* на \d+-м кв\./).first()).toBeVisible();
+  await page.getByRole('button', { name: 'НДС', exact: true }).click();
+  await expect(page.getByText(/НДС сразу поднимает уровень цен/)).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});

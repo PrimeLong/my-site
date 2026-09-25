@@ -6,7 +6,7 @@ import {
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
-  GraduationCap, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
+  GraduationCap, FlaskConical, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
 } from 'lucide-react';
 import {
@@ -909,6 +909,8 @@ const NetworkGameScreen = React.lazy(() => import('./network.jsx').then((m) => (
 const loadGame = () => import('./game.jsx');
 // «Своё дело» — отдельная игра и отдельный чанк
 const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ default: m.TycoonScreen })));
+// тренажёр: лаборатория, учебник и ограничения модели — отдельный чанк
+const LabScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.LabScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
 export function preloadGame() { loadGame().catch(() => {}); }
@@ -1126,7 +1128,7 @@ function MenuTicker() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1250,6 +1252,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     { id: 'tutorial', icon: GraduationCap, title: 'Обучение', tag: 'курсы с практикой',
       desc: 'Как работают ставка, бюджет, рынок и власть — короткими уроками с тестами и экзаменами.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
+    ...(onLab ? [{ id: 'lab', icon: FlaskConical, title: 'Лаборатория', tag: 'один рычаг — два мира',
+      desc: 'Меняете один рычаг, шоки выключены: графики показывают чистый эффект на инфляцию, выпуск, безработицу и курс за 12 кварталов.',
+      action: () => { Audio.prime(); Audio.play('tab'); onLab(); } }] : []),
   ];
 
   return (
@@ -1934,6 +1939,13 @@ export default function MacroSimulator() {
           </Suspense>
         );
       }
+      if (view === 'lab') {
+        return (
+          <Suspense fallback={<GameFallback />}>
+            <LabScreen key={theme} onBack={goMenu} />
+          </Suspense>
+        );
+      }
       if (view === 'tutorial') {
         return (
           <Suspense fallback={(
@@ -1953,6 +1965,7 @@ export default function MacroSimulator() {
           onNewGame={() => setView('setup')}
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
+          onLab={() => setView('lab')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
           onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}

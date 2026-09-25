@@ -12,9 +12,10 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
-import { CONFIG, fmt1, fmtMoney, fmtSigned1, defaultDecisions, simulateQuarter, taylorRate } from './lib/engine.js';
+import { fmt1, fmtMoney, fmtSigned1, taylorRate } from './lib/engine.js';
 import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
 import { YOY_KEYS, yoyFromAnnualized } from './lib/model/measures.js';
+import { impulseResponse } from './lib/lab.js';
 
 // вкладки, которые видны всегда; остальные — в списке «ещё»
 const MAIN_GROUPS = ['output', 'prices', 'money', 'labor', 'government'];
@@ -550,41 +551,13 @@ function InstrumentChartBase({ rows, color, avg, marks, benchLabel, benchColor, 
 }
 export const InstrumentChart = React.memo(InstrumentChartBase);
 
+// тот же расчёт, что в «Лаборатории»: шоки выключены, зерно одно, меняется один рычаг
 function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
-  const H = horizon || 12;
-  const noiseSave = CONFIG.noiseMult[difficulty];
-  const evSave = CONFIG.eventProbability[difficulty];
-  CONFIG.noiseMult[difficulty] = 0; CONFIG.eventProbability[difficulty] = 0;
-  const run = (val) => {
-    let e = economy; let d = { ...decisions, [leverId]: val };
-    let pend = []; let cds = {}; let st = []; const out = [];
-    for (let q = 1; q <= H; q++) {
-      const r = simulateQuarter({ economy: e, decisions: d, pendingImpulses: pend, eventCooldowns: cds,
-        difficulty, quarterIndex: q, stories: st });
-      e = r.economy; pend = r.pendingImpulses; cds = r.eventCooldowns; st = r.stories;
-      d = { ...defaultDecisions(e, d), [leverId]: val };
-      out.push(e);
-    }
-    return out;
-  };
-  let res = [];
   try {
-    const base = run(baseValue);
-    const alt = run(newValue);
-    res = base.map((b, i) => ({
-      q: i + 1,
-      gdpGrowth: alt[i].gdpGrowth - b.gdpGrowth,
-      inflation: alt[i].inflation - b.inflation,
-      unemployment: alt[i].unemployment - b.unemployment,
-      outputGap: alt[i].outputGap - b.outputGap,
-      debtToGdp: alt[i].debtToGdp - b.debtToGdp,
-      stockIndex: (alt[i].stockIndex / b.stockIndex - 1) * 100,
-      baseGdp: b.gdpGrowth, altGdp: alt[i].gdpGrowth,
-      baseInfl: b.inflation, altInfl: alt[i].inflation,
-    }));
-  } catch { res = []; }
-  CONFIG.noiseMult[difficulty] = noiseSave; CONFIG.eventProbability[difficulty] = evSave;
-  return res;
+    const r = impulseResponse({ economy, decisions, leverId, baseValue, value: newValue, difficulty, horizon: horizon || 12 });
+    return r.diff.map((x, i) => ({ ...x, baseGdp: r.base[i].gdpGrowth, altGdp: r.alt[i].gdpGrowth,
+      baseInfl: r.base[i].inflation, altInfl: r.alt[i].inflation }));
+  } catch { return []; }
 }
 const IRF_SERIES = [
   { key: 'gdpGrowth', label: 'Рост ВВП', color: COLOR.gold, unit: ' п.п.' },
@@ -623,8 +596,8 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
           <button className="ems-btn" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose} aria-label="Закрыть"><X size={13} /></button>
         </div>
         <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 12, lineHeight: 1.5 }}>
-          Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(decisions[lever.id])}{lever.suffix})
-          и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий. На графике — разница между этими двумя мирами,
+          Модель прогоняется на 12 кварталов вперёд дважды: с текущим значением ({fmt1(baseValue)}{lever.suffix})
+          и с новым ({fmt1(value)}{lever.suffix}), без случайных шоков и событий, с одним и тем же случайным зерном. На графике — разница между этими двумя мирами,
           то есть чистый эффект именно вашего решения.
         </div>
         <div className="ems-visual" style={{ height: 230, cursor: dragStart != null ? 'col-resize' : 'crosshair', userSelect: 'none', WebkitUserSelect: 'none' }}>
