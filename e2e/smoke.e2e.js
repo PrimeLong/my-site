@@ -537,3 +537,21 @@ test('обучение по экрану: включено в первой па�
   await expect(page.getByRole('dialog', { name: /Обучение/ })).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+// кнопка квартала всегда под рукой: закреплена внизу экрана, листать к ней не нужно
+test('кнопка квартала закреплена внизу экрана', async ({ page }) => {
+  await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.getByText('Партия у руля страны', { exact: true }).click();
+  await page.getByText('Глава Центрального банка', { exact: true }).click();
+  await page.getByRole('checkbox', { name: /Обучение по экрану/ }).uncheck();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  const btn = page.getByRole('button', { name: 'Завершить квартал и применить решения' });
+  await expect(btn).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
+  const box = await btn.boundingBox();
+  const vh = page.viewportSize().height;
+  expect(box.y + box.height).toBeLessThanOrEqual(vh + 1);
+  expect(box.y).toBeGreaterThan(vh - 140);
+});

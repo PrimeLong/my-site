@@ -1486,7 +1486,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       })()}
 
       {/* колонки на телефоне — в нижней панели над кнопкой: всегда под пальцем и не прячутся за ней */}
-      <div style={narrow ? { position: 'sticky', bottom: 0, zIndex: 6 } : undefined}>
+      {/* закреплена всегда: без этого на компьютере обёртка была высотой с саму панель,
+          и кнопке квартала было не к чему прилипать — приходилось листать вниз */}
+      <div style={{ position: 'sticky', bottom: 0, zIndex: 6 }}>
       {narrow && (
         <div style={{ padding: '8px 12px 0', background: COLOR.panel, borderTop: `1px solid ${COLOR.hairline}` }}>
           <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
