@@ -33,7 +33,8 @@ const CSS = `
   .tb-body h3 { font-size: 15px; font-weight: 700; margin: 18px 0 8px; }
   .tb-body ul, .tb-body ol { margin: 0 0 12px; padding-left: 22px; }
   .tb-body li { margin-bottom: 4px; }
-  .tb-math { overflow-x: auto; overflow-y: hidden; max-width: 100%; margin: 10px 0 14px; padding: 2px 0; }
+  .tb-math { overflow-x: auto; overflow-y: hidden; max-width: 100%; margin: 10px 0 14px; padding: 2px 0 6px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+  .tb-math .katex-display { margin: 0; }
   .tb-body .katex { font-size: 1.08em; }
   .tb-table { overflow-x: auto; max-width: 100%; margin: 0 0 14px; }
   .tb-table table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
@@ -138,8 +139,14 @@ const BOX = {
   note: { label: 'Заметка', icon: Info, color: () => COLOR.muted },
 };
 
-function Blocks({ blocks, ctx }) {
+// простой текст строки — для оглавления главы
+const inlineText = (nodes) => nodes.map((n) => (n.t === 'text' || n.t === 'math' ? n.v : n.c ? inlineText(n.c) : n.label || n.target || '')).join('');
+// разделы главы: заголовки второго уровня, по порядку (id — sec-1, sec-2…)
+export const chapterSections = (blocks) => blocks.filter((b) => b.type === 'h2').map((b, k) => ({ id: `sec-${k + 1}`, title: inlineText(b.inline) }));
+
+function Blocks({ blocks, ctx, top = false }) {
   let problemNo = 0;
+  let h2No = 0;
   return blocks.map((b, i) => {
     const action = actionOf(b);
     if (action) {
@@ -154,11 +161,11 @@ function Blocks({ blocks, ctx }) {
       );
     }
     switch (b.type) {
-      case 'h2': return <h2 key={i}><Inline nodes={b.inline} ctx={ctx} /></h2>;
+      case 'h2': h2No += 1; return <h2 key={i} id={top ? `sec-${h2No}` : undefined} style={{ scrollMarginTop: 12 }}><Inline nodes={b.inline} ctx={ctx} /></h2>;
       case 'h3': return <h3 key={i}><Inline nodes={b.inline} ctx={ctx} /></h3>;
       case 'p': return <p key={i}><Inline nodes={b.inline} ctx={ctx} /></p>;
       case 'ul': return <ul key={i}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ul>;
-      case 'ol': return <ol key={i}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ol>;
+      case 'ol': return <ol key={i} start={b.start}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ol>;
       case 'math': return <Tex key={i} tex={b.tex} display />;
       case 'table': return (
         <div key={i} className="tb-table">
@@ -185,7 +192,23 @@ function Blocks({ blocks, ctx }) {
 }
 
 /* ------------------------------ ГРАФИК ------------------------------ */
-const W = 560; const H = 330; const M = { l: 44, r: 18, t: 16, b: 34 };
+/* Размер графика в единицах SVG подстраивается под ширину экрана: на телефоне холст
+   уже, поэтому надписи в 12 единиц остаются 12 пикселями, а не сжимаются до восьми. */
+const M = { l: 44, r: 18, t: 16, b: 34 };
+function useWidth(ref, fallback = 560) {
+  const [w, setW] = useState(fallback);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const upd = () => setW(el.clientWidth || fallback);
+    upd();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(upd);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, fallback]);
+  return w;
+}
 function niceTicks(lo, hi, n = 5) {
   const span = hi - lo; const raw = span / n; const pow = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 2.5, 5, 10].map((k) => k * pow).find((x) => x >= raw) || 10 * pow;
@@ -196,6 +219,10 @@ function niceTicks(lo, hi, n = 5) {
 const CURVE_COLOR = { blue: () => COLOR.blue, rust: () => COLOR.rust, teal: () => COLOR.teal, gold: () => COLOR.gold };
 
 function ChartSvg({ scene }) {
+  const box = React.useRef(null);
+  const width = useWidth(box);
+  const W = Math.round(Math.max(300, Math.min(560, width)));
+  const H = W < 480 ? Math.round(W * 0.82) : 330;
   const [x0, x1] = scene.xDomain; const [y0, y1] = scene.yDomain;
   const sx = (x) => M.l + ((x - x0) / (x1 - x0)) * (W - M.l - M.r);
   const sy = (y) => H - M.b - ((y - y0) / (y1 - y0)) * (H - M.t - M.b);
@@ -204,27 +231,33 @@ function ChartSvg({ scene }) {
   const inside = (p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
   const labelAt = (pts, pos) => {
     if (pos === 'start') return { x: sx(pts[0].x) + 6, y: sy(pts[0].y) - 6 };
+    // доля пути по кривой: 0,3 — треть от начала
+    if (typeof pos === 'number') { const p = pts[Math.round(pos * (pts.length - 1))]; return { x: sx(p.x) + 6, y: sy(p.y) - 10 }; }
     if (pos === 'mid') {
       const m = { x: (pts[0].x + pts[pts.length - 1].x) / 2, y: (pts[0].y + pts[pts.length - 1].y) / 2 };
       return { x: sx(m.x) + 8, y: sy(m.y) - 8 };
     }
     const vis = pts.filter(inside);
     const p = vis[vis.length - 1] || pts[pts.length - 1];
-    return { x: Math.min(W - M.r - 4, sx(p.x) + 4), y: Math.max(M.t + 10, sy(p.y) - 4) };
+    // в стороне от линии и не на оси
+    return { x: Math.min(W - M.r - 4, sx(p.x) + 6), y: Math.min(H - M.b - 8, Math.max(M.t + 12, sy(p.y) - 8)) };
   };
+  // надпись с подложкой цвета фона: читается, даже если легла на линию
+  const halo = { stroke: COLOR.panel, strokeWidth: 4, paintOrder: 'stroke', strokeLinejoin: 'round' };
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="График" style={{ display: 'block', maxWidth: W, margin: '0 auto', fontFamily: 'inherit' }}>
+    <div ref={box} style={{ width: '100%' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="График" style={{ display: 'block', maxWidth: 560, margin: '0 auto', fontFamily: 'inherit' }}>
       <defs><clipPath id={clipId}><rect x={M.l} y={M.t} width={W - M.l - M.r} height={H - M.t - M.b} /></clipPath></defs>
       {niceTicks(x0, x1).map((t) => (
         <g key={`x${t}`}>
           <line x1={sx(t)} x2={sx(t)} y1={M.t} y2={H - M.b} stroke={COLOR.border} strokeOpacity={0.45} />
-          <text x={sx(t)} y={H - M.b + 14} fontSize={10.5} fill={COLOR.faint} textAnchor="middle">{fmtNum(t)}</text>
+          <text x={sx(t)} y={H - M.b + 14} fontSize={11} fill={COLOR.faint} textAnchor="middle">{fmtNum(t)}</text>
         </g>
       ))}
       {niceTicks(y0, y1).map((t) => (
         <g key={`y${t}`}>
           <line x1={M.l} x2={W - M.r} y1={sy(t)} y2={sy(t)} stroke={COLOR.border} strokeOpacity={0.45} />
-          <text x={M.l - 6} y={sy(t) + 3.5} fontSize={10.5} fill={COLOR.faint} textAnchor="end">{fmtNum(t)}</text>
+          <text x={M.l - 6} y={sy(t) + 3.5} fontSize={11} fill={COLOR.faint} textAnchor="end">{fmtNum(t)}</text>
         </g>
       ))}
       <line x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} stroke={COLOR.muted} />
@@ -237,20 +270,14 @@ function ChartSvg({ scene }) {
           return (
             <g key={`r${i}`}>
               <rect x={sx(r.x0)} y={sy(r.y1)} width={Math.max(0, sx(r.x1) - sx(r.x0))} height={Math.max(0, sy(r.y0) - sy(r.y1))} fill={tone} fillOpacity={0.16} stroke={tone} strokeOpacity={0.5} />
-              <text x={(sx(r.x0) + sx(r.x1)) / 2} y={(sy(r.y0) + sy(r.y1)) / 2 + 4} fontSize={11.5} fill={r.tone === 'rust' ? COLOR.rust : COLOR.goldSoft} textAnchor="middle">{r.label}</text>
+              <text x={(sx(r.x0) + sx(r.x1)) / 2} y={(sy(r.y0) + sy(r.y1)) / 2 + 4} fontSize={12} {...halo} fill={r.tone === 'rust' ? COLOR.rust : COLOR.goldSoft} textAnchor="middle">{r.label}</text>
             </g>
           );
         })}
-        {(scene.polys || []).map((g, i) => {
-          const cx = g.points.reduce((a, pt) => a + sx(pt.x), 0) / g.points.length;
-          const cy = g.points.reduce((a, pt) => a + sy(pt.y), 0) / g.points.length;
-          return (
-            <g key={`poly${i}`}>
-              <polygon points={g.points.map((pt) => `${sx(pt.x).toFixed(1)},${sy(pt.y).toFixed(1)}`).join(' ')} fill={COLOR.rust} fillOpacity={0.22} stroke={COLOR.rust} strokeOpacity={0.5} />
-              <text x={cx} y={cy + 4} fontSize={10.5} fill={COLOR.rust} textAnchor="middle">{g.label}</text>
-            </g>
-          );
-        })}
+        {(scene.polys || []).map((g, i) => (
+          <polygon key={`poly${i}`} points={g.points.map((pt) => `${sx(pt.x).toFixed(1)},${sy(pt.y).toFixed(1)}`).join(' ')}
+            fill={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} fillOpacity={0.2} stroke={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} strokeOpacity={0.45} />
+        ))}
         {scene.curves.map((c) => (
           <path key={c.id} d={path(c.points)} fill="none" stroke={(CURVE_COLOR[c.color] || CURVE_COLOR.gold)()}
             strokeWidth={c.ghost ? 1.5 : 2.4} strokeOpacity={c.ghost ? 0.35 : 1} strokeDasharray={c.ghost || c.dashed ? '5 4' : undefined} />
@@ -258,7 +285,7 @@ function ChartSvg({ scene }) {
         {(scene.segments || []).map((s, i) => (
           <g key={`s${i}`}>
             <line x1={sx(s.x0)} x2={sx(s.x1)} y1={sy(s.y)} y2={sy(s.y)} stroke={COLOR.gold} strokeWidth={5} strokeOpacity={0.8} />
-            <text x={(sx(s.x0) + sx(s.x1)) / 2} y={sy(s.y) + 16} fontSize={11.5} fill={COLOR.goldSoft} textAnchor="middle">{s.label}</text>
+            <text x={(sx(s.x0) + sx(s.x1)) / 2} y={sy(s.y) + 16} fontSize={12} {...halo} fill={COLOR.goldSoft} textAnchor="middle">{s.label}</text>
           </g>
         ))}
         {scene.points.filter((p) => p.guide && inside(p)).map((p, i) => (
@@ -268,17 +295,29 @@ function ChartSvg({ scene }) {
           </g>
         ))}
       </g>
+      {(scene.polys || []).map((g, i) => {
+        // подпись области — в её центре, но целиком внутри графика; у крошечных областей её нет
+        const P = g.points.map((pt) => [sx(pt.x), sy(pt.y)]);
+        const area = Math.abs(P.reduce((a, [x, y], k) => { const [x2, y2] = P[(k + 1) % P.length]; return a + x * y2 - x2 * y; }, 0)) / 2;
+        if (!g.label || area < 900) return null;
+        const w = g.label.length * 6.4;
+        const cx = Math.min(W - M.r - w / 2 - 2, Math.max(M.l + w / 2 + 4, P.reduce((a, [x]) => a + x, 0) / P.length));
+        const cy = P.reduce((a, [, y]) => a + y, 0) / P.length;
+        return <text key={`pl${i}`} x={cx} y={cy + 4} fontSize={11.5} {...halo} fill={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} textAnchor="middle">{g.label}</text>;
+      })}
       {scene.curves.filter((c) => c.label && !c.ghost).map((c) => {
         const at = labelAt(c.points, c.labelPos);
-        return <text key={`l${c.id}`} x={at.x} y={at.y} fontSize={12} fontWeight={600} fill={(CURVE_COLOR[c.color] || CURVE_COLOR.gold)()} textAnchor={at.x > W - 80 ? 'end' : 'start'}>{c.label}</text>;
+        return <text key={`l${c.id}`} x={at.x} y={at.y} fontSize={12.5} fontWeight={600} {...halo} fill={(CURVE_COLOR[c.color] || CURVE_COLOR.gold)()} textAnchor={at.x > W - 90 ? 'end' : 'start'}>{c.label}</text>;
       })}
       {scene.points.filter(inside).map((p, i) => (
         <g key={`p${i}`}>
           <circle cx={sx(p.x)} cy={sy(p.y)} r={p.small ? 3 : 5} fill={p.small ? COLOR.muted : COLOR.goldSoft} stroke={COLOR.bg} strokeWidth={1.5} />
-          <text x={sx(p.x) + 8} y={sy(p.y) - 8} fontSize={p.small ? 10.5 : 12} fill={p.small ? COLOR.faint : COLOR.goldSoft} fontWeight={p.small ? 400 : 700}>{p.label}</text>
+          <text x={Math.min(sx(p.x) + 8, W - M.r - 2)} y={p.below ? sy(p.y) + 17 : sy(p.y) - 8} fontSize={p.small ? 11 : 12.5} {...halo} textAnchor={sx(p.x) > W - 70 ? 'end' : 'start'}
+            fill={p.small ? COLOR.muted : COLOR.goldSoft} fontWeight={p.small ? 400 : 700}>{p.label}</text>
         </g>
       ))}
     </svg>
+    </div>
   );
 }
 
@@ -344,8 +383,10 @@ const KIND_LABEL = { number: 'Задача', truefalse: 'Верно или не�
 
 function ProblemFrame({ block, no, ctx, from, children, verdict, answerText }) {
   const rec = ctx.progress.problems[block.id];
-  // решение открыто по кнопке; у «верно или неверно» — само после ответа, пока его не скроют
+  // решение открыто по кнопке; после ответа, если задача его открывает, — само, пока его не скроют
   const [solMode, setSolMode] = useState(null);
+  const [hintsShown, setHintsShown] = useState(0);
+  const hints = block.hints || [];
   const status = rec ? (rec.ok ? 'решена' : 'не решена') : null;
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
   return (
@@ -357,15 +398,28 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText }) {
       </div>
       <div className="tb-body"><Blocks blocks={block.statement} ctx={ctx} /></div>
       {children}
-      <div style={{ marginTop: 8 }}>
-        <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
-          onClick={() => { Audio.play('click'); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
-      </div>
       {verdict && (
         <div data-testid="tb-verdict" style={{ fontSize: 13, marginTop: 8, color: verdict.bad ? COLOR.muted : verdict.ok ? COLOR.teal : COLOR.rust }}>
           {verdict.ok && <Check size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}{verdict.text}
         </div>
       )}
+      {hintsShown > 0 && (
+        <div data-testid="tb-hints" style={{ marginTop: 8 }}>
+          {hints.slice(0, hintsShown).map((h, k) => (
+            <div key={k} style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.55, marginBottom: 4 }}>
+              <b style={{ color: COLOR.goldSoft }}>Подсказка {k + 1}.</b> <Inline nodes={h} ctx={ctx} />
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {hintsShown < hints.length && (
+          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }}
+            onClick={() => { Audio.play('click'); setHintsShown((n) => n + 1); }}>Подсказка{hints.length > 1 ? ` ${hintsShown + 1} из ${hints.length}` : ''}</button>
+        )}
+        <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
+          onClick={() => { Audio.play('click'); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+      </div>
       {open && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.gold, marginBottom: 0 }}>
           <div className="tb-box-head" style={{ color: COLOR.gold }}>Решение · {answerText}</div>
@@ -377,20 +431,22 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText }) {
 }
 const WRONG = 'Пока неверно. Задача вернётся в список «на повторение» через два дня — загляните в решение.';
 const inputStyle = () => ({ padding: '7px 10px', fontSize: 14, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text });
+// «292 руб.» + точка в конце фразы не даёт «руб..»
+const endDot = (t) => (/[.!?]$/.test(t) ? t : `${t}.`);
+const withUnit = (block) => `${fmtNum(block.answer)}${block.unit ? ` ${block.unit}` : ''}`;
 
 function NumberProblem({ block, no, ctx, from }) {
   const [input, setInput] = useState('');
   const [verdict, setVerdict] = useState(null);
-  const answer = `ответ ${fmtNum(block.answer)}${block.unit ? ` ${block.unit}` : ''}`;
   const submit = () => {
-    const r = checkAnswer(input, block.answer, block.tol);
-    if (r.value == null) { setVerdict({ bad: true, text: 'Введите число: например, 25 или −0,5.' }); return; }
+    const r = checkAnswer(input, block.answer, block.tol, block.unit);
+    if (r.value == null) { setVerdict({ bad: true, text: 'Введите число: например, 25, −0,5 или 2/3.' }); return; }
     Audio.play(r.ok ? 'stamp' : 'tick');
     ctx.onAnswer(block.id, r.ok);
-    setVerdict({ ok: r.ok, text: r.ok ? `Верно: ${fmtNum(block.answer)}${block.unit ? ` ${block.unit}` : ''}.` : WRONG });
+    setVerdict({ ok: r.ok, text: r.ok ? endDot(`Верно: ${withUnit(block)}`) : WRONG });
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`}>
       <form style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <input value={input} onChange={(e) => { setInput(e.target.value); setVerdict(null); }} inputMode="decimal" aria-label={`Ответ к задаче ${no}`}
           placeholder="ответ числом" style={{ ...inputStyle(), width: 150 }} />
@@ -401,25 +457,53 @@ function NumberProblem({ block, no, ctx, from }) {
   );
 }
 
-// «верно или неверно»: выбор проверяется сразу, объяснение пишется для себя и сверяется с решением
+/* «Верно или неверно, объясните». Сначала пишется объяснение, потом выбор. Неверный выбор —
+   сразу на повторение. Верный — объяснение сверяется с ключевыми пунктами разбора, и
+   засчитывается задача, только если объяснение с ними совпало. */
+const MIN_WHY = 12;
 function TrueFalseProblem({ block, no, ctx, from }) {
   const [why, setWhy] = useState('');
+  const [stage, setStage] = useState('write'); // write → check → done
   const [verdict, setVerdict] = useState(null);
+  const ready = why.replace(/\s+/g, '').length >= MIN_WHY;
+  const finish = (ok, text) => { Audio.play(ok ? 'stamp' : 'tick'); ctx.onAnswer(block.id, ok); setStage('done'); setVerdict({ ok, reveal: true, text }); };
   const pick = (v) => {
-    const ok = v === block.answer;
-    Audio.play(ok ? 'stamp' : 'tick');
-    ctx.onAnswer(block.id, ok);
-    setVerdict({ ok, reveal: true, text: ok ? `Верно: утверждение ${block.answer ? 'верно' : 'неверно'}. Сравните своё объяснение с разбором.` : WRONG });
+    if (!ready) return;
+    if (v !== block.answer) { finish(false, `Утверждение ${block.answer ? 'верно' : 'неверно'}. ${WRONG}`); return; }
+    setStage('check');
+    setVerdict({ ok: true, text: `Выбор верный: утверждение ${block.answer ? 'верно' : 'неверно'}. Теперь сверьте объяснение.` });
   };
   return (
     <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={block.answer ? 'утверждение верно' : 'утверждение неверно'}>
-      <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`}
-        placeholder="почему — в одну-две фразы (для себя: объяснение сверяется с разбором, а не автоматически)"
+      <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`} disabled={stage !== 'write'}
+        placeholder="Сначала объясните в одну-две фразы, почему. Потом выберите ответ и сверьте объяснение с ключевыми пунктами."
         style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} onClick={() => pick(true)}>Верно</button>
-        <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} onClick={() => pick(false)}>Неверно</button>
-      </div>
+      {stage === 'write' && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} disabled={!ready} onClick={() => pick(true)}>Верно</button>
+          <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} disabled={!ready} onClick={() => pick(false)}>Неверно</button>
+          {!ready && <span style={{ fontSize: 12, color: COLOR.faint }}>сначала объяснение</span>}
+        </div>
+      )}
+      {stage !== 'write' && (
+        <div className="tb-box" style={{ borderLeftColor: COLOR.teal, marginBottom: 0 }} data-testid="tb-points">
+          <div className="tb-box-head" style={{ color: COLOR.teal }}>Ключевые пункты объяснения</div>
+          <ul style={{ margin: '0 0 8px', paddingLeft: 18, fontSize: 13, lineHeight: 1.55 }}>
+            {block.points.map((pt, k) => <li key={k}><Inline nodes={pt} ctx={ctx} /></li>)}
+          </ul>
+          {stage === 'check' && (
+            <>
+              <div style={{ fontSize: 13, marginBottom: 8 }}>Ваше объяснение говорит о том же?</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                <button type="button" className="ems-btn primary" style={{ padding: '6px 14px', fontSize: 13 }}
+                  onClick={() => finish(true, 'Засчитано: и выбор, и объяснение.')}>Совпало</button>
+                <button type="button" className="ems-btn" style={{ padding: '6px 14px', fontSize: 13 }}
+                  onClick={() => finish(false, 'Выбор верный, но объяснение неполное — задача вернётся на повторение через два дня.')}>Не совпало</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </ProblemFrame>
   );
 }
@@ -457,6 +541,23 @@ function ProblemCard(props) {
 }
 
 /* ------------------------------ СТРАНИЦЫ ------------------------------ */
+// оглавление длинной главы: по разделам, переход прокруткой
+function SectionNav({ blocks }) {
+  const secs = chapterSections(blocks);
+  if (secs.length < 3) return null;
+  return (
+    <nav className="tb-box" style={{ borderLeftColor: COLOR.muted, marginTop: 0 }} aria-label="Разделы главы" data-testid="tb-sections">
+      <div className="tb-box-head" style={{ color: COLOR.muted }}>В этой главе</div>
+      <ol style={{ margin: '0 0 8px', paddingLeft: 20, fontSize: 13, lineHeight: 1.7, columns: '2 240px' }}>
+        {secs.map((x) => (
+          <li key={x.id}><button type="button" className="tb-link" style={{ textDecoration: 'none' }}
+            onClick={() => { const el = document.getElementById(x.id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}>{x.title}</button></li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
 function ChapterPage({ id, ctx }) {
   const ch = CHAPTER_BY_ID[id];
   const blocks = CHAPTER_BLOCKS[id];
@@ -473,7 +574,10 @@ function ChapterPage({ id, ctx }) {
       </div>
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
-        <div className="tb-body"><Blocks blocks={blocks} ctx={ctx} /></div>
+        <>
+          <SectionNav blocks={blocks} />
+          <div className="tb-body"><Blocks blocks={blocks} ctx={ctx} top /></div>
+        </>
       ) : (
         <div className="ems-panel" style={{ padding: 14, fontSize: 13.5, lineHeight: 1.6 }}>
           <div style={{ marginBottom: 6 }}><b>Глава в работе.</b> {ch.summary}</div>

@@ -400,6 +400,151 @@ const cournotChart = {
   },
 };
 
+/* ---------------- КРИВАЯ ПРОИЗВОДСТВЕННЫХ ВОЗМОЖНОСТЕЙ ----------------
+   Четверть эллипса x²/X² + y²/Y² = 1: вогнутая, потому что ресурсы специализированы и
+   альтернативная стоимость растёт. Ползунки: сколько производить товара X (точка на
+   границе) и технологии в каждой отрасли (сдвигают концы кривой). */
+export const ppfY = (X, Y, x) => (x >= X ? 0 : Y * Math.sqrt(1 - (x * x) / (X * X)));
+// альтернативная стоимость единицы X в единицах Y: наклон границы −dy/dx
+export const ppfCost = (X, Y, x) => { const y = ppfY(X, Y, x); return y > 1e-9 ? (Y * Y * x) / (X * X * y) : Infinity; };
+const ppfParams = (A) => ({ X: num(A, 'x', 100), Y: num(A, 'y', 100) });
+const ppf = {
+  title: 'Кривая производственных возможностей',
+  controls: (A) => {
+    const p = ppfParams(A);
+    return [
+      { id: 'x', label: 'Производство хлеба X', min: 0, max: p.X, step: 1, def: num(A, 'x0', Math.round(p.X * 0.6)), fmt: (v) => `${v}` },
+      { id: 'tx', label: 'Технология в хлебе', min: -30, max: 50, step: 5, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}%` },
+      { id: 'ty', label: 'Технология в станках', min: -30, max: 50, step: 5, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}%` },
+    ];
+  },
+  measure: (A, v) => {
+    const p = ppfParams(A); const X = p.X * (1 + v.tx / 100); const Y = p.Y * (1 + v.ty / 100);
+    const x = Math.min(v.x, X);
+    return { x, y: ppfY(X, Y, x), oc: ppfCost(X, Y, x) };
+  },
+  build: (A, v) => {
+    const p = ppfParams(A); const X = p.X * (1 + v.tx / 100); const Y = p.Y * (1 + v.ty / 100);
+    const x = Math.min(v.x, X); const y = ppfY(X, Y, x); const oc = ppfCost(X, Y, x);
+    const curve = (XX, YY) => Array.from({ length: 60 }, (_, i) => { const xx = XX * i / 59; return { x: xx, y: ppfY(XX, YY, xx) }; });
+    const moved = v.tx !== 0 || v.ty !== 0;
+    const max = Math.ceil((Math.max(p.X, p.Y) * 1.55) / 10) * 10;
+    return {
+      xDomain: [0, max], yDomain: [0, max], xLabel: 'хлеб X', yLabel: 'станки Y',
+      curves: [
+        ...(moved ? [{ id: 'PPF0', points: curve(p.X, p.Y), ghost: true, color: 'blue' }] : []),
+        { id: 'PPF', label: 'КПВ', labelPos: 0.3, points: curve(X, Y), color: 'blue' },
+      ],
+      points: [
+        { x, y, label: 'A', guide: true },
+        { x: x * 0.7, y: y * 0.7, label: 'неэффективно', small: true },
+      ],
+      readout: [
+        { label: 'Хлеб X', value: r1(x) },
+        { label: 'Станки Y', value: r1(y) },
+        { label: 'Альтернативная стоимость единицы X', value: Number.isFinite(oc) ? `${r2(oc)} Y` : '∞' },
+      ],
+    };
+  },
+};
+
+/* ---------------- ВЫБОР ПОТРЕБИТЕЛЯ ----------------
+   Полезность Кобба — Дугласа U = x^α·y^(1−α), бюджет pₓ·x + p_y·y = I. Оптимум —
+   касание кривой безразличия: x = αI/pₓ, y = (1 − α)I/p_y. Когда цена X меняется,
+   график раскладывает изменение спроса по Слуцкому: компенсированный бюджет с новыми
+   ценами проходит через старый набор, точка S — эффект замещения, от S до нового
+   оптимума — эффект дохода. */
+export function cdChoice({ a, I, px, py }) { const x = (a * I) / px; const y = ((1 - a) * I) / py; return { x, y, U: Math.pow(x, a) * Math.pow(y, 1 - a) }; }
+export function slutsky({ a, I, px0, px1, py }) {
+  const old = cdChoice({ a, I, px: px0, py }); const now = cdChoice({ a, I, px: px1, py });
+  const Ic = px1 * old.x + py * old.y; const comp = cdChoice({ a, I: Ic, px: px1, py });
+  return { old, now, comp, Ic, substitution: comp.x - old.x, income: now.x - comp.x };
+}
+const consParams = (A) => ({ a: num(A, 'alpha', 0.5), I: num(A, 'i', 120), px: num(A, 'px', 2), py: num(A, 'py', 1) });
+const consumer = {
+  title: 'Выбор потребителя',
+  controls: (A) => {
+    const p = consParams(A);
+    return [
+      { id: 'px', label: 'Цена товара X', min: Math.max(0.5, p.px * 0.25), max: p.px * 3, step: 0.25, def: p.px, fmt: (v) => r2(v) },
+      { id: 'I', label: 'Доход I', min: Math.round(p.I * 0.4), max: Math.round(p.I * 1.8), step: 5, def: p.I, fmt: (v) => `${v}` },
+    ];
+  },
+  measure: (A, v) => { const p = consParams(A); const c = cdChoice({ a: p.a, I: v.I, px: v.px, py: p.py }); return { x: c.x, y: c.y, U: c.U }; },
+  build: (A, v) => {
+    const p = consParams(A);
+    const c = cdChoice({ a: p.a, I: v.I, px: v.px, py: p.py });
+    const max = Math.ceil((Math.max(p.I * 1.8 / p.px, p.I * 1.8 / p.py) * 0.75) / 10) * 10;
+    const budget = (I, px) => [{ x: 0, y: I / p.py }, { x: I / px, y: 0 }];
+    const indiff = (U) => Array.from({ length: 70 }, (_, i) => { const x = max * (0.02 + 0.98 * i / 69); return { x, y: Math.pow(U / Math.pow(x, p.a), 1 / (1 - p.a)) }; });
+    const curves = [];
+    const points = [{ x: c.x, y: c.y, label: 'E', guide: true }];
+    const readout = [{ label: 'Товар X', value: r1(c.x) }, { label: 'Товар Y', value: r1(c.y) }, { label: 'Полезность', value: r1(c.U) }];
+    const priceMoved = Math.abs(v.px - p.px) > 1e-9 && Math.abs(v.I - p.I) < 1e-9;
+    if (Math.abs(v.px - p.px) > 1e-9 || Math.abs(v.I - p.I) > 1e-9) {
+      const o = cdChoice({ a: p.a, I: p.I, px: p.px, py: p.py });
+      curves.push({ id: 'B0', points: budget(p.I, p.px), ghost: true, color: 'rust' }, { id: 'U0', points: indiff(o.U), ghost: true, color: 'teal' });
+      points.push({ x: o.x, y: o.y, label: 'E₀', small: true });
+    }
+    if (priceMoved) {
+      const sl = slutsky({ a: p.a, I: p.I, px0: p.px, px1: v.px, py: p.py });
+      curves.push({ id: 'Bc', label: 'компенсированный', labelPos: 'start', points: budget(sl.Ic, v.px), color: 'gold', dashed: true });
+      points.push({ x: sl.comp.x, y: sl.comp.y, label: 'S', small: true });
+      readout.push({ label: 'Эффект замещения', value: r1(sl.substitution) }, { label: 'Эффект дохода', value: r1(sl.income) });
+    }
+    curves.push({ id: 'B', label: 'бюджет', points: budget(v.I, v.px), color: 'rust' }, { id: 'U', label: 'U', points: indiff(c.U), color: 'teal' });
+    return { xDomain: [0, max], yDomain: [0, max], xLabel: 'X', yLabel: 'Y', curves, points, readout };
+  },
+};
+
+/* ---------------- НАЛОГ, ИЗЛИШКИ И ПОТЕРИ ----------------
+   Спрос Qd = a − bP, предложение Qs = c + dP, налог t с единицы: покупатели платят Pd,
+   продавцы получают Ps = Pd − t. Закрашены излишек потребителей, излишек производителей,
+   налоговые сборы и безвозвратные потери. Кто юридически платит налог — не важно:
+   цены покупателей и продавцов и объём одинаковы. */
+export function taxMarket({ a, b, c, d, t }) {
+  const Pd = (a - c + d * t) / (b + d); const Ps = Pd - t; const Q = Math.max(0, a - b * Pd);
+  const P0 = (a - c) / (b + d); const Q0 = a - b * P0;
+  const pmaxD = a / b; const pminS = -c / d;
+  return { Pd, Ps, Q, P0, Q0, cs: 0.5 * Q * (pmaxD - Pd), ps: 0.5 * Q * (Ps - pminS), rev: t * Q, dwl: 0.5 * t * (Q0 - Q), buyersShare: t > 0 ? (Pd - P0) / t : d / (b + d) };
+}
+const taxParams = (A) => ({ a: num(A, 'a', 100), b: num(A, 'b', 2), c: num(A, 'c', -20), d: num(A, 'd', 4) });
+const tax = {
+  title: 'Налог, излишки и потери',
+  controls: (A) => {
+    const p = taxParams(A); const P0 = (p.a - p.c) / (p.b + p.d);
+    return [{ id: 't', label: 'Налог с единицы t', min: 0, max: Math.round(P0), step: 1, def: num(A, 't', 0), fmt: (v) => `${v}` }];
+  },
+  measure: (A, v) => { const m = taxMarket({ ...taxParams(A), t: v.t }); return { Pd: m.Pd, Ps: m.Ps, Q: m.Q, dwl: m.dwl, rev: m.rev, cs: m.cs, ps: m.ps }; },
+  build: (A, v) => {
+    const p = taxParams(A); const m = taxMarket({ ...p, t: v.t });
+    const Pmax = Math.ceil((p.a / p.b * 1.1) / 10) * 10; const Qmax = Math.ceil((p.a * 1.05) / 10) * 10;
+    const pminS = -p.c / p.d;
+    const polys = [
+      { points: [{ x: 0, y: p.a / p.b }, { x: 0, y: m.Pd }, { x: m.Q, y: m.Pd }], label: 'покупатели', tone: 'blue' },
+      { points: [{ x: 0, y: Math.max(0, pminS) }, { x: 0, y: m.Ps }, { x: m.Q, y: m.Ps }], label: 'продавцы', tone: 'teal' },
+    ];
+    if (v.t > 0) polys.push({ points: [{ x: m.Q, y: m.Pd }, { x: m.Q0, y: m.P0 }, { x: m.Q, y: m.Ps }], label: 'DWL', tone: 'rust' });
+    const rects = v.t > 0 ? [{ x0: 0, x1: m.Q, y0: m.Ps, y1: m.Pd, label: 'налог' }] : [];
+    return {
+      xDomain: [0, Qmax], yDomain: [0, Pmax], xLabel: 'Q', yLabel: 'P', polys, rects,
+      curves: [
+        { id: 'D', label: 'D', points: [{ x: 0, y: p.a / p.b }, { x: p.a, y: 0 }], color: 'blue' },
+        { id: 'S', label: 'S', points: [{ x: Math.max(0, p.c), y: Math.max(0, pminS) }, { x: Qmax, y: (Qmax - p.c) / p.d }], color: 'rust' },
+      ],
+      points: v.t > 0 ? [{ x: m.Q, y: m.Pd, label: 'Pd', guide: true }, { x: m.Q, y: m.Ps, label: 'Ps', guide: true, below: true }] : [{ x: m.Q0, y: m.P0, label: 'E', guide: true }],
+      readout: [
+        { label: 'Цена покупателей', value: r1(m.Pd) },
+        { label: 'Цена продавцов', value: r1(m.Ps) },
+        { label: 'Количество', value: r1(m.Q) },
+        { label: 'Сборы', value: r1(m.rev) },
+        { label: 'Безвозвратные потери', value: r1(m.dwl) },
+        { label: 'Доля налога на покупателях', value: `${Math.round(m.buyersShare * 100)}%` },
+      ],
+    };
+  },
+};
+
 // что показывает график числами — по этим величинам проверяются графические задачи
 supplyDemand.measure = (A, v) => {
   const e = sdEquilibrium(num(A, 'a', 100) + (v.dA || 0), num(A, 'b', 2), num(A, 'c', -20) + (v.dC || 0), num(A, 'd', 4));
@@ -430,7 +575,11 @@ costs.measureNames = { avcMin: 'минимум AVC', atcMin: 'минимум ATC
 monopolyChart.measureNames = { P: 'цена', Q: 'выпуск', profit: 'прибыль', dwl: 'безвозвратные потери' };
 cournotChart.measureNames = { q1: 'выпуск фирмы 1', q2: 'выпуск фирмы 2', P: 'цена', pi1: 'прибыль фирмы 1', pi2: 'прибыль фирмы 2' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart };
+ppf.measureNames = { x: 'хлеб', y: 'станки', oc: 'альтернативная стоимость хлеба' };
+consumer.measureNames = { x: 'покупки X', y: 'покупки Y', U: 'полезность' };
+tax.measureNames = { Pd: 'цена покупателей', Ps: 'цена продавцов', Q: 'количество', dwl: 'безвозвратные потери', rev: 'сборы', cs: 'излишек покупателей', ps: 'излишек продавцов' };
+
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax };
 export const chartDefaults = (type, attrs) => Object.fromEntries(CHARTS[type].controls(attrs).filter((c) => !c.button).map((c) => [c.id, c.def]));
 
 /* ГРАФИЧЕСКАЯ ЗАДАЧА: игрок двигает ползунки, ответ — направления изменения величин

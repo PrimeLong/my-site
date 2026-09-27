@@ -10,6 +10,8 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('node_modules/recharts')) return 'recharts'
           if (id.includes('node_modules/lucide-react')) return 'lucide-react'
+          // KaTeX нужен только учебнику, но это самая тяжёлая его часть — свой чанк
+          if (id.includes('node_modules/katex')) return 'katex'
         },
       },
     },
