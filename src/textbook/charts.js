@@ -25,6 +25,8 @@ const supplyDemand = {
     const a = num(A, 'a', 100);
     const span = Math.round(a * 0.4);
     const { P } = sdEquilibrium(a, num(A, 'b', 2), num(A, 'c', -20), num(A, 'd', 4));
+    // режим «издержки»: единственный ползунок — на сколько подорожала каждая единица для продавцов
+    if (A.cost != null) return [{ id: 'cost', label: 'Издержки на единицу выросли на', min: 0, max: Math.round(P), step: 1, def: 0, fmt: (v) => `${v} руб.` }];
     return [
       { id: 'dA', label: 'Сдвиг спроса', min: -span, max: span, step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
       { id: 'dC', label: 'Сдвиг предложения', min: -span, max: span, step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
@@ -34,7 +36,8 @@ const supplyDemand = {
   },
   build: (A, v) => {
     const a = num(A, 'a', 100); const b = num(A, 'b', 2); const c = num(A, 'c', -20); const d = num(A, 'd', 4);
-    const a1 = a + v.dA; const c1 = c + v.dC;
+    // рост издержек на единицу поднимает кривую предложения на столько же: Qs = c + d·(P − cost)
+    const a1 = a + (v.dA || 0); const c1 = c + (v.dC || 0) - d * (v.cost || 0);
     const base = sdEquilibrium(a, b, c, d);
     const eq = sdEquilibrium(a1, b, c1, d);
     const Pmax = Math.ceil((a + a * 0.4) / b / 10) * 10;
@@ -42,8 +45,8 @@ const supplyDemand = {
     // кривые в осях «количество по горизонтали, цена по вертикали»
     const dem = (aa) => line((P) => P, 0, aa / b).map(({ x }) => ({ x: aa - b * x, y: x }));
     const sup = (cc) => line((P) => P, Math.max(0, -cc / d), (Qmax - cc) / d).map(({ x }) => ({ x: cc + d * x, y: x }));
-    const moved = v.dA !== 0 || v.dC !== 0;
-    const ceilOn = v.ceil < Math.round(base.P * 2);
+    const moved = (v.dA || 0) !== 0 || (v.dC || 0) !== 0 || (v.cost || 0) !== 0;
+    const ceilOn = v.ceil != null && v.ceil < Math.round(base.P * 2);
     const curves = [
       ...(moved ? [{ id: 'D0', points: dem(a), ghost: true, color: 'blue' }, { id: 'S0', points: sup(c), ghost: true, color: 'rust' }] : []),
       { id: 'D', label: 'D', points: dem(a1), color: 'blue' },
@@ -53,6 +56,10 @@ const supplyDemand = {
       { label: 'Равновесная цена', value: r1(eq.P) },
       { label: 'Равновесное количество', value: r1(eq.Q) },
     ];
+    if (v.cost) {
+      readout.push({ label: 'Цена выросла на', value: `${r1(eq.P - base.P)} из ${v.cost}` });
+      readout.push({ label: 'Покупатели платят', value: `${Math.round(((eq.P - base.P) / v.cost) * 100)}% роста издержек` });
+    }
     const segments = [];
     if (ceilOn) {
       const Pc = v.ceil;
@@ -100,6 +107,74 @@ const elasticity = {
         { label: 'Количество', value: r1(Q) },
         { label: 'Эластичность в точке', value: r2(E) },
         { label: 'Выручка P·Q', value: r1(P * Q) },
+        { label: 'Если цену поднять', value: Math.abs(E) > 1.0001 ? 'выручка упадёт' : Math.abs(E) < 0.9999 ? 'выручка вырастет' : 'выручка на максимуме' },
+      ],
+    };
+  },
+};
+
+/* ---------------- ЭЛАСТИЧНЫЙ ПРОТИВ НЕЭЛАСТИЧНОГО ----------------
+   Две прямые спроса через одну и ту же точку (Q₀; P₀): крутая — неэластичный спрос,
+   пологая — эластичный. Ползунок меняет цену на столько-то процентов, под графиком — на
+   сколько процентов изменились покупки и выручка по каждой кривой. */
+const compareParams = (A) => ({ p0: num(A, 'p0', 20), q0: num(A, 'q0', 60), eIn: num(A, 'ein', 0.4), eEl: num(A, 'eel', 2.5) });
+const compareQ = (p, e, P) => Math.max(0, p.q0 - (e * p.q0 / p.p0) * (P - p.p0));
+const elasticCompare = {
+  title: 'Эластичный и неэластичный спрос',
+  controls: () => [{ id: 'dp', label: 'Цена изменилась на', min: -30, max: 30, step: 5, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}%` }],
+  measure: (A, v) => {
+    const p = compareParams(A); const P = p.p0 * (1 + v.dp / 100);
+    return { qIn: compareQ(p, p.eIn, P), qEl: compareQ(p, p.eEl, P), rIn: P * compareQ(p, p.eIn, P), rEl: P * compareQ(p, p.eEl, P) };
+  },
+  build: (A, v) => {
+    const p = compareParams(A); const P = p.p0 * (1 + v.dp / 100);
+    const qIn = compareQ(p, p.eIn, P); const qEl = compareQ(p, p.eEl, P);
+    const Pmax = p.p0 * 1.6; const Qmax = p.q0 * 2;
+    const lineFor = (e, h = 0.6) => { const b = e * p.q0 / p.p0; return [{ x: Math.min(Qmax, p.q0 + b * p.p0 * h), y: p.p0 * (1 - h) }, { x: Math.max(0, p.q0 - b * p.p0 * h), y: p.p0 * (1 + h) }]; };
+    const pct = (a, b) => `${a >= b ? '+' : '−'}${r1(Math.abs((a / b - 1) * 100))}%`;
+    const points = [{ x: p.q0, y: p.p0, label: 'сейчас', small: true }];
+    if (v.dp !== 0) points.push({ x: qIn, y: P, label: 'A', guide: true }, { x: qEl, y: P, label: 'B', guide: true });
+    return {
+      xDomain: [0, Qmax], yDomain: [0, Pmax], xLabel: 'Q', yLabel: 'P',
+      curves: [
+        { id: 'in', label: `неэластичный, |E| = ${r1(p.eIn)}`, labelPos: 0.9, points: lineFor(p.eIn, 0.4), color: 'teal' },
+        { id: 'el', label: `эластичный, |E| = ${r1(p.eEl)}`, labelPos: 0.04, points: lineFor(p.eEl), color: 'rust' },
+        ...(v.dp !== 0 ? [{ id: 'P1', points: [{ x: 0, y: P }, { x: Qmax, y: P }], color: 'gold', dashed: true }] : []),
+      ],
+      points,
+      readout: v.dp === 0 ? [{ label: 'Сдвиньте цену', value: 'и сравните две кривые' }] : [
+        { label: 'Неэластичный: покупки', value: pct(qIn, p.q0) },
+        { label: 'выручка', value: pct(P * qIn, p.p0 * p.q0) },
+        { label: 'Эластичный: покупки', value: pct(qEl, p.q0) },
+        { label: 'выручка', value: pct(P * qEl, p.p0 * p.q0) },
+      ],
+    };
+  },
+};
+
+/* ---------------- КРИВАЯ ВЫРУЧКИ ----------------
+   Выручка R = P·(a − bP) как функция цены: горка с вершиной в середине прямой спроса.
+   Слева от вершины (неэластичный участок) рост цены увеличивает выручку, справа — уменьшает. */
+const revenueCurve = {
+  title: 'Выручка при разных ценах',
+  controls: (A) => { const a = num(A, 'a', 100); const b = num(A, 'b', 2); const Pm = a / b; return [{ id: 'P', label: 'Цена', min: 1, max: Math.round(Pm) - 1, step: 1, def: num(A, 'p', Math.round(Pm * 0.3)), fmt: (v) => `${v}` }]; },
+  measure: (A, v) => { const a = num(A, 'a', 100); const b = num(A, 'b', 2); return { P: v.P, R: v.P * (a - b * v.P) }; },
+  build: (A, v) => {
+    const a = num(A, 'a', 100); const b = num(A, 'b', 2); const Pm = a / b;
+    const R = (P) => P * (a - b * P); const Rmax = R(Pm / 2);
+    const curve = Array.from({ length: 60 }, (_, i) => { const P = Pm * i / 59; return { x: P, y: R(P) }; });
+    const E = pointElasticity(a, b, v.P);
+    return {
+      xDomain: [0, Pm], yDomain: [0, Math.ceil((Rmax * 1.2) / 100) * 100], xLabel: 'P', yLabel: 'выручка',
+      curves: [
+        { id: 'inel', label: 'неэластичный участок', labelPos: 0.2, points: curve.filter((c) => c.x <= Pm / 2 + 1e-9), color: 'teal' },
+        { id: 'el', label: 'эластичный', labelPos: 0.75, points: curve.filter((c) => c.x >= Pm / 2 - 1e-9), color: 'rust' },
+      ],
+      points: [{ x: v.P, y: R(v.P), label: `R = ${r1(R(v.P))}`, guide: true }, { x: Pm / 2, y: Rmax, label: 'максимум', small: true }],
+      readout: [
+        { label: 'Количество', value: r1(a - b * v.P) },
+        { label: 'Выручка', value: r1(R(v.P)) },
+        { label: '|E| в точке', value: r2(Math.abs(E)) },
         { label: 'Если цену поднять', value: Math.abs(E) > 1.0001 ? 'выручка упадёт' : Math.abs(E) < 0.9999 ? 'выручка вырастет' : 'выручка на максимуме' },
       ],
     };
@@ -547,7 +622,8 @@ const tax = {
 
 // что показывает график числами — по этим величинам проверяются графические задачи
 supplyDemand.measure = (A, v) => {
-  const e = sdEquilibrium(num(A, 'a', 100) + (v.dA || 0), num(A, 'b', 2), num(A, 'c', -20) + (v.dC || 0), num(A, 'd', 4));
+  const d = num(A, 'd', 4);
+  const e = sdEquilibrium(num(A, 'a', 100) + (v.dA || 0), num(A, 'b', 2), num(A, 'c', -20) + (v.dC || 0) - d * (v.cost || 0), d);
   return { P: e.P, Q: e.Q };
 };
 elasticity.measure = (A, v) => {
@@ -579,7 +655,9 @@ ppf.measureNames = { x: 'хлеб', y: 'станки', oc: 'альтернати
 consumer.measureNames = { x: 'покупки X', y: 'покупки Y', U: 'полезность' };
 tax.measureNames = { Pd: 'цена покупателей', Ps: 'цена продавцов', Q: 'количество', dwl: 'безвозвратные потери', rev: 'сборы', cs: 'излишек покупателей', ps: 'излишек продавцов' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax };
+elasticCompare.measureNames = { qIn: 'покупки (неэластичный)', qEl: 'покупки (эластичный)', rIn: 'выручка (неэластичный)', rEl: 'выручка (эластичный)' };
+revenueCurve.measureNames = { P: 'цена', R: 'выручка' };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax };
 export const chartDefaults = (type, attrs) => Object.fromEntries(CHARTS[type].controls(attrs).filter((c) => !c.button).map((c) => [c.id, c.def]));
 
 /* ГРАФИЧЕСКАЯ ЗАДАЧА: игрок двигает ползунки, ответ — направления изменения величин

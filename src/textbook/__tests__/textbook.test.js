@@ -8,11 +8,11 @@ import { DRILLS } from '../../lib/drills.js';
 import { GLOSSARY } from '../glossary.js';
 import { GAME_CARDS } from '../appendix.js';
 import { CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS } from '../toc.js';
-import { TYCOON_TASKS, TYCOON_TABS, TYCOON_STARTS } from '../tycoon-tasks.js';
+import { TYCOON_TASKS, TYCOON_TABS, TYCOON_STARTS, taskText } from '../tycoon-tasks.js';
 import { CHAPTER_BLOCKS, PROBLEMS, problemsOf } from '../content.js';
 import { parseBlocks, parseInline, collectLinks, collectMath, collectBlocks, actionOf, checkAnswer, parseNumber } from '../markdown.js';
 import { CHARTS, chartDefaults, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
-import { emptyProgress, recordAnswer, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil } from '../progress.js';
+import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil } from '../progress.js';
 import { STARTS, RES, makeTycoon, requiredStaff, levelMult, upgradeCost, buyPrice, marketPrice, cartelChance, cartelFineRisk, BLD } from '../../lib/tycoon.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -172,6 +172,19 @@ describe('ссылки из глав', () => {
       }
       default: throw new Error(`Неизвестный вид ссылки ${l.kind}`);
     }
+  });
+  it('задание тайкуна подстраивается под товары компании: нет хлеба — мебель с её эластичностью', () => {
+    const t = TYCOON_TASKS['price-elasticity'];
+    const furn = taskText(t, [{ id: 'furniture', name: 'Мебель', elast: RES.furniture.elast, shop: true }]);
+    expect(furn.text).toContain('«Мебель»');
+    expect(furn.text).toContain('1,8');
+    expect(furn.text).not.toMatch(/\{/);
+    expect(furn.note).toBeNull();
+    const both = taskText(t, [{ id: 'furniture', name: 'Мебель', elast: 1.8, shop: true }, { id: 'bread', name: 'Хлеб', elast: 1.2, shop: true }]);
+    expect(both.text).toContain('«Хлеб»');
+    expect(taskText(t, []).note).toContain('нет товара для магазинов');
+    // в тексте каждого задания не остаётся неподставленных {…}
+    Object.values(TYCOON_TASKS).forEach((x) => expect(taskText(x, [{ id: 'bread', name: 'Хлеб', elast: 1.2, shop: true, wholesale: true }]).text).not.toMatch(/\{/));
   });
   it('задания тайкуна: старты и вкладки существуют, у каждого есть глава', () => {
     Object.values(TYCOON_TASKS).forEach((t) => {
@@ -591,6 +604,20 @@ describe('прогресс и повторение', () => {
     expect(p.problems.x).toMatchObject({ box: 0, due: t0 + 9 * DAY });
     const q = recordAnswer(emptyProgress(), 'y', true, t0);
     expect(q.problems.y).toMatchObject({ ok: true, box: null, due: null });
+  });
+  it('верный ответ до срока повторения расписание не меняет (ошибся — посмотрел решение — ответил верно)', () => {
+    let p = recordAnswer(emptyProgress(), 'x', false, t0);
+    const due = p.problems.x.due;
+    p = recordAnswer(p, 'x', true, t0 + 60 * 1000, { sawSolution: true });
+    expect(p.problems.x).toMatchObject({ ok: true, box: 0, due });
+    p = recordAnswer(p, 'x', true, t0 + DAY);
+    expect(p.problems.x.due).toBe(due);
+  });
+  it('верный ответ с подсмотренным решением засчитан, но задача вернётся через 2 дня', () => {
+    const p = recordAnswer(emptyProgress(), 'y', true, t0, { sawSolution: true });
+    expect(p.problems.y).toMatchObject({ ok: true, box: 0, due: t0 + 2 * DAY });
+    expect(scheduleAfter(p.problems.y, true, t0 + 2 * DAY).why).toBe('advance');
+    expect(scheduleAfter(p.problems.y, true, t0 + 2 * DAY, { sawSolution: true }).why).toBe('solution');
   });
   it('счёт главы — по последней попытке', () => {
     let p = recordAnswer(emptyProgress(), 'a', true, t0);

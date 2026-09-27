@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
 import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS, rng } from './lib/catalog.js';
 import { passiveDecisions, changedLevers, policyContribution, startShadow, shadowQuarter, cumulativeContribution } from './lib/counterfactual.js';
-import { DRILLS, evaluateDrill, recordDrillResult, drillImpulses } from './lib/drills.js';
+import { DRILLS, evaluateDrill, recordDrillResult, drillImpulses, goalValueText, drillPrehistory } from './lib/drills.js';
 import { makeForecast, resolveForecasts, forecastStats, FORECAST_HORIZON } from './lib/forecast.js';
 import { makePrehistory } from './lib/autopilot.js';
 import {
@@ -4146,7 +4146,7 @@ export function DrillGoals({ ev }) {
     <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '4px 12px' }}>
       {ev.goals.map((g) => (
         <span key={g.key + g.when} style={{ color: g.status === 'ok' ? COLOR.teal : g.status === 'fail' ? COLOR.rust : COLOR.text }}>
-          {DRILL_MARK[g.status]} {g.label}{g.value != null ? ` (${g.when === 'always' ? 'худшее' : 'сейчас'} ${fmt1(g.value)})` : ''}
+          {DRILL_MARK[g.status]} {g.label}{g.value != null ? ` (${goalValueText(g).replace('итог: ', 'сейчас: ')})` : ''}
         </span>
       ))}
     </span>
@@ -4168,7 +4168,7 @@ export function DrillResultModal({ drill, ev, forecasts, onClose, onReplay, onMe
           {ev.goals.map((g) => (
             <div key={g.key + g.when} className="row-between">
               <span style={{ color: g.status === 'ok' ? COLOR.teal : COLOR.rust }}>{DRILL_MARK[g.status]} {g.label}</span>
-              <span className="ems-mono">{g.value != null ? `${g.when === 'always' ? 'худшее ' : 'итог '}${fmt1(g.value)}` : '—'}</span>
+              <span className="ems-mono">{goalValueText(g)}</span>
             </div>
           ))}
         </div>
@@ -4417,7 +4417,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     // «Только экономика» — настройка партии: война заморожена (см. simulateQuarter)
     return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
   }, []);
-  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : null));
+  // у задачи — вводный отрезок: как страна пришла к завязке (см. drillPrehistory)
+  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : drill ? drillPrehistory(drill) : null));
   /* Журнал решений игрока — только его рычаги, по кварталам. Хранится в сохранении и
      нужен стенду баланса (scripts/replay-balance.mjs): прогнать живые стратегии, а не
      только ботов против ботов. */

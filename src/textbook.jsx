@@ -6,7 +6,7 @@ import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info } from 'lucide-react';
-import { COLOR, Audio } from './MacroSimulator.jsx';
+import { COLOR, Audio, AudioControls } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { LEVERS, SCENARIOS } from './lib/engine.js';
 import { LAB_LEVERS } from './lib/lab.js';
@@ -18,7 +18,7 @@ import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
 import { CHAPTER_BLOCKS, PROBLEMS, problemsOf } from './textbook/content.js';
 import { CHARTS, chartDefaults, checkGraph } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer } from './textbook/markdown.js';
-import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, reviewQueue, chapterScore, setLast, daysUntil } from './textbook/progress.js';
+import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil } from './textbook/progress.js';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -232,7 +232,13 @@ function ChartSvg({ scene }) {
   const labelAt = (pts, pos) => {
     if (pos === 'start') return { x: sx(pts[0].x) + 6, y: sy(pts[0].y) - 6 };
     // доля пути по кривой: 0,3 — треть от начала
-    if (typeof pos === 'number') { const p = pts[Math.round(pos * (pts.length - 1))]; return { x: sx(p.x) + 6, y: sy(p.y) - 10 }; }
+    if (typeof pos === 'number') {
+      // между вершинами — по прямой, а не прыжком к ближайшей; и подпись не вылезает за поле графика
+      const f = Math.max(0, Math.min(1, pos)) * (pts.length - 1); const k = Math.min(pts.length - 2, Math.floor(f)); const t = f - k;
+      const a = pts[Math.max(0, k)]; const b = pts[Math.min(pts.length - 1, k + 1)];
+      const x = sx(a.x + (b.x - a.x) * t) + 6; const y = sy(a.y + (b.y - a.y) * t) - 10;
+      return { x: Math.min(W - M.r - 4, x), y: Math.min(H - M.b - 8, Math.max(M.t + 12, y)) };
+    }
     if (pos === 'mid') {
       const m = { x: (pts[0].x + pts[pts.length - 1].x) / 2, y: (pts[0].y + pts[pts.length - 1].y) / 2 };
       return { x: sx(m.x) + 8, y: sy(m.y) - 8 };
@@ -381,7 +387,7 @@ function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = 
 const DIR_WORD = { '+': 'растёт', '-': 'падает', 0: 'не меняется', '?': 'любое' };
 const KIND_LABEL = { number: 'Задача', truefalse: 'Верно или неверно', graph: 'Графическая задача' };
 
-function ProblemFrame({ block, no, ctx, from, children, verdict, answerText }) {
+function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onSolutionOpen }) {
   const rec = ctx.progress.problems[block.id];
   // решение открыто по кнопке; после ответа, если задача его открывает, — само, пока его не скроют
   const [solMode, setSolMode] = useState(null);
@@ -418,7 +424,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText }) {
             onClick={() => { Audio.play('click'); setHintsShown((n) => n + 1); }}>Подсказка{hints.length > 1 ? ` ${hintsShown + 1} из ${hints.length}` : ''}</button>
         )}
         <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
-          onClick={() => { Audio.play('click'); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+          onClick={() => { Audio.play('click'); if (!open && onSolutionOpen) onSolutionOpen(); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
       </div>
       {open && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.gold, marginBottom: 0 }}>
@@ -434,19 +440,30 @@ const inputStyle = () => ({ padding: '7px 10px', fontSize: 14, background: COLOR
 // «292 руб.» + точка в конце фразы не даёт «руб..»
 const endDot = (t) => (/[.!?]$/.test(t) ? t : `${t}.`);
 const withUnit = (block) => `${fmtNum(block.answer)}${block.unit ? ` ${block.unit}` : ''}`;
+// что будет с повторением после верного ответа — словами (см. scheduleAfter)
+function okText(ctx, id, head, sawSolution) {
+  const s = scheduleAfter(ctx.progress.problems[id], true, Date.now(), { sawSolution });
+  if (s.why === 'solution') return `${endDot(head)} Решение было открыто, поэтому задача вернётся на повторение через два дня — попробуйте тогда сами.`;
+  if (s.why === 'early') return `${endDot(head)} Повторение остаётся по плану — ${daysUntil(s.due)}: ответ до срока расписание не меняет.`;
+  if (s.why === 'advance') return `${endDot(head)} Следующее повторение — ${daysUntil(s.due)}.`;
+  if (s.why === 'done') return `${endDot(head)} Задача ушла из повторения.`;
+  return endDot(head);
+}
 
 function NumberProblem({ block, no, ctx, from }) {
   const [input, setInput] = useState('');
   const [verdict, setVerdict] = useState(null);
+  const [saw, setSaw] = useState(false);
   const submit = () => {
     const r = checkAnswer(input, block.answer, block.tol, block.unit);
     if (r.value == null) { setVerdict({ bad: true, text: 'Введите число: например, 25, −0,5 или 2/3.' }); return; }
     Audio.play(r.ok ? 'stamp' : 'tick');
-    ctx.onAnswer(block.id, r.ok);
-    setVerdict({ ok: r.ok, text: r.ok ? endDot(`Верно: ${withUnit(block)}`) : WRONG });
+    const text = r.ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : WRONG;
+    ctx.onAnswer(block.id, r.ok, { sawSolution: saw });
+    setVerdict({ ok: r.ok, text });
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}>
       <form style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <input value={input} onChange={(e) => { setInput(e.target.value); setVerdict(null); }} inputMode="decimal" aria-label={`Ответ к задаче ${no}`}
           placeholder="ответ числом" style={{ ...inputStyle(), width: 150 }} />
@@ -465,8 +482,13 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   const [why, setWhy] = useState('');
   const [stage, setStage] = useState('write'); // write → check → done
   const [verdict, setVerdict] = useState(null);
+  const [saw, setSaw] = useState(false);
   const ready = why.replace(/\s+/g, '').length >= MIN_WHY;
-  const finish = (ok, text) => { Audio.play(ok ? 'stamp' : 'tick'); ctx.onAnswer(block.id, ok); setStage('done'); setVerdict({ ok, reveal: true, text }); };
+  const finish = (ok, text) => {
+    Audio.play(ok ? 'stamp' : 'tick');
+    const t = ok ? okText(ctx, block.id, text, saw) : text;
+    ctx.onAnswer(block.id, ok, { sawSolution: saw }); setStage('done'); setVerdict({ ok, reveal: true, text: t });
+  };
   const pick = (v) => {
     if (!ready) return;
     if (v !== block.answer) { finish(false, `Утверждение ${block.answer ? 'верно' : 'неверно'}. ${WRONG}`); return; }
@@ -474,7 +496,8 @@ function TrueFalseProblem({ block, no, ctx, from }) {
     setVerdict({ ok: true, text: `Выбор верный: утверждение ${block.answer ? 'верно' : 'неверно'}. Теперь сверьте объяснение.` });
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={block.answer ? 'утверждение верно' : 'утверждение неверно'}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={block.answer ? 'утверждение верно' : 'утверждение неверно'}
+      onSolutionOpen={() => { if (stage === 'write') setSaw(true); }}>
       <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`} disabled={stage !== 'write'}
         placeholder="Сначала объясните в одну-две фразы, почему. Потом выберите ответ и сверьте объяснение с ключевыми пунктами."
         style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
@@ -496,7 +519,7 @@ function TrueFalseProblem({ block, no, ctx, from }) {
               <div style={{ fontSize: 13, marginBottom: 8 }}>Ваше объяснение говорит о том же?</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                 <button type="button" className="ems-btn primary" style={{ padding: '6px 14px', fontSize: 13 }}
-                  onClick={() => finish(true, 'Засчитано: и выбор, и объяснение.')}>Совпало</button>
+                  onClick={() => finish(true, 'Засчитано: и выбор, и объяснение')}>Совпало</button>
                 <button type="button" className="ems-btn" style={{ padding: '6px 14px', fontSize: 13 }}
                   onClick={() => finish(false, 'Выбор верный, но объяснение неполное — задача вернётся на повторение через два дня.')}>Не совпало</button>
               </div>
@@ -513,6 +536,7 @@ function GraphProblem({ block, no, ctx, from }) {
   const def = CHARTS[block.chart];
   const [values, setValues] = useState(() => chartDefaults(block.chart, block.attrs));
   const [verdict, setVerdict] = useState(null);
+  const [saw, setSaw] = useState(false);
   const names = def.measureNames || {};
   const answer = block.expect.filter((e) => e.dir !== '?').map((e) => `${names[e.key] || e.key}: ${DIR_WORD[e.dir]}`).join(', ');
   const submit = () => {
@@ -521,11 +545,12 @@ function GraphProblem({ block, no, ctx, from }) {
     const got = r.rows.map((x) => `${names[x.key] || x.key} ${DIR_WORD[x.got]}${x.ok ? '' : ' ✗'}`).join(', ');
     const extra = r.touched.length ? ` Условие не меняет: ${r.touched.map((k) => (def.controls(block.attrs).find((c) => c.id === k) || {}).label || k).join(', ')} — верните ползунок.` : '';
     Audio.play(r.ok ? 'stamp' : 'tick');
-    ctx.onAnswer(block.id, r.ok);
-    setVerdict({ ok: r.ok, text: r.ok ? `Верно: ${got}.` : `На графике: ${got}.${extra} ${WRONG}` });
+    const text = r.ok ? okText(ctx, block.id, `Верно: ${got}`, saw) : `На графике: ${got}.${extra} ${WRONG}`;
+    ctx.onAnswer(block.id, r.ok, { sawSolution: saw });
+    setVerdict({ ok: r.ok, text });
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)}>
       <ChartBox type={block.chart} attrs={block.attrs} ctx={ctx} values={values} onValues={(v) => { setValues(v); setVerdict(null); }}
         only={block.controls} framed={false} />
       <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} onClick={submit}>Проверить сдвиг</button>
@@ -541,6 +566,23 @@ function ProblemCard(props) {
 }
 
 /* ------------------------------ СТРАНИЦЫ ------------------------------ */
+// «Назад» — туда, откуда пришли по ссылке; «Оглавление» — всегда
+const pageTitle = (pg) => (!pg ? '' : pg.kind === 'toc' ? 'Оглавление' : pg.kind === 'chapter' ? (CHAPTER_BY_ID[pg.id] || {}).title : (APPENDIX_BY_ID[pg.id] || {}).title);
+function PageNav({ ctx }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      {ctx.prev && ctx.prev.kind !== 'toc' && (
+        <button type="button" className="ems-btn" style={{ padding: '6px 11px', fontSize: 12 }} data-testid="tb-back" onClick={() => { Audio.play('click'); ctx.back(); }}>
+          <ChevronLeft size={12} style={{ verticalAlign: -2 }} /> Назад: {pageTitle(ctx.prev)}
+        </button>
+      )}
+      <button type="button" className="ems-btn" style={{ padding: '6px 11px', fontSize: 12 }} onClick={() => { Audio.play('click'); ctx.go({ kind: 'toc' }); }}>
+        {!(ctx.prev && ctx.prev.kind !== 'toc') && <ChevronLeft size={12} style={{ verticalAlign: -2 }} />} Оглавление
+      </button>
+    </div>
+  );
+}
+
 // оглавление длинной главы: по разделам, переход прокруткой
 function SectionNav({ blocks }) {
   const secs = chapterSections(blocks);
@@ -566,9 +608,7 @@ function ChapterPage({ id, ctx }) {
   const read = !!ctx.progress.read[id];
   return (
     <div data-testid="chapter" data-chapter={id}>
-      <button type="button" className="ems-btn" style={{ padding: '6px 11px', fontSize: 12, marginBottom: 14 }} onClick={() => { Audio.play('click'); ctx.go({ kind: 'toc' }); }}>
-        <ChevronLeft size={12} style={{ verticalAlign: -2 }} /> Оглавление
-      </button>
+      <PageNav ctx={ctx} />
       <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>
         Глава {chapterNo(id)} · {PARTS.find((p) => p.id === ch.part).title}
       </div>
@@ -700,9 +740,7 @@ function AppendixPage({ id, anchor, ctx }) {
   const idx = APPENDICES.findIndex((x) => x.id === id);
   return (
     <div data-testid="appendix" data-appendix={id}>
-      <button type="button" className="ems-btn" style={{ padding: '6px 11px', fontSize: 12, marginBottom: 14 }} onClick={() => { Audio.play('click'); ctx.go({ kind: 'toc' }); }}>
-        <ChevronLeft size={12} style={{ verticalAlign: -2 }} /> Оглавление
-      </button>
+      <PageNav ctx={ctx} />
       <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>Приложение {String.fromCharCode(1040 + idx)}</div>
       <h1 className="ems-serif" style={{ fontSize: 24, color: COLOR.goldSoft, margin: '4px 0 8px', fontWeight: 700 }}>{a.title}</h1>
       <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 14, lineHeight: 1.55 }}>{a.summary}</div>
@@ -803,18 +841,79 @@ function TocPage({ ctx }) {
    resume — вернуться туда, где читали (после Лаборатории или тайкуна), иначе оглавление.
    onOpenLab({ lever, cb, mode, scenario }), onStartDrill(setup), onOpenTycoon(taskId),
    onOpenScenario(id) — выходы в игру. */
+/* Где остановились в каждой странице: прокрутка запоминается и восстанавливается при
+   возврате (и после Лаборатории, задачи или тайкуна). Размер текста — удобство этого
+   устройства. Оба — в localStorage, отдельно от прогресса: пишутся часто. */
+const SCROLL_KEY = 'ems-textbook-scroll';
+const SCALE_KEY = 'ems-textbook-scale';
+const SCALES = [0.9, 1, 1.15, 1.3, 1.5];
+const pageKey = (pg) => (pg.kind === 'toc' ? 'toc' : `${pg.kind}:${pg.id}`);
+const readJSON = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch { return d; } };
+const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* приватный режим */ } };
+const saveScroll = (key) => { const m = readJSON(SCROLL_KEY, {}); m[key] = Math.round(window.scrollY); writeJSON(SCROLL_KEY, m); };
+
+function ReaderBar({ scale, setScale }) {
+  const i = SCALES.indexOf(scale);
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }} data-testid="tb-reader-bar">
+      <span style={{ fontSize: 12, color: COLOR.faint }}>Текст</span>
+      <button type="button" className="ems-btn" style={{ padding: '4px 10px', fontSize: 12 }} aria-label="Мельче текст" disabled={i <= 0}
+        onClick={() => setScale(SCALES[Math.max(0, i - 1)])}>A−</button>
+      <span className="ems-mono" style={{ fontSize: 12, minWidth: 40, textAlign: 'center' }}>{Math.round(scale * 100)}%</span>
+      <button type="button" className="ems-btn" style={{ padding: '4px 10px', fontSize: 15 }} aria-label="Крупнее текст" disabled={i >= SCALES.length - 1}
+        onClick={() => setScale(SCALES[Math.min(SCALES.length - 1, i + 1)])}>A+</button>
+      <AudioControls />
+    </div>
+  );
+}
+
 export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => (resume && progress.last ? progress.last : { kind: 'toc' }));
+  const [stack, setStack] = useState([]);
+  const [scale, setScaleRaw] = useState(() => { const v = readJSON(SCALE_KEY, 1); return SCALES.includes(v) ? v : 1; });
+  const setScale = (v) => { setScaleRaw(v); writeJSON(SCALE_KEY, v); };
   const update = (fn) => setProgress((p) => saveProgress(fn(p)));
-  const go = (next) => {
+  // прокрутка текущей страницы — запоминается на ходу (не чаще раза в 300 мс)
+  const pageRef = React.useRef(page);
+  pageRef.current = page;
+  React.useEffect(() => {
+    let t = null;
+    const onScroll = () => {
+      if (t) return;
+      // ключ страницы — тот, где прокрутили, а не тот, что откроется к моменту записи
+      const key = pageKey(pageRef.current);
+      t = setTimeout(() => { t = null; if (key !== pageKey(pageRef.current)) return; saveScroll(key); }, 300);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); if (t) clearTimeout(t); };
+  }, []);
+  // открыли страницу — вернуть туда, где остановились (у якоря своё место)
+  React.useEffect(() => {
+    if (page.anchor || typeof window === 'undefined' || !window.scrollTo) return undefined;
+    const y = readJSON(SCROLL_KEY, {})[pageKey(page)] || 0;
+    let n = 0; let raf = 0;
+    // графики и формулы дорисовываются не сразу — несколько кадров догоняем нужную высоту
+    const tick = () => { window.scrollTo(0, y); n += 1; if (n < 20 && Math.abs(window.scrollY - y) > 2) raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [page]);
+  const go = (next, { push = true } = {}) => {
+    // уходя, запомнить, где остановились на этой странице
+    if (typeof window !== 'undefined') saveScroll(pageKey(page));
+    if (push && pageKey(next) !== pageKey(page)) setStack((st) => [...st, page].slice(-30));
     setPage(next);
     update((p) => setLast(p, next.kind === 'toc' ? p.last : { kind: next.kind, id: next.id }));
-    if (!next.anchor && typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0);
+  };
+  const back = () => {
+    const prev = stack[stack.length - 1];
+    if (!prev) { go({ kind: 'toc' }, { push: false }); return; }
+    setStack((st) => st.slice(0, -1));
+    go(prev, { push: false });
   };
   const ctx = {
-    progress, go, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
-    onAnswer: (id, ok) => update((p) => recordAnswer(p, id, ok)),
+    progress, go, back, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
+    onAnswer: (id, ok, opts) => update((p) => recordAnswer(p, id, ok, Date.now(), opts)),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
   };
   const valid = page.kind === 'chapter' ? !!CHAPTER_BY_ID[page.id] : page.kind === 'appendix' ? !!APPENDIX_BY_ID[page.id] : true;
@@ -823,9 +922,12 @@ export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill
     <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText} onBack={onBack}
       lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
       <style>{CSS}</style>
-      {cur.kind === 'toc' && <TocPage ctx={ctx} />}
-      {cur.kind === 'chapter' && <ChapterPage key={cur.id} id={cur.id} ctx={ctx} />}
-      {cur.kind === 'appendix' && <AppendixPage key={cur.id} id={cur.id} anchor={cur.anchor} ctx={ctx} />}
+      <ReaderBar scale={scale} setScale={setScale} />
+      <div style={{ zoom: scale }} data-testid="tb-content">
+        {cur.kind === 'toc' && <TocPage ctx={ctx} />}
+        {cur.kind === 'chapter' && <ChapterPage key={cur.id} id={cur.id} ctx={ctx} />}
+        {cur.kind === 'appendix' && <AppendixPage key={cur.id} id={cur.id} anchor={cur.anchor} ctx={ctx} />}
+      </div>
     </TrainerPage>
   );
 }

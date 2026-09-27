@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DRILLS, evaluateDrill, drillSetup, drillImpulses } from '../drills.js';
+import { DRILLS, evaluateDrill, drillSetup, drillImpulses, goalValueText, drillPrehistory } from '../drills.js';
 import { makeForecast, resolveForecasts, forecastStats } from '../forecast.js';
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry } from '../engine.js';
 import { withSeededRandom } from '../catalog.js';
@@ -24,7 +24,8 @@ describe('задачи на 10 минут', () => {
   const cb = (p) => (e) => botCentralBank(e, p, 'medium').decisions;
   const mof = (p) => (e) => botFinanceMinistry(e, p, 'medium').decisions;
   const SOLVER = {
-    disinflation: cb('hawk'), recession: cb('dove'), consolidation: mof('austerity'),
+    disinflation: cb('hawk'), recession: cb('dove'), // консолидация: выплаты и закупки растут заметно медленнее, чуть выше НДС
+    consolidation: () => ({ transfers: -12, govSpending: -4, vatRate: 19 }),
     fisher: (e) => ({ keyRate: Math.max(0, e.inflationExpectations + 3) }),
     peg: (e) => ({ keyRate: Math.max(e.keyRate, e.inflationExpectations + 3.5) }),
     laffer: (e) => ({ incomeTaxRate: Math.max(18, e.incomeTaxRate - 3), profitTaxRate: Math.max(22, e.profitTaxRate - 4), socialContribRate: Math.max(22, e.socialContribRate - 2) }),
@@ -51,6 +52,30 @@ describe('задачи на 10 минут', () => {
     });
   });
 
+  it('стартовые значения из условия задачи действительно стоят на старте (дефицит 6,5% — это 6,5%)', () => {
+    DRILLS.forEach((d) => {
+      const e = makeInitialEconomy(d.scenario, d.overrides);
+      Object.entries(d.overrides || {}).filter(([, v]) => typeof v === 'number').forEach(([k, v]) => {
+        expect(e[k], `${d.id}: ${k}`).toBeCloseTo(v, 6);
+      });
+    });
+  });
+  it('вводный отрезок задачи: восемь кварталов до старта, от обычной экономики к завязке', () => {
+    const d = DRILLS.find((x) => x.id === 'disinflation');
+    const pre = drillPrehistory(d);
+    expect(pre).toHaveLength(8);
+    expect(pre.every((r) => r.pre && r.q <= 0)).toBe(true);
+    const base = makeInitialEconomy('sandbox'); const start = makeInitialEconomy(d.scenario, d.overrides);
+    expect(Math.abs(pre[0].inflation - base.inflation)).toBeLessThan(Math.abs(pre[0].inflation - start.inflation));
+    expect(Math.abs(pre[7].inflation - start.inflation)).toBeLessThan(Math.abs(pre[7].inflation - base.inflation));
+    // цели считаются только по кварталам самой задачи
+    expect(evaluateDrill(d, pre).goals.every((g) => g.status === 'pending')).toBe(true);
+  });
+  it('значение цели — словами цели: сальдо −2,6 — это «дефицит 2,6% ВВП»', () => {
+    expect(goalValueText({ key: 'budgetBalancePctGdp', when: 'final', value: -2.6 })).toBe('итог: дефицит 2,6% ВВП');
+    expect(goalValueText({ key: 'gdpGrowth', when: 'always', value: 1.3 })).toBe('худшее: 1,3%');
+    expect(goalValueText({ key: 'inflation', when: 'final', value: null })).toBe('—');
+  });
   it('компромиссы, ради которых задачи сделаны', () => {
     // при полной занятости грубый стимул вытесняется ставкой ЦБ
     expect(playDrill(DRILLS.find((x) => x.id === 'full_stimulus'), () => ({ govSpending: 6, transfers: 4 }), 11).passed).toBe(false);

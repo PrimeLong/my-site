@@ -29,16 +29,27 @@ export const markRead = (p, chapterId, now = Date.now()) => ({ ...p, read: { ...
 export const unmarkRead = (p, chapterId) => { const read = { ...p.read }; delete read[chapterId]; return { ...p, read }; };
 export const setLast = (p, page) => ({ ...p, last: page });
 
+/* Расписание после ответа. Переносит повторение дальше только верный самостоятельный ответ
+   в день повторения (или позже). Верный ответ до срока — например, сразу после того как
+   открыли решение, — расписание не трогает: ничего не изменилось. Верный ответ с
+   подсмотренным решением засчитывается, но задача всё равно вернётся через 2 дня.
+   Неверный — в первую коробку, через 2 дня. */
+export function scheduleAfter(prev, correct, now = Date.now(), { sawSolution = false } = {}) {
+  const box = prev ? prev.box : null; const due = prev ? prev.due : null;
+  const first = { box: 0, due: now + REVIEW_DAYS[0] * DAY };
+  if (!correct) return { ...first, why: 'wrong' };
+  if (due != null && due > now) return { box, due, why: 'early' };
+  if (sawSolution) return due == null ? { ...first, why: 'solution' } : { box: 0, due: now + REVIEW_DAYS[0] * DAY, why: 'solution' };
+  if (box == null) return { box: null, due: null, why: 'clean' };
+  const next = box + 1;
+  if (next >= REVIEW_DAYS.length) return { box: null, due: null, why: 'done' };
+  return { box: next, due: now + REVIEW_DAYS[next] * DAY, why: 'advance' };
+}
+
 // ответ на задачу: обновляет счёт и расписание повторения
-export function recordAnswer(p, problemId, correct, now = Date.now()) {
+export function recordAnswer(p, problemId, correct, now = Date.now(), opts = {}) {
   const prev = p.problems[problemId] || { tries: 0, ok: false, box: null, due: null };
-  let { box, due } = prev;
-  if (!correct) { box = 0; due = now + REVIEW_DAYS[0] * DAY; }
-  else if (box != null) {
-    // верно на повторении — в следующую коробку, после последней повторение закончено
-    box += 1;
-    if (box >= REVIEW_DAYS.length) { box = null; due = null; } else due = now + REVIEW_DAYS[box] * DAY;
-  }
+  const { box, due } = scheduleAfter(prev, correct, now, opts);
   return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok: !!correct, box, due, lastAt: now } } };
 }
 
