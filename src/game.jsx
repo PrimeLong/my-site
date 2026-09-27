@@ -1870,7 +1870,7 @@ const HISTORY_LITE_KEYS = ['q', 'label', 'gdp', 'potentialGdp', 'outputGap', 'gd
   'unemployment', 'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare',
   'debtToGdp', 'budgetBalancePctGdp', 'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow',
   'bankNPL', 'bankCapitalAdequacy', 'creditGap', 'creditGrowth', 'stockIndex', 'bondIndex', 'volatilityIndex',
-  'approval', 'wellbeing', 'regime', 'politicalRegime', 'electionResult', 'activeCrises', 'gini', 'povertyRate',
+  'approval', 'wellbeing', 'regime', 'politicalRegime', 'electionResult', 'activeCrises', 'gini', 'povertyRate', 'povertyAbs',
   'scoreStability', 'scoreWelfare', 'scoreFinancial', 'scoreFiscal', 'scorePotential'];
 const liteEntry = (h) => Object.fromEntries(HISTORY_LITE_KEYS.filter((k) => h[k] !== undefined).map((k) => [k, h[k]]));
 const trimForBrowser = (data, keepOld = true) => {
@@ -3782,7 +3782,10 @@ export const INDICATOR_TABS = [
     // распределение доходов (см. model/distribution.js и «Общество» → «Доходы по слоям»)
     { key: 'gini', label: 'Неравенство (Джини)', fmt: (v) => v.toFixed(3), invert: true,
       hint: 'От 0 (все получают поровну) до 1 (всё у одного). Растёт, когда доходы низа отстают: инфляция в еде, безработица, урезанные трансферты.' },
-    { key: 'povertyRate', label: 'Бедность (ниже 60% медианы)', fmt: pctFmt, invert: true },
+    { key: 'povertyRate', label: 'Бедность относительная (ниже 60% медианы)', fmt: pctFmt, invert: true,
+      hint: 'Доля ниже 60% сегодняшней медианы располагаемого дохода, как в ЕС. Меряет отставание низа от середины: общий рост или общее обеднение её почти не двигают.' },
+    { key: 'povertyAbs', label: 'Бедность абсолютная (порог старта)', fmt: pctFmt, invert: true,
+      hint: 'Доля ниже порога, зафиксированного на старте партии в ценах старта. Растёт, когда реальные доходы падают (инфляция без индексации, безработица), падает при общем росте доходов.' },
   ] },
   { id: 'external', label: 'Внешний сектор', icon: Globe2, rows: [
     { key: 'exports', label: 'Экспорт', fmt: fmtMoney },

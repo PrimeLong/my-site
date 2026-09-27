@@ -230,6 +230,9 @@ test('общество: после квартала видны группы, к�
   await expect(page.getByText(/^Коалиция власти:/)).toBeVisible();
   for (const name of ['Пенсионеры', 'Силовики', 'Молодёжь']) await expect(page.getByLabel(new RegExp(`^${name}: \\d+ из 100`))).toBeVisible();
   await expect(page.getByText('Галина Воронцова,', { exact: false })).toBeVisible();
+  // две бедности рядом — относительная и абсолютная, с пояснением разницы
+  await expect(page.getByTestId('poverty')).toContainText('Относительная бедность');
+  await expect(page.getByTestId('poverty')).toContainText('Абсолютная бедность');
   await page.screenshot({ path: `test-results/society-${isMobile ? 'phone' : 'desktop'}.png`, fullPage: true });
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);

@@ -2176,7 +2176,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
     // настройка партии «Только экономика» живёт в состоянии и переходит из квартала в квартал
     ...(s.economyOnly ? { economyOnly: true } : {}),
     ...(s.currencyUnion ? { currencyUnion: { ...s.currencyUnion, q: (s.currencyUnion.q || 0) + 1 } } : {}),
-    distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate, guidance: GUID.next,
+    distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate, povertyAbs: DIST.povertyAbs, guidance: GUID.next,
     firms: FIRMS_Q.firms, firmStress: FIRMS_Q.regionShift, ...(s.firmBoost ? { firmBoost: s.firmBoost } : {}),
     gdp, nominalGdp, priceLevel, gdpGrowth, potentialGdp, potentialGrowth, outputGap,
     gdpPerCapita: gdp * 1000 / CONFIG.population,
@@ -2299,7 +2299,7 @@ function makeInitialEconomy(scenarioId, extra = null) {
   const dist0 = initialDistribution({ vatRate: I.vatRate, incomeTaxRate: I.incomeTaxRate, capitalTaxRate: I.capitalTaxRate });
   const base = {
     ...I,
-    distribution: dist0, gini: dist0.gini, povertyRate: dist0.povertyRate, firms: initialFirms(),
+    distribution: dist0, gini: dist0.gini, povertyRate: dist0.povertyRate, povertyAbs: dist0.povertyAbs, firms: initialFirms(),
     gdp: I.gdp, nominalGdp, potentialGdp, potentialGrowth: 2.3, outputGap: (I.gdp - potentialGdp) / potentialGdp * 100,
     gdpGrowth: 2.3, gdpPerCapita: I.gdp * 1000 / CONFIG.population,
     consumptionGrowth: 2.3, investmentGrowth: 2.3, govPurchasesGrowth: 2.3, transfersGrowth: 2.3, govInvestmentGrowth: 2.3,

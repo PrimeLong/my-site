@@ -205,7 +205,23 @@ function IncomePanel({ economy }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
         <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Доходы по слоям</span>
         <span style={{ fontSize: 12, color: COLOR.muted }}>неравенство (Джини) <b className="ems-mono" style={{ color: giniTone }}>{d.gini.toFixed(3).replace('.', ',')}</b></span>
-        <span style={{ fontSize: 12, color: COLOR.muted }}>бедность (ниже 60% медианы) <b className="ems-mono" style={{ color: COLOR.text }}>{fmt1(d.povertyRate)}%</b></span>
+      </div>
+      {/* две бедности рядом: они отвечают на разные вопросы и расходятся — это и есть урок */}
+      <div data-testid="poverty" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, margin: '4px 0 8px' }}>
+        {[['Относительная бедность', d.povertyRate, 'ниже 60% сегодняшней медианы'],
+          ['Абсолютная бедность', Number.isFinite(d.povertyAbs) ? d.povertyAbs : d.povertyRate, 'ниже порога, зафиксированного на старте']].map(([title, v, sub]) => (
+          <div key={title} style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '8px 10px' }}>
+            <div style={{ fontSize: 12, color: COLOR.muted }}>{title}</div>
+            <div className="ems-mono" style={{ fontSize: 17, fontWeight: 600, color: COLOR.text }}>{fmt1(v)}%</div>
+            <div style={{ fontSize: 12, color: COLOR.faint }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 8 }}>
+        Относительная (как в ЕС) спрашивает, насколько низ отстал от середины. Она считается по доходам в сегодняшних деньгах: разная инфляция у разных слоёв
+        её не касается вовсе, а общее обеднение почти не двигает — медиана проседает вместе со всеми (в сценарии «Гиперинфляция» за три года — на 2–3 пункта).
+        Абсолютная спрашивает, сколько людей не могут купить то, что могли на старте: доходы каждого слоя пересчитаны в цены старта по его собственной инфляции.
+        Общий рост доходов абсолютную бедность снижает, инфляция без индексации — поднимает (в той же «Гиперинфляции» — больше чем на десяток пунктов).
       </div>
       <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 10 }}>
         Пять групп по 20% населения. Инфляция у бедных выше — в их корзине больше еды и коммуналки. НДС ложится на тех, кто тратит весь доход,

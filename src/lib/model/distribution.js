@@ -46,17 +46,38 @@ export function giniOf(shares) {
    По пяти средним доходам квинтилей строим кривую квантилей: границы между
    соседними квинтилями — среднее геометрическое их средних, хвосты — с запасом;
    между точками — линейно. Медиана — точка 50%, порог — 60% от неё. */
-export function relativePoverty(incomes) {
+function quantileCurve(incomes) {
   const m = incomes.map((v) => Math.max(1e-6, v));
-  const pts = [[0, m[0] * 0.35], [0.2, Math.sqrt(m[0] * m[1])], [0.4, Math.sqrt(m[1] * m[2])],
+  return [[0, m[0] * 0.35], [0.2, Math.sqrt(m[0] * m[1])], [0.4, Math.sqrt(m[1] * m[2])],
     [0.6, Math.sqrt(m[2] * m[3])], [0.8, Math.sqrt(m[3] * m[4])], [1, m[4] * 2]];
-  const median = (pts[2][1] + pts[3][1]) / 2;
-  const line = 0.6 * median;
+}
+export function medianOf(incomes) {
+  const pts = quantileCurve(incomes);
+  return (pts[2][1] + pts[3][1]) / 2;
+}
+// доля населения (в %) с доходом ниже порога line — по той же кривой квантилей
+export function povertyBelow(incomes, line) {
+  const pts = quantileCurve(incomes);
+  if (line <= pts[0][1]) return 0;
   for (let i = 1; i < pts.length; i++) {
     const [p0, v0] = pts[i - 1]; const [p1, v1] = pts[i];
     if (line <= v1) return clamp((p0 + (p1 - p0) * (line - v0) / Math.max(1e-9, v1 - v0)) * 100, 0, 100);
   }
   return 100;
+}
+export function relativePoverty(incomes) {
+  return povertyBelow(incomes, 0.6 * medianOf(incomes));
+}
+
+/* АБСОЛЮТНАЯ БЕДНОСТЬ: порог зафиксирован на старте — 60% стартовой медианы в ценах
+   старта — и дальше не двигается. Доходы каждого слоя пересчитываются в цены старта
+   по его собственной инфляции (у бедных в корзине больше еды). Две меры отвечают на
+   разные вопросы: относительная — «насколько низ отстал от середины», абсолютная —
+   «сколько людей не могут купить то, что могли на старте». При гиперинфляции,
+   которая бьёт по всем, относительная почти стоит, а абсолютная растёт; при общем
+   росте доходов абсолютная падает, а относительная — нет. */
+export function absolutePoverty(base, line0, quintiles) {
+  return povertyBelow(base.map((b, i) => b * (quintiles[i].real || 100) / 100), line0);
 }
 
 // налоги, которые платит квинтиль, в % его дохода
@@ -73,7 +94,9 @@ export function initialDistribution(taxes) {
   const quintiles = QUINTILES.map((q) => ({ id: q.id, income: q.share0 * 100, real: 100, realYoY: 0, inflation: 0,
     taxBurden: taxes ? taxBurdenOf(q, taxes) : 0 }));
   const disp = quintiles.map((q) => q.income * (1 - q.taxBurden / 100));
-  return { quintiles, gini: giniOf(disp), povertyRate: relativePoverty(disp) };
+  const povertyRate = relativePoverty(disp);
+  // base — стартовые располагаемые доходы слоёв, line0 — абсолютный порог в ценах старта
+  return { quintiles, gini: giniOf(disp), povertyRate, povertyAbs: povertyRate, base: disp, line0: 0.6 * medianOf(disp) };
 }
 
 /* Один квартал. x — уже посчитанные величины квартала:
@@ -110,7 +133,10 @@ export function distributionStep(prev, x) {
   const gini = giniOf(disp);
   // бедность — относительная: ниже 60% медианного располагаемого дохода
   const povertyRate = relativePoverty(disp);
-  return { quintiles, gini, povertyRate };
+  // и абсолютная: ниже порога, зафиксированного на старте (у старых сохранений — от стартовых долей)
+  const start = Array.isArray(p.base) && p.base.length === 5 ? p : initialDistribution(x);
+  const povertyAbs = absolutePoverty(start.base, start.line0, quintiles);
+  return { quintiles, gini, povertyRate, povertyAbs, base: start.base, line0: start.line0 };
 }
 
 // какому квинтилю «принадлежит» соцгруппа: её доходы — доходы этого слоя

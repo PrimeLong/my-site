@@ -48,4 +48,29 @@ describe('распределение доходов по квинтилям', ()
     // первый квартал без скачка: старт тоже считается после налогов
     expect(Math.abs(distributionStep(initialDistribution(base), base).povertyRate - start)).toBeLessThan(0.5);
   });
+
+  it('абсолютная бедность: порог старта; гиперинфляция её поднимает, общий рост — снижает, а относительную почти не трогают', async () => {
+    const { absolutePoverty } = await import('../model/distribution.js');
+    const d0 = initialDistribution(base);
+    expect(d0.povertyAbs).toBeCloseTo(d0.povertyRate, 9);
+    // гиперинфляция с отстающими зарплатами и выплатами
+    const hyper = run({ inflation: 60, coreInflation: 50, wageGrowth: 40, transfersRealGrowth: -15, keyRate: 40 }, 12);
+    expect(hyper.povertyAbs - d0.povertyAbs).toBeGreaterThan(15);
+    expect(Math.abs(hyper.povertyRate - d0.povertyRate)).toBeLessThan(5);
+    // двадцать спокойных лет роста
+    const calm = run({}, 80);
+    expect(calm.povertyAbs).toBeLessThan(d0.povertyAbs - 4);
+    expect(Math.abs(calm.povertyRate - d0.povertyRate)).toBeLessThan(5);
+    // все доходы выросли вдвое в реальном выражении — абсолютная бедность падает
+    const doubled = d0.quintiles.map((q) => ({ ...q, real: 200 }));
+    expect(absolutePoverty(d0.base, d0.line0, doubled)).toBeLessThan(d0.povertyAbs / 2);
+  });
+
+  it('старое сохранение без стартового порога не ломается', () => {
+    const d0 = initialDistribution(base);
+    const { base: _b, line0: _l, ...old } = d0;
+    const next = distributionStep(old, base);
+    expect(Number.isFinite(next.povertyAbs)).toBe(true);
+    expect(next.base.length).toBe(5);
+  });
 });
