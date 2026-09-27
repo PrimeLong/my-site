@@ -760,6 +760,28 @@ test('учебник → «Своё дело»: задание открывае�
   expect(errors).toEqual([]);
 });
 
+test('учебник: прогресс уходит в профиль и приходит с другого устройства', async ({ page }) => {
+  const sent = [];
+  const api = (req) => {
+    let body = {}; try { body = JSON.parse(req.postData() || '{}'); } catch { /* GET */ }
+    if (body.action === 'progress') {
+      sent.push(body.progress);
+      // на другом устройстве уже прочитана глава про КПВ
+      return JSON.stringify({ profile: { ...body.progress, textbook: { read: { scarcity: 1000 }, problems: {}, last: null, lastAt: 0 } } });
+    }
+    return '{}';
+  };
+  const { errors } = await openApp(page, '/', api);
+  await page.getByText('Учебник', { exact: true }).first().click();
+  const toc = page.getByTestId('textbook');
+  await expect(toc.getByRole('button', { name: /Ограниченность и выбор/ })).toContainText('прочитана');
+  await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
+  await page.getByTestId('chapter').getByRole('button', { name: 'Отметить главу прочитанной' }).click();
+  // отметка уходит на сервер вместе с тем, что пришло с другого устройства
+  await expect.poll(() => sent.some((p) => p.textbook && p.textbook.read['supply-demand'] && p.textbook.read.scarcity), { timeout: 8000 }).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('задача на 10 минут: цель на экране, прогноз записывается, в конце разбор', async ({ page, isMobile }) => {
   test.skip(isMobile, 'восемь кварталов подряд — достаточно одного экрана');
   test.setTimeout(120_000);

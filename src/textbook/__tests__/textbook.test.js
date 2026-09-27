@@ -632,3 +632,18 @@ describe('прогресс и повторение', () => {
     expect(daysUntil(t0 + DAY, t0)).toBe('завтра');
   });
 });
+
+describe('учебник: отметки для синхронизации с профилем', () => {
+  it('снятая отметка «прочитано» помнит, когда её сняли, и не возвращается слиянием', async () => {
+    const { emptyProgress, markRead, unmarkRead, mergeTextbook, setLast } = await import('../progress.js');
+    const phone = markRead(emptyProgress(), 'elasticity', 100);
+    const pc = unmarkRead(phone, 'elasticity', 200);
+    expect(pc.read.elasticity).toBeUndefined();
+    expect(mergeTextbook(phone, pc).read.elasticity).toBeUndefined();
+    // а поставленная заново — снова прочитана
+    const again = markRead(pc, 'elasticity', 300);
+    expect(mergeTextbook(phone, again).read.elasticity).toBeTruthy();
+    expect(setLast(again, again.last)).toBe(again);
+    expect(setLast(again, { kind: 'chapter', id: 'elasticity' }, 400).lastAt).toBe(400);
+  });
+});

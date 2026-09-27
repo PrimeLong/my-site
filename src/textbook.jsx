@@ -6,7 +6,7 @@ import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info } from 'lucide-react';
-import { COLOR, Audio, AudioControls } from './MacroSimulator.jsx';
+import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { LEVERS, SCENARIOS } from './lib/engine.js';
 import { LAB_LEVERS } from './lib/lab.js';
@@ -873,7 +873,25 @@ export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill
   const [stack, setStack] = useState([]);
   const [scale, setScaleRaw] = useState(() => { const v = readJSON(SCALE_KEY, 1); return SCALES.includes(v) ? v : 1; });
   const setScale = (v) => { setScaleRaw(v); writeJSON(SCALE_KEY, v); };
-  const update = (fn) => setProgress((p) => saveProgress(fn(p)));
+  /* Прогресс уходит в профиль, как курсы обучения: при входе в учебник подтягиваем сделанное
+     на другом устройстве, после изменений отправляем своё (не чаще раза в пару секунд) и
+     ещё раз — при выходе. */
+  const playerId = useMemo(getPlayerId, []);
+  const syncTimer = React.useRef(null);
+  React.useEffect(() => {
+    let alive = true;
+    syncProfile(playerId).then((profile) => { if (alive && profile) setProgress(loadProgress()); });
+    return () => {
+      alive = false;
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+      syncProfile(playerId);
+    };
+  }, [playerId]);
+  const update = (fn) => {
+    setProgress((p) => { const next = fn(p); return next === p ? p : saveProgress(next); });
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => { syncTimer.current = null; syncProfile(playerId); }, 2000);
+  };
   // прокрутка текущей страницы — запоминается на ходу (не чаще раза в 300 мс)
   const pageRef = React.useRef(page);
   pageRef.current = page;

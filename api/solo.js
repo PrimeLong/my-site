@@ -5,6 +5,7 @@
    как и у сетевых комнат (тот же _lib/store.js). */
 import { getSoloSlots, setSoloSlots, getProfile, setProfile, getLink, setLink, delLink, hasKv, getTycoonSlots, setTycoonSlots } from './_lib/store.js';
 import { randomInt, randomUUID } from 'node:crypto';
+import { normalizeTextbook, mergeTextbook } from '../src/textbook/progress.js';
 
 const SLOT_COUNT = 4;
 const MAX_NAME_LEN = 40;
@@ -89,6 +90,8 @@ function normalizeProgress(p) {
     network: !!src.network,
     courses: cleanMap(src.courses),
     modules,
+    // учебник: прочитанные главы, задачи с расписанием повторения, место чтения
+    textbook: normalizeTextbook(src.textbook),
     // когда профиль стал общим: по этой отметке ОБА устройства понимают, что связка
     // есть, и могут её разорвать — раньше кнопка была только у того, кто вводил код
     linkedAt: Number.isFinite(src.linkedAt) ? src.linkedAt : null,
@@ -120,6 +123,7 @@ function mergeProgress(a, b) {
     network: x.network || y.network,
     courses: { ...x.courses, ...y.courses },
     modules,
+    textbook: mergeTextbook(x.textbook, y.textbook),
     linkedAt: Math.max(x.linkedAt || 0, y.linkedAt || 0) || null,
     updatedAt: Date.now(),
   };
