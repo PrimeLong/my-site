@@ -9,10 +9,11 @@ import { GLOSSARY } from '../glossary.js';
 import { GAME_CARDS } from '../appendix.js';
 import { CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS } from '../toc.js';
 import { TYCOON_TASKS, TYCOON_TABS, TYCOON_STARTS, taskText } from '../tycoon-tasks.js';
-import { CHAPTER_BLOCKS, PROBLEMS, problemsOf } from '../content.js';
+import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, sectionsOf, plainText } from '../content.js';
 import { parseBlocks, parseInline, collectLinks, collectMath, collectBlocks, actionOf, checkAnswer, parseNumber } from '../markdown.js';
-import { CHARTS, chartDefaults, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
-import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil } from '../progress.js';
+import { sectionDone, sectionProgress, nextSection, dueItems } from '../study.js';
+import { CHARTS, chartDefaults, lracFns, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
+import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil, confidenceStats, mergeTextbook, normalizeTextbook } from '../progress.js';
 import { STARTS, RES, makeTycoon, requiredStaff, levelMult, upgradeCost, buyPrice, marketPrice, cartelChance, cartelFineRisk, BLD } from '../../lib/tycoon.js';
 
 const DAY = 24 * 3600 * 1000;
@@ -114,6 +115,48 @@ describe('разметка глав', () => {
   });
 });
 
+describe('разметка методики: цели, итоги, вопросы на вспоминание, схемы, шаги задач', () => {
+  it('цели, «Главное», «Типичные ошибки» — врезки; «+++» прячет подробности', () => {
+    const b = parseBlocks(':::goals\n- раз\n:::\n:::summary\n- два\n:::\n:::mistakes\n- три\n:::\n:::game\nКоротко.\n+++\nПодробно.\n:::');
+    expect(b.map((x) => x.kind)).toEqual(['goals', 'summary', 'mistakes', 'game']);
+    expect(b[3].children[0].inline[0].v).toBe('Коротко.');
+    expect(b[3].more[0].inline[0].v).toBe('Подробно.');
+    expect(b[0].more).toBeUndefined();
+  });
+  it('вопрос на вспоминание: вопрос и ответ; без ответа — ошибка', () => {
+    const [r] = parseBlocks(':::recall id=q1\nЧто такое X?\n---\nЭто Y.\n:::');
+    expect(r).toMatchObject({ type: 'recall', id: 'q1' });
+    expect(r.question[0].inline[0].v).toBe('Что такое X?');
+    expect(r.answer[0].inline[0].v).toBe('Это Y.');
+    expect(() => parseBlocks(':::recall id=q2\nвопрос\n:::')).toThrow();
+  });
+  it('схема-цепочка: звенья с текстом «вверх» и «вниз» и подпись', () => {
+    const [f] = parseBlocks(':::flow Ставка и цены\n- Ставка | растёт | падает\n- Кредит | дорожает | дешевеет\nПодпись.\n:::');
+    expect(f.type).toBe('flow');
+    expect(f.title).toBe('Ставка и цены');
+    expect(f.steps).toHaveLength(2);
+    expect(f.steps[1].down[0].v).toBe('дешевеет');
+    expect(f.caption[0].v).toBe('Подпись.');
+  });
+  it('задача в несколько шагов и уровень; заголовок с якорем', () => {
+    const [p] = parseBlocks(':::problem id=m level=3 answer="15;0.5" tol=";0.01" unit="руб.;%" parts="MC;доля"\nУсловие\n---\nРешение\n:::');
+    expect(p.level).toBe(3);
+    expect(p.parts).toEqual([{ label: 'MC', answer: 15, tol: null, unit: 'руб.' }, { label: 'доля', answer: 0.5, tol: 0.01, unit: '%' }]);
+    const [q] = parseBlocks(':::problem id=n answer="1;2" unit="шт."\nУсловие\n---\nРешение\n:::');
+    expect(q.parts.map((x) => [x.label, x.unit])).toEqual([['а)', 'шт.'], ['б)', 'шт.']]);
+    const [one] = parseBlocks(':::problem id=o answer=7 unit="т зерна"\nУсловие\n---\nРешение\n:::');
+    expect(one).toMatchObject({ answer: 7, unit: 'т зерна', level: null });
+    const [h] = parseBlocks('## Производная {#derivative}');
+    expect(h).toMatchObject({ type: 'h2', anchor: 'derivative' });
+    expect(h.inline[0].v).toBe('Производная');
+  });
+  it('разделы: якорь, блоки до следующего заголовка, вопрос раздела и минуты', () => {
+    const secs = sectionsOf(parseBlocks('Вступление\n\n## Первый\nтекст\n:::recall id=r\nв\n---\nо\n:::\n## Второй {#two}\nещё'));
+    expect(secs.map((x) => [x.id, x.title, x.recall])).toEqual([['sec-1', 'Первый', 'r'], ['two', 'Второй', null]]);
+    expect(secs[0].minutes).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe('оглавление', () => {
   it('микро и макро — все главы из программы; блок микро готов, кроме заготовок «в работе»', () => {
     expect(CHAPTERS.filter((c) => c.part === 'micro').map((c) => c.id))
@@ -141,7 +184,8 @@ describe('ссылки из глав', () => {
   const labIds = new Set(LAB_LEVERS.map((l) => l.id));
   const drillIds = new Set(DRILLS.map((d) => d.id));
   const scenarioIds = new Set(SCENARIOS.map((s) => s.id));
-  const all = Object.entries(CHAPTER_BLOCKS).flatMap(([ch, blocks]) => collectLinks(blocks).map((l) => ({ ...l, ch })));
+  const all = [...Object.entries(CHAPTER_BLOCKS), ...Object.entries(APPENDIX_BLOCKS)].flatMap(([ch, blocks]) => collectLinks(blocks).map((l) => ({ ...l, ch })));
+  const anchorsOf = (blocks) => sectionsOf(blocks).map((x) => x.id);
   // подписи ссылок тоже размечены — и в них могут быть ссылки
   const inLabels = all.filter((l) => l.label).flatMap((l) => parseInline(l.label).filter((n) => n.t === 'link').map((n) => ({ ...n, ch: l.ch })));
 
@@ -151,9 +195,9 @@ describe('ссылки из глав', () => {
       case 'term': expect(GLOSSARY[l.target]).toBeTruthy(); break;
       case 'drill': expect(drillIds.has(l.target)).toBe(true); break;
       case 'scenario': expect(scenarioIds.has(l.target)).toBe(true); break;
-      case 'chapter': expect(CHAPTER_BY_ID[l.target]).toBeTruthy(); break;
+      case 'chapter': expect(CHAPTER_BY_ID[l.target]).toBeTruthy(); if (l.params.at) expect(anchorsOf(CHAPTER_BLOCKS[l.target])).toContain(l.params.at); break;
       case 'card': expect(GAME_CARDS.some((g) => g.id === l.target)).toBe(true); break;
-      case 'appendix': expect(APPENDICES.some((a) => a.id === l.target)).toBe(true); break;
+      case 'appendix': expect(APPENDICES.some((a) => a.id === l.target)).toBe(true); if (l.params.at) expect(anchorsOf(APPENDIX_BLOCKS[l.target])).toContain(l.params.at); break;
       case 'tycoon': {
         const t = TYCOON_TASKS[l.target];
         expect(t).toBeTruthy();
@@ -200,7 +244,7 @@ describe('ссылки из глав', () => {
 });
 
 describe('структура готовых глав', () => {
-  it.each(READY.map((c) => [c.id]))('%s: теория с формулами и графиком, пример, «проверьте в игре», 3–5 задач, модель и игра раздельно, учебник', (id) => {
+  it.each(READY.map((c) => [c.id]))('%s: теория с формулами и графиком, пример, «проверьте в игре», 10–12 задач трёх уровней, модель и игра раздельно, учебник', (id) => {
     const blocks = CHAPTER_BLOCKS[id];
     const kinds = (k) => collectBlocks(blocks, (b) => b.type === 'box' && b.kind === k);
     expect(collectBlocks(blocks, (b) => b.type === 'math').length).toBeGreaterThan(2);
@@ -215,24 +259,67 @@ describe('структура готовых глав', () => {
     expect(tries[0].children.filter((b) => actionOf(b)).length).toBeGreaterThan(0);
     const probs = collectBlocks(blocks, (b) => b.type === 'problem');
     const numeric = probs.filter((p) => p.kind === 'number');
-    expect(numeric.length).toBeGreaterThanOrEqual(3);
-    expect(numeric.length).toBeLessThanOrEqual(5);
+    expect(numeric.length).toBeGreaterThanOrEqual(5);
     // кроме числовых — «верно или неверно» и графическая, как на экзаменах и олимпиадах
     expect(probs.filter((p) => p.kind === 'truefalse').length).toBeGreaterThanOrEqual(1);
     expect(probs.filter((p) => p.kind === 'graph').length).toBeGreaterThanOrEqual(1);
-    expect(probs.length).toBeLessThanOrEqual(7);
+    expect(probs.length).toBeGreaterThanOrEqual(10);
+    expect(probs.length).toBeLessThanOrEqual(12);
+    // три уровня: базовый, семинарский, олимпиадный — у каждой задачи свой, все три есть
+    probs.forEach((p) => expect([1, 2, 3], `${p.id}: уровень`).toContain(p.level));
+    [1, 2, 3].forEach((lv) => expect(probs.some((p) => p.level === lv), `уровень ${lv}`).toBe(true));
+    // задачи идут от простых к сложным
+    expect(probs.map((p) => p.level)).toEqual(probs.map((p) => p.level).sort());
+    // не меньше трёх задач в несколько шагов
+    expect(numeric.filter((p) => p.parts.length > 1).length, 'задачи в несколько шагов').toBeGreaterThanOrEqual(3);
     probs.forEach((p) => {
       // перед решением — одна-две подсказки
       expect(p.hints.length, `${p.id}: подсказки`).toBeGreaterThanOrEqual(1);
       expect(p.hints.length, `${p.id}: подсказки`).toBeLessThanOrEqual(2);
       if (p.kind === 'truefalse') { expect(p.points.length, p.id).toBeGreaterThanOrEqual(2); expect(p.points.length, p.id).toBeLessThanOrEqual(3); }
       // дробный ответ без явного допуска не примет округлённое значение
-      if (p.kind === 'number' && !Number.isInteger(p.answer)) expect(p.tol, `${p.id}: нужен tol`).not.toBeNull();
-      if (p.kind === 'number') expect(Number.isFinite(p.answer), p.id).toBe(true);
+      if (p.kind === 'number') {
+        p.parts.forEach((pt, k) => {
+          expect(Number.isFinite(pt.answer), `${p.id}, шаг ${k + 1}`).toBe(true);
+          if (!Number.isInteger(pt.answer)) expect(pt.tol, `${p.id}, шаг ${k + 1}: нужен tol`).not.toBeNull();
+        });
+      }
       if (p.kind === 'truefalse') expect(typeof p.answer, p.id).toBe('boolean');
       expect(p.statement.length).toBeGreaterThan(0);
       expect(p.solution.length).toBeGreaterThan(0);
     });
+    // методика: цели в начале, «Главное» и «Типичные ошибки» в конце
+    const goals = kinds('goals'); const summary = kinds('summary'); const mistakes = kinds('mistakes');
+    expect(goals).toHaveLength(1);
+    expect(blocks.findIndex((b) => b.type === 'box' && b.kind === 'goals')).toBeLessThan(blocks.findIndex((b) => b.type === 'h2'));
+    const items = (box) => (box.children.find((b) => b.type === 'ul' || b.type === 'ol') || { items: [] }).items.length;
+    expect(items(goals[0]), 'целей 3–4').toBeGreaterThanOrEqual(3);
+    expect(items(goals[0]), 'целей 3–4').toBeLessThanOrEqual(4);
+    expect(summary).toHaveLength(1);
+    expect(items(summary[0]), '«Главное» — 5–7 пунктов').toBeGreaterThanOrEqual(5);
+    expect(items(summary[0]), '«Главное» — 5–7 пунктов').toBeLessThanOrEqual(7);
+    expect(mistakes).toHaveLength(1);
+    expect(items(mistakes[0])).toBeGreaterThanOrEqual(3);
+    // разделы: каждый, кроме «Итоги» и «Задачи», кончается вопросом на вспоминание и читается минут за 5–15
+    const secs = CHAPTER_SECTIONS[id];
+    expect(secs.map((x) => x.title).slice(-2)).toEqual(['Итоги', 'Задачи']);
+    const study = secs.slice(0, -2);
+    expect(study.length, 'разделов для чтения').toBeGreaterThanOrEqual(3);
+    study.forEach((x) => {
+      const last = x.blocks[x.blocks.length - 1];
+      expect(last.type, `«${x.title}» кончается вопросом`).toBe('recall');
+      expect(x.blocks.filter((b) => b.type === 'recall'), `«${x.title}»: один вопрос`).toHaveLength(1);
+      expect(x.minutes, `«${x.title}»: минут`).toBeLessThanOrEqual(15);
+    });
+    expect(secs.find((x) => x.title === 'Итоги').blocks.map((b) => b.kind)).toEqual(['summary', 'mistakes']);
+    // «как это устроено в игре» — 3–4 фразы, подробности — под «Подробнее»
+    const game = kinds('game')[0];
+    expect(game.more, 'подробности игры под «Подробнее»').toBeTruthy();
+    const brief = game.children.filter((b) => b.type === 'p').map((b) => plainText(b.inline)).join(' ');
+    const sentences = brief.split(/(?<=[.!?])\s+(?=[А-ЯA-Z«])/).filter((x) => x.trim()).length;
+    expect(sentences, `игра: ${sentences} фраз`).toBeGreaterThanOrEqual(2);
+    expect(sentences, `игра: ${sentences} фраз`).toBeLessThanOrEqual(4);
+    expect(game.children.every((b) => b.type === 'p')).toBe(true);
     const ch = CHAPTER_BY_ID[id];
     expect(ch.refs.length).toBeGreaterThan(0);
     ch.refs.forEach((r) => expect(BOOKS[r.book]).toBeTruthy());
@@ -245,13 +332,13 @@ describe('структура готовых глав', () => {
     });
     expect(actions('is-lm').map((a) => a.kind).sort()).toEqual(['drill', 'drill', 'lab', 'lab']);
   });
-  it('id задач уникальны во всём учебнике', () => {
-    const ids = Object.values(CHAPTER_BLOCKS).flatMap((b) => collectBlocks(b, (x) => x.type === 'problem').map((p) => p.id));
+  it('id задач и вопросов на вспоминание уникальны во всём учебнике', () => {
+    const ids = Object.values(CHAPTER_BLOCKS).flatMap((b) => collectBlocks(b, (x) => x.type === 'problem' || x.type === 'recall').map((p) => p.id));
     ids.forEach((id) => expect(id, 'у задачи нет id').toBeTruthy());
     expect(new Set(ids).size).toBe(ids.length);
   });
   it('все формулы KaTeX собираются без ошибок', () => {
-    Object.entries(CHAPTER_BLOCKS).forEach(([id, blocks]) => {
+    [...Object.entries(CHAPTER_BLOCKS), ...Object.entries(APPENDIX_BLOCKS)].forEach(([id, blocks]) => {
       collectMath(blocks).forEach((tex) => {
         expect(() => katex.renderToString(tex, { throwOnError: true, strict: 'ignore' }), `${id}: ${tex}`).not.toThrow();
       });
@@ -264,7 +351,24 @@ describe('структура готовых глав', () => {
 const INDEPENDENT = {
   'sd-equilibrium': () => sdEquilibrium(120, 3, -30, 2).P,
   'sd-market-demand': () => sdEquilibrium(10 + 20, 1 + 2, 0, 3).Q,
-  'sd-ceiling': () => { expect(sdEquilibrium(80, 2, -10, 4).P).toBeGreaterThan(12); return (80 - 2 * 12) - (-10 + 4 * 12); },
+  'sd-ceiling': () => { expect(sdEquilibrium(80, 2, -10, 4).P).toBeGreaterThan(12); return [sdEquilibrium(80, 2, -10, 4).P, (80 - 2 * 12) - (-10 + 4 * 12)]; },
+  'sd-read': () => [60 - 3 * 12, 60 / 3, 75 - 3 * 12],
+  'sd-floor': () => { const P = 25; expect(sdEquilibrium(150, 5, -30, 4).P).toBeLessThan(P); return (-30 + 4 * P) - (150 - 5 * P); },
+  'sd-kinked': () => {
+    // спрос с изломом — сумма двух групп, каждая покупает только до своей цены; равновесие — перебором цены
+    const D = (P) => (P <= 20 ? 60 - 3 * P : 0) + (P <= 40 ? 40 - P : 0);
+    const eq = (S) => argmin((P) => Math.abs(D(P) - S(P)), 0, 40);
+    const p1 = eq((P) => 4 * P - 20); const p2 = eq((P) => 2 * P - 26);
+    return [p1, p2, p2 <= 20 ? 60 - 3 * p2 : 0];
+  },
+  'sd-passthrough': () => {
+    // перебор наклонов: при каких b и d подъём предложения на 10 даёт цену +4 и количество −12
+    for (let b = 0.5; b <= 10; b += 0.5) for (let d = 0.5; d <= 10; d += 0.5) {
+      const e0 = sdEquilibrium(200, b, 0, d); const e1 = sdEquilibrium(200, b, -10 * d, d);
+      if (Math.abs(e1.P - e0.P - 4) < 1e-9 && Math.abs(e1.Q - e0.Q + 12) < 1e-9) return [b, d];
+    }
+    return [NaN, NaN];
+  },
   'sd-cost-shock': () => sdEquilibrium(200, 4, -40 - 2 * 6, 2).P - sdEquilibrium(200, 4, -40, 2).P,
   'sd-both-shift': () => sdEquilibrium(110, 1, 10, 1).P - sdEquilibrium(90, 1, -10, 1).P,
   'el-arc': () => {
@@ -285,6 +389,17 @@ const INDEPENDENT = {
   },
   'el-income': () => ((48 - 50) / 49) / ((44 - 40) / 42),
   'el-revenue-step': () => (1 + pointElasticity(90, 2, 30)) * -1,
+  'el-classify': () => [4 / 10, 15 / 10, (1 - 15 / 10) * 10],
+  'el-cross': () => 6 / 20,
+  'el-point': () => [Math.abs(pointElasticity(120, 3, 10)), Math.abs(pointElasticity(120, 3, 30)), argmin((p) => Math.abs(Math.abs(pointElasticity(120, 3, p)) - 1), 1, 39)],
+  'el-const': () => { const q = (p) => 1000 * Math.pow(p, -2); return [(q(11) / q(10) - 1) * 100, ((11 * q(11)) / (10 * q(10)) - 1) * 100]; },
+  'el-firm': () => {
+    // остаточный спрос фирмы: рынок Q = A·P^−0,8, соперники держат 3/4 исходного выпуска; эластичность — численно
+    const A = 1000; const Q = (p) => A * Math.pow(p, -0.8); const rivals = 0.75 * Q(10);
+    const own = (p) => Q(p) - rivals;
+    const h = 1e-6; const ef = -((own(10 + h) - own(10 - h)) / (2 * h)) * (10 / own(10));
+    return [ef, ef * 5];
+  },
   'islm-money': () => islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 325, G: 100, M: 1200, P: 2 }).Y,
   'islm-tax': () => islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 200 - 0.75 * 200 + 200, G: 100, M: 1000, P: 2 }).Y
     - islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 325, G: 100, M: 1000, P: 2 }).Y,
@@ -298,10 +413,32 @@ const INDEPENDENT = {
     return y(200, 200) - y(100, 100);
   },
   'islm-trap': () => 200 * (1 - 0.75),
+  'islm-cross': () => { const y = (G) => argmin((Y) => Math.abs(Y - (100 + 0.8 * (Y - 150) + 150 + G)), 0, 5000); return [y(200), y(201) - y(200), y(250)]; },
+  'islm-curves': () => { const r = argmin((x) => Math.abs((1500 - 50 * x) - (300 + 150 * x)), 0, 20); return [r, 1500 - 50 * r]; },
+  'islm-ad': () => {
+    const at = (P) => islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 325, G: 100, M: 1000, P }).Y;
+    return [at(2.5), argmin((P) => Math.abs(at(P) - 1200), 0.5, 5)];
+  },
+  'islm-mix': () => {
+    // при неподвижной ставке 6 — крест; при неизменных деньгах — полная IS-LM
+    const cross = (G) => (200 - 0.75 * 100 + 200 - 25 * 6 + G) / 0.25;
+    const dgFixed = argmin((g) => Math.abs(cross(100 + g) - 1200), 0, 200);
+    const islm = (G) => islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 325, G, M: 1000, P: 2 }).Y;
+    const dgMoney = argmin((g) => Math.abs(islm(100 + g) - 1200), 0, 300);
+    return [dgFixed, 2 * (1200 - 100 * 6), dgMoney];
+  },
   // издержки: производная и минимум — численно, а не по формуле из главы
   'costs-mc': () => { const tc = (q) => 200 + 5 * q + 0.1 * q * q; return (tc(50 + 1e-6) - tc(50 - 1e-6)) / 2e-6; },
   'costs-atc-min': () => argmin((q) => (200 + 5 * q + 0.5 * q * q) / q, 1, 100),
   'costs-econ-profit': () => 3000 - 1800 - 720 - 0.1 * 1500,
+  'costs-types': () => { const vc = (q) => 30 * q + q * q; return [400, vc(20), (400 + vc(20)) / 20]; },
+  'costs-avc-min': () => { const avc = (q) => (24 * q - 6 * q * q + q * q * q) / q; const q = argmin(avc, 0.01, 20); return [q, avc(q)]; },
+  'costs-from-avg': () => [30 * 10, 31 * 11 - 30 * 10],
+  'costs-plants': () => {
+    const tc1 = (q) => 80 + 10 * q + 0.5 * q * q; const tc2 = (q) => 360 + 4 * q + 0.1 * q * q;
+    const cross = argmin((q) => Math.abs(tc1(q) - tc2(q)), 0, 100);
+    return [cross, tc2(argmin((q) => tc2(q) / q, 1, 200)) / argmin((q) => tc2(q) / q, 1, 200), tc1(argmin((q) => tc1(q) / q, 1, 200)) / argmin((q) => tc1(q) / q, 1, 200)];
+  },
   'costs-game-scale': () => {
     // те же множители, что в тайкуне: выпуск levelMult, штат requiredStaff, содержание ×1,3
     const st = makeTycoon({ start: 'retail' });
@@ -328,6 +465,22 @@ const INDEPENDENT = {
     return 200 - 2 * q;
   },
   'mon-lerner-game': () => { const e = RES.furniture.elast; return (0.6 * e / (e - 1) - 1) * 100; },
+  'pc-basic': () => { const q = argmin((x) => -(30 * x - (10 * x + x * x)), 0, 50); return [q, 30 * q, (30 - 26) * q]; },
+  'mon-dwl': () => {
+    const q = argmin((x) => -((150 - x) * x - 30 * x), 0, 150); const P = 150 - q;
+    let dwl = 0; const h = 0.001; for (let x = q + h / 2; x < 120; x += h) dwl += ((150 - x) - 30) * h;
+    return [q, P, dwl];
+  },
+  'mon-discr': () => {
+    const q1 = argmin((x) => -((25 - x / 4) * x - 10 * x), 0, 100); const q2 = argmin((x) => -((60 - x) * x - 10 * x), 0, 60);
+    return [25 - q1 / 4, 60 - q2, (25 - q1 / 4 - 10) * q1 + (60 - q2 - 10) * q2];
+  },
+  'mon-natural': () => {
+    const q = argmin((x) => -((110 - x) * x - (1000 + 10 * x)), 0, 110);
+    // наименьшая цена без убытка: перебором цен снизу
+    let p = 10; while ((p * (110 - p)) - (1000 + 10 * (110 - p)) < 0) p += 0.0001;
+    return [110 - q, 10 * 100 - (1000 + 10 * 100), p];
+  },
   'olig-cournot-price': () => { const e = bestResponseCournot(100, [10, 10]); return 100 - e.reduce((a, q) => a + q, 0); },
   'olig-cournot-asym': () => bestResponseCournot(120, [20, 50])[0],
   'olig-cheat': () => {
@@ -337,6 +490,23 @@ const INDEPENDENT = {
   },
   // выбор и КПВ
   'sc-oc': () => 6 / 2,
+  'sc-inside': () => [Math.sqrt(4225 - 25 * 25) - 52, Math.sqrt(4225 - 52 * 52) - 25],
+  'sc-hours': () => { let h = 8; for (const r of [5000, 3500, 2500, 1500]) { if (r < 2800) break; h += 1; } return h; },
+  'sc-sunk': () => [3 - 2, 1.5],
+  'sc-joint': () => {
+    // перебор часов на рубашки у Ани (a) и Бориса (b): больше всего пирогов при заданных рубашках
+    const most = (need) => {
+      let best = -1;
+      for (let a = 0; a <= 8; a += 0.125) for (let b = 0; b <= 8; b += 0.125) {
+        if (2 * a + b >= need - 1e-9) best = Math.max(best, 6 * (8 - a) + 2 * (8 - b));
+      }
+      return best;
+    };
+    // излом: дальше него каждая рубашка дорожает — ищем, где цена рубашки меняется с 2 на 3
+    const kink = [...Array(24).keys()].find((k) => most(k) - most(k + 1) > 2.5);
+    return [most(kink), most(10), most(10) - most(11)];
+  },
+  'sc-marginal-oc': () => { const y = (x) => 100 - (x * x) / 100; const d = (x) => (y(x - 1e-6) - y(x + 1e-6)) / 2e-6; return [d(30), d(80)]; },
   'sc-ppf-cost': () => (Math.sqrt(625 - 49) - Math.sqrt(625 - 225)) / (15 - 7),
   'sc-terms': () => Math.max(10 / 5, 6 / 1),
   'sc-gains': () => {
@@ -358,14 +528,56 @@ const INDEPENDENT = {
     return xOf(5 * x0 + y0, 5) - x0;
   },
   'cons-engel-index': () => (0.52 * 1.1 + 0.48 * 1 - 1) * 100,
+  'cons-line': () => [480 / 12, 480 / 8, 12 / 8],
+  'cons-mu': () => [30 / 5, 12 / 3, 15 * (30 / 5) - 15 * (12 / 3)],
+  'cons-slutsky-full': () => {
+    // оптимум Кобба — Дугласа численно, по бюджетной линии
+    const xOf = (I, px) => argmin((x) => -(Math.pow(x, 0.25) * Math.pow(I - px * x, 0.75)), 0.001, I / px - 0.001);
+    const x0 = xOf(400, 1); const y0 = 400 - x0;
+    const xc = xOf(2 * x0 + y0, 2); const x1 = xOf(400, 2);
+    return [x0, xc - x0, x1 - xc];
+  },
+  'cons-living': () => {
+    const best = (I, px, py) => { const x = argmin((v) => -Math.sqrt(v * (I - px * v) / py), 0.001, I / px - 0.001); return Math.sqrt(x * (I - px * x) / py); };
+    const u0 = best(200, 2, 2);
+    const slutsky = 8 * 50 + 2 * 50;
+    // доход, при котором прежняя полезность достижима, — бисекцией
+    let lo = 0; let hi = 2000;
+    for (let i = 0; i < 100; i++) { const m = (lo + hi) / 2; if (best(m, 8, 2) < u0) lo = m; else hi = m; }
+    return [slutsky, lo, (slutsky / lo - 1) * 100];
+  },
   // провалы рынка
   'mf-cs': () => { let area = 0; const h = 0.01; for (let q = h / 2; q < 80; q += h) area += ((120 - q) / 2 - 20) * h; return area; },
   'mf-incidence': () => { const P = argmin((p) => Math.abs((90 - 3 * p) - (-10 + 2 * (p - 5))), 0, 30); return P; },
   'mf-dwl': () => { const q0 = 30; const q1 = 90 - 3 * 22; return 0.5 * 5 * (q0 - q1); },
   'mf-dwl-double': () => taxMarket({ a: 90, b: 3, c: -10, d: 2, t: 10 }).dwl,
   'mf-pigou': () => argmin((q) => Math.abs((100 - q) - (13 + q)), 0, 100),
+  'mf-surplus': () => { const m = taxMarket({ a: 80, b: 2, c: -10, d: 1, t: 0 }); return [m.Pd, m.cs, m.ps]; },
+  'mf-subsidy': () => [argmin((q) => Math.abs((100 - q) - (20 + q)), 0, 100), argmin((q) => Math.abs((110 - q) - (20 + q)), 0, 100), 10],
+  'mf-coase': () => [50, 30, 50 - 30],
+  'mf-laffer': () => {
+    const t = argmin((x) => -taxMarket({ a: 100, b: 2, c: -20, d: 4, t: x }).rev, 0, 45);
+    const m = taxMarket({ a: 100, b: 2, c: -20, d: 4, t });
+    return [t, m.rev, m.dwl];
+  },
   'olig-n-firms': () => { const e = bestResponseCournot(100, Array(9).fill(10)); return 100 - e.reduce((a, q) => a + q, 0); },
   'olig-bertrand-asym': () => (30 - 20) * (100 - 30),
+  'olig-matrix': () => {
+    // перебор: пара стратегий, от которой никому не выгодно отклоняться
+    const pay = { HH: [50, 50], HL: [20, 70], LH: [70, 20], LL: [30, 30] };
+    const S = ['H', 'L'];
+    const eq = S.flatMap((a) => S.map((b) => a + b)).find((k) => {
+      const [a, b] = k; return S.every((a2) => pay[a2 + b][0] <= pay[k][0]) && S.every((b2) => pay[a + b2][1] <= pay[k][1]);
+    });
+    return [pay[eq][0], pay.HH[0] + pay.HH[1]];
+  },
+  'olig-reaction': () => { const e = bestResponseCournot(130, [10, 10]); return [(120 - 20) / 2, e[0], 130 - e[0] - e[1]]; },
+  'olig-cartel-stab': () => {
+    const e = bestResponseCournot(150, [30, 30]); const cournot = (150 - e[0] - e[1] - 30) * e[0];
+    // наименьший δ перебором
+    let d = 0; while (1800 / (1 - d) < 2025 + (d * cournot) / (1 - d)) d += 0.0001;
+    return [cournot, d];
+  },
 };
 
 // минимум функции на отрезке тернарным поиском (для выпуклых функций задач)
@@ -388,9 +600,14 @@ describe('ответы задач', () => {
   });
   it.each(Object.keys(INDEPENDENT).map((id) => [id]))('%s', (id) => {
     const p = PROBLEMS[id].block;
-    // численный поиск (перебор, тернарный поиск) точен до ~1e-6 от ответа
-    const tol = p.tol != null ? p.tol : 1e-4;
-    expect(Math.abs(INDEPENDENT[id]() - p.answer)).toBeLessThanOrEqual(tol);
+    // у задачи в несколько шагов расчёт возвращает массив — по числу на шаг
+    const got = [].concat(INDEPENDENT[id]());
+    expect(got).toHaveLength(p.parts.length);
+    p.parts.forEach((pt, k) => {
+      // численный поиск (перебор, тернарный поиск) точен до ~1e-6 от ответа
+      const tol = Math.max(pt.tol || 0, 1e-4);
+      expect(Math.abs(got[k] - pt.answer), `шаг ${k + 1}: ${got[k]} против ${pt.answer}`).toBeLessThanOrEqual(tol);
+    });
   });
 });
 
@@ -552,10 +769,13 @@ describe('графики и разборы в тексте считают одн
     const fmt = (v) => String(v).replace('.', ',');
     Object.values(PROBLEMS).forEach(({ chapter, block }) => {
       // короткие числа вроде 0,5 встречаются где угодно — сверяем только «приметные»: 1139,06, 43,33
-      if (block.kind !== 'number' || Number.isInteger(block.answer) || String(Math.abs(block.answer)).replace('.', '').replace(/^0+/, '').length < 3) return;
-      const ex = collectBlocks(CHAPTER_BLOCKS[chapter], (b) => b.type === 'box' && b.kind === 'example')[0];
-      const text = JSON.stringify(ex);
-      expect(text.includes(fmt(Math.abs(block.answer))), `${block.id}: ${block.answer} есть в разборе`).toBe(false);
+      if (block.kind !== 'number') return;
+      block.parts.forEach(({ answer }) => {
+        if (Number.isInteger(answer) || String(Math.abs(answer)).replace('.', '').replace(/^0+/, '').length < 3) return;
+        const ex = collectBlocks(CHAPTER_BLOCKS[chapter], (b) => b.type === 'box' && b.kind === 'example')[0];
+        const text = JSON.stringify(ex);
+        expect(text.includes(fmt(Math.abs(answer))), `${block.id}: ${answer} есть в разборе`).toBe(false);
+      });
     });
   });
   it('утверждения глав про тайкун: эластичности 1,2 / 1,8 / 2,2', () => {
@@ -623,7 +843,7 @@ describe('прогресс и повторение', () => {
     let p = recordAnswer(emptyProgress(), 'a', true, t0);
     p = recordAnswer(p, 'b', false, t0);
     expect(chapterScore(p, ['a', 'b', 'c'])).toEqual({ solved: 1, tried: 2, total: 3 });
-    expect(problemsOf('is-lm')).toHaveLength(7);
+    expect(problemsOf('is-lm')).toHaveLength(12);
   });
   it('«через N дней» по-русски', () => {
     expect(daysUntil(t0 + 2 * DAY, t0)).toBe('через 2 дня');
@@ -645,5 +865,56 @@ describe('учебник: отметки для синхронизации с п
     expect(mergeTextbook(phone, again).read.elasticity).toBeTruthy();
     expect(setLast(again, again.last)).toBe(again);
     expect(setLast(again, { kind: 'chapter', id: 'elasticity' }, 400).lastAt).toBe(400);
+  });
+});
+
+describe('уверенность и разделы', () => {
+  it('уверенные и неуверенные ответы считаются отдельно; точность — по уверенным', () => {
+    let p = emptyProgress();
+    p = recordAnswer(p, 'a', true, 1000, { confident: true });
+    p = recordAnswer(p, 'a', false, 2000, { confident: true });
+    p = recordAnswer(p, 'b', true, 3000, { confident: false });
+    p = recordAnswer(p, 'c', true, 4000, {});
+    expect(confidenceStats(p, ['a', 'b', 'c'])).toEqual({ sure: { n: 2, ok: 1 }, unsure: { n: 1, ok: 1 } });
+    expect(p.problems.c.cn).toBeUndefined();
+  });
+  it('счётчики уверенности переживают синхронизацию и чистку', () => {
+    const a = recordAnswer(emptyProgress(), 'x', true, 1000, { confident: true });
+    const b = recordAnswer(recordAnswer(emptyProgress(), 'x', false, 500, { confident: false }), 'x', true, 600, { confident: true });
+    const m = mergeTextbook(a, b);
+    expect(m.problems.x).toMatchObject({ cn: 1, cok: 1, un: 1, uok: 0, lastAt: 1000 });
+    expect(normalizeTextbook({ problems: { y: { cn: 2, cok: 5, un: -1 } } }).problems.y).toMatchObject({ cn: 2, cok: 2, un: 0, uok: 0 });
+  });
+  it('«на сегодня»: первый непройденный раздел с главы, где остановились; пройденный — после «вспомнил»', () => {
+    const first = READY[0].id;
+    let p = emptyProgress();
+    const n0 = nextSection(p);
+    expect(n0.chapter).toBe(first);
+    expect(n0.section.recall).toBeTruthy();
+    p = recordAnswer(p, n0.section.recall, true, 1000);
+    expect(sectionDone(p, n0.section)).toBe(true);
+    expect(nextSection(p).section.id).not.toBe(n0.section.id);
+    expect(sectionProgress(p, first).done).toBe(1);
+    // читали другую главу — начинаем с неё
+    const other = READY[3].id;
+    expect(nextSection({ ...p, last: { kind: 'chapter', id: other } }).chapter).toBe(other);
+    // «не вспомнил» — раздел не пройден, вопрос вернётся через два дня
+    const q = recordAnswer(emptyProgress(), n0.section.recall, false, 1000);
+    expect(nextSection(q).section.id).toBe(n0.section.id);
+    expect(dueItems(q, 1000 + 2 * DAY)).toContain(n0.section.recall);
+    expect(RECALLS[n0.section.recall].chapter).toBe(first);
+  });
+});
+
+describe('огибающая LRAC', () => {
+  it('каждая SRAC не ниже LRAC и касается её в точке своего размера; минимум SRAC — правее касания слева от МЭМ и левее справа', () => {
+    const f = lracFns({ c: 20, m: 60, a: 0.004, s: 0.02 });
+    [20, 40, 60, 80, 100].forEach((K) => {
+      for (let q = 2; q <= 120; q += 1) expect(f.srac(K)(q)).toBeGreaterThanOrEqual(f.lrac(q) - 1e-9);
+      expect(f.srac(K)(K)).toBeCloseTo(f.lrac(K), 12);
+    });
+    expect(f.sracMinQ(20)).toBeGreaterThan(20);
+    expect(f.sracMinQ(60)).toBeCloseTo(60, 12);
+    expect(f.sracMinQ(100)).toBeLessThan(100);
   });
 });

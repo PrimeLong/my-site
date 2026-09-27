@@ -3,7 +3,7 @@
    рисует дерево. Модуль чистый: без React и без DOM — его же читают тесты ссылок.
 
    Блоки:
-     ## Заголовок, ### Подзаголовок
+     ## Заголовок, ### Подзаголовок; ## Заголовок {#якорь} — раздел, на который можно сослаться
      абзацы (строки подряд), списки «- …» и «1. …», таблицы «| a | b |»
      $$ формула $$ — выключная формула KaTeX (можно на нескольких строках)
      :::model Заголовок … :::      — «учебная модель» (стандартная, как в учебнике)
@@ -11,8 +11,16 @@
      :::example Заголовок … :::    — разобранный числовой пример
      :::try Заголовок … :::        — «проверьте в игре»; абзац из одной ссылки становится кнопкой
      :::note Заголовок … :::       — врезка
+     :::goals … :::                — «после главы вы сможете» (список целей в начале главы)
+     :::summary … :::              — «Главное» в конце главы
+     :::mistakes … :::             — «Типичные ошибки»
+     Во врезке строка «+++» отделяет основное от раскрывающегося «Подробнее».
+     :::recall id=… вопрос --- ответ ::: — вопрос на вспоминание в конце раздела
+     :::flow Заголовок — схема-цепочка: пункты «- Звено | если вверх | если вниз», ниже — подпись
      :::chart тип ключ=значение … ::: — интерактивный график; текст внутри — подпись
-     :::problem id=… answer=… tol=… unit=… условие --- решение :::   — ответ числом
+     :::problem id=… level=1|2|3 answer=… tol=… unit=… условие --- решение :::   — ответ числом;
+        задача в несколько шагов: answer="15;20" (tol, unit и parts — подписи шагов — тоже через «;»).
+        level: 1 — базовый, 2 — семинарский, 3 — олимпиадный
      :::truefalse id=… answer=true|false утверждение --- ключевые пункты (список) --- разбор :::
         — «верно или неверно»: сначала объяснение, потом сверка с ключевыми пунктами
      В любой задаче строки «?? …» — подсказки, они открываются по одной перед решением.
@@ -29,7 +37,9 @@
 export const LINK_KINDS = ['lever', 'term', 'drill', 'scenario', 'lab', 'tycoon', 'chapter', 'card', 'appendix'];
 // ссылки-действия: абзац из одной такой ссылки рисуется кнопкой
 export const ACTION_KINDS = ['lab', 'drill', 'scenario', 'tycoon'];
-export const BOX_KINDS = ['model', 'game', 'example', 'try', 'note'];
+export const BOX_KINDS = ['model', 'game', 'example', 'try', 'note', 'goals', 'summary', 'mistakes'];
+export const LEVELS = { 1: 'базовый', 2: 'семинарский', 3: 'олимпиадный' };
+const PART_LABELS = ['а)', 'б)', 'в)', 'г)', 'д)', 'е)'];
 
 /* ------------------------------ СТРОКА ------------------------------ */
 function parseLink(inner) {
@@ -119,6 +129,18 @@ export function parseBlocks(text) {
       if (name === 'chart') {
         const caption = body.join(' ').trim();
         blocks.push({ type: 'chart', chart: words[0], attrs, caption: caption ? parseInline(caption) : null });
+      } else if (name === 'recall') {
+        const sep = body.findIndex((l) => l.trim() === '---');
+        if (sep < 0) throw new Error(`В вопросе ${attrs.id} нет ответа (строка ---)`);
+        blocks.push({ type: 'recall', id: attrs.id, question: parseBlocks(body.slice(0, sep).join('\n')), answer: parseBlocks(body.slice(sep + 1).join('\n')) });
+      } else if (name === 'flow') {
+        const steps = []; const rest = [];
+        body.forEach((l) => {
+          const m = /^-\s+(.*)$/.exec(l.trim());
+          if (m) { const [title, up = '', down = ''] = m[1].split('|').map((x) => x.trim()); steps.push({ title: parseInline(title), up: parseInline(up), down: parseInline(down) }); } else rest.push(l);
+        });
+        const caption = rest.join(' ').trim();
+        blocks.push({ type: 'flow', title: words.join(' '), steps, caption: caption ? parseInline(caption) : null });
       } else if (name === 'problem' || name === 'truefalse' || name === 'graph') {
         // подсказки — строки «?? …» в условии: открываются по одной перед решением
         const hints = body.filter((l) => l.trim().startsWith('??')).map((l) => parseInline(l.trim().replace(/^\?\?\s*/, '')));
@@ -126,9 +148,20 @@ export function parseBlocks(text) {
         const seps = lines2.map((l, k) => (l.trim() === '---' ? k : -1)).filter((k) => k >= 0);
         if (!seps.length) throw new Error(`В задаче ${attrs.id} нет решения (строка ---)`);
         const part = (a, b) => parseBlocks(lines2.slice(a, b).join('\n'));
-        const base = { type: 'problem', id: attrs.id, hints, statement: part(0, seps[0]), solution: part(seps[seps.length - 1] + 1) };
+        const level = attrs.level != null ? Number(attrs.level) : null;
+        const base = { type: 'problem', id: attrs.id, level, hints, statement: part(0, seps[0]), solution: part(seps[seps.length - 1] + 1) };
         if (name === 'problem') {
-          blocks.push({ ...base, kind: 'number', answer: Number(attrs.answer), tol: attrs.tol != null ? Number(attrs.tol) : null, unit: attrs.unit || '' });
+          // шаги задачи: ответы, допуски, единицы и подписи — через «;», по порядку
+          const list = (x) => (x == null ? [] : String(x).split(';').map((v) => v.trim()));
+          const answers = list(attrs.answer); const tols = list(attrs.tol); const units = list(attrs.unit); const labels = list(attrs.parts);
+          const parts = answers.map((a, k) => ({
+            label: answers.length > 1 ? (labels[k] || PART_LABELS[k]) : '',
+            answer: Number(a),
+            tol: tols[k] != null && tols[k] !== '' ? Number(tols[k]) : null,
+            unit: units[k] != null ? units[k] : (units.length === 1 ? units[0] : ''),
+          }));
+          const one = parts.length === 1 ? parts[0] : null;
+          blocks.push({ ...base, kind: 'number', parts, answer: one ? one.answer : parts.map((x) => x.answer), tol: one ? one.tol : null, unit: one ? one.unit : '' });
         } else if (name === 'truefalse') {
           if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В задаче ${attrs.id} ответ должен быть true или false`);
           // утверждение --- ключевые пункты объяснения (список) --- полный разбор
@@ -146,7 +179,11 @@ export function parseBlocks(text) {
             still: split(still), controls: controls ? split(controls) : null, reference: ref });
         }
       } else if (BOX_KINDS.includes(name)) {
-        blocks.push({ type: 'box', kind: name, title: words.join(' '), children: parseBlocks(body.join('\n')) });
+        // «+++» — дальше подробности, они раскрываются по кнопке «Подробнее»
+        const cut = body.findIndex((l) => l.trim() === '+++');
+        const main = cut >= 0 ? body.slice(0, cut) : body;
+        const more = cut >= 0 ? parseBlocks(body.slice(cut + 1).join('\n')) : null;
+        blocks.push({ type: 'box', kind: name, title: words.join(' '), children: parseBlocks(main.join('\n')), ...(more ? { more } : {}) });
       } else {
         throw new Error(`Неизвестная вставка :::${name}`);
       }
@@ -171,7 +208,12 @@ export function parseBlocks(text) {
     }
 
     const h = /^(#{2,3})\s+(.*)$/.exec(trimmed);
-    if (h) { blocks.push({ type: h[1].length === 2 ? 'h2' : 'h3', inline: parseInline(h[2]) }); i += 1; continue; }
+    if (h) {
+      const anchor = /\s*\{#([\w-]+)\}\s*$/.exec(h[2]);
+      const text = anchor ? h[2].slice(0, anchor.index) : h[2];
+      blocks.push({ type: h[1].length === 2 ? 'h2' : 'h3', inline: parseInline(text), ...(anchor ? { anchor: anchor[1] } : {}) });
+      i += 1; continue;
+    }
 
     // список: пункты подряд, продолжение пункта — строка с отступом
     const li = /^(-|\d+\.)\s+(.*)$/.exec(trimmed);
@@ -218,10 +260,14 @@ export function walkBlocks(blocks, fn) {
     if (b.children) walkBlocks(b.children, fn);
     if (b.statement) walkBlocks(b.statement, fn);
     if (b.solution) walkBlocks(b.solution, fn);
+    if (b.more) walkBlocks(b.more, fn);
+    if (b.question) walkBlocks(b.question, fn);
+    if (b.type === 'recall') walkBlocks(b.answer, fn);
   });
 }
 const inlinesOf = (b) => [
   ...(b.inline ? [b.inline] : []), ...(b.items || []), ...(b.head || []), ...((b.rows || []).flat()), ...(b.caption ? [b.caption] : []),
+  ...(b.steps || []).flatMap((st) => [st.title, st.up, st.down]), ...(b.hints || []), ...(b.points || []),
 ];
 function walkInline(nodes, fn) {
   nodes.forEach((n) => { fn(n); if (n.c) walkInline(n.c, fn); });

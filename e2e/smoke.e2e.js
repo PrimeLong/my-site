@@ -618,7 +618,9 @@ test('учебник: оглавление, формулы KaTeX, график �
   const ch = page.getByTestId('chapter');
   await expect(ch.locator('h1')).toHaveText('Спрос и предложение');
   // оглавление главы по разделам ведёт к заголовку
-  await ch.getByTestId('tb-sections').getByRole('button', { name: 'Равновесие' }).click();
+  await expect(ch.getByTestId('tb-box-goals')).toContainText('После главы вы сможете');
+  await expect(ch.getByTestId('tb-section-progress')).toContainText('пройдено разделов: 0 из 4');
+  await ch.getByTestId('tb-sections').getByRole('button', { name: 'Равновесие и его сдвиги' }).click();
   await expect(ch.locator('h2', { hasText: 'Равновесие' })).toBeInViewport();
   // формулы отрисованы KaTeX, шрифты KaTeX — из сборки, а не с CDN
   await expect(ch.locator('.katex').first()).toBeVisible();
@@ -636,13 +638,19 @@ test('учебник: оглавление, формулы KaTeX, график �
 
   // задача: подсказка перед решением; неверный ответ уходит на повторение, верный засчитывается
   const prob = ch.locator('[data-problem="sd-equilibrium"]');
+  await expect(prob.getByTestId('tb-level')).toHaveText('базовый');
   await prob.getByRole('button', { name: /^Подсказка/ }).click();
   await expect(prob.getByTestId('tb-hints')).toContainText('приравняйте');
   await prob.getByRole('textbox').fill('29');
+  // перед ответом — оценка уверенности
+  await prob.getByRole('button', { name: 'Проверить' }).click();
+  await expect(prob.getByTestId('tb-verdict')).toContainText('уверены ли вы');
+  await prob.getByRole('button', { name: 'Уверен', exact: true }).click();
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Пока неверно');
   // единицу из подписи можно дописать к ответу
   await prob.getByRole('textbox').fill('30 руб.');
+  await prob.getByRole('button', { name: 'Не уверен', exact: true }).click();
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 руб.');
   await expect(prob.getByTestId('tb-verdict')).not.toContainText('руб..');
@@ -650,10 +658,23 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(prob.getByTestId('tb-verdict')).toContainText('по плану — через 2 дня');
   await prob.getByRole('button', { name: 'Решение' }).click();
   await expect(prob).toContainText('Приравниваем объёмы');
+  // задача в несколько шагов: засчитывается, только если верны все шаги
+  const multi = ch.locator('[data-problem="sd-read"]');
+  await multi.getByRole('textbox', { name: 'Задача 1, шаг а)' }).fill('24');
+  await multi.getByRole('textbox', { name: 'Задача 1, шаг б)' }).fill('20');
+  await multi.getByRole('textbox', { name: 'Задача 1, шаг в)' }).fill('24');
+  await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
+  await multi.getByRole('button', { name: 'Проверить' }).click();
+  await expect(multi.getByTestId('tb-verdict')).toContainText('в) неверно');
+  await multi.getByRole('textbox', { name: 'Задача 1, шаг в)' }).fill('39');
+  await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
+  await multi.getByRole('button', { name: 'Проверить' }).click();
+  await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 руб.; в) 39 ед.');
   // «верно или неверно»: сначала объяснение, потом выбор, потом сверка с ключевыми пунктами
   const tf = ch.locator('[data-problem="sd-tf-law"]');
   await expect(tf.getByRole('button', { name: 'Неверно', exact: true })).toBeDisabled();
   await tf.getByRole('textbox').fill('сдвинулась сама кривая спроса вправо');
+  await tf.getByRole('button', { name: 'Уверен', exact: true }).click();
   await tf.getByRole('button', { name: 'Неверно', exact: true }).click();
   await expect(tf.getByTestId('tb-points')).toContainText('сдвиг кривой спроса вправо');
   await expect(tf.getByTestId('tb-verdict')).toContainText('Теперь сверьте объяснение');
@@ -665,10 +686,12 @@ test('учебник: оглавление, формулы KaTeX, график �
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала сдвиньте');
   await gr.getByRole('slider', { name: 'Сдвиг спроса' }).fill('-20');
+  await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Пока неверно');
   await gr.getByRole('slider', { name: 'Сдвиг спроса' }).fill('0');
   await gr.getByRole('slider', { name: 'Сдвиг предложения' }).fill('-20');
+  await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Верно: цена растёт, количество падает');
   await ch.getByRole('button', { name: 'Отметить главу прочитанной' }).click();
@@ -696,9 +719,23 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByRole('button', { name: 'Мельче текст' }).click();
 
   await ch.getByRole('button', { name: /Оглавление/ }).first().click();
-  await expect(toc.getByText('Прочитано глав:')).toContainText('1');
-  // неверный ответ был — задача ждёт повторения через два дня
-  await expect(page.getByTestId('review')).toContainText('через 2 дня');
+  await expect(toc.getByText(/прочитано глав/)).toContainText('прочитано глав: 1');
+  // уверенные ответы: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
+  await expect(page.getByTestId('tb-confidence')).toContainText('верно 3 из 6 (50%)');
+  await expect(page.getByTestId('tb-confidence')).toContainText('неуверенные: верно 1 из 1');
+  // «на сегодня»: первый раздел главы, где остановились, с вопросом на вспоминание; повторение ждёт своего дня
+  await expect(page.getByTestId('today-card')).toContainText('раздел «Спрос»');
+  await page.getByTestId('today-card').getByRole('button', { name: 'Начать занятие' }).click();
+  const today = page.getByTestId('today');
+  await expect(today.getByTestId('today-section')).toContainText('Спрос и предложение');
+  const recall = today.getByTestId('tb-recall').first();
+  await recall.getByRole('button', { name: 'Показать ответ' }).click();
+  await recall.getByRole('button', { name: 'Вспомнил', exact: true }).click();
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
+  await expect(today.getByTestId('review')).toContainText('через 2 дня');
+  await expectNoSidewaysScroll(page);
+  await today.getByRole('button', { name: /Оглавление/ }).first().click();
+  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' })).toContainText('разделы 1/4');
 
   // IS-LM: переключатель «ЦБ держит ставку» на графике, ссылка в Лабораторию с настройками
   await toc.getByRole('button', { name: /Модель IS-LM/ }).click();
@@ -708,6 +745,17 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1200');
   await islm.getByRole('button', { name: 'ЦБ держит ставку' }).click();
   await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1300');
+  // схема «ставка → … → цены» переключается вверх и вниз
+  const flow = page.getByTestId('tb-flow');
+  await expect(flow.getByTestId('tb-flow-step')).toHaveCount(6);
+  await expect(flow).toContainText('кредиты дорожают');
+  await flow.getByRole('button', { name: 'Ставка ЦБ: вниз' }).click();
+  await expect(flow).toContainText('кредиты дешевеют');
+  // «Как это устроено в игре» — коротко, подробности по кнопке
+  const game = page.getByTestId('tb-box-game');
+  await expect(game.getByTestId('tb-more')).toHaveCount(0);
+  await game.getByRole('button', { name: /Подробнее/ }).click();
+  await expect(game.getByTestId('tb-more')).toContainText('расходы разово выше навсегда');
   await expectNoSidewaysScroll(page);
   await page.getByRole('button', { name: 'Лаборатория: госзакупки при неподвижной ставке' }).click();
   await expect(page.getByTestId('lab-charts')).toBeVisible();
@@ -726,6 +774,19 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(mono.getByTestId('tb-readout')).toContainText('Цена: 65');
   await expect(page.getByRole('button', { name: 'Своё дело: правило Лернера' })).toBeVisible();
   await expectNoSidewaysScroll(page);
+
+  // издержки: огибающая LRAC и ссылка на производную в приложении «Математика для экономиста»
+  await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();
+  await toc.getByRole('button', { name: /Издержки и прибыль/ }).click();
+  const lrac = page.locator('[data-chart="lrac"]');
+  await expect(lrac.getByTestId('tb-readout')).toContainText('положительный эффект масштаба');
+  await lrac.getByRole('slider').fill('60');
+  await expect(lrac.getByTestId('tb-readout')).toContainText('минимально эффективный масштаб');
+  await page.getByRole('button', { name: 'приложение «Математика для экономиста»' }).click();
+  await expect(page.getByTestId('appendix')).toHaveAttribute('data-appendix', 'math');
+  await expect(page.locator('#derivative')).toBeInViewport();
+  await page.getByTestId('tb-back').click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'costs');
 
   // приложения: «игра ↔ учебник» с кнопками в Лабораторию, ограничения модели и словарь
   await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();
