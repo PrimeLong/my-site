@@ -605,21 +605,95 @@ test('после квартала: «а если бы вы ничего не д�
   expect(errors).toEqual([]);
 });
 
-test('модель и учебник: восемь идей со ссылкой в лабораторию и страница ограничений', async ({ page }) => {
-  const { errors } = await openApp(page);
-  await page.getByText('Модель и учебник', { exact: true }).first().click();
-  const book = page.getByTestId('textbook');
-  await expect(book.getByText('Закон Оукена', { exact: true })).toBeVisible();
-  await expect(book.getByRole('button', { name: 'Открыть в Лаборатории' })).toHaveCount(8);
-  // к темам привязаны задачи: у Фишера — «Реальная ставка при инфляции 25%»
-  await expect(book.getByRole('button', { name: 'Задача: Реальная ставка при инфляции 25%' })).toBeVisible();
+test('учебник: оглавление, формулы KaTeX, график с ползунком, задача и повторение, без внешних запросов', async ({ page }) => {
+  const { errors, external } = await openApp(page);
+  await page.getByText('Учебник', { exact: true }).first().click();
+  const toc = page.getByTestId('textbook');
+  await expect(toc.getByText('Микроэкономика', { exact: true })).toBeVisible();
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(3);
+  await expect(toc.locator('[data-status="planned"]')).toHaveCount(13);
   await expectNoSidewaysScroll(page);
-  await page.getByRole('button', { name: 'Чем модель не похожа на настоящую' }).click();
-  await expect(page.getByTestId('limits').getByText('Адаптивные ожидания', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Игра ↔ учебник' }).click();
-  await page.getByTestId('textbook').getByRole('button', { name: 'Открыть в Лаборатории' }).nth(3).click();
+
+  await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
+  const ch = page.getByTestId('chapter');
+  await expect(ch.locator('h1')).toHaveText('Спрос и предложение');
+  // формулы отрисованы KaTeX, шрифты KaTeX — из сборки, а не с CDN
+  await expect(ch.locator('.katex').first()).toBeVisible();
+  expect(await ch.locator('.katex').count()).toBeGreaterThan(10);
+  await page.evaluate(() => document.fonts.ready);
+  const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/"/g, '')));
+  expect(families.some((f) => f.startsWith('KaTeX'))).toBe(true);
+
+  // ползунок сдвигает спрос: равновесная цена 20 → 25 при сдвиге на 30
+  const chart = ch.getByTestId('tb-chart').first();
+  await expect(chart.getByTestId('tb-readout')).toContainText('Равновесная цена: 20');
+  await chart.getByRole('slider', { name: 'Сдвиг спроса' }).fill('30');
+  await expect(chart.getByTestId('tb-readout')).toContainText('Равновесная цена: 25');
+  await expect(chart.getByTestId('tb-readout')).toContainText('Равновесное количество: 80');
+
+  // задача: неверный ответ уходит на повторение, верный засчитывается
+  const prob = ch.locator('[data-problem="sd-equilibrium"]');
+  await prob.getByRole('textbox').fill('25');
+  await prob.getByRole('button', { name: 'Проверить' }).click();
+  await expect(prob.getByTestId('tb-verdict')).toContainText('Пока неверно');
+  await prob.getByRole('textbox').fill('30');
+  await prob.getByRole('button', { name: 'Проверить' }).click();
+  await expect(prob.getByTestId('tb-verdict')).toContainText('Верно');
+  await prob.getByRole('button', { name: 'Решение' }).click();
+  await expect(prob).toContainText('Приравниваем объёмы');
+  await ch.getByRole('button', { name: 'Отметить главу прочитанной' }).click();
+  await expect(ch.getByRole('button', { name: /Глава прочитана/ })).toBeVisible();
+  await expectNoSidewaysScroll(page);
+
+  await ch.getByRole('button', { name: /Оглавление/ }).first().click();
+  await expect(toc.getByText('Прочитано глав:')).toContainText('1');
+  // неверный ответ был — задача ждёт повторения через два дня
+  await expect(page.getByTestId('review')).toContainText('через 2 дня');
+
+  // IS-LM: переключатель «ЦБ держит ставку» на графике, ссылка в Лабораторию с настройками
+  await toc.getByRole('button', { name: /Модель IS-LM/ }).click();
+  const islm = page.locator('[data-chart="is-lm"]');
+  await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1100');
+  await islm.getByRole('slider', { name: 'Госрасходы G' }).fill('150');
+  await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1200');
+  await islm.getByRole('button', { name: 'ЦБ держит ставку' }).click();
+  await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1300');
+  await expectNoSidewaysScroll(page);
+  await page.getByRole('button', { name: 'Лаборатория: госзакупки при неподвижной ставке' }).click();
   await expect(page.getByTestId('lab-charts')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Госинвестиции в инфраструктуру' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'ставка стоит' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'расходы растут быстрее каждый год' })).toHaveAttribute('aria-pressed', 'true');
+  // назад — в ту же главу учебника, а не в меню
+  await page.getByRole('button', { name: '← Назад в меню' }).click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'is-lm');
+
+  // приложения: «игра ↔ учебник» с кнопками в Лабораторию, ограничения модели и словарь
+  await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();
+  await toc.getByRole('button', { name: /Игра ↔ учебник/ }).click();
+  const cards = page.getByTestId('appendix-cards');
+  await expect(cards.getByText('Закон Оукена', { exact: true })).toBeVisible();
+  await expect(cards.getByRole('button', { name: 'Открыть в Лаборатории' })).toHaveCount(8);
+  await expect(cards.getByRole('button', { name: 'Задача: Реальная ставка при инфляции 25%' })).toBeVisible();
+  await page.getByRole('button', { name: /Чем модель не похожа на настоящую/ }).click();
+  await expect(page.getByTestId('appendix-limits').getByText('Адаптивные ожидания', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Словарь/ }).click();
+  await page.getByRole('textbox', { name: 'Поиск по словарю' }).fill('эластичн');
+  await expect(page.getByTestId('appendix-glossary')).toContainText('Эластичность спроса по цене');
+
+  expect(external).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('учебник → «Своё дело»: задание открывает нужную вкладку и висит плашкой', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Учебник', { exact: true }).first().click();
+  await page.getByTestId('textbook').getByRole('button', { name: /Эластичность/ }).first().click();
+  await page.getByRole('button', { name: 'Своё дело: измерить эластичность хлеба' }).click();
+  // сохранённой компании нет — анкета с выбранной лавкой
+  await page.getByRole('button', { name: /Начать|Открыть дело|Принять/ }).last().click();
+  const lesson = page.getByTestId('tycoon-lesson');
+  await expect(lesson).toContainText('Измерьте эластичность спроса на хлеб');
+  await expect(page.getByRole('tab', { name: /Склад и рынок/ })).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
 });
 
