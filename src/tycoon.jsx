@@ -86,7 +86,9 @@ function useNarrow() {
 }
 
 /* ------------------------------ ЭКРАН ------------------------------ */
-export function TycoonScreen({ initial, setupNew, onExit }) {
+/* lesson — задание из учебника ({ title, text, tab }): открывает нужную вкладку и висит
+   плашкой над разделами, пока его не закроют. Механику не меняет. */
+export function TycoonScreen({ initial, setupNew, onExit, lesson = null }) {
   const [boot] = useState(() => {
     if (initial) return T.catchUp(T.normalizeTycoon(initial));
     const meta = loadTycoonMeta();
@@ -95,7 +97,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   const [st, setSt] = useState(boot.st);
   const [offline, setOffline] = useState(boot.away > 0 ? boot : null);
   const narrow = useNarrow();
-  const [tabPicked, setTab] = useState(null);
+  const [tabPicked, setTab] = useState(lesson && lesson.tab ? lesson.tab : null);
+  const [lessonOpen, setLessonOpen] = useState(!!lesson);
   // по умолчанию: на телефоне — карта со стройкой, на компьютере карта и так слева — производство
   const tab = tabPicked === 'build' && !narrow ? 'prod' : tabPicked || (narrow ? 'build' : 'prod');
   const [region, setRegion] = useState(() => (boot.st.buildings[0] ? boot.st.buildings[0].region : 'capital'));
@@ -258,6 +261,17 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
         <div className="ty-grid">
           {!narrow && <div>{mapPanel}</div>}
           <div style={{ minWidth: 0 }}>
+            {lesson && lessonOpen && (
+              <div className="ems-panel" data-testid="tycoon-lesson" style={{ padding: '10px 12px', marginBottom: 12, borderLeft: `3px solid ${COLOR.gold}` }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: COLOR.gold, textTransform: 'uppercase', letterSpacing: '.06em' }}>Задание из учебника</span>
+                  <button className="ems-btn" style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 12 }} aria-label="Закрыть задание"
+                    onClick={() => { Audio.play('click'); setLessonOpen(false); }}>×</button>
+                </div>
+                <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, margin: '2px 0 4px' }}>{lesson.title}</div>
+                <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.55 }}>{lesson.text}</div>
+              </div>
+            )}
             <div className="ems-seg" role="tablist" aria-label="Разделы" style={{ display: 'flex', flexWrap: 'wrap', marginBottom: 12, width: '100%' }}>
               {tabs.map(([id, label, Icon]) => (
                 id === 'build' && !narrow ? null : <button key={id} role="tab" aria-pressed={tab === id}

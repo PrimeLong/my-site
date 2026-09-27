@@ -909,9 +909,10 @@ const NetworkGameScreen = React.lazy(() => import('./network.jsx').then((m) => (
 const loadGame = () => import('./game.jsx');
 // «Своё дело» — отдельная игра и отдельный чанк
 const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ default: m.TycoonScreen })));
-// тренажёр: лаборатория, учебник и ограничения модели — отдельный чанк
+// тренажёр: лаборатория и задачи на 10 минут — отдельный чанк
 const LabScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.LabScreen })));
-const ModelScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.ModelScreen })));
+// учебник: главы, KaTeX, приложения — свой чанк
+const TextbookScreen = React.lazy(() => import('./textbook.jsx').then((m) => ({ default: m.TextbookScreen })));
 const DrillsScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.DrillsScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
@@ -1130,7 +1131,7 @@ function MenuTicker() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onModel, onDrills }) {
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onTextbook, onDrills }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1260,9 +1261,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     ...(onDrills ? [{ id: 'drills', icon: Target, title: 'Задачи на 10 минут', tag: 'цель · кварталы · разбор',
       desc: 'Короткая партия с одной целью — например, инфляцию с 12% до 4% за восемь кварталов без рецессии. В конце — разбор и слепой прогноз.',
       action: () => { Audio.prime(); Audio.play('tab'); onDrills(); } }] : []),
-    ...(onModel ? [{ id: 'model', icon: BookOpenText, title: 'Модель и учебник', tag: 'Фишер, Оукен, Филлипс…',
-      desc: 'Где в игре работают формулы из учебника — и чем эта модель честно не похожа на настоящую экономику.',
-      action: () => { Audio.prime(); Audio.play('tab'); onModel(); } }] : []),
+    ...(onTextbook ? [{ id: 'textbook', icon: BookOpenText, title: 'Учебник', tag: 'микро и макро · задачи · графики',
+      desc: 'Главы первого курса экономфака с формулами, графиками и задачами — и в каждой главе: где эту модель видно в игре и чем игра от неё отличается.',
+      action: () => { Audio.prime(); Audio.play('tab'); onTextbook(); } }] : []),
   ];
 
   return (
@@ -1451,7 +1452,7 @@ const menuCss = () => `
 `;
 
 /* ============================ ЭКРАН ВЫБОРА ============================ */
-function SetupScreen({ onStart, onBack, initialRole = null }) {
+function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = null, initialSector = null }) {
   React.useEffect(preloadGame, []);
   const [role, setRole] = useState(initialRole);
   const [difficulty, setDifficulty] = useState('medium');
@@ -1459,8 +1460,9 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
   const setGoal = (g) => setGoalRaw(g);
   React.useEffect(() => { setGoalRaw(role === 'trader' ? 'max_wealth' : role === 'entrepreneur' ? 'company_value' : 'living_standards'); }, [role]);
   // отрасль компании — только для предпринимателя
-  const [sector, setSector] = useState('farm');
-  const [scenario, setScenario] = useState('sandbox');
+  const [sector, setSector] = useState(initialSector || 'farm');
+  // из учебника можно прийти с уже выбранным сценарием
+  const [scenario, setScenario] = useState(() => (initialScenario && SCENARIOS.some((x) => x.id === initialScenario) ? initialScenario : 'sandbox'));
   // сценарий, где роли нет (Греция в валютном союзе — без своего ЦБ), сбрасывается при смене роли
   React.useEffect(() => {
     const sc = SCENARIOS.find((x) => x.id === scenario);
@@ -1476,7 +1478,8 @@ function SetupScreen({ onStart, onBack, initialRole = null }) {
      случайно, а президент включён — то есть игрок садится за пульт, не выбирая
      заранее, с кем ему иметь дело. Все эти ручки никуда не делись, они просто не
      вываливаются на человека, который хочет просто начать играть. */
-  const [mode, setMode] = useState('classic');
+  // сценарий выбирается только в настраиваемой партии — пришли со сценарием, значит, она
+  const [mode, setMode] = useState(initialScenario ? 'custom' : 'classic');
   const [presEnabled, setPresEnabled] = useState(true);
   const [presPersona, setPresPersona] = useState('random');
   const roleDef = ROLES.find((r) => r.id === role);
@@ -1895,6 +1898,13 @@ export default function MacroSimulator() {
   // ведёт сразу в лобби, минуя меню.
   const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
   const [labLever, setLabLever] = useState('keyRate');
+  // учебник: откуда открыта Лаборатория ({ lever, cb, mode, scenario }), куда вернуться,
+  // задание для «Своего дела» и предвыбор сценария/старта в анкете
+  const [labInit, setLabInit] = useState(null);
+  const [fromBook, setFromBook] = useState(false);
+  const [bookResume, setBookResume] = useState(false);
+  const [setupPreset, setSetupPreset] = useState(null);
+  const [tycoonLesson, setTycoonLesson] = useState(null);
   // «Своё дело»: { initial } — продолжить сохранённое, { setupNew } — новое дело
   const [tycoon, setTycoon] = useState(() => (resumeTycoon ? { initial: resumeTycoon } : null));
   React.useEffect(() => {
@@ -1904,6 +1914,8 @@ export default function MacroSimulator() {
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
+  // назад из Лаборатории, анкеты или тайкуна: в учебник, если пришли из него
+  const goBack = () => { if (fromBook) { setFromBook(false); setBookResume(true); setView('textbook'); } else goMenu(); };
   // переключение между меню/анкетой/сетью/игрой не перезагружает страницу,
   // поэтому без явного сброса скролл оставался там, где был на предыдущем
   // экране — короткий новый экран открывался уже наполовину прокрученным
@@ -1913,15 +1925,16 @@ export default function MacroSimulator() {
   const backToMenu = () => { setNetwork(null); setLoaded(null); setSetup(null); goMenu(); };
   const startTycoon = (x) => {
     if (loadTycoonSave() && !window.confirm('Начать новое дело? Сохранённая компания будет потеряна (репутация останется).')) return;
-    setTycoon({ setupNew: { start: x.sector || 'farm', scenario: x.scenario, difficulty: x.difficulty, cbPersona: x.cbPersona,
+    setTycoon({ lesson: tycoonLesson, setupNew: { start: x.sector || 'farm', scenario: x.scenario, difficulty: x.difficulty, cbPersona: x.cbPersona,
       mofPersona: x.mofPersona, presPersona: x.president && x.president.persona, president: !!(x.president && x.president.enabled) } });
+    setTycoonLesson(null);
   };
   const screen = (() => {
     if (tycoon) {
       return (
         <Suspense fallback={<GameFallback />}>
           <TycoonScreen key={tycoon.initial ? 'load' : JSON.stringify(tycoon.setupNew)} initial={tycoon.initial} setupNew={tycoon.setupNew}
-            onExit={() => { setTycoon(null); goMenu(); }} />
+            lesson={tycoon.lesson || null} onExit={() => { setTycoon(null); goBack(); }} />
         </Suspense>
       );
     }
@@ -1936,8 +1949,9 @@ export default function MacroSimulator() {
       if (view === 'setup' || view === 'setup-biz') {
         return (
           <SetupScreen key={`${theme}${view}`} initialRole={view === 'setup-biz' ? 'entrepreneur' : null}
-            onStart={(x) => { if (x.role === 'entrepreneur') { startTycoon(x); return; } clearAutosave(); setLoaded(null); setSetup(x); }}
-            onBack={goMenu}
+            initialScenario={setupPreset && setupPreset.scenario} initialSector={setupPreset && setupPreset.sector}
+            onStart={(x) => { setSetupPreset(null); if (x.role === 'entrepreneur') { startTycoon(x); return; } setFromBook(false); clearAutosave(); setLoaded(null); setSetup(x); }}
+            onBack={() => { setSetupPreset(null); setTycoonLesson(null); goBack(); }}
           />
         );
       }
@@ -1951,7 +1965,7 @@ export default function MacroSimulator() {
       if (view === 'lab') {
         return (
           <Suspense fallback={<GameFallback />}>
-            <LabScreen key={`${theme}:${labLever}`} initialLever={labLever} onBack={goMenu} />
+            <LabScreen key={`${theme}:${labLever}:${JSON.stringify(labInit)}`} initialLever={labLever} initial={labInit} onBack={() => { setLabInit(null); goBack(); }} />
           </Suspense>
         );
       }
@@ -1962,11 +1976,22 @@ export default function MacroSimulator() {
           </Suspense>
         );
       }
-      if (view === 'model') {
+      if (view === 'textbook') {
+        const startDrill = (x) => { setFromBook(false); clearAutosave(); setLoaded(null); setSetup(x); };
         return (
           <Suspense fallback={<GameFallback />}>
-            <ModelScreen key={theme} onBack={goMenu} onOpenLab={(id) => { setLabLever(id); setView('lab'); }}
-              onStartDrill={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }} />
+            <TextbookScreen key={theme} resume={bookResume} onBack={() => { setBookResume(false); goMenu(); }}
+              onOpenLab={(init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); }}
+              onStartDrill={startDrill}
+              onOpenTycoon={(taskId, task) => {
+                if (!task) return;
+                setFromBook(true);
+                const save = loadTycoonSave();
+                const lesson = { id: taskId, ...task };
+                if (save) { setTycoon({ initial: save, lesson }); return; }
+                setTycoonLesson(lesson); setSetupPreset({ sector: task.start }); setView('setup-biz');
+              }}
+              onOpenScenario={(id) => { setFromBook(true); setSetupPreset({ scenario: id }); setView('setup'); }} />
           </Suspense>
         );
       }
@@ -1986,16 +2011,16 @@ export default function MacroSimulator() {
       }
       return (
         <MainMenu key={theme} theme={theme} setTheme={setTheme}
-          onNewGame={() => setView('setup')}
+          onNewGame={() => { setFromBook(false); setSetupPreset(null); setView('setup'); }}
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
-          onLab={() => { setLabLever('keyRate'); setView('lab'); }}
-          onModel={() => setView('model')}
+          onLab={() => { setFromBook(false); setLabInit(null); setLabLever('keyRate'); setView('lab'); }}
+          onTextbook={() => { setBookResume(false); setView('textbook'); }}
           onDrills={() => setView('drills')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
           onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
-          onTycoon={(save) => (save ? setTycoon({ initial: save }) : setView('setup-biz'))}
+          onTycoon={(save) => { setFromBook(false); setSetupPreset(null); setTycoonLesson(null); if (save) setTycoon({ initial: save }); else setView('setup-biz'); }}
         />
       );
     }
