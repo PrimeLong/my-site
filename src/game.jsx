@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
 import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS, rng } from './lib/catalog.js';
 import { passiveDecisions, changedLevers, policyContribution, startShadow, shadowQuarter, cumulativeContribution } from './lib/counterfactual.js';
-import { DRILLS, evaluateDrill, recordDrillResult } from './lib/drills.js';
+import { DRILLS, evaluateDrill, recordDrillResult, drillImpulses } from './lib/drills.js';
 import { makeForecast, resolveForecasts, forecastStats, FORECAST_HORIZON } from './lib/forecast.js';
 import { makePrehistory } from './lib/autopilot.js';
 import {
@@ -4425,7 +4425,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   // (например, «Размещение облигаций»/дефолт/МВФ) — без подстраховки открытие
   // вкладки с новым рычагом падало на undefined.toFixed()
   const [decisions, setDecisions] = useState(initial ? { ...defaultDecisions(initEconomy), ...initial.decisions } : defaultDecisions(initEconomy));
-  const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : []);
+  // у задачи тренажёра шок может быть уже в пути (например, волна издержек после скачка сырья)
+  const [pendingImpulses, setPendingImpulses] = useState(initial ? initial.pendingImpulses || [] : drill ? drillImpulses(drill, setup.difficulty) : []);
   const [eventCooldowns, setEventCooldowns] = useState(initial ? initial.eventCooldowns || {} : pre ? pre.eventCooldowns : {});
   const [quarterIndex, setQuarterIndex] = useState(initial ? initial.quarterIndex : 1);
   const [newsFeed, setNewsFeed] = useState(initial ? initial.newsFeed || [] : pre ? pre.news : []);
@@ -4533,7 +4534,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [shadow, setShadow] = useState(() => {
     if (!(roleDef.groups || []).some((g) => g === 'monetary' || g === 'fiscal')) return null;
     if (initial) return initial.shadow || startShadow(initial.economy, initial.quarterIndex || 1, initial);
-    return startShadow(initEconomy, 1, { eventCooldowns: pre ? pre.eventCooldowns : {} });
+    return startShadow(initEconomy, 1, { eventCooldowns: pre ? pre.eventCooldowns : {}, pendingImpulses: drill ? drillImpulses(drill, setup.difficulty) : [] });
   });
   const [forecasts, setForecasts] = useState(initial && Array.isArray(initial.forecasts) ? initial.forecasts : []);
   const [forecastInput, setForecastInput] = useState('');

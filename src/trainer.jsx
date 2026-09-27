@@ -273,7 +273,10 @@ const LIMITS = [
   { title: 'Что с этим делать', text: 'Использовать модель для интуиции: знаки, лаги, компромиссы (инфляция против безработицы, курс против ставки, дефицит против долга). Не использовать для прогнозов и точных чисел. Форма отклика в Лаборатории зависит от того, как отвечает ЦБ: знаки и порядок лагов устойчивы, а величина и то, затухает ли эффект, — условны.' },
 ];
 
-function TextbookTab({ onOpenLab }) {
+// тема задачи → заголовок раздела учебника
+const TOPIC_TITLE = () => Object.fromEntries(TEXTBOOK.map((t) => [t.id, t.title]));
+
+function TextbookTab({ onOpenLab, onStartDrill }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="textbook">
       {TEXTBOOK.map((t) => (
@@ -286,10 +289,16 @@ function TextbookTab({ onOpenLab }) {
             <div><div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 2 }}>Как устроено в модели</div>{t.model}</div>
             <div><div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 2 }}>Где увидеть в игре</div>{t.where}
               <div style={{ color: COLOR.muted, marginTop: 6, fontSize: 12 }}>Попробуйте: {t.try}</div>
-              {onOpenLab && t.lab && (
-                <button type="button" className="ems-btn" style={{ marginTop: 8, padding: '5px 10px', fontSize: 12 }}
-                  onClick={() => { Audio.play('click'); onOpenLab(t.lab); }}>Открыть в Лаборатории</button>
-              )}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                {onOpenLab && t.lab && (
+                  <button type="button" className="ems-btn" style={{ padding: '5px 10px', fontSize: 12 }}
+                    onClick={() => { Audio.play('click'); onOpenLab(t.lab); }}>Открыть в Лаборатории</button>
+                )}
+                {onStartDrill && DRILLS.filter((d) => d.topic === t.id).map((d) => (
+                  <button key={d.id} type="button" className="ems-btn" style={{ padding: '5px 10px', fontSize: 12 }}
+                    onClick={() => { Audio.prime(); Audio.play('stamp'); onStartDrill(drillSetup(d)); }}>Задача: {d.title}</button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -311,7 +320,7 @@ function LimitsTab() {
   );
 }
 
-export function ModelScreen({ onBack, onOpenLab, initialTab = 'textbook' }) {
+export function ModelScreen({ onBack, onOpenLab, onStartDrill, initialTab = 'textbook' }) {
   const [tab, setTab] = useState(initialTab);
   return (
     <TrainerPage eyebrow="Тренажёр" title="Модель и учебник" icon={BookOpenText} onBack={onBack}
@@ -320,7 +329,7 @@ export function ModelScreen({ onBack, onOpenLab, initialTab = 'textbook' }) {
         <Seg label="Раздел" value={tab} onChange={setTab}
           options={[{ id: 'textbook', label: 'Игра ↔ учебник' }, { id: 'limits', label: 'Чем модель не похожа на настоящую' }]} />
       </div>
-      {tab === 'textbook' ? <TextbookTab onOpenLab={onOpenLab} /> : <LimitsTab />}
+      {tab === 'textbook' ? <TextbookTab onOpenLab={onOpenLab} onStartDrill={onStartDrill} /> : <LimitsTab />}
     </TrainerPage>
   );
 }
@@ -329,9 +338,10 @@ export function ModelScreen({ onBack, onOpenLab, initialTab = 'textbook' }) {
 const ROLE_NAME = { central_bank: 'Центральный банк', ministry_finance: 'Минфин' };
 export function DrillsScreen({ onBack, onStart }) {
   const records = useMemo(loadDrillRecords, []);
+  const topics = TOPIC_TITLE();
   return (
     <TrainerPage eyebrow="Тренажёр" title="Задачи на 10 минут" icon={Target} onBack={onBack}
-      lede="Одна цель, несколько кварталов, никаких случайных событий. Соседнее ведомство ведёт бот, у каждой задачи своё зерно — попытки можно сравнивать. Перед каждым ходом можно записать слепой прогноз инфляции: он проверится через четыре квартала. В конце — разбор.">
+      lede="Десять задач — по темам страницы «Модель и учебник». Одна цель, несколько кварталов, никаких случайных событий. Соседнее ведомство ведёт бот, у каждой задачи своё зерно — попытки можно сравнивать. Перед каждым ходом можно записать слепой прогноз инфляции: он проверится через четыре квартала. В конце — разбор.">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="drills">
         {DRILLS.map((d) => {
           const rec = records[d.id];
@@ -339,7 +349,7 @@ export function DrillsScreen({ onBack, onStart }) {
             <div key={d.id} className="ems-panel" style={{ padding: 14 }}>
               <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
                 <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>{d.title}</span>
-                <span style={{ fontSize: 12, color: COLOR.muted }}>{ROLE_NAME[d.role]} · {d.quarters} кварталов
+                <span style={{ fontSize: 12, color: COLOR.muted }}>{topics[d.topic] ? `${topics[d.topic]} · ` : ''}{ROLE_NAME[d.role]} · {d.quarters} кварталов
                   {rec ? <> · {rec.passed ? <b style={{ color: COLOR.teal }}>выполнено</b> : 'не выполнено'}, попыток {rec.tries}</> : null}</span>
               </div>
               <div style={{ fontSize: 13, lineHeight: 1.55, margin: '6px 0' }}>{d.brief}</div>

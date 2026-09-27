@@ -2283,6 +2283,17 @@ function simulateQuarter(input, { skip = [] } = {}) {
 function makeInitialEconomy(scenarioId, extra = null) {
   const scenario = SCENARIOS.find((sc) => sc.id === scenarioId);
   const I = { ...CONFIG.initial, ...(scenario && scenario.overrides), ...extra };
+  /* Стартовый спад или перегрев (задачи тренажёра задают ВВП ниже или выше потенциала):
+     ВВП — сумма компонентов, и если поменять только его, со следующего квартала он
+     отскакивал обратно к сумме — «спад» лечился сам за квартал. Разницу несёт частный
+     спрос: потребление и инвестиции масштабируются так, чтобы тождество сходилось. */
+  const own = { ...(scenario && scenario.overrides), ...extra };
+  if ('gdp' in own && !('consumption' in own) && !('businessInvestment' in own)) {
+    const sum0 = CONFIG.initial.consumption + CONFIG.initial.businessInvestment;
+    const gapAbs = I.gdp - CONFIG.initial.gdp;
+    I.consumption = CONFIG.initial.consumption + gapAbs * CONFIG.initial.consumption / sum0;
+    I.businessInvestment = CONFIG.initial.businessInvestment + gapAbs * CONFIG.initial.businessInvestment / sum0;
+  }
   const potentialGdp = potentialFrom(I.capitalStock, I.laborForce, I.nairu, I.humanCapitalIndex, I.productivity, I.infrastructureIndex, TFP_SCALE, 0);
   const nominalGdp = I.gdp * I.priceLevel / 100;
   const dist0 = initialDistribution({ vatRate: I.vatRate, incomeTaxRate: I.incomeTaxRate, capitalTaxRate: I.capitalTaxRate });

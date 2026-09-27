@@ -1965,7 +1965,8 @@ export default function MacroSimulator() {
       if (view === 'model') {
         return (
           <Suspense fallback={<GameFallback />}>
-            <ModelScreen key={theme} onBack={goMenu} onOpenLab={(id) => { setLabLever(id); setView('lab'); }} />
+            <ModelScreen key={theme} onBack={goMenu} onOpenLab={(id) => { setLabLever(id); setView('lab'); }}
+              onStartDrill={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }} />
           </Suspense>
         );
       }

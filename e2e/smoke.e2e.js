@@ -601,6 +601,8 @@ test('модель и учебник: восемь идей со ссылкой 
   const book = page.getByTestId('textbook');
   await expect(book.getByText('Закон Оукена', { exact: true })).toBeVisible();
   await expect(book.getByRole('button', { name: 'Открыть в Лаборатории' })).toHaveCount(8);
+  // к темам привязаны задачи: у Фишера — «Реальная ставка при инфляции 25%»
+  await expect(book.getByRole('button', { name: 'Задача: Реальная ставка при инфляции 25%' })).toBeVisible();
   await expectNoSidewaysScroll(page);
   await page.getByRole('button', { name: 'Чем модель не похожа на настоящую' }).click();
   await expect(page.getByTestId('limits').getByText('Адаптивные ожидания', { exact: true })).toBeVisible();
@@ -616,6 +618,7 @@ test('задача на 10 минут: цель на экране, прогно�
   test.setTimeout(120_000);
   const { errors } = await openApp(page);
   await page.getByText('Задачи на 10 минут', { exact: true }).first().click();
+  await expect(page.getByTestId('drills').getByRole('button', { name: 'Начать' })).toHaveCount(10);
   await page.getByTestId('drills').getByRole('button', { name: 'Начать' }).first().click();
   await expect(page.getByTestId('drill-banner')).toContainText('Инфляция с 12% до 4%');
   await page.getByRole('textbox', { name: 'Прогноз инфляции через четыре квартала' }).fill('8');
