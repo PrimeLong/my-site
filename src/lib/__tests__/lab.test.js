@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { impulseResponse, peakOf, LAB_LEVERS, defaultLabMode, defaultLabCb } from '../lab.js';
+import { impulseResponse, impulseBand, peakOf, LAB_LEVERS, defaultLabMode, defaultLabCb, quarterLevelShift } from '../lab.js';
 import { CONFIG } from '../engine.js';
 
 describe('лаборатория: импульсный отклик одного рычага', () => {
@@ -24,7 +24,8 @@ describe('лаборатория: импульсный отклик одного
 
   it('режим по умолчанию — как в партии; шум после расчёта возвращается', () => {
     const noise = CONFIG.noiseMult.medium;
-    expect(defaultLabMode(LAB_LEVERS.find((l) => l.id === 'govSpending'))).toBe('hold');
+    expect(defaultLabMode(LAB_LEVERS.find((l) => l.id === 'govSpending'))).toBe('pulse');
+    expect(defaultLabMode(LAB_LEVERS.find((l) => l.id === 'vatRate'))).toBe('hold');
     expect(defaultLabMode(LAB_LEVERS.find((l) => l.id === 'keyRate'))).toBe('taylor');
     expect(defaultLabCb(LAB_LEVERS.find((l) => l.id === 'govSpending'))).toBe('taylor');
     expect(defaultLabMode(LAB_LEVERS.find((l) => l.id === 'fxIntervention'))).toBe('pulse');
@@ -51,8 +52,9 @@ describe('лаборатория: импульсный отклик одного
   });
 
   it('бюджетный стимул: ЦБ поднимает ставку и гасит часть эффекта (вытеснение)', () => {
-    const on = impulseResponse({ leverId: 'govInvestment', delta: 2, cb: 'taylor', horizon: 24 });
-    const off = impulseResponse({ leverId: 'govInvestment', delta: 2, cb: 'fixed', horizon: 24 });
+    // устойчивый стимул (расходы растут быстрее каждый год) — на него ЦБ отвечает ставкой
+    const on = impulseResponse({ leverId: 'govInvestment', delta: 2, mode: 'hold', cb: 'taylor', horizon: 24 });
+    const off = impulseResponse({ leverId: 'govInvestment', delta: 2, mode: 'hold', cb: 'fixed', horizon: 24 });
     expect(on.diff[11].keyRate).toBeGreaterThan(0.05);
     expect(off.diff[11].keyRate).toBe(0);
     expect(on.diff[23].outputGap).toBeLessThan(off.diff[23].outputGap * 0.7);
@@ -70,5 +72,38 @@ describe('оси графиков лаборатории', () => {
     expect(b.ticks).toContain(0);
     expect(b.domain[0]).toBeLessThanOrEqual(-0.39);
     expect(b.domain[1]).toBeGreaterThanOrEqual(1.2);
+    // шаг 0,005 требует трёх знаков, иначе деления сливаются в «0.01, 0.01»
+    const c = zeroTicks([0.012, 0.018]);
+    expect(new Set(c.ticks.map((t) => t.toFixed(c.digits))).size).toBe(c.ticks.length);
   });
 });
+
+describe('лаборатория: бюджетные потоки и фон', () => {
+  it('разовый сдвиг темпа расходов — +0,5% уровня навсегда и затухающий отклик; рост каждый год — нарастающий', () => {
+    expect(quarterLevelShift(2)).toBeCloseTo(0.496, 3);
+    const pulse = impulseResponse({ leverId: 'govSpending', delta: 2, horizon: 24 });
+    expect(pulse.mode).toBe('pulse');
+    expect(pulse.diff[0].govPurchasesReal).toBeCloseTo(0.5, 1);
+    expect(pulse.diff[0].outputGap).toBeGreaterThan(0.05);
+    expect(pulse.diff[23].outputGap).toBeLessThan(pulse.diff[0].outputGap * 0.4);
+    const hold = impulseResponse({ leverId: 'govSpending', delta: 2, mode: 'hold', horizon: 24 });
+    expect(hold.diff[23].govPurchasesReal).toBeGreaterThan(10);
+    expect(hold.diff[23].outputGap).toBeGreaterThan(hold.diff[11].outputGap);
+  });
+
+  it('без шумов зерно ничего не меняет; на фоне шумов — медиана и полоса по прогонам', () => {
+    const a = impulseResponse({ leverId: 'keyRate', delta: 1, seed: 1 });
+    const b = impulseResponse({ leverId: 'keyRate', delta: 1, seed: 2 });
+    expect(a.diff).toEqual(b.diff);
+    const band = impulseBand({ leverId: 'keyRate', delta: 1, horizon: 12 }, 6);
+    expect(band.seeds).toBe(6);
+    band.diff.forEach((r) => {
+      const [lo, hi] = r.outputGapBand;
+      expect(lo).toBeLessThanOrEqual(r.outputGap + 1e-9);
+      expect(hi).toBeGreaterThanOrEqual(r.outputGap - 1e-9);
+    });
+    // шум одинаков в обоих мирах — медиана близка к отклику без шумов
+    expect(Math.abs(band.diff[8].outputGap - a.diff[8].outputGap)).toBeLessThan(0.1);
+  });
+});
+

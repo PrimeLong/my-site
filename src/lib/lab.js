@@ -8,11 +8,19 @@
    чистый эффект рычага, квартал за кварталом (impulse response function).
 
    Режимы:
-   • 'hold'  — новое значение держится весь горизонт (ставка выше на 1 п.п. три года);
+   • 'hold'  — новое значение держится весь горизонт (ставка выше на 1 п.п. три года).
+     Для темпов роста расходов это значит «расходы растут быстрее каждый год»: уровень
+     уходит от базы всё дальше, и разрыв выпуска растёт весь горизонт;
    • 'pulse' — только первый квартал, дальше как в базе. Для темпов роста расходов это
-     разовый сдвиг уровня: расходы выросли на 2% один раз и остались выше навсегда.
-   По умолчанию — как в партии: ставка, налоги и темпы расходов сохраняются, пока их не
-   тронут, а интервенции и операции с деньгами действуют один квартал.
+     разовый сдвиг уровня: +2 п.п. годового темпа за один квартал — это (1,02)^¼ − 1 ≈
+     +0,5% уровня расходов, и они остаются на столько выше навсегда.
+   По умолчанию: уровни (налоги, нормативы) держатся весь срок, потоки (расходы,
+   интервенции, операции с деньгами) — разовый сдвиг; ставка — шок в правиле Тейлора.
+
+   Шумы: по умолчанию выключены, и зерно ничего не меняет — отклик детерминирован.
+   В режиме «на фоне шумов» оба мира живут с обычным квартальным шумом (одним и тем же
+   в каждой паре), пара прогоняется на нескольких зёрнах, а на графике — медиана и
+   полоса 10–90%: видно, насколько отклик зависит от фона.
 
    Другие рычаги не реагируют — ЦБ не отвечает на бюджет, Минфин на ставку. Это не
    прогноз, а эксперимент «при прочих равных». */
@@ -26,9 +34,14 @@ export const LAB_LEVERS = ['keyRate', 'govSpending', 'transfers', 'govInvestment
   'profitTaxRate', 'socialContribRate', 'moneySupplyOp', 'fxIntervention', 'reserveReq', 'capitalRequirement']
   .map((id) => LEVER_BY_ID[id]).filter(Boolean);
 
-// режим по умолчанию: ставка — шок в правиле Тейлора; остальное — как рычаг ведёт себя в партии
+// режим по умолчанию: ставка — шок в правиле Тейлора, уровни держатся, потоки — разовый сдвиг
 export const defaultLabMode = (lever) => (lever && lever.id === 'keyRate' ? 'taylor'
-  : lever && (lever.type === 'level' || lever.persistent) ? 'hold' : 'pulse');
+  : lever && lever.type === 'level' ? 'hold' : 'pulse');
+
+// что меняет рычаг-поток в уровне: какая статья расходов стоит за темпом роста
+export const LEVEL_KEY = { govSpending: 'govPurchasesReal', transfers: 'transfersReal', govInvestment: 'govInvestmentReal' };
+// сдвиг уровня за один квартал от +delta п.п. годового темпа, в %
+export const quarterLevelShift = (delta) => (Math.pow(1 + delta / 100, 0.25) - 1) * 100;
 // ЦБ по умолчанию отвечает на бюджетные и прочие рычаги правилом Тейлора — как в жизни
 export const defaultLabCb = () => 'taylor';
 
@@ -39,8 +52,10 @@ export const LAB_METRICS = [
   { key: 'exchangeRate', label: 'Курс (выше — слабее)', unit: '%' },
 ];
 const KEEP = ['inflation', 'outputGap', 'unemployment', 'exchangeRate', 'gdpGrowth', 'keyRate', 'lendingRate',
-  'inflationExpectations', 'debtToGdp', 'budgetBalancePctGdp', 'wageGrowth', 'stockIndex'];
-const PCT_KEYS = ['exchangeRate', 'stockIndex']; // в процентах к базе, остальное — в пунктах
+  'inflationExpectations', 'debtToGdp', 'budgetBalancePctGdp', 'wageGrowth', 'stockIndex',
+  'govPurchasesReal', 'transfersReal', 'govInvestmentReal'];
+// в процентах к базе, остальное — в пунктах
+const PCT_KEYS = ['exchangeRate', 'stockIndex', 'govPurchasesReal', 'transfersReal', 'govInvestmentReal'];
 
 /* ЦБ ПО ПРАВИЛУ ТЕЙЛОРА. Без реакции ЦБ модель к потенциалу сама не возвращается:
    разрыв выпуска закрывается только через ставку (у спроса нет собственного якоря —
@@ -61,7 +76,7 @@ export function taylorPolicy(e, prevRate, shock = 0) {
    решения (по умолчанию «ничего не менять»), leverId + value — что меняем. Возвращает
    { base, alt, diff }: diff[i] = alt − base (курс — в процентах к базе). */
 export function impulseResponse({ scenario = 'sandbox', economy = null, decisions = null, leverId, value = null, delta = null,
-  baseValue: baseOverride = null, horizon = 12, seed = 1, difficulty = 'medium', mode = null, cb = null } = {}) {
+  baseValue: baseOverride = null, horizon = 12, seed = 1, difficulty = 'medium', mode = null, cb = null, noise = false } = {}) {
   const lever = LEVER_BY_ID[leverId];
   if (!lever) throw new Error(`Нет рычага ${leverId}`);
   const start = { ...(economy || makeInitialEconomy(scenario)), economyOnly: true };
@@ -93,8 +108,9 @@ export function impulseResponse({ scenario = 'sandbox', economy = null, decision
   });
 
   // шоки выключены на время расчёта: шум квартала обнуляется, события пропускаются
+  // (в режиме «на фоне шумов» шум остаётся — одинаковый в обоих мирах пары)
   const noiseSave = CONFIG.noiseMult[difficulty];
-  CONFIG.noiseMult[difficulty] = 0;
+  if (!noise) CONFIG.noiseMult[difficulty] = 0;
   try {
     const base = run(baseValue);
     const alt = run(newValue);
@@ -108,6 +124,24 @@ export function impulseResponse({ scenario = 'sandbox', economy = null, decision
   } finally {
     CONFIG.noiseMult[difficulty] = noiseSave;
   }
+}
+
+/* На фоне шумов: та же пара миров на нескольких зёрнах; для каждого квартала — медиана
+   и полоса 10–90%. band[key] = [нижняя, верхняя] — для заливки на графике. */
+export function impulseBand(opts, seeds = 12) {
+  const runs = Array.from({ length: seeds }, (_, i) => impulseResponse({ ...opts, seed: 1000 + i * 7919, noise: true }));
+  const q = (arr, p) => { const a = [...arr].sort((x, y) => x - y); const i = (a.length - 1) * p; const lo = Math.floor(i);
+    return a[lo] + (a[Math.min(a.length - 1, lo + 1)] - a[lo]) * (i - lo); };
+  const diff = runs[0].diff.map((row, i) => {
+    const out = { q: row.q };
+    Object.keys(row).filter((k) => k !== 'q').forEach((k) => {
+      const vals = runs.map((r) => r.diff[i][k]).filter(Number.isFinite);
+      out[k] = q(vals, 0.5);
+      out[`${k}Band`] = [q(vals, 0.1), q(vals, 0.9)];
+    });
+    return out;
+  });
+  return { ...runs[0], diff, seeds };
 }
 
 // пик отклика: наибольшее по модулю отклонение и квартал, когда оно достигнуто
@@ -125,6 +159,7 @@ export function zeroTicks(values) {
   const ticks = [];
   for (let v = a; v <= b + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : Number(v.toFixed(6)));
   // сколько знаков после запятой нужно, чтобы деления читались одинаково: 0,25 → 2, 0,2 → 1, 2 → 0
-  const digits = step >= 1 ? 0 : Math.abs(step * 10 - Math.round(step * 10)) < 1e-9 ? 1 : 2;
+  let digits = 0;
+  while (digits < 4 && Math.abs(step * 10 ** digits - Math.round(step * 10 ** digits)) > 1e-9) digits += 1;
   return { domain: [a, b], ticks, digits };
 }

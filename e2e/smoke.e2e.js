@@ -574,6 +574,13 @@ test('лаборатория: один рычаг, четыре графика �
   await expect(page.getByText(/НДС сразу поднимает уровень цен/)).toBeVisible();
   await page.getByRole('button', { name: 'ставка стоит' }).click();
   await expect(charts.locator('.recharts-line')).toHaveCount(4);
+  // темп расходов: по умолчанию разовый сдвиг, уровень расходов — около +0,5%, а не +2%
+  await page.getByRole('button', { name: 'Госзакупки и содержание государства', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'расходы разово выше навсегда' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('lab-level')).toContainText('через квартал +0.5%');
+  // фон: без шумов или на фоне шумов с полосой
+  await page.getByRole('button', { name: /на фоне шумов/ }).click();
+  await expect(page.getByTestId('lab-cb-note').locator('..')).toContainText('медиана');
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
