@@ -15,11 +15,23 @@ export const PARTS = [
   {
     id: 'micro', title: 'Микроэкономика',
     chapters: [
+      { id: 'scarcity', title: 'Ограниченность и выбор: КПВ и альтернативная стоимость', status: 'ready',
+        summary: 'Альтернативная стоимость, кривая производственных возможностей, сравнительное преимущество и выгоды от торговли, выбор на предельном уровне.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Десять принципов экономикс» (Ten Principles of Economics) и «Думать как экономист» (Thinking Like an Economist)' },
+          { book: 'mankiwPrinciples', chapter: '«Взаимозависимость и выгоды от торговли» (Interdependence and the Gains from Trade)' },
+        ] },
       { id: 'supply-demand', title: 'Спрос и предложение', status: 'ready',
         summary: 'Кривые спроса и предложения, равновесие, сдвиги и движение вдоль кривой, потолок и пол цен.',
         refs: [
           { book: 'mankiwPrinciples', chapter: '«Рыночные силы спроса и предложения» (The Market Forces of Supply and Demand)' },
           { book: 'varian', chapter: '«Рынок» (The Market) и «Равновесие» (Equilibrium)' },
+        ] },
+      { id: 'consumer', title: 'Теория потребителя', status: 'ready',
+        summary: 'Бюджетное ограничение, полезность и кривые безразличия, оптимальный выбор, эффекты дохода и замещения, закон Энгеля.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Теория потребительского выбора» (The Theory of Consumer Choice)' },
+          { book: 'varian', chapter: '«Бюджетное ограничение» (Budget Constraint), «Предпочтения» (Preferences), «Полезность» (Utility), «Выбор» (Choice) и «Уравнение Слуцкого» (Slutsky Equation)' },
         ] },
       { id: 'elasticity', title: 'Эластичность', status: 'ready',
         summary: 'Эластичность по цене, доходу и перекрёстная; выручка и эластичность; почему спрос на товар фирмы эластичнее рыночного.',
@@ -27,6 +39,8 @@ export const PARTS = [
           { book: 'mankiwPrinciples', chapter: '«Эластичность и её применение» (Elasticity and Its Application)' },
           { book: 'varian', chapter: '«Рыночный спрос» (Market Demand)' },
         ] },
+      { id: 'production', title: 'Производство: производственная функция', status: 'planned',
+        summary: 'Факторы производства, средний и предельный продукт, убывающая отдача, изокванты, отдача от масштаба.' },
       { id: 'costs', title: 'Издержки и прибыль', status: 'ready',
         summary: 'Постоянные и переменные издержки, средние и предельные, бухгалтерская и экономическая прибыль, короткий и длинный период.',
         refs: [
@@ -39,15 +53,24 @@ export const PARTS = [
           { book: 'mankiwPrinciples', chapter: '«Фирмы на конкурентных рынках» (Firms in Competitive Markets) и «Монополия» (Monopoly)' },
           { book: 'varian', chapter: '«Предложение фирмы» (Firm Supply), «Предложение отрасли» (Industry Supply), «Монополия» (Monopoly) и «Поведение монополии» (Monopoly Behavior)' },
         ] },
+      { id: 'monopolistic', title: 'Монополистическая конкуренция', status: 'planned',
+        summary: 'Дифференцированный товар, свободный вход, избыточные мощности в длинном периоде, реклама и бренды.' },
       { id: 'oligopoly', title: 'Олигополия и картели', status: 'ready',
         summary: 'Модели Курно и Бертрана, картель и дилемма заключённого: почему сговор выгоден и почему он разваливается.',
         refs: [
           { book: 'mankiwPrinciples', chapter: '«Олигополия» (Oligopoly)' },
           { book: 'varian', chapter: '«Олигополия» (Oligopoly) и «Теория игр» (Game Theory)' },
         ] },
-      { id: 'market-failures', title: 'Провалы рынка и налоги', status: 'planned',
-        summary: 'Излишки потребителя и производителя, безвозвратные потери от налога, внешние эффекты, общественные блага.',
-        cards: ['laffer'] },
+      { id: 'labor', title: 'Рынок труда', status: 'planned',
+        summary: 'Спрос на труд как производный спрос, предельный продукт в деньгах, предложение труда, минимальная зарплата, монопсония.' },
+      { id: 'market-failures', title: 'Провалы рынка и налоги', status: 'ready',
+        summary: 'Излишки потребителя и производителя, налог и его бремя, безвозвратные потери, внешние эффекты и налог Пигу, общественные блага, асимметрия информации.',
+        cards: ['laffer'],
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Потребители, производители и эффективность рынков» (Consumers, Producers, and the Efficiency of Markets) и «Издержки налогообложения» (Application: The Costs of Taxation)' },
+          { book: 'mankiwPrinciples', chapter: '«Внешние эффекты» (Externalities) и «Общественные блага и общие ресурсы» (Public Goods and Common Resources)' },
+          { book: 'varian', chapter: '«Излишек потребителя» (Consumer’s Surplus), «Внешние эффекты» (Externalities) и «Общественные блага» (Public Goods)' },
+        ] },
     ],
   },
   {

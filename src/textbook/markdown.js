@@ -13,7 +13,9 @@
      :::note Заголовок … :::       — врезка
      :::chart тип ключ=значение … ::: — интерактивный график; текст внутри — подпись
      :::problem id=… answer=… tol=… unit=… условие --- решение :::   — ответ числом
-     :::truefalse id=… answer=true|false утверждение --- объяснение ::: — «верно или неверно»
+     :::truefalse id=… answer=true|false утверждение --- ключевые пункты (список) --- разбор :::
+        — «верно или неверно»: сначала объяснение, потом сверка с ключевыми пунктами
+     В любой задаче строки «?? …» — подсказки, они открываются по одной перед решением.
      :::graph id=… chart=тип <параметры графика> expect="P:+ Q:-" still="…" controls="…"
         solution="dC:-20" условие --- решение :::                    — сдвиньте кривую на графике;
         ответ — направления величин (+, −, 0, ? — любое), solution — эталонный сдвиг для тестов
@@ -118,14 +120,23 @@ export function parseBlocks(text) {
         const caption = body.join(' ').trim();
         blocks.push({ type: 'chart', chart: words[0], attrs, caption: caption ? parseInline(caption) : null });
       } else if (name === 'problem' || name === 'truefalse' || name === 'graph') {
-        const sep = body.findIndex((l) => l.trim() === '---');
-        if (sep < 0) throw new Error(`В задаче ${attrs.id} нет решения (строка ---)`);
-        const base = { type: 'problem', id: attrs.id, statement: parseBlocks(body.slice(0, sep).join('\n')), solution: parseBlocks(body.slice(sep + 1).join('\n')) };
+        // подсказки — строки «?? …» в условии: открываются по одной перед решением
+        const hints = body.filter((l) => l.trim().startsWith('??')).map((l) => parseInline(l.trim().replace(/^\?\?\s*/, '')));
+        const lines2 = body.filter((l) => !l.trim().startsWith('??'));
+        const seps = lines2.map((l, k) => (l.trim() === '---' ? k : -1)).filter((k) => k >= 0);
+        if (!seps.length) throw new Error(`В задаче ${attrs.id} нет решения (строка ---)`);
+        const part = (a, b) => parseBlocks(lines2.slice(a, b).join('\n'));
+        const base = { type: 'problem', id: attrs.id, hints, statement: part(0, seps[0]), solution: part(seps[seps.length - 1] + 1) };
         if (name === 'problem') {
           blocks.push({ ...base, kind: 'number', answer: Number(attrs.answer), tol: attrs.tol != null ? Number(attrs.tol) : null, unit: attrs.unit || '' });
         } else if (name === 'truefalse') {
           if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В задаче ${attrs.id} ответ должен быть true или false`);
-          blocks.push({ ...base, kind: 'truefalse', answer: attrs.answer === 'true' });
+          // утверждение --- ключевые пункты объяснения (список) --- полный разбор
+          if (seps.length !== 2) throw new Error(`В задаче ${attrs.id} нужны три части: утверждение, ключевые пункты, разбор`);
+          const pts = part(seps[0] + 1, seps[1]);
+          const list = pts.find((b) => b.type === 'ul' || b.type === 'ol');
+          if (!list) throw new Error(`В задаче ${attrs.id} ключевые пункты — списком`);
+          blocks.push({ ...base, kind: 'truefalse', answer: attrs.answer === 'true', points: list.items });
         } else {
           const { id: _id, chart, expect, still, controls, solution, ...chartAttrs } = attrs;
           const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
@@ -166,6 +177,8 @@ export function parseBlocks(text) {
     const li = /^(-|\d+\.)\s+(.*)$/.exec(trimmed);
     if (li) {
       const ordered = li[1] !== '-';
+      // нумерация продолжается с того номера, с которого начат список (после таблицы — «5.»)
+      const start = ordered ? parseInt(li[1], 10) : 1;
       const items = [];
       while (i < lines.length) {
         const m = /^(-|\d+\.)\s+(.*)$/.exec(lines[i].trim());
@@ -173,7 +186,7 @@ export function parseBlocks(text) {
         if (items.length && /^\s{2,}\S/.test(lines[i])) { items[items.length - 1] += ` ${lines[i].trim()}`; i += 1; continue; }
         break;
       }
-      blocks.push({ type: ordered ? 'ol' : 'ul', items: items.map(parseInline) });
+      blocks.push({ type: ordered ? 'ol' : 'ul', items: items.map(parseInline), ...(ordered && start !== 1 ? { start } : {}) });
       continue;
     }
 
@@ -235,19 +248,35 @@ export const actionOf = (b) => (b.type === 'p' && b.inline.length === 1 && b.inl
   ? b.inline[0] : null);
 
 /* ------------------------------ ОТВЕТЫ ------------------------------ */
-// «1 150», «−0,5», «2.22», «30%» → число; не число → null
-export function parseNumber(input) {
+// «1 150», «−0,5», «2.22», «30%», «2/3», «292 руб.» → число; не число → null.
+// unit — подпись задачи рядом с полем («руб.», «тыс. руб.», «%»): её можно дописать к ответу.
+const NUM = /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i;
+export function parseNumber(input, unit = '') {
   if (input == null) return null;
-  const s = String(input).trim().replace(/[\s  ]/g, '').replace(/[−–—]/g, '-').replace(',', '.').replace(/%$/, '');
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s)) return null;
+  let s = String(input).trim().toLowerCase().replace(/[\s  ]/g, '').replace(/[−–—]/g, '-').replace(/,/g, '.');
+  const u = String(unit || '').toLowerCase().replace(/[\s  ]/g, '').replace(/,/g, '.').replace(/\.$/, '');
+  if (u && u !== '%') {
+    if (s.endsWith(`${u}.`)) s = s.slice(0, -(u.length + 1));
+    else if (s.endsWith(u)) s = s.slice(0, -u.length);
+  }
+  s = s.replace(/%$/, '');
+  // дробь «a/b»
+  const frac = /^([-+]?[\d.]+)\/([\d.]+)$/.exec(s);
+  if (frac) {
+    if (!NUM.test(frac[1]) || !NUM.test(frac[2])) return null;
+    const d = Number(frac[2]);
+    return d === 0 ? null : Number(frac[1]) / d;
+  }
+  if (!NUM.test(s)) return null;
   const v = Number(s);
   return Number.isFinite(v) ? v : null;
 }
-// допуск по умолчанию — полпроцента от ответа (для целых ответов — точное совпадение до округления)
-export const defaultTol = (answer) => Math.max(1e-9, Math.abs(answer) * 0.005);
-export function checkAnswer(input, answer, tol = null) {
-  const v = parseNumber(input);
+// допуск: только тот, что задан в задаче; без него — точное совпадение (с поправкой на
+// двоичную запись дробей). Поэтому у каждой задачи с дробным ответом допуск задан явно.
+export const EXACT = 1e-9;
+export function checkAnswer(input, answer, tol = null, unit = '') {
+  const v = parseNumber(input, unit);
   if (v == null) return { ok: false, value: null };
-  const t = tol != null && Number.isFinite(tol) ? tol : defaultTol(answer);
-  return { ok: Math.abs(v - answer) <= t + 1e-12, value: v };
+  const t = tol != null && Number.isFinite(tol) ? tol : 0;
+  return { ok: Math.abs(v - answer) <= t + EXACT * Math.max(1, Math.abs(answer)), value: v };
 }

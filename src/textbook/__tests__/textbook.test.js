@@ -11,7 +11,7 @@ import { CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS } from '../toc.js';
 import { TYCOON_TASKS, TYCOON_TABS, TYCOON_STARTS } from '../tycoon-tasks.js';
 import { CHAPTER_BLOCKS, PROBLEMS, problemsOf } from '../content.js';
 import { parseBlocks, parseInline, collectLinks, collectMath, collectBlocks, actionOf, checkAnswer, parseNumber } from '../markdown.js';
-import { CHARTS, chartDefaults, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph } from '../charts.js';
+import { CHARTS, chartDefaults, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
 import { emptyProgress, recordAnswer, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil } from '../progress.js';
 import { STARTS, RES, makeTycoon, requiredStaff, levelMult, upgradeCost, buyPrice, marketPrice, cartelChance, cartelFineRisk, BLD } from '../../lib/tycoon.js';
 
@@ -64,15 +64,64 @@ describe('разметка глав', () => {
     expect(checkAnswer('30,5', 30).ok).toBe(false);
     expect(checkAnswer('', 30)).toEqual({ ok: false, value: null });
   });
+  it('ответы: без явного допуска — только точное совпадение (292 ≠ 291)', () => {
+    expect(checkAnswer('292', 292).ok).toBe(true);
+    expect(checkAnswer('291', 292).ok).toBe(false);
+    expect(checkAnswer('293', 292).ok).toBe(false);
+    expect(checkAnswer('292,1', 292).ok).toBe(false);
+    expect(checkAnswer('0,5', 0.5).ok).toBe(true);
+    expect(checkAnswer('0,49', 0.5).ok).toBe(false);
+    // двоичная запись дробей не мешает: 0,1 + 0,2 — это 0,3
+    expect(checkAnswer('0,3', 0.1 + 0.2).ok).toBe(true);
+    // явный допуск задан — действует он
+    expect(checkAnswer('1,85', -1.89, 0.05).ok).toBe(false);
+    expect(checkAnswer('-1,85', -1.89, 0.05).ok).toBe(true);
+  });
+  it('ответы: единица из подписи задачи и знак процента отбрасываются', () => {
+    expect(checkAnswer('292 руб.', 292, null, 'руб.').ok).toBe(true);
+    expect(checkAnswer('292 руб', 292, null, 'руб.').ok).toBe(true);
+    expect(checkAnswer('292руб.', 292, null, 'руб.').ok).toBe(true);
+    expect(checkAnswer('330 тыс. руб.', 330, null, 'тыс. руб.').ok).toBe(true);
+    expect(checkAnswer('35%', 35, null, '%').ok).toBe(true);
+    expect(checkAnswer('35 %', 35, null, '%').ok).toBe(true);
+    expect(checkAnswer('−1,89 %', -1.89, 0.05, '%').ok).toBe(true);
+    expect(checkAnswer('50 фирм', 50, null, 'фирм').ok).toBe(true);
+    // чужая единица — не число
+    expect(checkAnswer('292 долл.', 292, null, 'руб.')).toEqual({ ok: false, value: null });
+  });
+  it('ответы: дроби вида «2/3»', () => {
+    expect(parseNumber('2/3')).toBeCloseTo(2 / 3, 12);
+    expect(parseNumber('−1/2')).toBe(-0.5);
+    expect(parseNumber('1,5/3')).toBe(0.5);
+    expect(parseNumber('1/0')).toBe(null);
+    expect(parseNumber('1/2/3')).toBe(null);
+    expect(checkAnswer('2/3', 0.6667, 0.001).ok).toBe(true);
+    expect(checkAnswer('1/2', 0.5).ok).toBe(true);
+    expect(checkAnswer('1/3', 0.5).ok).toBe(false);
+  });
+  it('подсказки, ключевые пункты «верно или неверно» и нумерация списка с нужного номера', () => {
+    const [p] = parseBlocks(':::problem id=h answer=1\nУсловие\n?? Первая\n?? Вторая\n---\nРешение\n:::');
+    expect(p.hints.map((h) => h[0].v)).toEqual(['Первая', 'Вторая']);
+    expect(p.statement).toHaveLength(1);
+    const [t] = parseBlocks(':::truefalse id=t answer=true\nУтверждение\n?? Подумайте\n---\n- пункт 1\n- пункт 2\n---\nРазбор\n:::');
+    expect(t).toMatchObject({ kind: 'truefalse', answer: true });
+    expect(t.points).toHaveLength(2);
+    expect(t.solution[0].inline[0].v).toBe('Разбор');
+    expect(() => parseBlocks(':::truefalse id=t answer=true\nУтверждение\n---\nРазбор\n:::')).toThrow();
+    const blocks = parseBlocks('| a |\n|---|\n| 1 |\n\n5. пятый\n6. шестой');
+    expect(blocks[1]).toMatchObject({ type: 'ol', start: 5 });
+    expect(parseBlocks('1. первый')[0].start).toBeUndefined();
+  });
 });
 
 describe('оглавление', () => {
-  it('микро и макро — все главы из программы; готовы пилот и весь блок микро', () => {
+  it('микро и макро — все главы из программы; блок микро готов, кроме заготовок «в работе»', () => {
     expect(CHAPTERS.filter((c) => c.part === 'micro').map((c) => c.id))
-      .toEqual(['supply-demand', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures']);
+      .toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'production', 'costs', 'competition-monopoly', 'monopolistic', 'oligopoly', 'labor', 'market-failures']);
     expect(CHAPTERS.filter((c) => c.part === 'macro').map((c) => c.id))
       .toEqual(['gdp', 'money-banks', 'ad-as', 'is-lm', 'phillips', 'policy', 'growth', 'open-economy', 'public-debt', 'inequality']);
-    expect(READY.map((c) => c.id)).toEqual(['supply-demand', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'is-lm']);
+    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures', 'is-lm']);
+    expect(CHAPTERS.filter((c) => c.part === 'micro' && c.status !== 'ready').map((c) => c.id)).toEqual(['production', 'monopolistic', 'labor']);
   });
   it('у каждой готовой главы есть текст, у ненаписанной — нет; карточки приложения существуют', () => {
     CHAPTERS.forEach((c) => {
@@ -160,6 +209,12 @@ describe('структура готовых глав', () => {
     expect(probs.filter((p) => p.kind === 'graph').length).toBeGreaterThanOrEqual(1);
     expect(probs.length).toBeLessThanOrEqual(7);
     probs.forEach((p) => {
+      // перед решением — одна-две подсказки
+      expect(p.hints.length, `${p.id}: подсказки`).toBeGreaterThanOrEqual(1);
+      expect(p.hints.length, `${p.id}: подсказки`).toBeLessThanOrEqual(2);
+      if (p.kind === 'truefalse') { expect(p.points.length, p.id).toBeGreaterThanOrEqual(2); expect(p.points.length, p.id).toBeLessThanOrEqual(3); }
+      // дробный ответ без явного допуска не примет округлённое значение
+      if (p.kind === 'number' && !Number.isInteger(p.answer)) expect(p.tol, `${p.id}: нужен tol`).not.toBeNull();
       if (p.kind === 'number') expect(Number.isFinite(p.answer), p.id).toBe(true);
       if (p.kind === 'truefalse') expect(typeof p.answer, p.id).toBe('boolean');
       expect(p.statement.length).toBeGreaterThan(0);
@@ -173,7 +228,7 @@ describe('структура готовых глав', () => {
     const actions = (id) => collectBlocks(CHAPTER_BLOCKS[id], (b) => b.type === 'box' && b.kind === 'try')[0].children.map(actionOf).filter(Boolean);
     CHAPTERS.filter((c) => c.part === 'micro' && c.status === 'ready').forEach((c) => {
       expect(actions(c.id).length, c.id).toBeGreaterThanOrEqual(2);
-      expect(actions(c.id).every((a) => a.kind === 'tycoon'), c.id).toBe(true);
+      expect(actions(c.id).some((a) => a.kind === 'tycoon'), c.id).toBe(true);
     });
     expect(actions('is-lm').map((a) => a.kind).sort()).toEqual(['drill', 'drill', 'lab', 'lab']);
   });
@@ -196,7 +251,7 @@ describe('структура готовых глав', () => {
 const INDEPENDENT = {
   'sd-equilibrium': () => sdEquilibrium(120, 3, -30, 2).P,
   'sd-market-demand': () => sdEquilibrium(10 + 20, 1 + 2, 0, 3).Q,
-  'sd-ceiling': () => (100 - 2 * 17) - (-20 + 4 * 17),
+  'sd-ceiling': () => { expect(sdEquilibrium(80, 2, -10, 4).P).toBeGreaterThan(12); return (80 - 2 * 12) - (-10 + 4 * 12); },
   'sd-cost-shock': () => sdEquilibrium(200, 4, -40 - 2 * 6, 2).P - sdEquilibrium(200, 4, -40, 2).P,
   'sd-both-shift': () => sdEquilibrium(110, 1, 10, 1).P - sdEquilibrium(90, 1, -10, 1).P,
   'el-arc': () => {
@@ -216,7 +271,7 @@ const INDEPENDENT = {
     return (rev(0.1) / rev(0) - 1) * 100;
   },
   'el-income': () => ((48 - 50) / 49) / ((44 - 40) / 42),
-  'el-revenue-step': () => (1 + pointElasticity(100, 2, 30)) * -1,
+  'el-revenue-step': () => (1 + pointElasticity(90, 2, 30)) * -1,
   'islm-money': () => islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 325, G: 100, M: 1200, P: 2 }).Y,
   'islm-tax': () => islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 200 - 0.75 * 200 + 200, G: 100, M: 1000, P: 2 }).Y
     - islmEquilibrium({ c: 0.75, b: 25, k: 1, h: 100, a0: 325, G: 100, M: 1000, P: 2 }).Y,
@@ -233,7 +288,7 @@ const INDEPENDENT = {
   // издержки: производная и минимум — численно, а не по формуле из главы
   'costs-mc': () => { const tc = (q) => 200 + 5 * q + 0.1 * q * q; return (tc(50 + 1e-6) - tc(50 - 1e-6)) / 2e-6; },
   'costs-atc-min': () => argmin((q) => (200 + 5 * q + 0.5 * q * q) / q, 1, 100),
-  'costs-econ-profit': () => 2400 - 1500 - 600 - 0.12 * 1000,
+  'costs-econ-profit': () => 3000 - 1800 - 720 - 0.1 * 1500,
   'costs-game-scale': () => {
     // те же множители, что в тайкуне: выпуск levelMult, штат requiredStaff, содержание ×1,3
     const st = makeTycoon({ start: 'retail' });
@@ -244,10 +299,10 @@ const INDEPENDENT = {
     return (1 - unit2 / unit1) * 100;
   },
   'pc-profit': () => {
-    // перебор выпуска: максимум прибыли 83·Q − TC(Q)
-    const tc = (q) => 100 + 20 * q - 6 * q * q + q * q * q;
-    const q = argmin((x) => -(83 * x - tc(x)), 0, 20);
-    return 83 * q - tc(q);
+    // перебор выпуска: максимум прибыли 70·Q − TC(Q)
+    const tc = (q) => 60 + 10 * q - 4 * q * q + q * q * q;
+    const q = argmin((x) => -(70 * x - tc(x)), 1, 20);
+    return 70 * q - tc(q);
   },
   'pc-shutdown': () => { const avc = (q) => 12 - 4 * q + q * q; return avc(argmin(avc, 0.01, 20)); },
   'pc-firms': () => {
@@ -262,7 +317,40 @@ const INDEPENDENT = {
   'mon-lerner-game': () => { const e = RES.furniture.elast; return (0.6 * e / (e - 1) - 1) * 100; },
   'olig-cournot-price': () => { const e = bestResponseCournot(100, [10, 10]); return 100 - e.reduce((a, q) => a + q, 0); },
   'olig-cournot-asym': () => bestResponseCournot(120, [20, 50])[0],
-  'olig-cheat': () => { const q = argmin((x) => -((100 - 22.5 - x - 10) * x), 0, 90); return (100 - 22.5 - q - 10) * q; },
+  'olig-cheat': () => {
+    const quota = argmin((Q) => -((150 - Q - 30) * Q), 0, 150) / 2;
+    const q = argmin((x) => -((150 - quota - x - 30) * x), 0, 150);
+    return (150 - quota - q - 30) * q;
+  },
+  // выбор и КПВ
+  'sc-oc': () => 6 / 2,
+  'sc-ppf-cost': () => (Math.sqrt(625 - 49) - Math.sqrt(625 - 225)) / (15 - 7),
+  'sc-terms': () => Math.max(10 / 5, 6 / 1),
+  'sc-gains': () => {
+    // перебор распределения часов: сколько пирогов при 12 рубашках вдвоём
+    let best = 0;
+    for (let a = 0; a <= 8; a += 0.25) for (let b = 0; b <= 8; b += 0.25) {
+      const shirts = 2 * (8 - a) + 1 * (8 - b);
+      if (Math.abs(shirts - 12) < 1e-9) best = Math.max(best, 6 * a + 2 * b);
+    }
+    return best - (4 * 6 + 4 * 2);
+  },
+  // потребитель: оптимум численно, по бюджетной линии
+  'cons-budget': () => (600 - 12 * 20) / 30,
+  'cons-cd': () => { const x = argmin((v) => -(v * ((100 - 5 * v) / 2)), 0, 20); return (100 - 5 * x) / 2; },
+  'cons-cd-share': () => argmin((x) => -(Math.pow(x, 0.3) * Math.pow((1000 - 10 * x) / 7, 0.7)), 0.01, 99.99),
+  'cons-slutsky': () => {
+    const xOf = (I, px) => argmin((x) => -(x * (I - px * x)), 0, I / px);
+    const x0 = xOf(200, 2); const y0 = 200 - 2 * x0;
+    return xOf(5 * x0 + y0, 5) - x0;
+  },
+  'cons-engel-index': () => (0.52 * 1.1 + 0.48 * 1 - 1) * 100,
+  // провалы рынка
+  'mf-cs': () => { let area = 0; const h = 0.01; for (let q = h / 2; q < 80; q += h) area += ((120 - q) / 2 - 20) * h; return area; },
+  'mf-incidence': () => { const P = argmin((p) => Math.abs((90 - 3 * p) - (-10 + 2 * (p - 5))), 0, 30); return P; },
+  'mf-dwl': () => { const q0 = 30; const q1 = 90 - 3 * 22; return 0.5 * 5 * (q0 - q1); },
+  'mf-dwl-double': () => taxMarket({ a: 90, b: 3, c: -10, d: 2, t: 10 }).dwl,
+  'mf-pigou': () => argmin((q) => Math.abs((100 - q) - (13 + q)), 0, 100),
   'olig-n-firms': () => { const e = bestResponseCournot(100, Array(9).fill(10)); return 100 - e.reduce((a, q) => a + q, 0); },
   'olig-bertrand-asym': () => (30 - 20) * (100 - 30),
 };
@@ -287,7 +375,8 @@ describe('ответы задач', () => {
   });
   it.each(Object.keys(INDEPENDENT).map((id) => [id]))('%s', (id) => {
     const p = PROBLEMS[id].block;
-    const tol = p.tol != null ? p.tol : Math.max(1e-9, Math.abs(p.answer) * 0.005);
+    // численный поиск (перебор, тернарный поиск) точен до ~1e-6 от ответа
+    const tol = p.tol != null ? p.tol : 1e-4;
     expect(Math.abs(INDEPENDENT[id]() - p.answer)).toBeLessThanOrEqual(tol);
   });
 });
@@ -325,7 +414,7 @@ describe('графические задачи и «верно или невер�
     const [b] = parseBlocks(':::graph id=g chart=supply-demand a=100 b=2 expect="P:+ Q:-" still="dA" controls="dA dC" solution="dC:-20"\nусловие\n---\nрешение\n:::');
     expect(b).toMatchObject({ kind: 'graph', chart: 'supply-demand', attrs: { a: '100', b: '2' }, still: ['dA'], controls: ['dA', 'dC'], reference: { dC: -20 } });
     expect(b.expect).toEqual([{ key: 'P', dir: '+' }, { key: 'Q', dir: '-' }]);
-    const [t] = parseBlocks(':::truefalse id=t answer=false\nутверждение\n---\nобъяснение\n:::');
+    const [t] = parseBlocks(':::truefalse id=t answer=false\nутверждение\n---\n- пункт\n- ещё пункт\n---\nобъяснение\n:::');
     expect(t).toMatchObject({ kind: 'truefalse', answer: false });
     expect(() => parseBlocks(':::truefalse id=t answer=maybe\nу\n---\nо\n:::')).toThrow();
   });
@@ -421,6 +510,40 @@ describe('графики и разборы в тексте считают одн
     expect(rule.diff[23].outputGap).toBeLessThan(fixed.diff[23].outputGap * 0.25);
     // «уровень закупок примерно на 0,5% выше»
     expect(fixed.diff[0].govPurchasesReal).toBeCloseTo(0.5, 1);
+  });
+  it('КПВ: точки примера (60; 80) и (80; 60), альтернативная стоимость растёт; технология в станках +20% — 96 станков', () => {
+    expect(ppfY(100, 100, 60)).toBeCloseTo(80, 9);
+    expect(ppfY(100, 100, 80)).toBeCloseTo(60, 9);
+    expect(ppfCost(100, 100, 80)).toBeGreaterThan(ppfCost(100, 100, 60));
+    expect(ppfY(100, 120, 60)).toBeCloseTo(96, 9);
+  });
+  it('потребитель: пример главы — (30; 60), при цене 4 — 15, Слуцкий −7,5 и −7,5', () => {
+    expect(cdChoice({ a: 0.5, I: 120, px: 2, py: 1 })).toMatchObject({ x: 30, y: 60 });
+    const sl = slutsky({ a: 0.5, I: 120, px0: 2, px1: 4, py: 1 });
+    expect(sl.Ic).toBe(180);
+    expect(sl.substitution).toBeCloseTo(-7.5, 9);
+    expect(sl.income).toBeCloseTo(-7.5, 9);
+    expect(sl.now.y).toBeCloseTo(60, 9);
+  });
+  it('налог: пример главы — 24 и 18, количество 52, излишки 676 и 338, сборы 312, потери 24; кто платит — неважно', () => {
+    const m = taxMarket({ a: 100, b: 2, c: -20, d: 4, t: 6 });
+    expect(m).toMatchObject({ Pd: 24, Ps: 18, Q: 52, cs: 676, ps: 338, rev: 312, dwl: 24 });
+    // без налога общий излишек 900 + 450 = 1350; потеряно ровно DWL
+    const m0 = taxMarket({ a: 100, b: 2, c: -20, d: 4, t: 0 });
+    expect(m0.cs + m0.ps - (m.cs + m.ps + m.rev)).toBeCloseTo(m.dwl, 9);
+    // налог «на покупателей»: спрос вниз на t — те же цены и количество
+    const Pd = sdEquilibrium(100 - 2 * 6, 2, -20, 4).P + 6;
+    expect(Pd).toBeCloseTo(m.Pd, 9);
+  });
+  it('ни одна задача не повторяет разбор: дробные ответы не встречаются в разборе своей главы', () => {
+    const fmt = (v) => String(v).replace('.', ',');
+    Object.values(PROBLEMS).forEach(({ chapter, block }) => {
+      // короткие числа вроде 0,5 встречаются где угодно — сверяем только «приметные»: 1139,06, 43,33
+      if (block.kind !== 'number' || Number.isInteger(block.answer) || String(Math.abs(block.answer)).replace('.', '').replace(/^0+/, '').length < 3) return;
+      const ex = collectBlocks(CHAPTER_BLOCKS[chapter], (b) => b.type === 'box' && b.kind === 'example')[0];
+      const text = JSON.stringify(ex);
+      expect(text.includes(fmt(Math.abs(block.answer))), `${block.id}: ${block.answer} есть в разборе`).toBe(false);
+    });
   });
   it('утверждения глав про тайкун: эластичности 1,2 / 1,8 / 2,2', () => {
     expect([RES.bread.elast, RES.furniture.elast, RES.appliances.elast]).toEqual([1.2, 1.8, 2.2]);

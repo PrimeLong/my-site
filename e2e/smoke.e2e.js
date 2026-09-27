@@ -610,13 +610,16 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByText('Учебник', { exact: true }).first().click();
   const toc = page.getByTestId('textbook');
   await expect(toc.getByText('Микроэкономика', { exact: true })).toBeVisible();
-  await expect(toc.locator('[data-status="ready"]')).toHaveCount(6);
-  await expect(toc.locator('[data-status="planned"]')).toHaveCount(10);
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(9);
+  await expect(toc.locator('[data-status="planned"]')).toHaveCount(12);
   await expectNoSidewaysScroll(page);
 
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
   const ch = page.getByTestId('chapter');
   await expect(ch.locator('h1')).toHaveText('Спрос и предложение');
+  // оглавление главы по разделам ведёт к заголовку
+  await ch.getByTestId('tb-sections').getByRole('button', { name: 'Равновесие' }).click();
+  await expect(ch.locator('h2', { hasText: 'Равновесие' })).toBeInViewport();
   // формулы отрисованы KaTeX, шрифты KaTeX — из сборки, а не с CDN
   await expect(ch.locator('.katex').first()).toBeVisible();
   expect(await ch.locator('.katex').count()).toBeGreaterThan(10);
@@ -631,22 +634,29 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(chart.getByTestId('tb-readout')).toContainText('Равновесная цена: 25');
   await expect(chart.getByTestId('tb-readout')).toContainText('Равновесное количество: 80');
 
-  // задача: неверный ответ уходит на повторение, верный засчитывается
+  // задача: подсказка перед решением; неверный ответ уходит на повторение, верный засчитывается
   const prob = ch.locator('[data-problem="sd-equilibrium"]');
-  await prob.getByRole('textbox').fill('25');
+  await prob.getByRole('button', { name: /^Подсказка/ }).click();
+  await expect(prob.getByTestId('tb-hints')).toContainText('приравняйте');
+  await prob.getByRole('textbox').fill('29');
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Пока неверно');
-  await prob.getByRole('textbox').fill('30');
+  // единицу из подписи можно дописать к ответу
+  await prob.getByRole('textbox').fill('30 руб.');
   await prob.getByRole('button', { name: 'Проверить' }).click();
-  await expect(prob.getByTestId('tb-verdict')).toContainText('Верно');
+  await expect(prob.getByTestId('tb-verdict')).toHaveText('Верно: 30 руб.');
   await prob.getByRole('button', { name: 'Решение' }).click();
   await expect(prob).toContainText('Приравниваем объёмы');
-  // «верно или неверно»: выбор проверяется сразу, объяснение открывается само
+  // «верно или неверно»: сначала объяснение, потом выбор, потом сверка с ключевыми пунктами
   const tf = ch.locator('[data-problem="sd-tf-law"]');
-  await tf.getByRole('textbox').fill('кривая спроса сдвинулась');
+  await expect(tf.getByRole('button', { name: 'Неверно', exact: true })).toBeDisabled();
+  await tf.getByRole('textbox').fill('сдвинулась сама кривая спроса вправо');
   await tf.getByRole('button', { name: 'Неверно', exact: true }).click();
-  await expect(tf.getByTestId('tb-verdict')).toContainText('Верно');
-  await expect(tf).toContainText('сдвинулась сама кривая спроса');
+  await expect(tf.getByTestId('tb-points')).toContainText('сдвиг кривой спроса вправо');
+  await expect(tf.getByTestId('tb-verdict')).toContainText('Теперь сверьте объяснение');
+  await tf.getByRole('button', { name: 'Совпало', exact: true }).click();
+  await expect(tf.getByTestId('tb-verdict')).toContainText('Засчитано');
+  await expect(tf).toContainText('Закон спроса при этом выполняется');
   // графическая: сдвинуть не ту кривую — неверно, нужную — верно
   const gr = ch.locator('[data-problem="sd-graph-flour"]');
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
