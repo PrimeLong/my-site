@@ -8,7 +8,8 @@
    'avg' (в среднем за все кварталы задачи).
    topic — раздел страницы «игра ↔ учебник», к которому привязана задача;
    impulses — стартовые импульсы (шок, который уже в пути). */
-import { makeImpulse } from './engine.js';
+import { makeImpulse, makeInitialEconomy, quarterLabel } from './engine.js';
+import { PRE_KEYS } from './autopilot.js';
 
 export const DRILLS = [
   { id: 'disinflation', title: 'Инфляция с 12% до 4%', topic: 'phillips', role: 'central_bank', quarters: 8, scenario: 'sandbox',
@@ -29,9 +30,9 @@ export const DRILLS = [
     debrief: 'При отрицательном разрыве и инфляции ниже цели правило Тейлора требует ставку заметно ниже нейтральной. Смягчение работает с лагом: кредит → спрос → выпуск → занятость. Кривая Филлипса в спаде пологая — цены почти не реагируют, поэтому смягчать можно смело, а вот держать мягкую политику после закрытия разрыва — уже инфляция.' },
   { id: 'consolidation', title: 'Сократить дефицит без рецессии', topic: 'multiplier', role: 'ministry_finance', quarters: 8, scenario: 'sandbox',
     overrides: { budgetBalancePctGdp: -6.5, govDebt: 1500, riskPremium: 2.2 },
-    brief: 'Дефицит 6,5% ВВП, долг растёт, рынок нервничает. За восемь кварталов сведите дефицит к 3% ВВП так, чтобы экономика не ушла в минус.',
+    brief: 'Дефицит 6,5% ВВП: социальные выплаты раздуты, долг растёт, рынок нервничает. За восемь кварталов сведите дефицит к 4,5% ВВП так, чтобы экономика не ушла в минус. Бюджетные рычаги — темпы роста: расходы сокращаются постепенно, квартал за кварталом.',
     goals: [
-      { key: 'budgetBalancePctGdp', op: '>=', value: -3, when: 'final', label: 'дефицит к концу ≤ 3% ВВП' },
+      { key: 'budgetBalancePctGdp', op: '>=', value: -4.5, when: 'final', label: 'дефицит к концу ≤ 4,5% ВВП' },
       { key: 'gdpGrowth', op: '>=', value: -1, when: 'always', label: 'рост ВВП не ниже −1% ни в одном квартале' },
     ],
     debrief: 'Консолидация сжимает спрос через мультипликатор: урезанные закупки бьют по выпуску сильнее, чем выплаты, а госинвестиции ещё и по потенциалу. Резкая экономия в первые кварталы роняет рост и налоговую базу — дефицит сокращается хуже, чем обещала арифметика. Постепенность и выбор инструмента (налоги с низким мультипликатором, закупки аппарата, а не инвестиции) — главный урок.' },
@@ -116,6 +117,23 @@ export function evaluateDrill(drill, history) {
   return { done, passed: done && goals.every((g) => g.status === 'ok'), goals };
 }
 
+/* Значение цели словами — в тех же единицах, что и формулировка цели. Сальдо бюджета
+   хранится со знаком (−2,6), а цель звучит «дефицит ≤ 3%»: показываем «дефицит 2,6% ВВП»,
+   иначе «итог −2,6» при цели «≤ 3» читается как невыполненная. */
+const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1).replace('.', ',').replace('-', '−');
+export function goalValueText(g) {
+  if (g.value == null) return '—';
+  const v = g.value;
+  const pre = g.when === 'always' ? 'худшее: ' : g.when === 'avg' ? 'в среднем: ' : 'итог: ';
+  switch (g.key) {
+    case 'budgetBalancePctGdp': return `${pre}${v < 0 ? `дефицит ${f1(-v)}` : `профицит ${f1(v)}`}% ВВП`;
+    case 'debtToGdp': case 'revenuePctGdp': return `${pre}${f1(v)}% ВВП`;
+    case 'reserves': return `${pre}${f1(v)}`;
+    case 'exchangeRate': return `${pre}${f1(v)}`;
+    default: return `${pre}${f1(v)}%`;
+  }
+}
+
 // рекорды задач на этом устройстве: пройдена ли и за сколько попыток
 const BEST_KEY = 'ems-drills';
 export function loadDrillRecords() {
@@ -134,6 +152,30 @@ export function drillSetup(drill) {
   return { role: drill.role, difficulty: 'medium', goal: 'living_standards', scenario: drill.scenario, drill: drill.id,
     economyOnly: true, tour: false, cbPersona: 'pragmatic', mofPersona: 'technocrat',
     president: { enabled: false, persona: 'technocrat' } };
+}
+
+/* Вводный отрезок задачи: в обычной партии перед стартом три года страну ведут боты, и на
+   графике видно, куда шла экономика. Задача начинается со своей завязки, и график был
+   пустым. Здесь — восемь кварталов пути от обычной экономики к стартовому положению
+   задачи: сначала почти ровно, ближе к старту — всё быстрее (плавная кривая). Это
+   иллюстрация «как страна сюда пришла», а не расчёт движка; цели задачи считаются только
+   по её собственным кварталам. */
+export function drillPrehistory(drill, quarters = 8) {
+  const from = makeInitialEconomy('sandbox');
+  const to = makeInitialEconomy(drill.scenario, drill.overrides);
+  const rows = [];
+  for (let k = 0; k < quarters; k++) {
+    const t = (k + 1) / (quarters + 1);
+    const w = t * t * (3 - 2 * t);
+    const row = { q: k - quarters + 1, label: quarterLabel(k - quarters + 1), pre: true, drillLeadIn: true };
+    PRE_KEYS.forEach((key) => {
+      const a = from[key]; const b = to[key];
+      if (Number.isFinite(a) && Number.isFinite(b)) row[key] = a + (b - a) * w;
+      else if (b !== undefined) row[key] = b;
+    });
+    rows.push(row);
+  }
+  return rows;
 }
 
 // стартовые импульсы задачи: шок, который уже в пути

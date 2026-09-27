@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, Suspense } from 'react';
 import {
   syncProgress, fetchRoom,
-  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot,
+  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
@@ -1212,8 +1212,18 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     try { setSoloSlots(await deleteSoloSlot(playerId, idx)); } catch (e) { setSlotError(e.message); }
   };
   const hasSaves = !!(soloSlots && soloSlots.some(Boolean));
+  const removeTycoonSlot = async (idx) => {
+    if (!window.confirm(`Удалить сохранение «Своего дела» из слота ${idx + 1}?`)) return;
+    try { setTycoonSlots(await deleteTycoonSlot(playerId, idx)); } catch (e) { setSlotError(e.message); }
+  };
+  // автосохранение «Своего дела» в браузере: удалить, чтобы начать с чистого листа
+  const removeTycoonAutosave = () => {
+    if (!window.confirm('Удалить автосохранение «Своего дела» в этом браузере? Слоты на сервере останутся.')) return;
+    try { localStorage.removeItem(TYCOON_SAVE_KEY); } catch { /* приватный режим */ }
+    setTycoonSave(null);
+  };
 
-  const [tycoonSave] = useState(loadTycoonSave);
+  const [tycoonSave, setTycoonSave] = useState(loadTycoonSave);
   const [tycoonSlots, setTycoonSlots] = useState([]);
   const [tycoonBusy, setTycoonBusy] = useState(null);
   const [savesOpen, setSavesOpen] = useState(false);
@@ -1234,7 +1244,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     autosave && { id: 'solo', time: soloTime, icon: ROLE_ICON[(ROLES.find((r) => r.id === autosave.setup.role) || {}).icon] || Flag,
       title: roleShort(autosave.setup.role), sub: `${quarterLabel(autosave.quarterIndex || 1)}${autosave.setup.daily ? ' · вызов дня' : ''}`,
       go: () => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onLoad(autosave); } },
-    tycoonSave && onTycoon && { id: 'tycoon', time: tycoonTime, icon: Factory, title: 'Своё дело',
+    tycoonSave && onTycoon && { id: 'tycoon', time: tycoonTime, icon: Factory, title: 'Своё дело', remove: removeTycoonAutosave,
       sub: `${tycoonSave.buildings.length} зданий · на счёте ${moneyShort(tycoonSave.cash || 0)}`,
       go: () => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onTycoon(tycoonSave); } },
   ].filter(Boolean).sort((x, y) => y.time - x.time);
@@ -1305,14 +1315,24 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
               <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>{mainContinue.title}</div>
               <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>{mainContinue.sub}</div>
             </div>
+            {mainContinue.remove && (
+              <button className="menu-x" aria-label="Удалить автосохранение «Своего дела»" title="Удалить автосохранение"
+                onClick={(e) => { e.stopPropagation(); mainContinue.remove(); }} onKeyDown={(e) => e.stopPropagation()}><X size={13} /></button>
+            )}
             <Play size={22} color={COLOR.gold} style={{ flexShrink: 0 }} />
           </div>
         )}
         {continues[1] && (
-          <button className="ems-btn menu-continue-alt ems-fade-in" onClick={continues[1].go}>
-            <span style={{ color: COLOR.faint }}>или</span> {continues[1].title} · <span style={{ color: COLOR.muted }}>{continues[1].sub}</span>
-            <ChevronDown size={13} style={{ transform: 'rotate(-90deg)', marginLeft: 'auto' }} />
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+            <button className="ems-btn menu-continue-alt ems-fade-in" style={{ flex: 1 }} onClick={continues[1].go}>
+              <span style={{ color: COLOR.faint }}>или</span> {continues[1].title} · <span style={{ color: COLOR.muted }}>{continues[1].sub}</span>
+              <ChevronDown size={13} style={{ transform: 'rotate(-90deg)', marginLeft: 'auto' }} />
+            </button>
+            {continues[1].remove && (
+              <button className="ems-btn menu-continue-alt" style={{ width: 'auto', padding: '0 12px' }} aria-label="Удалить автосохранение «Своего дела»"
+                title="Удалить автосохранение" onClick={continues[1].remove}><X size={13} /></button>
+            )}
+          </div>
         )}
 
         {/* 2. Режимы */}
@@ -1375,6 +1395,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                       <span style={{ flex: 1, minWidth: 0 }}>Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий</span>
                       <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={tycoonBusy === idx}
                         onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                      <button onClick={() => removeTycoonSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
                     </div>
                   ) : null))}
                   {savesTab === 'network' && networkSlots.map((slot, idx) => {
@@ -1902,6 +1923,8 @@ export default function MacroSimulator() {
   // задание для «Своего дела» и предвыбор сценария/старта в анкете
   const [labInit, setLabInit] = useState(null);
   const [fromBook, setFromBook] = useState(false);
+  // партия (задача или сценарий) открыта из учебника — после неё вернуться в учебник
+  const [gameFromBook, setGameFromBook] = useState(false);
   const [bookResume, setBookResume] = useState(false);
   const [setupPreset, setSetupPreset] = useState(null);
   const [tycoonLesson, setTycoonLesson] = useState(null);
@@ -1912,7 +1935,7 @@ export default function MacroSimulator() {
   }, [tycoon]);
   applyTheme(theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
-  const startLoaded = (data) => { setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
+  const startLoaded = (data) => { setGameFromBook(false); setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
   // назад из Лаборатории, анкеты или тайкуна: в учебник, если пришли из него
   const goBack = () => { if (fromBook) { setFromBook(false); setBookResume(true); setView('textbook'); } else goMenu(); };
@@ -1950,7 +1973,7 @@ export default function MacroSimulator() {
         return (
           <SetupScreen key={`${theme}${view}`} initialRole={view === 'setup-biz' ? 'entrepreneur' : null}
             initialScenario={setupPreset && setupPreset.scenario} initialSector={setupPreset && setupPreset.sector}
-            onStart={(x) => { setSetupPreset(null); if (x.role === 'entrepreneur') { startTycoon(x); return; } setFromBook(false); clearAutosave(); setLoaded(null); setSetup(x); }}
+            onStart={(x) => { setSetupPreset(null); if (x.role === 'entrepreneur') { startTycoon(x); return; } setGameFromBook(fromBook); setFromBook(false); clearAutosave(); setLoaded(null); setSetup(x); }}
             onBack={() => { setSetupPreset(null); setTycoonLesson(null); goBack(); }}
           />
         );
@@ -1972,12 +1995,12 @@ export default function MacroSimulator() {
       if (view === 'drills') {
         return (
           <Suspense fallback={<GameFallback />}>
-            <DrillsScreen key={theme} onBack={goMenu} onStart={(x) => { clearAutosave(); setLoaded(null); setSetup(x); }} />
+            <DrillsScreen key={theme} onBack={goMenu} onStart={(x) => { setGameFromBook(false); clearAutosave(); setLoaded(null); setSetup(x); }} />
           </Suspense>
         );
       }
       if (view === 'textbook') {
-        const startDrill = (x) => { setFromBook(false); clearAutosave(); setLoaded(null); setSetup(x); };
+        const startDrill = (x) => { setFromBook(false); setGameFromBook(true); clearAutosave(); setLoaded(null); setSetup(x); };
         return (
           <Suspense fallback={<GameFallback />}>
             <TextbookScreen key={theme} resume={bookResume} onBack={() => { setBookResume(false); goMenu(); }}
@@ -2011,7 +2034,7 @@ export default function MacroSimulator() {
       }
       return (
         <MainMenu key={theme} theme={theme} setTheme={setTheme}
-          onNewGame={() => { setFromBook(false); setSetupPreset(null); setView('setup'); }}
+          onNewGame={() => { setFromBook(false); setGameFromBook(false); setSetupPreset(null); setView('setup'); }}
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
           onLab={() => { setFromBook(false); setLabInit(null); setLabLever('keyRate'); setView('lab'); }}
@@ -2028,7 +2051,10 @@ export default function MacroSimulator() {
       <Suspense fallback={<GameFallback />}>
         <GameScreen key={`${JSON.stringify(setup)}:${nonce}`} setup={setup} initial={loaded}
           theme={theme} setTheme={setTheme}
-          onRestart={() => { const wasDrill = !!setup.drill; clearAutosave(); setLoaded(null); setSetup(null); setView(wasDrill ? 'drills' : 'menu'); }} onLoadState={startLoaded}
+          onRestart={() => {
+            const wasDrill = !!setup.drill; clearAutosave(); setLoaded(null); setSetup(null);
+            if (gameFromBook) { setGameFromBook(false); setBookResume(true); setView('textbook'); } else setView(wasDrill ? 'drills' : 'menu');
+          }} onLoadState={startLoaded}
           onReplay={setup.drill ? () => { clearAutosave(); setLoaded(null); setNonce((n) => n + 1); } : null} />
       </Suspense>
     );

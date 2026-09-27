@@ -14,6 +14,7 @@ import {
   TYCOON_META_KEY, loadTycoonMeta, getPlayerId, loadAccount, emblemIcon, loadFold, saveFold,
 } from './MacroSimulator.jsx';
 import { fetchTycoonSlots, fetchTycoonSlot, saveTycoonSlot, deleteTycoonSlot, fetchRecords, submitRecord } from './lib/client.js';
+import { taskText } from './textbook/tycoon-tasks.js';
 import { BusinessMap } from './countrymap.jsx';
 import { PlanSlider, Toggle, Row, MiniSpark } from './business.jsx';
 import { fmtMln, fmt1, fmtSigned1, quarterLabel, getCbPersona, getMofPersona, getPresPersona, POLITICAL_REGIME_INFO, SCENARIOS } from './lib/engine.js';
@@ -99,6 +100,15 @@ export function TycoonScreen({ initial, setupNew, onExit, lesson = null }) {
   const narrow = useNarrow();
   const [tabPicked, setTab] = useState(lesson && lesson.tab ? lesson.tab : null);
   const [lessonOpen, setLessonOpen] = useState(!!lesson);
+  // задание подстраивается под товары компании: нет хлеба — мебель или техника
+  const lessonView = useMemo(() => {
+    if (!lesson) return null;
+    const made = new Set(st.buildings.flatMap((b) => Object.keys(T.BLD[b.type].out || {})));
+    const hasShop = st.buildings.some((b) => T.BLD[b.type].sells);
+    const goods = T.RESOURCES.filter((r) => made.has(r.id) || (st.stock[r.id] || 0) > 0.5)
+      .map((r) => ({ id: r.id, name: r.name, elast: r.elast, shop: !!r.consumer && hasShop, wholesale: !r.buyOnly && made.has(r.id) }));
+    return taskText(lesson, goods);
+  }, [lesson, st.buildings, st.stock]);
   // по умолчанию: на телефоне — карта со стройкой, на компьютере карта и так слева — производство
   const tab = tabPicked === 'build' && !narrow ? 'prod' : tabPicked || (narrow ? 'build' : 'prod');
   const [region, setRegion] = useState(() => (boot.st.buildings[0] ? boot.st.buildings[0].region : 'capital'));
@@ -269,7 +279,8 @@ export function TycoonScreen({ initial, setupNew, onExit, lesson = null }) {
                     onClick={() => { Audio.play('click'); setLessonOpen(false); }}>×</button>
                 </div>
                 <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, margin: '2px 0 4px' }}>{lesson.title}</div>
-                <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.55 }}>{lesson.text}</div>
+                <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.55 }}>{lessonView.text}</div>
+                {lessonView.note && <div style={{ fontSize: 12.5, color: COLOR.rust, lineHeight: 1.55, marginTop: 6 }}>{lessonView.note}</div>}
               </div>
             )}
             <div className="ems-seg" role="tablist" aria-label="Разделы" style={{ display: 'flex', flexWrap: 'wrap', marginBottom: 12, width: '100%' }}>
@@ -1247,7 +1258,7 @@ function SavesModal({ st, onClose, onLoad, toast }) {
             </span>
             <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => save(i)}>{busy === i ? '…' : 'Сохранить сюда'}</button>
             {sl && <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => load(i)}>Загрузить</button>}
-            {sl && <button onClick={() => remove(i)} aria-label="Удалить" style={{ background: 'none', border: 'none', color: COLOR.faint, cursor: 'pointer', lineHeight: 0 }}><X size={12} /></button>}
+            {sl && <button className="ems-btn" disabled={busy === i} style={{ padding: '4px 9px', fontSize: 12 }} aria-label={`Удалить сохранение из слота ${i + 1}`} onClick={() => remove(i)}>Удалить</button>}
           </div>
         ))}
       </div>

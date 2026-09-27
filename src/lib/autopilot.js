@@ -125,7 +125,7 @@ export function advanceCountry(country, { noEvents = false, firm = null } = {}) 
    экономика, в ленте — что происходило. Случайных потрясений в предыстории нет — это
    фон, а не сюжет. Счётчик до выборов и политический капитал возвращаются к
    стартовым: партия начинается с полного срока, как и раньше. */
-const PRE_KEYS = ['gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGrowth', 'consumptionGrowth', 'investmentGrowth', 'wageGrowth',
+export const PRE_KEYS = ['gdp', 'potentialGdp', 'outputGap', 'gdpGrowth', 'potentialGrowth', 'consumptionGrowth', 'investmentGrowth', 'wageGrowth',
   'inflation', 'coreInflation', 'inflationExpectations', 'cbCredibility', 'keyRate', 'lendingRate', 'realLendingRate', 'rStar', 'unemployment',
   'nairu', 'unitLaborCostGrowth', 'productivity', 'humanCapitalIndex', 'infrastructureIndex', 'shadowShare', 'debtToGdp', 'budgetBalancePctGdp',
   'interestPayment', 'exchangeRate', 'realExchangeRate', 'currentAccount', 'netCapitalFlow', 'bankNPL', 'bankCapitalAdequacy', 'creditGap',

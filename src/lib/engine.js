@@ -2392,6 +2392,17 @@ function makeInitialEconomy(scenarioId, extra = null) {
   base.govPurchasesNominal = I.govPurchasesReal;
   base.transfersNominal = I.transfersReal;
   base.govInvestmentNominal = I.govInvestmentReal;
+  /* Стартовый дефицит (задачи тренажёра задают его прямо): сальдо — не отдельная цифра,
+     а разница доходов и расходов, и если поменять только его, в первом же квартале оно
+     пересчитывалось обратно (задача «дефицит 6,5%» на деле начиналась с 3,8%). Разницу
+     несут социальные выплаты: они не входят в ВВП, и тождество выпуска не ломается. */
+  if ('budgetBalancePctGdp' in own && !('transfersReal' in own)) {
+    const spend0 = I.govPurchasesReal + I.transfersReal + I.govInvestmentReal + base.interestPayment;
+    const target = own.budgetBalancePctGdp * nominalGdp / 100;
+    I.transfersReal = Math.max(0, I.transfersReal + (base.govRevenue - spend0) - target);
+    base.transfersReal = I.transfersReal;
+    base.transfersNominal = I.transfersReal;
+  }
   base.govSpendingTotal = I.govPurchasesReal + I.transfersReal + I.govInvestmentReal + base.interestPayment;
   base.budgetBalance = base.govRevenue - base.govSpendingTotal;
   base.budgetBalancePctGdp = base.budgetBalance / nominalGdp * 100;
