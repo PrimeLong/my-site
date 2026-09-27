@@ -374,7 +374,8 @@ export function publicRegionEvent(ev, s, q) {
 /* Шаг округов за квартал: ответ на прошлое событие, ход строек, новое событие.
    Возвращает импульсы, разовые расходы и новое состояние — simulateQuarter
    вплетает это в бюджет, ВВП и ленту новостей. */
-export function regionStep(s, decisions, difficulty, quarterIndex) {
+// noEvents — без новых событий в областях (уроки, предыстория, лаборатория, задачи)
+export function regionStep(s, decisions, difficulty, quarterIndex, noEvents = false) {
   const out = { impulses: [], news: [], eventPct: 0, loyaltyDelta: {} };
   // напряжение от прошлых событий сходит на треть за квартал
   const shock = {};
@@ -425,7 +426,7 @@ export function regionStep(s, decisions, difficulty, quarterIndex) {
   let cooldown = Math.max(0, (Number.isFinite(s.regionEventCooldown) ? s.regionEventCooldown : 1) - 1);
   let regionEvent = null;
   if (pend) cooldown = Math.max(cooldown, 1);
-  if (!pend && cooldown === 0 && quarterIndex >= 3) {
+  if (!noEvents && !pend && cooldown === 0 && quarterIndex >= 3) {
     const pool = REGION_EVENTS.filter((e) => (!e.eligible || e.eligible(s)));
     const stressOf = (id) => regionStress(regionById(id), s);
     const maxStress = Math.max(...activeRegions(s).map((r) => stressOf(r.id)));

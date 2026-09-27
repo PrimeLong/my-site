@@ -8,7 +8,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { FlaskConical, BookOpenText, Target } from 'lucide-react';
 import { COLOR, Audio, GlobalStyle } from './MacroSimulator.jsx';
 import { SCENARIOS, fmt1, fmtSigned1 } from './lib/engine.js';
-import { impulseResponse, peakOf, LAB_LEVERS, LAB_METRICS, defaultLabMode } from './lib/lab.js';
+import { impulseResponse, peakOf, zeroTicks, LAB_LEVERS, LAB_METRICS, defaultLabMode, defaultLabCb, TAYLOR_SMOOTH, SHOCK_DECAY } from './lib/lab.js';
 import { DRILLS, drillSetup, loadDrillRecords } from './lib/drills.js';
 
 /* Общая рамка страницы тренажёра: кнопка назад, заголовок, вводный абзац. */
@@ -65,6 +65,7 @@ const LAB_NOTES = {
 
 function DiffChart({ data, metric, color }) {
   const pk = peakOf(data, metric.key);
+  const axis = zeroTicks(data.map((r) => r[metric.key]).filter(Number.isFinite));
   return (
     <div className="ems-panel" style={{ padding: '10px 10px 6px', minWidth: 0 }}>
       <div className="row-between" style={{ alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
@@ -78,7 +79,9 @@ function DiffChart({ data, metric, color }) {
           <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} />
-            <YAxis tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} width={46} tickFormatter={(v) => (Math.abs(v) < 1 ? v.toFixed(2) : fmt1(v))} />
+            {/* ноль на шкале всегда: отклик читается как отклонение от базы, а не как плавающий масштаб */}
+            <YAxis tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} width={46} tickFormatter={(v) => v.toFixed(axis.digits)}
+              domain={axis.domain} ticks={axis.ticks} interval={0} />
             <ReferenceLine y={0} stroke={COLOR.faint} />
             <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 12 }}
               labelFormatter={(v) => `${v}-й квартал после решения`} formatter={(v) => [`${fmtSigned1(v)} ${metric.unit}`, 'разница с базой']} />
@@ -90,7 +93,8 @@ function DiffChart({ data, metric, color }) {
   );
 }
 
-const METRIC_COLORS = { inflation: COLOR.rust, outputGap: COLOR.teal, unemployment: COLOR.blue, exchangeRate: COLOR.gold };
+const METRIC_COLORS = { inflation: COLOR.rust, outputGap: COLOR.teal, unemployment: COLOR.blue, exchangeRate: COLOR.gold, keyRate: COLOR.goldSoft };
+const RATE_METRIC = { key: 'keyRate', label: 'Ключевая ставка', unit: 'п.п.' };
 
 export function LabScreen({ onBack, initialLever = 'keyRate' }) {
   const [scenario, setScenario] = useState('sandbox');
@@ -98,14 +102,19 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
   const lever = LAB_LEVERS.find((l) => l.id === leverId);
   const [delta, setDelta] = useState(DEFAULT_DELTA[leverId] ?? lever.step * 4);
   const [mode, setMode] = useState(defaultLabMode(lever));
+  const [cb, setCb] = useState(defaultLabCb(lever));
+  const [horizon, setHorizon] = useState(24);
   const [seed, setSeed] = useState(1);
   const pickLever = (id) => {
     const l = LAB_LEVERS.find((x) => x.id === id);
-    setLeverId(id); setDelta(DEFAULT_DELTA[id] ?? l.step * 4); setMode(defaultLabMode(l));
+    setLeverId(id); setDelta(DEFAULT_DELTA[id] ?? l.step * 4); setMode(defaultLabMode(l)); setCb(defaultLabCb(l));
   };
   const res = useMemo(() => {
-    try { return impulseResponse({ scenario, leverId, delta, mode, seed }); } catch { return null; }
-  }, [scenario, leverId, delta, mode, seed]);
+    try { return impulseResponse({ scenario, leverId, delta, mode, cb, seed, horizon }); } catch { return null; }
+  }, [scenario, leverId, delta, mode, cb, seed, horizon]);
+  const isRate = leverId === 'keyRate';
+  const ruleOn = res ? res.cb === 'taylor' : false;
+  const metrics = ruleOn || isRate ? [...LAB_METRICS, RATE_METRIC] : LAB_METRICS;
   const sc = SCENARIOS.find((x) => x.id === scenario);
   const union = sc && sc.overrides && sc.overrides.currencyUnion && lever.group === 'monetary';
   const range = deltaRange(lever);
@@ -113,7 +122,7 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
 
   return (
     <TrainerPage eyebrow="Тренажёр" title="Лаборатория" onBack={onBack} wide
-      lede="Один рычаг — два мира. Модель прогоняется 12 кварталов из одной точки: в базовом мире ничего не меняется, в другом — только выбранный рычаг. Шоки и события выключены, случайное зерно одно и то же. Линии — разница между мирами: чистый эффект рычага, квартал за кварталом (импульсный отклик).">
+      lede="Один рычаг — два мира. Модель прогоняется из одной точки дважды: в базовом мире рычаг не трогают, в другом — меняют. Шоки и события выключены, случайное зерно одно и то же, ЦБ в обоих мирах ведёт себя одинаково. Линии — разница между мирами: чистый эффект рычага, квартал за кварталом (импульсный отклик).">
       <div className="ems-panel" style={{ padding: 14, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 6 }}>Рычаг</div>
@@ -135,10 +144,28 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
             <input type="range" min={-range} max={range} step={lever.step} value={delta} aria-label="Изменение рычага"
               onChange={(e) => setDelta(Number(e.target.value))} />
           </label>
+          {isRate ? (
+            <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6, gridColumn: 'span 2' }}>
+              <span>Что ЦБ делает после шока</span>
+              <Seg label="Что ЦБ делает после шока" value={mode} onChange={setMode}
+                options={[{ id: 'taylor', label: 'правило Тейлора, шок затухает' }, { id: 'hold', label: 'держит ставку выше' }, { id: 'pulse', label: 'один квартал, потом как было' }]} />
+            </div>
+          ) : (<>
+            <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span>Сколько держать</span>
+              <Seg label="Сколько держать" value={mode} onChange={setMode}
+                options={[{ id: 'hold', label: 'весь срок' }, { id: 'pulse', label: 'один квартал' }]} />
+            </div>
+            <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span>Центральный банк</span>
+              <Seg label="Центральный банк" value={cb} onChange={setCb}
+                options={[{ id: 'taylor', label: 'отвечает по Тейлору' }, { id: 'fixed', label: 'ставка стоит' }]} />
+            </div>
+          </>)}
           <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span>Сколько держать</span>
-            <Seg label="Сколько держать" value={mode} onChange={setMode}
-              options={[{ id: 'hold', label: 'все 12 кварталов' }, { id: 'pulse', label: 'один квартал' }]} />
+            <span>Горизонт</span>
+            <Seg label="Горизонт" value={String(horizon)} onChange={(v) => setHorizon(Number(v))}
+              options={[{ id: '12', label: '12 кв.' }, { id: '24', label: '24 кв.' }, { id: '40', label: '40 кв.' }]} />
           </div>
           <label style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span>Стартовая экономика</span>
@@ -169,19 +196,25 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
 
       {res ? (
         <div data-testid="lab-charts" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', gap: 10 }}>
-          {LAB_METRICS.map((m) => <DiffChart key={m.key} data={res.diff} metric={m} color={METRIC_COLORS[m.key]} />)}
+          {metrics.map((m) => <DiffChart key={m.key} data={res.diff} metric={m} color={METRIC_COLORS[m.key]} />)}
         </div>
       ) : <div className="ems-panel" style={{ padding: 14, fontSize: 13, color: COLOR.muted }}>Расчёт не удался.</div>}
 
       <div className="ems-panel" style={{ padding: 14, marginTop: 12, fontSize: 13, lineHeight: 1.55 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 6 }}>Как читать</div>
         <div style={{ color: COLOR.text, marginBottom: 8 }}>{LAB_NOTES[leverId]}</div>
+        <div style={{ color: COLOR.text, marginBottom: 8 }} data-testid="lab-cb-note">
+          {ruleOn ? (isRate
+            ? `ЦБ в обоих мирах ставит ставку по правилу Тейлора со сглаживанием (${Math.round(TAYLOR_SMOOTH * 100)}% веса — прошлой ставке). Шок — добавка к правилу, которая затухает на ${Math.round((1 - SHOCK_DECAY) * 100)}% за квартал. Когда шок уходит, правило видит отрицательный разрыв и низкую инфляцию и опускает ставку ниже базы — поэтому отклик горбатый и возвращается к нулю, как на лекции.`
+            : 'ЦБ в обоих мирах отвечает правилом Тейлора: бюджетный стимул разгоняет спрос и цены — ЦБ поднимает ставку и гасит часть эффекта (вытеснение). Переключите на «ставка стоит» и сравните: мультипликатор без ответа ЦБ заметно больше и эффект не затухает.')
+            : 'Ставка в обоих мирах стоит на месте. Без реакции ЦБ модель к потенциалу сама почти не возвращается: спрос задан темпами роста, а якорь уровня слабый — доли потребления и инвестиций тянутся к своей норме медленно, за десятки кварталов; потерянные инвестиции ещё и уменьшают капитал, то есть потенциал. Цены экономику тоже не возвращают: зарплаты вниз жёсткие, ожидания смотрят назад, а при неподвижной номинальной ставке падающая инфляция даже поднимает реальную. Поэтому разовый шок оставляет почти постоянный след, а удержанный — копится. В жизни разрыв закрывает прежде всего ЦБ, реагирующий на инфляцию сильнее чем один к одному (принцип Тейлора).'}
+        </div>
         <div style={{ color: COLOR.muted, fontSize: 12 }}>
           По оси — кварталы после решения, по вертикали — насколько мир с изменённым рычагом отличается от базового
-          (инфляция, разрыв и безработица — в процентных пунктах, курс — в процентах; выше — валюта слабее).
-          Остальные рычаги в обоих мирах не двигаются: ЦБ не отвечает на бюджет, Минфин — на ставку. В партии так не бывает —
-          поэтому это эксперимент «при прочих равных», а не прогноз. Смените зерно: форма отклика почти не меняется —
-          значит, она задана устройством модели, а не случаем.
+          (инфляция, разрыв, безработица и ставка — в процентных пунктах, курс — в процентах; выше — валюта слабее).
+          Минфин в обоих мирах не отвечает ни на что — это эксперимент «при прочих равных», а не прогноз.
+          Форма отклика зависит от того, как ведёт себя ЦБ: сравните режимы, прежде чем делать выводы.
+          Зерно почти ничего не меняет — шоки выключены, и разница задана устройством модели, а не случаем.
         </div>
       </div>
     </TrainerPage>
@@ -236,7 +269,8 @@ const LIMITS = [
   { title: 'Упрощённые финансы', text: 'Одна ставка по кредитам, один банковский сектор, один индекс акций. Нет кривой доходности, построенной из ожиданий, нет разных заёмщиков и цепочек дефолтов между банками.' },
   { title: 'Распределение — надстройка', text: 'Пять квинтилей раскладывают уже посчитанный квартал: неравенство не влияет обратно на спрос (у богатых склонность к потреблению ниже — здесь этого нет в ВВП). Бедность считается по кривой квантилей из пяти точек, а не по реальному распределению.' },
   { title: 'Политика и события — сценарий, а не модель', text: 'Выборы, президент, войны и события — игровые механизмы с вероятностями, заданными вручную. Они нужны, чтобы экономика жила, но не претендуют на политологию.' },
-  { title: 'Что с этим делать', text: 'Использовать модель для интуиции: знаки, лаги, компромиссы (инфляция против безработицы, курс против ставки, дефицит против долга). Не использовать для прогнозов и точных чисел. Лаборатория полезна именно этим: форма отклика устойчива, а величина — условна.' },
+  { title: 'Без ЦБ экономика сама к потенциалу не возвращается', text: 'Спрос в модели задан темпами роста, а якорь уровня слабый: доли потребления и инвестиций тянутся к своей норме за десятки кварталов, а потерянные инвестиции ещё и уменьшают капитал — то есть сам потенциал. Цены тоже не выручают: зарплаты вниз жёсткие, ожидания адаптивные, и при неподвижной номинальной ставке падающая инфляция поднимает реальную ставку. В учебных моделях возврат к равновесию обеспечивает прежде всего ЦБ, реагирующий на инфляцию сильнее чем один к одному (принцип Тейлора), и вдобавок гибкие цены и эффекты богатства. Поэтому в Лаборатории отклик горбатый и затухает, только когда ЦБ отвечает по правилу; если ставку заморозить, разовый шок оставляет почти постоянный след. Это свойство модели, а не экономики.' },
+  { title: 'Что с этим делать', text: 'Использовать модель для интуиции: знаки, лаги, компромиссы (инфляция против безработицы, курс против ставки, дефицит против долга). Не использовать для прогнозов и точных чисел. Форма отклика в Лаборатории зависит от того, как отвечает ЦБ: знаки и порядок лагов устойчивы, а величина и то, затухает ли эффект, — условны.' },
 ];
 
 function TextbookTab({ onOpenLab }) {

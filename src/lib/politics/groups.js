@@ -265,7 +265,8 @@ export function publicGroupDemand(groupId, s, q) {
         effect: 'Бюджет цел, группа запомнит отказ — и её лидер перейдёт к делу.' },
     ] };
 }
-export function groupDemandStep(s, decisions, difficulty, q) {
+// noEvents — без новых требований: те же случайные потрясения, только политические
+export function groupDemandStep(s, decisions, difficulty, q, noEvents = false) {
   const out = { impulses: [], news: [], spendPct: 0, memory: [], demand: null, cooldown: Math.max(0, (s.groupDemandCooldown || 0) - 1), resolution: null };
   const pend = s.groupDemand;
   if (pend) {
@@ -290,7 +291,7 @@ export function groupDemandStep(s, decisions, difficulty, q) {
     out.cooldown = Math.max(out.cooldown, 3);
     return out;
   }
-  if (out.cooldown > 0 || q < 4) return out;
+  if (noEvents || out.cooldown > 0 || q < 4) return out;
   const sup = s.groupSupport || {};
   const worst = SOCIAL_GROUPS.filter((g) => Number.isFinite(sup[g.id]) && sup[g.id] < 42).sort((a, b) => sup[a.id] - sup[b.id])[0];
   if (!worst || rng() >= 0.45) return out;

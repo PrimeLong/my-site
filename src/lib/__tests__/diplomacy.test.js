@@ -149,8 +149,10 @@ describe('войну можно объявить любому соседу', () 
     const base = { ...makeInitialEconomy(), politicalCapital: 90 };
     const w = declare(base, 'west').economy;
     const s = declare(base, 'southwest').economy;
-    const step = (e, target) => withSeededRandom(7, () => simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), warOrder: { target, stance: 'assault' } },
+    const step = (e, target, seed) => withSeededRandom(seed, () => simulateQuarter({ economy: e, decisions: { ...defaultDecisions(e), warOrder: { target, stance: 'assault' } },
       pendingImpulses: [], eventCooldowns: {}, difficulty: 'medium', quarterIndex: 5, stories: [], noEvents: true })).economy;
-    expect(step(w, 'fort').warCampaign.progress.fort).toBeLessThan(step(s, 'steppe').warCampaign.progress.steppe);
+    // исход штурма случаен — сравниваем в среднем по нескольким зёрнам, а не по одному броску
+    const avg = (e, target) => Array.from({ length: 10 }, (_, i) => step(e, target, i + 1).warCampaign.progress[target]).reduce((a, v) => a + v, 0) / 10;
+    expect(avg(w, 'fort')).toBeLessThan(avg(s, 'steppe'));
   });
 });

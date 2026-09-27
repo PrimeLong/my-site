@@ -554,7 +554,9 @@ export const InstrumentChart = React.memo(InstrumentChartBase);
 // тот же расчёт, что в «Лаборатории»: шоки выключены, зерно одно, меняется один рычаг
 function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty, horizon) {
   try {
-    const r = impulseResponse({ economy, decisions, leverId, baseValue, value: newValue, difficulty, horizon: horizon || 12 });
+    // в партии ставку держит сам игрок (или бот), поэтому здесь ставка не следует правилу: «держу новое значение»
+    const r = impulseResponse({ economy, decisions, leverId, baseValue, value: newValue, difficulty, horizon: horizon || 12,
+      mode: leverId === 'keyRate' ? 'hold' : undefined, cb: 'fixed' });
     return r.diff.map((x, i) => ({ ...x, baseGdp: r.base[i].gdpGrowth, altGdp: r.alt[i].gdpGrowth,
       baseInfl: r.base[i].inflation, altInfl: r.alt[i].inflation }));
   } catch { return []; }
@@ -634,8 +636,9 @@ export function IRFModal({ economy, decisions, lever, value, baseValue, difficul
           })}
         </div>
         <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 12, lineHeight: 1.5 }}>
-          Это контрфактический расчёт: «что было бы, если бы». Реальная траектория будет отличаться — в ней будут шоки,
-          решения второго ведомства и накопленные ожидания. Но знак, форма и задержка эффекта останутся теми же.
+          Это контрфактический расчёт: «что было бы, если бы». Остальные рычаги, включая ставку ЦБ, в обоих мирах стоят на месте —
+          поэтому эффект здесь сам не затухает: без реакции ЦБ модель к потенциалу почти не возвращается. В партии ЦБ и Минфин будут
+          отвечать, форма отклика от этого меняется. Как выглядит отклик при ЦБ, следующем правилу Тейлора, — в «Лаборатории».
         </div>
       </div>
     </div>

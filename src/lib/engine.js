@@ -751,11 +751,11 @@ function simulateQuarter(input, { skip = [] } = {}) {
     news.push(mkNews('gov', `ПРЕСС-КОНФЕРЕНЦИЯ: ${pressQ.shortLabel}`, `«${pressOpt.quote}»`, { priority: 6 }));
   }
   /* --- 1г. ОКРУГА: ответ на событие, ход строек, новое событие --- */
-  const RS = regionStep(s, decisions, difficulty, quarterIndex);
+  const RS = regionStep(s, decisions, difficulty, quarterIndex, noEvents);
   queue = queue.concat(RS.impulses);
   RS.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
   // требования лидеров групп: ответ на прошлое, новое требование
-  const GD = groupDemandStep(s, decisions, difficulty, quarterIndex);
+  const GD = groupDemandStep(s, decisions, difficulty, quarterIndex, noEvents);
   queue = queue.concat(GD.impulses);
   GD.news.forEach(([cat, h, t, pr]) => news.push(mkNews(cat, h, t, { priority: pr })));
   // новые земли: лояльность, интеграция, партизаны
