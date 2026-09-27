@@ -4,11 +4,11 @@
    • Задачи на 10 минут — список задач (сама партия идёт в обычном экране игры).
    Отдельный ленивый чанк: в меню и в партии этот код не нужен. */
 import React, { useMemo, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { FlaskConical, BookOpenText, Target } from 'lucide-react';
 import { COLOR, Audio, GlobalStyle } from './MacroSimulator.jsx';
 import { SCENARIOS, fmt1, fmtSigned1 } from './lib/engine.js';
-import { impulseResponse, peakOf, zeroTicks, LAB_LEVERS, LAB_METRICS, defaultLabMode, defaultLabCb, TAYLOR_SMOOTH, SHOCK_DECAY } from './lib/lab.js';
+import { impulseResponse, impulseBand, peakOf, zeroTicks, LAB_LEVERS, LAB_METRICS, LEVEL_KEY, quarterLevelShift, defaultLabMode, defaultLabCb, TAYLOR_SMOOTH, SHOCK_DECAY } from './lib/lab.js';
 import { DRILLS, drillSetup, loadDrillRecords } from './lib/drills.js';
 
 /* Общая рамка страницы тренажёра: кнопка назад, заголовок, вводный абзац. */
@@ -50,7 +50,7 @@ const deltaRange = (l) => (l.scale === 'gdp' ? 25 : Math.max(l.step * 4, Math.ro
 // цепочка передачи: что должно произойти и почему — чтобы график читался, а не угадывался
 const LAB_NOTES = {
   keyRate: 'Ставка → ставки по кредитам → кредит и инвестиции → спрос → разрыв выпуска → безработица (Оукен) → инфляция (Филлипс). Параллельно: выше ставка — приток капитала — курс крепче — импорт дешевле. Инфляция отвечает позже выпуска: у неё свой лаг через ожидания и зарплаты.',
-  govSpending: 'Госзакупки — прямой спрос: выпуск растёт сразу, с мультипликатором. Цены подтягиваются позже, через разогрев рынка труда. Ставка здесь не отвечает — в партии ЦБ мог бы погасить часть эффекта.',
+  govSpending: 'Госзакупки — прямой спрос: выпуск растёт сразу, с мультипликатором. Цены подтягиваются позже, через разогрев рынка труда. Если ЦБ отвечает по правилу Тейлора, он поднимает ставку и гасит часть эффекта; если ставка стоит — эффект держится.',
   transfers: 'Выплаты доходят до спроса через потребление домохозяйств: мультипликатор ниже, чем у закупок, — часть денег сберегают.',
   govInvestment: 'Госинвестиции — спрос сейчас и потенциал потом: инфраструктура повышает производительность, поэтому инфляционный след слабее, чем у закупок.',
   incomeTaxRate: 'Подоходный налог забирает располагаемый доход: потребление и выпуск ниже. Выше ставка — больше теневой занятости (кривая Лаффера на краях).',
@@ -63,20 +63,25 @@ const LAB_NOTES = {
   capitalRequirement: 'Норматив капитала заставляет банки копить капитал вместо выдачи кредитов: кредитный цикл остывает, финансовая устойчивость растёт.',
 };
 
+// мелкие отклики (сотые доли пункта) не должны превращаться в «+0.0»
+const signedSmall = (v) => (Math.abs(v) < 0.095 && v !== 0 ? `${v > 0 ? '+' : ''}${v.toFixed(2)}` : fmtSigned1(v));
+
 function DiffChart({ data, metric, color }) {
   const pk = peakOf(data, metric.key);
-  const axis = zeroTicks(data.map((r) => r[metric.key]).filter(Number.isFinite));
+  const bandKey = `${metric.key}Band`;
+  const hasBand = data.length && Array.isArray(data[0][bandKey]);
+  const axis = zeroTicks(data.flatMap((r) => [r[metric.key], ...(hasBand ? r[bandKey] : [])]).filter(Number.isFinite));
   return (
     <div className="ems-panel" style={{ padding: '10px 10px 6px', minWidth: 0 }}>
       <div className="row-between" style={{ alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
         <span style={{ fontSize: 13, color: COLOR.text }}>{metric.label}</span>
         <span style={{ fontSize: 12, color: COLOR.muted }}>
-          {pk.q ? <>пик <b className="ems-mono" style={{ color }}>{fmtSigned1(pk.v)} {metric.unit}</b> на {pk.q}-м кв.</> : 'без эффекта'}
+          {pk.q ? <>пик <b className="ems-mono" style={{ color }}>{signedSmall(pk.v)} {metric.unit}</b> на {pk.q}-м кв.</> : 'без эффекта'}
         </span>
       </div>
       <div style={{ height: 150 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
             <XAxis dataKey="q" tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} />
             {/* ноль на шкале всегда: отклик читается как отклонение от базы, а не как плавающий масштаб */}
@@ -84,9 +89,12 @@ function DiffChart({ data, metric, color }) {
               domain={axis.domain} ticks={axis.ticks} interval={0} />
             <ReferenceLine y={0} stroke={COLOR.faint} />
             <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 12 }}
-              labelFormatter={(v) => `${v}-й квартал после решения`} formatter={(v) => [`${fmtSigned1(v)} ${metric.unit}`, 'разница с базой']} />
+              labelFormatter={(v) => `${v}-й квартал после решения`}
+              formatter={(v) => (Array.isArray(v) ? [`${signedSmall(v[0])} … ${signedSmall(v[1])} ${metric.unit}`, '10–90% прогонов']
+                : [`${signedSmall(v)} ${metric.unit}`, hasBand ? 'медиана разницы с базой' : 'разница с базой'])} />
+            {hasBand && <Area type="monotone" dataKey={bandKey} stroke="none" fill={color} fillOpacity={0.18} isAnimationActive={false} />}
             <Line type="monotone" dataKey={metric.key} stroke={color} strokeWidth={2} dot={{ r: 2 }} isAnimationActive={false} />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -95,6 +103,7 @@ function DiffChart({ data, metric, color }) {
 
 const METRIC_COLORS = { inflation: COLOR.rust, outputGap: COLOR.teal, unemployment: COLOR.blue, exchangeRate: COLOR.gold, keyRate: COLOR.goldSoft };
 const RATE_METRIC = { key: 'keyRate', label: 'Ключевая ставка', unit: 'п.п.' };
+const NOISE_RUNS = 12;
 
 export function LabScreen({ onBack, initialLever = 'keyRate' }) {
   const [scenario, setScenario] = useState('sandbox');
@@ -104,25 +113,38 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
   const [mode, setMode] = useState(defaultLabMode(lever));
   const [cb, setCb] = useState(defaultLabCb(lever));
   const [horizon, setHorizon] = useState(24);
-  const [seed, setSeed] = useState(1);
+  const [noise, setNoise] = useState('off');
   const pickLever = (id) => {
     const l = LAB_LEVERS.find((x) => x.id === id);
     setLeverId(id); setDelta(DEFAULT_DELTA[id] ?? l.step * 4); setMode(defaultLabMode(l)); setCb(defaultLabCb(l));
   };
   const res = useMemo(() => {
-    try { return impulseResponse({ scenario, leverId, delta, mode, cb, seed, horizon }); } catch { return null; }
-  }, [scenario, leverId, delta, mode, cb, seed, horizon]);
+    try {
+      const opts = { scenario, leverId, delta, mode, cb, horizon };
+      return noise === 'on' ? impulseBand(opts, NOISE_RUNS) : impulseResponse(opts);
+    } catch { return null; }
+  }, [scenario, leverId, delta, mode, cb, noise, horizon]);
+  // темп роста расходов: сколько это в уровне — через квартал и к концу горизонта
+  const levelKey = LEVEL_KEY[leverId];
+  const levelNow = res && levelKey ? res.diff[0][levelKey] : null;
+  const levelEnd = res && levelKey ? res.diff[res.diff.length - 1][levelKey] : null;
   const isRate = leverId === 'keyRate';
   const ruleOn = res ? res.cb === 'taylor' : false;
   const metrics = ruleOn || isRate ? [...LAB_METRICS, RATE_METRIC] : LAB_METRICS;
   const sc = SCENARIOS.find((x) => x.id === scenario);
   const union = sc && sc.overrides && sc.overrides.currencyUnion && lever.group === 'monetary';
   const range = deltaRange(lever);
-  const unit = lever.suffix.trim() === '%' ? (lever.type === 'level' ? ' п.п.' : ' п.п. темпа') : lever.suffix;
+  const unit = lever.suffix.trim() === '%' ? (lever.type === 'level' ? ' п.п.' : lever.persistent ? ' п.п. годового темпа' : ' п.п.') : lever.suffix;
+  // подписи режимов — по смыслу рычага: для темпов роста расходов «держать» значит «расти быстрее каждый год»
+  const modeOptions = lever.persistent
+    ? [{ id: 'pulse', label: 'расходы разово выше навсегда' }, { id: 'hold', label: 'расходы растут быстрее каждый год' }]
+    : lever.type === 'level'
+      ? [{ id: 'hold', label: 'весь срок' }, { id: 'pulse', label: 'один квартал' }]
+      : [{ id: 'pulse', label: 'один квартал' }, { id: 'hold', label: 'каждый квартал' }];
 
   return (
     <TrainerPage eyebrow="Тренажёр" title="Лаборатория" onBack={onBack} wide
-      lede="Один рычаг — два мира. Модель прогоняется из одной точки дважды: в базовом мире рычаг не трогают, в другом — меняют. Шоки и события выключены, случайное зерно одно и то же, ЦБ в обоих мирах ведёт себя одинаково. Линии — разница между мирами: чистый эффект рычага, квартал за кварталом (импульсный отклик).">
+      lede="Один рычаг — два мира. Модель прогоняется из одной точки дважды: в базовом мире рычаг не трогают, в другом — меняют. События выключены, шумы — по выбору (одинаковые в обоих мирах), ЦБ в обоих мирах ведёт себя одинаково. Линии — разница между мирами: чистый эффект рычага, квартал за кварталом (импульсный отклик).">
       <div className="ems-panel" style={{ padding: 14, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div>
           <div style={{ fontSize: 12, color: COLOR.muted, marginBottom: 6 }}>Рычаг</div>
@@ -140,7 +162,8 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           <label style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span>Изменение: <b className="ems-mono" style={{ color: COLOR.text }}>{delta > 0 ? '+' : ''}{fmt1(delta)}{unit}</b>
-              {res && <span> (с {fmt1(res.baseValue)} до {fmt1(res.newValue)}{lever.suffix})</span>}</span>
+              {res && !lever.persistent && <span> (с {fmt1(res.baseValue)} до {fmt1(res.newValue)}{lever.suffix})</span>}
+              {lever.persistent && <span> — за квартал это {fmtSigned1(quarterLevelShift(delta))}% уровня расходов</span>}</span>
             <input type="range" min={-range} max={range} step={lever.step} value={delta} aria-label="Изменение рычага"
               onChange={(e) => setDelta(Number(e.target.value))} />
           </label>
@@ -152,9 +175,8 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
             </div>
           ) : (<>
             <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span>Сколько держать</span>
-              <Seg label="Сколько держать" value={mode} onChange={setMode}
-                options={[{ id: 'hold', label: 'весь срок' }, { id: 'pulse', label: 'один квартал' }]} />
+              <span>{lever.persistent ? 'Как меняются расходы' : 'Сколько держать'}</span>
+              <Seg label={lever.persistent ? 'Как меняются расходы' : 'Сколько держать'} value={mode} onChange={setMode} options={modeOptions} />
             </div>
             <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span>Центральный банк</span>
@@ -174,16 +196,11 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
               {SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
             </select>
           </label>
-          <label style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span>Случайное зерно (одно на оба мира)</span>
-            <span style={{ display: 'flex', gap: 6 }}>
-              <input type="number" min={1} max={9999} value={seed} aria-label="Случайное зерно"
-                onChange={(e) => setSeed(Math.max(1, Math.min(9999, Math.round(Number(e.target.value) || 1))))}
-                style={{ width: 90, padding: '6px 8px', background: COLOR.panelAlt, color: COLOR.text, border: `1px solid ${COLOR.border}`, borderRadius: 6 }} />
-              <button type="button" className="ems-btn" style={{ padding: '5px 10px', fontSize: 12 }}
-                onClick={() => { Audio.play('click'); setSeed(1 + Math.floor(Math.random() * 9999)); }}>другое</button>
-            </span>
-          </label>
+          <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span>Фон</span>
+            <Seg label="Фон" value={noise} onChange={setNoise}
+              options={[{ id: 'off', label: 'без шумов' }, { id: 'on', label: `на фоне шумов (${NOISE_RUNS} прогонов)` }]} />
+          </div>
         </div>
       </div>
 
@@ -191,6 +208,16 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
         <div className="ems-panel" style={{ padding: 12, marginBottom: 12, fontSize: 12, color: COLOR.goldSoft, lineHeight: 1.5 }}>
           В этой экономике валютный союз: ставку, эмиссию и курс ведёт внешний ЦБ, и рычаг ничего не меняет — линии лежат на нуле.
           Это и есть урок еврозоны: у страны нет своей денежной политики.
+        </div>
+      )}
+
+      {levelKey && res && (
+        <div className="ems-panel" data-testid="lab-level" style={{ padding: '10px 12px', marginBottom: 12, fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
+          Уровень расходов против базы: через квартал <b className="ems-mono" style={{ color: COLOR.text }}>{fmtSigned1(levelNow)}%</b>,
+          к {res.diff.length}-му кварталу <b className="ems-mono" style={{ color: COLOR.text }}>{fmtSigned1(levelEnd)}%</b>.{' '}
+          {mode === 'pulse'
+            ? 'Темп вырос на один квартал — уровень сдвинулся разово и остаётся выше базы. Это учебный бюджетный шок: отклик выпуска затухает.'
+            : 'Темп выше каждый квартал — уровень уходит от базы всё дальше, стимул не кончается, и разрыв выпуска растёт весь горизонт.'}
         </div>
       )}
 
@@ -214,7 +241,9 @@ export function LabScreen({ onBack, initialLever = 'keyRate' }) {
           (инфляция, разрыв, безработица и ставка — в процентных пунктах, курс — в процентах; выше — валюта слабее).
           Минфин в обоих мирах не отвечает ни на что — это эксперимент «при прочих равных», а не прогноз.
           Форма отклика зависит от того, как ведёт себя ЦБ: сравните режимы, прежде чем делать выводы.
-          Зерно почти ничего не меняет — шоки выключены, и разница задана устройством модели, а не случаем.
+          {noise === 'on'
+            ? ` Сейчас оба мира живут с обычным квартальным шумом — одним и тем же в каждой паре, — пара прогоняется ${NOISE_RUNS} раз с разными зёрнами; линия — медиана, заливка — 10–90% прогонов. Полоса узкая: в модели эффект рычага почти просто складывается с шоками, и отклик от фона мало зависит.`
+            : ' Шумы выключены, поэтому отклик детерминирован — повторный расчёт даёт тот же результат до знака. Включите «на фоне шумов», чтобы увидеть, насколько он зависит от фона.'}
         </div>
       </div>
     </TrainerPage>

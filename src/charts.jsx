@@ -12,7 +12,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import { Activity, X } from 'lucide-react';
-import { fmt1, fmtMoney, fmtSigned1, taylorRate } from './lib/engine.js';
+import { fmt1, fmtMoney, fmtSigned1, taylorRate, LEVERS } from './lib/engine.js';
 import { COLOR, Audio, useEscapeClose } from './MacroSimulator.jsx';
 import { YOY_KEYS, yoyFromAnnualized } from './lib/model/measures.js';
 import { impulseResponse } from './lib/lab.js';
@@ -557,7 +557,8 @@ function computeIRF(economy, decisions, leverId, baseValue, newValue, difficulty
   try {
     // в партии ставку держит сам игрок (или бот), поэтому здесь ставка не следует правилу: «держу новое значение»
     const r = impulseResponse({ economy, decisions, leverId, baseValue, value: newValue, difficulty, horizon: horizon || 12,
-      mode: leverId === 'keyRate' ? 'hold' : undefined, cb: 'fixed' });
+      // как в партии: уровни и темпы расходов держатся, пока их не тронут; интервенции — один квартал
+      mode: (() => { const l = LEVERS.find((x) => x.id === leverId); return l && (l.type === 'level' || l.persistent) ? 'hold' : 'pulse'; })(), cb: 'fixed' });
     return r.diff.map((x, i) => ({ ...x, baseGdp: r.base[i].gdpGrowth, altGdp: r.alt[i].gdpGrowth,
       baseInfl: r.base[i].inflation, altInfl: r.alt[i].inflation }));
   } catch { return []; }

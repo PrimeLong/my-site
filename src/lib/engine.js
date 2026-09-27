@@ -494,6 +494,17 @@ function botFinanceMinistry(s, personaId, _difficulty) {
     else profitTaxRate = clamp(profitTaxRate - taxStep, 0, 45);
   }
 
+  /* Бот знает о кривой Лаффера: выше потолка (или когда в тени уже четверть экономики)
+     он налоги не поднимает. Раньше консерватор с упёршимися в пол расходами доводил НДС
+     до 30%, подоходный до 45% — сбор падал с 31% до 22% ВВП, тень росла до 36%, а долг
+     разгонялся. Снижать ставки потолок не мешает. */
+  const LAFFER_CAP = { incomeTaxRate: 25, vatRate: 22, profitTaxRate: 30, capitalTaxRate: 25, exciseRate: 18, socialContribRate: 34 };
+  const noRaise = s.shadowShare > 25;
+  const lafferCap = (v, k) => (v <= s[k] ? v : Math.min(v, noRaise ? s[k] : Math.max(s[k], LAFFER_CAP[k])));
+  incomeTaxRate = lafferCap(incomeTaxRate, 'incomeTaxRate'); vatRate = lafferCap(vatRate, 'vatRate');
+  profitTaxRate = lafferCap(profitTaxRate, 'profitTaxRate'); capitalTaxRate = lafferCap(capitalTaxRate, 'capitalTaxRate');
+  exciseRate = lafferCap(exciseRate, 'exciseRate'); socialContribRate = lafferCap(socialContribRate, 'socialContribRate');
+
   // обещание не повышать налоги (taxCommit) держит каждую ставку не выше обещанной
   const caps = s.taxCommit && s.taxCommit.caps;
   if (caps) {
@@ -513,7 +524,7 @@ function botFinanceMinistry(s, personaId, _difficulty) {
   const shareAdmin = drift(s.budgetShares.admin, P.shares.admin);
 
   const regionPlan = botRegionPlan(s, P, consolidationNeed);
-  return buildMofResult(s, P, targetDeficit, {
+  const res = buildMofResult(s, P, targetDeficit, {
     ...regionPlan,
     incomeTaxRate: clampToLever('incomeTaxRate', incomeTaxRate, s),
     profitTaxRate: clampToLever('profitTaxRate', profitTaxRate, s),
@@ -525,6 +536,24 @@ function botFinanceMinistry(s, personaId, _difficulty) {
     transfers: clampToLever('transfers', transfers, s),
     govInvestment: clampToLever('govInvestment', govInvestment, s),
     shareHealth, shareEducation, shareScience, shareDefense, shareAdmin });
+  const debtMove = botDebtCrisisMove(s, P);
+  if (debtMove) res.decisions = { ...res.decisions, ...debtMove };
+  return res;
+}
+
+/* Долговой кризис: у игрока есть МВФ и реструктуризация, а бот ими не пользовался — и в
+   «Греции» на автопилоте долг уходил в тысячи процентов ВВП. Теперь бот делает то же,
+   что сделало бы настоящее правительство: при долговом кризисе и долге выше 110% ВВП
+   просит программу МВФ; если долг перевалил за 180% (популист — за 130%), проводит
+   реструктуризацию. Оба решения разовые: движок сам проверяет, что кризис настоящий. */
+function botDebtCrisisMove(s, P) {
+  if (!(s.activeCrises || []).includes('debt')) return null;
+  const imfNow = (s.imfQuartersLeft || 0) > 0;
+  const locked = (s.marketLockoutQuartersLeft || 0) > 0;
+  const defaultAt = P.id === 'populist' ? 130 : 180;
+  if (!locked && s.debtToGdp > defaultAt) return { sovereignDefault: true };
+  if (!imfNow && !locked && P.id !== 'populist' && s.debtToGdp > 110) return { imfProgram: true };
+  return null;
 }
 
 /* Аналог buildCbResult для Минфина: собирает текст решения по итоговым
@@ -977,11 +1006,18 @@ function simulateQuarter(input, { skip = [] } = {}) {
     : clamp(11 - 0.10 * Math.max(0, s.debtToGdp - 55) - 1.5 * Math.max(0, s.riskPremium - 2.0), 0.5, 11);
   const allowedPrimary = projRevenue + maxDeficitPct / 100 * s.nominalGdp - projInterest;
   const plannedPrimary = (plannedPurchases + plannedTransfers + plannedGovInv) * s.priceLevel / 100;
+  /* Пределы сокращений. Секвестр режет до 10% за квартал (раньше — до 28%), и следующий
+     квартал отсчитывается от урезанной базы: в кризисных сценариях это накапливалось до
+     госзакупок в 5% ВВП и нулевых госинвестиций. Так не бывает даже при самой жёсткой
+     экономии — Греция урезала расходы примерно на треть. Поэтому у государства есть пол:
+     школы, больницы, армия и пенсии не опускаются ниже доли потенциального ВВП, что бы
+     ни решили Минфин, бот или секвестр. Недостающее занимается — долг растёт. */
   const sequesterFactor = (plannedPrimary > allowedPrimary && allowedPrimary > 0)
-    ? clamp(allowedPrimary / plannedPrimary, 0.72, 1) : 1;
-  const govPurchasesReal = plannedPurchases * sequesterFactor;
-  const transfersReal = plannedTransfers * (sequesterFactor < 1 ? Math.min(1, sequesterFactor + 0.10) : 1);
-  const govInvestmentReal = plannedGovInv * (sequesterFactor < 1 ? Math.max(0.5, sequesterFactor - 0.12) : 1);
+    ? clamp(allowedPrimary / plannedPrimary, 0.9, 1) : 1;
+  const floorOf = (share) => share * Math.max(1, s.potentialGdp);
+  const govPurchasesReal = Math.max(plannedPurchases * sequesterFactor, floorOf(C.floorPurchasesShare));
+  const transfersReal = Math.max(plannedTransfers * (sequesterFactor < 1 ? Math.min(1, sequesterFactor + 0.05) : 1), floorOf(C.floorTransfersShare));
+  const govInvestmentReal = Math.max(plannedGovInv * (sequesterFactor < 1 ? Math.max(0.5, sequesterFactor - 0.05) : 1), floorOf(C.floorGovInvestmentShare));
   // стройки в округах и разовые ответы на события — госрасходы сверх ползунков:
   // входят в ВВП и в дефицит, но не в базу, от которой растут ползунки
   const projectReal = RS.projectPct / 100 * s.gdp;
@@ -1042,9 +1078,22 @@ function simulateQuarter(input, { skip = [] } = {}) {
   const investmentGrowth = clamp(C.invInertia * s.investmentGrowth + (1 - C.invInertia) * investmentCore
     + (d.investment || 0) + gauss(NB.investment * nMult), -35, 25);
 
+  /* Якорь внешней торговли. Реальный курс раньше влиял только на темп роста экспорта и
+     импорта — и дешёвая валюта десятилетиями накачивала долю экспорта до 70–90% ВВП, а
+     когда курс возвращался, доля не откатывалась. Курс определяет уровень, а не вечный
+     рост: доля экспорта в потенциальном ВВП тянется к стартовой, поправленной на реальный
+     курс (дешёвая валюта — доля выше, но конечная), доля импорта в ВВП — так же. Ровно
+     как у потребления и инвестиций, у которых притяжение к своей доле было всегда. */
+  const rerClamped = clamp(s.realExchangeRate, 40, 250);
+  const exportShareTarget = (CONFIG.initial.exports / CONFIG.initial.gdp) * Math.pow(100 / rerClamped, C.exportShareElasticity);
+  const importShareTarget = (CONFIG.initial.imports / CONFIG.initial.gdp) * Math.pow(rerClamped / 100, C.importShareElasticity);
+  const exportShareGap = Math.log(Math.max(1e-6, s.exports / Math.max(1, s.potentialGdp)) / exportShareTarget);
+  const importShareGap = Math.log(Math.max(1e-6, s.imports / Math.max(1, s.gdp)) / importShareTarget);
   const exportsGrowth = clamp(0.95 + C.exportWorld * worldGdpGrowth + 0.03 * (worldDemandIndex - 100)
-    - C.exportRer * (s.realExchangeRate - 100) + (d.exportsGrowth || 0) + gauss(NB.exports * nMult), -30, 30);
+    - C.exportRer * (s.realExchangeRate - 100) - C.tradeShareAnchor * 100 * exportShareGap
+    + (d.exportsGrowth || 0) + gauss(NB.exports * nMult), -30, 30);
   const importsGrowth = clamp(0.15 + C.importIncome * s.gdpGrowth + C.importRer * (s.realExchangeRate - 100)
+    - C.tradeShareAnchor * 100 * importShareGap
     + (d.importsGrowth || 0) + gauss(NB.imports * nMult), -30, 30);
 
   const consumption = Math.max(1, applyAnnualGrowth(s.consumption, consumptionGrowth));
@@ -2184,7 +2233,11 @@ function simulateQuarter(input, { skip = [] } = {}) {
     consumptionGrowth, investmentGrowth, govPurchasesGrowth: actualGrowthG, transfersGrowth: actualGrowthTr,
     govInvestmentGrowth: actualGrowthIg, sequesterFactor, maxDeficitPct,
     exports, imports, tradeBalance: exports - imports, currentAccount, capitalAccount, netCapitalFlow, reserves, fdi,
-    exchangeRate, realExchangeRate, fxDeprAnnual, fxRegime: decisions.fxRegime, fxTarget, importPriceInflation,
+    exchangeRate, realExchangeRate, fxDeprAnnual,
+    /* срыв режима — это конец привязки: курс дальше плавает. Раньше режим оставался
+       «управляемым» с прежней целью, ЦБ каждый квартал снова тратил остатки резервов,
+       снова срывался и снова добавлял +22% девальвации — десятилетиями подряд */
+    fxRegime: fxBreak ? 'free' : decisions.fxRegime, fxTarget: fxBreak ? roundTo(exchangeRate, 1) : fxTarget, importPriceInflation,
     inflationTarget: infTarget, defenseIntervention,
     capitalStock, laborForce, productivity, humanCapitalIndex, infrastructureIndex, supplyScar, tfpGrowth,
     unemployment, prevUnemployment: s.unemployment, employment, nairu, tightness, vacancyRate, wageGrowth, unitLaborCostGrowth,
