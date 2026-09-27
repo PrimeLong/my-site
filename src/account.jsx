@@ -80,7 +80,7 @@ const leaveProfile = async () => {
     const prev = JSON.parse(localStorage.getItem(ACCOUNT_PREV_KEY) || 'null');
     if (prev && prev.playerId) {
       localStorage.setItem(PLAYER_ID_KEY, prev.playerId);
-      writeLocalProgress(prev.progress);
+      writeLocalProgress(prev.progress, { replace: true });
     }
     localStorage.removeItem(ACCOUNT_PREV_KEY);
   } catch { /* приватный режим */ }

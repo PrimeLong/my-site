@@ -83,3 +83,45 @@ describe('общий прогресс связанных устройств', ()
     expect(normalizeProgress({ folds: { a: 'x', b: [1, 'нет'], c: [5, 3] } }).folds).toEqual({ c: [1, 3] });
   });
 });
+
+/* Учебник в профиле: здесь не всё монотонно — отметку «прочитано» снимают, задача после
+   ошибки возвращается в первую коробку, — поэтому по каждой записи побеждает более поздняя. */
+describe('прогресс учебника в профиле', () => {
+  const pc = { textbook: {
+    read: { 'supply-demand': 100, elasticity: 200 }, unread: {},
+    problems: { 'sd-1': { tries: 1, ok: true, box: null, due: null, lastAt: 300 },
+      'el-2': { tries: 2, ok: false, box: 0, due: 5000, lastAt: 400 } },
+    last: { kind: 'chapter', id: 'elasticity' }, lastAt: 400,
+  } };
+  const phone = { textbook: {
+    read: { consumer: 150 }, unread: { elasticity: 500 },
+    problems: { 'el-2': { tries: 1, ok: true, box: 1, due: 9000, lastAt: 600 },
+      'cons-1': { tries: 1, ok: true, box: null, due: null, lastAt: 250 } },
+    last: { kind: 'chapter', id: 'consumer' }, lastAt: 650,
+  } };
+
+  it('главы и задачи с обоих устройств, по спорным — более поздняя запись', () => {
+    const t = mergeProgress(pc, phone).textbook;
+    expect(Object.keys(t.read).sort()).toEqual(['consumer', 'supply-demand']);
+    expect(t.unread.elasticity).toBe(500); // сняли отметку позже, чем поставили — не прочитано
+    expect(t.problems['sd-1'].ok).toBe(true);
+    expect(t.problems['cons-1'].ok).toBe(true);
+    expect(t.problems['el-2']).toMatchObject({ ok: true, box: 1, due: 9000, tries: 2 });
+    expect(t.last).toEqual({ kind: 'chapter', id: 'consumer' });
+  });
+
+  it('слияние симметрично и повторное ничего не меняет', () => {
+    const a = mergeProgress(pc, phone).textbook; const b = mergeProgress(phone, pc).textbook;
+    expect(a).toEqual(b);
+    expect(mergeProgress({ textbook: a }, { textbook: b }).textbook).toEqual(a);
+  });
+
+  it('старый профиль без учебника и мусор на входе ничего не ломают', () => {
+    expect(mergeProgress({}, pc).textbook.read['supply-demand']).toBe(100);
+    const n = normalizeProgress({ textbook: { read: { ok: 5, bad: 'x', ['x'.repeat(80)]: 1 },
+      problems: { p: { tries: 'много', box: 7, due: 1, lastAt: -3 }, q: 'нет' }, last: 'toc' } }).textbook;
+    expect(n.read).toEqual({ ok: 5 });
+    expect(n.problems).toEqual({ p: { tries: 0, ok: false, box: null, due: null, lastAt: 0 } });
+    expect(n.last).toBe(null);
+  });
+});

@@ -17,6 +17,7 @@ import {
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, emblemIcon } from './account.jsx';
+import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
 
@@ -745,9 +746,10 @@ export const readLocalProgress = () => ({
   courses: loadCourseProgress(),
   modules: loadModuleState(),
   folds: loadFolds(),
+  textbook: loadTextbookProgress(),
 });
 
-export const writeLocalProgress = (profile) => {
+export const writeLocalProgress = (profile, { replace = false } = {}) => {
   if (!profile) return;
   try {
     if (profile.achievements) localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(profile.achievements));
@@ -757,6 +759,10 @@ export const writeLocalProgress = (profile) => {
     if (profile.courses) localStorage.setItem(COURSE_PROGRESS_KEY, JSON.stringify(profile.courses));
     if (profile.modules) localStorage.setItem(MODULE_STATE_KEY, JSON.stringify(profile.modules));
     writeFolds(profile.folds);
+    // учебник — слиянием с тем, что на устройстве: ответ, данный пока шёл запрос, не пропадёт
+    // (при выходе из профиля — наоборот, заменой: устройству возвращается его собственный прогресс)
+    if (profile.textbook) saveTextbookProgress(replace ? mergeTextbook(profile.textbook, null) : mergeTextbook(loadTextbookProgress(), profile.textbook));
+    else if (replace) localStorage.removeItem(TEXTBOOK_PROGRESS_KEY);
   } catch { /* приватный режим */ }
 };
 

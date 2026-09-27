@@ -6,18 +6,19 @@
    повторении переносит её в следующую коробку (через 5, потом через 12 дней), после
    последней задача из повторения уходит. Неверный ответ на любом шаге — снова в первую.
 
-   Состояние: { read: { [главa]: ts }, problems: { [задача]: { tries, ok, box, due, lastAt } }, last } */
+   Состояние: { read: { [главa]: ts }, unread: { [глава]: ts }, problems: { [задача]: { tries, ok, box, due, lastAt } },
+   last, lastAt }. Прогресс уходит в профиль вместе с остальным (см. mergeTextbook) — поэтому снятая
+   отметка «прочитано» не стирается бесследно, а помнит, когда её сняли: иначе второе устройство
+   вернуло бы её при следующей синхронизации. */
 export const TEXTBOOK_PROGRESS_KEY = 'ems-textbook-v1';
 export const REVIEW_DAYS = [2, 5, 12];
 const DAY = 24 * 3600 * 1000;
 
-export const emptyProgress = () => ({ read: {}, problems: {}, last: null });
+export const emptyProgress = () => ({ read: {}, unread: {}, problems: {}, last: null, lastAt: 0 });
 
 export function loadProgress() {
   try {
-    const raw = JSON.parse(localStorage.getItem(TEXTBOOK_PROGRESS_KEY) || 'null');
-    if (!raw || typeof raw !== 'object') return emptyProgress();
-    return { read: raw.read || {}, problems: raw.problems || {}, last: raw.last || null };
+    return normalizeTextbook(JSON.parse(localStorage.getItem(TEXTBOOK_PROGRESS_KEY) || 'null'));
   } catch { return emptyProgress(); }
 }
 export function saveProgress(p) {
@@ -25,9 +26,80 @@ export function saveProgress(p) {
   return p;
 }
 
-export const markRead = (p, chapterId, now = Date.now()) => ({ ...p, read: { ...p.read, [chapterId]: p.read[chapterId] || now } });
-export const unmarkRead = (p, chapterId) => { const read = { ...p.read }; delete read[chapterId]; return { ...p, read }; };
-export const setLast = (p, page) => ({ ...p, last: page });
+export const markRead = (p, chapterId, now = Date.now()) => {
+  const unread = { ...p.unread }; delete unread[chapterId];
+  return { ...p, read: { ...p.read, [chapterId]: p.read[chapterId] || now }, unread };
+};
+export const unmarkRead = (p, chapterId, now = Date.now()) => {
+  const read = { ...p.read }; delete read[chapterId];
+  return { ...p, read, unread: { ...p.unread, [chapterId]: now } };
+};
+export const setLast = (p, page, now = Date.now()) => (
+  JSON.stringify(page) === JSON.stringify(p.last) ? p : { ...p, last: page, lastAt: now });
+
+/* Прогресс в профиле. Данные приходят с другого устройства и с сервера, поэтому сначала
+   чистка: только знакомые поля, конечные числа, короткие ключи, ограниченное число записей. */
+const MAX_ENTRIES = 600;
+const fin = (v) => (Number.isFinite(v) ? v : null);
+const okKey = (k) => typeof k === 'string' && k.length > 0 && k.length <= 64;
+const tsMap = (v) => {
+  const out = {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+  Object.keys(v).filter(okKey).slice(0, MAX_ENTRIES).forEach((k) => { if (fin(v[k]) != null && v[k] > 0) out[k] = v[k]; });
+  return out;
+};
+const cleanPage = (v) => {
+  if (!v || typeof v !== 'object' || typeof v.kind !== 'string' || v.kind.length > 32) return null;
+  const page = { kind: v.kind };
+  if (okKey(v.id)) page.id = v.id;
+  return page;
+};
+export function normalizeTextbook(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return emptyProgress();
+  const problems = {};
+  const src = raw.problems && typeof raw.problems === 'object' && !Array.isArray(raw.problems) ? raw.problems : {};
+  Object.keys(src).filter(okKey).slice(0, MAX_ENTRIES).forEach((id) => {
+    const r = src[id];
+    if (!r || typeof r !== 'object') return;
+    const box = Number.isInteger(r.box) && r.box >= 0 && r.box < REVIEW_DAYS.length ? r.box : null;
+    problems[id] = {
+      tries: Math.max(0, Math.min(9999, Math.round(fin(r.tries) || 0))),
+      ok: !!r.ok,
+      box,
+      due: box == null ? null : fin(r.due),
+      lastAt: Math.max(0, fin(r.lastAt) || 0),
+    };
+  });
+  return { read: tsMap(raw.read), unread: tsMap(raw.unread), problems, last: cleanPage(raw.last), lastAt: Math.max(0, fin(raw.lastAt) || 0) };
+}
+
+/* Слияние двух копий прогресса (телефон и компьютер, устройство и профиль). В отличие от
+   достижений, здесь не всё монотонно: отметку «прочитано» снимают, задача после неверного
+   ответа возвращается в первую коробку. Поэтому по каждой записи побеждает более поздняя:
+   прочитано/не прочитано — по времени отметки, задача — по времени последнего ответа,
+   место чтения — по времени перехода. Слияние симметрично и повторное ничего не меняет. */
+export function mergeTextbook(a, b) {
+  const x = normalizeTextbook(a); const y = normalizeTextbook(b);
+  const read = {}; const unread = {};
+  const chapters = new Set([...Object.keys(x.read), ...Object.keys(y.read), ...Object.keys(x.unread), ...Object.keys(y.unread)]);
+  chapters.forEach((id) => {
+    const readTs = [x.read[id], y.read[id]].filter(Boolean);
+    const unreadAt = Math.max(x.unread[id] || 0, y.unread[id] || 0);
+    const lastRead = readTs.length ? Math.max(...readTs) : 0;
+    // прочитано, если последняя отметка «прочитано» позже снятия; дата — первого прочтения
+    if (lastRead > unreadAt) read[id] = Math.min(...readTs.filter((t) => t > unreadAt));
+    else if (unreadAt) unread[id] = unreadAt;
+  });
+  const problems = { ...x.problems };
+  Object.entries(y.problems).forEach(([id, r]) => {
+    const cur = problems[id];
+    if (!cur) { problems[id] = r; return; }
+    const later = r.lastAt > cur.lastAt || (r.lastAt === cur.lastAt && JSON.stringify(r) > JSON.stringify(cur)) ? r : cur;
+    problems[id] = { ...later, tries: Math.max(cur.tries, r.tries) };
+  });
+  const pickY = y.lastAt > x.lastAt || (y.lastAt === x.lastAt && !x.last && y.last);
+  return { read, unread, problems, last: pickY ? y.last : x.last, lastAt: Math.max(x.lastAt, y.lastAt) };
+}
 
 /* Расписание после ответа. Переносит повторение дальше только верный самостоятельный ответ
    в день повторения (или позже). Верный ответ до срока — например, сразу после того как
