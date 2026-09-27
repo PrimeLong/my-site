@@ -6,10 +6,17 @@
    повторении переносит её в следующую коробку (через 5, потом через 12 дней), после
    последней задача из повторения уходит. Неверный ответ на любом шаге — снова в первую.
 
-   Состояние: { read: { [главa]: ts }, unread: { [глава]: ts }, problems: { [задача]: { tries, ok, box, due, lastAt } },
+   Состояние: { read: { [главa]: ts }, unread: { [глава]: ts }, problems: { [задача]: { tries, ok, box, due, lastAt,
+   cn, cok, un, uok } },
    last, lastAt }. Прогресс уходит в профиль вместе с остальным (см. mergeTextbook) — поэтому снятая
    отметка «прочитано» не стирается бесследно, а помнит, когда её сняли: иначе второе устройство
-   вернуло бы её при следующей синхронизации. */
+   вернуло бы её при следующей синхронизации.
+
+   Уверенность: перед ответом человек отмечает «уверен» или «не уверен». cn/cok — сколько было
+   уверенных ответов и сколько из них верных, un/uok — то же для неуверенных. Точность уверенных
+   ответов показывает, можно ли себе доверять: 60% «уверенных» верных — повод перечитать главу.
+   В той же таблице живут и вопросы на вспоминание в конце разделов («вспомнил / не вспомнил»):
+   у них то же расписание повторения, но без оценки уверенности. */
 export const TEXTBOOK_PROGRESS_KEY = 'ems-textbook-v1';
 export const REVIEW_DAYS = [2, 5, 12];
 const DAY = 24 * 3600 * 1000;
@@ -62,7 +69,13 @@ export function normalizeTextbook(raw) {
     const r = src[id];
     if (!r || typeof r !== 'object') return;
     const box = Number.isInteger(r.box) && r.box >= 0 && r.box < REVIEW_DAYS.length ? r.box : null;
+    const cnt = (v) => Math.max(0, Math.min(9999, Math.round(fin(v) || 0)));
+    const conf = {};
+    // верных не больше, чем всего
+    const cn = cnt(r.cn); const un = cnt(r.un);
+    if (cn || un) Object.assign(conf, { cn, cok: Math.min(cn, cnt(r.cok)), un, uok: Math.min(un, cnt(r.uok)) });
     problems[id] = {
+      ...conf,
       tries: Math.max(0, Math.min(9999, Math.round(fin(r.tries) || 0))),
       ok: !!r.ok,
       box,
@@ -95,7 +108,12 @@ export function mergeTextbook(a, b) {
     const cur = problems[id];
     if (!cur) { problems[id] = r; return; }
     const later = r.lastAt > cur.lastAt || (r.lastAt === cur.lastAt && JSON.stringify(r) > JSON.stringify(cur)) ? r : cur;
-    problems[id] = { ...later, tries: Math.max(cur.tries, r.tries) };
+    const merged = { ...later, tries: Math.max(cur.tries, r.tries) };
+    // счётчики уверенности на двух устройствах расходятся — берём больший по каждому
+    if (cur.cn || cur.un || r.cn || r.un) {
+      ['cn', 'cok', 'un', 'uok'].forEach((k) => { merged[k] = Math.max(cur[k] || 0, r[k] || 0); });
+    }
+    problems[id] = merged;
   });
   const pickY = y.lastAt > x.lastAt || (y.lastAt === x.lastAt && !x.last && y.last);
   return { read, unread, problems, last: pickY ? y.last : x.last, lastAt: Math.max(x.lastAt, y.lastAt) };
@@ -122,7 +140,23 @@ export function scheduleAfter(prev, correct, now = Date.now(), { sawSolution = f
 export function recordAnswer(p, problemId, correct, now = Date.now(), opts = {}) {
   const prev = p.problems[problemId] || { tries: 0, ok: false, box: null, due: null };
   const { box, due } = scheduleAfter(prev, correct, now, opts);
-  return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok: !!correct, box, due, lastAt: now } } };
+  const c = { cn: prev.cn || 0, cok: prev.cok || 0, un: prev.un || 0, uok: prev.uok || 0 };
+  if (opts.confident === true) { c.cn += 1; if (correct) c.cok += 1; }
+  if (opts.confident === false) { c.un += 1; if (correct) c.uok += 1; }
+  const conf = c.cn || c.un ? c : {};
+  return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok: !!correct, box, due, lastAt: now, ...conf } } };
+}
+
+// точность уверенных и неуверенных ответов по списку задач
+export function confidenceStats(p, ids) {
+  const out = { sure: { n: 0, ok: 0 }, unsure: { n: 0, ok: 0 } };
+  ids.forEach((id) => {
+    const r = p.problems[id];
+    if (!r) return;
+    out.sure.n += r.cn || 0; out.sure.ok += r.cok || 0;
+    out.unsure.n += r.un || 0; out.unsure.ok += r.uok || 0;
+  });
+  return out;
 }
 
 // задачи, которые пора повторить (срок наступил), и те, что ещё ждут своего дня

@@ -642,6 +642,53 @@ adAs.measure = (A, v) => {
   return { Y: e.Y, P: e.P };
 };
 
+/* ОГИБАЮЩАЯ LRAC. Долгосрочные средние издержки — парабола LRAC(Q) = c + a(Q − m)², m —
+   минимально эффективный масштаб. Завод размера K даёт краткосрочную кривую
+   SRAC(Q) = LRAC(Q) + (s − a)(Q − K)²: она выше LRAC везде, кроме точки Q = K, где касается её.
+   Минимум SRAC — в Q* = (a·m + (s − a)·K)/s: у заводов меньше m он правее точки касания, у заводов
+   больше m — левее; точно в касании только у завода минимально эффективного масштаба. */
+const lracParams = (A) => ({ c: num(A, 'c', 20), m: num(A, 'm', 60), a: num(A, 'a', 0.004), s: num(A, 's', 0.02) });
+export function lracFns(p) {
+  const lrac = (q) => p.c + p.a * (q - p.m) ** 2;
+  const srac = (K) => (q) => lrac(q) + (p.s - p.a) * (q - K) ** 2;
+  const sracMinQ = (K) => (p.a * p.m + (p.s - p.a) * K) / p.s;
+  return { lrac, srac, sracMinQ };
+}
+const lrac = {
+  title: 'Долгосрочные издержки: огибающая',
+  controls: () => [{ id: 'K', label: 'Размер завода (на какой выпуск построен)', min: 10, max: 110, step: 10, def: 20, fmt: (v) => `${v}` }],
+  measure: (A, v) => {
+    const f = lracFns(lracParams(A)); const q = f.sracMinQ(v.K);
+    return { lrac: f.lrac(v.K), sracMinQ: q, sracMin: f.srac(v.K)(q) };
+  },
+  build: (A, v) => {
+    const p = lracParams(A); const f = lracFns(p);
+    const Qmax = p.m * 2; const yMax = Math.ceil((p.c + p.a * p.m * p.m * 1.1) / 5) * 5;
+    const samp = (fn) => Array.from({ length: 80 }, (_, i) => { const q = 2 + (Qmax - 2) * i / 79; return { x: q, y: fn(q) }; });
+    const sizes = [p.m / 3, (2 * p.m) / 3, p.m, (4 * p.m) / 3, (5 * p.m) / 3].map(Math.round).filter((K) => K !== v.K);
+    const q = f.sracMinQ(v.K);
+    const part = v.K < p.m ? 'положительный эффект масштаба' : v.K > p.m ? 'отрицательный эффект масштаба' : 'минимально эффективный масштаб';
+    return {
+      // сверху — запас над последней отметкой шкалы, чтобы подпись оси не легла на число
+      xDomain: [0, Qmax], yDomain: [Math.floor((p.c * 0.75) / 5) * 5, yMax + 2.5], xLabel: 'Q', yLabel: 'AC',
+      curves: [
+        ...sizes.map((K) => ({ id: `s${K}`, points: samp(f.srac(K)), color: 'blue', ghost: true })),
+        { id: 'LRAC', label: 'LRAC', labelPos: 0.97, points: samp(f.lrac), color: 'gold' },
+        { id: 'SRAC', label: `SRAC завода на ${v.K}`, labelPos: Math.max(0.05, Math.min(0.8, (v.K - 25) / Qmax)), points: samp(f.srac(v.K)), color: 'blue' },
+      ],
+      points: [
+        { x: v.K, y: f.lrac(v.K), label: 'касание', guide: true },
+        ...(Math.abs(q - v.K) > 1 ? [{ x: q, y: f.srac(v.K)(q), label: 'min SRAC', small: true, below: true }] : []),
+      ],
+      readout: [
+        { label: 'Касание с LRAC', value: `Q = ${v.K}, средние ${r1(f.lrac(v.K))}` },
+        { label: 'Минимум SRAC', value: `${r1(f.srac(v.K)(q))} при Q = ${r1(q)}` },
+        { label: 'Участок LRAC', value: part },
+      ],
+    };
+  },
+};
+
 // как называть величины графика в ответе графической задачи
 supplyDemand.measureNames = { P: 'цена', Q: 'количество' };
 elasticity.measureNames = { P: 'цена', Q: 'количество', R: 'выручка', E: 'эластичность' };
@@ -657,7 +704,8 @@ tax.measureNames = { Pd: 'цена покупателей', Ps: 'цена про
 
 elasticCompare.measureNames = { qIn: 'покупки (неэластичный)', qEl: 'покупки (эластичный)', rIn: 'выручка (неэластичный)', rEl: 'выручка (эластичный)' };
 revenueCurve.measureNames = { P: 'цена', R: 'выручка' };
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax };
+lrac.measureNames = { lrac: 'долгосрочные средние издержки', sracMinQ: 'выпуск при минимуме SRAC', sracMin: 'минимум SRAC' };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac };
 export const chartDefaults = (type, attrs) => Object.fromEntries(CHARTS[type].controls(attrs).filter((c) => !c.button).map((c) => [c.id, c.def]));
 
 /* ГРАФИЧЕСКАЯ ЗАДАЧА: игрок двигает ползунки, ответ — направления изменения величин
