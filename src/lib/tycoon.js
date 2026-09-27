@@ -213,7 +213,7 @@ export function normalizeTycoon(st) {
 }
 
 function emptyQuarter() {
-  return { revenue: 0, retail: 0, wholesale: 0, exports: 0, wages: 0, upkeep: 0, purchases: 0, transport: 0 };
+  return { revenue: 0, retail: 0, wholesale: 0, exports: 0, wages: 0, upkeep: 0, purchases: 0, transport: 0, capex: 0 };
 }
 function pushLog(st, text) {
   st.log = [{ t: st.t, q: st.country.quarterIndex, text }, ...st.log].slice(0, 40);
@@ -333,7 +333,10 @@ const upkeepOf = (st, b) => BLD[b.type].upkeep * Math.pow(1.3, b.level - 1) * pr
 
 /* ------------------------------ ТАКТ ------------------------------
    dt — секунды игрового времени. Большие промежутки режутся на секунды, внутри —
-   кварталы страны, если пришло их время (offline — страна стоит, кварталов нет). */
+   кварталы, если пришло их время. offline — страна стоит (её кварталы не идут), но
+   кварталы компании идут: проценты, погашение, налог, проверки, ход конкурентов.
+   Раньше офлайн их пропускал целиком — можно было взять максимальный кредит,
+   закрыть вкладку и три часа (180 кварталов) не платить ни процентов, ни налога. */
 export function tick(prev, dt, { offline = false } = {}) {
   let st = prev;
   let left = Math.max(0, dt);
@@ -342,7 +345,7 @@ export function tick(prev, dt, { offline = false } = {}) {
     st = step1(st, step, offline);
     if (st.mgrTimer >= 5) st = runManagers({ ...st, mgrTimer: 0 });
     left -= step;
-    if (!offline && st.qTime >= QUARTER_SEC) st = quarterEnd(st);
+    if (st.qTime >= QUARTER_SEC) st = quarterEnd(st, offline);
   }
   return st;
 }
@@ -587,14 +590,33 @@ function step1(prev, dt, offline) {
 
   st.cash = cash;
   st.t += dt;
-  if (!offline) st.qTime += dt;
+  st.qTime += dt;
   return st;
 }
 
 /* ------------------------------ КОНЕЦ КВАРТАЛА ------------------------------
    Страна делает ход, компания платит проценты и налог, случаются проверки,
    забастовки и беды в областях, банк пересчитывает лимит. */
-function quarterEnd(prev) {
+/* След компании в экономике страны. Сила — от размера компании (стоимость v / (v + 3000)):
+   небольшая лавка стране незаметна, концерн — заметен. Стройки — инвестиции, терминалы —
+   экспорт, штат — занятость, а области с вашими заводами спокойнее. */
+export function firmFootprint(st) {
+  const v = Math.max(0, companyValue(st));
+  const k = v / (v + 3000);
+  const q = st.quarter || {};
+  const byRegion = {};
+  st.buildings.forEach((b) => { byRegion[b.region] = (byRegion[b.region] || 0) + 1; });
+  const n = Math.max(1, st.buildings.length);
+  const exportShare = q.revenue > 0 ? (q.exports || 0) / q.revenue : 0;
+  return {
+    k, investment: (q.capex || 0) > 0 ? 0.5 * k : 0, exports: 0.6 * k * exportShare, jobs: 0.2 * k,
+    regions: Object.fromEntries(Object.entries(byRegion).map(([r, c]) => [r, Math.round(8 * k * (c / n) * 10) / 10])),
+  };
+}
+
+// тело кредита гасится каждый квартал: 5% долга (кредит на ~5 лет), а не только проценты
+export const AMORT_Q = 0.05;
+function quarterEnd(prev, offline = false) {
   const st = { ...prev, events: { ...prev.events }, milestones: { ...prev.milestones } };
   st.qTime -= QUARTER_SEC;
   const before = economyOf(st);
@@ -607,14 +629,25 @@ function quarterEnd(prev) {
   const pretax = ebitda - interest;
   const tax = Math.max(0, pretax) * clamp(before.profitTaxRate ?? 20, 0, 60) / 100;
   st.cash -= interest + tax;
+  // погашение тела: раньше долг висел вечно, сколько ни плати проценты
+  const principal = (st.debtRub + st.debtFx * fxRate(before)) * AMORT_Q;
+  if (principal > 0.005) {
+    st.cash -= principal;
+    st.debtRub *= 1 - AMORT_Q; st.debtFx *= 1 - AMORT_Q;
+  }
 
-  // страна: квартал экономики
-  const { country, news } = advanceCountry(st.country);
-  st.country = country;
-  const e = country.economy;
-  st.news = [...news.map((n) => ({ ...n, id: `c${qi}${n.id}` })), ...st.news].slice(0, 80);
-  st.wageIdx *= Math.pow(1 + (e.wageGrowth ?? 6) / 100, 0.25);
-  st.worldIdx *= 1.004;
+  // страна: квартал экономики (офлайн страна стоит на паузе)
+  if (!offline) {
+    // компания игрока — часть своей экономики: стройки, экспорт и рабочие места идут в страну
+    const { country, news } = advanceCountry(st.country, { firm: firmFootprint(st) });
+    st.country = country;
+    st.news = [...news.map((n) => ({ ...n, id: `c${qi}${n.id}` })), ...st.news].slice(0, 80);
+  }
+  const e = st.country.economy;
+  if (!offline) {
+    st.wageIdx *= Math.pow(1 + (e.wageGrowth ?? 6) / 100, 0.25);
+    st.worldIdx *= 1.004;
+  }
   const bankRate = Math.max(0.5, rubLoanRate(e) - (has(st, 'finance_dept') ? 1 : 0));
   st.loanRate = st.debtRub > 0 ? st.loanRate + 0.25 * (bankRate - st.loanRate) : bankRate;
 
@@ -625,7 +658,10 @@ function quarterEnd(prev) {
   // события квартала
   let fine = 0;
   st.events.regionHit = null;
-  const rev = e.regionEvent;
+  /* Событие области бьёт по компании один её квартал. Офлайн страна стоит, и её
+     последнее событие оставалось «текущим» — раньше оно повторялось каждый офлайн-
+     квартал: 77 новостей «под ударом» из 80, здания вполсилы все три часа. */
+  const rev = offline ? null : e.regionEvent;
   if (rev && rev.region && st.buildings.some((b) => b.region === rev.region)) {
     st.events.regionHit = { region: rev.region, title: rev.title, untilQ: e.quarterIndex };
     pushNews(st, `${(rev.title || 'Событие').toUpperCase()}: ВАШИ ПРЕДПРИЯТИЯ ПОД УДАРОМ`,
@@ -660,13 +696,35 @@ function quarterEnd(prev) {
   if (st.distress >= 2) { st.bankrupt = true; pushNews(st, 'КОМПАНИЯ ПРИЗНАНА БАНКРОТОМ', 'Суд ввёл внешнее управление.'); }
 
   const profit = pretax - tax - fine;
-  st.history = [...st.history, { q: qi, label: quarterLabel(qi), revenue: q.revenue, retail: q.retail, wholesale: q.wholesale,
+  const row = { q: qi, label: quarterLabel(qi), revenue: q.revenue, retail: q.retail, wholesale: q.wholesale,
     exports: q.exports, wages: q.wages, upkeep: q.upkeep, purchases: q.purchases, transport: q.transport,
-    ebitda, interest, tax, fine, profit, cash: st.cash, debt: totalDebtT(st), value: 0 }].slice(-60);
+    ebitda, interest, principal, tax, fine, profit, cash: st.cash, debt: totalDebtT(st), value: 0 };
+  st.history = pushHistory(st.history, row, offline);
   st.quarter = emptyQuarter();
   st.history[st.history.length - 1].value = companyValue(st);
   return st;
 }
+
+/* Офлайн-кварталы (до 60 за три часа) раньше ложились в историю отдельными строками с
+   одной и той же подписью квартала — страна же стоит — и вытесняли всю онлайн-историю.
+   Теперь офлайн сворачивается в одну строку: потоки — в среднем за квартал (чтобы
+   графики и оценка EBITDA банком не видели пика), остатки — на конец, quarters — сколько
+   кварталов в ней. */
+const HISTORY_FLOWS = ['revenue', 'retail', 'wholesale', 'exports', 'wages', 'upkeep', 'purchases', 'transport',
+  'ebitda', 'interest', 'principal', 'tax', 'fine', 'profit'];
+export function pushHistory(history, row, offline) {
+  const last = history[history.length - 1];
+  if (!offline) return [...history, row].slice(-60);
+  if (!last || !last.offline) {
+    return [...history, { ...row, offline: true, quarters: 1, label: 'Офлайн · 1 кв.' }].slice(-60);
+  }
+  const n = (last.quarters || 1) + 1;
+  const merged = { ...row, offline: true, quarters: n, label: `Офлайн · ${n} кв.` };
+  HISTORY_FLOWS.forEach((k) => { merged[k] = ((last[k] || 0) * (n - 1) + (row[k] || 0)) / n; });
+  return [...history.slice(0, -1), merged];
+}
+// сколько кварталов прожила компания: свёрнутая офлайн-строка считается за все свои кварталы
+export const quartersPlayed = (st) => st.history.reduce((a, h) => a + (h.quarters || 1), 0);
 
 /* ------------------------------ ФИНАНСЫ ------------------------------ */
 export const totalDebtT = (st) => st.debtRub + st.debtFx * fxRate(economyOf(st));
@@ -708,7 +766,7 @@ export function build(st, type, region) {
   const err = canBuild(st, type, region);
   if (err) return { error: err };
   const d = BLD[type];
-  const next = { ...st, cash: st.cash - d.cost,
+  const next = { ...st, cash: st.cash - d.cost, quarter: { ...st.quarter, capex: (st.quarter.capex || 0) + d.cost },
     buildings: [...st.buildings, { uid: newUid(), type, region, level: 1, staff: 0, enabled: true }] };
   return { st: checkMilestones(next) };
 }
@@ -718,7 +776,8 @@ export function upgrade(st, uid) {
   if (b.level >= MAX_LEVEL) return { error: 'Максимальный уровень' };
   const c = upgradeCost(b);
   if (st.cash < c) return { error: 'Не хватает денег' };
-  return { st: checkMilestones({ ...st, cash: st.cash - c, buildings: st.buildings.map((x) => (x.uid === uid ? { ...x, level: x.level + 1 } : x)) }) };
+  return { st: checkMilestones({ ...st, cash: st.cash - c, quarter: { ...st.quarter, capex: (st.quarter.capex || 0) + c },
+    buildings: st.buildings.map((x) => (x.uid === uid ? { ...x, level: x.level + 1 } : x)) }) };
 }
 // продажа здания возвращает треть вложенного
 export function demolish(st, uid) {
@@ -873,6 +932,47 @@ function rawDemand(st, region, id) {
   const stress = reg ? regionStress(reg, e) : 30;
   return r.demand * (POP[region] || 0.05) * macro * clamp(1.15 - stress / 200, 0.6, 1.15);
 }
+/* Где торговать. Для каждой области — сколько выручки в минуту принёс бы ещё один
+   магазин: покупатели области, доля, которую отдадут конкуренты, и полки, которые у
+   вас там уже стоят. Раньше этого не было видно вовсе: магазины ставились наугад. */
+const shopRevenue = (st, region, P, goods) => {
+  if (P <= 0) return 0;
+  const rows = goods.map((g) => {
+    const d = regionDemand(st, region, g.id) * marketSplit(st, region, g.id, P).share;
+    return [d, retailPrice(st, g.id)];
+  });
+  const units = rows.reduce((a, [d]) => a + d, 0);
+  const k = units > P ? P / units : 1; // полок меньше, чем покупателей, — продаётся столько, сколько влезет
+  return rows.reduce((a, [d, p]) => a + d * p * k, 0);
+};
+export function shopOpportunities(st) {
+  const cap = {};
+  st.buildings.forEach((b) => { const d = BLD[b.type]; if (d.sells) cap[b.region] = (cap[b.region] || 0) + d.sells * buildingPower(st, b); });
+  const one = BLD.shop.sells;
+  // считаем по товарам, которые у вас есть или производятся; нет ни одного — по всем
+  const made = new Set(st.buildings.flatMap((b) => Object.keys(BLD[b.type].out || {})));
+  const all = RESOURCES.filter((r) => r.consumer);
+  const own = all.filter((g) => made.has(g.id) || (st.stock[g.id] || 0) > 0.5);
+  const goods = own.length ? own : all;
+  return regionsOpen(st).map((region) => {
+    const P = cap[region] || 0;
+    const now = shopRevenue(st, region, P, goods);
+    const gain = shopRevenue(st, region, P + one, goods) - now;
+    const buyers = RESOURCES.filter((r) => r.consumer).reduce((a, g) => a + rawDemand(st, region, g.id), 0);
+    const rivalShelves = liveRivals(st).reduce((a, c) => a + (c.shops[region] || 0), 0);
+    return { region, gain: Math.max(0, gain) * 60, now: now * 60, buyers: buyers * 60, mine: P, rivals: rivalShelves, goods: goods.map((g) => g.name) };
+  }).sort((a, b) => b.gain - a.gain);
+}
+/* Экспорт: по каждому экспортному товару — мировая цена по курсу против оптовой внутри
+   страны. Разница и есть смысл терминала; санкции и война её съедают. */
+export function exportOpportunities(st) {
+  const ports = regionsOpen(st).filter((r) => siteBonus('terminal', r) != null);
+  return RESOURCES.filter((r) => r.export).map((r) => {
+    const world = exportPrice(st, r.id); const home = sellPrice(st, r.id);
+    return { id: r.id, name: r.name, world, home, edge: home > 0 ? world / home - 1 : 0, have: (st.stock[r.id] || 0) > 0.5 };
+  }).sort((a, b) => b.edge - a.edge).map((x) => ({ ...x, ports }));
+}
+
 // сколько всего конкуренты льют на оптовый рынок этого товара
 export const rivalSupply = (st, id) => liveRivals(st).reduce((a, c) => a + ((c.supply || {})[id] || 0), 0);
 // конкуренты в области переманивают людей: зарплаты там выше
@@ -1028,12 +1128,24 @@ function rivalsQuarter(st) {
       return c;
     }
     c.warned = false;
+    // запас на войну: три квартала содержания полок и ещё немного — в убыток торговать дорого
+    const warChest = 3 * upkeep + 3;
     if (c.mode === 'war' && c.modeQ > 0) {
       c.modeQ -= 1;
+      // деньги кончаются раньше срока — война сворачивается, а не доводит конкурента до долгов
+      if (c.cash < warChest / 3 && c.profitQ < 0) {
+        c.mode = 'hold'; c.modeQ = 0; c.markup = baseMarkup;
+        pushNews(st, `«${def.short.toUpperCase()}» СВОРАЧИВАЕТ ЦЕНОВУЮ ВОЙНУ`, 'Торговать в убыток дальше конкуренту не на что — цены возвращаются к рыночным.');
+        return c;
+      }
       if (c.modeQ <= 0) c.mode = 'hold';
       return c;
     }
-    if (def.goods.length && share > warAt && c.cash > 3) {
+    /* Ценовую войну объявляет только тот, кому есть чем её оплатить: заметная прибыль
+       и запас денег на три квартала торговли в убыток. Раньше хватало трёх миллионов
+       на счёте — и войну начинала сеть, которая сама еле сводила концы с концами. */
+    const comfy = c.profitQ > Math.max(0.5, upkeep * 0.5);
+    if (def.goods.length && share > warAt && comfy && c.cash > warChest) {
       c.mode = 'war'; c.modeQ = 3; c.markup = def.style === 'aggressive' ? -20 : def.style === 'defensive' ? -12 : -8;
       pushNews(st, `«${def.short.toUpperCase()}» НАЧИНАЕТ ЦЕНОВУЮ ВОЙНУ`, `Ваша доля рынка ${Math.round(share * 100)}% — конкурент снижает цены на ${Math.abs(c.markup)}% ниже рынка. Можно ответить ценой, переждать или договориться.`);
       return c;

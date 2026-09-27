@@ -3,7 +3,7 @@
    кто колеблется, кого уже потеряли, что каждую группу двигает сейчас и какие
    решения она помнит. Грузится лениво, как и карта. */
 import { AlertTriangle, Briefcase, HardHat, Heart, MapPin, Megaphone, Shield, Stethoscope, TrendingDown, TrendingUp, Users } from 'lucide-react';
-import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1, fmtMoney } from './lib/engine.js';
+import { SOCIAL_GROUPS, groupStatus, coalitionOf, fmt1, fmtMoney, QUINTILES, FIRMS, FIRM_MODE_LABEL } from './lib/engine.js';
 import { Audio, COLOR } from './MacroSimulator.jsx';
 
 const GROUP_ICON = { pensioners: Heart, workers: HardHat, business: Briefcase, siloviki: Shield, public: Stethoscope, youth: Megaphone, regions: MapPin };
@@ -81,6 +81,8 @@ export function SocietyView({ economy, plan, onPlan, planner }) {
             memory={(economy.groupMemory || []).filter((m) => m.group === g.id)} />
         ))}
       </div>
+      <IncomePanel economy={economy} />
+      <FirmsPanel economy={economy} />
     </div>
   );
 }
@@ -186,6 +188,104 @@ function GroupCard({ g, v, prevV, drivers, memory }) {
         background: v < 35 ? COLOR.rustDim : 'none', color: v < 35 ? COLOR.rust : COLOR.faint }}>
         {v < 35 ? 'Потеряны: ' : 'Если потерять: '}{g.lost}
       </div>
+    </div>
+  );
+}
+
+/* Доходы по слоям: пять квинтилей от беднейших 20% до богатейших. Показывает то, чего
+   не видно в средних цифрах: у кого реальные доходы растут, у кого падают, чья
+   инфляция выше и на кого как ложатся налоги. */
+function IncomePanel({ economy }) {
+  const d = economy.distribution;
+  if (!d || !Array.isArray(d.quintiles)) return null;
+  const maxTax = Math.max(...d.quintiles.map((q) => q.taxBurden), 1);
+  const giniTone = d.gini > 0.42 ? COLOR.rust : d.gini > 0.37 ? COLOR.gold : COLOR.teal;
+  return (
+    <div className="ems-panel" style={{ padding: 16 }} aria-label="Доходы по слоям">
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+        <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>Доходы по слоям</span>
+        <span style={{ fontSize: 12, color: COLOR.muted }}>неравенство (Джини) <b className="ems-mono" style={{ color: giniTone }}>{d.gini.toFixed(3).replace('.', ',')}</b></span>
+      </div>
+      {/* две бедности рядом: они отвечают на разные вопросы и расходятся — это и есть урок */}
+      <div data-testid="poverty" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, margin: '4px 0 8px' }}>
+        {[['Относительная бедность', d.povertyRate, 'ниже 60% сегодняшней медианы'],
+          ['Абсолютная бедность', Number.isFinite(d.povertyAbs) ? d.povertyAbs : d.povertyRate, 'ниже порога, зафиксированного на старте']].map(([title, v, sub]) => (
+          <div key={title} style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '8px 10px' }}>
+            <div style={{ fontSize: 12, color: COLOR.muted }}>{title}</div>
+            <div className="ems-mono" style={{ fontSize: 17, fontWeight: 600, color: COLOR.text }}>{fmt1(v)}%</div>
+            <div style={{ fontSize: 12, color: COLOR.faint }}>{sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 8 }}>
+        Относительная (как в ЕС) спрашивает, насколько низ отстал от середины. Она считается по доходам в сегодняшних деньгах: разная инфляция у разных слоёв
+        её не касается вовсе, а общее обеднение почти не двигает — медиана проседает вместе со всеми (в сценарии «Гиперинфляция» за три года — на 2–3 пункта).
+        Абсолютная спрашивает, сколько людей не могут купить то, что могли на старте: доходы каждого слоя пересчитаны в цены старта по его собственной инфляции.
+        Общий рост доходов абсолютную бедность снижает, инфляция без индексации — поднимает (в той же «Гиперинфляции» — больше чем на десяток пунктов).
+      </div>
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 10 }}>
+        Пять групп по 20% населения. Инфляция у бедных выше — в их корзине больше еды и коммуналки. НДС ложится на тех, кто тратит весь доход,
+        подоходный — на зарплаты, налог на капитал — на верхний слой. Трансферты — больше половины дохода беднейших.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(96px, 1.2fr) repeat(3, minmax(0, 1fr))', gap: '6px 10px', fontSize: 12, alignItems: 'center' }}>
+        <span style={{ color: COLOR.faint }}>Слой</span>
+        <span style={{ color: COLOR.faint }}>Реальный доход за год</span>
+        <span style={{ color: COLOR.faint }}>Своя инфляция</span>
+        <span style={{ color: COLOR.faint }}>Налоги, % дохода</span>
+        {d.quintiles.map((q, i) => (
+          <Row key={q.id} name={QUINTILES[i].name} q={q} maxTax={maxTax} />
+        ))}
+      </div>
+    </div>
+  );
+}
+function Row({ name, q, maxTax }) {
+  const up = q.realYoY >= 0;
+  return (
+    <>
+      <span style={{ color: COLOR.text }}>{name}</span>
+      <span className="ems-mono" style={{ color: Math.abs(q.realYoY) < 0.05 ? COLOR.muted : up ? COLOR.teal : COLOR.rust }}>
+        {up ? '+' : '−'}{fmt1(Math.abs(q.realYoY))}%
+      </span>
+      <span className="ems-mono" style={{ color: COLOR.text }}>{fmt1(q.inflation)}%</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ flex: 1, height: 5, borderRadius: 3, background: COLOR.border, overflow: 'hidden', minWidth: 30 }}>
+          <span style={{ display: 'block', height: '100%', width: `${(q.taxBurden / maxTax) * 100}%`, background: COLOR.gold }} />
+        </span>
+        <span className="ems-mono" style={{ color: COLOR.muted, minWidth: 30, textAlign: 'right' }}>{Math.round(q.taxBurden)}</span>
+      </span>
+    </>
+  );
+}
+
+/* Крупный бизнес: те же компании, что в «Своём деле». Их здоровье — от ставки, налога
+   на прибыль, спроса, курса и мирового рынка; сокращают людей — неспокойно в их областях. */
+function FirmsPanel({ economy }) {
+  const firms = economy.firms;
+  if (!firms) return null;
+  return (
+    <div className="ems-panel" style={{ padding: 16 }} aria-label="Крупный бизнес">
+      <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 4 }}>Крупный бизнес</div>
+      <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5, marginBottom: 10 }}>
+        Дорогой кредит и высокий налог на прибыль давят на всех, слабый курс помогает экспортёрам и бьёт по ритейлу.
+        Ниже 30 компания сокращает людей, выше 70 — расширяется.
+      </div>
+      {FIRMS.map((f) => {
+        const x = firms[f.id] || { health: 60, mode: 'steady' };
+        const tone = x.mode === 'gone' ? COLOR.faint : x.health < 30 ? COLOR.rust : x.health > 70 ? COLOR.teal : COLOR.gold;
+        return (
+          <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(60px,1fr) auto', gap: 10, alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${COLOR.hairline}` }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13 }}>{f.name}</div>
+              <div style={{ fontSize: 12, color: COLOR.faint }}>{f.sector}</div>
+            </div>
+            <span style={{ height: 5, borderRadius: 3, background: COLOR.border, overflow: 'hidden' }}>
+              <span style={{ display: 'block', height: '100%', width: `${x.health}%`, background: tone }} />
+            </span>
+            <span style={{ fontSize: 12, color: tone, whiteSpace: 'nowrap' }}>{FIRM_MODE_LABEL[x.mode] || x.mode}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

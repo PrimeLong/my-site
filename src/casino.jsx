@@ -99,7 +99,7 @@ function RouletteGame({ cash, onResult }) {
     setSpinning(true); setSpin(null); Audio.play('tick');
     setRotation((r) => r + spins * 360 + delta);
     setTimeout(() => {
-      onResult(net);
+      onResult(net, bet, GAME_EV.roulette);
       Audio.play(win ? 'coin' : 'click');
       setSpin({ n, color, win, net });
       setSpinning(false);
@@ -172,6 +172,16 @@ const SLOT_SYMBOLS = [
   { id: 'seven', icon: '7️⃣', weight: 3, pay3: 60 },
 ];
 const SLOT_WEIGHT_TOTAL = SLOT_SYMBOLS.reduce((a, s) => a + s.weight, 0);
+/* Матожидание каждой игры — доля ставки, которую казино в среднем забирает себе.
+   Считается из самих правил: рулетка с одним зеро, таблица выплат слотов, кости,
+   выплата 85% в бинарных опционах; блэкджек без удвоений и сплитов — около −2%. */
+const SLOT_EV = (() => {
+  const p = (s) => s.weight / SLOT_WEIGHT_TOTAL;
+  const three = SLOT_SYMBOLS.reduce((a, s) => a + Math.pow(p(s), 3) * s.pay3, 0);
+  const pc = p(SLOT_SYMBOLS[0]);
+  return three + 3 * pc * pc * (1 - pc) * SLOT_SYMBOLS[0].pay2 - 1;
+})();
+export const GAME_EV = { roulette: -1 / 37, slots: SLOT_EV, dice: -1 / 6, blackjack: -0.02, binary: -0.075 };
 const pickSlotSymbol = () => {
   let r = Math.random() * SLOT_WEIGHT_TOTAL;
   for (const s of SLOT_SYMBOLS) { r -= s.weight; if (r <= 0) return s; }
@@ -212,7 +222,7 @@ function SlotsGame({ cash, onResult }) {
         setDisplay((d) => { const nd = [...d]; nd[i] = final[i]; return nd; });
         setSpinningReels((s) => { const ns = [...s]; ns[i] = false; return ns; });
         if (i === 2) {
-          onResult(n);
+          onResult(n, bet, GAME_EV.slots);
           Audio.play(didWin ? 'coin' : 'click');
           setNet(n); setWin(didWin);
         }
@@ -272,7 +282,7 @@ function DiceGame({ cash, onResult }) {
       else if (betType === 'over') didWin = sum > 7;
       else didWin = sum === 7;
       const n = didWin ? bet * (b.mult - 1) : -bet;
-      onResult(n);
+      onResult(n, bet, GAME_EV.dice);
       Audio.play(didWin ? 'coin' : 'click');
       setDice([d1, d2, sum]); setNet(n); setWin(didWin);
       setRolling(false);
@@ -366,7 +376,7 @@ function BlackjackGame({ cash, onResult }) {
     else if (pv > dv) { net = b; text = 'Вы выиграли.'; }
     else if (pv < dv) { net = -b; text = 'Дилер выиграл.'; }
     else { net = 0; text = 'Ничья — ставка возвращена.'; }
-    onResult(net);
+    onResult(net, b, GAME_EV.blackjack);
     Audio.play(net > 0 ? 'coin' : net < 0 ? 'click' : 'tick');
     setDealer(d); setOutcome({ text, net }); setPhase('done');
   };
@@ -456,7 +466,7 @@ function BinaryOptionGame({ cash, onResult }) {
     }, 90);
     setTimeout(() => {
       clearInterval(tickRef.current);
-      onResult(net);
+      onResult(net, bet, GAME_EV.binary);
       Audio.play(win ? 'coin' : 'click');
       setRes({ up, win, net });
       setBusy(false);
@@ -520,6 +530,17 @@ export function CasinoScreen({ book, onCasino }) {
           <span style={{ fontSize: 12, color: COLOR.faint, marginLeft: 'auto' }}>
             Матожидание отрицательное — это развлечение, а не стратегия
           </span>
+        </div>
+        {/* счётчик честности: сколько поставлено, чем кончилось и чем «должно было» —
+            на длинной дистанции итог тянется к ожидаемому проигрышу */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', padding: '8px 13px', borderBottom: `1px solid ${COLOR.border}`, fontSize: 12, color: COLOR.muted }}>
+          <span>Матожидание игры: <b className="ems-mono" style={{ color: COLOR.rust }}>{(GAME_EV[game] * 100).toFixed(1).replace('.', ',')}%</b> ставки</span>
+          <span>Ставок: <b className="ems-mono" style={{ color: COLOR.text }}>{book.casinoBets || 0}</b> на {fmtMln(book.casinoWagered || 0)}</span>
+          <span>Итог: <b className="ems-mono" style={{ color: (book.casinoNet || 0) >= 0 ? COLOR.teal : COLOR.rust }}>{fmtMlnSigned(book.casinoNet || 0)}</b></span>
+          <span>Ожидаемо: <b className="ems-mono" style={{ color: COLOR.rust }}>{fmtMlnSigned(book.casinoExpected || 0)}</b></span>
+          {(book.casinoBets || 0) > 0 && (
+            <span style={{ color: COLOR.faint }}>{(book.casinoNet || 0) > (book.casinoExpected || 0) ? 'пока везёт — это удача, а не мастерство' : 'итог идёт к матожиданию'}</span>
+          )}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '9px 13px', borderBottom: `1px solid ${COLOR.border}` }}>
           {CASINO_GAMES.map((g) => (

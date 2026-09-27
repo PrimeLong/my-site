@@ -218,3 +218,87 @@ describe('Своё дело', () => {
   });
 });
 
+
+describe('Своё дело: кредит, офлайн и рынок', () => {
+  it('долг гасится сам: каждый квартал банк списывает 5% тела', () => {
+    let st = T.makeTycoon({ start: 'retail' });
+    st = T.borrow(st, 5).st;
+    const d0 = T.totalDebtT(st);
+    st = withSeededRandom(4, () => T.tick({ ...st, cash: st.cash + 50 }, T.QUARTER_SEC * 4 + 1));
+    expect(T.totalDebtT(st)).toBeLessThan(d0 * 0.9);
+    expect(st.history[st.history.length - 1].principal).toBeGreaterThan(0);
+  });
+
+  it('офлайн компания платит проценты и налог, а страна стоит', () => {
+    let st = T.makeTycoon({ start: 'retail' });
+    st = T.borrow(st, T.creditLimitT(st)).st;
+    const q0 = st.country.quarterIndex;
+    const saved = { ...T.snapshotTycoon(st), savedAt: Date.now() - 3600 * 1000 };
+    const { st: after } = withSeededRandom(5, () => T.catchUp(saved, Date.now()));
+    expect(after.country.quarterIndex).toBe(q0);
+    const off = after.history.filter((h) => h.offline);
+    // офлайн свёрнут в одну строку, но кварталы в ней все
+    expect(off.length).toBe(1);
+    expect(off[0].quarters).toBeGreaterThan(10);
+    expect(off[0].interest).toBeGreaterThan(0);
+  });
+
+  it('три часа офлайна с событием в области: история цела, событие не растягивается', () => {
+    let st = withSeededRandom(8, () => T.tick(T.makeTycoon({ start: 'farm' }), 5 * T.QUARTER_SEC + 10));
+    const online = st.history.map((h) => h.label);
+    expect(online.length).toBe(5);
+    const region = st.buildings[0].region;
+    // вкладку закрыли прямо во время события в области с заводами
+    st = { ...st, events: { ...st.events, regionHit: { region, title: 'Паводок', untilQ: st.country.quarterIndex } },
+      country: { ...st.country, economy: { ...st.country.economy, regionEvent: { region, title: 'Паводок' } } } };
+    const hits0 = st.news.filter((n) => /ПОД УДАРОМ/.test(n.title || n.headline || '')).length;
+    const saved = { ...T.snapshotTycoon(st), savedAt: Date.now() - 3 * 3600 * 1000 };
+    const { st: after, away } = withSeededRandom(9, () => T.catchUp(saved, Date.now()));
+    expect(away).toBe(T.OFFLINE_CAP_SEC);
+    // онлайн-история на месте, офлайн — одна строка на все 180 кварталов
+    expect(after.history.slice(0, 5).map((h) => h.label)).toEqual(online);
+    expect(after.history.length).toBe(6);
+    expect(after.history[5].quarters).toBe(T.OFFLINE_CAP_SEC / T.QUARTER_SEC);
+    expect(T.quartersPlayed(after)).toBe(5 + T.OFFLINE_CAP_SEC / T.QUARTER_SEC);
+    // событие не повторялось каждый квартал и снято
+    const hits = after.news.filter((n) => /ПОД УДАРОМ/.test(n.title || n.headline || '')).length;
+    expect(hits - hits0).toBe(0);
+    expect(after.events.regionHit).toBe(null);
+    expect(after.bankrupt).toBe(false);
+  });
+
+  it('подсказка «где торговать» ранжирует области и считает экспортную выгоду', () => {
+    const st = withSeededRandom(6, () => T.tick(T.makeTycoon({ start: 'retail' }), 120));
+    const opp = T.shopOpportunities(st);
+    expect(opp.length).toBeGreaterThan(3);
+    expect(opp[0].gain).toBeGreaterThanOrEqual(opp[opp.length - 1].gain);
+    const exp = T.exportOpportunities(st);
+    expect(exp.every((x) => Number.isFinite(x.edge))).toBe(true);
+  });
+});
+
+describe('предыстория партии', () => {
+  it('три года ботами: история для графика, новости и полный срок до выборов', async () => {
+    const { makePrehistory } = await import('../autopilot.js');
+    const { makeInitialEconomy, quarterLabel } = await import('../engine.js');
+    const p = withSeededRandom(7, () => makePrehistory({}));
+    expect(p.prehistory.length).toBe(12);
+    expect(p.prehistory.every((h) => h.pre && Number.isFinite(h.inflation) && !/0 кв/.test(h.label))).toBe(true);
+    expect(p.news.length).toBeGreaterThan(5);
+    expect(p.economy.quartersToElection).toBe(makeInitialEconomy('sandbox').quartersToElection);
+    expect(quarterLabel(0)).toBe('IV кв. 2031');
+  });
+});
+
+describe('компания и экономика — в обе стороны', () => {
+  it('крупная компания двигает свою страну: след растёт с размером и попадает в автопилот', () => {
+    const small = T.makeTycoon({ start: 'retail' });
+    expect(T.firmFootprint(small).k).toBeLessThan(0.05);
+    const big = { ...small, cash: 4000, quarter: { ...small.quarter, capex: 50, revenue: 100, exports: 40 } };
+    const f = T.firmFootprint(big);
+    expect(f.k).toBeGreaterThan(0.3);
+    expect(f.investment).toBeGreaterThan(0);
+    expect(f.exports).toBeGreaterThan(0);
+    expect(Object.values(f.regions).some((v) => v > 0)).toBe(true);
+  });
+});

@@ -156,8 +156,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
     const ids = [];
     if (st.milestones.chain_bread) ids.push('tycoon_chain');
     if (T.companyValue(st) >= 1000) ids.push('tycoon_billion');
-    if (st.history.length >= 4 && T.ownerWealth(st) >= 3 * Math.max(1, st.value0 || 1)) ids.push('biz_triple');
-    if (st.setup.scenario !== 'sandbox' && st.history.length >= 12 && !st.bankrupt) ids.push('biz_survivor');
+    if (T.quartersPlayed(st) >= 4 && T.ownerWealth(st) >= 3 * Math.max(1, st.value0 || 1)) ids.push('biz_triple');
+    if (st.setup.scenario !== 'sandbox' && T.quartersPlayed(st) >= 12 && !st.bankrupt) ids.push('biz_survivor');
     unlockAch(ids).forEach((a) => { Audio.play('coin'); toast(`Достижение: ${a.title}`, 'gold'); });
     sendRecord(st);
     // смена квартала — веха: сохраняемся сразу, не дожидаясь пятисекундного таймера
@@ -204,13 +204,32 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hoverType, e.annexed && e.annexed.length]);
 
+  // слой карты «где торговать»: пересчёт раз в пять секунд — спрос меняется медленно
+  const [mapLayer, setMapLayer] = useState('mine');
+  const tradeKey = Math.floor(st.t / 5);
+  const shopOpp = useMemo(() => (mapLayer === 'trade' ? T.shopOpportunities(st) : null),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapLayer, tradeKey, st.buildings.length]);
+  const demandLayer = useMemo(() => {
+    if (!shopOpp) return null;
+    const top = Math.max(1e-6, ...shopOpp.map((x) => x.gain));
+    return Object.fromEntries(shopOpp.map((x) => [x.region, { k: x.gain / top, label: `+${money(x.gain)}/мин` }]));
+  }, [shopOpp]);
+
   const tabs = [['build', 'Карта и стройка', MapIcon], ['prod', 'Производство', Factory], ['stock', 'Склад и рынок', Boxes],
     ['rivals', 'Конкуренты', Swords], ['lab', 'Исследования', FlaskConical], ['team', 'Команда', Users], ['money', 'Финансы', Coins], ['country', 'Страна', Landmark]];
   const mapPanel = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div className="ems-panel" style={{ padding: 10 }}>
-        <BusinessMap economy={e} selected={region} onSelect={setRegion} info={mapInfo} flows={flows}
-          highlight={highlight} hit={st.events.regionHit ? st.events.regionHit.region : null} routes={T.ROUTE_LINKS} rivals={rivalMarks} />
+        <div role="group" aria-label="Слой карты" style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+          {[['mine', 'Мои здания'], ['trade', 'Где торговать']].map(([id, label]) => (
+            <button key={id} className="ems-btn" aria-pressed={mapLayer === id} onClick={() => { Audio.play('tab'); setMapLayer(id); }}
+              style={{ padding: '4px 10px', fontSize: 12, borderColor: mapLayer === id ? COLOR.gold : COLOR.border, color: mapLayer === id ? COLOR.goldSoft : COLOR.muted }}>{label}</button>
+          ))}
+        </div>
+        <BusinessMap economy={e} selected={region} onSelect={setRegion} info={mapInfo} flows={mapLayer === 'trade' ? [] : flows}
+          highlight={highlight} hit={st.events.regionHit ? st.events.regionHit.region : null} routes={T.ROUTE_LINKS} rivals={rivalMarks} demand={demandLayer} />
+        {mapLayer === 'trade' && shopOpp && <TradePanel st={st} opp={shopOpp} onPick={setRegion} />}
         <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6, lineHeight: 1.45 }}>
           Нажмите на область, чтобы строить там. Золотые линии — ваши грузы между областями: чем толще, тем больше везёте
           (перевозка стоит денег, соседство цехов экономит). Наведите на здание в списке — карта покажет, где оно работает лучше.
@@ -293,7 +312,8 @@ export function TycoonScreen({ initial, setupNew, onExit }) {
         <Modal onClose={() => setOffline(null)} title="Пока вас не было">
           <div style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.55 }}>
             Прошло {Math.floor(offline.away / 3600) ? `${Math.floor(offline.away / 3600)} ч ` : ''}{Math.round((offline.away % 3600) / 60)} мин.
-            Предприятия работали без присмотра — вполсилы, а страна ждала вас: кварталы не шли.
+            Предприятия работали без присмотра — вполсилы. Страна ждала вас, а компания жила своей жизнью:
+            платила проценты и налог, гасила кредит, встречала проверки и ходы конкурентов.
           </div>
           <div className="ems-mono" style={{ fontSize: 28, color: offline.earned >= 0 ? COLOR.teal : COLOR.rust, margin: '12px 0', fontWeight: 600 }}>
             {moneySigned(offline.earned)}
@@ -338,7 +358,7 @@ function sendRecord(st) {
   try { sent = Number(localStorage.getItem(RECORD_SENT_KEY)) || 0; } catch { /* приватный режим */ }
   if (!(value > 0) || value <= sent * 1.02) return;
   try { localStorage.setItem(RECORD_SENT_KEY, String(value)); } catch { /* приватный режим */ }
-  submitRecord(account.token, { value, start: st.setup.start, quarters: st.history.length, legacy: st.legacy || 0 }).catch(() => {
+  submitRecord(account.token, { value, start: st.setup.start, quarters: T.quartersPlayed(st), legacy: st.legacy || 0 }).catch(() => {
     try { localStorage.setItem(RECORD_SENT_KEY, String(sent)); } catch { /* повторим в следующем квартале */ }
   });
 }
@@ -479,8 +499,8 @@ function TyHeader({ st, setSt, savedAt, onExit, onSaves, onRecords }) {
         {/* прогресс к «Выжить в кризис» — видно, что считается и сколько осталось */}
         {st.setup.scenario !== 'sandbox' && !st.bankrupt && (
           <span title="Достижение «Выжить в кризис»: 12 кварталов кризисного сценария без банкротства"
-            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, border: `1px solid ${COLOR.border}`, color: st.history.length >= 12 ? COLOR.teal : COLOR.muted }}>
-            кризис: {Math.min(12, st.history.length)} из 12 кв.
+            style={{ fontSize: 12, padding: '3px 8px', borderRadius: 999, border: `1px solid ${COLOR.border}`, color: T.quartersPlayed(st) >= 12 ? COLOR.teal : COLOR.muted }}>
+            кризис: {Math.min(12, T.quartersPlayed(st))} из 12 кв.
           </span>
         )}
         <span aria-live="off" title="Партия сама сохраняется в этом браузере каждые пять секунд, в конце квартала и при закрытии вкладки; после перезагрузки страницы она откроется с того же места"
@@ -636,6 +656,42 @@ function BuildingCard({ st, b, act, compact, onLocate }) {
           <Trash2 size={12} color={COLOR.faint} />
         </button>
       </div>
+    </div>
+  );
+}
+
+/* «Где торговать»: лучшие области для нового магазина и выгода экспорта по товарам. */
+function TradePanel({ st, opp, onPick }) {
+  const exp = T.exportOpportunities(st);
+  const goods = (opp[0] && opp[0].goods) || [];
+  return (
+    <div style={{ marginTop: 8, fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
+      <div>Ярче — выгоднее. Цифра — сколько выручки в минуту принёс бы ещё один магазин ({goods.join(', ') || 'ваши товары'}) при достаточном запасе товара:
+        покупатели области минус доля конкурентов и ваши полки, которые там уже стоят.</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6 }}>
+        {opp.slice(0, 5).map((x) => (
+          <button key={x.region} className="ems-btn ghost" onClick={() => onPick(x.region)}
+            style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '3px 6px', fontSize: 12, textAlign: 'left' }}>
+            <span style={{ color: COLOR.text, minWidth: 110 }}>{T.regionName(x.region)}</span>
+            <span className="ems-mono" style={{ color: COLOR.blue }}>+{money(x.gain)}/мин</span>
+            <span style={{ marginLeft: 'auto', color: COLOR.faint }}>
+              {x.mine > 0 ? `ваших полок ${Math.round(x.mine / T.BLD.shop.sells)}` : 'вас там нет'}{x.rivals > 0 ? ` · конкурентов ${Math.round(x.rivals / 1.5)}` : ''}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div style={{ marginTop: 10, color: COLOR.text }}>Мировой экспорт — через терминал в {exp[0] && exp[0].ports.length ? exp[0].ports.map(T.regionName).join(', ') : 'порту'}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+        {exp.slice(0, 6).map((x) => (
+          <div key={x.id} style={{ display: 'flex', gap: 8 }}>
+            <span style={{ minWidth: 110, color: x.have ? COLOR.text : COLOR.muted }}>{x.name}{x.have ? ' · есть на складе' : ''}</span>
+            <span className="ems-mono" style={{ color: x.edge > 0.05 ? COLOR.teal : x.edge < -0.05 ? COLOR.rust : COLOR.faint }}>
+              {x.edge >= 0 ? '+' : '−'}{Math.abs(Math.round(x.edge * 100))}% к опту
+            </span>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 4, color: COLOR.faint }}>Санкции, война и дорогой курс съедают экспортную выгоду — список пересчитывается вместе с экономикой.</div>
     </div>
   );
 }
@@ -946,18 +1002,38 @@ const NODE_W = 176; const NODE_H = 92; const GAP_X = 44; const GAP_Y = 18;
 function useDragScroll() {
   const ref = useRef(null);
   const d = useRef(null);
+  /* Раньше при сильном рывке дерево «колбасило»: мышь одновременно начинала выделять
+     текст узлов, а выделение само прокручивает рамку к краю — две прокрутки спорили.
+     Теперь выделение на время жеста отключено, а сдвиг применяется раз в кадр. */
+  const apply = () => {
+    const g = d.current;
+    if (!g) return;
+    g.raf = 0;
+    if (ref.current) ref.current.scrollLeft = g.left - g.dx;
+  };
   const handlers = {
-    onPointerDown: (e) => { if (e.button && e.button !== 0) return; d.current = { x: e.clientX, left: ref.current.scrollLeft, moved: false, id: e.pointerId }; },
+    onPointerDown: (e) => {
+      if (e.button && e.button !== 0) return;
+      d.current = { x: e.clientX, left: ref.current.scrollLeft, moved: false, id: e.pointerId, dx: 0, raf: 0 };
+    },
     onPointerMove: (e) => {
       const g = d.current;
       if (!g || g.id !== e.pointerId) return;
       const dx = e.clientX - g.x;
       if (!g.moved && Math.abs(dx) < 6) return;
-      if (!g.moved) { g.moved = true; try { ref.current.setPointerCapture(e.pointerId); } catch { /* уже отпущен */ } }
-      ref.current.scrollLeft = g.left - dx;
+      if (!g.moved) {
+        g.moved = true;
+        try { ref.current.setPointerCapture(e.pointerId); } catch { /* уже отпущен */ }
+        try { window.getSelection().removeAllRanges(); } catch { /* нет выделения */ }
+      }
+      e.preventDefault();
+      g.dx = dx;
+      if (!g.raf) g.raf = requestAnimationFrame(apply);
     },
-    onPointerUp: () => { setTimeout(() => { d.current = null; }, 0); },
-    onPointerCancel: () => { d.current = null; },
+    onPointerUp: () => { const g = d.current; if (g && g.raf) cancelAnimationFrame(g.raf); setTimeout(() => { d.current = null; }, 0); },
+    onPointerCancel: () => { const g = d.current; if (g && g.raf) cancelAnimationFrame(g.raf); d.current = null; },
+    // мышь не выделяет текст узлов, пока тянут дерево
+    onDragStart: (e) => e.preventDefault(),
   };
   const onClickCapture = (e) => { if (d.current && d.current.moved) { e.stopPropagation(); e.preventDefault(); } };
   return { ref, handlers, onClickCapture };
@@ -982,7 +1058,8 @@ function LabTab({ st, act }) {
         <span style={{ fontSize: 12, color: COLOR.muted }}>очков · +{perMin(rate)}/мин. Лаборатории ускоряют (лучше в столице). Каждое изучение дороже следующего. Дерево шире экрана — прокрутите его вбок.</span>
       </div>
       <div ref={drag.ref} {...drag.handlers} onClickCapture={drag.onClickCapture}
-        style={{ overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', paddingBottom: 4, touchAction: 'pan-y', cursor: 'grab' }}>
+        style={{ overflowX: 'auto', overflowY: 'hidden', paddingBottom: 4, touchAction: 'pan-y', cursor: 'grab',
+          userSelect: 'none', WebkitUserSelect: 'none', overscrollBehaviorX: 'contain' }}>
         <div style={{ position: 'relative', width: W, height: H }}>
           <svg width={W} height={H} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden="true">
             {T.RESEARCH.flatMap((r) => T.reqsOf(r).map((q) => {
@@ -1200,7 +1277,8 @@ function MoneyTab({ st, act, onSell }) {
       <div className="ems-panel" style={{ padding: 14 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 7 }}><Landmark size={14} />Кредит</div>
         <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
-          Проценты платятся раз в квартал. Рублёвый долг переоценивается по новой ставке постепенно, валютный дешевле
+          Раз в квартал банк списывает проценты и {Math.round(T.AMORT_Q * 100)}% самого долга — кредит гасится сам примерно за пять лет
+          {debt > 0.01 && <> (в этом квартале погашение ≈ {money(debt * T.AMORT_Q)})</>}. Рублёвый долг переоценивается по новой ставке постепенно, валютный дешевле
           ({fmt1(fxLoanRate(e))}% против {fmt1(e.lendingRate)}%), но растёт вместе с курсом.
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1236,6 +1314,7 @@ function MoneyTab({ st, act, onSell }) {
           <Row k="Содержание зданий" v={`−${money(last.upkeep)}`} />
           <Row k="Перевозки" v={`−${money(last.transport)}`} />
           <Row k="Проценты" v={`−${money(last.interest)}`} />
+          {last.principal > 0 && <Row k="Погашение долга (не расход — долг уменьшился)" v={`−${money(last.principal)}`} />}
           <Row k="Налог на прибыль" v={`−${money(last.tax)}`} />
           {last.fine > 0 && <Row k="Штрафы и «взносы»" v={`−${money(last.fine)}`} color={COLOR.rust} />}
           <Row k="Чистая прибыль" v={moneySigned(last.profit)} color={last.profit < 0 ? COLOR.rust : COLOR.teal} strong />
@@ -1266,6 +1345,30 @@ function MoneyTab({ st, act, onSell }) {
 }
 
 /* ------------------------------ СТРАНА ------------------------------ */
+/* Связь в обратную сторону: компания — часть своей экономики. Чем она больше, тем
+   заметнее её стройки (инвестиции), терминалы (экспорт) и штат (занятость), а области
+   с её заводами спокойнее. */
+function FootprintPanel({ st }) {
+  const f = T.firmFootprint(st);
+  const pct = Math.round(f.k * 100);
+  const regions = Object.entries(f.regions).filter(([, v]) => v >= 0.1).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="ems-panel" style={{ padding: 14 }}>
+      <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 4 }}>Ваш след в экономике</div>
+      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>
+        {pct < 3 ? 'Пока компания слишком мала, чтобы страна её заметила. С ростом её стройки, экспорт и рабочие места начнут двигать экономику.'
+          : `Вес компании в экономике — ${pct} из 100. Каждый квартал: стройки добавляют инвестиций, терминалы — экспорта, штат снижает безработицу.`}
+      </div>
+      {pct >= 3 && (
+        <div style={{ fontSize: 12, color: COLOR.text, marginTop: 6, lineHeight: 1.6 }}>
+          Инвестиции +{fmt1(f.investment)} п.п. · экспорт +{fmt1(f.exports)} п.п. · безработица −{fmt1(f.jobs)} п.п.
+          {regions.length > 0 && <div style={{ color: COLOR.muted }}>Спокойнее в областях: {regions.map(([r, v]) => `${T.regionName(r)} (−${fmt1(v)})`).join(', ')}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CountryTab({ st }) {
   const c = st.country; const e = c.economy; const p = c.prev || e;
   const d = (k) => (e[k] ?? 0) - (p[k] ?? 0);
@@ -1311,6 +1414,7 @@ function CountryTab({ st }) {
           </div>
         )}
       </div>
+      <FootprintPanel st={st} />
       <div className="ems-panel" style={{ padding: 14 }}>
         <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 7 }}><Newspaper size={14} />Новости</div>
         {!st.news.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Первые новости придут в конце квартала.</div>}

@@ -40,19 +40,30 @@ export async function fetchRoom(id, since, seat, token) {
   if (!r.ok) throw new Error(data.error || 'Комната недоступна');
   return data;
 }
-/* Опрос сервера: вызывает onRoom при каждом изменении версии */
+/* Опрос сервера: вызывает onRoom при каждом изменении версии (сервер отвечает
+   коротким «unchanged», если версия та же). Частота — по фазе: intervalMs может быть
+   функцией. Часто — когда ждём партнёров (решения отправлены), редко — пока свой ход
+   не сделан (без наших решений квартал всё равно не сдвинется), совсем редко — в
+   скрытой вкладке. Вернулись на вкладку — опрос сразу, не дожидаясь таймера. */
 export function watchRoom(id, onRoom, onError, intervalMs = 2500, seat, token) {
-  let version = 0; let stop = false;
+  let version = 0; let stop = false; let timer = 0;
+  const every = () => {
+    const base = typeof intervalMs === 'function' ? intervalMs() : intervalMs;
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden' ? Math.max(base, 20000) : base;
+  };
   const tick = async () => {
     if (stop) return;
+    clearTimeout(timer);
     try {
       const data = await fetchRoom(id, version, seat, token);
       if (data.room) { version = data.room.version; onRoom(data.room); }
     } catch (e) { if (onError) onError(e); }
-    if (!stop) setTimeout(tick, intervalMs);
+    if (!stop) timer = setTimeout(tick, every());
   };
+  const onVisible = () => { if (document.visibilityState === 'visible') tick(); };
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
   tick();
-  return () => { stop = true; };
+  return () => { stop = true; clearTimeout(timer); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible); };
 }
 
 /* Соло-сохранения: четыре слота на игрока, целиком на сервере (см. api/solo.js) —

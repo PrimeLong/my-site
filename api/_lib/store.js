@@ -94,6 +94,19 @@ export async function getSoloSlots(playerId) {
   if (redis) return (await redis.get(`solo:${playerId}`)) || null;
   return mem.get(`solo:${playerId}`) || null;
 }
+/* Для стенда баланса (scripts/replay-balance.mjs): пройти по всем соло-сохранениям.
+   Только чтение; в памяти — то, что есть в этом процессе. */
+export async function scanSoloSlots(limit = 2000) {
+  const out = [];
+  if (!redis) { for (const [k, v] of mem) if (k.startsWith('solo:')) out.push(v); return out; }
+  let cursor = 0;
+  do {
+    const [next, keys] = await redis.scan(cursor, { match: 'solo:*', count: 200 });
+    cursor = Number(next);
+    for (const k of keys) { const v = await redis.get(k); if (v) out.push(v); if (out.length >= limit) return out; }
+  } while (cursor !== 0);
+  return out;
+}
 export async function setSoloSlots(playerId, slots) {
   if (redis) return redis.set(`solo:${playerId}`, slots, { ex: SOLO_TTL });
   mem.set(`solo:${playerId}`, slots);

@@ -324,7 +324,7 @@ function NetworkLobby({ onEnter }) {
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontSize: 12, marginBottom: 6 }}>Стартовая ситуация</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {[...SCENARIOS].sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
+                  {[...SCENARIOS].filter((sc) => !sc.noRoles).sort((a, b) => (a.level || 0) - (b.level || 0)).map((sc) => {
                     const active = netScenario === sc.id;
                     const levelColor = sc.level >= 4 ? COLOR.rust : sc.level === 3 ? COLOR.gold : sc.level === 2 ? COLOR.goldSoft : COLOR.teal;
                     return (
@@ -567,10 +567,11 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
     });
   };
-  const onCasino = (net) => {
-    const casinoNet = (portfolio.casinoNet || 0) + net;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoNet })));
+  const onCasino = (net, bet = 0, ev = 0) => {
+    const casinoBets = (portfolio.casinoBets || 0) + 1;
+    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
+      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
+    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
   };
   const [marketTab, setMarketTab] = useState('market');
   // та же временная подмена плейлиста, что и в соло-игре — см. комментарий там.
@@ -632,6 +633,10 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
   const prevEconomyRef = React.useRef(room.economy);
   const [stampKey, setStampKey] = useState(0);
 
+  // частота опроса по фазе: отправили решения — ждём партнёра и смотрим часто (2,5 с);
+  // свой ход не сделан — квартал без нас не сдвинется, хватит раза в 5 с (чат и присутствие)
+  const sentRef = React.useRef(sent);
+  sentRef.current = sent;
   React.useEffect(() => watchRoom(id, (r) => {
     setRoom(r);
     if (r.quarterIndex !== prevQuarter.current) {
@@ -691,7 +696,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     }
     prevEconomyRef.current = r.economy;
     Audio.setMood(r.economy);
-  }, (e) => failWithError(e), 2500, seat, token), [id, seat, token]);
+  }, (e) => failWithError(e), () => (sentRef.current ? 2500 : 5000), seat, token), [id, seat, token]);
   // у президентского кресла своя тема, у трейдерской комнаты — репертуар торгового зала
   React.useEffect(() => {
     Audio.setRole(seat === 'president' ? 'president' : room.mode === 'trader' ? 'trader' : null);
@@ -1481,7 +1486,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       })()}
 
       {/* колонки на телефоне — в нижней панели над кнопкой: всегда под пальцем и не прячутся за ней */}
-      <div style={narrow ? { position: 'sticky', bottom: 0, zIndex: 6 } : undefined}>
+      {/* закреплена всегда: без этого на компьютере обёртка была высотой с саму панель,
+          и кнопке квартала было не к чему прилипать — приходилось листать вниз */}
+      <div style={{ position: 'sticky', bottom: 0, zIndex: 6 }}>
       {narrow && (
         <div style={{ padding: '8px 12px 0', background: COLOR.panel, borderTop: `1px solid ${COLOR.hairline}` }}>
           <div className="ems-seg" role="group" aria-label="Колонка" style={{ width: '100%', display: 'flex' }}>
