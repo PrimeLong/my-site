@@ -610,8 +610,8 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByText('Учебник', { exact: true }).first().click();
   const toc = page.getByTestId('textbook');
   await expect(toc.getByText('Микроэкономика', { exact: true })).toBeVisible();
-  await expect(toc.locator('[data-status="ready"]')).toHaveCount(3);
-  await expect(toc.locator('[data-status="planned"]')).toHaveCount(13);
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(6);
+  await expect(toc.locator('[data-status="planned"]')).toHaveCount(10);
   await expectNoSidewaysScroll(page);
 
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
@@ -641,6 +641,23 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(prob.getByTestId('tb-verdict')).toContainText('Верно');
   await prob.getByRole('button', { name: 'Решение' }).click();
   await expect(prob).toContainText('Приравниваем объёмы');
+  // «верно или неверно»: выбор проверяется сразу, объяснение открывается само
+  const tf = ch.locator('[data-problem="sd-tf-law"]');
+  await tf.getByRole('textbox').fill('кривая спроса сдвинулась');
+  await tf.getByRole('button', { name: 'Неверно', exact: true }).click();
+  await expect(tf.getByTestId('tb-verdict')).toContainText('Верно');
+  await expect(tf).toContainText('сдвинулась сама кривая спроса');
+  // графическая: сдвинуть не ту кривую — неверно, нужную — верно
+  const gr = ch.locator('[data-problem="sd-graph-flour"]');
+  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала сдвиньте');
+  await gr.getByRole('slider', { name: 'Сдвиг спроса' }).fill('-20');
+  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Пока неверно');
+  await gr.getByRole('slider', { name: 'Сдвиг спроса' }).fill('0');
+  await gr.getByRole('slider', { name: 'Сдвиг предложения' }).fill('-20');
+  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Верно: цена растёт, количество падает');
   await ch.getByRole('button', { name: 'Отметить главу прочитанной' }).click();
   await expect(ch.getByRole('button', { name: /Глава прочитана/ })).toBeVisible();
   await expectNoSidewaysScroll(page);
@@ -652,7 +669,7 @@ test('учебник: оглавление, формулы KaTeX, график �
 
   // IS-LM: переключатель «ЦБ держит ставку» на графике, ссылка в Лабораторию с настройками
   await toc.getByRole('button', { name: /Модель IS-LM/ }).click();
-  const islm = page.locator('[data-chart="is-lm"]');
+  const islm = page.locator('[data-chart="is-lm"]').first();
   await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1100');
   await islm.getByRole('slider', { name: 'Госрасходы G' }).fill('150');
   await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1200');
@@ -662,10 +679,20 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByRole('button', { name: 'Лаборатория: госзакупки при неподвижной ставке' }).click();
   await expect(page.getByTestId('lab-charts')).toBeVisible();
   await expect(page.getByRole('button', { name: 'ставка стоит' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: 'расходы растут быстрее каждый год' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'расходы разово выше навсегда' })).toHaveAttribute('aria-pressed', 'true');
   // назад — в ту же главу учебника, а не в меню
   await page.getByRole('button', { name: '← Назад в меню' }).click();
   await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'is-lm');
+
+  // монополия: график с ползунком издержек и правило Лернера в числах
+  await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();
+  await toc.getByRole('button', { name: /Совершенная конкуренция и монополия/ }).click();
+  const mono = page.locator('[data-chart="monopoly"]').first();
+  await expect(mono.getByTestId('tb-readout')).toContainText('Цена: 60');
+  await mono.getByRole('slider', { name: 'Предельные издержки MC' }).fill('30');
+  await expect(mono.getByTestId('tb-readout')).toContainText('Цена: 65');
+  await expect(page.getByRole('button', { name: 'Своё дело: правило Лернера' })).toBeVisible();
+  await expectNoSidewaysScroll(page);
 
   // приложения: «игра ↔ учебник» с кнопками в Лабораторию, ограничения модели и словарь
   await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();
