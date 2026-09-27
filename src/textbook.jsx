@@ -16,7 +16,7 @@ import { GAME_CARDS, LIMITS } from './textbook/appendix.js';
 import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo } from './textbook/toc.js';
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
 import { CHAPTER_BLOCKS, PROBLEMS, problemsOf } from './textbook/content.js';
-import { CHARTS, chartDefaults } from './textbook/charts.js';
+import { CHARTS, chartDefaults, checkGraph } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer } from './textbook/markdown.js';
 import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, reviewQueue, chapterScore, setLast, daysUntil } from './textbook/progress.js';
 
@@ -203,6 +203,7 @@ function ChartSvg({ scene }) {
   const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
   const inside = (p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1;
   const labelAt = (pts, pos) => {
+    if (pos === 'start') return { x: sx(pts[0].x) + 6, y: sy(pts[0].y) - 6 };
     if (pos === 'mid') {
       const m = { x: (pts[0].x + pts[pts.length - 1].x) / 2, y: (pts[0].y + pts[pts.length - 1].y) / 2 };
       return { x: sx(m.x) + 8, y: sy(m.y) - 8 };
@@ -231,12 +232,25 @@ function ChartSvg({ scene }) {
       <text x={W - M.r} y={H - 6} fontSize={12} fill={COLOR.muted} textAnchor="end" fontStyle="italic">{scene.xLabel}</text>
       <text x={M.l - 30} y={M.t + 4} fontSize={12} fill={COLOR.muted} fontStyle="italic">{scene.yLabel}</text>
       <g clipPath={`url(#${clipId})`}>
-        {(scene.rects || []).map((r, i) => (
-          <g key={`r${i}`}>
-            <rect x={sx(r.x0)} y={sy(r.y1)} width={Math.max(0, sx(r.x1) - sx(r.x0))} height={Math.max(0, sy(r.y0) - sy(r.y1))} fill={COLOR.gold} fillOpacity={0.16} stroke={COLOR.gold} strokeOpacity={0.5} />
-            <text x={(sx(r.x0) + sx(r.x1)) / 2} y={(sy(r.y0) + sy(r.y1)) / 2} fontSize={11.5} fill={COLOR.goldSoft} textAnchor="middle">{r.label}</text>
-          </g>
-        ))}
+        {(scene.rects || []).map((r, i) => {
+          const tone = r.tone === 'rust' ? COLOR.rust : COLOR.gold;
+          return (
+            <g key={`r${i}`}>
+              <rect x={sx(r.x0)} y={sy(r.y1)} width={Math.max(0, sx(r.x1) - sx(r.x0))} height={Math.max(0, sy(r.y0) - sy(r.y1))} fill={tone} fillOpacity={0.16} stroke={tone} strokeOpacity={0.5} />
+              <text x={(sx(r.x0) + sx(r.x1)) / 2} y={(sy(r.y0) + sy(r.y1)) / 2 + 4} fontSize={11.5} fill={r.tone === 'rust' ? COLOR.rust : COLOR.goldSoft} textAnchor="middle">{r.label}</text>
+            </g>
+          );
+        })}
+        {(scene.polys || []).map((g, i) => {
+          const cx = g.points.reduce((a, pt) => a + sx(pt.x), 0) / g.points.length;
+          const cy = g.points.reduce((a, pt) => a + sy(pt.y), 0) / g.points.length;
+          return (
+            <g key={`poly${i}`}>
+              <polygon points={g.points.map((pt) => `${sx(pt.x).toFixed(1)},${sy(pt.y).toFixed(1)}`).join(' ')} fill={COLOR.rust} fillOpacity={0.22} stroke={COLOR.rust} strokeOpacity={0.5} />
+              <text x={cx} y={cy + 4} fontSize={10.5} fill={COLOR.rust} textAnchor="middle">{g.label}</text>
+            </g>
+          );
+        })}
         {scene.curves.map((c) => (
           <path key={c.id} d={path(c.points)} fill="none" stroke={(CURVE_COLOR[c.color] || CURVE_COLOR.gold)()}
             strokeWidth={c.ghost ? 1.5 : 2.4} strokeOpacity={c.ghost ? 0.35 : 1} strokeDasharray={c.ghost || c.dashed ? '5 4' : undefined} />
@@ -268,15 +282,19 @@ function ChartSvg({ scene }) {
   );
 }
 
-function ChartBox({ type, attrs, caption, ctx }) {
+/* График с ползунками. Сам хранит положение ползунков, если его не ведёт задача:
+   в графической задаче values/onValues приходят снаружи, only — какие ползунки показать. */
+function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = null, only = null, framed = true }) {
   const def = CHARTS[type];
-  const [values, setValues] = useState(() => (def ? chartDefaults(type, attrs) : {}));
+  const [own, setOwn] = useState(() => (def ? chartDefaults(type, attrs) : {}));
   if (!def) return null;
-  const controls = def.controls(attrs);
+  const values = outer || own;
+  const setValues = (fn) => { const next = typeof fn === 'function' ? fn(values) : fn; if (onValues) onValues(next); else setOwn(next); };
+  const controls = def.controls(attrs).filter((c) => !only || only.includes(c.id));
   const scene = def.build(attrs, values);
   const set = (id, v) => setValues((s) => ({ ...s, [id]: v }));
   return (
-    <div className="ems-panel" style={{ padding: 14, margin: '16px 0' }} data-testid="tb-chart" data-chart={type}>
+    <div className={framed ? 'ems-panel' : undefined} style={{ padding: framed ? 14 : 0, margin: framed ? '16px 0' : '8px 0' }} data-testid="tb-chart" data-chart={type}>
       <div className="row-between" style={{ alignItems: 'baseline', marginBottom: 6 }}>
         <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{def.title}</span>
         <button type="button" className="ems-btn" style={{ padding: '3px 9px', fontSize: 12 }} onClick={() => { Audio.play('click'); setValues(chartDefaults(type, attrs)); }}>
@@ -318,51 +336,124 @@ function ChartBox({ type, attrs, caption, ctx }) {
   );
 }
 
-/* ------------------------------ ЗАДАЧА ------------------------------ */
-function ProblemCard({ block, no, ctx, from = null }) {
+/* ------------------------------ ЗАДАЧИ ------------------------------
+   Три вида: ответ числом, «верно или неверно, объясните» и графическая (сдвиньте кривую —
+   проверяется, куда пошли величины графика). Рамка, счёт и решение у всех общие. */
+const DIR_WORD = { '+': 'растёт', '-': 'падает', 0: 'не меняется', '?': 'любое' };
+const KIND_LABEL = { number: 'Задача', truefalse: 'Верно или неверно', graph: 'Графическая задача' };
+
+function ProblemFrame({ block, no, ctx, from, children, verdict, answerText }) {
   const rec = ctx.progress.problems[block.id];
-  const [input, setInput] = useState('');
-  const [result, setResult] = useState(null);
-  const [showSolution, setShowSolution] = useState(false);
-  const submit = () => {
-    const r = checkAnswer(input, block.answer, block.tol);
-    if (r.value == null) { setResult({ bad: true }); return; }
-    setResult(r);
-    Audio.play(r.ok ? 'stamp' : 'tick');
-    ctx.onAnswer(block.id, r.ok);
-  };
+  // решение открыто по кнопке; у «верно или неверно» — само после ответа, пока его не скроют
+  const [solMode, setSolMode] = useState(null);
   const status = rec ? (rec.ok ? 'решена' : 'не решена') : null;
+  const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
   return (
-    <div className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="tb-problem" data-problem={block.id}>
+    <div className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}Задача {no}</span>
+        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
         {status && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
           {status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
       </div>
       <div className="tb-body"><Blocks blocks={block.statement} ctx={ctx} /></div>
-      <form style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} onSubmit={(e) => { e.preventDefault(); submit(); }}>
-        <input value={input} onChange={(e) => { setInput(e.target.value); setResult(null); }} inputMode="decimal" aria-label={`Ответ к задаче ${no}`}
-          placeholder="ответ числом" style={{ width: 150, padding: '7px 10px', fontSize: 14, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text }} />
-        {block.unit && <span style={{ fontSize: 13, color: COLOR.muted }}>{block.unit}</span>}
-        <button type="submit" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }}>Проверить</button>
-        <button type="button" className="ems-btn" style={{ padding: '7px 12px', fontSize: 13 }} aria-expanded={showSolution}
-          onClick={() => { Audio.play('click'); setShowSolution((v) => !v); }}>{showSolution ? 'Скрыть решение' : 'Решение'}</button>
-      </form>
-      {result && (
-        <div data-testid="tb-verdict" style={{ fontSize: 13, marginTop: 8, color: result.bad ? COLOR.muted : result.ok ? COLOR.teal : COLOR.rust }}>
-          {result.bad ? 'Введите число: например, 25 или −0,5.'
-            : result.ok ? <><Check size={13} style={{ verticalAlign: -2 }} /> Верно: {fmtNum(block.answer)}{block.unit ? ` ${block.unit}` : ''}.</>
-              : 'Пока неверно. Задача вернётся в список «на повторение» через два дня — загляните в решение.'}
+      {children}
+      <div style={{ marginTop: 8 }}>
+        <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
+          onClick={() => { Audio.play('click'); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+      </div>
+      {verdict && (
+        <div data-testid="tb-verdict" style={{ fontSize: 13, marginTop: 8, color: verdict.bad ? COLOR.muted : verdict.ok ? COLOR.teal : COLOR.rust }}>
+          {verdict.ok && <Check size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}{verdict.text}
         </div>
       )}
-      {showSolution && (
+      {open && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.gold, marginBottom: 0 }}>
-          <div className="tb-box-head" style={{ color: COLOR.gold }}>Решение · ответ {fmtNum(block.answer)}{block.unit ? ` ${block.unit}` : ''}</div>
+          <div className="tb-box-head" style={{ color: COLOR.gold }}>Решение · {answerText}</div>
           <div className="tb-body"><Blocks blocks={block.solution} ctx={ctx} /></div>
         </div>
       )}
     </div>
   );
+}
+const WRONG = 'Пока неверно. Задача вернётся в список «на повторение» через два дня — загляните в решение.';
+const inputStyle = () => ({ padding: '7px 10px', fontSize: 14, background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text });
+
+function NumberProblem({ block, no, ctx, from }) {
+  const [input, setInput] = useState('');
+  const [verdict, setVerdict] = useState(null);
+  const answer = `ответ ${fmtNum(block.answer)}${block.unit ? ` ${block.unit}` : ''}`;
+  const submit = () => {
+    const r = checkAnswer(input, block.answer, block.tol);
+    if (r.value == null) { setVerdict({ bad: true, text: 'Введите число: например, 25 или −0,5.' }); return; }
+    Audio.play(r.ok ? 'stamp' : 'tick');
+    ctx.onAnswer(block.id, r.ok);
+    setVerdict({ ok: r.ok, text: r.ok ? `Верно: ${fmtNum(block.answer)}${block.unit ? ` ${block.unit}` : ''}.` : WRONG });
+  };
+  return (
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer}>
+      <form style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <input value={input} onChange={(e) => { setInput(e.target.value); setVerdict(null); }} inputMode="decimal" aria-label={`Ответ к задаче ${no}`}
+          placeholder="ответ числом" style={{ ...inputStyle(), width: 150 }} />
+        {block.unit && <span style={{ fontSize: 13, color: COLOR.muted }}>{block.unit}</span>}
+        <button type="submit" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }}>Проверить</button>
+      </form>
+    </ProblemFrame>
+  );
+}
+
+// «верно или неверно»: выбор проверяется сразу, объяснение пишется для себя и сверяется с решением
+function TrueFalseProblem({ block, no, ctx, from }) {
+  const [why, setWhy] = useState('');
+  const [verdict, setVerdict] = useState(null);
+  const pick = (v) => {
+    const ok = v === block.answer;
+    Audio.play(ok ? 'stamp' : 'tick');
+    ctx.onAnswer(block.id, ok);
+    setVerdict({ ok, reveal: true, text: ok ? `Верно: утверждение ${block.answer ? 'верно' : 'неверно'}. Сравните своё объяснение с разбором.` : WRONG });
+  };
+  return (
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={block.answer ? 'утверждение верно' : 'утверждение неверно'}>
+      <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`}
+        placeholder="почему — в одну-две фразы (для себя: объяснение сверяется с разбором, а не автоматически)"
+        style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} onClick={() => pick(true)}>Верно</button>
+        <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} onClick={() => pick(false)}>Неверно</button>
+      </div>
+    </ProblemFrame>
+  );
+}
+
+// графическая: игрок двигает кривые, проверяются направления величин графика
+function GraphProblem({ block, no, ctx, from }) {
+  const def = CHARTS[block.chart];
+  const [values, setValues] = useState(() => chartDefaults(block.chart, block.attrs));
+  const [verdict, setVerdict] = useState(null);
+  const names = def.measureNames || {};
+  const answer = block.expect.filter((e) => e.dir !== '?').map((e) => `${names[e.key] || e.key}: ${DIR_WORD[e.dir]}`).join(', ');
+  const submit = () => {
+    const r = checkGraph(block.chart, block.attrs, values, { expect: block.expect, still: block.still });
+    if (!r.moved) { setVerdict({ bad: true, text: 'Сначала сдвиньте кривую ползунком.' }); return; }
+    const got = r.rows.map((x) => `${names[x.key] || x.key} ${DIR_WORD[x.got]}${x.ok ? '' : ' ✗'}`).join(', ');
+    const extra = r.touched.length ? ` Условие не меняет: ${r.touched.map((k) => (def.controls(block.attrs).find((c) => c.id === k) || {}).label || k).join(', ')} — верните ползунок.` : '';
+    Audio.play(r.ok ? 'stamp' : 'tick');
+    ctx.onAnswer(block.id, r.ok);
+    setVerdict({ ok: r.ok, text: r.ok ? `Верно: ${got}.` : `На графике: ${got}.${extra} ${WRONG}` });
+  };
+  return (
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer}>
+      <ChartBox type={block.chart} attrs={block.attrs} ctx={ctx} values={values} onValues={(v) => { setValues(v); setVerdict(null); }}
+        only={block.controls} framed={false} />
+      <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} onClick={submit}>Проверить сдвиг</button>
+    </ProblemFrame>
+  );
+}
+
+function ProblemCard(props) {
+  const k = props.block.kind;
+  if (k === 'truefalse') return <TrueFalseProblem {...props} />;
+  if (k === 'graph') return <GraphProblem {...props} />;
+  return <NumberProblem {...props} />;
 }
 
 /* ------------------------------ СТРАНИЦЫ ------------------------------ */

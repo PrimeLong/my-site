@@ -12,7 +12,11 @@
      :::try Заголовок … :::        — «проверьте в игре»; абзац из одной ссылки становится кнопкой
      :::note Заголовок … :::       — врезка
      :::chart тип ключ=значение … ::: — интерактивный график; текст внутри — подпись
-     :::problem id=… answer=… tol=… unit=… условие --- решение :::
+     :::problem id=… answer=… tol=… unit=… условие --- решение :::   — ответ числом
+     :::truefalse id=… answer=true|false утверждение --- объяснение ::: — «верно или неверно»
+     :::graph id=… chart=тип <параметры графика> expect="P:+ Q:-" still="…" controls="…"
+        solution="dC:-20" условие --- решение :::                    — сдвиньте кривую на графике;
+        ответ — направления величин (+, −, 0, ? — любое), solution — эталонный сдвиг для тестов
 
    В строке: $формула$, **жирный**, *курсив* и ссылки [[вид:цель?параметры|текст]]:
      lever — рычаг (LEVERS), term — термин словаря, drill — задача на 10 минут,
@@ -113,11 +117,23 @@ export function parseBlocks(text) {
       if (name === 'chart') {
         const caption = body.join(' ').trim();
         blocks.push({ type: 'chart', chart: words[0], attrs, caption: caption ? parseInline(caption) : null });
-      } else if (name === 'problem') {
+      } else if (name === 'problem' || name === 'truefalse' || name === 'graph') {
         const sep = body.findIndex((l) => l.trim() === '---');
         if (sep < 0) throw new Error(`В задаче ${attrs.id} нет решения (строка ---)`);
-        blocks.push({ type: 'problem', id: attrs.id, answer: Number(attrs.answer), tol: attrs.tol != null ? Number(attrs.tol) : null,
-          unit: attrs.unit || '', statement: parseBlocks(body.slice(0, sep).join('\n')), solution: parseBlocks(body.slice(sep + 1).join('\n')) });
+        const base = { type: 'problem', id: attrs.id, statement: parseBlocks(body.slice(0, sep).join('\n')), solution: parseBlocks(body.slice(sep + 1).join('\n')) };
+        if (name === 'problem') {
+          blocks.push({ ...base, kind: 'number', answer: Number(attrs.answer), tol: attrs.tol != null ? Number(attrs.tol) : null, unit: attrs.unit || '' });
+        } else if (name === 'truefalse') {
+          if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В задаче ${attrs.id} ответ должен быть true или false`);
+          blocks.push({ ...base, kind: 'truefalse', answer: attrs.answer === 'true' });
+        } else {
+          const { id: _id, chart, expect, still, controls, solution, ...chartAttrs } = attrs;
+          const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
+          // эталонный сдвиг для тестов: «dC:-20 dA:10»
+          const ref = Object.fromEntries(split(solution).map((t) => { const [k, v] = t.split(':'); return [k, Number(v)]; }));
+          blocks.push({ ...base, kind: 'graph', chart, attrs: chartAttrs, expect: split(expect).map((t) => { const [key, dir] = t.split(':'); return { key, dir }; }),
+            still: split(still), controls: controls ? split(controls) : null, reference: ref });
+        }
       } else if (BOX_KINDS.includes(name)) {
         blocks.push({ type: 'box', kind: name, title: words.join(' '), children: parseBlocks(body.join('\n')) });
       } else {

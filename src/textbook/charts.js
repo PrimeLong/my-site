@@ -218,5 +218,238 @@ const adAs = {
   },
 };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'is-lm': isLm, 'ad-as': adAs };
+/* ---------------- ИЗДЕРЖКИ ФИРМЫ ----------------
+   TC = FC + a·Q − b·Q² + c·Q³: кубическая функция из учебников — средние переменные и
+   средние общие издержки U-образные, предельные пересекают обе в их минимумах.
+   Ползунки: постоянные издержки FC (сдвигают только ATC) и цены сырья (прибавка к a:
+   сдвигают AVC, ATC и MC). С атрибутом price — фирма на конкурентном рынке: линия цены,
+   выпуск P = MC на растущем участке, прибыль или убыток прямоугольником, правило закрытия. */
+export const costFns = ({ fc, a, b, c }) => ({
+  TC: (q) => fc + a * q - b * q * q + c * q * q * q,
+  MC: (q) => a - 2 * b * q + 3 * c * q * q,
+  AVC: (q) => a - b * q + c * q * q,
+  ATC: (q) => fc / q + a - b * q + c * q * q,
+});
+// минимум AVC — аналитически, минимум ATC — перебором с уточнением (кубическое уравнение)
+export function costMinima(p) {
+  const f = costFns(p);
+  const qAvc = p.b / (2 * p.c);
+  let lo = 0.01; let hi = 100;
+  for (let i = 0; i < 200; i++) { const m1 = lo + (hi - lo) / 3; const m2 = hi - (hi - lo) / 3; if (f.ATC(m1) < f.ATC(m2)) hi = m2; else lo = m1; }
+  const qAtc = (lo + hi) / 2;
+  return { qAvc, avcMin: f.AVC(qAvc), qAtc, atcMin: f.ATC(qAtc) };
+}
+// конкурентная фирма при цене P: выпуск (0 — закрыться) и прибыль
+export function competitiveFirm(p, P) {
+  const f = costFns(p); const { avcMin } = costMinima(p);
+  if (P < avcMin - 1e-9) return { Q: 0, profit: -p.fc, shut: true };
+  const disc = 4 * p.b * p.b - 12 * p.c * (p.a - P);
+  const Q = (2 * p.b + Math.sqrt(Math.max(0, disc))) / (6 * p.c);
+  return { Q, profit: P * Q - f.TC(Q), shut: false };
+}
+const costParams = (A) => ({ fc: num(A, 'fc', 100), a: num(A, 'a', 20), b: num(A, 'b', 6), c: num(A, 'c', 1) });
+const costs = {
+  title: 'Издержки фирмы',
+  controls: (A) => {
+    const p = costParams(A);
+    const ctl = [
+      { id: 'fc', label: 'Постоянные издержки FC', min: 0, max: Math.round(p.fc * 2.5), step: 5, def: p.fc, fmt: (v) => `${v}` },
+      { id: 'da', label: 'Цены сырья: прибавка к AVC', min: -10, max: 20, step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}` },
+    ];
+    if (A.price != null) ctl.unshift({ id: 'P', label: 'Рыночная цена P', min: 0, max: Math.round(num(A, 'price', 40) * 2.2), step: 1, def: num(A, 'price', 40), fmt: (v) => `${v}` });
+    return ctl;
+  },
+  measure: (A, v) => {
+    const p = { ...costParams(A), fc: v.fc, a: costParams(A).a + v.da };
+    const m = costMinima(p);
+    const out = { avcMin: m.avcMin, atcMin: m.atcMin, qEff: m.qAtc };
+    if (v.P != null) { const f = competitiveFirm(p, v.P); out.Q = f.Q; out.profit = f.profit; }
+    return out;
+  },
+  build: (A, v) => {
+    const p0 = costParams(A);
+    const p = { ...p0, fc: v.fc, a: p0.a + v.da };
+    const f = costFns(p); const m = costMinima(p);
+    const Qmax = Math.ceil(costMinima(p0).qAtc * 1.9);
+    const yMax = Math.ceil((costMinima(p0).atcMin * 2.4) / 10) * 10;
+    const samp = (fn, q0) => Array.from({ length: 60 }, (_, i) => { const q = q0 + (Qmax - q0) * i / 59; return { x: q, y: fn(q) }; });
+    const curves = [
+      { id: 'MC', label: 'MC', points: samp(f.MC, 0), color: 'rust' },
+      { id: 'ATC', label: 'ATC', points: samp(f.ATC, Math.max(0.3, p.fc / yMax)), color: 'blue' },
+      { id: 'AVC', label: 'AVC', points: samp(f.AVC, 0), color: 'teal' },
+    ];
+    const points = [
+      { x: m.qAvc, y: m.avcMin, label: 'min AVC', small: true },
+      { x: m.qAtc, y: m.atcMin, label: 'min ATC', small: true },
+    ];
+    const readout = [
+      { label: 'Минимум AVC', value: `${r1(m.avcMin)} при Q = ${r1(m.qAvc)}` },
+      { label: 'Минимум ATC', value: `${r1(m.atcMin)} при Q = ${r1(m.qAtc)}` },
+    ];
+    const rects = [];
+    if (v.P != null) {
+      const firm = competitiveFirm(p, v.P);
+      curves.push({ id: 'P', label: 'P = MR', labelPos: 'start', points: [{ x: 0, y: v.P }, { x: Qmax, y: v.P }], color: 'gold', dashed: true });
+      if (!firm.shut) {
+        const atc = f.ATC(firm.Q);
+        points.push({ x: firm.Q, y: v.P, label: 'P = MC', guide: true });
+        rects.push({ x0: 0, x1: firm.Q, y0: Math.min(atc, v.P), y1: Math.max(atc, v.P), label: firm.profit >= 0 ? 'прибыль' : 'убыток', tone: firm.profit >= 0 ? 'gold' : 'rust' });
+      }
+      readout.unshift(
+        { label: 'Выпуск', value: firm.shut ? '0 — закрыться' : r1(firm.Q) },
+        { label: 'Прибыль', value: r1(firm.profit) },
+      );
+      readout.push({ label: 'Решение', value: firm.shut ? 'цена ниже min AVC: закрыться, потерять FC' : firm.profit >= 0 ? 'работать с прибылью' : 'работать в убыток: он меньше FC' });
+    }
+    return { xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'руб.', curves, points, rects, readout };
+  },
+};
+
+/* ---------------- МОНОПОЛИЯ ----------------
+   Спрос P = A − B·Q, предельная выручка MR = A − 2B·Q, предельные издержки постоянны.
+   Монополист выбирает MR = MC и берёт цену со спроса; при совершенной конкуренции P = MC.
+   Треугольник между ними — безвозвратные потери. */
+export function monopoly({ A, B, mc }) {
+  const Q = Math.max(0, (A - mc) / (2 * B)); const P = A - B * Q;
+  const Qc = Math.max(0, (A - mc) / B);
+  return { Q, P, profit: (P - mc) * Q, Qc, Pc: mc, dwl: 0.5 * (P - mc) * (Qc - Q) };
+}
+const monoParams = (A) => ({ A: num(A, 'a', 100), B: num(A, 'b', 1), mc: num(A, 'mc', 20) });
+const monopolyChart = {
+  title: 'Монополия',
+  controls: (A) => {
+    const p = monoParams(A);
+    return [
+      { id: 'dA', label: 'Сдвиг спроса', min: -Math.round(p.A * 0.3), max: Math.round(p.A * 0.3), step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}` },
+      { id: 'mc', label: 'Предельные издержки MC', min: 0, max: Math.round(p.A * 0.6), step: 1, def: p.mc, fmt: (v) => `${v}` },
+    ];
+  },
+  measure: (A, v) => {
+    const p = monoParams(A); const m = monopoly({ A: p.A + v.dA, B: p.B, mc: v.mc });
+    return { P: m.P, Q: m.Q, profit: m.profit, dwl: m.dwl };
+  },
+  build: (A, v) => {
+    const p0 = monoParams(A); const a = p0.A + v.dA; const B = p0.B;
+    const m = monopoly({ A: a, B, mc: v.mc });
+    const Qmax = Math.ceil((p0.A * 1.3) / B / 10) * 10; const Pmax = Math.ceil((p0.A * 1.3) / 10) * 10;
+    const E = m.Q > 0 ? -(1 / B) * m.P / m.Q : 0;
+    return {
+      xDomain: [0, Qmax], yDomain: [0, Pmax], xLabel: 'Q', yLabel: 'P',
+      rects: m.Q > 0 ? [{ x0: 0, x1: m.Q, y0: v.mc, y1: m.P, label: 'прибыль' }] : [],
+      polys: m.Q > 0 ? [{ points: [{ x: m.Q, y: m.P }, { x: m.Qc, y: v.mc }, { x: m.Q, y: v.mc }], label: 'DWL' }] : [],
+      curves: [
+        { id: 'D', label: 'D', points: [{ x: 0, y: a }, { x: a / B, y: 0 }], color: 'blue' },
+        { id: 'MR', label: 'MR', points: [{ x: 0, y: a }, { x: a / (2 * B), y: 0 }], color: 'teal', dashed: true },
+        { id: 'MC', label: 'MC', points: [{ x: 0, y: v.mc }, { x: Qmax, y: v.mc }], color: 'rust' },
+      ],
+      points: [{ x: m.Q, y: m.P, label: 'M', guide: true }, { x: m.Qc, y: m.Pc, label: 'конкуренция', small: true }],
+      readout: [
+        { label: 'Выпуск монополиста', value: r1(m.Q) },
+        { label: 'Цена', value: r1(m.P) },
+        { label: 'Прибыль', value: r1(m.profit) },
+        { label: 'Безвозвратные потери', value: r1(m.dwl) },
+        { label: 'Лернер (P − MC)/P', value: m.P > 0 ? r2((m.P - v.mc) / m.P) : '—' },
+        { label: '1/|E| в точке M', value: E ? r2(-1 / E) : '—' },
+      ],
+    };
+  },
+};
+
+/* ---------------- ДУОПОЛИЯ КУРНО ----------------
+   Спрос P = a − (q₁ + q₂), издержки c₁ и c₂ на единицу. Кривая реакции фирмы 1:
+   q₁ = (a − c₁ − q₂)/2, фирмы 2 — симметрично. Равновесие Нэша — их пересечение. */
+export function cournot({ a, c1, c2 }) {
+  let q1 = (a - 2 * c1 + c2) / 3; let q2 = (a - 2 * c2 + c1) / 3;
+  if (q2 < 0) { q2 = 0; q1 = Math.max(0, (a - c1) / 2); }
+  if (q1 < 0) { q1 = 0; q2 = Math.max(0, (a - c2) / 2); }
+  const P = a - q1 - q2;
+  return { q1, q2, P, pi1: (P - c1) * q1, pi2: (P - c2) * q2 };
+}
+const cournotParams = (A) => ({ a: num(A, 'a', 120), c1: num(A, 'c1', 30), c2: num(A, 'c2', 30) });
+const cournotChart = {
+  title: 'Дуополия Курно',
+  controls: (A) => {
+    const p = cournotParams(A);
+    return [
+      { id: 'c1', label: 'Издержки фирмы 1', min: 0, max: Math.round(p.a * 0.6), step: 1, def: p.c1, fmt: (v) => `${v}` },
+      { id: 'c2', label: 'Издержки фирмы 2', min: 0, max: Math.round(p.a * 0.6), step: 1, def: p.c2, fmt: (v) => `${v}` },
+    ];
+  },
+  measure: (A, v) => { const e = cournot({ a: cournotParams(A).a, c1: v.c1, c2: v.c2 }); return { q1: e.q1, q2: e.q2, P: e.P, pi1: e.pi1, pi2: e.pi2 }; },
+  build: (A, v) => {
+    const { a } = cournotParams(A);
+    const e = cournot({ a, c1: v.c1, c2: v.c2 });
+    const max = Math.ceil((a * 0.75) / 10) * 10;
+    const r1c = (a - v.c1); const r2c = (a - v.c2);
+    const curves = [
+      { id: 'R1', label: 'реакция 1', points: [{ x: r1c / 2, y: 0 }, { x: 0, y: r1c }], color: 'blue' },
+      { id: 'R2', label: 'реакция 2', points: [{ x: 0, y: r2c / 2 }, { x: r2c, y: 0 }], color: 'rust' },
+    ];
+    // при одинаковых издержках — линия картеля: вместе производят монопольный объём
+    if (v.c1 === v.c2) curves.push({ id: 'K', label: 'картель', points: [{ x: 0, y: r1c / 2 }, { x: r1c / 2, y: 0 }], color: 'gold', dashed: true });
+    return {
+      xDomain: [0, max], yDomain: [0, max], xLabel: 'q₁', yLabel: 'q₂', curves,
+      points: [{ x: e.q1, y: e.q2, label: 'N', guide: true }],
+      readout: [
+        { label: 'Фирма 1: q₁', value: r1(e.q1) },
+        { label: 'Фирма 2: q₂', value: r1(e.q2) },
+        { label: 'Цена', value: r1(e.P) },
+        { label: 'Прибыли', value: `${r1(e.pi1)} и ${r1(e.pi2)}` },
+      ],
+    };
+  },
+};
+
+// что показывает график числами — по этим величинам проверяются графические задачи
+supplyDemand.measure = (A, v) => {
+  const e = sdEquilibrium(num(A, 'a', 100) + (v.dA || 0), num(A, 'b', 2), num(A, 'c', -20) + (v.dC || 0), num(A, 'd', 4));
+  return { P: e.P, Q: e.Q };
+};
+elasticity.measure = (A, v) => {
+  const a = num(A, 'a', 100); const b = num(A, 'b', 2); const Q = a - b * v.P;
+  return { P: v.P, Q, R: v.P * Q, E: pointElasticity(a, b, v.P) };
+};
+isLm.measure = (A, v) => {
+  const p = islmParams(A);
+  if (v.hold) { const base = islmEquilibrium(p); return { Y: (p.a0 + v.G - p.b * base.r) / (1 - p.c), r: base.r }; }
+  const e = islmEquilibrium({ ...p, G: v.G, M: v.M });
+  return { Y: e.Y, r: e.r };
+};
+adAs.measure = (A, v) => {
+  const p = islmParams(A); const ybar = num(A, 'ybar', islmEquilibrium(p).Y);
+  const e = adasEquilibrium(p, v.M, v.pe, ybar, num(A, 's', 1));
+  return { Y: e.Y, P: e.P };
+};
+
+// как называть величины графика в ответе графической задачи
+supplyDemand.measureNames = { P: 'цена', Q: 'количество' };
+elasticity.measureNames = { P: 'цена', Q: 'количество', R: 'выручка', E: 'эластичность' };
+isLm.measureNames = { Y: 'выпуск', r: 'ставка' };
+adAs.measureNames = { Y: 'выпуск', P: 'уровень цен' };
+costs.measureNames = { avcMin: 'минимум AVC', atcMin: 'минимум ATC', qEff: 'выпуск при минимуме ATC', Q: 'выпуск', profit: 'прибыль' };
+monopolyChart.measureNames = { P: 'цена', Q: 'выпуск', profit: 'прибыль', dwl: 'безвозвратные потери' };
+cournotChart.measureNames = { q1: 'выпуск фирмы 1', q2: 'выпуск фирмы 2', P: 'цена', pi1: 'прибыль фирмы 1', pi2: 'прибыль фирмы 2' };
+
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart };
 export const chartDefaults = (type, attrs) => Object.fromEntries(CHARTS[type].controls(attrs).filter((c) => !c.button).map((c) => [c.id, c.def]));
+
+/* ГРАФИЧЕСКАЯ ЗАДАЧА: игрок двигает ползунки, ответ — направления изменения величин
+   графика относительно исходного положения. expect: «P:+ Q:-» (+ растёт, − падает,
+   0 не меняется, ? любое); still — ползунки, которые трогать нельзя (условие задачи
+   их не меняет). Возвращает по каждой величине, что получилось, и общий вердикт. */
+export const parseExpect = (s) => (s || '').trim().split(/\s+/).filter(Boolean).map((t) => { const [key, dir] = t.split(':'); return { key, dir }; });
+export function checkGraph(type, attrs, values, { expect, still = [] }) {
+  const def = CHARTS[type];
+  const base = def.measure(attrs, chartDefaults(type, attrs));
+  const cur = def.measure(attrs, values);
+  const defaults = chartDefaults(type, attrs);
+  const moved = Object.keys(defaults).some((k) => values[k] !== defaults[k]);
+  const touched = still.filter((k) => values[k] !== defaults[k]);
+  const rows = expect.map(({ key, dir }) => {
+    const d = cur[key] - base[key];
+    const eps = 1e-6 * (1 + Math.abs(base[key]));
+    const got = d > eps ? '+' : d < -eps ? '-' : '0';
+    return { key, dir, got, ok: dir === '?' || dir === got };
+  });
+  return { moved, touched, rows, ok: moved && touched.length === 0 && rows.every((r) => r.ok) };
+}
