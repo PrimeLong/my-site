@@ -299,18 +299,22 @@ describe('политический режим и пропаганда', () => {
     let economy = { ...makeInitialEconomy(), approval: 30, bankCapital: 4, bankLiquidity: 0, quartersToElection: 99 };
     let decisions = defaultDecisions(economy);
     let pendingImpulses = []; let eventCooldowns = {};
-    let exit = null;
+    let exit = null; const bankingHistory = [];
     for (let q = 1; q <= 40 && !exit; q++) {
       const r = simulateQuarter({ economy, decisions, pendingImpulses, eventCooldowns,
         difficulty: 'medium', quarterIndex: q, stories: [], noEvents: true });
       economy = { ...r.economy, bankCapital: 4 }; // не даём банковскому кризису рассосаться самому
       pendingImpulses = r.pendingImpulses; eventCooldowns = r.eventCooldowns;
       decisions = defaultDecisions(economy, decisions);
+      bankingHistory.push((economy.activeCrises || []).includes('banking'));
       if (economy.politicalRegime !== 'democracy') exit = economy;
     }
     spy.mockRestore();
     expect(exit, 'за 40 кварталов банковский кризис так и не вывел страну из демократии').toBeTruthy();
-    expect(exit.activeCrises).toContain('banking');
+    // банковский кризис шёл большую часть пути и тянул за собой рецессию и долг: к моменту
+    // выхода он может уже закончиться — каскад, который он запустил, продолжает работу
+    expect(bankingHistory.filter(Boolean).length).toBeGreaterThan(bankingHistory.length / 2);
+    expect(bankingHistory.slice(-6).some(Boolean)).toBe(true);
     expect(exit.politicalTension).toBeGreaterThan(60);
   });
 
@@ -2744,8 +2748,12 @@ describe('общая просьба «снизить налоги»', () => {
     const bot = botFinanceMinistry(tight, 'austerity', 'medium');
     expect(bot.decisions.vatRate).toBeLessThanOrEqual(economy.taxCommit.caps.vatRate);
     expect(bot.decisions.incomeTaxRate).toBeLessThanOrEqual(economy.taxCommit.caps.incomeTaxRate);
-    const free = botFinanceMinistry({ ...tight, taxCommit: null }, 'austerity', 'medium');
-    expect(free.decisions.vatRate).toBeGreaterThan(economy.taxCommit.caps.vatRate);
+    // без обещания консерватор поднимает НДС — пока тот ниже потолка Лаффера
+    const free = botFinanceMinistry({ ...tight, taxCommit: null, vatRate: 18 }, 'austerity', 'medium');
+    expect(free.decisions.vatRate).toBeGreaterThan(18);
+    // а выше потолка не поднимает: сбор упал бы, а тень выросла
+    const high = botFinanceMinistry({ ...tight, taxCommit: null }, 'austerity', 'medium');
+    expect(high.decisions.vatRate).toBeLessThanOrEqual(tight.vatRate);
   });
 
   it('старые просьбы по одному налогу больше не предлагаются', () => {

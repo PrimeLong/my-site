@@ -100,7 +100,7 @@ function checkBotDecisions(decisions, economy, ctx) {
 /* Один прогон партии: оба ведомства ведут боты, президент — тоже бот, то есть
    экономика крутится сама. Так проверяется именно движок, а не конкретная
    стратегия игрока. */
-function playGame({ seed, scenario, difficulty, cbPersona, mofPersona, presPersona }) {
+function playGame({ seed, scenario, difficulty, cbPersona, mofPersona, presPersona, onQuarter = null }) {
   return withSeed(seed, () => {
     let economy = makeInitialEconomy(scenario);
     let decisions = defaultDecisions(economy);
@@ -126,6 +126,7 @@ function playGame({ seed, scenario, difficulty, cbPersona, mofPersona, presPerso
       eventCooldowns = r.eventCooldowns; stories = r.stories || stories;
       decisions = defaultDecisions(economy, decisions);
       checkEconomy(economy, ctx);
+      if (onQuarter) onQuarter(economy, q, ctx);
       // новости за квартал не должны содержать «дыр» от несобранных строк
       (r.newsEntries || []).forEach((n) => {
         if (/undefined|NaN|\[object/.test(`${n.headline} ${n.text}`)) {
@@ -263,3 +264,37 @@ describe('длинная партия: 120 кварталов не ломают 
     expect(a.approval).toBe(b.approval);
   });
 });
+
+/* СТРУКТУРА ЭКОНОМИКИ ЗА 30 ЛЕТ. Прогон ботами на 120 кварталов нашёл то, чего не видно
+   в диапазонах выше: в «Гиперинфляции» экспорт дорастал до 93% ВВП, госзакупки падали до
+   2%, долг обнулялся за десять лет, а безработица десятилетиями лежала на нижней границе.
+   Причины — вечный срыв валютного режима, отсутствие якоря у внешней торговли и
+   накапливающийся секвестр. Этот тест держит структуру в правдоподобных пределах. */
+describe('структура экономики в длинной партии', () => {
+  SCENARIOS.forEach((sc) => {
+    it(`${sc.id}: доли внешней торговли и госрасходов правдоподобны, безработица не лежит на границе`, () => {
+      MOF_PERSONAS.forEach((mofP) => {
+        const debt0 = makeInitialEconomy(sc.id).debtToGdp;
+        let floorQuarters = 0; let minDebtEarly = Infinity;
+        playGame({ seed: 20261001, scenario: sc.id, difficulty: 'medium', cbPersona: 'pragmatic', mofPersona: mofP.id, presPersona: 'technocrat',
+          onQuarter: (e, q, ctx) => {
+            const share = (v) => v / e.gdp;
+            expect(share(e.exports), `${ctx}: экспорт, доля ВВП`).toBeLessThan(0.5);
+            expect(share(e.exports), `${ctx}: экспорт, доля ВВП`).toBeGreaterThan(0.1);
+            expect(share(e.imports), `${ctx}: импорт, доля ВВП`).toBeLessThan(0.5);
+            expect(share(e.imports), `${ctx}: импорт, доля ВВП`).toBeGreaterThan(0.1);
+            // госзакупки режут не больше чем на треть от 20% ВВП (с запасом на перегрев)
+            expect(share(e.govPurchasesReal), `${ctx}: госзакупки, доля ВВП`).toBeGreaterThan(0.1);
+            expect(share(e.govInvestmentReal), `${ctx}: госинвестиции, доля ВВП`).toBeGreaterThan(0.008);
+            if (e.unemployment <= 1.6) floorQuarters += 1;
+            if (q <= 40) minDebtEarly = Math.min(minDebtEarly, e.debtToGdp);
+          } });
+        // безработица на нижней границе — эпизод, а не десятилетия
+        expect(floorQuarters, `${sc.id}/${mofP.id}: кварталов безработицы на нижней границе`).toBeLessThanOrEqual(8);
+        // долг не обнуляется за несколько лет даже при самой жёсткой экономии
+        expect(minDebtEarly, `${sc.id}/${mofP.id}: минимум долга в первые 10 лет`).toBeGreaterThan(Math.min(20, debt0 * 0.3));
+      });
+    }, 60_000);
+  });
+});
+

@@ -72,6 +72,10 @@ export const CONFIG = {
     capacityDrag: 0.30,
     // внешний сектор
     exportWorld: 0.55, exportRer: 0.09, importIncome: 0.95, importRer: 0.07,
+    // якорь долей внешней торговли: какая часть отклонения доли закрывается за год и насколько курс сдвигает саму норму
+    tradeShareAnchor: 0.25, exportShareElasticity: 0.6, importShareElasticity: 0.5,
+    // пол госрасходов в долях потенциального ВВП (старт: 20,25 / 8,75 / 3) — урезать можно примерно на треть
+    floorPurchasesShare: 0.135, floorTransfersShare: 0.058, floorGovInvestmentShare: 0.012,
     // труд
     okun: 0.45, uAdjust: 0.34, nairuHysteresis: 0.020,
     wageTightness: 0.80, wageExpect: 1.0, wageSocial: 0.30,
