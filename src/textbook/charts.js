@@ -255,30 +255,32 @@ const adAs = {
     const p = islmParams(A);
     return [
       { id: 'M', label: 'Денежная масса M', min: Math.round(p.M * 0.5), max: Math.round(p.M * 1.6), step: 20, def: p.M, fmt: (v) => `${v}` },
+      { id: 'G', label: 'Госзакупки G', min: 0, max: Math.round(p.G * 2), step: 10, def: p.G, fmt: (v) => `${v}` },
       { id: 'pe', label: 'Ожидаемые цены Pᵉ', min: Math.round(p.P * 0.6 * 20) / 20, max: Math.round(p.P * 1.6 * 20) / 20, step: 0.05, def: p.P, fmt: (v) => r2(v) },
       { id: 'longrun', label: 'Длинный период: ожидания догоняют цены', button: true },
     ];
   },
   // «длинный период»: Pᵉ = цене, при которой AD пересекает потенциал
   onButton: (A, v) => {
-    const p = islmParams(A); const ybar = num(A, 'ybar', islmEquilibrium(p).Y);
+    const p0 = islmParams(A); const ybar = num(A, 'ybar', islmEquilibrium(p0).Y); const p = { ...p0, G: v.G != null ? v.G : p0.G };
     let lo = 0.05; let hi = 50;
     for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; if (adOutput(p, v.M, mid) > ybar) lo = mid; else hi = mid; }
     return { ...v, pe: Math.round(((lo + hi) / 2) * 100) / 100 };
   },
   build: (A, v) => {
-    const p = islmParams(A);
-    const ybar = num(A, 'ybar', islmEquilibrium(p).Y); const s = num(A, 's', 1);
+    const p0 = islmParams(A);
+    const ybar = num(A, 'ybar', islmEquilibrium(p0).Y); const s = num(A, 's', 1);
+    const G = v.G != null ? v.G : p0.G; const p = { ...p0, G };
     const eq = adasEquilibrium(p, v.M, v.pe, ybar, s);
     const Pmax = p.P * 2.4; const Ymin = ybar * 0.6; const Ymax = ybar * 1.4;
-    const AD = (M) => Array.from({ length: 40 }, (_, i) => { const P = 0.35 * p.P + (Pmax - 0.35 * p.P) * i / 39; return { x: adOutput(p, M, P), y: P }; })
+    const AD = (M, pp = p) => Array.from({ length: 40 }, (_, i) => { const P = 0.35 * p.P + (Pmax - 0.35 * p.P) * i / 39; return { x: adOutput(pp, M, P), y: P }; })
       .filter((pt) => pt.x >= Ymin && pt.x <= Ymax);
     const SRAS = (pe) => line((Y) => pe * (1 + (s * (Y - ybar)) / ybar), Ymin, Ymax).map((pt) => ({ ...pt, y: clampV(pt.y, 0, Pmax) }));
-    const moved = v.M !== p.M || Math.abs(v.pe - p.P) > 1e-9;
+    const moved = v.M !== p0.M || G !== p0.G || Math.abs(v.pe - p0.P) > 1e-9;
     return {
       xDomain: [Ymin, Ymax], yDomain: [0, Pmax], xLabel: 'Y', yLabel: 'P',
       curves: [
-        ...(moved ? [{ id: 'AD0', points: AD(p.M), ghost: true, color: 'blue' }, { id: 'SRAS0', points: SRAS(p.P), ghost: true, color: 'rust' }] : []),
+        ...(moved ? [{ id: 'AD0', points: AD(p0.M, p0), ghost: true, color: 'blue' }, { id: 'SRAS0', points: SRAS(p0.P), ghost: true, color: 'rust' }] : []),
         { id: 'LRAS', label: 'LRAS', points: [{ x: ybar, y: 0 }, { x: ybar, y: Pmax }], color: 'gold', dashed: true },
         { id: 'AD', label: 'AD', points: AD(v.M), color: 'blue' },
         { id: 'SRAS', label: 'SRAS', points: SRAS(v.pe), color: 'rust' },
@@ -637,8 +639,8 @@ isLm.measure = (A, v) => {
   return { Y: e.Y, r: e.r };
 };
 adAs.measure = (A, v) => {
-  const p = islmParams(A); const ybar = num(A, 'ybar', islmEquilibrium(p).Y);
-  const e = adasEquilibrium(p, v.M, v.pe, ybar, num(A, 's', 1));
+  const p0 = islmParams(A); const ybar = num(A, 'ybar', islmEquilibrium(p0).Y);
+  const e = adasEquilibrium({ ...p0, G: v.G != null ? v.G : p0.G }, v.M, v.pe, ybar, num(A, 's', 1));
   return { Y: e.Y, P: e.P };
 };
 
@@ -689,6 +691,314 @@ const lrac = {
   },
 };
 
+/* ---------------- БЮДЖЕТНАЯ ЛИНИЯ ----------------
+   p_x·x + p_y·y = I. Доход сдвигает линию параллельно, цена X поворачивает её вокруг
+   точки на оси Y. Прежняя линия остаётся бледной, чтобы было видно, что изменилось. */
+const budgetParams = (A) => ({ I: num(A, 'i', 120), px: num(A, 'px', 2), py: num(A, 'py', 1) });
+const budgetChart = {
+  title: 'Бюджетная линия',
+  controls: (A) => {
+    const p = budgetParams(A);
+    return [
+      { id: 'I', label: 'Доход I', min: Math.round(p.I * 0.4), max: Math.round(p.I * 1.6), step: 5, def: p.I, fmt: (v) => `${v}` },
+      { id: 'px', label: 'Цена товара X', min: Math.max(0.5, p.px * 0.5), max: p.px * 3, step: 0.25, def: p.px, fmt: (v) => r2(v) },
+    ];
+  },
+  measure: (A, v) => { const p = budgetParams(A); return { xMax: v.I / v.px, yMax: v.I / p.py, slope: v.px / p.py }; },
+  build: (A, v) => {
+    const p = budgetParams(A);
+    const max = Math.ceil(Math.max((p.I * 1.6) / (p.px * 0.5), (p.I * 1.6) / p.py) * 0.72 / 10) * 10;
+    const seg = (I, px) => [{ x: 0, y: I / p.py }, { x: I / px, y: 0 }];
+    const moved = v.I !== p.I || Math.abs(v.px - p.px) > 1e-9;
+    return {
+      xDomain: [0, max], yDomain: [0, max], xLabel: 'X', yLabel: 'Y',
+      curves: [
+        ...(moved ? [{ id: 'B0', points: seg(p.I, p.px), ghost: true, color: 'rust' }] : []),
+        { id: 'B', label: 'бюджетная линия', labelPos: 0.2, points: seg(v.I, v.px), color: 'rust' },
+      ],
+      polys: [{ points: [{ x: 0, y: 0 }, { x: 0, y: v.I / p.py }, { x: v.I / v.px, y: 0 }], label: 'доступные наборы', tone: 'gold' }],
+      points: [
+        { x: 0, y: v.I / p.py, label: `всё на Y: ${r1(v.I / p.py)}`, small: true },
+        { x: v.I / v.px, y: 0, label: `всё на X: ${r1(v.I / v.px)}`, small: true },
+      ],
+      readout: [
+        { label: 'Максимум X', value: r1(v.I / v.px) },
+        { label: 'Максимум Y', value: r1(v.I / p.py) },
+        { label: 'Цена X в единицах Y', value: r2(v.px / p.py) },
+      ],
+    };
+  },
+};
+
+/* ---------------- ВЫБОР НА БЮДЖЕТНОЙ ЛИНИИ ----------------
+   Полезность Кобба — Дугласа U = x^α·y^(1−α). Ползунок двигает точку A по бюджетной линии;
+   через неё проходит своя кривая безразличия. Оптимум E — там, где MRS = p_x/p_y. */
+const choiceChart = {
+  title: 'Лучший набор на бюджетной линии',
+  controls: (A) => { const p = consParams(A); return [{ id: 'x', label: 'Покупки X (остальное — на Y)', min: 0, max: Math.round((p.I / p.px) * 0.95), step: 1, def: Math.round((p.I / p.px) * 0.2), fmt: (v) => `${v}` }]; },
+  measure: (A, v) => {
+    const p = consParams(A); const y = (p.I - p.px * v.x) / p.py;
+    return { U: Math.pow(Math.max(v.x, 1e-9), p.a) * Math.pow(Math.max(y, 1e-9), 1 - p.a), mrs: (p.a / (1 - p.a)) * (y / Math.max(v.x, 1e-9)) };
+  },
+  build: (A, v) => {
+    const p = consParams(A);
+    const c = cdChoice(p);
+    const x = Math.max(0.5, v.x); const y = (p.I - p.px * x) / p.py;
+    const U = Math.pow(x, p.a) * Math.pow(y, 1 - p.a);
+    const mrs = (p.a / (1 - p.a)) * (y / x);
+    const max = Math.ceil((Math.max(p.I / p.px, p.I / p.py) * 1.05) / 10) * 10;
+    const indiff = (u) => Array.from({ length: 70 }, (_, i) => { const xx = max * (0.02 + 0.98 * i / 69); return { x: xx, y: Math.pow(u / Math.pow(xx, p.a), 1 / (1 - p.a)) }; });
+    const ratio = p.px / p.py;
+    const hint = Math.abs(mrs - ratio) < 0.05 * ratio ? 'это оптимум' : mrs > ratio ? 'выгоднее купить больше X' : 'выгоднее купить больше Y';
+    const at = Math.abs(x - c.x) < 0.5;
+    return {
+      xDomain: [0, max], yDomain: [0, max], xLabel: 'X', yLabel: 'Y',
+      curves: [
+        { id: 'B', label: 'бюджет', labelPos: 0.1, points: [{ x: 0, y: p.I / p.py }, { x: p.I / p.px, y: 0 }], color: 'rust' },
+        ...(at ? [] : [{ id: 'UA', label: 'через A', labelPos: 0.85, points: indiff(U), color: 'blue' }]),
+        { id: 'UE', label: 'лучшая доступная', labelPos: 0.42, points: indiff(c.U), color: 'teal' },
+      ],
+      points: [
+        ...(at ? [] : [{ x, y, label: 'A', guide: true }]),
+        { x: c.x, y: c.y, label: 'E', small: at ? false : true },
+      ],
+      readout: [
+        { label: 'MRS в точке A', value: r2(mrs) },
+        { label: 'Отношение цен p_x/p_y', value: r2(ratio) },
+        { label: 'Совет', value: hint },
+      ],
+    };
+  },
+};
+
+/* ---------------- СПРОС: ВДОЛЬ КРИВОЙ И СДВИГ ----------------
+   Q = a − b·P. Цена товара двигает точку вдоль кривой, доходы (и всё остальное) сдвигают кривую. */
+const demandParams = (A) => ({ a: num(A, 'a', 100), b: num(A, 'b', 2), P: num(A, 'p', 20) });
+const demandChart = {
+  title: 'Движение вдоль кривой и сдвиг кривой',
+  controls: (A) => {
+    const p = demandParams(A);
+    return [
+      { id: 'P', label: 'Цена самого товара', min: 0, max: Math.round((p.a / p.b) * 0.9), step: 1, def: p.P, fmt: (v) => `${v} руб.` },
+      { id: 'dA', label: 'Доходы покупателей: сдвиг спроса', min: -Math.round(p.a * 0.3), max: Math.round(p.a * 0.3), step: 5, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
+    ];
+  },
+  measure: (A, v) => { const p = demandParams(A); return { Q: Math.max(0, p.a + v.dA - p.b * v.P) }; },
+  build: (A, v) => {
+    const p = demandParams(A);
+    const Pmax = Math.ceil(((p.a * 1.3) / p.b) / 10) * 10; const Qmax = Math.ceil((p.a * 1.3) / 10) * 10;
+    const D = (a) => [{ x: a, y: 0 }, { x: 0, y: a / p.b }];
+    const q0 = Math.max(0, p.a - p.b * p.P); const q = Math.max(0, p.a + v.dA - p.b * v.P);
+    const what = v.dA !== 0 && v.P !== p.P ? 'и сдвиг, и движение' : v.dA !== 0 ? 'сдвиг кривой: изменился спрос' : v.P !== p.P ? 'движение вдоль кривой: изменился объём спроса' : 'исходная точка';
+    return {
+      xDomain: [0, Qmax], yDomain: [0, Pmax], xLabel: 'Q', yLabel: 'P',
+      curves: [
+        ...(v.dA !== 0 ? [{ id: 'D0', points: D(p.a), ghost: true, color: 'blue' }] : []),
+        { id: 'D', label: 'D', points: D(p.a + v.dA), color: 'blue' },
+      ],
+      points: [
+        ...(v.dA !== 0 || v.P !== p.P ? [{ x: q0, y: p.P, label: 'было', small: true }] : []),
+        { x: q, y: v.P, label: 'сейчас', guide: true },
+      ],
+      readout: [{ label: 'Объём спроса', value: `${r1(q)} ед.` }, { label: 'Что произошло', value: what }],
+    };
+  },
+};
+
+/* ---------------- КЕЙНСИАНСКИЙ КРЕСТ ----------------
+   Планируемые расходы E = C₀ + c(Y − T) + I + G против линии Y = E (45°). Равновесие —
+   пересечение; сдвиг расходов вверх на ΔG поднимает выпуск на ΔG/(1 − c). */
+const crossParams = (A) => ({ c0: num(A, 'c0', 200), c: num(A, 'c', 0.75), I: num(A, 'inv', 50), G: num(A, 'g', 100), T: num(A, 't', 100) });
+export const crossY = (p, G, T) => (p.c0 - p.c * T + p.I + G) / (1 - p.c);
+const crossChart = {
+  title: 'Кейнсианский крест',
+  controls: (A) => {
+    const p = crossParams(A);
+    return [
+      { id: 'G', label: 'Госзакупки G', min: 0, max: p.G * 2, step: 10, def: p.G, fmt: (v) => `${v}` },
+      { id: 'T', label: 'Налоги T', min: 0, max: p.T * 2, step: 10, def: p.T, fmt: (v) => `${v}` },
+    ];
+  },
+  measure: (A, v) => { const p = crossParams(A); return { Y: crossY(p, v.G, v.T) }; },
+  build: (A, v) => {
+    const p = crossParams(A);
+    const y0 = crossY(p, p.G, p.T); const y = crossY(p, v.G, v.T);
+    const Ymax = Math.ceil((crossY(p, p.G * 2, 0) * 1.1) / 100) * 100;
+    const E = (G, T) => line((Y) => p.c0 + p.c * (Y - T) + p.I + G, 0, Ymax);
+    const moved = v.G !== p.G || v.T !== p.T;
+    return {
+      // запас сверху — подпись оси не ложится на верхнее число шкалы
+      xDomain: [0, Ymax], yDomain: [0, Ymax * 1.06], xLabel: 'Y', yLabel: 'E',
+      curves: [
+        { id: 'diag', label: 'Y = E', labelPos: 0.9, points: [{ x: 0, y: 0 }, { x: Ymax, y: Ymax }], color: 'gold', dashed: true },
+        ...(moved ? [{ id: 'E0', points: E(p.G, p.T), ghost: true, color: 'blue' }] : []),
+        { id: 'E', label: 'расходы E', labelPos: 0.05, points: E(v.G, v.T), color: 'blue' },
+      ],
+      points: [
+        ...(moved ? [{ x: y0, y: y0, label: 'было', small: true, below: true }] : []),
+        { x: y, y, label: 'равновесие', guide: true },
+      ],
+      readout: [
+        { label: 'Выпуск Y', value: r1(y) },
+        { label: 'Изменение выпуска', value: `${y - y0 >= 0 ? '+' : ''}${r1(y - y0)}` },
+        { label: 'Мультипликатор 1/(1 − c)', value: r2(1 / (1 - p.c)) },
+      ],
+    };
+  },
+};
+
+/* ---------------- ВНЕШНИЙ ЭФФЕКТ ----------------
+   Спрос P = a − Q, частные предельные издержки MC = c₀ + Q, внешние издержки e на единицу:
+   общественные SMC = c₀ + e + Q. Рынок выпускает там, где спрос = MC, общество хотело бы
+   спрос = SMC; между ними — треугольник потерь. Налог Пигу t = e возвращает выпуск к оптимуму. */
+const extParams = (A) => ({ a: num(A, 'a', 100), c0: num(A, 'c0', 10), e: num(A, 'ext', 20) });
+export function externality({ a, c0, e }, tax = 0) {
+  const qm = (a - c0 - tax) / 2; const qo = (a - c0 - e) / 2;
+  // потери — треугольник между общественными издержками и спросом от оптимума до выпуска рынка
+  return { qm, qo, dwl: 0.5 * Math.abs(qm - qo) * Math.abs(c0 + e + qm - (a - qm)) };
+}
+const extChart = {
+  title: 'Внешний эффект и налог Пигу',
+  controls: (A) => {
+    const p = extParams(A);
+    return [
+      { id: 'e', label: 'Ущерб соседям от единицы', min: 0, max: Math.round(p.e * 2), step: 1, def: p.e, fmt: (v) => `${v} руб.` },
+      { id: 'pigou', label: 'Налог Пигу = ущербу', toggle: true, def: false },
+    ];
+  },
+  measure: (A, v) => { const p = extParams(A); const m = externality({ ...p, e: v.e }, v.pigou ? v.e : 0); return { Q: m.qm, dwl: m.dwl }; },
+  build: (A, v) => {
+    const p = extParams(A); const e = v.e; const tax = v.pigou ? e : 0;
+    const m = externality({ ...p, e }, tax);
+    const Qmax = p.a; const Pmax = p.a;
+    const polys = !v.pigou && e > 0 ? [{ points: [{ x: m.qo, y: p.a - m.qo }, { x: m.qm, y: p.c0 + e + m.qm }, { x: m.qm, y: p.a - m.qm }], label: 'потери', tone: 'rust' }] : [];
+    return {
+      xDomain: [0, Qmax], yDomain: [0, Pmax], xLabel: 'Q', yLabel: 'P',
+      polys,
+      curves: [
+        { id: 'D', label: 'спрос', labelPos: 0.08, points: line((q) => p.a - q, 0, Qmax), color: 'blue' },
+        { id: 'MC', label: v.pigou ? 'MC + налог' : 'MC частные', labelPos: 0.2, points: line((q) => p.c0 + tax + q, 0, Qmax), color: 'teal' },
+        ...(e > 0 ? [{ id: 'SMC', label: 'MC общества', labelPos: 0.6, points: line((q) => p.c0 + e + q, 0, Qmax), color: 'rust', dashed: true }] : []),
+      ],
+      points: [
+        { x: m.qm, y: p.a - m.qm, label: 'рынок', guide: true },
+        ...(Math.abs(m.qm - m.qo) > 0.5 ? [{ x: m.qo, y: p.a - m.qo, label: 'оптимум', small: true }] : []),
+      ],
+      readout: [
+        { label: 'Выпуск рынка', value: r1(m.qm) },
+        { label: 'Оптимум для общества', value: r1(m.qo) },
+        { label: 'Безвозвратные потери', value: r1(m.dwl) },
+      ],
+    };
+  },
+};
+
+/* ---------------- ОБЩАЯ КПВ ДВУХ ПРОИЗВОДИТЕЛЕЙ ----------------
+   Каждый за час производит a пирогов или b рубашек (h часов). Первые рубашки шьёт тот, у
+   кого рубашка дешевле в пирогах; общая граница — ломаная с изломом там, где он занят целиком. */
+const tradeParams = (A) => ({ a1: num(A, 'a1', 4), b1: num(A, 'b1', 2), a2: num(A, 'a2', 1), b2: num(A, 'b2', 1), h: num(A, 'h', 8), n1: A.n1 || 'первый', n2: A.n2 || 'второй' });
+export function jointPies(p, shirts) {
+  // сначала рубашки шьёт тот, у кого альтернативная стоимость рубашки (a/b) ниже
+  const ppl = [{ a: p.a1, b: p.b1, name: p.n1 || 'первый' }, { a: p.a2, b: p.b2, name: p.n2 || 'второй' }].sort((x, y) => x.a / x.b - y.a / y.b);
+  let need = shirts; let pies = 0; const who = [];
+  ppl.forEach((pp) => {
+    const hours = Math.min(p.h, need / pp.b); need -= hours * pp.b;
+    pies += (p.h - hours) * pp.a; if (hours > 0) who.push(pp.name);
+  });
+  return { pies: need > 1e-9 ? NaN : pies, who, first: ppl[0] };
+}
+const tradeChart = {
+  title: 'Общая КПВ двух производителей',
+  controls: (A) => { const p = tradeParams(A); return [{ id: 's', label: 'Сколько рубашек нужно', min: 0, max: (p.b1 + p.b2) * p.h, step: 1, def: Math.round(p.b2 * p.h / 2), fmt: (v) => `${v}` }]; },
+  measure: (A, v) => ({ pies: jointPies(tradeParams(A), v.s).pies }),
+  build: (A, v) => {
+    const p = tradeParams(A);
+    const smax = (p.b1 + p.b2) * p.h;
+    const kinkS = jointPies(p, 0).first.b * p.h;
+    const frontier = [0, kinkS, smax].map((x) => ({ x, y: jointPies(p, x).pies }));
+    const r = jointPies(p, v.s);
+    const firstName = r.first === undefined ? '' : r.first.name;
+    return {
+      // сверху запас над последней отметкой: подпись оси не ложится на число
+      xDomain: [0, smax], yDomain: [0, (p.a1 + p.a2) * p.h * 1.15], xLabel: 'рубашки', yLabel: 'пироги',
+      curves: [{ id: 'J', label: 'граница вдвоём', labelPos: 0.8, points: frontier, color: 'gold' }],
+      points: [{ x: kinkS, y: frontier[1].y, label: 'излом', small: true }, { x: v.s, y: r.pies, label: 'выбор', guide: true }],
+      readout: [
+        { label: 'Пирогов при этом', value: r1(r.pies) },
+        { label: 'Рубашки шьёт', value: v.s === 0 ? 'никто' : v.s <= kinkS ? `только ${firstName}: у него рубашка дешевле в пирогах` : 'оба' },
+      ],
+    };
+  },
+};
+
+/* ---------------- НОМИНАЛЬНЫЙ И РЕАЛЬНЫЙ ВВП ----------------
+   Реальный ВВП растёт на g в год, цены — на π. Номинальный = реальный × дефлятор. */
+const gdpParams = (A) => ({ y0: num(A, 'y0', 100), g: num(A, 'g', 2), pi: num(A, 'pi', 8), n: num(A, 'n', 5) });
+const gdpChart = {
+  title: 'Номинальный и реальный ВВП',
+  controls: (A) => {
+    const p = gdpParams(A);
+    return [
+      { id: 'g', label: 'Реальный рост в год', min: -6, max: 10, step: 0.5, def: p.g, fmt: (v) => `${r1(v)}%` },
+      { id: 'pi', label: 'Инфляция (рост дефлятора) в год', min: 0, max: 30, step: 1, def: p.pi, fmt: (v) => `${v}%` },
+    ];
+  },
+  measure: (A, v) => { const p = gdpParams(A); const real = p.y0 * Math.pow(1 + v.g / 100, p.n); return { real, nominal: real * Math.pow(1 + v.pi / 100, p.n) }; },
+  build: (A, v) => {
+    const p = gdpParams(A);
+    const real = (t) => p.y0 * Math.pow(1 + v.g / 100, t);
+    const nom = (t) => real(t) * Math.pow(1 + v.pi / 100, t);
+    const pts = (f) => Array.from({ length: p.n * 4 + 1 }, (_, i) => ({ x: i / 4, y: f(i / 4) }));
+    const top = Math.max(nom(p.n), real(p.n), p.y0);
+    return {
+      xDomain: [0, p.n], yDomain: [0, Math.ceil((top * 1.15) / 20) * 20], xLabel: 'год', yLabel: 'ВВП',
+      curves: [
+        { id: 'N', label: 'номинальный', labelPos: 0.85, points: pts(nom), color: 'rust' },
+        { id: 'R', label: 'реальный', labelPos: 0.6, points: pts(real), color: 'blue' },
+      ],
+      points: [{ x: p.n, y: nom(p.n), label: r1(nom(p.n)), small: true }, { x: p.n, y: real(p.n), label: r1(real(p.n)), small: true, below: true }],
+      readout: [
+        { label: `Номинальный рост за ${p.n} лет`, value: `${r1((nom(p.n) / p.y0 - 1) * 100)}%` },
+        { label: 'Реальный рост', value: `${r1((real(p.n) / p.y0 - 1) * 100)}%` },
+        { label: 'Дефлятор в конце (база = 100)', value: r1(Math.pow(1 + v.pi / 100, p.n) * 100) },
+      ],
+    };
+  },
+};
+
+/* ---------------- ДЕНЕЖНЫЙ МУЛЬТИПЛИКАТОР ----------------
+   m = (1 + cr)/(cr + rr): cr — наличные к депозитам, rr — резервы к депозитам.
+   Денежная масса M = m·B при денежной базе B. Кривая — мультипликатор при разных нормах резервов. */
+const moneyParams = (A) => ({ B: num(A, 'base', 100), rr: num(A, 'rr', 0.1), cr: num(A, 'cr', 0.2) });
+export const moneyMultiplier = (cr, rr) => (1 + cr) / (cr + rr);
+const moneyChart = {
+  title: 'Денежный мультипликатор',
+  controls: (A) => {
+    const p = moneyParams(A);
+    return [
+      { id: 'rr', label: 'Норма резервов банков', min: 0.02, max: 0.5, step: 0.01, def: p.rr, fmt: (v) => `${Math.round(v * 100)}%` },
+      { id: 'cr', label: 'Наличные к вкладам', min: 0, max: 1, step: 0.05, def: p.cr, fmt: (v) => `${Math.round(v * 100)}%` },
+    ];
+  },
+  measure: (A, v) => { const p = moneyParams(A); const m = moneyMultiplier(v.cr, v.rr); return { m, M: m * p.B }; },
+  build: (A, v) => {
+    const p = moneyParams(A);
+    const m = moneyMultiplier(v.cr, v.rr); const M = m * p.B; const D = M / (1 + v.cr);
+    const pts = Array.from({ length: 60 }, (_, i) => { const rr = 0.02 + 0.48 * i / 59; return { x: rr * 100, y: moneyMultiplier(v.cr, rr) }; });
+    return {
+      xDomain: [0, 50], yDomain: [0, Math.max(8, Math.ceil(moneyMultiplier(v.cr, 0.02) * 1.1))], xLabel: 'резервы, %', yLabel: 'm',
+      curves: [{ id: 'm', label: 'мультипликатор', labelPos: 0.35, points: pts, color: 'gold' }],
+      points: [{ x: v.rr * 100, y: m, label: `m = ${r2(m)}`, guide: true }],
+      readout: [
+        { label: 'Мультипликатор', value: r2(m) },
+        { label: `Денежная масса при базе ${p.B}`, value: r1(M) },
+        { label: 'Вклады', value: r1(D) },
+        { label: 'Наличные', value: r1(M - D) },
+      ],
+    };
+  },
+};
+
 // как называть величины графика в ответе графической задачи
 supplyDemand.measureNames = { P: 'цена', Q: 'количество' };
 elasticity.measureNames = { P: 'цена', Q: 'количество', R: 'выручка', E: 'эластичность' };
@@ -705,7 +1015,15 @@ tax.measureNames = { Pd: 'цена покупателей', Ps: 'цена про
 elasticCompare.measureNames = { qIn: 'покупки (неэластичный)', qEl: 'покупки (эластичный)', rIn: 'выручка (неэластичный)', rEl: 'выручка (эластичный)' };
 revenueCurve.measureNames = { P: 'цена', R: 'выручка' };
 lrac.measureNames = { lrac: 'долгосрочные средние издержки', sracMinQ: 'выпуск при минимуме SRAC', sracMin: 'минимум SRAC' };
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac };
+budgetChart.measureNames = { xMax: 'максимум X', yMax: 'максимум Y', slope: 'цена X в единицах Y' };
+choiceChart.measureNames = { U: 'полезность', mrs: 'MRS' };
+demandChart.measureNames = { Q: 'объём спроса' };
+crossChart.measureNames = { Y: 'выпуск' };
+extChart.measureNames = { Q: 'выпуск', dwl: 'безвозвратные потери' };
+tradeChart.measureNames = { pies: 'пироги' };
+gdpChart.measureNames = { real: 'реальный ВВП', nominal: 'номинальный ВВП' };
+moneyChart.measureNames = { m: 'мультипликатор', M: 'денежная масса' };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, money: moneyChart };
 export const chartDefaults = (type, attrs) => Object.fromEntries(CHARTS[type].controls(attrs).filter((c) => !c.button).map((c) => [c.id, c.def]));
 
 /* ГРАФИЧЕСКАЯ ЗАДАЧА: игрок двигает ползунки, ответ — направления изменения величин

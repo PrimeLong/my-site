@@ -610,8 +610,8 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByText('Учебник', { exact: true }).first().click();
   const toc = page.getByTestId('textbook');
   await expect(toc.getByText('Микроэкономика', { exact: true })).toBeVisible();
-  await expect(toc.locator('[data-status="ready"]')).toHaveCount(9);
-  await expect(toc.locator('[data-status="planned"]')).toHaveCount(12);
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(12);
+  await expect(toc.locator('[data-status="planned"]')).toHaveCount(9);
   await expectNoSidewaysScroll(page);
 
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
@@ -630,9 +630,9 @@ test('учебник: оглавление, формулы KaTeX, график �
   expect(families.some((f) => f.startsWith('KaTeX'))).toBe(true);
 
   // ползунок сдвигает спрос: равновесная цена 20 → 25 при сдвиге на 30
-  const chart = ch.getByTestId('tb-chart').filter({ has: page.getByRole('slider', { name: 'Сдвиг спроса' }) }).first();
+  const chart = ch.getByTestId('tb-chart').filter({ has: page.getByRole('slider', { name: 'Сдвиг спроса', exact: true }) }).first();
   await expect(chart.getByTestId('tb-readout')).toContainText('Равновесная цена: 20');
-  await chart.getByRole('slider', { name: 'Сдвиг спроса' }).fill('30');
+  await chart.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('30');
   await expect(chart.getByTestId('tb-readout')).toContainText('Равновесная цена: 25');
   await expect(chart.getByTestId('tb-readout')).toContainText('Равновесное количество: 80');
 
@@ -670,6 +670,9 @@ test('учебник: оглавление, формулы KaTeX, график �
   await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
   await multi.getByRole('button', { name: 'Проверить' }).click();
   await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 руб.; в) 39 ед.');
+  // задачи свёрнуты по уровням: базовый открыт, семинарский — по нажатию
+  await expect(ch.locator('[data-problem="sd-tf-law"]')).toHaveCount(0);
+  await ch.locator('[data-testid="tb-level-group"][data-level="Семинарский уровень"]').getByRole('button').first().click();
   // «верно или неверно»: сначала объяснение, потом выбор, потом сверка с ключевыми пунктами
   const tf = ch.locator('[data-problem="sd-tf-law"]');
   await expect(tf.getByRole('button', { name: 'Неверно', exact: true })).toBeDisabled();
@@ -685,11 +688,11 @@ test('учебник: оглавление, формулы KaTeX, график �
   const gr = ch.locator('[data-problem="sd-graph-flour"]');
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала сдвиньте');
-  await gr.getByRole('slider', { name: 'Сдвиг спроса' }).fill('-20');
+  await gr.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('-20');
   await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Пока неверно');
-  await gr.getByRole('slider', { name: 'Сдвиг спроса' }).fill('0');
+  await gr.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('0');
   await gr.getByRole('slider', { name: 'Сдвиг предложения' }).fill('-20');
   await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
   await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
@@ -745,6 +748,11 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1200');
   await islm.getByRole('button', { name: 'ЦБ держит ставку' }).click();
   await expect(islm.getByTestId('tb-readout')).toContainText('Выпуск Y: 1300');
+  // кейнсианский крест: те же 1100, госзакупки +50 — выпуск +200
+  const cross = page.locator('[data-chart="cross"]');
+  await expect(cross.getByTestId('tb-readout')).toContainText('Выпуск Y: 1100');
+  await cross.getByRole('slider', { name: 'Госзакупки G' }).fill('150');
+  await expect(cross.getByTestId('tb-readout')).toContainText('Выпуск Y: 1300');
   // схема «ставка → … → цены» переключается вверх и вниз
   const flow = page.getByTestId('tb-flow');
   await expect(flow.getByTestId('tb-flow-step')).toHaveCount(6);
@@ -764,6 +772,16 @@ test('учебник: оглавление, формулы KaTeX, график �
   // назад — в ту же главу учебника, а не в меню
   await page.getByRole('button', { name: '← Назад в меню' }).click();
   await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'is-lm');
+
+  // AD-AS: кривая AD из IS-LM, те же числа; шок издержек — стагфляция
+  await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();
+  await toc.getByRole('button', { name: /Совокупный спрос и совокупное предложение/ }).click();
+  const adas = page.locator('[data-chart="ad-as"]').nth(1);
+  await expect(adas.getByTestId('tb-readout')).toContainText('Выпуск Y: 1100');
+  await adas.getByRole('slider', { name: 'Ожидаемые цены Pᵉ' }).fill('2.2');
+  await expect(adas.getByTestId('tb-readout')).toContainText('Выпуск Y: 1081,2');
+  await expect(adas.getByTestId('tb-readout')).toContainText('Уровень цен P: 2,16');
+  await expectNoSidewaysScroll(page);
 
   // монополия: график с ползунком издержек и правило Лернера в числах
   await page.getByTestId('chapter').getByRole('button', { name: /Оглавление/ }).first().click();

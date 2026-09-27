@@ -244,10 +244,47 @@ function FlowView({ b, ctx }) {
 // простой текст строки — для подписей
 const plainTitle = (nodes) => nodes.map((n) => (n.t === 'text' || n.t === 'math' ? n.v : n.c ? plainTitle(n.c) : n.label || n.target || '')).join('');
 
-function Blocks({ blocks, ctx, top = false }) {
-  let problemNo = 0;
+/* Задачи главы сворачиваются по уровням: базовый открыт сразу, семинарский и олимпиадный —
+   по нажатию. Уровень — подзаголовок «… уровень» и всё до следующего заголовка. */
+const isLevelHead = (b) => b.type === 'h3' && plainTitle(b.inline).trim().toLowerCase().endsWith('уровень');
+function groupLevels(blocks) {
+  const out = [];
+  let g = null;
+  blocks.forEach((b) => {
+    if (isLevelHead(b)) { g = { type: 'levels', title: plainTitle(b.inline).trim(), blocks: [] }; out.push(g); return; }
+    if (b.type === 'h2' || b.type === 'h3') g = null;
+    if (g) g.blocks.push(b); else out.push(b);
+  });
+  return out;
+}
+function LevelGroup({ g, ctx, startNo }) {
+  const basic = g.title.toLowerCase().startsWith('базов');
+  const [open, setOpen] = useState(basic);
+  const n = g.blocks.filter((b) => b.type === 'problem').length;
+  const solved = g.blocks.filter((b) => b.type === 'problem' && ctx.progress.problems[b.id] && ctx.progress.problems[b.id].ok).length;
+  return (
+    <div data-testid="tb-level-group" data-level={g.title}>
+      <button type="button" className="ems-btn" aria-expanded={open} style={{ width: '100%', textAlign: 'left', padding: '9px 12px', margin: '14px 0 6px', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}
+        onClick={() => { Audio.play('click'); setOpen((v) => !v); }}>
+        <ChevronDown size={14} style={{ transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+        <b style={{ flex: 1 }}>{g.title}</b>
+        <span style={{ fontSize: 12, color: COLOR.muted }}>{n} {n === 1 ? 'задача' : n < 5 ? 'задачи' : 'задач'}{solved ? ` · решено ${solved}` : ''}</span>
+      </button>
+      {open && <Blocks blocks={g.blocks} ctx={ctx} startNo={startNo} />}
+    </div>
+  );
+}
+
+function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
+  let problemNo = startNo;
   let h2No = 0;
+  const blocks = top ? groupLevels(raw) : raw;
   return blocks.map((b, i) => {
+    if (b.type === 'levels') {
+      const from = problemNo;
+      problemNo += b.blocks.filter((x) => x.type === 'problem').length;
+      return <LevelGroup key={`lv${i}`} g={b} ctx={ctx} startNo={from} />;
+    }
     const action = actionOf(b);
     if (action) {
       const act = linkAction(action, ctx);
@@ -357,7 +394,8 @@ function ChartSvg({ scene }) {
       {niceTicks(y0, y1).map((t) => (
         <g key={`y${t}`}>
           <line x1={M.l} x2={W - M.r} y1={sy(t)} y2={sy(t)} stroke={COLOR.border} strokeOpacity={0.45} />
-          <text x={M.l - 6} y={sy(t) + 3.5} fontSize={11} fill={COLOR.faint} textAnchor="end">{fmtNum(t)}</text>
+          {/* у самого верха стоит подпись оси — число там не пишем, чтобы они не слиплись */}
+          {sy(t) - M.t > 9 && <text x={M.l - 6} y={sy(t) + 3.5} fontSize={11} fill={COLOR.faint} textAnchor="end">{fmtNum(t)}</text>}
         </g>
       ))}
       <line x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} stroke={COLOR.muted} />

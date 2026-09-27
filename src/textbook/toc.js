@@ -76,19 +76,31 @@ export const PARTS = [
   {
     id: 'macro', title: 'Макроэкономика',
     chapters: [
-      { id: 'gdp', title: 'ВВП и система национальных счетов', status: 'planned',
-        summary: 'Три способа посчитать ВВП, номинальный и реальный ВВП, дефлятор и индекс потребительских цен.' },
-      { id: 'money-banks', title: 'Деньги и банки', status: 'planned',
-        summary: 'Функции денег, денежная база и денежная масса, банковский (денежный) мультипликатор.' },
-      { id: 'ad-as', title: 'Совокупный спрос и совокупное предложение', status: 'planned',
-        summary: 'Модель AD-AS: короткий и длинный период, шоки спроса и предложения, закон Оукена.',
-        cards: ['okun'] },
+      { id: 'gdp', title: 'ВВП и система национальных счетов', status: 'ready',
+        summary: 'Три способа посчитать ВВП, номинальный и реальный ВВП, дефлятор и индекс потребительских цен.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Измерение национального дохода» (Measuring a Nation’s Income) и «Измерение стоимости жизни» (Measuring the Cost of Living)' },
+          { book: 'mankiwMacro', chapter: '«Данные макроэкономики» (The Data of Macroeconomics)' },
+        ] },
+      { id: 'money-banks', title: 'Деньги и банки', status: 'ready',
+        summary: 'Функции денег, денежная база и денежная масса, банковский (денежный) мультипликатор, уравнение обмена, инструменты центрального банка.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Денежная система» (The Monetary System) и «Рост денежной массы и инфляция» (Money Growth and Inflation)' },
+          { book: 'mankiwMacro', chapter: '«Денежная система: что это такое и как она работает» (The Monetary System: What It Is and How It Works) и «Инфляция: причины, последствия и социальные издержки» (Inflation: Its Causes, Effects, and Social Costs)' },
+        ] },
       { id: 'is-lm', title: 'Модель IS-LM', status: 'ready',
         summary: 'Кейнсианский крест, кривые IS и LM, бюджетная и денежная политика, вытеснение, ловушка ликвидности, вывод кривой AD.',
         refs: [
           { book: 'mankiwMacro', chapter: '«Совокупный спрос I: построение модели IS-LM» (Aggregate Demand I: Building the IS–LM Model)' },
           { book: 'mankiwMacro', chapter: '«Совокупный спрос II: применение модели IS-LM» (Aggregate Demand II: Applying the IS–LM Model)' },
           { book: 'mankiwPrinciples', chapter: '«Влияние денежной и бюджетной политики на совокупный спрос» (The Influence of Monetary and Fiscal Policy on Aggregate Demand)' },
+        ] },
+      { id: 'ad-as', title: 'Совокупный спрос и совокупное предложение', status: 'ready',
+        summary: 'Модель AD-AS: кривая AD из IS-LM, короткий и длинный период, шоки спроса и предложения, закон Оукена.',
+        cards: ['okun'],
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Совокупный спрос и совокупное предложение» (Aggregate Demand and Aggregate Supply)' },
+          { book: 'mankiwMacro', chapter: '«Введение в экономические колебания» (Introduction to Economic Fluctuations) и «Совокупное предложение и краткосрочный выбор между инфляцией и безработицей» (Aggregate Supply and the Short-Run Tradeoff Between Inflation and Unemployment)' },
         ] },
       { id: 'phillips', title: 'Кривая Филлипса и ожидания', status: 'planned',
         summary: 'Компромисс инфляции и безработицы в коротком периоде, роль ожиданий, естественный уровень безработицы.',
