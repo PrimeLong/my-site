@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { fetchSoloSlots, fetchSoloSlot, saveSoloSlot, renameSoloSlot, deleteSoloSlot, submitDailyResult } from './lib/client.js';
 import { withSeededRandom, hashSeed, dailyScore, DAILY_SCORE_KEYS, rng } from './lib/catalog.js';
-import { passiveDecisions, changedLevers, policyContribution } from './lib/counterfactual.js';
+import { passiveDecisions, changedLevers, policyContribution, startShadow, shadowQuarter, cumulativeContribution } from './lib/counterfactual.js';
 import { DRILLS, evaluateDrill, recordDrillResult } from './lib/drills.js';
 import { makeForecast, resolveForecasts, forecastStats, FORECAST_HORIZON } from './lib/forecast.js';
 import { makePrehistory } from './lib/autopilot.js';
@@ -4185,38 +4185,62 @@ export function DrillResultModal({ drill, ev, forecasts, onClose, onReplay, onMe
   );
 }
 
-export function CounterfactualCard({ cf }) {
-  const shown = cf.rows.filter((r) => r.key !== 'approval' || Math.abs(r.diff) >= 0.05);
-  const fmtVal = (r, v) => (r.key === 'exchangeRate' ? fmt1(v) : `${fmt1(v)}${r.unit === 'п.п.' ? '%' : ''}`);
+// таблица «без вас / с вами / ваш вклад» — общая для квартала и для всей партии
+function CfTable({ rows }) {
+  const fmtVal = (r, v) => (r.key === 'exchangeRate' ? fmt1(v) : r.key === 'gdp' ? fmtMoney(v)
+    : r.key === 'wellbeing' || r.key === 'approval' ? fmt1(v) : `${fmt1(v)}%`);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.5fr) repeat(3, minmax(0,1fr))', gap: '3px 10px', fontSize: 12 }}>
+      <span className="t-muted" /><span className="t-muted" style={{ textAlign: 'right' }}>без вас</span>
+      <span className="t-muted" style={{ textAlign: 'right' }}>с вами</span><span className="t-muted" style={{ textAlign: 'right' }}>ваш вклад</span>
+      {rows.map((r) => {
+        const tone = Math.abs(r.diff) < 0.05 || !r.good ? COLOR.text : r.diff * r.good > 0 ? COLOR.teal : COLOR.rust;
+        return (
+          <React.Fragment key={r.key}>
+            <span style={{ overflowWrap: 'anywhere' }}>{r.label}</span>
+            <span className="ems-mono" style={{ textAlign: 'right', color: COLOR.muted }}>{fmtVal(r, r.passive)}</span>
+            <span className="ems-mono" style={{ textAlign: 'right' }}>{fmtVal(r, r.actual)}</span>
+            <b className="ems-mono" style={{ textAlign: 'right', color: tone }}>{Math.abs(r.diff) < 0.05 ? '0' : `${fmtSigned1(r.diff)} ${r.unit}`}</b>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* «А если бы вы ничего не делали»: вся партия без ваших решений (накопленный вклад —
+   тот, что виден сквозь лаги) и этот квартал без них (что успело случиться сразу). */
+export function CounterfactualCard({ cf, cum }) {
+  const shown = cf ? cf.rows.filter((r) => r.key !== 'approval' || Math.abs(r.diff) >= 0.05) : [];
   return (
     <div data-testid="counterfactual" style={{ marginTop: 12, padding: '12px 14px', border: `1px solid ${COLOR.border}`, background: COLOR.panelAlt }}>
       <div className="ems-serif" style={{ fontSize: 13, color: COLOR.goldSoft, marginBottom: 4 }}>А если бы вы ничего не делали</div>
-      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
-        {cf.changed.length
-          ? <>Вы изменили: {cf.changed.map((c) => `${c.label.toLowerCase()} ${c.from.toFixed(c.digits || 1)} → ${c.to.toFixed(c.digits || 1)}${c.suffix}`).join('; ')}. </>
-          : <>В этом квартале вы не трогали рычаги — всё, что произошло, сделали шоки, соседи и накопленные решения прошлых кварталов. </>}
-        Тот же {cf.label} посчитан второй раз — с теми же шоками и решениями соседей, но с вашими рычагами на прежних местах.
-      </div>
-      {cf.changed.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) repeat(3, minmax(0,1fr))', gap: '3px 10px', fontSize: 12 }}>
-          <span className="t-muted" /><span className="t-muted" style={{ textAlign: 'right' }}>без вас</span>
-          <span className="t-muted" style={{ textAlign: 'right' }}>с вами</span><span className="t-muted" style={{ textAlign: 'right' }}>ваш вклад</span>
-          {shown.map((r) => {
-            const tone = Math.abs(r.diff) < 0.05 || !r.good ? COLOR.text : r.diff * r.good > 0 ? COLOR.teal : COLOR.rust;
-            return (
-              <React.Fragment key={r.key}>
-                <span style={{ overflowWrap: 'anywhere' }}>{r.label}</span>
-                <span className="ems-mono" style={{ textAlign: 'right', color: COLOR.muted }}>{fmtVal(r, r.passive)}</span>
-                <span className="ems-mono" style={{ textAlign: 'right' }}>{fmtVal(r, r.actual)}</span>
-                <b className="ems-mono" style={{ textAlign: 'right', color: tone }}>{Math.abs(r.diff) < 0.05 ? '0' : `${fmtSigned1(r.diff)} ${r.unit}`}</b>
-              </React.Fragment>
-            );
-          })}
+      {cum && (
+        <div data-testid="counterfactual-cum" style={{ marginBottom: cf ? 12 : 0 }}>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 6 }}>
+            <b style={{ color: COLOR.text }}>С {cum.fromQ > 1 ? `${quarterLabel(cum.fromQ)}` : 'начала партии'}</b> ({cum.quarters} кв.) рядом идёт второй мир:
+            те же зёрна каждого квартала, тот же президент, бот соседнего ведомства отвечает на его собственное состояние,
+            а ваши рычаги с самого начала стоят на стартовых значениях. Здесь видно то, что лаги прячут в одном квартале.
+          </div>
+          <CfTable rows={cum.rows} />
+        </div>
+      )}
+      {cf && (
+        <div>
+          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 6 }}>
+            <b style={{ color: COLOR.text }}>Только {cf.label}.</b>{' '}
+            {cf.changed.length
+              ? <>Вы изменили: {cf.changed.map((c) => `${c.label.toLowerCase()} ${c.from.toFixed(c.digits || 1)} → ${c.to.toFixed(c.digits || 1)}${c.suffix}`).join('; ')}. </>
+              : <>В этом квартале вы не трогали рычаги. </>}
+            Тот же квартал посчитан второй раз — с теми же шоками и решениями соседей, но с вашими рычагами на прежних местах.
+          </div>
+          {cf.changed.length > 0 && <CfTable rows={shown} />}
         </div>
       )}
       <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginTop: 8 }}>
-        Здесь только то, что успело случиться сразу. Ставка и налоги действуют с лагом в несколько кварталов —
-        полную траекторию одного решения показывает «Лаборатория» в главном меню или кнопка отклика у ползунка.
+        За один квартал вклад ставки почти нулевой: она действует через кредит и спрос с лагом в несколько кварталов.
+        Шоки в двух мирах одинаковы лишь пока одинаковы броски: чем дальше миры расходятся, тем больше события могут разойтись.
+        Чистый отклик одного решения — в «Лаборатории».
       </div>
     </div>
   );
@@ -4504,6 +4528,13 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     : { gdpGrowth: [], inflation: [], exchangeRate: [], budget: [], unemployment: [], banking: [], potential: [] });
   const [lastReport, setLastReport] = useState(initial ? initial.lastReport || '' : '');
   const [lastCf, setLastCf] = useState(initial ? initial.lastCf || null : null);
+  /* второй мир «без вас с самого начала» (lib/counterfactual.js) — для ролей с рычагами;
+     у старого сохранения его нет — тогда он стартует с того квартала, где партию открыли */
+  const [shadow, setShadow] = useState(() => {
+    if (!(roleDef.groups || []).some((g) => g === 'monetary' || g === 'fiscal')) return null;
+    if (initial) return initial.shadow || startShadow(initial.economy, initial.quarterIndex || 1, initial);
+    return startShadow(initEconomy, 1, { eventCooldowns: pre ? pre.eventCooldowns : {} });
+  });
   const [forecasts, setForecasts] = useState(initial && Array.isArray(initial.forecasts) ? initial.forecasts : []);
   const [forecastInput, setForecastInput] = useState('');
   const [botAction, setBotAction] = useState(initial ? initial.botAction || null : null);
@@ -4560,7 +4591,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastCf, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
-    presPersonaId, presidentLast, slotIdx: activeSlot, prehistory, decisionLog, forecasts });
+    presPersonaId, presidentLast, slotIdx: activeSlot, prehistory, decisionLog, forecasts, shadow });
   // история снимков для отката после поражения: три хода назад решение ещё можно
   // было принять иначе, а начинать партию заново с нуля — обидно. Снимок делаем
   // тем же способом, что и ручное сохранение, — чтобы восстановление не забыло
@@ -4768,6 +4799,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       } catch { cf = null; }
     }
     setLastCf(cf);
+    if (shadow && myGroups.length) {
+      try {
+        setShadow(shadowQuarter(shadow, { eff, groups: myGroups, difficulty, quarterIndex, seed: qSeed,
+          bots: { cb: botRole === 'central_bank' ? cbPersonaId : null, mof: botRole === 'ministry_finance' ? mofPersonaId : null } }));
+      } catch { /* второй мир — подсказка, а не условие партии: сбой не должен ломать квартал */ }
+    }
     // слепой прогноз: записать новый (он сделан до хода) и сверить те, чей квартал наступил
     {
       const fv = Number(String(forecastInput).replace(',', '.'));
@@ -4991,7 +5028,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     pendingRequest, portfolio, isTrader, isPresident, bothBots, history, pushAch, defeat, promises,
     presActions, presAppointCb, presAppointMof, presDirective, presDirStrength, warTarget,
     presEnabled, presidentPlan, presPersonaId, playerBranch, decisionsBaseline, presDirMemo, regionPlan, canPlanMap, warOrder, campaignPlan, treatyPlan, diploPlan,
-    isPublic, canCommandDefense, roleDef, seedSrc, drill, forecasts, forecastInput]);
+    isPublic, canCommandDefense, roleDef, seedSrc, drill, forecasts, forecastInput, shadow]);
 
   const setLever = (id, val) => setDecisions((dd) => ({ ...dd, [id]: val }));
 
@@ -5008,6 +5045,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [showDaily, setShowDaily] = useState(false);
   // задача окончена: все кварталы пройдены или партия оборвалась
   const drillEv = useMemo(() => (drill ? evaluateDrill(drill, history) : null), [drill, history]);
+  const cumCf = useMemo(() => cumulativeContribution(history, shadow), [history, shadow]);
   const drillDone = !!drill && (quarterIndex > drill.quarters || !!defeat);
   const [showDrill, setShowDrill] = useState(false);
   React.useEffect(() => {
@@ -5605,7 +5643,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
                 <div className="ems-serif" style={{ fontSize: 13, color: COLOR.muted }}>Настройте политику слева и завершите первый квартал. Помните: между решением и результатом стоит цепочка — ставка меняет стоимость кредита, кредит меняет спрос, спрос меняет цены.</div>
               )}
             </div>
-            {lastCf && <CounterfactualCard cf={lastCf} />}
+            {(lastCf || cumCf) && <CounterfactualCard cf={lastCf} cum={cumCf} />}
             {setup.role !== 'trader' && !(drill && drillDone) && (
               <ForecastPanel quarterIndex={quarterIndex} value={forecastInput} onChange={setForecastInput} forecasts={forecasts} />
             )}

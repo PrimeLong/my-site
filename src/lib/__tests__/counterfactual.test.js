@@ -30,3 +30,42 @@ describe('«а если бы вы ничего не делали»', () => {
     expect(rows.exchangeRate).toBeLessThan(0);
   });
 });
+
+describe('накопленное сравнение: вся партия без решений игрока', () => {
+  // партия за ЦБ: настоящий мир и мир «без вас» на одних и тех же зёрнах
+  async function play(mine, quarters = 12) {
+    const { startShadow, shadowQuarter, cumulativeContribution } = await import('../counterfactual.js');
+    const { clamp } = await import('../engine.js');
+    let e = makeInitialEconomy(); let shadow = startShadow(e);
+    let p = []; let cd = {}; let st = []; let prev = null; const history = [];
+    for (let q = 1; q <= quarters; q++) {
+      const seed = 1000 + q;
+      const mof = botFinanceMinistry(e, 'technocrat', 'medium').decisions;
+      const eff = { ...defaultDecisions(e, prev), ...mof, ...mine(e, q) };
+      const cbStance = clamp((eff.keyRate - e.inflationExpectations - e.rStar) / 3, -1, 1);
+      const mofStance = clamp((eff.govSpending + eff.transfers * 0.6 + eff.govInvestment * 0.8) / 6
+        - (eff.vatRate - e.vatRate + eff.incomeTaxRate - e.incomeTaxRate) * 0.3, -1, 1);
+      const r = withSeededRandom(seed, () => simulateQuarter({ economy: { ...e, cbStance, mofStance }, decisions: eff,
+        pendingImpulses: p, eventCooldowns: cd, difficulty: 'medium', quarterIndex: q, stories: st }));
+      shadow = shadowQuarter(shadow, { eff, groups: ['monetary'], bots: { mof: 'technocrat' }, difficulty: 'medium', quarterIndex: q, seed });
+      e = r.economy; p = r.pendingImpulses; cd = r.eventCooldowns; st = r.stories; prev = eff;
+      history.push({ q, ...e });
+    }
+    return cumulativeContribution(history, shadow);
+  }
+
+  it('если игрок ничего не трогает, миры совпадают', async () => {
+    const cum = await play(() => ({}));
+    cum.rows.forEach((r) => expect(Math.abs(r.diff), r.key).toBeLessThan(1e-9));
+    expect(cum.quarters).toBe(12);
+  });
+
+  it('ставка выше на 2 п.п. всю партию: инфляция и ВВП ниже, чем в мире без вас', async () => {
+    const cum = await play(() => ({ keyRate: makeInitialEconomy().keyRate + 2 }));
+    const row = (k) => cum.rows.find((r) => r.key === k).diff;
+    expect(row('inflation')).toBeLessThan(-0.2);
+    expect(row('avgInflation')).toBeLessThan(0);
+    expect(row('gdp')).toBeLessThan(0);
+    expect(row('unemployment')).toBeGreaterThan(0);
+  });
+});

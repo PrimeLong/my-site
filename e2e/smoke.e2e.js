@@ -589,6 +589,9 @@ test('после квартала: «а если бы вы ничего не д�
   await expect(card).toBeVisible();
   await expect(card).toContainText('Вы изменили: ключевая ставка');
   await expect(card).toContainText('ваш вклад');
+  // накопленное сравнение: вся партия в мире без ваших решений
+  await expect(page.getByTestId('counterfactual-cum')).toContainText('С начала партии');
+  await expect(page.getByTestId('counterfactual-cum')).toContainText('Средняя инфляция за партию');
   expect(errors).toEqual([]);
 });
 
