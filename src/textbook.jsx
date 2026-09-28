@@ -150,6 +150,12 @@ export function Inline({ nodes, ctx }) {
     if (n.t === 'b') return <b key={i}><Inline nodes={n.c} ctx={ctx} /></b>;
     if (n.t === 'i') return <i key={i}><Inline nodes={n.c} ctx={ctx} /></i>;
     if (n.t === 'link') return <Link key={i} n={n} ctx={ctx} />;
+    // термин с подсказкой (упражнения Пути): нажатие открывает определение из словаря
+    if (n.t === 'term') {
+      return ctx && ctx.onTerm
+        ? <button key={i} type="button" className="tb-term" data-term={n.id} onClick={(e) => { e.stopPropagation(); ctx.onTerm(n.id); }}>{n.v}</button>
+        : <React.Fragment key={i}>{n.v}</React.Fragment>;
+    }
     return null;
   });
 }

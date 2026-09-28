@@ -6,7 +6,7 @@
    Серия дней — дни, когда пройден хотя бы один урок. Один пропуск в календарную неделю
    «замораживается» и серию не обнуляет. Без наказаний: пропуск просто не считается днём серии. */
 const DAY = 24 * 3600 * 1000;
-export const XP = { correct: 2, finish: 5, replayShare: 0.1 };
+export const XP = { correct: 2, hinted: 1, finish: 5, replayShare: 0.1 };
 export const GOALS = [1, 2, 3, 5];
 const MAX_DAYS = 400;
 const MAX_KEYS = 300;
@@ -51,8 +51,9 @@ export const resolveMistake = (s, id) => upd(s, { mistakes: s.mistakes.filter((m
 /* Опыт за урок: 2 за каждое упражнение, решённое верно с первой попытки (и новое, и
    повторение), плюс 5 за то, что урок доведён до конца. Урок, который уже был пройден, даёт
    десятую часть — повторять лёгкое ради опыта незачем. */
-export function lessonXp({ firstTry, replay }) {
-  const full = firstTry * XP.correct + XP.finish;
+// firstTry — верно с первой попытки без подсказки, hinted — верно с первой, но после подсказки
+export function lessonXp({ firstTry, hinted = 0, replay }) {
+  const full = firstTry * XP.correct + hinted * XP.hinted + XP.finish;
   return replay ? Math.max(1, Math.round(full * XP.replayShare)) : full;
 }
 export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true }) {

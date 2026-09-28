@@ -891,6 +891,9 @@ function DemandPractice({ economy, decisions, setDecisions, done, focus }) {
 }
 
 
+// сводка экономики под плитками практики: то, без чего решения принимаются вслепую
+const PRACTICE_ECONOMY = ['gdpGrowth', 'inflation', 'unemployment', 'keyRate', 'outputGap', 'wageGrowth', 'budgetBalancePctGdp', 'debtToGdp', 'approval'];
+
 const MODULE_CHECKS = {
   basics: {
     quiz: {
@@ -1187,11 +1190,13 @@ const MODULE_CHECKS = {
     },
     practice: {
       kind: 'practice', title: 'Практика: требование пенсионеров',
-      goalLabel: 'Через шесть кварталов пенсионеры — не ниже 40',
+      goalLabel: 'Через шесть кварталов пенсионеры — не ниже 40, дефицит бюджета — не больше 6% ВВП',
+      pins: ['approval', 'inflation', 'budgetBalancePctGdp', 'debtToGdp'],
       body: () => (
         <>
-          <p>Инфляция съела пенсии, и пенсионеры ушли в оппозицию: поддержка 29. Лидер Союза пенсионеров пришёл с требованием, и ответить на него нужно в этом квартале.</p>
-          <p>Задача — чтобы через шесть кварталов поддержка пенсионеров была не ниже 40. Проверяется именно конец срока: что бывает с обещаниями, которые не выполняют, видно не сразу.</p>
+          <p>Инфляция съела пенсии, и пенсионеры ушли в оппозицию: поддержка 29. Лидер Союза пенсионеров пришёл с требованием — ответить на него нужно в этом квартале.</p>
+          <p>Инструментов три. <b>Ответ лидеру</b> справа: обещание (дёшево, но невыполненное вспомнят), уступка (стоит бюджету, зато благодарность долгая) или отказ. <b>Соцвыплаты</b> — темп индексации пенсий: каждый пункт добавляет пенсионерам поддержки каждый квартал, но расширяет дефицит. <b>Ставка</b> — против цен: инфляция выше цели отнимает у пенсионеров поддержку сильнее всего.</p>
+          <p>Задача — через шесть кварталов поддержка пенсионеров не ниже 40, а дефицит бюджета не больше 6% ВВП: купить лояльность, просто раздав деньги, не выйдет. Проверяется конец срока — последствия обещаний видны не сразу.</p>
         </>
       ),
       setup: (e) => {
@@ -1199,11 +1204,11 @@ const MODULE_CHECKS = {
           groupSupport: { pensioners: 29, workers: 48, business: 50, siloviki: 50, public: 42, youth: 47, regions: 44 } };
         return { ...x, groupDemand: publicGroupDemand('pensioners', x, 1), groupDemandCooldown: 0 };
       },
-      levers: [], maxQuarters: 6,
+      levers: ['transfers', 'keyRate'], maxQuarters: 6,
       panel: (p) => <DemandPractice {...p} focus="pensioners" />,
-      goal: (c) => c.used >= 6 && shown0((c.economy.groupSupport || {}).pensioners || 0) >= 40,
-      goalText: (c) => `Пенсионеры: ${Math.round((c.economy.groupSupport || {}).pensioners || 0)}. Рейтинг ${Math.round(c.economy.approval)}.`,
-      hint: 'Обещание дешевле и сразу успокаивает, но через год невыполненное обещание группа вспомнит — и спросит строже. Уступка стоит бюджетных денег, зато благодарность долгая.',
+      goal: (c) => c.used >= 6 && shown0((c.economy.groupSupport || {}).pensioners || 0) >= 40 && c.economy.budgetBalancePctGdp >= -6,
+      goalText: (c) => `Пенсионеры: ${Math.round((c.economy.groupSupport || {}).pensioners || 0)} (нужно 40). Дефицит бюджета ${pctFmt(Math.max(0, -c.economy.budgetBalancePctGdp))} ВВП (не больше 6%). Инфляция ${pctFmt(c.economy.inflation)}. Рейтинг ${Math.round(c.economy.approval)}.`,
+      hint: 'Обещание дешевле и сразу успокаивает, но через год невыполненное обещание группа вспомнит — и спросит строже. Уступка стоит бюджетных денег, зато благодарность долгая. Сбить инфляцию ставкой — тоже помощь пенсионерам, и бесплатная для бюджета.',
     },
   },
 };
@@ -2571,6 +2576,33 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
             );
           })}
         </div>
+
+        {/* В практике — ещё и сводка экономики: задача может быть о рейтинге или группе, но
+            решения всё равно принимаются по росту, ценам, работе и бюджету — вслепую нельзя. */}
+        {kind === 'practice' && sandbox !== 'trader' && (() => {
+          const shown = new Set(cur.pins || module.pins);
+          const keys = PRACTICE_ECONOMY.filter((k) => !shown.has(k) && ALL_METRICS[k] && Number.isFinite(economy[k]));
+          if (!keys.length) return null;
+          return (
+            <div style={{ marginBottom: 14 }} data-testid="practice-economy">
+              <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Экономика сейчас</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))', gap: 6 }}>
+                {keys.map((key) => {
+                  const m = ALL_METRICS[key]; const d = economy[key] - prevEcon[key];
+                  const good = m.invert ? d < 0 : d > 0;
+                  return (
+                    <div key={key} className="ems-panel" style={{ padding: '6px 8px', borderRadius: 8 }}>
+                      <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.25 }}>{m.label}</div>
+                      <div className="ems-mono" style={{ fontSize: 14 }}>{m.fmt(economy[key])}
+                        {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 11, marginLeft: 4, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* В настоящей партии кризис виден баннером и бейджами сразу на экране;
             в практике его не было вообще — в задаче на несколько кварталов

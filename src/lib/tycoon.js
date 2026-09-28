@@ -176,7 +176,7 @@ export function makeTycoon({ start = 'farm', scenario = 'sandbox', difficulty = 
     cash: kit.cash || 8, debtRub: 0, debtFx: 0, loanRate: rubLoanRate(country.economy),
     wagePremium: 0, gr: false,
     buildings: [], slots: {},
-    stock: {}, autoSell: {}, autoBuy: {}, reserve: {}, exportList: {}, markup: {},
+    stock: {}, autoSell: {}, autoBuy: {}, reserve: {}, exportList: {}, markup: {}, manualPrice: {},
     research: {}, rp: 0,
     wageIdx: 1, worldIdx: 1,
     stats: { rates: {}, income: 0, costs: 0, flows: {}, unmet: {}, sellEma: {}, exportEma: {} },
@@ -208,7 +208,7 @@ export function makeTycoon({ start = 'farm', scenario = 'sandbox', difficulty = 
 
 // сохранения прошлых версий не знают о менеджерах, заданиях и счётчиках — дополняем
 export function normalizeTycoon(st) {
-  return { managers: {}, mgrTimer: 0, quest: 0, introSeen: true, lifetime: { retail: 0, wholesale: 0, exports: 0 }, flags: {},
+  return { managers: {}, mgrTimer: 0, quest: 0, introSeen: true, manualPrice: {}, lifetime: { retail: 0, wholesale: 0, exports: 0 }, flags: {},
     startBuildings: 3, rivals: makeRivals(), startQ: st.country ? st.country.quarterIndex : 1, ...st };
 }
 
@@ -285,6 +285,13 @@ export function exportPrice(st, id, rate = null) {
   const open = exportIndex(e) / Math.pow(fxRate(e), 0.9);
   return world * open / (1 + ema / (r.depth * 3));
 }
+// пределы цены в магазинах относительно рынка, % (ползунок игрока и автоцена)
+export const PRICE_MIN = -20;
+export const PRICE_MAX = 40;
+// покупателям в магазинах не хватает полок или товара: заметная доля спроса уходит ни с чем
+export const shopShort = (st, id) => (st.stats.unmet[id] || 0) > Math.max(0.005, ((st.stats.shopSold || {})[id] || 0) * 0.05);
+// цену в магазинах назначает автоматика «там, где выгоднее»
+export const autoPriced = (st, id) => !!(RES[id].consumer && RES[id].export && st.exportList[id] && !(st.manualPrice && st.manualPrice[id]) && st.buildings.some((b) => BLD[b.type].exports));
 export const retailPrice = (st, id) => marketPrice(st, id) * (1 + (st.markup[id] || 0) / 100);
 const tariff = (st, id) => RES[id].price * priceIdx(economyOf(st)) * 0.04
   * (has(st, 'logistics2') ? 0.3 : has(st, 'logistics1') ? 0.6 : 1);
@@ -446,10 +453,28 @@ function step1(prev, dt, offline) {
     Object.entries(d.out).forEach(([r, q]) => { const amt = q * p; st.stock[r] = (st.stock[r] || 0) + amt; add(prod, r, amt); });
   });
 
+  /* 2½. «Продавать там, где выгоднее»: у товара, который идёт на экспорт, цена в магазинах
+     сама тянется к экспортной. Магазин дороже экспорта — излишек уходит за границу дешевле,
+     чем продался бы дома: цену вниз, покупателей больше, вывоз меньше, и экспортная цена
+     от меньшего вывоза растёт. Сходится там, где цены равны. Если же в магазинах товара
+     не хватает (полки или запас), цену можно поднимать — продадут столько же, но дороже.
+     Ручная цена (игрок двинул ползунок) это отключает — manualPrice. */
+  if (st.buildings.some((b) => BLD[b.type].exports)) {
+    RESOURCES.forEach((r) => {
+      if (!r.consumer || !r.export || !st.exportList[r.id] || (st.manualPrice && st.manualPrice[r.id])) return;
+      const m = st.markup[r.id] || 0;
+      const short = shopShort(st, r.id);
+      const parity = (exportPrice(st, r.id) / marketPrice(st, r.id) - 1) * 100;
+      const target = clamp(short ? Math.max(parity, m + 2) : parity, PRICE_MIN, PRICE_MAX);
+      const next = m + (target - m) * Math.min(1, dt / 4);
+      if (Math.abs(next - m) > 1e-4) st.markup = { ...st.markup, [r.id]: next };
+    });
+  }
+
   // 3. магазины: покупатели области разбирают товары, пока хватает полок и запасов
   const shopCap = {};
   st.buildings.forEach((b) => { const d = BLD[b.type]; if (d.sells) add(shopCap, b.region, d.sells * power[b.uid] * dt); });
-  const planned = {}; const unmet = {};
+  const planned = {}; const unmet = {}; const shopSold = {};
   const goods = RESOURCES.filter((r) => r.consumer);
   const rivalSold = {};
   Object.entries(shopCap).forEach(([region, c]) => {
@@ -470,7 +495,7 @@ function step1(prev, dt, offline) {
     list.forEach(([region, v]) => {
       const amt = v * k;
       if (amt <= 0) return;
-      st.stock[g] -= amt; add(sold, g, amt);
+      st.stock[g] -= amt; add(sold, g, amt); add(shopSold, g, amt);
       const money = amt * price;
       revenue += money; st.quarter.retail += money;
       const src = sourceFor(g, region);
@@ -568,6 +593,10 @@ function step1(prev, dt, offline) {
   const un = {};
   goods.forEach((g) => { un[g.id] = ema(st.stats.unmet[g.id], (unmet[g.id] || 0) / dt); });
   st.stats.unmet = un;
+  // продажи в магазинах отдельно от экспорта и опта: по ним автоцена видит, упёрлись ли полки
+  const ss = {};
+  goods.forEach((g) => { ss[g.id] = ema((st.stats.shopSold || {})[g.id], (shopSold[g.id] || 0) / dt); });
+  st.stats.shopSold = ss;
   // продажи конкурентов там, где торгуете и вы (и там, где вас нет, — для доли рынка)
   liveRivals(st).forEach((c) => RIVAL[c.id].goods.forEach((g) => Object.keys(c.shops).forEach((region) => {
     if (shopCap[region]) return;
@@ -889,6 +918,8 @@ export const RIVALS = [
     about: 'Сеть гипермаркетов из Вестравии на дешёвых деньгах: заходит ценой и годами терпит убытки. Санкции против Вестравии или плохие отношения с ней её выгоняют.' },
 ];
 export const RIVAL = Object.fromEntries(RIVALS.map((r) => [r.id, r]));
+// сколько кварталов подряд владельцы иностранной сети оплачивают убыточную торговлю при доле ниже 10%
+export const FOREIGN_PATIENCE = 6;
 const RIVAL_SHOP = 1.5;
 const RIVAL_SHOP_COST = 6;
 export const RIVAL_MODE_LABEL = { wait: 'ещё не на рынке', grow: 'расширяется', hold: 'держит цены', war: 'ценовая война', retreat: 'отступает',
@@ -990,6 +1021,36 @@ export function marketShares(st) {
   return out;
 }
 
+/* Состояние конкурента для экрана: деньги, торговля и деньги владельцев за квартал, через
+   сколько кварталов при нынешних делах кончатся деньги и — у иностранной сети — терпение
+   владельцев. По этому видно, сколько ещё давить и когда сеть можно будет купить. */
+// доля конкурента во всех продажах его товаров (по штукам, ваши продажи — все каналы)
+export function rivalVolumeShare(st, id) {
+  const def = RIVAL[id];
+  if (!def.goods.length) return 1;
+  let theirs = 0; let total = 0;
+  def.goods.forEach((g) => {
+    const byRival = (st.stats.rivalSold || {})[g] || {};
+    theirs += byRival[id] || 0;
+    total += ((st.stats.rates[g] || {}).sold || 0) + Object.values(byRival).reduce((a, v) => a + v, 0);
+  });
+  return total > 1e-9 ? theirs / total : 0;
+}
+export function rivalOutlook(st, id) {
+  const c = (st.rivals || []).find((x) => x.id === id);
+  if (!c) return null;
+  const def = RIVAL[id];
+  const trade = c.tradeQ ?? c.profitQ ?? 0;
+  const subsidy = c.subsidyQ ?? (def.foreign ? 0.4 : 0);
+  const profit = trade + subsidy;
+  const runway = profit < 0 ? Math.max(0, Math.ceil(Math.max(0, c.cash) / -profit)) : Infinity;
+  const patience = def.foreign ? Math.max(0, FOREIGN_PATIENCE - (c.lossQ || 0)) : null;
+  // когда станет можно купить: иностранную — в долгах или когда сворачивается, свою — всегда
+  const buyableIn = !def.foreign || c.distress > 0 || c.mode === 'retreat' ? 0
+    : Math.min(runway === Infinity ? Infinity : runway + 1, trade < 0.2 ? patience : Infinity);
+  return { cash: c.cash, trade, subsidy, profit, runway, patience, losing: trade < 0.2, buyableIn };
+}
+
 // цена поглощения: полки, деньги и прибыль; в беде — дешевле, здоровый просит премию
 export function rivalPrice(st, id) {
   const c = (st.rivals || []).find((x) => x.id === id);
@@ -1003,7 +1064,7 @@ export function canBuyRival(st, id) {
   const c = (st.rivals || []).find((x) => x.id === id);
   if (!c || !c.alive) return 'Этой компании уже нет';
   if (!c.entered) return 'Компания ещё не вышла на рынок';
-  if (RIVAL[id].foreign && c.distress === 0) return 'Вестравцы здоровую сеть не продают — только если она в беде';
+  if (RIVAL[id].foreign && c.distress === 0 && c.mode !== 'retreat') return 'Вестравцы здоровую сеть не продают — только когда она в долгах или сворачивается';
   if (st.cash < rivalPrice(st, id)) return 'Не хватает денег';
   return null;
 }
@@ -1092,7 +1153,15 @@ function rivalsQuarter(st) {
     }));
     Object.entries(c.supply).forEach(([r, v]) => { sales += v * sellPrice(st, r) * 0.12; });
     const upkeep = rivalCap(c) / RIVAL_SHOP * 0.1 * pIdx;
-    c.profitQ = sales * QUARTER_SEC - upkeep + (def.foreign ? 0.4 : 0);
+    /* торговля отдельно от денег владельцев: иностранную сеть кормит материнская компания,
+       но её терпение не бесконечно — FOREIGN_PATIENCE кварталов торговли без заметной прибыли
+       при доле ниже 10%, и деньги из Вестравии перестают приходить, а сеть начинает уходить */
+    c.tradeQ = sales * QUARTER_SEC - upkeep;
+    const theirShare = rivalVolumeShare(st, c.id);
+    // торговля без заметной прибыли при доле ниже 10% копит усталость владельцев, хороший квартал её снимает не сразу
+    if (def.foreign) c.lossQ = c.tradeQ < 0.2 && theirShare < 0.1 ? (c.lossQ || 0) + 1 : Math.max(0, (c.lossQ || 0) - 1);
+    c.subsidyQ = def.foreign && (c.lossQ || 0) < FOREIGN_PATIENCE ? 0.4 : 0;
+    c.profitQ = c.tradeQ + c.subsidyQ;
     // сверх запаса на развитие владельцы забирают дивидендами — конкурент не копит сотни миллионов
     c.cash = Math.min(c.cash + c.profitQ, (def.foreign ? 30 : 12) + rivalCap(c) * 3);
     c.distress = c.cash < 0 ? c.distress + 1 : 0;
@@ -1118,6 +1187,15 @@ function rivalsQuarter(st) {
         pushNews(st, broke ? `«${def.short.toUpperCase()}»: ВЫ НАРУШИЛИ ДОГОВОР` : `ДОГОВОРЁННОСТЬ С «${def.short.toUpperCase()}» ИСТЕКЛА`,
           broke ? 'Вы опустили цены — конкурент отвечает ценовой войной.' : 'Год прошёл, каждый снова сам по себе.');
       }
+      return c;
+    }
+    // владельцы из Вестравии устали платить: сеть сворачивается магазин за магазином
+    if (def.foreign && (c.lossQ || 0) >= FOREIGN_PATIENCE && c.distress < 1) {
+      if (c.mode !== 'retreat') pushNews(st, `«${def.short.toUpperCase()}» СВОРАЧИВАЕТСЯ`, 'Владельцы из Вестравии перестали оплачивать убытки: сеть закрывает магазины и готова продать остальное дешевле обычного.');
+      c.mode = 'retreat'; c.markup = baseMarkup + 6;
+      const worst = Object.keys(c.shops).sort((a, b) => (POP[a] || 0) - (POP[b] || 0))[0];
+      if (worst && c.shops[worst] > 0) { c.shops[worst] = Math.max(0, c.shops[worst] - RIVAL_SHOP); if (!c.shops[worst]) delete c.shops[worst]; }
+      if (!rivalCap(c)) { c.alive = false; c.mode = 'gone'; pushNews(st, `«${def.short.toUpperCase()}» УШЁЛ С РЫНКА`, 'Последний магазин закрыт.'); }
       return c;
     }
     if (c.distress >= 1) {
@@ -1280,6 +1358,7 @@ function runManagers(prev) {
       if (r.consumer) {
         const unmet = st.stats.unmet[r.id] || 0;
         const m = markup[r.id] || 0;
+        if (autoPriced({ ...st, exportList }, r.id)) return; // цену ведёт «там, где выгоднее»
         if (unmet > rate.sold * 0.15 && stock < cap * 0.2) markup[r.id] = Math.min(30, m + 2);
         else if (stock > cap * 0.5 && unmet < 0.01) markup[r.id] = Math.max(-10, m - 2);
       }

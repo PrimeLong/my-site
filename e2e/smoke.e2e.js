@@ -425,6 +425,10 @@ test('обучение: практика «требование пенсионе
   await page.getByRole('button', { name: 'Проверить ответы' }).click();
   await page.getByRole('button', { name: /^Далее/ }).click();
   await expect(page.getByText('Практика: требование пенсионеров')).toBeVisible();
+  // у задачи есть инструменты — ответ лидеру, соцвыплаты и ставка — и видна экономика целиком
+  await expect(page.getByText(/Соцвыплаты|Социальные выплаты/).first()).toBeVisible();
+  await expect(page.getByText(/Ключевая ставка/).first()).toBeVisible();
+  await expect(page.getByTestId('practice-economy')).toContainText('Безработица');
   await page.getByRole('button', { name: /Проиндексировать пенсии/ }).click();
   for (let i = 0; i < 6; i++) await page.getByRole('button', { name: 'Завершить квартал' }).click();
   await expect(page.getByRole('button', { name: /^Далее/ })).toBeEnabled();
@@ -899,7 +903,7 @@ test('учебник: кругооборот в «ВВП» и балансы б�
   await toc.locator('.tb-toc-row', { hasText: 'Деньги и банки' }).click();
   const bal = page.locator('[data-diagram="balance"]');
   await expect(bal.getByTestId('tb-money')).toContainText('1000');
-  await bal.getByRole('button', { name: 'Дальше' }).click();
+  await bal.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(bal.getByTestId('tb-money')).toContainText('1900');
   await expect(bal.getByTestId('tb-bank')).toContainText('Вклад Бориса');
   await bal.getByRole('button', { name: /Итог/ }).click();
@@ -1109,14 +1113,17 @@ async function answerExercise(page, { wrong = false } = {}) {
 async function playLesson(page, { wrongAt = [] } = {}) {
   const kinds = new Set();
   let retries = 0;
+  let cards = 0;
   for (let i = 0; i < 40; i += 1) {
     if (await page.getByTestId('lesson-result').isVisible()) break;
+    // вторая карточка идеи урока — прочитать и дальше
+    if (await page.getByTestId('lesson-card').isVisible()) { cards += 1; await page.getByRole('button', { name: 'Понятно' }).click(); }
     if (await page.getByTestId('ex-retry').isVisible()) retries += 1;
     kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i) }));
-    await page.getByRole('button', { name: 'Дальше' }).click();
+    await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   await expect(page.getByTestId('lesson-result')).toBeVisible();
-  return { kinds, retries };
+  return { kinds, retries, cards };
 }
 const withTestFlag = (page) => page.addInitScript(() => { window.__INFLATIA_TEST__ = true; });
 
@@ -1127,14 +1134,23 @@ test('путь: урок целиком на телефоне — идея, ош
   await expect(path).toBeVisible();
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // пилотный юнит — уроками, остальные главы — «скоро» со ссылкой в «Теорию»
-  await expect(path.getByTestId('path-lesson')).toHaveCount(6);
+  // Путь начинается с юнита 1; уроками — юниты 1 и 2, остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(2);
+  await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
+  await expect(path.getByTestId('path-lesson')).toHaveCount(12);
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
-  await expect(path.getByTestId('path-soon').first()).toContainText('скоро');
+  await expect(path.locator('[data-lesson="sc-l1"]').first()).toHaveAttribute('data-state', 'open');
+  const soon = path.getByTestId('path-soon');
+  await expect(soon).toHaveCount(1);
+  await expect(soon).toContainText('юнитов готовятся');
+  await expect(path.getByTestId('path-soon-list')).toHaveCount(0);
+  await soon.getByRole('button').first().click();
+  await expect(path.getByTestId('path-soon-list')).toContainText('Эластичность');
   await expectNoSidewaysScroll(page);
 
-  await path.locator('[data-lesson="sd-l1"]').click();
-  await expect(page.getByTestId('lesson-idea')).toContainText('Закон спроса');
+  // урок открывается и нажатием на название
+  await path.getByTestId('path-lesson-title').and(path.locator('[data-lesson="sc-l1"]')).click();
+  await expect(page.getByTestId('lesson-idea')).toContainText('Ограниченность');
   await expect(page.getByTestId('lesson-idea').locator('svg').first()).toBeVisible();
   await page.getByRole('button', { name: 'Начать' }).click();
   // первое упражнение — неверно: красная плашка с правильным ответом и обещанием повтора
@@ -1142,7 +1158,7 @@ test('путь: урок целиком на телефоне — идея, ош
   await expect(page.getByTestId('lesson-foot')).toContainText('Правильно:');
   await expect(page.getByTestId('lesson-foot')).toContainText('вернётся в конце урока');
   await expectNoSidewaysScroll(page);
-  await page.getByRole('button', { name: 'Дальше' }).click();
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   const { retries } = await playLesson(page);
   expect(retries, 'ошибка вернулась в конце урока').toBe(1);
   const result = page.getByTestId('lesson-result');
@@ -1151,11 +1167,11 @@ test('путь: урок целиком на телефоне — идея, ош
   await expect(result.getByTestId('result-acc')).not.toContainText('100%');
   await expect(result).not.toContainText('Урок уже был пройден');
   await expect(result.getByTestId('mascot')).toHaveAttribute('data-mood', 'party');
-  await result.getByRole('button', { name: 'Дальше' }).click();
+  await result.getByRole('button', { name: 'Дальше', exact: true }).click();
 
   // путь: урок пройден, следующий открыт, серия и цель дня засчитаны
-  await expect(path.locator('[data-lesson="sd-l1"]')).toHaveAttribute('data-state', 'done');
-  await expect(path.locator('[data-lesson="sd-l2"]')).toHaveAttribute('data-state', 'open');
+  await expect(path.getByTestId('path-lesson').and(path.locator('[data-lesson="sc-l1"]'))).toHaveAttribute('data-state', 'done');
+  await expect(path.getByTestId('path-lesson').and(path.locator('[data-lesson="sc-l2"]'))).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('streak')).toHaveText('1');
   await expect(page.getByTestId('goal')).toContainText('1/1');
   // ошибка ушла в «Практику», статистика — в «Профиль»
@@ -1166,14 +1182,14 @@ test('путь: урок целиком на телефоне — идея, ош
   await expect(page.getByTestId('prof-types')).toContainText('Выбор ответа');
   // повтор пройденного урока — «Подробнее в теории» ведёт в раздел главы
   await openTab(page, 'path');
-  await path.locator('[data-lesson="sd-l1"]').click();
+  await path.getByTestId('path-lesson').and(path.locator('[data-lesson="sc-l1"]')).click();
   await page.getByRole('button', { name: 'Начать' }).click();
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Урок уже был пройден');
   await page.getByTestId('result-theory').click();
   await expect(page.getByTestId('shell')).toHaveAttribute('data-tab', 'theory');
-  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'supply-demand');
-  await expect(page.locator('#demand')).toBeInViewport();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'scarcity');
+  await expect(page.locator('#sc-choice')).toBeInViewport();
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -1188,12 +1204,35 @@ test('путь: газета и «куда сдвинется?», выход и�
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
-  await expect(path.locator('[data-lesson="sd-l5"]')).toHaveAttribute('data-state', 'open');
+  const node = (id) => path.getByTestId('path-lesson').and(path.locator(`[data-lesson="${id}"]`));
+  await expect(node('sd-l5')).toHaveAttribute('data-state', 'open');
+  // пройденный урок открыт для повтора: в уроке 1 перед упражнениями на эффекты — вторая карточка идеи,
+  // а термины в условии можно нажать и прочитать определение
+  await node('sd-l1').click();
+  await page.getByRole('button', { name: 'Начать' }).click();
+  let hinted = false; let cardSeen = false;
+  for (let i = 0; i < 40 && !hinted; i += 1) {
+    if (await page.getByTestId('lesson-card').isVisible()) { cardSeen = true; await page.getByRole('button', { name: 'Понятно' }).click(); }
+    const term = page.getByTestId('ex').locator('.tb-term').first();
+    if (await term.count()) {
+      await term.click();
+      await expect(page.getByTestId('term-sheet')).toContainText('подсказка');
+      await page.getByTestId('term-sheet').getByRole('button', { name: 'Понятно' }).click();
+      await expect(page.getByTestId('term-sheet')).toHaveCount(0);
+      hinted = true;
+    }
+    await answerExercise(page);
+    await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  }
+  expect(hinted).toBe(true);
+  const rest = await playLesson(page);
+  expect(cardSeen || rest.cards > 0, 'карточка «Почему покупают меньше»').toBe(true);
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // выйти посреди урока — мягкий вопрос, без наказаний
-  await path.locator('[data-lesson="sd-l5"]').click();
+  await node('sd-l5').click();
   await page.getByRole('button', { name: 'Начать' }).click();
   await answerExercise(page);
-  await page.getByRole('button', { name: 'Дальше' }).click();
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
   await expect(page.getByText('Выйти из урока?')).toBeVisible();
   await page.getByRole('button', { name: 'Выйти', exact: true }).click();
@@ -1204,26 +1243,26 @@ test('путь: газета и «куда сдвинется?», выход и�
 
   // урок 5 целиком: газета и сдвиг кривой, с одной ошибкой
   await openTab(page, 'path');
-  await path.locator('[data-lesson="sd-l5"]').click();
+  await node('sd-l5').click();
   await page.getByRole('button', { name: 'Начать' }).click();
   const { kinds } = await playLesson(page, { wrongAt: [2] });
   expect([...kinds]).toEqual(expect.arrayContaining(['news', 'shift']));
-  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше' }).click();
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // практика: ошибка решается — и уходит из списка
   await openTab(page, 'practice');
   await page.getByTestId('practice-mistakes').click();
   await playLesson(page);
-  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше' }).click();
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(page.getByTestId('practice-mistakes')).toBeDisabled();
 
   // проверка юнита: сдана — все уроки открыты, юнит пройден, открывается «уровень легенды»
   await openTab(page, 'path');
-  await page.getByTestId('unit-check').click();
+  await path.locator('[data-testid="path-unit"][data-unit="supply-demand"]').getByTestId('unit-check').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'check');
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Проверка сдана');
-  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше' }).click();
-  await expect(path.locator('[data-state="done"]')).toHaveCount(6);
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(6);
   await page.getByTestId('unit-legend').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'legend');
   await expect(page.getByTestId('ex')).toBeVisible();
@@ -1247,7 +1286,7 @@ test.describe('офлайн', () => {
     await context.setOffline(true);
     await page.reload();
     await expect(page.getByTestId('path')).toBeVisible();
-    await page.getByTestId('path').locator('[data-lesson="sd-l1"]').click();
+    await page.getByTestId('path').getByTestId('path-lesson').first().click();
     await expect(page.getByTestId('lesson-idea')).toBeVisible();
     await context.setOffline(false);
   });

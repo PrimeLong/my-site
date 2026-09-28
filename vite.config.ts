@@ -1,10 +1,11 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import textbookSections from './scripts/textbook-sections-plugin.js'
+import serviceWorker from './scripts/sw-plugin.js'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), textbookSections()],
+  plugins: [react(), textbookSections(), serviceWorker()],
   build: {
     rolldownOptions: {
       output: {
