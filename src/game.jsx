@@ -26,7 +26,7 @@ import {
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
 import { BookLink } from './booklink.jsx';
-import { LEVER_BOOK, WHY_BOOK, bookForChain } from './lib/booklinks.js';
+import { LEVER_BOOK, WHY_BOOK, COMPASS_BOOK, bookForChain } from './lib/booklinks.js';
 import {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
@@ -4286,6 +4286,7 @@ export function RateCompass({ economy, keyRate }) {
       <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.45, marginTop: 4 }}>
         Тейлор: r* + инфляция + 0.5·(инфляция − цель) + 0.5·(разрыв выпуска) = {fmt1(rStar)} + {fmt1(economy.inflation)} + 0.5·({fmtSigned1(economy.inflation - (economy.inflationTarget ?? 4))}) + 0.5·({fmtSigned1(economy.outputGap || 0)}). Ориентир, а не закон: в игре ЦБ может отступать от него — на графике «Ставки» видно, насколько.
       </div>
+      <div style={{ marginTop: 6 }}><BookLink to={COMPASS_BOOK} compact /></div>
     </div>
   );
 }

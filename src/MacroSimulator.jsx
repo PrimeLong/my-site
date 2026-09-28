@@ -1348,10 +1348,10 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить учиться</div>
               <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>
-                {study.section ? `«${study.section.title}»` : study.allDone ? 'Повторение и задачи' : 'Первое занятие по учебнику'}
+                {study.section ? `«${study.section.title}»` : 'Повторение и задачи'}
               </div>
               <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-                {study.section ? `${study.section.chapterTitle ? `${study.section.chapterTitle} · ` : ''}≈${study.section.minutes} мин` : study.allDone ? 'все разделы готовых глав пройдены' : 'раздел минут на десять с вопросом в конце'}
+                {study.section ? `${study.section.chapterTitle} · ≈${study.section.minutes} мин` : 'все разделы готовых глав пройдены'}
                 {' · '}на повторение: {study.due}
               </div>
             </div>

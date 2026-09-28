@@ -12,12 +12,14 @@ import { TYCOON_TASKS, TYCOON_TABS, TYCOON_STARTS, taskText } from '../tycoon-ta
 import { CHAPTER_TEXT, CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, sectionsOf, plainText } from '../content.js';
 import { parseBlocks, parseInline, collectLinks, collectMath, collectBlocks, actionOf, checkAnswer, parseNumber, matchTraps } from '../markdown.js';
 import { sectionDone, sectionProgress, nextSection, dueItems } from '../study.js';
-import { CHARTS, chartDefaults, captionVars, lracFns, crossY, externality, moneyMultiplier, jointPies, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
+import { CHARTS, chartDefaults, captionVars, lracFns, crossY, externality, moneyMultiplier, jointPies, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket, phillipsPi, taylorRule, solowSteady } from '../charts.js';
 import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil, confidenceStats, mergeTextbook, normalizeTextbook, addStudyMinute, dayKey, markRead as markReadP } from '../progress.js';
 import { STARTS, RES, makeTycoon, requiredStaff, levelMult, upgradeCost, buyPrice, marketPrice, cartelChance, cartelFineRisk, BLD } from '../../lib/tycoon.js';
-import { EXAMS, examProblems, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from '../check.js';
-import { LEVER_BOOK, WHY_BOOK, bookForChain, ALL_BOOK_LINKS } from '../../lib/booklinks.js';
+import { EXAMS, examSet, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from '../check.js';
+import { LEVER_BOOK, WHY_BOOK, COMPASS_BOOK, bookForChain, ALL_BOOK_LINKS } from '../../lib/booklinks.js';
 import { balanceSteps, circularFlow } from '../diagrams.js';
+import { TEMPLATES, templatesOf, makeVariant, seeded, trapDiffers } from '../variants.js';
+import { todayCard, indexSections } from '../today-snapshot.js';
 
 const DAY = 24 * 3600 * 1000;
 const READY = CHAPTERS.filter((c) => c.status === 'ready');
@@ -166,7 +168,7 @@ describe('оглавление', () => {
       .toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'production', 'costs', 'competition-monopoly', 'monopolistic', 'oligopoly', 'labor', 'market-failures']);
     expect(CHAPTERS.filter((c) => c.part === 'macro').map((c) => c.id))
       .toEqual(['gdp', 'money-banks', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth', 'open-economy', 'public-debt', 'inequality']);
-    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures', 'gdp', 'money-banks', 'is-lm', 'ad-as']);
+    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures', 'gdp', 'money-banks', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth']);
     expect(CHAPTERS.filter((c) => c.part === 'micro' && c.status !== 'ready').map((c) => c.id)).toEqual(['production', 'monopolistic', 'labor']);
   });
   it('у каждой готовой главы есть текст, у ненаписанной — нет; карточки приложения существуют', () => {
@@ -352,6 +354,61 @@ describe('структура готовых глав', () => {
 /* Ответы пересчитаны здесь заново — формулой, а не копией числа из главы. Если в
    условии поменяют число, а ответ забудут, тест упадёт. */
 const INDEPENDENT = {
+  // кривая Филлипса — функцией графика; пути инфляции — пошаговой симуляцией
+  'ph-pi': () => { const p = { us: 5, beta: 0.5 }; return [phillipsPi(p, 4, 7), phillipsPi(p, 4, 3)]; },
+  'ph-accel': () => { let pi = 2; for (let t = 0; t < 4; t += 1) pi = phillipsPi({ us: 5, beta: 0.5 }, pi, 4); return pi; },
+  'ph-sacrifice': () => {
+    // держим безработицу на пункт выше естественной и считаем пункт-годы, пока инфляция не дойдёт до 4%
+    let pi = 10; let py = 0;
+    while (pi > 4 + 1e-9) { pi = phillipsPi({ us: 5, beta: 0.5 }, pi, 6); py += 1; }
+    return [py, py * 2];
+  },
+  'ph-okun': () => { const u = 5 + 4 / 2; return [u, phillipsPi({ us: 5, beta: 0.5 }, 6, u)]; },
+  'ph-shock': () => [phillipsPi({ us: 5, beta: 0.5 }, 4, 5, 3), argmin((u) => Math.abs(phillipsPi({ us: 5, beta: 0.5 }, 4, u, 3) - 4), 5, 20)],
+  'ph-path': () => {
+    const p = { us: 5, beta: 0.5 }; let pi = 12;
+    pi = phillipsPi(p, pi, 7); pi = phillipsPi(p, pi, 7); const two = pi;
+    pi = phillipsPi(p, pi, 6); const three = pi;
+    let years = 1; while (pi > 4 + 1e-9) { pi = phillipsPi(p, pi, 6); years += 1; }
+    return [two, three, years];
+  },
+  'ph-trust': () => { const pe = 0.5 * 4 + 0.5 * 10; return [pe, argmin((u) => Math.abs(phillipsPi({ us: 5, beta: 0.5 }, pe, u) - 4), 5, 20)]; },
+  // правило Тейлора — функцией графика; бюджет — сходящейся цепочкой расходов
+  'pol-taylor': () => { const i = taylorRule(2, 8, 4, -2); return [i, i - 8]; },
+  'pol-real': () => 16 - 12,
+  'pol-stab': () => {
+    // цепочка: ΔG, потом из каждого рубля дохода тратится c(1 − t)
+    let dy = 0; let round = 40; for (let k = 0; k < 400; k += 1) { dy += round; round *= 0.8 * 0.75; }
+    return [dy / 40, dy];
+  },
+  'pol-cyclical': () => { const cyc = 0.25 * 100 + 10; return [cyc, 60 - cyc]; },
+  'pol-zlb': () => argmin((g) => Math.abs(taylorRule(2, 4, 4, g)), -30, 0),
+  'pol-principle': () => { const di = taylorRule(2, 7, 4, 0) - taylorRule(2, 4, 4, 0); return [di, di - 3]; },
+  'pol-zlbfiscal': () => {
+    const mult = (() => { let s = 0; let r = 1; for (let k = 0; k < 400; k += 1) { s += r; r *= 0.75 * 0.8; } return s; })();
+    const dG = 60 / mult; return [dG, dG - 0.2 * 60];
+  },
+  'pol-rulegap': () => { const i = taylorRule(2, 12, 4, 2); return [i, i - 15]; },
+  // Солоу — пошаговое накопление капитала до устойчивого состояния и формула графика
+  'gr-steady': () => {
+    let k = 1; for (let t = 0; t < 5000; t += 1) k += 0.2 * Math.sqrt(k) - 0.05 * k;
+    const st = solowSteady(0.5, 0.2, 0, 0.05); expect(k).toBeCloseTo(st.k, 3);
+    return [k, Math.sqrt(k), 0.8 * Math.sqrt(k)];
+  },
+  'gr-accum': () => 0.3 * Math.sqrt(4) - 0.1 * 4,
+  'gr-accounting': () => [0.3 * 5, 4 - 0.3 * 5 - 0.7 * 1],
+  'gr-golden': () => {
+    // перебор нормы сбережения: при какой потребление в устойчивом состоянии максимально
+    const bs = argmax((s) => solowSteady(0.5, s, 0, 0.05).c, 0.01, 0.99);
+    return [bs, solowSteady(0.5, bs, 0, 0.05).c];
+  },
+  'gr-pop': () => { const st = solowSteady(0.5, 0.2, 0.03, 0.05); return [st.k, st.y]; },
+  'gr-convergence': () => [(0.3 * Math.sqrt(4) - 0.1 * 4) / 4 * 100, (0.3 * Math.sqrt(9) - 0.1 * 9) / 9 * 100],
+  'gr-cd3': () => {
+    let k = 1; for (let t = 0; t < 20000; t += 1) k += 0.24 * Math.cbrt(k) - 0.08 * k;
+    return [k, Math.cbrt(k), 0.76 * Math.cbrt(k)];
+  },
+  'gr-transition': () => { const k1 = 4 + 0.2 * 2 - 0.05 * 4; return [k1, (Math.sqrt(k1) / 2 - 1) * 100, solowSteady(0.5, 0.2, 0, 0.05).k]; },
   'sd-equilibrium': () => sdEquilibrium(120, 3, -30, 2).P,
   'sd-market-demand': () => sdEquilibrium(10 + 20, 1 + 2, 0, 3).Q,
   'sd-ceiling': () => { expect(sdEquilibrium(80, 2, -10, 4).P).toBeGreaterThan(12); return [sdEquilibrium(80, 2, -10, 4).P, (80 - 2 * 12) - (-10 + 4 * 12)]; },
@@ -655,6 +712,7 @@ function argmin(f, lo, hi) {
   for (let i = 0; i < 300; i++) { const m1 = lo + (hi - lo) / 3; const m2 = hi - (hi - lo) / 3; if (f(m1) < f(m2)) hi = m2; else lo = m1; }
   return (lo + hi) / 2;
 }
+const argmax = (f, lo, hi) => argmin((x) => -f(x), lo, hi);
 // равновесие Курно итерацией лучших ответов: q_i = (a − c_i − Σ q_−i) / 2
 function bestResponseCournot(a, costs) {
   let q = costs.map(() => 1);
@@ -1031,7 +1089,7 @@ describe('новые графики считают то же, что текст'
 });
 
 describe('макроглавы: «проверьте в игре» и статистика', () => {
-  const MACRO_NEW = ['gdp', 'money-banks', 'ad-as'];
+  const MACRO_NEW = ['gdp', 'money-banks', 'ad-as', 'phillips', 'policy', 'growth'];
   it('в «проверьте в игре» — Лаборатория или задача и сценарий с исторической тенью', () => {
     MACRO_NEW.forEach((id) => {
       const acts = collectBlocks(CHAPTER_BLOCKS[id], (b) => b.type === 'box' && b.kind === 'try')[0].children.map(actionOf).filter(Boolean);
@@ -1133,32 +1191,39 @@ const studySecRecall = (ch) => CHAPTER_SECTIONS[ch].find((x) => x.recall).recall
 
 describe('итоговая проверка и задачи вперемешку', () => {
   const micro = CHAPTERS.filter((c) => c.part === 'micro' && c.status === 'ready');
-  it('проверка «Микро»: 15–20 числовых задач, из каждой главы блока, соседние — из разных глав', () => {
-    const ids = examProblems('micro');
-    expect(ids.length).toBeGreaterThanOrEqual(15);
-    expect(ids.length).toBeLessThanOrEqual(20);
-    expect(new Set(ids).size).toBe(ids.length);
-    ids.forEach((id) => { expect(PROBLEMS[id].block.kind).toBe('number'); expect(CHAPTER_BY_ID[PROBLEMS[id].chapter].part).toBe('micro'); });
-    expect(new Set(ids.map((id) => PROBLEMS[id].chapter))).toEqual(new Set(micro.map((c) => c.id)));
-    ids.slice(1).forEach((id, k) => expect(PROBLEMS[id].chapter).not.toBe(PROBLEMS[ids[k]].chapter));
-    expect(examProblems('micro')).toEqual(ids);
+  it('проверка «Микро»: 15–20 задач — варианты типов из каждой главы блока, соседние — из разных глав', () => {
+    const blocks = examSet('micro', 12345);
+    expect(blocks.length).toBeGreaterThanOrEqual(15);
+    expect(blocks.length).toBeLessThanOrEqual(20);
+    expect(new Set(blocks.map((b) => b.template)).size).toBe(blocks.length);
+    blocks.forEach((b) => { expect(b.kind).toBe('number'); expect(CHAPTER_BY_ID[b.chapter].part).toBe('micro'); expect(PROBLEMS[b.source], b.source).toBeTruthy(); });
+    expect(new Set(blocks.map((b) => b.chapter))).toEqual(new Set(micro.map((c) => c.id)));
+    blocks.slice(1).forEach((b, k) => expect(b.chapter).not.toBe(blocks[k].chapter));
     expect(EXAMS.micro.title).toContain('Микро');
   });
-  it('итог: счёт по темам и слабые места', () => {
-    const ids = examProblems('micro');
-    const right = Object.fromEntries(ids.map((id) => [id, PROBLEMS[id].block.parts.map((pt) => String(pt.answer))]));
-    const all = examResult(ids, right);
-    expect(all.ok).toBe(ids.length);
-    expect(all.weak).toEqual([]);
-    // обе задачи по эластичности — неверно
-    const answers = { ...right };
-    ids.filter((id) => PROBLEMS[id].chapter === 'elasticity').forEach((id) => { answers[id] = ['-12345']; });
-    const r = examResult(ids, answers);
-    expect(r.ok).toBe(ids.length - 2);
-    expect(r.weak.map((t) => t.chapter)).toEqual(['elasticity']);
-    expect(r.topics.find((t) => t.chapter === 'elasticity')).toMatchObject({ ok: 0, total: 2 });
+  it('пересдача — другие числа; тот же seed — тот же вариант', () => {
+    const a = examSet('micro', 1); const b = examSet('micro', 2);
+    expect(examSet('micro', 1).map((x) => x.answer)).toEqual(a.map((x) => x.answer));
+    const same = a.filter((x) => b.some((y) => y.template === x.template && JSON.stringify(y.answer) === JSON.stringify(x.answer)));
+    expect(same.length).toBeLessThan(4);
+    // и числа не совпадают с задачами глав: ответы вариантов не равны ответам исходных задач во всех шагах
+    const clones = a.filter((x) => JSON.stringify(x.answer) === JSON.stringify(PROBLEMS[x.source].block.answer));
+    expect(clones.length).toBeLessThan(3);
   });
-  it('вперемешку: только начатые главы, у каждой задачи три разных варианта с верным', () => {
+  it('итог: счёт по темам и слабые места', () => {
+    const blocks = examSet('micro', 7);
+    const right = Object.fromEntries(blocks.map((b) => [b.id, b.parts.map((pt) => String(pt.answer))]));
+    const all = examResult(blocks, right);
+    expect(all.ok).toBe(blocks.length);
+    expect(all.weak).toEqual([]);
+    const answers = { ...right };
+    blocks.filter((b) => b.chapter === 'elasticity').forEach((b) => { answers[b.id] = ['-12345']; });
+    const r = examResult(blocks, answers);
+    expect(r.ok).toBe(blocks.length - 2);
+    expect(r.weak.map((t) => t.chapter)).toEqual(['elasticity']);
+    expect(r.rows.filter((x) => !x.ok).map((x) => PROBLEMS[x.source].chapter)).toEqual(['elasticity', 'elasticity']);
+  });
+  it('вперемешку: варианты только из начатых глав, у каждой задачи три разных варианта модели', () => {
     const empty = emptyProgress();
     expect(mixedChapters(empty)).toEqual([]);
     expect(mixedSet(empty)).toEqual([]);
@@ -1166,11 +1231,12 @@ describe('итоговая проверка и задачи вперемешку
     p = recordAnswer(p, studySecRecall('costs'), true, 1000);
     expect(mixedChapters(p).sort()).toEqual(['costs', 'elasticity']);
     let seed = 1; const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    const set = mixedSet(p, 5, rand);
-    expect(set.length).toBe(5);
+    const set = mixedSet(p, 4, rand);
+    expect(set.length).toBe(4);
     set.forEach((it) => {
       expect(['costs', 'elasticity']).toContain(it.chapter);
-      expect(PROBLEMS[it.id].chapter).toBe(it.chapter);
+      expect(it.block.chapter).toBe(it.chapter);
+      expect(PROBLEMS[it.source].chapter).toBe(it.chapter);
       expect(it.options).toContain(it.chapter);
       expect(new Set(it.options).size).toBe(3);
     });
@@ -1235,6 +1301,12 @@ describe('игра → учебник: «Подробнее в учебнике�
     expect(bookForChain(['Резервы ↓', 'Защита курса невозможна', 'Девальвация', 'Импортные цены ↑', 'Инфляция ↑'])).toMatchObject({ chapter: 'ad-as' });
     expect(bookForChain(['Капитал ↓', 'Предложение кредита ↓', 'Инвестиции ↓', 'ВВП ↓'])).toMatchObject({ chapter: 'money-banks', anchor: 'multiplier' });
     expect(bookForChain(['Война', 'Доверие ↓'])).toBe(null);
+    // новые главы: инфляция и ожидания → Филлипс, «Компас ставки» → политика, потенциал → Солоу
+    expect(WHY_BOOK.inflation).toMatchObject({ chapter: 'phillips' });
+    expect(WHY_BOOK.potential).toMatchObject({ chapter: 'growth' });
+    expect(COMPASS_BOOK).toMatchObject({ chapter: 'policy', anchor: 'taylor' });
+    expect(bookForChain(['Спрос ↑', 'Разрыв выпуска ↑', 'Инфляция ↑', 'Реакция ЦБ'])).toMatchObject({ chapter: 'phillips' });
+    expect(bookForChain(['Производительность ↑', 'Потенциал ↑', 'Издержки ↓', 'Реальные зарплаты ↑'])).toMatchObject({ chapter: 'growth' });
   });
 });
 
@@ -1263,5 +1335,64 @@ describe('схемы: кругооборот и балансы банков', ()
     expect(steps[2].banks[0].assets[0][1]).toBeCloseTo(100, 6);
     // и числа сходятся с текстом главы: 1000 + 900 + 810 + … = 10 000
     expect(CHAPTER_TEXT['money-banks']).toContain('1000 + 900 + 810');
+  });
+});
+
+describe('«Продолжить учиться» в меню: те же разделы и минуты, что в учебнике', () => {
+  it('указатель разделов из сборки совпадает с разделами учебника', () => {
+    READY.forEach((c) => {
+      const idx = indexSections(c.id);
+      const book = CHAPTER_SECTIONS[c.id].filter((s) => s.recall);
+      expect(idx.map((s) => [s.id, s.title, s.minutes, s.recall]), c.id).toEqual(book.map((s) => [s.id, s.title, s.minutes, s.recall]));
+    });
+  });
+  it('карточка показывает тот же раздел и те же минуты, что «На сегодня»', () => {
+    let p = emptyProgress();
+    const check = () => {
+      const n = nextSection(p);
+      const card = todayCard(Date.now(), p);
+      expect(card.section.title).toBe(n.section.title);
+      expect(card.section.minutes).toBe(n.section.minutes);
+      expect(card.section.chapterTitle).toBe(CHAPTER_BY_ID[n.chapter].title);
+    };
+    check();
+    p = recordAnswer(p, nextSection(p).section.recall, true, 1000);
+    p = { ...p, last: { kind: 'chapter', id: 'gdp' } };
+    check();
+  });
+});
+
+describe('параллельные варианты: сто случайных наборов на каждый тип', () => {
+  const N = Number(process.env.VARIANT_N || 100);
+  it('у каждой готовой главы есть типы вариантов базового и семинарского уровня', () => {
+    READY.forEach((c) => {
+      const lv = templatesOf(c.id).map((t) => t.level);
+      expect(lv, c.id).toContain(1);
+      expect(lv, c.id).toContain(2);
+    });
+    TEMPLATES.forEach((t) => { expect(PROBLEMS[t.source], `${t.id} → ${t.source}`).toBeTruthy(); expect(PROBLEMS[t.source].chapter).toBe(t.chapter); });
+  });
+  it.each(TEMPLATES.map((t) => [t.id]))('%s: ответы конечные, положительные где должны, проходят независимую проверку; ловушки ≠ ответу', (id) => {
+    const tpl = TEMPLATES.find((t) => t.id === id);
+    for (let s = 1; s <= N; s += 1) {
+      const v = tpl.gen(seeded(s * 7 + 3));
+      const ans = v.parts.map((pt) => pt.answer);
+      ans.forEach((a, k) => {
+        expect(Number.isFinite(a), `${id} seed ${s}: шаг ${k}`).toBe(true);
+        if (v.parts[k].pos) expect(a, `${id} seed ${s}: шаг ${k} должен быть > 0`).toBeGreaterThan(0);
+      });
+      expect(v.check(ans), `${id} seed ${s}: независимая проверка`).toBe(true);
+      v.traps.forEach((tr) => {
+        const pt = v.parts[tr.part];
+        expect(Number.isFinite(tr.value), `${id} seed ${s}: ловушка`).toBe(true);
+        expect(trapDiffers(tr.value, pt.answer, pt.tol || 0), `${id} seed ${s}: ловушка ${tr.value} совпала с ответом ${pt.answer}`).toBe(true);
+      });
+      // и формулы условия и решения разбираются KaTeX
+      const b = makeVariant(id, s * 7 + 3);
+      collectMath([...b.statement, ...b.solution]).forEach((tex) => expect(() => katex.renderToString(tex, { throwOnError: true }), tex).not.toThrow());
+      expect(b.traps.length).toBe(v.traps.length);
+      // верный ответ, введённый как в тексте (с запятой), засчитывается
+      b.parts.forEach((pt) => expect(checkAnswer(String(Math.round(pt.answer * 100) / 100).replace('.', ','), pt.answer, pt.tol, pt.unit).ok, `${id} seed ${s}`).toBe(true));
+    }
   });
 });

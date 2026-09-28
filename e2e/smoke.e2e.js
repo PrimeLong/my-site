@@ -613,8 +613,8 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByText('Учебник', { exact: true }).first().click();
   const toc = page.getByTestId('textbook');
   await expect(toc.getByText('Микроэкономика', { exact: true })).toBeVisible();
-  await expect(toc.locator('[data-status="ready"]')).toHaveCount(12);
-  await expect(toc.locator('[data-status="planned"]')).toHaveCount(9);
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(15);
+  await expect(toc.locator('[data-status="planned"]')).toHaveCount(6);
   await expectNoSidewaysScroll(page);
 
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
@@ -853,12 +853,25 @@ test('игра → учебник: «Подробнее в учебнике» о
   await why.getByTestId('book-link').click();
   // учебник поверх партии: нужный раздел на экране
   const ch = page.getByTestId('chapter');
-  await expect(ch).toHaveAttribute('data-chapter', 'ad-as');
-  await expect(ch.locator('#shocks')).toBeInViewport();
+  await expect(ch).toHaveAttribute('data-chapter', 'phillips');
+  await expect(ch.locator('#expectations')).toBeInViewport();
+  // в новой главе работает свой график: ожидания сдвигают кривую Филлипса
+  const ph = page.locator('[data-chart="phillips"]').first();
+  await ph.getByRole('slider', { name: /Ожидаемая инфляция/ }).fill('6');
+  await expect(ph.getByTestId('tb-readout')).toContainText('Инфляция π, %: 6');
   await page.getByRole('button', { name: '← Назад в игру' }).click();
   // та же партия, то же окно «Почему это произошло?», квартал не сбросился
   await expect(why).toBeVisible();
   await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
+  // «Компас ставки» ведёт к правилу Тейлора
+  await why.getByRole('button').first().click();
+  await expect(why).toBeHidden();
+  const compass = page.getByTestId('rate-compass');
+  await compass.getByTestId('book-link').click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'policy');
+  await expect(page.locator('#taylor')).toBeInViewport();
+  await page.getByRole('button', { name: '← Назад в игру' }).click();
+  await expect(compass).toBeVisible();
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -898,8 +911,10 @@ test('меню «Учиться / Играть»: «Продолжить учи�
   const study = page.getByTestId('menu-study');
   await expect(study).toContainText('Продолжить учиться');
   await expect(study).toContainText('на повторение: 0');
+  // минуты — те же, что покажет учебник: одна функция и один расчёт
+  const minutes = (await study.innerText()).match(/≈(\d+) мин/)[1];
   await study.click();
-  await expect(page.getByTestId('today-section')).toBeVisible();
+  await expect(page.getByTestId('today-section')).toContainText(`≈${minutes} мин`);
   await expectNoSidewaysScroll(page);
   // после первого входа карточка знает раздел и минуты
   await page.getByRole('button', { name: /Назад в меню/ }).first().click();
@@ -923,6 +938,14 @@ test('меню «Учиться / Играть»: «Продолжить учи�
   await expect(exam.getByTestId('exam-weak')).toContainText('Слабое место');
   await expect(exam.getByRole('button', { name: 'Решение' })).toHaveCount(16);
   await expectNoSidewaysScroll(page);
+  // пересдача — те же темы, новые числа
+  const before = await exam.getByTestId('exam-problem').allInnerTexts();
+  await exam.getByRole('button', { name: 'Пересдать с новыми числами' }).click();
+  await expect(exam.getByTestId('exam-result')).toHaveCount(0);
+  await expect(exam.getByTestId('exam-problem')).toHaveCount(16);
+  const after = await exam.getByTestId('exam-problem').allInnerTexts();
+  expect(after.filter((t, i) => t === before[i]).length).toBeLessThan(3);
+  await exam.getByRole('button', { name: 'Завершить проверку' }).click();
   // «Мой прогресс»: слабые темы со ссылками и журнал
   await page.getByRole('button', { name: /Оглавление/ }).first().click();
   await check.getByRole('button', { name: /Мой прогресс/ }).click();

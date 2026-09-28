@@ -20,8 +20,7 @@ import { sectionDone, sectionProgress, nextSection, dueItems } from './textbook/
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
 import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
-import { EXAMS, examProblems, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
-import { saveTodaySnapshot } from './textbook/today-snapshot.js';
+import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
 import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
@@ -1107,15 +1106,23 @@ function TodayCard({ ctx }) {
    каждой задачи. Неверные ответы уходят в повторение — вернутся в «На сегодня» через два дня. */
 function ExamPage({ id, ctx }) {
   const exam = EXAMS[id];
-  const ids = useMemo(() => examProblems(id), [id]);
+  // каждая попытка — новые числа: зерно выбирается при входе и при пересдаче
+  const [seed, setSeed] = useState(() => 1 + Math.floor(Math.random() * 2 ** 30));
+  const blocks = useMemo(() => examSet(id, seed), [id, seed]);
+  const byId = useMemo(() => Object.fromEntries(blocks.map((b) => [b.id, b])), [blocks]);
+  const ids = blocks.map((b) => b.id);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [open, setOpen] = useState({});
-  const setAt = (pid, k, v) => setAnswers((a) => { const cur = (a[pid] || PROBLEMS[pid].block.parts.map(() => '')).slice(); cur[k] = v; return { ...a, [pid]: cur }; });
+  const setAt = (pid, k, v) => setAnswers((a) => { const cur = (a[pid] || byId[pid].parts.map(() => '')).slice(); cur[k] = v; return { ...a, [pid]: cur }; });
+  const retake = () => {
+    Audio.play('click'); setSeed((x) => x + 1); setAnswers({}); setResult(null); setOpen({});
+    if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0);
+  };
   const finish = () => {
-    const r = examResult(ids, answers);
-    // пустой ответ — тоже ошибка: задача уходит в повторение
-    r.rows.forEach((row) => ctx.onAnswer(row.id, row.ok, {}));
+    const r = examResult(blocks, answers);
+    // пустой ответ — тоже ошибка: на повторение уходит задача главы того же типа
+    r.rows.forEach((row) => ctx.onAnswer(row.source, row.ok, {}));
     Audio.play(r.ok >= r.total / 2 ? 'stamp' : 'tick');
     setResult(r);
     if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0);
@@ -1127,7 +1134,7 @@ function ExamPage({ id, ctx }) {
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 6px', fontWeight: 700 }}>{exam.title}</h1>
       {!result && (
         <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 14, lineHeight: 1.55 }}>
-          {ids.length} задач из всех глав блока вперемешку — какая модель нужна, решаете вы. Подсказок и решений до конца нет. В конце — счёт по темам и слабые места; задачи с ошибкой уйдут на повторение.
+          {ids.length} задач из всех глав блока вперемешку — какая модель нужна, решаете вы. Задачи того же типа, что в главах, но с новыми числами: при каждой пересдаче они другие. Подсказок и решений до конца нет. В конце — счёт по темам и слабые места; ошибки отправят на повторение задачи глав того же типа.
         </div>
       )}
       {result && (
@@ -1150,11 +1157,12 @@ function ExamPage({ id, ctx }) {
               ))}. Перечитайте главу и решите её задачи.
             </div>
           ) : <div style={{ fontSize: 13.5 }} data-testid="exam-weak">Слабых мест нет: в каждой теме верно хотя бы половина.</div>}
-          {result.ok < result.total && <div style={{ fontSize: 12.5, color: COLOR.muted, marginTop: 6 }}>Задачи с ошибкой ушли на повторение и вернутся в «На сегодня» через два дня.</div>}
+          {result.ok < result.total && <div style={{ fontSize: 12.5, color: COLOR.muted, marginTop: 6 }}>Задачи глав того же типа ушли на повторение и вернутся в «На сегодня» через два дня.</div>}
+          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5, marginTop: 8 }} onClick={retake}>Пересдать с новыми числами</button>
         </div>
       )}
       {ids.map((pid, i) => {
-        const b = PROBLEMS[pid].block;
+        const b = byId[pid];
         const row = result && result.rows.find((r) => r.id === pid);
         const multi = b.parts.length > 1;
         return (
@@ -1178,7 +1186,7 @@ function ExamPage({ id, ctx }) {
             {row && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 13, color: row.ok ? COLOR.teal : COLOR.rust }}>
-                  Ответ: {withUnit(b)} · глава «<button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: PROBLEMS[pid].chapter })}>{CHAPTER_BY_ID[PROBLEMS[pid].chapter].title}</button>»
+                  Ответ: {withUnit(b)} · глава «<button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: b.chapter })}>{CHAPTER_BY_ID[b.chapter].title}</button>»
                 </div>
                 {!row.ok && matchTraps(b, answers[pid] || []).map((tr, k) => (
                   <p key={k} style={{ fontSize: 13, lineHeight: 1.55, margin: '6px 0 0' }} data-testid="tb-trap"><Inline nodes={tr.text} ctx={ctx} /></p>
@@ -1201,11 +1209,15 @@ function ExamPage({ id, ctx }) {
   );
 }
 
-/* ЗАДАЧИ ВПЕРЕМЕШКУ: задачи из пройденных глав без названия главы. Сначала — какая модель
-   нужна (три варианта), потом сама задача. Набор выбирается при входе. */
+/* ЗАДАЧИ ВПЕРЕМЕШКУ: параллельные варианты задач из пройденных глав без названия главы.
+   Сначала — какая модель нужна (три варианта), потом сама задача. Ответ засчитывается задаче
+   главы того же типа: ошибка отправит на повторение её. Набор выбирается при входе. */
 function MixedItem({ item, no, ctx }) {
   const [pick, setPick] = useState(null);
-  const b = PROBLEMS[item.id].block;
+  const b = item.block;
+  const src = ctx.progress.problems[item.source];
+  const vctx = { ...ctx, progress: { ...ctx.progress, problems: { ...ctx.progress.problems, ...(src ? { [b.id]: src } : {}) } },
+    onAnswer: (_id, ok, opts) => ctx.onAnswer(item.source, ok, opts) };
   return (
     <div className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="mixed-item" data-problem={item.id}>
       {pick == null ? (
@@ -1226,7 +1238,7 @@ function MixedItem({ item, no, ctx }) {
           <div data-testid="mixed-model" style={{ fontSize: 13, marginBottom: 4, color: pick === item.chapter ? COLOR.teal : COLOR.rust }}>
             {pick === item.chapter ? `Верно: это модель из главы «${CHAPTER_BY_ID[item.chapter].title}».` : `Нет: здесь нужна глава «${CHAPTER_BY_ID[item.chapter].title}», а не «${CHAPTER_BY_ID[pick].title}». Теперь решите.`}
           </div>
-          <ProblemCard block={b} no={no} ctx={ctx} />
+          <ProblemCard block={b} no={no} ctx={vctx} />
         </>
       )}
     </div>
@@ -1316,7 +1328,7 @@ function StatsPage({ ctx }) {
 // «Проверить себя» в оглавлении
 function CheckPanel({ ctx }) {
   const rows = [
-    { page: { kind: 'exam', id: 'micro' }, title: EXAMS.micro.title, text: `${examProblems('micro').length} задач из всех глав микро вперемешку, без подсказок; в конце — счёт по темам и слабые места.` },
+    { page: { kind: 'exam', id: 'micro' }, title: EXAMS.micro.title, text: `${examTemplates('micro').length} задач из всех глав микро вперемешку, с новыми числами при каждой попытке, без подсказок; в конце — счёт по темам и слабые места.` },
     { page: { kind: 'mixed' }, title: 'Задачи вперемешку', text: 'Задачи из начатых глав без названия главы: сначала понять, какая модель нужна.' },
     { page: { kind: 'stats' }, title: 'Мой прогресс', text: 'Разделы, точность уверенных ответов, слабые темы и журнал занятий.' },
   ];
@@ -1473,8 +1485,6 @@ export function TextbookScreen({ onBack, resume = false, startPage = null, backL
     return () => { evs.forEach((e) => window.removeEventListener(e, act)); clearInterval(t); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // для карточки «Продолжить учиться» в меню: что на сегодня, без загрузки учебника
-  React.useEffect(() => { const n = nextSection(progress); saveTodaySnapshot(n && { ...n, chapterTitle: CHAPTER_BY_ID[n.chapter].title }); }, [progress]);
   // прокрутка текущей страницы — запоминается на ходу (не чаще раза в 300 мс)
   const pageRef = React.useRef(page);
   pageRef.current = page;
