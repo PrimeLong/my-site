@@ -11,14 +11,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Flame, Zap, Target, Lock, Check, Crown, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
-  Snowflake, ArrowDownToLine, ArrowUpToLine, Moon, UserRound,
+  Snowflake, ArrowDownToLine, ArrowUpToLine, Moon, UserRound, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio,
 } from 'lucide-react';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import {
-  UNITS, UNIT_BY_ID, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, buildLesson, buildUnitCheck, buildLegend, buildPractice, check, ready, answerText, pathState,
+  UNITS, UNIT_BY_ID, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, buildLesson, buildUnitCheck, buildLegend, buildPractice, check, ready, answerText, pathState,
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek,
@@ -28,6 +28,10 @@ import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from
 import { Mascot } from './mascot.jsx';
 import { todayCard } from './textbook/today-snapshot.js';
 import { markTerms, termTitle, termText } from './learn/terms.js';
+import { plainText } from './textbook/content.js';
+import {
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, SwipeRound, RushRound, ChainRound, StoryCard, FlashCard, ListenCard,
+} from './learn-play.jsx';
 import { LearnStyle, Confetti, CountUp, unitColor, learnDark, setLearnDark, useReducedMotion } from './learn-ui.jsx';
 import { ProfileModal } from './account.jsx';
 
@@ -51,6 +55,7 @@ const CSS = `
   @keyframes lx-hop { 0% { transform: translateY(0) } 25% { transform: translateY(-14px) } 50% { transform: translateY(0) } 70% { transform: translateY(-6px) } 100% { transform: translateY(0) } }
   @keyframes lx-ring { 0% { transform: scale(.92); opacity: .5 } 100% { transform: scale(1.18); opacity: 0 } }
   .lx-node.done { --nb: #FFC800; color: #6B4A00; }
+  .ln-done-badge { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: #58A700; color: #fff; display: flex; align-items: center; justify-content: center; border: 3px solid var(--c-bg); }
   .lx-node.locked { --nb: var(--c-border); color: var(--c-faint); cursor: pointer; }
   .ln-node-title { background: none; border: none; padding: 2px 4px; font: 700 13px 'Nunito', sans-serif; max-width: 170px; text-align: center; cursor: pointer; color: var(--c-text); }
   .ln-node-title.locked { color: var(--c-faint); }
@@ -108,6 +113,11 @@ const testAnswer = (inst) => {
     case 'calc': return JSON.stringify(String(Math.round(inst.answer * 100) / 100).replace('.', ','));
     case 'shift': return JSON.stringify(inst.answer);
     case 'news': return JSON.stringify(inst.expect);
+    case 'tiles': case 'chain': return JSON.stringify(inst.solution);
+    case 'curve': return JSON.stringify(inst.answer);
+    case 'price': return JSON.stringify(inst.answer);
+    case 'point': return JSON.stringify(inst.answer);
+    case 'swipe': case 'rush': return JSON.stringify('game');
     default: return undefined;
   }
 };
@@ -138,6 +148,9 @@ function useLearn() {
   return [progress.learn, update];
 }
 
+// значок вида урока: на кружке Пути и в карточке урока
+export const KIND_ICON = { intro: BookOpen, practice: Dumbbell, words: Languages, story: MessageCircle, listen: Headphones, game: Gamepad2, review: Repeat, summary: Flag };
+
 /* ------------------------------ ГРАФИК И КАРТИНКА ШАГА ------------------------------ */
 function MiniChart({ type, attrs, values = null }) {
   const def = CHARTS[type];
@@ -148,7 +161,7 @@ function MiniChart({ type, attrs, values = null }) {
 const PICS = {
   clock: Clock, scale: Scale, hourglass: Hourglass, ticket: Ticket, 'trending-up': TrendingUp, 'circle-check': CircleCheck, medal: Medal,
   'arrow-left-right': ArrowLeftRight, handshake: Handshake, coffee: Coffee, wallet: Wallet, link: Link, utensils: Utensils, boxes: Boxes, users: Users,
-  snowflake: Snowflake, 'arrow-down-to-line': ArrowDownToLine, 'arrow-up-to-line': ArrowUpToLine,
+  snowflake: Snowflake, 'arrow-down-to-line': ArrowDownToLine, 'arrow-up-to-line': ArrowUpToLine, croissant: Croissant, landmark: Landmark, radio: Radio, flag: Flag,
 };
 function Pic({ name }) {
   const Icon = PICS[name];
@@ -166,7 +179,7 @@ function Pic({ name }) {
 // «___» в тексте вопроса → выбранная плитка
 const fillBlank = (blocks, word) => JSON.parse(JSON.stringify(blocks), (k, v) => (k === 'v' && typeof v === 'string' && v.includes('___') ? v.replace('___', word) : v));
 
-function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx }) {
+function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit = () => {} }) {
   const pick = (v) => { if (!locked) { Audio.play('tick'); setResp(v); } };
   const optClass = (key, correct) => (!fb ? '' : correct ? 'right' : key === resp && !fb.ok ? 'wrong' : '');
   switch (inst.kind) {
@@ -275,6 +288,8 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx }) {
       return (
         <div>
           <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
+          {/* пары на время: по нулю ответ уходит на проверку таким, какой есть */}
+          {inst.timer && <TimerBar seconds={inst.timer} running={!locked} onEnd={() => onSubmit(inst._resp.current || {})} />}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div>{inst.left.map((l) => (
               <button key={l.key} type="button" className="lx-opt" data-side="left" data-key={l.key} aria-pressed={sel === l.key} disabled={locked}
@@ -336,9 +351,35 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx }) {
         </div>
       );
     }
+    case 'tiles': case 'curve': case 'price': case 'point': {
+      const View = { tiles: TilesEx, curve: CurveEx, price: PriceEx, point: PointEx }[inst.kind];
+      return (
+        <div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
+          <View inst={inst} resp={resp} setResp={(v) => !locked && setResp(v)} locked={locked} fb={fb} />
+        </div>
+      );
+    }
+    case 'swipe': case 'rush': case 'chain': {
+      const Round = { swipe: SwipeRound, rush: RushRound, chain: ChainRound }[inst.kind];
+      return (
+        <div>
+          <div className="lx-h" style={{ fontSize: 20, marginBottom: 6 }}>{inst.title}</div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
+          {/* раунд сам решает, когда он окончен, — и сразу уходит на проверку */}
+          <Round inst={inst} locked={locked} onDone={(r) => { setResp(r); onSubmit(r); }} />
+        </div>
+      );
+    }
     default: return null;
   }
 }
+// итог раунда мини-игры для плашки
+const gameLine = (inst, r) => {
+  if (!r) return '';
+  if (inst.kind === 'chain') return r.timeout ? 'Время вышло — цепочка не собрана.' : 'Цепочка собрана.';
+  return `Верно ${r.right} из ${inst.kind === 'rush' ? r.answered : r.total}.`;
+};
 
 /* ------------------------------ УРОК ------------------------------
    mode: lesson — урок пути; check — проверка юнита (ошибки не возвращаются, сдана при ≤ 1
@@ -347,7 +388,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx }) {
    после первого ответа — с подтверждением; урок сохраняется и продолжается с того же места
    в течение суток (resume). */
 function newPlan(run, learn) {
-  if (run.mode === 'lesson') { const p = buildLesson(run.lessonId); return { items: p.items, cards: p.cards, seconds: p.seconds }; }
+  if (run.mode === 'lesson') { const p = buildLesson(run.lessonId, Math.random, { mistakes: learn.mistakes.map((m) => m.id) }); return { items: p.items, cards: p.cards, seconds: p.seconds }; }
   if (run.mode === 'check') { const p = buildUnitCheck(run.unitId); return { items: p.items, cards: {}, passMistakes: p.passMistakes }; }
   if (run.mode === 'legend') return { items: buildLegend(run.unitId).items, cards: {} };
   return { items: buildPractice(learn.mistakes.map((m) => m.id)).items, cards: {} };
@@ -363,6 +404,10 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const cardsSeen = useRef(new Set(rs ? rs.cardsSeen : []));
   const cardFor = (item) => (item && plan.cards && plan.cards[item.uid] && !cardsSeen.current.has(item.uid) ? plan.cards[item.uid] : null);
   const [stage, setStage] = useState(() => (cardFor((rs ? rs.queue : plan.items)[rs ? rs.pos : 0]) ? 'card' : 'work'));
+  // карточки перед упражнением идут подряд: шаг, слово, пункт итогов; flipped — оборот слова
+  const [cardIdx, setCardIdx] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const respRef = useRef(null);
   const [resp, setResp] = useState(null);
   const [fb, setFb] = useState(null);
   const [sel, setSel] = useState(null);
@@ -383,9 +428,10 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const pct = total ? Math.round((acc.current.solved.size / total) * 100) : 0;
   const color = unitColor(lesson ? lesson.unit : run.unitId);
 
-  const doCheck = () => {
-    if (!cur || !ready(cur, resp)) return;
-    const r = check(cur, resp);
+  const doCheck = (given) => {
+    const answer = given !== undefined ? given : resp;
+    if (!cur || fb || (given === undefined && !ready(cur, answer))) return;
+    const r = check(cur, answer);
     if (r.empty) { setFb({ ok: false, why: null, empty: true }); return; }
     const a = acc.current;
     // урок начат — с первого ответа
@@ -405,7 +451,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
       setRun3(0);
       Audio.play('down'); vibrate([30, 40, 30]);
       if (run.mode === 'lesson') update((s) => addMistake(s, cur.id));
-      if (retryable) { a.retries += 1; setQueue((q) => [...q, { ...cur, uid: `${cur.uid}r${a.retries}`, orig, retry: true }]); }
+      if (retryable && !cur.noRetry) { a.retries += 1; setQueue((q) => [...q, { ...cur, uid: `${cur.uid}r${a.retries}`, orig, retry: true }]); }
       else a.solved.add(orig);
     }
     setAnim((x) => ({ k: x.k + 1, kind: r.ok ? 'flash' : 'shake' }));
@@ -473,7 +519,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const exit = () => { if (stage === 'done' || !started) onClose(); else setAsking(true); };
   // термины условия — с подсказками; варианты ответа не размечаем: нажатие по ним — это выбор
   const marked = useMemo(() => (cur ? { ...cur, prompt: markTerms(cur.prompt) } : null), [cur]);
-  const inst = marked ? { ...marked, _sel: sel, _setSel: setSel } : null;
+  respRef.current = resp;
+  const inst = marked ? { ...marked, _sel: sel, _setSel: setSel, _resp: respRef } : null;
   const title = run.mode === 'lesson' ? lesson.title : run.mode === 'check' ? 'Проверка юнита' : run.mode === 'legend' ? 'Уровень легенды' : 'Практика';
   const glow = run3 >= 3 && stage !== 'done';
 
@@ -502,21 +549,53 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
       )}
 
       {stage === 'card' && cur && cardFor(cur) && (() => {
-        const c = cardFor(cur);
+        const list = cardFor(cur);
+        const c = list[Math.min(cardIdx, list.length - 1)];
+        const last = cardIdx >= list.length - 1;
         const firstStep = lesson && c === lesson.idea;
+        const kind = lesson ? lesson.kind : 'intro';
+        const heading = firstStep ? bareTitle(lesson.title) : c.title;
+        // подпись над карточкой: вид урока на первой, дальше — «шаг», «слово», «итог N из M»
+        const eyebrow = firstStep ? LESSON_KIND[kind] : kind === 'summary' ? `Итог ${cardIdx + 1} из ${list.length}` : kind === 'words' ? `Слово ${cardIdx + 1} из ${list.length}`
+          : kind === 'story' ? 'История продолжается' : kind === 'listen' ? 'Слушаем дальше' : 'Шаг дальше';
+        const go = () => {
+          Audio.play('click');
+          if (!last) { setCardIdx(cardIdx + 1); setFlipped(false); return; }
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setFlipped(false); setStage('work');
+        };
+        const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
         return (
           <>
-            <div className="ln-body"><div className="ln-inner lx-rise" data-testid="lesson-card" key={c.id}>
-              <div className="ln-kind">{firstStep ? LESSON_KIND[lesson.kind] : 'Шаг дальше'}</div>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <Mascot mood="think" size={52} />
-                <h2 className="lx-h" style={{ fontSize: 24, margin: '4px 0 0' }}>{firstStep ? bareTitle(lesson.title) : c.title}</h2>
-              </div>
-              <div className="ln-prompt" style={{ fontSize: 18, marginTop: 14 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
-              {c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null}
+            <div className="ln-body"><div className="ln-inner lx-rise" data-testid="lesson-card" data-style={c.flash ? 'flash' : kind} key={c.id}>
+              <div className="ln-kind">{eyebrow}</div>
+              {c.flash ? (
+                <FlashCard card={c} flipped={flipped} onFlip={() => { Audio.play('tick'); setFlipped((v) => !v); }} />
+              ) : kind === 'story' && c.who ? (
+                <>
+                  <h2 className="lx-h" style={{ fontSize: 22, margin: '0 0 12px' }}>{heading}</h2>
+                  <StoryCard card={c}><Inline nodes={c.text} ctx={noopCtx} /></StoryCard>
+                  {picture}
+                </>
+              ) : kind === 'listen' ? (
+                <>
+                  <ListenCard key={c.id} text={plainText(c.text)} title={heading} />
+                  {picture}
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <Mascot mood={kind === 'summary' ? 'joy' : 'think'} size={52} />
+                    <h2 className="lx-h" style={{ fontSize: 24, margin: '4px 0 0' }}>{heading}</h2>
+                  </div>
+                  <div className="ln-prompt" style={{ fontSize: 18, marginTop: 14 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
+                  {picture}
+                </>
+              )}
             </div></div>
             <div className="ln-foot"><div className="ln-inner">
-              <button type="button" className="lx-btn wide" onClick={() => { Audio.play('click'); cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setStage('work'); }}>Понятно</button>
+              {c.flash && !flipped
+                ? <button type="button" className="lx-btn secondary wide" onClick={() => { Audio.play('tick'); setFlipped(true); }}>Перевернуть</button>
+                : <button type="button" className="lx-btn wide" onClick={go}>{last ? (kind === 'summary' ? 'К тесту юнита' : 'Понятно') : 'Дальше'}</button>}
             </div></div>
           </>
         );
@@ -527,32 +606,35 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
           <div className="ln-body"><div className={`ln-inner ${anim.kind === 'shake' && fb && !fb.ok ? 'lx-shake' : ''}`} key={`${inst.uid}:${anim.kind === 'shake' ? anim.k : 0}`}
             data-testid="ex" data-kind={inst.kind} data-answer={testAnswer(inst)}>
             <div className="ln-kind" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {KIND_LABEL[inst.kind]}{inst.review && <span className="tb-chip">повторение</span>}
+              {GAME_KINDS.includes(inst.kind) ? `Раунд ${plan.items.findIndex((x) => x.uid === orig) + 1} из ${plan.items.length}` : KIND_LABEL[inst.kind]}
+              {inst.review && <span className="tb-chip">повторение</span>}
             </div>
             {inst.retry && !fb && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 14 }} className="lx-sub" data-testid="ex-retry">
                 <Mascot mood="think" size={36} /> Эта задача уже была — попробуем ещё раз.
               </div>
             )}
-            <ExerciseView inst={inst} ctx={termCtx} resp={resp} setResp={(v) => { setResp(v); if (fb && fb.empty) setFb(null); }} locked={!!fb && !fb.empty} fb={fb && !fb.empty ? fb : null} />
+            <ExerciseView inst={inst} ctx={termCtx} resp={resp} setResp={(v) => { setResp(v); if (fb && fb.empty) setFb(null); }} locked={!!fb && !fb.empty} fb={fb && !fb.empty ? fb : null}
+              onSubmit={(v) => doCheck(v)} />
           </div></div>
           <div className={`ln-foot ${fb && !fb.empty ? (fb.ok ? 'ok lx-flash' : 'bad') : ''}`} key={`foot${anim.k}`} data-testid="lesson-foot"><div className="ln-inner">
             {fb && !fb.empty && (
               <div className="lx-rise" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 12 }} data-testid="ex-feedback" data-ok={String(fb.ok)}>
                 <Mascot mood={fb.ok ? 'joy' : 'cheer'} size={48} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="lx-h" style={{ fontSize: 21 }}>{fb.ok ? phrase(['Верно!', 'Отлично!', 'Так и есть!'], inst.uid) : 'Не совсем'}</div>
-                  {!fb.ok && <div style={{ fontSize: 15, marginTop: 2 }}>Правильно: <b>{answerText(inst)}</b></div>}
+                  <div className="lx-h" style={{ fontSize: 21 }}>{GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Раунд пройден!' : 'Раунд не засчитан') : fb.ok ? phrase(['Верно!', 'Отлично!', 'Так и есть!'], inst.uid) : 'Не совсем'}</div>
+                  {GAME_KINDS.includes(inst.kind) && <div style={{ fontSize: 15, marginTop: 2 }} data-testid="game-result">{gameLine(inst, resp)}{!fb.ok && ` Нужно: ${answerText(inst)}.`}</div>}
+                  {!fb.ok && !GAME_KINDS.includes(inst.kind) && <div style={{ fontSize: 15, marginTop: 2 }}>Правильно: <b>{answerText(inst)}</b></div>}
                   {!fb.ok && fb.why && <div style={{ fontSize: 15, marginTop: 4, lineHeight: 1.5 }} data-testid="ex-why"><Inline nodes={fb.why} ctx={noopCtx} /></div>}
                   {!fb.ok && !fb.why && inst.explain && <div className="tb-body" style={{ fontSize: 15, marginTop: 4, color: 'inherit' }}><Blocks blocks={inst.explain} ctx={noopCtx} /></div>}
-                  {!fb.ok && retryable && <div style={{ fontSize: 13.5, marginTop: 4, opacity: 0.85 }}>Задача вернётся в конце урока.</div>}
+                  {!fb.ok && retryable && !inst.noRetry && <div style={{ fontSize: 13.5, marginTop: 4, opacity: 0.85 }}>Задача вернётся в конце урока.</div>}
                 </div>
               </div>
             )}
             {fb && fb.empty && <div style={{ fontSize: 14, color: 'var(--c-rust)', marginBottom: 8 }}>Введите число: например, 25 или −0,5.</div>}
             {fb && !fb.empty
               ? <button type="button" className="lx-btn wide" onClick={next} autoFocus>Дальше</button>
-              : <button type="button" className="lx-btn wide" disabled={!ready(inst, resp)} onClick={doCheck}>Проверить</button>}
+              : GAME_KINDS.includes(inst.kind) ? null : <button type="button" className="lx-btn wide" disabled={!ready(inst, resp)} onClick={() => doCheck()}>Проверить</button>}
           </div></div>
         </>
       )}
@@ -579,7 +661,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
           </h2>
           <div className="lx-sub" style={{ fontSize: 15.5, marginBottom: 20 }}>
             {run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
-              : result.accuracy >= 90 ? 'Почти без ошибок.' : 'Ошибки разобраны — они вернутся в практике.'}
+              : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. Юнит «${UNIT_BY_ID[lesson.unit].title}» позади.`
+                : lesson && lesson.kind === 'game' ? `Раундов засчитано: ${Math.round((result.accuracy * total) / 100)} из ${total}.`
+                  : result.accuracy >= 90 ? 'Почти без ошибок.' : 'Ошибки разобраны — они вернутся в практике.'}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 22 }}>
             <Tile icon={Zap} label="Опыт" value={<CountUp value={result.xp} prefix="+" />} testid="result-xp" tone="#E89B00" />
@@ -618,7 +702,7 @@ function LessonSheet({ l, onStart, onClose }) {
   const lesson = LESSON_BY_ID[l.id];
   const [info] = useState(() => { const p = buildLesson(l.id); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: p.items.length * XP.correct + XP.finish }; });
   const resume = l.open ? getResume(l.id) : null;
-  const Icon = lesson.kind === 'intro' ? BookOpen : Dumbbell;
+  const Icon = KIND_ICON[lesson.kind] || Dumbbell;
   return (
     <div className="ln-sheet-back" onClick={onClose} data-testid="lesson-sheet-back">
       <div className="ln-sheet lx-rise" role="dialog" aria-label={`Урок: ${l.title}`} data-testid="lesson-sheet" data-lesson={l.id} onClick={(e) => e.stopPropagation()}
@@ -721,7 +805,7 @@ function PathView({ learn, onLesson, onStart, onOpenBook, visible }) {
               const isCur = st.current && st.current.id === l.id;
               const lesson = LESSON_BY_ID[l.id];
               const unlocking = !reduced && visible && l.open && !l.done && !seen.has(l.id);
-              const KindIcon = lesson.kind === 'intro' ? BookOpen : Dumbbell;
+              const KindIcon = KIND_ICON[lesson.kind] || Dumbbell;
               const cls = l.done ? 'done' : l.open ? '' : 'locked';
               return (
                 <div key={l.id} style={{ transform: `translateX(${ZIG[i % ZIG.length]}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, position: 'relative' }}>
@@ -730,7 +814,7 @@ function PathView({ learn, onLesson, onStart, onOpenBook, visible }) {
                     data-state={l.done ? 'done' : l.open ? 'open' : 'locked'} data-nav-target={`lesson:${l.id}`}
                     aria-label={`${LESSON_KIND[lesson.kind]} ${l.no}: ${l.title}${l.done ? ', пройден' : l.open ? '' : ', закрыт'}`}
                     onClick={() => { Audio.prime(); Audio.play('click'); onLesson(l); }}>
-                    {l.done ? <Check size={34} strokeWidth={3.2} />
+                    {l.done ? <><KindIcon size={30} /><span className="ln-done-badge" aria-hidden="true"><Check size={13} strokeWidth={3.4} /></span></>
                       : unlocking ? (
                         <span style={{ position: 'relative', display: 'inline-flex' }} data-testid="unlock-anim">
                           <Lock size={28} className="lx-unlock" style={{ position: 'absolute', inset: 0, margin: 'auto' }} />
@@ -893,7 +977,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   return (
     <div className="lx ln-root">
       <LearnStyle />
-      <style>{TEXTBOOK_CSS + CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} />

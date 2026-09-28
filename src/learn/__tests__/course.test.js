@@ -2,7 +2,11 @@
    совпадают с верным, урок укладывается в 3–5 минут, все типы упражнений есть в пилоте. */
 import { describe, it, expect } from 'vitest';
 import katex from 'katex';
-import { UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildLegend, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS } from '../course.js';
+import {
+  UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildLegend, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
+  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk,
+} from '../course.js';
+import { CAST } from '../cast.js';
 import { collectMath } from '../../textbook/markdown.js';
 import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
@@ -18,9 +22,19 @@ it('на Пути уроками — юниты 1 и 2, с самого нача
   expect(UNITS.slice(0, 2).map((u) => u.id)).toEqual(PATH);
 });
 
+// девять исходных видов упражнений — в каждом юните Пути
+const CORE = ['choice', 'gap', 'tf', 'order', 'match', 'sort', 'calc', 'shift', 'news'];
+// уроки из шагов: шаг — одна мысль, после каждого — вопрос
+const STEPPED = ['intro', 'story', 'listen'];
+const stepOk = (c) => {
+  const text = plain(c.idea.text);
+  return { words: text.split(/\s+/).filter(Boolean).length, sentences: text.split(/[.!?…](?:\s|$)/).filter((x) => x.trim()).length };
+};
+
 describe.each(PATH)('юнит %s', (unitId) => {
   const unit = UNIT_BY_ID[unitId];
   const intros = unit.lessons.filter((l) => l.kind === 'intro');
+  const stepped = unit.lessons.filter((l) => STEPPED.includes(l.kind));
   const practice = unit.lessons.filter((l) => l.kind === 'practice');
   it('первый урок темы — «Знакомство»; у каждого урока раздел главы для «Подробнее»', () => {
     expect(unit.lessons[0].kind).toBe('intro');
@@ -28,17 +42,15 @@ describe.each(PATH)('юнит %s', (unitId) => {
     expect(practice.length).toBeGreaterThanOrEqual(2);
     unit.lessons.forEach((l) => expect(l.section, `${l.id}: раздел главы`).toBeTruthy());
   });
-  it('«Знакомство»: экран — одна мысль (1–3 предложения, до 45 слов, график или картинка), после каждого — вопрос', () => {
-    intros.forEach((l) => {
-      expect(l.inner.length, l.id).toBeGreaterThanOrEqual(4);
+  it('«Знакомство», «История», «Слушай»: экран — одна мысль (1–3 предложения, до 45 слов, график, картинка или герой), после каждого — вопрос', () => {
+    stepped.forEach((l) => {
+      expect(l.inner.length, l.id).toBeGreaterThanOrEqual(l.kind === 'intro' ? 4 : 3);
       expect(l.inner.length, l.id).toBeLessThanOrEqual(10);
       l.inner.forEach((c, i) => {
-        const text = plain(c.idea.text);
-        const words = text.split(/\s+/).filter(Boolean).length;
-        const sentences = text.split(/[.!?…](?:\s|$)/).filter((x) => x.trim()).length;
+        const { words, sentences } = stepOk(c);
         expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
         expect(sentences, `${c.idea.id}: ${sentences} предложений`).toBeLessThanOrEqual(3);
-        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic), `${c.idea.id}: график или картинка`).toBeTruthy();
+        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && CAST[c.idea.who]), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
         const next = i + 1 < l.inner.length ? l.inner[i + 1].at : l.exercises.length;
         expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
       });
@@ -51,9 +63,9 @@ describe.each(PATH)('юнит %s', (unitId) => {
       expect(Object.keys(buildLesson(l.id, seeded(1)).cards), l.id).toEqual([]);
     });
   });
-  it('все девять типов упражнений есть хотя бы по разу', () => {
+  it('все девять исходных видов упражнений есть хотя бы по разу', () => {
     const kinds = new Set(unit.lessons.flatMap((l) => l.exercises.map((e) => e.kind)));
-    Object.keys(KIND_LABEL).forEach((k) => expect(kinds, k).toContain(k));
+    CORE.forEach((k) => expect(kinds, k).toContain(k));
   });
   it('в практике 10–15 упражнений, повторение — около трети; «Знакомство» — по порядку и без повторения', () => {
     practice.forEach((l) => {
@@ -69,18 +81,18 @@ describe.each(PATH)('юнит %s', (unitId) => {
         items.filter((it) => it.review).forEach((it) => expect(EXERCISES[it.id].lesson).not.toBe(l.id));
       }
     });
-    intros.forEach((l) => {
+    stepped.forEach((l) => {
       const { items, cards } = buildLesson(l.id, seeded(3));
       expect(items.map((it) => it.id)).toEqual(l.exercises.map((e) => e.id));
       expect(items.some((it) => it.review)).toBe(false);
-      expect(Object.keys(cards).length).toBe(l.inner.length);
+      expect(Object.values(cards).flat().length).toBe(l.inner.length);
     });
   });
-  it('урок укладывается в 3–5 минут по оценке времени («Знакомство» — от двух минут)', () => {
+  it('урок укладывается в 3–5 минут по оценке времени (уроки из шагов и мини-игра — от двух минут)', () => {
     unit.lessons.forEach((l) => {
       for (let s = 1; s <= N; s += 1) {
         const { seconds } = buildLesson(l.id, seeded(s));
-        expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual(l.kind === 'intro' ? 120 : 180);
+        expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual([...STEPPED, 'game'].includes(l.kind) ? 120 : 180);
         expect(seconds, `${l.id}: ${seconds} с`).toBeLessThanOrEqual(300);
       }
     });
@@ -165,6 +177,65 @@ describe('упражнения: ровно один верный ответ', ()
           expect(check(inst, { ...inst.expect, [v0]: inst.expect[v0] === '+' ? '-' : '+' }).ok).toBe(false);
           break;
         }
+        case 'tiles': {
+          expect(inst.solution.length).toBeGreaterThanOrEqual(3);
+          expect(check(inst, inst.solution).ok).toBe(true);
+          expect(check(inst, [...inst.solution].reverse()).ok).toBe(false);
+          expect(check(inst, inst.solution.slice(0, -1)).ok).toBe(false);
+          // лишние плитки не дают собрать второе определение: у них нет общих слов с верным
+          const words = (list) => new Set(list.flatMap((k) => inst.tiles.find((t) => t.key === k).text.toLowerCase().split(/[\s,]+/).filter(Boolean)));
+          const own = words(inst.solution);
+          [...words(inst.tiles.filter((t) => !inst.solution.includes(t.key)).map((t) => t.key))].forEach((w) => expect(own.has(w), `${ex.id}: «${w}»`).toBe(false));
+          break;
+        }
+        case 'curve': {
+          const [c, d] = inst.answer;
+          if (inst.only) expect(c).toBe(inst.only);
+          const other = c === 'D' ? 'S' : 'D';
+          expect(check(inst, { [c]: d === '+' ? 10 : -10, [other]: 0 }).ok).toBe(true);
+          expect(check(inst, { [c]: d === '+' ? -10 : 10 }).ok).toBe(false);
+          expect(check(inst, { [c]: d === '+' ? 10 : -10, [other]: 10 }).ok, 'сдвинуть можно только одну кривую').toBe(false);
+          inst.traps.forEach((t) => { expect(t.key).not.toBe(inst.answer); expect(check(inst, { [t.key[0]]: t.key[1] === '+' ? 10 : -10 }).why).toBeTruthy(); });
+          break;
+        }
+        case 'price': {
+          const ax = marketAxes(inst.market);
+          expect(Number.isInteger(inst.answer), `${ex.id}: цена — целое деление ползунка`).toBe(true);
+          expect(inst.answer).toBeGreaterThan(0); expect(inst.answer).toBeLessThan(ax.pMax);
+          expect(inst.start).not.toBe(inst.answer);
+          expect(qd(inst.market, inst.answer)).toBeCloseTo(qs(inst.market, inst.answer));
+          expect(check(inst, inst.answer).ok).toBe(true);
+          [inst.answer - 1, inst.answer + 1].forEach((p) => { const r = check(inst, p); expect(r.ok).toBe(false); expect(plain(r.why)).toMatch(p < inst.answer ? /дефицит/ : /избыток/); });
+          break;
+        }
+        case 'point': {
+          const ax = marketAxes(inst.market);
+          expect(inst.answer.q).toBeGreaterThan(0); expect(inst.answer.q).toBeLessThan(ax.qMax);
+          expect(inst.answer.p).toBeGreaterThan(0); expect(inst.answer.p).toBeLessThan(ax.pMax);
+          expect(check(inst, inst.answer).ok).toBe(true);
+          // старое равновесие (до сдвига) — не ответ
+          const old = equilibrium({ ...inst.market, dA: 0, dC: 0 });
+          if (inst.market.dA || inst.market.dC) expect(check(inst, old).ok, `${ex.id}: старое равновесие засчиталось`).toBe(false);
+          expect(check(inst, { q: 0, p: 0 }).ok).toBe(false);
+          break;
+        }
+        case 'swipe': case 'rush': {
+          const sides = Object.keys(inst.labels);
+          inst.items.forEach((it) => expect(sides).toContain(it.side));
+          sides.forEach((sd) => expect(inst.items.some((it) => it.side === sd), `${ex.id}: нет карточек «${sd}»`).toBe(true));
+          expect(new Set(inst.items.map((x) => x.raw)).size).toBe(inst.items.length);
+          const n = inst.items.length;
+          expect(check(inst, { right: n, answered: n, total: n, done: true }).ok).toBe(true);
+          expect(check(inst, { right: Math.floor(n / 2), answered: n, total: n, done: true }).ok).toBe(false);
+          expect(check(inst, { right: n, answered: n, total: n }).ok, 'раунд не окончен').toBe(false);
+          break;
+        }
+        case 'chain': {
+          expect(check(inst, { seq: inst.solution, done: true }).ok).toBe(true);
+          expect(check(inst, { seq: inst.solution, done: true, timeout: true }).ok).toBe(false);
+          expect(check(inst, { seq: inst.items.map((x) => x.key), done: true }).ok, 'показанный порядок не должен быть верным').toBe(false);
+          break;
+        }
         default: throw new Error(inst.kind);
       }
       expect(answerText(inst).length).toBeGreaterThan(0);
@@ -174,6 +245,77 @@ describe('упражнения: ровно один верный ответ', ()
     const ord = instantiate(Object.values(EXERCISES).find((e) => e.kind === 'order'), seeded(3));
     expect(ready(ord, [ord.items[0].key])).toBe(false);
     expect(ready(ord, ord.solution)).toBe(true);
+  });
+});
+
+describe('юнит «Спрос и предложение»: все виды уроков', () => {
+  const unit = UNIT_BY_ID[PILOT];
+  const of = (kind) => unit.lessons.filter((l) => l.kind === kind);
+  it('два «Знакомства», две «Практики», «Слова», «История», «Слушай», «Мини-игра», «Повторение», «Итоги» — в порядке Пути', () => {
+    expect(unit.lessons.map((l) => l.kind)).toEqual(['intro', 'practice', 'words', 'intro', 'practice', 'story', 'listen', 'game', 'review', 'summary']);
+    unit.lessons.forEach((l) => expect(LESSON_KIND[l.kind]).toBeTruthy());
+  });
+  it('все виды упражнений и раунды мини-игр есть в юните', () => {
+    const kinds = new Set(unit.lessons.flatMap((l) => l.exercises.map((e) => e.kind)));
+    Object.keys(KIND_LABEL).forEach((k) => expect(kinds, k).toContain(k));
+  });
+  it('«Слова»: карточка на каждое слово, потом плитки, пары на время и «какой это термин?»', () => {
+    const [w] = of('words');
+    const { items, cards } = buildLesson(w.id, seeded(2));
+    expect(Object.values(cards)[0]).toEqual(flashCards(w));
+    expect(flashCards(w).length).toBe(w.terms.length);
+    expect(items.filter((i) => i.kind === 'tiles').length).toBe(3);
+    const pairs = items.filter((i) => i.kind === 'match');
+    expect(pairs.length).toBeGreaterThanOrEqual(2);
+    pairs.forEach((m) => expect(m.timer).toBeGreaterThan(0));
+    expect(items.filter((i) => i.kind === 'choice').length).toBeGreaterThanOrEqual(3);
+  });
+  it('«История»: шаги ведут герои — Маша из кофейни, Гриша из пекарни и Вера Павловна из министерства', () => {
+    const [st] = of('story');
+    const who = st.inner.map((c) => c.idea.who);
+    who.forEach((x) => expect(CAST[x], x).toBeTruthy());
+    expect(new Set(who)).toEqual(new Set(['masha', 'grisha', 'vera']));
+    // в истории — новые взаимодействия: цена ползунком, точка равновесия и кривая пальцем
+    expect(st.exercises.map((e) => e.kind)).toEqual(expect.arrayContaining(['price', 'point', 'curve']));
+  });
+  it('«Мини-игра»: смахни, 60 секунд, цепочка на время; раунды не возвращаются как ошибки', () => {
+    const [g] = of('game');
+    const { items } = buildLesson(g.id, seeded(4));
+    expect(items.map((i) => i.kind)).toEqual(['swipe', 'rush', 'chain']);
+    items.forEach((i) => expect(i.noRetry).toBe(true));
+    const rush = items[1];
+    expect(rush.seconds).toBe(60);
+    expect(gameOk(rush, { right: 6, answered: 8, done: true })).toBe(true);
+    expect(gameOk(rush, { right: 5, answered: 5, done: true }), 'меньше шести верных').toBe(false);
+  });
+  it('«Повторение»: ошибки юнита первыми, раундов игр нет, 12–15 упражнений из прошлых уроков', () => {
+    const [r] = of('review');
+    const wrong = 'sd-e2-petrol';
+    for (let s = 1; s <= N; s += 1) {
+      const { items } = buildLesson(r.id, seeded(s), { mistakes: [wrong] });
+      expect(items.length).toBeGreaterThanOrEqual(12);
+      expect(items.length).toBeLessThanOrEqual(15);
+      expect(items.map((i) => i.id)).toContain(wrong);
+      items.forEach((i) => { expect(GAME_KINDS).not.toContain(i.kind); expect(UNIT_BY_ID[PILOT].lessons.find((l) => l.id === EXERCISES[i.id].lesson).no).toBeLessThan(r.no); });
+    }
+  });
+  it('«Итоги юнита»: 5–7 пунктов с картинкой или графиком, потом тест — десять упражнений без игр', () => {
+    const [sum] = of('summary');
+    expect(sum.inner.length).toBeGreaterThanOrEqual(5);
+    expect(sum.inner.length).toBeLessThanOrEqual(7);
+    sum.inner.forEach((c) => {
+      expect(c.at).toBe(0);
+      expect(c.idea.chart || STEP_PICS.includes(c.idea.pic), c.idea.id).toBeTruthy();
+      expect(stepOk(c).words, c.idea.id).toBeLessThanOrEqual(45);
+    });
+    const { items, cards } = buildLesson(sum.id, seeded(5));
+    expect(items.length).toBe(10);
+    expect(cards[items[0].uid].length).toBe(sum.inner.length);
+    items.forEach((i) => expect(GAME_KINDS).not.toContain(i.kind));
+  });
+  it('проверка юнита и практика ошибок не берут раунды мини-игр', () => {
+    for (let s = 1; s <= N; s += 1) buildUnitCheck(PILOT, seeded(s)).items.forEach((i) => expect(GAME_KINDS).not.toContain(i.kind));
+    expect(buildPractice(['sd-g-swipe', 'sd-e2-petrol']).items.map((i) => i.id)).toEqual(['sd-e2-petrol']);
   });
 });
 

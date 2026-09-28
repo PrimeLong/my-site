@@ -138,14 +138,22 @@ export function parseBlocks(text) {
         // карточка новой идеи урока: :::idea id=… title="…" chart=тип <параметры графика> auto="задачи" variants="типы";
         // со словом more — вторая карточка того же урока: встаёт перед следующим упражнением
         // kind=intro — урок «Знакомство» (эта карточка — его первый шаг), иначе урок-практика без карточки;
-        // pic=… — картинка шага вместо графика (значок из набора src/learn.jsx)
-        const { id: _id, title, chart, auto, variants, kind, pic, ...chartAttrs } = attrs;
+        // pic=… — картинка шага вместо графика (значок из набора src/learn.jsx);
+        // kind — вид урока (LESSON_KINDS); who=… — кто говорит в шаге «Истории» (src/learn/cast.js);
+        // в уроке «Слова» строки «- термин: короткое определение» — слова урока
+        const { id: _id, title, chart, auto, variants, kind, pic, who, ...chartAttrs } = attrs;
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
-        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), text: parseInline(body.join(' ').trim()),
-          kind: kind === 'intro' ? 'intro' : 'practice', pic: pic || null,
+        if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
+        const wordLines = kind === 'words' ? body.filter((l) => /^-\s/.test(l.trim())) : [];
+        const terms = wordLines.map((l) => { const t = l.trim().slice(2); const k = t.indexOf(':'); return { term: t.slice(0, k).trim(), text: t.slice(k + 1).trim() }; });
+        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants),
+          text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
+          kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}),
           ...(words.includes('more') ? { inner: true } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));
+      } else if (name === 'round') {
+        blocks.push(parseRound(words[0], attrs, body));
       } else if (name === 'diagram') {
         // схема-иллюстрация: :::diagram circular|balance ключ=значение, внутри — подпись
         if (!DIAGRAM_KINDS.includes(words[0])) throw new Error(`Неизвестная схема :::diagram ${words[0]}`);
@@ -304,8 +312,17 @@ export const parseChapter = (text) => parseBlocks(text);
      calc answer=… tol=… unit=… или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
      shift chart=тип answer="S-" options="D+ D- S+ S-" — «куда сдвинется?», ловушки «!! D+ | почему»;
      news headline="…" vars="P:цена Q:количество" expect="P:+ Q:-" — «газета».
-   Всё после строки «---» — объяснение, которое показывается после ответа. */
-const EX_KINDS = ['choice', 'gap', 'tf', 'order', 'match', 'sort', 'calc', 'shift', 'news'];
+   Всё после строки «---» — объяснение, которое показывается после ответа.
+   Новые взаимодействия (рынок Q_D = a − bP, Q_S = c + dP; dA, dC — сдвиги кривых):
+     tiles — «+ плитка | плитка | …» — верное определение из плиток, «- плитка | …» — лишние плитки;
+     curve a b c d answer="D+" only=D — сдвинуть кривую пальцем (only — на графике одна кривая), ловушки «!! S+ | почему»;
+     price a b c d start=10 — двигать цену, пока не исчезнут дефицит и избыток;
+     point a b c d dA=… dC=… — поставить точку (нового) равновесия;
+     у match — seconds=… — пары на время. */
+export const LESSON_KINDS = ['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary'];
+const EX_KINDS = ['choice', 'gap', 'tf', 'order', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point'];
+const MARKET = ['a', 'b', 'c', 'd', 'dA', 'dC'];
+const market = (attrs) => Object.fromEntries(MARKET.map((k) => [k, attrs[k] != null ? Number(attrs[k]) : (k === 'dA' || k === 'dC' ? 0 : NaN)]));
 function parseExercise(kind, attrs, body) {
   if (!EX_KINDS.includes(kind)) throw new Error(`Неизвестное упражнение :::ex ${kind}`);
   if (!attrs.id) throw new Error(`У упражнения ${kind} нет id`);
@@ -327,6 +344,19 @@ function parseExercise(kind, attrs, body) {
     ex.answer = attrs.answer === 'true';
   }
   if (kind === 'order') ex.items = main.filter(isNum).map((l) => { const raw = l.trim().replace(/^\d+\.\s*/, ''); return { raw, text: parseInline(raw) }; });
+  if (kind === 'match' && attrs.seconds) ex.seconds = Number(attrs.seconds);
+  if (kind === 'tiles') {
+    const tiles = (o) => o.raw.split(/\s\|\s/).map((x) => x.trim()).filter(Boolean);
+    const right = opts.filter((o) => o.correct);
+    if (right.length !== 1) throw new Error(`В плитках ${attrs.id} должна быть одна строка «+ …»`);
+    ex.solution = tiles(right[0]); ex.extra = opts.filter((o) => !o.correct).flatMap(tiles);
+  }
+  if (kind === 'curve' || kind === 'price' || kind === 'point') {
+    ex.market = market(attrs);
+    if (MARKET.slice(0, 4).some((k) => !Number.isFinite(ex.market[k]))) throw new Error(`В упражнении ${attrs.id} нужны a, b, c, d`);
+    if (kind === 'curve') { ex.answer = attrs.answer; ex.only = attrs.only || null; ex.traps = traps.map((t) => ({ key: t.key, why: t.why })); }
+    if (kind === 'price') ex.start = Number(attrs.start || 0);
+  }
   if (kind === 'match') ex.pairs = opts.map((o) => { const [l, r] = o.raw.split(/\s↔\s/); return [{ raw: l.trim(), text: parseInline(l.trim()) }, { raw: (r || '').trim(), text: parseInline((r || '').trim()) }]; });
   if (kind === 'sort') {
     ex.bins = (attrs.bins || '').split('|').map((x) => x.trim()).filter(Boolean);
@@ -353,6 +383,32 @@ function parseExercise(kind, attrs, body) {
   return ex;
 }
 
+/* :::round вид id=… title="…" — раунд мини-игры урока:
+     swipe left="…" right="…" — карточки «- текст >> left|right» смахнуть влево или вправо;
+     rush seconds=60 up="…" down="…" — заголовки «- текст >> up|down» на время;
+     chain seconds=30 — звенья «1. …» по порядку на время.
+   Текст до пунктов — условие раунда. */
+const ROUND_KINDS = ['swipe', 'rush', 'chain'];
+function parseRound(kind, attrs, body) {
+  if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
+  if (!attrs.id) throw new Error(`У игры ${kind} нет id`);
+  const item = (l) => /^[-]\s/.test(l.trim()) || /^\d+\.\s/.test(l.trim());
+  const g = { type: 'round', kind, id: attrs.id, title: attrs.title || '', prompt: parseBlocks(body.filter((l) => !item(l)).join('\n')), seconds: attrs.seconds ? Number(attrs.seconds) : null };
+  if (kind === 'chain') {
+    g.items = body.filter((l) => /^\d+\.\s/.test(l.trim())).map((l) => { const raw = l.trim().replace(/^\d+\.\s*/, ''); return { raw, text: parseInline(raw) }; });
+  } else {
+    const sides = kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
+    g.labels = Object.fromEntries(sides.map((k) => [k, attrs[k] || k]));
+    g.items = body.filter((l) => /^-\s/.test(l.trim())).map((l) => {
+      const [t, side] = l.trim().slice(2).split(/\s>>\s/);
+      if (!sides.includes((side || '').trim())) throw new Error(`В игре ${attrs.id}: «${t}» — сторона ${sides.join(' или ')}`);
+      return { raw: t.trim(), text: parseInline(t.trim()), side: side.trim() };
+    });
+  }
+  if (g.items.length < 3) throw new Error(`В игре ${attrs.id} меньше трёх пунктов`);
+  return g;
+}
+
 /* ------------------------------ ОБХОД ------------------------------ */
 // все блоки дерева, включая вложенные (врезки, условия и решения задач)
 export function walkBlocks(blocks, fn) {
@@ -363,16 +419,16 @@ export function walkBlocks(blocks, fn) {
     if (b.solution) walkBlocks(b.solution, fn);
     if (b.more) walkBlocks(b.more, fn);
     if (b.question) walkBlocks(b.question, fn);
-    if (b.type === 'ex') { walkBlocks(b.prompt, fn); if (b.explain) walkBlocks(b.explain, fn); }
+    if (b.type === 'ex' || b.type === 'round') { walkBlocks(b.prompt, fn); if (b.explain) walkBlocks(b.explain, fn); }
     if (b.type === 'recall') walkBlocks(b.answer, fn);
   });
 }
 const inlinesOf = (b) => [
-  ...(b.inline ? [b.inline] : []), ...(b.type === 'ex' ? [] : b.items || []), ...(b.head || []), ...((b.rows || []).flat()), ...(b.caption ? [b.caption] : []),
+  ...(b.inline ? [b.inline] : []), ...(b.type === 'ex' || b.type === 'round' ? [] : b.items || []), ...(b.head || []), ...((b.rows || []).flat()), ...(b.caption ? [b.caption] : []),
   ...(b.steps || []).flatMap((st) => [st.title, st.up, st.down]), ...(b.hints || []), ...(b.points || []),
   ...(b.traps || []).map((t) => t.text || t.why).filter(Boolean),
   ...(b.type === 'idea' ? [b.text] : []),
-  ...(b.type === 'ex' ? [...(b.options || []).flatMap((o) => [o.text, o.why]), ...(b.items || []).map((x) => x.text), ...(b.pairs || []).flat().map((x) => x.text)].filter(Boolean) : []),
+  ...(b.type === 'ex' || b.type === 'round' ? [...(b.options || []).flatMap((o) => [o.text, o.why]), ...(b.items || []).map((x) => x.text), ...(b.pairs || []).flat().map((x) => x.text)].filter(Boolean) : []),
 ];
 function walkInline(nodes, fn) {
   nodes.forEach((n) => { fn(n); if (n.c) walkInline(n.c, fn); });
