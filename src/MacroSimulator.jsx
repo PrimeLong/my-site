@@ -18,6 +18,8 @@ import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, emblemIcon } from './account.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
+import { todayCard } from './textbook/today-snapshot.js';
+import { BookLinkContext } from './booklink-context.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
 
@@ -1258,7 +1260,20 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   const savesCount = { solo: (soloSlots || []).filter(Boolean).length, tycoon: tycoonSlots.filter(Boolean).length, network: networkSlots.filter(Boolean).length };
   const savesTotal = savesCount.solo + savesCount.tycoon + savesCount.network;
 
-  const MODES = [
+  /* Меню в два блока: «Учиться» (учебник, задачи на 10 минут, лаборатория) и «Играть»
+     (партия, «Своё дело», сеть, «Как играть» и вызов дня). */
+  const LEARN = [
+    ...(onTextbook ? [{ id: 'textbook', icon: BookOpenText, title: 'Учебник', tag: 'микро и макро · задачи · графики',
+      desc: 'Главы первого курса экономфака с формулами, графиками и задачами — и в каждой главе: где эту модель видно в игре и чем игра от неё отличается.',
+      action: () => { Audio.prime(); Audio.play('tab'); onTextbook(); } }] : []),
+    ...(onDrills ? [{ id: 'drills', icon: Target, title: 'Задачи на 10 минут', tag: 'цель · кварталы · разбор',
+      desc: 'Короткая партия с одной целью — например, инфляцию с 12% до 4% за восемь кварталов без рецессии. В конце — разбор и слепой прогноз.',
+      action: () => { Audio.prime(); Audio.play('tab'); onDrills(); } }] : []),
+    ...(onLab ? [{ id: 'lab', icon: FlaskConical, title: 'Лаборатория', tag: 'один рычаг — два мира',
+      desc: 'Меняете один рычаг, шоки выключены: графики показывают чистый эффект на инфляцию, выпуск, безработицу и курс за 12 кварталов.',
+      action: () => { Audio.prime(); Audio.play('tab'); onLab(); } }] : []),
+  ];
+  const PLAY = [
     { id: 'new', icon: Landmark, title: 'Партия у руля страны', tag: 'ЦБ · Минфин · президент · премьер · трейдер',
       desc: 'Выберите пост и проведите страну через кризисы, выборы и войны. Второй ветвью власти управляет бот со своим характером.',
       action: () => { Audio.prime(); Audio.play('stamp'); onNewGame(); } },
@@ -1268,19 +1283,32 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
     { id: 'network', icon: Users, title: 'По сети', tag: 'вдвоём или втроём',
       desc: 'ЦБ, Минфин и президент — разные люди на одной экономике. Комната по коду или из списка открытых.',
       action: () => { Audio.prime(); Audio.play('tab'); onNetwork(); } },
-    { id: 'tutorial', icon: GraduationCap, title: 'Обучение', tag: 'курсы с практикой',
-      desc: 'Как работают ставка, бюджет, рынок и власть — короткими уроками с тестами и экзаменами.',
+    { id: 'tutorial', icon: GraduationCap, title: 'Как играть', tag: 'курсы с практикой',
+      desc: 'Как устроены экран партии, ставка, бюджет, рынок и власть — короткими уроками с тестами и экзаменами.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
-    ...(onLab ? [{ id: 'lab', icon: FlaskConical, title: 'Лаборатория', tag: 'один рычаг — два мира',
-      desc: 'Меняете один рычаг, шоки выключены: графики показывают чистый эффект на инфляцию, выпуск, безработицу и курс за 12 кварталов.',
-      action: () => { Audio.prime(); Audio.play('tab'); onLab(); } }] : []),
-    ...(onDrills ? [{ id: 'drills', icon: Target, title: 'Задачи на 10 минут', tag: 'цель · кварталы · разбор',
-      desc: 'Короткая партия с одной целью — например, инфляцию с 12% до 4% за восемь кварталов без рецессии. В конце — разбор и слепой прогноз.',
-      action: () => { Audio.prime(); Audio.play('tab'); onDrills(); } }] : []),
-    ...(onTextbook ? [{ id: 'textbook', icon: BookOpenText, title: 'Учебник', tag: 'микро и макро · задачи · графики',
-      desc: 'Главы первого курса экономфака с формулами, графиками и задачами — и в каждой главе: где эту модель видно в игре и чем игра от неё отличается.',
-      action: () => { Audio.prime(); Audio.play('tab'); onTextbook(); } }] : []),
   ];
+  // «Продолжить учиться»: раздел на сегодня и вопросы на повторение, одним нажатием — в занятие
+  const study = onTextbook ? todayCard() : null;
+  const renderModes = (list, delay = 0) => (
+    <div className="menu-modes">
+      {list.map((m, i) => {
+        const Icon = m.icon;
+        return (
+          <div key={m.id} className="ems-card-btn ems-fade-in menu-mode" style={{ animationDelay: `${delay + 60 + i * 50}ms` }} data-mode={m.id}
+            role="button" tabIndex={0} onClick={m.action} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') m.action(); }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+              <div className="ems-card-icon" style={{ width: 38, height: 38 }}><Icon size={18} color={COLOR.gold} /></div>
+              <div style={{ minWidth: 0 }}>
+                <div className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{m.title}</div>
+                <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 1 }}>{m.tag}</div>
+              </div>
+            </div>
+            <div className="menu-mode-desc" style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '36px 16px 48px' }}>
@@ -1311,7 +1339,32 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           </div>
         )}
 
-        {/* 1. Продолжить */}
+        {/* 1. Продолжить учиться */}
+        {study && (
+          <div className="ems-fade-in menu-continue" role="button" tabIndex={0} data-testid="menu-study"
+            onClick={() => { Audio.prime(); Audio.play('stamp'); onTextbook({ kind: 'today' }); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { Audio.prime(); onTextbook({ kind: 'today' }); } }}>
+            <div className="ems-card-icon" style={{ width: 46, height: 46, flexShrink: 0 }}><BookOpenText size={21} color={COLOR.gold} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить учиться</div>
+              <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>
+                {study.section ? `«${study.section.title}»` : study.allDone ? 'Повторение и задачи' : 'Первое занятие по учебнику'}
+              </div>
+              <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
+                {study.section ? `${study.section.chapterTitle ? `${study.section.chapterTitle} · ` : ''}≈${study.section.minutes} мин` : study.allDone ? 'все разделы готовых глав пройдены' : 'раздел минут на десять с вопросом в конце'}
+                {' · '}на повторение: {study.due}
+              </div>
+            </div>
+            <Play size={22} color={COLOR.gold} style={{ flexShrink: 0 }} />
+          </div>
+        )}
+
+        {/* 2. Учиться */}
+        <div className="menu-section-label">Учиться</div>
+        {renderModes(LEARN)}
+
+        {/* 3. Играть: продолжить партию, режимы, вызов дня */}
+        <div className="menu-section-label">Играть</div>
         {mainContinue && (
           <div className="ems-fade-in menu-continue" role="button" tabIndex={0} onClick={mainContinue.go}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') mainContinue.go(); }}>
@@ -1341,28 +1394,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           </div>
         )}
 
-        {/* 2. Режимы */}
-        <div className="menu-section-label">{mainContinue ? 'Или начните новое' : 'Во что сыграть'}</div>
-        <div className="menu-modes">
-          {MODES.map((m, i) => {
-            const Icon = m.icon;
-            return (
-              <div key={m.id} className="ems-card-btn ems-fade-in menu-mode" style={{ animationDelay: `${60 + i * 50}ms` }}
-                role="button" tabIndex={0} onClick={m.action} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') m.action(); }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                  <div className="ems-card-icon" style={{ width: 38, height: 38 }}><Icon size={18} color={COLOR.gold} /></div>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{m.title}</div>
-                    <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 1 }}>{m.tag}</div>
-                  </div>
-                </div>
-                <div className="menu-mode-desc" style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 3. Вызов дня */}
+        {renderModes(PLAY, 150)}
         {onDaily && <DailyCard onStart={onDaily} />}
 
         {/* 4. Все сохранения — свёрнуты, чтобы не заслонять главное */}
@@ -1932,6 +1964,19 @@ export default function MacroSimulator() {
   // партия (задача или сценарий) открыта из учебника — после неё вернуться в учебник
   const [gameFromBook, setGameFromBook] = useState(false);
   const [bookResume, setBookResume] = useState(false);
+  // с какой страницы открыть учебник: «на сегодня» из меню
+  const [bookPage, setBookPage] = useState(null);
+  /* «Подробнее в учебнике» из партии: учебник открывается поверх, партия остаётся
+     смонтированной (скрыта), «Назад в игру» возвращает туда же и на ту же прокрутку. */
+  const [bookOverlay, setBookOverlay] = useState(null);
+  const gameScroll = React.useRef(0);
+  const openBookFromGame = React.useCallback((page) => {
+    gameScroll.current = window.scrollY; setBookOverlay(page); window.scrollTo(0, 0);
+  }, []);
+  const closeBookOverlay = () => {
+    setBookOverlay(null);
+    requestAnimationFrame(() => window.scrollTo(0, gameScroll.current));
+  };
   const [setupPreset, setSetupPreset] = useState(null);
   const [tycoonLesson, setTycoonLesson] = useState(null);
   // «Своё дело»: { initial } — продолжить сохранённое, { setupNew } — новое дело
@@ -2009,7 +2054,7 @@ export default function MacroSimulator() {
         const startDrill = (x) => { setFromBook(false); setGameFromBook(true); clearAutosave(); setLoaded(null); setSetup(x); };
         return (
           <Suspense fallback={<GameFallback />}>
-            <TextbookScreen key={theme} resume={bookResume} onBack={() => { setBookResume(false); goMenu(); }}
+            <TextbookScreen key={theme} resume={bookResume} startPage={bookPage} onBack={() => { setBookResume(false); setBookPage(null); goMenu(); }}
               onOpenLab={(init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); }}
               onStartDrill={startDrill}
               onOpenTycoon={(taskId, task) => {
@@ -2044,7 +2089,7 @@ export default function MacroSimulator() {
           onNetwork={() => setView('network')}
           onTutorial={() => setView('tutorial')}
           onLab={() => { setFromBook(false); setLabInit(null); setLabLever('keyRate'); setView('lab'); }}
-          onTextbook={() => { setBookResume(false); setView('textbook'); }}
+          onTextbook={(page) => { setBookResume(false); setBookPage(page || null); setView('textbook'); }}
           onDrills={() => setView('drills')}
           onLoad={startLoaded}
           onEnterNetwork={setNetwork}
@@ -2065,5 +2110,16 @@ export default function MacroSimulator() {
       </Suspense>
     );
   })();
-  return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{screen}</ScreenErrorBoundary>;
+  const inGame = !tycoon && (network || setup);
+  const wrapped = inGame ? (
+    <BookLinkContext.Provider value={openBookFromGame}>
+      <div style={bookOverlay ? { display: 'none' } : undefined}>{screen}</div>
+      {bookOverlay && (
+        <Suspense fallback={<GameFallback />}>
+          <TextbookScreen key={`${theme}:${JSON.stringify(bookOverlay)}`} startPage={bookOverlay} backLabel="← Назад в игру" onBack={closeBookOverlay} />
+        </Suspense>
+      )}
+    </BookLinkContext.Provider>
+  ) : screen;
+  return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{wrapped}</ScreenErrorBoundary>;
 }

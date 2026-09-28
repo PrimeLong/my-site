@@ -157,6 +157,7 @@ const elasticCompare = {
    Слева от вершины (неэластичный участок) рост цены увеличивает выручку, справа — уменьшает. */
 const revenueCurve = {
   title: 'Выручка при разных ценах',
+  vars: (A) => { const a = num(A, 'a', 100); const b = num(A, 'b', 2); return { ptop: a / (2 * b), rtop: (a / (2 * b)) * (a / 2) }; },
   controls: (A) => { const a = num(A, 'a', 100); const b = num(A, 'b', 2); const Pm = a / b; return [{ id: 'P', label: 'Цена', min: 1, max: Math.round(Pm) - 1, step: 1, def: num(A, 'p', Math.round(Pm * 0.3)), fmt: (v) => `${v}` }]; },
   measure: (A, v) => { const a = num(A, 'a', 100); const b = num(A, 'b', 2); return { P: v.P, R: v.P * (a - b * v.P) }; },
   build: (A, v) => {
@@ -195,6 +196,8 @@ const islmParams = (A) => ({ c: num(A, 'c', 0.75), b: num(A, 'b', 25), k: num(A,
   a0: num(A, 'a0', 325), i0: num(A, 'i0', 200), G: num(A, 'g', 100), M: num(A, 'm', 1000), P: num(A, 'p', 2) });
 const isLm = {
   title: 'IS-LM',
+  // во сколько раз прирост выпуска больше, когда ЦБ держит ставку: кейнсианский мультипликатор к мультипликатору IS-LM
+  vars: (A) => { const p = islmParams(A); return { holdx: (1 - p.c + (p.b * p.k) / p.h) / (1 - p.c) }; },
   controls: (A) => {
     const p = islmParams(A);
     return [
@@ -251,6 +254,12 @@ export function adasEquilibrium(p, M, pe, ybar, s) {
 }
 const adAs = {
   title: 'AD-AS',
+  // AD в явном виде Y = ad0 + ad1·M/P — из той же IS-LM; ybar — потенциал
+  vars: (A, v) => {
+    const p = islmParams(A); const den = 1 - p.c + (p.b * p.k) / p.h;
+    const G = v && v.G != null ? v.G : p.G;
+    return { ad0: (p.a0 + G) / den, ad1: (p.b / p.h) / den, ybar: num(A, 'ybar', islmEquilibrium(p).Y) };
+  },
   controls: (A) => {
     const p = islmParams(A);
     return [
@@ -735,6 +744,7 @@ const budgetChart = {
    через неё проходит своя кривая безразличия. Оптимум E — там, где MRS = p_x/p_y. */
 const choiceChart = {
   title: 'Лучший набор на бюджетной линии',
+  vars: (A) => { const p = consParams(A); const c = cdChoice(p); return { ratio: p.px / p.py, ex: c.x, ey: c.y }; },
   controls: (A) => { const p = consParams(A); return [{ id: 'x', label: 'Покупки X (остальное — на Y)', min: 0, max: Math.round((p.I / p.px) * 0.95), step: 1, def: Math.round((p.I / p.px) * 0.2), fmt: (v) => `${v}` }]; },
   measure: (A, v) => {
     const p = consParams(A); const y = (p.I - p.px * v.x) / p.py;
@@ -812,6 +822,8 @@ const crossParams = (A) => ({ c0: num(A, 'c0', 200), c: num(A, 'c', 0.75), I: nu
 export const crossY = (p, G, T) => (p.c0 - p.c * T + p.I + G) / (1 - p.c);
 const crossChart = {
   title: 'Кейнсианский крест',
+  // эффекты «+50 к закупкам» и «+50 к налогам» — из той же формулы, что и линия расходов
+  vars: (A) => { const p = crossParams(A); const y0 = crossY(p, p.G, p.T); return { y0, dg: crossY(p, p.G + 50, p.T) - y0, dt: y0 - crossY(p, p.G, p.T + 50), mult: 1 / (1 - p.c) }; },
   controls: (A) => {
     const p = crossParams(A);
     return [
@@ -909,6 +921,7 @@ export function jointPies(p, shirts) {
 }
 const tradeChart = {
   title: 'Общая КПВ двух производителей',
+  vars: (A) => { const p = tradeParams(A); const oc = [p.a1 / p.b1, p.a2 / p.b2].sort((x, y) => x - y); return { oc1: oc[0], oc2: oc[1], kink: jointPies(p, 0).first.b * p.h }; },
   controls: (A) => { const p = tradeParams(A); return [{ id: 's', label: 'Сколько рубашек нужно', min: 0, max: (p.b1 + p.b2) * p.h, step: 1, def: Math.round(p.b2 * p.h / 2), fmt: (v) => `${v}` }]; },
   measure: (A, v) => ({ pies: jointPies(tradeParams(A), v.s).pies }),
   build: (A, v) => {
@@ -936,6 +949,11 @@ const tradeChart = {
 const gdpParams = (A) => ({ y0: num(A, 'y0', 100), g: num(A, 'g', 2), pi: num(A, 'pi', 8), n: num(A, 'n', 5) });
 const gdpChart = {
   title: 'Номинальный и реальный ВВП',
+  // числа для подписи — из тех же параметров, что и кривые: подпись не может разойтись с графиком
+  vars: (A, v) => {
+    const p = gdpParams(A); const rx = Math.pow(1 + v.g / 100, p.n); const px = Math.pow(1 + v.pi / 100, p.n);
+    return { g: `${r1(v.g)}%`, pi: `${r1(v.pi)}%`, n: `${p.n}`, nomx: r2(rx * px), realx: r2(rx), nompct: `${r1((rx * px - 1) * 100)}%`, realpct: `${r1((rx - 1) * 100)}%` };
+  },
   controls: (A) => {
     const p = gdpParams(A);
     return [
@@ -1024,6 +1042,19 @@ tradeChart.measureNames = { pies: 'пироги' };
 gdpChart.measureNames = { real: 'реальный ВВП', nominal: 'номинальный ВВП' };
 moneyChart.measureNames = { m: 'мультипликатор', M: 'денежная масса' };
 export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, money: moneyChart };
+/* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
+   текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
+const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));
+export function captionVars(type, attrs, values) {
+  const def = CHARTS[type];
+  if (!def) return {};
+  const defaults = chartDefaults(type, attrs);
+  const pack = (v) => ({ ...(def.measure ? def.measure(attrs, v) : {}), ...(def.vars ? def.vars(attrs, v) : {}) });
+  const out = {};
+  Object.entries(pack(values)).forEach(([k, x]) => { out[k] = fmtVar(x); });
+  Object.entries(pack(defaults)).forEach(([k, x]) => { out[`d_${k}`] = fmtVar(x); });
+  return out;
+}
 export const chartDefaults = (type, attrs) => Object.fromEntries(CHARTS[type].controls(attrs).filter((c) => !c.button).map((c) => [c.id, c.def]));
 
 /* ГРАФИЧЕСКАЯ ЗАДАЧА: игрок двигает ползунки, ответ — направления изменения величин

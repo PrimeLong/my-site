@@ -18,12 +18,19 @@
      :::recall id=… вопрос --- ответ ::: — вопрос на вспоминание в конце раздела
      :::flow Заголовок — схема-цепочка: пункты «- Звено | если вверх | если вниз», ниже — подпись
      :::chart тип ключ=значение … ::: — интерактивный график; текст внутри — подпись
+     :::diagram circular|balance … ::: — схема: кругооборот доходов и расходов, балансы банков по шагам
      :::problem id=… level=1|2|3 answer=… tol=… unit=… условие --- решение :::   — ответ числом;
         задача в несколько шагов: answer="15;20" (tol, unit и parts — подписи шагов — тоже через «;»).
         level: 1 — базовый, 2 — семинарский, 3 — олимпиадный
      :::truefalse id=… answer=true|false утверждение --- ключевые пункты (список) --- разбор :::
         — «верно или неверно»: сначала объяснение, потом сверка с ключевыми пунктами
      В любой задаче строки «?? …» — подсказки, они открываются по одной перед решением.
+     Строки «!! неверный ответ | почему так получается» — ловушки: если ответ совпал с ловушкой,
+        вместо «неверно» показывается объяснение ошибки. В задаче с шагами — «!! б) 30 | …»;
+        в «верно или неверно» — «!! true | …» (объяснение для неверного выбора);
+        в графической — «!! dD | …» (объяснение, если сдвинут этот ползунок).
+     news="ЗАГОЛОВОК" у задачи любого вида — задача по газете: сначала заголовок из игровой
+        газеты, потом вопрос, что он значит для спроса, выпуска, цен и курса.
      :::graph id=… chart=тип <параметры графика> expect="P:+ Q:-" still="…" controls="…"
         solution="dC:-20" условие --- решение :::                    — сдвиньте кривую на графике;
         ответ — направления величин (+, −, 0, ? — любое), solution — эталонный сдвиг для тестов
@@ -33,6 +40,7 @@
      scenario — сценарий партии, lab — рычаг в Лаборатории (?cb=fixed&mode=hold&scenario=…),
      tycoon — задание в «Своём деле», chapter — глава, card — карточка «игра ↔ учебник»,
      appendix — приложение (cards, limits, glossary). */
+import { DIAGRAM_KINDS } from './diagrams.js';
 
 export const LINK_KINDS = ['lever', 'term', 'drill', 'scenario', 'lab', 'tycoon', 'chapter', 'card', 'appendix'];
 // ссылки-действия: абзац из одной такой ссылки рисуется кнопкой
@@ -126,7 +134,12 @@ export function parseBlocks(text) {
       while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) { body.push(lines[i]); i += 1; }
       if (i >= lines.length) throw new Error(`Вставка :::${name} не закрыта`);
       i += 1;
-      if (name === 'chart') {
+      if (name === 'diagram') {
+        // схема-иллюстрация: :::diagram circular|balance ключ=значение, внутри — подпись
+        if (!DIAGRAM_KINDS.includes(words[0])) throw new Error(`Неизвестная схема :::diagram ${words[0]}`);
+        const caption = body.join(' ').trim();
+        blocks.push({ type: 'diagram', diagram: words[0], attrs, caption: caption ? parseInline(caption) : null });
+      } else if (name === 'chart') {
         const caption = body.join(' ').trim();
         blocks.push({ type: 'chart', chart: words[0], attrs, caption: caption ? parseInline(caption) : null });
       } else if (name === 'recall') {
@@ -144,12 +157,19 @@ export function parseBlocks(text) {
       } else if (name === 'problem' || name === 'truefalse' || name === 'graph') {
         // подсказки — строки «?? …» в условии: открываются по одной перед решением
         const hints = body.filter((l) => l.trim().startsWith('??')).map((l) => parseInline(l.trim().replace(/^\?\?\s*/, '')));
-        const lines2 = body.filter((l) => !l.trim().startsWith('??'));
+        // ловушки — строки «!! ответ | объяснение»
+        const trapLines = body.filter((l) => l.trim().startsWith('!!')).map((l) => {
+          const t = l.trim().replace(/^!!\s*/, ''); const bar = t.indexOf('|');
+          if (bar < 0) throw new Error(`В задаче ${attrs.id} ловушка без объяснения: ${t}`);
+          return { key: t.slice(0, bar).trim(), text: parseInline(t.slice(bar + 1).trim()) };
+        });
+        const lines2 = body.filter((l) => !l.trim().startsWith('??') && !l.trim().startsWith('!!'));
         const seps = lines2.map((l, k) => (l.trim() === '---' ? k : -1)).filter((k) => k >= 0);
         if (!seps.length) throw new Error(`В задаче ${attrs.id} нет решения (строка ---)`);
         const part = (a, b) => parseBlocks(lines2.slice(a, b).join('\n'));
         const level = attrs.level != null ? Number(attrs.level) : null;
-        const base = { type: 'problem', id: attrs.id, level, hints, statement: part(0, seps[0]), solution: part(seps[seps.length - 1] + 1) };
+        // news="ЗАГОЛОВОК" — задача по газете: условие начинается с заголовка игровой газеты
+        const base = { type: 'problem', id: attrs.id, level, hints, news: attrs.news || null, statement: part(0, seps[0]), solution: part(seps[seps.length - 1] + 1) };
         if (name === 'problem') {
           // шаги задачи: ответы, допуски, единицы и подписи — через «;», по порядку
           const list = (x) => (x == null ? [] : String(x).split(';').map((v) => v.trim()));
@@ -161,7 +181,15 @@ export function parseBlocks(text) {
             unit: units[k] != null ? units[k] : (units.length === 1 ? units[0] : ''),
           }));
           const one = parts.length === 1 ? parts[0] : null;
-          blocks.push({ ...base, kind: 'number', parts, answer: one ? one.answer : parts.map((x) => x.answer), tol: one ? one.tol : null, unit: one ? one.unit : '' });
+          // «б) 30» — ловушка шага б; просто «30» — первого (или единственного) шага
+          const traps = trapLines.map((tr) => {
+            const m = tr.key.match(/^(\S+\))\s*(.+)$/);
+            const k = m ? parts.findIndex((pt) => pt.label === m[1]) : 0;
+            const v = parseNumber(m ? m[2] : tr.key);
+            if (k < 0 || v == null) throw new Error(`В задаче ${attrs.id} ловушка «${tr.key}» не разобрана`);
+            return { part: k, value: v, text: tr.text };
+          });
+          blocks.push({ ...base, kind: 'number', traps, parts, answer: one ? one.answer : parts.map((x) => x.answer), tol: one ? one.tol : null, unit: one ? one.unit : '' });
         } else if (name === 'truefalse') {
           if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В задаче ${attrs.id} ответ должен быть true или false`);
           // утверждение --- ключевые пункты объяснения (список) --- полный разбор
@@ -169,14 +197,18 @@ export function parseBlocks(text) {
           const pts = part(seps[0] + 1, seps[1]);
           const list = pts.find((b) => b.type === 'ul' || b.type === 'ol');
           if (!list) throw new Error(`В задаче ${attrs.id} ключевые пункты — списком`);
-          blocks.push({ ...base, kind: 'truefalse', answer: attrs.answer === 'true', points: list.items });
+          const traps = trapLines.map((tr) => {
+            if (tr.key !== 'true' && tr.key !== 'false') throw new Error(`В задаче ${attrs.id} ловушка — true или false`);
+            return { value: tr.key === 'true', text: tr.text };
+          });
+          blocks.push({ ...base, kind: 'truefalse', answer: attrs.answer === 'true', points: list.items, traps });
         } else {
-          const { id: _id, chart, expect, still, controls, solution, ...chartAttrs } = attrs;
+          const { id: _id, chart, expect, still, controls, solution, news: _news, level: _level, ...chartAttrs } = attrs;
           const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
           // эталонный сдвиг для тестов: «dC:-20 dA:10»
           const ref = Object.fromEntries(split(solution).map((t) => { const [k, v] = t.split(':'); return [k, Number(v)]; }));
           blocks.push({ ...base, kind: 'graph', chart, attrs: chartAttrs, expect: split(expect).map((t) => { const [key, dir] = t.split(':'); return { key, dir }; }),
-            still: split(still), controls: controls ? split(controls) : null, reference: ref });
+            still: split(still), controls: controls ? split(controls) : null, reference: ref, traps: trapLines.map((tr) => ({ control: tr.key, text: tr.text })) });
         }
       } else if (BOX_KINDS.includes(name)) {
         // «+++» — дальше подробности, они раскрываются по кнопке «Подробнее»
@@ -268,6 +300,7 @@ export function walkBlocks(blocks, fn) {
 const inlinesOf = (b) => [
   ...(b.inline ? [b.inline] : []), ...(b.items || []), ...(b.head || []), ...((b.rows || []).flat()), ...(b.caption ? [b.caption] : []),
   ...(b.steps || []).flatMap((st) => [st.title, st.up, st.down]), ...(b.hints || []), ...(b.points || []),
+  ...(b.traps || []).map((t) => t.text),
 ];
 function walkInline(nodes, fn) {
   nodes.forEach((n) => { fn(n); if (n.c) walkInline(n.c, fn); });
@@ -325,4 +358,15 @@ export function checkAnswer(input, answer, tol = null, unit = '') {
   if (v == null) return { ok: false, value: null };
   const t = tol != null && Number.isFinite(tol) ? tol : 0;
   return { ok: Math.abs(v - answer) <= t + EXACT * Math.max(1, Math.abs(answer)), value: v };
+}
+
+// ловушки числовой задачи, в которые попали ответы шагов (неверные шаги, совпавшие с ловушкой)
+export function matchTraps(block, inputs) {
+  return (block.traps || []).filter((tr) => {
+    const pt = block.parts[tr.part];
+    const input = inputs[tr.part];
+    // ловушка ловит и округлённый ответ: допуск — не меньше 1% её значения
+    const tol = Math.max(pt.tol || 0, 0.01 * Math.abs(tr.value));
+    return !checkAnswer(input, pt.answer, pt.tol, pt.unit).ok && checkAnswer(input, tr.value, tol, pt.unit).ok;
+  });
 }

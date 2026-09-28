@@ -17,9 +17,12 @@ import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo } from './
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
 import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf } from './textbook/content.js';
 import { sectionDone, sectionProgress, nextSection, dueItems } from './textbook/study.js';
-import { CHARTS, chartDefaults, checkGraph } from './textbook/charts.js';
-import { actionOf, parseInline, checkAnswer, LEVELS } from './textbook/markdown.js';
-import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats } from './textbook/progress.js';
+import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
+import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
+import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
+import { EXAMS, examProblems, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
+import { saveTodaySnapshot } from './textbook/today-snapshot.js';
+import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -54,9 +57,25 @@ const CSS = `
   .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
+  .tb-news { background: #E8DFC6; color: #241C12; border: 1px solid #8C6B3E; padding: 8px 12px 10px; margin: 6px 0 10px; }
+  .tb-news-mast { font-size: 10px; letter-spacing: .12em; color: #6B5A3E; border-bottom: 3px double #8C6B3E; padding-bottom: 4px; margin-bottom: 6px; }
+  .tb-news-head { font-size: 17px; font-weight: 700; line-height: 1.2; }
   .tb-bar { height: 4px; background: var(--c-hairline); border-radius: 2px; overflow: hidden; }
   .tb-bar > span { display: block; height: 100%; background: var(--c-teal); }
 `;
+
+/* ------------------------------ СХЕМЫ ------------------------------ */
+// кругооборот и балансы банков (src/textbook-diagrams.jsx); подпись — как у графика
+function DiagramBox({ b, ctx }) {
+  const n = (k, d) => (b.attrs[k] != null && Number.isFinite(Number(b.attrs[k])) ? Number(b.attrs[k]) : d);
+  return (
+    <div className="ems-panel" style={{ padding: 14, margin: '16px 0' }}>
+      {b.diagram === 'circular' && <CircularFlow total={n('total', 1000)} />}
+      {b.diagram === 'balance' && <BalanceSheets base={n('base', 1000)} rr={n('rr', 0.1)} />}
+      {b.caption && <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.55, marginTop: 8 }} data-testid="tb-caption"><Inline nodes={b.caption} ctx={ctx} /></div>}
+    </div>
+  );
+}
 
 /* ------------------------------ ФОРМУЛЫ ------------------------------ */
 function Tex({ tex, display = false }) {
@@ -169,37 +188,52 @@ function BoxView({ b, ctx }) {
   );
 }
 
-/* Вопрос на вспоминание в конце раздела: вспомнить, открыть ответ, честно отметить.
-   «Не вспомнил» — вопрос вернётся на повторение через два дня, раздел пока не пройден. */
+/* Вопрос на вспоминание в конце раздела: сначала короткий ответ своими словами, потом
+   эталон и честная сверка «совпало / не совпало». Без своего ответа эталон открывается только
+   через «Не помню» — это засчитывается как «не совпало»: вопрос вернётся через два дня,
+   раздел пока не пройден. */
+const MIN_RECALL = 12;
 function RecallCard({ b, ctx, from }) {
   const rec = ctx.progress.problems[b.id];
-  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [stage, setStage] = useState('write'); // write → check → done
   const [said, setSaid] = useState(null);
+  const ready = text.replace(/\s+/g, '').length >= MIN_RECALL;
   const mark = (ok) => {
     Audio.play(ok ? 'stamp' : 'tick');
     ctx.onAnswer(b.id, ok, {});
-    setSaid(ok);
+    setSaid(ok); setStage('done');
   };
   return (
     <div className="tb-box" style={{ borderLeftColor: COLOR.blue }} data-testid="tb-recall" data-recall={b.id}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
         <div className="tb-box-head" style={{ color: COLOR.blue, marginBottom: 6 }}><Brain size={13} />{from ? `${from} · ` : ''}Вспомните</div>
         {rec && said == null && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
-          {rec.ok ? 'вспомнили' : 'не вспомнили'}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
+          {rec.ok ? 'совпало' : 'не совпало'}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
       </div>
       <Blocks blocks={b.question} ctx={ctx} />
-      {!open && (
-        <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5, marginBottom: 10 }}
-          onClick={() => { Audio.play('click'); setOpen(true); }}>Показать ответ</button>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} disabled={stage !== 'write'}
+        aria-label="Ваш ответ на вопрос раздела" placeholder="Ответьте своими словами, одна-две фразы"
+        style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
+      {stage === 'write' && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} disabled={!ready}
+            onClick={() => { Audio.play('click'); setStage('check'); }}>Сверить с ответом</button>
+          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не помню</button>
+          {!ready && <span style={{ fontSize: 12, color: COLOR.faint }}>сначала свой ответ</span>}
+        </div>
       )}
-      {open && (
+      {stage !== 'write' && (
         <>
-          <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 8 }}><Blocks blocks={b.answer} ctx={ctx} /></div>
-          {said == null ? (
+          <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 8 }} data-testid="tb-recall-answer">
+            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 4 }}>Ответ учебника</div>
+            <Blocks blocks={b.answer} ctx={ctx} />
+          </div>
+          {stage === 'check' ? (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontSize: 13 }}>Вспомнили сами?</span>
-              <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(true)}>Вспомнил</button>
-              <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не вспомнил</button>
+              <span style={{ fontSize: 13 }}>Ваш ответ говорит о том же?</span>
+              <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(true)}>Совпало</button>
+              <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не совпало</button>
             </div>
           ) : (
             <div data-testid="tb-recall-verdict" style={{ fontSize: 13, marginBottom: 10, color: said ? COLOR.teal : COLOR.rust }}>
@@ -316,11 +350,20 @@ function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
       case 'recall': return <RecallCard key={b.id} b={b} ctx={ctx} />;
       case 'flow': return <FlowView key={i} b={b} ctx={ctx} />;
       case 'chart': return <ChartBox key={i} type={b.chart} attrs={b.attrs} caption={b.caption} ctx={ctx} />;
+      case 'diagram': return <DiagramBox key={i} b={b} ctx={ctx} />;
       case 'problem': problemNo += 1; return <ProblemCard key={b.id} block={b} no={problemNo} ctx={ctx} />;
       default: return null;
     }
   });
 }
+
+// {{имя}} в подписи графика → число из модели при текущих ползунках
+const fillVars = (nodes, vars) => nodes.map((n) => {
+  // в формуле десятичная запятая — {,}, иначе KaTeX ставит после неё пробел
+  if ((n.t === 'text' || n.t === 'math') && n.v.includes('{{')) return { ...n, v: n.v.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? (n.t === 'math' ? vars[k].replace(',', '{,}') : vars[k]) : m)) };
+  if (n.c) return { ...n, c: fillVars(n.c, vars) };
+  return n;
+});
 
 /* ------------------------------ ГРАФИК ------------------------------ */
 /* Размер графика в единицах SVG подстраивается под ширину экрана: на телефоне холст
@@ -508,7 +551,7 @@ function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = 
           <span key={r.label} style={{ color: COLOR.muted }}>{r.label}: <b className="ems-mono" style={{ color: COLOR.text }}>{r.value}</b></span>
         ))}
       </div>
-      {caption && <div style={{ fontSize: 12.5, color: COLOR.muted, marginTop: 8, lineHeight: 1.55 }}><Inline nodes={caption} ctx={ctx} /></div>}
+      {caption && <div style={{ fontSize: 12.5, color: COLOR.muted, marginTop: 8, lineHeight: 1.55 }} data-testid="tb-caption"><Inline nodes={fillVars(caption, captionVars(type, attrs, values))} ctx={ctx} /></div>}
     </div>
   );
 }
@@ -532,17 +575,34 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
         <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
         <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+          {block.news && <span className="tb-chip">по газете</span>}
           {LEVELS[block.level] && <span className="tb-chip" data-testid="tb-level">{LEVELS[block.level]}</span>}
           {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'шага' : 'шагов'}</span>}
           {status && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
             {status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
         </span>
       </div>
+      {block.news && (
+        <div className="tb-news" data-testid="tb-news">
+          <div className="ems-mono tb-news-mast">ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
+          <div className="ems-serif tb-news-head">{block.news}</div>
+        </div>
+      )}
       <div className="tb-body"><Blocks blocks={block.statement} ctx={ctx} /></div>
       {children}
       {verdict && (
         <div data-testid="tb-verdict" style={{ fontSize: 13, marginTop: 8, color: verdict.bad ? COLOR.muted : verdict.ok ? COLOR.teal : COLOR.rust }}>
           {verdict.ok && <Check size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}{verdict.text}
+        </div>
+      )}
+      {verdict && verdict.traps && verdict.traps.length > 0 && (
+        <div className="tb-box" style={{ borderLeftColor: COLOR.rust, margin: '8px 0 0' }} data-testid="tb-trap">
+          <div className="tb-box-head" style={{ color: COLOR.rust }}>Похоже на типичную ошибку</div>
+          {verdict.traps.map((tr, k) => (
+            <p key={k} style={{ fontSize: 13, lineHeight: 1.55, margin: '0 0 8px' }}>
+              {tr.label && <b className="ems-mono">{tr.label} </b>}<Inline nodes={tr.text} ctx={ctx} />
+            </p>
+          ))}
         </div>
       )}
       {hintsShown > 0 && (
@@ -620,7 +680,8 @@ function NumberProblem({ block, no, ctx, from }) {
     const marks = multi ? ` Шаги: ${parts.map((pt, k) => `${pt.label} ${rs[k].ok ? 'верно' : 'неверно'}`).join(', ')}.` : '';
     const text = ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : `${multi ? `Не все шаги сошлись.${marks}` : 'Пока неверно.'} ${WRONG.replace(/^Пока неверно\. /, '')}`;
     ctx.onAnswer(block.id, ok, { sawSolution: saw, confident: sure });
-    setVerdict({ ok, text });
+    const traps = ok ? [] : matchTraps(block, inputs).map((tr) => ({ label: multi ? parts[tr.part].label : '', text: tr.text }));
+    setVerdict({ ok, text, traps });
     setSure(null);
   };
   const setAt = (k, v) => { setInputs((xs) => xs.map((x, j) => (j === k ? v : x))); setVerdict(null); };
@@ -666,7 +727,11 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   const pick = (v) => {
     if (!ready) return;
     if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
-    if (v !== block.answer) { finish(false, `Утверждение ${block.answer ? 'верно' : 'неверно'}. ${WRONG}`); return; }
+    if (v !== block.answer) {
+      finish(false, `Утверждение ${block.answer ? 'верно' : 'неверно'}. ${WRONG}`);
+      setVerdict((vd) => ({ ...vd, traps: (block.traps || []).filter((tr) => tr.value === v) }));
+      return;
+    }
     setStage('check');
     setVerdict({ ok: true, text: `Выбор верный: утверждение ${block.answer ? 'верно' : 'неверно'}. Теперь сверьте объяснение.` });
   };
@@ -725,7 +790,10 @@ function GraphProblem({ block, no, ctx, from }) {
     Audio.play(r.ok ? 'stamp' : 'tick');
     const text = r.ok ? okText(ctx, block.id, `Верно: ${got}`, saw) : `На графике: ${got}.${extra} ${WRONG}`;
     ctx.onAnswer(block.id, r.ok, { sawSolution: saw, confident: sure });
-    setVerdict({ ok: r.ok, text });
+    // ловушка графической задачи — сдвинут «не тот» ползунок
+    const d0 = chartDefaults(block.chart, block.attrs);
+    const traps = r.ok ? [] : (block.traps || []).filter((tr) => Math.abs((values[tr.control] || 0) - (d0[tr.control] || 0)) > 1e-9);
+    setVerdict({ ok: r.ok, text, traps });
     setSure(null);
   };
   return (
@@ -749,7 +817,8 @@ function ProblemCard(props) {
 
 /* ------------------------------ СТРАНИЦЫ ------------------------------ */
 // «Назад» — туда, откуда пришли по ссылке; «Оглавление» — всегда
-const pageTitle = (pg) => (!pg ? '' : pg.kind === 'toc' ? 'Оглавление' : pg.kind === 'today' ? 'На сегодня' : pg.kind === 'chapter' ? (CHAPTER_BY_ID[pg.id] || {}).title : (APPENDIX_BY_ID[pg.id] || {}).title);
+const PAGE_TITLE = { toc: 'Оглавление', today: 'На сегодня', mixed: 'Задачи вперемешку', stats: 'Мой прогресс' };
+const pageTitle = (pg) => (!pg ? '' : PAGE_TITLE[pg.kind] || (pg.kind === 'exam' ? (EXAMS[pg.id] || {}).title : pg.kind === 'chapter' ? (CHAPTER_BY_ID[pg.id] || {}).title : (APPENDIX_BY_ID[pg.id] || {}).title));
 function PageNav({ ctx }) {
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -768,7 +837,7 @@ function PageNav({ ctx }) {
 const scrollToId = (id, smooth = true) => { const el = document.getElementById(id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' }); return !!el; };
 
 /* Оглавление главы по разделам: сколько минут читать каждый и пройден ли он (ответ
-   «вспомнил» на вопрос в конце раздела). Сверху — прогресс главы по разделам. */
+   «совпало» на вопрос в конце раздела). Сверху — прогресс главы по разделам. */
 function SectionNav({ sections, ctx }) {
   if (!sections || sections.length < 3) return null;
   const study = sections.filter((x) => x.recall);
@@ -968,7 +1037,7 @@ function ReviewPanel({ ctx, due }) {
     <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="review">
       <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 4 }}>На повторение{due.length ? ` · ${due.length}` : ''}</div>
       <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 6 }}>
-        Задачи с неверным ответом и вопросы разделов, которые не вспомнились, возвращаются через 2 дня; верно на повторении — следующий раз через 5, потом через 12 дней, и вопрос уходит из списка.
+        Задачи с неверным ответом и вопросы разделов, где ответ не совпал, возвращаются через 2 дня; верно на повторении — следующий раз через 5, потом через 12 дней, и вопрос уходит из списка.
       </div>
       {due.length === 0 && <div style={{ fontSize: 13 }}>Сегодня повторять нечего.</div>}
       {due.map((id) => {
@@ -987,7 +1056,7 @@ function ReviewPanel({ ctx, due }) {
 
 /* НА СЕГОДНЯ: один раздел минут на десять — прямо здесь, с вопросом в конце, — и всё, чему
    подошёл срок повторения. Раздел выбирается при входе и не меняется, пока экран открыт:
-   ответ «вспомнил» не должен выдёргивать текст из-под глаз. */
+   ответ «совпало» не должен выдёргивать текст из-под глаз. */
 function TodayPage({ ctx }) {
   const [plan] = useState(() => ({ next: nextSection(ctx.progress), due: dueItems(ctx.progress) }));
   const n = plan.next;
@@ -996,7 +1065,7 @@ function TodayPage({ ctx }) {
       <PageNav ctx={ctx} />
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 6px', fontWeight: 700 }}>На сегодня</h1>
       <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 14, lineHeight: 1.55 }}>
-        Один раздел минут на десять и вопросы, которым подошёл срок. Раздел пройден, когда на вопрос в его конце вы ответили «вспомнил».
+        Один раздел минут на десять и вопросы, которым подошёл срок. Раздел пройден, когда ваш ответ на вопрос в его конце совпал с ответом учебника.
       </div>
       {n ? (
         <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="today-section">
@@ -1033,6 +1102,239 @@ function TodayCard({ ctx }) {
   );
 }
 
+/* ИТОГОВАЯ ПРОВЕРКА БЛОКА: задачи из всех глав вперемешку, без подсказок и решений. Ответы
+   проверяются только по «Завершить»: счёт по темам, слабые места со ссылками на главы, разбор
+   каждой задачи. Неверные ответы уходят в повторение — вернутся в «На сегодня» через два дня. */
+function ExamPage({ id, ctx }) {
+  const exam = EXAMS[id];
+  const ids = useMemo(() => examProblems(id), [id]);
+  const [answers, setAnswers] = useState({});
+  const [result, setResult] = useState(null);
+  const [open, setOpen] = useState({});
+  const setAt = (pid, k, v) => setAnswers((a) => { const cur = (a[pid] || PROBLEMS[pid].block.parts.map(() => '')).slice(); cur[k] = v; return { ...a, [pid]: cur }; });
+  const finish = () => {
+    const r = examResult(ids, answers);
+    // пустой ответ — тоже ошибка: задача уходит в повторение
+    r.rows.forEach((row) => ctx.onAnswer(row.id, row.ok, {}));
+    Audio.play(r.ok >= r.total / 2 ? 'stamp' : 'tick');
+    setResult(r);
+    if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0);
+  };
+  const filled = ids.filter((pid) => (answers[pid] || []).some((x) => String(x || '').trim())).length;
+  return (
+    <div data-testid="exam">
+      <PageNav ctx={ctx} />
+      <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 6px', fontWeight: 700 }}>{exam.title}</h1>
+      {!result && (
+        <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 14, lineHeight: 1.55 }}>
+          {ids.length} задач из всех глав блока вперемешку — какая модель нужна, решаете вы. Подсказок и решений до конца нет. В конце — счёт по темам и слабые места; задачи с ошибкой уйдут на повторение.
+        </div>
+      )}
+      {result && (
+        <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="exam-result">
+          <div className="ems-serif" style={{ fontSize: 18, color: COLOR.goldSoft, marginBottom: 6 }}>Верно {result.ok} из {result.total}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: '3px 12px', fontSize: 13, marginBottom: 8 }}>
+            {result.topics.map((t) => (
+              <React.Fragment key={t.chapter}>
+                <span>{CHAPTER_BY_ID[t.chapter].title}</span>
+                <span className="ems-mono" style={{ color: t.ok === t.total ? COLOR.teal : t.ok / t.total < 0.5 ? COLOR.rust : COLOR.text }}>{t.ok}/{t.total}</span>
+              </React.Fragment>
+            ))}
+          </div>
+          {result.weak.length > 0 ? (
+            <div style={{ fontSize: 13.5, lineHeight: 1.6 }} data-testid="exam-weak">
+              Слабое место: {result.weak.map((t, k) => (
+                <React.Fragment key={t.chapter}>{k > 0 && ', '}
+                  <button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: t.chapter })}>{CHAPTER_BY_ID[t.chapter].title.toLowerCase()}</button>
+                </React.Fragment>
+              ))}. Перечитайте главу и решите её задачи.
+            </div>
+          ) : <div style={{ fontSize: 13.5 }} data-testid="exam-weak">Слабых мест нет: в каждой теме верно хотя бы половина.</div>}
+          {result.ok < result.total && <div style={{ fontSize: 12.5, color: COLOR.muted, marginTop: 6 }}>Задачи с ошибкой ушли на повторение и вернутся в «На сегодня» через два дня.</div>}
+        </div>
+      )}
+      {ids.map((pid, i) => {
+        const b = PROBLEMS[pid].block;
+        const row = result && result.rows.find((r) => r.id === pid);
+        const multi = b.parts.length > 1;
+        return (
+          <div key={pid} className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="exam-problem" data-problem={pid}>
+            <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
+              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Задача {i + 1}</span>
+              {row && <span className="tb-chip" style={{ color: row.ok ? COLOR.teal : COLOR.rust, borderColor: row.ok ? COLOR.teal : COLOR.rust }}>{row.ok ? 'верно' : 'неверно'}</span>}
+            </div>
+            <div className="tb-body"><Blocks blocks={b.statement} ctx={ctx} /></div>
+            <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {b.parts.map((pt, k) => (
+                <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: COLOR.muted }}>
+                  {pt.label && <span className="ems-mono" style={{ color: COLOR.text }}>{pt.label}</span>}
+                  <input value={(answers[pid] || [])[k] || ''} onChange={(e) => setAt(pid, k, e.target.value)} inputMode="decimal" disabled={!!result}
+                    aria-label={multi ? `Проверка, задача ${i + 1}, шаг ${pt.label}` : `Проверка, ответ к задаче ${i + 1}`}
+                    placeholder="ответ числом" style={{ ...inputStyle(), width: multi ? 120 : 150 }} />
+                  {pt.unit && <span>{pt.unit}</span>}
+                </label>
+              ))}
+            </div>
+            {row && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 13, color: row.ok ? COLOR.teal : COLOR.rust }}>
+                  Ответ: {withUnit(b)} · глава «<button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: PROBLEMS[pid].chapter })}>{CHAPTER_BY_ID[PROBLEMS[pid].chapter].title}</button>»
+                </div>
+                {!row.ok && matchTraps(b, answers[pid] || []).map((tr, k) => (
+                  <p key={k} style={{ fontSize: 13, lineHeight: 1.55, margin: '6px 0 0' }} data-testid="tb-trap"><Inline nodes={tr.text} ctx={ctx} /></p>
+                ))}
+                <button type="button" className="ems-btn" style={{ padding: '5px 11px', fontSize: 12, marginTop: 6 }} aria-expanded={!!open[pid]}
+                  onClick={() => setOpen((o) => ({ ...o, [pid]: !o[pid] }))}>{open[pid] ? 'Скрыть решение' : 'Решение'}</button>
+                {open[pid] && <div className="tb-body" style={{ marginTop: 8 }}><Blocks blocks={b.solution} ctx={ctx} /></div>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {!result && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="ems-btn primary" style={{ padding: '8px 16px', fontSize: 13.5 }} onClick={finish}>Завершить проверку</button>
+          <span style={{ fontSize: 12.5, color: COLOR.faint }}>заполнено {filled} из {ids.length}; пустые ответы считаются ошибкой</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ЗАДАЧИ ВПЕРЕМЕШКУ: задачи из пройденных глав без названия главы. Сначала — какая модель
+   нужна (три варианта), потом сама задача. Набор выбирается при входе. */
+function MixedItem({ item, no, ctx }) {
+  const [pick, setPick] = useState(null);
+  const b = PROBLEMS[item.id].block;
+  return (
+    <div className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="mixed-item" data-problem={item.id}>
+      {pick == null ? (
+        <>
+          <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, marginBottom: 4 }}>Задача {no} · какая модель нужна?</div>
+          {b.news && <div className="tb-news"><div className="ems-mono tb-news-mast">ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div><div className="ems-serif tb-news-head">{b.news}</div></div>}
+          <div className="tb-body"><Blocks blocks={b.statement} ctx={ctx} /></div>
+          <div style={{ fontSize: 13, marginBottom: 6 }}>Прежде чем решать: из какой главы здесь модель?</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} role="group" aria-label={`Модель для задачи ${no}`}>
+            {item.options.map((c) => (
+              <button key={c} type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }}
+                onClick={() => { Audio.play(c === item.chapter ? 'stamp' : 'tick'); setPick(c); }}>{CHAPTER_BY_ID[c].title}</button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <div data-testid="mixed-model" style={{ fontSize: 13, marginBottom: 4, color: pick === item.chapter ? COLOR.teal : COLOR.rust }}>
+            {pick === item.chapter ? `Верно: это модель из главы «${CHAPTER_BY_ID[item.chapter].title}».` : `Нет: здесь нужна глава «${CHAPTER_BY_ID[item.chapter].title}», а не «${CHAPTER_BY_ID[pick].title}». Теперь решите.`}
+          </div>
+          <ProblemCard block={b} no={no} ctx={ctx} />
+        </>
+      )}
+    </div>
+  );
+}
+function MixedPage({ ctx }) {
+  const [set] = useState(() => mixedSet(ctx.progress, 5));
+  const [round, setRound] = useState(0);
+  const [items, setItems] = useState(set);
+  const chapters = mixedChapters(ctx.progress);
+  return (
+    <div data-testid="mixed">
+      <PageNav ctx={ctx} />
+      <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 6px', fontWeight: 700 }}>Задачи вперемешку</h1>
+      <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 14, lineHeight: 1.55 }}>
+        Задачи из глав, которые вы начали{chapters.length ? ` (${chapters.length})` : ''}, без названия главы — как на экзамене и в жизни. Сначала решите, какая модель нужна, потом решайте.
+      </div>
+      {items.length === 0 && <div className="ems-panel" style={{ padding: 14, fontSize: 13.5 }}>Пока не из чего выбирать: пройдите хотя бы один раздел или отметьте главу прочитанной.</div>}
+      {items.map((it, k) => <MixedItem key={`${round}-${it.id}`} item={it} no={k + 1} ctx={ctx} />)}
+      {items.length > 0 && (
+        <button type="button" className="ems-btn" style={{ padding: '7px 14px', fontSize: 13 }}
+          onClick={() => { Audio.play('click'); setItems(mixedSet(ctx.progress, 5)); setRound((r) => r + 1); if (window.scrollTo) window.scrollTo(0, 0); }}>Ещё пять задач</button>
+      )}
+    </div>
+  );
+}
+
+/* МОЙ ПРОГРЕСС: разделы, точность уверенных и неуверенных ответов, три слабые темы со
+   ссылками и журнал занятий — дни и минуты за четыре недели, без серий и штрафов. */
+const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+function Journal({ days }) {
+  const weeks = journalWeeks(days);
+  const sum = journalSummary(days);
+  const shade = (m) => (m <= 0 ? 'transparent' : m < 10 ? 'rgba(80,160,150,.35)' : m < 30 ? 'rgba(80,160,150,.65)' : COLOR.teal);
+  return (
+    <div data-testid="tb-journal">
+      <div style={{ fontSize: 13, marginBottom: 8 }}>За четыре недели: занимались <b>{sum.days}</b> {plural(sum.days, 'день', 'дня', 'дней')}, всего <b>{sum.minutes}</b> мин.</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 36px))', gap: 4 }}>
+        {WEEKDAYS.map((d) => <span key={d} style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center' }}>{d}</span>)}
+        {weeks.flat().map((c) => (
+          <span key={c.key} title={`${c.key}: ${c.minutes} мин`} data-minutes={c.minutes}
+            style={{ height: 26, border: `1px solid ${c.future ? 'transparent' : COLOR.hairline}`, background: shade(c.minutes), fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.minutes >= 30 ? COLOR.bg : COLOR.muted }}>
+            {c.minutes > 0 ? c.minutes : ''}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+const plural = (n, one, few, many) => { const m10 = n % 10; const m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many; };
+function StatsPage({ ctx }) {
+  const ready = CHAPTERS.filter((c) => c.status === 'ready');
+  const secs = ready.reduce((acc, c) => { const sp = sectionProgress(ctx.progress, c.id); return { done: acc.done + sp.done, total: acc.total + sp.total }; }, { done: 0, total: 0 });
+  const conf = confidenceStats(ctx.progress, Object.keys(PROBLEMS));
+  const weak = weakTopics(ctx.progress);
+  const pct = (x) => (x.n ? `${Math.round((x.ok / x.n) * 100)}%` : '—');
+  return (
+    <div data-testid="stats">
+      <PageNav ctx={ctx} />
+      <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 12px', fontWeight: 700 }}>Мой прогресс</h1>
+      <div className="ems-panel" style={{ padding: 14, marginBottom: 14, fontSize: 13.5, lineHeight: 1.65 }}>
+        <div>Разделов пройдено: <b>{secs.done}</b> из {secs.total}</div>
+        <div data-testid="stats-confidence">
+          Уверенные ответы: {conf.sure.n ? <>верно <b>{conf.sure.ok}</b> из {conf.sure.n} ({pct(conf.sure)})</> : 'пока нет'}
+          {' · '}неуверенные: {conf.unsure.n ? <>верно <b>{conf.unsure.ok}</b> из {conf.unsure.n} ({pct(conf.unsure)})</> : 'пока нет'}
+        </div>
+        {conf.sure.n >= 5 && conf.sure.ok / conf.sure.n < 0.7 && <div style={{ color: COLOR.muted, fontSize: 12.5 }}>Уверенные ответы верны реже чем в 70% случаев — стоит чаще открывать решения и перечитывать разделы.</div>}
+      </div>
+      <div className="ems-panel" style={{ padding: 14, marginBottom: 14 }} data-testid="stats-weak">
+        <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 6 }}>Слабые темы</div>
+        {weak.length === 0 && <div style={{ fontSize: 13 }}>Пока не видно: нужно хотя бы по два ответа в главе, и среди них ошибки.</div>}
+        {weak.map((t) => (
+          <div key={t.chapter} style={{ fontSize: 13.5, marginBottom: 4 }}>
+            <button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: t.chapter })}>{CHAPTER_BY_ID[t.chapter].title}</button>
+            <span style={{ color: COLOR.muted }}> — неверно {t.wrong} из {t.tried}</span>
+          </div>
+        ))}
+      </div>
+      <div className="ems-panel" style={{ padding: 14 }}>
+        <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 6 }}>Журнал занятий</div>
+        <Journal days={ctx.progress.days} />
+      </div>
+    </div>
+  );
+}
+
+// «Проверить себя» в оглавлении
+function CheckPanel({ ctx }) {
+  const rows = [
+    { page: { kind: 'exam', id: 'micro' }, title: EXAMS.micro.title, text: `${examProblems('micro').length} задач из всех глав микро вперемешку, без подсказок; в конце — счёт по темам и слабые места.` },
+    { page: { kind: 'mixed' }, title: 'Задачи вперемешку', text: 'Задачи из начатых глав без названия главы: сначала понять, какая модель нужна.' },
+    { page: { kind: 'stats' }, title: 'Мой прогресс', text: 'Разделы, точность уверенных ответов, слабые темы и журнал занятий.' },
+  ];
+  return (
+    <div className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }} data-testid="tb-check">
+      <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 8px' }}>Проверить себя</div>
+      {rows.map((r) => (
+        <button key={r.title} type="button" className="tb-toc-row" onClick={() => { Audio.play('click'); ctx.go(r.page); }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 14 }}>{r.title}</span>
+            <span style={{ display: 'block', fontSize: 12, color: COLOR.faint, lineHeight: 1.45 }}>{r.text}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function TocPage({ ctx }) {
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
   const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
@@ -1057,6 +1359,7 @@ function TocPage({ ctx }) {
           onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>Продолжить: {last.title}</button>}
       </div>
       <TodayCard ctx={ctx} />
+      <CheckPanel ctx={ctx} />
       {PARTS.map((p) => (
         <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }}>
           <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 8px' }}>{p.title}</div>
@@ -1101,7 +1404,8 @@ function TocPage({ ctx }) {
 }
 
 /* ------------------------------ ЭКРАН ------------------------------
-   resume — вернуться туда, где читали (после Лаборатории или тайкуна), иначе оглавление.
+   resume — вернуться туда, где читали (после Лаборатории или тайкуна), иначе оглавление;
+   startPage — открыть сразу нужную страницу (из меню — «на сегодня», из игры — раздел главы).
    onOpenLab({ lever, cb, mode, scenario }), onStartDrill(setup), onOpenTycoon(taskId),
    onOpenScenario(id) — выходы в игру. */
 /* Где остановились в каждой странице: прокрутка запоминается и восстанавливается при
@@ -1130,9 +1434,9 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
-export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario }) {
+export function TextbookScreen({ onBack, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario }) {
   const [progress, setProgress] = useState(loadProgress);
-  const [page, setPage] = useState(() => (resume && progress.last ? progress.last : { kind: 'toc' }));
+  const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);
   const [scale, setScaleRaw] = useState(() => { const v = readJSON(SCALE_KEY, 1); return SCALES.includes(v) ? v : 1; });
   const setScale = (v) => { setScaleRaw(v); writeJSON(SCALE_KEY, v); };
@@ -1155,6 +1459,22 @@ export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => { syncTimer.current = null; syncProfile(playerId); }, 2000);
   };
+  /* Журнал занятий: раз в минуту, если экран на виду и за последние две минуты человек
+     что-то делал (прокрутка, нажатие, ввод), — ещё минута в сегодняшний день. */
+  React.useEffect(() => {
+    let lastAct = Date.now();
+    const act = () => { lastAct = Date.now(); };
+    const evs = ['scroll', 'pointerdown', 'keydown'];
+    evs.forEach((e) => window.addEventListener(e, act, { passive: true }));
+    const t = setInterval(() => {
+      const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+      if (visible && Date.now() - lastAct < 120000) update((p) => addStudyMinute(p));
+    }, 60000);
+    return () => { evs.forEach((e) => window.removeEventListener(e, act)); clearInterval(t); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // для карточки «Продолжить учиться» в меню: что на сегодня, без загрузки учебника
+  React.useEffect(() => { const n = nextSection(progress); saveTodaySnapshot(n && { ...n, chapterTitle: CHAPTER_BY_ID[n.chapter].title }); }, [progress]);
   // прокрутка текущей страницы — запоминается на ходу (не чаще раза в 300 мс)
   const pageRef = React.useRef(page);
   pageRef.current = page;
@@ -1193,7 +1513,7 @@ export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill
     if (push && pageKey(next) !== pageKey(page)) setStack((st) => [...st, page].slice(-30));
     setPage(next);
     // «продолжить» — глава или приложение; оглавление и «на сегодня» место чтения не меняют
-    update((p) => setLast(p, next.kind === 'toc' || next.kind === 'today' ? p.last : { kind: next.kind, id: next.id }));
+    update((p) => setLast(p, next.kind === 'chapter' || next.kind === 'appendix' ? { kind: next.kind, id: next.id } : p.last));
   };
   const back = () => {
     const prev = stack[stack.length - 1];
@@ -1206,16 +1526,20 @@ export function TextbookScreen({ onBack, resume = false, onOpenLab, onStartDrill
     onAnswer: (id, ok, opts) => update((p) => recordAnswer(p, id, ok, Date.now(), opts)),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
   };
-  const valid = page.kind === 'chapter' ? !!CHAPTER_BY_ID[page.id] : page.kind === 'appendix' ? !!APPENDIX_BY_ID[page.id] : page.kind === 'toc' || page.kind === 'today';
+  const valid = page.kind === 'chapter' ? !!CHAPTER_BY_ID[page.id] : page.kind === 'appendix' ? !!APPENDIX_BY_ID[page.id] : page.kind === 'exam' ? !!EXAMS[page.id]
+    : ['toc', 'today', 'mixed', 'stats'].includes(page.kind);
   const cur = valid ? page : { kind: 'toc' };
   return (
-    <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText} onBack={onBack}
+    <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText} onBack={onBack} backLabel={backLabel}
       lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
       <style>{CSS}</style>
       <ReaderBar scale={scale} setScale={setScale} />
       <div style={{ zoom: scale }} data-testid="tb-content">
         {cur.kind === 'toc' && <TocPage ctx={ctx} />}
         {cur.kind === 'today' && <TodayPage ctx={ctx} />}
+        {cur.kind === 'exam' && <ExamPage key={cur.id} id={cur.id} ctx={ctx} />}
+        {cur.kind === 'mixed' && <MixedPage ctx={ctx} />}
+        {cur.kind === 'stats' && <StatsPage ctx={ctx} />}
         {cur.kind === 'chapter' && <ChapterPage key={cur.id} id={cur.id} ctx={ctx} />}
         {cur.kind === 'appendix' && <AppendixPage key={cur.id} id={cur.id} anchor={cur.anchor} ctx={ctx} />}
       </div>
