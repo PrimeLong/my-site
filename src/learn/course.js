@@ -383,7 +383,37 @@ const sum = (items) => items.reduce((a, it) => a + (it.seconds || SECONDS[it.kin
 // карточки слов урока «Слова»: слово — на лицевой стороне, короткое определение — на обороте
 export const flashCards = (lesson) => lesson.terms.map((t) => ({ id: `${lesson.id}:card:${t.term}`, flash: true, term: t.term, title: termName(t.term), text: text(t.text) }));
 
-export function buildLesson(lessonId, rand = Math.random, { mistakes = [], hinted = [] } = {}) {
+/* Персональная программа (src/learn/program.js) подстраивает урок:
+   level — «easy» (точность ниже 60%): в выборе ответа три варианта вместо четырёх, а разбор
+   ошибки — по шагам (steps); «hard» (выше 90%): в практике часть упражнений заменяют задачи
+   семинарского и олимпиадного уровня (hard: 2 или 3);
+   weak — уроки со слабой точностью: их упражнения первыми идут в «Повторение». */
+export function buildLesson(lessonId, rand = Math.random, opts = {}) {
+  const p = buildLessonBase(lessonId, rand, opts);
+  const level = opts.level || 'normal';
+  if (level === 'easy') p.items = p.items.map((it) => easier(it, rand));
+  return p;
+}
+// три варианта вместо четырёх: верный и две ошибки — те, у которых есть объяснение, первыми
+function easier(it, rand) {
+  const out = { ...it, steps: true };
+  if ((it.kind === 'choice' || it.kind === 'gap') && it.options.length > 3) {
+    const right = it.options.find((o) => o.correct);
+    const wrong = it.options.filter((o) => !o.correct).sort((a, b) => (b.why ? 1 : 0) - (a.why ? 1 : 0)).slice(0, 2);
+    out.options = shuffle([right, ...wrong], rand);
+  }
+  return out;
+}
+// задачи семинарского и олимпиадного уровня юнита — для «уровня легенды» и сильных учеников
+function hardPool(unitId) {
+  const probs = Object.keys(PROBLEMS).filter((id) => PROBLEMS[id].chapter === unitId && PROBLEMS[id].block.level >= 2);
+  const autos = [];
+  probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unitId, level: PROBLEMS[pid].block.level }); } catch { /* многошаговая — в упражнение не годится */ } });
+  const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId, level: 2 }));
+  return { variants, autos, multi: probs.filter((id) => PROBLEMS[id].block.kind === 'number' && PROBLEMS[id].block.parts.length > 1) };
+}
+export const HARD_IN_PRACTICE = 2;
+function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = 'normal', weak = [] }) {
   const lesson = LESSON_BY_ID[lessonId];
   const unit = UNIT_BY_ID[lesson.unitId];
   if (['intro', 'story', 'listen'].includes(lesson.kind)) {
@@ -406,7 +436,9 @@ export function buildLesson(lessonId, rand = Math.random, { mistakes = [], hinte
     const pool = unit.lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(reviewable);
     const wrong = pool.filter((e) => mistakes.includes(e.id));
     const helped = pool.filter((e) => hinted.includes(e.id) && !mistakes.includes(e.id));
-    const rest = shuffle(pool.filter((e) => !mistakes.includes(e.id) && !hinted.includes(e.id)), rand);
+    // остальное: сначала из уроков со слабой точностью, потом прочее — вперемешку внутри групп
+    const other = pool.filter((e) => !mistakes.includes(e.id) && !hinted.includes(e.id));
+    const rest = [...shuffle(other.filter((e) => weak.includes(e.lesson)), rand), ...shuffle(other.filter((e) => !weak.includes(e.lesson)), rand)];
     const order = [...shuffle(wrong, rand), ...shuffle(helped, rand), ...rest];
     // двенадцать упражнений; если они все быстрые — ещё несколько, чтобы вышло минуты три
     let n = Math.min(REVIEW_SIZE, order.length);
@@ -442,6 +474,16 @@ export function buildLesson(lessonId, rand = Math.random, { mistakes = [], hinte
     const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !!items[i].review === dropReview);
     items.splice(k, 1);
   }
+  // сильному ученику — задачи семинарского и олимпиадного уровня вместо последних своих
+  if (level === 'hard') {
+    const { variants, autos } = hardPool(unit.id);
+    const hard = shuffle([...variants, ...autos], rand).slice(0, HARD_IN_PRACTICE);
+    hard.forEach((e) => {
+      const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard);
+      const it = instantiate(e, rand, { hard: e.level >= 3 ? 3 : 2 });
+      if (k != null && items.length >= 10) items.splice(k, 1, it); else items.push(it);
+    });
+  }
   return { lesson, items, cards: {}, seconds: estimate(items) };
 }
 export const LESSON_MAX_SECONDS = 300;
@@ -461,18 +503,55 @@ export function buildUnitCheck(unitId, rand = Math.random) {
 }
 export function buildLegend(unitId, rand = Math.random) {
   const unit = UNIT_BY_ID[unitId];
-  const probs = Object.keys(PROBLEMS).filter((id) => PROBLEMS[id].chapter === unitId && PROBLEMS[id].block.level >= 2);
-  const autos = [];
-  probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unitId }); } catch { /* многошаговая — в упражнение не годится */ } });
-  const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId }));
+  const { variants, autos, multi } = hardPool(unitId);
   const items = [...variants, ...autos].map((e) => instantiate(e, rand, { legend: true }));
-  return { course: unit, items: shuffle(items, rand), multi: probs.filter((id) => PROBLEMS[id].block.kind === 'number' && PROBLEMS[id].block.parts.length > 1) };
+  return { course: unit, items: shuffle(items, rand), multi };
 }
 
-// практика: ошибки прошлых уроков (по id упражнения), не больше двенадцати
-export function buildPractice(mistakeIds, rand = Math.random) {
+/* Практика: ошибки прошлых уроков (по id упражнения), не больше двенадцати. Если ошибок
+   мало — добираем до восьми упражнениями из слабых тем (weak — уроки, по порядку слабости). */
+export const PRACTICE_MIN = 8;
+export function buildPractice(mistakeIds, rand = Math.random, { weak = [] } = {}) {
   const exs = mistakeIds.map((id) => EXERCISES[id]).filter((e) => e && reviewable(e));
-  return { items: shuffle(exs, rand).slice(0, 12).map((e) => instantiate(e, rand, { practice: true })) };
+  const items = shuffle(exs, rand).slice(0, 12).map((e) => instantiate(e, rand, { practice: true }));
+  const have = new Set(exs.map((e) => e.id));
+  for (const lessonId of weak) {
+    if (items.length >= PRACTICE_MIN) break;
+    const lesson = LESSON_BY_ID[lessonId];
+    if (!lesson) continue;
+    const pool = shuffle(lesson.exercises.map((e) => EXERCISES[e.id]).filter((e) => reviewable(e) && !have.has(e.id)), rand);
+    pool.slice(0, PRACTICE_MIN - items.length).forEach((e) => { have.add(e.id); items.push(instantiate(e, rand, { practice: true, weak: true })); });
+  }
+  return { items };
+}
+
+/* Вступительный тест: по пять упражнений на юнит, юниты — по порядку Пути. Юнит считается
+   известным, если в его пятёрке не больше одной ошибки; первая проваленная пятёрка тест
+   заканчивает — дальше Путь откроется обычным порядком. */
+export const PLACE_PER_UNIT = 5;
+export const PLACE_MISTAKES = 1;
+export function buildPlacement(rand = Math.random) {
+  const items = [];
+  pilotUnits().forEach((u) => {
+    unitTest(u, Infinity, rand).slice(0, PLACE_PER_UNIT).forEach((it) => items.push({ ...it, placeUnit: u.id, check: true }));
+  });
+  return { items };
+}
+// какие юниты открыл тест: подряд с начала, пока в пятёрке юнита не больше одной ошибки
+export function placementOpened(items, first) {
+  const opened = [];
+  for (const u of pilotUnits()) {
+    const block = items.filter((it) => it.placeUnit === u.id);
+    if (!block.length || block.some((it) => !(it.uid in first))) break;
+    const wrong = block.filter((it) => !first[it.uid]).length;
+    if (wrong > PLACE_MISTAKES) break;
+    opened.push(u.id);
+  }
+  return opened;
+}
+// пятёрка юнита уже провалена — дальше спрашивать незачем
+export function placementFailed(items, first, unitId) {
+  return items.filter((it) => it.placeUnit === unitId && it.uid in first && !first[it.uid]).length > PLACE_MISTAKES;
 }
 
 /* ------------------------------ СОСТОЯНИЕ ПУТИ ------------------------------

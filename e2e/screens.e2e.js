@@ -12,21 +12,21 @@ const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star' 
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
 const DONE = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'];
 
-async function setup(page, { theme, account = true }) {
+async function setup(page, { theme, account = true, learn = null }) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
-  await page.addInitScript(({ theme: th, account: acc, a, done }) => {
+  await page.addInitScript(({ theme: th, account: acc, a, done, extra }) => {
     try {
       window.__INFLATIA_TEST__ = true;
       if (acc) localStorage.setItem('ems-account', JSON.stringify(a));
       if (th === 'dark') localStorage.setItem('ems-learn-dark', '1');
       if (!localStorage.getItem('ems-textbook-v1')) {
         const at = Date.now() - 86400000;
-        localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(done.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+        localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(done.map((id) => [id, { at, runs: 1, best: 90 }])), ...extra } }));
       }
     } catch { /* нет хранилища */ }
-  }, { theme, account, a: ACCOUNT, done: DONE });
+  }, { theme, account, a: ACCOUNT, done: DONE, extra: learn });
   return errors;
 }
 const shot = async (page, name, theme, opts = {}) => {
@@ -59,6 +59,14 @@ async function answer(page, wrong = false) {
   else if (kind === 'price') await ex.getByRole('slider', { name: 'Цена' }).fill(String(wrong ? ans + 3 : ans));
   else if (kind === 'curve') await ex.locator(`[data-curve="${ans[0]}"][data-dir="${ans[1]}"]`).click();
   else if (kind === 'tiles') { for (const k of ans) await ex.locator(`[data-tile="${k}"]`).click(); }
+  else if (kind === 'calc') {
+    for (const ch of wrong ? '99999' : ans) {
+      if (ch === '-') await ex.getByRole('button', { name: 'Минус' }).click();
+      else await ex.getByRole('group', { name: 'Цифровая клавиатура' }).getByRole('button', { name: ch, exact: true }).click();
+    }
+  } else if (kind === 'order') { for (const k of wrong ? [...ans].reverse() : ans) await ex.locator(`button[data-key="${k}"]`).click(); }
+  else if (kind === 'sort') { for (const [it, b] of Object.entries(ans)) await ex.locator(`[data-item="${it}"][data-bin="${b}"]`).click(); }
+  else if (kind === 'news') { for (const [v, d] of Object.entries(ans)) await ex.locator(`[data-var="${v}"][data-dir="${d}"]`).click(); }
   else if (kind === 'point') {
     const svg = ex.getByTestId('market-chart'); const pl = JSON.parse(await svg.getAttribute('data-plot')); const box = await svg.boundingBox();
     await svg.click({ position: { x: ((pl.x0 + (ans.q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (ans.p / pl.pMax) * pl.h) / pl.vh) * box.height } });
@@ -167,6 +175,52 @@ for (const theme of ['light', 'dark']) {
       await openLesson(page, 'sd-sum');
       await shot(page, '25-summary-point', theme);
       await exitLesson(page);
+      expect(errors).toEqual([]);
+    });
+
+    test(`награды и программа: утро, задания, лавка, сундук, вступительный тест (${theme})`, async ({ page }) => {
+      test.setTimeout(120_000);
+      // серия три дня, 240 монет, при регистрации — «кое-что знаю»: на Пути ждёт вступительный тест
+      const day = (back) => { const d = new Date(Date.now() - back * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+      const errors = await setup(page, { theme, learn: {
+        done: { [day(1)]: 2, [day(2)]: 1, [day(3)]: 1 }, xp: { [day(1)]: 40, [day(2)]: 20, [day(3)]: 20 }, coins: { [day(1)]: 240 },
+        profile: { goal: 'exam', minutes: 10, knows: true, at: Date.now() - 86400000 },
+        claimed: { 'a:first': Date.now() - 86400000, 'a:streak3': Date.now() - 86400000 },
+      } });
+      await page.goto('/', { waitUntil: 'networkidle' });
+      await expect(page.getByTestId('morning')).toBeVisible();
+      await shot(page, '35-morning', theme, { wait: 1200 });
+      await page.getByTestId('morning-go').click();
+      await expect(page.getByTestId('placement-card')).toBeVisible();
+      await shot(page, '36-path-quests', theme);
+      await page.getByTestId('wallet').click();
+      await expect(page.getByTestId('shop')).toBeVisible();
+      await shot(page, '37-shop', theme);
+      await page.locator('[data-testid=shop-item][data-item="bowtie"]').getByRole('button', { name: 'Купить' }).click();
+      await expect(page.getByTestId('shop-msg')).toContainText('Куплено');
+      await page.locator('[data-testid=shop-item][data-item="bowtie"]').scrollIntoViewIfNeeded();
+      await shot(page, '38-shop-bought', theme);
+      await page.getByTestId('shop').getByRole('button', { name: 'Назад' }).click();
+      await page.getByTestId('chest').first().scrollIntoViewIfNeeded();
+      await page.getByTestId('chest').first().click();
+      await shot(page, '39-chest', theme);
+      await page.getByTestId('chest-open').click();
+      await expect(page.getByTestId('chest-coins')).toBeVisible();
+      await shot(page, '40-chest-open', theme, { wait: 600 });
+      await page.getByRole('button', { name: 'Забрать' }).click();
+      await page.getByTestId('placement-start').scrollIntoViewIfNeeded();
+      await page.getByTestId('placement-start').click();
+      await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'placement');
+      await shot(page, '41-placement', theme);
+      for (let i = 0; i < 20 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) { await answer(page); await next(page); }
+      await expect(page.getByTestId('lesson-result')).toBeVisible();
+      await shot(page, '42-placement-result', theme, { wait: 1500 });
+      await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+      await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+      await page.getByTestId('prof-program').scrollIntoViewIfNeeded();
+      await shot(page, '43-profile-program', theme);
+      await page.getByTestId('achievements').scrollIntoViewIfNeeded();
+      await shot(page, '44-achievements', theme);
       expect(errors).toEqual([]);
     });
 

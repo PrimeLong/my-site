@@ -12,20 +12,15 @@ import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
 import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
-import { setGoal } from './textbook/learn-state.js';
+import { setGoal, setProfile, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES } from './textbook/learn-state.js';
 
-// ответы первого запуска; персональная программа (этап 3) возьмёт их отсюда
+// ответы первого запуска: после регистрации они уходят в программу ученика (learn.profile)
 const ONBOARD_KEY = 'ems-onboarding';
 export const loadOnboarding = () => { try { return JSON.parse(localStorage.getItem(ONBOARD_KEY) || 'null'); } catch { return null; } };
 const saveOnboarding = (v) => { try { localStorage.setItem(ONBOARD_KEY, JSON.stringify(v)); } catch { /* приватный режим */ } };
 
-export const GOALS = [
-  { id: 'exam', label: 'Поступление в вуз' }, { id: 'olymp', label: 'Олимпиада' },
-  { id: 'uni', label: 'Первый курс' }, { id: 'self', label: 'Для себя' },
-];
+export const GOALS = Object.entries(PROFILE_GOAL_LABEL).map(([id, label]) => ({ id, label }));
 export const MINUTES = [5, 10, 15, 20];
-// минуты в день → уроков в день (урок — 3–5 минут)
-const LESSONS_FOR = { 5: 1, 10: 2, 15: 3, 20: 5 };
 
 const CSS = `
   .wl { max-width: 460px; margin: 0 auto; padding: 18px 20px calc(24px + env(safe-area-inset-bottom)); min-height: 100vh; display: flex; flex-direction: column; }
@@ -110,10 +105,10 @@ function AuthForm({ mode, go, plan }) {
   const [error, setError] = useState('');
   const [shown, setShown] = useState(null);
   const finish = () => {
-    // цель дня из минут, выбранных при первом запуске
+    // программа ученика: цель, минуты (из них — цель дня и задание дня) и знания (вступительный тест)
     if (mode === 'register' && plan.minutes) {
       const p = loadProgress();
-      saveProgress({ ...p, learn: setGoal(p.learn, LESSONS_FOR[plan.minutes] || 1) });
+      saveProgress({ ...p, learn: setGoal(setProfile(p.learn, plan), LESSONS_FOR_MINUTES[plan.minutes] || 1) });
     }
     // аккаунт уже сохранён — приложение само перейдёт на Путь
     window.dispatchEvent(new Event('ems-account-ready'));
