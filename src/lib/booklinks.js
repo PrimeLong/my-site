@@ -7,6 +7,10 @@ const AS = L('ad-as', 'as', 'AD-AS: совокупное предложение'
 const SHOCKS = L('ad-as', 'shocks', 'AD-AS: шоки спроса и предложения');
 const MULT = L('money-banks', 'multiplier', 'Деньги и банки: как банки создают деньги');
 const TAX = L('market-failures', 'tax', 'Провалы рынка: налог и его бремя');
+const PHILLIPS = L('phillips', 'expectations', 'Кривая Филлипса: ожидания и естественная безработица');
+const TAYLOR = L('policy', 'taylor', 'Политика: правило Тейлора и реальная ставка');
+const STAB = L('policy', 'fiscal', 'Политика: автоматические стабилизаторы');
+const SOLOW = L('growth', 'steady', 'Модель Солоу: устойчивое состояние');
 
 // подсказки у рычагов
 export const LEVER_BOOK = {
@@ -18,8 +22,11 @@ export const LEVER_BOOK = {
 
 // вкладки «Почему это произошло?»
 export const WHY_BOOK = {
-  gdpGrowth: AD, outputGap: AS, inflation: SHOCKS, unemployment: AS, budget: ISLM, banking: MULT, potential: AS,
+  gdpGrowth: AD, outputGap: AS, inflation: PHILLIPS, unemployment: PHILLIPS, budget: STAB, banking: MULT, potential: SOLOW,
 };
+
+// «Компас ставки» на панели ЦБ
+export const COMPASS_BOOK = TAYLOR;
 
 // новости с цепочкой причин: по звеньям цепочки
 export function bookForChain(chain) {
@@ -31,9 +38,10 @@ export function bookForChain(chain) {
   if (has('Дилемма ЦБ') || has('Шок издержек') || (has('Издержки ↑') && has('Инфляция ↑'))) return SHOCKS;
   if (has('НДС')) return TAX;
   if (has('Выплаты ↑')) return ISLM;
+  if (has('Инфляция ↑') && (has('Реакция ЦБ') || has('Ожидания'))) return PHILLIPS;
   if (has('Спрос ↑') && has('Инфляция ↑')) return AD;
-  if (has('Производительность ↑')) return AS;
+  if (has('Производительность ↑') || has('Потенциал ↑')) return SOLOW;
   return null;
 }
 
-export const ALL_BOOK_LINKS = [ISLM, AD, AS, SHOCKS, MULT, TAX];
+export const ALL_BOOK_LINKS = [ISLM, AD, AS, SHOCKS, MULT, TAX, PHILLIPS, TAYLOR, STAB, SOLOW];

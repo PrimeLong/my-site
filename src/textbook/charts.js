@@ -1041,7 +1041,132 @@ extChart.measureNames = { Q: 'выпуск', dwl: 'безвозвратные п
 tradeChart.measureNames = { pies: 'пироги' };
 gdpChart.measureNames = { real: 'реальный ВВП', nominal: 'номинальный ВВП' };
 moneyChart.measureNames = { m: 'мультипликатор', M: 'денежная масса' };
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, money: moneyChart };
+
+/* ---------------- КРИВАЯ ФИЛЛИПСА ----------------
+   Краткосрочная кривая: π = πᵉ − β·(u − u*) + s. Долгосрочная — вертикаль на u*.
+   Ползунки: ожидаемая инфляция (сдвигает кривую), безработица (движение вдоль кривой),
+   шок предложения. Кнопка «ожидания догоняют»: πᵉ становится равной фактической инфляции. */
+const phParams = (A) => ({ us: num(A, 'us', 5), pe: num(A, 'pe', 4), beta: num(A, 'beta', 0.5) });
+export const phillipsPi = (p, pe, u, s = 0) => pe - p.beta * (u - p.us) + s;
+const phillipsChart = {
+  title: 'Кривая Филлипса',
+  controls: (A) => {
+    const p = phParams(A);
+    return [
+      { id: 'pe', label: 'Ожидаемая инфляция πᵉ, %', min: 0, max: 16, step: 0.5, def: p.pe, fmt: (v) => `${r1(v)}%` },
+      { id: 'u', label: 'Безработица u, %', min: 1, max: 12, step: 0.5, def: p.us, fmt: (v) => `${r1(v)}%` },
+      { id: 's', label: 'Шок предложения, п.п.', min: 0, max: 6, step: 0.5, def: 0, fmt: (v) => `+${r1(v)}` },
+      { id: 'catchup', label: 'Ожидания догоняют инфляцию', button: true },
+    ];
+  },
+  onButton: (A, v) => ({ ...v, pe: Math.round(phillipsPi(phParams(A), v.pe, v.u, v.s) * 2) / 2 }),
+  measure: (A, v) => { const p = phParams(A); return { pi: phillipsPi(p, v.pe, v.u, v.s), u: v.u, gap: v.u - p.us }; },
+  vars: (A) => { const p = phParams(A); return { us: p.us, pe: p.pe, beta: p.beta }; },
+  build: (A, v) => {
+    const p = phParams(A);
+    const pi = phillipsPi(p, v.pe, v.u, v.s);
+    const curve = (pe, s) => line((u) => phillipsPi(p, pe, u, s), 1, 12);
+    const moved = v.pe !== p.pe || v.s !== 0;
+    return {
+      xDomain: [0, 12], yDomain: [-2, 20], xLabel: 'u, %', yLabel: 'π, %',
+      curves: [
+        ...(moved ? [{ id: 'SR0', points: curve(p.pe, 0), ghost: true, color: 'blue' }] : []),
+        { id: 'LR', label: 'долгосрочная', labelPos: 0.92, points: [{ x: p.us, y: -2 }, { x: p.us, y: 20 }], color: 'gold', dashed: true },
+        { id: 'SR', label: `πᵉ = ${r1(v.pe)}%`, labelPos: 0.12, points: curve(v.pe, v.s), color: 'blue' },
+      ],
+      points: [{ x: v.u, y: pi, label: 'E', guide: true }],
+      readout: [
+        { label: 'Инфляция π, %', value: r1(pi) },
+        { label: 'Ожидания πᵉ, %', value: r1(v.pe) },
+        { label: 'u − u*, п.п.', value: r1(v.u - p.us) },
+        { label: pi > v.pe + 1e-9 ? 'Инфляция выше ожиданий' : pi < v.pe - 1e-9 ? 'Инфляция ниже ожиданий' : 'Ожидания сбылись', value: pi > v.pe + 1e-9 ? 'ожидания пойдут вверх' : pi < v.pe - 1e-9 ? 'ожидания пойдут вниз' : 'кривая стоит' },
+      ],
+    };
+  },
+};
+
+/* ---------------- ПРАВИЛО ТЕЙЛОРА ----------------
+   i = r* + π + 0,5·(π − π*) + 0,5·(разрыв выпуска) — та же формула, что в «Компасе ставки».
+   По горизонтали инфляция, по вертикали ставка; пунктир — «реальная ставка ноль» (i = π). */
+const tayParams = (A) => ({ rstar: num(A, 'rstar', 2), target: num(A, 'target', 4), pi: num(A, 'pi', 4), gap: num(A, 'gap', 0) });
+export const taylorRule = (rstar, pi, target, gap) => rstar + pi + 0.5 * (pi - target) + 0.5 * gap;
+const taylorChart = {
+  title: 'Правило Тейлора',
+  controls: (A) => {
+    const p = tayParams(A);
+    return [
+      { id: 'pi', label: 'Инфляция π, %', min: 0, max: 16, step: 0.5, def: p.pi, fmt: (v) => `${r1(v)}%` },
+      { id: 'gap', label: 'Разрыв выпуска, %', min: -6, max: 6, step: 0.5, def: p.gap, fmt: (v) => `${v > 0 ? '+' : ''}${r1(v)}%` },
+      { id: 'rstar', label: 'Нейтральная ставка r*, %', min: 0, max: 5, step: 0.5, def: p.rstar, fmt: (v) => `${r1(v)}%` },
+    ];
+  },
+  measure: (A, v) => { const p = tayParams(A); const i = taylorRule(v.rstar, v.pi, p.target, v.gap); return { i, real: i - v.pi }; },
+  vars: (A) => { const p = tayParams(A); return { i0: taylorRule(p.rstar, p.pi, p.target, p.gap), target: p.target, rstar: p.rstar }; },
+  build: (A, v) => {
+    const p = tayParams(A);
+    const i = taylorRule(v.rstar, v.pi, p.target, v.gap);
+    return {
+      xDomain: [0, 16], yDomain: [0, 30], xLabel: 'π, %', yLabel: 'i, %',
+      curves: [
+        { id: 'zero', label: 'i = π', labelPos: 0.9, points: [{ x: 0, y: 0 }, { x: 16, y: 16 }], color: 'rust', dashed: true },
+        { id: 'rule', label: 'правило', labelPos: 0.72, points: line((x) => clampV(taylorRule(v.rstar, x, p.target, v.gap), 0, 30), 0, 16), color: 'gold' },
+      ],
+      points: [{ x: v.pi, y: Math.max(0, i), label: 'i', guide: true }],
+      readout: [
+        { label: 'Ставка по правилу, %', value: r2(Math.max(0, i)) },
+        { label: 'Реальная ставка i − π, %', value: r2(i - v.pi) },
+        { label: 'Жёстче нейтральной на, п.п.', value: r2(i - v.pi - v.rstar) },
+        ...(i < 0 ? [{ label: 'Правило просит ставку ниже нуля', value: 'ловушка ликвидности' }] : []),
+      ],
+    };
+  },
+};
+
+/* ---------------- МОДЕЛЬ СОЛОУ ----------------
+   На работника: y = k^α; инвестиции s·y, «выбытие» (δ + n)·k. Устойчивое состояние —
+   там, где они равны: k* = (s/(δ + n))^(1/(1 − α)). */
+const solParams = (A) => ({ alpha: num(A, 'alpha', 0.5), s: num(A, 's', 0.25), n: num(A, 'n', 0.01), d: num(A, 'd', 0.04) });
+export const solowSteady = (alpha, s, n, d) => { const k = Math.pow(s / (n + d), 1 / (1 - alpha)); const y = Math.pow(k, alpha); return { k, y, c: (1 - s) * y, i: s * y }; };
+const solowChart = {
+  title: 'Модель Солоу',
+  controls: (A) => {
+    const p = solParams(A);
+    return [
+      { id: 's', label: 'Норма сбережения s', min: 0.05, max: 0.6, step: 0.01, def: p.s, fmt: (v) => `${Math.round(v * 100)}%` },
+      { id: 'n', label: 'Рост населения n', min: 0, max: 0.04, step: 0.005, def: p.n, fmt: (v) => `${r1(v * 100)}%` },
+      { id: 'd', label: 'Износ капитала δ', min: 0.02, max: 0.1, step: 0.005, def: p.d, fmt: (v) => `${r1(v * 100)}%` },
+    ];
+  },
+  measure: (A, v) => { const p = solParams(A); return solowSteady(p.alpha, v.s, v.n, v.d); },
+  vars: (A) => { const p = solParams(A); const st = solowSteady(p.alpha, p.s, p.n, p.d); return { k0: st.k, y0: st.y, c0: st.c, gold: p.alpha }; },
+  build: (A, v) => {
+    const p = solParams(A);
+    const st = solowSteady(p.alpha, v.s, v.n, v.d); const st0 = solowSteady(p.alpha, p.s, p.n, p.d);
+    const kMax = Math.max(st0.k * 2.2, st.k * 1.25);
+    const f = (k) => Math.pow(k, p.alpha);
+    const yMax = Math.ceil(f(kMax) * 1.15);
+    return {
+      xDomain: [0, kMax], yDomain: [0, yMax], xLabel: 'k', yLabel: 'y',
+      curves: [
+        { id: 'f', label: 'выпуск y = f(k)', labelPos: 0.8, points: line(f, 0, kMax, 80), color: 'teal' },
+        { id: 'sf', label: 'инвестиции s·f(k)', labelPos: 0.93, points: line((k) => v.s * f(k), 0, kMax, 80), color: 'gold' },
+        { id: 'dep', label: '(δ + n)·k', labelPos: 0.93, points: line((k) => (v.n + v.d) * k, 0, Math.min(kMax, yMax / (v.n + v.d))), color: 'rust' },
+      ],
+      points: [{ x: st.k, y: st.i, label: 'k*', guide: true }, { x: st.k, y: st.y, label: 'y*' }],
+      readout: [
+        { label: 'Капитал на работника k*', value: r2(st.k) },
+        { label: 'Выпуск на работника y*', value: r2(st.y) },
+        { label: 'Потребление c* = (1 − s)·y*', value: r2(st.c) },
+        { label: 'Золотое правило (макс. c*)', value: `s = ${Math.round(p.alpha * 100)}%` },
+      ],
+    };
+  },
+};
+phillipsChart.measureNames = { pi: 'инфляция', u: 'безработица', gap: 'u − u*' };
+taylorChart.measureNames = { i: 'ставка', real: 'реальная ставка' };
+solowChart.measureNames = { k: 'капитал на работника', y: 'выпуск на работника', c: 'потребление на работника', i: 'инвестиции на работника' };
+
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
 /* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
    текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
 const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));

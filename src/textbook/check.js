@@ -1,14 +1,17 @@
 /* ПРОВЕРКА ЗНАНИЙ: итоговая проверка по блоку, «задачи вперемешку», «мой прогресс» и журнал
    занятий. Модуль чистый — его читают тесты; экран — в textbook.jsx.
 
-   Итоговая проверка блока — по две числовые задачи из каждой готовой главы (базовая и
-   семинарская), вперемешку, без подсказок и решений до конца. В конце — счёт по темам и
-   слабые места; неверные ответы уходят в повторение.
+   Итоговая проверка блока — по два типа задач из каждой готовой главы (базовый и
+   семинарский), вперемешку, без подсказок и решений до конца. Задачи — параллельные варианты
+   (variants.js): тот же тип, что в главе, но числа новые при каждой пересдаче, чтобы проверка
+   меряла умение, а не память. В конце — счёт по темам и слабые места; ошибка отправляет на
+   повторение задачу главы того же типа.
 
-   «Задачи вперемешку» — задачи из глав, где пройден хотя бы раздел или глава отмечена
-   прочитанной, без названия главы: сначала нужно понять, какая модель здесь нужна. */
+   «Задачи вперемешку» — такие же варианты из глав, где пройден хотя бы раздел или глава
+   отмечена прочитанной, без названия главы: сначала нужно понять, какая модель здесь нужна. */
 import { CHAPTERS, CHAPTER_BY_ID } from './toc.js';
-import { PROBLEMS, problemsOf, studySections } from './content.js';
+import { problemsOf, studySections } from './content.js';
+import { templatesOf, makeVariant, seeded } from './variants.js';
 import { checkAnswer } from './markdown.js';
 import { sectionProgress } from './study.js';
 import { dayKey } from './progress.js';
@@ -19,48 +22,44 @@ export const EXAMS = {
 
 const readyOf = (part) => CHAPTERS.filter((c) => c.status === 'ready' && c.part === part);
 
-// детерминированное перемешивание: тот же набор — тот же порядок у всех
-function mix(list, seed = 7) {
+// перемешивание с зерном: у одного зерна — один порядок
+function mix(list, rand) {
   const out = list.slice();
-  let s = seed;
   for (let i = out.length - 1; i > 0; i -= 1) {
-    s = (s * 1103515245 + 12345) % 2147483648;
-    const j = s % (i + 1);
+    const j = Math.floor(rand() * (i + 1));
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
 }
 
-// задачи проверки: из каждой главы первая числовая базового и первая семинарского уровня
-export function examProblems(examId) {
+/* Задачи проверки — параллельные варианты: из каждой главы блока тип задачи базового и тип
+   семинарского уровня, с новыми числами при каждом seed (каждой пересдаче). Соседние задачи —
+   из разных глав: по порядку тему не угадать. */
+export function examTemplates(examId) {
   const exam = EXAMS[examId];
   if (!exam) return [];
-  const ids = readyOf(exam.part).flatMap((c) => {
-    const nums = problemsOf(c.id).filter((id) => PROBLEMS[id].block.kind === 'number');
-    return [1, 2].map((lv) => nums.find((id) => PROBLEMS[id].block.level === lv)).filter(Boolean);
-  });
-  // соседние задачи — из разных глав: по номеру главы не угадать
-  let order = mix(ids);
-  for (let tries = 0; tries < 50 && order.some((id, k) => k > 0 && PROBLEMS[id].chapter === PROBLEMS[order[k - 1]].chapter); tries += 1) order = mix(ids, 11 + tries);
-  return order;
+  return readyOf(exam.part).flatMap((c) => [1, 2].map((lv) => templatesOf(c.id).find((t) => t.level === lv)).filter(Boolean));
+}
+export function examSet(examId, seed = 1) {
+  const rand = seeded(seed);
+  const tpls = examTemplates(examId);
+  let order = mix(tpls, rand);
+  for (let k = 0; k < 200 && order.some((t, i) => i > 0 && t.chapter === order[i - 1].chapter); k += 1) order = mix(tpls, rand);
+  return order.map((t, i) => makeVariant(t.id, (seed * 7919 + i * 104729) >>> 0));
 }
 
 // верна ли задача целиком: все шаги
-export const examCorrect = (id, inputs) => {
-  const b = PROBLEMS[id].block;
-  return b.parts.every((pt, k) => checkAnswer((inputs || [])[k], pt.answer, pt.tol, pt.unit).ok);
-};
+export const examCorrect = (block, inputs) => block.parts.every((pt, k) => checkAnswer((inputs || [])[k], pt.answer, pt.tol, pt.unit).ok);
 
 /* Итог проверки: по каждой главе — сколько верно; слабые места — главы, где верно меньше
-   половины (по возрастанию доли), не больше трёх. */
-export function examResult(ids, answers) {
+   половины (по возрастанию доли), не больше трёх. answers — по id варианта. */
+export function examResult(blocks, answers) {
   const byChapter = {};
-  const rows = ids.map((id) => {
-    const ok = examCorrect(id, answers[id]);
-    const ch = PROBLEMS[id].chapter;
-    byChapter[ch] = byChapter[ch] || { chapter: ch, ok: 0, total: 0 };
-    byChapter[ch].total += 1; if (ok) byChapter[ch].ok += 1;
-    return { id, ok };
+  const rows = blocks.map((b) => {
+    const ok = examCorrect(b, answers[b.id]);
+    byChapter[b.chapter] = byChapter[b.chapter] || { chapter: b.chapter, ok: 0, total: 0 };
+    byChapter[b.chapter].total += 1; if (ok) byChapter[b.chapter].ok += 1;
+    return { id: b.id, source: b.source, ok };
   });
   const topics = Object.values(byChapter);
   const weak = topics.filter((t) => t.ok / t.total < 0.5).sort((a, b) => a.ok / a.total - b.ok / b.total).slice(0, 3);
@@ -72,18 +71,18 @@ export function mixedChapters(progress) {
   return CHAPTERS.filter((c) => c.status === 'ready' && (progress.read[c.id] || sectionProgress(progress, c.id).done > 0)).map((c) => c.id);
 }
 
-/* Набор «вперемешку»: n задач из пройденных глав, у каждой — три варианта модели: верная глава
-   и две другие (сначала из того же блока). rand — для тестов. */
+/* Набор «вперемешку»: n параллельных вариантов задач из пройденных глав, у каждой — три
+   варианта модели: верная глава и две другие (сначала из того же блока). rand — для тестов. */
 export function mixedSet(progress, n = 5, rand = Math.random) {
   const chapters = mixedChapters(progress);
-  const pool = chapters.flatMap((c) => problemsOf(c));
+  const pool = chapters.flatMap((c) => templatesOf(c));
   const pick = (arr, k) => {
     const a = arr.slice(); const out = [];
     while (a.length && out.length < k) out.push(a.splice(Math.floor(rand() * a.length), 1)[0]);
     return out;
   };
-  return pick(pool, n).map((id) => {
-    const ch = PROBLEMS[id].chapter;
+  return pick(pool, n).map((tpl) => {
+    const ch = tpl.chapter;
     const part = CHAPTER_BY_ID[ch].part;
     const others = CHAPTERS.filter((c) => c.status === 'ready' && c.id !== ch);
     const same = others.filter((c) => c.part === part).map((c) => c.id);
@@ -91,7 +90,8 @@ export function mixedSet(progress, n = 5, rand = Math.random) {
     const wrong = pick(same, 2);
     if (wrong.length < 2) wrong.push(...pick(rest, 2 - wrong.length));
     const options = pick([ch, ...wrong], 3);
-    return { id, chapter: ch, options };
+    const block = makeVariant(tpl.id, Math.floor(rand() * 2 ** 31));
+    return { id: block.id, block, chapter: ch, source: tpl.source, options };
   });
 }
 
