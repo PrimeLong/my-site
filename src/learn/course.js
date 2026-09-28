@@ -179,7 +179,7 @@ function lessonsOf(chapterId) {
       addAuto(cur, b);
     } else if (b.type === 'idea') {
       if (b.who && !CAST[b.who]) throw new Error(`Нет героя ${b.who} (${b.id})`);
-      out.push({ id: b.id, unit: chapterId, no: out.length + 1, title: b.title, kind: b.kind, idea: b, section: sectionOf(chapterId, b), exercises: [],
+      out.push({ id: b.id, unitId: chapterId, no: out.length + 1, title: b.title, kind: b.kind, idea: b, section: sectionOf(chapterId, b), exercises: [],
         inner: STEP_KINDS.includes(b.kind) ? [{ at: 0, idea: b }] : [], terms: b.terms || null });
       const cur = out[out.length - 1];
       if (b.kind === 'words') {
@@ -201,7 +201,7 @@ export const UNITS = CHAPTERS.map((c) => ({ id: c.id, title: c.title, part: c.pa
 export const UNIT_BY_ID = Object.fromEntries(UNITS.map((u) => [u.id, u]));
 export const LESSONS = UNITS.flatMap((u) => u.lessons);
 export const LESSON_BY_ID = Object.fromEntries(LESSONS.map((l) => [l.id, l]));
-export const EXERCISES = Object.fromEntries(LESSONS.flatMap((l) => l.exercises.map((e) => [e.id, { ...e, lesson: l.id, unit: l.unit }])));
+export const EXERCISES = Object.fromEntries(LESSONS.flatMap((l) => l.exercises.map((e) => [e.id, { ...e, lesson: l.id, unitId: l.unitId }])));
 export const pilotUnits = () => UNITS.filter((u) => u.lessons.length);
 
 /* ------------------------------ ЭКЗЕМПЛЯР УПРАЖНЕНИЯ ------------------------------
@@ -213,7 +213,7 @@ function shuffle(list, rand) {
 }
 let uidSeq = 0;
 export function instantiate(ex, rand = Math.random, extra = {}) {
-  const base = { uid: `u${uidSeq += 1}`, id: ex.id, kind: ex.kind, lesson: ex.lesson, unit: ex.unit, prompt: ex.prompt, explain: ex.explain || null, seconds: SECONDS[ex.kind], ...extra };
+  const base = { uid: `u${uidSeq += 1}`, id: ex.id, kind: ex.kind, lesson: ex.lesson, unitId: ex.unitId, prompt: ex.prompt, explain: ex.explain || null, seconds: SECONDS[ex.kind], ...extra };
   switch (ex.kind) {
     case 'choice': case 'gap':
       return { ...base, options: shuffle(ex.options.map((o, k) => ({ key: `o${k}`, text: o.text, raw: o.raw, correct: o.correct, why: o.why })), rand) };
@@ -383,9 +383,9 @@ const sum = (items) => items.reduce((a, it) => a + (it.seconds || SECONDS[it.kin
 // карточки слов урока «Слова»: слово — на лицевой стороне, короткое определение — на обороте
 export const flashCards = (lesson) => lesson.terms.map((t) => ({ id: `${lesson.id}:card:${t.term}`, flash: true, term: t.term, title: termName(t.term), text: text(t.text) }));
 
-export function buildLesson(lessonId, rand = Math.random, { mistakes = [] } = {}) {
+export function buildLesson(lessonId, rand = Math.random, { mistakes = [], hinted = [] } = {}) {
   const lesson = LESSON_BY_ID[lessonId];
-  const unit = UNIT_BY_ID[lesson.unit];
+  const unit = UNIT_BY_ID[lesson.unitId];
   if (['intro', 'story', 'listen'].includes(lesson.kind)) {
     // шаги и вопросы строго по порядку, без повторения: это первая встреча с темой
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
@@ -402,11 +402,12 @@ export function buildLesson(lessonId, rand = Math.random, { mistakes = [] } = {}
     return { lesson, items, cards: {}, seconds: sum(items) };
   }
   if (lesson.kind === 'review') {
-    // ошибки этого юнита — первыми, дальше — упражнения прошлых уроков юнита вперемешку
+    // ошибки этого юнита — первыми, за ними решённые с подсказкой, дальше — остальное вперемешку
     const pool = unit.lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(reviewable);
     const wrong = pool.filter((e) => mistakes.includes(e.id));
-    const rest = shuffle(pool.filter((e) => !mistakes.includes(e.id)), rand);
-    const order = [...shuffle(wrong, rand), ...rest];
+    const helped = pool.filter((e) => hinted.includes(e.id) && !mistakes.includes(e.id));
+    const rest = shuffle(pool.filter((e) => !mistakes.includes(e.id) && !hinted.includes(e.id)), rand);
+    const order = [...shuffle(wrong, rand), ...shuffle(helped, rand), ...rest];
     // двенадцать упражнений; если они все быстрые — ещё несколько, чтобы вышло минуты три
     let n = Math.min(REVIEW_SIZE, order.length);
     while (n < Math.min(15, order.length) && order.slice(0, n).reduce((a, e) => a + SECONDS[e.kind], 0) < 180) n += 1;
@@ -450,22 +451,22 @@ export const estimate = (items) => IDEA_SECONDS + items.reduce((s, it) => s + (i
    уроков юнита вперемешку, 10 штук. Сдана, если ошибок с первой попытки не больше одной.
    «Уровень легенды» — то же из задач семинарского и олимпиадного уровня. */
 function unitTest(unit, beforeNo, rand) {
-  const variants = templatesOf(unit.id).filter((t) => t.level === 1 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unit: unit.id }));
+  const variants = templatesOf(unit.id).filter((t) => t.level === 1 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId: unit.id }));
   const pool = shuffle(unit.lessons.filter((l) => l.no < beforeNo).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter((e) => !e.variant && reviewable(e)), rand);
   return shuffle([...variants, ...pool].slice(0, 10).map((e) => instantiate(e, rand, { check: true })), rand);
 }
 export function buildUnitCheck(unitId, rand = Math.random) {
   const unit = UNIT_BY_ID[unitId];
-  return { unit, items: unitTest(unit, Infinity, rand), passMistakes: 1 };
+  return { course: unit, items: unitTest(unit, Infinity, rand), passMistakes: 1 };
 }
 export function buildLegend(unitId, rand = Math.random) {
   const unit = UNIT_BY_ID[unitId];
   const probs = Object.keys(PROBLEMS).filter((id) => PROBLEMS[id].chapter === unitId && PROBLEMS[id].block.level >= 2);
   const autos = [];
-  probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unit: unitId }); } catch { /* многошаговая — в упражнение не годится */ } });
-  const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unit: unitId }));
+  probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unitId }); } catch { /* многошаговая — в упражнение не годится */ } });
+  const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId }));
   const items = [...variants, ...autos].map((e) => instantiate(e, rand, { legend: true }));
-  return { unit, items: shuffle(items, rand), multi: probs.filter((id) => PROBLEMS[id].block.kind === 'number' && PROBLEMS[id].block.parts.length > 1) };
+  return { course: unit, items: shuffle(items, rand), multi: probs.filter((id) => PROBLEMS[id].block.kind === 'number' && PROBLEMS[id].block.parts.length > 1) };
 }
 
 // практика: ошибки прошлых уроков (по id упражнения), не больше двенадцати
@@ -489,7 +490,7 @@ export function pathState(learn) {
       return { id: l.id, no: l.no, title: l.title, done, open };
     });
     const current = lessons.find((l) => l.open && !l.done) || null;
-    return { unit: u, lessons, current, complete: lessons.every((l) => l.done), tested: !!learn.units[u.id] };
+    return { course: u, lessons, current, complete: lessons.every((l) => l.done), tested: !!learn.units[u.id] };
   });
 }
 export const unitTitle = (id) => (CHAPTER_BY_ID[id] || {}).title || id;

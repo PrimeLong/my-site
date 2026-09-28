@@ -26,3 +26,6 @@ dist-ssr
 # браузерные тесты
 test-results/
 playwright-report/
+
+# скриншоты всех экранов (e2e/screens.e2e.js)
+screens/

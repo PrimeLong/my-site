@@ -984,6 +984,13 @@ export function createAudioEngine(options = {}) {
     alarm: () => { const t = now(); [0, 0.22, 0.44].forEach((d) => { tone(233, t + d, 0.18, 0.06, 'square'); tone(175, t + d + 0.09, 0.18, 0.05, 'square'); }); },
     news: () => { const t = now(); tone(1500, t, 0.04, 0.025, 'sine'); tone(2100, t + 0.05, 0.05, 0.02, 'sine'); },
     coin: () => { const t = now(); tone(988, t, 0.09, 0.035, 'triangle'); tone(1319, t + 0.05, 0.16, 0.03, 'triangle'); },
+    // касса в конце урока: щелчок ящика, звонок и ссыпающиеся монеты
+    register: () => {
+      const t = now();
+      noiseHit(t, 0.07, 0.07, 'bandpass', 900, 0.9, sfxBus);
+      tone(2093, t + 0.06, 0.7, 0.045, 'sine'); tone(2637, t + 0.06, 0.55, 0.025, 'sine'); tone(4186, t + 0.06, 0.25, 0.01, 'sine');
+      [0.32, 0.38, 0.45, 0.5, 0.58].forEach((d, i) => tone(1500 + i * 140, t + d, 0.06, 0.018, 'triangle'));
+    },
   };
 
   return {

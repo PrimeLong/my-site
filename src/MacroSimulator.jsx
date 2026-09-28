@@ -18,7 +18,8 @@ import {
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon } from './account.jsx';
-import { learnThemeId, LEARN_FONT } from './learn-ui.jsx';
+import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx } from './ds-tokens.js';
+import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { todayCard } from './textbook/today-snapshot.js';
 import { BookLinkContext } from './booklink-context.js';
@@ -73,26 +74,9 @@ export const THEMES = {
 /* Темы обучения (Путь, практика, профиль, учебник-справочник): светлая и яркая по
    умолчанию, тёмная — по выбору в профиле. В переключателе тем «Мира» их нет: там
    остаётся канцелярия. */
-THEMES.learn = { id: 'learn', name: 'Обучение', dark: false, learn: true, colors: {
-  bg: '#FFFFFF', bgVignette: '#F7F9FB', panel: '#FFFFFF', panelAlt: '#F3F6F9', panelRaised: '#FFFFFF',
-  border: '#E3E6EA', borderStrong: '#C9CED4', hairline: '#EEF1F4',
-  text: '#2F3437', muted: '#545C66', faint: '#666E78',
-  paper: '#FFF7E0', paperText: '#2F3437', paperMuted: '#6B6450', paperRule: '#EAD9A6',
-  gold: '#E8A300', goldSoft: '#9A6400', goldDim: 'rgba(232,163,0,0.14)', ink: '#2B1D00',
-  teal: '#1F9D46', tealDim: 'rgba(31,157,70,0.12)',
-  rust: '#D93A3F', rustDim: 'rgba(217,58,63,0.12)',
-  blue: '#1682C4', blueDim: 'rgba(22,130,196,0.12)',
-  sel: '#DDF4FF', selText: '#12476A', selBorder: '#84D8FF' } };
-THEMES.learnDark = { id: 'learnDark', name: 'Обучение (тёмная)', dark: true, learn: true, colors: {
-  bg: '#131F24', bgVignette: '#16242A', panel: '#1B2B32', panelAlt: '#20333B', panelRaised: '#243A43',
-  border: '#37464F', borderStrong: '#52656D', hairline: '#2A3A42',
-  text: '#F1F7FB', muted: '#B4C4CC', faint: '#9CB0BA',
-  paper: '#22343C', paperText: '#F1F7FB', paperMuted: '#B4C4CC', paperRule: '#37464F',
-  gold: '#FFC800', goldSoft: '#FFD84D', goldDim: 'rgba(255,200,0,0.16)', ink: '#2B1D00',
-  teal: '#58CC02', tealDim: 'rgba(88,204,2,0.16)',
-  rust: '#FF5B5B', rustDim: 'rgba(255,91,91,0.16)',
-  blue: '#1CB0F6', blueDim: 'rgba(28,176,246,0.16)',
-  sel: '#1F3D4D', selText: '#E8F7FF', selBorder: '#1CB0F6' } };
+// цвета — из токенов дизайн-системы обучения (src/ds-tokens.js): бумага и тушь
+THEMES.learn = { id: 'learn', name: 'Обучение', dark: false, learn: true, colors: appColors(DS_THEMES.paper) };
+THEMES.learnDark = { id: 'learnDark', name: 'Обучение (тёмная)', dark: true, learn: true, colors: appColors(DS_THEMES.ink) };
 // темы для переключателя в «Мире» и в партии — без тем обучения
 export const WORLD_THEMES = Object.values(THEMES).filter((t) => !t.learn);
 
@@ -953,6 +937,8 @@ const TextbookScreen = React.lazy(() => import('./textbook.jsx').then((m) => ({ 
 const loadLearn = () => import('./learn.jsx');
 const LearnTab = React.lazy(() => loadLearn().then((m) => ({ default: m.LearnTab })));
 const Welcome = React.lazy(() => import('./welcome.jsx'));
+// витрина дизайн-системы обучения — внутренняя страница …/#ds
+const DsShowcase = React.lazy(() => import('./ds-showcase.jsx'));
 const DrillsScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.DrillsScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
@@ -1075,28 +1061,27 @@ function DailyCard({ onStart }) {
       : ch.role === 'president' ? `ЦБ: ${cbName} · Минфин: ${mofName}` : 'обе ветви в ваших руках';
   const roleTitle = (ROLES.find((r) => r.id === ch.role) || {}).short;
   return (
-    <div className="ems-panel ems-fade-in" style={{ padding: '13px 15px', marginBottom: 18, borderColor: `${COLOR.gold}88` }}>
+    <div className="ds-card" style={{ marginBottom: 18 }} data-testid="daily-card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <Calendar size={16} color={COLOR.gold} style={{ flexShrink: 0 }} />
+        <Calendar size={18} color="var(--u-ink)" style={{ flexShrink: 0 }} aria-hidden="true" />
         <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-          <div className="ems-serif" style={{ fontSize: 15, color: COLOR.goldSoft }}>Вызов дня · {dailyDateLabel(ch.day)}</div>
-          <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 1 }}>
+          <div className="ds-eyebrow">Вызов дня</div>
+          <div className="ds-h3">{dailyDateLabel(ch.day)}</div>
+          <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 2 }}>
             {roleTitle} · {scenario.id === 'sandbox' ? 'спокойный старт' : scenario.title.toLowerCase()} · {diff.title.toLowerCase()} · {ch.quarters} кв.
-            {best ? <> · ваш лучший <b className="ems-mono" style={{ color: COLOR.gold }}>{best.score.toFixed(1).replace('.', ',')}</b></> : null}
+            {best ? <> · ваш лучший <b className="ds-num" style={{ color: 'var(--u-ink)' }}>{best.score.toFixed(1).replace('.', ',')}</b></> : null}
           </div>
         </div>
-        <button className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 12 }}
-          onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart(ch); }}>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+        <Button small onClick={() => { Audio.prime(); Audio.play('stamp'); Audio.startMusic(); onStart(ch); }}>
           {best ? 'Ещё раз' : 'Принять вызов'}
-        </button>
-        <button className="ems-btn" style={{ padding: '7px 11px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}
-          aria-expanded={open} onClick={() => { Audio.play('tab'); setOpen((v) => !v); }}>
-          <Trophy size={13} />Таблица дня
-        </button>
+        </Button>
+        <Button small variant="secondary" icon={Trophy} aria-expanded={open} onClick={() => { Audio.play('tab'); setOpen((v) => !v); }}>Таблица дня</Button>
       </div>
       {open && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 8 }}>
+          <div className="ds-sub" style={{ fontSize: 13.5, lineHeight: 1.5, marginBottom: 8 }}>
             Одна партия на всех: тот же пост, тот же кризис и те же случайные события. Итог — пять оценок, где цель дня
             («{goal ? goal.label.toLowerCase() : '—'}») весит вдвое. Боты: {rivals}. Новый вызов через {untilNextDaily()}.
           </div>
@@ -1182,28 +1167,11 @@ const NAV_TABS = [
 ];
 function BottomNav({ tab, onTab }) {
   const learning = tab !== 'world';
+  // та же панель из дизайн-системы: в обучении — бумага (или тушь), в «Мире» — его тёмная тема
   return (
-    <nav aria-label="Разделы" data-testid="bottom-nav"
-      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 120, background: COLOR.panel, borderTop: `2px solid ${COLOR.border}`,
-        paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: learning ? 'none' : '0 -6px 18px rgba(0,0,0,.25)' }}>
-      <div style={{ display: 'flex', maxWidth: 560, margin: '0 auto' }}>
-        {NAV_TABS.map((t) => {
-          const on = tab === t.id;
-          const Icon = t.icon;
-          return (
-            <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on ? undefined : `tab:${t.id}`}
-              onClick={() => { if (on) return; Audio.prime(); Audio.play('tab'); onTab(t.id); }}
-              style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: on ? 'default' : 'pointer', padding: '8px 2px 7px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                color: on ? (learning ? COLOR.blue : COLOR.gold) : COLOR.muted, fontFamily: learning ? LEARN_FONT : FONT.sans, fontSize: 12, fontWeight: on ? 800 : 600 }}>
-              <span style={{ display: 'flex', padding: '3px 14px', borderRadius: 12, border: `2px solid ${on && learning ? COLOR.selBorder : 'transparent'}`, background: on && learning ? COLOR.sel : 'none' }}>
-                <Icon size={22} strokeWidth={on ? 2.4 : 1.9} />
-              </span>
-              <span>{t.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </nav>
+    <DsRoot theme={dsThemeId()} world={learning ? null : COLOR} style={{ background: 'none' }}>
+      <Tabs tabs={NAV_TABS} active={tab} onTab={(t) => { Audio.prime(); Audio.play('tab'); onTab(t); }} />
+    </DsRoot>
   );
 }
 
@@ -1362,16 +1330,16 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
       {list.map((m, i) => {
         const Icon = m.icon;
         return (
-          <div key={m.id} className="ems-card-btn ems-fade-in menu-mode" style={{ animationDelay: `${delay + 60 + i * 50}ms` }} data-mode={m.id}
+          <div key={m.id} className="ds-card menu-mode" style={{ cursor: 'pointer', padding: 14 }} data-mode={m.id} data-delay={delay + i}
             role="button" tabIndex={0} onClick={m.action} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') m.action(); }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-              <div className="ems-card-icon" style={{ width: 38, height: 38 }}><Icon size={18} color={COLOR.gold} /></div>
+              <span style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--u)', color: 'var(--ds-paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={19} aria-hidden="true" /></span>
               <div style={{ minWidth: 0 }}>
-                <div className="ems-serif" style={{ fontSize: 16, color: COLOR.text }}>{m.title}</div>
-                <div style={{ fontSize: 12, color: COLOR.goldSoft, marginTop: 1 }}>{m.tag}</div>
+                <div className="ds-h3">{m.title}</div>
+                <div className="ds-eyebrow" style={{ fontSize: 11, letterSpacing: '.08em', marginTop: 2 }}>{m.tag}</div>
               </div>
             </div>
-            <div className="menu-mode-desc" style={{ fontSize: 13, color: COLOR.muted, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>
+            <div className="menu-mode-desc ds-sub" style={{ fontSize: 14, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>
           </div>
         );
       })}
@@ -1379,7 +1347,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   );
 
   return (
-    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: inShell ? '28px 16px 104px' : '36px 16px 48px' }} data-testid="world">
+    <DsRoot world={COLOR} className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: inShell ? '28px 16px 104px' : '36px 16px 48px' }} data-testid="world">
       <GlobalStyle />
       <style>{menuCss()}</style>
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
@@ -1394,7 +1362,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
           <InflatiaMark size={54} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 className="ems-serif menu-title">Inflatia</h1>
+            <h1 className="ds-h1 menu-title">Inflatia</h1>
             <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>Симулятор государства и бизнеса</div>
           </div>
           {!inShell && profileSlot}
@@ -1409,13 +1377,13 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 
         {/* 1. Продолжить учиться */}
         {study && (
-          <div className="ems-fade-in menu-continue" role="button" tabIndex={0} data-testid="menu-study"
+          <div className="ds-card menu-continue" role="button" tabIndex={0} data-testid="menu-study"
             onClick={() => { Audio.prime(); Audio.play('stamp'); onTextbook({ kind: 'today' }); }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { Audio.prime(); onTextbook({ kind: 'today' }); } }}>
-            <div className="ems-card-icon" style={{ width: 46, height: 46, flexShrink: 0 }}><BookOpenText size={21} color={COLOR.gold} /></div>
+            <div style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 4, background: 'var(--ds-card2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BookOpenText size={21} color={COLOR.gold} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить учиться</div>
-              <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>
+              <div className="ds-eyebrow">Продолжить учиться</div>
+              <div className="ds-h3" style={{ marginTop: 1 }}>
                 {study.section ? `«${study.section.title}»` : 'Повторение и задачи'}
               </div>
               <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
@@ -1428,18 +1396,18 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         )}
 
         {/* 2. Учиться */}
-        <div className="menu-section-label">{inShell ? 'Модель в действии' : 'Учиться'}</div>
+        <div className="menu-section-label ds-eyebrow">{inShell ? 'Модель в действии' : 'Учиться'}</div>
         {renderModes(LEARN)}
 
         {/* 3. Играть: продолжить партию, режимы, вызов дня */}
-        <div className="menu-section-label">Играть</div>
+        <div className="menu-section-label ds-eyebrow">Играть</div>
         {mainContinue && (
-          <div className="ems-fade-in menu-continue" role="button" tabIndex={0} onClick={mainContinue.go}
+          <div className="ds-card menu-continue" role="button" tabIndex={0} onClick={mainContinue.go}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') mainContinue.go(); }}>
-            <div className="ems-card-icon" style={{ width: 46, height: 46, flexShrink: 0 }}><mainContinue.icon size={21} color={COLOR.gold} /></div>
+            <div style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 4, background: 'var(--ds-card2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><mainContinue.icon size={21} color={COLOR.gold} /></div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, color: COLOR.goldSoft, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Продолжить</div>
-              <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text, marginTop: 1 }}>{mainContinue.title}</div>
+              <div className="ds-eyebrow">Продолжить</div>
+              <div className="ds-h3" style={{ marginTop: 1 }}>{mainContinue.title}</div>
               <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>{mainContinue.sub}</div>
             </div>
             {mainContinue.remove && (
@@ -1467,7 +1435,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 
         {/* 4. Все сохранения — свёрнуты, чтобы не заслонять главное */}
         {savesTotal > 0 && (
-          <div className="ems-panel ems-fade-in" style={{ padding: 0, marginBottom: 18, overflow: 'hidden' }}>
+          <div className="ds-card" style={{ padding: 0, marginBottom: 18, overflow: 'hidden' }}>
             <button className="menu-fold" aria-expanded={savesOpen} onClick={() => { Audio.play('tab'); setSavesOpen((v) => !v); }}>
               <Save size={14} color={COLOR.gold} />
               <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Все сохранения</span>
@@ -1537,7 +1505,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           <AudioControls />
         </div>
       </div>
-    </div>
+    </DsRoot>
   );
 }
 
@@ -1558,15 +1526,13 @@ const menuCss = () => `
   .menu-profile { display: flex; align-items: center; gap: 7px; padding: 7px 11px; font-size: 13px; flex-shrink: 0; max-width: 170px; }
   .menu-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   @media (max-width: 560px) { .menu-profile { padding: 7px 9px; max-width: 110px; } .menu-eyebrow { font-size: 12px; letter-spacing: 0.1em; } }
-  .menu-continue { display: flex; align-items: center; gap: 14px; cursor: pointer; padding: 16px 18px; margin-bottom: 8px;
-    border-radius: 14px; border: 1px solid ${COLOR.gold}; background: linear-gradient(135deg, ${COLOR.goldDim}, ${COLOR.panel} 70%);
-    box-shadow: 0 16px 36px -20px rgba(0,0,0,0.7); transition: transform .18s ease, box-shadow .18s ease; }
-  .menu-continue:hover, .menu-continue:focus-visible { transform: translateY(-2px); box-shadow: 0 22px 40px -18px rgba(0,0,0,0.75); outline: none; }
+  .menu-continue { display: flex; align-items: center; gap: 14px; cursor: pointer; margin-bottom: 8px; }
+  .menu-continue:focus-visible { outline: 3px solid var(--ds-sel-rule); outline-offset: 2px; }
   .menu-continue-alt { width: 100%; display: flex; align-items: center; gap: 6px; padding: 9px 14px; font-size: 13px; text-align: left; margin-bottom: 4px; }
-  .menu-section-label { font-size: 12px; color: ${COLOR.faint}; letter-spacing: 0.1em; text-transform: uppercase; margin: 20px 0 10px; }
+  .menu-section-label { margin: 22px 0 10px; }
   .menu-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
   @media (max-width: 600px) { .menu-modes { grid-template-columns: minmax(0, 1fr); } }
-  .menu-mode { flex-direction: column; align-items: stretch !important; gap: 0 !important; padding: 15px 16px; }
+  .menu-mode { display: flex; flex-direction: column; }
   @media (max-width: 600px) { .menu-mode-desc { display: none; } .menu-mode { padding: 12px 14px; } }
   .menu-fold { width: 100%; display: flex; align-items: center; gap: 8px; padding: 13px 15px; background: none; border: none; cursor: pointer; font: inherit; color: inherit; text-align: left; }
   .menu-slot { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: ${COLOR.panelAlt}; border: 1px solid ${COLOR.border}; font-size: 12px; color: ${COLOR.text}; }
@@ -2033,6 +1999,12 @@ export default function MacroSimulator() {
      Экран входа закрывается событием ems-account-ready, когда аккаунт сохранён и код
      восстановления показан; выход из аккаунта возвращает на приветствие. */
   const account = useAccount();
+  const [showcase, setShowcase] = useState(() => typeof window !== 'undefined' && window.location.hash === '#ds');
+  React.useEffect(() => {
+    const f = () => setShowcase(window.location.hash === '#ds');
+    window.addEventListener('hashchange', f);
+    return () => window.removeEventListener('hashchange', f);
+  }, []);
   const [gate, setGate] = useState(() => !loadAccount());
   React.useEffect(() => {
     const ready = () => { setGate(false); setView('menu'); setTabRaw('path'); window.scrollTo(0, 0); };
@@ -2041,7 +2013,7 @@ export default function MacroSimulator() {
   }, []);
   React.useEffect(() => { if (!account) setGate(true); }, [account]);
   // тёмная тема обучения переключается в профиле — перерисовать оболочку
-  const [, setLearnTick] = useState(0);
+  const [learnTick, setLearnTick] = useState(0);
   // вернулись из Лаборатории, партии или «Своего дела», открытых из учебника, — снова в учебник
   const [reopenBook, setReopenBook] = useState(false);
   const [labLever, setLabLever] = useState('keyRate');
@@ -2073,6 +2045,21 @@ export default function MacroSimulator() {
   const learning = showGate || (view === 'menu' && !setup && !network && !tycoon && tab !== 'world');
   // обучение — в своей светлой (или тёмной по выбору) теме; «канцелярия» — только в «Мире»
   applyTheme(learning ? learnThemeId() : theme);
+  /* Звук: в обучении музыка по умолчанию выключена (своя настройка в профиле), звуки
+     ответов — отдельный переключатель, по умолчанию включён. Уходя в «Мир», возвращаем
+     его настройки — там музыка играет как раньше. */
+  const worldAudio = React.useRef(null);
+  React.useEffect(() => {
+    if (learning) {
+      if (!worldAudio.current) worldAudio.current = { music: Audio.opts.music, sfx: Audio.opts.sfx };
+      // setMusic(false) сам останавливает музыку и не грузит звуковой движок раньше времени
+      Audio.setMusic(learnMusic()); Audio.setSfx(learnSfx());
+    } else if (worldAudio.current) {
+      Audio.setMusic(worldAudio.current.music); Audio.setSfx(worldAudio.current.sfx);
+      worldAudio.current = null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [learning, learnTick]);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setGameFromBook(false); setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
@@ -2216,6 +2203,7 @@ export default function MacroSimulator() {
       )}
     </BookLinkContext.Provider>
   ) : screen;
+  if (showcase) return <Suspense fallback={<GameFallback />}><DsShowcase /></Suspense>;
   if (showGate) {
     return (
       <div className="ems-root" data-testid="gate">

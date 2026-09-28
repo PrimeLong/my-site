@@ -12,39 +12,44 @@ import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
 import { equilibrium, marketAxes, qd, qs } from './learn/course.js';
 import { CAST } from './learn/cast.js';
-import { useReducedMotion } from './learn-ui.jsx';
+import { useReducedMotion } from './ds-art.jsx';
 
 export const PLAY_CSS = `
   .lp-chart { width: 100%; max-width: 380px; display: block; margin: 6px auto 10px; touch-action: none; user-select: none; -webkit-user-select: none; }
-  .lp-chart text { font: 700 11px 'Nunito', sans-serif; fill: var(--c-muted); }
+  .lp-chart text { font: 700 11px var(--ds-mono); fill: var(--ds-ink2); }
   .lp-hit { cursor: grab; }
   .lp-hit:active { cursor: grabbing; }
   .lp-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 6px 0; }
   .lp-readout { text-align: center; font-size: 15px; margin: 4px 0 10px; min-height: 22px; }
+  .lp-readout b { font-family: var(--ds-mono); }
   .lp-range { width: 100%; accent-color: var(--u); height: 32px; }
-  .lp-tiles { min-height: 64px; border: 2px dashed var(--c-border); border-radius: 14px; padding: 8px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
-  .lp-tile { font: 700 15px 'Nunito', sans-serif; padding: 9px 12px; border-radius: 12px; border: 2px solid var(--c-border); border-bottom-width: 4px; background: var(--c-panel); color: var(--c-text); cursor: pointer; }
-  .lp-tile:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 2px; }
-  .lp-timer { height: 10px; border-radius: 5px; background: var(--c-border); overflow: hidden; margin: 4px 0 12px; }
+  .lp-tiles { min-height: 64px; border: 1px dashed var(--ds-rule2); border-radius: 4px; padding: 8px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; background: var(--ds-card2); }
+  .lp-tile { font: 15px/1.2 var(--ds-serif); padding: 9px 12px; border-radius: 2px; border: 1px solid var(--ds-rule2); border-bottom-width: 2px; background: var(--ds-card); color: var(--ds-ink); cursor: pointer; }
+  .lp-tile:active:not(:disabled) { transform: translateY(1px); }
+  .lp-timer { height: 8px; border-radius: 1px; background: var(--ds-card2); border: 1px solid var(--ds-rule2); overflow: hidden; margin: 4px 0 12px; }
   .lp-timer > span { display: block; height: 100%; background: var(--u); transition: width .1s linear; }
-  .lp-timer.low > span { background: #FF4B4B; }
-  .lp-card { position: relative; min-height: 150px; border-radius: 20px; border: 2px solid var(--c-border); border-bottom-width: 5px; background: var(--c-panel);
-    display: flex; align-items: center; justify-content: center; text-align: center; padding: 22px 18px; font: 800 21px 'Nunito', sans-serif; margin: 10px 0 14px; touch-action: pan-y; user-select: none; }
-  .lp-card.ok { border-color: var(--c-teal); }
-  .lp-card.bad { border-color: var(--c-rust); }
-  .lp-score { display: flex; justify-content: space-between; font: 800 14px 'Nunito', sans-serif; color: var(--c-muted); }
+  .lp-timer.low > span { background: var(--ds-bad); }
+  .lp-card { position: relative; min-height: 150px; border-radius: 6px; border: 1px solid var(--ds-rule2); background: var(--ds-card);
+    box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule), 0 2px 4px var(--ds-shade);
+    display: flex; align-items: center; justify-content: center; text-align: center; padding: 22px 18px; font: 700 20px/1.3 var(--ds-serif); margin: 10px 0 14px; touch-action: pan-y; user-select: none; }
+  .lp-card.ok { border-color: var(--ds-ok); box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-ok); }
+  .lp-card.bad { border-color: var(--ds-bad); box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-bad); }
+  .lp-score { display: flex; justify-content: space-between; font: 700 13px var(--ds-mono); color: var(--ds-ink2); }
   .lp-flash { perspective: 900px; margin: 12px 0; }
-  .lp-flash-in { position: relative; min-height: 190px; transition: transform .45s; transform-style: preserve-3d; }
+  .lp-flash-in { position: relative; min-height: 200px; transition: transform .45s; transform-style: preserve-3d; }
   .lp-flash-in.flip { transform: rotateY(180deg); }
-  .lp-face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 22px; border: 2px solid var(--c-border); border-bottom-width: 5px; background: var(--c-panel);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px; text-align: center; }
-  .lp-face.back { transform: rotateY(180deg); background: var(--c-sel); border-color: var(--c-sel-border); color: var(--c-sel-text); }
-  .lp-bubble { position: relative; background: var(--c-panel); border: 2px solid var(--c-border); border-radius: 18px; padding: 14px 16px; font-size: 17.5px; line-height: 1.5; margin-top: 12px; }
-  .lp-bubble::before { content: ''; position: absolute; top: -11px; left: 30px; width: 18px; height: 18px; background: var(--c-panel); border-left: 2px solid var(--c-border); border-top: 2px solid var(--c-border); transform: rotate(45deg); }
-  .lp-word { border-radius: 4px; transition: background .15s; }
-  .lp-word.on { background: color-mix(in srgb, var(--u) 28%, transparent); }
-  .lp-word.done { color: var(--c-text); }
-  .lp-listen-text { font-size: 17.5px; line-height: 1.6; color: var(--c-muted); }
+  /* слово — библиотечная каталожная карточка: красная линейка сверху, отверстие внизу */
+  .lp-face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 3px; border: 1px solid var(--ds-rule2); background: var(--ds-card);
+    background-image: linear-gradient(transparent 38px, #C0392B 38px, #C0392B 39.5px, transparent 39.5px), repeating-linear-gradient(transparent 0 27px, var(--ds-rule) 27px 28px);
+    background-position: 0 0, 0 40px; background-repeat: no-repeat, repeat; box-shadow: 0 2px 5px var(--ds-shade);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 18px 26px; text-align: center; }
+  .lp-face::after { content: ''; position: absolute; bottom: 8px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--ds-paper); box-shadow: inset 0 1px 2px var(--ds-shade); }
+  .lp-face.back { transform: rotateY(180deg); }
+  .lp-bubble { position: relative; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 4px; padding: 14px 16px; font-size: 17.5px; line-height: 1.5; margin-top: 12px; }
+  .lp-word { border-radius: 2px; transition: background .15s; }
+  .lp-word.on { background: color-mix(in srgb, var(--u) 26%, transparent); }
+  .lp-word.done { color: var(--ds-ink); }
+  .lp-listen-text { font: 17.5px/1.6 var(--ds-serif); color: var(--ds-ink2); }
   @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span, .lp-word { transition: none !important; } }
 `;
 
@@ -104,32 +109,32 @@ export function MarketChart({ m, shift = { D: 0, S: 0 }, show = ['D', 'S'], ghos
       data-plot={JSON.stringify({ x0: PL, y0: PT, w: PW, h: PH, vw: VW, vh: VH, qMax: ax.qMax, pMax: ax.pMax })}
       onPointerMove={move} onPointerUp={up} onPointerCancel={up} onClick={click} style={{ cursor: onPlot ? 'crosshair' : undefined }}>
       <rect x={PL} y={PT} width={PW} height={PH} fill="none" />
-      {ticksP.map((p) => <g key={`p${p}`}><line x1={PL} x2={PL + PW} y1={yOf(p, ax)} y2={yOf(p, ax)} stroke="var(--c-hairline)" strokeWidth="1" /><text x={PL - 6} y={yOf(p, ax) + 4} textAnchor="end">{p}</text></g>)}
+      {ticksP.map((p) => <g key={`p${p}`}><line x1={PL} x2={PL + PW} y1={yOf(p, ax)} y2={yOf(p, ax)} stroke="var(--ds-rule)" strokeWidth="1" /><text x={PL - 6} y={yOf(p, ax) + 4} textAnchor="end">{p}</text></g>)}
       {ticksQ.map((q) => <text key={`q${q}`} x={xOf(q, ax)} y={PT + PH + 16} textAnchor="middle">{q}</text>)}
-      <line x1={PL} y1={PT} x2={PL} y2={PT + PH} stroke="var(--c-muted)" strokeWidth="2" />
-      <line x1={PL} y1={PT + PH} x2={PL + PW} y2={PT + PH} stroke="var(--c-muted)" strokeWidth="2" />
+      <line x1={PL} y1={PT} x2={PL} y2={PT + PH} stroke="var(--ds-ink2)" strokeWidth="2" />
+      <line x1={PL} y1={PT + PH} x2={PL + PW} y2={PT + PH} stroke="var(--ds-ink2)" strokeWidth="2" />
       <text x={PL + 4} y={PT + 10}>P</text><text x={PL + PW - 4} y={PT + PH - 6} textAnchor="end">Q</text>
-      {ghost && show.includes('D') && (shift.D || m.dA) ? <path d={curvePath(fD({ ...m, dA: 0 }), ax)} stroke="#1CB0F6" strokeOpacity=".45" strokeWidth="2.5" strokeDasharray="6 5" fill="none" /> : null}
-      {ghost && show.includes('S') && (shift.S || m.dC) ? <path d={curvePath(fS({ ...m, dC: 0 }), ax)} stroke="#FF9600" strokeOpacity=".45" strokeWidth="2.5" strokeDasharray="6 5" fill="none" /> : null}
-      {show.includes('D') && <path d={curvePath(fD(dm), ax)} stroke="#1CB0F6" strokeWidth="4" fill="none" strokeLinecap="round" data-curve-line="D" />}
-      {show.includes('S') && <path d={curvePath(fS(sm), ax)} stroke="#FF9600" strokeWidth="4" fill="none" strokeLinecap="round" data-curve-line="S" />}
+      {ghost && show.includes('D') && (shift.D || m.dA) ? <path d={curvePath(fD({ ...m, dA: 0 }), ax)} stroke="#3E6FA8" strokeOpacity=".45" strokeWidth="2.5" strokeDasharray="6 5" fill="none" /> : null}
+      {ghost && show.includes('S') && (shift.S || m.dC) ? <path d={curvePath(fS({ ...m, dC: 0 }), ax)} stroke="#C0602A" strokeOpacity=".45" strokeWidth="2.5" strokeDasharray="6 5" fill="none" /> : null}
+      {show.includes('D') && <path d={curvePath(fD(dm), ax)} stroke="#3E6FA8" strokeWidth="4" fill="none" strokeLinecap="round" data-curve-line="D" />}
+      {show.includes('S') && <path d={curvePath(fS(sm), ax)} stroke="#C0602A" strokeWidth="4" fill="none" strokeLinecap="round" data-curve-line="S" />}
       {onDrag && show.map((c) => (
         <path key={c} d={curvePath(c === 'D' ? fD(dm) : fS(sm), ax)} stroke="transparent" strokeWidth="26" fill="none" className="lp-hit" onPointerDown={down(c)} data-hit={c} />
       ))}
-      {show.includes('D') && (() => { const q = clampN(qd(dm, ax.pMax * 0.12), 0, ax.qMax); return <text x={xOf(q, ax) + 4} y={yOf(ax.pMax * 0.12, ax) - 6} style={{ fill: '#1682C4' }}>D</text>; })()}
-      {show.includes('S') && (() => { const p = ax.pMax * 0.9; const q = clampN(qs(sm, p), 0, ax.qMax); return <text x={xOf(q, ax) + 6} y={yOf(p, ax) + 4} style={{ fill: '#D97A00' }}>S</text>; })()}
+      {show.includes('D') && (() => { const q = clampN(qd(dm, ax.pMax * 0.12), 0, ax.qMax); return <text x={xOf(q, ax) + 4} y={yOf(ax.pMax * 0.12, ax) - 6} style={{ fill: '#3E6FA8' }}>D</text>; })()}
+      {show.includes('S') && (() => { const p = ax.pMax * 0.9; const q = clampN(qs(sm, p), 0, ax.qMax); return <text x={xOf(q, ax) + 6} y={yOf(p, ax) + 4} style={{ fill: '#C0602A' }}>S</text>; })()}
       {price != null && (() => {
         const d = clampN(qd(dm, price), 0, ax.qMax); const s = clampN(qs(sm, price), 0, ax.qMax);
         return (
           <g data-testid="price-line">
             <line x1={PL} x2={PL + PW} y1={yOf(price, ax)} y2={yOf(price, ax)} stroke="var(--u)" strokeWidth="2" strokeDasharray="4 4" />
-            <line x1={xOf(Math.min(d, s), ax)} x2={xOf(Math.max(d, s), ax)} y1={yOf(price, ax)} y2={yOf(price, ax)} stroke={d > s ? '#FF4B4B' : '#FF9600'} strokeWidth="7" strokeLinecap="round" opacity=".75" />
-            <circle cx={xOf(d, ax)} cy={yOf(price, ax)} r="5" fill="#1CB0F6" /><circle cx={xOf(s, ax)} cy={yOf(price, ax)} r="5" fill="#FF9600" />
+            <line x1={xOf(Math.min(d, s), ax)} x2={xOf(Math.max(d, s), ax)} y1={yOf(price, ax)} y2={yOf(price, ax)} stroke={d > s ? 'var(--ds-bad)' : '#C0602A'} strokeWidth="7" strokeLinecap="round" opacity=".75" />
+            <circle cx={xOf(d, ax)} cy={yOf(price, ax)} r="5" fill="#3E6FA8" /><circle cx={xOf(s, ax)} cy={yOf(price, ax)} r="5" fill="#C0602A" />
           </g>
         );
       })()}
-      {e0 && <circle cx={xOf(e0.q, ax)} cy={yOf(e0.p, ax)} r="6" fill="var(--c-text)" />}
-      {good && <circle cx={xOf(good.q, ax)} cy={yOf(good.p, ax)} r="9" fill="none" stroke="var(--c-teal)" strokeWidth="3" data-testid="point-good" />}
+      {e0 && <circle cx={xOf(e0.q, ax)} cy={yOf(e0.p, ax)} r="6" fill="var(--ds-ink)" />}
+      {good && <circle cx={xOf(good.q, ax)} cy={yOf(good.p, ax)} r="9" fill="none" stroke="var(--ds-ok)" strokeWidth="3" data-testid="point-good" />}
       {mark && <circle cx={xOf(mark.q, ax)} cy={yOf(mark.p, ax)} r="7" fill="var(--u)" stroke="#fff" strokeWidth="2" data-testid="point-mark" />}
     </svg>
   );
@@ -150,15 +155,15 @@ export function CurveEx({ inst, resp, setResp, locked, fb }) {
   return (
     <div data-testid="curve-ex">
       <MarketChart m={inst.market} show={curves} shift={shown} ghost eq={curves.length === 2} onDrag={locked ? null : set} label="Кривые рынка: перетащите нужную кривую" />
-      <div className="lp-readout lx-sub">{fb && !fb.ok ? 'Так должна была сдвинуться кривая' : curves.some((c) => r[c]) ? curves.filter((c) => r[c]).map((c) => `${CURVE_TITLE[c]} ${r[c] > 0 ? 'вправо' : 'влево'} на ${Math.abs(r[c])}`).join(', ') : 'Потяните кривую пальцем или нажмите стрелку'}</div>
+      <div className="lp-readout ds-sub">{fb && !fb.ok ? 'Так должна была сдвинуться кривая' : curves.some((c) => r[c]) ? curves.filter((c) => r[c]).map((c) => `${CURVE_TITLE[c]} ${r[c] > 0 ? 'вправо' : 'влево'} на ${Math.abs(r[c])}`).join(', ') : 'Потяните кривую пальцем или нажмите стрелку'}</div>
       {curves.map((c) => (
         <div key={c} className="lp-row">
-          <button type="button" className="lx-chip" data-curve={c} data-dir="-" aria-label={`Сдвинуть ${CURVE_NAME[c]} влево`} disabled={locked} onClick={() => set(c, (r[c] || 0) - inst.step)}><ArrowLeft size={16} /> {CURVE_TITLE[c]}</button>
-          <button type="button" className="lx-chip" data-curve={c} data-dir="+" aria-label={`Сдвинуть ${CURVE_NAME[c]} вправо`} disabled={locked} onClick={() => set(c, (r[c] || 0) + inst.step)}>{CURVE_TITLE[c]} <ArrowRight size={16} /></button>
+          <button type="button" className="ds-chip" data-curve={c} data-dir="-" aria-label={`Сдвинуть ${CURVE_NAME[c]} влево`} disabled={locked} onClick={() => set(c, (r[c] || 0) - inst.step)}><ArrowLeft size={16} /> {CURVE_TITLE[c]}</button>
+          <button type="button" className="ds-chip" data-curve={c} data-dir="+" aria-label={`Сдвинуть ${CURVE_NAME[c]} вправо`} disabled={locked} onClick={() => set(c, (r[c] || 0) + inst.step)}>{CURVE_TITLE[c]} <ArrowRight size={16} /></button>
         </div>
       ))}
       {curves.some((c) => r[c]) && !locked && (
-        <div className="lp-row"><button type="button" className="lx-btn ghost" style={{ padding: '6px 10px', fontSize: 14 }} onClick={() => setResp(null)}><RotateCcw size={14} style={{ verticalAlign: -2 }} /> Вернуть кривые</button></div>
+        <div className="lp-row"><button type="button" className="ds-btn ds-btn--ghost" style={{ padding: '6px 10px', fontSize: 14 }} onClick={() => setResp(null)}><RotateCcw size={14} style={{ verticalAlign: -2 }} /> Вернуть кривые</button></div>
       )}
     </div>
   );
@@ -174,8 +179,8 @@ export function PriceEx({ inst, resp, setResp, locked }) {
     <div data-testid="price-ex">
       <MarketChart m={inst.market} price={p} label={`Рынок при цене ${p}`} />
       <div className="lp-readout" data-testid="price-readout">
-        Цена <b>{p}</b>: хотят купить <b style={{ color: '#1682C4' }}>{Math.max(0, d)}</b>, продают <b style={{ color: '#D97A00' }}>{Math.max(0, s)}</b>
-        {gap > 0 ? <> — <b style={{ color: 'var(--c-rust)' }}>дефицит {gap}</b></> : gap < 0 ? <> — <b style={{ color: '#D97A00' }}>избыток {-gap}</b></> : <> — <b style={{ color: 'var(--c-teal)' }}>ни дефицита, ни избытка</b></>}
+        Цена <b>{p}</b>: хотят купить <b style={{ color: '#3E6FA8' }}>{Math.max(0, d)}</b>, продают <b style={{ color: '#C0602A' }}>{Math.max(0, s)}</b>
+        {gap > 0 ? <> — <b style={{ color: 'var(--ds-bad)' }}>дефицит {gap}</b></> : gap < 0 ? <> — <b style={{ color: '#C0602A' }}>избыток {-gap}</b></> : <> — <b style={{ color: 'var(--ds-ok)' }}>ни дефицита, ни избытка</b></>}
       </div>
       <input type="range" className="lp-range" min={0} max={ax.pMax} step={1} value={p} disabled={locked} aria-label="Цена"
         onChange={(e) => { Audio.play('tick'); setResp(Number(e.target.value)); }} />
@@ -189,7 +194,7 @@ export function PointEx({ inst, resp, setResp, locked, fb }) {
     <div data-testid="point-ex">
       <MarketChart m={inst.market} ghost mark={resp} good={fb ? inst.answer : null} onPlot={locked ? null : (q, p) => { Audio.play('tick'); setResp({ q, p }); }}
         label="Нажмите на график там, где новое равновесие" />
-      <div className="lp-readout lx-sub">{resp ? <>Ваша точка: объём <b>{resp.q}</b>, цена <b>{String(resp.p).replace('.', ',')}</b></> : 'Нажмите на график, чтобы поставить точку'}</div>
+      <div className="lp-readout ds-sub">{resp ? <>Ваша точка: объём <b>{resp.q}</b>, цена <b>{String(resp.p).replace('.', ',')}</b></> : 'Нажмите на график, чтобы поставить точку'}</div>
     </div>
   );
 }
@@ -200,11 +205,11 @@ export function TilesEx({ inst, resp, setResp, locked, fb }) {
   const tile = (k) => inst.tiles.find((t) => t.key === k);
   return (
     <div data-testid="tiles-ex">
-      <div className="lp-tiles" data-testid="tiles-answer" style={fb ? { borderColor: fb.ok ? 'var(--c-teal)' : 'var(--c-rust)', borderStyle: 'solid' } : undefined}>
+      <div className="lp-tiles" data-testid="tiles-answer" style={fb ? { borderColor: fb.ok ? 'var(--ds-ok)' : 'var(--ds-bad)', borderStyle: 'solid' } : undefined}>
         {seq.map((k) => (
           <button key={k} type="button" className="lp-tile" disabled={locked} onClick={() => { Audio.play('tick'); setResp(seq.filter((x) => x !== k)); }}>{tile(k).text}</button>
         ))}
-        {!seq.length && <span style={{ fontSize: 14, color: 'var(--c-faint)', padding: 8 }}>Нажимайте плитки по порядку</span>}
+        {!seq.length && <span style={{ fontSize: 14, color: 'var(--ds-ink3)', padding: 8 }}>Нажимайте плитки по порядку</span>}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }} role="group" aria-label="Плитки">
         {inst.tiles.filter((t) => !seq.includes(t.key)).map((t) => (
@@ -276,8 +281,8 @@ export function SwipeRound({ inst, onDone, locked }) {
         </div>
       ) : <div className="lp-card" style={{ fontSize: 17 }}>Раунд окончен: верно {right} из {inst.items.length}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button type="button" className="lx-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="left" disabled={locked || !item} onClick={() => decide('left')}><ArrowLeft size={16} style={{ verticalAlign: -3 }} /> {inst.labels.left}</button>
-        <button type="button" className="lx-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="right" disabled={locked || !item} onClick={() => decide('right')}>{inst.labels.right} <ArrowRight size={16} style={{ verticalAlign: -3 }} /></button>
+        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="left" disabled={locked || !item} onClick={() => decide('left')}><ArrowLeft size={16} style={{ verticalAlign: -3 }} /> {inst.labels.left}</button>
+        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="right" disabled={locked || !item} onClick={() => decide('right')}>{inst.labels.right} <ArrowRight size={16} style={{ verticalAlign: -3 }} /></button>
       </div>
     </div>
   );
@@ -304,8 +309,8 @@ export function RushRound({ inst, onDone, locked }) {
   if (!on && !locked) {
     return (
       <div data-testid="rush-round" style={{ textAlign: 'center' }}>
-        <div className="lx-sub" style={{ margin: '8px 0 14px' }}>{inst.items.length} заголовков, {inst.seconds} секунд. Засчитывается от шести верных.</div>
-        <button type="button" className="lx-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setOn(true); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
+        <div className="ds-sub" style={{ margin: '8px 0 14px' }}>{inst.items.length} заголовков, {inst.seconds} секунд. Засчитывается от шести верных.</div>
+        <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setOn(true); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
       </div>
     );
   }
@@ -316,8 +321,8 @@ export function RushRound({ inst, onDone, locked }) {
       {item && !locked ? <div className={`lp-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}><Inline nodes={item.text} /></div>
         : <div className="lp-card" style={{ fontSize: 17 }}>Время! Верно {right}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button type="button" className="lx-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="up" disabled={locked || !item} onClick={() => decide('up')}><ArrowUp size={16} style={{ verticalAlign: -3 }} /> {inst.labels.up}</button>
-        <button type="button" className="lx-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="down" disabled={locked || !item} onClick={() => decide('down')}><ArrowDown size={16} style={{ verticalAlign: -3 }} /> {inst.labels.down}</button>
+        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="up" disabled={locked || !item} onClick={() => decide('up')}><ArrowUp size={16} style={{ verticalAlign: -3 }} /> {inst.labels.up}</button>
+        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="down" disabled={locked || !item} onClick={() => decide('down')}><ArrowDown size={16} style={{ verticalAlign: -3 }} /> {inst.labels.down}</button>
       </div>
     </div>
   );
@@ -333,23 +338,23 @@ export function ChainRound({ inst, onDone, locked }) {
   if (!on && !locked) {
     return (
       <div data-testid="chain-round" style={{ textAlign: 'center' }}>
-        <div className="lx-sub" style={{ margin: '8px 0 14px' }}>{inst.items.length} звеньев, {inst.seconds} секунд.</div>
-        <button type="button" className="lx-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setOn(true); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
+        <div className="ds-sub" style={{ margin: '8px 0 14px' }}>{inst.items.length} звеньев, {inst.seconds} секунд.</div>
+        <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setOn(true); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
       </div>
     );
   }
   return (
     <div data-testid="chain-round">
       <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={() => finish(seq, true)} />
-      <div style={{ minHeight: 56, border: '2px dashed var(--c-border)', borderRadius: 12, padding: 6, marginBottom: 10 }}>
+      <div style={{ minHeight: 56, border: '2px dashed var(--ds-rule2)', borderRadius: 12, padding: 6, marginBottom: 10 }}>
         {seq.map((k, i) => (
-          <button key={k} type="button" className="lx-opt" style={{ margin: '4px 0' }} disabled={locked} onClick={() => setSeq(seq.filter((x) => x !== k))}>
+          <button key={k} type="button" className="ds-opt" style={{ margin: '4px 0' }} disabled={locked} onClick={() => setSeq(seq.filter((x) => x !== k))}>
             <b style={{ color: 'var(--u)' }}>{i + 1}.</b> <Inline nodes={inst.items.find((x) => x.key === k).text} />
           </button>
         ))}
       </div>
       {inst.items.filter((it) => !seq.includes(it.key)).map((it) => (
-        <button key={it.key} type="button" className="lx-opt" data-key={it.key} disabled={locked} onClick={() => add(it.key)}><Inline nodes={it.text} /></button>
+        <button key={it.key} type="button" className="ds-opt" data-key={it.key} disabled={locked} onClick={() => add(it.key)}><Inline nodes={it.text} /></button>
       ))}
     </div>
   );
@@ -372,7 +377,7 @@ export function Portrait({ who, size = 64 }) {
         <circle cx="27.5" cy="29" r="1.6" fill="#3B2A20" /><circle cx="36.5" cy="29" r="1.6" fill="#3B2A20" />
         <path d="M28 34c2.4 2 5.6 2 8 0" stroke="#3B2A20" strokeWidth="1.6" fill="none" strokeLinecap="round" />
       </svg>
-      <span style={{ position: 'absolute', right: -2, bottom: -2, width: size * 0.4, height: size * 0.4, borderRadius: '50%', background: c.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--c-panel)' }}>
+      <span style={{ position: 'absolute', right: -2, bottom: -2, width: size * 0.4, height: size * 0.4, borderRadius: '50%', background: c.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--ds-card)' }}>
         <Icon size={size * 0.22} />
       </span>
     </span>
@@ -385,7 +390,7 @@ export function StoryCard({ card, children }) {
       {c && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Portrait who={card.who} size={64} />
-          <div><div className="lx-h" style={{ fontSize: 19 }}>{c.name}</div><div className="lx-sub" style={{ fontSize: 13.5 }}>{c.role}</div></div>
+          <div><div className="ds-h3" style={{ fontSize: 19 }}>{c.name}</div><div className="ds-sub" style={{ fontSize: 13.5 }}>{c.role}</div></div>
         </div>
       )}
       <div className="lp-bubble">{children}</div>
@@ -400,8 +405,8 @@ export function FlashCard({ card, flipped, onFlip }) {
       <button type="button" className={`lp-flash-in ${flipped ? 'flip' : ''}`} onClick={onFlip} aria-label={flipped ? 'Карточка перевёрнута' : `Перевернуть карточку «${card.title}»`}
         style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', display: 'block' }} data-testid="flash-card" data-flipped={String(flipped)}>
         <span className="lp-face" aria-hidden={flipped}>
-          <span className="lx-h" style={{ fontSize: 28, color: 'var(--u)' }}>{card.title}</span>
-          <span className="lx-sub" style={{ fontSize: 13.5, marginTop: 10 }}>нажмите, чтобы перевернуть</span>
+          <span className="ds-h3" style={{ fontSize: 28, color: 'var(--u)' }}>{card.title}</span>
+          <span className="ds-sub" style={{ fontSize: 13.5, marginTop: 10 }}>нажмите, чтобы перевернуть</span>
         </span>
         <span className="lp-face back" aria-hidden={!flipped}>
           <span style={{ fontSize: 19, lineHeight: 1.45, fontWeight: 700 }}><Inline nodes={card.text} /></span>
@@ -460,15 +465,15 @@ export function ListenCard({ text, title }) {
   return (
     <div data-style="listen" data-voice={voice ? 'on' : 'off'} data-testid="listen-card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 14px' }}>
-        <button type="button" className="lx-btn" style={{ width: 64, height: 64, borderRadius: '50%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <button type="button" className="ds-btn" style={{ width: 64, height: 64, borderRadius: '50%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={speak} aria-label={voice ? (speaking ? 'Слушаю' : 'Слушать') : 'Читать с подсветкой'} data-testid="listen-play"><Headphones size={28} /></button>
         <div style={{ flex: 1 }}>
-          <div className="lx-h" style={{ fontSize: 19 }}>{title}</div>
-          <div className="lx-sub" style={{ fontSize: 13.5 }}>{voice ? (speaking ? 'Слушаем…' : 'Нажмите, чтобы послушать') : 'Голоса в браузере нет — читайте вслед за подсветкой'}</div>
+          <div className="ds-h3" style={{ fontSize: 19 }}>{title}</div>
+          <div className="ds-sub" style={{ fontSize: 13.5 }}>{voice ? (speaking ? 'Слушаем…' : 'Нажмите, чтобы послушать') : 'Голоса в браузере нет — читайте вслед за подсветкой'}</div>
         </div>
       </div>
       {voice && (
-        <button type="button" className="lx-btn ghost" style={{ padding: '4px 0', fontSize: 14 }} onClick={() => setShowText((v) => !v)} data-testid="listen-toggle">
+        <button type="button" className="ds-btn ds-btn--ghost" style={{ padding: '4px 0', fontSize: 14 }} onClick={() => setShowText((v) => !v)} data-testid="listen-toggle">
           {showText ? <><EyeOff size={14} style={{ verticalAlign: -2 }} /> Скрыть текст</> : <><Eye size={14} style={{ verticalAlign: -2 }} /> Показать текст</>}
         </button>
       )}

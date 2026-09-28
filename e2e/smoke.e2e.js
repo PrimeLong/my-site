@@ -290,7 +290,7 @@ test('президент ведёт наступление на карте: це
 
 test('вызов дня: карточка в меню, общий старт и счётчик кварталов', async ({ page }) => {
   const { errors } = await openApp(page);
-  await expect(page.getByText(/Вызов дня ·/)).toBeVisible();
+  await expect(page.getByTestId('daily-card')).toContainText('Вызов дня');
   await page.getByRole('button', { name: 'Таблица дня' }).click();
   await expect(page.getByText('Сегодня ещё никто не прошёл вызов — будьте первым.')).toBeVisible();
   await page.getByRole('button', { name: 'Принять вызов' }).click();
@@ -1143,6 +1143,9 @@ async function answerExercise(page, { wrong = false } = {}) {
   } else if (kind === 'tf') await ex.locator(`[data-key="${wrong ? !ans : ans}"]`).click();
   else if (kind === 'shift') await ex.locator(wrong ? `[data-key]:not([data-key="${ans}"])` : `[data-key="${ans}"]`).first().click();
   else if (kind === 'calc') {
+    // рядом с полем — единица измерения, а не имя главы латиницей
+    const unitEl = ex.getByTestId('calc-unit');
+    if (await unitEl.count()) expect(await unitEl.innerText()).not.toMatch(/^[a-z_-]+$/i);
     // цифры — с экранной клавиатуры, как на телефоне
     for (const ch of wrong ? '99999' : ans) {
       if (ch === '-') await ex.getByRole('button', { name: 'Минус' }).click();
@@ -1256,7 +1259,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
   const soon = path.getByTestId('path-soon');
-  await expect(soon).toContainText('юнитов готовятся');
+  await expect(soon).toContainText('мест строятся');
   await expect(path.getByTestId('path-soon-list')).toHaveCount(0);
   await soon.getByRole('button').first().click();
   await expect(path.getByTestId('path-soon-list')).toContainText('Эластичность');
@@ -1289,7 +1292,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await answerExercise(page, { wrong: true });
   await expect(page.getByTestId('lesson-foot')).toContainText('Правильно:');
   await expect(page.getByTestId('lesson-foot')).toContainText('вернётся в конце урока');
-  await expect(page.getByTestId('lesson-foot')).not.toHaveClass(/lx-flash/);
+  await expect(page.getByTestId('lesson-foot')).not.toHaveClass(/ds-flash/);
   await expectNoSidewaysScroll(page);
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   const { retries, cards } = await playLesson(page);
@@ -1297,7 +1300,7 @@ test('путь: карточка урока, «Знакомство» шагам
   expect(cards, 'перед каждым вопросом — свой шаг').toBeGreaterThanOrEqual(4);
   const result = page.getByTestId('lesson-result');
   await expect(result).toContainText('Урок пройден');
-  await expect(page.getByTestId('confetti')).toHaveCount(1);
+  await expect(page.getByTestId('coins')).toHaveCount(1);
   await expect(result.getByTestId('result-xp').locator('[data-value]')).toHaveText(/^\+\d+$/);
   await expect(result.getByTestId('result-acc')).not.toContainText('100%');
   await expect(result).not.toContainText('Урок уже был пройден');
@@ -1365,7 +1368,7 @@ test('путь: выход после первого ответа — урок �
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
   await ask.getByRole('button', { name: 'Выйти', exact: true }).click();
   await expect(page.getByTestId('lesson')).toHaveCount(0);
-  await expect(path.locator('[data-unit="supply-demand"] .ln-bubble')).toHaveText(/продолжить/i);
+  await expect(path.locator('[data-unit="supply-demand"] .ln-pin')).toHaveText(/продолжить/i);
   await openTab(page, 'profile');
   await expect(page.getByTestId('prof-completion')).toContainText('—');
   await expect(page.getByTestId('prof-quits')).toHaveCount(0);
@@ -1392,7 +1395,8 @@ test('путь: выход после первого ответа — урок �
   const term = page.getByTestId('ex').locator('.tb-term').first();
   if (await term.count()) {
     await term.click();
-    await expect(page.getByTestId('term-sheet')).toContainText('подсказка');
+    // подсказка ничем не наказывается — и ни о каком штрафе не пишет
+    await expect(page.getByTestId('term-sheet')).not.toContainText('опыта');
     await page.getByTestId('term-sheet').getByRole('button', { name: 'Понятно' }).click();
     await expect(page.getByTestId('term-sheet')).toHaveCount(0);
   }
@@ -1601,7 +1605,7 @@ test('анимации выключены, если в системе «умен
   await expect(page.getByTestId('path')).toBeVisible();
   expect(await anim(pathNode(page, 'sc-i1'))).toBe('none');
   expect(await anim(pathNode(page, 'sc-i1'), '::after')).toBe('none');
-  expect(await anim(page.locator('.ln-bubble').first())).toBe('none');
+  expect(await anim(page.locator('.ln-pin').first())).toBe('none');
   expect(await anim(page.locator('.infla-eyes').first())).toBe('none');
   await startLesson(page, 'sc-i1');
   await page.getByRole('button', { name: 'Понятно' }).click();
@@ -1609,8 +1613,8 @@ test('анимации выключены, если в системе «умен
   expect(await anim(page.getByTestId('ex'))).toBe('none');
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await playLesson(page);
-  // без конфетти, опыт — сразу итоговым числом
-  await expect(page.getByTestId('confetti')).toHaveCount(0);
+  // без монет, опыт — сразу итоговым числом
+  await expect(page.getByTestId('coins')).toHaveCount(0);
   const xp = page.getByTestId('result-xp').locator('[data-value]');
   await expect(xp).toHaveText(`+${await xp.getAttribute('data-value')}`);
   expect(errors).toEqual([]);
