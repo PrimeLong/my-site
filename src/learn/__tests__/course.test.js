@@ -8,14 +8,19 @@ import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
 import { emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, quitLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
+const PATH = ['scarcity', 'supply-demand'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-describe('пилот: юнит «Спрос и предложение»', () => {
-  const unit = UNIT_BY_ID[PILOT];
-  it('5–6 уроков, в пилоте только этот юнит, у каждого урока карточка идеи до 60 слов', () => {
-    expect(pilotUnits().map((u) => u.id)).toEqual([PILOT]);
+it('на Пути уроками — юниты 1 и 2, с самого начала курса', () => {
+  expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
+  expect(UNITS.slice(0, 2).map((u) => u.id)).toEqual(PATH);
+});
+
+describe.each(PATH)('юнит %s', (unitId) => {
+  const unit = UNIT_BY_ID[unitId];
+  it('5–6 уроков, у каждого урока карточка идеи до 60 слов', () => {
     expect(unit.lessons.length).toBeGreaterThanOrEqual(5);
     expect(unit.lessons.length).toBeLessThanOrEqual(6);
     unit.lessons.forEach((l) => {
@@ -146,6 +151,11 @@ describe('упражнения: ровно один верный ответ', ()
 
 describe('проверка юнита, уровень легенды, практика, состояние пути', () => {
   it('проверка юнита: 10 упражнений, в том числе расчёты с новыми числами; легенда — задачи уровней 2–3', () => {
+    PATH.forEach((id) => {
+      const lg = buildLegend(id, seeded(1));
+      expect(lg.items.length, id).toBeGreaterThanOrEqual(3);
+      expect(buildUnitCheck(id, seeded(3)).items.length, id).toBe(10);
+    });
     const a = buildUnitCheck(PILOT, seeded(1)); const b = buildUnitCheck(PILOT, seeded(2));
     expect(a.items.length).toBe(10);
     expect(a.items.some((it) => it.variant)).toBe(true);
@@ -156,23 +166,29 @@ describe('проверка юнита, уровень легенды, практ
   });
   it('путь: следующий урок открывается после предыдущего, проверка юнита открывает все', () => {
     let learn = emptyLearn();
-    let st = pathState(learn)[0];
+    let [st, st2] = pathState(learn);
     expect(st.lessons.map((l) => l.open)).toEqual(st.lessons.map((_, i) => i === 0));
+    expect(st2.lessons.every((l) => !l.open)).toBe(true);
     expect(st.current.id).toBe(st.lessons[0].id);
     learn = finishLesson(learn, st.lessons[0].id, { xp: 10, accuracy: 90, now: 1e12 });
-    st = pathState(learn)[0];
+    [st] = pathState(learn);
     expect(st.lessons[1].open).toBe(true);
     expect(st.lessons[2].open).toBe(false);
-    learn = passUnit(learn, PILOT, st.lessons.map((l) => l.id), 1e12);
-    st = pathState(learn)[0];
+    // проверка первого юнита отмечает его пройденным и открывает первый урок второго
+    learn = passUnit(learn, PATH[0], st.lessons.map((l) => l.id), 1e12);
+    [st, st2] = pathState(learn);
     expect(st.complete).toBe(true);
     expect(st.tested).toBe(true);
+    expect(st2.lessons.map((l) => l.open)).toEqual(st2.lessons.map((_, i) => i === 0));
+    // пройденный урок остаётся открытым для повтора
+    const only = finishLesson(emptyLearn(), st2.lessons[2].id, { xp: 1, accuracy: 100, now: 1e12 });
+    expect(pathState(only)[1].lessons[2].open).toBe(true);
   });
   it('практика собирается из ошибок', () => {
     const ids = Object.keys(EXERCISES).slice(0, 5);
     expect(buildPractice(ids, seeded(1)).items.map((it) => it.id).sort()).toEqual(ids.sort());
     expect(estimate([])).toBeGreaterThan(0);
-    expect(LESSONS.length).toBe(UNIT_BY_ID[PILOT].lessons.length);
+    expect(LESSONS.length).toBe(PATH.reduce((n, id) => n + UNIT_BY_ID[id].lessons.length, 0));
     expect(UNITS.length).toBeGreaterThan(10);
   });
 });
@@ -184,6 +200,8 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(lessonXp({ firstTry: 10, replay: false })).toBe(25);
     expect(lessonXp({ firstTry: 10, replay: true })).toBe(3);
     expect(lessonXp({ firstTry: 0, replay: true })).toBe(1);
+    // ответ после подсказки к термину — не ошибка, но 1 опыта вместо 2
+    expect(lessonXp({ firstTry: 8, hinted: 2, replay: false })).toBe(23);
   });
   it('серия: один пропуск в неделю замораживается, второй в той же неделе рвёт серию', () => {
     // среда 30 сентября 2026; пропущен понедельник 28-го

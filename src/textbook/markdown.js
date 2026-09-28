@@ -135,10 +135,12 @@ export function parseBlocks(text) {
       if (i >= lines.length) throw new Error(`Вставка :::${name} не закрыта`);
       i += 1;
       if (name === 'idea') {
-        // карточка новой идеи урока: :::idea id=… title="…" chart=тип <параметры графика> auto="задачи" variants="типы"
+        // карточка новой идеи урока: :::idea id=… title="…" chart=тип <параметры графика> auto="задачи" variants="типы";
+        // со словом more — вторая карточка того же урока: встаёт перед следующим упражнением
         const { id: _id, title, chart, auto, variants, ...chartAttrs } = attrs;
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
-        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), text: parseInline(body.join(' ').trim()) });
+        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), text: parseInline(body.join(' ').trim()),
+          ...(words.includes('more') ? { inner: true } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));
       } else if (name === 'diagram') {
@@ -337,7 +339,7 @@ function parseExercise(kind, attrs, body) {
   if (kind === 'shift') {
     const { id: _i, chart, answer, options, ...chartAttrs } = attrs;
     ex.chart = chart; ex.chartAttrs = chartAttrs; ex.answer = answer;
-    ex.choices = (options || 'D+ D- S+ S-').split(/\s+/).filter(Boolean);
+    ex.choices = options ? options.split(/\s+/).filter(Boolean) : null;
     ex.traps = traps.map((t) => ({ key: t.key, why: t.why }));
   }
   if (kind === 'news') {

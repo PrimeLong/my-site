@@ -17,12 +17,24 @@ export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполни пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', order: 'Собери цепочку', match: 'Сопоставь пары', sort: 'Разложи по корзинам', calc: 'Быстрый расчёт',
 };
-// «куда сдвинется?»: какой ползунок графика — какая кривая
+/* «куда сдвинется?»: какой ползунок графика — какая кривая, как называть направления и
+   какие стрелки рисовать на кнопках. Ключ ответа — буква кривой и знак: «D+», «Y-». */
+const LR = { plus: 'вправо', minus: 'влево', up: '→', down: '←' };
 export const SHIFT_CURVES = {
-  'supply-demand': { D: { control: 'dA', label: 'Спрос' }, S: { control: 'dC', label: 'Предложение' } },
+  'supply-demand': { D: { control: 'dA', label: 'Спрос', ...LR }, S: { control: 'dC', label: 'Предложение', ...LR } },
+  ppf: {
+    X: { control: 'tx', label: 'Конец КПВ на оси хлеба', short: 'Хлеб', plus: 'наружу', minus: 'внутрь', up: '→', down: '←' },
+    Y: { control: 'ty', label: 'Конец КПВ на оси станков', short: 'Станки', plus: 'наружу', minus: 'внутрь', up: '↑', down: '↓' },
+  },
 };
-const dirWord = (d) => (d === '+' ? 'вправо' : 'влево');
-export const shiftLabel = (chart, key) => `${SHIFT_CURVES[chart][key[0]].label} ${dirWord(key[1])}`;
+const curveOf = (chart, key) => SHIFT_CURVES[chart][key[0]];
+export const shiftLabel = (chart, key) => { const c = curveOf(chart, key); return `${c.label} ${key[1] === '+' ? c.plus : c.minus}`; };
+// надпись на кнопке: «Спрос →», «← Спрос», «Станки ↑»
+export const shiftButton = (chart, key) => {
+  const c = curveOf(chart, key); const name = c.short || c.label;
+  return key[1] === '+' ? `${name} ${c.up}` : c.down === '←' ? `← ${name}` : `${name} ${c.down}`;
+};
+export const shiftChoices = (chart) => Object.keys(SHIFT_CURVES[chart]).flatMap((k) => [`${k}+`, `${k}-`]);
 
 const fmt = (x) => String(Math.round(x * 100) / 100).replace('.', ',').replace('-', '−');
 const withUnit = (x, unit) => `${fmt(x)}${unit ? ` ${unit}` : ''}`;
@@ -61,7 +73,7 @@ function fromProblem(pid) {
     // в учебнике кривую двигают ползунком, здесь — одним касанием по стрелке
     const prompt = [...JSON.parse(JSON.stringify(b.statement), (k, v) => (k === 'v' && typeof v === 'string' ? v.replace(/\s*Сдвиньте[^.]*\./g, '') : v)),
       ...parseBlocks('Какая кривая сдвинется и куда?')];
-    return { ...base, prompt, kind: 'shift', chart: b.chart, chartAttrs: b.attrs, answer, choices: ['D+', 'D-', 'S+', 'S-'], traps };
+    return { ...base, prompt, kind: 'shift', chart: b.chart, chartAttrs: b.attrs, answer, choices: shiftChoices(b.chart), traps };
   }
   throw new Error(`Задачу ${pid} нельзя превратить в упражнение`);
 }
@@ -80,7 +92,7 @@ function fromBlock(b) {
     case 'match': return { ...e, pairs: b.pairs };
     case 'sort': return { ...e, bins: b.bins, items: b.items };
     case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps };
-    case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices, traps: b.traps };
+    case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
     default: throw new Error(b.kind);
   }
@@ -94,8 +106,15 @@ function lessonsOf(chapterId) {
   const seq = collectBlocks(blocks, (b) => b.type === 'idea' || b.type === 'ex' || b.type === 'flow');
   const out = [];
   seq.forEach((b) => {
-    if (b.type === 'idea') {
-      out.push({ id: b.id, unit: chapterId, no: out.length + 1, title: b.title, idea: b, section: sectionOf(chapterId, b), exercises: [] });
+    if (b.type === 'idea' && b.inner) {
+      // вторая карточка урока — перед упражнением, которое идёт следом
+      if (!out.length) throw new Error(`Карточка ${b.id} раньше первого урока`);
+      const cur = out[out.length - 1];
+      cur.inner.push({ at: cur.exercises.length, idea: b });
+      b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
+      b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
+    } else if (b.type === 'idea') {
+      out.push({ id: b.id, unit: chapterId, no: out.length + 1, title: b.title, idea: b, section: sectionOf(chapterId, b), exercises: [], inner: [] });
       const cur = out[out.length - 1];
       b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
       b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
@@ -151,7 +170,7 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
       }
       return { ...base, answer: ex.answer, tol: ex.tol, unit: ex.unit, traps: ex.traps || [] };
     }
-    case 'shift': return { ...base, chart: ex.chart, chartAttrs: ex.chartAttrs, answer: ex.answer, choices: ex.choices.map((key) => ({ key, label: shiftLabel(ex.chart, key) })), traps: ex.traps || [] };
+    case 'shift': return { ...base, chart: ex.chart, chartAttrs: ex.chartAttrs, answer: ex.answer, choices: ex.choices.map((key) => ({ key, label: shiftLabel(ex.chart, key), button: shiftButton(ex.chart, key) })), traps: ex.traps || [] };
     case 'news': return { ...base, headline: ex.headline, vars: ex.vars, expect: ex.expect };
     default: throw new Error(ex.kind);
   }
@@ -219,18 +238,22 @@ export function buildLesson(lessonId, rand = Math.random) {
   const lesson = LESSON_BY_ID[lessonId];
   const unit = UNIT_BY_ID[lesson.unit];
   const own = lesson.exercises.map((e) => EXERCISES[e.id]);
-  // начинать с упражнения в одно касание, а не с расчёта или сборки
-  const easy = own.findIndex((e) => SECONDS[e.kind] <= 12);
+  // начинать с упражнения в одно касание, а не с расчёта или сборки — но не перескакивая
+  // через вторую карточку идеи: то, что идёт после неё, без неё не решить
+  const firstCard = lesson.inner.length ? Math.min(...lesson.inner.map((c) => c.at)) : own.length;
+  const easy = own.findIndex((e, k) => k < firstCard && SECONDS[e.kind] <= 12);
   if (easy > 0) own.unshift(own.splice(easy, 1)[0]);
   const prev = unit.lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id]));
   const nReview = Math.min(prev.length, Math.max(0, Math.min(15 - own.length, Math.round(own.length / 2))));
   const review = shuffle(prev, rand).slice(0, nReview);
   const items = own.map((e) => instantiate(e, rand));
+  // cards: uid упражнения → карточка, которую показать перед ним
+  const cards = Object.fromEntries(lesson.inner.filter((c) => items[c.at]).map((c) => [items[c.at].uid, c.idea]));
   review.forEach((e) => {
     const at = 1 + Math.floor(rand() * items.length);
     items.splice(at, 0, instantiate(e, rand, { review: true }));
   });
-  return { lesson, items, seconds: estimate(items) };
+  return { lesson, items, cards, seconds: estimate(items) + lesson.inner.length * IDEA_SECONDS };
 }
 export const estimate = (items) => IDEA_SECONDS + items.reduce((s, it) => s + (it.seconds || SECONDS[it.kind]), 0);
 
@@ -261,13 +284,17 @@ export function buildPractice(mistakeIds, rand = Math.random) {
 }
 
 /* ------------------------------ СОСТОЯНИЕ ПУТИ ------------------------------
-   Урок открыт, если пройден предыдущий урок юнита (первый урок — всегда). Юнит пройден,
+   Урок открыт, если пройден предыдущий урок Пути (первый урок — всегда). Юнит пройден,
    когда пройдены все его уроки; тогда открывается «уровень легенды». */
 export function pathState(learn) {
+  // Путь сквозной: первый урок юнита открывается, когда пройден последний урок прошлого юнита
+  // (или прошлый юнит сдан проверкой — она отмечает его уроки пройденными)
+  let prevDone = true;
   return pilotUnits().map((u) => {
-    const lessons = u.lessons.map((l, i) => {
+    const lessons = u.lessons.map((l) => {
       const done = !!learn.lessons[l.id];
-      const open = i === 0 || !!learn.lessons[u.lessons[i - 1].id];
+      const open = done || prevDone;
+      prevDone = done;
       return { id: l.id, no: l.no, title: l.title, done, open };
     });
     const current = lessons.find((l) => l.open && !l.done) || null;

@@ -815,6 +815,32 @@ function ProductionTab({ st, act, setRegion }) {
 /* ------------------------------ СКЛАД И РЫНОК ------------------------------ */
 /* Сворачиваемая строка внутри карточки: заголовок со сводкой, по нажатию — содержимое.
    Положение помнится между заходами (как у панелей партии за государство). */
+/* Состояние конкурента: торговля отдельно от денег владельцев, запас денег, терпение
+   владельцев иностранной сети и когда её можно будет купить. */
+function RivalState({ st, c, def }) {
+  const o = T.rivalOutlook(st, c.id);
+  const sign = (v) => `${v >= 0 ? '+' : '−'}${money(Math.abs(v))}`;
+  const state = c.distress > 0 ? 'в долгах' : c.mode === 'retreat' ? 'сворачивается'
+    : o.losing ? `${o.trade < 0 ? 'торгует в убыток' : 'торгует почти в ноль'}${o.subsidy > 0 ? ', держится на деньгах владельцев' : ''}`
+      : o.trade > 1 ? 'прибыльна' : 'еле в плюсе';
+  const buy = o.buyableIn === 0 ? 'сейчас: сеть в беде и продаётся дешевле'
+    : o.buyableIn === Infinity ? 'пока не продаётся: торгует в плюс'
+      : `примерно через ${o.buyableIn} кв., если дела пойдут так же`;
+  return (
+    <>
+      <Row k="Положение" v={state} />
+      <Row k="Деньги" v={money(o.cash)} />
+      <Row k="За квартал" v={`торговля ${sign(o.trade)}${o.subsidy > 0 ? ` · от владельцев ${sign(o.subsidy)}` : ''}`} />
+      {o.patience != null && c.mode !== 'retreat' && c.distress === 0 && (
+        <Row k="Терпение владельцев" v={o.losing
+          ? `ещё ${o.patience} кв. без прибыли при её доле ниже 10% — и сеть начнёт уходить`
+          : `${T.FOREIGN_PATIENCE} кв. без прибыли при её доле ниже 10% — и сеть начнёт уходить`} />
+      )}
+      {def.foreign && <Row k="Купить можно" v={buy} />}
+    </>
+  );
+}
+
 function FoldRow({ id, title, summary, children }) {
   const [open, setOpen] = useState(() => loadFold(id, false));
   const toggle = () => { const v = !open; setOpen(v); saveFold(id, v); };
@@ -893,16 +919,35 @@ function StockTab({ st, act }) {
                   </span>
                 )}
               </div>
-              {r.consumer && (
-                <FoldRow id={`price.${r.id}`} title={`Цена в магазинах: ${money(T.retailPrice(st, r.id))}`}
-                  summary={`${(st.markup[r.id] || 0) > 0 ? '+' : ''}${st.markup[r.id] || 0}% к рынку`}>
-                  <PlanSlider label={`Цена в магазинах: ${money(T.retailPrice(st, r.id))}`} value={st.markup[r.id] || 0} min={-20} max={40} step={1}
-                    hint={hasShops
-                      ? `Дешевле рынка — больше покупателей, дороже — выше маржа. Не хватило товара или полок: ${perMin(st.stats.unmet[r.id] || 0)}/мин.`
-                      : 'Нужен магазин: без него товар идёт только оптом.'}
-                    format={(v) => `${v > 0 ? '+' : ''}${v}% к рынку`} onChange={(v) => act((s) => T.setMap(s, 'markup', r.id, v), null)} />
-                </FoldRow>
-              )}
+              {r.consumer && (() => {
+                const m = Math.round(st.markup[r.id] || 0);
+                const auto = T.autoPriced(st, r.id);
+                const canAuto = r.export && hasTerminal && !!st.exportList[r.id];
+                return (
+                  <FoldRow id={`price.${r.id}`} title={`Цена в магазинах: ${money(T.retailPrice(st, r.id))}`}
+                    summary={`${m > 0 ? '+' : ''}${m}% к рынку${auto ? ' · авто' : ''}`}>
+                    {canAuto && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <Chip on={auto} onClick={() => act((s) => T.setMap(s, 'manualPrice', r.id, auto), 'tick')}>Продавать там, где выгоднее</Chip>
+                        <span style={{ fontSize: 12, color: COLOR.faint }}>
+                          {!auto ? 'цену задаёте вы'
+                            : T.shopShort(st, r.id) && m >= T.PRICE_MAX - 1
+                              ? `полки магазинов заняты целиком: дома уходит всё, что они вмещают, по высшей цене, остальное — на экспорт по ${money(T.exportPrice(st, r.id))}. Продавать дома больше — строить магазины`
+                              : T.shopShort(st, r.id)
+                                ? 'в магазинах не хватает полок или товара — цена поднимается'
+                                : `цена в магазинах тянется к экспортной (${money(T.exportPrice(st, r.id))}): товар идёт туда, где дороже`}
+                        </span>
+                      </div>
+                    )}
+                    <PlanSlider label={`Цена в магазинах: ${money(T.retailPrice(st, r.id))}`} value={m} min={T.PRICE_MIN} max={T.PRICE_MAX} step={1}
+                      hint={hasShops
+                        ? `Дешевле рынка — больше покупателей, дороже — выше маржа. Не хватило товара или полок: ${perMin(st.stats.unmet[r.id] || 0)}/мин.`
+                        : 'Нужен магазин: без него товар идёт только оптом.'}
+                      format={(v) => `${v > 0 ? '+' : ''}${v}% к рынку`}
+                      onChange={(v) => act((s) => T.setMap(T.setMap(s, 'markup', r.id, v).st, 'manualPrice', r.id, true), null)} />
+                  </FoldRow>
+                );
+              })()}
             </div>
           );
         })}
@@ -965,7 +1010,12 @@ function RivalsTab({ st, act, onRegion }) {
             <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, margin: '5px 0 8px' }}>{def.about}</div>
             {live && (
               <>
-                {def.goods.length > 0 && <Row k="Цены" v={c.markup >= 0 ? `+${Math.round(c.markup)}% к рынку` : `${Math.round(c.markup)}% к рынку`} />}
+                {def.goods.length > 0 && (() => {
+                  // для сравнения — ваша средняя цена по тем же товарам
+                  const mine = Math.round(def.goods.reduce((a, g) => a + (st.markup[g] || 0), 0) / def.goods.length);
+                  const pct = (v) => `${v >= 0 ? '+' : ''}${Math.round(v)}%`;
+                  return <Row k="Цены" v={`${pct(c.markup)} к рынку · ваши ${pct(mine)}`} />;
+                })()}
                 {shops.length > 0 && (
                   <div style={{ fontSize: 12, margin: '4px 0', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ color: COLOR.faint }}>Магазины:</span>
@@ -977,7 +1027,7 @@ function RivalsTab({ st, act, onRegion }) {
                   </div>
                 )}
                 {supplies.length > 0 && <Row k="Льёт на оптовый рынок" v={supplies.map(([r]) => T.RES[r].name.toLowerCase()).join(', ')} />}
-                <Row k="Положение" v={c.distress > 0 ? 'в долгах' : c.profitQ > 1 ? 'прибыльна' : c.profitQ > 0 ? 'еле в плюсе' : 'в убытке'} />
+                <RivalState st={st} c={c} def={def} />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                   <button className="ems-btn" disabled={!!buyErr} title={buyErr || 'Её магазины станут вашими'}
                     style={{ padding: '6px 10px', fontSize: 12 }}

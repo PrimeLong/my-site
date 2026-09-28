@@ -4415,11 +4415,15 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
 
   /* Предыстория: в открытой партии три года до игрока страну ведут боты (см.
      makePrehistory) — на графике и в ленте с первого квартала видно, куда шла
-     экономика. Кризисные сценарии и вызов дня начинаются как раньше, со своей завязки. */
-  const pre = useMemo(() => (!initial && !daily && !drill && (setup.scenario || 'sandbox') === 'sandbox'
-    ? makePrehistory({ difficulty: setup.difficulty, cbPersona: setup.cbPersona, mofPersona: setup.mofPersona,
-      presPersona: (setup.president && setup.president.persona) || 'technocrat' })
-    : null), []);
+     экономика. В вызове дня так же, но по общему зерну дня: предыстория у всех одна и та
+     же. Кризисный сценарий в вызове дня получает вводный отрезок, как задача на 10 минут
+     (см. prehistory ниже): старт тот же, но видно, как страна к нему пришла. */
+  const pre = useMemo(() => {
+    if (initial || drill || (setup.scenario || 'sandbox') !== 'sandbox') return null;
+    const make = () => makePrehistory({ difficulty: setup.difficulty, cbPersona: setup.cbPersona, mofPersona: setup.mofPersona,
+      presPersona: (setup.president && setup.president.persona) || 'technocrat' });
+    return daily ? runSeeded(daily, 'pre', make) : make();
+  }, []);
   const initEconomy = useMemo(() => {
     if (initial) return initial.economy;
     const e0 = pre ? pre.economy : runSeeded(seedSrc, 'start', () => makeInitialEconomy(setup.scenario, drill ? drill.overrides : null));
@@ -4427,7 +4431,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
   }, []);
   // у задачи — вводный отрезок: как страна пришла к завязке (см. drillPrehistory)
-  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : drill ? drillPrehistory(drill) : null));
+  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : drill ? drillPrehistory(drill)
+    : daily ? drillPrehistory({ scenario: setup.scenario }) : null));
   /* Журнал решений игрока — только его рычаги, по кварталам. Хранится в сохранении и
      нужен стенду баланса (scripts/replay-balance.mjs): прогнать живые стратегии, а не
      только ботов против ботов. */

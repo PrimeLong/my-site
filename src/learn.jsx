@@ -13,6 +13,7 @@ import { UNITS, UNIT_BY_ID, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, buildLesson,
 import { startLesson, recordAttempt, quitLesson, addMistake, resolveMistake, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, goalToday, missedYesterday, learnStats, setGoal, GOALS, XP } from './textbook/learn-state.js';
 import { Mascot } from './mascot.jsx';
 import { todayCard } from './textbook/today-snapshot.js';
+import { markTerms, termTitle, termText } from './learn/terms.js';
 
 const CSS = `
   .ln-root { min-height: 100vh; background: var(--c-bg, ${COLOR.bg}); color: ${COLOR.text}; padding: 16px 16px 96px; }
@@ -45,6 +46,12 @@ const CSS = `
   .ln-prompt p { margin: 0 0 10px; }
   .ln-kind { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: ${COLOR.goldSoft}; margin-bottom: 8px; }
   .ln-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; }
+  .ln-node-title { background: none; border: none; padding: 2px 4px; font: inherit; font-size: 12.5px; max-width: 160px; text-align: center; cursor: pointer; }
+  .ln-node-title[disabled] { cursor: default; }
+  .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 10px 12px; cursor: pointer; }
+  .tb-term { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help; text-decoration: underline dotted ${COLOR.goldSoft}; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+  .tb-term:focus-visible { outline: 2px solid ${COLOR.gold}; outline-offset: 2px; }
+  .ln-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: ${COLOR.panel}; border-top: 2px solid ${COLOR.gold}; border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px rgba(0,0,0,.45); }
 `;
 
 // ответы для e2e-тестов: только если тест сам включил флаг
@@ -96,17 +103,17 @@ function MiniChart({ type, attrs, values = null }) {
 // «___» в тексте вопроса → выбранная плитка
 const fillBlank = (blocks, word) => JSON.parse(JSON.stringify(blocks), (k, v) => (k === 'v' && typeof v === 'string' && v.includes('___') ? v.replace('___', word) : v));
 
-function ExerciseView({ inst, resp, setResp, locked, fb }) {
+function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx }) {
   const pick = (v) => { if (!locked) { Audio.play('tick'); setResp(v); } };
   const optClass = (key, correct) => (!fb ? '' : correct ? 'right' : key === resp && !fb.ok ? 'wrong' : '');
   switch (inst.kind) {
     case 'choice':
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           {inst.options.map((o) => (
             <button key={o.key} type="button" className={`ln-opt ${optClass(o.key, o.correct)}`} aria-pressed={resp === o.key} data-key={o.key} disabled={locked}
-              onClick={() => pick(o.key)}><Inline nodes={o.text} ctx={noopCtx} /></button>
+              onClick={() => pick(o.key)}><Inline nodes={o.text} ctx={ctx} /></button>
           ))}
         </div>
       );
@@ -114,11 +121,11 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       const chosen = inst.options.find((o) => o.key === resp);
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={fillBlank(inst.prompt, chosen ? `[${chosen.raw}]` : '_____')} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={fillBlank(inst.prompt, chosen ? `[${chosen.raw}]` : '_____')} ctx={ctx} /></div>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
             {inst.options.map((o) => (
               <button key={o.key} type="button" className={`ln-chip ${optClass(o.key, o.correct)}`} aria-pressed={resp === o.key} data-key={o.key} disabled={locked}
-                onClick={() => pick(o.key)}><Inline nodes={o.text} ctx={noopCtx} /></button>
+                onClick={() => pick(o.key)}><Inline nodes={o.text} ctx={ctx} /></button>
             ))}
           </div>
         </div>
@@ -127,7 +134,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
     case 'tf':
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {[[true, 'Верно'], [false, 'Неверно']].map(([v, l]) => (
               <button key={l} type="button" className={`ln-opt ${!fb ? '' : v === inst.answer ? 'right' : v === resp ? 'wrong' : ''}`} style={{ textAlign: 'center', fontWeight: 700 }}
@@ -143,13 +150,13 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       const values = ctl ? { [ctl.id]: Math.round(ctl.max / 2) * (shown[1] === '+' ? 1 : -1) } : null;
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           <MiniChart type={inst.chart} attrs={inst.chartAttrs} values={values} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             {inst.choices.map((c) => (
               <button key={c.key} type="button" className={`ln-opt ${optClass(c.key, c.key === inst.answer)}`} style={{ textAlign: 'center', margin: 0 }}
                 aria-pressed={resp === c.key} data-key={c.key} disabled={locked} onClick={() => pick(c.key)}>
-                {c.key[1] === '-' ? '← ' : ''}{c.label.split(' ')[0]}{c.key[1] === '+' ? ' →' : ''}
+                {c.button}
               </button>
             ))}
           </div>
@@ -161,7 +168,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       return (
         <div>
           <div className="tb-news" style={{ marginTop: 0 }}><div className="ems-mono tb-news-mast">ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div><div className="ems-serif tb-news-head">{inst.headline}</div></div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           {inst.vars.map((v) => (
             <div key={v.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '6px 0' }}>
               <span style={{ fontSize: 15 }}>{v.label}</span>
@@ -181,17 +188,17 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       const seq = resp || [];
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           <div style={{ minHeight: 60, border: `2px dashed ${COLOR.border}`, borderRadius: 12, padding: 6, marginBottom: 10 }} data-testid="ln-order-answer">
             {seq.map((k, i) => { const it = inst.items.find((x) => x.key === k); return (
               <button key={k} type="button" className="ln-opt" style={{ margin: '4px 0' }} disabled={locked} onClick={() => pick(seq.filter((x) => x !== k))}>
-                <b style={{ color: COLOR.goldSoft }}>{i + 1}.</b> <Inline nodes={it.text} ctx={noopCtx} />
+                <b style={{ color: COLOR.goldSoft }}>{i + 1}.</b> <Inline nodes={it.text} ctx={ctx} />
               </button>
             ); })}
             {!seq.length && <div style={{ fontSize: 13, color: COLOR.faint, padding: 10, textAlign: 'center' }}>Нажимайте карточки по порядку</div>}
           </div>
           {inst.items.filter((it) => !seq.includes(it.key)).map((it) => (
-            <button key={it.key} type="button" className="ln-opt" data-key={it.key} disabled={locked} onClick={() => pick([...seq, it.key])}><Inline nodes={it.text} ctx={noopCtx} /></button>
+            <button key={it.key} type="button" className="ln-opt" data-key={it.key} disabled={locked} onClick={() => pick([...seq, it.key])}><Inline nodes={it.text} ctx={ctx} /></button>
           ))}
         </div>
       );
@@ -204,13 +211,13 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       const tone = (i) => ['#6FA8DC', '#4FA38F', '#D9B23A', '#E07A5F', '#A78BDA'][i % 5];
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div>{inst.left.map((l) => (
               <button key={l.key} type="button" className="ln-opt" data-side="left" data-key={l.key} aria-pressed={sel === l.key} disabled={locked}
                 style={{ fontSize: 14, borderColor: l.key in pairNo ? tone(pairNo[l.key]) : undefined }}
                 onClick={() => { Audio.play('tick'); if (l.key in r) { const n = { ...r }; delete n[l.key]; setResp(n); setSel(null); } else setSel(l.key); }}>
-                <Inline nodes={l.text} ctx={noopCtx} /></button>
+                <Inline nodes={l.text} ctx={ctx} /></button>
             ))}</div>
             <div>{inst.right.map((x) => (
               <button key={x.key} type="button" className="ln-opt" data-side="right" data-key={x.key} disabled={locked || (!sel && !(x.key in rightOwner))}
@@ -221,7 +228,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
                   if (x.key in rightOwner) delete n[rightOwner[x.key]];
                   if (sel) n[sel] = x.key;
                   setResp(n); setSel(null);
-                }}><Inline nodes={x.text} ctx={noopCtx} /></button>
+                }}><Inline nodes={x.text} ctx={ctx} /></button>
             ))}</div>
           </div>
         </div>
@@ -231,10 +238,10 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       const r = resp || {};
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           {inst.items.map((it) => (
             <div key={it.key} style={{ border: `1px solid ${fb ? (r[it.key] === it.bin ? COLOR.teal : COLOR.rust) : COLOR.border}`, borderRadius: 12, padding: '8px 10px', margin: '8px 0', background: COLOR.panel }}>
-              <div style={{ fontSize: 14.5, marginBottom: 4 }}><Inline nodes={it.text} ctx={noopCtx} /></div>
+              <div style={{ fontSize: 14.5, marginBottom: 4 }}><Inline nodes={it.text} ctx={ctx} /></div>
               <div style={{ display: 'flex', flexWrap: 'wrap' }}>
                 {inst.bins.map((b) => (
                   <button key={b} type="button" className="ln-chip" style={{ fontSize: 13, padding: '6px 10px' }} aria-pressed={r[it.key] === b} data-item={it.key} data-bin={b} disabled={locked}
@@ -251,7 +258,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb }) {
       const press = (k) => { if (locked) return; Audio.play('tick'); if (k === 'del') setResp(val.slice(0, -1)); else if (val.length < 10) setResp(val + k); };
       return (
         <div>
-          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+          <div className="ln-prompt tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', margin: '10px 0 14px' }}>
             <input value={val} onChange={(e) => !locked && setResp(e.target.value.replace(/[^0-9.,\-−/]/g, '').slice(0, 10))} inputMode="none" aria-label="Ответ числом"
               style={{ width: 180, fontSize: 26, textAlign: 'center', padding: '8px 10px', borderRadius: 12, border: `2px solid ${COLOR.border}`, background: COLOR.panel, color: COLOR.text, fontFamily: 'inherit' }} />
@@ -291,7 +298,10 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
   const [sel, setSel] = useState(null);
   const [asking, setAsking] = useState(false);
   const [result, setResult] = useState(null);
-  const acc = useRef({ first: {}, solved: new Set(), start: Date.now(), itemStart: Date.now(), retries: 0 });
+  const acc = useRef({ first: {}, hinted: {}, solved: new Set(), start: Date.now(), itemStart: Date.now(), retries: 0 });
+  const [term, setTerm] = useState(null);
+  const cardsSeen = useRef(new Set());
+  const cardFor = (item) => (item && plan.cards && plan.cards[item.uid] && !cardsSeen.current.has(item.uid) ? plan.cards[item.uid] : null);
   const retryable = run.mode === 'lesson' || run.mode === 'practice';
   useEffect(() => { update(startLesson); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -326,20 +336,23 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
   const finish = () => {
     const a = acc.current;
     const firstOk = Object.values(a.first).filter(Boolean).length;
+    // подсказка — не ошибка, но опыта за такой ответ меньше
+    const hintedOk = Object.keys(a.first).filter((k) => a.first[k] && a.hinted[k]).length;
+    const cleanOk = firstOk - hintedOk;
     const mistakes = Object.values(a.first).filter((x) => !x).length;
     const accuracy = total ? (firstOk / total) * 100 : 0;
     const ms = Date.now() - a.start;
     let xp = 0; let pass = null;
     if (run.mode === 'lesson') {
-      xp = lessonXp({ firstTry: firstOk, replay });
+      xp = lessonXp({ firstTry: cleanOk, hinted: hintedOk, replay });
       update((s) => finishLesson(s, run.lessonId, { xp, accuracy }));
     } else if (run.mode === 'check') {
       pass = mistakes <= plan.passMistakes;
-      xp = firstOk * XP.correct;
+      xp = cleanOk * XP.correct + hintedOk * XP.hinted;
       const ids = UNIT_BY_ID[run.unitId].lessons.map((l) => l.id);
       update((s) => { const t = finishLesson(s, null, { xp, accuracy }); return pass ? passUnit(t, run.unitId, ids) : t; });
     } else {
-      xp = firstOk * XP.correct;
+      xp = cleanOk * XP.correct + hintedOk * XP.hinted;
       update((s) => finishLesson(s, null, { xp, accuracy }));
     }
     Audio.play('up'); vibrate([20, 30, 20, 30, 60]);
@@ -349,9 +362,18 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
   const next = () => {
     Audio.play('click');
     if (pos + 1 >= queue.length) { finish(); return; }
-    setPos(pos + 1); setResp(null); setFb(null); setSel(null);
+    setPos(pos + 1); setResp(null); setFb(null); setSel(null); setTerm(null);
     acc.current.itemStart = Date.now();
+    // перед упражнением на новое понятие — вторая карточка идеи
+    if (cardFor(queue[pos + 1])) setStage('card');
   };
+  const openTerm = (id) => {
+    Audio.play('tick');
+    if (!fb && orig) acc.current.hinted[orig] = true;
+    setTerm(id);
+  };
+  const termCtx = useMemo(() => ({ ...noopCtx, onTerm: openTerm }), // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orig, fb]);
   const quit = () => {
     if (stage !== 'done' && cur) update((s) => quitLesson(s, cur.kind, pos));
     onClose();
@@ -360,7 +382,9 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
   useEffect(() => { if (stage === 'work' && !cur && !result) finish(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, cur, result]);
   const exit = () => { if (stage === 'done') onClose(); else setAsking(true); };
-  const inst = cur ? { ...cur, _sel: sel, _setSel: setSel } : null;
+  // термины условия — с подсказками; варианты ответа не размечаем: нажатие по ним — это выбор
+  const marked = useMemo(() => (cur ? { ...cur, prompt: markTerms(cur.prompt) } : null), [cur]);
+  const inst = marked ? { ...marked, _sel: sel, _setSel: setSel } : null;
   const title = run.mode === 'lesson' ? lesson.title : run.mode === 'check' ? 'Проверка юнита' : run.mode === 'legend' ? 'Уровень легенды' : 'Практика';
 
   return (
@@ -394,10 +418,29 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
             <div style={{ fontSize: 12.5, color: COLOR.faint, textAlign: 'center' }}>{total} упражнений · около {Math.round(plan.seconds / 60)} мин</div>
           </div></div>
           <div className="ln-foot"><div className="ln-inner">
-            <button type="button" className="ems-btn primary ln-cta" onClick={() => { Audio.play('click'); setStage('work'); acc.current.start = Date.now(); acc.current.itemStart = Date.now(); }}>Начать</button>
+            <button type="button" className="ems-btn primary ln-cta" onClick={() => { Audio.play('click'); setStage(cardFor(queue[0]) ? 'card' : 'work'); acc.current.start = Date.now(); acc.current.itemStart = Date.now(); }}>Начать</button>
           </div></div>
         </>
       )}
+
+      {stage === 'card' && cur && cardFor(cur) && (() => {
+        const c = cardFor(cur);
+        return (
+          <>
+            <div className="ln-body"><div className="ln-inner" data-testid="lesson-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+                <Mascot mood="think" size={48} />
+                <div><div className="ln-kind">Ещё одна идея</div><div className="ems-serif" style={{ fontSize: 21, fontWeight: 700 }}>{c.title}</div></div>
+              </div>
+              <div className="ln-prompt tb-body" style={{ fontSize: 16.5 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
+              {c.chart && <MiniChart type={c.chart} attrs={c.attrs} />}
+            </div></div>
+            <div className="ln-foot"><div className="ln-inner">
+              <button type="button" className="ems-btn primary ln-cta" onClick={() => { Audio.play('click'); cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setStage('work'); }}>Понятно</button>
+            </div></div>
+          </>
+        );
+      })()}
 
       {stage === 'work' && inst && (
         <>
@@ -410,7 +453,7 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
                 <Mascot mood="think" size={36} /> Эта задача уже была — попробуем ещё раз.
               </div>
             )}
-            <ExerciseView inst={inst} resp={resp} setResp={(v) => { setResp(v); if (fb && fb.empty) setFb(null); }} locked={!!fb && !fb.empty} fb={fb && !fb.empty ? fb : null} />
+            <ExerciseView inst={inst} ctx={termCtx} resp={resp} setResp={(v) => { setResp(v); if (fb && fb.empty) setFb(null); }} locked={!!fb && !fb.empty} fb={fb && !fb.empty ? fb : null} />
           </div></div>
           <div className={`ln-foot ${fb && !fb.empty ? (fb.ok ? 'ok' : 'bad') : ''}`} data-testid="lesson-foot"><div className="ln-inner">
             {fb && !fb.empty && (
@@ -431,6 +474,19 @@ function Runner({ run, learn, update, onClose, onOpenTheory }) {
               : <button type="button" className="ems-btn primary ln-cta" disabled={!ready(inst, resp)} onClick={doCheck}>Проверить</button>}
           </div></div>
         </>
+      )}
+
+      {term && stage === 'work' && (
+        <div className="ln-sheet" role="dialog" aria-label={`Термин: ${termTitle(term)}`} data-testid="term-sheet">
+          <div className="ln-inner">
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+              <div className="ems-serif" style={{ fontSize: 18, fontWeight: 700, color: COLOR.goldSoft }}>{termTitle(term)}</div>
+              <span style={{ fontSize: 11.5, color: COLOR.faint }}>подсказка · опыта за ответ меньше</span>
+            </div>
+            <div style={{ fontSize: 14.5, lineHeight: 1.55, margin: '8px 0 12px' }}>{termText(term)}</div>
+            <button type="button" className="ems-btn ln-cta" style={{ padding: 11, fontSize: 15 }} onClick={() => setTerm(null)} autoFocus>Понятно</button>
+          </div>
+        </div>
       )}
 
       {stage === 'done' && result && (
@@ -491,8 +547,9 @@ function PathView({ learn, onStart, onOpenTheory }) {
   const sleepy = missedYesterday(learn);
   const g = goalToday(learn);
   const hello = g.done >= g.goal ? 'joy' : sleepy ? 'sleep' : 'hello';
-  const first = states[0];
-  let unitNo = 0;
+  const first = states.find((x) => x.current) || states[0];
+  const soon = UNITS.map((u, k) => ({ u, no: k + 1 })).filter(({ u }) => !states.some((x) => x.unit.id === u.id));
+  const [soonOpen, setSoonOpen] = useState(false);
   return (
     <div className="ln-wrap" data-testid="path">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -505,18 +562,7 @@ function PathView({ learn, onStart, onOpenTheory }) {
         </div>
       </div>
       <TopStats learn={learn} />
-      {UNITS.map((u) => {
-        unitNo += 1;
-        const st = states.find((x) => x.unit.id === u.id);
-        if (!st) {
-          return (
-            <div key={u.id} className="ln-soon" data-testid="path-soon" data-unit={u.id}>
-              <Lock size={16} />
-              <span style={{ flex: 1 }}>Юнит {unitNo} · {u.title}<span style={{ display: 'block', fontSize: 12, color: COLOR.faint }}>скоро на Пути{u.ready ? ' · учебник уже в «Теории»' : ''}</span></span>
-              {u.ready && <button type="button" className="ems-btn ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => onOpenTheory({ kind: 'chapter', id: u.id })}>Теория</button>}
-            </div>
-          );
-        }
+      {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.unit.id === u.id) })).filter((x) => x.st).map(({ u, no: unitNo, st }) => {
         const sections = CHAPTER_SECTIONS[u.id] || [];
         const problemsAt = (sections.find((x) => x.title === 'Задачи') || {}).id;
         return (
@@ -546,7 +592,9 @@ function PathView({ learn, onStart, onOpenTheory }) {
                       onClick={() => { Audio.play('click'); onStart({ mode: 'lesson', lessonId: l.id }); }}>
                       {l.done ? <Check size={30} strokeWidth={3} /> : l.open ? <span className="ems-serif" style={{ fontSize: 24, fontWeight: 700 }}>{l.no}</span> : <Lock size={24} />}
                     </button>
-                    <span style={{ fontSize: 12.5, color: l.open ? COLOR.text : COLOR.faint, maxWidth: 150, textAlign: 'center' }}>{l.title}</span>
+                    {/* название — тоже кнопка урока: в кружок на телефоне попадают не всегда */}
+                    <button type="button" className="ln-node-title" disabled={!l.open} tabIndex={-1} aria-hidden="true" data-testid="path-lesson-title" data-lesson={l.id}
+                      style={{ color: l.open ? COLOR.text : COLOR.faint }} onClick={() => { Audio.play('click'); onStart({ mode: 'lesson', lessonId: l.id }); }}>{l.title}</button>
                     {isCur && <span style={{ fontSize: 11.5, color: COLOR.gold, fontWeight: 700 }}>{l.done ? 'повторить' : 'начать'}</span>}
                   </div>
                 );
@@ -555,6 +603,26 @@ function PathView({ learn, onStart, onOpenTheory }) {
           </div>
         );
       })}
+      {soon.length > 0 && (
+        <div className="ln-soon" style={{ display: 'block', padding: 0 }} data-testid="path-soon">
+          <button type="button" className="ln-soon-head" aria-expanded={soonOpen} onClick={() => { Audio.play('tab'); setSoonOpen((v) => !v); }}>
+            <Lock size={16} />
+            <span style={{ flex: 1, textAlign: 'left' }}>Дальше на Пути: {soon.length} {soon.length % 10 === 1 && soon.length % 100 !== 11 ? 'юнит готовится' : 'юнитов готовятся'}
+              <span style={{ display: 'block', fontSize: 12, color: COLOR.faint }}>учебник по готовым главам уже в «Теории»</span></span>
+            <ChevronRight size={16} style={{ transform: soonOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+          </button>
+          {soonOpen && (
+            <div style={{ padding: '0 12px 8px' }} data-testid="path-soon-list">
+              {soon.map(({ u, no }) => (
+                <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: `1px solid ${COLOR.hairline}` }} data-unit={u.id}>
+                  <span style={{ flex: 1, fontSize: 13.5 }}>Юнит {no} · {u.title}</span>
+                  {u.ready && <button type="button" className="ems-btn ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => onOpenTheory({ kind: 'chapter', id: u.id })}>Теория</button>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -655,9 +723,12 @@ export function LearnTab({ tab, onOpenTheory }) {
   return (
     <div className="ln-root">
       <style>{TEXTBOOK_CSS + CSS}</style>
-      {tab === 'path' && <PathView learn={learn} onStart={setRun} onOpenTheory={onOpenTheory} />}
-      {tab === 'practice' && <PracticeView learn={learn} onStart={setRun} onOpenTheory={onOpenTheory} />}
-      {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenTheory={onOpenTheory} />}
+      {/* пока идёт урок, экран под ним недоступен ни с клавиатуры, ни для чтения с экрана */}
+      <div inert={!!run}>
+        {tab === 'path' && <PathView learn={learn} onStart={setRun} onOpenTheory={onOpenTheory} />}
+        {tab === 'practice' && <PracticeView learn={learn} onStart={setRun} onOpenTheory={onOpenTheory} />}
+        {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenTheory={onOpenTheory} />}
+      </div>
       {run && <Runner key={JSON.stringify(run)} run={run} learn={learn} update={update} onClose={() => setRun(null)} onOpenTheory={onOpenTheory} />}
     </div>
   );
