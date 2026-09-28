@@ -9,6 +9,7 @@ import {
 import {
   COLOR, Audio, useEscapeClose, getPlayerId, syncProfile, readLocalProgress, writeLocalProgress, PLAYER_ID_KEY,
 } from './MacroSimulator.jsx';
+import { DsRoot } from './ds.jsx';
 
 /* ================================ ПРОФИЛЬ ================================
    Логин и пароль, имя и значок. Главное, ради чего он заведён, — сетевая игра:
@@ -100,29 +101,27 @@ export const leaveProfile = async () => {
   return getPlayerId();
 };
 
-const fieldStyle = () => ({ width: '100%', padding: '9px 11px', fontSize: 13, background: COLOR.panelAlt,
-  border: `1px solid ${COLOR.border}`, borderRadius: 3, color: COLOR.text });
 
 function ModalShell({ title, icon: Icon, onClose, children, label }) {
   useEscapeClose(onClose);
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div role="dialog" aria-label={label || title} className="ems-panel-raised ems-fade-in" style={{ maxWidth: 420, width: '100%', maxHeight: '88vh', overflow: 'auto', padding: 18 }} onClick={(e) => e.stopPropagation()}>
+    <DsRoot world={COLOR} style={{ position: 'fixed', inset: 0, background: 'rgba(20,14,6,0.6)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div role="dialog" aria-label={label || title} className="ds-card ds-rise" style={{ maxWidth: 420, width: '100%', maxHeight: '88vh', overflow: 'auto', padding: 18 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <Icon size={15} color={COLOR.gold} />
-          <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>{title}</span>
-          <button type="button" className="ems-btn" aria-label="Закрыть" data-nav="back" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
+          <Icon size={17} color="var(--u-ink)" aria-hidden="true" />
+          <span className="ds-h3" style={{ flex: 1 }}>{title}</span>
+          <button type="button" className="ds-icon-btn" aria-label="Закрыть" data-nav="back" onClick={onClose}><X size={20} /></button>
         </div>
         {children}
       </div>
-    </div>
+    </DsRoot>
   );
 }
 
 // предупреждение, когда сервер работает без общего хранилища: профиль там не выживет
 export function StorageWarning() {
   return (
-    <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 12, color: COLOR.rust, lineHeight: 1.5, marginBottom: 10 }}>
+    <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 12, color: 'var(--ds-bad)', lineHeight: 1.5, marginBottom: 10 }}>
       <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} />
       Сервер работает без общего хранилища (Redis): профили и сессии могут пропадать. Это настройка развёртывания —
       нужны переменные KV_REST_API_URL и KV_REST_API_TOKEN.
@@ -139,18 +138,18 @@ export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохрани�
   };
   return (
     <div>
-      <div style={{ fontSize: 13, color: COLOR.text, lineHeight: 1.55, marginBottom: 10 }}>
+      <div style={{ fontSize: 15, color: 'var(--ds-ink)', lineHeight: 1.55, marginBottom: 10 }}>
         Это код восстановления. Если забудете пароль, по нему можно задать новый. Сохраните его где-нибудь вне игры:
         показываем его только сейчас.
       </div>
-      <div className="ems-mono" data-testid="recovery-code" style={{ fontSize: 20, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px',
-        background: COLOR.panelAlt, border: `1px dashed ${COLOR.gold}`, color: COLOR.goldSoft, marginBottom: 10 }}>{code}</div>
+      <div className="ds-num" data-testid="recovery-code" style={{ fontSize: 21, fontWeight: 700, letterSpacing: '0.12em', textAlign: 'center', padding: '12px 8px',
+        background: 'var(--ds-card2)', border: '1.5px dashed var(--u-ink)', color: 'var(--ds-ink)', marginBottom: 12 }}>{code}</div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" className="ems-btn" style={{ padding: '9px 12px', fontSize: 12 }} onClick={copy}>
+        <button type="button" className="ds-btn ds-btn--secondary ds-btn--small"  onClick={copy}>
           {copied ? <Check size={12} style={{ verticalAlign: -2, marginRight: 5 }} /> : <Copy size={12} style={{ verticalAlign: -2, marginRight: 5 }} />}
           {copied ? 'Скопировано' : 'Копировать'}
         </button>
-        <button type="button" className="ems-btn primary" style={{ flex: 1, padding: '9px 0', fontSize: 13 }} onClick={onDone}>{doneLabel}</button>
+        <button type="button" className="ds-btn" style={{ flex: 1, }} onClick={onDone}>{doneLabel}</button>
       </div>
     </div>
   );
@@ -194,59 +193,59 @@ export function AuthModal({ onClose, onDone, reason }) {
   const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12);
   return (
     <ModalShell title={titles[tab]} label="Профиль игрока" icon={User} onClose={onClose}>
-      {reason && <div style={{ fontSize: 12, color: COLOR.text, marginBottom: 12, lineHeight: 1.5 }}>{reason}</div>}
+      {reason && <div style={{ fontSize: 14, color: 'var(--ds-ink)', marginBottom: 12, lineHeight: 1.5 }}>{reason}</div>}
       {tab !== 'recover' && (
-        <div className="ems-seg" role="tablist" style={{ display: 'flex', marginBottom: 14 }}>
+        <div role="tablist" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           {[['register', 'Новый профиль'], ['login', 'У меня есть профиль']].map(([id, lbl]) => (
-            <button key={id} type="button" role="tab" aria-pressed={tab === id} style={{ flex: 1, padding: '7px 8px', fontSize: 12 }}
+            <button key={id} type="button" role="tab" className="ds-chip" aria-pressed={tab === id} style={{ flex: 1, margin: 0 }}
               onClick={() => { setTab(id); setError(''); }}>{lbl}</button>
           ))}
         </div>
       )}
       {tab === 'recover' && (
-        <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5, marginBottom: 12 }}>
+        <div style={{ fontSize: 14, color: 'var(--ds-ink2)', lineHeight: 1.5, marginBottom: 12 }}>
           Введите логин, код восстановления, который вы получили при регистрации, и новый пароль. Все прежние входы в профиль
           на других устройствах закроются.
         </div>
       )}
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <label style={{ fontSize: 12 }}>Логин
+        <label className="ds-label">Логин
           <input value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" autoCapitalize="none"
-            placeholder="латиница, цифры, _" style={{ ...fieldStyle(), marginTop: 5 }} />
+            placeholder="латиница, цифры, _" className="ds-field" style={{ marginTop: 5 }} />
         </label>
         {tab === 'recover' && (
-          <label style={{ fontSize: 12 }}>Код восстановления
+          <label className="ds-label">Код восстановления
             <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX"
-              className="ems-mono" style={{ ...fieldStyle(), marginTop: 5, letterSpacing: '0.08em' }} />
+              className="ds-field ds-num" style={{ marginTop: 5, letterSpacing: '0.08em' }} />
           </label>
         )}
-        <label style={{ fontSize: 12 }}>{tab === 'recover' ? 'Новый пароль' : 'Пароль'}
+        <label className="ds-label">{tab === 'recover' ? 'Новый пароль' : 'Пароль'}
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             autoComplete={tab === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов"
-            style={{ ...fieldStyle(), marginTop: 5 }} />
+            className="ds-field" style={{ marginTop: 5 }} />
         </label>
         {tab === 'register' && (
-          <label style={{ fontSize: 12 }}>Имя в игре
+          <label className="ds-label">Имя в игре
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="как вас видят партнёры" maxLength={24}
-              style={{ ...fieldStyle(), marginTop: 5 }} />
+              className="ds-field" style={{ marginTop: 5 }} />
           </label>
         )}
         {tab === 'register' && (
-          <div style={{ fontSize: 12, color: COLOR.faint, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 14, color: 'var(--ds-ink3)', lineHeight: 1.5 }}>
             Сохранения, достижения и пройденные курсы с этого устройства перейдут в профиль — войдите с ним на другом
             устройстве, и они будут там.
           </div>
         )}
-        {error && <div style={{ fontSize: 12, color: COLOR.rust }}>{error}</div>}
-        <button type="submit" className="ems-btn primary" disabled={busy || !canSubmit} style={{ padding: '11px 0', marginTop: 2 }}>
+        {error && <div style={{ fontSize: 14, color: 'var(--ds-bad)' }}>{error}</div>}
+        <button type="submit" className="ds-btn" disabled={busy || !canSubmit} style={{ marginTop: 2 }}>
           {busy ? 'Минутку…' : tab === 'register' ? 'Создать профиль' : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
         </button>
         {tab === 'login' && (
-          <button type="button" className="ems-btn ghost" style={{ padding: '6px 0', fontSize: 12, background: 'none', border: 'none', color: COLOR.muted }}
+          <button type="button" className="ds-btn ds-btn--ghost" 
             onClick={() => { setTab('recover'); setError(''); setPassword(''); }}>Забыли пароль?</button>
         )}
         {tab === 'recover' && (
-          <button type="button" className="ems-btn ghost" style={{ padding: '6px 0', fontSize: 12, background: 'none', border: 'none', color: COLOR.muted }}
+          <button type="button" className="ds-btn ds-btn--ghost" 
             onClick={() => { setTab('login'); setError(''); }}>← Ко входу</button>
         )}
       </form>
@@ -324,30 +323,30 @@ export function ProfileModal({ onClose, onSwitched }) {
     <ModalShell title="Профиль" icon={User} onClose={onClose}>
       {storageMemory && <StorageWarning />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-        <div className="ems-card-icon" style={{ width: 50, height: 50 }}><Icon size={24} color={COLOR.gold} /></div>
+        <div className="ds-panel" style={{ width: 50, height: 50, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={24} color={'var(--u-ink)'} /></div>
         <div style={{ minWidth: 0 }}>
-          <div className="ems-serif" style={{ fontSize: 18, color: COLOR.text }}>{account.name}</div>
-          <div className="ems-mono" style={{ fontSize: 12, color: COLOR.faint }}>@{account.login}
+          <div className="ds-h3" style={{ fontSize: 18, color: 'var(--ds-ink)' }}>{account.name}</div>
+          <div className="ds-num" style={{ fontSize: 14, color: 'var(--ds-ink3)' }}>@{account.login}
             {profile && profile.createdAt ? ` · с ${new Date(profile.createdAt).toLocaleDateString('ru-RU')}` : ''}</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
         {[['Комнат', st && st.rooms], ['Кварталов по сети', st && st.quarters], ['Выходов из партий', st && st.leaves]].map(([lbl, v]) => (
-          <div key={lbl} style={{ background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, padding: '8px 6px', textAlign: 'center' }}>
-            <div className="ems-mono" style={{ fontSize: 17, color: COLOR.goldSoft }}>{v == null ? '—' : v}</div>
-            <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 2 }}>{lbl}</div>
+          <div key={lbl} style={{ background: 'var(--ds-card2)', border: '1px solid var(--ds-rule2)', padding: '8px 6px', textAlign: 'center' }}>
+            <div className="ds-num" style={{ fontSize: 17, color: 'var(--u-ink)' }}>{v == null ? '—' : v}</div>
+            <div style={{ fontSize: 14, color: 'var(--ds-ink3)', marginTop: 2 }}>{lbl}</div>
           </div>
         ))}
       </div>
       {profile && !profile.hasRecovery && (
-        <div style={{ fontSize: 12, color: COLOR.goldSoft, lineHeight: 1.5, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: 'var(--u-ink)', lineHeight: 1.5, marginBottom: 12 }}>
           У профиля нет кода восстановления — без него забытый пароль не вернуть. Получите его кнопкой «Код восстановления» ниже.
         </div>
       )}
       <div style={{ fontSize: 12, marginBottom: 5 }}>Имя в игре</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} style={fieldStyle()} />
-        <button className="ems-btn" disabled={busy || name.trim() === account.name || name.trim().length < 2}
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" />
+        <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || name.trim() === account.name || name.trim().length < 2}
           style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => save({ name: name.trim() })}>Сохранить</button>
       </div>
       <div style={{ fontSize: 12, marginBottom: 5 }}>Значок</div>
@@ -355,34 +354,34 @@ export function ProfileModal({ onClose, onSwitched }) {
         {EMBLEMS.map((em) => {
           const EI = em.icon; const on = account.emblem === em.id;
           return (
-            <button key={em.id} className="ems-btn" aria-label={em.label} aria-pressed={on} disabled={busy}
-              style={{ padding: 8, lineHeight: 0, borderColor: on ? COLOR.gold : COLOR.border, background: on ? COLOR.panelAlt : undefined }}
-              onClick={() => { if (!on) save({ emblem: em.id }); }}><EI size={16} color={on ? COLOR.gold : COLOR.muted} /></button>
+            <button key={em.id} className="ds-btn ds-btn--secondary ds-btn--small" aria-label={em.label} aria-pressed={on} disabled={busy}
+              style={{ padding: 8, lineHeight: 0, borderColor: on ? 'var(--u-ink)' : 'var(--ds-rule2)', background: on ? 'var(--ds-card2)' : undefined }}
+              onClick={() => { if (!on) save({ emblem: em.id }); }}><EI size={16} color={on ? 'var(--u-ink)' : 'var(--ds-ink2)'} /></button>
           );
         })}
       </div>
       {panel === 'password' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          <input type="password" placeholder="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" style={fieldStyle()} />
-          <input type="password" placeholder="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" style={fieldStyle()} />
-          <button className="ems-btn" disabled={busy || newPw.length < 6 || !oldPw} style={{ padding: '7px 0', fontSize: 12 }} onClick={changePw}>Сменить пароль</button>
+          <input type="password" placeholder="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
+          <input type="password" placeholder="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
+          <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || newPw.length < 6 || !oldPw}  onClick={changePw}>Сменить пароль</button>
         </div>
       )}
       {panel === 'recovery' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.5 }}>Новый код заменит прежний. Для этого нужен пароль.</div>
-          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" style={fieldStyle()} />
-          <button className="ems-btn" disabled={busy || !oldPw} style={{ padding: '7px 0', fontSize: 12 }} onClick={newCode}>Получить новый код</button>
+          <div style={{ fontSize: 14, color: 'var(--ds-ink2)', lineHeight: 1.5 }}>Новый код заменит прежний. Для этого нужен пароль.</div>
+          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
+          <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || !oldPw}  onClick={newCode}>Получить новый код</button>
         </div>
       )}
-      {error && <div style={{ fontSize: 12, color: COLOR.rust, marginBottom: 8 }}>{error}</div>}
-      {note && <div style={{ fontSize: 12, color: COLOR.teal, marginBottom: 8 }}>{note}</div>}
+      {error && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>{error}</div>}
+      {note && <div style={{ fontSize: 14, color: 'var(--ds-ok)', marginBottom: 8 }}>{note}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        <button className="ems-btn" aria-pressed={panel === 'password'} style={{ padding: '6px 10px', fontSize: 12 }}
+        <button className="ds-btn ds-btn--secondary ds-btn--small" aria-pressed={panel === 'password'} 
           onClick={() => { setOldPw(''); setPanel(panel === 'password' ? null : 'password'); }}><KeyRound size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Пароль</button>
-        <button className="ems-btn" aria-pressed={panel === 'recovery'} style={{ padding: '6px 10px', fontSize: 12 }}
+        <button className="ds-btn ds-btn--secondary ds-btn--small" aria-pressed={panel === 'recovery'} 
           onClick={() => { setOldPw(''); setPanel(panel === 'recovery' ? null : 'recovery'); }}>Код восстановления</button>
-        <button className="ems-btn" style={{ padding: '6px 10px', fontSize: 12, marginLeft: 'auto' }} onClick={logout}><LogOut size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Выйти</button>
+        <button className="ds-btn ds-btn--secondary ds-btn--small" style={{ marginLeft: 'auto' }} onClick={logout}><LogOut size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Выйти</button>
       </div>
     </ModalShell>
   );
@@ -393,7 +392,7 @@ export function ProfileChip({ account, onClick }) {
   const Icon = account ? emblemIcon(account.emblem) : LogIn;
   return (
     <button className="ems-btn menu-profile" onClick={onClick} aria-label={account ? `Профиль: ${account.name}` : 'Войти в профиль'}>
-      <Icon size={15} color={COLOR.gold} />
+      <Icon size={15} color={'var(--u-ink)'} />
       <span className="menu-profile-name">{account ? account.name : 'Войти'}</span>
     </button>
   );

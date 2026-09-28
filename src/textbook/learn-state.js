@@ -6,15 +6,16 @@
    Серия дней — дни, когда пройден хотя бы один урок. Один пропуск в календарную неделю
    «замораживается» и серию не обнуляет. Без наказаний: пропуск просто не считается днём серии. */
 const DAY = 24 * 3600 * 1000;
-export const XP = { correct: 2, hinted: 1, finish: 5, replayShare: 0.1 };
+export const XP = { correct: 2, finish: 5, replayShare: 0.1 };
 export const GOALS = [1, 2, 3, 5];
 const MAX_DAYS = 400;
 const MAX_KEYS = 300;
 const MAX_MISTAKES = 60;
+const MAX_HINTED = 60;
 
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
-  runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [],
+  runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
 });
 
 // день по местному времени: ГГГГ-ММ-ДД
@@ -51,13 +52,17 @@ export function abandonLesson(s, kind, index) {
 // ошибки уходят в практику, верный ответ в практике их убирает
 export const addMistake = (s, id, now = Date.now()) => upd(s, { mistakes: [...s.mistakes.filter((m) => m.id !== id), { id, at: now }].slice(-MAX_MISTAKES) });
 export const resolveMistake = (s, id) => upd(s, { mistakes: s.mistakes.filter((m) => m.id !== id) });
+/* Подсказка ничем не наказывается: ни опытом, ни плашкой. Единственное невидимое следствие —
+   упражнение, решённое с подсказкой, попадает в «Повторение» раньше остальных (сразу после
+   ошибок). Решено потом без подсказки — снимается с этого списка. */
+export const addHinted = (s, id, now = Date.now()) => upd(s, { hinted: [...(s.hinted || []).filter((m) => m.id !== id), { id, at: now }].slice(-MAX_HINTED) });
+export const clearHinted = (s, id) => ((s.hinted || []).some((m) => m.id === id) ? upd(s, { hinted: s.hinted.filter((m) => m.id !== id) }) : s);
 
 /* Опыт за урок: 2 за каждое упражнение, решённое верно с первой попытки (и новое, и
-   повторение), плюс 5 за то, что урок доведён до конца. Урок, который уже был пройден, даёт
-   десятую часть — повторять лёгкое ради опыта незачем. */
-// firstTry — верно с первой попытки без подсказки, hinted — верно с первой, но после подсказки
-export function lessonXp({ firstTry, hinted = 0, replay }) {
-  const full = firstTry * XP.correct + hinted * XP.hinted + XP.finish;
+   повторение, с подсказкой или без), плюс 5 за то, что урок доведён до конца. Урок, который
+   уже был пройден, даёт десятую часть — повторять лёгкое ради опыта незачем. */
+export function lessonXp({ firstTry, replay }) {
+  const full = firstTry * XP.correct + XP.finish;
   return replay ? Math.max(1, Math.round(full * XP.replayShare)) : full;
 }
 export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true }) {
@@ -177,6 +182,7 @@ export function normalizeLearn(raw) {
     runs: { started, finished: Math.min(started || cnt(runs.finished), cnt(runs.finished)), abandoned: cnt(runs.abandoned) },
     quits: smallMap(r.quits), quitAt: smallMap(r.quitAt),
     mistakes: (Array.isArray(r.mistakes) ? r.mistakes : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_MISTAKES),
+    hinted: (Array.isArray(r.hinted) ? r.hinted : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_HINTED),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),
@@ -195,6 +201,8 @@ export function mergeLearn(a, b) {
   Object.entries(y.types).forEach(([k, t]) => { const c = types[k] || { n: 0, ok: 0, ms: 0 }; types[k] = { n: Math.max(c.n, t.n), ok: Math.max(c.ok, t.ok), ms: Math.max(c.ms, t.ms) }; });
   const byId = {};
   [...x.mistakes, ...y.mistakes].forEach((m) => { byId[m.id] = Math.max(byId[m.id] || 0, m.at); });
+  const hintById = {};
+  [...x.hinted, ...y.hinted].forEach((m) => { hintById[m.id] = Math.max(hintById[m.id] || 0, m.at); });
   const laterGoal = y.goalAt > x.goalAt || (y.goalAt === x.goalAt && y.goal > x.goal);
   return normalizeLearn({
     lessons, units, types,
@@ -203,5 +211,6 @@ export function mergeLearn(a, b) {
     runs: { started: Math.max(x.runs.started, y.runs.started), finished: Math.max(x.runs.finished, y.runs.finished), abandoned: Math.max(x.runs.abandoned, y.runs.abandoned) },
     quits: maxMap(x.quits, y.quits), quitAt: maxMap(x.quitAt, y.quitAt),
     mistakes: Object.entries(byId).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
+    hinted: Object.entries(hintById).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
   });
 }

@@ -44,7 +44,7 @@ describe('урок не спрашивает того, чему ещё не уч
       // объясняют только шаги «Знакомства» (карточка урока — его первый шаг); у «Практики» карточек нет
       l.exercises.forEach((e, k) => {
         l.inner.filter((c) => c.at === k).forEach((c) => termsIn([txt(c.idea.title), c.idea.text]).forEach((t) => known.add(t)));
-        samples({ ...e, lesson: l.id, unit: u.id }).forEach((inst) => {
+        samples({ ...e, lesson: l.id, unitId: u.id }).forEach((inst) => {
           termsIn(shown(inst)).forEach((t) => { if (!known.has(t)) problems.push(`${l.id} / ${e.id}: «${GLOSSARY[t].title}» ещё не вводили`); });
         });
       });
@@ -62,7 +62,7 @@ describe('урок не спрашивает того, чему ещё не уч
     // у мини-игры — скорость, а не чтение; у «Повторения» и «Итогов» своих упражнений нет
     pilotUnits().forEach((u) => u.lessons.filter((l) => l.exercises.length && l.kind !== 'game').forEach((l) => {
       // подсказки — в условии (по вариантам ответа нажатие означает выбор)
-      const withHints = l.exercises.filter((e) => termsIn(instantiate({ ...e, lesson: l.id, unit: u.id }, seeded(1)).prompt).size > 0).length;
+      const withHints = l.exercises.filter((e) => termsIn(instantiate({ ...e, lesson: l.id, unitId: u.id }, seeded(1)).prompt).size > 0).length;
       expect(withHints / l.exercises.length, `${l.id}: ${withHints} из ${l.exercises.length}`).toBeGreaterThanOrEqual(0.5);
     }));
   });

@@ -7,10 +7,11 @@ import {
   GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk,
 } from '../course.js';
 import { CAST } from '../cast.js';
-import { collectMath } from '../../textbook/markdown.js';
+import { collectMath, collectBlocks } from '../../textbook/markdown.js';
+import { CHAPTER_BLOCKS } from '../../textbook/content.js';
 import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
-import { emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
+import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
 const PATH = ['scarcity', 'supply-demand'];
 const PILOT = 'supply-demand';
@@ -248,6 +249,23 @@ describe('упражнения: ровно один верный ответ', ()
   });
 });
 
+describe('расчёт: рядом с полем — единица измерения из разметки главы', () => {
+  const ids = new Set([...UNITS.map((u) => u.id), ...LESSONS.map((l) => l.id)]);
+  const blockOf = (unitId, id) => collectBlocks(CHAPTER_BLOCKS[unitId], (b) => b.type === 'ex' && b.id === id)[0];
+  it.each(pilotUnits().flatMap((u) => u.lessons.flatMap((l) => l.exercises.filter((e) => e.kind === 'calc').map((e) => [`${l.id} / ${e.id}`, u.id, e.id]))))('%s', (_, unitId, id) => {
+    for (let s = 1; s <= 5; s += 1) {
+      const inst = instantiate(EXERCISES[id], seeded(s));
+      expect(typeof inst.unit).toBe('string');
+      expect(ids.has(inst.unit), `«${inst.unit}» — идентификатор юнита или урока`).toBe(false);
+      expect(/^[a-z_-]+$/i.test(inst.unit), `«${inst.unit}» — латиница`).toBe(false);
+      // написанное руками — ровно то, что в разметке главы (unit=…)
+      const b = blockOf(unitId, id);
+      if (b && !b.variant) expect(inst.unit).toBe(b.unit);
+      expect(inst.unitId).toBe(unitId);
+    }
+  });
+});
+
 describe('юнит «Спрос и предложение»: все виды уроков', () => {
   const unit = UNIT_BY_ID[PILOT];
   const of = (kind) => unit.lessons.filter((l) => l.kind === kind);
@@ -370,8 +388,25 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(lessonXp({ firstTry: 10, replay: false })).toBe(25);
     expect(lessonXp({ firstTry: 10, replay: true })).toBe(3);
     expect(lessonXp({ firstTry: 0, replay: true })).toBe(1);
-    // ответ после подсказки к термину — не ошибка, но 1 опыта вместо 2
-    expect(lessonXp({ firstTry: 8, hinted: 2, replay: false })).toBe(23);
+    // подсказка ничем не наказывается: опыт за ответ после неё — тот же
+    expect(lessonXp({ firstTry: 10, hinted: 2, replay: false })).toBe(25);
+    expect(XP.hinted).toBeUndefined();
+  });
+  it('подсказка: упражнение невидимо уходит в «Повторение» раньше остальных, решённое без неё — снимается', () => {
+    let s = addHinted(emptyLearn(), 'sd-e2-gap', 5);
+    expect(s.hinted).toEqual([{ id: 'sd-e2-gap', at: 5 }]);
+    expect(normalizeLearn(s).hinted).toEqual(s.hinted);
+    expect(mergeLearn(s, addHinted(emptyLearn(), 'sd-e2-gap', 9)).hinted).toEqual([{ id: 'sd-e2-gap', at: 9 }]);
+    const rev = UNIT_BY_ID[PILOT].lessons.find((l) => l.kind === 'review');
+    for (let k = 1; k <= N; k += 1) {
+      const { items } = buildLesson(rev.id, seeded(k), { mistakes: ['sd-e2-petrol'], hinted: ['sd-e2-gap'] });
+      const ids = items.map((i) => i.id);
+      expect(ids).toContain('sd-e2-petrol');
+      expect(ids).toContain('sd-e2-gap');
+    }
+    s = clearHinted(s, 'sd-e2-gap');
+    expect(s.hinted).toEqual([]);
+    expect(clearHinted(s, 'нет-такого')).toBe(s);
   });
   it('серия: один пропуск в неделю замораживается, второй в той же неделе рвёт серию', () => {
     // среда 30 сентября 2026; пропущен понедельник 28-го

@@ -8,7 +8,9 @@ import { ArrowLeft } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { authenticate, RecoveryCodeView, StorageWarning } from './account.jsx';
 import { Mascot } from './mascot.jsx';
-import { LearnStyle } from './learn-ui.jsx';
+import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
+import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
+import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import { setGoal } from './textbook/learn-state.js';
 
@@ -26,23 +28,19 @@ export const MINUTES = [5, 10, 15, 20];
 const LESSONS_FOR = { 5: 1, 10: 2, 15: 3, 20: 5 };
 
 const CSS = `
-  .wl { max-width: 460px; margin: 0 auto; padding: 18px 20px calc(24px + env(safe-area-inset-bottom)); min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
-  .wl-top { display: flex; align-items: center; min-height: 40px; }
+  .wl { max-width: 460px; margin: 0 auto; padding: 18px 20px calc(24px + env(safe-area-inset-bottom)); min-height: 100vh; display: flex; flex-direction: column; }
+  .wl-top { display: flex; align-items: center; min-height: 44px; }
   .wl-body { flex: 1; display: flex; flex-direction: column; }
-  .wl-foot { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
-  .wl-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .wl-opts .lx-opt { margin: 0; text-align: center; font-weight: 700; }
-  .wl-err { color: var(--c-rust); font-size: 14px; margin: 4px 0 8px; }
+  .wl-foot { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+  .wl-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .wl-opts .ds-opt { margin: 0; text-align: center; font-weight: 700; }
+  .wl-err { color: var(--ds-bad); font-size: 14px; margin: 4px 0 8px; }
 `;
 
 function Top({ onBack }) {
   return (
     <div className="wl-top">
-      {onBack && (
-        <button type="button" className="lx-icon-btn" aria-label="Назад" data-nav="back" onClick={() => { Audio.play('click'); onBack(); }}>
-          <ArrowLeft size={24} />
-        </button>
-      )}
+      {onBack && <IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={() => { Audio.play('paper'); onBack(); }} />}
     </div>
   );
 }
@@ -50,16 +48,20 @@ function Top({ onBack }) {
 function Hello({ go }) {
   return (
     <div className="wl" data-testid="welcome">
+      {/* титул — как купюра: гильош, розетка-водяной знак, Инфля в середине */}
       <div className="wl-body" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-        <Mascot mood="wave" size={150} />
-        <h1 className="lx-h" style={{ fontSize: 34, margin: '18px 0 8px' }}>Inflatia</h1>
-        <div className="lx-sub" style={{ fontSize: 17, lineHeight: 1.45, maxWidth: 320 }}>
-          Экономика маленькими уроками — пять минут в день вместе с Инфлей.
+        <Guilloche height={26} />
+        <div style={{ margin: '18px 0 6px' }}><Rosette size={210} opacity={0.4}><Mascot mood="wave" size={120} /></Rosette></div>
+        <h1 className="ds-h1" style={{ fontSize: 36, letterSpacing: '.02em' }}>Инфлатия</h1>
+        <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика · пять минут в день</div>
+        <div className="ds-sub" style={{ fontSize: 16.5, lineHeight: 1.5, maxWidth: 320, margin: '12px 0 18px' }}>
+          Дорога по стране маленькими уроками — вместе с Инфлей.
         </div>
+        <Guilloche height={26} />
       </div>
       <div className="wl-foot">
-        <button type="button" className="lx-btn wide" onClick={() => { Audio.prime(); Audio.play('click'); go('goal'); }}>Начать</button>
-        <button type="button" className="lx-btn secondary wide" onClick={() => { Audio.prime(); Audio.play('click'); go('login'); }}>У меня уже есть аккаунт</button>
+        <Button wide onClick={() => { Audio.prime(); Audio.play('click'); go('goal'); }}>Начать</Button>
+        <Button variant="secondary" wide onClick={() => { Audio.prime(); Audio.play('click'); go('login'); }}>У меня уже есть аккаунт</Button>
       </div>
     </div>
   );
@@ -74,24 +76,24 @@ function Goal({ go, plan, setPlan }) {
       <div className="wl-body">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <Mascot mood="hello" size={56} />
-          <h2 className="lx-h" style={{ fontSize: 22, margin: 0 }}>Зачем вам экономика?</h2>
+          <Heading level={2} eyebrow="Шаг 1 из 2" title="Зачем вам экономика?" />
         </div>
         <div className="wl-opts" role="group" aria-label="Цель">
-          {GOALS.map((g) => <button key={g.id} type="button" className="lx-opt" aria-pressed={plan.goal === g.id} onClick={() => pick({ goal: g.id })}>{g.label}</button>)}
+          {GOALS.map((g) => <button key={g.id} type="button" className="ds-opt" aria-pressed={plan.goal === g.id} onClick={() => pick({ goal: g.id })}>{g.label}</button>)}
         </div>
-        <h2 className="lx-h" style={{ fontSize: 20, margin: '22px 0 10px' }}>Сколько минут в день?</h2>
+        <h2 className="ds-h3" style={{ margin: '22px 0 10px' }}>Сколько минут в день?</h2>
         <div className="wl-opts" role="group" aria-label="Минут в день">
-          {MINUTES.map((m) => <button key={m} type="button" className="lx-opt" aria-pressed={plan.minutes === m} onClick={() => pick({ minutes: m })}>{m} минут</button>)}
+          {MINUTES.map((m) => <button key={m} type="button" className="ds-opt" aria-pressed={plan.minutes === m} onClick={() => pick({ minutes: m })}>{m} минут</button>)}
         </div>
-        <h2 className="lx-h" style={{ fontSize: 20, margin: '22px 0 10px' }}>Уже знакомы с экономикой?</h2>
+        <h2 className="ds-h3" style={{ margin: '22px 0 10px' }}>Уже знакомы с экономикой?</h2>
         <div className="wl-opts" role="group" aria-label="Знания">
           {[[false, 'Начинаю с нуля'], [true, 'Кое-что знаю']].map(([v, l]) => (
-            <button key={l} type="button" className="lx-opt" aria-pressed={plan.knows === v} onClick={() => pick({ knows: v })}>{l}</button>
+            <button key={l} type="button" className="ds-opt" aria-pressed={plan.knows === v} onClick={() => pick({ knows: v })}>{l}</button>
           ))}
         </div>
       </div>
       <div className="wl-foot">
-        <button type="button" className="lx-btn wide" disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); go('register'); }}>Продолжить</button>
+        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); go('register'); }}>Продолжить</Button>
       </div>
     </div>
   );
@@ -130,7 +132,7 @@ function AuthForm({ mode, go, plan }) {
       <div className="wl" data-testid="welcome-code">
         <Top />
         <div className="wl-body">
-          <h2 className="lx-h" style={{ fontSize: 22, margin: '0 0 12px' }}>Сохраните код восстановления</h2>
+          <Heading level={2} title="Сохраните код восстановления" style={{ marginBottom: 12 }} />
           {shown.storage === 'memory' && <StorageWarning />}
           <RecoveryCodeView code={shown.recoveryCode} onDone={finish} />
         </div>
@@ -145,34 +147,34 @@ function AuthForm({ mode, go, plan }) {
       <form className="wl-body" onSubmit={submit}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <Mascot mood={mode === 'register' ? 'joy' : 'hello'} size={52} />
-          <h2 className="lx-h" style={{ fontSize: 24, margin: 0 }}>{title}</h2>
+          <Heading level={1} eyebrow={mode === 'register' ? 'Шаг 2 из 2' : 'Аккаунт'} title={title} />
         </div>
-        {mode === 'register' && <div className="lx-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Прогресс, серия и опыт хранятся в аккаунте — войдите на другом устройстве, и всё будет там.</div>}
-        {mode === 'recover' && <div className="lx-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Логин, код восстановления из регистрации и новый пароль.</div>}
-        <label className="lx-label">Логин
-          <input className="lx-field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" autoCapitalize="none" placeholder="латиница, цифры, _" />
+        {mode === 'register' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Прогресс, серия и опыт хранятся в аккаунте — войдите на другом устройстве, и всё будет там.</div>}
+        {mode === 'recover' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Логин, код восстановления из регистрации и новый пароль.</div>}
+        <label className="ds-label">Логин
+          <input className="ds-field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" autoCapitalize="none" placeholder="латиница, цифры, _" />
         </label>
         {mode === 'recover' && (
-          <label className="lx-label">Код восстановления
-            <input className="lx-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
+          <label className="ds-label">Код восстановления
+            <input className="ds-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
           </label>
         )}
-        <label className="lx-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
-          <input className="lx-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+        <label className="ds-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
+          <input className="ds-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов" />
         </label>
         {mode === 'register' && (
-          <label className="lx-label">Имя
-            <input className="lx-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
+          <label className="ds-label">Имя
+            <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
           </label>
         )}
         {error && <div className="wl-err" role="alert">{error}</div>}
         <div style={{ flex: 1 }} />
         <div className="wl-foot">
-          <button type="submit" className="lx-btn wide" disabled={busy || !canSubmit}>
+          <Button type="submit" wide disabled={busy || !canSubmit}>
             {busy ? 'Минутку…' : mode === 'register' ? 'Создать аккаунт' : mode === 'recover' ? 'Задать пароль' : 'Войти'}
-          </button>
-          {mode === 'login' && <button type="button" className="lx-btn ghost wide" onClick={() => go('recover')}>Забыли пароль?</button>}
+          </Button>
+          {mode === 'login' && <Button variant="ghost" wide onClick={() => go('recover')}>Забыли пароль?</Button>}
         </div>
       </form>
     </div>
@@ -184,13 +186,13 @@ export function Welcome() {
   const [plan, setPlan] = useState(() => loadOnboarding() || { goal: null, minutes: null, knows: false });
   const go = (s) => { setScreen(s); window.scrollTo(0, 0); };
   return (
-    <div className="lx">
-      <LearnStyle />
+    <DsRoot theme={dsThemeId()} page accent="#86461F">
+      <ArtStyle />
       <style>{CSS}</style>
       {screen === 'hello' && <Hello go={go} />}
       {screen === 'goal' && <Goal go={go} plan={plan} setPlan={setPlan} />}
       {(screen === 'register' || screen === 'login' || screen === 'recover') && <AuthForm key={screen} mode={screen} go={go} plan={plan} />}
-    </div>
+    </DsRoot>
   );
 }
 export default Welcome;

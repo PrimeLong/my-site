@@ -5,9 +5,10 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, CalendarCheck, ChevronDown, ArrowDown } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, CalendarCheck, ChevronDown, ArrowDown } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
+import { TopBar, IconButton } from './ds.jsx';
 import { LEVERS, SCENARIOS } from './lib/engine.js';
 import { LAB_LEVERS } from './lib/lab.js';
 import { DRILLS, drillSetup } from './lib/drills.js';
@@ -1538,6 +1539,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     // уходя, запомнить, где остановились на этой странице
     if (typeof window !== 'undefined') saveScroll(pageKey(page));
     if (push && pageKey(next) !== pageKey(page)) setStack((st) => [...st, page].slice(-30));
+    if (pageKey(next) !== pageKey(page)) Audio.play('paper');
     setPage(next);
     // «продолжить» — глава или приложение; оглавление и «на сегодня» место чтения не меняют
     update((p) => setLast(p, next.kind === 'chapter' || next.kind === 'appendix' ? { kind: next.kind, id: next.id } : p.last));
@@ -1557,10 +1559,8 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
   const valid = page.kind === 'chapter' ? !!CHAPTER_BY_ID[page.id] : page.kind === 'appendix' ? !!APPENDIX_BY_ID[page.id] : page.kind === 'exam' ? !!EXAMS[page.id]
     : ['toc', 'today', 'mixed', 'stats'].includes(page.kind);
   const cur = valid ? page : { kind: 'toc' };
-  return (
-    <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText}
-      onBack={embedded ? () => (stack.length ? back() : onExit()) : onBack} backLabel={embedded ? '← Назад' : backLabel}
-      lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
+  const pages = (
+    <>
       <style>{TEXTBOOK_CSS}</style>
       <ReaderBar scale={scale} setScale={setScale} />
       <div style={{ zoom: scale }} data-testid="tb-content">
@@ -1572,6 +1572,24 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
         {cur.kind === 'chapter' && <ChapterPage key={cur.id} id={cur.id} ctx={ctx} />}
         {cur.kind === 'appendix' && <AppendixPage key={cur.id} id={cur.id} anchor={cur.anchor} ctx={ctx} />}
       </div>
+    </>
+  );
+  /* В обучении учебник — справочник в дизайн-системе обучения: верхняя панель с одним
+     «назад» (на прошлую страницу, с первой — туда, откуда открыли) и название страницы. */
+  if (embedded) {
+    return (
+      <div className="ln-textbook" style={{ maxWidth: 760, margin: '0 auto', padding: '6px 16px 40px' }}>
+        <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={() => { Audio.play('paper'); if (stack.length) back(); else onExit(); }} />}
+          title={<><span className="ds-eyebrow" style={{ display: 'block' }}>Учебник</span>{cur.kind === 'toc' ? 'Оглавление' : pageTitle(cur)}</>} />
+        {pages}
+      </div>
+    );
+  }
+  return (
+    <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText}
+      onBack={onBack} backLabel={backLabel}
+      lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
+      {pages}
     </TrainerPage>
   );
 }
