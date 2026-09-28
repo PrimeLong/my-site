@@ -497,6 +497,36 @@ T.push({ id: 'v-gr-acc', chapter: 'growth', level: 2, source: 'gr-accounting', g
   };
 } });
 
+
+// быстрый расчёт для уроков: объём спроса при цене и равновесная цена (одним числом)
+T.push({ id: 'v-sd-qd', chapter: 'supply-demand', level: 1, source: 'sd-read', gen: (rand) => {
+  const b = ri(rand, 2, 5); const top = ri(rand, 10, 40); const a = b * top; const P = ri(rand, 1, top - 1);
+  const q = a - b * P;
+  return {
+    statement: `Спрос $Q_D = ${a} - ${b}P$. Сколько покупают при цене ${P}?`,
+    parts: [{ answer: q, unit: 'ед.', pos: true }],
+    traps: [
+      { part: 0, value: a - P, text: `Цену нужно умножить на наклон ${b}: $${a} - ${b} \\cdot ${P}$.` },
+      { part: 0, value: a + b * P, text: 'Цена вычитается, а не прибавляется: чем дороже, тем меньше покупают.' },
+    ],
+    solution: `$${a} - ${b} \\cdot ${P} = ${q}$.`,
+    check: ([x]) => near(x + b * P, a),
+  };
+} });
+T.push({ id: 'v-sd-eqp', chapter: 'supply-demand', level: 1, source: 'sd-equilibrium', gen: (rand) => {
+  const k = market(rand, ({ Q, d, P, b, a: A, c }) => Q !== d * P && b !== d && differs((A + c) / (b + d), P));
+  return {
+    statement: `Спрос $Q_D = ${k.a} - ${k.b}P$, предложение $Q_S = ${lin(k.c, k.d, 'P')}$. Найдите равновесную цену.`,
+    parts: [{ answer: k.P, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: (k.a + k.c) / (k.b + k.d), text: 'Похоже на ошибку знака при переносе: $P = (a - c)/(b + d)$.' },
+      { part: 0, value: k.Q, text: 'Это равновесное количество. Спрашивали цену.' },
+    ],
+    solution: `$${k.a} - ${k.b}P = ${lin(k.c, k.d, 'P')}$, $${k.b + k.d}P = ${k.a - k.c}$, $P^* = ${k.P}$.`,
+    check: ([P]) => near(k.a - k.b * P, k.c + k.d * P),
+  };
+} });
+
 T.forEach((t) => { t.gen = guarded(t.gen); });
 export const TEMPLATES = T;
 export const TEMPLATE_BY_ID = Object.fromEntries(T.map((t) => [t.id, t]));

@@ -15,6 +15,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
+    // service worker (офлайн) перехватывал бы подставленные ответы api — его проверяет свой тест
+    serviceWorkers: 'block',
     // в облачной песочнице разработки Chromium уже лежит рядом с Playwright
     ...(process.env.PW_CHROMIUM ? { launchOptions: { executablePath: process.env.PW_CHROMIUM } } : {}),
   },

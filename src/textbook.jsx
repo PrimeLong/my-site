@@ -29,7 +29,7 @@ const CARD_BY_ID = Object.fromEntries(GAME_CARDS.map((c) => [c.id, c]));
 const APPENDIX_BY_ID = Object.fromEntries(APPENDICES.map((a) => [a.id, a]));
 const fmtNum = (v) => String(Math.round(v * 1000) / 1000).replace('.', ',').replace('-', '−');
 
-const CSS = `
+export const TEXTBOOK_CSS = `
   .tb-body { font-size: 14.5px; line-height: 1.68; color: var(--c-text); }
   .tb-body p { margin: 0 0 12px; }
   .tb-body h2 { font-family: 'PT Serif', Georgia, serif; font-size: 20px; font-weight: 700; color: var(--c-gold-soft); margin: 28px 0 10px; }
@@ -143,7 +143,7 @@ function Link({ n, ctx }) {
   );
 }
 
-function Inline({ nodes, ctx }) {
+export function Inline({ nodes, ctx }) {
   return nodes.map((n, i) => {
     if (n.t === 'text') return <React.Fragment key={i}>{n.v}</React.Fragment>;
     if (n.t === 'math') return <Tex key={i} tex={n.v} />;
@@ -308,7 +308,7 @@ function LevelGroup({ g, ctx, startNo }) {
   );
 }
 
-function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
+export function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
   let problemNo = startNo;
   let h2No = 0;
   const blocks = top ? groupLevels(raw) : raw;
@@ -391,7 +391,7 @@ function niceTicks(lo, hi, n = 5) {
 }
 const CURVE_COLOR = { blue: () => COLOR.blue, rust: () => COLOR.rust, teal: () => COLOR.teal, gold: () => COLOR.gold };
 
-function ChartSvg({ scene }) {
+export function ChartSvg({ scene }) {
   const box = React.useRef(null);
   const width = useWidth(box);
   const W = Math.round(Math.max(300, Math.min(560, width)));
@@ -1542,7 +1542,7 @@ export function TextbookScreen({ onBack, resume = false, startPage = null, backL
   return (
     <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText} onBack={onBack} backLabel={backLabel}
       lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
-      <style>{CSS}</style>
+      <style>{TEXTBOOK_CSS}</style>
       <ReaderBar scale={scale} setScale={setScale} />
       <div style={{ zoom: scale }} data-testid="tb-content">
         {cur.kind === 'toc' && <TocPage ctx={ctx} />}

@@ -8,6 +8,7 @@ import {
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
+  Route, Dumbbell, UserRound, Map as MapIcon,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -921,6 +922,9 @@ const TycoonScreen = React.lazy(() => import('./tycoon.jsx').then((m) => ({ defa
 const LabScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.LabScreen })));
 // учебник: главы, KaTeX, приложения — свой чанк
 const TextbookScreen = React.lazy(() => import('./textbook.jsx').then((m) => ({ default: m.TextbookScreen })));
+// путь уроков, практика и профиль учёбы — вместе с учебником (формулы и графики те же)
+const loadLearn = () => import('./learn.jsx');
+const LearnTab = React.lazy(() => loadLearn().then((m) => ({ default: m.LearnTab })));
 const DrillsScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.DrillsScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
@@ -1139,7 +1143,40 @@ function MenuTicker() {
   );
 }
 
-function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onTextbook, onDrills }) {
+/* Нижняя панель главного экрана: пять вкладок, на телефоне — под большим пальцем.
+   Урок открывается поверх неё во весь экран. */
+const NAV_TABS = [
+  { id: 'path', icon: Route, label: 'Путь' },
+  { id: 'practice', icon: Dumbbell, label: 'Практика' },
+  { id: 'theory', icon: BookOpenText, label: 'Теория' },
+  { id: 'world', icon: MapIcon, label: 'Мир' },
+  { id: 'profile', icon: UserRound, label: 'Профиль' },
+];
+function BottomNav({ tab, onTab }) {
+  return (
+    <nav aria-label="Разделы" data-testid="bottom-nav"
+      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 120, background: COLOR.panel, borderTop: `1px solid ${COLOR.border}`,
+        paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: '0 -6px 18px rgba(0,0,0,.25)' }}>
+      <div style={{ display: 'flex', maxWidth: 560, margin: '0 auto' }}>
+        {NAV_TABS.map((t) => {
+          const on = tab === t.id;
+          const Icon = t.icon;
+          return (
+            <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id}
+              onClick={() => { Audio.prime(); Audio.play('tab'); onTab(t.id); }}
+              style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '8px 2px 7px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                color: on ? COLOR.gold : COLOR.muted, fontFamily: FONT.sans, fontSize: 11.5, fontWeight: on ? 700 : 400 }}>
+              <Icon size={21} strokeWidth={on ? 2.4 : 1.8} />
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, onEnterNetwork, onDaily, onTycoon, onLab, onTextbook, onDrills, inShell = false }) {
   // профиль может смениться прямо здесь (связывание устройств), поэтому это
   // состояние, а не разовое чтение: после связывания список слотов перечитывается
   const [playerId, setPlayerIdState] = useState(getPlayerId);
@@ -1311,7 +1348,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
   );
 
   return (
-    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '36px 16px 48px' }}>
+    <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: inShell ? '28px 16px 104px' : '36px 16px 48px' }} data-testid="world">
       <GlobalStyle />
       <style>{menuCss()}</style>
       {showAch && <AchievementsModal onClose={() => setShowAch(false)} />}
@@ -1360,7 +1397,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         )}
 
         {/* 2. Учиться */}
-        <div className="menu-section-label">Учиться</div>
+        <div className="menu-section-label">{inShell ? 'Модель в действии' : 'Учиться'}</div>
         {renderModes(LEARN)}
 
         {/* 3. Играть: продолжить партию, режимы, вызов дня */}
@@ -1956,6 +1993,12 @@ export default function MacroSimulator() {
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
   // ведёт сразу в лобби, минуя меню.
   const [view, setView] = useState(() => (roomCodeFromUrl() ? 'network' : 'menu'));
+  /* Главный экран — оболочка с нижней панелью: Путь (уроки), Практика, Теория (учебник как
+     справочник), Мир (партия, «Своё дело», лаборатория) и Профиль. view 'menu' — оболочка,
+     tab — открытая вкладка; из Лаборатории или партии возвращаемся на ту же вкладку. */
+  const [tab, setTabRaw] = useState('path');
+  const setTab = (t) => { setTabRaw(t); window.scrollTo(0, 0); };
+  // «Теория» с нужной страницы (из урока — раздел главы); bookKey — открыть заново
   const [labLever, setLabLever] = useState('keyRate');
   // учебник: откуда открыта Лаборатория ({ lever, cb, mode, scenario }), куда вернуться,
   // задание для «Своего дела» и предвыбор сценария/старта в анкете
@@ -1988,8 +2031,10 @@ export default function MacroSimulator() {
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setGameFromBook(false); setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
+  const [bookKey, setBookKey] = useState(0);
+  const openTheory = (page = null, resume = false) => { setBookResume(resume); setBookPage(page); setBookKey((k) => k + 1); setTabRaw('theory'); setView('menu'); window.scrollTo(0, 0); };
   // назад из Лаборатории, анкеты или тайкуна: в учебник, если пришли из него
-  const goBack = () => { if (fromBook) { setFromBook(false); setBookResume(true); setView('textbook'); } else goMenu(); };
+  const goBack = () => { if (fromBook) { setFromBook(false); openTheory(null, true); } else goMenu(); };
   // переключение между меню/анкетой/сетью/игрой не перезагружает страницу,
   // поэтому без явного сброса скролл оставался там, где был на предыдущем
   // экране — короткий новый экран открывался уже наполовину прокрученным
@@ -2050,25 +2095,6 @@ export default function MacroSimulator() {
           </Suspense>
         );
       }
-      if (view === 'textbook') {
-        const startDrill = (x) => { setFromBook(false); setGameFromBook(true); clearAutosave(); setLoaded(null); setSetup(x); };
-        return (
-          <Suspense fallback={<GameFallback />}>
-            <TextbookScreen key={theme} resume={bookResume} startPage={bookPage} onBack={() => { setBookResume(false); setBookPage(null); goMenu(); }}
-              onOpenLab={(init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); }}
-              onStartDrill={startDrill}
-              onOpenTycoon={(taskId, task) => {
-                if (!task) return;
-                setFromBook(true);
-                const save = loadTycoonSave();
-                const lesson = { id: taskId, ...task };
-                if (save) { setTycoon({ initial: save, lesson }); return; }
-                setTycoonLesson(lesson); setSetupPreset({ sector: task.start }); setView('setup-biz');
-              }}
-              onOpenScenario={(id) => { setFromBook(true); setSetupPreset({ scenario: id }); setView('setup'); }} />
-          </Suspense>
-        );
-      }
       if (view === 'tutorial') {
         return (
           <Suspense fallback={(
@@ -2083,19 +2109,48 @@ export default function MacroSimulator() {
           </Suspense>
         );
       }
+      const startDrill = (x) => { setFromBook(false); setGameFromBook(true); clearAutosave(); setLoaded(null); setSetup(x); };
       return (
-        <MainMenu key={theme} theme={theme} setTheme={setTheme}
-          onNewGame={() => { setFromBook(false); setGameFromBook(false); setSetupPreset(null); setView('setup'); }}
-          onNetwork={() => setView('network')}
-          onTutorial={() => setView('tutorial')}
-          onLab={() => { setFromBook(false); setLabInit(null); setLabLever('keyRate'); setView('lab'); }}
-          onTextbook={(page) => { setBookResume(false); setBookPage(page || null); setView('textbook'); }}
-          onDrills={() => setView('drills')}
-          onLoad={startLoaded}
-          onEnterNetwork={setNetwork}
-          onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
-          onTycoon={(save) => { setFromBook(false); setSetupPreset(null); setTycoonLesson(null); if (save) setTycoon({ initial: save }); else setView('setup-biz'); }}
-        />
+        <div data-testid="shell" data-tab={tab}>
+          {tab === 'theory' ? (
+            <div style={{ paddingBottom: 72 }}>
+              <Suspense fallback={<GameFallback />}>
+                <TextbookScreen key={`${theme}:${bookKey}`} resume={bookResume} startPage={bookPage} backLabel="← Путь" onBack={() => { setBookResume(false); setBookPage(null); setTab('path'); }}
+                  onOpenLab={(init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); }}
+                  onStartDrill={startDrill}
+                  onOpenTycoon={(taskId, task) => {
+                    if (!task) return;
+                    setFromBook(true);
+                    const save = loadTycoonSave();
+                    const lesson = { id: taskId, ...task };
+                    if (save) { setTycoon({ initial: save, lesson }); return; }
+                    setTycoonLesson(lesson); setSetupPreset({ sector: task.start }); setView('setup-biz');
+                  }}
+                  onOpenScenario={(id) => { setFromBook(true); setSetupPreset({ scenario: id }); setView('setup'); }} />
+              </Suspense>
+            </div>
+          ) : tab === 'world' ? (
+            <MainMenu key={theme} theme={theme} setTheme={setTheme} inShell
+              onNewGame={() => { setFromBook(false); setGameFromBook(false); setSetupPreset(null); setView('setup'); }}
+              onNetwork={() => setView('network')}
+              onTutorial={() => setView('tutorial')}
+              onLab={() => { setFromBook(false); setLabInit(null); setLabLever('keyRate'); setView('lab'); }}
+              onDrills={() => setView('drills')}
+              onLoad={startLoaded}
+              onEnterNetwork={setNetwork}
+              onDaily={(ch) => { clearAutosave(); setLoaded(null); setSetup(dailySetup(ch)); }}
+              onTycoon={(save) => { setFromBook(false); setSetupPreset(null); setTycoonLesson(null); if (save) setTycoon({ initial: save }); else setView('setup-biz'); }}
+            />
+          ) : (
+            <div className="ems-root">
+              <GlobalStyle />
+              <Suspense fallback={<GameFallback />}>
+                <LearnTab tab={tab} onOpenTheory={(page) => openTheory(page)} />
+              </Suspense>
+            </div>
+          )}
+          <BottomNav tab={tab} onTab={(t) => { if (t === 'theory') openTheory(null, true); else setTab(t); }} />
+        </div>
       );
     }
     return (
@@ -2104,7 +2159,7 @@ export default function MacroSimulator() {
           theme={theme} setTheme={setTheme}
           onRestart={() => {
             const wasDrill = !!setup.drill; clearAutosave(); setLoaded(null); setSetup(null);
-            if (gameFromBook) { setGameFromBook(false); setBookResume(true); setView('textbook'); } else setView(wasDrill ? 'drills' : 'menu');
+            if (gameFromBook) { setGameFromBook(false); openTheory(null, true); } else setView(wasDrill ? 'drills' : 'menu');
           }} onLoadState={startLoaded}
           onReplay={setup.drill ? () => { clearAutosave(); setLoaded(null); setNonce((n) => n + 1); } : null} />
       </Suspense>

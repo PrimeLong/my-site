@@ -8,7 +8,7 @@
 
    Состояние: { read: { [главa]: ts }, unread: { [глава]: ts }, problems: { [задача]: { tries, ok, box, due, lastAt,
    cn, cok, un, uok } },
-   last, lastAt, days: { 'ГГГГ-ММ-ДД': минуты } }. days — журнал занятий: сколько минут в учебнике
+   last, lastAt, days: { 'ГГГГ-ММ-ДД': минуты }, learn }. learn — путь уроков (learn-state.js). days — журнал занятий: сколько минут в учебнике
    по дням, без серий и штрафов. Прогресс уходит в профиль вместе с остальным (см. mergeTextbook) — поэтому снятая
    отметка «прочитано» не стирается бесследно, а помнит, когда её сняли: иначе второе устройство
    вернуло бы её при следующей синхронизации.
@@ -18,11 +18,13 @@
    ответов показывает, можно ли себе доверять: 60% «уверенных» верных — повод перечитать главу.
    В той же таблице живут и вопросы на вспоминание в конце разделов («совпало / не совпало»):
    у них то же расписание повторения, но без оценки уверенности. */
+import { emptyLearn, normalizeLearn, mergeLearn } from './learn-state.js';
+
 export const TEXTBOOK_PROGRESS_KEY = 'ems-textbook-v1';
 export const REVIEW_DAYS = [2, 5, 12];
 const DAY = 24 * 3600 * 1000;
 
-export const emptyProgress = () => ({ read: {}, unread: {}, problems: {}, last: null, lastAt: 0, days: {} });
+export const emptyProgress = () => ({ read: {}, unread: {}, problems: {}, last: null, lastAt: 0, days: {}, learn: emptyLearn() });
 
 // журнал занятий: день по местному времени и ещё одна минута в нём
 export const dayKey = (ts) => {
@@ -95,7 +97,7 @@ export function normalizeTextbook(raw) {
       lastAt: Math.max(0, fin(r.lastAt) || 0),
     };
   });
-  return { read: tsMap(raw.read), unread: tsMap(raw.unread), problems, last: cleanPage(raw.last), lastAt: Math.max(0, fin(raw.lastAt) || 0), days: cleanDays(raw.days) };
+  return { read: tsMap(raw.read), unread: tsMap(raw.unread), problems, last: cleanPage(raw.last), lastAt: Math.max(0, fin(raw.lastAt) || 0), days: cleanDays(raw.days), learn: normalizeLearn(raw.learn) };
 }
 // журнал: только даты вида ГГГГ-ММ-ДД, минуты — целые от 1 до суток, последние MAX_DAYS дней
 function cleanDays(v) {
@@ -141,7 +143,7 @@ export function mergeTextbook(a, b) {
   // журнал: минуты за день на двух устройствах — берём больше (одно и то же время не удваивается)
   const days = { ...x.days };
   Object.entries(y.days).forEach(([k, m]) => { days[k] = Math.max(days[k] || 0, m); });
-  return { read, unread, problems, last: pickY ? y.last : x.last, lastAt: Math.max(x.lastAt, y.lastAt), days: cleanDays(days) };
+  return { read, unread, problems, last: pickY ? y.last : x.last, lastAt: Math.max(x.lastAt, y.lastAt), days: cleanDays(days), learn: mergeLearn(x.learn, y.learn) };
 }
 
 /* Расписание после ответа. Переносит повторение дальше только верный самостоятельный ответ
