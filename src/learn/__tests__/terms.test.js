@@ -37,13 +37,12 @@ describe('термины: формы слов', () => {
 });
 
 describe('урок не спрашивает того, чему ещё не учил', () => {
-  it('каждый термин упражнения введён в карточке идеи этого или прошлого урока', () => {
+  it('каждый термин упражнения объяснён шагом «Знакомства» раньше — в этом или прошлом уроке', () => {
     const known = new Set();
     const problems = [];
     pilotUnits().forEach((u) => u.lessons.forEach((l) => {
-      termsIn([txt(l.title), l.idea.text]).forEach((t) => known.add(t));
+      // объясняют только шаги «Знакомства» (карточка урока — его первый шаг); у «Практики» карточек нет
       l.exercises.forEach((e, k) => {
-        // вторая карточка урока встаёт перед своим упражнением
         l.inner.filter((c) => c.at === k).forEach((c) => termsIn([txt(c.idea.title), c.idea.text]).forEach((t) => known.add(t)));
         samples({ ...e, lesson: l.id, unit: u.id }).forEach((inst) => {
           termsIn(shown(inst)).forEach((t) => { if (!known.has(t)) problems.push(`${l.id} / ${e.id}: «${GLOSSARY[t].title}» ещё не вводили`); });
@@ -52,7 +51,7 @@ describe('урок не спрашивает того, чему ещё не уч
     }));
     expect([...new Set(problems)]).toEqual([]);
   });
-  it('вторые карточки урока — тоже до 60 слов и стоят перед упражнением', () => {
+  it('шаги «Знакомства» — до 60 слов и стоят перед упражнением', () => {
     pilotUnits().forEach((u) => u.lessons.forEach((l) => l.inner.forEach((c) => {
       expect(plainText(c.idea.text).split(/\s+/).filter(Boolean).length, c.idea.id).toBeLessThanOrEqual(60);
       expect(c.at, c.idea.id).toBeLessThan(l.exercises.length);

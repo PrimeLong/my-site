@@ -1,0 +1,196 @@
+/* ПЕРВЫЙ ЗАПУСК И ВХОД. Без аккаунта в приложении только эти экраны: приветствие с
+   Инфлей → «Начать» → цель и минуты в день → регистрация → Путь. «У меня уже есть
+   аккаунт» → вход (и восстановление по коду, если забыт пароль). Прогресс хранится в
+   аккаунте: после входа устройство переходит на профиль (см. authenticate в account.jsx).
+   У каждого экрана один «назад» — стрелка вверху слева. */
+import React, { useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { Audio } from './MacroSimulator.jsx';
+import { authenticate, RecoveryCodeView, StorageWarning } from './account.jsx';
+import { Mascot } from './mascot.jsx';
+import { LearnStyle } from './learn-ui.jsx';
+import { loadProgress, saveProgress } from './textbook/progress.js';
+import { setGoal } from './textbook/learn-state.js';
+
+// ответы первого запуска; персональная программа (этап 3) возьмёт их отсюда
+const ONBOARD_KEY = 'ems-onboarding';
+export const loadOnboarding = () => { try { return JSON.parse(localStorage.getItem(ONBOARD_KEY) || 'null'); } catch { return null; } };
+const saveOnboarding = (v) => { try { localStorage.setItem(ONBOARD_KEY, JSON.stringify(v)); } catch { /* приватный режим */ } };
+
+export const GOALS = [
+  { id: 'exam', label: 'Поступление в вуз' }, { id: 'olymp', label: 'Олимпиада' },
+  { id: 'uni', label: 'Первый курс' }, { id: 'self', label: 'Для себя' },
+];
+export const MINUTES = [5, 10, 15, 20];
+// минуты в день → уроков в день (урок — 3–5 минут)
+const LESSONS_FOR = { 5: 1, 10: 2, 15: 3, 20: 5 };
+
+const CSS = `
+  .wl { max-width: 460px; margin: 0 auto; padding: 18px 20px calc(24px + env(safe-area-inset-bottom)); min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+  .wl-top { display: flex; align-items: center; min-height: 40px; }
+  .wl-body { flex: 1; display: flex; flex-direction: column; }
+  .wl-foot { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+  .wl-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .wl-opts .lx-opt { margin: 0; text-align: center; font-weight: 700; }
+  .wl-err { color: var(--c-rust); font-size: 14px; margin: 4px 0 8px; }
+`;
+
+function Top({ onBack }) {
+  return (
+    <div className="wl-top">
+      {onBack && (
+        <button type="button" className="lx-icon-btn" aria-label="Назад" data-nav="back" onClick={() => { Audio.play('click'); onBack(); }}>
+          <ArrowLeft size={24} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Hello({ go }) {
+  return (
+    <div className="wl" data-testid="welcome">
+      <div className="wl-body" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+        <Mascot mood="wave" size={150} />
+        <h1 className="lx-h" style={{ fontSize: 34, margin: '18px 0 8px' }}>Inflatia</h1>
+        <div className="lx-sub" style={{ fontSize: 17, lineHeight: 1.45, maxWidth: 320 }}>
+          Экономика маленькими уроками — пять минут в день вместе с Инфлей.
+        </div>
+      </div>
+      <div className="wl-foot">
+        <button type="button" className="lx-btn wide" onClick={() => { Audio.prime(); Audio.play('click'); go('goal'); }}>Начать</button>
+        <button type="button" className="lx-btn secondary wide" onClick={() => { Audio.prime(); Audio.play('click'); go('login'); }}>У меня уже есть аккаунт</button>
+      </div>
+    </div>
+  );
+}
+
+function Goal({ go, plan, setPlan }) {
+  const ok = plan.goal && plan.minutes;
+  const pick = (patch) => { Audio.play('tick'); setPlan((p) => ({ ...p, ...patch })); };
+  return (
+    <div className="wl" data-testid="welcome-goal">
+      <Top onBack={() => go('hello')} />
+      <div className="wl-body">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <Mascot mood="hello" size={56} />
+          <h2 className="lx-h" style={{ fontSize: 22, margin: 0 }}>Зачем вам экономика?</h2>
+        </div>
+        <div className="wl-opts" role="group" aria-label="Цель">
+          {GOALS.map((g) => <button key={g.id} type="button" className="lx-opt" aria-pressed={plan.goal === g.id} onClick={() => pick({ goal: g.id })}>{g.label}</button>)}
+        </div>
+        <h2 className="lx-h" style={{ fontSize: 20, margin: '22px 0 10px' }}>Сколько минут в день?</h2>
+        <div className="wl-opts" role="group" aria-label="Минут в день">
+          {MINUTES.map((m) => <button key={m} type="button" className="lx-opt" aria-pressed={plan.minutes === m} onClick={() => pick({ minutes: m })}>{m} минут</button>)}
+        </div>
+        <h2 className="lx-h" style={{ fontSize: 20, margin: '22px 0 10px' }}>Уже знакомы с экономикой?</h2>
+        <div className="wl-opts" role="group" aria-label="Знания">
+          {[[false, 'Начинаю с нуля'], [true, 'Кое-что знаю']].map(([v, l]) => (
+            <button key={l} type="button" className="lx-opt" aria-pressed={plan.knows === v} onClick={() => pick({ knows: v })}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div className="wl-foot">
+        <button type="button" className="lx-btn wide" disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); go('register'); }}>Продолжить</button>
+      </div>
+    </div>
+  );
+}
+
+/* Форма регистрации, входа или восстановления. После регистрации и восстановления
+   показываем код восстановления — почты у игры нет, без кода забытый пароль не вернуть. */
+function AuthForm({ mode, go, plan }) {
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [shown, setShown] = useState(null);
+  const finish = () => {
+    // цель дня из минут, выбранных при первом запуске
+    if (mode === 'register' && plan.minutes) {
+      const p = loadProgress();
+      saveProgress({ ...p, learn: setGoal(p.learn, LESSONS_FOR[plan.minutes] || 1) });
+    }
+    // аккаунт уже сохранён — приложение само перейдёт на Путь
+    window.dispatchEvent(new Event('ems-account-ready'));
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const r = await authenticate(mode, { login, password, name, code });
+      Audio.play('up');
+      if (r.recoveryCode) setShown(r); else finish();
+    } catch (err) { setError(err.message); Audio.play('down'); setBusy(false); }
+  };
+  if (shown) {
+    return (
+      <div className="wl" data-testid="welcome-code">
+        <Top />
+        <div className="wl-body">
+          <h2 className="lx-h" style={{ fontSize: 22, margin: '0 0 12px' }}>Сохраните код восстановления</h2>
+          {shown.storage === 'memory' && <StorageWarning />}
+          <RecoveryCodeView code={shown.recoveryCode} onDone={finish} />
+        </div>
+      </div>
+    );
+  }
+  const title = { register: 'Создайте аккаунт', login: 'Вход', recover: 'Новый пароль по коду' }[mode];
+  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12);
+  return (
+    <div className="wl" data-testid={`welcome-${mode}`}>
+      <Top onBack={() => go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello')} />
+      <form className="wl-body" onSubmit={submit}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <Mascot mood={mode === 'register' ? 'joy' : 'hello'} size={52} />
+          <h2 className="lx-h" style={{ fontSize: 24, margin: 0 }}>{title}</h2>
+        </div>
+        {mode === 'register' && <div className="lx-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Прогресс, серия и опыт хранятся в аккаунте — войдите на другом устройстве, и всё будет там.</div>}
+        {mode === 'recover' && <div className="lx-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Логин, код восстановления из регистрации и новый пароль.</div>}
+        <label className="lx-label">Логин
+          <input className="lx-field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" autoCapitalize="none" placeholder="латиница, цифры, _" />
+        </label>
+        {mode === 'recover' && (
+          <label className="lx-label">Код восстановления
+            <input className="lx-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
+          </label>
+        )}
+        <label className="lx-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
+          <input className="lx-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов" />
+        </label>
+        {mode === 'register' && (
+          <label className="lx-label">Имя
+            <input className="lx-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
+          </label>
+        )}
+        {error && <div className="wl-err" role="alert">{error}</div>}
+        <div style={{ flex: 1 }} />
+        <div className="wl-foot">
+          <button type="submit" className="lx-btn wide" disabled={busy || !canSubmit}>
+            {busy ? 'Минутку…' : mode === 'register' ? 'Создать аккаунт' : mode === 'recover' ? 'Задать пароль' : 'Войти'}
+          </button>
+          {mode === 'login' && <button type="button" className="lx-btn ghost wide" onClick={() => go('recover')}>Забыли пароль?</button>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export function Welcome() {
+  const [screen, setScreen] = useState('hello');
+  const [plan, setPlan] = useState(() => loadOnboarding() || { goal: null, minutes: null, knows: false });
+  const go = (s) => { setScreen(s); window.scrollTo(0, 0); };
+  return (
+    <div className="lx">
+      <LearnStyle />
+      <style>{CSS}</style>
+      {screen === 'hello' && <Hello go={go} />}
+      {screen === 'goal' && <Goal go={go} plan={plan} setPlan={setPlan} />}
+      {(screen === 'register' || screen === 'login' || screen === 'recover') && <AuthForm key={screen} mode={screen} go={go} plan={plan} />}
+    </div>
+  );
+}
+export default Welcome;

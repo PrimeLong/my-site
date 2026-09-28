@@ -137,9 +137,12 @@ export function parseBlocks(text) {
       if (name === 'idea') {
         // карточка новой идеи урока: :::idea id=… title="…" chart=тип <параметры графика> auto="задачи" variants="типы";
         // со словом more — вторая карточка того же урока: встаёт перед следующим упражнением
-        const { id: _id, title, chart, auto, variants, ...chartAttrs } = attrs;
+        // kind=intro — урок «Знакомство» (эта карточка — его первый шаг), иначе урок-практика без карточки;
+        // pic=… — картинка шага вместо графика (значок из набора src/learn.jsx)
+        const { id: _id, title, chart, auto, variants, kind, pic, ...chartAttrs } = attrs;
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), text: parseInline(body.join(' ').trim()),
+          kind: kind === 'intro' ? 'intro' : 'practice', pic: pic || null,
           ...(words.includes('more') ? { inner: true } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));

@@ -3545,7 +3545,7 @@ export function ViewSettings({ theme, setTheme, dense, setDense, dashboards, act
             <button className="ems-btn" style={{ marginLeft: 'auto', padding: '3px 5px', lineHeight: 0 }} aria-label="Закрыть"
               onClick={() => { Audio.play('click'); setOpen(false); }}><X size={12} /></button>
           </div>
-          {Object.values(THEMES).map((t) => (
+          {Object.values(THEMES).filter((t) => !t.learn).map((t) => (
             <button key={t.id} className="ems-btn" style={{ width: '100%', textAlign: 'left', padding: '6px 9px', fontSize: 12, marginBottom: 4,
               display: 'flex', alignItems: 'center', gap: 7,
               background: theme === t.id ? COLOR.sel : COLOR.panelAlt, color: theme === t.id ? COLOR.selText : COLOR.text,

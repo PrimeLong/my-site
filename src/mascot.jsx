@@ -1,5 +1,5 @@
 /* ИНФЛЯ — талисман пути уроков: монета-шарик с логотипа, только вместо колонны «I» — лицо.
-   Шесть настроений: hello (привет), joy (радость после верного ответа), cheer (подбадривание
+   Семь настроений: wave (машет на приветствии), hello (привет), joy (радость после верного ответа), cheer (подбадривание
    после ошибки), party (праздник в конце урока), sleep (сон, если день пропущен),
    think (задумчивость на подсказке). Реакции короткие: лёгкое покачивание, без звука и без
    всплывающих окон; при «меньше движения» в системе — стоит на месте. */
@@ -13,7 +13,9 @@ const EYES = {
   sleep: (c) => <><path d="M21.5 24 Q24.5 26.2 27.5 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" /><path d="M36.5 24 Q39.5 26.2 42.5 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" /></>,
   think: (c) => <><circle cx="26" cy="21.5" r="2.5" fill={c} /><circle cx="41" cy="21.5" r="2.5" fill={c} /><path d="M22 17 L28.5 16.2" stroke={c} strokeWidth="1.6" strokeLinecap="round" /></>,
 };
+EYES.wave = EYES.hello;
 const MOUTH = {
+  wave: (c) => <path d="M24.5 29.5 Q32 38.5 39.5 29.5 Z" fill={c} />,
   hello: (c) => <path d="M26 31 Q32 35.6 38 31" fill="none" stroke={c} strokeWidth="2.2" strokeLinecap="round" />,
   joy: (c) => <path d="M24.5 29.5 Q32 38.5 39.5 29.5 Z" fill={c} />,
   party: (c) => <path d="M23.5 29 Q32 40 40.5 29 Z" fill={c} />,
@@ -28,18 +30,25 @@ const CSS = `
   .infla { transform-origin: 50% 90%; }
   .infla-bob { animation: infla-bob 3.2s ease-in-out infinite; }
   .infla-hop { animation: infla-hop .45s ease-out 1; }
-  @media (prefers-reduced-motion: reduce) { .infla-bob, .infla-hop { animation: none; } }
+  /* моргает раз в несколько секунд; машет рукой на приветствии */
+  @keyframes infla-blink { 0%, 92%, 100% { transform: scaleY(1) } 95% { transform: scaleY(.1) } }
+  @keyframes infla-wave { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(-28deg) } 75% { transform: rotate(18deg) } }
+  @keyframes infla-sway { 0%, 100% { transform: rotate(-3deg) } 50% { transform: rotate(3deg) } }
+  .infla-eyes { transform-box: fill-box; transform-origin: center; animation: infla-blink 4.2s ease-in-out infinite; }
+  .infla-hand { transform-box: fill-box; transform-origin: 20% 90%; animation: infla-wave 1.1s ease-in-out infinite; }
+  .infla-sway { animation: infla-sway 3.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .infla-bob, .infla-hop, .infla-eyes, .infla-hand, .infla-sway { animation: none; } }
 `;
 
 export function Mascot({ mood = 'hello', size = 56, label }) {
   const m = MOUTH[mood] ? mood : 'hello';
   const gid = `infla-g-${React.useId().replace(/:/g, '')}`;
   const ink = '#2A1D05';
-  const motion = m === 'joy' || m === 'party' ? 'infla-hop' : m === 'sleep' ? '' : 'infla-bob';
+  const motion = m === 'joy' || m === 'party' ? 'infla-hop' : m === 'sleep' ? '' : m === 'wave' ? 'infla-sway' : 'infla-bob';
   return (
     <span style={{ display: 'inline-block', lineHeight: 0 }} data-testid="mascot" data-mood={m}>
       <style>{CSS}</style>
-      <svg viewBox="0 0 64 70" width={size} height={size * 70 / 64} role="img" aria-label={label || `Инфля: ${({ hello: 'привет', joy: 'радуется', cheer: 'подбадривает', party: 'празднует', sleep: 'спит', think: 'думает' })[m]}`}
+      <svg viewBox="0 0 64 70" width={size} height={size * 70 / 64} role="img" aria-label={label || `Инфля: ${({ hello: 'привет', wave: 'машет', joy: 'радуется', cheer: 'подбадривает', party: 'празднует', sleep: 'спит', think: 'думает' })[m]}`}
         className={`infla ${motion}`} key={m}>
         <defs>
           <radialGradient id={gid} cx="36%" cy="28%" r="78%">
@@ -52,7 +61,13 @@ export function Mascot({ mood = 'hello', size = 56, label }) {
         <ellipse cx="32" cy="25" rx="18.2" ry="19.3" fill="none" stroke="#5A4210" strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="1.2 2" />
         <path d="M17.4 18.6 C 18.6 13.6, 22.4 9.8, 27 8.8" fill="none" stroke="#FFF7DC" strokeOpacity="0.75" strokeWidth="2.4" strokeLinecap="round" />
         {(m === 'joy' || m === 'party' || m === 'hello') && <><ellipse cx="20" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /><ellipse cx="44" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /></>}
-        {EYES[m](ink)}
+        {m === 'sleep' ? EYES[m](ink) : <g className="infla-eyes">{EYES[m](ink)}</g>}
+        {m === 'wave' && (
+          <g className="infla-hand">
+            <path d="M52 34 Q57 30 58 24" fill="none" stroke="#3A2A08" strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="58.5" cy="21.5" r="4" fill="#E8C766" stroke="#3A2A08" strokeWidth="1.2" />
+          </g>
+        )}
         {MOUTH[m](ink)}
         {m === 'party' && <>
           <path d="M26 3.5 L32 -4 L38 3.5 Z" fill="#4FA38F" stroke="#3A2A08" strokeWidth="0.8" transform="translate(0 4)" />

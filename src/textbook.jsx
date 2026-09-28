@@ -824,7 +824,18 @@ function ProblemCard(props) {
 // «Назад» — туда, откуда пришли по ссылке; «Оглавление» — всегда
 const PAGE_TITLE = { toc: 'Оглавление', today: 'На сегодня', mixed: 'Задачи вперемешку', stats: 'Мой прогресс' };
 const pageTitle = (pg) => (!pg ? '' : PAGE_TITLE[pg.kind] || (pg.kind === 'exam' ? (EXAMS[pg.id] || {}).title : pg.kind === 'chapter' ? (CHAPTER_BY_ID[pg.id] || {}).title : (APPENDIX_BY_ID[pg.id] || {}).title));
+/* Внутри обучения (embedded) у учебника один «назад» — кнопка вверху: она ведёт на прошлую
+   страницу, а с первой — туда, откуда учебник открыли. Второй «Назад: …» не нужен, а
+   «Оглавление» не показываем там, где «назад» и так ведёт в оглавление. */
 function PageNav({ ctx }) {
+  if (ctx.embedded) {
+    if (ctx.prev && ctx.prev.kind === 'toc') return null;
+    return (
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        <button type="button" className="ems-btn" style={{ padding: '6px 11px', fontSize: 12 }} data-testid="tb-toc" data-nav-target="book:toc" onClick={() => { Audio.play('click'); ctx.go({ kind: 'toc' }); }}>Оглавление</button>
+      </div>
+    );
+  }
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
       {ctx.prev && ctx.prev.kind !== 'toc' && (
@@ -1452,7 +1463,7 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
-export function TextbookScreen({ onBack, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario }) {
+export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);
@@ -1537,8 +1548,9 @@ export function TextbookScreen({ onBack, resume = false, startPage = null, backL
     setStack((st) => st.slice(0, -1));
     go(prev, { push: false });
   };
+  const embedded = !!onExit;
   const ctx = {
-    progress, go, back, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
+    progress, go, back, embedded, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
     onAnswer: (id, ok, opts) => update((p) => recordAnswer(p, id, ok, Date.now(), opts)),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
   };
@@ -1546,7 +1558,8 @@ export function TextbookScreen({ onBack, resume = false, startPage = null, backL
     : ['toc', 'today', 'mixed', 'stats'].includes(page.kind);
   const cur = valid ? page : { kind: 'toc' };
   return (
-    <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText} onBack={onBack} backLabel={backLabel}
+    <TrainerPage eyebrow="Учебник" title={cur.kind === 'toc' ? 'Учебник экономики' : 'Учебник'} icon={BookOpenText}
+      onBack={embedded ? () => (stack.length ? back() : onExit()) : onBack} backLabel={embedded ? '← Назад' : backLabel}
       lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
       <style>{TEXTBOOK_CSS}</style>
       <ReaderBar scale={scale} setScale={setScale} />

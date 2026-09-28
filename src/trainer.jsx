@@ -17,7 +17,7 @@ export function TrainerPage({ eyebrow, title, lede, onBack, children, icon: Icon
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <div style={{ maxWidth: wide ? 960 : 760, width: '100%', minWidth: 0 }}>
-        <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
+        <button type="button" className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }} data-nav="back"
           onClick={() => { Audio.play('click'); onBack(); }}>{backLabel}</button>
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
           <div className="ems-hero-eyebrow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon size={12} />{eyebrow}</div>

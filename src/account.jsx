@@ -71,8 +71,21 @@ const adoptProfile = (token, profile) => {
   return profile.playerId || cur;
 };
 
+/* Регистрация, вход и восстановление одной функцией — для окна профиля и для экранов
+   первого запуска (src/welcome.jsx). mode: register | login | recover. Возвращает
+   { profile, playerId, recoveryCode, storage }. */
+export async function authenticate(mode, { login, password, name = '', code = '' }) {
+  const lg = String(login || '').trim().toLowerCase();
+  const r = mode === 'register' ? await accountRegister(lg, password, String(name).trim(), getPlayerId())
+    : mode === 'recover' ? await accountRecover(lg, code, password)
+      : await accountLogin(lg, password);
+  if (!r || !r.token || !r.profile) throw new Error('Сервер не ответил');
+  const playerId = adoptProfile(r.token, r.profile);
+  return { profile: r.profile, playerId, recoveryCode: r.recoveryCode || null, storage: r.storage || null };
+}
+
 // выход: сессия гасится на сервере, устройство возвращается к своему профилю
-const leaveProfile = async () => {
+export const leaveProfile = async () => {
   const a = loadAccount();
   if (a) accountLogout(a.token).catch(() => { /* сессия и так протухнет */ });
   saveAccount(null);
@@ -93,12 +106,12 @@ const fieldStyle = () => ({ width: '100%', padding: '9px 11px', fontSize: 13, ba
 function ModalShell({ title, icon: Icon, onClose, children, label }) {
   useEscapeClose(onClose);
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,9,14,0.8)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
       <div role="dialog" aria-label={label || title} className="ems-panel-raised ems-fade-in" style={{ maxWidth: 420, width: '100%', maxHeight: '88vh', overflow: 'auto', padding: 18 }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <Icon size={15} color={COLOR.gold} />
           <span className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft }}>{title}</span>
-          <button className="ems-btn" aria-label="Закрыть" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
+          <button type="button" className="ems-btn" aria-label="Закрыть" data-nav="back" style={{ marginLeft: 'auto', padding: '4px 7px' }} onClick={onClose}><X size={13} /></button>
         </div>
         {children}
       </div>
@@ -107,7 +120,7 @@ function ModalShell({ title, icon: Icon, onClose, children, label }) {
 }
 
 // предупреждение, когда сервер работает без общего хранилища: профиль там не выживет
-function StorageWarning() {
+export function StorageWarning() {
   return (
     <div style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 12, color: COLOR.rust, lineHeight: 1.5, marginBottom: 10 }}>
       <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -119,7 +132,7 @@ function StorageWarning() {
 
 /* Код восстановления показываем один раз: почты у игры нет, и без кода забытый
    пароль не вернуть. Кнопка «Я сохранил» — нарочно отдельное действие. */
-function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохранил код' }) {
+export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохранил код' }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
     try { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* код виден на экране */ }
@@ -161,12 +174,8 @@ export function AuthModal({ onClose, onDone, reason }) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const lg = login.trim().toLowerCase();
-      const r = tab === 'register' ? await accountRegister(lg, password, name.trim(), getPlayerId())
-        : tab === 'recover' ? await accountRecover(lg, code, password)
-          : await accountLogin(lg, password);
-      if (!r || !r.token || !r.profile) throw new Error('Сервер не ответил');
-      const playerId = adoptProfile(r.token, r.profile);
+      const r = await authenticate(tab, { login, password, name, code });
+      const playerId = r.playerId;
       Audio.play('up');
       const done = () => { if (onDone) onDone(r.profile, playerId); onClose(); };
       if (r.recoveryCode) { setStorageMemory(r.storage === 'memory'); setShownCode(r.recoveryCode); setFinish(() => done); }

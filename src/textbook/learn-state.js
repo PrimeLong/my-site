@@ -14,7 +14,7 @@ const MAX_MISTAKES = 60;
 
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
-  runs: { started: 0, finished: 0 }, quits: {}, quitAt: {}, mistakes: [],
+  runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [],
 });
 
 // день по местному времени: ГГГГ-ММ-ДД
@@ -29,6 +29,9 @@ const weekOf = (key) => { const t = new Date(dayTs(key)); const dow = (t.getDay(
 
 /* ------------------------------ ЗАПИСИ ------------------------------ */
 const upd = (s, patch) => ({ ...s, ...patch });
+/* Урок начат — с первого ответа, а не с открытия: открыть и сразу закрыть урок нигде не
+   засчитывается. Брошенным он становится, только если его не продолжили в течение суток
+   (см. src/learn/resume.js) — тогда abandonLesson. */
 export const startLesson = (s) => upd(s, { runs: { ...s.runs, started: s.runs.started + 1 } });
 
 // первая попытка в упражнении: тип, верно ли, сколько миллисекунд
@@ -38,10 +41,11 @@ export function recordAttempt(s, kind, ok, ms) {
   return upd(s, { types: { ...s.types, [kind]: { n: t.n + 1, ok: t.ok + (ok ? 1 : 0), ms: t.ms + cap } } });
 }
 
-// ушли из урока, не закончив: на каком по счёту упражнении и какого типа
-export function quitLesson(s, kind, index) {
+// урок брошен после начала и не продолжен: на каком по счёту упражнении и какого типа
+export function abandonLesson(s, kind, index) {
   const i = String(Math.max(0, Math.min(30, index | 0)));
-  return upd(s, { quits: { ...s.quits, [kind]: (s.quits[kind] || 0) + 1 }, quitAt: { ...s.quitAt, [i]: (s.quitAt[i] || 0) + 1 } });
+  return upd(s, { quits: { ...s.quits, [kind]: (s.quits[kind] || 0) + 1 }, quitAt: { ...s.quitAt, [i]: (s.quitAt[i] || 0) + 1 },
+    runs: { ...s.runs, abandoned: (s.runs.abandoned || 0) + 1 } });
 }
 
 // ошибки уходят в практику, верный ответ в практике их убирает
@@ -130,7 +134,9 @@ export function learnStats(s, now = Date.now()) {
   });
   const types = Object.entries(s.types).map(([kind, t]) => ({ kind, n: t.n, accuracy: t.n ? t.ok / t.n : 0, avgSec: t.n ? t.ms / t.n / 1000 : 0 }))
     .sort((a, b) => b.n - a.n);
-  const completion = s.runs.started ? Math.min(1, s.runs.finished / s.runs.started) : null;
+  // доля доведённых: брошенные — только те, что не продолжили в течение суток
+  const ab = s.runs.abandoned || 0;
+  const completion = s.runs.finished + ab ? s.runs.finished / (s.runs.finished + ab) : null;
   const quitKinds = Object.entries(s.quits).sort((a, b) => b[1] - a[1]);
   const quitPos = Object.entries(s.quitAt).map(([i, n]) => ({ index: Number(i), n })).sort((a, b) => b.n - a.n);
   return { weeks, types, completion, quitKinds, quitPos, totalXp: Object.values(s.xp).reduce((a, b) => a + b, 0) };
@@ -168,7 +174,7 @@ export function normalizeLearn(raw) {
     lessons, units, types,
     goal: GOALS.includes(r.goal) ? r.goal : e.goal, goalAt: cnt(r.goalAt, 1e14),
     xp: dayMap(r.xp, 1e6), done: dayMap(r.done, 1000),
-    runs: { started, finished: Math.min(started || cnt(runs.finished), cnt(runs.finished)) },
+    runs: { started, finished: Math.min(started || cnt(runs.finished), cnt(runs.finished)), abandoned: cnt(runs.abandoned) },
     quits: smallMap(r.quits), quitAt: smallMap(r.quitAt),
     mistakes: (Array.isArray(r.mistakes) ? r.mistakes : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_MISTAKES),
   };
@@ -194,7 +200,7 @@ export function mergeLearn(a, b) {
     lessons, units, types,
     goal: laterGoal ? y.goal : x.goal, goalAt: Math.max(x.goalAt, y.goalAt),
     xp: maxMap(x.xp, y.xp), done: maxMap(x.done, y.done),
-    runs: { started: Math.max(x.runs.started, y.runs.started), finished: Math.max(x.runs.finished, y.runs.finished) },
+    runs: { started: Math.max(x.runs.started, y.runs.started), finished: Math.max(x.runs.finished, y.runs.finished), abandoned: Math.max(x.runs.abandoned, y.runs.abandoned) },
     quits: maxMap(x.quits, y.quits), quitAt: maxMap(x.quitAt, y.quitAt),
     mistakes: Object.entries(byId).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
   });
