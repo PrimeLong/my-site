@@ -2,11 +2,11 @@
    совпадают с верным, урок укладывается в 3–5 минут, все типы упражнений есть в пилоте. */
 import { describe, it, expect } from 'vitest';
 import katex from 'katex';
-import { UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildLegend, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL } from '../course.js';
+import { UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildLegend, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS } from '../course.js';
 import { collectMath } from '../../textbook/markdown.js';
 import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
-import { emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, quitLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
+import { emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
 const PATH = ['scarcity', 'supply-demand'];
 const PILOT = 'supply-demand';
@@ -20,39 +20,67 @@ it('на Пути уроками — юниты 1 и 2, с самого нача
 
 describe.each(PATH)('юнит %s', (unitId) => {
   const unit = UNIT_BY_ID[unitId];
-  it('5–6 уроков, у каждого урока карточка идеи до 60 слов', () => {
-    expect(unit.lessons.length).toBeGreaterThanOrEqual(5);
-    expect(unit.lessons.length).toBeLessThanOrEqual(6);
-    unit.lessons.forEach((l) => {
-      const words = plain(l.idea.text).split(/\s+/).filter(Boolean).length;
-      expect(words, `${l.id}: ${words} слов`).toBeLessThanOrEqual(60);
-      expect(l.idea.chart, `${l.id}: мини-график`).toBeTruthy();
-      expect(l.section, `${l.id}: раздел главы для «Подробнее в теории»`).toBeTruthy();
+  const intros = unit.lessons.filter((l) => l.kind === 'intro');
+  const practice = unit.lessons.filter((l) => l.kind === 'practice');
+  it('первый урок темы — «Знакомство»; у каждого урока раздел главы для «Подробнее»', () => {
+    expect(unit.lessons[0].kind).toBe('intro');
+    expect(intros.length).toBeGreaterThanOrEqual(2);
+    expect(practice.length).toBeGreaterThanOrEqual(2);
+    unit.lessons.forEach((l) => expect(l.section, `${l.id}: раздел главы`).toBeTruthy());
+  });
+  it('«Знакомство»: экран — одна мысль (1–3 предложения, до 45 слов, график или картинка), после каждого — вопрос', () => {
+    intros.forEach((l) => {
+      expect(l.inner.length, l.id).toBeGreaterThanOrEqual(4);
+      expect(l.inner.length, l.id).toBeLessThanOrEqual(10);
+      l.inner.forEach((c, i) => {
+        const text = plain(c.idea.text);
+        const words = text.split(/\s+/).filter(Boolean).length;
+        const sentences = text.split(/[.!?…](?:\s|$)/).filter((x) => x.trim()).length;
+        expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
+        expect(sentences, `${c.idea.id}: ${sentences} предложений`).toBeLessThanOrEqual(3);
+        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic), `${c.idea.id}: график или картинка`).toBeTruthy();
+        const next = i + 1 < l.inner.length ? l.inner[i + 1].at : l.exercises.length;
+        expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
+      });
+      expect(l.inner[0].at).toBe(0);
+    });
+  });
+  it('«Практика» — только упражнения, без карточек перед ними', () => {
+    practice.forEach((l) => {
+      expect(l.inner, l.id).toEqual([]);
+      expect(Object.keys(buildLesson(l.id, seeded(1)).cards), l.id).toEqual([]);
     });
   });
   it('все девять типов упражнений есть хотя бы по разу', () => {
     const kinds = new Set(unit.lessons.flatMap((l) => l.exercises.map((e) => e.kind)));
     Object.keys(KIND_LABEL).forEach((k) => expect(kinds, k).toContain(k));
   });
-  it('в каждом уроке не меньше 10 упражнений и не больше 15, повторение — около трети', () => {
-    unit.lessons.forEach((l) => {
+  it('в практике 10–15 упражнений, повторение — около трети; «Знакомство» — по порядку и без повторения', () => {
+    practice.forEach((l) => {
       for (let s = 1; s <= N; s += 1) {
         const { items } = buildLesson(l.id, seeded(s));
         expect(items.length, l.id).toBeGreaterThanOrEqual(10);
         expect(items.length, l.id).toBeLessThanOrEqual(15);
         const rev = items.filter((it) => it.review).length;
-        if (l.no > 1) { expect(rev / items.length, l.id).toBeGreaterThanOrEqual(0.25); expect(rev / items.length, l.id).toBeLessThanOrEqual(0.4); }
+        expect(rev / items.length, l.id).toBeGreaterThanOrEqual(0.25);
+        expect(rev / items.length, l.id).toBeLessThanOrEqual(0.4);
         expect(items[0].review).toBeFalsy();
         expect(SECONDS[items[0].kind]).toBeLessThanOrEqual(12);
         items.filter((it) => it.review).forEach((it) => expect(EXERCISES[it.id].lesson).not.toBe(l.id));
       }
     });
+    intros.forEach((l) => {
+      const { items, cards } = buildLesson(l.id, seeded(3));
+      expect(items.map((it) => it.id)).toEqual(l.exercises.map((e) => e.id));
+      expect(items.some((it) => it.review)).toBe(false);
+      expect(Object.keys(cards).length).toBe(l.inner.length);
+    });
   });
-  it('урок укладывается в 3–5 минут по оценке времени', () => {
+  it('урок укладывается в 3–5 минут по оценке времени («Знакомство» — от двух минут)', () => {
     unit.lessons.forEach((l) => {
       for (let s = 1; s <= N; s += 1) {
         const { seconds } = buildLesson(l.id, seeded(s));
-        expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual(180);
+        expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual(l.kind === 'intro' ? 120 : 180);
         expect(seconds, `${l.id}: ${seconds} с`).toBeLessThanOrEqual(300);
       }
     });
@@ -224,7 +252,9 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(missedYesterday(s, at(2026, 10, 1))).toBe(false);
     s = startLesson(startLesson(s));
     s = recordAttempt(s, 'calc', true, 20000); s = recordAttempt(s, 'calc', false, 40000);
-    s = quitLesson(s, 'order', 7);
+    // начатый, но ещё не брошенный урок (его можно продолжить) долю доведённых не портит
+    expect(learnStats(s, at(2026, 9, 30)).completion).toBe(1);
+    s = abandonLesson(s, 'order', 7);
     const st = learnStats(s, at(2026, 9, 30));
     expect(st.types.find((t) => t.kind === 'calc')).toMatchObject({ n: 2, accuracy: 0.5, avgSec: 30 });
     expect(st.completion).toBe(0.5);

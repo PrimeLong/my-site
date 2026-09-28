@@ -17,7 +17,8 @@ import {
 // звуковой движок подгружается по первому клику — в стартовом файле только обёртка
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
-import { AuthModal, ProfileModal, ProfileChip, useAccount, emblemIcon } from './account.jsx';
+import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon } from './account.jsx';
+import { learnThemeId, LEARN_FONT } from './learn-ui.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { todayCard } from './textbook/today-snapshot.js';
 import { BookLinkContext } from './booklink-context.js';
@@ -69,9 +70,35 @@ export const THEMES = {
     sel: '#FFFFFF', selText: '#000000', selBorder: '#FFFFFF' } },
 };
 
+/* Темы обучения (Путь, практика, профиль, учебник-справочник): светлая и яркая по
+   умолчанию, тёмная — по выбору в профиле. В переключателе тем «Мира» их нет: там
+   остаётся канцелярия. */
+THEMES.learn = { id: 'learn', name: 'Обучение', dark: false, learn: true, colors: {
+  bg: '#FFFFFF', bgVignette: '#F7F9FB', panel: '#FFFFFF', panelAlt: '#F3F6F9', panelRaised: '#FFFFFF',
+  border: '#E3E6EA', borderStrong: '#C9CED4', hairline: '#EEF1F4',
+  text: '#2F3437', muted: '#545C66', faint: '#666E78',
+  paper: '#FFF7E0', paperText: '#2F3437', paperMuted: '#6B6450', paperRule: '#EAD9A6',
+  gold: '#E8A300', goldSoft: '#9A6400', goldDim: 'rgba(232,163,0,0.14)', ink: '#2B1D00',
+  teal: '#1F9D46', tealDim: 'rgba(31,157,70,0.12)',
+  rust: '#D93A3F', rustDim: 'rgba(217,58,63,0.12)',
+  blue: '#1682C4', blueDim: 'rgba(22,130,196,0.12)',
+  sel: '#DDF4FF', selText: '#12476A', selBorder: '#84D8FF' } };
+THEMES.learnDark = { id: 'learnDark', name: 'Обучение (тёмная)', dark: true, learn: true, colors: {
+  bg: '#131F24', bgVignette: '#16242A', panel: '#1B2B32', panelAlt: '#20333B', panelRaised: '#243A43',
+  border: '#37464F', borderStrong: '#52656D', hairline: '#2A3A42',
+  text: '#F1F7FB', muted: '#B4C4CC', faint: '#9CB0BA',
+  paper: '#22343C', paperText: '#F1F7FB', paperMuted: '#B4C4CC', paperRule: '#37464F',
+  gold: '#FFC800', goldSoft: '#FFD84D', goldDim: 'rgba(255,200,0,0.16)', ink: '#2B1D00',
+  teal: '#58CC02', tealDim: 'rgba(88,204,2,0.16)',
+  rust: '#FF5B5B', rustDim: 'rgba(255,91,91,0.16)',
+  blue: '#1CB0F6', blueDim: 'rgba(28,176,246,0.16)',
+  sel: '#1F3D4D', selText: '#E8F7FF', selBorder: '#1CB0F6' } };
+// темы для переключателя в «Мире» и в партии — без тем обучения
+export const WORLD_THEMES = Object.values(THEMES).filter((t) => !t.learn);
+
 export const COLOR = { ...THEMES.ink.colors, isDark: true };
 
-function applyTheme(id) {
+export function applyTheme(id) {
   const t = THEMES[id] || THEMES.ink;
   Object.assign(COLOR, t.colors, { isDark: t.dark });
 }
@@ -925,6 +952,7 @@ const TextbookScreen = React.lazy(() => import('./textbook.jsx').then((m) => ({ 
 // путь уроков, практика и профиль учёбы — вместе с учебником (формулы и графики те же)
 const loadLearn = () => import('./learn.jsx');
 const LearnTab = React.lazy(() => loadLearn().then((m) => ({ default: m.LearnTab })));
+const Welcome = React.lazy(() => import('./welcome.jsx'));
 const DrillsScreen = React.lazy(() => import('./trainer.jsx').then((m) => ({ default: m.DrillsScreen })));
 const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScreen })));
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
@@ -1143,30 +1171,33 @@ function MenuTicker() {
   );
 }
 
-/* Нижняя панель главного экрана: пять вкладок, на телефоне — под большим пальцем.
-   Урок открывается поверх неё во весь экран. */
+/* Нижняя панель главного экрана: четыре вкладки, на телефоне — под большим пальцем. Урок
+   открывается поверх неё во весь экран. Открытая вкладка — не кнопка перехода: путь назад у
+   подэкранов (учебник поверх вкладки) один — их собственный «назад». */
 const NAV_TABS = [
   { id: 'path', icon: Route, label: 'Путь' },
   { id: 'practice', icon: Dumbbell, label: 'Практика' },
-  { id: 'theory', icon: BookOpenText, label: 'Теория' },
   { id: 'world', icon: MapIcon, label: 'Мир' },
   { id: 'profile', icon: UserRound, label: 'Профиль' },
 ];
 function BottomNav({ tab, onTab }) {
+  const learning = tab !== 'world';
   return (
     <nav aria-label="Разделы" data-testid="bottom-nav"
-      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 120, background: COLOR.panel, borderTop: `1px solid ${COLOR.border}`,
-        paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: '0 -6px 18px rgba(0,0,0,.25)' }}>
+      style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 120, background: COLOR.panel, borderTop: `2px solid ${COLOR.border}`,
+        paddingBottom: 'env(safe-area-inset-bottom)', boxShadow: learning ? 'none' : '0 -6px 18px rgba(0,0,0,.25)' }}>
       <div style={{ display: 'flex', maxWidth: 560, margin: '0 auto' }}>
         {NAV_TABS.map((t) => {
           const on = tab === t.id;
           const Icon = t.icon;
           return (
-            <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id}
-              onClick={() => { Audio.prime(); Audio.play('tab'); onTab(t.id); }}
-              style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '8px 2px 7px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                color: on ? COLOR.gold : COLOR.muted, fontFamily: FONT.sans, fontSize: 11.5, fontWeight: on ? 700 : 400 }}>
-              <Icon size={21} strokeWidth={on ? 2.4 : 1.8} />
+            <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on ? undefined : `tab:${t.id}`}
+              onClick={() => { if (on) return; Audio.prime(); Audio.play('tab'); onTab(t.id); }}
+              style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: on ? 'default' : 'pointer', padding: '8px 2px 7px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                color: on ? (learning ? COLOR.blue : COLOR.gold) : COLOR.muted, fontFamily: learning ? LEARN_FONT : FONT.sans, fontSize: 12, fontWeight: on ? 800 : 600 }}>
+              <span style={{ display: 'flex', padding: '3px 14px', borderRadius: 12, border: `2px solid ${on && learning ? COLOR.selBorder : 'transparent'}`, background: on && learning ? COLOR.sel : 'none' }}>
+                <Icon size={22} strokeWidth={on ? 2.4 : 1.9} />
+              </span>
               <span>{t.label}</span>
             </button>
           );
@@ -1366,7 +1397,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             <h1 className="ems-serif menu-title">Inflatia</h1>
             <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>Симулятор государства и бизнеса</div>
           </div>
-          {profileSlot}
+          {!inShell && profileSlot}
         </div>
 
         {storageMode === 'memory' && (
@@ -1500,7 +1531,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           <label className="menu-chip menu-theme">
             <span style={{ fontSize: 12, color: COLOR.faint }}>Оформление</span>
             <select value={theme} onChange={(e) => { Audio.play('tab'); setTheme(e.target.value); }} aria-label="Оформление">
-              {Object.values(THEMES).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {WORLD_THEMES.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
           <AudioControls />
@@ -1998,7 +2029,21 @@ export default function MacroSimulator() {
      tab — открытая вкладка; из Лаборатории или партии возвращаемся на ту же вкладку. */
   const [tab, setTabRaw] = useState('path');
   const setTab = (t) => { setTabRaw(t); window.scrollTo(0, 0); };
-  // «Теория» с нужной страницы (из урока — раздел главы); bookKey — открыть заново
+  /* Вход обязателен: без аккаунта — только приветствие, вход и регистрация (src/welcome.jsx).
+     Экран входа закрывается событием ems-account-ready, когда аккаунт сохранён и код
+     восстановления показан; выход из аккаунта возвращает на приветствие. */
+  const account = useAccount();
+  const [gate, setGate] = useState(() => !loadAccount());
+  React.useEffect(() => {
+    const ready = () => { setGate(false); setView('menu'); setTabRaw('path'); window.scrollTo(0, 0); };
+    window.addEventListener('ems-account-ready', ready);
+    return () => window.removeEventListener('ems-account-ready', ready);
+  }, []);
+  React.useEffect(() => { if (!account) setGate(true); }, [account]);
+  // тёмная тема обучения переключается в профиле — перерисовать оболочку
+  const [, setLearnTick] = useState(0);
+  // вернулись из Лаборатории, партии или «Своего дела», открытых из учебника, — снова в учебник
+  const [reopenBook, setReopenBook] = useState(false);
   const [labLever, setLabLever] = useState('keyRate');
   // учебник: откуда открыта Лаборатория ({ lever, cb, mode, scenario }), куда вернуться,
   // задание для «Своего дела» и предвыбор сценария/старта в анкете
@@ -2006,9 +2051,6 @@ export default function MacroSimulator() {
   const [fromBook, setFromBook] = useState(false);
   // партия (задача или сценарий) открыта из учебника — после неё вернуться в учебник
   const [gameFromBook, setGameFromBook] = useState(false);
-  const [bookResume, setBookResume] = useState(false);
-  // с какой страницы открыть учебник: «на сегодня» из меню
-  const [bookPage, setBookPage] = useState(null);
   /* «Подробнее в учебнике» из партии: учебник открывается поверх, партия остаётся
      смонтированной (скрыта), «Назад в игру» возвращает туда же и на ту же прокрутку. */
   const [bookOverlay, setBookOverlay] = useState(null);
@@ -2027,14 +2069,16 @@ export default function MacroSimulator() {
   React.useEffect(() => {
     try { if (tycoon) localStorage.setItem(LAST_SCREEN_KEY, 'tycoon'); else localStorage.removeItem(LAST_SCREEN_KEY); } catch { /* приватный режим */ }
   }, [tycoon]);
-  applyTheme(theme);
+  const showGate = gate || !account;
+  const learning = showGate || (view === 'menu' && !setup && !network && !tycoon && tab !== 'world');
+  // обучение — в своей светлой (или тёмной по выбору) теме; «канцелярия» — только в «Мире»
+  applyTheme(learning ? learnThemeId() : theme);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
   const startLoaded = (data) => { setGameFromBook(false); setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
-  const [bookKey, setBookKey] = useState(0);
-  const openTheory = (page = null, resume = false) => { setBookResume(resume); setBookPage(page); setBookKey((k) => k + 1); setTabRaw('theory'); setView('menu'); window.scrollTo(0, 0); };
+  const backToBook = () => { setReopenBook(true); setView('menu'); };
   // назад из Лаборатории, анкеты или тайкуна: в учебник, если пришли из него
-  const goBack = () => { if (fromBook) { setFromBook(false); openTheory(null, true); } else goMenu(); };
+  const goBack = () => { if (fromBook) { setFromBook(false); backToBook(); } else goMenu(); };
   // переключение между меню/анкетой/сетью/игрой не перезагружает страницу,
   // поэтому без явного сброса скролл оставался там, где был на предыдущем
   // экране — короткий новый экран открывался уже наполовину прокрученным
@@ -2112,24 +2156,7 @@ export default function MacroSimulator() {
       const startDrill = (x) => { setFromBook(false); setGameFromBook(true); clearAutosave(); setLoaded(null); setSetup(x); };
       return (
         <div data-testid="shell" data-tab={tab}>
-          {tab === 'theory' ? (
-            <div style={{ paddingBottom: 72 }}>
-              <Suspense fallback={<GameFallback />}>
-                <TextbookScreen key={`${theme}:${bookKey}`} resume={bookResume} startPage={bookPage} backLabel="← Путь" onBack={() => { setBookResume(false); setBookPage(null); setTab('path'); }}
-                  onOpenLab={(init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); }}
-                  onStartDrill={startDrill}
-                  onOpenTycoon={(taskId, task) => {
-                    if (!task) return;
-                    setFromBook(true);
-                    const save = loadTycoonSave();
-                    const lesson = { id: taskId, ...task };
-                    if (save) { setTycoon({ initial: save, lesson }); return; }
-                    setTycoonLesson(lesson); setSetupPreset({ sector: task.start }); setView('setup-biz');
-                  }}
-                  onOpenScenario={(id) => { setFromBook(true); setSetupPreset({ scenario: id }); setView('setup'); }} />
-              </Suspense>
-            </div>
-          ) : tab === 'world' ? (
+          {tab === 'world' ? (
             <MainMenu key={theme} theme={theme} setTheme={setTheme} inShell
               onNewGame={() => { setFromBook(false); setGameFromBook(false); setSetupPreset(null); setView('setup'); }}
               onNetwork={() => setView('network')}
@@ -2145,11 +2172,24 @@ export default function MacroSimulator() {
             <div className="ems-root">
               <GlobalStyle />
               <Suspense fallback={<GameFallback />}>
-                <LearnTab tab={tab} onOpenTheory={(page) => openTheory(page)} />
+                <LearnTab tab={tab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
+                  bookHandlers={{
+                    onOpenLab: (init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); },
+                    onStartDrill: startDrill,
+                    onOpenTycoon: (taskId, task) => {
+                      if (!task) return;
+                      setFromBook(true);
+                      const save = loadTycoonSave();
+                      const lesson = { id: taskId, ...task };
+                      if (save) { setTycoon({ initial: save, lesson }); return; }
+                      setTycoonLesson(lesson); setSetupPreset({ sector: task.start }); setView('setup-biz');
+                    },
+                    onOpenScenario: (id) => { setFromBook(true); setSetupPreset({ scenario: id }); setView('setup'); },
+                  }} />
               </Suspense>
             </div>
           )}
-          <BottomNav tab={tab} onTab={(t) => { if (t === 'theory') openTheory(null, true); else setTab(t); }} />
+          <BottomNav tab={tab} onTab={setTab} />
         </div>
       );
     }
@@ -2159,7 +2199,7 @@ export default function MacroSimulator() {
           theme={theme} setTheme={setTheme}
           onRestart={() => {
             const wasDrill = !!setup.drill; clearAutosave(); setLoaded(null); setSetup(null);
-            if (gameFromBook) { setGameFromBook(false); openTheory(null, true); } else setView(wasDrill ? 'drills' : 'menu');
+            if (gameFromBook) { setGameFromBook(false); backToBook(); } else setView(wasDrill ? 'drills' : 'menu');
           }} onLoadState={startLoaded}
           onReplay={setup.drill ? () => { clearAutosave(); setLoaded(null); setNonce((n) => n + 1); } : null} />
       </Suspense>
@@ -2176,5 +2216,13 @@ export default function MacroSimulator() {
       )}
     </BookLinkContext.Provider>
   ) : screen;
+  if (showGate) {
+    return (
+      <div className="ems-root" data-testid="gate">
+        <GlobalStyle />
+        <Suspense fallback={<GameFallback />}><Welcome /></Suspense>
+      </div>
+    );
+  }
   return <ScreenErrorBoundary resetKey={screenKey} onMenu={backToMenu}>{wrapped}</ScreenErrorBoundary>;
 }

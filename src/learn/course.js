@@ -114,14 +114,19 @@ function lessonsOf(chapterId) {
       b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
       b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
     } else if (b.type === 'idea') {
-      out.push({ id: b.id, unit: chapterId, no: out.length + 1, title: b.title, idea: b, section: sectionOf(chapterId, b), exercises: [], inner: [] });
+      /* «Знакомство»: объяснение шагами — карточка урока и есть первый шаг, дальше каждая
+         вторая карточка (more) — следующий шаг, и после каждого шага вопрос. «Практика»:
+         только упражнения, карточка идеи не показывается (объяснял урок «Знакомство»). */
+      const intro = b.kind === 'intro';
+      out.push({ id: b.id, unit: chapterId, no: out.length + 1, title: b.title, kind: b.kind, idea: b, section: sectionOf(chapterId, b), exercises: [],
+        inner: intro ? [{ at: 0, idea: b }] : [] });
       const cur = out[out.length - 1];
       b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
       b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
     } else if (out.length) {
       const cur = out[out.length - 1];
       if (b.type === 'ex') cur.exercises.push(fromBlock(b));
-      else if (b.steps.length >= 4) cur.exercises.push(fromFlow(b, `flow:${cur.id}:${cur.exercises.length}`));
+      else if (b.steps.length >= 4 && cur.kind !== 'intro') cur.exercises.push(fromFlow(b, `flow:${cur.id}:${cur.exercises.length}`));
     }
   });
   return out;
@@ -234,8 +239,20 @@ export function answerText(inst) {
 /* ------------------------------ СБОРКА УРОКА ------------------------------
    Свои упражнения урока плюс повторение прошлых уроков юнита — около трети урока, всего
    10–15. Повторение вперемешку со своими, первым идёт своё упражнение. */
+export const LESSON_KIND = { intro: 'Знакомство', practice: 'Практика' };
+// картинки шагов «Знакомства» (pic=…): значки, которые рисует src/learn.jsx
+export const STEP_PICS = ['clock', 'scale', 'hourglass', 'ticket', 'trending-up', 'circle-check', 'medal', 'arrow-left-right', 'handshake',
+  'coffee', 'wallet', 'link', 'utensils', 'boxes', 'users', 'snowflake', 'arrow-down-to-line', 'arrow-up-to-line'];
+// шаг «Знакомства» читается секунд за пятнадцать
+export const STEP_SECONDS = 15;
 export function buildLesson(lessonId, rand = Math.random) {
   const lesson = LESSON_BY_ID[lessonId];
+  if (lesson.kind === 'intro') {
+    // шаги и вопросы строго по порядку, без повторения: это первая встреча с темой
+    const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
+    const cards = Object.fromEntries(lesson.inner.filter((c) => items[c.at]).map((c) => [items[c.at].uid, c.idea]));
+    return { lesson, items, cards, seconds: items.reduce((a, it) => a + it.seconds, 0) + lesson.inner.length * STEP_SECONDS };
+  }
   const unit = UNIT_BY_ID[lesson.unit];
   const own = lesson.exercises.map((e) => EXERCISES[e.id]);
   // начинать с упражнения в одно касание, а не с расчёта или сборки — но не перескакивая
