@@ -2787,7 +2787,7 @@ export function TutorialHub({ onBack, onStartRealGame }) {
         {showGlossary && <GlossaryModal onClose={() => setShowGlossary(false)} />}
 
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 30 }}>
-          <div className="ems-hero-eyebrow">{course ? 'Программа курса' : 'Обучение'}</div>
+          <div className="ems-hero-eyebrow">{course ? 'Программа курса' : 'Как играть'}</div>
           <div className="ems-hero-title small">{course ? course.title : 'Четыре курса'}</div>
           <div className="ems-hero-rule" />
           <span className="ems-hero-badge">

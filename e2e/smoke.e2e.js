@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import katex from 'katex';
+import { parseChapter, collectBlocks } from '../src/textbook/markdown.js';
 import { freshRoom, resolveQuarter, publicView } from '../api/room.js';
 import { makeInitialEconomy, defaultDecisions } from '../src/lib/engine.js';
 
@@ -80,7 +83,7 @@ test('одиночная партия: квартал проходит, газе
 
 test('обучение: хаб и программа курса открываются', async ({ page }) => {
   const { errors } = await openApp(page);
-  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Как играть', { exact: true }).click();
   await expect(page.getByText('Четыре курса')).toBeVisible();
   await page.getByText('Экономическая политика', { exact: true }).first().click();
   await expect(page.getByText('ПРОГРАММА КУРСА', { exact: false })).toBeVisible();
@@ -405,7 +408,7 @@ test('обучение: практика «требование пенсионе
   await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   await page.addInitScript(() => localStorage.setItem('ems-course-progress', JSON.stringify({ basics: true, budget: true, fx: true, expectations: true, crisis: true, stabilization: true, pr_capital: true, pr_reforms: true, pr_regime: true })));
   await page.goto('/', { waitUntil: 'networkidle' });
-  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Как играть', { exact: true }).click();
   await page.getByText('Экономическая политика', { exact: true }).first().click();
   await page.getByText('Общество: семь групп вместо одного рейтинга', { exact: true }).click();
   for (let i = 0; i < 4; i++) await page.getByRole('button', { name: /^Далее/ }).click();
@@ -426,7 +429,7 @@ test('обучение: практика обороны от Дешта — ко
   await page.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   await page.addInitScript(() => localStorage.setItem('ems-course-progress', JSON.stringify({ pr_capital: true, society: true, pr_reforms: true, pr_regime: true })));
   await page.goto('/', { waitUntil: 'networkidle' });
-  await page.getByText('Обучение', { exact: true }).click();
+  await page.getByText('Как играть', { exact: true }).click();
   await page.getByText('Президент', { exact: true }).first().click();
   await page.getByText('Война, мир и реванш', { exact: true }).click();
   for (let i = 0; i < 5; i++) await page.getByRole('button', { name: /^Далее/ }).click();
@@ -670,6 +673,12 @@ test('учебник: оглавление, формулы KaTeX, график �
   await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
   await multi.getByRole('button', { name: 'Проверить' }).click();
   await expect(multi.getByTestId('tb-verdict')).toContainText('Верно: а) 24 ед.; б) 20 руб.; в) 39 ед.');
+  // ловушка: типичный неверный ответ получает объяснение ошибки
+  const floor = ch.locator('[data-problem="sd-floor"]');
+  await floor.getByRole('textbox').fill('70');
+  await floor.getByRole('button', { name: 'Не уверен', exact: true }).click();
+  await floor.getByRole('button', { name: 'Проверить' }).click();
+  await expect(floor.getByTestId('tb-trap')).toContainText('разница между предложением и спросом');
   // задачи свёрнуты по уровням: базовый открыт, семинарский — по нажатию
   await expect(ch.locator('[data-problem="sd-tf-law"]')).toHaveCount(0);
   await ch.locator('[data-testid="tb-level-group"][data-level="Семинарский уровень"]').getByRole('button').first().click();
@@ -725,15 +734,20 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(toc.getByText(/прочитано глав/)).toContainText('прочитано глав: 1');
   // уверенные ответы: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
   await expect(page.getByTestId('tb-confidence')).toContainText('верно 3 из 6 (50%)');
-  await expect(page.getByTestId('tb-confidence')).toContainText('неуверенные: верно 1 из 1');
+  await expect(page.getByTestId('tb-confidence')).toContainText('неуверенные: верно 1 из 2');
   // «на сегодня»: первый раздел главы, где остановились, с вопросом на вспоминание; повторение ждёт своего дня
   await expect(page.getByTestId('today-card')).toContainText('раздел «Спрос»');
   await page.getByTestId('today-card').getByRole('button', { name: 'Начать занятие' }).click();
   const today = page.getByTestId('today');
   await expect(today.getByTestId('today-section')).toContainText('Спрос и предложение');
   const recall = today.getByTestId('tb-recall').first();
-  await recall.getByRole('button', { name: 'Показать ответ' }).click();
-  await recall.getByRole('button', { name: 'Вспомнил', exact: true }).click();
+  // сначала свой ответ: без него эталон не открыть, кроме как через «Не помню»
+  await expect(recall.getByRole('button', { name: 'Сверить с ответом' })).toBeDisabled();
+  await expect(recall.getByRole('button', { name: 'Вспомнил' })).toHaveCount(0);
+  await recall.getByRole('textbox').fill('при росте цены покупают меньше, при прочих равных');
+  await recall.getByRole('button', { name: 'Сверить с ответом' }).click();
+  await expect(recall.getByTestId('tb-recall-answer')).toBeVisible();
+  await recall.getByRole('button', { name: 'Совпало', exact: true }).click();
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expect(today.getByTestId('review')).toContainText('через 2 дня');
   await expectNoSidewaysScroll(page);
@@ -821,6 +835,142 @@ test('учебник: оглавление, формулы KaTeX, график �
 
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('игра → учебник: «Подробнее в учебнике» открывает раздел и возвращает в ту же партию', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'рычаги на телефоне в отдельной вкладке — логика та же');
+  const { errors, external } = await openApp(page);
+  await startSoloGame(page);
+  // у ставки — ссылки на IS-LM и AD-AS
+  await expect(page.getByTestId('book-link').filter({ hasText: 'IS-LM' }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Завершить квартал и применить решения' }).click();
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  if (!(await close.isVisible().catch(() => false))) await page.getByRole('button', { name: /Газета/ }).first().click();
+  await close.click();
+  await page.getByRole('button', { name: /Почему это произошло/ }).first().click();
+  const why = page.locator('.ems-panel-raised', { hasText: 'Почему это произошло?' });
+  await why.getByRole('button', { name: 'Инфляция', exact: true }).click();
+  await why.getByTestId('book-link').click();
+  // учебник поверх партии: нужный раздел на экране
+  const ch = page.getByTestId('chapter');
+  await expect(ch).toHaveAttribute('data-chapter', 'ad-as');
+  await expect(ch.locator('#shocks')).toBeInViewport();
+  await page.getByRole('button', { name: '← Назад в игру' }).click();
+  // та же партия, то же окно «Почему это произошло?», квартал не сбросился
+  await expect(why).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
+  expect(external).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('учебник: кругооборот в «ВВП» и балансы банков по шагам в «Деньгах и банках»', async ({ page }) => {
+  const { errors } = await openApp(page);
+  await page.getByText('Учебник', { exact: true }).first().click();
+  const toc = page.getByTestId('textbook');
+  await toc.locator('.tb-toc-row', { hasText: 'ВВП и система национальных счетов' }).click();
+  const circ = page.locator('[data-diagram="circular"]');
+  await expect(circ.getByTestId('tb-diagram-note')).toContainText('потратили');
+  await circ.getByRole('button', { name: 'По добавленной стоимости' }).click();
+  await expect(circ.getByTestId('tb-diagram-note')).toContainText('300 + 400 + 300 = 1000');
+  await circ.getByRole('button', { name: 'По доходам' }).click();
+  await expect(circ.getByTestId('tb-diagram-note')).toContainText('вместе 1000');
+  await expectNoSidewaysScroll(page);
+  await page.getByRole('button', { name: /Оглавление/ }).first().click();
+  await toc.locator('.tb-toc-row', { hasText: 'Деньги и банки' }).click();
+  const bal = page.locator('[data-diagram="balance"]');
+  await expect(bal.getByTestId('tb-money')).toContainText('1000');
+  await bal.getByRole('button', { name: 'Дальше' }).click();
+  await expect(bal.getByTestId('tb-money')).toContainText('1900');
+  await expect(bal.getByTestId('tb-bank')).toContainText('Вклад Бориса');
+  await bal.getByRole('button', { name: /Итог/ }).click();
+  await expect(bal.getByTestId('tb-money')).toContainText('10000');
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('меню «Учиться / Играть»: «Продолжить учиться» ведёт в занятие; итоговая проверка, вперемешку и «Мой прогресс»', async ({ page }) => {
+  const { errors, external } = await openApp(page);
+  await expect(page.locator('.menu-section-label', { hasText: 'Учиться' })).toBeVisible();
+  await expect(page.locator('.menu-section-label', { hasText: 'Играть' })).toBeVisible();
+  await expect(page.getByText('Во что сыграть')).toHaveCount(0);
+  await expect(page.locator('[data-mode="tutorial"]')).toContainText('Как играть');
+  // первая карточка — занятие на сегодня: одно нажатие открывает раздел и повторение
+  const study = page.getByTestId('menu-study');
+  await expect(study).toContainText('Продолжить учиться');
+  await expect(study).toContainText('на повторение: 0');
+  await study.click();
+  await expect(page.getByTestId('today-section')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  // после первого входа карточка знает раздел и минуты
+  await page.getByRole('button', { name: /Назад в меню/ }).first().click();
+  await expect(page.getByTestId('menu-study')).toContainText('мин');
+
+  await page.getByText('Учебник', { exact: true }).first().click();
+  const check = page.getByTestId('tb-check');
+  // вперемешку: пока ни одна глава не начата — не из чего выбирать
+  await check.getByRole('button', { name: /Задачи вперемешку/ }).click();
+  await expect(page.getByTestId('mixed')).toContainText('Пока не из чего выбирать');
+  await page.getByRole('button', { name: /Оглавление/ }).first().click();
+  // итоговая проверка: без подсказок и решений до конца, в конце — счёт по темам
+  await check.getByRole('button', { name: /Итоговая проверка: Микро/ }).click();
+  const exam = page.getByTestId('exam');
+  await expect(exam.getByTestId('exam-problem')).toHaveCount(16);
+  await expect(exam.getByRole('button', { name: /^Подсказка/ })).toHaveCount(0);
+  await expect(exam.getByRole('button', { name: 'Решение' })).toHaveCount(0);
+  await exam.getByRole('textbox', { name: 'Проверка, ответ к задаче 1' }).or(exam.getByRole('textbox', { name: 'Проверка, задача 1, шаг а)' })).first().fill('1');
+  await exam.getByRole('button', { name: 'Завершить проверку' }).click();
+  await expect(exam.getByTestId('exam-result')).toContainText('Верно 0 из 16');
+  await expect(exam.getByTestId('exam-weak')).toContainText('Слабое место');
+  await expect(exam.getByRole('button', { name: 'Решение' })).toHaveCount(16);
+  await expectNoSidewaysScroll(page);
+  // «Мой прогресс»: слабые темы со ссылками и журнал
+  await page.getByRole('button', { name: /Оглавление/ }).first().click();
+  await check.getByRole('button', { name: /Мой прогресс/ }).click();
+  const stats = page.getByTestId('stats');
+  await expect(stats.getByTestId('stats-weak').getByRole('button')).toHaveCount(3);
+  await expect(stats.getByTestId('tb-journal')).toContainText('За четыре недели');
+  await stats.getByTestId('stats-weak').getByRole('button').first().click();
+  await expect(page.getByTestId('chapter')).toBeVisible();
+  await page.getByTestId('chapter').getByRole('button', { name: 'Отметить главу прочитанной' }).click();
+  // вперемешку: теперь глава прочитана — сначала выбор модели, потом задача
+  await page.getByRole('button', { name: /Оглавление/ }).first().click();
+  await page.getByTestId('tb-check').getByRole('button', { name: /Задачи вперемешку/ }).click();
+  const item = page.getByTestId('mixed-item').first();
+  await expect(item).toContainText('какая модель нужна');
+  await item.getByRole('group').getByRole('button').first().click();
+  await expect(item.getByTestId('mixed-model')).toBeVisible();
+  await expect(item.getByTestId('tb-problem')).toBeVisible();
+  expect(external).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('учебник: на телефоне ни одна блочная формула не шире 1,2 экрана', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'ширина формул важна на узком экране');
+  // самый узкий распространённый телефон: колонка текста около 343 px
+  await page.setViewportSize({ width: 375, height: 800 });
+  await openApp(page);
+  await page.getByText('Учебник', { exact: true }).first().click();
+  await page.getByTestId('textbook').getByRole('button', { name: /Спрос и предложение/ }).click();
+  const ch = page.getByTestId('chapter');
+  await expect(ch.locator('.katex').first()).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  // все блочные формулы всех глав и приложений, включая разборы задач, — в той же колонке текста, с теми же шрифтами
+  const files = ['src/textbook/chapters', 'src/textbook/appendices'].flatMap((d) => fs.readdirSync(d).filter((f) => f.endsWith('.md')).map((f) => `${d}/${f}`));
+  const formulas = files.flatMap((f) => collectBlocks(parseChapter(fs.readFileSync(f, 'utf8')), (b) => b.type === 'math').map((b) => ({ where: f.replace(/^.*\//, ''), tex: b.tex })));
+  expect(formulas.length).toBeGreaterThan(50);
+  const html = formulas.map((m, i) => `<div class="tb-math" data-i="${i}">${katex.renderToString(m.tex, { displayMode: true, throwOnError: false, strict: 'ignore', output: 'htmlAndMathml' })}</div>`).join('');
+  const widths = await ch.locator('.tb-body').first().evaluate((body, h) => {
+    const box = document.createElement('div');
+    box.innerHTML = h;
+    body.appendChild(box);
+    const out = [...box.querySelectorAll('.tb-math')].map((el) => el.scrollWidth);
+    box.remove();
+    return { out, column: body.clientWidth };
+  }, html);
+  // «экран» — колонка текста, в которой формула прокручивается
+  const limit = 1.2 * widths.column;
+  const wide = formulas.map((m, i) => ({ ...m, w: widths.out[i] })).filter((m) => m.w > limit);
+  expect(wide, `колонка ${widths.column} px, предел ${Math.round(limit)} px`).toEqual([]);
 });
 
 test('учебник → «Своё дело»: задание открывает нужную вкладку и висит плашкой', async ({ page }) => {

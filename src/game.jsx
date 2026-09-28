@@ -25,6 +25,8 @@ import {
   directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever, currencyUnionRate, taylorRate,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
+import { BookLink } from './booklink.jsx';
+import { LEVER_BOOK, WHY_BOOK, bookForChain } from './lib/booklinks.js';
 import {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
@@ -301,6 +303,7 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
         )}
       </div>
       {lever.hint && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 1 }}>{lever.hint}</div>}
+      {LEVER_BOOK[lever.id] && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>{LEVER_BOOK[lever.id].map((to) => <BookLink key={to.chapter} to={to} compact />)}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         <input type="range" className="ems-slider" style={trackStyle} min={lever.min} max={lever.max} step={lever.step}
           aria-label={`${lever.label}, текущее значение ${value}${lever.suffix}, допустимо от ${lever.min} до ${lever.max}, шаг ${lever.step}`}
@@ -404,6 +407,7 @@ export function WhyModal({ reasons, onClose }) {
             </div>
           ))}
         </div>
+        {WHY_BOOK[tab] && <div style={{ marginTop: 10 }}><BookLink to={WHY_BOOK[tab]} /></div>}
       </div>
     </div>
   );
@@ -455,17 +459,21 @@ export const catOf = (id) => CATMAP[id] || CATMAP.markets;
 
 export function ChainTrail({ chain }) {
   if (!chain || !chain.length) return null;
+  const book = bookForChain(chain);
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 7 }}>
-      {chain.map((step, i) => (
-        <React.Fragment key={i}>
-          <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 2,
-            background: i === 0 ? COLOR.goldDim : COLOR.panelAlt, border: `1px solid ${i === 0 ? COLOR.gold : COLOR.border}`,
-            color: i === 0 ? COLOR.goldSoft : COLOR.muted, whiteSpace: 'nowrap' }}>{step}</span>
-          {i < chain.length - 1 && <span style={{ color: COLOR.faint, fontSize: 12 }}>→</span>}
-        </React.Fragment>
-      ))}
-    </div>
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, marginTop: 7 }}>
+        {chain.map((step, i) => (
+          <React.Fragment key={i}>
+            <span style={{ fontSize: 12, padding: '2px 6px', borderRadius: 2,
+              background: i === 0 ? COLOR.goldDim : COLOR.panelAlt, border: `1px solid ${i === 0 ? COLOR.gold : COLOR.border}`,
+              color: i === 0 ? COLOR.goldSoft : COLOR.muted, whiteSpace: 'nowrap' }}>{step}</span>
+            {i < chain.length - 1 && <span style={{ color: COLOR.faint, fontSize: 12 }}>→</span>}
+          </React.Fragment>
+        ))}
+      </div>
+      {book && <div style={{ marginTop: 6 }}><BookLink to={book} /></div>}
+    </>
   );
 }
 

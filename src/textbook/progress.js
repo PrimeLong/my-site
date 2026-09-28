@@ -8,20 +8,32 @@
 
    Состояние: { read: { [главa]: ts }, unread: { [глава]: ts }, problems: { [задача]: { tries, ok, box, due, lastAt,
    cn, cok, un, uok } },
-   last, lastAt }. Прогресс уходит в профиль вместе с остальным (см. mergeTextbook) — поэтому снятая
+   last, lastAt, days: { 'ГГГГ-ММ-ДД': минуты } }. days — журнал занятий: сколько минут в учебнике
+   по дням, без серий и штрафов. Прогресс уходит в профиль вместе с остальным (см. mergeTextbook) — поэтому снятая
    отметка «прочитано» не стирается бесследно, а помнит, когда её сняли: иначе второе устройство
    вернуло бы её при следующей синхронизации.
 
    Уверенность: перед ответом человек отмечает «уверен» или «не уверен». cn/cok — сколько было
    уверенных ответов и сколько из них верных, un/uok — то же для неуверенных. Точность уверенных
    ответов показывает, можно ли себе доверять: 60% «уверенных» верных — повод перечитать главу.
-   В той же таблице живут и вопросы на вспоминание в конце разделов («вспомнил / не вспомнил»):
+   В той же таблице живут и вопросы на вспоминание в конце разделов («совпало / не совпало»):
    у них то же расписание повторения, но без оценки уверенности. */
 export const TEXTBOOK_PROGRESS_KEY = 'ems-textbook-v1';
 export const REVIEW_DAYS = [2, 5, 12];
 const DAY = 24 * 3600 * 1000;
 
-export const emptyProgress = () => ({ read: {}, unread: {}, problems: {}, last: null, lastAt: 0 });
+export const emptyProgress = () => ({ read: {}, unread: {}, problems: {}, last: null, lastAt: 0, days: {} });
+
+// журнал занятий: день по местному времени и ещё одна минута в нём
+export const dayKey = (ts) => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const MAX_DAYS = 120;
+export const addStudyMinute = (p, now = Date.now()) => {
+  const key = dayKey(now); const days = p.days || {};
+  return { ...p, days: { ...days, [key]: Math.min(24 * 60, (days[key] || 0) + 1) } };
+};
 
 export function loadProgress() {
   try {
@@ -83,7 +95,17 @@ export function normalizeTextbook(raw) {
       lastAt: Math.max(0, fin(r.lastAt) || 0),
     };
   });
-  return { read: tsMap(raw.read), unread: tsMap(raw.unread), problems, last: cleanPage(raw.last), lastAt: Math.max(0, fin(raw.lastAt) || 0) };
+  return { read: tsMap(raw.read), unread: tsMap(raw.unread), problems, last: cleanPage(raw.last), lastAt: Math.max(0, fin(raw.lastAt) || 0), days: cleanDays(raw.days) };
+}
+// журнал: только даты вида ГГГГ-ММ-ДД, минуты — целые от 1 до суток, последние MAX_DAYS дней
+function cleanDays(v) {
+  const out = {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+  Object.keys(v).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort().slice(-MAX_DAYS).forEach((k) => {
+    const m = Math.round(fin(v[k]) || 0);
+    if (m > 0) out[k] = Math.min(24 * 60, m);
+  });
+  return out;
 }
 
 /* Слияние двух копий прогресса (телефон и компьютер, устройство и профиль). В отличие от
@@ -116,7 +138,10 @@ export function mergeTextbook(a, b) {
     problems[id] = merged;
   });
   const pickY = y.lastAt > x.lastAt || (y.lastAt === x.lastAt && !x.last && y.last);
-  return { read, unread, problems, last: pickY ? y.last : x.last, lastAt: Math.max(x.lastAt, y.lastAt) };
+  // журнал: минуты за день на двух устройствах — берём больше (одно и то же время не удваивается)
+  const days = { ...x.days };
+  Object.entries(y.days).forEach(([k, m]) => { days[k] = Math.max(days[k] || 0, m); });
+  return { read, unread, problems, last: pickY ? y.last : x.last, lastAt: Math.max(x.lastAt, y.lastAt), days: cleanDays(days) };
 }
 
 /* Расписание после ответа. Переносит повторение дальше только верный самостоятельный ответ

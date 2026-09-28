@@ -9,12 +9,15 @@ import { GLOSSARY } from '../glossary.js';
 import { GAME_CARDS } from '../appendix.js';
 import { CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS } from '../toc.js';
 import { TYCOON_TASKS, TYCOON_TABS, TYCOON_STARTS, taskText } from '../tycoon-tasks.js';
-import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, sectionsOf, plainText } from '../content.js';
-import { parseBlocks, parseInline, collectLinks, collectMath, collectBlocks, actionOf, checkAnswer, parseNumber } from '../markdown.js';
+import { CHAPTER_TEXT, CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, sectionsOf, plainText } from '../content.js';
+import { parseBlocks, parseInline, collectLinks, collectMath, collectBlocks, actionOf, checkAnswer, parseNumber, matchTraps } from '../markdown.js';
 import { sectionDone, sectionProgress, nextSection, dueItems } from '../study.js';
-import { CHARTS, chartDefaults, lracFns, crossY, externality, moneyMultiplier, jointPies, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
-import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil, confidenceStats, mergeTextbook, normalizeTextbook } from '../progress.js';
+import { CHARTS, chartDefaults, captionVars, lracFns, crossY, externality, moneyMultiplier, jointPies, sdEquilibrium, pointElasticity, islmEquilibrium, adasEquilibrium, costMinima, competitiveFirm, monopoly, cournot, checkGraph, ppfY, ppfCost, slutsky, cdChoice, taxMarket } from '../charts.js';
+import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, chapterScore, REVIEW_DAYS, daysUntil, confidenceStats, mergeTextbook, normalizeTextbook, addStudyMinute, dayKey, markRead as markReadP } from '../progress.js';
 import { STARTS, RES, makeTycoon, requiredStaff, levelMult, upgradeCost, buyPrice, marketPrice, cartelChance, cartelFineRisk, BLD } from '../../lib/tycoon.js';
+import { EXAMS, examProblems, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from '../check.js';
+import { LEVER_BOOK, WHY_BOOK, bookForChain, ALL_BOOK_LINKS } from '../../lib/booklinks.js';
+import { balanceSteps, circularFlow } from '../diagrams.js';
 
 const DAY = 24 * 3600 * 1000;
 const READY = CHAPTERS.filter((c) => c.status === 'ready');
@@ -1051,5 +1054,214 @@ describe('макроглавы: «проверьте в игре» и стати
       // и примечание в начале главы честно говорит, что числа примеров условные
       expect(JSON.stringify(CHAPTER_BLOCKS[id].slice(0, 3))).toMatch(/условн/);
     });
+  });
+});
+
+describe('подписи к графикам считают числа из параметров', () => {
+  const charts = Object.entries(CHAPTER_BLOCKS).flatMap(([id, bl]) => collectBlocks(bl, (b) => b.type === 'chart' && b.caption).map((b) => ({ id, b })));
+  const holes = (nodes) => [...JSON.stringify(nodes).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]);
+  it('каждая подстановка {{…}} в подписи находит значение', () => {
+    charts.forEach(({ id, b }) => {
+      const vars = captionVars(b.chart, b.attrs, chartDefaults(b.chart, b.attrs));
+      holes(b.caption).forEach((k) => expect(vars, `${id}: {{${k}}}`).toHaveProperty(k));
+    });
+  });
+  it('ВВП: множители за период совпадают со сложными процентами', () => {
+    const b = charts.find((c) => c.b.chart === 'gdp').b;
+    const d = chartDefaults('gdp', b.attrs);
+    const v = captionVars('gdp', b.attrs, d);
+    const n = Number(v.n);
+    expect(Number(v.nomx.replace(',', '.'))).toBeCloseTo(Math.pow((1 + d.g / 100) * (1 + d.pi / 100), n), 2);
+    expect(Number(v.realx.replace(',', '.'))).toBeCloseTo(Math.pow(1 + d.g / 100, n), 2);
+  });
+  it('кейнсианский крест: мультипликаторы из подписи', () => {
+    const b = charts.find((c) => c.b.chart === 'cross').b;
+    const v = captionVars('cross', b.attrs, chartDefaults('cross', b.attrs));
+    expect(Number(v.dg)).toBeCloseTo(50 * Number(v.mult), 6);
+  });
+});
+
+describe('ловушки: неверный ответ → объяснение ошибки', () => {
+  const blocks = READY.flatMap((c) => problemsOf(c.id).map((id) => ({ ch: c.id, b: PROBLEMS[id].block })));
+  it.each(READY.map((c) => [c.id]))('%s: не меньше трёх задач с ловушками', (id) => {
+    expect(problemsOf(id).filter((pid) => (PROBLEMS[pid].block.traps || []).length > 0).length).toBeGreaterThanOrEqual(3);
+  });
+  it('ответ-ловушка всегда отличается от верного', () => {
+    blocks.forEach(({ b }) => (b.traps || []).forEach((tr) => {
+      if (b.kind === 'number') {
+        const pt = b.parts[tr.part];
+        const tol = Math.max(pt.tol || 0, 0.01 * Math.abs(tr.value));
+        expect(Math.abs(tr.value - pt.answer), `${b.id}: ловушка ${tr.value}`).toBeGreaterThan(tol);
+      } else if (b.kind === 'truefalse') {
+        expect(tr.value, b.id).not.toBe(b.answer);
+      } else {
+        // графическая: ловушка — ползунок, который двигать не нужно
+        expect(CHARTS[b.chart].controls(b.attrs).map((c) => c.id), b.id).toContain(tr.control);
+        expect(b.reference[tr.control] == null || b.reference[tr.control] === chartDefaults(b.chart, b.attrs)[tr.control], b.id).toBe(true);
+      }
+    }));
+  });
+  it('ловушка срабатывает на свой ответ, а на верный — нет', () => {
+    blocks.filter(({ b }) => b.kind === 'number').forEach(({ b }) => (b.traps || []).forEach((tr) => {
+      const right = b.parts.map((pt) => String(pt.answer));
+      const wrong = right.map((x, k) => (k === tr.part ? String(tr.value) : x));
+      expect(matchTraps(b, wrong), `${b.id}: ${tr.value}`).toContain(tr);
+      expect(matchTraps(b, right), b.id).toEqual([]);
+    }));
+  });
+  it('пример из задачи о монополии: без ½ потери совпадают с прибылью', () => {
+    const b = PROBLEMS['mon-dwl'].block;
+    expect(matchTraps(b, ['60', '90', '3600']).map((t) => plainText(t.text))[0]).toContain('Забыли ½');
+    expect(matchTraps(b, ['60', '90', '3000'])).toEqual([]);
+  });
+});
+
+describe('задачи по газете', () => {
+  it.each(READY.filter((c) => c.part === 'macro').map((c) => [c.id]))('%s: не меньше двух задач с заголовком газеты', (id) => {
+    const news = problemsOf(id).map((pid) => PROBLEMS[pid].block).filter((b) => b.news);
+    expect(news.length).toBeGreaterThanOrEqual(2);
+    news.forEach((b) => {
+      // заголовок — как в игровой газете: заглавными, коротко
+      expect(b.news, b.id).toBe(b.news.toUpperCase());
+      expect(b.news.length, b.id).toBeLessThanOrEqual(60);
+      expect(['graph', 'truefalse'], b.id).toContain(b.kind);
+    });
+  });
+});
+
+const studySecRecall = (ch) => CHAPTER_SECTIONS[ch].find((x) => x.recall).recall;
+
+describe('итоговая проверка и задачи вперемешку', () => {
+  const micro = CHAPTERS.filter((c) => c.part === 'micro' && c.status === 'ready');
+  it('проверка «Микро»: 15–20 числовых задач, из каждой главы блока, соседние — из разных глав', () => {
+    const ids = examProblems('micro');
+    expect(ids.length).toBeGreaterThanOrEqual(15);
+    expect(ids.length).toBeLessThanOrEqual(20);
+    expect(new Set(ids).size).toBe(ids.length);
+    ids.forEach((id) => { expect(PROBLEMS[id].block.kind).toBe('number'); expect(CHAPTER_BY_ID[PROBLEMS[id].chapter].part).toBe('micro'); });
+    expect(new Set(ids.map((id) => PROBLEMS[id].chapter))).toEqual(new Set(micro.map((c) => c.id)));
+    ids.slice(1).forEach((id, k) => expect(PROBLEMS[id].chapter).not.toBe(PROBLEMS[ids[k]].chapter));
+    expect(examProblems('micro')).toEqual(ids);
+    expect(EXAMS.micro.title).toContain('Микро');
+  });
+  it('итог: счёт по темам и слабые места', () => {
+    const ids = examProblems('micro');
+    const right = Object.fromEntries(ids.map((id) => [id, PROBLEMS[id].block.parts.map((pt) => String(pt.answer))]));
+    const all = examResult(ids, right);
+    expect(all.ok).toBe(ids.length);
+    expect(all.weak).toEqual([]);
+    // обе задачи по эластичности — неверно
+    const answers = { ...right };
+    ids.filter((id) => PROBLEMS[id].chapter === 'elasticity').forEach((id) => { answers[id] = ['-12345']; });
+    const r = examResult(ids, answers);
+    expect(r.ok).toBe(ids.length - 2);
+    expect(r.weak.map((t) => t.chapter)).toEqual(['elasticity']);
+    expect(r.topics.find((t) => t.chapter === 'elasticity')).toMatchObject({ ok: 0, total: 2 });
+  });
+  it('вперемешку: только начатые главы, у каждой задачи три разных варианта с верным', () => {
+    const empty = emptyProgress();
+    expect(mixedChapters(empty)).toEqual([]);
+    expect(mixedSet(empty)).toEqual([]);
+    let p = markReadP(empty, 'elasticity');
+    p = recordAnswer(p, studySecRecall('costs'), true, 1000);
+    expect(mixedChapters(p).sort()).toEqual(['costs', 'elasticity']);
+    let seed = 1; const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const set = mixedSet(p, 5, rand);
+    expect(set.length).toBe(5);
+    set.forEach((it) => {
+      expect(['costs', 'elasticity']).toContain(it.chapter);
+      expect(PROBLEMS[it.id].chapter).toBe(it.chapter);
+      expect(it.options).toContain(it.chapter);
+      expect(new Set(it.options).size).toBe(3);
+    });
+  });
+  it('слабые темы: главы с наибольшей долей ошибок, не больше трёх', () => {
+    let p = emptyProgress();
+    const [a, b] = problemsOf('costs');
+    p = recordAnswer(p, a, false, 1); p = recordAnswer(p, b, false, 2);
+    const [c, d] = problemsOf('oligopoly');
+    p = recordAnswer(p, c, false, 3); p = recordAnswer(p, d, true, 4);
+    const [e] = problemsOf('gdp');
+    p = recordAnswer(p, e, false, 5);
+    const w = weakTopics(p);
+    expect(w.map((t) => t.chapter)).toEqual(['costs', 'oligopoly']);
+    expect(w[0]).toMatchObject({ tried: 2, wrong: 2 });
+  });
+});
+
+describe('журнал занятий', () => {
+  const now = new Date(2026, 8, 30, 15).getTime(); // среда
+  it('минуты копятся по дням, без серий', () => {
+    let p = emptyProgress();
+    p = addStudyMinute(p, now); p = addStudyMinute(p, now);
+    p = addStudyMinute(p, now - 2 * 24 * 3600 * 1000);
+    expect(p.days[dayKey(now)]).toBe(2);
+    expect(journalSummary(p.days, now)).toEqual({ days: 2, minutes: 3 });
+    const weeks = journalWeeks(p.days, now);
+    expect(weeks.length).toBe(4);
+    weeks.forEach((w) => expect(w.length).toBe(7));
+    // неделя с понедельника; сегодня — среда последней недели, дальше — будущее
+    expect(weeks[3][2]).toMatchObject({ key: dayKey(now), minutes: 2, future: false });
+    expect(weeks[3][3].future).toBe(true);
+  });
+  it('в профиле: чистка и слияние по максимуму за день', () => {
+    const n = normalizeTextbook({ days: { '2026-09-30': 5, 'bad': 3, '2026-09-29': -1, '2026-09-28': 99999 } });
+    expect(n.days).toEqual({ '2026-09-30': 5, '2026-09-28': 1440 });
+    const m = mergeTextbook({ days: { '2026-09-30': 5, '2026-09-29': 7 } }, { days: { '2026-09-30': 9 } });
+    expect(m.days).toEqual({ '2026-09-30': 9, '2026-09-29': 7 });
+    expect(mergeTextbook(m, m)).toEqual(m);
+  });
+});
+
+describe('игра → учебник: «Подробнее в учебнике»', () => {
+  const anchors = (ch) => collectBlocks(CHAPTER_BLOCKS[ch] || [], (b) => (b.type === 'h2' || b.type === 'h3') && b.anchor).map((b) => b.anchor);
+  it('все ссылки ведут в готовые главы и на существующие разделы', () => {
+    ALL_BOOK_LINKS.forEach((l) => {
+      expect(CHAPTER_BY_ID[l.chapter].status, l.chapter).toBe('ready');
+      expect(anchors(l.chapter), `${l.chapter}#${l.anchor}`).toContain(l.anchor);
+    });
+  });
+  it('рычаги: ставка → IS-LM и AD-AS, налоги → «Провалы рынка», норма резервов → «Деньги и банки», госзакупки → IS-LM', () => {
+    expect(LEVER_BOOK.keyRate.map((l) => l.chapter)).toEqual(['is-lm', 'ad-as']);
+    ['incomeTaxRate', 'vatRate', 'profitTaxRate', 'socialContribRate'].forEach((id) => expect(LEVER_BOOK[id][0].chapter).toBe('market-failures'));
+    expect(LEVER_BOOK.reserveReq[0].chapter).toBe('money-banks');
+    expect(LEVER_BOOK.govSpending[0].chapter).toBe('is-lm');
+    Object.keys(LEVER_BOOK).forEach((id) => expect(LEVERS.some((l) => l.id === id), id).toBe(true));
+  });
+  it('«Почему это произошло?» и новости с цепочкой: стагфляция, секвестр, девальвация, кредитное сжатие', () => {
+    Object.values(WHY_BOOK).forEach((l) => expect(ALL_BOOK_LINKS).toContain(l));
+    expect(bookForChain(['Шок издержек', 'Выпуск ↓', 'Инфляция ↑', 'Дилемма ЦБ'])).toMatchObject({ chapter: 'ad-as', anchor: 'shocks' });
+    expect(bookForChain(['Долг ↑', 'Премия за риск ↑', 'Рынок закрыт', 'Секвестр расходов', 'Спад ↑'])).toMatchObject({ chapter: 'is-lm', anchor: 'policy' });
+    expect(bookForChain(['Резервы ↓', 'Защита курса невозможна', 'Девальвация', 'Импортные цены ↑', 'Инфляция ↑'])).toMatchObject({ chapter: 'ad-as' });
+    expect(bookForChain(['Капитал ↓', 'Предложение кредита ↓', 'Инвестиции ↓', 'ВВП ↓'])).toMatchObject({ chapter: 'money-banks', anchor: 'multiplier' });
+    expect(bookForChain(['Война', 'Доверие ↓'])).toBe(null);
+  });
+});
+
+describe('схемы: кругооборот и балансы банков', () => {
+  const sum = (rows) => rows.reduce((s, [, v]) => s + v, 0);
+  it('в главах: кругооборот — в «ВВП», балансы — в «Деньгах и банках»', () => {
+    expect(collectBlocks(CHAPTER_BLOCKS.gdp, (b) => b.type === 'diagram').map((b) => b.diagram)).toEqual(['circular']);
+    expect(collectBlocks(CHAPTER_BLOCKS['money-banks'], (b) => b.type === 'diagram').map((b) => b.diagram)).toEqual(['balance']);
+    expect(() => parseBlocks(':::diagram nope\nподпись\n:::')).toThrow();
+  });
+  it('кругооборот: три способа дают одно число', () => {
+    const f = circularFlow(1000);
+    expect(sum(f.valueAdded)).toBe(f.spending);
+    expect(sum(f.incomes)).toBe(f.spending);
+    // те же числа, что в разборе главы: 300 + 400 + 300
+    expect(f.valueAdded.map(([, v]) => v)).toEqual([300, 400, 300]);
+  });
+  it('балансы: активы = пассивы на каждом шаге, кредит становится вкладом, в конце — база / норма', () => {
+    const steps = balanceSteps(1000, 0.1);
+    steps.forEach((s) => s.banks.forEach((b) => expect(sum(b.assets), `${s.title}: ${b.name}`).toBeCloseTo(sum(b.liab), 6)));
+    expect(steps.map((s) => s.money)).toEqual([1000, 1900, 1900, 2710, 10000]);
+    // шаг «кредит»: кредит и новый вклад — одна и та же сумма
+    const loan = steps[1].banks[0];
+    expect(loan.assets.find(([l]) => l === 'Кредит Борису')[1]).toBe(loan.liab.find(([l]) => l === 'Вклад Бориса')[1]);
+    // после платежа у банка А ровно норма от вклада Анны
+    expect(steps[2].banks[0].assets[0][1]).toBeCloseTo(100, 6);
+    // и числа сходятся с текстом главы: 1000 + 900 + 810 + … = 10 000
+    expect(CHAPTER_TEXT['money-banks']).toContain('1000 + 900 + 810');
   });
 });

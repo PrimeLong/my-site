@@ -12,13 +12,13 @@ import { DRILLS, drillSetup, loadDrillRecords } from './lib/drills.js';
 import { GAME_CARDS } from './textbook/appendix.js';
 
 /* Общая рамка страницы тренажёра: кнопка назад, заголовок, вводный абзац. */
-export function TrainerPage({ eyebrow, title, lede, onBack, children, icon: Icon = FlaskConical, wide = false }) {
+export function TrainerPage({ eyebrow, title, lede, onBack, children, icon: Icon = FlaskConical, wide = false, backLabel = '← Назад в меню' }) {
   return (
     <div className="ems-root ems-hero-bg" style={{ display: 'flex', justifyContent: 'center', padding: '44px 16px' }}>
       <GlobalStyle />
       <div style={{ maxWidth: wide ? 960 : 760, width: '100%', minWidth: 0 }}>
         <button className="ems-btn" style={{ marginBottom: 22, padding: '7px 12px', fontSize: 12 }}
-          onClick={() => { Audio.play('click'); onBack(); }}>← Назад в меню</button>
+          onClick={() => { Audio.play('click'); onBack(); }}>{backLabel}</button>
         <div className="ems-fade-in" style={{ textAlign: 'center', marginBottom: 28 }}>
           <div className="ems-hero-eyebrow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon size={12} />{eyebrow}</div>
           <div className="ems-hero-title small">{title}</div>
