@@ -40,15 +40,34 @@ const CSS = `
   @media (prefers-reduced-motion: reduce) { .infla-bob, .infla-hop, .infla-eyes, .infla-hand, .infla-sway { animation: none; } }
 `;
 
-export function Mascot({ mood = 'hello', size = 56, label }) {
+/* Наряды из лавки (src/learn/rewards.js): голова, лицо, шея. Рисуются поверх монеты тушью и
+   одним цветом; для головного убора поле рисунка чуть выше. */
+const INK = '#2A1D05';
+const OUTFIT = {
+  cap: <g><path d="M13 13 Q32 -6 51 13 Q32 9 13 13 Z" fill="#3E6FA8" stroke={INK} strokeWidth="1.1" /><path d="M42 11.6 Q55 10 60 14.6 Q51 15.6 42 14 Z" fill="#2E568A" stroke={INK} strokeWidth="1" /><circle cx="32" cy="2.6" r="1.6" fill="#2E568A" stroke={INK} strokeWidth=".8" /></g>,
+  beret: <g><ellipse cx="29" cy="5.5" rx="18" ry="6.4" fill="#A0372A" stroke={INK} strokeWidth="1.1" transform="rotate(-8 29 5.5)" /><path d="M29 -0.8 l1 -3" stroke={INK} strokeWidth="1.4" strokeLinecap="round" /></g>,
+  bowler: <g><path d="M18 9.5 Q18 -8 32 -8 Q46 -8 46 9.5 Z" fill="#3A3530" stroke={INK} strokeWidth="1.1" /><ellipse cx="32" cy="9.5" rx="20" ry="3.4" fill="#2A2622" stroke={INK} strokeWidth="1" /><path d="M18.6 5.6 Q32 8 45.4 5.6" fill="none" stroke="#86461F" strokeWidth="1.8" /></g>,
+  tophat: <g><rect x="21" y="-11" width="22" height="19" rx="1.5" fill="#22201E" stroke={INK} strokeWidth="1.1" /><rect x="21" y="3" width="22" height="3.4" fill="#A0372A" /><ellipse cx="32" cy="8" rx="19" ry="3.2" fill="#22201E" stroke={INK} strokeWidth="1" /></g>,
+  glasses: <g fill="none" stroke={INK} strokeWidth="1.5"><circle cx="24.5" cy="23" r="5.6" fill="#DDEBF7" fillOpacity=".35" /><circle cx="39.5" cy="23" r="5.6" fill="#DDEBF7" fillOpacity=".35" /><path d="M30.1 22.4 Q32 21 33.9 22.4 M18.9 22 L12.5 20.5 M45.1 22 L51.5 20.5" /></g>,
+  monocle: <g fill="none" stroke={INK} strokeWidth="1.4"><circle cx="39.5" cy="23" r="6.2" fill="#DDEBF7" fillOpacity=".35" stroke="#94700F" strokeWidth="1.8" /><path d="M44 27.6 Q49 36 45 44" strokeDasharray="1.4 1.6" stroke="#94700F" /></g>,
+  bowtie: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M24 45.5 L32 49 L24 52.5 Z" fill="#A0372A" /><path d="M40 45.5 L32 49 L40 52.5 Z" fill="#A0372A" /><rect x="30.3" y="47.3" width="3.4" height="3.4" rx=".8" fill="#7A2A20" /></g>,
+  scarf: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M13 40 Q32 53 51 40 L51.5 45 Q32 58 12.5 45 Z" fill="#356653" /><path d="M42 47 L47 60 L42 61 L38.5 49 Z" fill="#2B5343" /><path d="M20 44 L21 48.5 M26 46.5 L26.6 51 M44 44 L43 48.5" stroke="#A9C7B8" strokeWidth="1.2" /></g>,
+  tie: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M29.5 45.6 L34.5 45.6 L33.6 49 L30.4 49 Z" fill="#2C5A8E" /><path d="M30.4 49 L33.6 49 L35.6 61 L32 64.5 L28.4 61 Z" fill="#3E6FA8" /><path d="M29.6 53 L34.4 55.5 M29 58 L35 60.6" stroke="#9FB3C8" strokeWidth="1" /></g>,
+};
+export const OUTFIT_IDS = Object.keys(OUTFIT);
+
+export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
   const m = MOUTH[mood] ? mood : 'hello';
   const gid = `infla-g-${React.useId().replace(/:/g, '')}`;
   const ink = '#2A1D05';
+  const wear = outfit || {};
+  // головной убор выше монеты — поле рисунка растёт вверх
+  const top = wear.head && OUTFIT[wear.head] ? -12 : 0;
   const motion = m === 'joy' || m === 'party' ? 'infla-hop' : m === 'sleep' ? '' : m === 'wave' ? 'infla-sway' : 'infla-bob';
   return (
     <span style={{ display: 'inline-block', lineHeight: 0 }} data-testid="mascot" data-mood={m}>
       <style>{CSS}</style>
-      <svg viewBox="0 0 64 70" width={size} height={size * 70 / 64} role="img" aria-label={label || `Инфля: ${({ hello: 'привет', wave: 'машет', joy: 'радуется', cheer: 'подбадривает', party: 'празднует', sleep: 'спит', think: 'думает' })[m]}`}
+      <svg viewBox={`0 ${top} 64 ${70 - top}`} width={size} height={size * (70 - top) / 64} role="img" aria-label={label || `Инфля: ${({ hello: 'привет', wave: 'машет', joy: 'радуется', cheer: 'подбадривает', party: 'празднует', sleep: 'спит', think: 'думает' })[m]}`}
         className={`infla ${motion}`} key={m}>
         <defs>
           <radialGradient id={gid} cx="36%" cy="28%" r="78%">
@@ -73,6 +92,7 @@ export function Mascot({ mood = 'hello', size = 56, label }) {
           <path d="M26 3.5 L32 -4 L38 3.5 Z" fill="#4FA38F" stroke="#3A2A08" strokeWidth="0.8" transform="translate(0 4)" />
           {[[8, 12, '#E07A5F'], [56, 10, '#6FA8DC'], [5, 34, '#4FA38F'], [59, 32, '#E07A5F'], [12, 4, '#D9B23A']].map(([x, y, c], i) => <rect key={i} x={x} y={y} width="3" height="3" fill={c} transform={`rotate(${i * 37} ${x + 1.5} ${y + 1.5})`} />)}
         </>}
+        {['neck', 'face', 'head'].map((sl) => (wear[sl] && OUTFIT[wear[sl]] ? <g key={sl} data-outfit={wear[sl]}>{OUTFIT[wear[sl]]}</g> : null))}
         {m === 'sleep' && <text x="46" y="9" fontSize="9" fill="#9FB3C8" fontFamily="sans-serif">z z</text>}
         {m === 'think' && <><circle cx="52" cy="9" r="1.6" fill="#9FB3C8" /><circle cx="56.5" cy="4.5" r="2.4" fill="#9FB3C8" /></>}
         {m === 'cheer' && <path d="M52 30 l2 -4 l2 4 l4 1 l-3 3 l1 4 l-4 -2 l-4 2 l1 -4 l-3 -3 z" fill="#FBE7A1" stroke="#94700F" strokeWidth="0.6" />}

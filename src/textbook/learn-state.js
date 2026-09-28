@@ -13,10 +13,32 @@ const MAX_KEYS = 300;
 const MAX_MISTAKES = 60;
 const MAX_HINTED = 60;
 
+/* Этап 3 — персональная программа и награды:
+   profile — ответы при регистрации (цель, минут в день, есть ли знания);
+   placement — вступительный тест: когда пройден и какие юниты открыл;
+   topics — точность по урокам (первые попытки, окно ~20 последних): слабые темы;
+   recent — последние 30 первых попыток строкой «1»/«0»: уровень сложности;
+   daily — счётчики дня для заданий дня: уроки, без ошибок, верные, секунды, серия, игры, практика;
+   coins/spent — монеты по дням (заработано/потрачено), claimed — полученные награды (ключ → когда):
+   одна награда не выдаётся дважды и на двух устройствах; owned — купленные вещи, wear — наряд Инфли;
+   freezeBuy — купленные заморозки по дням, frozen — дни, которые спасла купленная заморозка. */
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
+  profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
+  topics: {}, recent: '', recentAt: 0, daily: {},
+  coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, at: 0 }, freezeBuy: {}, frozen: {},
 });
+export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
+export const PROFILE_MINUTES = [5, 10, 15, 20];
+export const PROFILE_GOAL_LABEL = { exam: 'Поступление в вуз', olymp: 'Олимпиада', uni: 'Первый курс', self: 'Для себя' };
+// минуты в день → уроков в день (урок — 3–5 минут): это цель дня
+export const LESSONS_FOR_MINUTES = { 5: 1, 10: 2, 15: 3, 20: 5 };
+export const SLOTS = ['head', 'face', 'neck'];
+const MAX_RECENT = 30;
+const TOPIC_WINDOW = 20;
+const MAX_DAILY = 60;
+const MAX_CLAIMED = 500;
 
 // день по местному времени: ГГГГ-ММ-ДД
 export const dayOf = (ts) => {
@@ -24,7 +46,7 @@ export const dayOf = (ts) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 const dayTs = (key) => { const [y, mo, d] = key.split('-').map(Number); return new Date(y, mo - 1, d, 12).getTime(); };
-const addDays = (key, n) => dayOf(dayTs(key) + n * DAY);
+export const addDays = (key, n) => dayOf(dayTs(key) + n * DAY);
 // неделя с понедельника: ключ — дата понедельника
 const weekOf = (key) => { const t = new Date(dayTs(key)); const dow = (t.getDay() + 6) % 7; return addDays(key, -dow); };
 
@@ -35,12 +57,40 @@ const upd = (s, patch) => ({ ...s, ...patch });
    (см. src/learn/resume.js) — тогда abandonLesson. */
 export const startLesson = (s) => upd(s, { runs: { ...s.runs, started: s.runs.started + 1 } });
 
-// первая попытка в упражнении: тип, верно ли, сколько миллисекунд
-export function recordAttempt(s, kind, ok, ms) {
+/* Первая попытка в упражнении: тип, верно ли, сколько миллисекунд. lesson — урок, откуда
+   упражнение (точность по темам), run — сколько верных подряд теперь (для задания дня). */
+export function recordAttempt(s, kind, ok, ms, { lesson = null, run = 0, now = Date.now() } = {}) {
   const t = s.types[kind] || { n: 0, ok: 0, ms: 0 };
   const cap = Math.max(0, Math.min(120000, Math.round(ms || 0)));
-  return upd(s, { types: { ...s.types, [kind]: { n: t.n + 1, ok: t.ok + (ok ? 1 : 0), ms: t.ms + cap } } });
+  const patch = { types: { ...s.types, [kind]: { n: t.n + 1, ok: t.ok + (ok ? 1 : 0), ms: t.ms + cap } } };
+  if (lesson) {
+    // окно: после двадцати попыток старые затухают (×19/20 на каждую новую) — считается недавняя точность
+    const tp = (s.topics || {})[lesson] || { n: 0, ok: 0 };
+    const full = tp.n >= TOPIC_WINDOW;
+    const n = full ? TOPIC_WINDOW : tp.n + 1;
+    const good = (full ? (tp.ok * (TOPIC_WINDOW - 1)) / TOPIC_WINDOW : tp.ok) + (ok ? 1 : 0);
+    patch.topics = { ...s.topics, [lesson]: { n, ok: Math.round(good * 100) / 100 } };
+  }
+  patch.recent = `${s.recent || ''}${ok ? 1 : 0}`.slice(-MAX_RECENT);
+  patch.recentAt = now;
+  const day = dayOf(now); const d = dayEntry(s, day);
+  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), r: Math.max(d.r, ok ? run : 0) } };
+  return upd(s, patch);
 }
+const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'g', 'pr', 'h'];
+const dayEntry = (s, day) => ({ l: 0, p: 0, c: 0, s: 0, r: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
+export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
+
+// ответы при регистрации — из них цель дня и задания; меняются в профиле
+export function setProfile(s, { goal, minutes, knows }, now = Date.now()) {
+  const p = s.profile || emptyLearn().profile;
+  return upd(s, { profile: {
+    goal: PROFILE_GOALS.includes(goal) ? goal : p.goal, minutes: PROFILE_MINUTES.includes(minutes) ? minutes : p.minutes,
+    knows: typeof knows === 'boolean' ? knows : p.knows, at: now,
+  } });
+}
+// вступительный тест пройден: открытые им юниты — как сданные проверкой
+export const setPlacement = (s, opened, now = Date.now()) => upd(s, { placement: { at: now, opened: opened.slice(0, 40) } });
 
 // урок брошен после начала и не продолжен: на каком по счёту упражнении и какого типа
 export function abandonLesson(s, kind, index) {
@@ -65,15 +115,24 @@ export function lessonXp({ firstTry, replay }) {
   const full = firstTry * XP.correct + XP.finish;
   return replay ? Math.max(1, Math.round(full * XP.replayShare)) : full;
 }
-export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true }) {
+/* Урок доведён до конца. seconds — сколько занимались (в задание «N минут занятий», не больше
+   пятнадцати минут за раз), kind — вид урока, mode — урок Пути, практика или проверка. */
+export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true, seconds = 0, kind = null, mode = 'lesson' }) {
   const day = dayOf(now);
   const prev = s.lessons[lessonId];
   const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: prev ? prev.at : now, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)) } } : s.lessons;
+  const d = dayEntry(s, day);
+  const hour = new Date(now).getHours();
+  const entry = {
+    ...d, l: d.l + (lessonId ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.min(900, Math.round(seconds))),
+    g: d.g + (kind === 'game' ? 1 : 0), pr: d.pr + (mode === 'practice' ? 1 : 0), h: d.h | (hour < 8 ? 1 : 0) | (hour >= 22 ? 2 : 0),
+  };
   return upd(s, {
     lessons,
     xp: { ...s.xp, [day]: (s.xp[day] || 0) + xp },
     done: count ? { ...s.done, [day]: (s.done[day] || 0) + 1 } : s.done,
     runs: { ...s.runs, finished: s.runs.finished + 1 },
+    daily: { ...s.daily, [day]: entry },
   });
 }
 // «Проверка юнита» сдана: все его уроки считаются пройденными
@@ -96,6 +155,9 @@ export function streak(s, now = Date.now()) {
   for (let k = 0; k < MAX_DAYS; k += 1) {
     if (active(s, key)) {
       n += 1; used.push(...pending); pending = [];
+    } else if ((s.frozen || {})[key]) {
+      // день спасла купленная заморозка: не рвёт серию и не тратит недельную
+      pending.push(key);
     } else {
       const w = weekOf(key);
       if (frozenWeeks.has(w)) break;
@@ -105,6 +167,39 @@ export function streak(s, now = Date.now()) {
   }
   // заморозки, за которыми дальше в прошлом не было занятий, ничего не спасли — не считаем
   return { days: n, today: active(s, today), freezesUsed: used };
+}
+/* Купленные заморозки: куплено минус потрачено. Тратятся сами, при открытии приложения, —
+   на пропуск, который недельная заморозка уже не покрывает, и только если за пропуском есть
+   занятия, то есть серию действительно есть что спасать. */
+export const MAX_FREEZES = 2;
+const sumMap = (m) => Object.values(m || {}).reduce((a, b) => a + b, 0);
+export const ownedFreezes = (s) => Math.max(0, sumMap(s.freezeBuy) - Object.keys(s.frozen || {}).length);
+export function applyFreezes(s, now = Date.now()) {
+  let owned = ownedFreezes(s);
+  if (!owned) return s;
+  const frozen = s.frozen || {};
+  let key = addDays(dayOf(now), -1);
+  const weeks = new Set(); const commit = []; let pending = []; let gap = 0;
+  for (let k = 0; k < MAX_DAYS; k += 1) {
+    if (active(s, key)) { commit.push(...pending); pending = []; gap = 0; } else if (!frozen[key]) {
+      gap += 1;
+      if (gap > 30) break;
+      const w = weekOf(key);
+      if (!weeks.has(w)) weeks.add(w);
+      else if (owned > 0) { pending.push(key); owned -= 1; } else break;
+    }
+    key = addDays(key, -1);
+  }
+  if (!commit.length) return s;
+  return upd(s, { frozen: { ...frozen, ...Object.fromEntries(commit.map((d) => [d, 1])) } });
+}
+// дни последней недели для экрана серии: занимался, спасён заморозкой, пропуск, сегодня
+export function weekDots(s, now = Date.now()) {
+  const today = dayOf(now);
+  return [6, 5, 4, 3, 2, 1, 0].map((back) => {
+    const key = addDays(today, -back);
+    return { day: key, dow: (new Date(dayTs(key)).getDay() + 6) % 7, done: active(s, key), frozen: !!(s.frozen || {})[key], today: back === 0 };
+  });
 }
 // самая длинная серия за всю историю (с теми же заморозками)
 export function longestStreak(s) {
@@ -183,6 +278,67 @@ export function normalizeLearn(raw) {
     quits: smallMap(r.quits), quitAt: smallMap(r.quitAt),
     mistakes: (Array.isArray(r.mistakes) ? r.mistakes : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_MISTAKES),
     hinted: (Array.isArray(r.hinted) ? r.hinted : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_HINTED),
+    ...normalizeProgram(r),
+  };
+}
+const tsMap = (v, limit) => {
+  const out = {};
+  Object.keys(obj(v)).filter(okKey).slice(0, limit).forEach((k) => { const t = cnt(v[k], 1e14); if (t) out[k] = t; });
+  return out;
+};
+// полученные награды: ключи заданий дня («q:ГГГГ-ММ-ДД:…») — только за последние месяцы, остальные — все
+function claimedMap(v) {
+  const all = tsMap(v, 5000);
+  const quests = Object.keys(all).filter((k) => k.startsWith('q:')).sort().slice(-250);
+  const rest = Object.keys(all).filter((k) => !k.startsWith('q:')).sort().slice(0, MAX_CLAIMED - 250);
+  const out = {}; [...rest, ...quests].forEach((k) => { out[k] = all[k]; });
+  return out;
+}
+function normalizeProgram(r) {
+  const e = emptyLearn();
+  const p = obj(r.profile); const pl = obj(r.placement); const w = obj(r.wear);
+  const topics = {};
+  Object.keys(obj(r.topics)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => {
+    const t = obj(r.topics[k]); const n = cnt(t.n, TOPIC_WINDOW);
+    if (n) topics[k] = { n, ok: Math.min(n, Math.round(Math.max(0, fin(t.ok)) * 100) / 100) };
+  });
+  const daily = {};
+  Object.keys(obj(r.daily)).filter(isDay).sort().slice(-MAX_DAILY).forEach((k) => {
+    const d = obj(r.daily[k]); const out = {};
+    DAILY_FIELDS.forEach((f) => { out[f] = cnt(d[f], f === 's' ? 86400 : f === 'h' ? 3 : 1e5); });
+    daily[k] = out;
+  });
+  return {
+    profile: {
+      goal: PROFILE_GOALS.includes(p.goal) ? p.goal : e.profile.goal, minutes: PROFILE_MINUTES.includes(p.minutes) ? p.minutes : e.profile.minutes,
+      knows: p.knows === true, at: cnt(p.at, 1e14),
+    },
+    placement: { at: cnt(pl.at, 1e14), opened: (Array.isArray(pl.opened) ? pl.opened : []).filter(okKey).slice(0, 40) },
+    topics, daily,
+    recent: typeof r.recent === 'string' && /^[01]*$/.test(r.recent) ? r.recent.slice(-MAX_RECENT) : '', recentAt: cnt(r.recentAt, 1e14),
+    coins: dayMap(r.coins, 1e6), spent: dayMap(r.spent, 1e6), freezeBuy: dayMap(r.freezeBuy, MAX_FREEZES * 5),
+    frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
+    claimed: claimedMap(r.claimed), owned: tsMap(r.owned, 60),
+    wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? w[sl] : null])), at: cnt(w.at, 1e14) },
+  };
+}
+// слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
+function mergeProgram(x, y) {
+  const maxMap = (p, q) => { const out = { ...p }; Object.entries(q).forEach(([k, v]) => { out[k] = Math.max(out[k] || 0, v); }); return out; };
+  const minTs = (p, q) => { const out = { ...p }; Object.entries(q).forEach(([k, v]) => { out[k] = out[k] ? Math.min(out[k], v) : v; }); return out; };
+  // «более позднее» при равном времени решает сравнение текста — слияние симметрично
+  const later = (a, b) => (b.at > a.at || (b.at === a.at && JSON.stringify(b) > JSON.stringify(a)) ? b : a);
+  const topics = { ...x.topics };
+  Object.entries(y.topics).forEach(([k, t]) => { const c = topics[k]; topics[k] = !c || t.n > c.n || (t.n === c.n && t.ok > c.ok) ? t : c; });
+  const daily = { ...x.daily };
+  Object.entries(y.daily).forEach(([k, d]) => { const c = daily[k]; daily[k] = c ? Object.fromEntries(DAILY_FIELDS.map((f) => [f, f === 'h' ? (c.h | d.h) : Math.max(c[f], d[f])])) : d; });
+  const laterRecent = y.recentAt > x.recentAt || (y.recentAt === x.recentAt && y.recent > x.recent);
+  return {
+    profile: later(x.profile, y.profile), placement: later(x.placement, y.placement), wear: later(x.wear, y.wear),
+    topics, daily,
+    recent: laterRecent ? y.recent : x.recent, recentAt: Math.max(x.recentAt, y.recentAt),
+    coins: maxMap(x.coins, y.coins), spent: maxMap(x.spent, y.spent), freezeBuy: maxMap(x.freezeBuy, y.freezeBuy),
+    frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),
@@ -212,5 +368,6 @@ export function mergeLearn(a, b) {
     quits: maxMap(x.quits, y.quits), quitAt: maxMap(x.quitAt, y.quitAt),
     mistakes: Object.entries(byId).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
     hinted: Object.entries(hintById).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
+    ...mergeProgram(x, y),
   });
 }

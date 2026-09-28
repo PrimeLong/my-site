@@ -20,5 +20,7 @@ export const SCREENS = {
   lesson: { from: ['lessonCard', 'path', 'practice'], back: 'origin', title: 'Урок', testid: 'lesson' },
   book: { from: ['path', 'practice', 'profile', 'lesson'], back: 'origin', title: 'Учебник', testid: 'learn-book' },
   account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
+  shop: { from: ['path', 'profile'], back: 'origin', title: 'Лавка', testid: 'shop' },
+  chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
 };
 export const TABS = Object.keys(SCREENS).filter((k) => SCREENS[k].root && !SCREENS[k].gate);

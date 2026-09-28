@@ -1,0 +1,188 @@
+/* НАГРАДЫ: монеты, курс и лавка, задания дня, сундук юнита, печати-достижения, испытание
+   месяца. Это экономика, поэтому у монет есть курс: цены в лавке назначены в кронах, а
+   платите вы монетами по курсу дня — он колеблется вокруг единицы и тянется к ней обратно.
+   Модуль чистый: всё считается из состояния учёбы (learn-state.js); каждая награда выдаётся
+   под ключом (claimed) — ни дважды, ни на двух устройствах. Экраны — src/learn.jsx. */
+import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf } from '../textbook/learn-state.js';
+
+// детерминированная «случайность» из строки: FNV-1a → [0, 1)
+export function hash01(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0) / 4294967296;
+}
+const sum = (m) => Object.values(m || {}).reduce((a, b) => a + b, 0);
+export const plural = (n, one, few, many) => { const a = n % 10; const b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
+export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монеты', 'монет');
+
+/* ------------------------------ МОНЕТЫ ------------------------------ */
+// за урок впервые — 10 (без ошибок — ещё 5), повтор — 2, практика — 5, сданная проверка юнита — 20
+export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, legend: 10, goal: 10, allQuests: 10 };
+export const earned = (s) => sum(s.coins);
+export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent));
+export const hasClaim = (s, key) => !!(s.claimed || {})[key];
+// начислить монеты; с ключом — только один раз
+export function earn(s, n, key = null, now = Date.now()) {
+  if (n <= 0 || (key && hasClaim(s, key))) return s;
+  const day = dayOf(now);
+  return {
+    ...s, coins: { ...s.coins, [day]: ((s.coins || {})[day] || 0) + n },
+    claimed: key ? { ...s.claimed, [key]: now } : s.claimed,
+  };
+}
+// монеты за пройденный урок, практику или проверку
+export function runCoins({ mode, replay = false, accuracy = 0, pass = null, items = 0 }) {
+  if (mode === 'lesson') return replay ? COIN.replay : COIN.lesson + (accuracy >= 100 ? COIN.perfect : 0);
+  if (mode === 'practice') return items ? COIN.practice : 0;
+  if (mode === 'check') return pass ? COIN.check : 0;
+  if (mode === 'legend') return accuracy >= 80 ? COIN.legend : 0;
+  return 0;
+}
+
+/* ------------------------------ КУРС ------------------------------
+   Сколько монет стоит одна крона в этот день: r = 1 + 0,75·(r_вчера − 1) + шум ±0,07.
+   Считаем сорок дней назад от единицы — к нужному дню начало уже забыто. */
+export function rateOn(day) {
+  let r = 1; let key = addDays(day, -40);
+  for (let i = 0; i <= 40; i += 1) { r = 1 + 0.75 * (r - 1) + (hash01(`rate:${key}`) - 0.5) * 0.14; key = addDays(key, 1); }
+  return Math.round(Math.min(1.25, Math.max(0.8, r)) * 100) / 100;
+}
+export const rateHistory = (day, n = 14) => Array.from({ length: n }, (_, k) => { const d = addDays(day, k - n + 1); return { day: d, rate: rateOn(d) }; });
+
+/* ------------------------------ ЛАВКА ------------------------------
+   Цены — в кронах; в монетах — по курсу дня, с округлением вверх. Наряды Инфли — по одному
+   на голову, лицо и шею. */
+export const FREEZE = { id: 'freeze', title: 'Заморозка серии', crowns: 25, text: `Спасёт серию, если за неделю пропущено больше одного дня. В запасе — не больше ${MAX_FREEZES}.` };
+export const OUTFITS = [
+  { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 30 },
+  { id: 'beret', slot: 'head', title: 'Берет гравёра', crowns: 40 },
+  { id: 'bowler', slot: 'head', title: 'Котелок биржевика', crowns: 60 },
+  { id: 'tophat', slot: 'head', title: 'Цилиндр банкира', crowns: 90 },
+  { id: 'glasses', slot: 'face', title: 'Очки бухгалтера', crowns: 35 },
+  { id: 'monocle', slot: 'face', title: 'Монокль', crowns: 70 },
+  { id: 'bowtie', slot: 'neck', title: 'Бабочка', crowns: 30 },
+  { id: 'scarf', slot: 'neck', title: 'Шарф', crowns: 45 },
+  { id: 'tie', slot: 'neck', title: 'Галстук министра', crowns: 60 },
+];
+export const OUTFIT_BY_ID = Object.fromEntries(OUTFITS.map((o) => [o.id, o]));
+export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея' };
+const itemOf = (id) => (id === FREEZE.id ? FREEZE : OUTFIT_BY_ID[id]);
+export const priceOf = (id, day) => Math.ceil(itemOf(id).crowns * rateOn(day));
+// купить: { s, ok, reason }
+export function buy(s, id, now = Date.now()) {
+  const item = itemOf(id);
+  if (!item) return { s, ok: false, reason: 'Такого товара нет' };
+  const day = dayOf(now);
+  const price = priceOf(id, day);
+  if (id === FREEZE.id && ownedFreezes(s) >= MAX_FREEZES) return { s, ok: false, reason: `В запасе уже ${MAX_FREEZES} заморозки` };
+  if (id !== FREEZE.id && (s.owned || {})[id]) return { s, ok: false, reason: 'Уже куплено' };
+  if (balance(s) < price) return { s, ok: false, reason: `Не хватает ${price - balance(s)} ${coinsWord(price - balance(s))}` };
+  let t = { ...s, spent: { ...s.spent, [day]: ((s.spent || {})[day] || 0) + price } };
+  if (id === FREEZE.id) t = { ...t, freezeBuy: { ...t.freezeBuy, [day]: ((t.freezeBuy || {})[day] || 0) + 1 } };
+  else t = { ...t, owned: { ...t.owned, [id]: now }, wear: { ...t.wear, [item.slot]: id, at: now } };
+  return { s: t, ok: true, price };
+}
+// надеть купленное или снять (id = null)
+export function setWear(s, slot, id, now = Date.now()) {
+  if (id && (!(s.owned || {})[id] || OUTFIT_BY_ID[id].slot !== slot)) return s;
+  return { ...s, wear: { ...s.wear, [slot]: id, at: now } };
+}
+export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null }; };
+
+/* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------
+   Три задания: минуты занятий (из ответа при регистрации) — всегда, одно про уроки и одно
+   про ответы; какие именно — решает дата. Выполнено — монеты сразу, все три — ещё бонус. */
+const QUEST = {
+  minutes: { coins: 15, target: (s) => (s.profile && s.profile.minutes) || 10, have: (d) => Math.floor(d.s / 60), title: (t) => `${t} ${plural(t, 'минута', 'минуты', 'минут')} занятий` },
+  lessons: { coins: 10, target: (s) => Math.max(2, s.goal || 1), have: (d) => d.l, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')}` },
+  perfect: { coins: 20, target: (s) => Math.min(2, Math.max(1, s.goal || 1)), have: (d) => d.p, title: (t) => (t === 1 ? 'Урок без ошибок' : `${t} урока без ошибок`) },
+  goal: { coins: 10, target: (s) => s.goal || 1, have: (d, s, day) => (s.done || {})[day] || 0, title: () => 'Выполнить цель дня' },
+  correct: { coins: 10, target: () => 15, have: (d) => d.c, title: (t) => `${t} верных ответов` },
+  run: { coins: 15, target: () => 8, have: (d) => d.r, title: (t) => `${t} верных ответов подряд` },
+};
+export const QUEST_ICON = { minutes: 'timer', lessons: 'map', perfect: 'check', goal: 'target', correct: 'coins', run: 'flame' };
+export function questsFor(s, now = Date.now()) {
+  const day = dayOf(now); const d = dailyOf(s, now);
+  const pick = (list, salt) => list[Math.floor(hash01(`${day}:${salt}`) * list.length)];
+  const ids = ['minutes', pick(['perfect', 'lessons', 'goal'], 'a'), pick(['correct', 'run'], 'b')];
+  return ids.map((id) => {
+    const q = QUEST[id]; const target = q.target(s); const have = Math.min(target, q.have(d, s, day));
+    const key = `q:${day}:${id}`;
+    return { id, key, title: q.title(target), have, target, done: have >= target, claimed: hasClaim(s, key), coins: q.coins };
+  });
+}
+
+/* ------------------------------ СУНДУК ЮНИТА ------------------------------ */
+export const chestCoins = (unitId) => 40 + Math.floor(hash01(`chest:${unitId}`) * 41);
+export const chestKey = (unitId) => `c:${unitId}`;
+export const openChest = (s, unitId, now = Date.now()) => earn(s, chestCoins(unitId), chestKey(unitId), now);
+
+/* ------------------------------ СЕРИЯ ------------------------------ */
+export const STREAK_BONUS = [[3, 15], [7, 40], [14, 80], [30, 200], [60, 300], [100, 500]];
+
+/* ------------------------------ ПЕЧАТИ-ДОСТИЖЕНИЯ ------------------------------
+   ctx — то, что знает только курс: сколько пройдено уроков и юнитов, какие виды уроков. */
+export const ACHIEVEMENTS = [
+  { id: 'first', icon: 'footprints', title: 'Первый шаг', text: 'Пройден первый урок', coins: 10, test: (s, c) => c.lessonsDone >= 1 },
+  { id: 'perfect', icon: 'check', title: 'Без помарок', text: 'Урок без единой ошибки', coins: 15, test: (s) => Object.values(s.lessons).some((l) => l.best >= 100 && l.runs > 0) },
+  { id: 'streak3', icon: 'flame', title: 'Три дня подряд', text: 'Серия — три дня', coins: 10, test: (s, c) => c.longest >= 3 },
+  { id: 'streak7', icon: 'flame', title: 'Неделя в пути', text: 'Серия — семь дней', coins: 30, test: (s, c) => c.longest >= 7 },
+  { id: 'streak30', icon: 'flame', title: 'Месяц в пути', text: 'Серия — тридцать дней', coins: 100, test: (s, c) => c.longest >= 30 },
+  { id: 'unit', icon: 'landmark', title: 'Место на карте', text: 'Пройден первый юнит', coins: 20, test: (s, c) => c.unitsDone >= 1 },
+  { id: 'kinds', icon: 'shapes', title: 'Все жанры', text: 'Пройдены уроки всех восьми видов', coins: 30, test: (s, c) => c.kinds >= 8 },
+  { id: 'placement', icon: 'graduation', title: 'Экстерн', text: 'Вступительный тест открыл юнит', coins: 20, test: (s) => (s.placement || {}).opened && s.placement.opened.length > 0 },
+  { id: 'quests', icon: 'scroll', title: 'Прилежание', text: 'Все задания дня — семь раз', coins: 40, test: (s) => Object.keys(s.claimed || {}).filter((k) => /^q:.*:all$/.test(k)).length >= 7 },
+  { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 5, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 },
+  { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },
+  { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
+  { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
+  { id: 'saver', icon: 'piggy', title: 'Копилка', text: 'Заработано 500 монет', coins: 25, test: (s) => earned(s) >= 500 },
+  { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
+];
+export const achievementKey = (id) => `a:${id}`;
+
+/* ------------------------------ ИСПЫТАНИЕ МЕСЯЦА ------------------------------ */
+const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.startsWith(month));
+const MONTH_KINDS = [
+  { id: 'days', target: 15, title: 'Заниматься 15 дней за месяц', have: (s, m) => inMonth(s.done, m).filter(([, v]) => v > 0).length },
+  { id: 'lessons', target: 40, title: 'Пройти 40 уроков за месяц', have: (s, m) => inMonth(s.done, m).reduce((a, [, v]) => a + v, 0) },
+  { id: 'perfect', target: 12, title: '12 уроков без ошибок за месяц', have: (s, m) => inMonth(s.daily, m).reduce((a, [, d]) => a + d.p, 0) },
+  { id: 'xp', target: 500, title: 'Набрать 500 опыта за месяц', have: (s, m) => inMonth(s.xp, m).reduce((a, [, v]) => a + v, 0) },
+];
+export const MONTH_COINS = 100;
+export function monthChallenge(s, now = Date.now()) {
+  const day = dayOf(now); const month = day.slice(0, 7);
+  const kind = MONTH_KINDS[Math.floor(hash01(`month:${month}`) * MONTH_KINDS.length)];
+  const d = new Date(now); const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const have = Math.min(kind.target, kind.have(s, month));
+  const key = `m:${month}`;
+  return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title, have, target: kind.target,
+    done: have >= kind.target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft: last - d.getDate() };
+}
+// марки месяцев, которые уже получены: «m:ГГГГ-ММ» → подпись
+export const monthStamps = (s) => Object.keys(s.claimed || {}).filter((k) => k.startsWith('m:')).sort().map((k) => {
+  const [y, m] = k.slice(2).split('-').map(Number); return { key: k, name: `${MONTHS[m - 1]} ${y}` };
+});
+
+/* ------------------------------ РАСЧЁТ НАГРАД ------------------------------
+   После каждого урока: цель дня, серия, задания дня, печати, испытание месяца — всё, что
+   выполнено и ещё не получено. Возвращает новое состояние и список полученного. */
+export function settle(s, ctx, now = Date.now()) {
+  const gains = [];
+  const give = (t, n, key, title, kind) => { const before = t; const next = earn(t, n, key, now); if (next !== before) gains.push({ key, coins: n, title, kind }); return next; };
+  let t = s;
+  const day = dayOf(now);
+  if (((t.done || {})[day] || 0) >= (t.goal || 1)) t = give(t, COIN.goal, `g:${day}`, 'Цель дня выполнена', 'goal');
+  const st = streak(t, now).days;
+  STREAK_BONUS.forEach(([n, c]) => { if (st >= n) t = give(t, c, `st:${n}`, `Серия: ${n} ${plural(n, 'день', 'дня', 'дней')}`, 'streak'); });
+  const quests = questsFor(t, now);
+  quests.forEach((q) => { if (q.done) t = give(t, q.coins, q.key, `Задание: ${q.title}`, 'quest'); });
+  if (quests.every((q) => q.done)) t = give(t, COIN.allQuests, `q:${day}:all`, 'Все задания дня', 'quest');
+  const m = monthChallenge(t, now);
+  if (m.done) t = give(t, m.coins, m.key, `Испытание месяца: ${m.name}`, 'month');
+  const full = { longest: longestStreak(t), ...ctx };
+  ACHIEVEMENTS.forEach((a) => { if (a.test(t, full)) t = give(t, a.coins, achievementKey(a.id), `Печать «${a.title}»`, 'achievement'); });
+  return { s: t, gains };
+}
+export const achievementsOf = (s) => ACHIEVEMENTS.map((a) => ({ ...a, got: hasClaim(s, achievementKey(a.id)), at: (s.claimed || {})[achievementKey(a.id)] || 0 }));
