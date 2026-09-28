@@ -22,7 +22,7 @@ export function sectionsOf(blocks) {
   return out.map((s) => {
     const recall = s.blocks.find((b) => b.type === 'recall');
     // упражнения и карточки уроков — для пути, а не для чтения главы: во время чтения их не считаем
-    const reading = s.blocks.filter((b) => !['problem', 'recall', 'ex', 'idea'].includes(b.type));
+    const reading = s.blocks.filter((b) => !['problem', 'recall', 'ex', 'idea', 'round'].includes(b.type));
     const text = collectInline(reading, (n) => n.t === 'text').map((n) => n.v).join(' ');
     const words = text.split(/\s+/).filter(Boolean).length;
     const charts = collectBlocks(s.blocks, (b) => b.type === 'chart' || b.type === 'flow' || b.type === 'diagram').length;

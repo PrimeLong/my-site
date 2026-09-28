@@ -1163,8 +1163,33 @@ async function answerExercise(page, { wrong = false } = {}) {
     for (const [it, b] of Object.entries(ans)) await ex.locator(`[data-item="${it}"][data-bin="${wrong ? bins.find((x) => x !== b) : b}"]`).click();
   } else if (kind === 'news') {
     for (const [v, d] of Object.entries(ans)) await ex.locator(`[data-var="${v}"][data-dir="${wrong ? (d === '+' ? '-' : '+') : d}"]`).click();
+  } else if (kind === 'tiles') {
+    for (const k of wrong ? [...ans].reverse() : ans) await ex.locator(`[data-tile="${k}"]`).click();
+  } else if (kind === 'curve') {
+    await ex.locator(`[data-curve="${ans[0]}"][data-dir="${wrong === (ans[1] === '+') ? '-' : '+'}"]`).click();
+  } else if (kind === 'price') {
+    await ex.getByRole('slider', { name: 'Цена' }).fill(String(wrong ? ans + 1 : ans));
+  } else if (kind === 'point') {
+    // точка по координатам графика: поле графика — в data-plot, в единицах viewBox
+    const svg = ex.getByTestId('market-chart');
+    const pl = JSON.parse(await svg.getAttribute('data-plot'));
+    const box = await svg.boundingBox();
+    const q = wrong ? pl.qMax * 0.1 : ans.q; const pr = wrong ? pl.pMax * 0.9 : ans.p;
+    await svg.click({ position: { x: ((pl.x0 + (q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (pr / pl.pMax) * pl.h) / pl.vh) * box.height } });
+  } else if (kind === 'swipe' || kind === 'rush') {
+    // раунд мини-игры: карточка за карточкой, пока раунд не кончится; проверка — сама
+    if (kind === 'rush') await ex.getByTestId('game-start').click();
+    const card = ex.getByTestId('game-card');
+    while (await card.count()) {
+      const side = await card.getAttribute('data-answer');
+      const pick = wrong ? await ex.locator(`button[data-side]:not([data-side="${side}"])`).first().getAttribute('data-side') : side;
+      await ex.locator(`button[data-side="${pick}"]`).click();
+    }
+  } else if (kind === 'chain') {
+    await ex.getByTestId('game-start').click();
+    for (const k of wrong ? [...ans].reverse() : ans) await ex.locator(`button[data-key="${k}"]`).click();
   }
-  await page.getByRole('button', { name: 'Проверить' }).click();
+  if (!['swipe', 'rush', 'chain'].includes(kind)) await page.getByRole('button', { name: 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
   await expect(fb).toHaveAttribute('data-ok', String(!wrong));
   return kind;
@@ -1176,8 +1201,8 @@ async function playLesson(page, { wrongAt = [] } = {}) {
   let cards = 0;
   for (let i = 0; i < 40; i += 1) {
     if (await page.getByTestId('lesson-result').isVisible()) break;
-    // вторая карточка идеи урока — прочитать и дальше
-    if (await page.getByTestId('lesson-card').isVisible()) { cards += 1; await page.getByRole('button', { name: 'Понятно' }).click(); }
+    // карточки перед упражнением: шаг, слово (перевернуть), пункт итогов — прочитать и дальше
+    cards += await passCards(page);
     if (await page.getByTestId('ex-retry').isVisible()) retries += 1;
     kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i) }));
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -1186,6 +1211,23 @@ async function playLesson(page, { wrongAt = [] } = {}) {
   return { kinds, retries, cards };
 }
 const withTestFlag = (page) => page.addInitScript(() => { window.__INFLATIA_TEST__ = true; });
+async function passCards(page) {
+  let n = 0;
+  const card = page.getByTestId('lesson-card');
+  // подпись карточки: вид, «Слово 2 из 8», перевёрнута ли — по ней видно, что нажатие сработало
+  const sig = async () => {
+    if (!(await card.isVisible())) return 'gone';
+    const flip = card.locator('[data-flipped]');
+    return `${await card.getAttribute('data-style')}|${await card.locator('.ln-kind').innerText()}|${(await flip.count()) ? await flip.getAttribute('data-flipped') : ''}`;
+  };
+  while (await card.isVisible()) {
+    n += 1;
+    const before = await sig();
+    await page.getByTestId('lesson').locator('.ln-foot button').click();
+    await expect.poll(sig).not.toBe(before);
+  }
+  return n;
+}
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
 // карточка урока → «Начать» (или «Продолжить»)
@@ -1205,10 +1247,10 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(4);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — юниты 1 и 2 по восемь уроков, остальные свёрнуты в одну строку
+  // Путь начинается с юнита 1; уроками — юниты 1 (восемь уроков) и 2 (десять), остальные свёрнуты в одну строку
   await expect(path.getByTestId('path-unit')).toHaveCount(2);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(16);
+  await expect(path.getByTestId('path-lesson')).toHaveCount(18);
   await expect(path.locator('[data-kind="intro"]')).toHaveCount(4);
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
@@ -1296,22 +1338,22 @@ test('путь: карточка урока, «Знакомство» шагам
 
 test('путь: выход после первого ответа — урок продолжается с того же места; брошенный за сутки — в статистике', async ({ page }) => {
   await withTestFlag(page);
-  // уроки юнита 2 до пятого уже пройдены (прогресс кладётся один раз — перезагрузка его не стирает)
+  // уроки юнита 2 до второй «Практики» уже пройдены (прогресс кладётся один раз — перезагрузка его не стирает)
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
-    const lessons = Object.fromEntries(['sd-i1', 'sd-l1', 'sd-l2', 'sd-i2', 'sd-l3', 'sd-l4'].map((id) => [id, { at, runs: 1, best: 90 }]));
+    const lessons = Object.fromEntries(['sd-i1', 'sd-l1', 'sd-w', 'sd-i2'].map((id) => [id, { at, runs: 1, best: 90 }]));
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
-  await expect(pathNode(page, 'sd-l5')).toHaveAttribute('data-state', 'open');
+  await expect(pathNode(page, 'sd-l3')).toHaveAttribute('data-state', 'open');
   // открыть и сразу закрыть — не считается
-  await startLesson(page, 'sd-l5');
+  await startLesson(page, 'sd-l3');
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
   await expect(page.getByTestId('lesson')).toHaveCount(0);
   // после первого ответа — вопрос с обещанием сохранить прогресс
-  await startLesson(page, 'sd-l5');
+  await startLesson(page, 'sd-l3');
   await answerExercise(page);
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
@@ -1329,7 +1371,7 @@ test('путь: выход после первого ответа — урок �
   await expect(page.getByTestId('prof-quits')).toHaveCount(0);
   // продолжить — с того же места: прогресс урока не с нуля
   await openTab(page, 'path');
-  await startLesson(page, 'sd-l5', 'Продолжить');
+  await startLesson(page, 'sd-l3', 'Продолжить');
   expect(Number(await page.getByTestId('lesson-progress').getAttribute('aria-valuenow'))).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
   await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
@@ -1343,9 +1385,9 @@ test('путь: выход после первого ответа — урок �
   await expect(page.getByTestId('prof-quits')).toContainText('прерывали');
   await expect(page.getByTestId('prof-completion')).toContainText('0%');
 
-  // урок 5 заново и целиком: газета и сдвиг кривой, с одной ошибкой; термины — с подсказкой
+  // вторая «Практика» заново и целиком, с одной ошибкой; термины — с подсказкой
   await openTab(page, 'path');
-  await startLesson(page, 'sd-l5', 'Начать');
+  await startLesson(page, 'sd-l3', 'Начать');
   await expect(page.getByTestId('lesson-card')).toHaveCount(0);
   const term = page.getByTestId('ex').locator('.tb-term').first();
   if (await term.count()) {
@@ -1354,8 +1396,7 @@ test('путь: выход после первого ответа — урок �
     await page.getByTestId('term-sheet').getByRole('button', { name: 'Понятно' }).click();
     await expect(page.getByTestId('term-sheet')).toHaveCount(0);
   }
-  const { kinds } = await playLesson(page, { wrongAt: [2] });
-  expect([...kinds]).toEqual(expect.arrayContaining(['news', 'shift']));
+  await playLesson(page, { wrongAt: [2] });
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // практика: ошибка решается — и уходит из списка
   await openTab(page, 'practice');
@@ -1371,10 +1412,78 @@ test('путь: выход после первого ответа — урок �
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Проверка сдана');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
-  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(8);
+  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(10);
   await page.getByTestId('unit-legend').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'legend');
   await expect(page.getByTestId('ex')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('путь: юнит «Спрос и предложение» — каждый вид урока проходится на телефоне', async ({ page }) => {
+  test.setTimeout(180_000);
+  await withTestFlag(page);
+  // юнит пройден — любой урок открыт для повтора
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = page.locator('[data-testid="path-unit"][data-unit="supply-demand"]');
+  // у каждого вида — свой значок на Пути
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  const kinds = await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind));
+  expect(kinds).toEqual(['intro', 'practice', 'words', 'intro', 'practice', 'story', 'listen', 'game', 'review', 'summary']);
+  const icons = await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.querySelector('svg').getAttribute('class')));
+  expect(new Set(icons).size, 'восемь видов — восемь разных значков').toBe(8);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+
+  // «Слова»: карточка переворачивается, потом плитки и пары на время
+  await startLesson(page, 'sd-w');
+  await expect(page.getByTestId('lesson-card')).toHaveAttribute('data-style', 'flash');
+  await expect(page.getByTestId('flash-card')).toHaveAttribute('data-flipped', 'false');
+  await page.getByTestId('flash-card').click();
+  await expect(page.getByTestId('flash-card')).toHaveAttribute('data-flipped', 'true');
+  const { kinds: wk } = await playLesson(page, { wrongAt: [0] });
+  expect([...wk]).toEqual(expect.arrayContaining(['tiles', 'match', 'choice']));
+  await finish();
+
+  // «История»: герои с портретами, цена ползунком, точка равновесия, кривая пальцем
+  await startLesson(page, 'sd-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'masha');
+  const { kinds: sk } = await playLesson(page);
+  expect([...sk]).toEqual(expect.arrayContaining(['price', 'curve', 'point']));
+  await finish();
+
+  // «Слушай»: голоса в браузере теста нет — текст на экране с подсветкой
+  await startLesson(page, 'sd-l-radio');
+  await expect(page.getByTestId('listen-card')).toBeVisible();
+  await expect(page.getByTestId('listen-text')).toContainText('морозы');
+  await playLesson(page);
+  await finish();
+
+  // «Мини-игра»: три раунда, проверка — сама по окончании раунда; неудачный раунд не возвращается
+  await startLesson(page, 'sd-g');
+  const { kinds: gk, retries } = await playLesson(page, { wrongAt: [0] });
+  expect([...gk]).toEqual(['swipe', 'rush', 'chain']);
+  expect(retries).toBe(0);
+  await expect(page.getByTestId('lesson-result')).toContainText('Раундов засчитано: 2 из 3');
+  await finish();
+
+  // «Повторение» и «Итоги юнита»: пункты-карточки, потом тест юнита
+  await startLesson(page, 'sd-rev');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'sd-sum');
+  await expect(page.getByTestId('lesson-card').locator('.ln-kind')).toHaveText(/Итоги юнита/i);
+  const { cards } = await playLesson(page);
+  expect(cards).toBe(6);
+  await expect(page.getByTestId('lesson-result')).toContainText('Тест юнита');
+  await finish();
+
+  // новые взаимодействия вне историй: точка равновесия и сдвиг кривой в «Практиках»
+  await startLesson(page, 'sd-l3');
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

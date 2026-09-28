@@ -9,14 +9,31 @@ import { CHAPTER_BLOCKS, CHAPTER_SECTIONS, PROBLEMS } from '../textbook/content.
 import { collectBlocks, parseInline, parseBlocks, checkAnswer } from '../textbook/markdown.js';
 import { TEMPLATE_BY_ID, templatesOf, seeded } from '../textbook/variants.js';
 import { plain } from '../textbook/sections.js';
+import { GLOSSARY } from '../textbook/glossary.js';
+import { CAST } from './cast.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
-export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, order: 22, match: 22, sort: 22, calc: 28 };
+export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, order: 22, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 40, rush: 60, chain: 30 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполни пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', order: 'Собери цепочку', match: 'Сопоставь пары', sort: 'Разложи по корзинам', calc: 'Быстрый расчёт',
+  tiles: 'Собери определение', curve: 'Сдвинь кривую', price: 'Найди цену', point: 'Отметь равновесие',
+  swipe: 'Сдвиг или движение?', rush: '60 секунд', chain: 'Цепочка на время',
 };
+// раунды мини-игр: у них свой счёт внутри, в проверку юнита и повторение они не идут
+export const GAME_KINDS = ['swipe', 'rush', 'chain'];
+/* Рынок из упражнений с графиком: Q_D = a − bP + dA, Q_S = c + dP + dC. Равновесие — где
+   объёмы равны: P* = (a + dA − c − dC) / (b + d). */
+export function equilibrium({ a, b, c, d, dA = 0, dC = 0 }) {
+  const p = (a + dA - c - dC) / (b + d);
+  return { p, q: a + dA - b * p };
+}
+export const qd = (m, p) => m.a + (m.dA || 0) - m.b * p;
+export const qs = (m, p) => m.c + (m.dC || 0) + m.d * p;
+// оси графика: цена от нуля до цены, при которой спрос исчезает; объём — с запасом на сдвиги
+export const marketAxes = (m) => ({ pMax: Math.ceil((m.a + Math.max(0, m.dA || 0)) / m.b / 5) * 5 + 5, qMax: Math.ceil((m.a + 40) / 10) * 10 });
+export const CURVE_STEP = 10;
 /* «куда сдвинется?»: какой ползунок графика — какая кривая, как называть направления и
    какие стрелки рисовать на кнопках. Ключ ответа — буква кривой и знак: «D+», «Y-». */
 const LR = { plus: 'вправо', minus: 'влево', up: '→', down: '←' };
@@ -94,39 +111,87 @@ function fromBlock(b) {
     case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps };
     case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
+    case 'tiles': return { ...e, solution: b.solution, extra: b.extra };
+    case 'curve': return { ...e, market: b.market, answer: b.answer, only: b.only, traps: b.traps };
+    case 'price': return { ...e, market: b.market, start: b.start };
+    case 'point': return { ...e, market: b.market };
     default: throw new Error(b.kind);
   }
+}
+// раунд мини-игры → упражнение со своим счётом
+function fromGame(g) {
+  const base = { id: g.id, kind: g.kind, title: g.title, prompt: g.prompt, explain: null, game: true };
+  if (g.kind === 'chain') return { ...base, items: g.items, seconds: g.seconds || 30 };
+  return { ...base, items: g.items, labels: g.labels, seconds: g.seconds || null };
+}
+/* «Слова»: упражнения из слов урока — определение из плиток (первые три слова), пары «термин —
+   определение» на время (по четыре) и «какой это термин?» для остальных. Плитки — по два
+   слова определения; лишние плитки берутся из определения соседнего слова. */
+const chunk = (textStr) => { const w = textStr.split(/\s+/); const out = []; for (let k = 0; k < w.length; k += 2) out.push(w.slice(k, k + 2).join(' ')); return out; };
+const termName = (id) => { if (!GLOSSARY[id]) throw new Error(`Нет термина ${id} в словаре`); return GLOSSARY[id].title; };
+function wordsExercises(lessonId, terms) {
+  const out = [];
+  const wordsOf = (x) => new Set(x.toLowerCase().split(/[\s,]+/).filter(Boolean));
+  terms.slice(0, 3).forEach((t, k) => {
+    // лишние плитки — из определения, где нет ни одного слова верного: иначе из плиток
+    // можно собрать второе правдоподобное определение
+    const own = wordsOf(t.text);
+    const other = terms.slice(k + 1).concat(terms.slice(0, k)).find((o) => ![...wordsOf(o.text)].some((w) => own.has(w)));
+    if (!other) throw new Error(`Для плиток «${t.term}» нет слова без общих слов`);
+    out.push({ id: `${lessonId}:tiles:${t.term}`, kind: 'tiles', prompt: parseBlocks(`Соберите из плиток определение: **${termName(t.term)}**.`), explain: null,
+      solution: chunk(t.text), extra: chunk(other.text).slice(0, 2) });
+  });
+  for (let k = 0; k + 4 <= terms.length; k += 4) {
+    out.push({ id: `${lessonId}:pairs:${k / 4}`, kind: 'match', seconds: 40, prompt: parseBlocks('Соедините слова о спросе с определениями — на время, 40 секунд.'), explain: null,
+      pairs: terms.slice(k, k + 4).map((t) => [{ raw: termName(t.term), text: text(termName(t.term)) }, { raw: t.text, text: text(t.text) }]) });
+  }
+  terms.slice(3).forEach((t, k) => {
+    const others = terms.filter((x) => x !== t).slice(k % 3, (k % 3) + 3);
+    out.push({ id: `${lessonId}:which:${t.term}`, kind: 'choice', prompt: parseBlocks(`Какой это термин: «${t.text}»?`), explain: null,
+      options: [{ raw: termName(t.term), text: text(termName(t.term)), correct: true, why: null }, ...others.map((o) => ({ raw: termName(o.term), text: text(termName(o.term)), correct: false, why: null }))] });
+  });
+  return out;
 }
 
 /* Уроки юнита: у каждого карточка идеи и упражнения — свои, автоматические (из задач,
    названных в auto, и параллельных вариантов из variants) и из схем-цепочек раздела. */
+/* Виды уроков (LESSON_KIND): «Знакомство», «История», «Слушай» — шаги (первая карточка урока и
+   карточки more), после каждого шага — вопрос; «Итоги юнита» — пункты-карточки подряд, потом
+   тест по юниту; «Практика» — только упражнения; «Слова» — карточки слов, потом упражнения из
+   них; «Мини-игра» — раунды :::round; «Повторение» — упражнения юнита, ошибки первыми. */
+const STEP_KINDS = ['intro', 'story', 'listen', 'summary'];
 function lessonsOf(chapterId) {
   const blocks = CHAPTER_BLOCKS[chapterId];
   if (!blocks) return [];
-  const seq = collectBlocks(blocks, (b) => b.type === 'idea' || b.type === 'ex' || b.type === 'flow');
+  const seq = collectBlocks(blocks, (b) => b.type === 'idea' || b.type === 'ex' || b.type === 'flow' || b.type === 'round');
   const out = [];
+  const addAuto = (cur, b) => {
+    b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
+    b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
+  };
   seq.forEach((b) => {
     if (b.type === 'idea' && b.inner) {
-      // вторая карточка урока — перед упражнением, которое идёт следом
+      // следующий шаг урока — перед упражнением, которое идёт следом
       if (!out.length) throw new Error(`Карточка ${b.id} раньше первого урока`);
       const cur = out[out.length - 1];
+      if (b.who && !CAST[b.who]) throw new Error(`Нет героя ${b.who} (${b.id})`);
       cur.inner.push({ at: cur.exercises.length, idea: b });
-      b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
-      b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
+      addAuto(cur, b);
     } else if (b.type === 'idea') {
-      /* «Знакомство»: объяснение шагами — карточка урока и есть первый шаг, дальше каждая
-         вторая карточка (more) — следующий шаг, и после каждого шага вопрос. «Практика»:
-         только упражнения, карточка идеи не показывается (объяснял урок «Знакомство»). */
-      const intro = b.kind === 'intro';
+      if (b.who && !CAST[b.who]) throw new Error(`Нет героя ${b.who} (${b.id})`);
       out.push({ id: b.id, unit: chapterId, no: out.length + 1, title: b.title, kind: b.kind, idea: b, section: sectionOf(chapterId, b), exercises: [],
-        inner: intro ? [{ at: 0, idea: b }] : [] });
+        inner: STEP_KINDS.includes(b.kind) ? [{ at: 0, idea: b }] : [], terms: b.terms || null });
       const cur = out[out.length - 1];
-      b.auto.forEach((pid) => cur.exercises.push(fromProblem(pid)));
-      b.variants.forEach((v) => { if (!TEMPLATE_BY_ID[v]) throw new Error(`Нет варианта ${v}`); cur.exercises.push({ id: `var:${v}`, kind: 'calc', variant: v }); });
+      if (b.kind === 'words') {
+        if (!b.terms || b.terms.length < 4) throw new Error(`В уроке «Слова» ${b.id} меньше четырёх слов`);
+        wordsExercises(b.id, b.terms).forEach((e) => cur.exercises.push(e));
+      }
+      addAuto(cur, b);
     } else if (out.length) {
       const cur = out[out.length - 1];
       if (b.type === 'ex') cur.exercises.push(fromBlock(b));
-      else if (b.steps.length >= 4 && cur.kind !== 'intro') cur.exercises.push(fromFlow(b, `flow:${cur.id}:${cur.exercises.length}`));
+      else if (b.type === 'round') cur.exercises.push(fromGame(b));
+      else if (b.steps.length >= 4 && cur.kind === 'practice') cur.exercises.push(fromFlow(b, `flow:${cur.id}:${cur.exercises.length}`));
     }
   });
   return out;
@@ -162,7 +227,7 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
     }
     case 'match': {
       const pairs = ex.pairs.map(([l, r], k) => ({ key: `p${k}`, left: l, right: r }));
-      return { ...base, left: shuffle(pairs.map((p) => ({ key: p.key, text: p.left.text, raw: p.left.raw })), rand), right: shuffle(pairs.map((p) => ({ key: p.key, text: p.right.text, raw: p.right.raw })), rand) };
+      return { ...base, ...(ex.seconds ? { timer: ex.seconds } : {}), left: shuffle(pairs.map((p) => ({ key: p.key, text: p.left.text, raw: p.left.raw })), rand), right: shuffle(pairs.map((p) => ({ key: p.key, text: p.right.text, raw: p.right.raw })), rand) };
     }
     case 'sort': return { ...base, bins: ex.bins, items: shuffle(ex.items.map((it, k) => ({ key: `s${k}`, text: it.text, raw: it.raw, bin: it.bin })), rand) };
     case 'calc': {
@@ -177,6 +242,22 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
     }
     case 'shift': return { ...base, chart: ex.chart, chartAttrs: ex.chartAttrs, answer: ex.answer, choices: ex.choices.map((key) => ({ key, label: shiftLabel(ex.chart, key), button: shiftButton(ex.chart, key) })), traps: ex.traps || [] };
     case 'news': return { ...base, headline: ex.headline, vars: ex.vars, expect: ex.expect };
+    case 'tiles': {
+      const sol = ex.solution.map((t, k) => ({ key: `t${k}`, text: t }));
+      const extra = ex.extra.map((t, k) => ({ key: `x${k}`, text: t }));
+      return { ...base, tiles: shuffle([...sol, ...extra], rand), solution: sol.map((t) => t.key) };
+    }
+    case 'curve': return { ...base, market: ex.market, answer: ex.answer, only: ex.only || null, traps: ex.traps || [], step: CURVE_STEP };
+    case 'price': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, start: ex.start, answer: Math.round(eq.p * 100) / 100 }; }
+    case 'point': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, answer: { q: eq.q, p: eq.p } }; }
+    case 'swipe': case 'rush':
+      return { ...base, title: ex.title, labels: ex.labels, seconds: ex.seconds || SECONDS[ex.kind], items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, side: it.side })), rand) };
+    case 'chain': {
+      const items = ex.items.map((it, k) => ({ key: `i${k}`, text: it.text, raw: it.raw }));
+      let shown = shuffle(items, rand);
+      for (let t = 0; t < 10 && shown.every((x, k) => x.key === items[k].key); t += 1) shown = shuffle(items, rand);
+      return { ...base, title: ex.title, seconds: ex.seconds, items: shown, solution: items.map((x) => x.key) };
+    }
     default: throw new Error(ex.kind);
   }
 }
@@ -205,8 +286,36 @@ export function check(inst, resp) {
       return { ok: resp === inst.answer, why: resp !== inst.answer && tr ? tr.why : null };
     }
     case 'news': return { ok: !!resp && inst.vars.every((v) => resp[v.key] === inst.expect[v.key]), why: null };
+    case 'tiles': return { ok: Array.isArray(resp) && resp.length === inst.solution.length && resp.every((k, i) => k === inst.solution[i]), why: null };
+    case 'curve': {
+      // сдвинуть нужно одну кривую и в нужную сторону; вторая остаётся на месте
+      const moved = ['D', 'S'].filter((k) => resp && resp[k]);
+      const key = moved.length === 1 ? `${moved[0]}${resp[moved[0]] > 0 ? '+' : '-'}` : null;
+      const tr = key && inst.traps.find((t) => t.key === key);
+      return { ok: key === inst.answer, why: key !== inst.answer && tr ? tr.why : null };
+    }
+    case 'price': {
+      const p = Number(resp);
+      if (Math.abs(p - inst.answer) < 1e-9) return { ok: true, why: null };
+      const gap = Math.round(Math.abs(qd(inst.market, p) - qs(inst.market, p)));
+      return { ok: false, why: text(p < inst.answer ? `При цене ${fmt(p)} покупатели хотят на ${gap} больше, чем продают: дефицит — цену надо поднять.` : `При цене ${fmt(p)} продают на ${gap} больше, чем покупают: избыток — цену надо снизить.`) };
+    }
+    case 'point': {
+      const ax = marketAxes(inst.market);
+      const ok = !!resp && Math.abs(resp.q - inst.answer.q) <= ax.qMax * 0.06 && Math.abs(resp.p - inst.answer.p) <= ax.pMax * 0.06;
+      return { ok, why: ok ? null : text('Равновесие — там, где кривые пересекаются: объём спроса равен объёму предложения.') };
+    }
+    case 'swipe': case 'rush': case 'chain': return { ok: gameOk(inst, resp), why: null };
     default: return { ok: false, why: null };
   }
+}
+/* Раунд мини-игры засчитан: в «смахни» — три четверти верно; в «60 секундах» — не меньше
+   шести верных при точности от 70%; цепочка — верный порядок, пока не кончилось время. */
+export function gameOk(inst, resp) {
+  if (!resp || !resp.done) return false;
+  if (inst.kind === 'swipe') return resp.right >= Math.ceil(inst.items.length * 0.75);
+  if (inst.kind === 'rush') return resp.right >= Math.min(6, inst.items.length) && resp.right >= 0.7 * resp.answered;
+  return !resp.timeout && Array.isArray(resp.seq) && resp.seq.length === inst.solution.length && resp.seq.every((k, i) => k === inst.solution[i]);
 }
 // ответ заполнен настолько, что можно нажать «Проверить»
 export function ready(inst, resp) {
@@ -217,6 +326,10 @@ export function ready(inst, resp) {
     case 'sort': return Object.keys(resp).length === inst.items.length;
     case 'news': return inst.vars.every((v) => resp[v.key]);
     case 'calc': return String(resp).trim().length > 0;
+    case 'tiles': return Array.isArray(resp) && resp.length > 0;
+    case 'curve': return !!(resp.D || resp.S);
+    case 'point': return Number.isFinite(resp.q) && Number.isFinite(resp.p);
+    case 'swipe': case 'rush': case 'chain': return !!resp.done;
     default: return true;
   }
 }
@@ -232,6 +345,13 @@ export function answerText(inst) {
     case 'calc': return withUnit(inst.answer, inst.unit);
     case 'shift': return shiftLabel(inst.chart, inst.answer);
     case 'news': return inst.vars.map((v) => `${v.label} ${({ '+': '↑', '-': '↓', 0: '—' })[inst.expect[v.key]]}`).join(', ');
+    case 'tiles': return inst.solution.map((k) => inst.tiles.find((t) => t.key === k).text).join(' ');
+    case 'curve': return shiftLabel('supply-demand', inst.answer);
+    case 'price': return `цена ${fmt(inst.answer)}`;
+    case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
+    case 'swipe': return `не меньше ${Math.ceil(inst.items.length * 0.75)} верных из ${inst.items.length}`;
+    case 'rush': return `не меньше ${Math.min(6, inst.items.length)} верных`;
+    case 'chain': return inst.solution.map((k) => plain(inst.items.find((x) => x.key === k).text)).join(' → ');
     default: return '';
   }
 }
@@ -239,50 +359,104 @@ export function answerText(inst) {
 /* ------------------------------ СБОРКА УРОКА ------------------------------
    Свои упражнения урока плюс повторение прошлых уроков юнита — около трети урока, всего
    10–15. Повторение вперемешку со своими, первым идёт своё упражнение. */
-export const LESSON_KIND = { intro: 'Знакомство', practice: 'Практика' };
+export const LESSON_KIND = {
+  intro: 'Знакомство', practice: 'Практика', words: 'Слова', story: 'История', listen: 'Слушай', game: 'Мини-игра', review: 'Повторение', summary: 'Итоги юнита',
+};
 // картинки шагов «Знакомства» (pic=…): значки, которые рисует src/learn.jsx
 export const STEP_PICS = ['clock', 'scale', 'hourglass', 'ticket', 'trending-up', 'circle-check', 'medal', 'arrow-left-right', 'handshake',
-  'coffee', 'wallet', 'link', 'utensils', 'boxes', 'users', 'snowflake', 'arrow-down-to-line', 'arrow-up-to-line'];
-// шаг «Знакомства» читается секунд за пятнадцать
+  'coffee', 'wallet', 'link', 'utensils', 'boxes', 'users', 'snowflake', 'arrow-down-to-line', 'arrow-up-to-line', 'croissant', 'landmark', 'radio', 'flag'];
+// шаг читается секунд за пятнадцать, карточка слова — за восемь, пункт итогов — за десять
 export const STEP_SECONDS = 15;
-export function buildLesson(lessonId, rand = Math.random) {
+export const FLASH_SECONDS = 8;
+export const POINT_SECONDS = 10;
+// в практике — не больше десяти своих упражнений за раз: при повторе урока набор другой
+export const PRACTICE_OWN = 10;
+export const REVIEW_SIZE = 12;
+// упражнения, годные для повторения и проверок: в одно действие, без игрового счёта
+const reviewable = (e) => !GAME_KINDS.includes(e.kind);
+const stepCards = (lesson, items) => {
+  const cards = {};
+  lesson.inner.forEach((c) => { if (items[c.at]) (cards[items[c.at].uid] = cards[items[c.at].uid] || []).push(c.idea); });
+  return cards;
+};
+const sum = (items) => items.reduce((a, it) => a + (it.seconds || SECONDS[it.kind]), 0);
+// карточки слов урока «Слова»: слово — на лицевой стороне, короткое определение — на обороте
+export const flashCards = (lesson) => lesson.terms.map((t) => ({ id: `${lesson.id}:card:${t.term}`, flash: true, term: t.term, title: termName(t.term), text: text(t.text) }));
+
+export function buildLesson(lessonId, rand = Math.random, { mistakes = [] } = {}) {
   const lesson = LESSON_BY_ID[lessonId];
-  if (lesson.kind === 'intro') {
+  const unit = UNIT_BY_ID[lesson.unit];
+  if (['intro', 'story', 'listen'].includes(lesson.kind)) {
     // шаги и вопросы строго по порядку, без повторения: это первая встреча с темой
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
-    const cards = Object.fromEntries(lesson.inner.filter((c) => items[c.at]).map((c) => [items[c.at].uid, c.idea]));
-    return { lesson, items, cards, seconds: items.reduce((a, it) => a + it.seconds, 0) + lesson.inner.length * STEP_SECONDS };
+    return { lesson, items, cards: stepCards(lesson, items), seconds: sum(items) + lesson.inner.length * STEP_SECONDS };
   }
-  const unit = UNIT_BY_ID[lesson.unit];
-  const own = lesson.exercises.map((e) => EXERCISES[e.id]);
-  // начинать с упражнения в одно касание, а не с расчёта или сборки — но не перескакивая
-  // через вторую карточку идеи: то, что идёт после неё, без неё не решить
-  const firstCard = lesson.inner.length ? Math.min(...lesson.inner.map((c) => c.at)) : own.length;
-  const easy = own.findIndex((e, k) => k < firstCard && SECONDS[e.kind] <= 12);
+  if (lesson.kind === 'words') {
+    const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
+    const flash = flashCards(lesson);
+    return { lesson, items, cards: { [items[0].uid]: flash }, seconds: sum(items) + flash.length * FLASH_SECONDS };
+  }
+  if (lesson.kind === 'game') {
+    // раунды — по порядку: от простого к быстрому
+    const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand, { noRetry: true }));
+    return { lesson, items, cards: {}, seconds: sum(items) };
+  }
+  if (lesson.kind === 'review') {
+    // ошибки этого юнита — первыми, дальше — упражнения прошлых уроков юнита вперемешку
+    const pool = unit.lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(reviewable);
+    const wrong = pool.filter((e) => mistakes.includes(e.id));
+    const rest = shuffle(pool.filter((e) => !mistakes.includes(e.id)), rand);
+    const order = [...shuffle(wrong, rand), ...rest];
+    // двенадцать упражнений; если они все быстрые — ещё несколько, чтобы вышло минуты три
+    let n = Math.min(REVIEW_SIZE, order.length);
+    while (n < Math.min(15, order.length) && order.slice(0, n).reduce((a, e) => a + SECONDS[e.kind], 0) < 180) n += 1;
+    const items = order.slice(0, n).map((e) => instantiate(e, rand, { review: true }));
+    return { lesson, items: shuffle(items, rand), cards: {}, seconds: sum(items) };
+  }
+  if (lesson.kind === 'summary') {
+    // пункты итогов подряд, потом тест по юниту — как проверка юнита, десять упражнений
+    const items = unitTest(unit, lesson.no, rand);
+    const points = lesson.inner.map((c) => c.idea);
+    return { lesson, items, cards: { [items[0].uid]: points }, seconds: sum(items) + points.length * POINT_SECONDS };
+  }
+  const all = lesson.exercises.map((e) => EXERCISES[e.id]);
+  // свои — не больше десяти, в прежнем порядке (случайный набор при каждом прохождении)
+  const keep = new Set(shuffle(all.map((_, k) => k), rand).slice(0, PRACTICE_OWN));
+  const own = all.filter((_, k) => keep.has(k));
+  // начинать с упражнения в одно касание, а не с расчёта или сборки
+  const easy = own.findIndex((e) => SECONDS[e.kind] <= 12);
   if (easy > 0) own.unshift(own.splice(easy, 1)[0]);
-  const prev = unit.lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id]));
+  const prev = unit.lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(reviewable);
   const nReview = Math.min(prev.length, Math.max(0, Math.min(15 - own.length, Math.round(own.length / 2))));
   const review = shuffle(prev, rand).slice(0, nReview);
   const items = own.map((e) => instantiate(e, rand));
-  // cards: uid упражнения → карточка, которую показать перед ним
-  const cards = Object.fromEntries(lesson.inner.filter((c) => items[c.at]).map((c) => [items[c.at].uid, c.idea]));
   review.forEach((e) => {
     const at = 1 + Math.floor(rand() * items.length);
     items.splice(at, 0, instantiate(e, rand, { review: true }));
   });
-  return { lesson, items, cards, seconds: estimate(items) + lesson.inner.length * IDEA_SECONDS };
+  // урок — не дольше пяти минут: лишнее снимаем с конца, свои и повторение поровну
+  while (estimate(items) > LESSON_MAX_SECONDS && items.length > 10) {
+    const rev = items.filter((it) => it.review).length;
+    const dropReview = rev / (items.length - 1) > 0.34;
+    const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !!items[i].review === dropReview);
+    items.splice(k, 1);
+  }
+  return { lesson, items, cards: {}, seconds: estimate(items) };
 }
+export const LESSON_MAX_SECONDS = 300;
 export const estimate = (items) => IDEA_SECONDS + items.reduce((s, it) => s + (it.seconds || SECONDS[it.kind]), 0);
 
 /* «Проверка юнита»: расчёты по параллельным вариантам с новыми числами и упражнения всех
    уроков юнита вперемешку, 10 штук. Сдана, если ошибок с первой попытки не больше одной.
    «Уровень легенды» — то же из задач семинарского и олимпиадного уровня. */
+function unitTest(unit, beforeNo, rand) {
+  const variants = templatesOf(unit.id).filter((t) => t.level === 1 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unit: unit.id }));
+  const pool = shuffle(unit.lessons.filter((l) => l.no < beforeNo).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter((e) => !e.variant && reviewable(e)), rand);
+  return shuffle([...variants, ...pool].slice(0, 10).map((e) => instantiate(e, rand, { check: true })), rand);
+}
 export function buildUnitCheck(unitId, rand = Math.random) {
   const unit = UNIT_BY_ID[unitId];
-  const variants = templatesOf(unitId).filter((t) => t.level === 1 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unit: unitId }));
-  const pool = shuffle(unit.lessons.flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter((e) => !e.variant), rand);
-  const items = [...variants, ...pool].slice(0, 10).map((e) => instantiate(e, rand, { check: true }));
-  return { unit, items: shuffle(items, rand), passMistakes: 1 };
+  return { unit, items: unitTest(unit, Infinity, rand), passMistakes: 1 };
 }
 export function buildLegend(unitId, rand = Math.random) {
   const unit = UNIT_BY_ID[unitId];
@@ -296,7 +470,7 @@ export function buildLegend(unitId, rand = Math.random) {
 
 // практика: ошибки прошлых уроков (по id упражнения), не больше двенадцати
 export function buildPractice(mistakeIds, rand = Math.random) {
-  const exs = mistakeIds.map((id) => EXERCISES[id]).filter(Boolean);
+  const exs = mistakeIds.map((id) => EXERCISES[id]).filter((e) => e && reviewable(e));
   return { items: shuffle(exs, rand).slice(0, 12).map((e) => instantiate(e, rand, { practice: true })) };
 }
 

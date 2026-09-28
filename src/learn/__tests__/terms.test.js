@@ -52,13 +52,15 @@ describe('урок не спрашивает того, чему ещё не уч
     expect([...new Set(problems)]).toEqual([]);
   });
   it('шаги «Знакомства» — до 60 слов и стоят перед упражнением', () => {
-    pilotUnits().forEach((u) => u.lessons.forEach((l) => l.inner.forEach((c) => {
+    // у «Итогов» пункты идут подряд перед тестом юнита, своих упражнений у урока нет
+    pilotUnits().forEach((u) => u.lessons.filter((l) => l.kind !== 'summary').forEach((l) => l.inner.forEach((c) => {
       expect(plainText(c.idea.text).split(/\s+/).filter(Boolean).length, c.idea.id).toBeLessThanOrEqual(60);
       expect(c.at, c.idea.id).toBeLessThan(l.exercises.length);
     })));
   });
   it('подсказки к терминам есть в условии хотя бы половины упражнений каждого урока', () => {
-    pilotUnits().forEach((u) => u.lessons.forEach((l) => {
+    // у мини-игры — скорость, а не чтение; у «Повторения» и «Итогов» своих упражнений нет
+    pilotUnits().forEach((u) => u.lessons.filter((l) => l.exercises.length && l.kind !== 'game').forEach((l) => {
       // подсказки — в условии (по вариантам ответа нажатие означает выбор)
       const withHints = l.exercises.filter((e) => termsIn(instantiate({ ...e, lesson: l.id, unit: u.id }, seeded(1)).prompt).size > 0).length;
       expect(withHints / l.exercises.length, `${l.id}: ${withHints} из ${l.exercises.length}`).toBeGreaterThanOrEqual(0.5);
