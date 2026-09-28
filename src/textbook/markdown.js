@@ -134,7 +134,14 @@ export function parseBlocks(text) {
       while (i < lines.length && !/^:::\s*$/.test(lines[i].trim())) { body.push(lines[i]); i += 1; }
       if (i >= lines.length) throw new Error(`Вставка :::${name} не закрыта`);
       i += 1;
-      if (name === 'diagram') {
+      if (name === 'idea') {
+        // карточка новой идеи урока: :::idea id=… title="…" chart=тип <параметры графика> auto="задачи" variants="типы"
+        const { id: _id, title, chart, auto, variants, ...chartAttrs } = attrs;
+        const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
+        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), text: parseInline(body.join(' ').trim()) });
+      } else if (name === 'ex') {
+        blocks.push(parseExercise(words[0], attrs, body));
+      } else if (name === 'diagram') {
         // схема-иллюстрация: :::diagram circular|balance ключ=значение, внутри — подпись
         if (!DIAGRAM_KINDS.includes(words[0])) throw new Error(`Неизвестная схема :::diagram ${words[0]}`);
         const caption = body.join(' ').trim();
@@ -284,6 +291,63 @@ export function parseBlocks(text) {
 
 export const parseChapter = (text) => parseBlocks(text);
 
+/* ------------------------------ УПРАЖНЕНИЯ УРОКОВ ------------------------------
+   :::ex вид id=… — упражнение урока (путь «как в Дуолинго»). Виды:
+     choice / gap — вопрос (в gap пропуск «___»), строки «+ верный вариант» и «- неверный | почему»;
+     tf answer=true|false — утверждение; order — пункты «1. …» в верном порядке;
+     match — пары «- слева ↔ справа»; sort bins="А|Б" — «- пункт >> А»;
+     calc answer=… tol=… unit=… или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
+     shift chart=тип answer="S-" options="D+ D- S+ S-" — «куда сдвинется?», ловушки «!! D+ | почему»;
+     news headline="…" vars="P:цена Q:количество" expect="P:+ Q:-" — «газета».
+   Всё после строки «---» — объяснение, которое показывается после ответа. */
+const EX_KINDS = ['choice', 'gap', 'tf', 'order', 'match', 'sort', 'calc', 'shift', 'news'];
+function parseExercise(kind, attrs, body) {
+  if (!EX_KINDS.includes(kind)) throw new Error(`Неизвестное упражнение :::ex ${kind}`);
+  if (!attrs.id) throw new Error(`У упражнения ${kind} нет id`);
+  const sep = body.findIndex((l) => l.trim() === '---');
+  const main = sep >= 0 ? body.slice(0, sep) : body;
+  const explain = sep >= 0 ? parseBlocks(body.slice(sep + 1).join('\n')) : null;
+  const isOpt = (l) => /^[+-]\s/.test(l.trim());
+  const isNum = (l) => /^\d+\.\s/.test(l.trim());
+  const isTrap = (l) => l.trim().startsWith('!!');
+  const special = (l) => isOpt(l) || isTrap(l) || (kind === 'order' && isNum(l));
+  const prompt = parseBlocks(main.filter((l) => !special(l)).join('\n'));
+  const why = (t) => { const k = t.indexOf('|'); return k < 0 ? [t.trim(), null] : [t.slice(0, k).trim(), parseInline(t.slice(k + 1).trim())]; };
+  const ex = { type: 'ex', kind, id: attrs.id, attrs, prompt, explain };
+  const opts = main.filter(isOpt).map((l) => { const t = l.trim(); const [text, w] = why(t.slice(1).trim()); return { raw: text, correct: t[0] === '+', why: w }; });
+  const traps = main.filter(isTrap).map((l) => { const [v, w] = why(l.trim().replace(/^!!\s*/, '')); return { key: v, why: w }; });
+  if (kind === 'choice' || kind === 'gap') ex.options = opts.map((o) => ({ text: parseInline(o.raw), raw: o.raw, correct: o.correct, why: o.why }));
+  if (kind === 'tf') {
+    if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В упражнении ${attrs.id} answer — true или false`);
+    ex.answer = attrs.answer === 'true';
+  }
+  if (kind === 'order') ex.items = main.filter(isNum).map((l) => { const raw = l.trim().replace(/^\d+\.\s*/, ''); return { raw, text: parseInline(raw) }; });
+  if (kind === 'match') ex.pairs = opts.map((o) => { const [l, r] = o.raw.split(/\s↔\s/); return [{ raw: l.trim(), text: parseInline(l.trim()) }, { raw: (r || '').trim(), text: parseInline((r || '').trim()) }]; });
+  if (kind === 'sort') {
+    ex.bins = (attrs.bins || '').split('|').map((x) => x.trim()).filter(Boolean);
+    ex.items = opts.map((o) => { const [t, bin] = o.raw.split(/\s>>\s/); return { raw: t.trim(), text: parseInline(t.trim()), bin: (bin || '').trim() }; });
+  }
+  if (kind === 'calc') {
+    ex.variant = attrs.variant || null;
+    if (!ex.variant) {
+      ex.answer = Number(attrs.answer); ex.tol = attrs.tol != null ? Number(attrs.tol) : null; ex.unit = attrs.unit || '';
+      ex.traps = traps.map((t) => ({ value: parseNumber(t.key), why: t.why }));
+    }
+  }
+  if (kind === 'shift') {
+    const { id: _i, chart, answer, options, ...chartAttrs } = attrs;
+    ex.chart = chart; ex.chartAttrs = chartAttrs; ex.answer = answer;
+    ex.choices = (options || 'D+ D- S+ S-').split(/\s+/).filter(Boolean);
+    ex.traps = traps.map((t) => ({ key: t.key, why: t.why }));
+  }
+  if (kind === 'news') {
+    ex.headline = attrs.headline || '';
+    ex.vars = (attrs.vars || '').split(/\s+(?=\w+:)/).map((v) => { const k = v.indexOf(':'); return { key: v.slice(0, k), label: v.slice(k + 1).trim() }; }).filter((v) => v.key);
+    ex.expect = Object.fromEntries((attrs.expect || '').split(/\s+/).filter(Boolean).map((t) => t.split(':')));
+  }
+  return ex;
+}
+
 /* ------------------------------ ОБХОД ------------------------------ */
 // все блоки дерева, включая вложенные (врезки, условия и решения задач)
 export function walkBlocks(blocks, fn) {
@@ -294,13 +358,16 @@ export function walkBlocks(blocks, fn) {
     if (b.solution) walkBlocks(b.solution, fn);
     if (b.more) walkBlocks(b.more, fn);
     if (b.question) walkBlocks(b.question, fn);
+    if (b.type === 'ex') { walkBlocks(b.prompt, fn); if (b.explain) walkBlocks(b.explain, fn); }
     if (b.type === 'recall') walkBlocks(b.answer, fn);
   });
 }
 const inlinesOf = (b) => [
-  ...(b.inline ? [b.inline] : []), ...(b.items || []), ...(b.head || []), ...((b.rows || []).flat()), ...(b.caption ? [b.caption] : []),
+  ...(b.inline ? [b.inline] : []), ...(b.type === 'ex' ? [] : b.items || []), ...(b.head || []), ...((b.rows || []).flat()), ...(b.caption ? [b.caption] : []),
   ...(b.steps || []).flatMap((st) => [st.title, st.up, st.down]), ...(b.hints || []), ...(b.points || []),
-  ...(b.traps || []).map((t) => t.text),
+  ...(b.traps || []).map((t) => t.text || t.why).filter(Boolean),
+  ...(b.type === 'idea' ? [b.text] : []),
+  ...(b.type === 'ex' ? [...(b.options || []).flatMap((o) => [o.text, o.why]), ...(b.items || []).map((x) => x.text), ...(b.pairs || []).flat().map((x) => x.text)].filter(Boolean) : []),
 ];
 function walkInline(nodes, fn) {
   nodes.forEach((n) => { fn(n); if (n.c) walkInline(n.c, fn); });
