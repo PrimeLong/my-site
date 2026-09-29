@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { LESSON_BY_ID, UNIT_BY_ID, EXERCISES, buildLesson, buildPractice, buildPlacement, placementOpened, placementFailed, pathState, pilotUnits, PLACE_PER_UNIT, PRACTICE_MIN, HARD_IN_PRACTICE } from '../course.js';
 import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts } from '../program.js';
+import { evalExpr, fmtResult } from '../calc.js';
 import {
   balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, OUTFITS, questsFor, openChest, chestCoins, chestKey,
   settle, monthChallenge, achievementsOf, hash01, COIN,
@@ -265,6 +266,46 @@ describe('задания дня, сундук, печати, испытание 
     achievementsOf(emptyLearn()).forEach((a) => { expect(a.icon).toBeTruthy(); expect(a.title).toBeTruthy(); expect(a.coins).toBeGreaterThan(0); expect(a.got).toBe(false); });
     const s = finishLesson(emptyLearn(), 'sc-i1', { xp: 5, accuracy: 70, now: at('2026-09-28', 7) });
     expect(settle(s, courseCtx(s), at('2026-09-28', 7)).gains.map((g) => g.key)).toContain('a:early');
+  });
+});
+
+describe('правки: печать «Без помарок», испытание месяца, калькулятор', () => {
+  it('«Без помарок» — только когда урок пройден без ошибок сейчас, а не за старый лучший результат', () => {
+    // урок когда-то был пройден на 100%, а сейчас повторён с ошибкой — печати нет
+    let s = { ...emptyLearn(), lessons: { 'sc-i1': { at: T - 86400e3 * 30, runs: 1, best: 100 } } };
+    s = finishLesson(s, 'sc-i1', { xp: 1, accuracy: 80, now: T });
+    expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).not.toContain('a:perfect');
+    s = finishLesson(s, 'sc-l1', { xp: 10, accuracy: 100, now: T });
+    expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).toContain('a:perfect');
+  });
+  it('испытание месяца: пришедшему в конце месяца — цель в доле оставшихся дней; «до конца месяца» включает сегодня', () => {
+    const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29'));
+    const m = monthChallenge(late, at('2026-09-29'));
+    expect(m.daysLeft).toBe(2);
+    expect(m.target).toBeLessThanOrEqual(Math.ceil({ days: 15, lessons: 40, perfect: 12, xp: 500 }[m.id] * 2 / 30) + 1);
+    expect(m.target).toBeGreaterThanOrEqual(1);
+    expect(m.need).toBe(m.target - m.have);
+    expect(m.title).toContain(String(m.target));
+    // с начала месяца — полная цель
+    const early = setProfile(emptyLearn(), { minutes: 10 }, at('2026-08-15'));
+    expect(monthChallenge(early, at('2026-09-29')).target).toBe({ days: 15, lessons: 40, perfect: 12, xp: 500 }[m.id]);
+  });
+  it('калькулятор: скобки, приоритет, унарный минус, степень, запятая; неполное и деление на ноль — ничего', () => {
+    expect(evalExpr('100/50')).toBe(2);
+    expect(evalExpr('2+3*4')).toBe(14);
+    expect(evalExpr('(2+3)×4')).toBe(20);
+    expect(evalExpr('−5+2')).toBe(-3);
+    expect(evalExpr('0,5*4')).toBe(2);
+    expect(evalExpr('10^2')).toBe(100);
+    expect(evalExpr('2^3^2')).toBe(512);
+    expect(evalExpr('1500+500')).toBe(2000);
+    expect(evalExpr('5/0')).toBe(null);
+    expect(evalExpr('2+')).toBe(null);
+    expect(evalExpr('(2')).toBe(null);
+    expect(evalExpr('2..3')).toBe(null);
+    expect(evalExpr('alert(1)')).toBe(null);
+    expect(fmtResult(1 / 3)).toBe('0,3333');
+    expect(fmtResult(-2.5)).toBe('−2,5');
   });
 });
 

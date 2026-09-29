@@ -7,7 +7,7 @@
 import { CHAPTERS, CHAPTER_BY_ID } from '../textbook/toc.js';
 import { CHAPTER_BLOCKS, CHAPTER_SECTIONS, PROBLEMS } from '../textbook/content.js';
 import { collectBlocks, parseInline, parseBlocks, checkAnswer } from '../textbook/markdown.js';
-import { TEMPLATE_BY_ID, templatesOf, seeded } from '../textbook/variants.js';
+import { TEMPLATE_BY_ID, TEMPLATES, templatesOf, seeded } from '../textbook/variants.js';
 import { plain } from '../textbook/sections.js';
 import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
@@ -142,7 +142,8 @@ function wordsExercises(lessonId, terms) {
       solution: chunk(t.text), extra: chunk(other.text).slice(0, 2) });
   });
   for (let k = 0; k + 4 <= terms.length; k += 4) {
-    out.push({ id: `${lessonId}:pairs:${k / 4}`, kind: 'match', seconds: 40, prompt: parseBlocks('Соедините слова о спросе с определениями — на время, 40 секунд.'), explain: null,
+    const group = terms.slice(k, k + 4).map((t) => termName(t.term));
+    out.push({ id: `${lessonId}:pairs:${k / 4}`, kind: 'match', seconds: 40, prompt: parseBlocks(`Соедините с определениями: ${group.join(', ')} — на время, 40 секунд.`), explain: null,
       pairs: terms.slice(k, k + 4).map((t) => [{ raw: termName(t.term), text: text(termName(t.term)) }, { raw: t.text, text: text(t.text) }]) });
   }
   terms.slice(3).forEach((t, k) => {
@@ -394,6 +395,56 @@ export function buildLesson(lessonId, rand = Math.random, opts = {}) {
   if (level === 'easy') p.items = p.items.map((it) => easier(it, rand));
   return p;
 }
+/* ------------------------------ ПОВТОР БЕЗ ЗУБРЁЖКИ ------------------------------
+   Задача, которая возвращается (после ошибки в уроке, в «Повторении», в практике), не
+   должна быть той же самой — иначе запоминается ответ, а не решение. По порядку:
+   1) у задачи есть генератор вариантов — те же условия с новыми числами;
+   2) у автоупражнения из задачи главы есть параллельный вариант — расчёт с новыми числами;
+   3) похожий вопрос на ту же тему: из того же шага урока, иначе того же вида или любой ещё не
+      заданный из урока, иначе того же вида из другого урока того же раздела главы;
+   4) если ничего нет — та же задача с перемешанными вариантами.
+   fresh — что вышло ('numbers' | 'sibling' | 'same'), of — id исходной задачи. */
+const TEMPLATE_BY_SOURCE = Object.fromEntries(TEMPLATES.filter((t) => t.gen(seeded(1)).parts.length === 1).map((t) => [t.source, t.id]));
+function siblingOf(ex, avoid, rand) {
+  const lesson = LESSON_BY_ID[ex.lesson];
+  if (!lesson) return null;
+  const list = lesson.exercises;
+  const idx = list.findIndex((e) => e.id === ex.id);
+  const free = (e) => e.id !== ex.id && !avoid.has(e.id) && reviewable(e);
+  let pool = [];
+  if (lesson.inner.length && idx >= 0) {
+    const starts = lesson.inner.map((c) => c.at);
+    const from = Math.max(...starts.filter((a) => a <= idx), 0);
+    const to = starts.filter((a) => a > idx).sort((a, b) => a - b)[0] ?? list.length;
+    pool = list.slice(from, to).filter(free);
+  }
+  if (!pool.length) pool = list.filter((e) => free(e) && e.kind === ex.kind);
+  if (!pool.length) pool = list.filter(free);
+  // в уроке всё уже спрошено — вопрос того же вида из другого урока того же раздела главы
+  if (!pool.length) {
+    const near = UNIT_BY_ID[lesson.unitId].lessons.filter((l) => l.id !== lesson.id && l.section === lesson.section);
+    pool = near.flatMap((l) => l.exercises).filter((e) => free(e) && e.kind === ex.kind);
+  }
+  if (!pool.length) return null;
+  return EXERCISES[pool[Math.floor(rand() * pool.length)].id];
+}
+export function freshCopy(ex, rand = Math.random, extra = {}, { avoid = new Set(), sibling = true } = {}) {
+  if (ex.variant) return instantiate(ex, rand, { ...extra, fresh: 'numbers', of: ex.id });
+  const tpl = ex.source && TEMPLATE_BY_SOURCE[ex.source];
+  if (tpl) return instantiate({ id: `var:${tpl}`, kind: 'calc', variant: tpl, lesson: ex.lesson, unitId: ex.unitId }, rand, { ...extra, fresh: 'numbers', of: ex.id });
+  const sib = sibling ? siblingOf(ex, avoid, rand) : null;
+  if (sib) return instantiate(sib, rand, { ...extra, fresh: 'sibling', of: ex.id });
+  return instantiate(ex, rand, { ...extra, fresh: 'same' });
+}
+// повтор после ошибки в уроке: avoid — задачи, которые уже есть в этом уроке
+export function retryOf(inst, rand = Math.random, avoid = []) {
+  const base = EXERCISES[inst.of || inst.id] || (inst.variant ? { id: inst.id, kind: 'calc', variant: inst.variant, lesson: inst.lesson, unitId: inst.unitId } : null);
+  if (!base) return { ...inst, fresh: 'same' };
+  const keep = Object.fromEntries(['review', 'practice', 'check', 'hard', 'weak', 'steps', 'noRetry'].filter((k) => inst[k]).map((k) => [k, inst[k]]));
+  const copy = freshCopy(base, rand, keep, { avoid: new Set(avoid), sibling: true });
+  return inst.steps ? easier(copy, rand) : copy;
+}
+
 // три варианта вместо четырёх: верный и две ошибки — те, у которых есть объяснение, первыми
 function easier(it, rand) {
   const out = { ...it, steps: true };
@@ -443,7 +494,10 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     // двенадцать упражнений; если они все быстрые — ещё несколько, чтобы вышло минуты три
     let n = Math.min(REVIEW_SIZE, order.length);
     while (n < Math.min(15, order.length) && order.slice(0, n).reduce((a, e) => a + SECONDS[e.kind], 0) < 180) n += 1;
-    const items = order.slice(0, n).map((e) => instantiate(e, rand, { review: true }));
+    // ошибки и решённое с подсказкой — похожей задачей или новыми числами, прочее — с новыми числами, где они есть
+    const picked = order.slice(0, n);
+    const avoid = new Set(picked.map((e) => e.id));
+    const items = picked.map((e) => freshCopy(e, rand, { review: true }, { avoid, sibling: mistakes.includes(e.id) || hinted.includes(e.id) }));
     return { lesson, items: shuffle(items, rand), cards: {}, seconds: sum(items) };
   }
   if (lesson.kind === 'summary') {
@@ -465,7 +519,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
   const items = own.map((e) => instantiate(e, rand));
   review.forEach((e) => {
     const at = 1 + Math.floor(rand() * items.length);
-    items.splice(at, 0, instantiate(e, rand, { review: true }));
+    items.splice(at, 0, freshCopy(e, rand, { review: true }, { sibling: false }));
   });
   // урок — не дольше пяти минут: лишнее снимаем с конца, свои и повторение поровну
   while (estimate(items) > LESSON_MAX_SECONDS && items.length > 10) {
@@ -513,7 +567,9 @@ export function buildLegend(unitId, rand = Math.random) {
 export const PRACTICE_MIN = 8;
 export function buildPractice(mistakeIds, rand = Math.random, { weak = [] } = {}) {
   const exs = mistakeIds.map((id) => EXERCISES[id]).filter((e) => e && reviewable(e));
-  const items = shuffle(exs, rand).slice(0, 12).map((e) => instantiate(e, rand, { practice: true }));
+  // ошибка возвращается похожей задачей или с новыми числами — ответ не запомнить
+  const avoidMistakes = new Set(exs.map((e) => e.id));
+  const items = shuffle(exs, rand).slice(0, 12).map((e) => freshCopy(e, rand, { practice: true }, { avoid: avoidMistakes, sibling: true }));
   const have = new Set(exs.map((e) => e.id));
   for (const lessonId of weak) {
     if (items.length >= PRACTICE_MIN) break;

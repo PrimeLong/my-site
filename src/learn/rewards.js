@@ -124,7 +124,8 @@ export const STREAK_BONUS = [[3, 15], [7, 40], [14, 80], [30, 200], [60, 300], [
    ctx — то, что знает только курс: сколько пройдено уроков и юнитов, какие виды уроков. */
 export const ACHIEVEMENTS = [
   { id: 'first', icon: 'footprints', title: 'Первый шаг', text: 'Пройден первый урок', coins: 10, test: (s, c) => c.lessonsDone >= 1 },
-  { id: 'perfect', icon: 'check', title: 'Без помарок', text: 'Урок без единой ошибки', coins: 15, test: (s) => Object.values(s.lessons).some((l) => l.best >= 100 && l.runs > 0) },
+  // только за урок, пройденный без ошибок сейчас: счётчик дня растёт в момент такого урока (не «лучший результат» старых прохождений)
+  { id: 'perfect', icon: 'check', title: 'Без помарок', text: 'Урок без единой ошибки', coins: 15, test: (s) => Object.values(s.daily || {}).some((d) => d.p > 0) },
   { id: 'streak3', icon: 'flame', title: 'Три дня подряд', text: 'Серия — три дня', coins: 10, test: (s, c) => c.longest >= 3 },
   { id: 'streak7', icon: 'flame', title: 'Неделя в пути', text: 'Серия — семь дней', coins: 30, test: (s, c) => c.longest >= 7 },
   { id: 'streak30', icon: 'flame', title: 'Месяц в пути', text: 'Серия — тридцать дней', coins: 100, test: (s, c) => c.longest >= 30 },
@@ -144,21 +145,39 @@ export const achievementKey = (id) => `a:${id}`;
 /* ------------------------------ ИСПЫТАНИЕ МЕСЯЦА ------------------------------ */
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.startsWith(month));
+/* Цель — на полный месяц; кто начал заниматься посреди месяца, получает её в доле от
+   оставшихся дней (со дня регистрации или первого занятия): испытание всегда выполнимо. */
 const MONTH_KINDS = [
-  { id: 'days', target: 15, title: 'Заниматься 15 дней за месяц', have: (s, m) => inMonth(s.done, m).filter(([, v]) => v > 0).length },
-  { id: 'lessons', target: 40, title: 'Пройти 40 уроков за месяц', have: (s, m) => inMonth(s.done, m).reduce((a, [, v]) => a + v, 0) },
-  { id: 'perfect', target: 12, title: '12 уроков без ошибок за месяц', have: (s, m) => inMonth(s.daily, m).reduce((a, [, d]) => a + d.p, 0) },
-  { id: 'xp', target: 500, title: 'Набрать 500 опыта за месяц', have: (s, m) => inMonth(s.xp, m).reduce((a, [, v]) => a + v, 0) },
+  { id: 'days', target: 15, title: (t) => `Заниматься ${t} ${plural(t, 'день', 'дня', 'дней')} в этом месяце`, unit: (n) => `${plural(n, 'день', 'дня', 'дней')} занятий`,
+    have: (s, m) => inMonth(s.done, m).filter(([, v]) => v > 0).length },
+  { id: 'lessons', target: 40, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
+    have: (s, m) => inMonth(s.done, m).reduce((a, [, v]) => a + v, 0) },
+  { id: 'perfect', target: 12, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без ошибок в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
+    have: (s, m) => inMonth(s.daily, m).reduce((a, [, d]) => a + d.p, 0) },
+  { id: 'xp', target: 500, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
+    have: (s, m) => inMonth(s.xp, m).reduce((a, [, v]) => a + v, 0) },
 ];
 export const MONTH_COINS = 100;
+// первый день ученика: регистрация или самое раннее занятие
+const firstDay = (s) => {
+  const days = [...Object.keys(s.done || {}), ...Object.keys(s.xp || {})].sort();
+  const reg = s.profile && s.profile.at ? dayOf(s.profile.at) : null;
+  return [days[0], reg].filter(Boolean).sort()[0] || null;
+};
 export function monthChallenge(s, now = Date.now()) {
   const day = dayOf(now); const month = day.slice(0, 7);
   const kind = MONTH_KINDS[Math.floor(hash01(`month:${month}`) * MONTH_KINDS.length)];
   const d = new Date(now); const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  const have = Math.min(kind.target, kind.have(s, month));
+  const start = firstDay(s) || day;
+  const from = start.slice(0, 7) === month ? Number(start.slice(8)) : start < month ? 1 : d.getDate();
+  const span = last - from + 1;
+  const target = span >= last ? kind.target : Math.max(1, Math.round((kind.target * span) / last));
+  const have = Math.min(target, kind.have(s, month));
   const key = `m:${month}`;
-  return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title, have, target: kind.target,
-    done: have >= kind.target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft: last - d.getDate() };
+  // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
+  const daysLeft = last - d.getDate() + 1;
+  return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
+    done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft };
 }
 // марки месяцев, которые уже получены: «m:ГГГГ-ММ» → подпись
 export const monthStamps = (s) => Object.keys(s.claimed || {}).filter((k) => k.startsWith('m:')).sort().map((k) => {

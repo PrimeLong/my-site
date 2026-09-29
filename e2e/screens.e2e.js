@@ -10,7 +10,7 @@ import fs from 'node:fs';
 const DIR = 'screens';
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star' };
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
-const DONE = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'];
+const DONE = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'];
 
 async function setup(page, { theme, account = true, learn = null }) {
   const errors = [];
@@ -193,14 +193,14 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('morning-go').click();
       await expect(page.getByTestId('placement-card')).toBeVisible();
       await shot(page, '36-path-quests', theme);
-      await page.getByTestId('wallet').click();
+      await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
       await expect(page.getByTestId('shop')).toBeVisible();
       await shot(page, '37-shop', theme);
       await page.locator('[data-testid=shop-item][data-item="bowtie"]').getByRole('button', { name: 'Купить' }).click();
       await expect(page.getByTestId('shop-msg')).toContainText('Куплено');
       await page.locator('[data-testid=shop-item][data-item="bowtie"]').scrollIntoViewIfNeeded();
       await shot(page, '38-shop-bought', theme);
-      await page.getByTestId('shop').getByRole('button', { name: 'Назад' }).click();
+      await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
       await page.getByTestId('chest').first().scrollIntoViewIfNeeded();
       await page.getByTestId('chest').first().click();
       await shot(page, '39-chest', theme);
@@ -252,6 +252,15 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
       await page.getByTestId('prof-reports').click();
       await shot(page, '50-reports', theme);
+      // юнит 1: «История» Гриши и калькулятор в расчёте
+      await page.getByTestId('reports').getByRole('button', { name: 'Назад' }).click();
+      await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
+      await openLesson(page, 'sc-s1');
+      await shot(page, '51-sc-story', theme);
+      await passCards(page);
+      await page.getByTestId('ex').getByTestId('calc-open').click();
+      for (const k of ['1', '0', '0', '÷', '5', '0']) await page.getByTestId('ex').locator(`[data-calc="${k}"]`).click();
+      await shot(page, '52-calculator', theme);
       expect(errors).toEqual([]);
     });
 
