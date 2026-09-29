@@ -8,7 +8,7 @@ import {
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
-  Route, Dumbbell, UserRound, Map as MapIcon,
+  Route, Dumbbell, UserRound, Map as MapIcon, ShoppingBag,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -1156,12 +1156,13 @@ function MenuTicker() {
   );
 }
 
-/* Нижняя панель главного экрана: четыре вкладки, на телефоне — под большим пальцем. Урок
+/* Нижняя панель главного экрана: пять вкладок (лавка — отдельной вкладкой, чтобы до неё было одно касание), на телефоне — под большим пальцем. Урок
    открывается поверх неё во весь экран. Открытая вкладка — не кнопка перехода: путь назад у
    подэкранов (учебник поверх вкладки) один — их собственный «назад». */
 const NAV_TABS = [
   { id: 'path', icon: Route, label: 'Путь' },
   { id: 'practice', icon: Dumbbell, label: 'Практика' },
+  { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
   { id: 'world', icon: MapIcon, label: 'Мир' },
   { id: 'profile', icon: UserRound, label: 'Профиль' },
 ];

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
   UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildLegend, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk,
+  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf,
 } from '../course.js';
 import { CAST } from '../cast.js';
 import { collectMath, collectBlocks } from '../../textbook/markdown.js';
@@ -266,6 +266,56 @@ describe('расчёт: рядом с полем — единица измере
   });
 });
 
+describe.each(PATH)('юнит %s: полноценный — все восемь видов уроков', (unitId) => {
+  const unit = UNIT_BY_ID[unitId];
+  const of = (kind) => unit.lessons.filter((l) => l.kind === kind);
+  it('есть «Знакомство», «Практика», «Слова», «История», «Слушай», «Мини-игра», «Повторение» и «Итоги»; «Итоги» — последний урок', () => {
+    Object.keys(LESSON_KIND).forEach((k) => expect(of(k).length, `${unitId}: ${k}`).toBeGreaterThanOrEqual(1));
+    expect(unit.lessons[unit.lessons.length - 1].kind).toBe('summary');
+    expect(unit.lessons[unit.lessons.length - 2].kind).toBe('review');
+  });
+  it('«Слова»: восемь слов, три плитки, пары на время; «Мини-игра»: три раунда; «История» — голосами героев', () => {
+    const [w] = of('words');
+    expect(w.terms.length).toBe(8);
+    const { items } = buildLesson(w.id, seeded(2));
+    expect(items.filter((i) => i.kind === 'tiles').length).toBe(3);
+    expect(items.filter((i) => i.kind === 'match').length).toBe(2);
+    const [g] = of('game');
+    expect(buildLesson(g.id, seeded(4)).items.map((i) => i.kind)).toEqual(['swipe', 'rush', 'chain']);
+    const [st] = of('story');
+    st.inner.forEach((c) => expect(CAST[c.idea.who], c.idea.id).toBeTruthy());
+    expect(new Set(st.inner.map((c) => c.idea.who)).size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('повтор без зубрёжки: вернувшаяся задача — новые числа или похожий вопрос', () => {
+  it('расчёт по варианту возвращается с новыми числами', () => {
+    const v = Object.values(EXERCISES).find((e) => e.variant);
+    const a = freshCopy(v, seeded(1)); const b = freshCopy(v, seeded(2));
+    expect(a.fresh).toBe('numbers');
+    expect(a.of).toBe(v.id);
+    expect(JSON.stringify(a.prompt)).not.toBe(JSON.stringify(b.prompt));
+  });
+  it('автоупражнение из задачи с параллельным вариантом — расчётом с новыми числами', () => {
+    const auto = Object.values(EXERCISES).find((e) => e.source && freshCopy(e, seeded(1)).fresh === 'numbers');
+    expect(auto).toBeTruthy();
+    expect(freshCopy(auto, seeded(1)).kind).toBe('calc');
+  });
+  it('шаг «Знакомства» с несколькими вопросами или урок с вопросами того же вида дают похожий вопрос; повтор в уроке — не та же задача, где есть замена', () => {
+    let fresh = 0; let total = 0;
+    PATH.forEach((id) => UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'practice').forEach((l) => {
+      const { items } = buildLesson(l.id, seeded(3));
+      items.filter((it) => !it.review).forEach((it) => {
+        const r = retryOf(it, seeded(5), items.map((x) => x.of || x.id));
+        total += 1;
+        if (r.fresh !== 'same') { fresh += 1; expect(r.of).toBe(it.of || it.id); expect(items.map((x) => x.id)).not.toContain(r.fresh === 'sibling' ? r.id : '—'); }
+      });
+    }));
+    // в «Практиках» почти всегда есть чем заменить
+    expect(fresh / total).toBeGreaterThan(0.8);
+  });
+});
+
 describe('юнит «Спрос и предложение»: все виды уроков', () => {
   const unit = UNIT_BY_ID[PILOT];
   const of = (kind) => unit.lessons.filter((l) => l.kind === kind);
@@ -313,8 +363,11 @@ describe('юнит «Спрос и предложение»: все виды у�
       const { items } = buildLesson(r.id, seeded(s), { mistakes: [wrong] });
       expect(items.length).toBeGreaterThanOrEqual(12);
       expect(items.length).toBeLessThanOrEqual(15);
-      expect(items.map((i) => i.id)).toContain(wrong);
-      items.forEach((i) => { expect(GAME_KINDS).not.toContain(i.kind); expect(UNIT_BY_ID[PILOT].lessons.find((l) => l.id === EXERCISES[i.id].lesson).no).toBeLessThan(r.no); });
+      // ошибка возвращается, но не той же задачей: похожей или с новыми числами
+      const back = items.find((i) => (i.of || i.id) === wrong);
+      expect(back).toBeTruthy();
+      expect(back.fresh).not.toBe('same');
+      items.forEach((i) => { expect(GAME_KINDS).not.toContain(i.kind); expect(UNIT_BY_ID[PILOT].lessons.find((l) => l.id === EXERCISES[i.of || i.id].lesson).no).toBeLessThan(r.no); });
     }
   });
   it('«Итоги юнита»: 5–7 пунктов с картинкой или графиком, потом тест — десять упражнений без игр', () => {
@@ -333,7 +386,7 @@ describe('юнит «Спрос и предложение»: все виды у�
   });
   it('проверка юнита и практика ошибок не берут раунды мини-игр', () => {
     for (let s = 1; s <= N; s += 1) buildUnitCheck(PILOT, seeded(s)).items.forEach((i) => expect(GAME_KINDS).not.toContain(i.kind));
-    expect(buildPractice(['sd-g-swipe', 'sd-e2-petrol']).items.map((i) => i.id)).toEqual(['sd-e2-petrol']);
+    expect(buildPractice(['sd-g-swipe', 'sd-e2-petrol']).items.map((i) => i.of || i.id)).toEqual(['sd-e2-petrol']);
   });
 });
 
@@ -374,7 +427,7 @@ describe('проверка юнита, уровень легенды, практ
   });
   it('практика собирается из ошибок', () => {
     const ids = Object.keys(EXERCISES).slice(0, 5);
-    expect(buildPractice(ids, seeded(1)).items.map((it) => it.id).sort()).toEqual(ids.sort());
+    expect(buildPractice(ids, seeded(1)).items.map((it) => it.of || it.id).sort()).toEqual(ids.sort());
     expect(estimate([])).toBeGreaterThan(0);
     expect(LESSONS.length).toBe(PATH.reduce((n, id) => n + UNIT_BY_ID[id].lessons.length, 0));
     expect(UNITS.length).toBeGreaterThan(10);
@@ -400,7 +453,7 @@ describe('мотивация: опыт, серия с заморозкой, ре
     const rev = UNIT_BY_ID[PILOT].lessons.find((l) => l.kind === 'review');
     for (let k = 1; k <= N; k += 1) {
       const { items } = buildLesson(rev.id, seeded(k), { mistakes: ['sd-e2-petrol'], hinted: ['sd-e2-gap'] });
-      const ids = items.map((i) => i.id);
+      const ids = items.map((i) => i.of || i.id);
       expect(ids).toContain('sd-e2-petrol');
       expect(ids).toContain('sd-e2-gap');
     }

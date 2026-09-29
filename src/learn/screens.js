@@ -13,6 +13,7 @@ export const SCREENS = {
   // после входа: вкладки нижней панели
   path: { root: true, title: 'Путь', testid: 'path' },
   practice: { root: true, title: 'Практика', testid: 'practice' },
+  shop: { root: true, title: 'Лавка', testid: 'shop' },
   world: { root: true, title: 'Мир', testid: 'world' },
   profile: { root: true, title: 'Профиль', testid: 'learn-profile' },
   // поверх вкладок
@@ -20,7 +21,6 @@ export const SCREENS = {
   lesson: { from: ['lessonCard', 'path', 'practice'], back: 'origin', title: 'Урок', testid: 'lesson' },
   book: { from: ['path', 'practice', 'profile', 'lesson'], back: 'origin', title: 'Учебник', testid: 'learn-book' },
   account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
-  shop: { from: ['path', 'profile'], back: 'origin', title: 'Лавка', testid: 'shop' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
   // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
   reports: { from: ['profile'], back: 'profile', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },

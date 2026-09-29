@@ -6,13 +6,14 @@
    карточки не летают, подсветка текста не бежит. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer,
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
 import { equilibrium, marketAxes, qd, qs } from './learn/course.js';
 import { CAST } from './learn/cast.js';
 import { useReducedMotion } from './ds-art.jsx';
+import { evalExpr, fmtResult } from './learn/calc.js';
 
 export const PLAY_CSS = `
   .lp-chart { width: 100%; max-width: 380px; display: block; margin: 6px auto 10px; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -45,6 +46,9 @@ export const PLAY_CSS = `
     display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 18px 26px; text-align: center; }
   .lp-face::after { content: ''; position: absolute; bottom: 8px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--ds-paper); box-shadow: inset 0 1px 2px var(--ds-shade); }
   .lp-face.back { transform: rotateY(180deg); }
+  .lp-calc { max-width: 320px; margin: 0 auto; }
+  .lp-calc-screen { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 8px; text-align: right; }
+  .lp-op { color: var(--u-ink); font-weight: 700; }
   .lp-bubble { position: relative; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 4px; padding: 14px 16px; font-size: 17.5px; line-height: 1.5; margin-top: 12px; }
   @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span { transition: none !important; } }
 `;
@@ -416,6 +420,41 @@ export function FlashCard({ card, flipped, onFlip }) {
           <span style={{ fontSize: 19, lineHeight: 1.45, fontWeight: 700 }}><Inline nodes={card.text} /></span>
         </span>
       </button>
+    </div>
+  );
+}
+
+/* Калькулятор расчётного упражнения: выражение, результат по ходу набора и «В ответ» —
+   результат уходит в поле ответа. Подсказкой не считается: считать в уме никто не просит. */
+export function Calculator({ onUse, disabled }) {
+  const [expr, setExpr] = useState('');
+  const v = evalExpr(expr);
+  const press = (k) => {
+    if (disabled) return;
+    Audio.play('tick');
+    if (k === 'C') setExpr('');
+    else if (k === 'del') setExpr((e) => e.slice(0, -1));
+    else if (k === '=') { if (v != null) setExpr(fmtResult(v).replace('−', '-')); }
+    else setExpr((e) => (e.length < 40 ? e + k : e));
+  };
+  const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', 'C', '=']];
+  return (
+    <div className="lp-calc" data-testid="calculator">
+      <div className="lp-calc-screen" aria-live="polite">
+        <div className="ds-num" data-testid="calc-expr" style={{ minHeight: 22, fontSize: 17, wordBreak: 'break-all' }}>{expr.replace(/-/g, '−') || ' '}</div>
+        <div className="ds-num" data-testid="calc-value" style={{ fontSize: 24, fontWeight: 700 }}>{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }} role="group" aria-label="Калькулятор">
+        {KEYS.flat().map((k) => (
+          <button key={k} type="button" className={`ds-key ${'÷×−+^='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k}
+            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', C: 'Очистить', '=': 'Равно' })[k] || k}
+            onClick={() => press(k === '÷' ? '/' : k === '×' ? '*' : k === '−' ? '-' : k)}>{k}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Стереть символ" disabled={disabled} onClick={() => press('del')}><Delete size={18} /></button>
+        <button type="button" className="ds-btn" style={{ flex: 3 }} disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>В ответ</button>
+      </div>
     </div>
   );
 }

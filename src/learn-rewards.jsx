@@ -4,12 +4,12 @@
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
 import React, { useState } from 'react';
 import {
-  ArrowLeft, X, Wallet, Snowflake, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
+  X, Wallet, Snowflake, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
   ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, Vault, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
-import { Button, IconButton, Card, Heading, Row, Sheet, TopBar } from './ds.jsx';
+import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, OUTFITS, SLOT_LABEL, questsFor, QUEST_ICON, monthChallenge, monthStamps,
@@ -66,13 +66,13 @@ const Bar = ({ have, target, ok }) => <div className={`rw-bar ${ok ? 'ok' : ''}`
 const CoinTag = ({ n, testid }) => <span className="rw-coin" data-testid={testid}><Coins size={14} color="var(--ds-gold)" aria-hidden="true" />{n}</span>;
 
 /* ------------------------------ КОШЕЛЁК ------------------------------ */
-export function WalletStat({ learn, onOpen }) {
+// монеты в кошельке; тратятся во вкладке «Лавка» нижней панели
+export function WalletStat({ learn }) {
   const b = balance(learn);
   return (
-    <button type="button" className="ln-stat" title="Монеты — в лавку" aria-label={`Монеты: ${b}. Открыть лавку`} data-testid="wallet" data-nav-target="shop"
-      onClick={() => { Audio.play('coin'); onOpen(); }} style={{ cursor: 'pointer', color: 'inherit' }}>
+    <span className="ln-stat" title="Монеты — тратятся во вкладке «Лавка»" data-testid="wallet">
       <Wallet size={17} color="var(--ds-gold)" aria-hidden="true" /><span data-testid="wallet-balance">{b}</span>
-    </button>
+    </span>
   );
 }
 
@@ -113,7 +113,8 @@ export function QuestsCard({ learn, now = Date.now() }) {
         </div>
         <Bar have={m.have} target={m.target} ok={m.done} />
         <div className="ds-faint" style={{ fontSize: 12, marginTop: 4 }}>
-          {m.claimed ? `Выполнено — марка «${m.name}» в альбоме.` : `${m.have} из ${m.target} · ${m.daysLeft ? `осталось ${m.daysLeft} ${plural(m.daysLeft, 'день', 'дня', 'дней')}` : 'последний день'}`}
+          {m.claimed ? `Выполнено — марка «${m.name}» в альбоме.`
+            : `${m.have} из ${m.target}${m.need ? ` · нужно ещё ${m.need} ${m.unit}` : ''} · до конца месяца ${m.daysLeft} ${plural(m.daysLeft, 'день', 'дня', 'дней')}${m.daysLeft === 1 ? ' — сегодня последний' : ''}`}
         </div>
       </div>
     </Card>
@@ -153,7 +154,7 @@ function RateChart({ hist }) {
 }
 
 /* ------------------------------ ЛАВКА ------------------------------ */
-export function ShopView({ learn, update, onBack, now = Date.now() }) {
+export function ShopView({ learn, update, now = Date.now() }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);
@@ -170,9 +171,9 @@ export function ShopView({ learn, update, onBack, now = Date.now() }) {
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, wear[o.slot] === o.id ? null : o.id, now)); };
   return (
-    <div className="rw-page" data-testid="shop" role="dialog" aria-label="Лавка">
-      <div className="rw-page-in">
-        <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Лавка Инфли" />
+    <div className="ln-wrap" data-testid="shop">
+      <div>
+        <Heading eyebrow="Лавка" title="Лавка Инфли" sub="Монеты — за уроки, серию и задания. Цены в кронах, платите по курсу дня." />
         <Card style={{ margin: '10px 0 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Mascot mood="joy" size={58} outfit={wear} />

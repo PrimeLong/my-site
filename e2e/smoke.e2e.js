@@ -1247,13 +1247,13 @@ test('путь: карточка урока, «Знакомство» шагам
   const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
   await expect(path).toBeVisible();
-  await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(4);
+  await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — юниты 1 (восемь уроков) и 2 (десять), остальные свёрнуты в одну строку
+  // Путь начинается с юнита 1; уроками — юниты 1 и 2 (по четырнадцать и десять уроков, все восемь видов), остальные свёрнуты в одну строку
   await expect(path.getByTestId('path-unit')).toHaveCount(2);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(18);
+  await expect(path.getByTestId('path-lesson')).toHaveCount(24);
   await expect(path.locator('[data-kind="intro"]')).toHaveCount(4);
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
@@ -1430,7 +1430,7 @@ test('путь: юнит «Спрос и предложение» — кажды
   // юнит пройден — любой урок открыт для повтора
   await page.addInitScript(() => {
     const at = Date.now() - 86400000;
-    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
@@ -1496,7 +1496,7 @@ test('путь: юнит «Спрос и предложение» — кажды
 const unitDone = (page) => page.addInitScript(() => {
   if (localStorage.getItem('ems-textbook-v1')) return;
   const at = Date.now() - 86400000;
-  const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
+  const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
   localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
 });
 // раунд мини-игры: ответить на все карточки; wrong(i) — ошибиться на i-й
@@ -1517,6 +1517,54 @@ async function playRound(page, wrong = () => false) {
   }
   return kind;
 }
+
+test('юнит 1 «Ограниченность и выбор»: все виды уроков, калькулятор в расчёте, повтор после ошибки — другой задачей', async ({ page }) => {
+  test.setTimeout(180_000);
+  await withTestFlag(page);
+  await unitDone(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = page.locator('[data-testid="path-unit"][data-unit="scarcity"]');
+  const kinds = await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind));
+  expect(new Set(kinds)).toEqual(new Set(['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']));
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); };
+
+  // «История» Гриши: первый вопрос — расчёт; калькулятор считает и вставляет ответ
+  await startLesson(page, 'sc-s1');
+  await expect(page.getByTestId('story-feed')).toBeVisible();
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'grisha');
+  await passCards(page);
+  const ex = page.getByTestId('ex');
+  await expect(ex).toHaveAttribute('data-kind', 'calc');
+  await ex.getByTestId('calc-open').click();
+  for (const k of ['1', '0', '0', '÷', '5', '0']) await ex.locator(`[data-calc="${k}"]`).click();
+  await expect(ex.getByTestId('calc-value')).toHaveText('= 2');
+  await ex.getByTestId('calc-use').click();
+  await expect(ex.getByRole('textbox', { name: 'Ответ числом' })).toHaveValue('2');
+  await page.getByRole('button', { name: 'Проверить' }).click();
+  await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await playLesson(page);
+  await finish();
+
+  // «Слова», «Слушай», «Мини-игра», «Повторение», «Итоги юнита»
+  for (const id of ['sc-w', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum']) {
+    await startLesson(page, id);
+    await playLesson(page);
+    await finish();
+  }
+
+  // ошибка в «Практике» возвращается в конце урока новыми числами или похожим вопросом
+  await startLesson(page, 'sc-l1');
+  let fresh = null;
+  for (let i = 0; i < 30 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) {
+    if (await page.getByTestId('ex-retry').isVisible()) fresh = await page.getByTestId('ex-retry').getAttribute('data-fresh');
+    await answerExercise(page, { wrong: i === 0 });
+    await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  }
+  expect(fresh).toBeTruthy();
+  expect(fresh).not.toBe('same');
+  expect(errors).toEqual([]);
+});
 
 test('мини-игра: итог раунда — точный счёт, «Готово!» или «Время!»; раунд после ошибки не обнуляется', async ({ page }) => {
   test.setTimeout(120_000);
@@ -1759,7 +1807,7 @@ test('вход: программа — вступительный тест, су
   await result.getByRole('button', { name: 'Дальше', exact: true }).click();
   // юнит 1 пройден, юнит 2 открыт с начала; приглашения на тест больше нет
   await expect(page.getByTestId('placement-card')).toHaveCount(0);
-  await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(8);
+  await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(14);
   await expect(pathNode(page, 'sd-i1')).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('path-rec')).toHaveText(/рекомендуем/i);
 
@@ -1779,8 +1827,8 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('result-coins')).toContainText('За урок');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
 
-  // лавка: курс дня и график, заморозка по курсу, наряд Инфли
-  await page.getByTestId('wallet').click();
+  // лавка — отдельная вкладка: курс дня и график, заморозка по курсу, наряд Инфли
+  await openTab(page, 'shop');
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
   await expect(shop.getByTestId('rate-chart')).toBeVisible();
@@ -1790,8 +1838,6 @@ test('вход: программа — вступительный тест, су
   await expect(shop.getByTestId('freeze-owned')).toHaveText('1');
   expect(Number(await shop.getByTestId('shop-balance').innerText().then((t) => t.replace(/\D/g, '')))).toBeLessThan(coins);
   await expectNoSidewaysScroll(page);
-  await shop.getByRole('button', { name: 'Назад' }).click();
-  await expect(page.getByTestId('shop')).toHaveCount(0);
 
   // профиль: программа с ответами регистрации и печати-достижения
   await openTab(page, 'profile');
@@ -1852,7 +1898,7 @@ test('навигация: у каждого экрана один «назад»
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
-    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6'];
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', accountApi, { tab: 'path' });
@@ -1879,10 +1925,10 @@ test('навигация: у каждого экрана один «назад»
   await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'scarcity');
   await clickBack(page);
   await expectScreen(page, 'path', seen);
-  // Путь → лавка → назад; Путь → сундук → назад
-  await page.getByTestId('wallet').click();
+  // лавка — вкладка нижней панели; Путь → сундук → назад
+  await openTab(page, 'shop');
   await expectScreen(page, 'shop', seen);
-  await clickBack(page);
+  await openTab(page, 'path');
   await expectScreen(page, 'path', seen);
   await page.getByTestId('chest').first().click();
   await expectScreen(page, 'chest', seen);
@@ -1904,10 +1950,6 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'profile', seen);
   await page.getByTestId('prof-account').click();
   await expectScreen(page, 'account', seen);
-  await clickBack(page);
-  await expectScreen(page, 'profile', seen);
-  await page.getByTestId('prof-shop').click();
-  await expectScreen(page, 'shop', seen);
   await clickBack(page);
   await expectScreen(page, 'profile', seen);
   // Мир — корень без «назад»; профиль игрока — только во вкладке «Профиль»
