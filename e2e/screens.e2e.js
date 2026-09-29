@@ -224,6 +224,37 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
+    test(`лента «История» и «Слушай», сообщение об ошибке (${theme})`, async ({ page }) => {
+      const errors = await setup(page, { theme });
+      await page.route('**/api/reports', (r) => {
+        let body = {}; try { body = r.request().postDataJSON(); } catch { body = {}; }
+        const reports = [{ id: 'r1', at: Date.now() - 60000, login: 'kate', name: 'Катя', status: 'new', reason: 'answer', comment: 'в ответе 25, а должно быть 20',
+          context: { screen: 'exercise', exercise: 'sd-l1:x', lesson: 'sd-l1', answer: '"25"', correct: '20 станков', build: 'abc1234 · 2026-09-29' } }];
+        r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body.action === 'me' ? { owner: true } : body.action === 'list' ? { reports, counts: { new: 1, done: 0 } } : { ok: true }) });
+      });
+      await page.goto('/', { waitUntil: 'networkidle' });
+      await openLesson(page, 'sd-s1');
+      await passCards(page); await answer(page, true);
+      await shot(page, '45-story-feed', theme);
+      await next(page); await page.getByTestId('lesson').locator('.ln-foot button').click();
+      await shot(page, '46-story-feed-more', theme);
+      await exitLesson(page);
+      await openLesson(page, 'sd-l-radio');
+      await passCards(page); await answer(page);
+      await shot(page, '47-listen-feed', theme);
+      await page.locator('.fd-q').last().getByTestId('report-flag').click();
+      await page.getByTestId('report-sheet').locator('[data-reason="answer"]').click();
+      await shot(page, '48-report-sheet', theme);
+      await page.getByTestId('report-send').click();
+      await shot(page, '49-report-thanks', theme);
+      await page.getByRole('button', { name: 'Продолжить' }).click();
+      await exitLesson(page);
+      await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+      await page.getByTestId('prof-reports').click();
+      await shot(page, '50-reports', theme);
+      expect(errors).toEqual([]);
+    });
+
     test(`практика, профиль, справочник, мир, витрина (${theme})`, async ({ page }) => {
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });

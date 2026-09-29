@@ -1492,6 +1492,232 @@ test('путь: юнит «Спрос и предложение» — кажды
   expect(errors).toEqual([]);
 });
 
+// юнит «Спрос и предложение» пройден — любой его урок открыт для повтора
+const unitDone = (page) => page.addInitScript(() => {
+  if (localStorage.getItem('ems-textbook-v1')) return;
+  const at = Date.now() - 86400000;
+  const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
+  localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+});
+// раунд мини-игры: ответить на все карточки; wrong(i) — ошибиться на i-й
+async function playRound(page, wrong = () => false) {
+  const ex = page.getByTestId('ex');
+  const kind = await ex.getAttribute('data-kind');
+  if (kind === 'rush' || kind === 'chain') await ex.getByTestId('game-start').click();
+  if (kind === 'chain') {
+    const ans = JSON.parse(await ex.getAttribute('data-answer'));
+    for (const k of ans) await ex.locator(`button[data-key="${k}"]`).click();
+    return kind;
+  }
+  const card = ex.getByTestId('game-card');
+  for (let i = 0; await card.count(); i += 1) {
+    const side = await card.getAttribute('data-answer');
+    const pick = wrong(i) ? await ex.locator(`button[data-side]:not([data-side="${side}"])`).first().getAttribute('data-side') : side;
+    await ex.locator(`button[data-side="${pick}"]`).click();
+  }
+  return kind;
+}
+
+test('мини-игра: итог раунда — точный счёт, «Готово!» или «Время!»; раунд после ошибки не обнуляется', async ({ page }) => {
+  test.setTimeout(120_000);
+  await withTestFlag(page);
+  await unitDone(page);
+  await page.clock.install();
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sd-g');
+  const ex = page.getByTestId('ex');
+  // раунд 1 «Сдвиг или движение?» — все ответы неверные: не засчитан, счёт 0
+  await expect(ex).toHaveAttribute('data-kind', 'swipe');
+  const n1 = await ex.getByTestId('game-card').evaluate(() => 0).then(() => ex.locator('.lp-score span').first().innerText()).then((t) => Number(t.match(/из (\d+)/)[1]));
+  await playRound(page, () => true);
+  await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
+  await expect(ex.getByTestId('game-final')).toHaveText(`Раунд окончен: верно 0 из ${n1}`);
+  await expect(page.getByTestId('game-result')).toContainText(`Верно 0 из ${n1}.`);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  // раунд 2 «60 секунд» сразу после неверного раунда — все верно: «Готово! Верно N из N», засчитан
+  await expect(ex).toHaveAttribute('data-kind', 'rush');
+  await playRound(page);
+  await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
+  const final = await ex.getByTestId('game-final').innerText();
+  const [, right, total] = final.match(/Верно (\d+) из (\d+)/);
+  expect(final).toMatch(/^Готово!/);
+  expect(right).toBe(total);
+  expect(Number(total)).toBeGreaterThanOrEqual(6);
+  await expect(page.getByTestId('game-result')).toContainText(`Верно ${total} из ${total}.`);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  // раунд 3 «Цепочка на время» — собрана
+  await expect(ex).toHaveAttribute('data-kind', 'chain');
+  await playRound(page);
+  await expect(ex.getByTestId('game-final')).toContainText('Готово!');
+  await expect(page.getByTestId('game-result')).toContainText('Цепочка собрана');
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(page.getByTestId('lesson-result')).toContainText('Раундов засчитано: 2 из 3');
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+
+  // заново: «60 секунд» с двумя ошибками — точный счёт; и время вышло — «Время!» и счёт отвеченных
+  await startLesson(page, 'sd-g');
+  await playRound(page);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(ex).toHaveAttribute('data-kind', 'rush');
+  await ex.getByTestId('game-start').click();
+  const card = ex.getByTestId('game-card');
+  for (let i = 0; i < 4; i += 1) {
+    const side = await card.getAttribute('data-answer');
+    const pick = i < 2 ? await ex.locator(`button[data-side]:not([data-side="${side}"])`).first().getAttribute('data-side') : side;
+    await ex.locator(`button[data-side="${pick}"]`).click();
+  }
+  await page.clock.fastForward(61_000);
+  await expect(ex.getByTestId('game-final')).toHaveText('Время! Верно 2 из 4');
+  await expect(page.getByTestId('game-result')).toContainText('Время вышло. Верно 2 из 4.');
+  await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
+  expect(errors).toEqual([]);
+});
+
+test('лента «История»: сообщения по одному, вопросы между ними, прошлое остаётся в ленте', async ({ page }) => {
+  await withTestFlag(page);
+  await unitDone(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sd-s1');
+  const feed = page.getByTestId('story-feed');
+  await expect(feed).toBeVisible();
+  // первое сообщение — от героини, с портретом; «Дальше» открывает следующее, прошлые остаются
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'masha');
+  await expect(feed.getByTestId('feed-msg')).toHaveCount(0);
+  let msgs = 0;
+  while (await page.getByTestId('lesson-card').isVisible()) {
+    await page.getByTestId('lesson').locator('.ln-foot button').click();
+    msgs += 1;
+    await expect(feed.getByTestId('feed-msg')).toHaveCount(msgs);
+  }
+  // вопрос — прямо в ленте, ответ и плашка — там же; после «Дальше» вопрос остаётся в ленте
+  await expect(feed.getByTestId('ex')).toBeVisible();
+  await answerExercise(page);
+  await expect(feed.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(feed.getByTestId('feed-q')).toHaveCount(1);
+  await expect(feed.getByTestId('feed-msg')).toHaveCount(msgs);
+  // дальше — новые сообщения после вопроса
+  await expect(page.getByTestId('lesson-card')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  // второй вопрос встаёт в ленту под новыми сообщениями, первый — выше
+  await passCards(page);
+  await answerExercise(page);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(feed.getByTestId('feed-q')).toHaveCount(2);
+  await playLesson(page);
+  expect(errors).toEqual([]);
+});
+
+test('лента «Слушай»: текст скрыт, «прослушать» читает сообщение с подсветкой, после вопроса текст открыт', async ({ page }) => {
+  await withTestFlag(page);
+  await unitDone(page);
+  // русский голос браузера — подмена: запоминаем, что читали, и сразу «дочитываем»
+  await page.addInitScript(() => {
+    window.__spoken = [];
+    const voice = { lang: 'ru-RU', name: 'Тест', default: true };
+    window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+      getVoices: () => [voice], addEventListener() {}, removeEventListener() {}, cancel() {},
+      speak(u) { window.__spoken.push(u.text); setTimeout(() => { if (u.onboundary) u.onboundary({ charIndex: 0 }); }, 50); setTimeout(() => u.onend && u.onend(), 400); },
+    } });
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sd-l-radio');
+  const feed = page.getByTestId('listen-card');
+  await expect(feed).toHaveAttribute('data-voice', 'on');
+  const live = page.getByTestId('lesson-card');
+  // новое сообщение эфира читается само; текст скрыт до «показать текст»
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__spoken[0])).toContain('морозы');
+  await expect(live.getByTestId('feed-hidden')).toBeVisible();
+  await live.getByTestId('feed-toggle').click();
+  await expect(live.getByTestId('listen-text')).toContainText('морозы');
+  await live.getByTestId('feed-toggle').click();
+  await expect(live.getByTestId('feed-hidden')).toBeVisible();
+  // «прослушать» ещё раз — то же сообщение
+  await live.getByTestId('feed-play').click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBeGreaterThan(1);
+  while (await live.isVisible()) await page.getByTestId('lesson').locator('.ln-foot button').click();
+  // вопрос про то, что прозвучало; после ответа текст прошлых сообщений открыт сам
+  await expect(feed.getByTestId('feed-msg').first().getByTestId('feed-hidden')).toBeVisible();
+  await answerExercise(page);
+  await expect(feed.getByTestId('feed-msg').first().getByTestId('listen-text')).toContainText('морозы');
+  // прошлое сообщение можно переслушать
+  const before = await page.evaluate(() => window.__spoken.length);
+  await feed.getByTestId('feed-msg').first().getByTestId('feed-play').click();
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(before + 1);
+  expect(errors).toEqual([]);
+});
+
+test('сообщить об ошибке: флажок на упражнении, причина и контекст уходят на сервер, урок продолжается', async ({ page, context }) => {
+  await withTestFlag(page);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const sent = [];
+  const reports = [
+    { id: 'r1', at: Date.now() - 60000, login: 'kate', name: 'Катя', status: 'new', reason: 'answer', comment: 'должно быть 20', context: { exercise: 'sd-l1:x', answer: '25', correct: '20', build: 'abc' } },
+    { id: 'r2', at: Date.now() - 120000, login: 'ivan', name: 'Иван', status: 'new', reason: 'typo', comment: '', context: { screen: 'step', lesson: 'sd-i1' } },
+  ];
+  const api = (req) => {
+    let body = null; try { body = req.postDataJSON(); } catch { body = null; }
+    if (req.url().includes('/api/reports') && body) {
+      if (body.action === 'send') { sent.push(body); return JSON.stringify({ ok: true, id: 'x' }); }
+      if (body.action === 'me') return JSON.stringify({ owner: true });
+      if (body.action === 'list') return JSON.stringify({ reports: body.status === 'done' ? [] : reports, counts: { new: 2, done: 0 } });
+    }
+    return '{}';
+  };
+  const { errors } = await openApp(page, '/', api, { tab: 'path' });
+  await startLesson(page, 'sc-i1');
+  await page.getByRole('button', { name: 'Понятно' }).click();
+  const ex = page.getByTestId('ex');
+  const exId = await ex.getAttribute('data-kind');
+  await answerExercise(page, { wrong: true });
+  // флажок есть и после ответа
+  await ex.getByTestId('report-flag').click();
+  const sheet = page.getByTestId('report-sheet');
+  await expect(sheet.getByTestId('report-send')).toBeDisabled();
+  await sheet.locator('[data-reason="accept"]').click();
+  await sheet.getByLabel(/Комментарий/).fill('мне кажется, мой ответ верный');
+  await sheet.getByTestId('report-send').click();
+  await expect(page.getByTestId('report-thanks')).toContainText('Спасибо! Посмотрим');
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({ reason: 'accept', comment: 'мне кажется, мой ответ верный', session: 't' });
+  expect(sent[0].context).toMatchObject({ screen: 'exercise', kind: exId, lesson: 'sc-i1', unit: 'scarcity' });
+  expect(sent[0].context.exercise).toBeTruthy();
+  expect(sent[0].context.answer).toBeTruthy();
+  expect(sent[0].context.correct).toBeTruthy();
+  expect(sent[0].context.build).toBeTruthy();
+  expect(sent[0].context.device).toBeTruthy();
+  await page.getByRole('button', { name: 'Продолжить' }).click();
+  // урок — с того же места: плашка ответа на месте
+  await expect(page.getByTestId('report-sheet')).toHaveCount(0);
+  await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
+  // флажок — и на шаге «Знакомства», и в учебнике, и на итогах
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(page.getByTestId('lesson-card').getByTestId('report-flag')).toBeVisible();
+  await page.getByRole('button', { name: 'Выйти из урока' }).click();
+  await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
+  await page.getByTestId('unit-guide').first().click();
+  await expect(page.getByTestId('learn-book').getByTestId('report-flag')).toBeVisible();
+
+  // владелец: список сообщений, фильтр и «скопировать всё»
+  await openTab(page, 'profile');
+  await page.getByTestId('prof-reports').click();
+  const view = page.getByTestId('reports');
+  await expect(view.getByTestId('report-item')).toHaveCount(2);
+  await view.getByTestId('reports-copy').click();
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text).toContain('Ошибка в ответе');
+  expect(text).toContain('ответ ученика: 25');
+  expect(text).toContain('правильный ответ: 20');
+  expect(text).toContain('Опечатка');
+  await view.locator('[data-filter="done"]').click();
+  await expect(view.getByTestId('reports-empty')).toBeVisible();
+  await view.getByRole('button', { name: 'Назад' }).click();
+  await expect(page.getByTestId('learn-profile')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 /* Персональная программа и награды: регистрация с «Кое-что знаю» → вступительный тест
    открывает известный юнит → сундук, задания дня, монеты и лавка с курсом; назавтра —
    утренний экран серии. */
@@ -1694,7 +1920,7 @@ test('навигация: у каждого экрана один «назад»
   await openTab(page, 'path');
   await expect(page.getByTestId('learn-book')).toHaveCount(0);
   // обойдены все экраны после входа
-  expect([...seen].sort()).toEqual(Object.keys(SCREENS).filter((k) => !SCREENS[k].gate).sort());
+  expect([...seen].sort()).toEqual(Object.keys(SCREENS).filter((k) => !SCREENS[k].gate && !SCREENS[k].owner).sort());
   expect(errors).toEqual([]);
 });
 

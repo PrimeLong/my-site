@@ -155,3 +155,10 @@ export async function fetchRecords(kind = 'tycoon', login) {
   return data;
 }
 export const submitRecord = (session, payload) => post({ kind: 'tycoon', session, ...payload }, RECORDS_API);
+
+/* «Сообщить об ошибке» (api/reports.js): отправка — из профиля; список — только владельцам. */
+const REPORTS_API = '/api/reports';
+export const sendReport = (session, reason, comment, context) => post({ action: 'send', session, reason, comment, context }, REPORTS_API);
+export const reportsMe = (session) => post({ action: 'me', session }, REPORTS_API);
+export const listReports = (session, status) => post({ action: 'list', session, status }, REPORTS_API);
+export const setReportStatus = (session, id, status) => post({ action: 'status', session, id, status }, REPORTS_API);

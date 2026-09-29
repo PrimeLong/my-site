@@ -1464,7 +1464,7 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
-export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario }) {
+export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);
@@ -1580,7 +1580,8 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     return (
       <div className="ln-textbook" style={{ maxWidth: 760, margin: '0 auto', padding: '6px 16px 40px' }}>
         <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={() => { Audio.play('paper'); if (stack.length) back(); else onExit(); }} />}
-          title={<><span className="ds-eyebrow" style={{ display: 'block' }}>Учебник</span>{cur.kind === 'toc' ? 'Оглавление' : pageTitle(cur)}</>} />
+          title={<><span className="ds-eyebrow" style={{ display: 'block' }}>Учебник</span>{cur.kind === 'toc' ? 'Оглавление' : pageTitle(cur)}</>}
+          right={reportSlot ? reportSlot(cur) : null} />
         {pages}
       </div>
     );

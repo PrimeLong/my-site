@@ -193,3 +193,22 @@ export async function setRecord(kind, key, entry) {
   mem.set(`records:${kind}`, { ...mem.get(`records:${kind}`), [key]: entry });
   return true;
 }
+
+/* Сообщения об ошибках в уроках: хэш reports, поле — id сообщения, значение — само
+   сообщение. Бессрочно, но не больше REPORTS_MAX: лишние — самые старые. */
+const REPORTS_MAX = 2000;
+export async function getReports() {
+  const raw = redis ? (await redis.hgetall('reports')) || {} : { ...mem.get('reports') };
+  return Object.values(raw).map((v) => (typeof v === 'string' ? JSON.parse(v) : v));
+}
+export async function setReport(entry) {
+  if (redis) await redis.hset('reports', { [entry.id]: entry });
+  else mem.set('reports', { ...mem.get('reports'), [entry.id]: entry });
+  const all = await getReports();
+  if (all.length > REPORTS_MAX) {
+    const old = all.sort((a, b) => a.at - b.at).slice(0, all.length - REPORTS_MAX).map((r) => r.id);
+    if (redis) await redis.hdel('reports', ...old);
+    else { const m = { ...mem.get('reports') }; old.forEach((id) => delete m[id]); mem.set('reports', m); }
+  }
+  return true;
+}

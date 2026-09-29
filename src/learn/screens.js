@@ -22,5 +22,7 @@ export const SCREENS = {
   account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
   shop: { from: ['path', 'profile'], back: 'origin', title: 'Лавка', testid: 'shop' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
+  // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
+  reports: { from: ['profile'], back: 'profile', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },
 };
 export const TABS = Object.keys(SCREENS).filter((k) => SCREENS[k].root && !SCREENS[k].gate);
