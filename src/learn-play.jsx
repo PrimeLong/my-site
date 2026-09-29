@@ -6,7 +6,7 @@
    карточки не летают, подсветка текста не бежит. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, Headphones, Eye, EyeOff, RotateCcw, Play, Timer,
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
@@ -46,11 +46,7 @@ export const PLAY_CSS = `
   .lp-face::after { content: ''; position: absolute; bottom: 8px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--ds-paper); box-shadow: inset 0 1px 2px var(--ds-shade); }
   .lp-face.back { transform: rotateY(180deg); }
   .lp-bubble { position: relative; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 4px; padding: 14px 16px; font-size: 17.5px; line-height: 1.5; margin-top: 12px; }
-  .lp-word { border-radius: 2px; transition: background .15s; }
-  .lp-word.on { background: color-mix(in srgb, var(--u) 26%, transparent); }
-  .lp-word.done { color: var(--ds-ink); }
-  .lp-listen-text { font: 17.5px/1.6 var(--ds-serif); color: var(--ds-ink2); }
-  @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span, .lp-word { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span { transition: none !important; } }
 `;
 
 /* ------------------------------ ГРАФИК РЫНКА ------------------------------ */
@@ -248,8 +244,10 @@ export function TimerBar({ seconds, running, onEnd }) {
 
 const testing = () => typeof window !== 'undefined' && !!window.__INFLATIA_TEST__;
 
+/* Итог раунда на карточке — из результата, который раунд передал наверх (result), а не из
+   своего состояния: так счёт верен, даже если раунд пересоздан после проверки. */
 // «смахни»: карточка уходит влево или вправо; кнопки — то же без жеста
-export function SwipeRound({ inst, onDone, locked }) {
+export function SwipeRound({ inst, onDone, locked, result = null }) {
   const reduced = useReducedMotion();
   const [idx, setIdx] = useState(0);
   const [right, setRight] = useState(0);
@@ -272,14 +270,14 @@ export function SwipeRound({ inst, onDone, locked }) {
   const up = () => { if (start.current == null) return; const d = dx; start.current = null; if (Math.abs(d) > 90) decide(d > 0 ? 'right' : 'left'); else setDx(0); };
   return (
     <div data-testid="swipe-round">
-      <div className="lp-score"><span>Карточка {Math.min(idx + 1, inst.items.length)} из {inst.items.length}</span><span data-testid="game-score">верно: {right}</span></div>
+      <div className="lp-score"><span>Карточка {result ? inst.items.length : Math.min(idx + 1, inst.items.length)} из {inst.items.length}</span><span data-testid="game-score">верно: {result ? result.right : right}</span></div>
       {item && !locked ? (
         <div className={`lp-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}
           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
           style={{ transform: reduced ? undefined : `translateX(${dx}px) rotate(${dx / 18}deg)`, transition: start.current != null || reduced ? 'none' : 'transform .2s' }}>
           <Inline nodes={item.text} />
         </div>
-      ) : <div className="lp-card" style={{ fontSize: 17 }}>Раунд окончен: верно {right} из {inst.items.length}</div>}
+      ) : <div className="lp-card" style={{ fontSize: 17 }} data-testid="game-final">Раунд окончен: верно {result ? result.right : right} из {inst.items.length}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="left" disabled={locked || !item} onClick={() => decide('left')}><ArrowLeft size={16} style={{ verticalAlign: -3 }} /> {inst.labels.left}</button>
         <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="right" disabled={locked || !item} onClick={() => decide('right')}>{inst.labels.right} <ArrowRight size={16} style={{ verticalAlign: -3 }} /></button>
@@ -289,14 +287,15 @@ export function SwipeRound({ inst, onDone, locked }) {
 }
 
 // «60 секунд»: заголовок за заголовком, пока не кончится время или заголовки
-export function RushRound({ inst, onDone, locked }) {
+export function RushRound({ inst, onDone, locked, result = null }) {
   const [on, setOn] = useState(false);
   const [idx, setIdx] = useState(0);
   const [right, setRight] = useState(0);
   const [flash, setFlash] = useState(null);
   const done = useRef(false);
   const score = useRef({ right: 0, answered: 0 });
-  const finish = () => { if (done.current) return; done.current = true; onDone({ right: score.current.right, answered: score.current.answered, total: inst.items.length, done: true }); };
+  // timeout — время действительно вышло; иначе заголовки кончились раньше
+  const finish = (timeout = false) => { if (done.current) return; done.current = true; onDone({ right: score.current.right, answered: score.current.answered, total: inst.items.length, timeout, done: true }); };
   const item = inst.items[idx];
   const decide = (side) => {
     if (!on || locked || !item || done.current) return;
@@ -316,10 +315,12 @@ export function RushRound({ inst, onDone, locked }) {
   }
   return (
     <div data-testid="rush-round">
-      <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={finish} />
-      <div className="lp-score"><span>{Math.min(idx + 1, inst.items.length)} / {inst.items.length}</span><span data-testid="game-score">верно: {right}</span></div>
+      {!locked && <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={() => finish(true)} />}
+      <div className="lp-score"><span>{result ? result.answered : Math.min(idx + 1, inst.items.length)} / {inst.items.length}</span><span data-testid="game-score">верно: {result ? result.right : right}</span></div>
       {item && !locked ? <div className={`lp-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}><Inline nodes={item.text} /></div>
-        : <div className="lp-card" style={{ fontSize: 17 }}>Время! Верно {right}</div>}
+        : <div className="lp-card" style={{ fontSize: 17 }} data-testid="game-final">
+          {result && result.timeout ? 'Время!' : 'Готово!'} Верно {result ? result.right : right} из {result ? result.answered : score.current.answered}
+        </div>}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="up" disabled={locked || !item} onClick={() => decide('up')}><ArrowUp size={16} style={{ verticalAlign: -3 }} /> {inst.labels.up}</button>
         <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="down" disabled={locked || !item} onClick={() => decide('down')}><ArrowDown size={16} style={{ verticalAlign: -3 }} /> {inst.labels.down}</button>
@@ -329,9 +330,11 @@ export function RushRound({ inst, onDone, locked }) {
 }
 
 // цепочка на время: звенья по порядку; собрана — проверяется сразу
-export function ChainRound({ inst, onDone, locked }) {
+export function ChainRound({ inst, onDone, locked, result = null }) {
   const [on, setOn] = useState(false);
-  const [seq, setSeq] = useState([]);
+  const [own, setSeq] = useState([]);
+  // после проверки — собранное из результата раунда
+  const seq = locked && result && result.seq ? result.seq : own;
   const done = useRef(false);
   const finish = (s, timeout = false) => { if (done.current) return; done.current = true; onDone({ seq: s, timeout, done: true }); };
   const add = (k) => { if (locked || done.current) return; Audio.play('tick'); const s = [...seq, k]; setSeq(s); if (s.length === inst.items.length) finish(s); };
@@ -345,7 +348,8 @@ export function ChainRound({ inst, onDone, locked }) {
   }
   return (
     <div data-testid="chain-round">
-      <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={() => finish(seq, true)} />
+      {locked && result ? <div className="lp-score" data-testid="game-final"><span>{result.timeout ? 'Время!' : 'Готово!'} Собрано {result.seq.length} из {inst.items.length}</span></div>
+        : <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={() => finish(seq, true)} />}
       <div style={{ minHeight: 56, border: '2px dashed var(--ds-rule2)', borderRadius: 12, padding: 6, marginBottom: 10 }}>
         {seq.map((k, i) => (
           <button key={k} type="button" className="ds-opt" style={{ margin: '4px 0' }} disabled={locked} onClick={() => setSeq(seq.filter((x) => x !== k))}>
@@ -412,76 +416,6 @@ export function FlashCard({ card, flipped, onFlip }) {
           <span style={{ fontSize: 19, lineHeight: 1.45, fontWeight: 700 }}><Inline nodes={card.text} /></span>
         </span>
       </button>
-    </div>
-  );
-}
-
-/* «Слушай»: текст читает голос браузера (русский, если он есть в системе); слова под
-   голосом подсвечиваются. Голоса нет — текст сразу на экране и подсветка идёт сама, в
-   темпе чтения вслух. Текст под голосом можно открыть кнопкой «Показать текст». */
-const ruVoice = () => {
-  try { const s = window.speechSynthesis; if (!s) return null; return s.getVoices().find((v) => /^ru/i.test(v.lang)) || null; } catch { return null; }
-};
-export function ListenCard({ text, title }) {
-  const reduced = useReducedMotion();
-  const words = text.split(/\s+/).filter(Boolean);
-  const starts = []; words.reduce((pos, w) => { const k = text.indexOf(w, pos); starts.push(k); return k + w.length; }, 0);
-  const [voice, setVoice] = useState(ruVoice);
-  const [at, setAt] = useState(-1);
-  const [speaking, setSpeaking] = useState(false);
-  const [showText, setShowText] = useState(false);
-  const timer = useRef(null);
-  useEffect(() => {
-    const s = typeof window !== 'undefined' ? window.speechSynthesis : null;
-    if (!s || !s.addEventListener) return undefined;
-    const f = () => setVoice(ruVoice());
-    s.addEventListener('voiceschanged', f);
-    return () => { s.removeEventListener('voiceschanged', f); try { s.cancel(); } catch { /* нет голоса */ } };
-  }, []);
-  useEffect(() => () => clearInterval(timer.current), []);
-  // без голоса — подсветка сама, около 2,6 слова в секунду
-  const runHighlight = () => {
-    clearInterval(timer.current);
-    if (reduced) { setAt(words.length); return; }
-    let k = 0; setAt(0);
-    timer.current = setInterval(() => { k += 1; setAt(k); if (k >= words.length) clearInterval(timer.current); }, 380);
-  };
-  useEffect(() => { if (!voice) runHighlight(); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voice, text]);
-  const speak = () => {
-    Audio.prime();
-    if (!voice) { runHighlight(); return; }
-    try {
-      const s = window.speechSynthesis; s.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.voice = voice; u.lang = voice.lang; u.rate = 0.95;
-      u.onboundary = (e) => { const k = starts.findIndex((p, i) => e.charIndex >= p && (i === starts.length - 1 || e.charIndex < starts[i + 1])); if (k >= 0) setAt(k); };
-      u.onend = () => { setSpeaking(false); setAt(words.length); };
-      u.onerror = () => { setSpeaking(false); setVoice(null); };
-      setSpeaking(true); setAt(0); s.speak(u);
-    } catch { setVoice(null); }
-  };
-  const visible = !voice || showText;
-  return (
-    <div data-style="listen" data-voice={voice ? 'on' : 'off'} data-testid="listen-card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 14px' }}>
-        <button type="button" className="ds-btn" style={{ width: 64, height: 64, borderRadius: '50%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={speak} aria-label={voice ? (speaking ? 'Слушаю' : 'Слушать') : 'Читать с подсветкой'} data-testid="listen-play"><Headphones size={28} /></button>
-        <div style={{ flex: 1 }}>
-          <div className="ds-h3" style={{ fontSize: 19 }}>{title}</div>
-          <div className="ds-sub" style={{ fontSize: 13.5 }}>{voice ? (speaking ? 'Слушаем…' : 'Нажмите, чтобы послушать') : 'Голоса в браузере нет — читайте вслед за подсветкой'}</div>
-        </div>
-      </div>
-      {voice && (
-        <button type="button" className="ds-btn ds-btn--ghost" style={{ padding: '4px 0', fontSize: 14 }} onClick={() => setShowText((v) => !v)} data-testid="listen-toggle">
-          {showText ? <><EyeOff size={14} style={{ verticalAlign: -2 }} /> Скрыть текст</> : <><Eye size={14} style={{ verticalAlign: -2 }} /> Показать текст</>}
-        </button>
-      )}
-      {visible && (
-        <p className="lp-listen-text" data-testid="listen-text">
-          {words.map((w, i) => <React.Fragment key={i}><span className={`lp-word ${i === at ? 'on' : i < at ? 'done' : ''}`}>{w}</span>{' '}</React.Fragment>)}
-        </p>
-      )}
     </div>
   );
 }

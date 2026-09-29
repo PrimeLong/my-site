@@ -38,13 +38,15 @@ import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from
 import { Mascot } from './mascot.jsx';
 import { todayCard } from './textbook/today-snapshot.js';
 import { markTerms, termTitle, termText } from './learn/terms.js';
-import { plainText } from './textbook/content.js';
 import {
-  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, SwipeRound, RushRound, ChainRound, FlashCard, ListenCard, Portrait,
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, SwipeRound, RushRound, ChainRound, FlashCard,
 } from './learn-play.jsx';
-import { CAST } from './learn/cast.js';
+import { Feed, FEED_CSS } from './learn-feed.jsx';
+import { ReportFlag, ReportsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
+import { reportsMe } from './lib/client.js';
+import { loadAccount } from './account.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette, Stamp, PostStamp, Engraving, EngravingG, Clipping, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette, Stamp, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
 import { placeOf, unitColor, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { ProfileModal } from './account.jsx';
@@ -109,6 +111,11 @@ const CSS = `
   .ln-ticket-stub::before, .ln-ticket-stub::after { content: ''; position: absolute; left: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--ds-card2); }
   .ln-ticket-stub::before { top: -9px; } .ln-ticket-stub::after { bottom: -9px; }
   .ln-album { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 3px; border-left: 3px solid; }
+  .ln-verdict.ok { background: var(--ds-ok-bg); border-color: var(--ds-ok); }
+  .ln-verdict.bad { background: var(--ds-bad-bg); border-color: var(--ds-bad); }
+  .ln-verdict.ok .ds-answer-stamp { color: var(--ds-ok); font-size: 13px; }
+  .ln-verdict.bad .ds-answer-stamp { color: var(--ds-bad); font-size: 13px; }
   .ln-book { min-height: 100vh; margin: -12px -16px 0; }
   /* кнопки учебника-справочника — те же, что у дизайн-системы: билет и бумажная кнопка */
   .ln-textbook .ems-btn { font: 700 13.5px/1.25 var(--ds-sans); border: 1px solid var(--ds-rule2); border-bottom-width: 2px; border-radius: 3px; background: var(--ds-card);
@@ -386,7 +393,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
           <div className="ds-h2" style={{ marginBottom: 6 }}>{inst.title}</div>
           <div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           {/* раунд сам решает, когда он окончен, — и сразу уходит на проверку */}
-          <Round inst={inst} locked={locked} onDone={(r) => { setResp(r); onSubmit(r); }} />
+          <Round inst={inst} locked={locked} result={resp} onDone={(r) => { setResp(r); onSubmit(r); }} />
         </div>
       );
     }
@@ -397,7 +404,8 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
 const gameLine = (inst, r) => {
   if (!r) return '';
   if (inst.kind === 'chain') return r.timeout ? 'Время вышло — цепочка не собрана.' : 'Цепочка собрана.';
-  return `Верно ${r.right} из ${inst.kind === 'rush' ? r.answered : r.total}.`;
+  if (inst.kind === 'rush') return `${r.timeout ? 'Время вышло. ' : ''}Верно ${r.right} из ${r.answered}.`;
+  return `Верно ${r.right} из ${r.total}.`;
 };
 
 /* ------------------------------ УРОК ------------------------------
@@ -436,9 +444,22 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const [result, setResult] = useState(null);
   const [term, setTerm] = useState(null);
   const [anim, setAnim] = useState({ k: 0, kind: null });
+  /* Встряска после неверного ответа — перезапуском CSS-анимации на том же узле: обёртка
+     упражнения после ответа не пересоздаётся, и раунд мини-игры не теряет свой счёт. */
+  const shakeRef = useRef(null);
+  useEffect(() => {
+    const el = shakeRef.current;
+    if (!el || anim.kind !== 'shake') return;
+    el.classList.remove('ds-shake'); void el.offsetWidth; el.classList.add('ds-shake');
+  }, [anim]);
+  useEffect(() => { if (shakeRef.current) shakeRef.current.classList.remove('ds-shake'); }, [pos]);
   const [run3, setRun3] = useState(rs ? rs.streak || 0 : 0);
   // линия графика прогресса: первые попытки по порядку; pulse — короткая вспышка на верном ответе серии
   const [log, setLog] = useState(rs ? rs.log || [] : []);
+  /* «Слушай» и «История» — лента: прошлые сообщения и отвеченные вопросы остаются в ней
+     (и сохраняются вместе с прерванным уроком) */
+  const feed = !!lesson && (lesson.kind === 'story' || lesson.kind === 'listen');
+  const [history, setHistory] = useState(rs ? rs.history || [] : []);
   const [pulse, setPulse] = useState(0);
   const acc = useRef({
     first: rs ? rs.first : {}, hinted: rs ? rs.hinted : {}, solved: new Set(rs ? rs.solved : []),
@@ -528,6 +549,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   };
   const next = () => {
     Audio.play('paper');
+    if (feed && cur && fb) setHistory((h) => [...h, { type: 'q', key: `q:${cur.uid}`, inst: marked, resp, fb }]);
     if (pos + 1 >= queue.length) { finish(); return; }
     // вступительный тест: пятёрка юнита провалена — дальше спрашивать незачем
     if (run.mode === 'placement' && cur && placementFailed(plan.items, acc.current.first, cur.placeUnit)) { finish(); return; }
@@ -550,7 +572,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
       saveResume(run.lessonId, {
         plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds }, queue, pos: Math.min(at, queue.length - 1),
         first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: Date.now() - a.start,
-        cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice',
+        cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history,
       });
       if (at >= queue.length) dropResume(run.lessonId);
     }
@@ -569,12 +591,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
 
   const kindName = GAME_KINDS.includes(cur && cur.kind) ? `Раунд ${plan.items.findIndex((x) => x.uid === orig) + 1} из ${plan.items.length}` : cur ? KIND_LABEL[cur.kind] : '';
   const unitId = lesson ? lesson.unitId : run.unitId;
-  const cast = (who) => CAST[who] || null;
 
   return (
     <DsRoot theme={dsThemeId()} accent={color} className="ln-overlay" data-testid="lesson" data-mode={run.mode} role="dialog" aria-label={title}
       style={{ display: hidden ? 'none' : undefined }}>
-      <ArtStyle /><style>{CSS + PLAY_CSS}</style>
+      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS}</style>
       <div className="ln-head">
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
         <ProgressChart answers={log} total={total} pulse={pulse} />
@@ -594,7 +615,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
         </Sheet>
       )}
 
-      {stage === 'card' && cur && cardFor(cur) && (() => {
+      {!feed && stage === 'card' && cur && cardFor(cur) && (() => {
         const list = cardFor(cur);
         const c = list[Math.min(cardIdx, list.length - 1)];
         const last = cardIdx >= list.length - 1;
@@ -610,25 +631,15 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
           cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setFlipped(false); setStage('work');
         };
         const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
-        const who = cast(c.who);
         return (
           <>
             <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style={c.flash ? 'flash' : kind} key={c.id}>
-              <div className="ln-kind ds-eyebrow">{eyebrow}</div>
+              <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span className="ln-kind" style={{ margin: 0 }}>{eyebrow}</span><span style={{ flex: 1 }} />
+                <ReportFlag context={() => stepContext(c, lesson, eyebrow)} />
+              </div>
               {c.flash ? (
                 <FlashCard card={c} flipped={flipped} onFlip={() => { Audio.play('paper'); setFlipped((v) => !v); }} />
-              ) : kind === 'story' && who ? (
-                // история — вырезка из «Вестника»: заголовок, герой с портретом, его слова
-                <Clipping issue={`№ ${String(cardIdx + 1 + (plan.items.findIndex((x) => x.uid === cur.uid) + 1) * 10).padStart(3, '0')}`} rubric={who.role} testid="story-clipping">
-                  <h2 className="ds-h2" style={{ margin: '0 0 10px' }}>{heading}</h2>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <Portrait who={c.who} size={60} />
-                    <div className="ds-text" style={{ flex: 1, fontFamily: 'var(--ds-serif)' }}><b>{who.name}.</b> <Inline nodes={c.text} ctx={noopCtx} /></div>
-                  </div>
-                  {picture}
-                </Clipping>
-              ) : kind === 'listen' ? (
-                <><ListenCard key={c.id} text={plainText(c.text)} title={heading} />{picture}</>
               ) : kind === 'summary' ? (
                 <Card>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -658,15 +669,17 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
         );
       })()}
 
-      {stage === 'work' && inst && (
+      {!feed && stage === 'work' && inst && (
         <>
-          <div className="ln-body"><div className={`ln-inner ${anim.kind === 'shake' && fb && !fb.ok ? 'ds-shake' : ''}`} key={`${inst.uid}:${anim.kind === 'shake' ? anim.k : 0}`}
+          <div className="ln-body"><div className="ln-inner" ref={shakeRef} key={inst.uid}
             data-testid="ex" data-kind={inst.kind} data-answer={testAnswer(inst)}>
             <div className="ln-kind ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {kindName}{inst.review && <span className="ds-badge">повторение</span>}
               {inst.hard && <span className="ds-badge" data-testid="ex-hard">{inst.hard >= 3 ? 'олимпиада' : 'семинар'}</span>}
               {inst.weak && <span className="ds-badge">слабая тема</span>}
               {inst.placeUnit && <span className="ds-badge">{placeOf(inst.placeUnit).place}</span>}
+              <span style={{ flex: 1 }} />
+              <ReportFlag context={() => exerciseContext(inst, { lesson, resp: respRef.current, correct: answerText(inst), mode: run.mode })} />
             </div>
             {inst.retry && !fb && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 14 }} className="ds-sub" data-testid="ex-retry">
@@ -699,6 +712,53 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
         </>
       )}
 
+      {feed && stage !== 'done' && cur && (() => {
+        const list = stage === 'card' ? cardFor(cur) : null;
+        const idx = list ? Math.min(cardIdx, list.length - 1) : 0;
+        const liveCard = list ? list[idx] : null;
+        const last = !list || idx >= list.length - 1;
+        let n = 0;
+        const entries = history.map((h) => (h.type === 'msg'
+          ? { kind: 'msg', key: h.key, card: h.card, index: (n += 1) }
+          : { kind: 'q', key: h.key, node: <FeedAnswer h={h} />, flag: <ReportFlag context={() => exerciseContext(h.inst, { lesson, resp: h.resp, correct: answerText(h.inst) })} /> }));
+        if (liveCard) entries.push({ kind: 'msg', key: `m:${cur.uid}:${idx}`, card: liveCard, index: (n += 1), live: true });
+        else if (stage === 'work' && inst) {
+          entries.push({ kind: 'q', key: `q:${inst.uid}`, live: true, flag: <ReportFlag context={() => exerciseContext(inst, { lesson, resp: respRef.current, correct: answerText(inst) })} />, node: (
+            <div className={anim.kind === 'shake' && fb && !fb.ok ? 'ds-shake' : ''} data-testid="ex" data-kind={inst.kind} data-answer={testAnswer(inst)}>
+              {inst.retry && !fb && <div className="ds-sub" style={{ fontSize: 14, marginBottom: 6 }} data-testid="ex-retry"><RotateCcw size={15} aria-hidden="true" style={{ verticalAlign: -2 }} /> Этот вопрос уже был — ещё раз.</div>}
+              <ExerciseView inst={inst} ctx={termCtx} resp={resp} setResp={(v) => { setResp(v); if (fb && fb.empty) setFb(null); }} locked={!!fb && !fb.empty} fb={fb && !fb.empty ? fb : null} onSubmit={(v) => doCheck(v)} />
+              {fb && !fb.empty && <FeedVerdict inst={inst} fb={fb} live retry={retryable && !inst.noRetry} />}
+            </div>
+          ) });
+        }
+        // аудиоурок: текст сообщений перед отвеченным вопросом открыт сам
+        const lastQ = entries.map((e, i) => (e.kind === 'q' && !e.live ? i : -1)).reduce((a, b) => Math.max(a, b), -1);
+        entries.forEach((e, i) => { if (e.kind === 'msg') e.revealed = i < lastQ || (stage === 'work' && !!fb && !fb.empty && i < entries.length - 1); });
+        const feedGo = () => {
+          Audio.play('paper');
+          setHistory((h) => [...h, { type: 'msg', key: `m:${cur.uid}:${idx}`, card: liveCard }]);
+          if (!last) { setCardIdx(cardIdx + 1); return; }
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
+        };
+        return (
+          <>
+            <div className="ln-body"><div className="ln-inner">
+              <Feed mode={lesson.kind} title={bareTitle(lesson.title)} skipTitle={lesson.title} entries={entries}
+                flagFor={(e) => <ReportFlag context={() => stepContext(e.card, lesson, `сообщение ${e.index}`)} />}
+                picture={(c) => (c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null)} />
+            </div></div>
+            <div className={`ln-foot ${fb && !fb.empty ? `fb ${fb.ok ? 'ok' : 'bad'}` : ''}`} data-testid="lesson-foot"><div className="ln-inner" style={fb && !fb.empty ? { padding: '14px 16px calc(14px + env(safe-area-inset-bottom))' } : undefined}>
+              {liveCard ? <Button wide onClick={feedGo}>Дальше</Button>
+                : fb && !fb.empty ? <Button variant={fb.ok ? 'ok' : 'bad'} wide onClick={next} autoFocus>Дальше</Button>
+                  : <>
+                    {fb && fb.empty && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>Введите число: например, 25 или −0,5.</div>}
+                    {inst && !GAME_KINDS.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>Проверить</Button>}
+                  </>}
+            </div></div>
+          </>
+        );
+      })()}
+
       {term && stage === 'work' && (
         <div className="ln-term-sheet ds-rise" role="dialog" aria-label={`Термин: ${termTitle(term)}`} data-testid="term-sheet">
           <div className="ln-inner">
@@ -714,7 +774,10 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
         <div className="ln-body"><div className="ln-inner" data-testid="lesson-result">
           {(run.mode !== 'check' || result.pass) && <CoinShower seed={result.xp + 1} />}
           {/* итоги — как сертификат: гильош по краям, розетка-печать с Инфлей */}
-          <Card style={{ padding: 0, overflow: 'hidden', textAlign: 'center' }}>
+          <Card style={{ padding: 0, overflow: 'hidden', textAlign: 'center', position: 'relative' }}>
+            <span style={{ position: 'absolute', top: 30, right: 14 }}>
+              <ReportFlag context={() => ({ screen: 'result', mode: run.mode, lesson: lesson ? lesson.id : '', unit: unitId || '', answer: `точность ${Math.round(result.accuracy)}%, ошибок ${result.mistakes}, опыт ${result.xp}` })} />
+            </span>
             <Guilloche height={22} />
             <div style={{ padding: '14px 16px 18px' }}>
               <div className="ds-eyebrow">{lesson ? `${placeOf(unitId).place} · ${LESSON_KIND[lesson.kind]}` : title}</div>
@@ -751,6 +814,33 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
         </div></div>
       )}
     </DsRoot>
+  );
+}
+// контекст шага урока или сообщения ленты для «Сообщить об ошибке»
+const stepContext = (card, lesson, where) => ({
+  screen: 'step', lesson: lesson ? lesson.id : '', unit: lesson ? lesson.unitId : '', kind: lesson ? lesson.kind : '',
+  step: `${where}${card && card.id ? ` · ${card.id}` : ''}${card && card.title ? ` · ${card.title}` : ''}`, prompt: flatText(card && card.text).slice(0, 1500),
+});
+/* Ответ в ленте: плашка верно/неверно остаётся под вопросом. FeedAnswer — отвеченный
+   вопрос из истории: условие, выбор ученика и та же плашка. */
+function FeedVerdict({ inst, fb, live = false, retry = false }) {
+  return (
+    <div className={`ln-verdict ${fb.ok ? 'ok' : 'bad'}`} data-testid={live ? 'ex-feedback' : undefined} data-ok={String(fb.ok)}>
+      <span className="ds-answer-stamp">{fb.ok ? 'Верно' : 'Не совсем'}</span>
+      {!fb.ok && <div style={{ fontSize: 15, marginTop: 8 }}>Правильно: <b>{answerText(inst)}</b></div>}
+      {!fb.ok && fb.why && <div style={{ fontSize: 15, marginTop: 4, lineHeight: 1.5 }} data-testid={live ? 'ex-why' : undefined}><Inline nodes={fb.why} ctx={noopCtx} /></div>}
+      {!fb.ok && !fb.why && inst.explain && <div className="tb-body" style={{ fontSize: 15, marginTop: 4, color: 'inherit' }}><Blocks blocks={inst.explain} ctx={noopCtx} /></div>}
+      {!fb.ok && retry && <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 4 }}>Вопрос вернётся в конце ленты.</div>}
+    </div>
+  );
+}
+function FeedAnswer({ h }) {
+  const inst = { ...h.inst, _sel: null, _setSel: () => {}, _resp: { current: h.resp } };
+  return (
+    <div data-kind={inst.kind}>
+      <ExerciseView inst={inst} resp={h.resp} setResp={() => {}} locked fb={h.fb} />
+      <FeedVerdict inst={inst} fb={h.fb} />
+    </div>
   );
 }
 /* Разбор по шагам — на уровне «по шагам» (точность ниже 60%): решение открывается по одному
@@ -1064,7 +1154,16 @@ function PracticeView({ learn, onStart, onOpenBook }) {
 /* ------------------------------ ПРОФИЛЬ ------------------------------
    Личные рекорды, альбом марок (пройденный юнит — марка с его зданием), цель дня,
    статистика, учебник, аккаунт и настройки: тёмная тема, музыка, звуки ответов. */
-function ProfileView({ learn, update, onOpenBook, onThemeChange, onShop, onStart }) {
+function ProfileView({ learn, update, onOpenBook, onThemeChange, onShop, onStart, onReports }) {
+  // владельцы (OWNER_LOGINS на сервере) видят сообщения об ошибках
+  const [owner, setOwner] = useState(false);
+  useEffect(() => {
+    const a = loadAccount();
+    if (!a) return undefined;
+    let alive = true;
+    reportsMe(a.token).then((r) => { if (alive) setOwner(!!r.owner); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
   const pct = (x) => `${Math.round(x * 100)}%`;
@@ -1142,6 +1241,8 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onShop, onStart
       </Card>
       <MenuCard icon={BookOpenText} tone="#3E6FA8" title="Учебник" data-testid="prof-book" data-nav-target="book:toc" right={arrow} text="Все главы, формулы и задачи — как справочник" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'toc' }); }} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
+      {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
+        text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
       <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход" onClick={() => setAccount(true)} />
       <Card style={{ margin: '12px 0' }} data-testid="prof-settings">
         <div className="ds-h3" style={{ marginBottom: 4 }}>Настройки</div>
@@ -1170,6 +1271,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   const [book, setBook] = useState(null);
   const [bookKey, setBookKey] = useState(0);
   const [shop, setShop] = useState(false);
+  const [reports, setReports] = useState(false);
   const [chest, setChest] = useState(null);
   // утренний экран серии: один раз в день, при первом открытии Пути, если серия уже идёт
   const [morning, setMorning] = useState(() => {
@@ -1180,7 +1282,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   });
   const openBook = (page, resume = false) => { setBook({ page, resume }); setBookKey((k) => k + 1); window.scrollTo(0, 0); };
   // смена вкладки закрывает подэкраны
-  useEffect(() => { setBook(null); setSheet(null); setShop(false); setChest(null); }, [tab]);
+  useEffect(() => { setBook(null); setSheet(null); setShop(false); setChest(null); setReports(false); }, [tab]);
   // вернулись из Лаборатории или партии, открытой из учебника, — снова в учебник, на то же место
   useEffect(() => { if (reopenBook) { openBook(null, true); onBookReopened(); } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenBook]);
@@ -1190,19 +1292,22 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   return (
     <DsRoot theme={dsThemeId()} accent={accent} page className="ln-root">
       <ArtStyle />
-      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
-          <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} />
+          <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers}
+            reportSlot={(cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />} />
         </div>
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
-      <div inert={!!run || !!sheet || !!book || shop || !!chest || morning} style={book || shop ? { display: 'none' } : undefined}>
+      <div inert={!!run || !!sheet || !!book || shop || !!chest || morning || reports} style={book || shop || reports ? { display: 'none' } : undefined}>
         {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onShop={openShop} onChest={setChest}
           visible={!run && !sheet && !book && !shop && !chest && !morning} />}
         {tab === 'practice' && <PracticeView learn={learn} onStart={start} onOpenBook={openBook} />}
-        {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onShop={openShop} onStart={start} />}
+        {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onShop={openShop} onStart={start}
+          onReports={() => { setReports(true); window.scrollTo(0, 0); }} />}
       </div>
+      {reports && <ReportsView onBack={() => { Audio.play('paper'); setReports(false); }} />}
       {shop && <div inert={!!run}><ShopView learn={learn} update={update} onBack={() => { Audio.play('paper'); setShop(false); }} /></div>}
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update} onClose={() => setChest(null)} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
