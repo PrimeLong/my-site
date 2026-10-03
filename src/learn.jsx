@@ -1074,6 +1074,45 @@ function Atlas({ states, onPick }) {
 /* Остановки юнита на дороге: жетоны вдоль извилистой дороги. Пройденная — в цвете юнита с
    сургучной печатью, текущая — с золотым кольцом и флажком «Вы здесь», закрытая — пунктир. */
 const ROW = 118; const ZIG = [0, 64, 92, 64, 0, -64, -92, -64];
+/* Убранство дороги: у каждой остановки, на другой стороне от неё, — дерево, фонарь, куст или
+   верстовой столб с номером урока; в начале юнита — указатель с названием места. У пройденных
+   остановок убранство в цвете юнита («дорога оживает»), у закрытых — серое. Чисто украшение:
+   скрыто от чтения с экрана и не ловит нажатий. */
+function Prop({ kind, x, y, alive, no }) {
+  const ink = alive ? 'var(--u-ink)' : 'var(--ds-ink3)';
+  const fill = alive ? 'var(--u)' : 'var(--ds-rule2)';
+  const o = alive ? 1 : 0.55;
+  return (
+    <g transform={`translate(${x},${y})`} opacity={o} className="ln-prop" data-prop={kind}>
+      {kind === 'tree' && <>
+        <line x1="0" y1="2" x2="0" y2="22" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
+        <circle cx="0" cy="-8" r="13" fill={fill} fillOpacity=".22" stroke={ink} strokeWidth="1.6" />
+        <circle cx="-7" cy="-2" r="7" fill={fill} fillOpacity=".18" stroke={ink} strokeWidth="1.2" />
+        <path d="M-6 -12 l4 4 M2 -14 l4 4 M-2 -4 l4 4" stroke={ink} strokeWidth="1" opacity=".7" />
+        <line x1="-9" y1="22" x2="9" y2="22" stroke={ink} strokeWidth="1.2" opacity=".6" />
+      </>}
+      {kind === 'lamp' && <>
+        <line x1="0" y1="-16" x2="0" y2="22" stroke={ink} strokeWidth="2" strokeLinecap="round" />
+        <path d="M0 -16 q8 0 10 6" fill="none" stroke={ink} strokeWidth="1.6" />
+        <circle cx="10" cy="-7" r="4" fill={alive ? 'var(--ds-gold)' : 'none'} fillOpacity=".8" stroke={ink} strokeWidth="1.4" />
+        {alive && <circle cx="10" cy="-7" r="9" fill="var(--ds-gold)" opacity=".18" />}
+        <line x1="-6" y1="22" x2="6" y2="22" stroke={ink} strokeWidth="1.6" />
+      </>}
+      {kind === 'bush' && <>
+        <circle cx="-8" cy="14" r="8" fill={fill} fillOpacity=".2" stroke={ink} strokeWidth="1.3" />
+        <circle cx="6" cy="12" r="10" fill={fill} fillOpacity=".24" stroke={ink} strokeWidth="1.3" />
+        <circle cx="-1" cy="6" r="7" fill={fill} fillOpacity=".2" stroke={ink} strokeWidth="1.2" />
+        <line x1="-16" y1="22" x2="16" y2="22" stroke={ink} strokeWidth="1.2" opacity=".6" />
+      </>}
+      {kind === 'mile' && <>
+        <path d="M-9 22 V2 q0 -9 9 -9 q9 0 9 9 V22 Z" fill="var(--ds-card)" stroke={ink} strokeWidth="1.6" />
+        <text x="0" y="12" textAnchor="middle" fontSize="10" fontWeight="700" fill={ink} fontFamily="var(--ds-serif)">{no}</text>
+        <line x1="-13" y1="22" x2="13" y2="22" stroke={ink} strokeWidth="1.2" />
+      </>}
+    </g>
+  );
+}
+const PROPS = ['tree', 'lamp', 'bush', 'mile'];
 function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, chest = null, onChest }) {
   const W = 300;
   // пройденный юнит — в конце дороги сундук
@@ -1088,6 +1127,12 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
         <path d={seg(pts)} fill="none" stroke="var(--ds-card)" strokeWidth="11" strokeLinecap="round" />
         <path d={seg(pts)} fill="none" stroke="var(--ds-rule2)" strokeWidth="1.5" strokeDasharray="6 7" />
         {lastDone >= 0 && <path d={seg(pts.slice(0, lastDone + 2))} fill="none" stroke="var(--u-ink)" strokeWidth="2.5" strokeDasharray="6 7" />}
+        {st.lessons.map((l, i) => {
+          // на другой стороне дороги от остановки; у остановки посередине — по очереди слева и справа
+          const z = ZIG[i % ZIG.length];
+          const left = z > 0 || (z === 0 && i % 8 === 0);
+          return <Prop key={l.id} kind={PROPS[i % PROPS.length]} x={left ? 30 : W - 30} y={pts[i][1] - 4} alive={l.done} no={l.no} />;
+        })}
       </svg>
       {st.lessons.map((l, i) => {
         const isCur = st.current && st.current.id === l.id;
@@ -1146,6 +1191,9 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
   const first = states.find((x) => x.current) || states[0];
   const soon = UNITS.map((u, k) => ({ u, no: k + 1 })).filter(({ u }) => !states.some((x) => x.course.id === u.id));
   const [soonOpen, setSoonOpen] = useState(false);
+  /* Пройденный юнит с открытым сундуком сворачивается в одну карточку: новые модули не уезжают
+     вниз длинной лентой. Развернуть — по кнопке, на время этого экрана. */
+  const [unfolded, setUnfolded] = useState({});
   const resumes = new Set(resumeIds());
   /* Замок открывшегося урока анимируется один раз, когда Путь снова на виду (урок и билет
      его закрывают). При первом запуске уже открытое — без анимации. */
@@ -1173,8 +1221,10 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
       <Atlas states={states} onPick={pick} />
-      {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }) => (
-        <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} style={{ '--u': pl.color, scrollMarginTop: 12 }}>
+      {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }) => {
+        const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];
+        return (
+        <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} style={{ '--u': pl.color, scrollMarginTop: 12 }}>
           {/* шапка юнита — как купюра своего достоинства: гильош, номер, место и здание */}
           <Card className="ln-bill">
             <Guilloche height={16} opacity={0.45} />
@@ -1190,14 +1240,19 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
             <div className="ln-bill-btns">
               <Button variant="secondary" small icon={BookOpenText} data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }}>Гайд юнита</Button>
               {!st.complete && <Button variant="secondary" small icon={Sparkles} data-testid="unit-check" data-nav-target={`check:${u.id}`} onClick={() => { Audio.prime(); onStart({ mode: 'check', unitId: u.id }); }}>Проверка юнита</Button>}
+              {st.complete && hasClaim(learn, chestKey(u.id)) && (
+                <Button variant="ghost" small icon={ChevronRight} data-testid="unit-fold" aria-expanded={!folded}
+                  onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: !m[u.id] })); }}>{folded ? `Уроки: ${st.lessons.length}` : 'Свернуть'}</Button>
+              )}
               {st.complete && <span className="ds-sub" style={{ fontSize: 13, alignSelf: 'center' }} data-testid="unit-diamonds"><Gem size={14} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> алмазов: {st.lessons.filter((l) => l.diamond).length} из {st.lessons.length}</span>}
             </div>
             <Guilloche height={16} opacity={0.45} />
           </Card>
-          <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
-            chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />
+          {!folded && <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
+            chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />}
         </section>
-      ))}
+        );
+      })}
       {soon.length > 0 && (
         <Card flat style={{ padding: 0, marginTop: 8 }} data-testid="path-soon">
           <button type="button" className="ln-soon-head" aria-expanded={soonOpen} onClick={() => { Audio.play('paper'); setSoonOpen((v) => !v); }}>

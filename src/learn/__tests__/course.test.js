@@ -16,14 +16,14 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-const PATH = ['scarcity', 'supply-demand'];
+const PATH = ['scarcity', 'supply-demand', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — юниты 1 и 2, с самого начала курса', () => {
+it('на Пути уроками — юниты 1–3, с самого начала курса', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
-  expect(UNITS.slice(0, 2).map((u) => u.id)).toEqual(PATH);
+  expect(UNITS.slice(0, 3).map((u) => u.id)).toEqual(PATH);
 });
 
 // девять исходных видов упражнений — в каждом юните Пути
@@ -536,6 +536,8 @@ describe('мини-игра: одна на урок, карточки двига
         expect(ROUND_EFFECTS[g.chart], `${g.id}: ${it.raw}`).toContain(it.effect);
         if (g.chart === 'market') expect(it.side, `${it.raw}: ${it.effect}`).toBe(PRICE[it.effect]);
         if (g.chart === 'ppf') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['x', 'y'].includes(it.effect) ? 'left' : 'right');
+        // бюджет: доход сдвигает линию (влево), цена поворачивает (вправо)
+        if (g.chart === 'budget') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['out', 'in'].includes(it.effect) ? 'left' : 'right');
       });
       // эффект виден на графике: каждая сторона и оба направления встречаются
       const effs = new Set(g.items.map((it) => it.effect));
@@ -578,7 +580,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });

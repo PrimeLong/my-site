@@ -386,16 +386,18 @@ function parseExercise(kind, attrs, body) {
   return ex;
 }
 
-/* :::round вид id=… title="…" chart=market|ppf — мини-игра урока, одна на урок, на время:
+/* :::round вид id=… title="…" chart=market|ppf|budget — мини-игра урока, одна на урок, на время:
      swipe left="…" right="…" — карточки «- текст >> left|right [эффект]» смахнуть влево или вправо;
      rush up="…" down="…" — заголовки «- текст >> up|down [эффект]».
    seconds — сколько длится игра (по умолчанию 60). Эффект — что карточка делает с графиком игры:
    на рынке (chart=market a b c d — как у упражнений с графиком) — сдвиг кривой D+ D- S+ S-;
    на КПВ (chart=ppf) — out / in (кривая наружу или внутрь), ox / oy и ix / iy (наружу или внутрь
-   только по оси хлеба или станков), x / y (точка едет по кривой к хлебу или к станкам).
+   только по оси хлеба или станков), x / y (точка едет по кривой к хлебу или к станкам);
+   на бюджетной линии (chart=budget) — out / in (доход вырос или упал: сдвиг параллельно),
+   ox / ix и oy / iy (товар X или Y подешевел или подорожал: поворот).
    Текст до пунктов — условие игры. */
 const ROUND_KINDS = ['swipe', 'rush'];
-export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'] };
+export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
   if (!attrs.id) throw new Error(`У игры ${kind} нет id`);

@@ -271,13 +271,17 @@ const testing = () => typeof window !== 'undefined' && !!window.__INFLATIA_TEST_
    ответ — очки с множителем серии (comboOf), ошибка серию обнуляет. Каждая карточка меняет
    график игры — так видно, что делает с рынком заголовок или со страной решение:
    chart=market — кривая спроса или предложения сдвигается, цена едет, внизу — её история;
-   chart=ppf — КПВ растёт или сжимается, точка страны скользит по кривой.
+   chart=ppf — КПВ растёт или сжимается, точка страны скользит по кривой;
+   chart=budget — бюджетная линия: доход сдвигает её параллельно, цена товара поворачивает.
    Ответ — смахнуть карточку (swipe), кнопки или стрелки клавиатуры. */
 const EFFECT_LABEL = {
   'D+': 'Спрос вправо', 'D-': 'Спрос влево', 'S+': 'Предложение вправо', 'S-': 'Предложение влево',
   out: 'КПВ наружу', in: 'КПВ внутрь', ox: 'КПВ наружу по хлебу', oy: 'КПВ наружу по станкам', ix: 'КПВ внутрь по хлебу', iy: 'КПВ внутрь по станкам',
   x: 'Точка — к хлебу', y: 'Точка — к станкам',
 };
+const BUDGET_LABEL = { out: 'Доход вырос', in: 'Доход упал', ox: 'Товар X дешевле', ix: 'Товар X дороже', oy: 'Товар Y дешевле', iy: 'Товар Y дороже' };
+const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : EFFECT_LABEL[eff]);
+const BUDGET0 = { I: 100, px: 1.25, py: 1.25 };
 const MARKET_STEP = 16;
 // состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
 function applyEffect(chart, st, eff) {
@@ -285,6 +289,18 @@ function applyEffect(chart, st, eff) {
     const d = { D: st.D * 0.6, S: st.S * 0.6 };
     if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
     return d;
+  }
+  if (chart === 'budget') {
+    // доход и цены понемногу возвращаются к исходным, чтобы линия не уезжала за край
+    const back = (key, v) => BUDGET0[key] + (v - BUDGET0[key]) * 0.85;
+    let { I, px, py } = { I: back('I', st.I), px: back('px', st.px), py: back('py', st.py) };
+    if (eff === 'out') I = clampN(I * 1.2, 60, 160);
+    if (eff === 'in') I = clampN(I / 1.2, 60, 160);
+    if (eff === 'ox') px = clampN(px / 1.25, 0.9, 2.6);
+    if (eff === 'ix') px = clampN(px * 1.25, 0.9, 2.6);
+    if (eff === 'oy') py = clampN(py / 1.25, 0.9, 2.6);
+    if (eff === 'iy') py = clampN(py * 1.25, 0.9, 2.6);
+    return { I, px, py };
   }
   const k = (v) => 100 + (v - 100) * 0.85;
   let { rx, ry, t } = { rx: k(st.rx), ry: k(st.ry), t: st.t };
@@ -294,7 +310,7 @@ function applyEffect(chart, st, eff) {
   if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
   return { rx, ry, t };
 }
-const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : { rx: 100, ry: 100, t: 0.5 });
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : { rx: 100, ry: 100, t: 0.5 });
 // плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
 function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
@@ -314,6 +330,28 @@ function useTween(target, ms = 420) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(target), reduced]);
   return v;
+}
+// бюджетная линия игры: от «всё на Y» до «всё на X», закрашены доступные наборы; пунктир — с чего начинали
+function BudgetGameChart({ st }) {
+  const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12; const M = 170;
+  const sx = (v) => L + (Math.min(v, M) / M) * (W - L - R); const sy = (v) => H - B - (Math.min(v, M) / M) * (H - B - T);
+  const xm = st.I / st.px; const ym = st.I / st.py;
+  const x0 = BUDGET0.I / BUDGET0.px; const y0 = BUDGET0.I / BUDGET0.py;
+  return (
+    <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Бюджетная линия: всё на X — ${Math.round(xm)}, всё на Y — ${Math.round(ym)}`} data-testid="game-chart" data-chart="budget"
+      data-state={JSON.stringify({ x: Math.round(xm), y: Math.round(ym) })}>
+      <path d={`M${sx(0)},${sy(0)}L${sx(0)},${sy(ym)}L${sx(xm)},${sy(0)}Z`} fill="var(--u)" opacity=".12" />
+      <line x1={sx(0)} y1={sy(y0)} x2={sx(x0)} y2={sy(0)} stroke="var(--ds-ink3)" strokeWidth="2" strokeDasharray="5 5" />
+      <line x1={sx(0)} y1={sy(ym)} x2={sx(xm)} y2={sy(0)} stroke="var(--u)" strokeWidth="4" strokeLinecap="round" />
+      <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <text x={W - R} y={H - 8} textAnchor="end" className="lp-ax">X</text>
+      <text x={L - 6} y={T + 8} textAnchor="end" className="lp-ax">Y</text>
+      <circle cx={sx(xm)} cy={sy(0)} r="4.5" fill="var(--u)" /><circle cx={sx(0)} cy={sy(ym)} r="4.5" fill="var(--u)" />
+      <text x={sx(xm)} y={H - B - 8} textAnchor="middle" className="lp-ax">{Math.round(xm)}</text>
+      <text x={L + 8} y={sy(ym) + 4} className="lp-ax">{Math.round(ym)}</text>
+    </svg>
+  );
 }
 // КПВ игры: четверть эллипса с концами rx (хлеб) и ry (станки); пунктир — с чего начинали
 function PpfGameChart({ st }) {
@@ -392,7 +430,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
     setTimeout(() => setFlash(null), 260);
     if (item.effect) {
       const ns = applyEffect(inst.chart, st, item.effect);
-      setSt(ns); setTag({ k: next.length, text: EFFECT_LABEL[item.effect] });
+      setSt(ns); setTag({ k: next.length, text: effectLabel(inst.chart, item.effect) });
       if (inst.market) setPrices((p) => [...p, equilibrium({ ...inst.market, dA: ns.D, dC: ns.S }).p].slice(-24));
     }
     if ((idx + 1) % deck.current.length === 0) {
@@ -413,7 +451,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
   const chart = inst.chart === 'market'
     ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок кофе в игре" /><PriceTicker prices={prices} /></>
-    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : null;
+    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (
