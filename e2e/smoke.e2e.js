@@ -1837,7 +1837,7 @@ test('вход: программа — вступительный тест, су
   // лавка — отдельная вкладка: курс дня и график, заморозка по курсу, наряд Инфли (монеты — как будто накоплены)
   await page.evaluate(() => {
     const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
-    p.learn.coins = { ...(p.learn.coins || {}), '2026-01-01': 500 };
+    p.learn.coins = { ...p.learn.coins, '2026-01-01': 500 };
     localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
   });
   await page.reload({ waitUntil: 'networkidle' });
