@@ -3,14 +3,17 @@
 import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
-  UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildLegend, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf,
+  UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
+  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
 import { collectMath, collectBlocks } from '../../textbook/markdown.js';
 import { CHAPTER_BLOCKS } from '../../textbook/content.js';
 import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
+import { parseBlocks, ROUND_EFFECTS } from '../../textbook/markdown.js';
+import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-state.js';
+import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
 const PATH = ['scarcity', 'supply-demand'];
@@ -24,7 +27,8 @@ it('на Пути уроками — юниты 1 и 2, с самого нача
 });
 
 // девять исходных видов упражнений — в каждом юните Пути
-const CORE = ['choice', 'gap', 'tf', 'order', 'match', 'sort', 'calc', 'shift', 'news'];
+// «собери цепочку» убрана: порядок слов проверял русский язык, а не экономику
+const CORE = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news'];
 // уроки из шагов: шаг — одна мысль, после каждого — вопрос
 const STEPPED = ['intro', 'story', 'listen'];
 const stepOk = (c) => {
@@ -46,7 +50,8 @@ describe.each(PATH)('юнит %s', (unitId) => {
   it('«Знакомство», «История», «Слушай»: экран — одна мысль (1–3 предложения, до 45 слов, график, картинка или герой), после каждого — вопрос', () => {
     stepped.forEach((l) => {
       expect(l.inner.length, l.id).toBeGreaterThanOrEqual(l.kind === 'intro' ? 4 : 3);
-      expect(l.inner.length, l.id).toBeLessThanOrEqual(10);
+      expect(l.inner.filter((c) => !c.diamond).length, l.id).toBeLessThanOrEqual(10);
+      expect(l.inner.filter((c) => c.diamond).length, l.id).toBeLessThanOrEqual(3);
       l.inner.forEach((c, i) => {
         const { words, sentences } = stepOk(c);
         expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
@@ -64,9 +69,11 @@ describe.each(PATH)('юнит %s', (unitId) => {
       expect(Object.keys(buildLesson(l.id, seeded(1)).cards), l.id).toEqual([]);
     });
   });
-  it('все девять исходных видов упражнений есть хотя бы по разу', () => {
+  it('все восемь исходных видов упражнений есть хотя бы по разу, «собери цепочку» — нет', () => {
     const kinds = new Set(unit.lessons.flatMap((l) => l.exercises.map((e) => e.kind)));
     CORE.forEach((k) => expect(kinds, k).toContain(k));
+    expect(kinds.has('order')).toBe(false);
+    expect(kinds.has('chain')).toBe(false);
   });
   it('в практике 10–15 упражнений, повторение — около трети; «Знакомство» — по порядку и без повторения', () => {
     practice.forEach((l) => {
@@ -84,16 +91,18 @@ describe.each(PATH)('юнит %s', (unitId) => {
     });
     stepped.forEach((l) => {
       const { items, cards } = buildLesson(l.id, seeded(3));
-      expect(items.map((it) => it.id)).toEqual(l.exercises.map((e) => e.id));
+      // алмазные шаги и вопросы после них — только на алмазном уровне
+      expect(items.map((it) => it.id)).toEqual(l.exercises.filter((e) => !e.diamond).map((e) => e.id));
       expect(items.some((it) => it.review)).toBe(false);
-      expect(Object.values(cards).flat().length).toBe(l.inner.length);
+      expect(Object.values(cards).flat().length).toBe(l.inner.filter((c) => !c.diamond).length);
     });
   });
-  it('урок укладывается в 3–5 минут по оценке времени (уроки из шагов и мини-игра — от двух минут)', () => {
+  it('урок укладывается в 3–5 минут по оценке времени (уроки из шагов — от двух минут, мини-игра — ровно минута)', () => {
     unit.lessons.forEach((l) => {
       for (let s = 1; s <= N; s += 1) {
         const { seconds } = buildLesson(l.id, seeded(s));
-        expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual([...STEPPED, 'game'].includes(l.kind) ? 120 : 180);
+        if (l.kind === 'game') { expect(seconds, l.id).toBe(60); continue; }
+        expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual(STEPPED.includes(l.kind) ? 120 : 180);
         expect(seconds, `${l.id}: ${seconds} с`).toBeLessThanOrEqual(300);
       }
     });
@@ -122,14 +131,6 @@ describe('упражнения: ровно один верный ответ', ()
           break;
         }
         case 'tf': expect(check(inst, inst.answer).ok).toBe(true); expect(check(inst, !inst.answer).ok).toBe(false); break;
-        case 'order': {
-          expect(inst.items.length).toBeGreaterThanOrEqual(4); expect(inst.items.length).toBeLessThanOrEqual(5);
-          expect(new Set(inst.items.map((x) => x.raw)).size).toBe(inst.items.length);
-          expect(check(inst, inst.solution).ok).toBe(true);
-          expect(check(inst, inst.items.map((x) => x.key)).ok, 'показанный порядок не должен быть верным').toBe(false);
-          expect(check(inst, [...inst.solution].reverse()).ok).toBe(false);
-          break;
-        }
         case 'match': {
           expect(inst.left.length).toBeGreaterThanOrEqual(3);
           expect(new Set(inst.left.map((x) => x.raw)).size).toBe(inst.left.length);
@@ -225,16 +226,12 @@ describe('упражнения: ровно один верный ответ', ()
           inst.items.forEach((it) => expect(sides).toContain(it.side));
           sides.forEach((sd) => expect(inst.items.some((it) => it.side === sd), `${ex.id}: нет карточек «${sd}»`).toBe(true));
           expect(new Set(inst.items.map((x) => x.raw)).size).toBe(inst.items.length);
-          const n = inst.items.length;
-          expect(check(inst, { right: n, answered: n, total: n, done: true }).ok).toBe(true);
-          expect(check(inst, { right: Math.floor(n / 2), answered: n, total: n, done: true }).ok).toBe(false);
-          expect(check(inst, { right: n, answered: n, total: n }).ok, 'раунд не окончен').toBe(false);
-          break;
-        }
-        case 'chain': {
-          expect(check(inst, { seq: inst.solution, done: true }).ok).toBe(true);
-          expect(check(inst, { seq: inst.solution, done: true, timeout: true }).ok).toBe(false);
-          expect(check(inst, { seq: inst.items.map((x) => x.key), done: true }).ok, 'показанный порядок не должен быть верным').toBe(false);
+          // карточек хватает, чтобы колода не повторялась каждые несколько секунд
+          expect(inst.items.length, ex.id).toBeGreaterThanOrEqual(12);
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS, done: true }).ok).toBe(true);
+          expect(check(inst, { right: GAME_PASS - 1, answered: GAME_PASS - 1, done: true }).ok, 'меньше восьми верных').toBe(false);
+          expect(check(inst, { right: GAME_PASS, answered: 12, done: true }).ok, 'точность ниже 70%').toBe(false);
+          expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
         default: throw new Error(inst.kind);
@@ -243,9 +240,9 @@ describe('упражнения: ровно один верный ответ', ()
     }
   });
   it('ready: «Проверить» доступна, только когда ответ собран целиком', () => {
-    const ord = instantiate(Object.values(EXERCISES).find((e) => e.kind === 'order'), seeded(3));
-    expect(ready(ord, [ord.items[0].key])).toBe(false);
-    expect(ready(ord, ord.solution)).toBe(true);
+    const m = instantiate(Object.values(EXERCISES).find((e) => e.kind === 'match'), seeded(3));
+    expect(ready(m, { [m.left[0].key]: m.right[0].key })).toBe(false);
+    expect(ready(m, Object.fromEntries(m.left.map((l) => [l.key, l.key])))).toBe(true);
   });
 });
 
@@ -274,14 +271,18 @@ describe.each(PATH)('юнит %s: полноценный — все восемь
     expect(unit.lessons[unit.lessons.length - 1].kind).toBe('summary');
     expect(unit.lessons[unit.lessons.length - 2].kind).toBe('review');
   });
-  it('«Слова»: восемь слов, три плитки, пары на время; «Мини-игра»: три раунда; «История» — голосами героев', () => {
+  it('«Слова»: восемь слов, три плитки, пары на время; «Мини-игра»: одна игра с графиком; «История» — голосами героев', () => {
     const [w] = of('words');
     expect(w.terms.length).toBe(8);
     const { items } = buildLesson(w.id, seeded(2));
     expect(items.filter((i) => i.kind === 'tiles').length).toBe(3);
     expect(items.filter((i) => i.kind === 'match').length).toBe(2);
     const [g] = of('game');
-    expect(buildLesson(g.id, seeded(4)).items.map((i) => i.kind)).toEqual(['swipe', 'rush', 'chain']);
+    const game = buildLesson(g.id, seeded(4)).items;
+    expect(game.length).toBe(1);
+    expect(GAME_KINDS).toContain(game[0].kind);
+    expect(game[0].chart).toBeTruthy();
+    game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
     const [st] = of('story');
     st.inner.forEach((c) => expect(CAST[c.idea.who], c.idea.id).toBeTruthy());
     expect(new Set(st.inner.map((c) => c.idea.who)).size).toBeGreaterThanOrEqual(3);
@@ -323,8 +324,8 @@ describe('юнит «Спрос и предложение»: все виды у�
     expect(unit.lessons.map((l) => l.kind)).toEqual(['intro', 'practice', 'words', 'intro', 'practice', 'story', 'listen', 'game', 'review', 'summary']);
     unit.lessons.forEach((l) => expect(LESSON_KIND[l.kind]).toBeTruthy());
   });
-  it('все виды упражнений и раунды мини-игр есть в юните', () => {
-    const kinds = new Set(unit.lessons.flatMap((l) => l.exercises.map((e) => e.kind)));
+  it('все виды упражнений есть в двух юнитах вместе (мини-игра «смахни» — в юните 1, «60 секунд» — здесь)', () => {
+    const kinds = new Set(PATH.flatMap((id) => UNIT_BY_ID[id].lessons.flatMap((l) => l.exercises.map((e) => e.kind))));
     Object.keys(KIND_LABEL).forEach((k) => expect(kinds, k).toContain(k));
   });
   it('«Слова»: карточка на каждое слово, потом плитки, пары на время и «какой это термин?»', () => {
@@ -346,15 +347,16 @@ describe('юнит «Спрос и предложение»: все виды у�
     // в истории — новые взаимодействия: цена ползунком, точка равновесия и кривая пальцем
     expect(st.exercises.map((e) => e.kind)).toEqual(expect.arrayContaining(['price', 'point', 'curve']));
   });
-  it('«Мини-игра»: смахни, 60 секунд, цепочка на время; раунды не возвращаются как ошибки', () => {
+  it('«Мини-игра»: одна игра на минуту, рынок с кривыми; не возвращается как ошибка', () => {
     const [g] = of('game');
     const { items } = buildLesson(g.id, seeded(4));
-    expect(items.map((i) => i.kind)).toEqual(['swipe', 'rush', 'chain']);
-    items.forEach((i) => expect(i.noRetry).toBe(true));
-    const rush = items[1];
+    expect(items.map((i) => i.kind)).toEqual(['rush']);
+    const rush = items[0];
+    expect(rush.noRetry).toBe(true);
     expect(rush.seconds).toBe(60);
-    expect(gameOk(rush, { right: 6, answered: 8, done: true })).toBe(true);
-    expect(gameOk(rush, { right: 5, answered: 5, done: true }), 'меньше шести верных').toBe(false);
+    expect(rush.chart).toBe('market');
+    expect(gameOk(rush, { right: 8, answered: 11, done: true })).toBe(true);
+    expect(gameOk(rush, { right: 7, answered: 7, done: true }), 'меньше восьми верных').toBe(false);
   });
   it('«Повторение»: ошибки юнита первыми, раундов игр нет, 12–15 упражнений из прошлых уроков', () => {
     const [r] = of('review');
@@ -386,15 +388,13 @@ describe('юнит «Спрос и предложение»: все виды у�
   });
   it('проверка юнита и практика ошибок не берут раунды мини-игр', () => {
     for (let s = 1; s <= N; s += 1) buildUnitCheck(PILOT, seeded(s)).items.forEach((i) => expect(GAME_KINDS).not.toContain(i.kind));
-    expect(buildPractice(['sd-g-swipe', 'sd-e2-petrol']).items.map((i) => i.of || i.id)).toEqual(['sd-e2-petrol']);
+    expect(buildPractice(['sd-g-market', 'sd-e2-petrol']).items.map((i) => i.of || i.id)).toEqual(['sd-e2-petrol']);
   });
 });
 
-describe('проверка юнита, уровень легенды, практика, состояние пути', () => {
-  it('проверка юнита: 10 упражнений, в том числе расчёты с новыми числами; легенда — задачи уровней 2–3', () => {
+describe('проверка юнита, практика, состояние пути', () => {
+  it('проверка юнита: 10 упражнений, в том числе расчёты с новыми числами', () => {
     PATH.forEach((id) => {
-      const lg = buildLegend(id, seeded(1));
-      expect(lg.items.length, id).toBeGreaterThanOrEqual(3);
       expect(buildUnitCheck(id, seeded(3)).items.length, id).toBe(10);
     });
     const a = buildUnitCheck(PILOT, seeded(1)); const b = buildUnitCheck(PILOT, seeded(2));
@@ -402,8 +402,6 @@ describe('проверка юнита, уровень легенды, практ
     expect(a.items.some((it) => it.variant)).toBe(true);
     const va = a.items.filter((it) => it.variant).map((it) => it.answer).join(); const vb = b.items.filter((it) => it.variant).map((it) => it.answer).join();
     expect(va).not.toBe(vb);
-    const lg = buildLegend(PILOT, seeded(1));
-    expect(lg.items.length).toBeGreaterThanOrEqual(3);
   });
   it('путь: следующий урок открывается после предыдущего, проверка юнита открывает все', () => {
     let learn = emptyLearn();
@@ -504,5 +502,186 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(mergeLearn(a, b)).toEqual(mergeLearn(b, a));
     expect(normalizeLearn({ goal: 99, xp: { bad: 5, '2026-09-30': -3 }, types: { calc: { n: 2, ok: 9 } } })).toMatchObject({ goal: 1, xp: {}, types: { calc: { n: 2, ok: 2 } } });
     expect(dayOf(at(2026, 9, 30))).toBe('2026-09-30');
+  });
+});
+
+
+/* Мини-игра: эффект карточки — то, что на самом деле происходит с графиком, и он согласован
+   с верной стороной: на рынке рост спроса или падение предложения поднимает цену; на КПВ
+   сдвиг кривой — «сдвиг», точка по кривой — «движение». */
+describe('мини-игра: одна на урок, карточки двигают график', () => {
+  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind));
+  it('в каждом юните Пути — ровно одна игра, на минуту', () => {
+    PATH.forEach((id) => {
+      const g = UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'game');
+      expect(g.length).toBe(1);
+      expect(g[0].exercises.length, id).toBe(1);
+      expect(g[0].exercises[0].seconds).toBe(60);
+    });
+  });
+  it('эффект карточки согласован с верной стороной', () => {
+    const PRICE = { 'D+': 'up', 'D-': 'down', 'S+': 'down', 'S-': 'up' };
+    games.forEach((g) => {
+      expect(ROUND_EFFECTS[g.chart], g.id).toBeTruthy();
+      g.items.forEach((it) => {
+        expect(ROUND_EFFECTS[g.chart], `${g.id}: ${it.raw}`).toContain(it.effect);
+        if (g.chart === 'market') expect(it.side, `${it.raw}: ${it.effect}`).toBe(PRICE[it.effect]);
+        if (g.chart === 'ppf') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['x', 'y'].includes(it.effect) ? 'left' : 'right');
+      });
+      // эффект виден на графике: каждая сторона и оба направления встречаются
+      const effs = new Set(g.items.map((it) => it.effect));
+      expect(effs.size, g.id).toBeGreaterThanOrEqual(4);
+    });
+  });
+  it('очки: 10 за верный ответ, каждые три подряд — множитель выше (не больше ×4), ошибка обнуляет серию', () => {
+    expect(comboOf(0)).toBe(1); expect(comboOf(3)).toBe(2); expect(comboOf(6)).toBe(3); expect(comboOf(30)).toBe(4);
+    expect(gameScore([true, true, true]).score).toBe(30);
+    expect(gameScore([true, true, true, true]).score).toBe(50);
+    expect(gameScore([true, true, true, false, true])).toEqual({ score: 40, bestRun: 3 });
+  });
+  it('разметка: «цепочки» нет ни в упражнениях, ни в играх; эффект без графика — ошибка', () => {
+    expect(() => parseBlocks(':::ex order id=x\nА\n1. раз\n2. два\n:::')).toThrow(/Неизвестное упражнение/);
+    expect(() => parseBlocks(':::round chain id=x\n1. а\n2. б\n3. в\n:::')).toThrow(/Неизвестный раунд/);
+    expect(() => parseBlocks(':::round swipe id=x left=a right=b\n- а >> left out\n- б >> right\n- в >> left\n:::')).toThrow(/эффект/);
+    expect(() => parseBlocks(':::round swipe id=x chart=ppf left=a right=b\n- а >> left\n- б >> right out\n- в >> left x\n:::')).toThrow(/нет эффекта/);
+    const [g] = parseBlocks(':::round rush id=x chart=market a=100 b=2 c=10 d=2 up=a down=b\n- а >> up D+\n- б >> down S+\n- в >> up S-\n:::');
+    expect(g.items.map((i) => i.effect)).toEqual(['D+', 'S+', 'S-']);
+    expect(g.market).toMatchObject({ a: 100, b: 2, c: 10, d: 2 });
+  });
+});
+
+/* Алмазный уровень: пройденный урок — ещё раз, с усложнением. */
+describe('алмазный уровень', () => {
+  const lessons = PATH.flatMap((id) => UNIT_BY_ID[id].lessons);
+  const of = (kind) => lessons.filter((l) => l.kind === kind);
+  it('все упражнения помечены diamond; урок — те же 3–5 минут (игра — 45 секунд)', () => {
+    lessons.forEach((l) => {
+      for (let s = 1; s <= 5; s += 1) {
+        const p = buildLesson(l.id, seeded(s), { diamond: true });
+        expect(p.diamond, l.id).toBe(true);
+        expect(p.items.length, l.id).toBeGreaterThanOrEqual(1);
+        p.items.forEach((it) => expect(it.diamond, `${l.id}: ${it.id}`).toBe(true));
+        if (l.kind === 'game') { expect(p.seconds).toBe(45); continue; }
+        expect(p.seconds, `${l.id}: ${p.seconds} с`).toBeGreaterThanOrEqual(Math.min(180, buildLesson(l.id, seeded(s)).seconds));
+        expect(p.seconds, `${l.id}: ${p.seconds} с`).toBeLessThanOrEqual(330);
+      }
+    });
+  });
+  it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
+    const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
+    expect(deep.map((l) => l.id).sort()).toEqual(['sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    deep.forEach((l) => {
+      const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
+      const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });
+      const gemIds = gemPlan.items.map((it) => it.id);
+      const extra = l.exercises.filter((e) => e.diamond).map((e) => e.id);
+      expect(extra.length, l.id).toBeGreaterThanOrEqual(2);
+      extra.forEach((id) => { expect(plainIds).not.toContain(id); expect(gemIds).toContain(id); });
+      expect(Object.values(gemPlan.cards).flat().length).toBe(l.inner.length);
+      // алмазные упражнения не попадают в повторение и проверки тех, кто их не видел
+      for (let s = 1; s <= 10; s += 1) {
+        buildUnitCheck(l.unitId, seeded(s)).items.forEach((it) => expect(extra).not.toContain(it.of || it.id));
+        UNIT_BY_ID[l.unitId].lessons.filter((x) => x.kind === 'review' || x.kind === 'practice').forEach((x) => buildLesson(x.id, seeded(s)).items.forEach((it) => expect(extra).not.toContain(it.of || it.id)));
+      }
+    });
+  });
+  it('«Практика»: задачи семинарского и олимпиадного уровня, остальное — с новыми числами, где они есть', () => {
+    of('practice').forEach((l) => {
+      for (let s = 1; s <= 5; s += 1) {
+        const { items } = buildLesson(l.id, seeded(s), { diamond: true });
+        const hard = items.filter((it) => it.hard);
+        expect(hard.length, l.id).toBeGreaterThanOrEqual(Math.min(DIAMOND_HARD, 2));
+      }
+    });
+  });
+  it('«Мини-игра» — 45 секунд; «Слова» — пары на 25 секунд; «Повторение» и «Итоги» — с задачами посложнее', () => {
+    of('game').forEach((l) => buildLesson(l.id, seeded(1), { diamond: true }).items.forEach((it) => expect(it.seconds).toBe(45)));
+    of('words').forEach((l) => buildLesson(l.id, seeded(1), { diamond: true }).items.filter((it) => it.kind === 'match').forEach((it) => expect(it.timer).toBe(25)));
+    [...of('review'), ...of('summary')].forEach((l) => expect(buildLesson(l.id, seeded(2), { diamond: true }).items.filter((it) => it.hard).length, l.id).toBeGreaterThanOrEqual(2));
+  });
+  it('алмаз урока — от 80% верных на алмазном уровне; сохраняется при слиянии устройств', () => {
+    let s = finishLesson(emptyLearn(), 'sd-i1', { xp: 10, accuracy: 100, now: 1e12 });
+    expect(s.lessons['sd-i1'].diamond).toBeUndefined();
+    s = finishLesson(s, 'sd-i1', { xp: 10, accuracy: DIAMOND_ACCURACY - 1, now: 2e12, diamond: true });
+    expect(s.lessons['sd-i1'].diamond).toBeUndefined();
+    s = finishLesson(s, 'sd-i1', { xp: 10, accuracy: DIAMOND_ACCURACY, now: 3e12, diamond: true });
+    expect(s.lessons['sd-i1'].diamond).toBe(3e12);
+    // простой повтор алмаз не снимает
+    s = finishLesson(s, 'sd-i1', { xp: 1, accuracy: 50, now: 4e12 });
+    expect(s.lessons['sd-i1'].diamond).toBe(3e12);
+    expect(normalizeLearn(s).lessons['sd-i1'].diamond).toBe(3e12);
+    const other = finishLesson(emptyLearn(), 'sd-i1', { xp: 10, accuracy: 100, now: 5e12 });
+    expect(mergeLearn(s, other).lessons['sd-i1'].diamond).toBe(3e12);
+    expect(mergeLearn(other, s)).toEqual(mergeLearn(s, other));
+    expect(pathState(s)[1].lessons.find((l) => l.id === 'sd-i1').diamond).toBe(true);
+  });
+  it('награда: опыт ×1,5; монеты — 25 за первый алмаз (+10 без ошибок), потом по 5; ниже 80% — ничего', () => {
+    expect(lessonXp({ firstTry: 10, replay: true, diamond: true })).toBe(Math.round((10 * XP.correct + XP.finish) * 1.5));
+    expect(runCoins({ mode: 'lesson', diamond: true, accuracy: 90 })).toBe(COIN.diamond);
+    expect(runCoins({ mode: 'lesson', diamond: true, accuracy: 100 })).toBe(COIN.diamond + COIN.diamondPerfect);
+    expect(runCoins({ mode: 'lesson', diamond: true, gem: true, accuracy: 100 })).toBe(COIN.diamondReplay);
+    expect(runCoins({ mode: 'lesson', diamond: true, accuracy: 70 })).toBe(0);
+    expect(runKey({ mode: 'lesson', lessonId: 'x', replay: true, diamond: true, gem: false })).toBe('d:x');
+    expect(runKey({ mode: 'lesson', lessonId: 'x', replay: true, diamond: true, gem: true })).toBe(null);
+    expect(runKey({ mode: 'lesson', lessonId: 'x', replay: false })).toBe('l:x');
+  });
+});
+
+/* Меньше повторов: упражнение, которое ученик уже видел, идёт в повторение и проверки позже
+   тех, что он видел реже. */
+describe('меньше повторов в юните', () => {
+  it('seen: счётчик встреч, слияние — по максимуму; рекорды игр — лучший счёт', () => {
+    let s = recordSeen(recordSeen(emptyLearn(), 'sd-e2-petrol'), 'sd-e2-petrol');
+    expect(s.seen['sd-e2-petrol']).toBe(2);
+    const t = recordSeen(emptyLearn(), 'sd-e2-petrol');
+    expect(mergeLearn(s, t).seen['sd-e2-petrol']).toBe(2);
+    expect(normalizeLearn({ seen: { ok: 3, bad: -1, '': 2 } }).seen).toEqual({ ok: 3 });
+    s = recordBest(recordBest(s, 'sd-g-market', 120), 'sd-g-market', 90);
+    expect(s.best['sd-g-market']).toBe(120);
+    expect(mergeLearn(s, emptyLearn()).best['sd-g-market']).toBe(120);
+  });
+  it('«Повторение» берёт сначала невиденное: виденные много раз уходят в конец', () => {
+    const [r] = UNIT_BY_ID[PILOT].lessons.filter((l) => l.kind === 'review');
+    const pool = UNIT_BY_ID[PILOT].lessons.filter((l) => l.no < r.no).flatMap((l) => l.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source);
+    // половину пула ученик видел по три раза
+    const seen = Object.fromEntries(pool.filter((_, k) => k % 2 === 0).map((e) => [e.id, 3]));
+    for (let s = 1; s <= 10; s += 1) {
+      const { items } = buildLesson(r.id, seeded(s), { seen });
+      const ids = items.map((it) => it.of || it.id).filter((id) => pool.some((e) => e.id === id));
+      const fresh = ids.filter((id) => !seen[id]).length;
+      // невиденных хватает на весь урок — виденных трижды в нём почти нет
+      expect(fresh / ids.length).toBeGreaterThanOrEqual(0.8);
+    }
+  });
+  it('повторение в «Практике» и проверка юнита тоже предпочитают невиденное', () => {
+    const l = UNIT_BY_ID[PILOT].lessons.filter((x) => x.kind === 'practice').slice(-1)[0];
+    const prev = UNIT_BY_ID[PILOT].lessons.filter((x) => x.no < l.no).flatMap((x) => x.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source);
+    const seen = Object.fromEntries(prev.slice(0, Math.floor(prev.length * 0.6)).map((e) => [e.id, 5]));
+    for (let s = 1; s <= 10; s += 1) {
+      const rev = buildLesson(l.id, seeded(s), { seen }).items.filter((it) => it.review && prev.some((e) => e.id === (it.of || it.id)));
+      rev.forEach((it) => expect(seen[it.of || it.id], it.id).toBeUndefined());
+      const chk = buildUnitCheck(PILOT, seeded(s), { seen }).items.filter((it) => !it.variant);
+      expect(chk.filter((it) => seen[it.id]).length).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
+/* «Слушай»: вопрос не пересказывает эфир; вне эфира (повторение, практика, проверка) перед
+   условием встаёт то, что прозвучало, — иначе вопрос «что эта новость сделает?» без смысла. */
+describe('«Слушай»: вопрос без пересказа, вне эфира — с контекстом', () => {
+  const listen = PATH.flatMap((id) => UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'listen'));
+  it('в радиоуроке условие — без контекста; в повторении — с ним', () => {
+    listen.forEach((l) => l.exercises.filter((e) => e.context).forEach((e) => {
+      const air = instantiate(EXERCISES[e.id], seeded(1));
+      expect(JSON.stringify(air.prompt)).not.toContain(JSON.stringify(e.context).slice(1, -1));
+      const out = instantiate(EXERCISES[e.id], seeded(1), { review: true });
+      expect(out.prompt[0]).toEqual({ type: 'p', inline: e.context });
+    }));
+  });
+  it('у вопросов «Слушай», которые без эфира непонятны, есть context', () => {
+    listen.forEach((l) => l.exercises.filter((e) => !e.diamond).forEach((e) => {
+      const p = plain(e.prompt);
+      if (/эт(а|у|ой|и) новост|по итогам|ведущ|слушател|Аня|Ане/.test(p)) expect(e.context, `${e.id}: «${p}»`).toBeTruthy();
+    }));
   });
 });

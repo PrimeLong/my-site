@@ -23,7 +23,7 @@ export const GOALS = Object.entries(PROFILE_GOAL_LABEL).map(([id, label]) => ({ 
 export const MINUTES = [5, 10, 15, 20];
 
 const CSS = `
-  .wl { max-width: 460px; margin: 0 auto; padding: 18px 20px calc(24px + env(safe-area-inset-bottom)); min-height: 100vh; display: flex; flex-direction: column; }
+  .wl { max-width: 460px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom)); min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; box-sizing: border-box; }
   .wl-top { display: flex; align-items: center; min-height: 44px; }
   .wl-body { flex: 1; display: flex; flex-direction: column; }
   .wl-foot { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }

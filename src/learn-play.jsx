@@ -1,16 +1,16 @@
 /* ВЗАИМОДЕЙСТВИЯ УРОКОВ ЭТАПА 2: рынок на графике (сдвинуть кривую пальцем, двигать цену,
-   пока не исчезнет дефицит, поставить точку равновесия), определение из плиток, раунды
-   мини-игр (смахнуть карточку, 60 секунд, цепочка на время), таймер, карточки видов уроков
+   пока не исчезнет дефицит, поставить точку равновесия), определение из плиток, мини-игра
+   на минуту с живым графиком, таймер, карточки видов уроков
    (слово с оборотом, герой «Истории», «Слушай» с голосом браузера и подсветкой текста).
    Всё своё: SVG и Web Speech API, без библиотек и внешних запросов. При «уменьшить движение»
    карточки не летают, подсветка текста не бежит. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete,
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
-import { equilibrium, marketAxes, qd, qs } from './learn/course.js';
+import { equilibrium, marketAxes, qd, qs, gameScore, comboOf } from './learn/course.js';
 import { CAST } from './learn/cast.js';
 import { useReducedMotion } from './ds-art.jsx';
 import { evalExpr, fmtResult } from './learn/calc.js';
@@ -49,8 +49,26 @@ export const PLAY_CSS = `
   .lp-calc { max-width: 320px; margin: 0 auto; }
   .lp-calc-screen { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 8px; text-align: right; }
   .lp-op { color: var(--u-ink); font-weight: 700; }
+  .lp-game-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 13.5px; margin-top: 4px; }
+  .lp-game-rules span { display: inline-flex; align-items: center; gap: 4px; }
+  .lp-game-hud { display: flex; align-items: center; gap: 8px; margin: -4px 0 2px; }
+  .lp-game-score { font-size: 26px; font-weight: 700; color: var(--u-ink); min-width: 48px; }
+  .lp-combo { font: 700 14px var(--ds-mono); color: #fff; background: var(--u); border-radius: 999px; padding: 2px 9px; animation: lp-combo .35s ease-out; }
+  @keyframes lp-combo { 0% { transform: scale(.4); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  .lp-game-stage { position: relative; }
+  .lp-game .lp-chart { margin: 0 auto 2px; max-width: 340px; }
+  .lp-effect { position: absolute; top: 6px; right: 8px; font: 700 13px var(--ds-sans); background: var(--ds-card); border: 1.5px solid var(--u); color: var(--u-ink); border-radius: 3px; padding: 3px 8px;
+    animation: lp-effect 1.6s ease-out forwards; pointer-events: none; }
+  @keyframes lp-effect { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+  .lp-game-card { min-height: 104px; margin: 8px 0 10px; font-size: 19px; }
+  .lp-game-final { flex-direction: column; gap: 2px; min-height: 0; margin-top: 8px; }
+  .lp-side { margin: 0; text-align: center; font-weight: 700; min-height: 52px; }
+  .lp-pop { position: absolute; left: 50%; top: 0; z-index: 2; font-size: 20px; font-weight: 700; color: var(--ds-ok); animation: lp-pop .7s ease-out forwards; pointer-events: none; }
+  @keyframes lp-pop { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -26px) scale(1.15); } }
+  .lp-ticker { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; max-width: 340px; margin: 0 auto; }
+  .lp-ticker svg { width: 100%; height: 30px; display: block; }
   .lp-bubble { position: relative; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 4px; padding: 14px 16px; font-size: 17.5px; line-height: 1.5; margin-top: 12px; }
-  @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span { transition: none !important; } .lp-combo, .lp-effect, .lp-pop { animation: none !important; } }
 `;
 
 /* ------------------------------ ГРАФИК РЫНКА ------------------------------ */
@@ -248,124 +266,218 @@ export function TimerBar({ seconds, running, onEnd }) {
 
 const testing = () => typeof window !== 'undefined' && !!window.__INFLATIA_TEST__;
 
-/* Итог раунда на карточке — из результата, который раунд передал наверх (result), а не из
-   своего состояния: так счёт верен, даже если раунд пересоздан после проверки. */
-// «смахни»: карточка уходит влево или вправо; кнопки — то же без жеста
-export function SwipeRound({ inst, onDone, locked, result = null }) {
+/* ------------------------------ МИНИ-ИГРА ------------------------------
+   Одна игра на урок, на время. Карточки идут по кругу, пока не кончится время; за верный
+   ответ — очки с множителем серии (comboOf), ошибка серию обнуляет. Каждая карточка меняет
+   график игры — так видно, что делает с рынком заголовок или со страной решение:
+   chart=market — кривая спроса или предложения сдвигается, цена едет, внизу — её история;
+   chart=ppf — КПВ растёт или сжимается, точка страны скользит по кривой.
+   Ответ — смахнуть карточку (swipe), кнопки или стрелки клавиатуры. */
+const EFFECT_LABEL = {
+  'D+': 'Спрос вправо', 'D-': 'Спрос влево', 'S+': 'Предложение вправо', 'S-': 'Предложение влево',
+  out: 'КПВ наружу', in: 'КПВ внутрь', ox: 'КПВ наружу по хлебу', oy: 'КПВ наружу по станкам', ix: 'КПВ внутрь по хлебу', iy: 'КПВ внутрь по станкам',
+  x: 'Точка — к хлебу', y: 'Точка — к станкам',
+};
+const MARKET_STEP = 16;
+// состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
+function applyEffect(chart, st, eff) {
+  if (chart === 'market') {
+    const d = { D: st.D * 0.6, S: st.S * 0.6 };
+    if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
+    return d;
+  }
+  const k = (v) => 100 + (v - 100) * 0.85;
+  let { rx, ry, t } = { rx: k(st.rx), ry: k(st.ry), t: st.t };
+  const mul = { out: [1.14, 1.14], in: [0.88, 0.88], ox: [1.18, 1], oy: [1, 1.18], ix: [0.84, 1], iy: [1, 0.84] }[eff];
+  if (mul) { rx = clampN(rx * mul[0], 62, 138); ry = clampN(ry * mul[1], 62, 138); }
+  if (eff === 'x') t = clampN(t - 0.16, 0.08, 0.92);
+  if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
+  return { rx, ry, t };
+}
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : { rx: 100, ry: 100, t: 0.5 });
+// плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
+function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
+  const [v, setV] = useState(target);
+  const from = useRef(target);
+  useEffect(() => {
+    if (reduced) { setV(target); from.current = target; return undefined; }
+    const a = from.current; const t0 = performance.now(); let id;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms); const e = 1 - (1 - k) ** 3;
+      const cur = Object.fromEntries(Object.keys(target).map((key) => [key, a[key] + (target[key] - a[key]) * e]));
+      setV(cur); from.current = cur;
+      if (k < 1) id = requestAnimationFrame(step);
+    };
+    id = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(target), reduced]);
+  return v;
+}
+// КПВ игры: четверть эллипса с концами rx (хлеб) и ry (станки); пунктир — с чего начинали
+function PpfGameChart({ st }) {
+  const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
+  const sx = (v) => L + (v / 140) * (W - L - R); const sy = (v) => H - B - (v / 140) * (H - B - T);
+  const path = (rx, ry) => { const pts = []; for (let k = 0; k <= 40; k += 1) { const a = (k / 40) * (Math.PI / 2); pts.push(`${sx(rx * Math.cos(a)).toFixed(1)},${sy(ry * Math.sin(a)).toFixed(1)}`); } return `M${pts.join('L')}`; };
+  const a = st.t * (Math.PI / 2);
+  const px = sx(st.rx * Math.cos(a)); const py = sy(st.ry * Math.sin(a));
+  return (
+    <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`КПВ: хлеба до ${Math.round(st.rx)}, станков до ${Math.round(st.ry)}`} data-testid="game-chart" data-chart="ppf"
+      data-state={JSON.stringify({ rx: Math.round(st.rx), ry: Math.round(st.ry), t: Math.round(st.t * 100) / 100 })}>
+      <path d={`${path(st.rx, st.ry)}L${sx(0)},${sy(0)}Z`} fill="var(--u)" opacity=".1" />
+      <path d={path(100, 100)} stroke="var(--ds-ink3)" strokeWidth="2" strokeDasharray="5 5" fill="none" />
+      <path d={path(st.rx, st.ry)} stroke="var(--u)" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="2" />
+      <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="2" />
+      <text x={L + 4} y={T + 10}>станки</text><text x={W - R} y={H - B - 6} textAnchor="end">хлеб</text>
+      <line x1={px} y1={py} x2={px} y2={H - B} stroke="var(--u)" strokeDasharray="3 4" opacity=".6" />
+      <line x1={L} y1={py} x2={px} y2={py} stroke="var(--u)" strokeDasharray="3 4" opacity=".6" />
+      <circle cx={px} cy={py} r="8" fill="var(--ds-card)" stroke="var(--u)" strokeWidth="4" />
+    </svg>
+  );
+}
+// история цены за игру: маленькая линия под графиком рынка
+function PriceTicker({ prices }) {
+  if (prices.length < 2) return null;
+  const W = 300; const H = 34; const lo = Math.min(...prices) - 1; const hi = Math.max(...prices) + 1;
+  const pts = prices.map((p, i) => `${((i / (prices.length - 1)) * (W - 8) + 4).toFixed(1)},${(H - 4 - ((p - lo) / (hi - lo)) * (H - 8)).toFixed(1)}`);
+  const last = prices[prices.length - 1]; const prev = prices[prices.length - 2];
+  return (
+    <div className="lp-ticker" data-testid="price-ticker">
+      <span className="ds-eyebrow" style={{ fontSize: 10.5 }}>Цена</span>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><polyline points={pts.join(' ')} fill="none" stroke="var(--u)" strokeWidth="2.5" strokeLinejoin="round" /></svg>
+      <b className="ds-num" style={{ color: last > prev ? 'var(--ds-bad)' : last < prev ? 'var(--ds-ok)' : 'inherit' }}>{fmtResult(Math.round(last * 10) / 10)} {last > prev ? '↑' : last < prev ? '↓' : ''}</b>
+    </div>
+  );
+}
+const SIDE_ICON = { left: ArrowLeft, right: ArrowRight, up: ArrowUp, down: ArrowDown };
+const KEY_SIDE = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+export function GameRound({ inst, onDone, locked, result = null, best = 0, intro = null }) {
+  const reduced = useReducedMotion();
+  const sides = inst.kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
+  const [phase, setPhase] = useState(locked ? 'over' : 'ready');
+  // колода по кругу: кончилась — перемешиваем заново, первой не идёт только что показанная
+  const deck = useRef(inst.items.slice());
   const [idx, setIdx] = useState(0);
-  const [right, setRight] = useState(0);
+  const [st, setSt] = useState(() => startState(inst.chart));
+  const [prices, setPrices] = useState(() => (inst.market ? [equilibrium(inst.market).p] : []));
+  const [answers, setAnswers] = useState([]);
+  const [flash, setFlash] = useState(null);
+  const [pop, setPop] = useState(null);
+  const [tag, setTag] = useState(null);
   const [dx, setDx] = useState(0);
-  const [flash, setFlash] = useState(null);
   const start = useRef(null);
-  const item = inst.items[idx];
+  const done = useRef(false);
+  const ans = useRef([]);
+  const shown = useTween(st);
+  const item = deck.current[idx % deck.current.length];
+  const { score, bestRun } = gameScore(answers);
+  const run = (() => { let n = 0; for (let k = answers.length - 1; k >= 0 && answers[k]; k -= 1) n += 1; return n; })();
+  const combo = comboOf(run);
+  const seconds = testing() && window.__INFLATIA_GAME_SECONDS__ ? Number(window.__INFLATIA_GAME_SECONDS__) : inst.seconds;
+  const finish = () => {
+    if (done.current) return; done.current = true;
+    const a = ans.current; const sc = gameScore(a);
+    setPhase('over');
+    onDone({ right: a.filter(Boolean).length, answered: a.length, score: sc.score, bestRun: sc.bestRun, record: sc.score > best && sc.score > 0, timeout: true, done: true });
+  };
   const decide = (side) => {
-    if (locked || !item) return;
+    if (phase !== 'play' || locked || done.current || !item) return;
     const ok = side === item.side;
     Audio.play(ok ? 'coin' : 'down');
-    const nr = right + (ok ? 1 : 0);
-    setRight(nr); setFlash(ok ? 'ok' : 'bad'); setDx(0);
-    setTimeout(() => setFlash(null), 250);
-    if (idx + 1 >= inst.items.length) onDone({ right: nr, total: inst.items.length, done: true });
-    else setIdx(idx + 1);
+    const next = [...ans.current, ok]; ans.current = next; setAnswers(next);
+    if (ok) { const r = (() => { let n = 0; for (let k = next.length - 1; k >= 0 && next[k]; k -= 1) n += 1; return n; })(); setPop({ k: next.length, v: 10 * comboOf(r - 1) }); }
+    setFlash(ok ? 'ok' : 'bad'); setDx(0);
+    setTimeout(() => setFlash(null), 260);
+    if (item.effect) {
+      const ns = applyEffect(inst.chart, st, item.effect);
+      setSt(ns); setTag({ k: next.length, text: EFFECT_LABEL[item.effect] });
+      if (inst.market) setPrices((p) => [...p, equilibrium({ ...inst.market, dA: ns.D, dC: ns.S }).p].slice(-24));
+    }
+    if ((idx + 1) % deck.current.length === 0) {
+      const last = item; let d = shuffleList(inst.items);
+      for (let t = 0; t < 5 && d[0] === last; t += 1) d = shuffleList(inst.items);
+      deck.current = d; setIdx(0);
+    } else setIdx(idx + 1);
   };
-  const down = (e) => { if (locked) return; start.current = e.clientX; if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId); };
+  useEffect(() => {
+    if (phase !== 'play') return undefined;
+    const key = (e) => { const side = KEY_SIDE[e.key]; if (side && sides.includes(side)) { e.preventDefault(); decide(side); } };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  });
+  const down = (e) => { if (phase !== 'play' || inst.kind !== 'swipe') return; start.current = e.clientX; if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId); };
   const move = (e) => { if (start.current != null) setDx(e.clientX - start.current); };
-  const up = () => { if (start.current == null) return; const d = dx; start.current = null; if (Math.abs(d) > 90) decide(d > 0 ? 'right' : 'left'); else setDx(0); };
+  const up = () => { if (start.current == null) return; const d = dx; start.current = null; if (Math.abs(d) > 80) decide(d > 0 ? 'right' : 'left'); else setDx(0); };
+  const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
+  const chart = inst.chart === 'market'
+    ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок кофе в игре" /><PriceTicker prices={prices} /></>
+    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : null;
   return (
-    <div data-testid="swipe-round">
-      <div className="lp-score"><span>Карточка {result ? inst.items.length : Math.min(idx + 1, inst.items.length)} из {inst.items.length}</span><span data-testid="game-score">верно: {result ? result.right : right}</span></div>
-      {item && !locked ? (
-        <div className={`lp-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}
-          onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
-          style={{ transform: reduced ? undefined : `translateX(${dx}px) rotate(${dx / 18}deg)`, transition: start.current != null || reduced ? 'none' : 'transform .2s' }}>
-          <Inline nodes={item.text} />
-        </div>
-      ) : <div className="lp-card" style={{ fontSize: 17 }} data-testid="game-final">Раунд окончен: верно {result ? result.right : right} из {inst.items.length}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="left" disabled={locked || !item} onClick={() => decide('left')}><ArrowLeft size={16} style={{ verticalAlign: -3 }} /> {inst.labels.left}</button>
-        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="right" disabled={locked || !item} onClick={() => decide('right')}>{inst.labels.right} <ArrowRight size={16} style={{ verticalAlign: -3 }} /></button>
-      </div>
+    <div data-testid="game" data-phase={phase} className="lp-game">
+      {phase === 'ready' && (
+        <>
+          {intro}
+          {chart}
+          <div className="lp-game-rules ds-sub">
+            <span><Timer size={14} aria-hidden="true" /> {seconds} секунд</span>
+            <span>засчитывается от 8 верных при точности от 70%</span>
+            {best > 0 && <span data-testid="game-best"><Trophy size={14} aria-hidden="true" /> рекорд: {best}</span>}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: 10 }}>
+            <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setPhase('play'); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
+          </div>
+        </>
+      )}
+      {phase === 'play' && (
+        <>
+          <TimerBar seconds={seconds} running={!locked} onEnd={finish} />
+          <div className="lp-game-hud">
+            <span className="ds-num lp-game-score" data-testid="game-score">{score}</span>
+            {combo > 1 && <span className="lp-combo" key={`c${combo}`} data-testid="game-combo">×{combo}</span>}
+            <span style={{ flex: 1 }} />
+            <span className="ds-sub" style={{ fontSize: 13 }}>верно {answers.filter(Boolean).length} из {answers.length}</span>
+          </div>
+          <div className="lp-game-stage">
+            {chart}
+            {tag && <span className="lp-effect" key={`t${tag.k}`} data-testid="game-effect">{tag.text}</span>}
+          </div>
+          <div style={{ position: 'relative' }}>
+            {pop && <span className="lp-pop ds-num" key={`p${pop.k}`}>+{pop.v}</span>}
+            <div className={`lp-card lp-game-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}
+              onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} key={`${idx}:${answers.length}`}
+              style={{ transform: reduced || inst.kind !== 'swipe' ? undefined : `translateX(${dx}px) rotate(${dx / 18}deg)`, transition: start.current != null || reduced ? 'none' : 'transform .2s' }}>
+              <Inline nodes={item.text} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {sides.map((sd) => { const Icon = SIDE_ICON[sd]; return (
+              <button key={sd} type="button" className="ds-opt lp-side" data-side={sd} onClick={() => decide(sd)}>
+                {sd === 'right' ? <>{inst.labels[sd]} <Icon size={16} style={{ verticalAlign: -3 }} /></> : <><Icon size={16} style={{ verticalAlign: -3 }} /> {inst.labels[sd]}</>}
+              </button>
+            ); })}
+          </div>
+        </>
+      )}
+      {phase === 'over' && r && (
+        <>
+          {chart}
+          <div className="lp-card lp-game-final" data-testid="game-final">
+            <div className="ds-eyebrow">Время!</div>
+            <div className="ds-num" style={{ fontSize: 34, fontWeight: 700, color: 'var(--u-ink)' }}>{r.score}</div>
+            <div style={{ fontSize: 16 }}>очков · верно {r.right} из {r.answered} · лучшая серия {r.bestRun}</div>
+            {r.record && <div className="ds-badge" style={{ marginTop: 6 }} data-testid="game-record">Новый рекорд!</div>}
+          </div>
+        </>
+      )}
     </div>
   );
 }
-
-// «60 секунд»: заголовок за заголовком, пока не кончится время или заголовки
-export function RushRound({ inst, onDone, locked, result = null }) {
-  const [on, setOn] = useState(false);
-  const [idx, setIdx] = useState(0);
-  const [right, setRight] = useState(0);
-  const [flash, setFlash] = useState(null);
-  const done = useRef(false);
-  const score = useRef({ right: 0, answered: 0 });
-  // timeout — время действительно вышло; иначе заголовки кончились раньше
-  const finish = (timeout = false) => { if (done.current) return; done.current = true; onDone({ right: score.current.right, answered: score.current.answered, total: inst.items.length, timeout, done: true }); };
-  const item = inst.items[idx];
-  const decide = (side) => {
-    if (!on || locked || !item || done.current) return;
-    const ok = side === item.side;
-    Audio.play(ok ? 'coin' : 'down');
-    score.current = { right: score.current.right + (ok ? 1 : 0), answered: score.current.answered + 1 };
-    setRight(score.current.right); setFlash(ok ? 'ok' : 'bad'); setTimeout(() => setFlash(null), 200);
-    if (idx + 1 >= inst.items.length) finish(); else setIdx(idx + 1);
-  };
-  if (!on && !locked) {
-    return (
-      <div data-testid="rush-round" style={{ textAlign: 'center' }}>
-        <div className="ds-sub" style={{ margin: '8px 0 14px' }}>{inst.items.length} заголовков, {inst.seconds} секунд. Засчитывается от шести верных.</div>
-        <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setOn(true); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
-      </div>
-    );
-  }
-  return (
-    <div data-testid="rush-round">
-      {!locked && <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={() => finish(true)} />}
-      <div className="lp-score"><span>{result ? result.answered : Math.min(idx + 1, inst.items.length)} / {inst.items.length}</span><span data-testid="game-score">верно: {result ? result.right : right}</span></div>
-      {item && !locked ? <div className={`lp-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}><Inline nodes={item.text} /></div>
-        : <div className="lp-card" style={{ fontSize: 17 }} data-testid="game-final">
-          {result && result.timeout ? 'Время!' : 'Готово!'} Верно {result ? result.right : right} из {result ? result.answered : score.current.answered}
-        </div>}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="up" disabled={locked || !item} onClick={() => decide('up')}><ArrowUp size={16} style={{ verticalAlign: -3 }} /> {inst.labels.up}</button>
-        <button type="button" className="ds-opt" style={{ margin: 0, textAlign: 'center', fontWeight: 700 }} data-side="down" disabled={locked || !item} onClick={() => decide('down')}><ArrowDown size={16} style={{ verticalAlign: -3 }} /> {inst.labels.down}</button>
-      </div>
-    </div>
-  );
-}
-
-// цепочка на время: звенья по порядку; собрана — проверяется сразу
-export function ChainRound({ inst, onDone, locked, result = null }) {
-  const [on, setOn] = useState(false);
-  const [own, setSeq] = useState([]);
-  // после проверки — собранное из результата раунда
-  const seq = locked && result && result.seq ? result.seq : own;
-  const done = useRef(false);
-  const finish = (s, timeout = false) => { if (done.current) return; done.current = true; onDone({ seq: s, timeout, done: true }); };
-  const add = (k) => { if (locked || done.current) return; Audio.play('tick'); const s = [...seq, k]; setSeq(s); if (s.length === inst.items.length) finish(s); };
-  if (!on && !locked) {
-    return (
-      <div data-testid="chain-round" style={{ textAlign: 'center' }}>
-        <div className="ds-sub" style={{ margin: '8px 0 14px' }}>{inst.items.length} звеньев, {inst.seconds} секунд.</div>
-        <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setOn(true); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
-      </div>
-    );
-  }
-  return (
-    <div data-testid="chain-round">
-      {locked && result ? <div className="lp-score" data-testid="game-final"><span>{result.timeout ? 'Время!' : 'Готово!'} Собрано {result.seq.length} из {inst.items.length}</span></div>
-        : <TimerBar seconds={inst.seconds} running={on && !locked} onEnd={() => finish(seq, true)} />}
-      <div style={{ minHeight: 56, border: '2px dashed var(--ds-rule2)', borderRadius: 12, padding: 6, marginBottom: 10 }}>
-        {seq.map((k, i) => (
-          <button key={k} type="button" className="ds-opt" style={{ margin: '4px 0' }} disabled={locked} onClick={() => setSeq(seq.filter((x) => x !== k))}>
-            <b style={{ color: 'var(--u)' }}>{i + 1}.</b> <Inline nodes={inst.items.find((x) => x.key === k).text} />
-          </button>
-        ))}
-      </div>
-      {inst.items.filter((it) => !seq.includes(it.key)).map((it) => (
-        <button key={it.key} type="button" className="ds-opt" data-key={it.key} disabled={locked} onClick={() => add(it.key)}><Inline nodes={it.text} /></button>
-      ))}
-    </div>
-  );
+function shuffleList(list) {
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
 }
 
 /* ------------------------------ КАРТОЧКИ ВИДОВ УРОКОВ ------------------------------ */
@@ -426,7 +538,7 @@ export function FlashCard({ card, flipped, onFlip }) {
 
 /* Калькулятор расчётного упражнения: выражение, результат по ходу набора и «В ответ» —
    результат уходит в поле ответа. Подсказкой не считается: считать в уме никто не просит. */
-export function Calculator({ onUse, disabled }) {
+export function Calculator({ onUse = null, disabled = false, useLabel = 'В ответ' }) {
   const [expr, setExpr] = useState('');
   const v = evalExpr(expr);
   const press = (k) => {
@@ -437,7 +549,7 @@ export function Calculator({ onUse, disabled }) {
     else if (k === '=') { if (v != null) setExpr(fmtResult(v).replace('−', '-')); }
     else setExpr((e) => (e.length < 40 ? e + k : e));
   };
-  const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', 'C', '=']];
+  const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', '√', '=']];
   return (
     <div className="lp-calc" data-testid="calculator">
       <div className="lp-calc-screen" aria-live="polite">
@@ -446,14 +558,15 @@ export function Calculator({ onUse, disabled }) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }} role="group" aria-label="Калькулятор">
         {KEYS.flat().map((k) => (
-          <button key={k} type="button" className={`ds-key ${'÷×−+^='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k}
-            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', C: 'Очистить', '=': 'Равно' })[k] || k}
+          <button key={k} type="button" className={`ds-key ${'÷×−+^√='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k}
+            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно' })[k] || k}
             onClick={() => press(k === '÷' ? '/' : k === '×' ? '*' : k === '−' ? '-' : k)}>{k}</button>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
         <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Стереть символ" disabled={disabled} onClick={() => press('del')}><Delete size={18} /></button>
-        <button type="button" className="ds-btn" style={{ flex: 3 }} disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>В ответ</button>
+        <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Очистить" data-calc="C" disabled={disabled} onClick={() => press('C')}>C</button>
+        {onUse && <button type="button" className="ds-btn" style={{ flex: 2.6 }} disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{useLabel}</button>}
       </div>
     </div>
   );

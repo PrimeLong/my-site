@@ -54,5 +54,5 @@ export function courseCtx(s, states = pathState(s)) {
 // параметры сборки урока из состояния ученика
 export const lessonOpts = (s) => ({
   mistakes: s.mistakes.map((m) => m.id), hinted: (s.hinted || []).map((m) => m.id),
-  level: skillLevel(s), weak: weakLessons(s).map((w) => w.id),
+  level: skillLevel(s), weak: weakLessons(s).map((w) => w.id), seen: s.seen || {},
 });

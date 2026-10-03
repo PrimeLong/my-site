@@ -2,17 +2,17 @@
    сундук юнита, утренний экран серии, печати-достижения, «Моя программа» в профиле и
    приглашение на вступительный тест. Всё — из компонентов дизайн-системы (src/ds.jsx,
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wallet, Snowflake, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, Vault, TrendingUp, TrendingDown, Minus,
+  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, Vault, TrendingUp, TrendingDown, Minus, Gem, Zap,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche } from './ds-art.jsx';
 import {
-  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, OUTFITS, SLOT_LABEL, questsFor, QUEST_ICON, monthChallenge, monthStamps,
+  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
@@ -56,10 +56,16 @@ export const REWARD_CSS = `
   .rw-chest-open { animation: ds-stamp .4s ease-out 1 both; }
   .rw-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
+  .rw-item { position: relative; }
+  .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad); color: #fff; font: 700 11.5px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
+  .rw-rare { position: absolute; top: -8px; left: -6px; transform: rotate(-6deg); background: #2E8FB8; color: #fff; font: 700 11px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; }
+  .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
+  .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
+  .rw-goal > i { display: block; height: 100%; background: #2E8FB8; }
   @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open { animation: none; } .rw-bar > i { transition: none; } }
 `;
 
-const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays };
+const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem };
 const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame };
 const fmtRate = (r) => r.toFixed(2).replace('.', ',');
 const Bar = ({ have, target, ok }) => <div className={`rw-bar ${ok ? 'ok' : ''}`} role="presentation"><i style={{ width: `${Math.round((Math.min(have, target) / target) * 100)}%` }} /></div>;
@@ -123,29 +129,45 @@ export function QuestsCard({ learn, now = Date.now() }) {
 
 /* ------------------------------ ГРАФИК КУРСА ------------------------------
    Одна линия за 14 дней, пунктир — 1,0 (крона = монета). Касание или наведение — день и курс. */
+/* График курса: ширина рисунка — ширина экрана (иначе рисунок сжимается к середине, и
+   наведение показывает не тот день). Подпись точки — «сегодня», «вчера», «позавчера»,
+   «N дн. назад» и дата. */
+const agoText = (n) => (n === 0 ? 'сегодня' : n === 1 ? 'вчера' : n === 2 ? 'позавчера' : `${n} ${plural(n, 'день', 'дня', 'дней')} назад`);
 function RateChart({ hist }) {
   const [hover, setHover] = useState(null);
-  const W = 300; const H = 64; const pad = 6;
+  const box = useRef(null);
+  const [W, setW] = useState(300);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const fit = () => setW(Math.max(200, Math.round(el.getBoundingClientRect().width) || 300));
+    fit();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(fit); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const H = 64; const pad = 8;
   const lo = Math.min(0.9, ...hist.map((h) => h.rate)); const hi = Math.max(1.1, ...hist.map((h) => h.rate));
   const x = (i) => pad + (i / (hist.length - 1)) * (W - pad * 2);
   const y = (r) => pad + (1 - (r - lo) / (hi - lo)) * (H - pad * 2);
   const pts = hist.map((h, i) => `${x(i).toFixed(1)},${y(h.rate).toFixed(1)}`).join(' ');
-  const pick = (e) => { const b = e.currentTarget.getBoundingClientRect(); const k = Math.round(((e.clientX - b.left) / b.width) * (hist.length - 1)); setHover(Math.max(0, Math.min(hist.length - 1, k))); };
+  // ближайшая к пальцу точка — в тех же координатах, в которых нарисована
+  const pick = (e) => { const b = e.currentTarget.getBoundingClientRect(); const px = ((e.clientX - b.left) / b.width) * W; const k = Math.round(((px - pad) / (W - pad * 2)) * (hist.length - 1)); setHover(Math.max(0, Math.min(hist.length - 1, k))); };
   const h = hover != null ? hist[hover] : null;
   const last = hist.length - 1;
   return (
-    <div style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="rw-rate" role="img" data-testid="rate-chart"
+    <div style={{ position: 'relative' }} ref={box}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="rw-rate" role="img" data-testid="rate-chart"
         aria-label={`Курс за ${hist.length} дней: от ${fmtRate(Math.min(...hist.map((q) => q.rate)))} до ${fmtRate(Math.max(...hist.map((q) => q.rate)))} монеты за крону, сегодня ${fmtRate(hist[last].rate)}`}
         onPointerMove={pick} onPointerDown={pick} onPointerLeave={() => setHover(null)}>
         <line x1={pad} x2={W - pad} y1={y(1)} y2={y(1)} stroke="var(--ds-rule2)" strokeWidth="1" strokeDasharray="3 4" />
         <polyline points={pts} fill="none" stroke="var(--u-ink)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={x(last)} cy={y(hist[last].rate)} r="4" fill="var(--u-ink)" stroke="var(--ds-card)" strokeWidth="2" />
-        {h && <><line x1={x(hover)} x2={x(hover)} y1={pad} y2={H - pad} stroke="var(--ds-ink3)" strokeWidth="1" /><circle cx={x(hover)} cy={y(h.rate)} r="4" fill="var(--u-ink)" stroke="var(--ds-card)" strokeWidth="2" /></>}
+        {hist.map((q, i) => <circle key={q.day} cx={x(i)} cy={y(q.rate)} r={i === last ? 4 : 1.8} fill="var(--u-ink)" stroke={i === last ? 'var(--ds-card)' : 'none'} strokeWidth="2" />)}
+        {h && <><line x1={x(hover)} x2={x(hover)} y1={pad / 2} y2={H - pad / 2} stroke="var(--ds-ink3)" strokeWidth="1" /><circle cx={x(hover)} cy={y(h.rate)} r="4.5" fill="var(--u-ink)" stroke="var(--ds-card)" strokeWidth="2" /></>}
       </svg>
       {h && (
-        <div className="ds-num" style={{ position: 'absolute', top: -6, left: `${Math.min(70, Math.max(0, (hover / last) * 100 - 12))}%`, background: 'var(--ds-ink)', color: 'var(--ds-paper)', fontSize: 12, padding: '3px 6px', borderRadius: 2, pointerEvents: 'none' }}>
-          {h.day.slice(8)}.{h.day.slice(5, 7)} · {fmtRate(h.rate)}
+        <div className="ds-num" data-testid="rate-tip" style={{ position: 'absolute', top: -8, left: Math.min(W - 150, Math.max(0, x(hover) - 60)), background: 'var(--ds-ink)', color: 'var(--ds-paper)', fontSize: 12, padding: '3px 6px', borderRadius: 2, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          {agoText(last - hover)} · {h.day.slice(8)}.{h.day.slice(5, 7)} · {fmtRate(h.rate)}
         </div>
       )}
       <div className="ds-faint" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>две недели назад</span><span>пунктир — 1,00</span><span>сегодня</span></div>
@@ -154,6 +176,28 @@ function RateChart({ hist }) {
 }
 
 /* ------------------------------ ЛАВКА ------------------------------ */
+// до полуночи — когда обновится витрина
+const untilMidnight = (now) => { const d = new Date(now); const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - now; const hh = Math.floor(m / 3600000); const mm = Math.floor((m % 3600000) / 60000); return `${hh} ч ${mm} мин`; };
+// карточка вещи: Инфля в ней, цена по курсу (со скидкой — старая зачёркнута), купить / надеть
+function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false }) {
+  const owned = !!(learn.owned || {})[o.id]; const on = wear[o.slot] === o.id;
+  const price = priceOf(o.id, day, learn); const full = priceOf(o.id, day);
+  return (
+    <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare ? 'true' : undefined}>
+      {deal && !owned && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
+      {o.rare && <span className="rw-rare">редкое</span>}
+      <Mascot mood="hello" size={50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
+      <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{o.title}</div>
+      {owned
+        ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)}>{on ? 'Снять' : 'Надеть'}</Button>
+        : <>
+          <div className="rw-price">{price < full && <s>{full}</s>}{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
+          {goal && b < price && <div className="rw-goal" aria-label={`Накоплено ${Math.floor((b / price) * 100)}%`}><i style={{ width: `${Math.min(100, (b / price) * 100)}%` }} /></div>}
+          <Button small variant="secondary" disabled={b < price} onClick={() => onBuy(o.id)}>Купить</Button>
+        </>}
+    </div>
+  );
+}
 export function ShopView({ learn, update, now = Date.now() }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
@@ -161,15 +205,19 @@ export function ShopView({ learn, update, now = Date.now() }) {
   const b = balance(learn);
   const wear = outfitOf(learn);
   const freezes = ownedFreezes(learn);
+  const today = shopDay(learn, day);
+  const boosted = boostActive(learn, now);
   const Trend = rate > prev ? TrendingUp : rate < prev ? TrendingDown : Minus;
   const doBuy = (id) => {
     const r = buy(learn, id, now);
     if (!r.ok) { Audio.play('down'); setMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register');
     update(() => r.s, { settle: true });
-    setMsg({ ok: true, text: id === FREEZE.id ? `Заморозка куплена за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
+    setMsg({ ok: true, text: id === FREEZE.id ? `Заморозка куплена за ${r.price} ${coinsWord(r.price)}.` : id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, wear[o.slot] === o.id ? null : o.id, now)); };
+  const ownedList = OUTFITS.filter((o) => (learn.owned || {})[o.id]);
+  const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
   return (
     <div className="ln-wrap" data-testid="shop">
       <div>
@@ -195,36 +243,47 @@ export function ShopView({ learn, update, now = Date.now() }) {
         </Card>
         {msg && <div role="status" data-testid="shop-msg" style={{ margin: '0 0 12px', fontSize: 14.5, color: msg.ok ? 'var(--ds-ok)' : 'var(--ds-bad)' }}>{msg.text}</div>}
 
-        <Heading level={3} title="Заморозка серии" sub={FREEZE.text} />
-        <Card style={{ margin: '8px 0 16px' }} data-testid="shop-freeze">
+        <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)}. На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
+        <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-showcase">
+          {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
+          {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше только витрина ювелира.</div>}
+        </div>
+
+        <Heading level={3} title="Полезное" />
+        <Card style={{ margin: '8px 0 10px' }} data-testid="shop-freeze">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Rosette size={54} opacity={0.5}><Snowflake size={24} color="#3E6FA8" aria-hidden="true" /></Rosette>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>В запасе: <span className="ds-num" data-testid="freeze-owned">{freezes}</span> из {MAX_FREEZES}</div>
+              <div style={{ fontWeight: 700 }}>{FREEZE.title} · в запасе <span className="ds-num" data-testid="freeze-owned">{freezes}</span> из {MAX_FREEZES}</div>
+              <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>{FREEZE.text}</div>
               <div className="rw-price">{priceOf(FREEZE.id, day)} <span style={{ fontWeight: 400 }}>мон.</span><small>{FREEZE.crowns} кр.</small></div>
             </div>
             <Button small disabled={freezes >= MAX_FREEZES} onClick={() => doBuy(FREEZE.id)} data-testid="buy-freeze">Купить</Button>
           </div>
         </Card>
+        <Card style={{ margin: '0 0 16px' }} data-testid="shop-boost">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Rosette size={54} opacity={0.5}><Zap size={24} color="var(--ds-gold)" aria-hidden="true" /></Rosette>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700 }}>{BOOST.title}{boosted && <span className="ds-badge" style={{ marginLeft: 6 }} data-testid="boost-on">действует до {new Date(learn.boost).toTimeString().slice(0, 5)}</span>}</div>
+              <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>{BOOST.text}</div>
+              <div className="rw-price">{priceOf(BOOST.id, day)} <span style={{ fontWeight: 400 }}>мон.</span><small>{BOOST.crowns} кр.</small></div>
+            </div>
+            <Button small disabled={boosted} onClick={() => doBuy(BOOST.id)} data-testid="buy-boost">Купить</Button>
+          </div>
+        </Card>
 
-        <Heading level={3} title="Наряды Инфли" sub="По одному на голову, лицо и шею. Купленное можно снять и надеть снова." />
-        {Object.keys(SLOT_LABEL).map((slot) => (
-          <div key={slot} style={{ margin: '10px 0 14px' }}>
+        <Heading level={3} title="Витрина ювелира" sub="Редкие вещи — всегда здесь. На них копят: полоска показывает, сколько уже собрано." />
+        <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-rare">
+          {today.rare.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
+        </div>
+
+        <Heading level={3} title="Гардероб" sub={ownedList.length ? 'Купленное можно снять и надеть снова: по одной вещи на голову, лицо, шею, в руку и рамку.' : 'Пока пусто — купленные вещи будут здесь.'} />
+        {Object.keys(SLOT_LABEL).filter((slot) => ownedList.some((o) => o.slot === slot)).map((slot) => (
+          <div key={slot} style={{ margin: '10px 0 14px' }} data-testid="shop-wardrobe">
             <div className="ds-eyebrow" style={{ marginBottom: 6 }}>{SLOT_LABEL[slot]}</div>
             <div className="rw-items">
-              {OUTFITS.filter((o) => o.slot === slot).map((o) => {
-                const owned = !!(learn.owned || {})[o.id]; const on = wear[slot] === o.id; const price = priceOf(o.id, day);
-                return (
-                  <div key={o.id} className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)}>
-                    <Mascot mood="hello" size={50} outfit={{ [slot]: o.id }} label={`Инфля: ${o.title}`} />
-                    <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{o.title}</div>
-                    {owned
-                      ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => toggle(o)}>{on ? 'Снять' : 'Надеть'}</Button>
-                      : <><div className="rw-price">{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
-                        <Button small variant="secondary" disabled={b < price} onClick={() => doBuy(o.id)}>Купить</Button></>}
-                  </div>
-                );
-              })}
+              {ownedList.filter((o) => o.slot === slot).map((o) => <ShopItem key={o.id} o={o} {...itemProps} />)}
             </div>
           </div>
         ))}

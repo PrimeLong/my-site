@@ -45,7 +45,8 @@ import { DIAGRAM_KINDS } from './diagrams.js';
 export const LINK_KINDS = ['lever', 'term', 'drill', 'scenario', 'lab', 'tycoon', 'chapter', 'card', 'appendix'];
 // ссылки-действия: абзац из одной такой ссылки рисуется кнопкой
 export const ACTION_KINDS = ['lab', 'drill', 'scenario', 'tycoon'];
-export const BOX_KINDS = ['model', 'game', 'example', 'try', 'note', 'goals', 'summary', 'mistakes'];
+// numbers — короткий пример на числах сразу после вывода новой формулы (example — большой разбор главы)
+export const BOX_KINDS = ['model', 'game', 'example', 'numbers', 'try', 'note', 'goals', 'summary', 'mistakes'];
 export const LEVELS = { 1: 'базовый', 2: 'семинарский', 3: 'олимпиадный' };
 const PART_LABELS = ['а)', 'б)', 'в)', 'г)', 'д)', 'е)'];
 
@@ -140,7 +141,9 @@ export function parseBlocks(text) {
         // kind=intro — урок «Знакомство» (эта карточка — его первый шаг), иначе урок-практика без карточки;
         // pic=… — картинка шага вместо графика (значок из набора src/learn.jsx);
         // kind — вид урока (LESSON_KINDS); who=… — кто говорит в шаге «Истории» (src/learn/cast.js);
-        // в уроке «Слова» строки «- термин: короткое определение» — слова урока
+        // в уроке «Слова» строки «- термин: короткое определение» — слова урока;
+        // со словом diamond — шаг алмазного уровня: его и упражнения после него видно только
+        // при повторном, усложнённом прохождении урока
         const { id: _id, title, chart, auto, variants, kind, pic, who, ...chartAttrs } = attrs;
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
@@ -149,7 +152,7 @@ export function parseBlocks(text) {
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
           kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}),
-          ...(words.includes('more') ? { inner: true } : {}) });
+          ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));
       } else if (name === 'round') {
@@ -307,12 +310,14 @@ export const parseChapter = (text) => parseBlocks(text);
 /* ------------------------------ УПРАЖНЕНИЯ УРОКОВ ------------------------------
    :::ex вид id=… — упражнение урока (путь «как в Дуолинго»). Виды:
      choice / gap — вопрос (в gap пропуск «___»), строки «+ верный вариант» и «- неверный | почему»;
-     tf answer=true|false — утверждение; order — пункты «1. …» в верном порядке;
+     tf answer=true|false — утверждение;
      match — пары «- слева ↔ справа»; sort bins="А|Б" — «- пункт >> А»;
      calc answer=… tol=… unit=… или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
      shift chart=тип answer="S-" options="D+ D- S+ S-" — «куда сдвинется?», ловушки «!! D+ | почему»;
      news headline="…" vars="P:цена Q:количество" expect="P:+ Q:-" — «газета».
    Всё после строки «---» — объяснение, которое показывается после ответа.
+   context="…" — то, что ученик услышал в «Слушай»: в самом радиоуроке вопрос его не повторяет,
+   а в повторении, практике и проверке (вне эфира) context встаёт перед условием.
    Новые взаимодействия (рынок Q_D = a − bP, Q_S = c + dP; dA, dC — сдвиги кривых):
      tiles — «+ плитка | плитка | …» — верное определение из плиток, «- плитка | …» — лишние плитки;
      curve a b c d answer="D+" only=D — сдвинуть кривую пальцем (only — на графике одна кривая), ловушки «!! S+ | почему»;
@@ -320,7 +325,7 @@ export const parseChapter = (text) => parseBlocks(text);
      point a b c d dA=… dC=… — поставить точку (нового) равновесия;
      у match — seconds=… — пары на время. */
 export const LESSON_KINDS = ['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary'];
-const EX_KINDS = ['choice', 'gap', 'tf', 'order', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point'];
+const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point'];
 const MARKET = ['a', 'b', 'c', 'd', 'dA', 'dC'];
 const market = (attrs) => Object.fromEntries(MARKET.map((k) => [k, attrs[k] != null ? Number(attrs[k]) : (k === 'dA' || k === 'dC' ? 0 : NaN)]));
 function parseExercise(kind, attrs, body) {
@@ -330,12 +335,11 @@ function parseExercise(kind, attrs, body) {
   const main = sep >= 0 ? body.slice(0, sep) : body;
   const explain = sep >= 0 ? parseBlocks(body.slice(sep + 1).join('\n')) : null;
   const isOpt = (l) => /^[+-]\s/.test(l.trim());
-  const isNum = (l) => /^\d+\.\s/.test(l.trim());
   const isTrap = (l) => l.trim().startsWith('!!');
-  const special = (l) => isOpt(l) || isTrap(l) || (kind === 'order' && isNum(l));
+  const special = (l) => isOpt(l) || isTrap(l);
   const prompt = parseBlocks(main.filter((l) => !special(l)).join('\n'));
   const why = (t) => { const k = t.indexOf('|'); return k < 0 ? [t.trim(), null] : [t.slice(0, k).trim(), parseInline(t.slice(k + 1).trim())]; };
-  const ex = { type: 'ex', kind, id: attrs.id, attrs, prompt, explain };
+  const ex = { type: 'ex', kind, id: attrs.id, attrs, prompt, explain, ...(attrs.context ? { context: parseInline(attrs.context) } : {}) };
   const opts = main.filter(isOpt).map((l) => { const t = l.trim(); const [text, w] = why(t.slice(1).trim()); return { raw: text, correct: t[0] === '+', why: w }; });
   const traps = main.filter(isTrap).map((l) => { const [v, w] = why(l.trim().replace(/^!!\s*/, '')); return { key: v, why: w }; });
   if (kind === 'choice' || kind === 'gap') ex.options = opts.map((o) => ({ text: parseInline(o.raw), raw: o.raw, correct: o.correct, why: o.why }));
@@ -343,7 +347,6 @@ function parseExercise(kind, attrs, body) {
     if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В упражнении ${attrs.id} answer — true или false`);
     ex.answer = attrs.answer === 'true';
   }
-  if (kind === 'order') ex.items = main.filter(isNum).map((l) => { const raw = l.trim().replace(/^\d+\.\s*/, ''); return { raw, text: parseInline(raw) }; });
   if (kind === 'match' && attrs.seconds) ex.seconds = Number(attrs.seconds);
   if (kind === 'tiles') {
     const tiles = (o) => o.raw.split(/\s\|\s/).map((x) => x.trim()).filter(Boolean);
@@ -383,28 +386,33 @@ function parseExercise(kind, attrs, body) {
   return ex;
 }
 
-/* :::round вид id=… title="…" — раунд мини-игры урока:
-     swipe left="…" right="…" — карточки «- текст >> left|right» смахнуть влево или вправо;
-     rush seconds=60 up="…" down="…" — заголовки «- текст >> up|down» на время;
-     chain seconds=30 — звенья «1. …» по порядку на время.
-   Текст до пунктов — условие раунда. */
-const ROUND_KINDS = ['swipe', 'rush', 'chain'];
+/* :::round вид id=… title="…" chart=market|ppf — мини-игра урока, одна на урок, на время:
+     swipe left="…" right="…" — карточки «- текст >> left|right [эффект]» смахнуть влево или вправо;
+     rush up="…" down="…" — заголовки «- текст >> up|down [эффект]».
+   seconds — сколько длится игра (по умолчанию 60). Эффект — что карточка делает с графиком игры:
+   на рынке (chart=market a b c d — как у упражнений с графиком) — сдвиг кривой D+ D- S+ S-;
+   на КПВ (chart=ppf) — out / in (кривая наружу или внутрь), ox / oy и ix / iy (наружу или внутрь
+   только по оси хлеба или станков), x / y (точка едет по кривой к хлебу или к станкам).
+   Текст до пунктов — условие игры. */
+const ROUND_KINDS = ['swipe', 'rush'];
+export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
   if (!attrs.id) throw new Error(`У игры ${kind} нет id`);
-  const item = (l) => /^[-]\s/.test(l.trim()) || /^\d+\.\s/.test(l.trim());
-  const g = { type: 'round', kind, id: attrs.id, title: attrs.title || '', prompt: parseBlocks(body.filter((l) => !item(l)).join('\n')), seconds: attrs.seconds ? Number(attrs.seconds) : null };
-  if (kind === 'chain') {
-    g.items = body.filter((l) => /^\d+\.\s/.test(l.trim())).map((l) => { const raw = l.trim().replace(/^\d+\.\s*/, ''); return { raw, text: parseInline(raw) }; });
-  } else {
-    const sides = kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
-    g.labels = Object.fromEntries(sides.map((k) => [k, attrs[k] || k]));
-    g.items = body.filter((l) => /^-\s/.test(l.trim())).map((l) => {
-      const [t, side] = l.trim().slice(2).split(/\s>>\s/);
-      if (!sides.includes((side || '').trim())) throw new Error(`В игре ${attrs.id}: «${t}» — сторона ${sides.join(' или ')}`);
-      return { raw: t.trim(), text: parseInline(t.trim()), side: side.trim() };
-    });
-  }
+  const chart = attrs.chart || null;
+  if (chart && !ROUND_EFFECTS[chart]) throw new Error(`В игре ${attrs.id} неизвестный график ${chart}`);
+  const item = (l) => /^-\s/.test(l.trim());
+  const g = { type: 'round', kind, id: attrs.id, title: attrs.title || '', chart, ...(chart === 'market' ? { market: market(attrs) } : {}), prompt: parseBlocks(body.filter((l) => !item(l)).join('\n')), seconds: attrs.seconds ? Number(attrs.seconds) : null };
+  const sides = kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
+  g.labels = Object.fromEntries(sides.map((k) => [k, attrs[k] || k]));
+  g.items = body.filter(item).map((l) => {
+    const [t, tail = ''] = l.trim().slice(2).split(/\s>>\s/);
+    const [side, effect] = tail.trim().split(/\s+/);
+    if (!sides.includes(side)) throw new Error(`В игре ${attrs.id}: «${t}» — сторона ${sides.join(' или ')}`);
+    if (effect && (!chart || !ROUND_EFFECTS[chart].includes(effect))) throw new Error(`В игре ${attrs.id}: «${t}» — неизвестный эффект ${effect}`);
+    if (chart && !effect) throw new Error(`В игре ${attrs.id}: у «${t}» нет эффекта для графика`);
+    return { raw: t.trim(), text: parseInline(t.trim()), side, ...(effect ? { effect } : {}) };
+  });
   if (g.items.length < 3) throw new Error(`В игре ${attrs.id} меньше трёх пунктов`);
   return g;
 }
