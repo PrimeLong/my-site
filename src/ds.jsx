@@ -117,6 +117,7 @@ export const DS_CSS = `
   .ds-nav button { flex: 1; min-width: 0; background: none; border: none; cursor: pointer; padding: 10px 2px 8px; display: flex; flex-direction: column; align-items: center; gap: 3px;
     color: var(--ds-ink3); font: 700 12px/1.1 var(--ds-sans); letter-spacing: .04em; position: relative; }
   .ds-nav button[aria-current="page"] { color: var(--u-ink); cursor: default; }
+  @media (max-width: 380px) { .ds-nav button { font-size: 11px; letter-spacing: 0; } }
   .ds-nav button[aria-current="page"]::before { content: ''; position: absolute; top: 5px; width: 30px; height: 3px; border-radius: 1px; background: var(--u-ink); }
 
   /* короткие анимации по делу */

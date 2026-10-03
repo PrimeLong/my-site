@@ -3,7 +3,10 @@
    выше 85%) — «hard», ниже 60% — «easy» (см. buildLesson в course.js). Слабая тема — пройденный
    урок, где недавняя точность ниже 70%: его упражнения первыми идут в «Повторение» и добирают
    практику. Модуль чистый: экраны — src/learn.jsx. */
-import { LESSON_BY_ID, pathState } from './course.js';
+import { LESSON_BY_ID, UNIT_BY_ID, pathState } from './course.js';
+import { CHAPTER_SECTIONS } from '../textbook/content.js';
+import { sectionDone } from '../textbook/study-core.js';
+import { lessonDone } from '../textbook/learn-state.js';
 
 export const LEVEL_MIN = 10;
 export function skillLevel(s) {
@@ -56,3 +59,18 @@ export const lessonOpts = (s) => ({
   mistakes: s.mistakes.map((m) => m.id), hinted: (s.hinted || []).map((m) => m.id),
   level: skillLevel(s), weak: weakLessons(s).map((w) => w.id), seen: s.seen || {},
 });
+
+/* Напоминание о теории перед уроком. Уроку нужна теория раздела учебника, а ученик её ещё
+   не видел: ни в учебнике (глава отмечена прочитанной или раздел пройден вопросом в конце),
+   ни в уроке «Знакомство» по тому же разделу. known — разделы, про которые ученик сказал
+   «теория уже была в уроке»: про них больше не спрашиваем. Уроки «Знакомство» сами дают
+   теорию — для них напоминания нет. */
+export function theoryNotice(lesson, learn, progress = null, known = []) {
+  if (!lesson || lesson.kind === 'intro' || !lesson.section) return null;
+  const sec = (CHAPTER_SECTIONS[lesson.unitId] || []).find((x) => x.id === lesson.section);
+  if (!sec || known.includes(sec.id)) return null;
+  if (progress && ((progress.read || {})[lesson.unitId] || sectionDone(progress, sec))) return null;
+  const unit = UNIT_BY_ID[lesson.unitId];
+  if (unit && unit.lessons.some((o) => o.kind === 'intro' && o.section === lesson.section && lessonDone(learn, o.id))) return null;
+  return { chapter: lesson.unitId, section: { id: sec.id, title: sec.title, minutes: sec.minutes } };
+}

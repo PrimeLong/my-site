@@ -478,9 +478,13 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(streak(emptyLearn(), at(2026, 9, 30)).days).toBe(0);
   });
   it('цель дня, «спит» ли талисман, статистика профиля', () => {
-    let s = setGoal(emptyLearn(), 2, 5);
-    s = finishLesson(s, 'a', { xp: 10, accuracy: 80, now: at(2026, 9, 30) });
-    expect(goalToday(s, at(2026, 9, 30))).toEqual({ done: 1, goal: 2 });
+    // цель дня — минуты занятий (10 по умолчанию), уроки — для подписи
+    let s = finishLesson(emptyLearn(), 'a', { xp: 10, accuracy: 80, now: at(2026, 9, 30), seconds: 330 });
+    expect(goalToday(s, at(2026, 9, 30))).toEqual({ done: 5, goal: 10, lessons: 1 });
+    expect(goalToday(setGoal(s, 2, 5), at(2026, 9, 30)).goal).toBe(10);
+    // урок, начатый до полуночи: в новый день идут только минуты после полуночи
+    const night = finishLesson(emptyLearn(), 'b', { xp: 10, accuracy: 80, now: new Date(2026, 9, 1, 0, 2).getTime(), seconds: 900 });
+    expect(goalToday(night, new Date(2026, 9, 1, 0, 2).getTime()).done).toBe(2);
     expect(missedYesterday(s, at(2026, 10, 2))).toBe(true);
     expect(missedYesterday(s, at(2026, 10, 1))).toBe(false);
     s = startLesson(startLesson(s));

@@ -8,7 +8,7 @@ import {
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
-  Route, Dumbbell, UserRound, Map as MapIcon, ShoppingBag,
+  Route, ListChecks, UserRound, Map as MapIcon, ShoppingBag,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -21,7 +21,6 @@ import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIc
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
-import { todayCard } from './textbook/today-snapshot.js';
 import { BookLinkContext } from './booklink-context.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
@@ -1156,12 +1155,14 @@ function MenuTicker() {
   );
 }
 
-/* Нижняя панель главного экрана: пять вкладок (лавка — отдельной вкладкой, чтобы до неё было одно касание), на телефоне — под большим пальцем. Урок
+/* Нижняя панель главного экрана: шесть вкладок — Путь, Задания (задания дня, испытание месяца
+   и практика), Учебник, Лавка, Мир, Профиль; до каждой одно касание, на телефоне — под большим пальцем. Урок
    открывается поверх неё во весь экран. Открытая вкладка — не кнопка перехода: путь назад у
    подэкранов (учебник поверх вкладки) один — их собственный «назад». */
 const NAV_TABS = [
   { id: 'path', icon: Route, label: 'Путь' },
-  { id: 'practice', icon: Dumbbell, label: 'Практика' },
+  { id: 'tasks', icon: ListChecks, label: 'Задания' },
+  { id: 'book', icon: BookOpenText, label: 'Учебник' },
   { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
   { id: 'world', icon: MapIcon, label: 'Мир' },
   { id: 'profile', icon: UserRound, label: 'Профиль' },
@@ -1324,8 +1325,6 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
       desc: 'Как устроены экран партии, ставка, бюджет, рынок и власть — короткими уроками с тестами и экзаменами.',
       action: () => { Audio.prime(); Audio.play('tab'); onTutorial(); } },
   ];
-  // «Продолжить учиться»: раздел на сегодня и вопросы на повторение, одним нажатием — в занятие
-  const study = onTextbook ? todayCard() : null;
   const renderModes = (list, delay = 0) => (
     <div className="menu-modes">
       {list.map((m, i) => {
@@ -1376,25 +1375,6 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           </div>
         )}
 
-        {/* 1. Продолжить учиться */}
-        {study && (
-          <div className="ds-card menu-continue" role="button" tabIndex={0} data-testid="menu-study"
-            onClick={() => { Audio.prime(); Audio.play('stamp'); onTextbook({ kind: 'today' }); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { Audio.prime(); onTextbook({ kind: 'today' }); } }}>
-            <div style={{ width: 46, height: 46, flexShrink: 0, borderRadius: 4, background: 'var(--ds-card2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><BookOpenText size={21} color={COLOR.gold} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="ds-eyebrow">Продолжить учиться</div>
-              <div className="ds-h3" style={{ marginTop: 1 }}>
-                {study.section ? `«${study.section.title}»` : 'Повторение и задачи'}
-              </div>
-              <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 2 }}>
-                {study.section ? `${study.section.chapterTitle} · ≈${study.section.minutes} мин` : 'все разделы готовых глав пройдены'}
-                {' · '}на повторение: {study.due}
-              </div>
-            </div>
-            <Play size={22} color={COLOR.gold} style={{ flexShrink: 0 }} />
-          </div>
-        )}
 
         {/* 2. Учиться */}
         <div className="menu-section-label ds-eyebrow">{inShell ? 'Модель в действии' : 'Учиться'}</div>

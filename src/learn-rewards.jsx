@@ -13,11 +13,11 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, streak, ownedFreezes, weekDots, MAX_FREEZES, setProfile, setGoal, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES,
+  dayOf, addDays, streak, ownedFreezes, weekDots, MAX_FREEZES, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -66,7 +66,7 @@ export const REWARD_CSS = `
 `;
 
 const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem };
-const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame };
+const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame, spark: Zap };
 const fmtRate = (r) => r.toFixed(2).replace('.', ',');
 const Bar = ({ have, target, ok }) => <div className={`rw-bar ${ok ? 'ok' : ''}`} role="presentation"><i style={{ width: `${Math.round((Math.min(have, target) / target) * 100)}%` }} /></div>;
 const CoinTag = ({ n, testid }) => <span className="rw-coin" data-testid={testid}><Coins size={14} color="var(--ds-gold)" aria-hidden="true" />{n}</span>;
@@ -85,7 +85,7 @@ export function WalletStat({ learn }) {
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------ */
 export function QuestsCard({ learn, now = Date.now() }) {
   const quests = questsFor(learn, now);
-  const m = monthChallenge(learn, now);
+  const g = goalToday(learn, now);
   const done = quests.filter((q) => q.done).length;
   return (
     <Card style={{ margin: '0 0 14px' }} data-testid="quests">
@@ -93,7 +93,19 @@ export function QuestsCard({ learn, now = Date.now() }) {
         <div className="ds-h3">Задания дня</div>
         <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="quests-done">{done}/3</span>
       </div>
-      <div style={{ marginTop: 4 }}>
+      <div>
+      {/* цель дня — минуты занятий: у всех своя скорость, а время честно сравнивается само с собой */}
+      <div className="rw-quest" data-testid="goal-row" data-done={String(g.done >= g.goal)}>
+        <span className={`rw-ico ${g.done >= g.goal ? 'ok' : ''}`}>{g.done >= g.goal ? <Check size={16} aria-hidden="true" /> : <Timer size={16} aria-hidden="true" />}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 4 }}>Цель дня: {g.goal} минут занятий</div>
+          <Bar have={g.done} target={g.goal} ok={g.done >= g.goal} />
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <CoinTag n={`+${COIN.goal}`} />
+          <div className="ds-num ds-faint" style={{ fontSize: 11.5 }}>{Math.min(g.done, g.goal)}/{g.goal} мин</div>
+        </div>
+      </div>
         {quests.map((q) => {
           const Icon = Q_ICON[QUEST_ICON[q.id]] || Target;
           return (
@@ -111,18 +123,27 @@ export function QuestsCard({ learn, now = Date.now() }) {
           );
         })}
       </div>
-      <div style={{ borderTop: '1px solid var(--ds-rule2)', marginTop: 6, paddingTop: 10 }} data-testid="month" data-done={String(m.done)}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <CalendarDays size={16} color="var(--u-ink)" aria-hidden="true" />
-          <span style={{ flex: 1, fontSize: 14 }}><b>Испытание месяца.</b> {m.title}</span>
-          <CoinTag n={`+${m.coins}`} />
-        </div>
-        <Bar have={m.have} target={m.target} ok={m.done} />
-        <div className="ds-faint" style={{ fontSize: 12, marginTop: 4 }}>
-          {m.claimed ? `Выполнено — марка «${m.name}» в альбоме.`
-            : `${m.have} из ${m.target}${m.need ? ` · нужно ещё ${m.need} ${m.unit}` : ''} · до конца месяца ${m.daysLeft} ${plural(m.daysLeft, 'день', 'дня', 'дней')}${m.daysLeft === 1 ? ' — сегодня последний' : ''}`}
-        </div>
+      <div className="ds-faint" style={{ fontSize: 12, marginTop: 6 }}>Все три — ещё +{COIN.allQuests}. Новые задания — завтра, с нуля.</div>
+    </Card>
+  );
+}
+// испытание месяца: цель от самого ученика (цель дня в минутах, прошлый месяц) — и откуда она взялась
+export function MonthCard({ learn, now = Date.now() }) {
+  const m = monthChallenge(learn, now);
+  return (
+    <Card style={{ margin: '0 0 14px' }} data-testid="month" data-done={String(m.done)} data-kind={m.id}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <CalendarDays size={18} color="var(--u-ink)" aria-hidden="true" />
+        <span className="ds-h3" style={{ flex: 1 }}>Испытание месяца</span>
+        <CoinTag n={`+${m.coins}`} />
       </div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{m.title}</div>
+      <Bar have={m.have} target={m.target} ok={m.done} />
+      <div className="ds-faint" style={{ fontSize: 12, marginTop: 4 }}>
+        {m.claimed ? `Выполнено — марка «${m.name}» в альбоме.`
+          : `${m.have} из ${m.target}${m.need ? ` · нужно ещё ${m.need} ${m.unit}` : ''} · до конца месяца ${m.daysLeft} ${plural(m.daysLeft, 'день', 'дня', 'дней')}${m.daysLeft === 1 ? ' — сегодня последний' : ''}`}
+      </div>
+      <div className="ds-faint" style={{ fontSize: 12, marginTop: 2 }} data-testid="month-why">{m.why}</div>
     </Card>
   );
 }
@@ -402,7 +423,8 @@ export function GainsList({ coins, gains }) {
 export function ProgramCard({ learn, update, onPlacement }) {
   const p = learn.profile || {};
   const level = skillLevel(learn);
-  const setMinutes = (m) => { Audio.play('tick'); update((s) => setGoal(setProfile(s, { minutes: m }), LESSONS_FOR_MINUTES[m])); };
+  const setMinutes = (m) => { Audio.play('tick'); update((s) => setProfile(s, { minutes: m })); };
+  const mins = goalMinutes(learn);
   return (
     <Card style={{ margin: '12px 0' }} data-testid="prof-program">
       <div className="ds-h3" style={{ marginBottom: 8 }}>Моя программа</div>
@@ -410,12 +432,10 @@ export function ProgramCard({ learn, update, onPlacement }) {
       <div className="rw-chip-row" role="group" aria-label="Цель">
         {PROFILE_GOALS.map((g) => <button key={g} type="button" className="ds-chip" aria-pressed={p.goal === g} onClick={() => { Audio.play('tick'); update((s) => setProfile(s, { goal: g })); }}>{PROFILE_GOAL_LABEL[g]}</button>)}
       </div>
-      <div className="ds-eyebrow" style={{ margin: '12px 0 6px' }}>Минут в день · цель дня</div>
+      <div className="ds-eyebrow" style={{ margin: '12px 0 6px' }}>Цель дня · минут занятий</div>
       <div className="rw-chip-row" role="group" aria-label="Минут в день">
         {PROFILE_MINUTES.map((m) => (
-          <button key={m} type="button" className="ds-chip" aria-pressed={p.minutes === m || (!p.minutes && learn.goal === LESSONS_FOR_MINUTES[m])} onClick={() => setMinutes(m)}>
-            {m} мин · {LESSONS_FOR_MINUTES[m]} {plural(LESSONS_FOR_MINUTES[m], 'урок', 'урока', 'уроков')}
-          </button>
+          <button key={m} type="button" className="ds-chip" aria-pressed={mins === m} onClick={() => setMinutes(m)}>{m} мин</button>
         ))}
       </div>
       <Row label="Уровень заданий" value={LEVEL_NAME[level]} data-testid="prof-level" data-level={level} />

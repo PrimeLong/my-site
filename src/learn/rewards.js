@@ -3,7 +3,7 @@
    платите вы монетами по курсу дня — он колеблется вокруг единицы и тянется к ней обратно.
    Модуль чистый: всё считается из состояния учёбы (learn-state.js); каждая награда выдаётся
    под ключом (claimed) — ни дважды, ни на двух устройствах. Экраны — src/learn.jsx. */
-import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf, DIAMOND_ACCURACY } from '../textbook/learn-state.js';
+import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf, DIAMOND_ACCURACY, goalMinutes, goalToday } from '../textbook/learn-state.js';
 
 // детерминированная «случайность» из строки: FNV-1a → [0, 1)
 export function hash01(str) {
@@ -130,21 +130,24 @@ export function setWear(s, slot, id, now = Date.now()) {
 export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null, hand: w.hand || null, frame: w.frame || null }; };
 
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------
-   Три задания: минуты занятий (из ответа при регистрации) — всегда, одно про уроки и одно
-   про ответы; какие именно — решает дата. Выполнено — монеты сразу, все три — ещё бонус. */
+   Три задания: одно про уроки, одно про ответы, одно про опыт или новый урок; какие именно —
+   решает дата, размер — цель дня в минутах. Минуты сами по себе — это цель дня (у неё своя
+   награда), заданием их не дублируем. Всё считается только по сегодняшним занятиям.
+   Выполнено — монеты сразу, все три — ещё бонус. */
+const newToday = (s, day) => Object.values(s.lessons || {}).filter((l) => l && l.runs > 0 && l.at && dayOf(l.at) === day).length;
 const QUEST = {
-  minutes: { coins: 15, target: (s) => (s.profile && s.profile.minutes) || 10, have: (d) => Math.floor(d.s / 60), title: (t) => `${t} ${plural(t, 'минута', 'минуты', 'минут')} занятий` },
-  lessons: { coins: 10, target: (s) => Math.max(2, s.goal || 1), have: (d) => d.l, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')}` },
-  perfect: { coins: 20, target: (s) => Math.min(2, Math.max(1, s.goal || 1)), have: (d) => d.p, title: (t) => (t === 1 ? 'Урок без ошибок' : `${t} урока без ошибок`) },
-  goal: { coins: 10, target: (s) => s.goal || 1, have: (d, s, day) => (s.done || {})[day] || 0, title: () => 'Выполнить цель дня' },
-  correct: { coins: 10, target: () => 15, have: (d) => d.c, title: (t) => `${t} верных ответов` },
-  run: { coins: 15, target: () => 8, have: (d) => d.r, title: (t) => `${t} верных ответов подряд` },
+  lessons: { coins: 10, target: (s) => Math.max(2, Math.round(goalMinutes(s) / 5)), have: (d) => d.l, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')}` },
+  perfect: { coins: 20, target: (s) => (goalMinutes(s) >= 15 ? 2 : 1), have: (d) => d.p, title: (t) => (t === 1 ? 'Урок без ошибок' : `${t} урока без ошибок`) },
+  correct: { coins: 10, target: (s) => (goalMinutes(s) >= 15 ? 20 : 12), have: (d) => d.c, title: (t) => `${t} верных ответов` },
+  run: { coins: 15, target: (s) => (goalMinutes(s) >= 15 ? 10 : 6), have: (d) => d.r, title: (t) => `${t} верных ответов подряд` },
+  xp: { coins: 10, target: (s) => goalMinutes(s) * 3, have: (d, s, day) => (s.xp || {})[day] || 0, title: (t) => `Набрать ${t} опыта` },
+  fresh: { coins: 15, target: () => 1, have: (d, s, day) => newToday(s, day), title: () => 'Пройти новый урок на Пути' },
 };
-export const QUEST_ICON = { minutes: 'timer', lessons: 'map', perfect: 'check', goal: 'target', correct: 'coins', run: 'flame' };
+export const QUEST_ICON = { lessons: 'map', perfect: 'check', correct: 'coins', run: 'flame', xp: 'spark', fresh: 'target' };
 export function questsFor(s, now = Date.now()) {
   const day = dayOf(now); const d = dailyOf(s, now);
   const pick = (list, salt) => list[Math.floor(hash01(`${day}:${salt}`) * list.length)];
-  const ids = ['minutes', pick(['perfect', 'lessons', 'goal'], 'a'), pick(['correct', 'run'], 'b')];
+  const ids = [pick(['lessons', 'perfect'], 'a'), pick(['correct', 'run'], 'b'), pick(['xp', 'fresh'], 'c')];
   return ids.map((id) => {
     const q = QUEST[id]; const target = q.target(s); const have = Math.min(target, q.have(d, s, day));
     const key = `q:${day}:${id}`;
@@ -189,25 +192,32 @@ export const achievementKey = (id) => `a:${id}`;
 /* ------------------------------ ИСПЫТАНИЕ МЕСЯЦА ------------------------------ */
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.startsWith(month));
-/* Цель — на полный месяц; кто начал заниматься посреди месяца, получает её в доле от
-   оставшихся дней (со дня регистрации или первого занятия): испытание всегда выполнимо. */
+/* Испытание ПЕРСОНАЛЬНОЕ: цель считается от самого ученика.
+   — Темп: цель дня в минутах → сколько это уроков, опыта, уроков без ошибок за день; за
+     месяц — примерно за 60% его дней (занятия не каждый день — тоже нормально).
+   — История: если в прошлом месяце сделано больше — цель «чуть больше прошлого» (+15%), но не
+     больше полутора темпов; сделано меньше — цель по темпу, без наказаний.
+   — Пришёл посреди месяца — темп считается по оставшимся дням, но не ниже нижней планки
+     (иначе получается «заниматься 2 дня»). Испытания «просто заходить N дней» нет. */
 const MONTH_KINDS = [
-  { id: 'days', target: 15, title: (t) => `Заниматься ${t} ${plural(t, 'день', 'дня', 'дней')} в этом месяце`, unit: (n) => `${plural(n, 'день', 'дня', 'дней')} занятий`,
-    have: (s, m) => inMonth(s.done, m).filter(([, v]) => v > 0).length },
-  { id: 'lessons', target: 40, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
+  { id: 'minutes', floor: 60, round: 10, pace: (m) => m, title: (t) => `Заниматься ${t} минут в этом месяце`, unit: () => 'мин',
+    have: (s, m) => Math.floor(inMonth(s.daily, m).reduce((a, [, d]) => a + (d.s || 0), 0) / 60) },
+  { id: 'lessons', floor: 5, round: 1, pace: (m) => m / 5, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
     have: (s, m) => inMonth(s.done, m).reduce((a, [, v]) => a + v, 0) },
-  { id: 'perfect', target: 12, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без ошибок в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
+  { id: 'perfect', floor: 3, round: 1, pace: (m) => m / 40, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без ошибок в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
     have: (s, m) => inMonth(s.daily, m).reduce((a, [, d]) => a + d.p, 0) },
-  { id: 'xp', target: 500, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
+  { id: 'xp', floor: 100, round: 10, pace: (m) => m * 3, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
     have: (s, m) => inMonth(s.xp, m).reduce((a, [, v]) => a + v, 0) },
 ];
 export const MONTH_COINS = 100;
+const ACTIVE_SHARE = 0.6;
 // первый день ученика: регистрация или самое раннее занятие
 const firstDay = (s) => {
   const days = [...Object.keys(s.done || {}), ...Object.keys(s.xp || {})].sort();
   const reg = s.profile && s.profile.at ? dayOf(s.profile.at) : null;
   return [days[0], reg].filter(Boolean).sort()[0] || null;
 };
+const prevMonth = (month) => { const [y, m] = month.split('-').map(Number); return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; };
 export function monthChallenge(s, now = Date.now()) {
   const day = dayOf(now); const month = day.slice(0, 7);
   const kind = MONTH_KINDS[Math.floor(hash01(`month:${month}`) * MONTH_KINDS.length)];
@@ -215,13 +225,19 @@ export function monthChallenge(s, now = Date.now()) {
   const start = firstDay(s) || day;
   const from = start.slice(0, 7) === month ? Number(start.slice(8)) : start < month ? 1 : d.getDate();
   const span = last - from + 1;
-  const target = span >= last ? kind.target : Math.max(1, Math.round((kind.target * span) / last));
+  const mins = goalMinutes(s);
+  const byPace = kind.pace(mins) * span * ACTIVE_SHARE;
+  const before = kind.have(s, prevMonth(month));
+  const raw = before > byPace ? Math.min(before * 1.15, byPace * 1.5) : byPace;
+  const target = Math.max(kind.floor, Math.round(raw / kind.round) * kind.round);
   const have = Math.min(target, kind.have(s, month));
   const key = `m:${month}`;
   // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
   const daysLeft = last - d.getDate() + 1;
+  // почему именно столько — чтобы цель читалась как своя, а не взятая с потолка
+  const why = before > byPace ? `В прошлом месяце — ${before}: теперь чуть больше.` : `По вашей цели — ${mins} минут в день.`;
   return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
-    done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft };
+    done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft, why };
 }
 // марки месяцев, которые уже получены: «m:ГГГГ-ММ» → подпись
 export const monthStamps = (s) => Object.keys(s.claimed || {}).filter((k) => k.startsWith('m:')).sort().map((k) => {
@@ -236,7 +252,8 @@ export function settle(s, ctx, now = Date.now()) {
   const give = (t, n, key, title, kind) => { const before = t; const next = earn(t, n, key, now); if (next !== before) gains.push({ key, coins: n, title, kind }); return next; };
   let t = s;
   const day = dayOf(now);
-  if (((t.done || {})[day] || 0) >= (t.goal || 1)) t = give(t, COIN.goal, `g:${day}`, 'Цель дня выполнена', 'goal');
+  const g = goalToday(t, now);
+  if (g.done >= g.goal) t = give(t, COIN.goal, `g:${day}`, `Цель дня: ${g.goal} минут`, 'goal');
   const st = streak(t, now).days;
   STREAK_BONUS.forEach(([n, c]) => { if (st >= n) t = give(t, c, `st:${n}`, `Серия: ${n} ${plural(n, 'день', 'дня', 'дней')}`, 'streak'); });
   const quests = questsFor(t, now);

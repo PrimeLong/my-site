@@ -20,7 +20,7 @@ import {
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
-import { loadProgress, saveProgress } from './textbook/progress.js';
+import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
   UNITS, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf,
@@ -30,13 +30,12 @@ import {
   goalToday, missedYesterday, learnStats, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
-import { lessonOpts, weakLessons, recommend, courseCtx } from './learn/program.js';
+import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
-  REWARD_CSS, WalletStat, QuestsCard, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
+  REWARD_CSS, WalletStat, QuestsCard, MonthCard, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
-import { todayCard } from './textbook/today-snapshot.js';
 import { markTerms, termTitle, termText } from './learn/terms.js';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, FlashCard, Calculator as CalcPad,
@@ -140,6 +139,7 @@ const CSS = `
   .ln-textbook .ems-btn.primary { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000); font: 700 13.5px/1.25 var(--ds-serif); letter-spacing: .06em; text-transform: uppercase; }
   .ln-textbook .ems-btn.primary:hover { background: var(--u); filter: brightness(1.07); }
   .ln-textbook .ems-btn[aria-pressed="true"] { background: var(--ds-sel); color: var(--ds-sel-ink); border-color: var(--ds-sel-rule); }
+  .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
 `;
 
@@ -914,8 +914,14 @@ const bareTitle = (t) => { const x = String(t).replace(/^Знакомство:\s
    и опыт — и кнопка «Начать» (или «Продолжить», если урок был прерван). Пройденный урок
    можно взять на алмазном уровне — задачи сложнее, опыт и монеты больше — или просто
    повторить. Если тема слабая, первым предлагается простой повтор. */
-function LessonSheet({ l, weak = false, onStart, onClose }) {
+/* «Теория уже была в уроке»: разделы, про которые больше не спрашиваем (удобство устройства) */
+const THEORY_KEY = 'ems-learn-theory-known';
+const readKnown = () => { try { const v = JSON.parse(localStorage.getItem(THEORY_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+const addKnown = (id) => { try { localStorage.setItem(THEORY_KEY, JSON.stringify([...new Set([...readKnown(), id])].slice(-200))); } catch { /* приватный режим */ } };
+function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
   const lesson = LESSON_BY_ID[l.id];
+  // уроку нужна теория из учебника, которой ученик ещё не видел — спросим перед стартом
+  const [theory] = useState(() => (l.open && !l.done && !getResume(l.id) ? theoryNotice(lesson, learn, loadProgress(), readKnown()) : null));
   const [info] = useState(() => { const p = buildLesson(l.id); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: p.items.length * XP.correct + XP.finish }; });
   const [gemInfo] = useState(() => { if (!l.done) return null; const p = buildLesson(l.id, Math.random, { diamond: true }); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: Math.round((p.items.length * XP.correct + XP.finish) * XP.diamond) }; });
   const resume = l.open ? getResume(l.id) : null;
@@ -945,6 +951,22 @@ function LessonSheet({ l, weak = false, onStart, onClose }) {
         {!l.open ? (
           <div className="ds-sub" style={{ fontSize: 15, textAlign: 'center' }} data-testid="lesson-sheet-locked">
             <Lock size={15} style={{ verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />Откроется после предыдущего урока — или сдайте проверку юнита.
+          </div>
+        ) : theory ? (
+          <div className="ln-theory" data-testid="theory-notice">
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <BookOpenText size={22} color="var(--u-ink)" style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+              <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.45 }}>
+                Для этого урока нужна теория из учебника: раздел <b>«{theory.section.title}»</b>{theory.section.minutes ? `, ≈${theory.section.minutes} мин` : ''}.
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+              <Button wide variant="secondary" icon={BookOpenText} data-testid="theory-open"
+                onClick={() => { Audio.play('paper'); onClose(); onOpenBook({ kind: 'chapter', id: theory.chapter, anchor: theory.section.id }); }}>Открыть теорию</Button>
+              <Button wide data-testid="lesson-start" onClick={() => { Audio.prime(); Audio.play('click'); onStart({ mode: 'lesson', lessonId: l.id }); }}>Начать без теории</Button>
+              <Button wide variant="ghost" data-testid="theory-known"
+                onClick={() => { Audio.prime(); Audio.play('click'); addKnown(theory.section.id); onStart({ mode: 'lesson', lessonId: l.id }); }}>Теория уже была в уроке</Button>
+            </div>
           </div>
         ) : resume || !l.done ? (
           <Button wide data-testid="lesson-start" onClick={() => { Audio.prime(); Audio.play('click'); onStart({ mode: 'lesson', lessonId: l.id, resume }); }}>
@@ -991,7 +1013,7 @@ function TopStats({ learn }) {
       <span className="ln-stat" title="Серия дней"><Flame size={17} color={st.days ? 'var(--ds-bad)' : 'var(--ds-ink3)'} aria-hidden="true" /><span data-testid="streak">{st.days}</span><small>дн.</small></span>
       <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" />{totalXp}<small>XP</small></span>
       <WalletStat learn={learn} />
-      <span className="ln-stat" title="Цель дня" data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" />{Math.min(g.done, g.goal)}/{g.goal}</span>
+      <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" />{Math.min(g.done, g.goal)}/{g.goal}<small>мин</small></span>
     </div>
   );
 }
@@ -1150,7 +1172,6 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
         </div>
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
-      <QuestsCard learn={learn} />
       <Atlas states={states} onPick={pick} />
       {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }) => (
         <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} style={{ '--u': pl.color, scrollMarginTop: 12 }}>
@@ -1202,24 +1223,32 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
 }
 
 /* ------------------------------ ПРАКТИКА ------------------------------ */
-function PracticeView({ learn, onStart, onOpenBook }) {
+/* ------------------------------ ЗАДАНИЯ ------------------------------
+   Отдельная вкладка: цель дня в минутах и три задания дня, персональное испытание месяца,
+   ниже — практика: ошибки уроков, задачи вперемешку и итоговая проверка. */
+function TasksView({ learn, onStart, onOpenBook }) {
   const n = learn.mistakes.length;
-  // раздел учебника на сегодня и повторение — тот же расчёт минут, что и в самом учебнике
-  const [today] = useState(() => todayCard());
+  // задачи и вопросы учебника, которым подошёл срок повторения
+  const [due] = useState(() => reviewQueue(loadProgress()).due.length);
   const arrow = <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />;
   return (
-    <div className="ln-wrap" data-testid="practice">
-      <Heading eyebrow="Практика" title="Повторить и закрепить" sub="Ошибки уроков возвращаются сюда, пока не решите их верно." style={{ marginBottom: 6 }} />
-      <MenuCard icon={RotateCcw} tone="var(--ds-bad)" title="Повторить ошибки" data-testid="practice-mistakes" data-nav-target={n ? 'run:practice' : undefined} disabled={!n}
-        text={n ? `${n} ${plural(n, 'упражнение', 'упражнения', 'упражнений')} из прошлых уроков` : 'Ошибок нет — всё решено верно'} right={n ? arrow : null}
-        onClick={() => { Audio.prime(); onStart({ mode: 'practice' }); }} />
-      <MenuCard icon={BookOpenText} tone="#3E6FA8" title="На сегодня" data-testid="practice-today" data-nav-target="book:today" right={arrow}
-        text={today.section ? `«${today.section.title}» · ≈${today.section.minutes} мин · на повторение: ${today.due}` : `Все разделы готовых глав пройдены · на повторение: ${today.due}`}
-        onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'today' }); }} />
-      <MenuCard icon={Target} tone="#65408F" title="Задачи вперемешку" data-testid="practice-mixed" data-nav-target="book:mixed" right={arrow} text="Из начатых глав, без подсказки, какая нужна модель"
-        onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'mixed' }); }} />
-      <MenuCard icon={Trophy} tone="var(--ds-gold)" title="Итоговая проверка: Микро" data-testid="practice-exam" data-nav-target="book:exam:micro" right={arrow} text="Шестнадцать задач с новыми числами при каждой попытке"
-        onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'exam', id: 'micro' }); }} />
+    <div className="ln-wrap" data-testid="tasks">
+      <Heading eyebrow="Задания" title="На сегодня и на месяц" sub="Задания дня обновляются в полночь и начинаются с нуля." style={{ marginBottom: 10 }} />
+      <QuestsCard learn={learn} />
+      <MonthCard learn={learn} />
+      <div data-testid="practice">
+        <div className="ds-h3" style={{ margin: '18px 0 6px' }}>Практика</div>
+        <MenuCard icon={RotateCcw} tone="var(--ds-bad)" title="Повторить ошибки" data-testid="practice-mistakes" data-nav-target={n ? 'run:practice' : undefined} disabled={!n}
+          text={n ? `${n} ${plural(n, 'упражнение', 'упражнения', 'упражнений')} из прошлых уроков` : 'Ошибок нет — всё решено верно'} right={n ? arrow : null}
+          onClick={() => { Audio.prime(); onStart({ mode: 'practice' }); }} />
+        <MenuCard icon={BookOpenText} tone="#3E6FA8" title="Повторить задачи учебника" data-testid="practice-review" data-nav-target={due ? 'book:review' : undefined} disabled={!due}
+          text={due ? `${due} ${plural(due, 'задача или вопрос', 'задачи или вопроса', 'задач или вопросов')} — подошёл срок` : 'Сегодня повторять нечего'} right={due ? arrow : null}
+          onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'review' }); }} />
+        <MenuCard icon={Target} tone="#65408F" title="Задачи вперемешку" data-testid="practice-mixed" data-nav-target="book:mixed" right={arrow} text="Из начатых глав учебника, без подсказки, какая нужна модель"
+          onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'mixed' }); }} />
+        <MenuCard icon={Trophy} tone="var(--ds-gold)" title="Итоговая проверка: Микро" data-testid="practice-exam" data-nav-target="book:exam:micro" right={arrow} text="Шестнадцать задач с новыми числами при каждой попытке"
+          onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'exam', id: 'micro' }); }} />
+      </div>
     </div>
   );
 }
@@ -1311,7 +1340,6 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
           </div>
         )}
       </Card>
-      <MenuCard icon={BookOpenText} tone="#3E6FA8" title="Учебник" data-testid="prof-book" data-nav-target="book:toc" right={arrow} text="Все главы, формулы и задачи — как справочник" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'toc' }); }} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
         text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
@@ -1358,6 +1386,11 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   useEffect(() => { if (reopenBook) { openBook(null, true); onBookReopened(); } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenBook]);
   const start = (r) => { setSheet(null); setRun(r); };
+  // «Сообщить об ошибке» в учебнике: на странице (вверху) и у каждой задачи
+  const bookReports = {
+    reportSlot: (cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />,
+    reportFlag: (context) => <ReportFlag context={context} label="Сообщить об ошибке" withText />,
+  };
   const accent = placeOf((pathState(learn).find((s) => s.current) || pathState(learn)[0] || { course: { id: 'supply-demand' } }).course.id).color;
   // наряд из лавки — на всех Инфлях обучения: в уроке, на итогах, на Пути и в профиле
   const outfitKey = JSON.stringify(outfitOf(learn));
@@ -1369,24 +1402,23 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
-          <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers}
-            reportSlot={(cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />}
-            reportFlag={(context) => <ReportFlag context={context} label="Сообщить об ошибке" withText />} />
+          <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />
         </div>
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports} style={book || reports ? { display: 'none' } : undefined}>
         {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           visible={!run && !sheet && !book && !chest && !morning} />}
+        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
-        {tab === 'practice' && <PracticeView learn={learn} onStart={start} onOpenBook={openBook} />}
+        {tab === 'tasks' && <TasksView learn={learn} onStart={start} onOpenBook={openBook} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}
           onReports={() => { setReports(true); window.scrollTo(0, 0); }} />}
       </div>
       {reports && <ReportsView onBack={() => { Audio.play('paper'); setReports(false); }} />}
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update} onClose={() => setChest(null)} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
-      {sheet && <LessonSheet l={sheet} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} />}
+      {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook} />}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
     </DsRoot>
