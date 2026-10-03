@@ -588,7 +588,19 @@ function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = 
 const DIR_WORD = { '+': 'растёт', '-': 'падает', 0: 'не меняется', '?': 'любое' };
 const KIND_LABEL = { number: 'Задача', truefalse: 'Верно или неверно', graph: 'Графическая задача' };
 
-function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onSolutionOpen }) {
+// контекст для «Сообщить об ошибке»: задача, условие, что ввёл ученик и правильный ответ
+const problemContext = (block, given, answerText) => ({
+  screen: 'textbook-problem', kind: block.kind, exercise: block.id, unit: block.chapter || '',
+  prompt: flatProblem(block.statement).slice(0, 1500), answer: given == null ? '' : String(given).slice(0, 480), correct: String(answerText || '').slice(0, 480),
+});
+function flatProblem(x) {
+  if (x == null) return '';
+  if (typeof x === 'string') return x;
+  if (Array.isArray(x)) return x.map(flatProblem).filter(Boolean).join(' ');
+  if (typeof x === 'object') return Object.entries(x).filter(([k]) => k !== 'id' && k !== 'type' && k !== 't').map(([, v]) => flatProblem(v)).filter(Boolean).join(' ');
+  return '';
+}
+function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onSolutionOpen, given = null }) {
   const rec = ctx.progress.problems[block.id];
   // решение открыто по кнопке; после ответа, если задача его открывает, — само, пока его не скроют
   const [solMode, setSolMode] = useState(null);
@@ -603,7 +615,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
         <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {block.news && <span className="tb-chip">по газете</span>}
           {LEVELS[block.level] && <span className="tb-chip" data-testid="tb-level">{LEVELS[block.level]}</span>}
-          {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'шага' : 'шагов'}</span>}
+          {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'пункта' : 'пунктов'}</span>}
           {status && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
             {status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
         </span>
@@ -647,6 +659,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
         )}
         <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
           onClick={() => { Audio.play('click'); if (!open && onSolutionOpen) onSolutionOpen(); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+        {ctx.reportFlag && <span style={{ marginLeft: 'auto' }} data-testid="tb-report">{ctx.reportFlag(() => problemContext(block, given, answerText))}</span>}
       </div>
       {open && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.gold, marginBottom: 0 }}>
@@ -742,8 +755,11 @@ function NumberProblem({ block, no, ctx, from }) {
     if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
     const ok = rs.every((r) => r.ok);
     Audio.play(ok ? 'stamp' : 'tick');
-    const marks = multi ? ` Шаги: ${parts.map((pt, k) => `${pt.label} ${rs[k].ok ? 'верно' : 'неверно'}`).join(', ')}.` : '';
-    const text = ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : `${multi ? `Не все шаги сошлись.${marks}` : 'Пока неверно.'} ${WRONG.replace(/^Пока неверно\. /, '')}`;
+    // какие пункты сошлись, а какие нет: «верно/неверно» здесь не пишем — выбора «верно или неверно» в задаче нет
+    const bad = parts.filter((pt, k) => !rs[k].ok).map((pt) => pt.label);
+    const good = parts.filter((pt, k) => rs[k].ok).map((pt) => pt.label);
+    const marks = multi ? ` ${good.length ? `Сошлось: ${good.join(' ')}. ` : ''}Не сошлось: ${bad.join(' ')} — разберите ${bad.length > 1 ? 'эти пункты' : 'этот пункт'} в решении.` : '';
+    const text = ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : `${multi ? `Ответ засчитывается, когда сходятся все пункты.${marks}` : 'Пока неверно.'} ${WRONG.replace(/^Пока неверно\. /, '').replace(/ — загляните в решение\./, '.')}`;
     ctx.onAnswer(block.id, ok, { sawSolution: saw, confident: sure });
     const traps = ok ? [] : matchTraps(block, inputs).map((tr) => ({ label: multi ? parts[tr.part].label : '', text: tr.text }));
     setVerdict({ ok, text, traps });
@@ -754,7 +770,8 @@ function NumberProblem({ block, no, ctx, from }) {
   const [focus, setFocus] = useState(null);
   const useCalc = (v) => { const k = focus != null ? focus : Math.max(0, inputs.findIndex((x) => !String(x).trim())); setAt(k, v); };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}
+      given={parts.map((pt, k) => `${pt.label ? `${pt.label} ` : ''}${inputs[k]}`).join('; ')}>
       <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', alignItems: 'center' }}>
           {parts.map((pt, k) => (
@@ -806,7 +823,7 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   };
   return (
     <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={block.answer ? 'утверждение верно' : 'утверждение неверно'}
-      onSolutionOpen={() => { if (stage === 'write') setSaw(true); }}>
+      onSolutionOpen={() => { if (stage === 'write') setSaw(true); }} given={why}>
       <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`} disabled={stage !== 'write'}
         placeholder="Почему? Одна-две фразы"
         style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
@@ -866,7 +883,7 @@ function GraphProblem({ block, no, ctx, from }) {
     setSure(null);
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)} given={JSON.stringify(values)}>
       <ChartBox type={block.chart} attrs={block.attrs} ctx={ctx} values={values} onValues={(v) => { setValues(v); setVerdict(null); }}
         only={block.controls} framed={false} />
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1528,7 +1545,7 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
-export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null }) {
+export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null, reportFlag = null }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);
@@ -1619,6 +1636,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     progress, go, back, embedded, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
     onAnswer: (id, ok, opts) => update((p) => recordAnswer(p, id, ok, Date.now(), opts)),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
+    reportFlag,
   };
   const valid = page.kind === 'chapter' ? !!CHAPTER_BY_ID[page.id] : page.kind === 'appendix' ? !!APPENDIX_BY_ID[page.id] : page.kind === 'exam' ? !!EXAMS[page.id]
     : ['toc', 'today', 'mixed', 'stats'].includes(page.kind);

@@ -159,12 +159,15 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
     daily: { ...s.daily, [day]: entry },
   });
 }
-// «Проверка юнита» сдана: все его уроки считаются пройденными
-export function passUnit(s, unitId, lessonIds, now = Date.now()) {
-  const lessons = { ...s.lessons };
-  lessonIds.forEach((id) => { if (!lessons[id]) lessons[id] = { at: now, runs: 0, best: 0 }; });
-  return upd(s, { lessons, units: { ...s.units, [unitId]: { tested: now } } });
+/* «Проверка юнита» сдана (или вступительный тест открыл юнит): его уроки ОТКРЫТЫ, но не
+   пройдены — ни опыта, ни сундука, ни печатей за них. Пройденным урок становится только
+   уроком. ace — проверка без единой ошибки (печать «Знаток»). */
+export function passUnit(s, unitId, { ace = false, now = Date.now() } = {}) {
+  const prev = (s.units || {})[unitId] || {};
+  return upd(s, { units: { ...s.units, [unitId]: { tested: prev.tested || now, ...(ace || prev.ace ? { ace: prev.ace || now } : {}) } } });
 }
+// урок пройден по-настоящему: был хотя бы один доведённый до конца раз (старые записи вступительного теста — runs: 0)
+export const lessonDone = (s, id) => ((s.lessons || {})[id] || {}).runs > 0;
 export const setGoal = (s, goal, now = Date.now()) => (GOALS.includes(goal) ? upd(s, { goal, goalAt: now }) : s);
 
 /* ------------------------------ СЕРИЯ И РЕКОРДЫ ------------------------------ */
@@ -285,7 +288,7 @@ export function normalizeLearn(raw) {
     lessons[k] = { at: cnt(l.at, 1e14), runs: cnt(l.runs, 1e5), best: cnt(l.best, 100), ...(gem ? { diamond: gem } : {}) };
   });
   const units = {};
-  Object.keys(obj(r.units)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => { const t = cnt(obj(r.units[k]).tested, 1e14); if (t) units[k] = { tested: t }; });
+  Object.keys(obj(r.units)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => { const u = obj(r.units[k]); const t = cnt(u.tested, 1e14); const ace = cnt(u.ace, 1e14); if (t) units[k] = { tested: t, ...(ace ? { ace } : {}) }; });
   const types = {};
   Object.keys(obj(r.types)).filter(okKey).slice(0, 20).forEach((k) => {
     const t = obj(r.types[k]); const n = cnt(t.n);
@@ -384,7 +387,7 @@ export function mergeLearn(a, b) {
     lessons[k] = c ? { at: Math.min(c.at || l.at, l.at || c.at), runs: Math.max(c.runs, l.runs), best: Math.max(c.best, l.best), ...(gem < Infinity ? { diamond: gem } : {}) } : l;
   });
   const units = { ...x.units };
-  Object.entries(y.units).forEach(([k, u]) => { units[k] = { tested: Math.max((units[k] || {}).tested || 0, u.tested) }; });
+  Object.entries(y.units).forEach(([k, u]) => { const c = units[k] || {}; const ace = Math.max(c.ace || 0, u.ace || 0); units[k] = { tested: Math.max(c.tested || 0, u.tested), ...(ace ? { ace } : {}) }; });
   const types = { ...x.types };
   Object.entries(y.types).forEach(([k, t]) => { const c = types[k] || { n: 0, ok: 0, ms: 0 }; types[k] = { n: Math.max(c.n, t.n), ok: Math.max(c.ok, t.ok), ms: Math.max(c.ms, t.ms) }; });
   const byId = {};

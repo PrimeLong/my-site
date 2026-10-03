@@ -44,7 +44,7 @@ export function recommend(s, states = pathState(s)) {
 
 // то, что наградам нужно знать о курсе: пройдено уроков и юнитов, сколько видов уроков
 export function courseCtx(s, states = pathState(s)) {
-  const done = states.flatMap((st) => st.lessons.filter((l) => l.done && (s.lessons[l.id] || {}).runs > 0));
+  const done = states.flatMap((st) => st.lessons.filter((l) => l.done));
   return {
     lessonsDone: done.length,
     unitsDone: states.filter((st) => st.complete).length,

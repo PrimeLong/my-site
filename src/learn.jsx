@@ -13,7 +13,7 @@
    Карта экранов — src/learn/screens.js. */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, Flame, Coins, Target, Lock, Check, Gem, Vault, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
+  X, Flame, Coins, Target, Lock, Check, Gem, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
 } from 'lucide-react';
@@ -22,11 +22,11 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import {
-  UNITS, UNIT_BY_ID, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf,
 } from './learn/course.js';
 import {
-  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek,
+  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
   goalToday, missedYesterday, learnStats, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
@@ -47,7 +47,7 @@ import { ReportFlag, ReportsView, REPORT_CSS, exerciseContext, flatText } from '
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette, Stamp, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette, Stamp, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { ProfileModal } from './account.jsx';
@@ -90,8 +90,11 @@ const CSS = `
   .ln-pin.rec { background: var(--ds-gold); color: #2A1D05; }
   .ln-pin.rec::after { border-top-color: var(--ds-gold); }
   .ln-chest { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: inherit; cursor: pointer; font: 700 13.5px/1.25 var(--ds-serif); }
-  .ln-chest .ln-token { border-color: var(--ds-gold); color: var(--ds-gold); }
-  .ln-chest[data-opened="true"] .ln-token { background: var(--ds-card2); color: var(--ds-ink3); border-style: dashed; }
+  .ln-chest-art { display: inline-flex; filter: drop-shadow(0 2px 2px var(--ds-shade)); transition: transform .15s; }
+  .ln-chest:hover .ln-chest-art { transform: translateY(-2px) rotate(-2deg); }
+  .ln-chest[data-opened="false"] .ln-chest-art { animation: ln-chest-wiggle 2.8s ease-in-out infinite; }
+  @keyframes ln-chest-wiggle { 0%, 82%, 100% { transform: none; } 86% { transform: rotate(-5deg); } 90% { transform: rotate(4deg); } 94% { transform: rotate(-2deg); } }
+  @media (prefers-reduced-motion: reduce) { .ln-chest[data-opened="false"] .ln-chest-art { animation: none; } }
   .ln-pin::after { content: ''; position: absolute; left: 50%; bottom: -4px; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top-color: var(--ds-ink); }
   .ln-stop-title { background: none; border: none; padding: 2px 4px; font: 700 13.5px/1.25 var(--ds-serif); max-width: 170px; text-align: center; cursor: pointer; color: var(--ds-ink); }
   .ln-stop-title.locked { color: var(--ds-ink3); }
@@ -123,6 +126,7 @@ const CSS = `
   .ln-ticket-stub::before { top: -9px; } .ln-ticket-stub::after { bottom: -9px; }
   .ln-album { display: flex; flex-wrap: wrap; gap: 10px; }
   .ln-legend { margin-top: 12px; padding: 8px 10px; border-left: 3px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 0 3px 3px 0; }
+  .ln-how { background: none; border: none; padding: 4px 0; margin-top: 6px; font: 700 14px var(--ds-sans); color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
   .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 3px; border-left: 3px solid; }
   .ln-verdict.ok { background: var(--ds-ok-bg); border-color: var(--ds-ok); }
   .ln-verdict.bad { background: var(--ds-bad-bg); border-color: var(--ds-bad); }
@@ -428,7 +432,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const [plan] = useState(() => (rs ? rs.plan : newPlan(run, learn)));
   const lesson = run.lessonId ? LESSON_BY_ID[run.lessonId] : null;
   // пройден ли урок раньше — на момент начала (после финиша он уже в прогрессе); был ли уже алмаз
-  const [replay] = useState(() => run.mode === 'lesson' && !!learn.lessons[run.lessonId]);
+  const [replay] = useState(() => run.mode === 'lesson' && lessonDone(learn, run.lessonId));
   const diamond = !!plan.diamond;
   const [gem] = useState(() => !!(run.lessonId && learn.lessons[run.lessonId] && learn.lessons[run.lessonId].diamond));
   const [queue, setQueue] = useState(() => (rs ? rs.queue : plan.items));
@@ -445,6 +449,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const [sel, setSel] = useState(null);
   // калькулятор расчётного упражнения открыт; на следующем упражнении — снова клавиатура ответа
   const [calcOpen, setCalcOpen] = useState(false);
+  const [how, setHow] = useState(false);
   const [asking, setAsking] = useState(false);
   const [result, setResult] = useState(null);
   const [term, setTerm] = useState(null);
@@ -541,12 +546,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
     } else if (run.mode === 'check') {
       pass = mistakes <= plan.passMistakes;
       xp = firstOk * XP.correct;
-      const ids = UNIT_BY_ID[run.unitId].lessons.map((l) => l.id);
-      apply = (s) => { const t = finishLesson(s, null, { xp, ...done }); return pass ? passUnit(t, run.unitId, ids) : t; };
+      apply = (s) => { const t = finishLesson(s, null, { xp, ...done }); return pass ? passUnit(t, run.unitId, { ace: mistakes === 0, now }) : t; };
     } else if (run.mode === 'placement') {
       // открытые тестом юниты — как сданные проверкой; тест не засчитывается уроком дня
       opened = placementOpened(plan.items, a.first);
-      apply = (s) => setPlacement(opened.reduce((t, u) => passUnit(t, u, UNIT_BY_ID[u].lessons.map((l) => l.id), now), s), opened, now);
+      apply = (s) => setPlacement(opened.reduce((t, u) => passUnit(t, u, { now }), s), opened, now);
     } else {
       xp = firstOk * XP.correct;
       apply = (s) => finishLesson(s, null, { xp, ...done });
@@ -572,7 +576,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
     if (pos + 1 >= queue.length) { finish(); return; }
     // вступительный тест: пятёрка юнита провалена — дальше спрашивать незачем
     if (run.mode === 'placement' && cur && placementFailed(plan.items, acc.current.first, cur.placeUnit)) { finish(); return; }
-    setPos(pos + 1); setResp(null); setFb(null); setSel(null); setTerm(null); setCalcOpen(false);
+    setPos(pos + 1); setResp(null); setFb(null); setSel(null); setTerm(null); setCalcOpen(false); setHow(false);
     acc.current.itemStart = Date.now();
     if (cardFor(queue[pos + 1])) setStage('card');
   };
@@ -618,6 +622,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
         {!fb.ok && fb.why && <div style={{ fontSize: 15, marginTop: 4, lineHeight: 1.5 }} data-testid="ex-why"><Inline nodes={fb.why} ctx={noopCtx} /></div>}
         {!fb.ok && !fb.why && inst.explain && !inst.steps && <div className="tb-body" style={{ fontSize: 15, marginTop: 4, color: 'inherit' }}><Blocks blocks={inst.explain} ctx={noopCtx} /></div>}
         {!fb.ok && inst.explain && inst.steps && <StepsExplain blocks={inst.explain} key={inst.uid} />}
+        {/* верный ответ на расчёт — ход решения по кнопке: важно не только число, но и почему так считают */}
+        {fb.ok && inst.explain && !GAME_KINDS.includes(inst.kind) && (
+          how ? <div className="tb-body" style={{ fontSize: 15, marginTop: 6, color: 'inherit' }} data-testid="ex-how"><Blocks blocks={inst.explain} ctx={noopCtx} /></div>
+            : <button type="button" className="ln-how" data-testid="ex-how-open" onClick={() => { Audio.play('paper'); setHow(true); }}>Как решать</button>
+        )}
         {!fb.ok && retryable && !inst.noRetry && <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 4 }}>{feed ? 'Вопрос вернётся в конце урока.' : 'Задача вернётся в конце урока.'}</div>}
         <Button variant={fb.ok ? 'ok' : 'bad'} wide onClick={next} autoFocus style={{ marginTop: 12 }}>Дальше</Button>
       </div>
@@ -1095,7 +1104,7 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
         <div className="ln-stop" style={{ left: pts[n - 1][0], top: pts[n - 1][1] - 31 }}>
           <button type="button" className="ln-chest" data-testid="chest" data-unit={chest.unitId} data-opened={String(chest.opened)} data-nav-target={`chest:${chest.unitId}`}
             aria-label={chest.opened ? 'Сундук юнита открыт' : 'Сундук юнита: открыть'} onClick={() => { Audio.play('click'); onChest(chest.unitId); }}>
-            <span className="ln-token"><Vault size={28} aria-hidden="true" /></span>
+            <span className="ln-chest-art"><Chest size={60} open={false} spent={chest.opened} label={chest.opened ? 'Сундук открыт' : 'Сундук юнита'} /></span>
             <span>{chest.opened ? 'Сундук открыт' : 'Сундук юнита'}</span>
           </button>
         </div>
@@ -1237,7 +1246,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
   const [account, setAccount] = useState(false);
   const states = pathState(learn);
   const arrow = <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />;
-  const lessonsDone = Object.keys(learn.lessons).length;
+  const lessonsDone = Object.keys(learn.lessons).filter((id) => lessonDone(learn, id)).length;
   return (
     <div className="ln-wrap" data-testid="learn-profile">
       {account && <div data-testid="account" style={{ display: 'contents' }}><ProfileModal onClose={() => setAccount(false)} onSwitched={() => setAccount(false)} /></div>}
@@ -1361,7 +1370,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers}
-            reportSlot={(cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />} />
+            reportSlot={(cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />}
+            reportFlag={(context) => <ReportFlag context={context} label="Сообщить об ошибке" withText />} />
         </div>
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}

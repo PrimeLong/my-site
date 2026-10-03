@@ -134,14 +134,19 @@ describe('вступительный тест', () => {
     expect(placementFailed(plan.items, first, 'scarcity')).toBe(true);
     expect(placementFailed(plan.items, first, 'supply-demand')).toBe(false);
   });
-  it('открытые тестом юниты пройдены на Пути, но уроки не засчитаны как пройденные вами', () => {
-    const ids = UNIT_BY_ID.scarcity.lessons.map((l) => l.id);
-    const s = setPlacement(passUnit(emptyLearn(), 'scarcity', ids, T), ['scarcity'], T);
+  it('открытые тестом юниты — уроки открыты, но не пройдены: ни сундука, ни печатей за них', () => {
+    const s = setPlacement(passUnit(emptyLearn(), 'scarcity', { now: T }), ['scarcity'], T);
     const st = pathState(s);
-    expect(st[0].complete).toBe(true);
+    expect(st[0].complete).toBe(false);
+    expect(st[0].lessons.every((l) => l.open && !l.done)).toBe(true);
     expect(st[1].lessons[0].open).toBe(true);
     expect(courseCtx(s).lessonsDone).toBe(0);
-    expect(courseCtx(s).unitsDone).toBe(1);
+    expect(courseCtx(s).unitsDone).toBe(0);
+    // печать за тест не выдаётся; «Знаток» — только за проверку юнита без ошибок
+    expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).not.toContain('a:ace');
+    const ace = passUnit(emptyLearn(), 'scarcity', { ace: true, now: T });
+    expect(settle(ace, courseCtx(ace), T).gains.map((g) => g.key)).toContain('a:ace');
+    expect(mergeLearn(ace, s).units.scarcity.ace).toBe(T);
     expect(normalizeLearn(JSON.parse(JSON.stringify(s))).placement).toEqual({ at: T, opened: ['scarcity'] });
   });
 });

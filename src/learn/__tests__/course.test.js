@@ -413,12 +413,17 @@ describe('проверка юнита, практика, состояние пу
     [st] = pathState(learn);
     expect(st.lessons[1].open).toBe(true);
     expect(st.lessons[2].open).toBe(false);
-    // проверка первого юнита отмечает его пройденным и открывает первый урок второго
-    learn = passUnit(learn, PATH[0], st.lessons.map((l) => l.id), 1e12);
+    // проверка первого юнита открывает все его уроки и первый урок второго, но не засчитывает их
+    learn = passUnit(learn, PATH[0], { now: 1e12 });
     [st, st2] = pathState(learn);
-    expect(st.complete).toBe(true);
+    expect(st.complete).toBe(false);
     expect(st.tested).toBe(true);
+    expect(st.lessons.every((l) => l.open)).toBe(true);
+    expect(st.lessons.filter((l) => l.done)).toHaveLength(1);
     expect(st2.lessons.map((l) => l.open)).toEqual(st2.lessons.map((_, i) => i === 0));
+    // старые записи вступительного теста (runs: 0) — открыто, но не пройдено
+    const legacy = { ...emptyLearn(), lessons: { [st.lessons[3].id]: { at: 1, runs: 0, best: 0 } } };
+    expect(pathState(legacy)[0].lessons[3].done).toBe(false);
     // пройденный урок остаётся открытым для повтора
     const only = finishLesson(emptyLearn(), st2.lessons[2].id, { xp: 1, accuracy: 100, now: 1e12 });
     expect(pathState(only)[1].lessons[2].open).toBe(true);

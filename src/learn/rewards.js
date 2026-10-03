@@ -171,7 +171,8 @@ export const ACHIEVEMENTS = [
   { id: 'streak30', icon: 'flame', title: 'Месяц в пути', text: 'Серия — тридцать дней', coins: 100, test: (s, c) => c.longest >= 30 },
   { id: 'unit', icon: 'landmark', title: 'Место на карте', text: 'Пройден первый юнит', coins: 20, test: (s, c) => c.unitsDone >= 1 },
   { id: 'kinds', icon: 'shapes', title: 'Все жанры', text: 'Пройдены уроки всех восьми видов', coins: 30, test: (s, c) => c.kinds >= 8 },
-  { id: 'placement', icon: 'graduation', title: 'Экстерн', text: 'Вступительный тест открыл юнит', coins: 20, test: (s) => (s.placement || {}).opened && s.placement.opened.length > 0 },
+  // знания, показанные делом: проверка юнита без единой ошибки (вступительный тест сам по себе печать не даёт)
+  { id: 'ace', icon: 'graduation', title: 'Знаток', text: 'Проверка юнита — без единой ошибки', coins: 30, test: (s) => Object.values(s.units || {}).some((u) => u.ace) },
   { id: 'quests', icon: 'scroll', title: 'Прилежание', text: 'Все задания дня — семь раз', coins: 40, test: (s) => Object.keys(s.claimed || {}).filter((k) => /^q:.*:all$/.test(k)).length >= 7 },
   { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 5, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 },
   { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },

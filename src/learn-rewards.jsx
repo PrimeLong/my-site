@@ -5,12 +5,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wallet, Snowflake, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, Vault, TrendingUp, TrendingDown, Minus, Gem, Zap,
+  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
-import { Rosette, Stamp, CoinShower, CountUp, Guilloche } from './ds-art.jsx';
+import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural,
@@ -305,7 +305,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
         {opened && <CoinShower seed={n} n={18} />}
         <div className="ds-eyebrow">Сундук юнита · {place}</div>
         <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }} className={opened ? 'rw-chest-open' : ''}>
-          <Rosette size={120} opacity={0.5}><Vault size={52} color={opened || was ? 'var(--ds-gold)' : 'var(--u-ink)'} aria-hidden="true" /></Rosette>
+          <Chest size={132} open={opened} spent={was && !opened} label={opened ? 'Сундук открыт: монеты' : was ? 'Сундук пуст' : 'Сундук закрыт'} />
         </div>
         {opened ? (
           <><div className="ds-h2" data-testid="chest-coins">+{n} {coinsWord(n)}</div><div className="ds-sub" style={{ fontSize: 14.5, margin: '4px 0 14px' }}>Место на карте ваше — монеты в кошельке.</div>
