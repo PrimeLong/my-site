@@ -5,7 +5,7 @@ import { LESSON_BY_ID, UNIT_BY_ID, EXERCISES, buildLesson, buildPractice, buildP
 import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts } from '../program.js';
 import { evalExpr, fmtResult } from '../calc.js';
 import {
-  balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, OUTFITS, questsFor, openChest, chestCoins, chestKey,
+  balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
   settle, monthChallenge, achievementsOf, hash01, COIN,
 } from '../rewards.js';
 import {
@@ -102,7 +102,7 @@ describe('слабые темы и «рекомендуем сейчас»', () 
     for (let seed = 0; seed < 5; seed += 1) {
       const p = buildLesson(rev.id, Math.random, { weak: [weakId] });
       const fromWeak = p.items.filter((it) => EXERCISES[it.id].lesson === weakId).length;
-      const poolWeak = LESSON_BY_ID[weakId].exercises.filter((e) => !['swipe', 'rush', 'chain'].includes(e.kind)).length;
+      const poolWeak = LESSON_BY_ID[weakId].exercises.filter((e) => !['swipe', 'rush'].includes(e.kind)).length;
       expect(fromWeak).toBe(Math.min(poolWeak, p.items.length));
     }
     const pr = buildPractice([], Math.random, { weak: [weakId] });
@@ -123,7 +123,7 @@ describe('вступительный тест', () => {
     const units = pilotUnits().map((u) => u.id);
     expect(plan.items).toHaveLength(units.length * PLACE_PER_UNIT);
     expect([...new Set(plan.items.map((it) => it.placeUnit))]).toEqual(units);
-    plan.items.forEach((it) => expect(['swipe', 'rush', 'chain']).not.toContain(it.kind));
+    plan.items.forEach((it) => expect(['swipe', 'rush']).not.toContain(it.kind));
   });
   it('юнит открыт, если в пятёрке не больше одной ошибки; первая проваленная пятёрка останавливает', () => {
     expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand']);
@@ -169,23 +169,65 @@ describe('монеты и курс', () => {
     expect(Math.abs(mean - 1)).toBeLessThan(0.05);
     expect(new Set(hist).size).toBeGreaterThan(5);
     expect(rateOn('2026-09-28')).toBe(rateOn('2026-09-28'));
-    expect(priceOf('tophat', '2026-09-28')).toBe(Math.ceil(90 * rateOn('2026-09-28')));
+    expect(priceOf('tophat', '2026-09-28')).toBe(Math.ceil(900 * rateOn('2026-09-28')));
   });
 });
 
 describe('лавка и заморозки', () => {
-  const rich = earn(emptyLearn(), 500, null, T);
+  const rich = earn(emptyLearn(), 20000, null, T);
+  const day = dayOf(T);
   it('покупка списывает цену по курсу дня; денег не хватает — не покупается; наряд — один раз, сразу надет', () => {
-    const r = buy(rich, 'bowtie', T);
+    const { showcase, deal } = shopDay(rich, day);
+    const id = showcase.find((x) => x !== deal);
+    const o = OUTFITS.find((x) => x.id === id);
+    const r = buy(rich, id, T);
     expect(r.ok).toBe(true);
-    expect(balance(r.s)).toBe(500 - priceOf('bowtie', dayOf(T)));
-    expect(outfitOf(r.s).neck).toBe('bowtie');
-    expect(buy(r.s, 'bowtie', T).ok).toBe(false);
-    expect(buy(emptyLearn(), 'bowtie', T).reason).toMatch(/Не хватает/);
+    expect(balance(r.s)).toBe(20000 - priceOf(id, day));
+    expect(outfitOf(r.s)[o.slot]).toBe(id);
+    expect(buy(r.s, id, T).ok).toBe(false);
+    expect(buy(emptyLearn(), id, T).reason).toMatch(/Не хватает/);
     // снять и надеть можно только купленное и в свой слот
-    expect(outfitOf(setWear(r.s, 'neck', null, T)).neck).toBe(null);
-    expect(outfitOf(setWear(r.s, 'head', 'tophat', T)).head).toBe(null);
-    expect(outfitOf(setWear(r.s, 'head', 'bowtie', T)).head).toBe(null);
+    expect(outfitOf(setWear(r.s, o.slot, null, T))[o.slot]).toBe(null);
+    const other = OUTFITS.find((x) => x.slot !== o.slot);
+    expect(outfitOf(setWear(r.s, other.slot, id, T))[other.slot]).toBe(null);
+  });
+  it('цены: обычные вещи — 150–1500 крон, редкие — от 2500; всю лавку за неделю не скупить', () => {
+    OUTFITS.forEach((o) => {
+      if (o.rare) expect(o.crowns, o.id).toBeGreaterThanOrEqual(2500);
+      else { expect(o.crowns, o.id).toBeGreaterThanOrEqual(150); expect(o.crowns, o.id).toBeLessThanOrEqual(1500); }
+    });
+    const total = OUTFITS.reduce((a, o) => a + o.crowns, 0);
+    // старательный ученик: три урока без ошибок, все задания, цель — около 120 монет в день
+    expect(total / 120).toBeGreaterThan(90);
+    expect(new Set(OUTFITS.map((o) => o.slot))).toEqual(new Set(['head', 'face', 'neck', 'hand', 'frame']));
+    expect(OUTFITS.filter((o) => o.rare).length).toBeGreaterThanOrEqual(3);
+  });
+  it('витрина дня: шесть некупленных обычных вещей, одинаковая у всех и меняется по дням; скидка дня — 30% на одну', () => {
+    const a = shopDay(emptyLearn(), day);
+    expect(a.showcase).toHaveLength(SHOWCASE_SIZE);
+    a.showcase.forEach((id) => expect(OUTFITS.find((o) => o.id === id).rare).toBeFalsy());
+    expect(shopDay(emptyLearn(), day)).toEqual(a);
+    const days = Array.from({ length: 7 }, (_, k) => shopDay(emptyLearn(), addDays(day, k)).showcase.join());
+    expect(new Set(days).size).toBeGreaterThan(4);
+    expect(priceOf(a.deal, day, emptyLearn())).toBe(Math.ceil(priceOf(a.deal, day) * 0.7));
+    expect(priceOf(a.showcase[1], day, emptyLearn())).toBe(priceOf(a.showcase[1], day));
+    // купленное с витрины уходит — на её место встаёт следующая вещь
+    const r = buy(rich, a.showcase[2], T).s;
+    expect(shopDay(r, day).showcase).not.toContain(a.showcase[2]);
+    expect(shopDay(r, day).showcase).toHaveLength(SHOWCASE_SIZE);
+    // вещи не с витрины сегодня не купить; редкие — всегда
+    const off = OUTFITS.find((o) => !o.rare && !a.showcase.includes(o.id));
+    expect(buy(rich, off.id, T).reason).toMatch(/витрин/);
+    expect(buy(rich, a.rare[0], T).ok).toBe(true);
+    expect(DEAL_OFF).toBe(0.3);
+  });
+  it('«двойной опыт»: полчаса после покупки, второй раз во время действия не купить', () => {
+    const r = buy(rich, BOOST.id, T);
+    expect(r.ok).toBe(true);
+    expect(boostActive(r.s, T + 60000)).toBe(true);
+    expect(boostActive(r.s, T + 31 * 60000)).toBe(false);
+    expect(buy(r.s, BOOST.id, T + 60000).ok).toBe(false);
+    expect(normalizeLearn(r.s).boost).toBe(T + BOOST.minutes * 60000);
   });
   it('заморозок в запасе — не больше двух', () => {
     let s = rich;
@@ -300,6 +342,13 @@ describe('правки: печать «Без помарок», испытани
     expect(evalExpr('2^3^2')).toBe(512);
     expect(evalExpr('1500+500')).toBe(2000);
     expect(evalExpr('5/0')).toBe(null);
+    expect(evalExpr('√16')).toBe(4);
+    expect(evalExpr('√(9+16)')).toBe(5);
+    expect(evalExpr('2*√9')).toBe(6);
+    expect(evalExpr('√9^2')).toBe(9);
+    expect(evalExpr('−√4')).toBe(-2);
+    expect(evalExpr('√(0−4)')).toBe(null);
+    expect(evalExpr('√')).toBe(null);
     expect(evalExpr('2+')).toBe(null);
     expect(evalExpr('(2')).toBe(null);
     expect(evalExpr('2..3')).toBe(null);
@@ -311,14 +360,16 @@ describe('правки: печать «Без помарок», испытани
 
 describe('слияние двух устройств', () => {
   it('монеты по дням — по максимуму, награды и покупки — объединение, наряд — более поздний; симметрично', () => {
-    const a = buy(earn(emptyLearn(), 100, 'q:2026-09-28:minutes', T), 'cap', T).s;
+    const cheap = shopDay(emptyLearn(), dayOf(T)).showcase[1];
+    const slot = OUTFITS.find((o) => o.id === cheap).slot;
+    const a = buy(earn(emptyLearn(), 2000, 'q:2026-09-28:minutes', T), cheap, T).s;
     const b = earn(setProfile(emptyLearn(), { minutes: 10 }, T), 60, 'c:scarcity', T + 5);
     const ab = mergeLearn(a, b); const ba = mergeLearn(b, a);
     expect(ab).toEqual(ba);
     expect(Object.keys(ab.claimed).sort()).toEqual(['c:scarcity', 'q:2026-09-28:minutes']);
-    expect(ab.coins[dayOf(T)]).toBe(100);
-    expect(ab.owned.cap).toBe(T);
-    expect(ab.wear.head).toBe('cap');
+    expect(ab.coins[dayOf(T)]).toBe(2000);
+    expect(ab.owned[cheap]).toBe(T);
+    expect(ab.wear[slot]).toBe(cheap);
     expect(mergeLearn(ab, ab)).toEqual(ab);
   });
   it('чистка не пропускает мусор', () => {

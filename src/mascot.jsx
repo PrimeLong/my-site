@@ -53,14 +53,35 @@ const OUTFIT = {
   bowtie: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M24 45.5 L32 49 L24 52.5 Z" fill="#A0372A" /><path d="M40 45.5 L32 49 L40 52.5 Z" fill="#A0372A" /><rect x="30.3" y="47.3" width="3.4" height="3.4" rx=".8" fill="#7A2A20" /></g>,
   scarf: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M13 40 Q32 53 51 40 L51.5 45 Q32 58 12.5 45 Z" fill="#356653" /><path d="M42 47 L47 60 L42 61 L38.5 49 Z" fill="#2B5343" /><path d="M20 44 L21 48.5 M26 46.5 L26.6 51 M44 44 L43 48.5" stroke="#A9C7B8" strokeWidth="1.2" /></g>,
   tie: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M29.5 45.6 L34.5 45.6 L33.6 49 L30.4 49 Z" fill="#2C5A8E" /><path d="M30.4 49 L33.6 49 L35.6 61 L32 64.5 L28.4 61 Z" fill="#3E6FA8" /><path d="M29.6 53 L34.4 55.5 M29 58 L35 60.6" stroke="#9FB3C8" strokeWidth="1" /></g>,
+  // новые вещи лавки: голова, лицо, шея
+  ushanka: <g stroke={INK} strokeWidth="1.1" strokeLinejoin="round"><path d="M14 10 Q32 -9 50 10 L50 13 Q32 6 14 13 Z" fill="#6B4E32" /><path d="M14 10 Q32 4 50 10 L50 14.5 Q32 9 14 14.5 Z" fill="#E9DDC7" /><path d="M13.5 13 L11 27 Q14.5 28.5 17 25 L17.5 13.5 Z M50.5 13 L53 27 Q49.5 28.5 47 25 L46.5 13.5 Z" fill="#E9DDC7" /><circle cx="32" cy="2.5" r="2.4" fill="#A0372A" /></g>,
+  crown: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M17 10 L19 -6 L25.5 3 L32 -9 L38.5 3 L45 -6 L47 10 Z" fill="#E3B53C" /><path d="M17 10 L47 10 L47 6.8 L17 6.8 Z" fill="#B88A1A" /><circle cx="32" cy="-4.5" r="1.9" fill="#2E8FB8" /><circle cx="24" cy="5" r="1.5" fill="#A0372A" /><circle cx="40" cy="5" r="1.5" fill="#A0372A" /><circle cx="19" cy="-6" r="1.2" fill="#FBE7A1" /><circle cx="45" cy="-6" r="1.2" fill="#FBE7A1" /></g>,
+  pince: <g fill="none" stroke={INK} strokeWidth="1.3"><ellipse cx="25.5" cy="23.5" rx="4.6" ry="4" fill="#DDEBF7" fillOpacity=".35" /><ellipse cx="38.5" cy="23.5" rx="4.6" ry="4" fill="#DDEBF7" fillOpacity=".35" /><path d="M30.1 22.8 Q32 20.5 33.9 22.8" /><path d="M43 25 Q49 33 46 43" strokeDasharray="1.2 1.6" stroke="#94700F" /></g>,
+  medal: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M26 44 L30 52 L34 52 L38 44 Z" fill="#A0372A" /><path d="M30 44 L32 50 L34 44 Z" fill="#3E6FA8" /><circle cx="32" cy="56" r="5.2" fill="#E3B53C" /><path d="M32 52.2 L33.1 54.9 L36 55.1 L33.8 56.9 L34.5 59.7 L32 58.2 L29.5 59.7 L30.2 56.9 L28 55.1 L30.9 54.9 Z" fill="#FBE7A1" strokeWidth=".6" /></g>,
+  // в руке: справа, у края монеты
+  paper: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><circle cx="54" cy="39" r="3.2" fill="#E8C766" /><path d="M50 26 L62 28.5 L59.5 46 L47.5 43.5 Z" fill="#F4ECD8" /><path d="M51 29.5 L60 31.4 M50.6 32.6 L59.4 34.5 M50.2 35.7 L58.9 37.6 M49.8 38.8 L58.4 40.7" stroke="#8A7A5C" strokeWidth=".8" /><path d="M51.2 27.6 L56 28.6" stroke="#A0372A" strokeWidth="1.6" /></g>,
+  abacus: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><rect x="49" y="29" width="13" height="17" rx="1.5" fill="#B9874E" /><rect x="50.6" y="30.6" width="9.8" height="13.8" fill="#F4ECD8" />{[33.5, 37.5, 41.5].map((y) => <g key={y}><path d={`M50.6 ${y} H60.4`} stroke="#6B4E32" strokeWidth=".7" /><circle cx="52.6" cy={y} r="1.1" fill="#A0372A" strokeWidth=".5" /><circle cx="55" cy={y} r="1.1" fill="#A0372A" strokeWidth=".5" /><circle cx="58.6" cy={y} r="1.1" fill="#3E6FA8" strokeWidth=".5" /></g>)}<circle cx="51" cy="44.5" r="3" fill="#E8C766" /></g>,
+  briefcase: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M52.5 35 Q52.5 31.5 55.5 31.5 Q58.5 31.5 58.5 35" fill="none" strokeWidth="1.4" /><rect x="48" y="35" width="15" height="12" rx="1.6" fill="#7A4A2A" /><path d="M48 39.5 H63" stroke="#4E2E18" /><rect x="54.3" y="38.4" width="2.4" height="2.4" fill="#E3B53C" strokeWidth=".6" /><circle cx="55.5" cy="33" r="2.6" fill="#E8C766" /></g>,
+  cane: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M56 30 L58.5 63" stroke="#3A2A1A" strokeWidth="2.2" strokeLinecap="round" /><circle cx="55.6" cy="28.4" r="3.2" fill="#E3B53C" /><circle cx="54.5" cy="27.4" r="1" fill="#FBE7A1" stroke="none" /><circle cx="56.5" cy="37" r="3" fill="#E8C766" /></g>,
+  goldbar: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><circle cx="55" cy="41.5" r="3.2" fill="#E8C766" /><path d="M47.5 37 L50 30.5 L61 30.5 L63.5 37 Z" fill="#E3B53C" /><path d="M50 30.5 L61 30.5 L59.6 32.4 L51.4 32.4 Z" fill="#FBE7A1" strokeWidth=".6" /><path d="M52 34.6 H59" stroke="#94700F" strokeWidth=".8" /></g>,
+  // рамки — кольцо вокруг монеты
+  'frame-guilloche': <g fill="none"><circle cx="32" cy="25" r="28.5" stroke="#5A4E80" strokeWidth="1.2" /><circle cx="32" cy="25" r="26.6" stroke="#5A4E80" strokeWidth="1" strokeDasharray="1.6 1.4" /><circle cx="32" cy="25" r="30.4" stroke="#5A4E80" strokeWidth=".8" strokeDasharray="4 2 1 2" /></g>,
+  'frame-gold': <g fill="none"><circle cx="32" cy="25" r="29.5" stroke="#B88A1A" strokeWidth="3.4" /><circle cx="32" cy="25" r="29.5" stroke="#FBE7A1" strokeWidth="1" strokeDasharray="2 3" /><circle cx="32" cy="25" r="27" stroke="#94700F" strokeWidth=".8" /></g>,
+  'frame-diamond': <g><circle cx="32" cy="25" r="29.5" fill="none" stroke="#2E8FB8" strokeWidth="2.6" />{Array.from({ length: 12 }, (_, k) => { const a = (k / 12) * Math.PI * 2; const x = 32 + Math.cos(a) * 29.5; const y = 25 + Math.sin(a) * 29.5; return <path key={k} d={`M${x} ${y - 2.6} L${x + 2} ${y} L${x} ${y + 2.6} L${x - 2} ${y} Z`} fill="#BFE9F7" stroke="#1D6A8E" strokeWidth=".7" />; })}</g>,
 };
 export const OUTFIT_IDS = Object.keys(OUTFIT);
+/* Наряд ученика для всех Инфль внутри обучения (урок, итоги, Путь, профиль): его задаёт корень
+   обучения, а явный outfit (витрина лавки) — важнее. */
+export const OutfitContext = React.createContext(null);
+// высота рисунка с учётом головного убора — чтобы место под Инфлю оставляли заранее
+export const mascotHeight = (size, outfit) => size * (70 - (outfit && outfit.head && OUTFIT[outfit.head] ? -12 : 0)) / 64;
 
 export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
+  const ctxOutfit = React.useContext(OutfitContext);
   const m = MOUTH[mood] ? mood : 'hello';
   const gid = `infla-g-${React.useId().replace(/:/g, '')}`;
   const ink = '#2A1D05';
-  const wear = outfit || {};
+  const wear = outfit || ctxOutfit || {};
   // головной убор выше монеты — поле рисунка растёт вверх
   const top = wear.head && OUTFIT[wear.head] ? -12 : 0;
   const motion = m === 'joy' || m === 'party' ? 'infla-hop' : m === 'sleep' ? '' : m === 'wave' ? 'infla-sway' : 'infla-bob';
@@ -68,7 +89,7 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
     <span style={{ display: 'inline-block', lineHeight: 0 }} data-testid="mascot" data-mood={m}>
       <style>{CSS}</style>
       <svg viewBox={`0 ${top} 64 ${70 - top}`} width={size} height={size * (70 - top) / 64} role="img" aria-label={label || `Инфля: ${({ hello: 'привет', wave: 'машет', joy: 'радуется', cheer: 'подбадривает', party: 'празднует', sleep: 'спит', think: 'думает' })[m]}`}
-        className={`infla ${motion}`} key={m}>
+        className={`infla ${motion}`} key={m} style={{ overflow: 'visible' }}>
         <defs>
           <radialGradient id={gid} cx="36%" cy="28%" r="78%">
             <stop offset="0" stopColor="#FBE7A1" /><stop offset="0.5" stopColor="#D9B23A" /><stop offset="1" stopColor="#94700F" />
@@ -76,6 +97,7 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
         </defs>
         <path d="M32 50.2 C 28.8 53.6, 35.6 56.4, 31.8 60.4 C 30.6 61.6, 31.4 62.6, 32.6 63.4" fill="none" stroke="#D9B23A" strokeWidth="1.8" strokeLinecap="round" />
         <path d="M29.3 51.6 L32 47.6 L34.7 51.6 Q32 52.6 29.3 51.6 Z" fill="#A9841A" stroke="#3A2A08" strokeWidth="0.9" strokeLinejoin="round" />
+        {wear.frame && OUTFIT[wear.frame] && <g data-outfit={wear.frame}>{OUTFIT[wear.frame]}</g>}
         <ellipse cx="32" cy="25" rx="22" ry="23.2" fill={`url(#${gid})`} stroke="#3A2A08" strokeWidth="1.6" />
         <ellipse cx="32" cy="25" rx="18.2" ry="19.3" fill="none" stroke="#5A4210" strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="1.2 2" />
         <path d="M17.4 18.6 C 18.6 13.6, 22.4 9.8, 27 8.8" fill="none" stroke="#FFF7DC" strokeOpacity="0.75" strokeWidth="2.4" strokeLinecap="round" />
@@ -92,7 +114,7 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
           <path d="M26 3.5 L32 -4 L38 3.5 Z" fill="#4FA38F" stroke="#3A2A08" strokeWidth="0.8" transform="translate(0 4)" />
           {[[8, 12, '#E07A5F'], [56, 10, '#6FA8DC'], [5, 34, '#4FA38F'], [59, 32, '#E07A5F'], [12, 4, '#D9B23A']].map(([x, y, c], i) => <rect key={i} x={x} y={y} width="3" height="3" fill={c} transform={`rotate(${i * 37} ${x + 1.5} ${y + 1.5})`} />)}
         </>}
-        {['neck', 'face', 'head'].map((sl) => (wear[sl] && OUTFIT[wear[sl]] ? <g key={sl} data-outfit={wear[sl]}>{OUTFIT[wear[sl]]}</g> : null))}
+        {['neck', 'face', 'head', 'hand'].map((sl) => (wear[sl] && OUTFIT[wear[sl]] ? <g key={sl} data-outfit={wear[sl]}>{OUTFIT[wear[sl]]}</g> : null))}
         {m === 'sleep' && <text x="46" y="9" fontSize="9" fill="#9FB3C8" fontFamily="sans-serif">z z</text>}
         {m === 'think' && <><circle cx="52" cy="9" r="1.6" fill="#9FB3C8" /><circle cx="56.5" cy="4.5" r="2.4" fill="#9FB3C8" /></>}
         {m === 'cheer' && <path d="M52 30 l2 -4 l2 4 l4 1 l-3 3 l1 4 l-4 -2 l-4 2 l1 -4 l-3 -3 z" fill="#FBE7A1" stroke="#94700F" strokeWidth="0.6" />}

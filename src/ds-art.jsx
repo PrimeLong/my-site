@@ -3,8 +3,8 @@
    вырезка из «Вестника» для историй, полоса прогресса урока — линия графика, растущая
    вверх, Инфля, которая надувается с каждым верным ответом подряд, и монеты в конце урока.
    Всё — свой SVG, без библиотек. При «уменьшить движение» всё стоит на месте. */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Mascot } from './mascot.jsx';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Mascot, OutfitContext, mascotHeight } from './mascot.jsx';
 
 export function useReducedMotion() {
   const q = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -32,7 +32,14 @@ export const ART_CSS = `
   .ds-coins { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 400; perspective: 600px; }
   .ds-coins i { position: absolute; top: 0; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #F7DC8A, #C9971F 60%, #8E6612);
     box-shadow: inset 0 0 0 2px rgba(120,80,10,.55), inset 0 0 0 4px rgba(255,236,170,.6); animation: ds-fall var(--t) cubic-bezier(.3,.6,.45,1) var(--d) 1 forwards; }
-  .ds-infla { display: inline-block; transform-origin: 50% 85%; transition: transform .45s cubic-bezier(.34,1.45,.5,1); }
+  .ds-level { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+  .ds-level-track { flex: 1; display: flex; gap: 3px; height: 12px; }
+  .ds-level-track i { flex: 1; border-radius: 3px; background: var(--ds-rule); transition: background .25s; }
+  .ds-level-track i.ok { background: linear-gradient(180deg, color-mix(in srgb, var(--u) 75%, #fff) 0 35%, var(--u) 35%); }
+  .ds-level-track i.bad { background: repeating-linear-gradient(135deg, var(--ds-bad) 0 3px, color-mix(in srgb, var(--ds-bad) 45%, var(--ds-card)) 3px 6px); }
+  .ds-level-track i.cur { background: var(--ds-card); box-shadow: inset 0 0 0 1.5px var(--u-ink); }
+  .ds-level-n { font-size: 12.5px; font-weight: 700; color: var(--ds-ink2); min-width: 34px; text-align: right; }
+  .ds-infla { display: inline-block; transform-origin: 50% 90%; transition: transform .45s cubic-bezier(.34,1.45,.5,1); }
   .ds-infla.deflate { transition: transform 1s cubic-bezier(.25,.8,.3,1); }
   .ds-clip { position: relative; background: #F7F1E1; color: #1F1C17; padding: 18px 18px 20px; font-family: var(--ds-serif);
     clip-path: polygon(0 3%, 4% 0, 9% 2%, 15% 0, 22% 2.5%, 30% 0, 38% 2%, 47% 0, 55% 2.5%, 63% 0, 71% 2%, 79% 0, 87% 2.5%, 94% 0, 100% 2%,
@@ -86,7 +93,7 @@ export function Rosette({ size = 96, color = 'var(--u-ink)', opacity = 0.7, chil
         {curves.map((d, i) => <path key={i} d={d} fill="none" stroke={color} strokeWidth="0.6" opacity={opacity} />)}
         <circle cx="50" cy="50" r="47" fill="none" stroke={color} strokeWidth="1" opacity={opacity} />
       </svg>
-      <span style={{ position: 'relative' }}>{children}</span>
+      <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{children}</span>
     </span>
   );
 }
@@ -281,39 +288,42 @@ export function Clipping({ issue, rubric, children, testid }) {
   );
 }
 
-/* Полоса прогресса урока — линия графика: каждое упражнение — шаг вправо, верный ответ —
-   шаг вверх. pulse растёт с каждым верным ответом серии: линия коротко вспыхивает
-   (около 0,5 с) и возвращается к обычному виду — постоянного свечения нет. */
+/* Полоса уровня — сколько упражнений урока пройдено: отрезок на каждое упражнение, верный
+   ответ — в цвете юнита, ошибка — красной штриховкой, текущее — рамкой. pulse растёт с каждым
+   верным ответом серии: последний отрезок коротко вспыхивает (около 0,5 с). Справа — счёт. */
 export function ProgressChart({ answers = [], total, pulse = 0, testid = 'lesson-progress' }) {
-  const W = 300; const H = 34; const n = Math.max(1, total);
-  let up = 0;
-  const pts = [[0, H - 3], ...answers.slice(0, n).map((ok, i) => { if (ok) up += 1; return [((i + 1) / n) * W, H - 3 - (up / n) * (H - 8)]; })];
-  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
-  const last = pts[pts.length - 1];
-  const pct = Math.round((up / n) * 100);
+  const n = Math.max(1, total);
+  const done = Math.min(answers.length, n);
+  const pct = Math.round((done / n) * 100);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ flex: 1, height: H, minWidth: 0, overflow: 'visible' }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
-      aria-label="Прогресс урока" data-testid={testid} data-glow={pulse ? 'pulse' : 'off'}>
-      {[0.33, 0.66].map((k) => <line key={k} x1="0" x2={W} y1={H - 3 - k * (H - 8)} y2={H - 3 - k * (H - 8)} stroke="var(--ds-rule)" strokeWidth="1" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />)}
-      <line x1="0" x2={W} y1={H - 3} y2={H - 3} stroke="var(--ds-rule2)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-      <line x1={W} x2={W} y1="2" y2={H - 3} stroke="var(--ds-rule2)" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
-      {answers.length > 0 && <path d={`${d}L${last[0].toFixed(1)},${H - 3}L0,${H - 3}Z`} fill="color-mix(in srgb, var(--u) 14%, transparent)" />}
-      <g key={pulse} className={pulse ? 'ds-pulse' : undefined}>
-        <path d={d} fill="none" stroke="var(--u-ink)" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-      </g>
-    </svg>
+    <div className="ds-level" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Пройдено ${done} из ${n}`}
+      data-testid={testid} data-glow={pulse ? 'pulse' : 'off'}>
+      <div className="ds-level-track">
+        {Array.from({ length: n }, (_, i) => {
+          const st = i < done ? (answers[i] ? 'ok' : 'bad') : i === done ? 'cur' : '';
+          return <i key={i === done - 1 ? `p${pulse}` : i} className={`${st} ${i === done - 1 && answers[i] && pulse ? 'ds-pulse' : ''}`} />;
+        })}
+      </div>
+      <span className="ds-num ds-level-n">{done}/{n}</span>
+    </div>
   );
 }
 
-/* Инфля надувается с каждым верным ответом подряд (до пяти) и мягко сдувается после ошибки. */
+/* Инфля надувается с каждым верным ответом подряд (до пяти) и мягко сдувается после ошибки.
+   Место под самую большую Инфлю (и под её шляпу) оставлено заранее — она не уходит за край. */
+const INFLA_MAX = 1.3;
 export function InflaMeter({ streak = 0, mood = 'hello', size = 40 }) {
-  const k = 1 + 0.08 * Math.min(streak, 5);
+  const k = 1 + 0.06 * Math.min(streak, 5);
   const prev = useRef(k);
   const deflate = k < prev.current;
   useEffect(() => { prev.current = k; });
+  const outfit = useContext(OutfitContext);
+  const h = mascotHeight(size, outfit);
   return (
-    <span className={`ds-infla ${deflate ? 'deflate' : ''}`} style={{ transform: `scale(${k})` }} data-testid="infla" data-scale={k.toFixed(2)}>
-      <Mascot mood={mood} size={size} />
+    <span style={{ display: 'inline-flex', alignItems: 'flex-end', justifyContent: 'center', width: Math.ceil(size * INFLA_MAX) + 4, height: Math.ceil(h * INFLA_MAX) + 4, flexShrink: 0 }}>
+      <span className={`ds-infla ${deflate ? 'deflate' : ''}`} style={{ transform: `scale(${k})` }} data-testid="infla" data-scale={k.toFixed(2)}>
+        <Mascot mood={mood} size={size} />
+      </span>
     </span>
   );
 }

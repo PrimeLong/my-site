@@ -6,7 +6,7 @@
    Серия дней — дни, когда пройден хотя бы один урок. Один пропуск в календарную неделю
    «замораживается» и серию не обнуляет. Без наказаний: пропуск просто не считается днём серии. */
 const DAY = 24 * 3600 * 1000;
-export const XP = { correct: 2, finish: 5, replayShare: 0.1 };
+export const XP = { correct: 2, finish: 5, replayShare: 0.1, diamond: 1.5 };
 export const GOALS = [1, 2, 3, 5];
 const MAX_DAYS = 400;
 const MAX_KEYS = 300;
@@ -21,20 +21,26 @@ const MAX_HINTED = 60;
    daily — счётчики дня для заданий дня: уроки, без ошибок, верные, секунды, серия, игры, практика;
    coins/spent — монеты по дням (заработано/потрачено), claimed — полученные награды (ключ → когда):
    одна награда не выдаётся дважды и на двух устройствах; owned — купленные вещи, wear — наряд Инфли;
-   freezeBuy — купленные заморозки по дням, frozen — дни, которые спасла купленная заморозка. */
+   freezeBuy — купленные заморозки по дням, frozen — дни, которые спасла купленная заморозка;
+   seen — сколько раз ученик встречал каждое упражнение (чтобы реже повторять одно и то же);
+   best — рекорды мини-игр (очки); lessons[id].diamond — когда урок взят на алмазном уровне;
+   boost — до какого времени действует купленный «двойной опыт». */
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
   profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
   topics: {}, recent: '', recentAt: 0, daily: {},
-  coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, at: 0 }, freezeBuy: {}, frozen: {},
+  coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
+  seen: {}, best: {}, boost: 0,
 });
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
 export const PROFILE_GOAL_LABEL = { exam: 'Поступление в вуз', olymp: 'Олимпиада', uni: 'Первый курс', self: 'Для себя' };
 // минуты в день → уроков в день (урок — 3–5 минут): это цель дня
 export const LESSONS_FOR_MINUTES = { 5: 1, 10: 2, 15: 3, 20: 5 };
-export const SLOTS = ['head', 'face', 'neck'];
+export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame'];
+const MAX_SEEN = 800;
+const MAX_BEST = 40;
 const MAX_RECENT = 30;
 const TOPIC_WINDOW = 20;
 const MAX_DAILY = 60;
@@ -99,6 +105,19 @@ export function abandonLesson(s, kind, index) {
     runs: { ...s.runs, abandoned: (s.runs.abandoned || 0) + 1 } });
 }
 
+// упражнение встретилось ученику (первая попытка): счётчик для «реже виденное — первым»
+export function recordSeen(s, id) {
+  if (!id || id.length > 64) return s;
+  const seen = { ...s.seen };
+  seen[id] = Math.min(9999, (seen[id] || 0) + 1);
+  const keys = Object.keys(seen);
+  // переполнение: забываем самые редкие — их и так покажут первыми
+  if (keys.length > MAX_SEEN) keys.sort((a, b) => seen[a] - seen[b]).slice(0, keys.length - MAX_SEEN).forEach((k) => { if (k !== id) delete seen[k]; });
+  return upd(s, { seen });
+}
+// рекорд мини-игры: остаётся лучший счёт
+export const recordBest = (s, gameId, score) => ((s.best || {})[gameId] >= score ? s : upd(s, { best: { ...s.best, [gameId]: Math.max(0, Math.round(score)) } }));
+
 // ошибки уходят в практику, верный ответ в практике их убирает
 export const addMistake = (s, id, now = Date.now()) => upd(s, { mistakes: [...s.mistakes.filter((m) => m.id !== id), { id, at: now }].slice(-MAX_MISTAKES) });
 export const resolveMistake = (s, id) => upd(s, { mistakes: s.mistakes.filter((m) => m.id !== id) });
@@ -110,17 +129,22 @@ export const clearHinted = (s, id) => ((s.hinted || []).some((m) => m.id === id)
 
 /* Опыт за урок: 2 за каждое упражнение, решённое верно с первой попытки (и новое, и
    повторение, с подсказкой или без), плюс 5 за то, что урок доведён до конца. Урок, который
-   уже был пройден, даёт десятую часть — повторять лёгкое ради опыта незачем. */
-export function lessonXp({ firstTry, replay }) {
+   уже был пройден, даёт десятую часть — повторять лёгкое ради опыта незачем. Алмазный
+   уровень — не лёгкое: полтора полного опыта, сколько бы раз его ни проходили. */
+export function lessonXp({ firstTry, replay, diamond = false }) {
   const full = firstTry * XP.correct + XP.finish;
+  if (diamond) return Math.round(full * XP.diamond);
   return replay ? Math.max(1, Math.round(full * XP.replayShare)) : full;
 }
 /* Урок доведён до конца. seconds — сколько занимались (в задание «N минут занятий», не больше
-   пятнадцати минут за раз), kind — вид урока, mode — урок Пути, практика или проверка. */
-export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true, seconds = 0, kind = null, mode = 'lesson' }) {
+   пятнадцати минут за раз), kind — вид урока, mode — урок Пути, практика или проверка;
+   diamond — урок пройден на алмазном уровне: от 80% верных он отмечается алмазом. */
+export const DIAMOND_ACCURACY = 80;
+export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true, seconds = 0, kind = null, mode = 'lesson', diamond = false }) {
   const day = dayOf(now);
   const prev = s.lessons[lessonId];
-  const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: prev ? prev.at : now, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)) } } : s.lessons;
+  const gem = (prev && prev.diamond) || (diamond && accuracy >= DIAMOND_ACCURACY ? now : 0);
+  const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: prev ? prev.at : now, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
   const d = dayEntry(s, day);
   const hour = new Date(now).getHours();
   const entry = {
@@ -257,8 +281,8 @@ export function normalizeLearn(raw) {
   const r = obj(raw); const e = emptyLearn();
   const lessons = {};
   Object.keys(obj(r.lessons)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => {
-    const l = obj(r.lessons[k]);
-    lessons[k] = { at: cnt(l.at, 1e14), runs: cnt(l.runs, 1e5), best: cnt(l.best, 100) };
+    const l = obj(r.lessons[k]); const gem = cnt(l.diamond, 1e14);
+    lessons[k] = { at: cnt(l.at, 1e14), runs: cnt(l.runs, 1e5), best: cnt(l.best, 100), ...(gem ? { diamond: gem } : {}) };
   });
   const units = {};
   Object.keys(obj(r.units)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => { const t = cnt(obj(r.units[k]).tested, 1e14); if (t) units[k] = { tested: t }; });
@@ -284,6 +308,11 @@ export function normalizeLearn(raw) {
 const tsMap = (v, limit) => {
   const out = {};
   Object.keys(obj(v)).filter(okKey).slice(0, limit).forEach((k) => { const t = cnt(v[k], 1e14); if (t) out[k] = t; });
+  return out;
+};
+const countMap = (v, limit, hi) => {
+  const out = {};
+  Object.keys(obj(v)).filter(okKey).slice(0, limit).forEach((k) => { const x = cnt(v[k], hi); if (x) out[k] = x; });
   return out;
 };
 // полученные награды: ключи заданий дня («q:ГГГГ-ММ-ДД:…») — только за последние месяцы, остальные — все
@@ -320,6 +349,7 @@ function normalizeProgram(r) {
     frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
     claimed: claimedMap(r.claimed), owned: tsMap(r.owned, 60),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? w[sl] : null])), at: cnt(w.at, 1e14) },
+    seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
   };
 }
 // слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
@@ -339,6 +369,7 @@ function mergeProgram(x, y) {
     recent: laterRecent ? y.recent : x.recent, recentAt: Math.max(x.recentAt, y.recentAt),
     coins: maxMap(x.coins, y.coins), spent: maxMap(x.spent, y.spent), freezeBuy: maxMap(x.freezeBuy, y.freezeBuy),
     frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned),
+    seen: maxMap(x.seen, y.seen), best: maxMap(x.best, y.best), boost: Math.max(x.boost, y.boost),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),
@@ -349,7 +380,8 @@ export function mergeLearn(a, b) {
   const lessons = { ...x.lessons };
   Object.entries(y.lessons).forEach(([k, l]) => {
     const c = lessons[k];
-    lessons[k] = c ? { at: Math.min(c.at || l.at, l.at || c.at), runs: Math.max(c.runs, l.runs), best: Math.max(c.best, l.best) } : l;
+    const gem = Math.min(c && c.diamond ? c.diamond : Infinity, l.diamond || Infinity);
+    lessons[k] = c ? { at: Math.min(c.at || l.at, l.at || c.at), runs: Math.max(c.runs, l.runs), best: Math.max(c.best, l.best), ...(gem < Infinity ? { diamond: gem } : {}) } : l;
   });
   const units = { ...x.units };
   Object.entries(y.units).forEach(([k, u]) => { units[k] = { tested: Math.max((units[k] || {}).tested || 0, u.tested) }; });

@@ -23,6 +23,8 @@ import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbo
 import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
 import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
 import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
+import { evalExpr, fmtResult } from './learn/calc.js';
+import { formulaSymbols } from './textbook/symbols.js';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -54,6 +56,12 @@ export const TEXTBOOK_CSS = `
   .tb-toc-row:hover { background: var(--c-panel-alt); }
   .tb-toc-row[disabled] { cursor: pointer; }
   .tb-chip { font-size: 11.5px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
+  .tb-legend { font-size: 13px; line-height: 1.6; color: var(--c-muted); margin: -6px 0 14px; padding-left: 10px; border-left: 2px solid var(--c-hairline); }
+  .tb-calc { margin: 10px 0 4px; max-width: 300px; border: 1px solid var(--c-border); border-radius: 4px; padding: 8px; background: var(--c-panel-alt, rgba(0,0,0,.03)); }
+  .tb-calc-screen { text-align: right; font-family: var(--ds-mono, monospace); padding: 4px 6px 6px; }
+  .tb-calc-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .tb-calc-keys button { font: 600 15px/1 var(--ds-mono, monospace); padding: 9px 0; border: 1px solid var(--c-border); border-radius: 3px; background: var(--c-panel, #fff); color: inherit; cursor: pointer; }
+  .tb-calc-keys button.op { color: var(--c-gold, #9C7218); }
   .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
@@ -78,6 +86,17 @@ function DiagramBox({ b, ctx }) {
 }
 
 /* ------------------------------ ФОРМУЛЫ ------------------------------ */
+// «где P — цена, …» под выключной формулой главы: только буквы из этой формулы
+function SymbolLegend({ tex, chapter }) {
+  const list = formulaSymbols(tex, chapter);
+  if (!list.length) return null;
+  return (
+    <div className="tb-legend" data-testid="tb-legend">
+      <span style={{ fontStyle: 'italic' }}>где </span>
+      {list.map((x, k) => <span key={x.key}>{k > 0 && '; '}<Tex tex={x.key} /> — {x.text}</span>)}
+    </div>
+  );
+}
 function Tex({ tex, display = false }) {
   const html = useMemo(() => {
     try { return katex.renderToString(tex, { displayMode: display, throwOnError: false, strict: 'ignore', output: 'htmlAndMathml' }); }
@@ -166,6 +185,7 @@ const BOX = {
   model: { label: 'Учебная модель', icon: BookOpen, color: () => COLOR.blue },
   game: { label: 'Как это устроено в игре', icon: Gamepad2, color: () => COLOR.teal },
   example: { label: 'Разбор на числах', icon: Calculator, color: () => COLOR.gold },
+  numbers: { label: 'Пример', icon: Calculator, color: () => COLOR.goldSoft },
   try: { label: 'Проверьте в игре', icon: Play, color: () => COLOR.rust },
   note: { label: 'Заметка', icon: Info, color: () => COLOR.muted },
   goals: { label: 'После главы вы сможете', icon: Target, color: () => COLOR.gold },
@@ -343,7 +363,7 @@ export function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
       case 'p': return <p key={i}><Inline nodes={b.inline} ctx={ctx} /></p>;
       case 'ul': return <ul key={i}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ul>;
       case 'ol': return <ol key={i} start={b.start}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ol>;
-      case 'math': return <Tex key={i} tex={b.tex} display />;
+      case 'math': return <React.Fragment key={i}><Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}</React.Fragment>;
       case 'table': return (
         <div key={i} className="tb-table">
           <table>
@@ -668,6 +688,45 @@ function okText(ctx, id, head, sawSolution) {
   return endDot(head);
 }
 
+/* Калькулятор задач учебника: выражение с клавиатуры или кнопками (+ − × ÷, степень, корень,
+   скобки), результат — по ходу набора; «В ответ» вставляет его в поле, где стоял курсор
+   (или в первое пустое). Подсказкой не считается: считать в уме никто не просит. */
+const TB_KEYS = ['7', '8', '9', '÷', '(', '4', '5', '6', '×', ')', '1', '2', '3', '−', '^', '0', ',', 'C', '+', '√'];
+function TbCalc({ onUse, label = 'В ответ' }) {
+  const [expr, setExpr] = useState('');
+  const v = evalExpr(expr);
+  const press = (k) => { Audio.play('tick'); if (k === 'C') setExpr(''); else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e)); };
+  return (
+    <div className="tb-calc" data-testid="tb-calc">
+      <input value={expr} onChange={(e) => setExpr(e.target.value.replace(/[^0-9.,+\-−*/×÷:^√()\s]/g, '').slice(0, 40))} aria-label="Выражение для калькулятора" placeholder="например, (120−60)/2"
+        style={{ ...inputStyle(), width: '100%', boxSizing: 'border-box', fontFamily: 'var(--ds-mono, monospace)' }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (v != null) onUse(fmtResult(v).replace('−', '-')); } }} />
+      <div className="tb-calc-screen" data-testid="tb-calc-value" style={{ fontSize: 18, fontWeight: 700 }}>{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</div>
+      <div className="tb-calc-keys" role="group" aria-label="Калькулятор">
+        {TB_KEYS.map((k) => (
+          <button key={k} type="button" className={'÷×−+^√()'.includes(k) ? 'op' : ''} data-calc={k} onClick={() => press(k)}
+            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', C: 'Очистить' })[k] || k}>{k}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <button type="button" className="ems-btn" style={{ padding: '6px 10px', fontSize: 12.5 }} aria-label="Стереть символ" onClick={() => { Audio.play('tick'); setExpr((e) => e.slice(0, -1)); }}>⌫</button>
+        <button type="button" className="ems-btn primary" style={{ flex: 1, padding: '6px 10px', fontSize: 12.5 }} disabled={v == null} data-testid="tb-calc-use"
+          onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{label}</button>
+      </div>
+    </div>
+  );
+}
+// кнопка «Калькулятор» и сам калькулятор под полями ответа; at — поле, куда пойдёт результат
+function CalcToggle({ onUse }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="ems-btn" style={{ padding: '7px 12px', fontSize: 13 }} aria-expanded={open} data-testid="tb-calc-open"
+        onClick={() => { Audio.play('click'); setOpen((x) => !x); }}><Calculator size={14} style={{ verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />Калькулятор</button>
+      {open && <div style={{ flexBasis: '100%' }}><TbCalc onUse={(x) => onUse(x)} /></div>}
+    </>
+  );
+}
+
 /* Числовая задача: одно поле или несколько шагов (а, б, в…). Засчитывается, только если
    верны все шаги; в ответе видно, какой шаг не сошёлся. */
 function NumberProblem({ block, no, ctx, from }) {
@@ -691,6 +750,9 @@ function NumberProblem({ block, no, ctx, from }) {
     setSure(null);
   };
   const setAt = (k, v) => { setInputs((xs) => xs.map((x, j) => (j === k ? v : x))); setVerdict(null); };
+  // результат калькулятора — в поле, где был курсор, иначе в первое пустое
+  const [focus, setFocus] = useState(null);
+  const useCalc = (v) => { const k = focus != null ? focus : Math.max(0, inputs.findIndex((x) => !String(x).trim())); setAt(k, v); };
   return (
     <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}>
       <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
@@ -698,7 +760,7 @@ function NumberProblem({ block, no, ctx, from }) {
           {parts.map((pt, k) => (
             <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: COLOR.muted }}>
               {pt.label && <span className="ems-mono" style={{ color: COLOR.text }}>{pt.label}</span>}
-              <input value={inputs[k]} onChange={(e) => setAt(k, e.target.value)} inputMode="decimal"
+              <input value={inputs[k]} onChange={(e) => setAt(k, e.target.value)} inputMode="decimal" onFocus={() => setFocus(k)}
                 aria-label={multi ? `Задача ${no}, шаг ${pt.label}` : `Ответ к задаче ${no}`}
                 placeholder="ответ числом" style={{ ...inputStyle(), width: multi ? 120 : 150 }} />
               {pt.unit && <span>{pt.unit}</span>}
@@ -708,6 +770,7 @@ function NumberProblem({ block, no, ctx, from }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />
           <button type="submit" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }}>Проверить</button>
+          <CalcToggle onUse={useCalc} />
         </div>
       </form>
     </ProblemFrame>
@@ -893,7 +956,7 @@ function ChapterPage({ id, ctx }) {
       {blocks ? (
         <>
           <SectionNav sections={CHAPTER_SECTIONS[id]} ctx={ctx} />
-          <div className="tb-body"><Blocks blocks={blocks} ctx={ctx} top /></div>
+          <div className="tb-body"><Blocks blocks={blocks} ctx={{ ...ctx, chapter: id }} top /></div>
         </>
       ) : (
         <div className="ems-panel" style={{ padding: 14, fontSize: 13.5, lineHeight: 1.6 }}>
@@ -1200,6 +1263,7 @@ function ExamPage({ id, ctx }) {
                   {pt.unit && <span>{pt.unit}</span>}
                 </label>
               ))}
+              {!result && <CalcToggle onUse={(v) => { const cur = answers[pid] || []; const k = Math.max(0, b.parts.findIndex((_, j) => !String(cur[j] || '').trim())); setAt(pid, k, v); }} />}
             </div>
             {row && (
               <div style={{ marginTop: 8 }}>

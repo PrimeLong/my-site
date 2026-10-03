@@ -64,8 +64,7 @@ async function answer(page, wrong = false) {
       if (ch === '-') await ex.getByRole('button', { name: 'Минус' }).click();
       else await ex.getByRole('group', { name: 'Цифровая клавиатура' }).getByRole('button', { name: ch, exact: true }).click();
     }
-  } else if (kind === 'order') { for (const k of wrong ? [...ans].reverse() : ans) await ex.locator(`button[data-key="${k}"]`).click(); }
-  else if (kind === 'sort') { for (const [it, b] of Object.entries(ans)) await ex.locator(`[data-item="${it}"][data-bin="${b}"]`).click(); }
+  } else if (kind === 'sort') { for (const [it, b] of Object.entries(ans)) await ex.locator(`[data-item="${it}"][data-bin="${b}"]`).click(); }
   else if (kind === 'news') { for (const [v, d] of Object.entries(ans)) await ex.locator(`[data-var="${v}"][data-dir="${d}"]`).click(); }
   else if (kind === 'point') {
     const svg = ex.getByTestId('market-chart'); const pl = JSON.parse(await svg.getAttribute('data-plot')); const box = await svg.boundingBox();
@@ -73,15 +72,26 @@ async function answer(page, wrong = false) {
   } else if (kind === 'match') {
     for (const l of Object.keys(ans)) { await ex.locator(`[data-side=left][data-key="${l}"]`).click(); await ex.locator(`[data-side=right][data-key="${ans[l]}"]`).click(); }
   } else if (kind === 'swipe' || kind === 'rush') {
-    if (kind === 'rush') await ex.getByTestId('game-start').click();
-    const card = ex.getByTestId('game-card');
-    while (await card.count()) await ex.locator(`button[data-side="${await card.getAttribute('data-answer')}"]`).click();
+    await playGame(page);
     return kind;
   }
   await page.getByRole('button', { name: 'Проверить' }).click();
   return kind;
 }
 const next = (page) => page.getByRole('button', { name: 'Дальше', exact: true }).click();
+// мини-игра: в тесте короче; max — сколько карточек ответить (остальное время — ждать)
+async function playGame(page, { seconds = 5, max = Infinity } = {}) {
+  const ex = page.getByTestId('ex');
+  await page.evaluate((sec) => { window.__INFLATIA_GAME_SECONDS__ = sec; }, seconds);
+  if (await ex.getByTestId('game-start').isVisible()) await ex.getByTestId('game-start').click();
+  const card = ex.getByTestId('game-card');
+  for (let i = 0; i < max && await card.count(); i += 1) {
+    const side = await card.getAttribute('data-answer', { timeout: 1000 }).catch(() => null);
+    if (!side) break;
+    await ex.locator(`button[data-side="${side}"]`).click({ timeout: 1500 }).catch(() => {});
+  }
+  await expect(ex.getByTestId('game-final')).toBeVisible({ timeout: (seconds + 5) * 1000 });
+}
 // карточки перед упражнением: шаг, слово, пункт итогов
 async function passCards(page) {
   const card = page.getByTestId('lesson-card');
@@ -109,7 +119,7 @@ for (const theme of ['light', 'dark']) {
     });
 
     test(`путь, уроки всех видов, итоги (${theme})`, async ({ page }) => {
-      test.setTimeout(150_000);
+      test.setTimeout(240_000);
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
       await expect(page.getByTestId('path')).toBeVisible();
@@ -164,13 +174,34 @@ for (const theme of ['light', 'dark']) {
       await openLesson(page, 'sd-l-radio');
       await shot(page, '21-listen', theme, { wait: 1500 });
       await exitLesson(page);
+      // мини-игра «Рынок кофе»: старт, игра с живым графиком, итог
       await openLesson(page, 'sd-g');
-      await shot(page, '22-game-swipe', theme);
-      await answer(page);
-      await shot(page, '23-game-round-done', theme);
-      await next(page);
+      await shot(page, '22-game-ready', theme);
+      await page.evaluate(() => { window.__INFLATIA_GAME_SECONDS__ = 30; });
       await page.getByTestId('game-start').click();
-      await shot(page, '24-game-rush', theme);
+      const card = page.getByTestId('game-card');
+      for (let i = 0; i < 7; i += 1) await page.getByTestId('ex').locator(`button[data-side="${await card.getAttribute('data-answer')}"]`).click();
+      await shot(page, '23-game-play', theme, { wait: 600 });
+      await exitLesson(page);
+      await openLesson(page, 'sd-g');
+      await playGame(page, { seconds: 4, max: 9 });
+      await shot(page, '24-game-done', theme);
+      await exitLesson(page);
+      // мини-игра «Мастерская»: КПВ растёт и сжимается от решений
+      await openLesson(page, 'sc-g');
+      await page.evaluate(() => { window.__INFLATIA_GAME_SECONDS__ = 30; });
+      await page.getByTestId('game-start').click();
+      for (let i = 0; i < 6; i += 1) await page.getByTestId('ex').locator(`button[data-side="${await card.getAttribute('data-answer')}"]`).click();
+      await shot(page, '24b-game-ppf', theme, { wait: 600 });
+      await exitLesson(page);
+      // алмазный уровень: билет пройденного урока и алмазный шаг с обозначениями (sd-i2 прерван выше — у него «Продолжить»)
+      await page.locator('[data-testid=path-lesson][data-lesson="sd-i1"]').click();
+      await shot(page, '25a-diamond-ticket', theme);
+      await page.getByTestId('lesson-diamond').click();
+      for (let i = 0; i < 30 && !(await page.getByTestId('step-legend').isVisible()); i += 1) {
+        if (await page.getByTestId('lesson-card').isVisible()) await foot(page).click(); else { await answer(page); await next(page); }
+      }
+      await shot(page, '25b-diamond-step', theme);
       await exitLesson(page);
       await openLesson(page, 'sd-sum');
       await shot(page, '25-summary-point', theme);
@@ -183,7 +214,7 @@ for (const theme of ['light', 'dark']) {
       // серия три дня, 240 монет, при регистрации — «кое-что знаю»: на Пути ждёт вступительный тест
       const day = (back) => { const d = new Date(Date.now() - back * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
       const errors = await setup(page, { theme, learn: {
-        done: { [day(1)]: 2, [day(2)]: 1, [day(3)]: 1 }, xp: { [day(1)]: 40, [day(2)]: 20, [day(3)]: 20 }, coins: { [day(1)]: 240 },
+        done: { [day(1)]: 2, [day(2)]: 1, [day(3)]: 1 }, xp: { [day(1)]: 40, [day(2)]: 20, [day(3)]: 20 }, coins: { [day(1)]: 2400 },
         profile: { goal: 'exam', minutes: 10, knows: true, at: Date.now() - 86400000 },
         claimed: { 'a:first': Date.now() - 86400000, 'a:streak3': Date.now() - 86400000 },
       } });
@@ -196,9 +227,19 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
       await expect(page.getByTestId('shop')).toBeVisible();
       await shot(page, '37-shop', theme);
-      await page.locator('[data-testid=shop-item][data-item="bowtie"]').getByRole('button', { name: 'Купить' }).click();
+      // витрина дня со скидкой, полезное и витрина ювелира с полоской накопления
+      await page.getByTestId('rate-chart').hover({ position: { x: 300, y: 30 } });
+      await expect(page.getByTestId('rate-tip')).toBeVisible();
+      await shot(page, '37a-shop-rate-tip', theme);
+      await page.getByTestId('shop-showcase').scrollIntoViewIfNeeded();
+      await shot(page, '37b-shop-showcase', theme);
+      await page.getByTestId('shop-rare').scrollIntoViewIfNeeded();
+      await shot(page, '37c-shop-rare', theme);
+      const first = page.getByTestId('shop-showcase').getByTestId('shop-item').first();
+      const bought = await first.getAttribute('data-item');
+      await first.getByRole('button', { name: 'Купить' }).click();
       await expect(page.getByTestId('shop-msg')).toContainText('Куплено');
-      await page.locator('[data-testid=shop-item][data-item="bowtie"]').scrollIntoViewIfNeeded();
+      await page.locator(`[data-testid=shop-wardrobe] [data-item="${bought}"]`).scrollIntoViewIfNeeded();
       await shot(page, '38-shop-bought', theme);
       await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
       await page.getByTestId('chest').first().scrollIntoViewIfNeeded();
@@ -283,6 +324,15 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('unit-guide').first().click();
       await expect(page.getByTestId('chapter')).toBeVisible();
       await shot(page, '31-book-chapter', theme);
+      // формула с обозначениями, пример на числах и калькулятор задачи
+      await page.getByTestId('tb-legend').first().scrollIntoViewIfNeeded();
+      await shot(page, '31a-book-legend', theme);
+      await page.getByTestId('tb-box-numbers').first().scrollIntoViewIfNeeded();
+      await shot(page, '31b-book-example', theme);
+      await page.getByTestId('tb-calc-open').first().scrollIntoViewIfNeeded();
+      await page.getByTestId('tb-calc-open').first().click();
+      await page.getByRole('textbox', { name: 'Выражение для калькулятора' }).fill('√(120−20)×3');
+      await shot(page, '31c-book-calc', theme);
       await tab('world');
       await expect(page.getByTestId('world')).toBeVisible();
       await shot(page, '32-world', theme);

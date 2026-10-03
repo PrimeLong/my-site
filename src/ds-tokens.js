@@ -62,6 +62,8 @@ export const PLACES = {
 };
 export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#5A4E80', region: 'capital', at: [496, 372], note: '' };
 export const unitColor = (unitId) => placeOf(unitId).color;
+// алмазный уровень урока: свой цвет — холодный синий гранёного камня
+export const DIAMOND_COLOR = '#2E8FB8';
 
 // CSS-переменные темы: одна строка на корень экрана (ds-root)
 export function tokenVars(t, accent) {

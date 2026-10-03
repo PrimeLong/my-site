@@ -3,7 +3,7 @@
    платите вы монетами по курсу дня — он колеблется вокруг единицы и тянется к ней обратно.
    Модуль чистый: всё считается из состояния учёбы (learn-state.js); каждая награда выдаётся
    под ключом (claimed) — ни дважды, ни на двух устройствах. Экраны — src/learn.jsx. */
-import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf } from '../textbook/learn-state.js';
+import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf, DIAMOND_ACCURACY } from '../textbook/learn-state.js';
 
 // детерминированная «случайность» из строки: FNV-1a → [0, 1)
 export function hash01(str) {
@@ -16,8 +16,9 @@ export const plural = (n, one, few, many) => { const a = n % 10; const b = n % 1
 export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монеты', 'монет');
 
 /* ------------------------------ МОНЕТЫ ------------------------------ */
-// за урок впервые — 10 (без ошибок — ещё 5), повтор — 2, практика — 5, сданная проверка юнита — 20
-export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, legend: 10, goal: 10, allQuests: 10 };
+/* За урок впервые — 10 (без ошибок — ещё 5), повтор — 2, практика — 5, сданная проверка
+   юнита — 20. Алмазный уровень (от 80% верных): впервые — 25 (без ошибок — ещё 10), потом — 5. */
+export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, diamond: 25, diamondPerfect: 10, diamondReplay: 5, goal: 10, allQuests: 10 };
 export const earned = (s) => sum(s.coins);
 export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent));
 export const hasClaim = (s, key) => !!(s.claimed || {})[key];
@@ -30,14 +31,16 @@ export function earn(s, n, key = null, now = Date.now()) {
     claimed: key ? { ...s.claimed, [key]: now } : s.claimed,
   };
 }
-// монеты за пройденный урок, практику или проверку
-export function runCoins({ mode, replay = false, accuracy = 0, pass = null, items = 0 }) {
+// монеты за пройденный урок, практику или проверку; diamond — алмазный уровень, gem — алмаз урока уже был
+export function runCoins({ mode, replay = false, accuracy = 0, pass = null, items = 0, diamond = false, gem = false }) {
+  if (mode === 'lesson' && diamond) return accuracy < DIAMOND_ACCURACY ? 0 : gem ? COIN.diamondReplay : COIN.diamond + (accuracy >= 100 ? COIN.diamondPerfect : 0);
   if (mode === 'lesson') return replay ? COIN.replay : COIN.lesson + (accuracy >= 100 ? COIN.perfect : 0);
   if (mode === 'practice') return items ? COIN.practice : 0;
   if (mode === 'check') return pass ? COIN.check : 0;
-  if (mode === 'legend') return accuracy >= 80 ? COIN.legend : 0;
   return 0;
 }
+// ключ награды: первое прохождение урока и первый алмаз — по разу
+export const runKey = ({ mode, lessonId, replay, diamond, gem }) => (mode !== 'lesson' ? null : diamond ? (gem ? null : `d:${lessonId}`) : replay ? null : `l:${lessonId}`);
 
 /* ------------------------------ КУРС ------------------------------
    Сколько монет стоит одна крона в этот день: r = 1 + 0,75·(r_вчера − 1) + шум ±0,07.
@@ -50,35 +53,72 @@ export function rateOn(day) {
 export const rateHistory = (day, n = 14) => Array.from({ length: n }, (_, k) => { const d = addDays(day, k - n + 1); return { day: d, rate: rateOn(d) }; });
 
 /* ------------------------------ ЛАВКА ------------------------------
-   Цены — в кронах; в монетах — по курсу дня, с округлением вверх. Наряды Инфли — по одному
-   на голову, лицо и шею. */
-export const FREEZE = { id: 'freeze', title: 'Заморозка серии', crowns: 25, text: `Спасёт серию, если за неделю пропущено больше одного дня. В запасе — не больше ${MAX_FREEZES}.` };
+   Цены — в кронах; в монетах — по курсу дня, с округлением вверх. Всё в лавке — только
+   за монеты уроков, без случайных выпадений.
+   Наряды Инфли — по одному на голову, лицо, шею, в руку и рамку. Обычные вещи стоят от 150
+   до 1500 крон и меняются каждый день: на витрине дня — шесть из тех, что ещё не куплены, и
+   одна из них — со скидкой дня 30%. Купленное всегда в гардеробе. Редкие вещи (от 2500 крон) —
+   в витрине ювелира всегда: на них копят. Заморозка серии и «двойной опыт» — всегда в продаже. */
+export const FREEZE = { id: 'freeze', title: 'Заморозка серии', crowns: 60, text: `Спасёт серию, если за неделю пропущено больше одного дня. В запасе — не больше ${MAX_FREEZES}.` };
+export const BOOST = { id: 'boost', title: 'Двойной опыт', crowns: 150, minutes: 30, text: 'Полчаса после покупки уроки дают вдвое больше опыта.' };
 export const OUTFITS = [
-  { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 30 },
-  { id: 'beret', slot: 'head', title: 'Берет гравёра', crowns: 40 },
-  { id: 'bowler', slot: 'head', title: 'Котелок биржевика', crowns: 60 },
-  { id: 'tophat', slot: 'head', title: 'Цилиндр банкира', crowns: 90 },
-  { id: 'glasses', slot: 'face', title: 'Очки бухгалтера', crowns: 35 },
-  { id: 'monocle', slot: 'face', title: 'Монокль', crowns: 70 },
-  { id: 'bowtie', slot: 'neck', title: 'Бабочка', crowns: 30 },
-  { id: 'scarf', slot: 'neck', title: 'Шарф', crowns: 45 },
-  { id: 'tie', slot: 'neck', title: 'Галстук министра', crowns: 60 },
+  { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 150 },
+  { id: 'beret', slot: 'head', title: 'Берет гравёра', crowns: 220 },
+  { id: 'ushanka', slot: 'head', title: 'Ушанка ревизора', crowns: 320 },
+  { id: 'bowler', slot: 'head', title: 'Котелок биржевика', crowns: 450 },
+  { id: 'tophat', slot: 'head', title: 'Цилиндр банкира', crowns: 900 },
+  { id: 'crown', slot: 'head', title: 'Корона казначея', crowns: 4500, rare: true },
+  { id: 'glasses', slot: 'face', title: 'Очки бухгалтера', crowns: 180 },
+  { id: 'pince', slot: 'face', title: 'Пенсне профессора', crowns: 380 },
+  { id: 'monocle', slot: 'face', title: 'Монокль', crowns: 650 },
+  { id: 'bowtie', slot: 'neck', title: 'Бабочка', crowns: 160 },
+  { id: 'scarf', slot: 'neck', title: 'Шарф', crowns: 260 },
+  { id: 'tie', slot: 'neck', title: 'Галстук министра', crowns: 480 },
+  { id: 'medal', slot: 'neck', title: 'Орден «За финансовую грамотность»', crowns: 2800, rare: true },
+  { id: 'paper', slot: 'hand', title: 'Свежий «Вестник»', crowns: 200 },
+  { id: 'abacus', slot: 'hand', title: 'Счёты', crowns: 420 },
+  { id: 'briefcase', slot: 'hand', title: 'Портфель с отчётом', crowns: 750 },
+  { id: 'cane', slot: 'hand', title: 'Трость с набалдашником', crowns: 1500 },
+  { id: 'goldbar', slot: 'hand', title: 'Золотой слиток', crowns: 6000, rare: true },
+  { id: 'frame-guilloche', slot: 'frame', title: 'Рамка-гильош', crowns: 400 },
+  { id: 'frame-gold', slot: 'frame', title: 'Золотой багет', crowns: 1200 },
+  { id: 'frame-diamond', slot: 'frame', title: 'Алмазная огранка', crowns: 5000, rare: true },
 ];
 export const OUTFIT_BY_ID = Object.fromEntries(OUTFITS.map((o) => [o.id, o]));
-export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея' };
-const itemOf = (id) => (id === FREEZE.id ? FREEZE : OUTFIT_BY_ID[id]);
-export const priceOf = (id, day) => Math.ceil(itemOf(id).crowns * rateOn(day));
+export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея', hand: 'В руке', frame: 'Рамка' };
+export const SHOWCASE_SIZE = 6;
+export const DEAL_OFF = 0.3;
+const itemOf = (id) => (id === FREEZE.id ? FREEZE : id === BOOST.id ? BOOST : OUTFIT_BY_ID[id]);
+/* Витрина дня: порядок обычных вещей задаёт дата (у всех учеников один), купленные
+   пропускаются; скидка дня — на первую вещь витрины. */
+export function shopDay(s, day) {
+  const owned = (s && s.owned) || {};
+  const order = OUTFITS.filter((o) => !o.rare).map((o) => ({ o, k: hash01(`shop:${day}:${o.id}`) })).sort((a, b) => a.k - b.k).map((x) => x.o.id);
+  const showcase = order.filter((id) => !owned[id]).slice(0, SHOWCASE_SIZE);
+  return { showcase, deal: showcase[0] || null, rare: OUTFITS.filter((o) => o.rare).map((o) => o.id) };
+}
+export const crownsOf = (id) => itemOf(id).crowns;
+// цена в монетах: по курсу дня; вещь со скидкой дня — на 30% дешевле
+export function priceOf(id, day, s = null) {
+  const full = Math.ceil(itemOf(id).crowns * rateOn(day));
+  return s && shopDay(s, day).deal === id ? Math.ceil(full * (1 - DEAL_OFF)) : full;
+}
+export const boostActive = (s, now = Date.now()) => (s.boost || 0) > now;
 // купить: { s, ok, reason }
 export function buy(s, id, now = Date.now()) {
   const item = itemOf(id);
   if (!item) return { s, ok: false, reason: 'Такого товара нет' };
   const day = dayOf(now);
-  const price = priceOf(id, day);
+  const price = priceOf(id, day, s);
   if (id === FREEZE.id && ownedFreezes(s) >= MAX_FREEZES) return { s, ok: false, reason: `В запасе уже ${MAX_FREEZES} заморозки` };
-  if (id !== FREEZE.id && (s.owned || {})[id]) return { s, ok: false, reason: 'Уже куплено' };
+  if (id === BOOST.id && boostActive(s, now)) return { s, ok: false, reason: 'Двойной опыт уже действует' };
+  const outfit = id !== FREEZE.id && id !== BOOST.id;
+  if (outfit && (s.owned || {})[id]) return { s, ok: false, reason: 'Уже куплено' };
+  if (outfit && !item.rare && !shopDay(s, day).showcase.includes(id)) return { s, ok: false, reason: 'Сегодня этого нет на витрине — загляните завтра' };
   if (balance(s) < price) return { s, ok: false, reason: `Не хватает ${price - balance(s)} ${coinsWord(price - balance(s))}` };
   let t = { ...s, spent: { ...s.spent, [day]: ((s.spent || {})[day] || 0) + price } };
   if (id === FREEZE.id) t = { ...t, freezeBuy: { ...t.freezeBuy, [day]: ((t.freezeBuy || {})[day] || 0) + 1 } };
+  else if (id === BOOST.id) t = { ...t, boost: now + BOOST.minutes * 60000 };
   else t = { ...t, owned: { ...t.owned, [id]: now }, wear: { ...t.wear, [item.slot]: id, at: now } };
   return { s: t, ok: true, price };
 }
@@ -87,7 +127,7 @@ export function setWear(s, slot, id, now = Date.now()) {
   if (id && (!(s.owned || {})[id] || OUTFIT_BY_ID[id].slot !== slot)) return s;
   return { ...s, wear: { ...s.wear, [slot]: id, at: now } };
 }
-export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null }; };
+export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null, hand: w.hand || null, frame: w.frame || null }; };
 
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------
    Три задания: минуты занятий (из ответа при регистрации) — всегда, одно про уроки и одно
@@ -135,10 +175,13 @@ export const ACHIEVEMENTS = [
   { id: 'quests', icon: 'scroll', title: 'Прилежание', text: 'Все задания дня — семь раз', coins: 40, test: (s) => Object.keys(s.claimed || {}).filter((k) => /^q:.*:all$/.test(k)).length >= 7 },
   { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 5, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 },
   { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },
+  { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare) },
   { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
   { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
   { id: 'saver', icon: 'piggy', title: 'Копилка', text: 'Заработано 500 монет', coins: 25, test: (s) => earned(s) >= 500 },
   { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
+  { id: 'diamond', icon: 'gem', title: 'Огранщик', text: 'Урок взят на алмазном уровне', coins: 20, test: (s) => Object.values(s.lessons || {}).some((l) => l.diamond) },
+  { id: 'diamond10', icon: 'gem', title: 'Ювелир', text: 'Десять уроков на алмазном уровне', coins: 60, test: (s) => Object.values(s.lessons || {}).filter((l) => l.diamond).length >= 10 },
 ];
 export const achievementKey = (id) => `a:${id}`;
 
