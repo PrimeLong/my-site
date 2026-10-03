@@ -32,17 +32,15 @@ test.beforeEach(async ({ page }, info) => {
   if (info.title.startsWith('вход:')) return;
   await page.context().addInitScript((a) => { try { localStorage.setItem('ems-account', JSON.stringify(a)); } catch { /* нет хранилища */ } }, ACCOUNT);
 });
-// учебник — справочник: из профиля, из шапки юнита, из итогов урока и из практики
+// учебник — своя вкладка внизу; поверх урока он открывается справочником
 async function openBook(page) {
-  await openTab(page, 'profile');
-  await page.getByTestId('prof-book').click();
+  await openTab(page, 'book');
   await expect(page.getByTestId('textbook')).toBeVisible();
 }
-// у учебника в обучении один «назад»: на прошлую страницу, с первой — туда, откуда открыли
-const bookBack = (page) => page.getByTestId('learn-book').locator('[data-nav="back"]').click();
+// у учебника в обучении один «назад»: на прошлую страницу, с первой — в оглавление (вкладка) или туда, откуда открыли
+const bookBack = (page) => page.locator('[data-testid=learn-book], [data-testid=book-tab]').locator('[data-nav="back"]').filter({ visible: true }).first().click();
 async function toToc(page) {
-  const b = page.getByTestId('tb-toc');
-  if (await b.count()) await b.first().click(); else await bookBack(page);
+  for (let k = 0; k < 6 && !(await page.getByTestId('textbook').isVisible()); k += 1) await bookBack(page);
   await expect(page.getByTestId('textbook')).toBeVisible();
 }
 
@@ -390,7 +388,7 @@ const accountApi = (req) => {
 };
 // без аккаунта не открыто ничего, кроме приветствия, входа и регистрации
 async function expectGateOnly(page) {
-  for (const id of ['bottom-nav', 'shell', 'path', 'practice', 'learn-profile', 'world', 'lesson', 'learn-book']) await expect(page.getByTestId(id)).toHaveCount(0);
+  for (const id of ['bottom-nav', 'shell', 'path', 'tasks', 'learn-profile', 'world', 'lesson', 'learn-book']) await expect(page.getByTestId(id)).toHaveCount(0);
 }
 
 test('вход: первый запуск — приветствие, цель, регистрация, Путь; выход, вход и восстановление', async ({ page }) => {
@@ -420,9 +418,9 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
   await expectGateOnly(page);
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
-  // сразу Путь; цель дня — из минут (10 минут → 2 урока)
+  // сразу Путь; цель дня — минуты занятий (10 минут)
   await expect(page.getByTestId('path')).toBeVisible();
-  await expect(page.getByTestId('goal')).toContainText('0/2');
+  await expect(page.getByTestId('goal')).toContainText('0/10');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ems-onboarding')))).toEqual({ goal: 'exam', minutes: 10, knows: false });
 
   // аккаунт — в профиле; выход возвращает на приветствие
@@ -739,7 +737,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await multi.getByRole('textbox', { name: 'Задача 1, шаг в)' }).fill('24');
   await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
   await multi.getByRole('button', { name: 'Проверить' }).click();
-  await expect(multi.getByTestId('tb-verdict')).toContainText('в) неверно');
+  await expect(multi.getByTestId('tb-verdict')).toContainText('Не сошлось: в)');
   await multi.getByRole('textbox', { name: 'Задача 1, шаг в)' }).fill('39');
   await multi.getByRole('button', { name: 'Уверен', exact: true }).click();
   await multi.getByRole('button', { name: 'Проверить' }).click();
@@ -809,16 +807,16 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByRole('button', { name: 'Мельче текст' }).click();
 
   await toToc(page);
-  await expect(toc.getByText(/прочитано глав/)).toContainText('прочитано глав: 1');
-  // уверенные ответы: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
-  await expect(page.getByTestId('tb-confidence')).toContainText('верно 3 из 6 (50%)');
-  await expect(page.getByTestId('tb-confidence')).toContainText('неуверенные: верно 1 из 2');
-  // «на сегодня»: первый раздел главы, где остановились, с вопросом на вспоминание; повторение ждёт своего дня
-  await expect(page.getByTestId('today-card')).toContainText('раздел «Спрос»');
-  await page.getByTestId('today-card').getByRole('button', { name: 'Начать занятие' }).click();
-  const today = page.getByTestId('today');
-  await expect(today.getByTestId('today-section')).toContainText('Спрос и предложение');
-  const recall = today.getByTestId('tb-recall').first();
+  await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 15');
+  // уверенные ответы — на странице «Мой прогресс»: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
+  await page.getByTestId('tb-stats-link').click();
+  await expect(page.getByTestId('stats-confidence')).toContainText('верно 3 из 6 (50%)');
+  await expect(page.getByTestId('stats-confidence')).toContainText('неуверенные: верно 1 из 2');
+  await toToc(page);
+  // «На сегодня» больше нет: вопрос на вспоминание — в конце раздела главы; ответ «совпало» проходит раздел
+  await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
+  const recall = page.getByTestId('chapter').getByTestId('tb-recall').first();
+  await recall.scrollIntoViewIfNeeded();
   // сначала свой ответ: без него эталон не открыть, кроме как через «Не помню»
   await expect(recall.getByRole('button', { name: 'Сверить с ответом' })).toBeDisabled();
   await expect(recall.getByRole('button', { name: 'Вспомнил' })).toHaveCount(0);
@@ -827,10 +825,11 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall.getByTestId('tb-recall-answer')).toBeVisible();
   await recall.getByRole('button', { name: 'Совпало', exact: true }).click();
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
-  await expect(today.getByTestId('review')).toContainText('через 2 дня');
   await expectNoSidewaysScroll(page);
   await toToc(page);
-  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' })).toContainText('разделы 1/4');
+  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[aria-label="разделы 1/4"]')).toHaveCount(1);
+  // ни «На сегодня», ни «Оглавления» на страницах: один «назад» вверху
+  await expect(page.getByTestId('today-card')).toHaveCount(0);
 
   // IS-LM: переключатель «ЦБ держит ставку» на графике, ссылка в Лабораторию с настройками
   await toc.getByRole('button', { name: /Модель IS-LM/ }).click();
@@ -979,34 +978,28 @@ test('учебник: кругооборот в «ВВП» и балансы б�
   expect(errors).toEqual([]);
 });
 
-test('нижняя панель: «Мир» без учебных карточек, «На сегодня» в практике ведёт в занятие; итоговая проверка, вперемешку и «Мой прогресс»', async ({ page }) => {
+test('нижняя панель: «Мир» без учебных карточек; «Задания»: повторение, итоговая проверка, вперемешку; «Мой прогресс» в учебнике', async ({ page }) => {
   const { errors, external } = await openApp(page);
   await expect(page.locator('.menu-section-label', { hasText: 'Модель в действии' })).toBeVisible();
   await expect(page.locator('.menu-section-label', { hasText: 'Играть' })).toBeVisible();
   await expect(page.locator('[data-mode="tutorial"]')).toContainText('Как играть');
-  // учебник и «Продолжить учиться» переехали в «Теорию» и «Практику»
+  // учебник — своя вкладка внизу; «На сегодня» больше нет
   await expect(page.getByTestId('menu-study')).toHaveCount(0);
   await expect(page.locator('[data-mode="textbook"]')).toHaveCount(0);
   await expect(page.locator('[data-mode="lab"]')).toBeVisible();
-  // «На сегодня»: одно нажатие открывает раздел и повторение
-  await openTab(page, 'practice');
-  const study = page.getByTestId('practice-today');
-  await expect(study).toContainText('на повторение: 0');
-  // минуты — те же, что покажет учебник: одна функция и один расчёт
-  const minutes = (await study.innerText()).match(/≈(\d+) мин/)[1];
-  await study.click();
-  await expect(page.getByTestId('learn-book')).toBeVisible();
-  await expect(page.getByTestId('today-section')).toContainText(`≈${minutes} мин`);
-  await expectNoSidewaysScroll(page);
-
-  await openBook(page);
-  const check = page.getByTestId('tb-check');
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Задания', 'Учебник', 'Лавка', 'Мир', 'Профиль']);
+  await openTab(page, 'tasks');
+  await expect(page.getByTestId('practice-today')).toHaveCount(0);
+  // повторять пока нечего — кнопка выключена
+  await expect(page.getByTestId('practice-review')).toBeDisabled();
+  await expect(page.getByTestId('practice-review')).toContainText('Сегодня повторять нечего');
   // вперемешку: пока ни одна глава не начата — не из чего выбирать
-  await check.getByRole('button', { name: /Задачи вперемешку/ }).click();
+  await page.getByTestId('practice-mixed').click();
   await expect(page.getByTestId('mixed')).toContainText('Пока не из чего выбирать');
-  await toToc(page);
+  await expectNoSidewaysScroll(page);
+  await bookBack(page);
   // итоговая проверка: без подсказок и решений до конца, в конце — счёт по темам
-  await check.getByRole('button', { name: /Итоговая проверка: Микро/ }).click();
+  await page.getByTestId('practice-exam').click();
   const exam = page.getByTestId('exam');
   await expect(exam.getByTestId('exam-problem')).toHaveCount(16);
   await expect(exam.getByRole('button', { name: /^Подсказка/ })).toHaveCount(0);
@@ -1025,9 +1018,10 @@ test('нижняя панель: «Мир» без учебных карточе
   const after = await exam.getByTestId('exam-problem').allInnerTexts();
   expect(after.filter((t, i) => t === before[i]).length).toBeLessThan(3);
   await exam.getByRole('button', { name: 'Завершить проверку' }).click();
-  // «Мой прогресс»: слабые темы со ссылками и журнал
-  await toToc(page);
-  await check.getByRole('button', { name: /Мой прогресс/ }).click();
+  await bookBack(page);
+  // «Мой прогресс» — внизу оглавления учебника: слабые темы со ссылками и журнал
+  await openBook(page);
+  await page.getByTestId('tb-stats-link').click();
   const stats = page.getByTestId('stats');
   await expect(stats.getByTestId('stats-weak').getByRole('button')).toHaveCount(3);
   await expect(stats.getByTestId('tb-journal')).toContainText('За четыре недели');
@@ -1035,8 +1029,8 @@ test('нижняя панель: «Мир» без учебных карточе
   await expect(page.getByTestId('chapter')).toBeVisible();
   await page.getByTestId('chapter').getByRole('button', { name: 'Отметить главу прочитанной' }).click();
   // вперемешку: теперь глава прочитана — сначала выбор модели, потом задача
-  await toToc(page);
-  await page.getByTestId('tb-check').getByRole('button', { name: /Задачи вперемешку/ }).click();
+  await openTab(page, 'tasks');
+  await page.getByTestId('practice-mixed').click();
   const item = page.getByTestId('mixed-item').first();
   await expect(item).toContainText('какая модель нужна');
   await item.getByRole('group').getByRole('button').first().click();
@@ -1313,9 +1307,10 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(pathNode(page, 'sc-l1').getByTestId('unlock-anim')).toHaveCount(1);
   await expect(pathNode(page, 'sc-l1').getByTestId('unlock-anim')).toHaveCount(0, { timeout: 5000 });
   await expect(page.getByTestId('streak')).toHaveText('1');
-  await expect(page.getByTestId('goal')).toContainText('1/1');
-  // ошибка ушла в «Практику», статистика — в «Профиль»
-  await openTab(page, 'practice');
+  // цель дня — минуты занятий (по умолчанию 10)
+  await expect(page.getByTestId('goal')).toContainText(/\d+\/10\s*мин/);
+  // ошибка ушла в практику (вкладка «Задания»), статистика — в «Профиль»
+  await openTab(page, 'tasks');
   await expect(page.getByTestId('practice-mistakes')).toBeEnabled();
   await openTab(page, 'profile');
   await expect(page.getByTestId('prof-completion')).toContainText('100%');
@@ -1401,23 +1396,25 @@ test('путь: выход после первого ответа — урок �
   await playLesson(page, { wrongAt: [2] });
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // практика: ошибка решается — и уходит из списка
-  await openTab(page, 'practice');
+  await openTab(page, 'tasks');
   await page.getByTestId('practice-mistakes').click();
   await playLesson(page);
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(page.getByTestId('practice-mistakes')).toBeDisabled();
 
-  // проверка юнита: сдана — все уроки открыты, юнит пройден
+  // проверка юнита: сдана — все уроки открыты, но пройденными становятся только уроками
   await openTab(page, 'path');
   await path.locator('[data-testid="path-unit"][data-unit="supply-demand"]').getByTestId('unit-check').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'check');
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Проверка сдана');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
-  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(10);
+  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(5);
+  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"] [data-testid="path-lesson"][data-state="locked"]')).toHaveCount(0);
+  // юнит не пройден — сундука нет, пока уроки не пройдены по-настоящему
+  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"]').getByTestId('chest')).toHaveCount(0);
   // «уровня легенды» больше нет: пройденный урок берут на алмазном уровне — задачи и теория сложнее
   await expect(page.getByTestId('unit-legend')).toHaveCount(0);
-  await expect(path.locator('[data-testid="path-unit"][data-unit="supply-demand"]').getByTestId('unit-diamonds')).toContainText('алмазов: 0 из 10');
   await pathNode(page, 'sd-i1').click();
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-diamond-info')).toContainText('теория глубже');
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-start')).toHaveText('Повторить без усложнения');
@@ -1794,13 +1791,18 @@ test('вход: программа — вступительный тест, су
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
   await expect(page.getByTestId('path')).toBeVisible();
-  // ответы при регистрации — в программе ученика: цель дня из минут, задание «15 минут занятий»
-  await expect(page.getByTestId('goal')).toContainText('0/3');
-  await expect(page.getByTestId('quests').getByTestId('quest')).toHaveCount(3);
-  await expect(page.locator('[data-testid=quest][data-quest="minutes"]')).toContainText('15 минут занятий');
-  await expect(page.getByTestId('month')).toBeVisible();
+  // ответы при регистрации — в программе ученика: цель дня — 15 минут занятий
+  await expect(page.getByTestId('goal')).toContainText('0/15');
   await expect(page.getByTestId('wallet-balance')).toHaveText('0');
   await expect(page.getByTestId('chest')).toHaveCount(0);
+  // задания дня и испытание месяца — своя вкладка; испытание считается от цели в минутах
+  await expect(page.getByTestId('quests')).toHaveCount(0);
+  await openTab(page, 'tasks');
+  await expect(page.getByTestId('quests').getByTestId('quest')).toHaveCount(3);
+  await expect(page.getByTestId('goal-row')).toContainText('Цель дня: 15 минут занятий');
+  await expect(page.getByTestId('month')).toBeVisible();
+  await expect(page.getByTestId('month-why')).toContainText('15 минут в день');
+  await openTab(page, 'path');
 
   // вступительный тест: юнит 1 — без ошибок, юнит 2 — две ошибки подряд: тест заканчивается
   await expect(page.getByTestId('placement-card')).toBeVisible();
@@ -1812,23 +1814,17 @@ test('вход: программа — вступительный тест, су
   await expect(result).toContainText('Тест пройден');
   await expect(result.getByTestId('result-text')).toContainText('«Мастерская»');
   await expect(result.getByTestId('result-text')).not.toContainText('«Рынок»');
-  await expect(result.getByTestId('result-coins')).toContainText('Экстерн');
+  // тест ничего не раздаёт: ни монет, ни печатей
+  await expect(result.getByTestId('result-coins')).toHaveCount(0);
   await result.getByRole('button', { name: 'Дальше', exact: true }).click();
-  // юнит 1 пройден, юнит 2 открыт с начала; приглашения на тест больше нет
+  // уроки юнита 1 открыты, но не пройдены; юнит 2 открыт с начала; приглашения на тест больше нет
   await expect(page.getByTestId('placement-card')).toHaveCount(0);
-  await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(14);
+  await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="open"]')).toHaveCount(14);
+  await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(0);
   await expect(pathNode(page, 'sd-i1')).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('path-rec')).toHaveText(/рекомендуем/i);
-
-  // сундук пройденного юнита: монеты один раз
-  const before = Number(await page.getByTestId('wallet-balance').innerText());
-  await page.locator('[data-testid=chest][data-unit="scarcity"]').click();
-  await page.getByTestId('chest-open').click();
-  const got = Number((await page.getByTestId('chest-coins').innerText()).replace(/\D/g, ''));
-  expect(got).toBeGreaterThanOrEqual(40);
-  await page.getByRole('button', { name: 'Забрать' }).click();
-  await expect(page.getByTestId('wallet-balance')).toHaveText(String(before + got));
-  await expect(page.locator('[data-testid=chest][data-unit="scarcity"]')).toHaveAttribute('data-opened', 'true');
+  // сундук — только за по-настоящему пройденный юнит
+  await expect(page.getByTestId('chest')).toHaveCount(0);
 
   // первый урок юнита 2: монеты за урок и выполненные задания
   await startLesson(page, 'sd-i1');
@@ -1836,7 +1832,13 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('result-coins')).toContainText('За урок');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
 
-  // лавка — отдельная вкладка: курс дня и график, заморозка по курсу, наряд Инфли
+  // лавка — отдельная вкладка: курс дня и график, заморозка по курсу, наряд Инфли (монеты — как будто накоплены)
+  await page.evaluate(() => {
+    const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
+    p.learn.coins = { ...(p.learn.coins || {}), '2026-01-01': 500 };
+    localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
   await openTab(page, 'shop');
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
@@ -1853,7 +1855,8 @@ test('вход: программа — вступительный тест, су
   const prog = page.getByTestId('prof-program');
   await expect(prog.getByRole('group', { name: 'Цель' }).getByRole('button', { name: 'Олимпиада' })).toHaveAttribute('aria-pressed', 'true');
   await expect(prog.getByRole('group', { name: 'Минут в день' }).getByRole('button', { name: /15 мин/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('[data-testid=ach][data-ach="placement"]')).toHaveAttribute('data-got', 'true');
+  // печать «Знаток» — только за проверку юнита без ошибок, вступительный тест её не даёт
+  await expect(page.locator('[data-testid=ach][data-ach="ace"]')).toHaveAttribute('data-got', 'false');
   await expect(page.locator('[data-testid=ach][data-ach="shop"]')).toHaveAttribute('data-got', 'true');
 
   // назавтра: утренний экран серии — один раз в день
@@ -1923,15 +1926,11 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'lesson', seen);
   await clickBack(page);
   await expectScreen(page, 'path', seen);
-  // Путь → гайд юнита → назад
+  // Путь → гайд юнита → назад: у справочника поверх экрана один «назад», оглавления на странице нет
   await page.getByTestId('path-unit').first().getByTestId('unit-guide').click();
   await expectScreen(page, 'book', seen);
   await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'scarcity');
-  // внутри учебника «назад» — на прошлую страницу, с первой — на Путь
-  await page.getByTestId('tb-toc').click();
-  await expectScreen(page, 'book', seen);
-  await clickBack(page);
-  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'scarcity');
+  await expect(page.getByTestId('tb-toc')).toHaveCount(0);
   await clickBack(page);
   await expectScreen(page, 'path', seen);
   // лавка — вкладка нижней панели; Путь → сундук → назад
@@ -1943,14 +1942,22 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'chest', seen);
   await clickBack(page);
   await expectScreen(page, 'path', seen);
-  // Практика → учебник «на сегодня» → назад в Практику
-  await openTab(page, 'practice');
-  await expectScreen(page, 'practice', seen);
+  // Задания → задачи вперемешку → назад в Задания
+  await openTab(page, 'tasks');
+  await expectScreen(page, 'tasks', seen);
   await page.getByTestId('practice-mixed').click();
   await expectScreen(page, 'book', seen);
   await clickBack(page);
-  await expectScreen(page, 'practice', seen);
-  // Профиль → учебник → назад; Профиль → аккаунт → назад
+  await expectScreen(page, 'tasks', seen);
+  // вкладка «Учебник»: оглавление без «назад», глава — один «назад» в оглавление
+  await openTab(page, 'book');
+  await expectScreen(page, 'bookTab', seen);
+  await page.getByTestId('textbook').getByRole('button', { name: /Спрос и предложение/ }).click();
+  await expectScreen(page, 'bookPage', seen);
+  await clickBack(page);
+  await expectScreen(page, 'bookTab', seen);
+  await expect(page.getByTestId('textbook')).toBeVisible();
+  // Профиль → прогресс в учебнике → назад; Профиль → аккаунт → назад
   await openTab(page, 'profile');
   await expectScreen(page, 'profile', seen);
   await page.getByTestId('prof-book-stats').click();
@@ -1967,7 +1974,7 @@ test('навигация: у каждого экрана один «назад»
   await expect(page.getByRole('button', { name: /Войти в профиль|Профиль:/ })).toHaveCount(0);
   // смена вкладки закрывает подэкран: учебник не остаётся висеть под другой вкладкой
   await openTab(page, 'profile');
-  await page.getByTestId('prof-book').click();
+  await page.getByTestId('prof-book-stats').click();
   await openTab(page, 'path');
   await expect(page.getByTestId('learn-book')).toHaveCount(0);
   // обойдены все экраны после входа

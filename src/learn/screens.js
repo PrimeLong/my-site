@@ -12,14 +12,17 @@ export const SCREENS = {
   'welcome-recover': { gate: true, from: ['welcome-login'], back: 'welcome-login', title: 'Новый пароль по коду', testid: 'welcome-recover' },
   // после входа: вкладки нижней панели
   path: { root: true, title: 'Путь', testid: 'path' },
-  practice: { root: true, title: 'Практика', testid: 'practice' },
+  tasks: { root: true, title: 'Задания', testid: 'tasks' },
+  // вкладка «Учебник»: оглавление — корень; глава из оглавления — «назад» в оглавление
+  bookTab: { root: true, title: 'Учебник', testid: 'book-tab' },
   shop: { root: true, title: 'Лавка', testid: 'shop' },
   world: { root: true, title: 'Мир', testid: 'world' },
   profile: { root: true, title: 'Профиль', testid: 'learn-profile' },
   // поверх вкладок
   lessonCard: { from: ['path'], back: 'path', title: 'Карточка урока', testid: 'lesson-sheet' },
-  lesson: { from: ['lessonCard', 'path', 'practice'], back: 'origin', title: 'Урок', testid: 'lesson' },
-  book: { from: ['path', 'practice', 'profile', 'lesson'], back: 'origin', title: 'Учебник', testid: 'learn-book' },
+  lesson: { from: ['lessonCard', 'path', 'tasks'], back: 'origin', title: 'Урок', testid: 'lesson' },
+  bookPage: { from: ['bookTab'], back: 'bookTab', title: 'Страница учебника', testid: 'book-tab' },
+  book: { from: ['path', 'tasks', 'profile', 'lesson', 'lessonCard'], back: 'origin', title: 'Учебник поверх экрана', testid: 'learn-book' },
   account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
   // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
