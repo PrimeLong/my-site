@@ -1099,7 +1099,7 @@ test('учебник: прогресс уходит в профиль и при�
   const { errors } = await openApp(page, '/', api);
   await openBook(page);
   const toc = page.getByTestId('textbook');
-  await expect(toc.getByRole('button', { name: /Ограниченность и выбор/ })).toContainText('прочитана');
+  await expect(toc.getByRole('button', { name: /Ограниченность и выбор/ }).locator('[aria-label="прочитана"]')).toHaveCount(1);
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
   await page.getByTestId('chapter').getByRole('button', { name: 'Отметить главу прочитанной' }).click();
   // отметка уходит на сервер вместе с тем, что пришло с другого устройства
@@ -1235,14 +1235,14 @@ test('путь: карточка урока, «Знакомство» шагам
   const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
   await expect(path).toBeVisible();
-  await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
+  await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(6);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — юниты 1 и 2 (по четырнадцать и десять уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(2);
+  // Путь начинается с юнита 1; уроками — юниты 1–3 (14, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(3);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(24);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(4);
+  await expect(path.getByTestId('path-lesson')).toHaveCount(34);
+  await expect(path.locator('[data-kind="intro"]')).toHaveCount(6);
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1752,7 +1752,9 @@ test('сообщить об ошибке: флажок на упражнении
   await page.getByRole('button', { name: 'Выйти из урока' }).click();
   await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
   await page.getByTestId('unit-guide').first().click();
-  await expect(page.getByTestId('learn-book').getByTestId('report-flag')).toBeVisible();
+  await expect(page.getByTestId('learn-book').getByTestId('report-flag').first()).toBeVisible();
+  // у каждой задачи учебника — своя кнопка «Сообщить об ошибке»
+  expect(await page.getByTestId('learn-book').getByTestId('tb-report').count()).toBeGreaterThanOrEqual(3);
 
   // владелец: список сообщений, фильтр и «скопировать всё»
   await openTab(page, 'profile');
