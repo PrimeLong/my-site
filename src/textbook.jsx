@@ -1468,7 +1468,7 @@ function LearnToc({ ctx }) {
   return (
     <div data-testid="textbook" className="tbl">
       {last && (
-        <button type="button" className="tbl-continue" data-testid="tb-continue" onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>
+        <button type="button" className="tbl-continue" data-testid="tb-continue" aria-label={`Продолжить чтение главы ${chapterNo(last.id)}`} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>
           <BookOpen size={26} aria-hidden="true" />
           <span style={{ flex: 1, minWidth: 0 }}><small>Продолжить чтение</small><b>{last.title}</b></span>
           <ChevronRight size={22} aria-hidden="true" />
