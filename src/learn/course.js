@@ -674,22 +674,25 @@ export function placementFailed(items, first, unitId) {
 }
 
 /* ------------------------------ СОСТОЯНИЕ ПУТИ ------------------------------
-   Урок открыт, если пройден предыдущий урок Пути (первый урок — всегда). Юнит пройден,
-   когда пройдены все его уроки. Пройденный урок можно повторить на алмазном уровне;
-   diamond — урок взят и на нём. */
+   Урок открыт, если пройден предыдущий урок Пути (первый урок — всегда) или юнит сдан
+   проверкой / открыт вступительным тестом. Пройден — только если урок доведён до конца
+   (runs > 0): проверка и тест уроки открывают, но не засчитывают. Юнит пройден, когда
+   пройдены все его уроки — тогда и сундук. diamond — урок взят на алмазном уровне. */
 export function pathState(learn) {
   // Путь сквозной: первый урок юнита открывается, когда пройден последний урок прошлого юнита
-  // (или прошлый юнит сдан проверкой — она отмечает его уроки пройденными)
+  // или прошлый юнит сдан проверкой
   let prevDone = true;
   return pilotUnits().map((u) => {
+    const tested = !!(learn.units || {})[u.id];
     const lessons = u.lessons.map((l) => {
-      const done = !!learn.lessons[l.id];
-      const open = done || prevDone;
-      prevDone = done;
-      return { id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && learn.lessons[l.id].diamond) };
+      const entry = learn.lessons[l.id];
+      const done = !!(entry && entry.runs > 0);
+      const open = done || prevDone || tested;
+      prevDone = done || tested;
+      return { id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond) };
     });
     const current = lessons.find((l) => l.open && !l.done) || null;
-    return { course: u, lessons, current, complete: lessons.every((l) => l.done), tested: !!learn.units[u.id] };
+    return { course: u, lessons, current, complete: lessons.every((l) => l.done), tested };
   });
 }
 export const unitTitle = (id) => (CHAPTER_BY_ID[id] || {}).title || id;

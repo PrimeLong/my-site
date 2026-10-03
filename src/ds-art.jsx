@@ -29,6 +29,8 @@ export const ART_CSS = `
   .ds-pulse { animation: ds-pulse .5s ease-out 1; }
   .ds-unlock { animation: ds-unlock .8s ease-in 1 forwards; }
   .ds-appear { animation: ds-appear .4s ease-out 1; }
+  .ds-chest-glow { animation: ds-chest-glow 1.6s ease-in-out infinite alternate; transform-origin: 32px 30px; }
+  @keyframes ds-chest-glow { from { opacity: .6; } to { opacity: 1; } }
   .ds-coins { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 400; perspective: 600px; }
   .ds-coins i { position: absolute; top: 0; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #F7DC8A, #C9971F 60%, #8E6612);
     box-shadow: inset 0 0 0 2px rgba(120,80,10,.55), inset 0 0 0 4px rgba(255,236,170,.6); animation: ds-fall var(--t) cubic-bezier(.3,.6,.45,1) var(--d) 1 forwards; }
@@ -329,6 +331,52 @@ export function InflaMeter({ streak = 0, mood = 'hello', size = 40 }) {
 }
 
 // монеты в конце урока — вместо конфетти; при «уменьшить движение» их нет
+/* Сундук юнита: деревянный, с коваными полосами и замком. open — крышка откинута, внутри
+   монеты и свечение; spent — уже открыт и пуст (крышка откинута, внутри темно). */
+export function Chest({ size = 64, open = false, spent = false, label = 'Сундук' }) {
+  const reduced = useReducedMotion();
+  const id = useMemo(() => `chest${Math.random().toString(36).slice(2, 8)}`, []);
+  const lid = open || spent;
+  return (
+    <svg viewBox="0 0 64 64" width={size} height={size} role="img" aria-label={label} data-testid="chest-art" data-open={String(lid)} style={{ overflow: 'visible' }}>
+      <defs>
+        <linearGradient id={`${id}w`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#B4723A" /><stop offset="1" stopColor="#7A4420" /></linearGradient>
+        <linearGradient id={`${id}l`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#C98446" /><stop offset="1" stopColor="#8E5228" /></linearGradient>
+        <radialGradient id={`${id}g`} cx="50%" cy="60%" r="60%"><stop offset="0" stopColor="#FFF1B8" stopOpacity=".95" /><stop offset="1" stopColor="#FFD24A" stopOpacity="0" /></radialGradient>
+      </defs>
+      <ellipse cx="32" cy="58.5" rx="25" ry="3.2" fill="#000" opacity=".12" />
+      {/* короб */}
+      <rect x="7" y="30" width="50" height="27" rx="3" fill={`url(#${id}w)`} stroke="#3B2210" strokeWidth="1.6" />
+      <path d="M7 38 H57 M7 49 H57" stroke="#5C3416" strokeWidth=".9" opacity=".55" />
+      {/* внутри — монеты и свет, когда открыт */}
+      {lid && (
+        <g>
+          <path d="M9 31 H55 V35 H9 Z" fill={spent ? '#2A170A' : '#5A3212'} />
+          {!spent && <>
+            <ellipse cx="32" cy="27" rx="26" ry="16" fill={`url(#${id}g)`} className={reduced ? '' : 'ds-chest-glow'} />
+            {[[18, 30], [24, 28.6], [30, 29.6], [36, 28.2], [42, 29.4], [47, 30.4], [27, 31], [39, 31]].map(([x, y], k) => (
+              <ellipse key={k} cx={x} cy={y} rx="3.6" ry="1.9" fill="#E3B53C" stroke="#94700F" strokeWidth=".7" />
+            ))}
+          </>}
+        </g>
+      )}
+      {/* кованые полосы и уголки */}
+      <rect x="15" y="30" width="5" height="27" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
+      <rect x="44" y="30" width="5" height="27" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
+      {[[17.5, 34], [17.5, 53], [46.5, 34], [46.5, 53]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r=".9" fill="#C8C2B8" />)}
+      {/* замок */}
+      <rect x="27.5" y="31" width="9" height="10" rx="1.6" fill="#D9A92E" stroke="#6E4E0A" strokeWidth="1" />
+      <path d="M32 34.4 a1.4 1.4 0 1 1 0.01 0 M32 35.6 V38.4" stroke="#3B2A08" strokeWidth="1.3" strokeLinecap="round" fill="#3B2A08" />
+      {/* крышка: закрыта — сводом над коробом, открыта — откинута назад */}
+      <g style={{ transformOrigin: '32px 30px', transform: lid ? 'translateY(-6px) scaleY(-.55)' : 'none', transition: reduced ? 'none' : 'transform .5s cubic-bezier(.3,1.5,.6,1)' }}>
+        <path d="M7 30 V22 Q7 12 32 12 Q57 12 57 22 V30 Z" fill={`url(#${id}l)`} stroke="#3B2210" strokeWidth="1.6" strokeLinejoin="round" />
+        <path d="M9 21 Q32 13 55 21" stroke="#E2A866" strokeWidth="1.2" fill="none" opacity=".6" />
+        <path d="M15 30 V18.5 Q17 15 20 14.4 V30 Z M44 14.4 Q47 15 49 18.5 V30 H44 Z" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
+      </g>
+    </svg>
+  );
+}
+
 export function CoinShower({ n = 26, seed = 1 }) {
   const reduced = useReducedMotion();
   const [bits] = useState(() => {

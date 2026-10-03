@@ -223,7 +223,10 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '35-morning', theme, { wait: 1200 });
       await page.getByTestId('morning-go').click();
       await expect(page.getByTestId('placement-card')).toBeVisible();
-      await shot(page, '36-path-quests', theme);
+      await shot(page, '36-path', theme);
+      await page.getByTestId('bottom-nav').locator('[data-tab="tasks"]').click();
+      await expect(page.getByTestId('quests')).toBeVisible();
+      await shot(page, '36a-tasks', theme, { full: true });
       await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
       await expect(page.getByTestId('shop')).toBeVisible();
       await shot(page, '37-shop', theme);
@@ -305,21 +308,59 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
+    test(`модуль 3: свёрнутый юнит, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
+      const CS = ['cs-i1', 'cs-l1', 'cs-i2', 'cs-l2', 'cs-w'];
+      const errors = await setup(page, { theme, learn: { claimed: { 'c:scarcity': Date.now() - 86400000 } } });
+      await page.addInitScript((ids) => {
+        try {
+          const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
+          const at = Date.now() - 86400000;
+          ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-sum', ...ids].forEach((id) => { p.learn.lessons[id] = { at, runs: 1, best: 90 }; });
+          localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
+        } catch { /* нет хранилища */ }
+      }, CS);
+      await page.goto('/', { waitUntil: 'networkidle' });
+      await expect(page.locator('[data-testid=path-unit][data-unit="scarcity"]')).toHaveAttribute('data-folded', 'true');
+      await shot(page, '53-path-folded', theme);
+      await page.locator('[data-testid=path-unit][data-unit="consumer"]').scrollIntoViewIfNeeded();
+      await shot(page, '54-path-consumer', theme);
+      await page.locator('[data-testid=path-lesson][data-lesson="cs-s1"]').click();
+      await expect(page.getByTestId('theory-notice')).toBeVisible();
+      await shot(page, '55-theory-notice', theme);
+      await page.getByTestId('theory-known').click();
+      await expect(page.getByTestId('lesson')).toBeVisible();
+      await exitLesson(page);
+      await openLesson(page, 'cs-i1');
+      await shot(page, '56-consumer-step', theme);
+      await exitLesson(page);
+      expect(errors).toEqual([]);
+    });
+
     test(`практика, профиль, справочник, мир, витрина (${theme})`, async ({ page }) => {
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
       const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
-      await tab('practice');
-      await shot(page, '26-practice', theme);
+      await tab('tasks');
+      await shot(page, '26-tasks', theme);
       await tab('profile');
       await shot(page, '27-profile', theme);
       await shot(page, '28-profile-full', theme, { full: true });
       await page.getByTestId('prof-account').click();
       await shot(page, '29-account', theme);
       await page.getByRole('button', { name: 'Закрыть' }).click();
-      await page.getByTestId('prof-book').click();
+      await tab('book');
       await expect(page.getByTestId('textbook')).toBeVisible();
       await shot(page, '30-book-toc', theme);
+      // задача учебника: «Сообщить об ошибке» и проверка по пунктам
+      await page.getByTestId('textbook').getByRole('button', { name: /Ограниченность и выбор/ }).click();
+      const prob = page.locator('[data-testid=tb-problem][data-problem="sc-inside"]');
+      await prob.scrollIntoViewIfNeeded();
+      await prob.getByRole('textbox').nth(0).fill('8');
+      await prob.getByRole('textbox').nth(1).fill('10');
+      await prob.getByRole('button', { name: 'Уверен', exact: true }).click();
+      await prob.getByRole('button', { name: 'Проверить' }).click();
+      await expect(prob.getByTestId('tb-verdict')).toContainText('Не сошлось: б)');
+      await shot(page, '30a-book-problem', theme);
       await tab('path');
       await page.getByTestId('unit-guide').first().click();
       await expect(page.getByTestId('chapter')).toBeVisible();

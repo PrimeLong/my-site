@@ -96,7 +96,7 @@ function ReportSheet({ context, onClose }) {
 }
 
 /* Флажок. context — функция: контекст собирается в момент нажатия (ответ уже введён). */
-export function ReportFlag({ context, label = 'Сообщить об ошибке', style }) {
+export function ReportFlag({ context, label = 'Сообщить об ошибке', style, withText = false }) {
   const [open, setOpen] = useState(null);
   const btn = useRef(null);
   /* шторка — в корень экрана дизайн-системы (там её цвета и шрифты): внутри анимированной
@@ -106,7 +106,7 @@ export function ReportFlag({ context, label = 'Сообщить об ошибк�
     <>
       <button type="button" ref={btn} className="ln-flag" aria-label={label} title={label} data-testid="report-flag" style={style}
         onClick={(e) => { e.stopPropagation(); Audio.play('tick'); setOpen(context()); }}>
-        <Flag size={16} aria-hidden="true" />
+        <Flag size={16} aria-hidden="true" />{withText && <span className="ln-flag-text">{label}</span>}
       </button>
       {open && createPortal(<div className="ln-report-root"><ReportSheet context={open} onClose={() => setOpen(null)} /></div>, root || document.body)}
     </>
@@ -115,6 +115,8 @@ export function ReportFlag({ context, label = 'Сообщить об ошибк�
 export const REPORT_CSS = `
   .ln-flag { background: none; border: none; padding: 6px; margin: -6px; color: var(--ds-ink3); cursor: pointer; border-radius: 50%; line-height: 0; }
   .ln-flag:hover, .ln-flag:focus-visible { color: var(--ds-bad); background: var(--ds-card2); }
+  .ln-flag:has(.ln-flag-text) { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 6px 10px; margin: 0; line-height: 1; }
+  .ln-flag-text { font: 600 12.5px/1 var(--ds-sans); }
   .ln-report-root { text-transform: none; letter-spacing: normal; font: 400 16px/1.45 var(--ds-sans); color: var(--ds-ink); text-align: left; }
   .rp-item { border-top: 1px dotted var(--ds-rule2); padding: 10px 0; }
   .rp-item:first-of-type { border-top: none; }

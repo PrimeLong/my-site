@@ -16,14 +16,14 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-const PATH = ['scarcity', 'supply-demand'];
+const PATH = ['scarcity', 'supply-demand', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — юниты 1 и 2, с самого начала курса', () => {
+it('на Пути уроками — юниты 1–3, с самого начала курса', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
-  expect(UNITS.slice(0, 2).map((u) => u.id)).toEqual(PATH);
+  expect(UNITS.slice(0, 3).map((u) => u.id)).toEqual(PATH);
 });
 
 // девять исходных видов упражнений — в каждом юните Пути
@@ -413,12 +413,17 @@ describe('проверка юнита, практика, состояние пу
     [st] = pathState(learn);
     expect(st.lessons[1].open).toBe(true);
     expect(st.lessons[2].open).toBe(false);
-    // проверка первого юнита отмечает его пройденным и открывает первый урок второго
-    learn = passUnit(learn, PATH[0], st.lessons.map((l) => l.id), 1e12);
+    // проверка первого юнита открывает все его уроки и первый урок второго, но не засчитывает их
+    learn = passUnit(learn, PATH[0], { now: 1e12 });
     [st, st2] = pathState(learn);
-    expect(st.complete).toBe(true);
+    expect(st.complete).toBe(false);
     expect(st.tested).toBe(true);
+    expect(st.lessons.every((l) => l.open)).toBe(true);
+    expect(st.lessons.filter((l) => l.done)).toHaveLength(1);
     expect(st2.lessons.map((l) => l.open)).toEqual(st2.lessons.map((_, i) => i === 0));
+    // старые записи вступительного теста (runs: 0) — открыто, но не пройдено
+    const legacy = { ...emptyLearn(), lessons: { [st.lessons[3].id]: { at: 1, runs: 0, best: 0 } } };
+    expect(pathState(legacy)[0].lessons[3].done).toBe(false);
     // пройденный урок остаётся открытым для повтора
     const only = finishLesson(emptyLearn(), st2.lessons[2].id, { xp: 1, accuracy: 100, now: 1e12 });
     expect(pathState(only)[1].lessons[2].open).toBe(true);
@@ -473,9 +478,13 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(streak(emptyLearn(), at(2026, 9, 30)).days).toBe(0);
   });
   it('цель дня, «спит» ли талисман, статистика профиля', () => {
-    let s = setGoal(emptyLearn(), 2, 5);
-    s = finishLesson(s, 'a', { xp: 10, accuracy: 80, now: at(2026, 9, 30) });
-    expect(goalToday(s, at(2026, 9, 30))).toEqual({ done: 1, goal: 2 });
+    // цель дня — минуты занятий (10 по умолчанию), уроки — для подписи
+    let s = finishLesson(emptyLearn(), 'a', { xp: 10, accuracy: 80, now: at(2026, 9, 30), seconds: 330 });
+    expect(goalToday(s, at(2026, 9, 30))).toEqual({ done: 5, goal: 10, lessons: 1 });
+    expect(goalToday(setGoal(s, 2, 5), at(2026, 9, 30)).goal).toBe(10);
+    // урок, начатый до полуночи: в новый день идут только минуты после полуночи
+    const night = finishLesson(emptyLearn(), 'b', { xp: 10, accuracy: 80, now: new Date(2026, 9, 1, 0, 2).getTime(), seconds: 900 });
+    expect(goalToday(night, new Date(2026, 9, 1, 0, 2).getTime()).done).toBe(2);
     expect(missedYesterday(s, at(2026, 10, 2))).toBe(true);
     expect(missedYesterday(s, at(2026, 10, 1))).toBe(false);
     s = startLesson(startLesson(s));
@@ -527,6 +536,8 @@ describe('мини-игра: одна на урок, карточки двига
         expect(ROUND_EFFECTS[g.chart], `${g.id}: ${it.raw}`).toContain(it.effect);
         if (g.chart === 'market') expect(it.side, `${it.raw}: ${it.effect}`).toBe(PRICE[it.effect]);
         if (g.chart === 'ppf') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['x', 'y'].includes(it.effect) ? 'left' : 'right');
+        // бюджет: доход сдвигает линию (влево), цена поворачивает (вправо)
+        if (g.chart === 'budget') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['out', 'in'].includes(it.effect) ? 'left' : 'right');
       });
       // эффект виден на графике: каждая сторона и оба направления встречаются
       const effs = new Set(g.items.map((it) => it.effect));
@@ -569,7 +580,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });

@@ -36,8 +36,11 @@ export const emptyLearn = () => ({
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
 export const PROFILE_GOAL_LABEL = { exam: 'Поступление в вуз', olymp: 'Олимпиада', uni: 'Первый курс', self: 'Для себя' };
-// минуты в день → уроков в день (урок — 3–5 минут): это цель дня
+// минуты в день → примерно уроков в день (урок — 3–5 минут): только для подписей и заданий
 export const LESSONS_FOR_MINUTES = { 5: 1, 10: 2, 15: 3, 20: 5 };
+/* Цель дня — в минутах (из ответа при регистрации, меняется в профиле): скорость у всех
+   разная, а время занятий честно сравнивается само с собой. По умолчанию — 10 минут. */
+export const goalMinutes = (s) => (s.profile && PROFILE_MINUTES.includes(s.profile.minutes) ? s.profile.minutes : 10);
 export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame'];
 const MAX_SEEN = 800;
 const MAX_BEST = 40;
@@ -80,7 +83,8 @@ export function recordAttempt(s, kind, ok, ms, { lesson = null, run = 0, now = D
   patch.recent = `${s.recent || ''}${ok ? 1 : 0}`.slice(-MAX_RECENT);
   patch.recentAt = now;
   const day = dayOf(now); const d = dayEntry(s, day);
-  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), r: Math.max(d.r, ok ? run : 0) } };
+  // серия считается только по сегодняшним ответам: урок, начатый вчера, не приносит в новый день «готовую» серию
+  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), r: Math.max(d.r, ok ? Math.min(run, d.c + 1) : 0) } };
   return upd(s, patch);
 }
 const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'g', 'pr', 'h'];
@@ -147,8 +151,10 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
   const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: prev ? prev.at : now, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
   const d = dayEntry(s, day);
   const hour = new Date(now).getHours();
+  // в сегодняшние минуты — только время после полуночи: урок, начатый вчера, не делает новый день наполовину выполненным
+  const sinceMidnight = (now - new Date(new Date(now).setHours(0, 0, 0, 0)).getTime()) / 1000;
   const entry = {
-    ...d, l: d.l + (lessonId ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.min(900, Math.round(seconds))),
+    ...d, l: d.l + (lessonId ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.round(Math.min(900, seconds, sinceMidnight))),
     g: d.g + (kind === 'game' ? 1 : 0), pr: d.pr + (mode === 'practice' ? 1 : 0), h: d.h | (hour < 8 ? 1 : 0) | (hour >= 22 ? 2 : 0),
   };
   return upd(s, {
@@ -159,12 +165,15 @@ export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), coun
     daily: { ...s.daily, [day]: entry },
   });
 }
-// «Проверка юнита» сдана: все его уроки считаются пройденными
-export function passUnit(s, unitId, lessonIds, now = Date.now()) {
-  const lessons = { ...s.lessons };
-  lessonIds.forEach((id) => { if (!lessons[id]) lessons[id] = { at: now, runs: 0, best: 0 }; });
-  return upd(s, { lessons, units: { ...s.units, [unitId]: { tested: now } } });
+/* «Проверка юнита» сдана (или вступительный тест открыл юнит): его уроки ОТКРЫТЫ, но не
+   пройдены — ни опыта, ни сундука, ни печатей за них. Пройденным урок становится только
+   уроком. ace — проверка без единой ошибки (печать «Знаток»). */
+export function passUnit(s, unitId, { ace = false, now = Date.now() } = {}) {
+  const prev = (s.units || {})[unitId] || {};
+  return upd(s, { units: { ...s.units, [unitId]: { tested: prev.tested || now, ...(ace || prev.ace ? { ace: prev.ace || now } : {}) } } });
 }
+// урок пройден по-настоящему: был хотя бы один доведённый до конца раз (старые записи вступительного теста — runs: 0)
+export const lessonDone = (s, id) => ((s.lessons || {})[id] || {}).runs > 0;
 export const setGoal = (s, goal, now = Date.now()) => (GOALS.includes(goal) ? upd(s, { goal, goalAt: now }) : s);
 
 /* ------------------------------ СЕРИЯ И РЕКОРДЫ ------------------------------ */
@@ -239,8 +248,8 @@ export function bestWeek(s) {
   Object.entries(s.xp).forEach(([d, x]) => { const w = weekOf(d); weeks[w] = (weeks[w] || 0) + x; });
   return Object.entries(weeks).reduce((b, [w, x]) => (x > b.xp ? { week: w, xp: x } : b), { week: null, xp: 0 });
 }
-// сделано сегодня против дневной цели
-export const goalToday = (s, now = Date.now()) => ({ done: s.done[dayOf(now)] || 0, goal: s.goal || 1 });
+// сделано сегодня против дневной цели: минуты занятий (уроки — для подписи)
+export const goalToday = (s, now = Date.now()) => ({ done: Math.floor(dayEntry(s, dayOf(now)).s / 60), goal: goalMinutes(s), lessons: s.done[dayOf(now)] || 0 });
 // спит ли талисман: вчера занятий не было и сегодня ещё не было
 export const missedYesterday = (s, now = Date.now()) => {
   const today = dayOf(now);
@@ -285,7 +294,7 @@ export function normalizeLearn(raw) {
     lessons[k] = { at: cnt(l.at, 1e14), runs: cnt(l.runs, 1e5), best: cnt(l.best, 100), ...(gem ? { diamond: gem } : {}) };
   });
   const units = {};
-  Object.keys(obj(r.units)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => { const t = cnt(obj(r.units[k]).tested, 1e14); if (t) units[k] = { tested: t }; });
+  Object.keys(obj(r.units)).filter(okKey).slice(0, MAX_KEYS).forEach((k) => { const u = obj(r.units[k]); const t = cnt(u.tested, 1e14); const ace = cnt(u.ace, 1e14); if (t) units[k] = { tested: t, ...(ace ? { ace } : {}) }; });
   const types = {};
   Object.keys(obj(r.types)).filter(okKey).slice(0, 20).forEach((k) => {
     const t = obj(r.types[k]); const n = cnt(t.n);
@@ -384,7 +393,7 @@ export function mergeLearn(a, b) {
     lessons[k] = c ? { at: Math.min(c.at || l.at, l.at || c.at), runs: Math.max(c.runs, l.runs), best: Math.max(c.best, l.best), ...(gem < Infinity ? { diamond: gem } : {}) } : l;
   });
   const units = { ...x.units };
-  Object.entries(y.units).forEach(([k, u]) => { units[k] = { tested: Math.max((units[k] || {}).tested || 0, u.tested) }; });
+  Object.entries(y.units).forEach(([k, u]) => { const c = units[k] || {}; const ace = Math.max(c.ace || 0, u.ace || 0); units[k] = { tested: Math.max(c.tested || 0, u.tested), ...(ace ? { ace } : {}) }; });
   const types = { ...x.types };
   Object.entries(y.types).forEach(([k, t]) => { const c = types[k] || { n: 0, ok: 0, ms: 0 }; types[k] = { n: Math.max(c.n, t.n), ok: Math.max(c.ok, t.ok), ms: Math.max(c.ms, t.ms) }; });
   const byId = {};

@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, CalendarCheck, ChevronDown, ArrowDown } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -17,7 +17,7 @@ import { GAME_CARDS, LIMITS } from './textbook/appendix.js';
 import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo } from './textbook/toc.js';
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
 import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf } from './textbook/content.js';
-import { sectionDone, sectionProgress, nextSection, dueItems } from './textbook/study.js';
+import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
 import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
@@ -70,6 +70,47 @@ export const TEXTBOOK_CSS = `
   .tb-news-head { font-size: 17px; font-weight: 700; line-height: 1.2; }
   .tb-bar { height: 4px; background: var(--c-hairline); border-radius: 2px; overflow: hidden; }
   .tb-bar > span { display: block; height: 100%; background: var(--c-teal); }
+  /* разделы главы: строка = номер, название, минуты; на телефоне ничего не «плывёт» */
+  .tb-secnav { border: 1px solid var(--c-border); background: var(--c-panel-alt); padding: 10px 12px 6px; margin: 0 0 16px; }
+  .tb-secnav-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted); margin-bottom: 6px; }
+  .tb-secnav-head [data-testid="tb-section-progress"] { text-transform: none; letter-spacing: 0; }
+  .tb-secnav-list { list-style: none; margin: 6px 0 0; padding: 0; }
+  .tb-secnav-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; padding: 7px 2px; background: none; border: none; border-top: 1px solid var(--c-hairline);
+    color: var(--c-text); font: inherit; font-size: 13.5px; line-height: 1.35; text-align: left; cursor: pointer; }
+  .tb-secnav-list li:first-child .tb-secnav-row { border-top: none; }
+  .tb-secnav-no { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--c-border); display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; color: var(--c-muted); }
+  .tb-secnav-no.done { background: var(--c-teal); border-color: var(--c-teal); color: #fff; }
+  .tb-secnav-min { font-size: 11.5px; color: var(--c-faint); white-space: nowrap; }
+  /* учебник внутри обучения: оглавление в стиле дизайн-системы */
+  .tbl-continue { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer; padding: 14px 16px; margin: 0 0 12px; border-radius: 6px;
+    background: var(--u); color: #fff; border: 1px solid color-mix(in srgb, var(--u) 70%, #000); border-bottom-width: 3px; font: inherit; }
+  .tbl-continue small { display: block; font: 700 11px/1.2 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
+  .tbl-continue b { display: block; font: 700 18px/1.25 var(--ds-serif); margin-top: 2px; }
+  .tbl-stats { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; font-size: 13.5px; color: var(--ds-ink2); margin: 0 0 14px; }
+  .tbl-stats b { color: var(--ds-ink); }
+  .tbl-parts { display: grid; gap: 14px; }
+  .tbl-part { background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 6px; padding: 10px 0 4px; }
+  .tbl-part-title { font: 700 13px/1.2 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; color: var(--u-ink); margin: 0; padding: 0 14px 8px; }
+  .tbl-ch { display: grid; grid-template-columns: 28px minmax(0, 1fr) 54px; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; background: none; border: none;
+    border-top: 1px solid var(--ds-rule); color: var(--ds-ink); font: inherit; text-align: left; cursor: pointer; }
+  .tbl-ch:hover { background: var(--ds-card2); }
+  .tbl-ch[data-status="draft"] { color: var(--ds-ink3); }
+  .tbl-no { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--ds-rule2); display: inline-flex; align-items: center; justify-content: center; font: 700 12px/1 var(--ds-sans); color: var(--ds-ink2); }
+  .tbl-no.done { background: var(--ds-ok); border-color: var(--ds-ok); color: #fff; }
+  .tbl-ch-title { font: 600 15px/1.3 var(--ds-sans); }
+  .tbl-ch-title small { font-weight: 500; color: var(--ds-ink3); }
+  .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
+  .tbl-ch-bar i { display: block; height: 100%; background: var(--ds-ok); }
+  .tbl-more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  /* ПК: учебник во весь экран — оглавление в две колонки, у главы слева закреплённый список разделов */
+  @media (min-width: 1100px) {
+    .ln-textbook.wide { max-width: 1240px !important; }
+    .ln-textbook.wide .tbl-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+    .ln-textbook.wide .tb-ch-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 36px; align-items: start; }
+    .ln-textbook.wide .tb-ch-aside { position: sticky; top: 12px; max-height: calc(100vh - 110px); overflow: auto; }
+    .ln-textbook.wide .tb-ch-main { max-width: 860px; }
+    .ln-textbook.wide .tb-body { font-size: 16px; }
+  }
 `;
 
 /* ------------------------------ СХЕМЫ ------------------------------ */
@@ -588,7 +629,19 @@ function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = 
 const DIR_WORD = { '+': 'растёт', '-': 'падает', 0: 'не меняется', '?': 'любое' };
 const KIND_LABEL = { number: 'Задача', truefalse: 'Верно или неверно', graph: 'Графическая задача' };
 
-function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onSolutionOpen }) {
+// контекст для «Сообщить об ошибке»: задача, условие, что ввёл ученик и правильный ответ
+const problemContext = (block, given, answerText) => ({
+  screen: 'textbook-problem', kind: block.kind, exercise: block.id, unit: block.chapter || '',
+  prompt: flatProblem(block.statement).slice(0, 1500), answer: given == null ? '' : String(given).slice(0, 480), correct: String(answerText || '').slice(0, 480),
+});
+function flatProblem(x) {
+  if (x == null) return '';
+  if (typeof x === 'string') return x;
+  if (Array.isArray(x)) return x.map(flatProblem).filter(Boolean).join(' ');
+  if (typeof x === 'object') return Object.entries(x).filter(([k]) => k !== 'id' && k !== 'type' && k !== 't').map(([, v]) => flatProblem(v)).filter(Boolean).join(' ');
+  return '';
+}
+function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onSolutionOpen, given = null }) {
   const rec = ctx.progress.problems[block.id];
   // решение открыто по кнопке; после ответа, если задача его открывает, — само, пока его не скроют
   const [solMode, setSolMode] = useState(null);
@@ -603,7 +656,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
         <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {block.news && <span className="tb-chip">по газете</span>}
           {LEVELS[block.level] && <span className="tb-chip" data-testid="tb-level">{LEVELS[block.level]}</span>}
-          {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'шага' : 'шагов'}</span>}
+          {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'пункта' : 'пунктов'}</span>}
           {status && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
             {status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
         </span>
@@ -647,6 +700,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
         )}
         <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
           onClick={() => { Audio.play('click'); if (!open && onSolutionOpen) onSolutionOpen(); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+        {ctx.reportFlag && <span style={{ marginLeft: 'auto' }} data-testid="tb-report">{ctx.reportFlag(() => problemContext(block, given, answerText))}</span>}
       </div>
       {open && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.gold, marginBottom: 0 }}>
@@ -742,8 +796,11 @@ function NumberProblem({ block, no, ctx, from }) {
     if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
     const ok = rs.every((r) => r.ok);
     Audio.play(ok ? 'stamp' : 'tick');
-    const marks = multi ? ` Шаги: ${parts.map((pt, k) => `${pt.label} ${rs[k].ok ? 'верно' : 'неверно'}`).join(', ')}.` : '';
-    const text = ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : `${multi ? `Не все шаги сошлись.${marks}` : 'Пока неверно.'} ${WRONG.replace(/^Пока неверно\. /, '')}`;
+    // какие пункты сошлись, а какие нет: «верно/неверно» здесь не пишем — выбора «верно или неверно» в задаче нет
+    const bad = parts.filter((pt, k) => !rs[k].ok).map((pt) => pt.label);
+    const good = parts.filter((pt, k) => rs[k].ok).map((pt) => pt.label);
+    const marks = multi ? ` ${good.length ? `Сошлось: ${good.join(' ')}. ` : ''}Не сошлось: ${bad.join(' ')} — разберите ${bad.length > 1 ? 'эти пункты' : 'этот пункт'} в решении.` : '';
+    const text = ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : `${multi ? `Ответ засчитывается, когда сходятся все пункты.${marks}` : 'Пока неверно.'} ${WRONG.replace(/^Пока неверно\. /, '').replace(/ — загляните в решение\./, '.')}`;
     ctx.onAnswer(block.id, ok, { sawSolution: saw, confident: sure });
     const traps = ok ? [] : matchTraps(block, inputs).map((tr) => ({ label: multi ? parts[tr.part].label : '', text: tr.text }));
     setVerdict({ ok, text, traps });
@@ -754,7 +811,8 @@ function NumberProblem({ block, no, ctx, from }) {
   const [focus, setFocus] = useState(null);
   const useCalc = (v) => { const k = focus != null ? focus : Math.max(0, inputs.findIndex((x) => !String(x).trim())); setAt(k, v); };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}
+      given={parts.map((pt, k) => `${pt.label ? `${pt.label} ` : ''}${inputs[k]}`).join('; ')}>
       <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', alignItems: 'center' }}>
           {parts.map((pt, k) => (
@@ -806,7 +864,7 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   };
   return (
     <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={block.answer ? 'утверждение верно' : 'утверждение неверно'}
-      onSolutionOpen={() => { if (stage === 'write') setSaw(true); }}>
+      onSolutionOpen={() => { if (stage === 'write') setSaw(true); }} given={why}>
       <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`} disabled={stage !== 'write'}
         placeholder="Почему? Одна-две фразы"
         style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
@@ -866,7 +924,7 @@ function GraphProblem({ block, no, ctx, from }) {
     setSure(null);
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)} given={JSON.stringify(values)}>
       <ChartBox type={block.chart} attrs={block.attrs} ctx={ctx} values={values} onValues={(v) => { setValues(v); setVerdict(null); }}
         only={block.controls} framed={false} />
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -886,20 +944,13 @@ function ProblemCard(props) {
 
 /* ------------------------------ СТРАНИЦЫ ------------------------------ */
 // «Назад» — туда, откуда пришли по ссылке; «Оглавление» — всегда
-const PAGE_TITLE = { toc: 'Оглавление', today: 'На сегодня', mixed: 'Задачи вперемешку', stats: 'Мой прогресс' };
+const PAGE_TITLE = { toc: 'Оглавление', review: 'Повторение', mixed: 'Задачи вперемешку', stats: 'Мой прогресс' };
 const pageTitle = (pg) => (!pg ? '' : PAGE_TITLE[pg.kind] || (pg.kind === 'exam' ? (EXAMS[pg.id] || {}).title : pg.kind === 'chapter' ? (CHAPTER_BY_ID[pg.id] || {}).title : (APPENDIX_BY_ID[pg.id] || {}).title));
-/* Внутри обучения (embedded) у учебника один «назад» — кнопка вверху: она ведёт на прошлую
-   страницу, а с первой — туда, откуда учебник открыли. Второй «Назад: …» не нужен, а
-   «Оглавление» не показываем там, где «назад» и так ведёт в оглавление. */
+/* Внутри обучения (embedded) у учебника ОДИН «назад» — кнопка в верхней панели: на прошлую
+   страницу, а с первой — в оглавление (вкладка «Учебник») или туда, откуда учебник открыли.
+   Ни «Назад: …», ни «Оглавление» на странице не дублируют её. */
 function PageNav({ ctx }) {
-  if (ctx.embedded) {
-    if (ctx.prev && ctx.prev.kind === 'toc') return null;
-    return (
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-        <button type="button" className="ems-btn" style={{ padding: '6px 11px', fontSize: 12 }} data-testid="tb-toc" data-nav-target="book:toc" onClick={() => { Audio.play('click'); ctx.go({ kind: 'toc' }); }}>Оглавление</button>
-      </div>
-    );
-  }
+  if (ctx.embedded) return null;
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
       {ctx.prev && ctx.prev.kind !== 'toc' && (
@@ -923,18 +974,25 @@ function SectionNav({ sections, ctx }) {
   const study = sections.filter((x) => x.recall);
   const done = study.filter((x) => sectionDone(ctx.progress, x)).length;
   return (
-    <nav className="tb-box" style={{ borderLeftColor: COLOR.muted, marginTop: 0 }} aria-label="Разделы главы" data-testid="tb-sections">
-      <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
-        <div className="tb-box-head" style={{ color: COLOR.muted }}>В этой главе</div>
-        {study.length > 0 && <span style={{ fontSize: 12, color: COLOR.muted }} data-testid="tb-section-progress">пройдено разделов: {done} из {study.length}</span>}
+    <nav className="tb-secnav" aria-label="Разделы главы" data-testid="tb-sections">
+      <div className="tb-secnav-head">
+        <span>В этой главе</span>
+        {study.length > 0 && <span data-testid="tb-section-progress">пройдено разделов: {done} из {study.length}</span>}
       </div>
-      {study.length > 0 && <div className="tb-bar" style={{ marginBottom: 8 }}><span style={{ width: `${(done / study.length) * 100}%` }} /></div>}
-      <ol style={{ margin: '0 0 8px', paddingLeft: 20, fontSize: 13, lineHeight: 1.7, columns: '2 240px' }}>
-        {sections.map((x) => (
-          <li key={x.id}><button type="button" className="tb-link" style={{ textDecoration: 'none', textAlign: 'left' }} onClick={() => scrollToId(x.id)}>{x.title}</button>
-            {x.recall && <span style={{ fontSize: 11.5, color: sectionDone(ctx.progress, x) ? COLOR.teal : COLOR.faint, marginLeft: 6, whiteSpace: 'nowrap' }}>
-              {sectionDone(ctx.progress, x) ? <><Check size={10} style={{ verticalAlign: -1 }} /> </> : ''}≈{x.minutes} мин</span>}</li>
-        ))}
+      {study.length > 0 && <div className="tb-bar"><span style={{ width: `${(done / study.length) * 100}%` }} /></div>}
+      <ol className="tb-secnav-list">
+        {sections.map((x, k) => {
+          const ok = x.recall && sectionDone(ctx.progress, x);
+          return (
+            <li key={x.id}>
+              <button type="button" className="tb-secnav-row" onClick={() => scrollToId(x.id)}>
+                <span className={`tb-secnav-no${ok ? ' done' : ''}`} aria-hidden="true">{ok ? <Check size={12} /> : k + 1}</span>
+                <span>{x.title}</span>
+                {x.recall ? <span className="tb-secnav-min">≈{x.minutes} мин</span> : <span />}
+              </button>
+            </li>
+          );
+        })}
       </ol>
     </nav>
   );
@@ -954,10 +1012,10 @@ function ChapterPage({ id, ctx }) {
       </div>
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
-        <>
-          <SectionNav sections={CHAPTER_SECTIONS[id]} ctx={ctx} />
-          <div className="tb-body"><Blocks blocks={blocks} ctx={{ ...ctx, chapter: id }} top /></div>
-        </>
+        <div className="tb-ch-grid">
+          <aside className="tb-ch-aside"><SectionNav sections={CHAPTER_SECTIONS[id]} ctx={ctx} /></aside>
+          <div className="tb-ch-main tb-body"><Blocks blocks={blocks} ctx={{ ...ctx, chapter: id }} top /></div>
+        </div>
       ) : (
         <div className="ems-panel" style={{ padding: 14, fontSize: 13.5, lineHeight: 1.6 }}>
           <div style={{ marginBottom: 6 }}><b>Глава в работе.</b> {ch.summary}</div>
@@ -1134,57 +1192,23 @@ function ReviewPanel({ ctx, due }) {
   );
 }
 
-/* НА СЕГОДНЯ: один раздел минут на десять — прямо здесь, с вопросом в конце, — и всё, чему
-   подошёл срок повторения. Раздел выбирается при входе и не меняется, пока экран открыт:
-   ответ «совпало» не должен выдёргивать текст из-под глаз. */
-function TodayPage({ ctx }) {
-  const [plan] = useState(() => ({ next: nextSection(ctx.progress), due: dueItems(ctx.progress) }));
-  const n = plan.next;
+/* ПОВТОРЕНИЕ: только то, чему подошёл срок, — задачи глав с неверным ответом и вопросы
+   разделов. Новой теории здесь нет (её читают в главах), и список не пополняется на глазах:
+   он собирается при входе. */
+function ReviewPage({ ctx }) {
+  const [due] = useState(() => dueItems(ctx.progress));
   return (
-    <div data-testid="today">
+    <div data-testid="review-page">
       <PageNav ctx={ctx} />
-      <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 6px', fontWeight: 700 }}>На сегодня</h1>
-      <div style={{ fontSize: 13, color: COLOR.muted, marginBottom: 14, lineHeight: 1.55 }}>
-        Один раздел минут на десять и вопросы, которым подошёл срок. Раздел пройден, когда ваш ответ на вопрос в его конце совпал с ответом учебника.
-      </div>
-      {n ? (
-        <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="today-section">
-          <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-            Глава {chapterNo(n.chapter)} · {CHAPTER_BY_ID[n.chapter].title} · ≈{n.section.minutes} мин
-          </div>
-          <h2 className="ems-serif" style={{ fontSize: 20, color: COLOR.goldSoft, margin: '4px 0 10px' }}>{n.section.title}</h2>
-          <div className="tb-body"><Blocks blocks={n.section.blocks} ctx={ctx} /></div>
-          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }}
-            onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: n.chapter, anchor: n.section.id }); }}>Открыть раздел в главе</button>
-        </div>
-      ) : (
-        <div className="ems-panel" style={{ padding: 14, marginBottom: 16, fontSize: 13.5 }}>Все разделы готовых глав пройдены. Остаются повторение и задачи глав.</div>
-      )}
-      <ReviewPanel ctx={ctx} due={plan.due.filter((id) => !(n && id === n.section.recall))} />
-    </div>
-  );
-}
-
-// карточка «на сегодня» в оглавлении
-function TodayCard({ ctx }) {
-  const n = nextSection(ctx.progress);
-  const due = dueItems(ctx.progress);
-  return (
-    <div className="ems-panel" style={{ padding: '12px 14px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', borderLeft: `3px solid ${COLOR.gold}` }} data-testid="today-card">
-      <CalendarCheck size={18} color={COLOR.gold} />
-      <span style={{ flex: 1, minWidth: 200, fontSize: 13, lineHeight: 1.5 }}>
-        <b>На сегодня:</b> {n ? <>раздел «{n.section.title}» (≈{n.section.minutes} мин)</> : 'все разделы пройдены'}
-        {' · '}на повторение: <b>{due.length}</b>
-      </span>
-      <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }}
-        onClick={() => { Audio.play('click'); ctx.go({ kind: 'today' }); }}>Начать занятие</button>
+      {!ctx.embedded && <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 12px', fontWeight: 700 }}>Повторение</h1>}
+      <ReviewPanel ctx={ctx} due={due} />
     </div>
   );
 }
 
 /* ИТОГОВАЯ ПРОВЕРКА БЛОКА: задачи из всех глав вперемешку, без подсказок и решений. Ответы
    проверяются только по «Завершить»: счёт по темам, слабые места со ссылками на главы, разбор
-   каждой задачи. Неверные ответы уходят в повторение — вернутся в «На сегодня» через два дня. */
+   каждой задачи. Неверные ответы уходят в повторение — вернутся через два дня. */
 function ExamPage({ id, ctx }) {
   const exam = EXAMS[id];
   // каждая попытка — новые числа: зерно выбирается при входе и при пересдаче
@@ -1429,7 +1453,70 @@ function CheckPanel({ ctx }) {
   );
 }
 
+/* Оглавление внутри обучения: «продолжить чтение», две цифры прогресса и главы по частям —
+   номер (или галочка, если глава прочитана), название, полоска пройденных разделов. Описания
+   глав, уверенность ответов и «проверить себя» здесь лишние: проверки — во вкладке «Задания»,
+   прогресс — по ссылке внизу. */
+function LearnToc({ ctx }) {
+  const ready = CHAPTERS.filter((c) => c.status === 'ready');
+  const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
+  const allProblems = Object.keys(PROBLEMS);
+  const solved = allProblems.filter((id) => ctx.progress.problems[id] && ctx.progress.problems[id].ok).length;
+  const due = dueItems(ctx.progress).length;
+  const last = ctx.progress.last && ctx.progress.last.kind === 'chapter' && CHAPTER_BY_ID[ctx.progress.last.id] ? CHAPTER_BY_ID[ctx.progress.last.id] : null;
+  let n = 0;
+  return (
+    <div data-testid="textbook" className="tbl">
+      {last && (
+        <button type="button" className="tbl-continue" data-testid="tb-continue" aria-label={`Продолжить чтение главы ${chapterNo(last.id)}`} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>
+          <BookOpen size={26} aria-hidden="true" />
+          <span style={{ flex: 1, minWidth: 0 }}><small>Продолжить чтение</small><b>{last.title}</b></span>
+          <ChevronRight size={22} aria-hidden="true" />
+        </button>
+      )}
+      <div className="tbl-stats" data-testid="tb-stats">
+        <span>Глав прочитано: <b>{readCount}</b> из {ready.length}</span>
+        <span>Задач решено: <b>{solved}</b> из {allProblems.length}</span>
+        {due > 0 && <button type="button" className="tb-link" data-testid="tb-review-link" onClick={() => { Audio.play('click'); ctx.go({ kind: 'review' }); }}>На повторение: {due}</button>}
+      </div>
+      <div className="tbl-parts">
+        {PARTS.map((p) => (
+          <section key={p.id} className="tbl-part">
+            <h2 className="tbl-part-title">{p.title}</h2>
+            {p.chapters.map((c) => {
+              n += 1;
+              const readMark = !!ctx.progress.read[c.id];
+              const sp = sectionProgress(ctx.progress, c.id);
+              return (
+                <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
+                  <span className={`tbl-no${readMark ? ' done' : ''}`} aria-label={readMark ? 'прочитана' : undefined}>{readMark ? <Check size={14} aria-hidden="true" /> : n}</span>
+                  <span className="tbl-ch-title">{c.title}{c.status !== 'ready' && <small> · скоро</small>}</span>
+                  {sp.total > 0 ? <span className="tbl-ch-bar" title={`разделы ${sp.done}/${sp.total}`} aria-label={`разделы ${sp.done}/${sp.total}`}><i style={{ width: `${(sp.done / sp.total) * 100}%` }} /></span> : <span />}
+                </button>
+              );
+            })}
+          </section>
+        ))}
+        <section className="tbl-part">
+          <h2 className="tbl-part-title">Приложения</h2>
+          {APPENDICES.map((a, i) => (
+            <button key={a.id} type="button" className="tbl-ch tb-toc-row" onClick={() => { Audio.play('click'); ctx.go({ kind: 'appendix', id: a.id }); }}>
+              <span className="tbl-no">{String.fromCharCode(1040 + i)}</span>
+              <span className="tbl-ch-title">{a.title}</span>
+              <span />
+            </button>
+          ))}
+        </section>
+      </div>
+      <div className="tbl-more">
+        <button type="button" className="ems-btn" data-testid="tb-stats-link" onClick={() => { Audio.play('click'); ctx.go({ kind: 'stats' }); }}>Мой прогресс в учебнике</button>
+      </div>
+    </div>
+  );
+}
+
 function TocPage({ ctx }) {
+  if (ctx.embedded) return <LearnToc ctx={ctx} />;
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
   const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
   const allProblems = Object.keys(PROBLEMS);
@@ -1452,7 +1539,6 @@ function TocPage({ ctx }) {
         {last && <button type="button" className="ems-btn primary" style={{ marginLeft: 'auto', padding: '6px 12px', fontSize: 12 }}
           onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>Продолжить: {last.title}</button>}
       </div>
-      <TodayCard ctx={ctx} />
       <CheckPanel ctx={ctx} />
       {PARTS.map((p) => (
         <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }}>
@@ -1528,7 +1614,7 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
-export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null }) {
+export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null, reportFlag = null, asTab = false }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);
@@ -1614,22 +1700,26 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     setStack((st) => st.slice(0, -1));
     go(prev, { push: false });
   };
-  const embedded = !!onExit;
+  // в обучении (вкладка «Учебник» или справочник поверх урока) — дизайн-система и один «назад»
+  const embedded = !!onExit || asTab;
   const ctx = {
     progress, go, back, embedded, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
     onAnswer: (id, ok, opts) => update((p) => recordAnswer(p, id, ok, Date.now(), opts)),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
+    reportFlag,
   };
-  const valid = page.kind === 'chapter' ? !!CHAPTER_BY_ID[page.id] : page.kind === 'appendix' ? !!APPENDIX_BY_ID[page.id] : page.kind === 'exam' ? !!EXAMS[page.id]
-    : ['toc', 'today', 'mixed', 'stats'].includes(page.kind);
-  const cur = valid ? page : { kind: 'toc' };
+  // «На сегодня» больше нет: старые ссылки на него ведут в повторение
+  const pg = page.kind === 'today' ? { kind: 'review' } : page;
+  const valid = pg.kind === 'chapter' ? !!CHAPTER_BY_ID[pg.id] : pg.kind === 'appendix' ? !!APPENDIX_BY_ID[pg.id] : pg.kind === 'exam' ? !!EXAMS[pg.id]
+    : ['toc', 'review', 'mixed', 'stats'].includes(pg.kind);
+  const cur = valid ? pg : { kind: 'toc' };
   const pages = (
     <>
       <style>{TEXTBOOK_CSS}</style>
-      <ReaderBar scale={scale} setScale={setScale} />
+      {!(embedded && cur.kind === 'toc') && <ReaderBar scale={scale} setScale={setScale} />}
       <div style={{ zoom: scale }} data-testid="tb-content">
         {cur.kind === 'toc' && <TocPage ctx={ctx} />}
-        {cur.kind === 'today' && <TodayPage ctx={ctx} />}
+        {cur.kind === 'review' && <ReviewPage ctx={ctx} />}
         {cur.kind === 'exam' && <ExamPage key={cur.id} id={cur.id} ctx={ctx} />}
         {cur.kind === 'mixed' && <MixedPage ctx={ctx} />}
         {cur.kind === 'stats' && <StatsPage ctx={ctx} />}
@@ -1641,9 +1731,13 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
   /* В обучении учебник — справочник в дизайн-системе обучения: верхняя панель с одним
      «назад» (на прошлую страницу, с первой — туда, откуда открыли) и название страницы. */
   if (embedded) {
+    /* вкладка: «назад» есть только вне оглавления — на прошлую страницу или в оглавление;
+       справочник поверх урока: на прошлую страницу, с первой — обратно в урок */
+    const canBack = asTab ? cur.kind !== 'toc' : true;
+    const onBackTap = () => { Audio.play('paper'); if (stack.length || asTab) back(); else onExit(); };
     return (
-      <div className="ln-textbook" style={{ maxWidth: 760, margin: '0 auto', padding: '6px 16px 40px' }}>
-        <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={() => { Audio.play('paper'); if (stack.length) back(); else onExit(); }} />}
+      <div className="ln-textbook wide" style={{ maxWidth: 760, margin: '0 auto', padding: '6px 16px 40px' }}>
+        <TopBar back={canBack ? <IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBackTap} /> : null}
           title={<><span className="ds-eyebrow" style={{ display: 'block' }}>Учебник</span>{cur.kind === 'toc' ? 'Оглавление' : pageTitle(cur)}</>}
           right={reportSlot ? reportSlot(cur) : null} />
         {pages}

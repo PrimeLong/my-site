@@ -2,7 +2,7 @@
    тест) и награды (монеты, курс, лавка, заморозки, задания дня, сундук, печати, испытание месяца). */
 import { describe, it, expect } from 'vitest';
 import { LESSON_BY_ID, UNIT_BY_ID, EXERCISES, buildLesson, buildPractice, buildPlacement, placementOpened, placementFailed, pathState, pilotUnits, PLACE_PER_UNIT, PRACTICE_MIN, HARD_IN_PRACTICE } from '../course.js';
-import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts } from '../program.js';
+import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts, theoryNotice } from '../program.js';
 import { evalExpr, fmtResult } from '../calc.js';
 import {
   balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
@@ -10,7 +10,7 @@ import {
 } from '../rewards.js';
 import {
   emptyLearn, recordAttempt, finishLesson, setProfile, setPlacement, passUnit, normalizeLearn, mergeLearn, streak, applyFreezes, ownedFreezes,
-  dayOf, addDays, weekDots, dailyOf, MAX_FREEZES,
+  dayOf, addDays, weekDots, dailyOf, MAX_FREEZES, goalToday,
 } from '../../textbook/learn-state.js';
 
 const at = (day, h = 12) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, h).getTime(); };
@@ -53,7 +53,8 @@ describe('уровень сложности', () => {
     expect(s.topics['sd-l1'].n).toBe(20);
     expect(s.topics['sd-l1'].ok / s.topics['sd-l1'].n).toBeCloseTo(0.75, 1);
     expect(dailyOf(s, T).c).toBe(30);
-    expect(dailyOf(s, T).r).toBe(39);
+    // серия дня не длиннее сегодняшних верных ответов (урок, начатый вчера, её не приносит)
+    expect(dailyOf(s, T).r).toBe(30);
   });
   it('«по шагам»: в выборе ответа три варианта и разбор по шагам; «повышенный»: в практике задачи семинара и олимпиады', () => {
     let easyChoices = 0;
@@ -126,22 +127,27 @@ describe('вступительный тест', () => {
     plan.items.forEach((it) => expect(['swipe', 'rush']).not.toContain(it.kind));
   });
   it('юнит открыт, если в пятёрке не больше одной ошибки; первая проваленная пятёрка останавливает', () => {
-    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand']);
-    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand']);
+    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'consumer']);
+    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'consumer']);
     expect(placementOpened(plan.items, answer({ 'supply-demand': 2 }))).toEqual(['scarcity']);
     expect(placementOpened(plan.items, answer({ scarcity: 2 }))).toEqual([]);
     const first = answer({ scarcity: 2 });
     expect(placementFailed(plan.items, first, 'scarcity')).toBe(true);
     expect(placementFailed(plan.items, first, 'supply-demand')).toBe(false);
   });
-  it('открытые тестом юниты пройдены на Пути, но уроки не засчитаны как пройденные вами', () => {
-    const ids = UNIT_BY_ID.scarcity.lessons.map((l) => l.id);
-    const s = setPlacement(passUnit(emptyLearn(), 'scarcity', ids, T), ['scarcity'], T);
+  it('открытые тестом юниты — уроки открыты, но не пройдены: ни сундука, ни печатей за них', () => {
+    const s = setPlacement(passUnit(emptyLearn(), 'scarcity', { now: T }), ['scarcity'], T);
     const st = pathState(s);
-    expect(st[0].complete).toBe(true);
+    expect(st[0].complete).toBe(false);
+    expect(st[0].lessons.every((l) => l.open && !l.done)).toBe(true);
     expect(st[1].lessons[0].open).toBe(true);
     expect(courseCtx(s).lessonsDone).toBe(0);
-    expect(courseCtx(s).unitsDone).toBe(1);
+    expect(courseCtx(s).unitsDone).toBe(0);
+    // печать за тест не выдаётся; «Знаток» — только за проверку юнита без ошибок
+    expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).not.toContain('a:ace');
+    const ace = passUnit(emptyLearn(), 'scarcity', { ace: true, now: T });
+    expect(settle(ace, courseCtx(ace), T).gains.map((g) => g.key)).toContain('a:ace');
+    expect(mergeLearn(ace, s).units.scarcity.ace).toBe(T);
     expect(normalizeLearn(JSON.parse(JSON.stringify(s))).placement).toEqual({ at: T, opened: ['scarcity'] });
   });
 });
@@ -258,15 +264,35 @@ describe('лавка и заморозки', () => {
 });
 
 describe('задания дня, сундук, печати, испытание месяца', () => {
-  it('три задания: минуты из ответа при регистрации — всегда; набор одинаков весь день', () => {
+  it('три задания: про уроки, про ответы, про опыт или новый урок; размер — от цели в минутах; набор одинаков весь день', () => {
     const s = setProfile(emptyLearn(), { minutes: 15 }, T);
     const q = questsFor(s, T);
     expect(q).toHaveLength(3);
-    expect(q[0]).toMatchObject({ id: 'minutes', target: 15, have: 0, done: false });
+    // минуты — это цель дня, заданием они не дублируются
+    expect(q.map((x) => x.id)).not.toContain('minutes');
+    expect(['lessons', 'perfect']).toContain(q[0].id);
+    expect(['correct', 'run']).toContain(q[1].id);
+    expect(['xp', 'fresh']).toContain(q[2].id);
+    q.forEach((x) => expect(x).toMatchObject({ have: 0, done: false }));
     expect(questsFor(s, T + 3600e3).map((x) => x.id)).toEqual(q.map((x) => x.id));
     const ids = new Set();
     for (let d = 0; d < 30; d += 1) questsFor(s, T + d * 86400e3).forEach((x) => ids.add(x.id));
-    expect(ids.size).toBeGreaterThanOrEqual(5);
+    expect(ids.size).toBe(6);
+    // больше минут в цели — больше задания
+    const small = setProfile(emptyLearn(), { minutes: 5 }, T);
+    const sum = (st) => { let n = 0; for (let d = 0; d < 30; d += 1) questsFor(st, T + d * 86400e3).forEach((x) => { n += x.target; }); return n; };
+    expect(sum(s)).toBeGreaterThan(sum(small));
+  });
+  it('новый день начинается с нуля: вчерашний урок, законченный после полуночи, не выполняет задания', () => {
+    const late = new Date(2026, 8, 29, 0, 1).getTime();
+    let s = setProfile(emptyLearn(), { minutes: 10 }, T);
+    // урок шёл с вечера: двенадцать верных подряд, законченных в 00:01
+    for (let k = 0; k < 12; k += 1) s = recordAttempt(s, 'choice', true, 1000, { lesson: 'sc-l1', run: k + 1, now: k < 11 ? T : late });
+    const d = dailyOf(s, late);
+    expect(d.c).toBe(1);
+    expect(d.r).toBe(1);
+    s = finishLesson(s, 'sc-l1', { xp: 10, accuracy: 100, now: late, seconds: 900 });
+    expect(goalToday(s, late).done).toBe(1);
   });
   it('выполненные задания и цель дня приносят монеты один раз; все три — ещё бонус', () => {
     let s = setProfile(emptyLearn(), { minutes: 5 }, T);
@@ -297,7 +323,10 @@ describe('задания дня, сундук, печати, испытание 
     expect(m.month).toBe('2026-09');
     expect(m.name).toBe('сентябрь 2026');
     expect(m.have).toBe(0);
-    for (let d = 1; d <= 28; d += 1) s = lessonOn(s, 'sc-i1', `2026-09-${String(d).padStart(2, '0')}`, 100);
+    for (let d = 1; d <= 28; d += 1) {
+      const day = `2026-09-${String(d).padStart(2, '0')}`;
+      for (let k = 0; k < 2; k += 1) s = finishLesson(s, `sc-i${k + 1}`, { xp: 10, accuracy: 100, now: at(day), seconds: 900 });
+    }
     s = { ...s, xp: { ...s.xp, '2026-09-01': 600 } };
     expect(monthChallenge(s, T).done).toBe(true);
     const r = settle(s, courseCtx(s), T);
@@ -320,17 +349,35 @@ describe('правки: печать «Без помарок», испытани
     s = finishLesson(s, 'sc-l1', { xp: 10, accuracy: 100, now: T });
     expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).toContain('a:perfect');
   });
-  it('испытание месяца: пришедшему в конце месяца — цель в доле оставшихся дней; «до конца месяца» включает сегодня', () => {
+  it('испытание месяца персональное: от цели в минутах и прошлого месяца, без «заниматься 2 дня»', () => {
+    const FLOOR = { minutes: 60, lessons: 5, perfect: 3, xp: 100 };
     const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29'));
     const m = monthChallenge(late, at('2026-09-29'));
     expect(m.daysLeft).toBe(2);
-    expect(m.target).toBeLessThanOrEqual(Math.ceil({ days: 15, lessons: 40, perfect: 12, xp: 500 }[m.id] * 2 / 30) + 1);
-    expect(m.target).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(FLOOR)).toContain(m.id);
+    // пришёл в конце месяца — цель не ниже нижней планки
+    expect(m.target).toBe(FLOOR[m.id]);
     expect(m.need).toBe(m.target - m.have);
     expect(m.title).toContain(String(m.target));
-    // с начала месяца — полная цель
-    const early = setProfile(emptyLearn(), { minutes: 10 }, at('2026-08-15'));
-    expect(monthChallenge(early, at('2026-09-29')).target).toBe({ days: 15, lessons: 40, perfect: 12, xp: 500 }[m.id]);
+    expect(m.why).toContain('10 минут');
+    // за весь месяц: больше минут в цели — больше испытание
+    for (const day of ['2026-09-29', '2026-10-15', '2026-11-15', '2026-12-15']) {
+      const five = setProfile(emptyLearn(), { minutes: 5 }, at('2026-07-01'));
+      const twenty = setProfile(emptyLearn(), { minutes: 20 }, at('2026-07-01'));
+      const a = monthChallenge(five, at(day)); const b = monthChallenge(twenty, at(day));
+      expect(a.target).toBeGreaterThanOrEqual(FLOOR[a.id]);
+      expect(b.target).toBeGreaterThan(a.target);
+    }
+    // в прошлом месяце сделано много — теперь чуть больше прошлого
+    let busy = setProfile(emptyLearn(), { minutes: 5 }, at('2026-07-01'));
+    for (let d = 1; d <= 31; d += 1) {
+      const day = `2026-08-${String(d).padStart(2, '0')}`;
+      for (let k = 0; k < 3; k += 1) busy = finishLesson(busy, `sc-i${k + 1}`, { xp: 30, accuracy: 100, now: at(day), seconds: 900 });
+    }
+    const calm = monthChallenge(setProfile(emptyLearn(), { minutes: 5 }, at('2026-07-01')), at('2026-09-29'));
+    const hard = monthChallenge(busy, at('2026-09-29'));
+    expect(hard.target).toBeGreaterThan(calm.target);
+    expect(hard.why).toContain('В прошлом месяце');
   });
   it('калькулятор: скобки, приоритет, унарный минус, степень, запятая; неполное и деление на ноль — ничего', () => {
     expect(evalExpr('100/50')).toBe(2);
@@ -388,5 +435,23 @@ describe('слияние двух устройств', () => {
     expect(addDays('2026-09-28', 3)).toBe('2026-10-01');
     expect(COIN.lesson).toBe(10);
     expect(OUTFITS.length).toBeGreaterThanOrEqual(9);
+  });
+});
+
+describe('напоминание о теории перед уроком', () => {
+  it('нужна теория раздела, которой не было ни в учебнике, ни в «Знакомстве»; «теория уже была» — больше не спрашиваем', () => {
+    const l1 = LESSON_BY_ID['sc-l1'];
+    const n = theoryNotice(l1, emptyLearn(), { read: {}, problems: {} });
+    expect(n).toMatchObject({ chapter: 'scarcity', section: { id: l1.section } });
+    expect(n.section.title).toBeTruthy();
+    // «Знакомство» по тому же разделу пройдено — теория дана в уроке
+    const intro = finishLesson(emptyLearn(), 'sc-i1', { xp: 5, accuracy: 100, now: T });
+    expect(theoryNotice(l1, intro, { read: {}, problems: {} })).toBeNull();
+    // глава прочитана в учебнике
+    expect(theoryNotice(l1, emptyLearn(), { read: { scarcity: T }, problems: {} })).toBeNull();
+    // ученик сказал «теория уже была в уроке»
+    expect(theoryNotice(l1, emptyLearn(), { read: {}, problems: {} }, [l1.section])).toBeNull();
+    // сам урок «Знакомство» теорию даёт
+    expect(theoryNotice(LESSON_BY_ID['sc-i1'], emptyLearn(), { read: {}, problems: {} })).toBeNull();
   });
 });
