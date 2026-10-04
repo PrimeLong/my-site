@@ -53,6 +53,24 @@ describe('сообщения об ошибках', () => {
     expect(done.data.counts.done).toBeGreaterThanOrEqual(1);
   });
 
+  it('грубое сообщение не принимается; старые грубые помечены, владелец может удалить', async () => {
+    const rude = await send(userToken, { comment: 'Это пиздец блять какая МАША' });
+    expect(rude.status).toBe(400);
+    expect(rude.data.error).toContain('грубых');
+    const { data: sent } = await send(userToken, { comment: 'Тут нужен калькулятор' });
+    const list = await call(reportsHandler, { action: 'list', session: ownerToken, status: 'new' });
+    expect(list.data.reports.find((x) => x.id === sent.id).rude).toBe(false);
+    expect((await call(reportsHandler, { action: 'delete', session: userToken, id: sent.id })).status).toBe(403);
+    expect((await call(reportsHandler, { action: 'delete', session: ownerToken, id: sent.id })).status).toBe(200);
+    const after = await call(reportsHandler, { action: 'list', session: ownerToken, status: 'all' });
+    expect(after.data.reports.map((x) => x.id)).not.toContain(sent.id);
+  });
+
+  it('логин и имя с грубыми словами не регистрируются', async () => {
+    expect((await call(accountHandler, { action: 'register', login: uniq('ok'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
+    expect((await call(accountHandler, { action: 'register', login: `fuck${n++}`, password: 'secret1', name: 'Анна' })).status).toBe(400);
+  });
+
   it(`не больше ${REPORTS_PER_HOUR} сообщений в час с профиля`, async () => {
     const t = await register(uniq('spam'));
     const codes = [];

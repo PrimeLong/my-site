@@ -257,6 +257,26 @@ export const missedYesterday = (s, now = Date.now()) => {
 };
 
 /* ------------------------------ СТАТИСТИКА ДЛЯ ПРОФИЛЯ ------------------------------ */
+/* «Мои четыре недели»: календарь минут по дням (с понедельника, сегодня — последняя клетка),
+   сколько минут и уроков за это время и точность первых ответов (последние 30). */
+export function studyWeeks(s, now = Date.now()) {
+  const today = dayOf(now);
+  const start = addDays(weekOf(today), -21);
+  const days = Array.from({ length: 28 }, (_, k) => {
+    const key = addDays(start, k);
+    return { day: key, minutes: Math.floor(dayEntry(s, key).s / 60), lessons: (s.done || {})[key] || 0, today: key === today, future: key > today };
+  });
+  const past = days.filter((d) => !d.future);
+  const r = s.recent || '';
+  return {
+    days,
+    minutes: past.reduce((a, d) => a + d.minutes, 0),
+    lessons: past.reduce((a, d) => a + d.lessons, 0),
+    active: past.filter((d) => d.lessons > 0 || d.minutes > 0).length,
+    accuracy: r.length >= 5 ? [...r].filter((c) => c === '1').length / r.length : null,
+  };
+}
+
 export function learnStats(s, now = Date.now()) {
   const today = dayOf(now);
   // дни занятий по неделям: последние четыре недели, от текущей назад
@@ -332,6 +352,9 @@ function claimedMap(v) {
   const out = {}; [...rest, ...quests].forEach((k) => { out[k] = all[k]; });
   return out;
 }
+// переименованные вещи лавки: купленное остаётся у ученика под новым именем
+const RENAMED = { goldbar: 'balloon' };
+const renamed = (m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [RENAMED[k] || k, v]));
 function normalizeProgram(r) {
   const e = emptyLearn();
   const p = obj(r.profile); const pl = obj(r.placement); const w = obj(r.wear);
@@ -356,8 +379,8 @@ function normalizeProgram(r) {
     recent: typeof r.recent === 'string' && /^[01]*$/.test(r.recent) ? r.recent.slice(-MAX_RECENT) : '', recentAt: cnt(r.recentAt, 1e14),
     coins: dayMap(r.coins, 1e6), spent: dayMap(r.spent, 1e6), freezeBuy: dayMap(r.freezeBuy, MAX_FREEZES * 5),
     frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
-    claimed: claimedMap(r.claimed), owned: tsMap(r.owned, 60),
-    wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? w[sl] : null])), at: cnt(w.at, 1e14) },
+    claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
+    wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
   };
 }

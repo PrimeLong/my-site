@@ -7,6 +7,7 @@
    Почты нет, поэтому забытый пароль восстанавливается кодом, который показывается
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
 import { getUser, setUser, setSession, delSession, hasKv, hit } from './_lib/store.js';
+import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
   newRecoveryCode, hashRecovery, checkRecovery, sessionValue,
@@ -51,6 +52,8 @@ async function handleRequest(req, res) {
       return res.status(400).json({ error: 'Пароль — не короче 6 символов' });
     }
     const name = cleanName(body.name) || login;
+    // ни логин, ни имя — без грубых слов (их видят в сетевых партиях и в сообщениях об ошибках)
+    if (isRude(login) || isRude(name)) return res.status(400).json({ error: RUDE_NAME });
     if (await hit(`reg:${clientIp(req)}`, 3600) > REG_PER_HOUR) {
       return res.status(429).json({ error: 'Слишком много регистраций с этого адреса — попробуйте через час' });
     }
@@ -116,7 +119,12 @@ async function handleRequest(req, res) {
   if (action === 'me') return res.status(200).json({ profile: publicProfile(user), storage: storage() });
   if (action === 'update') {
     const next = { ...user };
-    if (body.name !== undefined) { const n = cleanName(body.name); if (!n) return res.status(400).json({ error: 'Имя — от 2 до 24 символов' }); next.name = n; }
+    if (body.name !== undefined) {
+      const n = cleanName(body.name);
+      if (!n) return res.status(400).json({ error: 'Имя — от 2 до 24 символов' });
+      if (isRude(n)) return res.status(400).json({ error: RUDE_NAME });
+      next.name = n;
+    }
     if (body.emblem !== undefined) { if (!EMBLEMS.has(body.emblem)) return res.status(400).json({ error: 'Нет такого значка' }); next.emblem = body.emblem; }
     await setUser(user.login, next);
     return res.status(200).json({ profile: publicProfile(next) });

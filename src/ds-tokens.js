@@ -110,3 +110,10 @@ export const learnMusic = () => store.get('ems-learn-music') === '1';
 export const setLearnMusic = (on) => store.set('ems-learn-music', on ? '1' : null);
 export const learnSfx = () => store.get('ems-learn-sfx') !== '0';
 export const setLearnSfx = (on) => store.set('ems-learn-sfx', on ? null : '0');
+// звук «Мира»: выключенная музыка (и звуки, громкость) остаётся выключенной после перезагрузки
+export const worldMusic = () => store.get('ems-world-music') !== '0';
+export const setWorldMusic = (on) => store.set('ems-world-music', on ? null : '0');
+export const worldSfx = () => store.get('ems-world-sfx') !== '0';
+export const setWorldSfx = (on) => store.set('ems-world-sfx', on ? null : '0');
+export const worldVolume = () => { const v = parseFloat(store.get('ems-world-volume')); return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.6; };
+export const setWorldVolume = (v) => store.set('ems-world-volume', String(v));

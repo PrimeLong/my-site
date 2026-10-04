@@ -23,7 +23,7 @@ import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbo
 import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
 import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
 import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
-import { evalExpr, fmtResult } from './learn/calc.js';
+import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 import { formulaSymbols } from './textbook/symbols.js';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
@@ -749,7 +749,7 @@ const TB_KEYS = ['7', '8', '9', '÷', '(', '4', '5', '6', '×', ')', '1', '2', '
 function TbCalc({ onUse, label = 'В ответ' }) {
   const [expr, setExpr] = useState('');
   const v = evalExpr(expr);
-  const press = (k) => { Audio.play('tick'); if (k === 'C') setExpr(''); else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e)); };
+  const press = (k) => { Audio.play('tick'); if (k === 'C') setExpr(''); else if (k === '√') setExpr((e) => pressRoot(e)); else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e)); };
   return (
     <div className="tb-calc" data-testid="tb-calc">
       <input value={expr} onChange={(e) => setExpr(e.target.value.replace(/[^0-9.,+\-−*/×÷:^√()\s]/g, '').slice(0, 40))} aria-label="Выражение для калькулятора" placeholder="например, (120−60)/2"

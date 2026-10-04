@@ -1214,7 +1214,8 @@ async function passCards(page) {
   while (await card.isVisible()) {
     n += 1;
     const before = await sig();
-    await page.getByTestId('lesson').locator('.ln-foot button').click();
+    // в «Словах» в подвале две кнопки — «Ещё раз» и «Знаю»: берём последнюю
+    await page.getByTestId('lesson').locator('.ln-foot button').last().click();
     await expect.poll(sig).not.toBe(before);
   }
   return n;
@@ -1271,7 +1272,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByText('Выйти из урока?')).toHaveCount(0);
   await expect(page.getByTestId('lesson')).toHaveCount(0);
   await openTab(page, 'profile');
-  await expect(page.getByTestId('prof-completion')).toContainText('—');
+  await expect(page.getByTestId('prof-lessons')).toHaveText('0');
   await openTab(page, 'path');
 
   // «Знакомство»: шаг — вопрос — шаг — вопрос; первое упражнение неверно
@@ -1313,8 +1314,10 @@ test('путь: карточка урока, «Знакомство» шагам
   await openTab(page, 'tasks');
   await expect(page.getByTestId('practice-mistakes')).toBeEnabled();
   await openTab(page, 'profile');
-  await expect(page.getByTestId('prof-completion')).toContainText('100%');
-  await expect(page.getByTestId('prof-types')).toBeVisible();
+  // «Мои четыре недели»: календарь и уроки; разбивки по типам упражнений нет
+  await expect(page.getByTestId('prof-lessons')).toHaveText('1');
+  await expect(page.getByTestId('prof-calendar').locator('.today')).toHaveCount(1);
+  await expect(page.getByTestId('prof-types')).toHaveCount(0);
   // повтор пройденного урока — «Подробнее в учебнике» открывает главу, «назад» — снова итоги
   await openTab(page, 'path');
   await startLesson(page, 'sc-i1', 'Повторить');
@@ -1362,9 +1365,6 @@ test('путь: выход после первого ответа — урок �
   await ask.getByRole('button', { name: 'Выйти', exact: true }).click();
   await expect(page.getByTestId('lesson')).toHaveCount(0);
   await expect(path.locator('[data-unit="supply-demand"] .ln-pin')).toHaveText(/продолжить/i);
-  await openTab(page, 'profile');
-  await expect(page.getByTestId('prof-completion')).toContainText('—');
-  await expect(page.getByTestId('prof-quits')).toHaveCount(0);
   // продолжить — с того же места: прогресс урока не с нуля
   await openTab(page, 'path');
   await startLesson(page, 'sd-l3', 'Продолжить');
@@ -1378,8 +1378,7 @@ test('путь: выход после первого ответа — урок �
     localStorage.setItem('ems-learn-resume', JSON.stringify(m));
   });
   await gotoApp(page, '/', 'profile');
-  await expect(page.getByTestId('prof-quits')).toContainText('прерывали');
-  await expect(page.getByTestId('prof-completion')).toContainText('0%');
+  await expect(page.getByTestId('prof-calendar')).toBeVisible();
 
   // вторая «Практика» заново и целиком, с одной ошибкой; термины — с подсказкой
   await openTab(page, 'path');
@@ -1456,12 +1455,28 @@ test('путь: юнит «Спрос и предложение» — кажды
   expect(new Set(icons).size, 'восемь видов — восемь разных значков').toBe(8);
   const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
 
-  // «Слова»: карточка переворачивается, потом плитки и пары на время
+  // «Слова»: колода — вспомнить, открыть значение, «Знаю» или «Ещё раз»; потом плитки и пары на время
   await startLesson(page, 'sd-w');
   await expect(page.getByTestId('lesson-card')).toHaveAttribute('data-style', 'flash');
-  await expect(page.getByTestId('flash-card')).toHaveAttribute('data-flipped', 'false');
-  await page.getByTestId('flash-card').click();
-  await expect(page.getByTestId('flash-card')).toHaveAttribute('data-flipped', 'true');
+  const word = page.getByTestId('flash-card');
+  await expect(word).toHaveAttribute('data-flipped', 'false');
+  await expect(word.getByTestId('word-def')).toHaveCount(0);
+  await expect(word).toContainText('Слово 1 из 8');
+  await page.getByTestId('word-show').click();
+  await expect(word.getByTestId('word-def')).toContainText('сколько покупатели готовы купить');
+  // «Ещё раз»: слово уходит в конец колоды и вернётся с пометкой
+  await page.getByTestId('word-again').click();
+  await expect(word).toContainText('Слово 2 из 8');
+  await expect(page.getByTestId('word-dots').locator('i.again')).toHaveCount(1);
+  // открыть можно и касанием карточки
+  await word.click();
+  await expect(word).toHaveAttribute('data-flipped', 'true');
+  await page.getByTestId('word-know').click();
+  await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(1);
+  for (let i = 0; i < 6; i += 1) { await page.getByTestId('word-show').click(); await page.getByTestId('word-know').click(); }
+  // последнее — отложенное слово, с пометкой «ещё раз»
+  await expect(word).toContainText('ещё раз');
+  await expect(word).toContainText('Спрос');
   const { kinds: wk } = await playLesson(page, { wrongAt: [0] });
   expect([...wk]).toEqual(expect.arrayContaining(['tiles', 'match', 'choice']));
   await finish();
@@ -2063,4 +2078,19 @@ test.describe('офлайн', () => {
     await expect(page.getByTestId('lesson-card')).toBeVisible();
     await context.setOffline(false);
   });
+});
+
+// «Мир»: выключенная музыка остаётся выключенной после перезагрузки страницы
+test('мир: выключенная музыка не включается после перезагрузки', async ({ page }) => {
+  const { errors } = await openApp(page);
+  const soundBtn = page.locator('button[title^="Музыка"]');
+  await soundBtn.click();
+  const row = page.locator('div', { has: page.locator('span', { hasText: /^Музыка$/ }) }).last();
+  await row.getByRole('button', { name: 'вкл' }).click();
+  await expect(row.getByRole('button', { name: 'выкл' })).toBeVisible();
+  await gotoApp(page);
+  await page.locator('button[title^="Музыка"]').click();
+  const row2 = page.locator('div', { has: page.locator('span', { hasText: /^Музыка$/ }) }).last();
+  await expect(row2.getByRole('button', { name: 'выкл' })).toBeVisible();
+  expect(errors).toEqual([]);
 });

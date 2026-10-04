@@ -7,11 +7,12 @@
    «скопировать всё» — чтобы отдать их на исправление одним куском. */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Flag, ArrowLeft, Check, Copy, RotateCcw, X } from 'lucide-react';
+import { Flag, ArrowLeft, Check, Copy, RotateCcw, X, Trash2 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton, Card, Sheet, TopBar, Heading } from './ds.jsx';
 import { loadAccount } from './account.jsx';
-import { sendReport, listReports, setReportStatus } from './lib/client.js';
+import { sendReport, listReports, setReportStatus, deleteReport } from './lib/client.js';
+import { isRude, RUDE_MESSAGE } from './lib/moderation.js';
 
 export const REASONS = [
   ['answer', 'Ошибка в ответе'], ['accept', 'Мой ответ должен быть засчитан'], ['typo', 'Опечатка или ошибка в тексте'],
@@ -27,7 +28,8 @@ export function flatText(x) {
   if (typeof x === 'string' || typeof x === 'number') return String(x);
   if (Array.isArray(x)) return x.map(flatText).filter(Boolean).join(' ');
   if (typeof x === 'object') {
-    if ((x.t === 'text' || x.t === 'math') && typeof x.v === 'string') return x.v;
+    // текст, формула, термин со словарной подсказкой — всё, у чего есть строка v
+    if (typeof x.v === 'string') return x.v;
     return Object.entries(x).filter(([k]) => k !== 'id' && k !== 'type' && k !== 't').map(([, v]) => (typeof v === 'object' ? flatText(v) : '')).filter(Boolean).join(' ');
   }
   return '';
@@ -87,8 +89,9 @@ function ReportSheet({ context, onClose }) {
           <label className="ds-label">Комментарий — необязательно
             <textarea className="ds-field" rows={3} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Например: в ответе 25, а должно быть 20" style={{ resize: 'vertical', minHeight: 72 }} />
           </label>
+          {isRude(comment) && <div role="alert" data-testid="report-rude" style={{ color: 'var(--ds-bad)', fontSize: 14, margin: '6px 0' }}>{RUDE_MESSAGE}</div>}
           {state.error && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14, margin: '6px 0' }}>{state.error}</div>}
-          <Button wide disabled={!reason || state.busy} onClick={send} data-testid="report-send" style={{ marginTop: 8 }}>{state.busy ? 'Отправляем…' : 'Отправить'}</Button>
+          <Button wide disabled={!reason || state.busy || isRude(comment)} onClick={send} data-testid="report-send" style={{ marginTop: 8 }}>{state.busy ? 'Отправляем…' : 'Отправить'}</Button>
         </>
       )}
     </Sheet>
@@ -145,6 +148,7 @@ export function ReportsView({ onBack }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [status]);
   const mark = async (r, s) => { Audio.play('tick'); try { await setReportStatus(account.token, r.id, s); load(); } catch (e) { setErr(e.message); } };
+  const remove = async (r) => { Audio.play('tick'); try { await deleteReport(account.token, r.id); load(); } catch (e) { setErr(e.message); } };
   const copyAll = async () => {
     const text = (data ? data.reports : []).map(reportText).join('\n\n———\n\n');
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setErr('Не удалось скопировать — браузер не дал доступа к буферу'); }
@@ -170,6 +174,7 @@ export function ReportsView({ onBack }) {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                   <b>{REASON_BY_ID[r.reason] || r.reason}</b>
                   <span className="ds-faint" style={{ fontSize: 12.5 }}>{fmtDate(r.at)} · {r.name || r.login}</span>
+                  {r.rude && <span className="ds-chip" style={{ color: 'var(--ds-bad)', borderColor: 'var(--ds-bad)', fontSize: 11.5, padding: '1px 8px' }} data-testid="report-rude-mark">грубость</span>}
                 </div>
                 {r.comment && <div style={{ fontSize: 14.5, marginTop: 4 }}>{r.comment}</div>}
                 <div className="rp-ctx">{Object.entries(CTX_LABEL).filter(([k]) => r.context && r.context[k] && k !== 'device').map(([k, label]) => `${label}: ${r.context[k]}`).join('\n')}</div>
@@ -177,6 +182,7 @@ export function ReportsView({ onBack }) {
                   {r.status === 'done'
                     ? <Button small variant="ghost" icon={RotateCcw} onClick={() => mark(r, 'new')}>Вернуть в новые</Button>
                     : <Button small variant="secondary" icon={Check} onClick={() => mark(r, 'done')} data-testid="report-done">Разобрано</Button>}
+                  <Button small variant="ghost" icon={Trash2} onClick={() => remove(r)} data-testid="report-delete" style={{ marginLeft: 6 }}>Удалить</Button>
                 </div>
               </div>
             ))}

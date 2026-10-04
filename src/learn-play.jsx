@@ -13,7 +13,8 @@ import { Inline } from './textbook.jsx';
 import { equilibrium, marketAxes, qd, qs, gameScore, comboOf } from './learn/course.js';
 import { CAST } from './learn/cast.js';
 import { useReducedMotion } from './ds-art.jsx';
-import { evalExpr, fmtResult } from './learn/calc.js';
+import { Button } from './ds.jsx';
+import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 
 export const PLAY_CSS = `
   .lp-chart { width: 100%; max-width: 380px; display: block; margin: 6px auto 10px; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -36,16 +37,30 @@ export const PLAY_CSS = `
   .lp-card.ok { border-color: var(--ds-ok); box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-ok); }
   .lp-card.bad { border-color: var(--ds-bad); box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-bad); }
   .lp-score { display: flex; justify-content: space-between; font: 700 13px var(--ds-mono); color: var(--ds-ink2); }
-  .lp-flash { perspective: 900px; margin: 12px 0; }
-  .lp-flash-in { position: relative; min-height: 200px; transition: transform .45s; transform-style: preserve-3d; }
-  .lp-flash-in.flip { transform: rotateY(180deg); }
-  /* слово — библиотечная каталожная карточка: красная линейка сверху, отверстие внизу */
-  .lp-face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 3px; border: 1px solid var(--ds-rule2); background: var(--ds-card);
-    background-image: linear-gradient(transparent 38px, #C0392B 38px, #C0392B 39.5px, transparent 39.5px), repeating-linear-gradient(transparent 0 27px, var(--ds-rule) 27px 28px);
-    background-position: 0 0, 0 40px; background-repeat: no-repeat, repeat; box-shadow: 0 2px 5px var(--ds-shade);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 18px 26px; text-align: center; }
-  .lp-face::after { content: ''; position: absolute; bottom: 8px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--ds-paper); box-shadow: inset 0 1px 2px var(--ds-shade); }
-  .lp-face.back { transform: rotateY(180deg); }
+  /* «Слова» — колода: сверху карточка слова, под ней край ещё не открытых. Значение сначала
+     закрыто: вспомнить — открыть — честно отметить «Знаю» или «Ещё раз». */
+  .lp-deck { position: relative; margin: 6px 0 14px; padding-bottom: 14px; }
+  .lp-deck-ghost { position: absolute; left: 12px; right: 12px; height: 40px; bottom: 6px; border: 1px solid var(--ds-rule2); border-radius: 6px; background: var(--ds-card2); }
+  .lp-deck-ghost.g2 { left: 24px; right: 24px; bottom: 0; opacity: .7; }
+  .lp-word { position: relative; z-index: 1; border: 1px solid var(--ds-rule2); border-radius: 6px; background: var(--ds-card); box-shadow: 0 3px 10px var(--ds-shade);
+    padding: 18px 18px 20px; min-height: 250px; display: flex; flex-direction: column; touch-action: pan-y; user-select: none;
+    transition: transform .26s ease-in, opacity .26s ease-in; border-top: 5px solid var(--u); }
+  .lp-word.in { animation: lp-word-in .3s ease-out both; }
+  @keyframes lp-word-in { from { transform: translateY(14px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
+  .lp-word.out-r { transform: translateX(115%) rotate(9deg); opacity: 0; }
+  .lp-word.out-l { transform: translateX(-115%) rotate(-9deg); opacity: 0; }
+  .lp-word-top { display: flex; align-items: center; gap: 8px; font: 700 11.5px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
+  .lp-word-term { font: 700 30px/1.15 var(--ds-serif); color: var(--u-ink); margin: 18px 0 6px; text-align: center; }
+  .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
+  .lp-word-def { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 18.5px; line-height: 1.45; }
+  .lp-word-def.open { animation: lp-def .35s ease-out both; }
+  @keyframes lp-def { from { opacity: 0; transform: translateY(6px); filter: blur(3px) } to { opacity: 1; transform: none; filter: none } }
+  .lp-word-hide { width: 100%; border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 18px 12px; color: var(--ds-ink3); font-size: 15px; background: none; cursor: pointer; font-family: inherit; }
+  .lp-word-dots { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .lp-word-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--ds-rule); }
+  .lp-word-dots i.know { background: var(--u); }
+  .lp-word-dots i.again { background: none; box-shadow: inset 0 0 0 2px var(--ds-gold); }
+  .lp-word-dots i.cur { box-shadow: 0 0 0 2px var(--ds-paper), 0 0 0 3.5px var(--u); }
   .lp-calc { max-width: 320px; margin: 0 auto; }
   .lp-calc-screen { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 8px; text-align: right; }
   .lp-op { color: var(--u-ink); font-weight: 700; }
@@ -68,7 +83,7 @@ export const PLAY_CSS = `
   .lp-ticker { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; max-width: 340px; margin: 0 auto; }
   .lp-ticker svg { width: 100%; height: 30px; display: block; }
   .lp-bubble { position: relative; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 4px; padding: 14px 16px; font-size: 17.5px; line-height: 1.5; margin-top: 12px; }
-  @media (prefers-reduced-motion: reduce) { .lp-flash-in, .lp-timer > span { transition: none !important; } .lp-combo, .lp-effect, .lp-pop { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .lp-word, .lp-timer > span { transition: none !important; } .lp-word.in, .lp-word-def.open { animation: none !important; } .lp-combo, .lp-effect, .lp-pop { animation: none !important; } }
 `;
 
 /* ------------------------------ ГРАФИК РЫНКА ------------------------------ */
@@ -556,21 +571,84 @@ export function StoryCard({ card, children }) {
   );
 }
 
-// слово: лицевая сторона — термин, оборот — короткое определение
-export function FlashCard({ card, flipped, onFlip }) {
+/* «Слова»: колода карточек. На карточке — слово, значение закрыто: сначала вспомнить, потом
+   открыть (кнопка, касание карточки или пробел) и отметить «Знаю» или «Ещё раз». «Ещё раз»
+   возвращает слово в конец колоды (один раз), «Знаю» — убирает. Можно и смахнуть:
+   вправо — «Знаю», влево — «Ещё раз»; на клавиатуре — стрелки. Точки внизу — все слова урока. */
+export function WordDeck({ cards, onDone, body, foot }) {
+  const [queue, setQueue] = useState(() => cards.map((_, i) => i));
+  const [marks, setMarks] = useState({});
+  const [open, setOpen] = useState(false);
+  const [out, setOut] = useState(null);
+  const [dx, setDx] = useState(0);
+  const drag = useRef(null);
+  const reduced = useReducedMotion();
+  const idx = queue[0];
+  const card = cards[idx];
+  const repeat = marks[idx] === 'again';
+  const reveal = () => { if (!open) { Audio.play('paper'); setOpen(true); } };
+  const decide = (know) => {
+    if (!open || out) return;
+    Audio.play(know ? 'tick' : 'paper');
+    setOut(know ? 'r' : 'l');
+    const finish = () => {
+      const again = !know && marks[idx] !== 'again';
+      const rest = queue.slice(1);
+      const nextQ = again ? [...rest, idx] : rest;
+      setMarks((m) => ({ ...m, [idx]: know ? (m[idx] === 'again' ? 'again-know' : 'know') : 'again' }));
+      setOut(null); setDx(0); setOpen(false);
+      if (!nextQ.length) onDone(); else setQueue(nextQ);
+    };
+    if (reduced) finish(); else setTimeout(finish, 260);
+  };
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target && /INPUT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); reveal(); }
+      else if (e.key === 'ArrowRight') decide(true);
+      else if (e.key === 'ArrowLeft') decide(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+  if (!card) return null;
+  const left = queue.length - 1;
+  const onDown = (e) => { if (open && !out) drag.current = { x: e.clientX }; };
+  const onMove = (e) => { if (drag.current) setDx(e.clientX - drag.current.x); };
+  const onUp = () => { if (!drag.current) return; const d = dx; drag.current = null; if (Math.abs(d) > 80) decide(d > 0); else setDx(0); };
+  const style = dx && !out ? { transform: `translateX(${dx}px) rotate(${dx / 30}deg)`, transition: 'none' } : undefined;
   return (
-    <div className="lp-flash" data-style="flash">
-      <button type="button" className={`lp-flash-in ${flipped ? 'flip' : ''}`} onClick={onFlip} aria-label={flipped ? 'Карточка перевёрнута' : `Перевернуть карточку «${card.title}»`}
-        style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', display: 'block' }} data-testid="flash-card" data-flipped={String(flipped)}>
-        <span className="lp-face" aria-hidden={flipped}>
-          <span className="ds-h3" style={{ fontSize: 28, color: 'var(--u)' }}>{card.title}</span>
-          <span className="ds-sub" style={{ fontSize: 13.5, marginTop: 10 }}>нажмите, чтобы перевернуть</span>
-        </span>
-        <span className="lp-face back" aria-hidden={!flipped}>
-          <span style={{ fontSize: 19, lineHeight: 1.45, fontWeight: 700 }}><Inline nodes={card.text} /></span>
-        </span>
-      </button>
-    </div>
+    <>
+      {body(<>
+      <div className="lp-deck">
+        {left > 0 && <div className="lp-deck-ghost" aria-hidden="true" />}
+        {left > 1 && <div className="lp-deck-ghost g2" aria-hidden="true" />}
+        <div className={`lp-word ${out ? `out-${out}` : 'in'}`} key={`${idx}-${repeat}`} style={style} data-testid="flash-card" data-flipped={String(open)}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onClick={() => { if (!open) reveal(); }}>
+          <div className="lp-word-top">
+            <span>Слово {idx + 1} из {cards.length}</span>
+            {repeat && <span className="ds-badge" style={{ textTransform: 'none', letterSpacing: 0 }}>ещё раз</span>}
+            <span style={{ flex: 1 }} />
+            {open && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>смахните →</span>}
+          </div>
+          <div className="lp-word-term">{card.title}</div>
+          <div className="lp-word-rule" />
+          {open
+            ? <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} /></span></div>
+            : <div className="lp-word-def"><button type="button" className="lp-word-hide" onClick={(e) => { e.stopPropagation(); reveal(); }}>Вспомните, что это значит, — и откройте</button></div>}
+        </div>
+      </div>
+      <div className="lp-word-dots" data-testid="word-dots" aria-label={`Слов отмечено: ${Object.keys(marks).length} из ${cards.length}`}>
+        {cards.map((_, i) => <i key={i} className={`${marks[i] === 'know' || marks[i] === 'again-know' ? 'know' : marks[i] === 'again' ? 'again' : ''} ${i === idx ? 'cur' : ''}`} />)}
+      </div>
+      </>)}
+      {foot(open
+        ? <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Button variant="secondary" onClick={() => decide(false)} data-testid="word-again">Ещё раз</Button>
+          <Button onClick={() => decide(true)} data-testid="word-know">Знаю</Button>
+        </div>
+        : <Button variant="secondary" wide onClick={reveal} data-testid="word-show">Показать значение</Button>)}
+    </>
   );
 }
 
@@ -585,6 +663,7 @@ export function Calculator({ onUse = null, disabled = false, useLabel = 'В от
     if (k === 'C') setExpr('');
     else if (k === 'del') setExpr((e) => e.slice(0, -1));
     else if (k === '=') { if (v != null) setExpr(fmtResult(v).replace('−', '-')); }
+    else if (k === '√') setExpr((e) => pressRoot(e));
     else setExpr((e) => (e.length < 40 ? e + k : e));
   };
   const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', '√', '=']];

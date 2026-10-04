@@ -183,7 +183,7 @@ function lessonsOf(chapterId) {
       addAuto(cur, b);
     } else if (b.type === 'idea') {
       if (b.who && !CAST[b.who]) throw new Error(`Нет героя ${b.who} (${b.id})`);
-      out.push({ id: b.id, unitId: chapterId, no: out.length + 1, title: b.title, kind: b.kind, idea: b, section: sectionOf(chapterId, b), exercises: [],
+      out.push({ id: b.id, unitId: chapterId, no: out.length + 1, title: b.title, kind: b.kind, idea: b, section: sectionOf(chapterId, b), exercises: [], hard: b.hard || [],
         inner: STEP_KINDS.includes(b.kind) ? [{ at: 0, idea: b }] : [], terms: b.terms || null });
       const cur = out[out.length - 1];
       if (b.kind === 'words') {
@@ -198,6 +198,15 @@ function lessonsOf(chapterId) {
     }
   });
   out.forEach((l) => { delete l.diamond; });
+  /* вопрос «Истории» без её шага непонятен («Маша двигает цену…»): вне урока — во вступительном
+     тесте, проверке юнита, повторении — перед условием встаёт шаг, после которого он шёл */
+  out.filter((l) => l.kind === 'story').forEach((l) => {
+    l.exercises = l.exercises.map((e, k) => {
+      if (e.context) return e;
+      const step = l.inner.filter((c) => c.at <= k).pop();
+      return step ? { ...e, context: step.idea.text } : e;
+    });
+  });
   return out;
 }
 
@@ -406,10 +415,13 @@ export function buildLesson(lessonId, rand = Math.random, opts = {}) {
    1) у задачи есть генератор вариантов — те же условия с новыми числами;
    2) у автоупражнения из задачи главы есть параллельный вариант — расчёт с новыми числами;
    3) похожий вопрос на ту же тему: из того же шага урока, иначе того же вида или любой ещё не
-      заданный из урока, иначе того же вида из другого урока того же раздела главы;
+      заданный из урока, иначе из урока раньше этого в том же разделе главы (того же вида, если есть) —
+      из уроков дальше по Пути никогда: там может быть тема, которой ещё не учили;
    4) если ничего нет — та же задача с перемешанными вариантами.
    fresh — что вышло ('numbers' | 'sibling' | 'same'), of — id исходной задачи. */
-const TEMPLATE_BY_SOURCE = Object.fromEntries(TEMPLATES.filter((t) => t.gen(seeded(1)).parts.length === 1).map((t) => [t.source, t.id]));
+// первый тип вариантов на задачу (базовый раньше семинарского): автоупражнение из задачи возвращается им
+const TEMPLATE_BY_SOURCE = {};
+TEMPLATES.filter((t) => t.gen(seeded(1)).parts.length === 1).forEach((t) => { if (!TEMPLATE_BY_SOURCE[t.source]) TEMPLATE_BY_SOURCE[t.source] = t.id; });
 function siblingOf(ex, avoid, rand) {
   const lesson = LESSON_BY_ID[ex.lesson];
   if (!lesson) return null;
@@ -427,8 +439,10 @@ function siblingOf(ex, avoid, rand) {
   if (!pool.length) pool = list.filter(free);
   // в уроке всё уже спрошено — вопрос того же вида из другого урока того же раздела главы
   if (!pool.length) {
-    const near = UNIT_BY_ID[lesson.unitId].lessons.filter((l) => l.id !== lesson.id && l.section === lesson.section);
-    pool = near.flatMap((l) => l.exercises).filter((e) => free(e) && e.kind === ex.kind);
+    // только из уроков раньше этого: позже может быть тема, которой ещё не учили
+    const near = UNIT_BY_ID[lesson.unitId].lessons.filter((l) => l.no < lesson.no && l.section === lesson.section).flatMap((l) => l.exercises).filter(free);
+    pool = near.filter((e) => e.kind === ex.kind);
+    if (!pool.length) pool = near;
   }
   if (!pool.length) return null;
   return EXERCISES[pool[Math.floor(rand() * pool.length)].id];
@@ -461,13 +475,33 @@ function easier(it, rand) {
   }
   return out;
 }
-// задачи семинарского и олимпиадного уровня юнита — для алмазного уровня и сильных учеников
-function hardPool(unitId) {
+/* Задачи семинарского и олимпиадного уровня — для алмазного уровня и сильных учеников. Урок не
+   спрашивает того, чему ещё не учил: задачи берутся только из списков hard="…" этого урока и
+   уроков до него (каждый список — задачи на тему своего урока). «Повторение» и «Итоги» — в конце
+   юнита, им годятся все задачи юнита. upto — номер урока. */
+const hardEntry = (unitId, id) => {
+  if (id.startsWith('var:')) {
+    const t = TEMPLATE_BY_ID[id.slice(4)];
+    if (!t || t.chapter !== unitId || t.gen(seeded(1)).parts.length !== 1) throw new Error(`hard: нет варианта ${id} с одним ответом в ${unitId}`);
+    return { id, kind: 'calc', variant: t.id, lesson: null, unitId, level: Math.max(2, t.level) };
+  }
+  const p = PROBLEMS[id];
+  if (!p || p.chapter !== unitId) throw new Error(`hard: нет задачи ${id} в ${unitId}`);
+  return { ...fromProblem(id), lesson: null, unitId, level: p.block.level };
+};
+function hardPool(unitId, upto = Infinity) {
+  const unit = UNIT_BY_ID[unitId];
   const probs = Object.keys(PROBLEMS).filter((id) => PROBLEMS[id].chapter === unitId && PROBLEMS[id].block.level >= 2);
-  const autos = [];
-  probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unitId, level: PROBLEMS[pid].block.level }); } catch { /* многошаговая — в упражнение не годится */ } });
-  const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId, level: 2 }));
-  return { variants, autos, multi: probs.filter((id) => PROBLEMS[id].block.kind === 'number' && PROBLEMS[id].block.parts.length > 1) };
+  const multi = probs.filter((id) => PROBLEMS[id].block.kind === 'number' && PROBLEMS[id].block.parts.length > 1);
+  if (upto === Infinity) {
+    const autos = [];
+    probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unitId, level: PROBLEMS[pid].block.level }); } catch { /* многошаговая — в упражнение не годится */ } });
+    const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId, level: 2 }));
+    return { variants, autos, multi };
+  }
+  const ids = [...new Set(unit.lessons.filter((l) => l.no <= upto).flatMap((l) => l.hard))];
+  const list = ids.map((id) => hardEntry(unitId, id));
+  return { variants: list.filter((e) => e.variant), autos: list.filter((e) => !e.variant), multi };
 }
 export const HARD_IN_PRACTICE = 2;
 const ownOf = (lesson) => lesson.exercises.filter((e) => !e.diamond).map((e) => EXERCISES[e.id]);
@@ -539,7 +573,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
   }
   // сильному ученику — задачи семинарского и олимпиадного уровня вместо последних своих
   if (level === 'hard') {
-    const { variants, autos } = hardPool(unit.id);
+    const { variants, autos } = hardPool(unit.id, lesson.no);
     const hard = shuffle([...variants, ...autos], rand).slice(0, HARD_IN_PRACTICE);
     hard.forEach((e) => {
       const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard);
@@ -577,8 +611,8 @@ export function buildUnitCheck(unitId, rand = Math.random, { seen = {} } = {}) {
    Всё в таком уроке помечено diamond: true. Награды — в src/learn/rewards.js. */
 export const DIAMOND_HARD = 4;
 export const DIAMOND_PAIRS_SECONDS = 25;
-const hardItems = (unitId, n, rand, avoid = new Set()) => {
-  const { variants, autos } = hardPool(unitId);
+const hardItems = (unitId, n, rand, avoid = new Set(), upto = Infinity) => {
+  const { variants, autos } = hardPool(unitId, upto);
   return shuffle([...variants, ...autos].filter((e) => !avoid.has(e.id)), rand).slice(0, n).map((e) => instantiate(e, rand, { hard: e.level >= 3 ? 3 : 2 }));
 };
 function buildDiamond(lessonId, rand, opts) {
@@ -588,7 +622,7 @@ function buildDiamond(lessonId, rand, opts) {
   if (['intro', 'story', 'listen'].includes(lesson.kind)) {
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
     const deep = lesson.inner.some((c) => c.diamond);
-    if (!deep) hardItems(unitId, 2, rand).forEach((it) => items.push(it));
+    if (!deep) hardItems(unitId, 2, rand, new Set(), lesson.no).forEach((it) => items.push(it));
     // карточки собираются до того, как mark скопирует упражнения: uid у копий тот же
     return mark({ lesson, items, cards: stepCards(lesson, items), seconds: sum(items) + lesson.inner.length * STEP_SECONDS });
   }
@@ -603,7 +637,11 @@ function buildDiamond(lessonId, rand, opts) {
   if (lesson.kind === 'review' || lesson.kind === 'summary') {
     const p = buildLessonBase(lessonId, rand, opts);
     const hard = hardItems(unitId, 3, rand);
-    const items = p.items.slice(0, Math.max(1, p.items.length - hard.length)).concat(hard);
+    const keep = Math.max(1, p.items.length - hard.length);
+    const items = p.items.slice(0, keep).concat(hard);
+    // задачи посложнее бывают и короткими («верно или неверно»): урок не короче трёх минут
+    const rest = p.items.slice(keep);
+    while (sum(items) < 180 && rest.length) items.splice(items.length - hard.length, 0, rest.shift());
     return mark({ ...p, items, seconds: sum(items) + (p.seconds - sum(p.items)) });
   }
   // практика: свои упражнения с новыми числами, последние — задачи посложнее
@@ -612,7 +650,7 @@ function buildDiamond(lessonId, rand, opts) {
   const easy = own.findIndex((e) => SECONDS[e.kind] <= 12);
   if (easy > 0) own.unshift(own.splice(easy, 1)[0]);
   const items = own.map((e) => freshCopy(e, rand, {}, { sibling: false }));
-  const hard = hardItems(unitId, DIAMOND_HARD, rand);
+  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set(), lesson.no);
   hard.forEach((it, k) => { const at = items.length - 1 - k; if (at > 0 && items.length >= 8) items.splice(at, 1, it); else items.push(it); });
   // короткий урок добираем до трёх минут повторением прошлых уроков юнита (реже виденное — первым)
   const prev = bySeen(UNIT_BY_ID[unitId].lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(basic), opts.seen || {}, rand);

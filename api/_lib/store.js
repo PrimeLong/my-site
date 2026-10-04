@@ -201,6 +201,11 @@ export async function getReports() {
   const raw = redis ? (await redis.hgetall('reports')) || {} : { ...mem.get('reports') };
   return Object.values(raw).map((v) => (typeof v === 'string' ? JSON.parse(v) : v));
 }
+export async function deleteReport(id) {
+  if (redis) await redis.hdel('reports', id);
+  else { const m = { ...mem.get('reports') }; delete m[id]; mem.set('reports', m); }
+  return true;
+}
 export async function setReport(entry) {
   if (redis) await redis.hset('reports', { [entry.id]: entry });
   else mem.set('reports', { ...mem.get('reports'), [entry.id]: entry });

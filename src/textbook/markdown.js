@@ -144,12 +144,14 @@ export function parseBlocks(text) {
         // в уроке «Слова» строки «- термин: короткое определение» — слова урока;
         // со словом diamond — шаг алмазного уровня: его и упражнения после него видно только
         // при повторном, усложнённом прохождении урока
-        const { id: _id, title, chart, auto, variants, kind, pic, who, ...chartAttrs } = attrs;
+        // hard="задачи var:тип" — задачи семинарского и олимпиадного уровня на тему этого урока: из них
+        // берутся усложнения (алмазный уровень, сильному ученику) в этом уроке и дальше по юниту
+        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, ...chartAttrs } = attrs;
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
         const wordLines = kind === 'words' ? body.filter((l) => /^-\s/.test(l.trim())) : [];
         const terms = wordLines.map((l) => { const t = l.trim().slice(2); const k = t.indexOf(':'); return { term: t.slice(0, k).trim(), text: t.slice(k + 1).trim() }; });
-        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants),
+        blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), hard: split(hard),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
           kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}),
           ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}) });

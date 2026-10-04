@@ -27,7 +27,7 @@ import {
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
-  goalToday, missedYesterday, learnStats, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
+  goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
@@ -38,7 +38,7 @@ import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText } from './learn/terms.js';
 import {
-  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, FlashCard, Calculator as CalcPad,
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
 import { symbolsOf } from './textbook/symbols.js';
@@ -139,6 +139,18 @@ const CSS = `
   .ln-textbook .ems-btn.primary { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000); font: 700 13.5px/1.25 var(--ds-serif); letter-spacing: .06em; text-transform: uppercase; }
   .ln-textbook .ems-btn.primary:hover { background: var(--u); filter: brightness(1.07); }
   .ln-textbook .ems-btn[aria-pressed="true"] { background: var(--ds-sel); color: var(--ds-sel-ink); border-color: var(--ds-sel-rule); }
+  .ln-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; max-width: 360px; }
+  .ln-cal-wd { font: 700 11px/1 var(--ds-sans); color: var(--ds-ink3); text-align: center; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
+  .ln-cal-d { aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--ds-rule2); display: flex; align-items: center; justify-content: center;
+    font: 700 11px/1 var(--ds-mono); color: var(--ds-ink2); background: var(--ds-card); }
+  .ln-cal-d.t1 { background: color-mix(in srgb, var(--u) 22%, var(--ds-card)); }
+  .ln-cal-d.t2 { background: color-mix(in srgb, var(--u) 50%, var(--ds-card)); color: var(--ds-ink); }
+  .ln-cal-d.t3 { background: var(--u); color: #fff; border-color: transparent; }
+  .ln-cal-d.today { outline: 2px solid var(--ds-ink); outline-offset: 1px; }
+  .ln-cal-d.future { opacity: .35; border-style: dashed; }
+  .ln-cal-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; text-align: center; }
+  .ln-cal-sum b { display: block; font-size: 24px; color: var(--u-ink); }
+  .ln-cal-sum span { font-size: 12.5px; color: var(--ds-ink3); }
   .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
 `;
@@ -224,16 +236,36 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
   const pick = (v) => { if (!locked) { Audio.play('tick'); setResp(v); } };
   const optClass = (key, correct) => (!fb ? '' : correct ? 'right' : key === resp && !fb.ok ? 'wrong' : '');
   switch (inst.kind) {
-    case 'choice':
+    case 'choice': {
+      // варианты — числа: задача на расчёт, и калькулятор нужен так же, как в «Расчёте»
+      const numOf = (o) => { const m = String(o.raw).replace('−', '-').match(/^-?\d+(?:[.,]\d+)?/); return m ? Number(m[0].replace(',', '.')) : null; };
+      const numeric = inst.options.every((o) => numOf(o) != null);
       return (
         <div>
           <div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
+          {numeric && !locked && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+              <button type="button" className="ds-chip" aria-pressed={!!inst._calc} data-testid="calc-open" onClick={() => { Audio.play('tick'); inst._setCalc(!inst._calc); }}>
+                <Calculator size={15} style={{ verticalAlign: -3, marginRight: 4 }} aria-hidden="true" />Калькулятор
+              </button>
+            </div>
+          )}
+          {numeric && inst._calc && !locked && (
+            <div style={{ marginBottom: 12 }}>
+              <CalcPad useLabel="Выбрать ответ" onUse={(v) => {
+                const x = Number(v.replace(',', '.'));
+                const hit = inst.options.find((o) => Math.abs(numOf(o) - x) <= 0.011 * Math.max(1, Math.abs(x)));
+                if (hit) { pick(hit.key); inst._setCalc(false); }
+              }} />
+            </div>
+          )}
           {inst.options.map((o) => (
             <button key={o.key} type="button" className={`ds-opt ${optClass(o.key, o.correct)}`} aria-pressed={resp === o.key} data-key={o.key} disabled={locked}
               onClick={() => pick(o.key)}><Inline nodes={o.text} ctx={ctx} /></button>
           ))}
         </div>
       );
+    }
     case 'gap': {
       const chosen = inst.options.find((o) => o.key === resp);
       return (
@@ -440,9 +472,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const cardsSeen = useRef(new Set(rs ? rs.cardsSeen : []));
   const cardFor = (item) => (item && plan.cards && plan.cards[item.uid] && !cardsSeen.current.has(item.uid) ? plan.cards[item.uid] : null);
   const [stage, setStage] = useState(() => (cardFor((rs ? rs.queue : plan.items)[rs ? rs.pos : 0]) ? 'card' : 'work'));
-  // карточки перед упражнением идут подряд: шаг, слово, пункт итогов; flipped — оборот слова
+  // карточки перед упражнением идут подряд: шаг, слово, пункт итогов
   const [cardIdx, setCardIdx] = useState(0);
-  const [flipped, setFlipped] = useState(false);
   const respRef = useRef(null);
   const [resp, setResp] = useState(null);
   const [fb, setFb] = useState(null);
@@ -669,20 +700,35 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
           : kind === 'story' ? 'История продолжается' : kind === 'listen' ? 'Слушаем дальше' : 'Шаг дальше';
         const go = () => {
           Audio.play('paper');
-          if (!last) { setCardIdx(cardIdx + 1); setFlipped(false); return; }
-          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setFlipped(false); setStage('work');
+          if (!last) { setCardIdx(cardIdx + 1); return; }
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
         };
         const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
+        // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
+        if (c.flash) {
+          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work'); };
+          return (
+            <WordDeck key={cur.uid} cards={list} onDone={done}
+              body={(inner) => (
+                <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style="flash">
+                  <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span className="ln-kind" style={{ margin: 0 }}>{LESSON_KIND.words}</span><span style={{ flex: 1 }} />
+                    <ReportFlag context={() => stepContext(c, lesson, 'Слова')} />
+                  </div>
+                  {inner}
+                </div></div>
+              )}
+              foot={(buttons) => <div className="ln-foot"><div className="ln-inner">{buttons}</div></div>} />
+          );
+        }
         return (
           <>
-            <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style={c.flash ? 'flash' : kind} key={c.id}>
+            <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style={kind} key={c.id}>
               <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <span className="ln-kind" style={{ margin: 0 }}>{eyebrow}</span><span style={{ flex: 1 }} />
                 <ReportFlag context={() => stepContext(c, lesson, eyebrow)} />
               </div>
-              {c.flash ? (
-                <FlashCard card={c} flipped={flipped} onFlip={() => { Audio.play('paper'); setFlipped((v) => !v); }} />
-              ) : kind === 'summary' ? (
+              {kind === 'summary' ? (
                 <Card>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <Rosette size={54} opacity={0.6}><span className="ds-num" style={{ fontSize: 20, fontWeight: 700, color: 'var(--u-ink)' }}>{cardIdx + 1}</span></Rosette>
@@ -705,9 +751,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
               )}
             </div></div>
             <div className="ln-foot"><div className="ln-inner">
-              {c.flash && !flipped
-                ? <Button variant="secondary" wide onClick={() => { Audio.play('paper'); setFlipped(true); }}>Перевернуть</Button>
-                : <Button wide onClick={go}>{last ? (kind === 'summary' ? 'К тесту юнита' : 'Понятно') : 'Дальше'}</Button>}
+              <Button wide onClick={go}>{last ? (kind === 'summary' ? 'К тесту юнита' : 'Понятно') : 'Дальше'}</Button>
             </div></div>
           </>
         );
@@ -826,7 +870,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
                     : lesson && lesson.kind === 'game' ? (result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана — попробуйте ещё раз, планка та же.')
-                      : result.accuracy >= 90 ? 'Почти без ошибок.' : 'Ошибки разобраны — они вернутся в практике.'}
+                      : result.mistakes === 0 ? 'Без единой ошибки.' : result.accuracy >= 90 ? (result.mistakes === 1 ? 'Всего одна ошибка — она уже разобрана.' : `Ошибок всего ${result.mistakes} — они разобраны и вернутся в практике.`) : 'Ошибки разобраны — они вернутся в практике.'}
                 {diamond && <div style={{ marginTop: 6, color: 'var(--u-ink)', fontWeight: 700 }} data-testid="result-diamond">
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}
@@ -1311,6 +1355,34 @@ function TasksView({ learn, onStart, onOpenBook }) {
 /* ------------------------------ ПРОФИЛЬ ------------------------------
    Личные рекорды, альбом марок (пройденный юнит — марка с его зданием), цель дня,
    статистика, учебник, аккаунт и настройки: тёмная тема, музыка, звуки ответов. */
+/* Четыре недели занятий: календарь — клетка дня темнее, чем больше минут; три числа под ним.
+   Без разбивки по типам упражнений: она мало что говорит ученику. */
+const WD = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+function StudyWeeks({ learn }) {
+  const w = studyWeeks(learn);
+  const goal = goalToday(learn).goal;
+  const tone = (m) => (m <= 0 ? 0 : m < goal / 2 ? 1 : m < goal ? 2 : 3);
+  return (
+    <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
+      <div className="ds-h3" style={{ marginBottom: 2 }}>Мои четыре недели</div>
+      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 10 }}>Клетка — день: чем темнее, тем больше минут. Полный цвет — цель дня ({goal} мин) выполнена.</div>
+      <div className="ln-cal" data-testid="prof-calendar">
+        {WD.map((d) => <span key={d} className="ln-cal-wd">{d}</span>)}
+        {w.days.map((d) => (
+          <span key={d.day} className={`ln-cal-d t${tone(d.minutes)}${d.today ? ' today' : ''}${d.future ? ' future' : ''}`} title={`${d.day}: ${d.minutes} мин, уроков ${d.lessons}`} data-minutes={d.minutes}>
+            {d.minutes > 0 ? d.minutes : ''}
+          </span>
+        ))}
+      </div>
+      <div className="ln-cal-sum">
+        <div><b className="ds-num" data-testid="prof-minutes">{w.minutes}</b><span>минут</span></div>
+        <div><b className="ds-num" data-testid="prof-lessons">{w.lessons}</b><span>{plural(w.lessons, 'урок', 'урока', 'уроков')}</span></div>
+        <div><b className="ds-num" data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b><span>верно с первого раза</span></div>
+      </div>
+    </Card>
+  );
+}
+
 function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onReports }) {
   // владельцы (OWNER_LOGINS на сервере) видят сообщения об ошибках
   const [owner, setOwner] = useState(false);
@@ -1323,7 +1395,6 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
   }, []);
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
-  const pct = (x) => `${Math.round(x * 100)}%`;
   const [dark, setDark] = useState(learnDark);
   const [music, setMusic] = useState(learnMusic);
   const [sfx, setSfx] = useState(learnSfx);
@@ -1369,32 +1440,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
         <div className="ds-sub" style={{ fontSize: 13.5, margin: '0 0 10px' }}>Достижения — оттиски печатей; за каждую — монеты.</div>
         <Achievements learn={learn} />
       </Card>
-      <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
-        <div className="ds-h3" style={{ marginBottom: 6 }}>Как идёт учёба</div>
-        <div className="ds-sub" style={{ fontSize: 14, marginBottom: 4 }}>Дней занятий по неделям (эта — справа)</div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 64, marginBottom: 10 }} data-testid="prof-weeks">
-          {[...stats.weeks].reverse().map((w) => (
-            <div key={w.week} style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ height: Math.max(3, (w.days / 7) * 46), background: w.days ? 'var(--u)' : 'var(--ds-rule)', borderRadius: 1 }} />
-              <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{w.days}/7</div>
-            </div>
-          ))}
-        </div>
-        <Row label="Уроков доведено до конца" value={stats.completion == null ? '—' : pct(stats.completion)} data-testid="prof-completion" />
-        {stats.types.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', gap: '3px 12px', fontSize: 14, marginTop: 8 }} data-testid="prof-types">
-            <span className="ds-faint">тип</span><span className="ds-faint">точность</span><span className="ds-faint">время</span>
-            {stats.types.map((t) => (
-              <React.Fragment key={t.kind}><span>{KIND_LABEL[t.kind] || t.kind}</span><b className="ds-num">{pct(t.accuracy)}</b><b className="ds-num">{Math.round(t.avgSec)} с</b></React.Fragment>
-            ))}
-          </div>
-        )}
-        {stats.quitKinds.length > 0 && (
-          <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }} data-testid="prof-quits">
-            Брошенные уроки чаще всего прерывали на упражнении «{KIND_LABEL[stats.quitKinds[0][0]] || stats.quitKinds[0][0]}»{stats.quitPos[0] ? `, обычно на ${stats.quitPos[0].index + 1}-м` : ''}.
-          </div>
-        )}
-      </Card>
+      <StudyWeeks learn={learn} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
         text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}

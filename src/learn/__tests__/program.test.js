@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { LESSON_BY_ID, UNIT_BY_ID, EXERCISES, buildLesson, buildPractice, buildPlacement, placementOpened, placementFailed, pathState, pilotUnits, PLACE_PER_UNIT, PRACTICE_MIN, HARD_IN_PRACTICE } from '../course.js';
 import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts, theoryNotice } from '../program.js';
-import { evalExpr, fmtResult } from '../calc.js';
+import { evalExpr, fmtResult, pressRoot } from '../calc.js';
 import {
   balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
   settle, monthChallenge, achievementsOf, hash01, COIN,
@@ -217,15 +217,27 @@ describe('лавка и заморозки', () => {
     expect(new Set(days).size).toBeGreaterThan(4);
     expect(priceOf(a.deal, day, emptyLearn())).toBe(Math.ceil(priceOf(a.deal, day) * 0.7));
     expect(priceOf(a.showcase[1], day, emptyLearn())).toBe(priceOf(a.showcase[1], day));
-    // купленное с витрины уходит — на её место встаёт следующая вещь
+    // покупка витрину дня не меняет: купленное остаётся на месте («Надеть»), скидка — на той же вещи
     const r = buy(rich, a.showcase[2], T).s;
-    expect(shopDay(r, day).showcase).not.toContain(a.showcase[2]);
-    expect(shopDay(r, day).showcase).toHaveLength(SHOWCASE_SIZE);
+    expect(shopDay(r, day)).toEqual(shopDay(rich, day));
+    const r2 = buy(rich, a.deal, T).s;
+    expect(shopDay(r2, day).deal).toBe(a.deal);
+    // назавтра купленное уходит — на его место встаёт следующая вещь
+    const next = addDays(day, 1);
+    expect(shopDay(r, next).showcase).not.toContain(a.showcase[2]);
+    expect(shopDay(r, next).showcase).toHaveLength(SHOWCASE_SIZE);
     // вещи не с витрины сегодня не купить; редкие — всегда
     const off = OUTFITS.find((o) => !o.rare && !a.showcase.includes(o.id));
     expect(buy(rich, off.id, T).reason).toMatch(/витрин/);
     expect(buy(rich, a.rare[0], T).ok).toBe(true);
     expect(DEAL_OFF).toBe(0.3);
+  });
+  it('редкие вещи: у каждой своя подпись про анимацию; купленный «Золотой слиток» становится шаром «Инфляция»', () => {
+    OUTFITS.filter((o) => o.rare).forEach((o) => expect(o.note, o.id).toBeTruthy());
+    expect(OUTFITS.find((o) => o.id === 'goldbar')).toBeUndefined();
+    const s = normalizeLearn({ owned: { goldbar: T, cap: T }, wear: { hand: 'goldbar', head: 'cap', at: T } });
+    expect(s.owned).toEqual({ balloon: T, cap: T });
+    expect(outfitOf(s).hand).toBe('balloon');
   });
   it('«двойной опыт»: полчаса после покупки, второй раз во время действия не купить', () => {
     const r = buy(rich, BOOST.id, T);
@@ -453,5 +465,20 @@ describe('напоминание о теории перед уроком', () =>
     expect(theoryNotice(l1, emptyLearn(), { read: {}, problems: {} }, [l1.section])).toBeNull();
     // сам урок «Знакомство» теорию даёт
     expect(theoryNotice(LESSON_BY_ID['sc-i1'], emptyLearn(), { read: {}, problems: {} })).toBeNull();
+  });
+});
+
+describe('корень как на обычном калькуляторе', () => {
+  it('число, потом √ — корень сразу; скобка, потом √ — корень из скобки; иначе — знак перед числом', () => {
+    expect(pressRoot('16')).toBe('4');
+    expect(pressRoot('9+16')).toBe('9+4');
+    expect(pressRoot('2')).toBe('1,4142');
+    expect(evalExpr(pressRoot('2'))).toBeCloseTo(1.4142, 4);
+    expect(pressRoot('√16')).toBe('2');
+    expect(pressRoot('(9+16)')).toBe('√(9+16)');
+    expect(evalExpr(pressRoot('3*(9+16)'))).toBe(15);
+    expect(pressRoot('')).toBe('√');
+    expect(pressRoot('5+')).toBe('5+√');
+    expect(evalExpr(`${pressRoot('5+')}9`)).toBe(8);
   });
 });

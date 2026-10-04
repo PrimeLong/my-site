@@ -4431,8 +4431,10 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
   }, []);
   // у задачи — вводный отрезок: как страна пришла к завязке (см. drillPrehistory)
-  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory : drill ? drillPrehistory(drill)
-    : daily ? drillPrehistory({ scenario: setup.scenario }) : null));
+  const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory
+    : drill ? runSeeded(seedSrc, 'lead', () => drillPrehistory(drill))
+      : daily ? runSeeded(seedSrc, 'lead', () => drillPrehistory({ scenario: setup.scenario }, 8, { difficulty: setup.difficulty, cbPersona: setup.cbPersona,
+        mofPersona: setup.mofPersona, presPersona: (setup.president && setup.president.persona) || 'technocrat' })) : null));
   /* Журнал решений игрока — только его рычаги, по кварталам. Хранится в сохранении и
      нужен стенду баланса (scripts/replay-balance.mjs): прогнать живые стратегии, а не
      только ботов против ботов. */
