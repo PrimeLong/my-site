@@ -4,7 +4,7 @@
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  X, Wallet, Snowflake, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
+  X, Wallet, ShieldCheck, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
   ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
@@ -13,7 +13,7 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
@@ -38,6 +38,9 @@ export const REWARD_CSS = `
   .rw-price { font: 700 14px var(--ds-mono); }
   .rw-price small { font: 11.5px var(--ds-sans); color: var(--ds-ink3); margin-left: 4px; }
   .rw-dots { display: flex; justify-content: center; gap: 8px; }
+  .rw-forgone { font-size: 11.5px; line-height: 1.25; color: var(--ds-ink3); }
+  .rw-piggy-chart { width: 100%; display: block; margin: 6px 0 2px; }
+  .rw-piggy-chart text { font: 700 10px var(--ds-mono); fill: var(--ds-ink2); }
   .rw-dot { width: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 11px var(--ds-sans); color: var(--ds-ink3); }
   .rw-dot i { width: 26px; height: 26px; border-radius: 50%; border: 1.5px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
   .rw-dot.done i { border: none; background: var(--ds-bad); color: #fff; }
@@ -222,6 +225,8 @@ function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal 
         ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)}>{on ? 'Снять' : 'Надеть'}</Button>
         : <>
           <div className="rw-price">{price < full && <s>{full}</s>}{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
+          {/* цена отказа: чего стоит вещь, кроме монет */}
+          <div className="rw-forgone" data-testid="shop-forgone" title={`Цена отказа: ${forgone(price).text} или +${forgone(price).week} в копилке за неделю`}>{forgone(price).text} · копилка дала бы +{forgone(price).week}</div>
           {goal && b < price && <div className="rw-goal" aria-label={`Накоплено ${Math.floor((b / price) * 100)}%`}><i style={{ width: `${Math.min(100, (b / price) * 100)}%` }} /></div>}
           <Button small variant="secondary" disabled={b < price} onClick={() => onBuy(o.id)}>Купить</Button>
         </>}
@@ -243,7 +248,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
     if (!r.ok) { Audio.play('down'); setMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register');
     update(() => r.s, { settle: true });
-    setMsg({ ok: true, text: id === FREEZE.id ? `Заморозка куплена за ${r.price} ${coinsWord(r.price)}.` : id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
+    setMsg({ ok: true, text: id === FREEZE.id ? `Полис страховки серии — за ${r.price} ${coinsWord(r.price)}.` : id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, wear[o.slot] === o.id ? null : o.id, now)); };
   const ownedList = OUTFITS.filter((o) => (learn.owned || {})[o.id]);
@@ -279,12 +284,14 @@ export function ShopView({ learn, update, now = Date.now() }) {
           {!today.showcase.length && <div className="ds-sub" style={{ gridColumn: '1 / -1', fontSize: 14.5 }}>Всё обычное уже ваше — дальше только витрина ювелира.</div>}
         </div>
 
+        <PiggyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
+
         <Heading level={3} title="Полезное" />
         <Card style={{ margin: '8px 0 10px' }} data-testid="shop-freeze">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Rosette size={54} opacity={0.5}><Snowflake size={24} color="#3E6FA8" aria-hidden="true" /></Rosette>
+            <Rosette size={54} opacity={0.5}><ShieldCheck size={24} color="#3E6FA8" aria-hidden="true" /></Rosette>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{FREEZE.title} · в запасе <span className="ds-num" data-testid="freeze-owned">{freezes}</span> из {MAX_FREEZES}</div>
+              <div style={{ fontWeight: 700 }}>{FREEZE.title} · полисов <span className="ds-num" data-testid="freeze-owned">{freezes}</span> из {MAX_FREEZES}</div>
               <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>{FREEZE.text}</div>
               <div className="rw-price">{priceOf(FREEZE.id, day)} <span style={{ fontWeight: 400 }}>мон.</span><small>{FREEZE.crowns} кр.</small></div>
             </div>
@@ -322,6 +329,82 @@ export function ShopView({ learn, update, now = Date.now() }) {
   );
 }
 
+/* ------------------------------ КОПИЛКА ИНФЛИ ------------------------------
+   Положить монеты под 2% в день на неделю; график — как растёт вклад по дням: столбик каждого дня
+   чуть выше прошлого не на 2 монеты, а на 2% от уже накопленного. Забрать раньше — процент сгорит. */
+function PiggyChart({ amount, day = null }) {
+  const pts = piggyCurve(amount);
+  const W = 300; const H = 92; const pad = 18; const top = pts[pts.length - 1].value; const lo = amount * 0.97;
+  const bw = (W - pad * 2) / pts.length;
+  const h = (v) => ((v - lo) / (top - lo)) * (H - 30);
+  return (
+    <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" data-testid="piggy-chart"
+      aria-label={`Вклад ${amount}: через неделю ${piggyValue(amount, PIGGY.days)}`}>
+      {pts.map((p) => (
+        <g key={p.day}>
+          <rect x={pad + p.day * bw + 3} y={H - 14 - h(p.value)} width={bw - 6} height={h(p.value) + 1} rx="1.5"
+            fill={day != null && p.day <= day ? 'var(--u)' : 'color-mix(in srgb, var(--u) 28%, var(--ds-card))'} stroke="var(--u-ink)" strokeWidth={day === p.day ? 1.6 : 0.6} />
+          <text x={pad + p.day * bw + bw / 2} y={H - 3} textAnchor="middle">{p.day === 0 ? 'сейч.' : `д${p.day}`}</text>
+        </g>
+      ))}
+      <text x={pad + 7 * bw + bw / 2} y={H - 18 - h(top)} textAnchor="middle">{Math.floor(top + 1e-9)}</text>
+      <text x={pad + bw / 2} y={H - 18 - h(amount)} textAnchor="middle">{amount}</text>
+    </svg>
+  );
+}
+function PiggyCard({ learn, update, now, b, onMsg }) {
+  const st = piggyState(learn, now);
+  const [amount, setAmount] = useState(() => Math.max(PIGGY.min, Math.min(100, Math.floor(b / 2))));
+  const can = b >= PIGGY.min;
+  const n = Math.max(PIGGY.min, Math.min(amount, b));
+  const put = () => {
+    const r = piggyPut(learn, n, now);
+    if (!r.ok) { Audio.play('down'); onMsg({ ok: false, text: r.reason }); return; }
+    Audio.play('register'); update(() => r.s, { settle: true });
+    onMsg({ ok: true, text: `В копилке ${r.amount} ${coinsWord(r.amount)}. Через ${PIGGY.days} дней станет ${piggyValue(r.amount, PIGGY.days)}.` });
+  };
+  const take = () => {
+    const r = piggyTake(learn, now);
+    if (!r.ok) { onMsg({ ok: false, text: r.reason }); return; }
+    Audio.play(r.early ? 'paper' : 'register'); update(() => r.s, { settle: true });
+    onMsg({ ok: true, text: !r.early ? `Забрано ${r.payout} ${coinsWord(r.payout)} — с процентами за неделю.` : r.lost ? `Забрано ${r.payout} ${coinsWord(r.payout)}: раньше срока процент сгорел (−${r.lost}).` : `Забрано ${r.payout} ${coinsWord(r.payout)}: проценты не успели набежать.` });
+  };
+  return (
+    <Card style={{ margin: '0 0 14px' }} data-testid="shop-piggy" data-open={String(!!st)}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Rosette size={54} opacity={0.5}><PiggyBank size={24} color="var(--u-ink)" aria-hidden="true" /></Rosette>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700 }}>Копилка Инфли</div>
+          <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>
+            {Math.round(PIGGY.rate * 100)}% в день на накопленное, срок — {PIGGY.days} дней. Раньше срока забрать можно, но процент сгорит.
+          </div>
+        </div>
+      </div>
+      {st ? (
+        <>
+          <PiggyChart amount={st.amount} day={st.days} />
+          <div style={{ fontSize: 14.5, margin: '2px 0 8px' }} data-testid="piggy-state">
+            Положено <b className="ds-num">{st.amount}</b>, день {st.days} из {PIGGY.days}: сейчас <b className="ds-num">{st.value}</b>{st.ripe ? ' — срок вышел, можно забирать.' : `, через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')} — ${st.final}.`}
+          </div>
+          <Button small variant={st.ripe ? 'primary' : 'ghost'} data-testid="piggy-take" onClick={take}>
+            {st.ripe ? `Забрать ${st.payout} ${coinsWord(st.payout)}` : `Забрать раньше: только ${st.payout}`}
+          </Button>
+        </>
+      ) : can ? (
+        <>
+          <PiggyChart amount={n} />
+          <label className="ds-sub" style={{ fontSize: 14, display: 'block' }} htmlFor="piggy-amount">Положить: <b className="ds-num">{n}</b> {coinsWord(n)} → через неделю <b className="ds-num">{piggyValue(n, PIGGY.days)}</b></label>
+          <input id="piggy-amount" type="range" min={PIGGY.min} max={Math.max(PIGGY.min, b)} step={1} value={n} data-testid="piggy-amount" style={{ width: '100%', accentColor: 'var(--u)' }}
+            onChange={(e) => { Audio.play('tick'); setAmount(Number(e.target.value)); }} />
+          <Button small data-testid="piggy-put" onClick={put}>Положить {n} {coinsWord(n)}</Button>
+        </>
+      ) : (
+        <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }}>Положить можно от {PIGGY.min} монет — их дают уроки.</div>
+      )}
+    </Card>
+  );
+}
+
 /* ------------------------------ СУНДУК ЮНИТА ------------------------------ */
 export function ChestSheet({ unitId, place, learn, update, onClose }) {
   const n = chestCoins(unitId);
@@ -351,7 +434,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
 }
 
 /* ------------------------------ УТРЕННИЙ ЭКРАН СЕРИИ ------------------------------
-   Один раз в день, при первом открытии: «Вы на N дней подряд», неделя и заморозки. */
+   Один раз в день, при первом открытии: «Вы на N дней подряд», неделя и страховка серии. */
 const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 export function MorningStreak({ learn, onClose, now = Date.now() }) {
   const st = streak(learn, now);
@@ -370,12 +453,12 @@ export function MorningStreak({ learn, onClose, now = Date.now() }) {
         <div className="rw-dots" data-testid="morning-week">
           {weekDots(learn, now).map((d) => (
             <div key={d.day} className={`rw-dot ${d.done ? 'done' : d.frozen ? 'frozen' : ''} ${d.today ? 'today' : ''}`}>
-              <i>{d.done ? <Flame size={14} aria-hidden="true" /> : d.frozen ? <Snowflake size={14} aria-hidden="true" /> : null}</i>{DOW[d.dow]}
+              <i>{d.done ? <Flame size={14} aria-hidden="true" /> : d.frozen ? <ShieldCheck size={14} aria-hidden="true" /> : null}</i>{DOW[d.dow]}
             </div>
           ))}
         </div>
         <div className="ds-faint" style={{ fontSize: 13, marginTop: 14 }}>
-          <Snowflake size={13} style={{ verticalAlign: -2 }} aria-hidden="true" /> Заморозок в запасе: {fr}. Один пропуск в неделю серию не рвёт и без них.
+          <ShieldCheck size={13} style={{ verticalAlign: -2 }} aria-hidden="true" /> Полисов «Страховки серии»: {fr}. Один пропуск в неделю серию не рвёт и без них.
         </div>
         <Guilloche height={22} style={{ marginTop: 18 }} />
       </div>

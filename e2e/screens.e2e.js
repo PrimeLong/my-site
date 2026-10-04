@@ -76,6 +76,13 @@ async function answer(page, wrong = false) {
     return kind;
   }
   if (kind === 'open') await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
+  if (kind === 'domino') {
+    const dom = ex.getByTestId('domino');
+    await dom.locator(`[data-key="${ans[0]}"]`).click();
+    if (wrong) await dom.locator('[data-testid="domino-card"][data-key^="f"]').first().click();
+    for (const k of ans.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
+    return kind;
+  }
   await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   return kind;
 }
@@ -93,10 +100,23 @@ async function playGame(page, { seconds = 5, max = Infinity } = {}) {
   }
   await expect(ex.getByTestId('game-final')).toBeVisible({ timeout: (seconds + 5) * 1000 });
 }
-// карточки перед упражнением: шаг, слово, пункт итогов
+// «Открой сам»: четыре дня с разными ценами
+async function playDiscover(page, prices = [12, 18, 26, 33]) {
+  const d = page.getByTestId('discover');
+  for (const p of prices) {
+    await d.getByTestId('discover-price').fill(String(p));
+    await expect(d.getByTestId('discover-open')).toBeEnabled({ timeout: 4000 });
+    await d.getByTestId('discover-open').click();
+  }
+  await expect(page.getByTestId('discover-next')).toBeEnabled({ timeout: 4000 });
+}
+// карточки перед упражнением: шаг, слово, пункт итогов, «Открой сам»
 async function passCards(page) {
   const card = page.getByTestId('lesson-card');
-  for (let i = 0; i < 24 && await card.isVisible(); i += 1) { await foot(page).click(); await page.waitForTimeout(320); }
+  for (let i = 0; i < 24 && await card.isVisible(); i += 1) {
+    if (await card.getAttribute('data-style') === 'discover') await playDiscover(page);
+    await foot(page).click(); await page.waitForTimeout(320);
+  }
 }
 
 for (const theme of ['light', 'dark']) {
@@ -337,6 +357,71 @@ for (const theme of ['light', 'dark']) {
       await openLesson(page, 'cs-i1');
       await shot(page, '56-consumer-step', theme);
       await exitLesson(page);
+      expect(errors).toEqual([]);
+    });
+
+    test(`новые глаголы: «Открой сам», живая модель, «Домино», копилка (${theme})`, async ({ page }) => {
+      test.setTimeout(180_000);
+      // пройдено всё до юнита 2: первый урок «Рынка» — с «Открой сам»
+      const errors = await setup(page, { theme, learn: { coins: { '2026-01-01': 400 } } });
+      await page.addInitScript(() => {
+        try {
+          if (localStorage.getItem('shots-trimmed')) return;
+          const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
+          ['sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'].forEach((id) => { delete p.learn.lessons[id]; });
+          localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
+          localStorage.setItem('shots-trimmed', '1');
+        } catch { /* нет хранилища */ }
+      });
+      await page.goto('/', { waitUntil: 'networkidle' });
+      await openLesson(page, 'sd-i1');
+      await expect(page.getByTestId('discover')).toBeVisible();
+      await shot(page, '57-discover', theme);
+      await playDiscover(page);
+      await page.getByTestId('discover-chart').scrollIntoViewIfNeeded();
+      await shot(page, '57a-discover-line', theme);
+      await exitLesson(page);
+      // живая модель: открыты три детали (пройдены sd-i1, sd-l1, sd-w — как будто)
+      await page.evaluate(() => {
+        const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
+        ['sd-i1', 'sd-l1', 'sd-w', 'sd-i2'].forEach((id) => { p.learn.lessons[id] = { at: Date.now() - 86400000, runs: 1, best: 90 }; });
+        localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
+      });
+      await page.reload({ waitUntil: 'networkidle' });
+      const model = page.locator('[data-testid=unit-model]').first();
+      await model.scrollIntoViewIfNeeded();
+      await shot(page, '58-unit-model', theme);
+      await model.getByTestId('model-toggle').click();
+      await model.getByTestId('model-parts').scrollIntoViewIfNeeded();
+      await shot(page, '58a-unit-model-parts', theme);
+      // «Домино» — в практике «Предложение и равновесие»
+      await openLesson(page, 'sd-l3');
+      for (let i = 0; i < 20; i += 1) {
+        const ex = page.getByTestId('ex');
+        await expect(ex).toBeVisible();
+        if (await ex.getAttribute('data-kind') === 'domino') break;
+        await answer(page); await next(page);
+      }
+      const dom = page.getByTestId('domino');
+      await shot(page, '59-domino', theme);
+      const chain = JSON.parse(await page.getByTestId('ex').getAttribute('data-answer'));
+      await dom.locator(`[data-key="${chain[0]}"]`).click();
+      await dom.locator('[data-testid="domino-card"][data-key^="f"]').first().click();
+      await page.waitForTimeout(800);
+      await dom.getByTestId('domino-why').scrollIntoViewIfNeeded();
+      await shot(page, '59a-domino-fall', theme);
+      for (const k of chain.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
+      await shot(page, '59b-domino-done', theme);
+      await exitLesson(page);
+      // копилка Инфли в лавке
+      await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
+      const piggy = page.getByTestId('shop-piggy');
+      await piggy.scrollIntoViewIfNeeded();
+      await shot(page, '60-piggy', theme);
+      await piggy.getByTestId('piggy-amount').fill('120');
+      await piggy.getByTestId('piggy-put').click();
+      await piggy.scrollIntoViewIfNeeded();
+      await shot(page, '60a-piggy-open', theme);
       expect(errors).toEqual([]);
     });
 

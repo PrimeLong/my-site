@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makePrehistory } from '../autopilot.js';
-import { drillPrehistory } from '../drills.js';
+import { drillPrehistory, overheatAmp } from '../drills.js';
 import { withSeededRandom, hashSeed } from '../catalog.js';
 import { makeInitialEconomy } from '../engine.js';
 
@@ -36,5 +36,24 @@ describe('вызов дня: предыстория', () => {
     // к старту экономика сведена в завязку сценария: инфляция уже высокая, как на старте
     const start = makeInitialEconomy('hyperinflation');
     expect(Math.abs(rows[rows.length - 1].inflation - start.inflation)).toBeLessThan(Math.abs(rows[0].inflation - start.inflation));
+  });
+  it('гиперинфляция: вводный отрезок связный — инфляцию разгоняет перегрев, к старту разрыв закрывается', () => {
+    const rows = withSeededRandom(hashSeed('2026-10-04:lead'), () => drillPrehistory({ scenario: 'hyperinflation' }));
+    const start = makeInitialEconomy('hyperinflation');
+    const plain = withSeededRandom(hashSeed('2026-10-04:lead'), () => makePrehistory({ quarters: 8 })).prehistory;
+    const n = rows.length; const mid = Math.floor((n - 1) / 2);
+    // в середине отрезка экономика перегрета: разрыв заметно выше, чем у той же экономики без завязки
+    expect(rows[mid].outputGap - plain[mid].outputGap).toBeGreaterThan(2);
+    expect(Math.max(...rows.map((r) => r.outputGap))).toBeGreaterThan(start.outputGap + 2);
+    // к старту перегрев гаснет: последний квартал ближе к стартовому разрыву, чем середина
+    expect(Math.abs(rows[n - 1].outputGap - start.outputGap)).toBeLessThan(Math.abs(rows[mid].outputGap - start.outputGap));
+    // в первой половине рост ВВП выше обычного, во второй — ниже: перегрев набирается и гаснет
+    expect(rows[0].gdpGrowth - plain[0].gdpGrowth).toBeGreaterThan(0);
+    expect(rows[n - 1].gdpGrowth - plain[n - 1].gdpGrowth).toBeLessThan(0);
+  });
+  it('без скачка инфляции горба перегрева нет', () => {
+    expect(overheatAmp(2)).toBe(0);
+    expect(overheatAmp(30)).toBeGreaterThan(3);
+    expect(overheatAmp(100)).toBe(4);
   });
 });

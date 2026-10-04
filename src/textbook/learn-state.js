@@ -21,17 +21,18 @@ const MAX_HINTED = 60;
    daily — счётчики дня для заданий дня: уроки, без ошибок, верные, секунды, серия, игры, практика;
    coins/spent — монеты по дням (заработано/потрачено), claimed — полученные награды (ключ → когда):
    одна награда не выдаётся дважды и на двух устройствах; owned — купленные вещи, wear — наряд Инфли;
-   freezeBuy — купленные заморозки по дням, frozen — дни, которые спасла купленная заморозка;
+   freezeBuy — купленные полисы «Страховки серии» по дням, frozen — дни, которые спасла страховка;
    seen — сколько раз ученик встречал каждое упражнение (чтобы реже повторять одно и то же);
    best — рекорды мини-игр (очки); lessons[id].diamond — когда урок взят на алмазном уровне;
-   boost — до какого времени действует купленный «двойной опыт». */
+   boost — до какого времени действует купленный «двойной опыт»;
+   piggy / piggyOut — вклады в копилку Инфли { время вклада: монеты } и забранные { время вклада: выдано }. */
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
   profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
   topics: {}, recent: '', recentAt: 0, daily: {},
   coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
-  seen: {}, best: {}, boost: 0,
+  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {},
 });
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
@@ -352,6 +353,12 @@ function claimedMap(v) {
   const out = {}; [...rest, ...quests].forEach((k) => { out[k] = all[k]; });
   return out;
 }
+// вклады копилки: ключ — время вклада (мс), значение — монеты; храним последние сорок
+const piggyMap = (v) => {
+  const out = {};
+  Object.keys(obj(v)).filter((k) => /^\d{10,15}$/.test(k)).sort().slice(-40).forEach((k) => { const x = cnt(v[k], 1e6); if (x) out[k] = x; });
+  return out;
+};
 // переименованные вещи лавки: купленное остаётся у ученика под новым именем
 const RENAMED = { goldbar: 'balloon' };
 const renamed = (m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [RENAMED[k] || k, v]));
@@ -382,6 +389,7 @@ function normalizeProgram(r) {
     claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
+    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut),
   };
 }
 // слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
@@ -402,6 +410,7 @@ function mergeProgram(x, y) {
     coins: maxMap(x.coins, y.coins), spent: maxMap(x.spent, y.spent), freezeBuy: maxMap(x.freezeBuy, y.freezeBuy),
     frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned),
     seen: maxMap(x.seen, y.seen), best: maxMap(x.best, y.best), boost: Math.max(x.boost, y.boost),
+    piggy: maxMap(x.piggy, y.piggy), piggyOut: maxMap(x.piggyOut, y.piggyOut),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),

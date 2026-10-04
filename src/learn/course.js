@@ -13,14 +13,18 @@ import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
-export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, open: 30 };
+export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, open: 30, domino: 35 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполни пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', match: 'Сопоставь пары', sort: 'Разложи по корзинам', calc: 'Быстрый расчёт',
   tiles: 'Собери определение', curve: 'Сдвинь кривую', price: 'Найди цену', point: 'Отметь равновесие',
-  swipe: 'Мини-игра', rush: 'Мини-игра на время', open: 'Как бы вы поступили?',
+  swipe: 'Мини-игра', rush: 'Мини-игра на время', open: 'Как бы вы поступили?', domino: 'Домино',
 };
+/* «Домино»: ученик сам выкладывает цепочку причин; неверное звено роняет домино с этого места,
+   разбор — и он продолжает с верного места. Проверяется само, когда цепочка собрана: засчитано,
+   если домино ни разу не упало. */
+export const SELF_CHECK = ['domino'];
 /* Открытый вопрос в конце истории: письменный ответ и разбор. Неверного ответа у него нет — он
    не идёт ни в ошибки, ни в повторение, ни в проверку юнита. */
 export const OPEN_MIN = 15;
@@ -118,6 +122,7 @@ function fromBlock(b) {
     case 'price': return { ...e, market: b.market, start: b.start };
     case 'point': return { ...e, market: b.market };
     case 'open': return e;
+    case 'domino': return { ...e, headline: b.headline, scene: b.scene, links: b.links, decoys: b.decoys };
     default: throw new Error(b.kind);
   }
 }
@@ -183,6 +188,12 @@ function lessonsOf(chapterId) {
       if (b.who && !CAST[b.who]) throw new Error(`Нет героя ${b.who} (${b.id})`);
       if (cur.diamond && !b.diamond) throw new Error(`Обычный шаг ${b.id} после алмазного: алмазные шаги — в конце урока`);
       if (b.diamond) cur.diamond = true;
+      // «Открой сам» — первым шагом урока, до карточки-идеи: сначала ученик пробует сам, потом ему объясняют
+      if (b.discover) {
+        if (cur.kind !== 'intro' || cur.exercises.length || cur.inner.length !== 1) throw new Error(`Шаг «Открой сам» ${b.id} — сразу после первой карточки «Знакомства»`);
+        cur.inner.unshift({ at: 0, idea: b, discover: true });
+        return;
+      }
       cur.inner.push({ at: cur.exercises.length, idea: b, ...(b.diamond ? { diamond: true } : {}) });
       addAuto(cur, b);
     } else if (b.type === 'idea') {
@@ -284,6 +295,11 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
     case 'price': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, start: ex.start, answer: Math.round(eq.p * 100) / 100 }; }
     case 'point': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, answer: { q: eq.q, p: eq.p } }; }
     case 'open': return { ...base, noRetry: true };
+    case 'domino': {
+      const links = ex.links.map((l, k) => ({ key: `l${k}`, text: l.text, raw: l.raw, effects: l.effects, link: k }));
+      const decoys = ex.decoys.map((d, k) => ({ key: `f${k}`, text: d.text, raw: d.raw, why: d.why, link: null }));
+      return { ...base, headline: ex.headline, scene: ex.scene, chain: links.map((l) => l.key), deck: shuffle([...links, ...decoys], rand) };
+    }
     case 'swipe': case 'rush':
       return { ...base, title: ex.title, labels: ex.labels, seconds: extra.seconds || ex.seconds || SECONDS[ex.kind], chart: ex.chart || null, ...(ex.market ? { market: ex.market } : {}),
         items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, side: it.side, effect: it.effect || null })), rand) };
@@ -336,6 +352,11 @@ export function check(inst, resp) {
     case 'swipe': case 'rush': return { ok: gameOk(inst, resp), why: null };
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
     case 'open': return { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
+    case 'domino': {
+      const falls = resp && resp.falls ? resp.falls.length : 0;
+      const ok = !!(resp && resp.done) && falls === 0;
+      return { ok, why: ok ? null : text(`Цепочка собрана, но домино падало ${falls} ${falls % 10 === 1 && falls % 100 !== 11 ? 'раз' : 'раза'}: каждое звено должно прямо следовать из предыдущего.`) };
+    }
     default: return { ok: false, why: null };
   }
 }
@@ -365,6 +386,7 @@ export function ready(inst, resp) {
     case 'point': return Number.isFinite(resp.q) && Number.isFinite(resp.p);
     case 'swipe': case 'rush': return !!resp.done;
     case 'open': return String(resp).trim().length >= OPEN_MIN;
+    case 'domino': return !!resp.done;
     default: return true;
   }
 }
@@ -385,6 +407,7 @@ export function answerText(inst) {
     case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
     case 'swipe': case 'rush': return `не меньше ${GAME_PASS} верных при точности от 70%`;
     case 'open': return 'свой ответ — пара продуманных предложений';
+    case 'domino': return inst.chain.map((k) => plain(inst.deck.find((c) => c.key === k).text)).join(' → ');
     default: return '';
   }
 }
@@ -400,6 +423,9 @@ export const STEP_PICS = ['clock', 'scale', 'hourglass', 'ticket', 'trending-up'
   'coffee', 'wallet', 'link', 'utensils', 'boxes', 'users', 'snowflake', 'arrow-down-to-line', 'arrow-up-to-line', 'croissant', 'landmark', 'radio', 'flag'];
 // шаг читается секунд за пятнадцать, карточка слова — за восемь, пункт итогов — за десять
 export const STEP_SECONDS = 15;
+// «Открой сам»: пять-шесть дней в кофейне — около сорока пяти секунд
+export const DISCOVER_SECONDS = 45;
+const stepsSeconds = (inner) => inner.reduce((s, c) => s + (c.discover ? DISCOVER_SECONDS : STEP_SECONDS), 0);
 export const FLASH_SECONDS = 8;
 export const POINT_SECONDS = 10;
 // в практике — не больше десяти своих упражнений за раз: при повторе урока набор другой
@@ -541,7 +567,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     // шаги и вопросы строго по порядку, без повторения: это первая встреча с темой
     const items = ownOf(lesson).map((e) => instantiate(e, rand));
     const inner = lesson.inner.filter((c) => !c.diamond);
-    return { lesson, items, cards: stepCards(lesson, items, inner), seconds: sum(items) + inner.length * STEP_SECONDS };
+    return { lesson, items, cards: stepCards(lesson, items, inner), seconds: sum(items) + stepsSeconds(inner) };
   }
   if (lesson.kind === 'words') {
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
@@ -578,8 +604,10 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     return { lesson, items, cards: { [items[0].uid]: points }, seconds: sum(items) + points.length * POINT_SECONDS };
   }
   const all = ownOf(lesson);
-  // свои — не больше десяти, в прежнем порядке (случайный набор при каждом прохождении; реже виденные — первыми)
-  const keep = new Set(bySeen(all.map((e, k) => ({ ...e, k })), seen, rand).slice(0, PRACTICE_OWN).map((e) => e.k));
+  // свои — не больше десяти, в прежнем порядке (случайный набор при каждом прохождении; реже виденные — первыми);
+  // «Домино» урока — всегда: в нём ученик сам строит цепочку, а не только отвечает
+  const pinned = all.map((e, k) => (SELF_CHECK.includes(e.kind) ? k : -1)).filter((k) => k >= 0);
+  const keep = new Set([...pinned, ...bySeen(all.map((e, k) => ({ ...e, k })).filter((e) => !pinned.includes(e.k)), seen, rand).slice(0, PRACTICE_OWN - pinned.length).map((e) => e.k)]);
   const own = all.filter((_, k) => keep.has(k));
   // начинать с упражнения в одно касание, а не с расчёта или сборки
   const easy = own.findIndex((e) => SECONDS[e.kind] <= 12);
@@ -597,7 +625,8 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
   while (estimate(items) > LESSON_MAX_SECONDS && items.length > 10) {
     const rev = items.filter((it) => it.review).length;
     const dropReview = rev / (items.length - 1) > 0.34;
-    const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !!items[i].review === dropReview);
+    const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !!items[i].review === dropReview && !SELF_CHECK.includes(items[i].kind));
+    if (k == null) break;
     items.splice(k, 1);
   }
   // сильному ученику — задачи семинарского и олимпиадного уровня вместо последних своих
@@ -605,7 +634,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     const { variants, autos } = hardPool(unit.id, lesson.no);
     const hard = shuffle([...variants, ...autos], rand).slice(0, HARD_IN_PRACTICE);
     hard.forEach((e) => {
-      const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard);
+      const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard && !SELF_CHECK.includes(items[i].kind));
       const it = instantiate(e, rand, { hard: e.level >= 3 ? 3 : 2 });
       if (k != null && items.length >= 10) items.splice(k, 1, it); else items.push(it);
     });
@@ -652,8 +681,10 @@ function buildDiamond(lessonId, rand, opts) {
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
     const deep = lesson.inner.some((c) => c.diamond);
     if (!deep) hardItems(unitId, 2, rand, new Set(), lesson.no).forEach((it) => items.push(it));
+    // «Открой сам» на повторе не нужен: кривую ученик уже нашёл
+    const inner = lesson.inner.filter((c) => !c.discover);
     // карточки собираются до того, как mark скопирует упражнения: uid у копий тот же
-    return mark({ lesson, items, cards: stepCards(lesson, items), seconds: sum(items) + lesson.inner.length * STEP_SECONDS });
+    return mark({ lesson, items, cards: stepCards(lesson, items, inner), seconds: sum(items) + stepsSeconds(inner) });
   }
   if (lesson.kind === 'words') {
     const p = buildLessonBase(lessonId, rand, opts);

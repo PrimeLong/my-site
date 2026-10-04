@@ -87,14 +87,15 @@ describe('слабые темы и «рекомендуем сейчас»', () 
     expect(weakLessons(s).map((w) => w.id)).toEqual(['sc-l1', 'sc-l2']);
     expect(lessonOpts(s).weak).toEqual(['sc-l1', 'sc-l2']);
   });
-  it('рекомендуем: урок с точностью ниже 60%, если он открыт; иначе — следующая остановка', () => {
+  it('рекомендуем: всегда следующая непройденная остановка; слабое место (ниже 60%) — отдельно, без отметки над пройденным уроком', () => {
     const base = done(['sc-i1', 'sc-l1', 'sc-l2']);
     const cur = pathState(base).find((x) => x.current).current.id;
     expect(recommend(base)).toEqual({ lessonId: cur, why: 'next' });
-    expect(recommend(topics(base, { 'sc-l2': [3, 5] })).lessonId).toBe(cur);
+    expect(recommend(topics(base, { 'sc-l2': [3, 5] }))).toEqual({ lessonId: cur, why: 'next' });
     const r = recommend(topics(base, { 'sc-l1': [1, 5], 'sc-l2': [2, 5] }));
-    expect(r.lessonId).toBe('sc-l1');
-    expect(r.why).toBe('weak');
+    expect(r.lessonId).toBe(cur);
+    expect(pathState(base).flatMap((x) => x.lessons).find((l) => l.id === r.lessonId).done).toBe(false);
+    expect(r.weak).toEqual({ lessonId: 'sc-l1', acc: 0.2 });
   });
   it('«Повторение» ставит упражнения слабых уроков раньше остальных; практика добирает слабыми темами до восьми', () => {
     const rev = Object.values(LESSON_BY_ID).find((l) => l.kind === 'review');

@@ -22,7 +22,7 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
-  UNITS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf,
 } from './learn/course.js';
 import {
@@ -43,6 +43,9 @@ import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
+import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx, modelBadge } from './learn-model.jsx';
+import { hasModel, partsOfLesson } from './learn/model.js';
+import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
 import { ReportFlag, ReportsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
@@ -106,7 +109,7 @@ const CSS = `
      встряска после ошибки и свайп карточки двигают его вбок (без overflow-x: hidden из-за
      overflow-y: auto появлялся горизонтальный ползунок), а появление шага — не сдвигом вниз
      (сдвиг на 14 px на миг давал вертикальный), а проявлением */
-  .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 14px 16px 24px; }
+  .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 14px 16px 24px; }
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
   .ln-inner { max-width: 560px; margin: 0 auto; }
@@ -175,6 +178,7 @@ const testAnswer = (inst) => {
     case 'curve': case 'price': case 'point': return JSON.stringify(inst.answer);
     case 'swipe': case 'rush': return JSON.stringify('game');
     case 'open': return JSON.stringify('open');
+    case 'domino': return JSON.stringify(inst.chain);
     default: return undefined;
   }
 };
@@ -442,6 +446,10 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
         </div>
       );
     }
+    case 'domino':
+      // цепочка собрана — задание уходит на проверку само
+      return <DominoEx inst={inst} resp={resp} setResp={(v) => !locked && setResp(v)} locked={locked} fb={fb} onSubmit={onSubmit}
+        prompt={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>} />;
     case 'swipe': case 'rush': {
       return (
         <div>
@@ -528,6 +536,14 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
     start: Date.now() - (rs ? rs.elapsed || 0 : 0), itemStart: Date.now(), retries: rs ? rs.retries : 0,
   });
   const [started, setStarted] = useState(!!rs);
+  /* урок — слой поверх страницы: пока он открыт, страница под ним не прокручивается и не
+     показывает свой ползунок (на ПК он висел сбоку урока, даже когда прокручивать нечего) */
+  useEffect(() => {
+    if (hidden || typeof document === 'undefined') return undefined;
+    const els = [document.documentElement, document.body]; const was = els.map((el) => el.style.overflow);
+    els.forEach((el) => { el.style.overflow = 'hidden'; });
+    return () => { els.forEach((el, k) => { el.style.overflow = was[k]; }); };
+  }, [hidden]);
   const retryable = run.mode === 'lesson' || run.mode === 'practice';
   const total = plan.items.length;
   const cur = queue[pos];
@@ -695,7 +711,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   return (
     <DsRoot theme={dsThemeId()} accent={color} className="ln-overlay" data-testid="lesson" data-mode={run.mode} data-diamond={diamond ? 'true' : undefined} role="dialog" aria-label={title}
       style={{ display: hidden ? 'none' : undefined }}>
-      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS}</style>
+      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS + MODEL_CSS + DOMINO_CSS}</style>
       <div className="ln-head">
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
         <ProgressChart answers={log} total={total} pulse={pulse} />
@@ -748,6 +764,22 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
               foot={(buttons) => <div className="ln-foot"><div className="ln-inner">{buttons}</div></div>} />
           );
         }
+        // «Открой сам» — исследование со своей кнопкой: дальше — с четырёх разных цен
+        if (c.discover) {
+          return (
+            <DiscoverDay key={`${cur.uid}:${c.id}`} card={c} onDone={go}
+              body={(inner) => (
+                <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style="discover">
+                  <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span className="ln-kind" style={{ margin: 0 }}>Открой сам</span><span style={{ flex: 1 }} />
+                    <ReportFlag context={() => stepContext(c, lesson, 'Открой сам')} />
+                  </div>
+                  {inner}
+                </div></div>
+              )}
+              foot={(button) => <div className="ln-foot"><div className="ln-inner">{button}</div></div>} />
+          );
+        }
         return (
           <>
             <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style={kind} key={c.id}>
@@ -774,6 +806,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
                   <div className="ds-text" style={{ marginTop: 14 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
                   <StepLegend nodes={c.text} unitId={unitId} />
                   {picture}
+                  {/* Инфля вспоминает механику лавки, которой ученик уже пользовался: тема знакома на деле */}
+                  {(() => { const cb = callbackFor(c.id, learn); return cb ? <div className="lm-say" data-testid="step-callback" data-callback={cb.id}><Mascot mood="joy" size={38} /><span>{cb.text}</span></div> : null; })()}
                 </>
               )}
             </div></div>
@@ -808,7 +842,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
             {fb && !fb.empty ? verdictBar : (
               <div className="ln-inner">
                 {fb && fb.empty && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>Введите число: например, 25 или −0,5.</div>}
-                {!GAME_KINDS.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>{inst.kind === 'open' ? 'Ответить' : 'Проверить'}</Button>}
+                {!GAME_KINDS.includes(inst.kind) && !SELF_CHECK.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>{inst.kind === 'open' ? 'Ответить' : 'Проверить'}</Button>}
               </div>
             )}
           </div>
@@ -855,7 +889,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
                   {liveCard ? <Button wide onClick={feedGo}>{lesson.kind === 'listen' ? 'К вопросу' : 'Дальше'}</Button>
                     : <>
                       {fb && fb.empty && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>Введите число: например, 25 или −0,5.</div>}
-                      {inst && !GAME_KINDS.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>{inst.kind === 'open' ? 'Ответить' : 'Проверить'}</Button>}
+                      {inst && !GAME_KINDS.includes(inst.kind) && !SELF_CHECK.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>{inst.kind === 'open' ? 'Ответить' : 'Проверить'}</Button>}
                     </>}
                 </div>
               )}
@@ -913,6 +947,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
                 <div data-testid="result-time"><div className="ds-eyebrow" style={{ fontSize: 10.5 }}>Время</div><div className="v">{mmss(result.ms)}</div></div>
               </div>
               <GainsList coins={result.coins} gains={result.gains} />
+              {lesson && run.mode === 'lesson' && !replay && partsOfLesson(lesson.id).length > 0 && (
+                <div className="ds-sub" style={{ fontSize: 14.5, marginTop: 10 }} data-testid="result-model">
+                  В модель рынка добавлено: {partsOfLesson(lesson.id).map((p) => `«${p.title}»`).join(', ')}. Покрутить её можно на Пути, под юнитом.
+                </div>
+              )}
               {replay && !diamond && <div className="ds-faint" style={{ fontSize: 13.5, marginTop: 12 }}>Урок уже был пройден: за простой повтор — немного опыта и монет. На алмазном уровне задачи сложнее, а награда больше.</div>}
             </div>
             <Guilloche height={22} />
@@ -1100,7 +1139,7 @@ function TopStats({ learn }) {
    гравюра; пройденный юнит его «оживляет» (цвет, свет в окнах, дым). Нажатие по месту —
    прокрутка к юниту на дороге ниже. */
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
-function Atlas({ states, onPick }) {
+function Atlas({ states, onPick, learn = null }) {
   const units = UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) }));
   const onPath = units.filter((x) => x.st);
   const route = units.map((x) => x.pl.at);
@@ -1141,6 +1180,10 @@ function Atlas({ states, onPick }) {
               <circle cx={x} cy={y - 26} r="50" fill="var(--ds-card)" opacity=".85" />
               <EngravingG kind={pl.building} alive={alive} x={x - 54} y={y - 72} scale={0.9} color={pl.color} />
               <text x={x} y={y + 30} textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="7" paintOrder="stroke">{pl.place}</text>
+              {learn && hasModel(u.id) && (
+                <text x={x} y={y - 84} textAnchor="middle" fontSize="21" fill="var(--u-ink)" stroke="var(--ds-paper)" strokeWidth="6" paintOrder="stroke" data-testid="atlas-model"
+                  style={{ fontFamily: 'var(--ds-mono)' }}>{modelBadge(u.id, learn)}</text>
+              )}
             </g>
           );
         })}
@@ -1323,12 +1366,12 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <Mascot mood={hello} size={44} />
         <div className="ds-sub" style={{ fontSize: 15, lineHeight: 1.4 }}>
-          {rec && rec.why === 'weak' ? `Рекомендуем сейчас: «${recTitle}» — здесь было больше всего ошибок.`
+          {rec && rec.weak ? `Слабое место — «${LESSON_BY_ID[rec.weak.lessonId].title}»: его задачи первыми придут в «Повторение». А дальше по Пути — «${recTitle}».`
             : g.done >= g.goal ? 'Цель дня выполнена — можно и дальше.' : sleepy ? 'Инфля заскучала. Одна остановка — и снова в пути.' : first && first.current ? `Следующая остановка: «${first.current.title}»` : 'Уроки по 3–5 минут.'}
         </div>
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
-      <Atlas states={states} onPick={pick} />
+      <Atlas states={states} onPick={pick} learn={learn} />
       {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }, k, list) => {
         const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];
         // первый юнит уровня — над ним полоса уровня: «Базовый — понимаешь спрос, предложение…»
@@ -1361,6 +1404,8 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
             </div>
             <Guilloche height={16} opacity={0.45} />
           </Card>
+          {/* живая модель юнита: собирается урок за уроком — главный видимый прогресс юнита */}
+          {hasModel(u.id) && <Card style={{ marginTop: 10 }}><MarketModel unitId={u.id} learn={learn} compact /></Card>}
           {!folded && <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
             chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />}
         </section>
@@ -1482,13 +1527,13 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
       </div>
       <Card style={{ margin: '12px 0' }}>
         <div className="ds-h3" style={{ marginBottom: 6 }}>Рекорды</div>
-        <Row label="Серия сейчас" value={`${st.days} дн.${st.freezesUsed.length ? ` · заморожено: ${st.freezesUsed.length}` : ''}`} data-testid="prof-streak" />
+        <Row label="Серия сейчас" value={`${st.days} дн.${st.freezesUsed.length ? ` · прощено: ${st.freezesUsed.length}` : ''}`} data-testid="prof-streak" />
         <Row label="Самая длинная серия" value={`${longestStreak(learn)} дн.`} />
         <Row label="Лучшая неделя" value={bw.xp ? `${bw.xp} XP` : '—'} />
         <Row label="Всего опыта" value={`${stats.totalXp} XP`} />
         <Row label="Монет в кошельке" value={`${balance(learn)}`} data-testid="prof-coins" />
         <Row label="Заморозок в запасе" value={`${ownedFreezes(learn)}`} />
-        <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }}>Один пропущенный день в неделю серию не обнуляет, второй — спасает купленная заморозка.</div>
+        <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
       </Card>
       <ProgramCard learn={learn} update={update} onPlacement={() => onStart({ mode: 'placement' })} />
 
@@ -1538,7 +1583,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
    Корень экранов обучения. Учебник — подэкран поверх вкладки (или поверх итогов урока):
    его «назад» возвращает туда, откуда открыли. Нижняя панель — в корне приложения. */
 const MORNING_KEY = 'ems-learn-morning';
-export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0 }) {
+export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0 }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
   const [sheet, setSheet] = useState(null);
@@ -1577,7 +1622,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     <OutfitContext.Provider value={outfit}>
     <DsRoot theme={dsThemeId()} accent={accent} page className="ln-root">
       <ArtStyle />
-      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />
@@ -1587,7 +1632,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports} style={book || reports ? { display: 'none' } : undefined}>
         {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           visible={!run && !sheet && !book && !chest && !morning} />}
-        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab {...bookHandlers} {...bookReports} /></div>}
+        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
         {tab === 'tasks' && <TasksView learn={learn} onStart={start} onOpenBook={openBook} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}

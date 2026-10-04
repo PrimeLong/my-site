@@ -228,7 +228,8 @@ export function TopBar({ back = null, title, right = null }) {
   return <div className="ds-topbar">{back}{title && <div className="ds-topbar-title">{title}</div>}{right}</div>;
 }
 // нижняя панель вкладок: открытая вкладка — не кнопка перехода
-export function Tabs({ tabs, active, onTab, label = 'Разделы' }) {
+// onReselect — нажатие на уже открытую вкладку (например, «Учебник» — вернуться на его главную)
+export function Tabs({ tabs, active, onTab, onReselect = null, label = 'Разделы' }) {
   return (
     <nav aria-label={label} data-testid="bottom-nav" className="ds-nav">
       <div className="ds-nav-in">
@@ -236,7 +237,7 @@ export function Tabs({ tabs, active, onTab, label = 'Разделы' }) {
           const on = active === t.id; const Icon = t.icon;
           return (
             <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on ? undefined : `tab:${t.id}`}
-              onClick={() => { if (!on) onTab(t.id); }}>
+              onClick={() => { if (!on) onTab(t.id); else if (onReselect) onReselect(t.id); }}>
               <Icon size={22} strokeWidth={on ? 2.2 : 1.7} aria-hidden="true" /><span>{t.label}</span>
             </button>
           );

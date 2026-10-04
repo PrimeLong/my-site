@@ -21,7 +21,8 @@ export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монет�
    юнита — 20. Алмазный уровень (от 80% верных): впервые — 25 (без ошибок — ещё 10), потом — 5. */
 export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, diamond: 25, diamondPerfect: 10, diamondReplay: 5, goal: 10, allQuests: 10 };
 export const earned = (s) => sum(s.coins);
-export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent));
+// в кошельке: заработано − потрачено − лежит в копилке + проценты забранных вкладов
+export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent) - piggyLocked(s) + piggyGain(s));
 export const hasClaim = (s, key) => !!(s.claimed || {})[key];
 // начислить монеты; с ключом — только один раз
 export function earn(s, n, key = null, now = Date.now()) {
@@ -59,8 +60,9 @@ export const rateHistory = (day, n = 14) => Array.from({ length: n }, (_, k) => 
    Наряды Инфли — по одному на голову, лицо, шею, в руку и рамку. Обычные вещи стоят от 150
    до 1500 крон и меняются каждый день: на витрине дня — шесть из тех, что ещё не куплены, и
    одна из них — со скидкой дня 30%. Купленное всегда в гардеробе. Редкие вещи (от 2500 крон) —
-   в витрине ювелира всегда: на них копят; у каждой своя анимация (src/mascot.jsx). Заморозка серии и «двойной опыт» — всегда в продаже. */
-export const FREEZE = { id: 'freeze', title: 'Заморозка серии', crowns: 60, text: `Спасёт серию, если за неделю пропущено больше одного дня. В запасе — не больше ${MAX_FREEZES}.` };
+   в витрине ювелира всегда: на них копят; у каждой своя анимация (src/mascot.jsx). Страховка серии и «двойной опыт» — всегда в продаже. */
+// «Страховка серии» (в данных — freeze): взнос монетами — и пропущенный день прощается
+export const FREEZE = { id: 'freeze', title: 'Страховка серии', crowns: 60, text: `Взнос — и один пропущенный день прощается, когда недельная поблажка уже потрачена. Полисов в запасе — не больше ${MAX_FREEZES}.` };
 export const BOOST = { id: 'boost', title: 'Двойной опыт', crowns: 150, minutes: 30, text: 'Полчаса после покупки уроки дают вдвое больше опыта.' };
 export const OUTFITS = [
   { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 150 },
@@ -114,7 +116,7 @@ export function buy(s, id, now = Date.now()) {
   if (!item) return { s, ok: false, reason: 'Такого товара нет' };
   const day = dayOf(now);
   const price = priceOf(id, day, s);
-  if (id === FREEZE.id && ownedFreezes(s) >= MAX_FREEZES) return { s, ok: false, reason: `В запасе уже ${MAX_FREEZES} заморозки` };
+  if (id === FREEZE.id && ownedFreezes(s) >= MAX_FREEZES) return { s, ok: false, reason: `В запасе уже ${MAX_FREEZES} ${plural(MAX_FREEZES, 'полис', 'полиса', 'полисов')} страховки` };
   if (id === BOOST.id && boostActive(s, now)) return { s, ok: false, reason: 'Двойной опыт уже действует' };
   const outfit = id !== FREEZE.id && id !== BOOST.id;
   if (outfit && (s.owned || {})[id]) return { s, ok: false, reason: 'Уже куплено' };
@@ -132,6 +134,49 @@ export function setWear(s, slot, id, now = Date.now()) {
   return { ...s, wear: { ...s.wear, [slot]: id, at: now } };
 }
 export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null, hand: w.hand || null, frame: w.frame || null }; };
+
+/* ------------------------------ КОПИЛКА ИНФЛИ ------------------------------
+   Монеты можно положить под 2% в день на 7 дней. Процент начисляется на накопленное, а не только
+   на вложенное, — это сложный процент: за неделю 1000 монет вырастают до 1148, а не до 1140, как
+   при простых 20 монетах в день. Забрать раньше срока можно, но процент сгорает — вернётся вложенное. Вклад один за
+   раз. piggy — вклады { время вклада: монеты }, piggyOut — забранные { время вклада: сколько
+   выдано }: ключи времени не пересекаются, и слияние устройств — просто объединение. */
+export const PIGGY = { rate: 0.02, days: 7, min: 10 };
+const DAY_MS = 86400000;
+const deposits = (s) => Object.entries(s.piggy || {}).map(([at, amount]) => ({ at: Number(at), amount, out: (s.piggyOut || {})[at] || 0 }));
+export function piggyLocked(s) { return deposits(s).filter((d) => !d.out).reduce((a, d) => a + d.amount, 0); }
+export function piggyGain(s) { return deposits(s).filter((d) => d.out).reduce((a, d) => a + Math.max(0, d.out - d.amount), 0); }
+// сколько стоит вклад через days дней: монеты — целые, дробь копится, но выдаётся по целой части
+export const piggyValue = (amount, days) => Math.floor(amount * (1 + PIGGY.rate) ** Math.min(days, PIGGY.days) + 1e-9);
+export const piggyCurve = (amount) => Array.from({ length: PIGGY.days + 1 }, (_, d) => ({ day: d, value: amount * (1 + PIGGY.rate) ** d }));
+// открытый вклад: сколько дней лежит, сколько стоит сейчас, сколько дадут, если забрать сейчас
+export function piggyState(s, now = Date.now()) {
+  const open = deposits(s).filter((d) => !d.out).sort((a, b) => b.at - a.at)[0];
+  if (!open) return null;
+  const days = Math.min(PIGGY.days, Math.max(0, Math.floor((now - open.at) / DAY_MS)));
+  const ripe = days >= PIGGY.days;
+  return { at: open.at, amount: open.amount, days, ripe, value: piggyValue(open.amount, days), final: piggyValue(open.amount, PIGGY.days), payout: ripe ? piggyValue(open.amount, PIGGY.days) : open.amount,
+    ripeAt: open.at + PIGGY.days * DAY_MS };
+}
+export function piggyPut(s, amount, now = Date.now()) {
+  const n = Math.floor(amount);
+  if (piggyState(s, now)) return { s, ok: false, reason: 'В копилке уже лежит вклад — сначала заберите его' };
+  if (n < PIGGY.min) return { s, ok: false, reason: `Положить можно от ${PIGGY.min} монет` };
+  if (balance(s) < n) return { s, ok: false, reason: `Не хватает ${n - balance(s)} ${coinsWord(n - balance(s))}` };
+  return { s: { ...s, piggy: { ...s.piggy, [now]: n } }, ok: true, amount: n };
+}
+export function piggyTake(s, now = Date.now()) {
+  const st = piggyState(s, now);
+  if (!st) return { s, ok: false, reason: 'Копилка пуста' };
+  return { s: { ...s, piggyOut: { ...s.piggyOut, [st.at]: st.payout } }, ok: true, payout: st.payout, early: !st.ripe, lost: st.ripe ? 0 : st.value - st.amount };
+}
+export const piggyUsed = (s) => Object.keys(s.piggy || {}).length > 0;
+/* Цена отказа: что ученик отдаёт за вещь — уроки, которые пришлось пройти ради этих монет
+   (урок впервые — 10 монет), и проценты, которые эти монеты принесли бы за неделю в копилке. */
+export function forgone(price) {
+  const lessons = Math.max(1, Math.round(price / COIN.lesson));
+  return { lessons, week: piggyValue(price, PIGGY.days) - price, text: `≈ ${lessons} ${plural(lessons, 'урок', 'урока', 'уроков')}` };
+}
 
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------
    Три задания: одно про уроки, одно про ответы, одно про опыт или новый урок; какие именно —
@@ -186,7 +231,7 @@ export const ACHIEVEMENTS = [
   { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare) },
   { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
   { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
-  { id: 'saver', icon: 'piggy', title: 'Копилка', text: 'Заработано 500 монет', coins: 25, test: (s) => earned(s) >= 500 },
+  { id: 'saver', icon: 'piggy', title: 'Пятьсот монет', text: 'Заработано 500 монет', coins: 25, test: (s) => earned(s) >= 500 },
   { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
   { id: 'diamond', icon: 'gem', title: 'Огранщик', text: 'Урок взят на алмазном уровне', coins: 20, test: (s) => Object.values(s.lessons || {}).some((l) => l.diamond) },
   { id: 'diamond10', icon: 'gem', title: 'Ювелир', text: 'Десять уроков на алмазном уровне', coins: 60, test: (s) => Object.values(s.lessons || {}).filter((l) => l.diamond).length >= 10 },

@@ -89,14 +89,17 @@ describe.each(PATH)('юнит %s', (unitId) => {
         expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
         expect(sentences, `${c.idea.id}: ${sentences} предложений`).toBeLessThanOrEqual(3);
         // в истории шаг без героя — рассказчик со своим аватаром (docs/world.md)
-        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && (!c.idea.who || CAST[c.idea.who])), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
+        // у «Открой сам» своя картинка — улица у метро и график, который строит сам ученик
+        expect(c.discover || c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && (!c.idea.who || CAST[c.idea.who])), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
         const next = i + 1 < l.inner.length ? l.inner[i + 1].at : l.exercises.length;
         // в истории до вопроса — не больше двух сообщений подряд (реплика героя и слова рассказчика), в остальных — одно
         if (l.kind === 'story') {
           const run = l.inner.filter((d) => d.at === c.at).length;
           expect(run, `${c.idea.id}: подряд без вопроса`).toBeLessThanOrEqual(2);
           if (i + 1 === l.inner.length) expect(l.exercises.length - c.at, `${c.idea.id}: после последнего шага — вопрос`).toBeGreaterThanOrEqual(1);
-        } else expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
+        // после «Открой сам» — карточка-идея урока: сначала ученик нашёл сам, потом это назвали
+        } else if (c.discover) expect(l.inner[i + 1].idea, `${c.idea.id}: дальше — карточка-идея`).toBe(l.idea);
+        else expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
       });
       expect(l.inner[0].at).toBe(0);
     });
@@ -277,6 +280,20 @@ describe('упражнения: ровно один верный ответ', ()
           expect(ready(inst, 'да')).toBe(false);
           expect(check(inst, 'Я бы ввёл студенческую карту, потому что…').ok).toBe(true);
           expect(inst.explain && inst.explain.length).toBeTruthy();
+          break;
+        }
+        case 'domino': {
+          // 4–5 звеньев, 7–8 карточек; засчитано, только если цепочка собрана без падений
+          expect(inst.chain.length).toBeGreaterThanOrEqual(4); expect(inst.chain.length).toBeLessThanOrEqual(5);
+          expect(inst.deck.length).toBeGreaterThanOrEqual(7); expect(inst.deck.length).toBeLessThanOrEqual(8);
+          expect(new Set(inst.deck.map((c) => c.raw)).size, `${ex.id}: карточки не повторяются`).toBe(inst.deck.length);
+          inst.deck.filter((c) => c.link == null).forEach((c) => expect(plain(c.why).length, `${ex.id}: «${c.raw}» без объяснения`).toBeGreaterThan(20));
+          expect(ready(inst, { placed: inst.chain.slice(0, -1), falls: [], done: false })).toBe(false);
+          expect(check(inst, { placed: inst.chain, falls: [], done: true }).ok).toBe(true);
+          expect(check(inst, { placed: inst.chain, falls: [{ key: 'f0', at: 1 }], done: true }).ok).toBe(false);
+          // сцена: звенья со сдвигом кривой — те, что про кривую; цепочка про новость газеты
+          inst.deck.filter((c) => c.link != null).forEach((c) => c.effects.filter((e) => /^[DS][+-]$/.test(e)).forEach((e) => expect(c.raw, `${ex.id}: ${e}`).toMatch(e[0] === 'D' ? /спрос/i : /предложени/i)));
+          expect(inst.headline).toMatch(/^[^a-zа-яё]*$/);
           break;
         }
         default: throw new Error(inst.kind);
@@ -641,7 +658,8 @@ describe('алмазный уровень', () => {
       const extra = l.exercises.filter((e) => e.diamond).map((e) => e.id);
       expect(extra.length, l.id).toBeGreaterThanOrEqual(2);
       extra.forEach((id) => { expect(plainIds).not.toContain(id); expect(gemIds).toContain(id); });
-      expect(Object.values(gemPlan.cards).flat().length).toBe(l.inner.length);
+      // «Открой сам» на алмазном повторе не нужен: кривую ученик уже нашёл
+      expect(Object.values(gemPlan.cards).flat().length).toBe(l.inner.filter((c) => !c.discover).length);
       // алмазные упражнения не попадают в повторение и проверки тех, кто их не видел
       for (let s = 1; s <= 10; s += 1) {
         buildUnitCheck(l.unitId, seeded(s)).items.forEach((it) => expect(extra).not.toContain(it.of || it.id));
