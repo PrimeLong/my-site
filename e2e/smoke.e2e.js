@@ -1271,7 +1271,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByText('Выйти из урока?')).toHaveCount(0);
   await expect(page.getByTestId('lesson')).toHaveCount(0);
   await openTab(page, 'profile');
-  await expect(page.getByTestId('prof-completion')).toContainText('—');
+  await expect(page.getByTestId('prof-lessons')).toHaveText('0');
   await openTab(page, 'path');
 
   // «Знакомство»: шаг — вопрос — шаг — вопрос; первое упражнение неверно
@@ -1313,8 +1313,10 @@ test('путь: карточка урока, «Знакомство» шагам
   await openTab(page, 'tasks');
   await expect(page.getByTestId('practice-mistakes')).toBeEnabled();
   await openTab(page, 'profile');
-  await expect(page.getByTestId('prof-completion')).toContainText('100%');
-  await expect(page.getByTestId('prof-types')).toBeVisible();
+  // «Мои четыре недели»: календарь и уроки; разбивки по типам упражнений нет
+  await expect(page.getByTestId('prof-lessons')).toHaveText('1');
+  await expect(page.getByTestId('prof-calendar').locator('.today')).toHaveCount(1);
+  await expect(page.getByTestId('prof-types')).toHaveCount(0);
   // повтор пройденного урока — «Подробнее в учебнике» открывает главу, «назад» — снова итоги
   await openTab(page, 'path');
   await startLesson(page, 'sc-i1', 'Повторить');
@@ -1362,9 +1364,6 @@ test('путь: выход после первого ответа — урок �
   await ask.getByRole('button', { name: 'Выйти', exact: true }).click();
   await expect(page.getByTestId('lesson')).toHaveCount(0);
   await expect(path.locator('[data-unit="supply-demand"] .ln-pin')).toHaveText(/продолжить/i);
-  await openTab(page, 'profile');
-  await expect(page.getByTestId('prof-completion')).toContainText('—');
-  await expect(page.getByTestId('prof-quits')).toHaveCount(0);
   // продолжить — с того же места: прогресс урока не с нуля
   await openTab(page, 'path');
   await startLesson(page, 'sd-l3', 'Продолжить');
@@ -1378,8 +1377,7 @@ test('путь: выход после первого ответа — урок �
     localStorage.setItem('ems-learn-resume', JSON.stringify(m));
   });
   await gotoApp(page, '/', 'profile');
-  await expect(page.getByTestId('prof-quits')).toContainText('прерывали');
-  await expect(page.getByTestId('prof-completion')).toContainText('0%');
+  await expect(page.getByTestId('prof-calendar')).toBeVisible();
 
   // вторая «Практика» заново и целиком, с одной ошибкой; термины — с подсказкой
   await openTab(page, 'path');

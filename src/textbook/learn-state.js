@@ -257,6 +257,26 @@ export const missedYesterday = (s, now = Date.now()) => {
 };
 
 /* ------------------------------ СТАТИСТИКА ДЛЯ ПРОФИЛЯ ------------------------------ */
+/* «Мои четыре недели»: календарь минут по дням (с понедельника, сегодня — последняя клетка),
+   сколько минут и уроков за это время и точность первых ответов (последние 30). */
+export function studyWeeks(s, now = Date.now()) {
+  const today = dayOf(now);
+  const start = addDays(weekOf(today), -21);
+  const days = Array.from({ length: 28 }, (_, k) => {
+    const key = addDays(start, k);
+    return { day: key, minutes: Math.floor(dayEntry(s, key).s / 60), lessons: (s.done || {})[key] || 0, today: key === today, future: key > today };
+  });
+  const past = days.filter((d) => !d.future);
+  const r = s.recent || '';
+  return {
+    days,
+    minutes: past.reduce((a, d) => a + d.minutes, 0),
+    lessons: past.reduce((a, d) => a + d.lessons, 0),
+    active: past.filter((d) => d.lessons > 0 || d.minutes > 0).length,
+    accuracy: r.length >= 5 ? [...r].filter((c) => c === '1').length / r.length : null,
+  };
+}
+
 export function learnStats(s, now = Date.now()) {
   const today = dayOf(now);
   // дни занятий по неделям: последние четыре недели, от текущей назад

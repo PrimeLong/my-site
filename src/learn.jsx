@@ -27,7 +27,7 @@ import {
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
-  goalToday, missedYesterday, learnStats, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
+  goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
@@ -139,6 +139,18 @@ const CSS = `
   .ln-textbook .ems-btn.primary { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000); font: 700 13.5px/1.25 var(--ds-serif); letter-spacing: .06em; text-transform: uppercase; }
   .ln-textbook .ems-btn.primary:hover { background: var(--u); filter: brightness(1.07); }
   .ln-textbook .ems-btn[aria-pressed="true"] { background: var(--ds-sel); color: var(--ds-sel-ink); border-color: var(--ds-sel-rule); }
+  .ln-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; max-width: 360px; }
+  .ln-cal-wd { font: 700 11px/1 var(--ds-sans); color: var(--ds-ink3); text-align: center; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
+  .ln-cal-d { aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--ds-rule2); display: flex; align-items: center; justify-content: center;
+    font: 700 11px/1 var(--ds-mono); color: var(--ds-ink2); background: var(--ds-card); }
+  .ln-cal-d.t1 { background: color-mix(in srgb, var(--u) 22%, var(--ds-card)); }
+  .ln-cal-d.t2 { background: color-mix(in srgb, var(--u) 50%, var(--ds-card)); color: var(--ds-ink); }
+  .ln-cal-d.t3 { background: var(--u); color: #fff; border-color: transparent; }
+  .ln-cal-d.today { outline: 2px solid var(--ds-ink); outline-offset: 1px; }
+  .ln-cal-d.future { opacity: .35; border-style: dashed; }
+  .ln-cal-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; text-align: center; }
+  .ln-cal-sum b { display: block; font-size: 24px; color: var(--u-ink); }
+  .ln-cal-sum span { font-size: 12.5px; color: var(--ds-ink3); }
   .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
 `;
@@ -1331,6 +1343,34 @@ function TasksView({ learn, onStart, onOpenBook }) {
 /* ------------------------------ ПРОФИЛЬ ------------------------------
    Личные рекорды, альбом марок (пройденный юнит — марка с его зданием), цель дня,
    статистика, учебник, аккаунт и настройки: тёмная тема, музыка, звуки ответов. */
+/* Четыре недели занятий: календарь — клетка дня темнее, чем больше минут; три числа под ним.
+   Без разбивки по типам упражнений: она мало что говорит ученику. */
+const WD = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+function StudyWeeks({ learn }) {
+  const w = studyWeeks(learn);
+  const goal = goalToday(learn).goal;
+  const tone = (m) => (m <= 0 ? 0 : m < goal / 2 ? 1 : m < goal ? 2 : 3);
+  return (
+    <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
+      <div className="ds-h3" style={{ marginBottom: 2 }}>Мои четыре недели</div>
+      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 10 }}>Клетка — день: чем темнее, тем больше минут. Полный цвет — цель дня ({goal} мин) выполнена.</div>
+      <div className="ln-cal" data-testid="prof-calendar">
+        {WD.map((d) => <span key={d} className="ln-cal-wd">{d}</span>)}
+        {w.days.map((d) => (
+          <span key={d.day} className={`ln-cal-d t${tone(d.minutes)}${d.today ? ' today' : ''}${d.future ? ' future' : ''}`} title={`${d.day}: ${d.minutes} мин, уроков ${d.lessons}`} data-minutes={d.minutes}>
+            {d.minutes > 0 ? d.minutes : ''}
+          </span>
+        ))}
+      </div>
+      <div className="ln-cal-sum">
+        <div><b className="ds-num" data-testid="prof-minutes">{w.minutes}</b><span>минут</span></div>
+        <div><b className="ds-num" data-testid="prof-lessons">{w.lessons}</b><span>{plural(w.lessons, 'урок', 'урока', 'уроков')}</span></div>
+        <div><b className="ds-num" data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b><span>верно с первого раза</span></div>
+      </div>
+    </Card>
+  );
+}
+
 function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onReports }) {
   // владельцы (OWNER_LOGINS на сервере) видят сообщения об ошибках
   const [owner, setOwner] = useState(false);
@@ -1343,7 +1383,6 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
   }, []);
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
-  const pct = (x) => `${Math.round(x * 100)}%`;
   const [dark, setDark] = useState(learnDark);
   const [music, setMusic] = useState(learnMusic);
   const [sfx, setSfx] = useState(learnSfx);
@@ -1389,32 +1428,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
         <div className="ds-sub" style={{ fontSize: 13.5, margin: '0 0 10px' }}>Достижения — оттиски печатей; за каждую — монеты.</div>
         <Achievements learn={learn} />
       </Card>
-      <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
-        <div className="ds-h3" style={{ marginBottom: 6 }}>Как идёт учёба</div>
-        <div className="ds-sub" style={{ fontSize: 14, marginBottom: 4 }}>Дней занятий по неделям (эта — справа)</div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 64, marginBottom: 10 }} data-testid="prof-weeks">
-          {[...stats.weeks].reverse().map((w) => (
-            <div key={w.week} style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ height: Math.max(3, (w.days / 7) * 46), background: w.days ? 'var(--u)' : 'var(--ds-rule)', borderRadius: 1 }} />
-              <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{w.days}/7</div>
-            </div>
-          ))}
-        </div>
-        <Row label="Уроков доведено до конца" value={stats.completion == null ? '—' : pct(stats.completion)} data-testid="prof-completion" />
-        {stats.types.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', gap: '3px 12px', fontSize: 14, marginTop: 8 }} data-testid="prof-types">
-            <span className="ds-faint">тип</span><span className="ds-faint">точность</span><span className="ds-faint">время</span>
-            {stats.types.map((t) => (
-              <React.Fragment key={t.kind}><span>{KIND_LABEL[t.kind] || t.kind}</span><b className="ds-num">{pct(t.accuracy)}</b><b className="ds-num">{Math.round(t.avgSec)} с</b></React.Fragment>
-            ))}
-          </div>
-        )}
-        {stats.quitKinds.length > 0 && (
-          <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }} data-testid="prof-quits">
-            Брошенные уроки чаще всего прерывали на упражнении «{KIND_LABEL[stats.quitKinds[0][0]] || stats.quitKinds[0][0]}»{stats.quitPos[0] ? `, обычно на ${stats.quitPos[0].index + 1}-м` : ''}.
-          </div>
-        )}
-      </Card>
+      <StudyWeeks learn={learn} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
         text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
