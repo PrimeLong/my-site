@@ -613,7 +613,6 @@ export function WordDeck({ cards, onDone, body, foot }) {
   });
   if (!card) return null;
   const left = queue.length - 1;
-  const pos = cards.length - new Set(queue).size + 1;
   const onDown = (e) => { if (open && !out) drag.current = { x: e.clientX }; };
   const onMove = (e) => { if (drag.current) setDx(e.clientX - drag.current.x); };
   const onUp = () => { if (!drag.current) return; const d = dx; drag.current = null; if (Math.abs(d) > 80) decide(d > 0); else setDx(0); };
@@ -627,7 +626,7 @@ export function WordDeck({ cards, onDone, body, foot }) {
         <div className={`lp-word ${out ? `out-${out}` : 'in'}`} key={`${idx}-${repeat}`} style={style} data-testid="flash-card" data-flipped={String(open)}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onClick={() => { if (!open) reveal(); }}>
           <div className="lp-word-top">
-            <span>Слово {Math.min(pos, cards.length)} из {cards.length}</span>
+            <span>Слово {idx + 1} из {cards.length}</span>
             {repeat && <span className="ds-badge" style={{ textTransform: 'none', letterSpacing: 0 }}>ещё раз</span>}
             <span style={{ flex: 1 }} />
             {open && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>смахните →</span>}
