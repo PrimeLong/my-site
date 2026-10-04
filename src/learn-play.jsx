@@ -6,7 +6,7 @@
    карточки не летают, подсветка текста не бежит. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy,
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy, GraduationCap, Radio, Feather,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
@@ -534,19 +534,35 @@ function shuffleList(list) {
 }
 
 /* ------------------------------ КАРТОЧКИ ВИДОВ УРОКОВ ------------------------------ */
-const CAST_ICON = { coffee: Coffee, croissant: Croissant, landmark: Landmark, 'scroll-text': ScrollText };
+const CAST_ICON = { coffee: Coffee, croissant: Croissant, landmark: Landmark, 'scroll-text': ScrollText, graduation: GraduationCap, radio: Radio, feather: Feather };
+// причёски: у каждого героя своя
+const HAIR = {
+  vera: 'M19 27c0-10 6-15 13-15s13 5 13 15c-3-5-8-7-13-7s-10 2-13 7z',
+  masha: 'M18 30c-1-12 6-18 14-18s15 6 14 18c-2-6-6-9-9-10-3 3-10 5-19 10z',
+  host: 'M17 36c-2-14 5-23 15-23s17 9 15 23c-1-7-4-12-7-14-5 2-12 3-18 4-2 3-4 6-5 10z',
+  timur: 'M20 25c0-8 5-12 12-12s12 4 12 12c-2-2-5-4-9-4l-1 3-2-3c-5 0-9 2-12 4z',
+};
 // портрет героя: лицо, причёска его цвета и значок его дела
 export function Portrait({ who, size = 64 }) {
   const c = CAST[who];
   if (!c) return null;
   const Icon = CAST_ICON[c.icon] || Coffee;
+  // рассказчик — не человек в кадре: вместо лица перо
+  if (c.nofs) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: size, height: size, flexShrink: 0, borderRadius: '50%',
+        background: `color-mix(in srgb, ${c.color} 12%, var(--ds-card))`, border: `2px solid ${c.color}`, color: c.color }} data-testid="portrait" data-who={who}>
+        <Icon size={size * 0.46} aria-hidden="true" />
+      </span>
+    );
+  }
   return (
     <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flexShrink: 0 }} data-testid="portrait" data-who={who}>
       <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
         <circle cx="32" cy="32" r="31" fill={`color-mix(in srgb, ${c.color} 18%, white)`} stroke={c.color} strokeWidth="2" />
         <path d="M14 58c2-11 9-16 18-16s16 5 18 16" fill={c.color} />
         <circle cx="32" cy="28" r="12.5" fill="#F6D2B8" />
-        <path d={who === 'vera' ? 'M19 27c0-10 6-15 13-15s13 5 13 15c-3-5-8-7-13-7s-10 2-13 7z' : who === 'masha' ? 'M18 30c-1-12 6-18 14-18s15 6 14 18c-2-6-6-9-9-10-3 3-10 5-19 10z' : 'M20 24c1-7 6-10 12-10s11 3 12 10c-4-3-8-4-12-4s-8 1-12 4z'} fill={c.hair} />
+        <path d={HAIR[who] || 'M20 24c1-7 6-10 12-10s11 3 12 10c-4-3-8-4-12-4s-8 1-12 4z'} fill={c.hair} />
         <circle cx="27.5" cy="29" r="1.6" fill="#3B2A20" /><circle cx="36.5" cy="29" r="1.6" fill="#3B2A20" />
         <path d="M28 34c2.4 2 5.6 2 8 0" stroke="#3B2A20" strokeWidth="1.6" fill="none" strokeLinecap="round" />
       </svg>
