@@ -36,7 +36,7 @@ const shot = async (page, name, theme, opts = {}) => {
   expect(overflow, `${name}: страницу можно прокрутить вбок`).toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${DIR}/${name}-${theme}.png`, fullPage: !!opts.full, animations: 'disabled' });
 };
-const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button');
+const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
 const openLesson = async (page, id) => {
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click().catch(() => {});
   await page.locator(`[data-testid=path-lesson][data-lesson="${id}"]`).click();
@@ -95,7 +95,7 @@ async function playGame(page, { seconds = 5, max = Infinity } = {}) {
 // карточки перед упражнением: шаг, слово, пункт итогов
 async function passCards(page) {
   const card = page.getByTestId('lesson-card');
-  for (let i = 0; i < 12 && await card.isVisible(); i += 1) { await foot(page).click(); await page.waitForTimeout(120); }
+  for (let i = 0; i < 24 && await card.isVisible(); i += 1) { await foot(page).click(); await page.waitForTimeout(320); }
 }
 
 for (const theme of ['light', 'dark']) {
@@ -152,7 +152,7 @@ for (const theme of ['light', 'dark']) {
       // «Слова»: карточка, оборот, плитки
       await openLesson(page, 'sd-w');
       await shot(page, '14-words-card', theme);
-      await page.getByTestId('flash-card').click();
+      await page.getByTestId('word-show').click();
       await shot(page, '15-words-flip', theme, { wait: 700 });
       await passCards(page);
       await shot(page, '16-words-tiles', theme);

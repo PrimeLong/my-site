@@ -8,7 +8,7 @@
    'avg' (в среднем за все кварталы задачи).
    topic — раздел страницы «игра ↔ учебник», к которому привязана задача;
    impulses — стартовые импульсы (шок, который уже в пути). */
-import { makeImpulse, makeInitialEconomy, quarterLabel } from './engine.js';
+import { makeImpulse, makeInitialEconomy } from './engine.js';
 import { PRE_KEYS, makePrehistory } from './autopilot.js';
 
 export const DRILLS = [

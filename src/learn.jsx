@@ -38,7 +38,7 @@ import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText } from './learn/terms.js';
 import {
-  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, FlashCard, Calculator as CalcPad,
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
 import { symbolsOf } from './textbook/symbols.js';
@@ -472,9 +472,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const cardsSeen = useRef(new Set(rs ? rs.cardsSeen : []));
   const cardFor = (item) => (item && plan.cards && plan.cards[item.uid] && !cardsSeen.current.has(item.uid) ? plan.cards[item.uid] : null);
   const [stage, setStage] = useState(() => (cardFor((rs ? rs.queue : plan.items)[rs ? rs.pos : 0]) ? 'card' : 'work'));
-  // карточки перед упражнением идут подряд: шаг, слово, пункт итогов; flipped — оборот слова
+  // карточки перед упражнением идут подряд: шаг, слово, пункт итогов
   const [cardIdx, setCardIdx] = useState(0);
-  const [flipped, setFlipped] = useState(false);
   const respRef = useRef(null);
   const [resp, setResp] = useState(null);
   const [fb, setFb] = useState(null);
@@ -701,20 +700,35 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
           : kind === 'story' ? 'История продолжается' : kind === 'listen' ? 'Слушаем дальше' : 'Шаг дальше';
         const go = () => {
           Audio.play('paper');
-          if (!last) { setCardIdx(cardIdx + 1); setFlipped(false); return; }
-          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setFlipped(false); setStage('work');
+          if (!last) { setCardIdx(cardIdx + 1); return; }
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
         };
         const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
+        // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
+        if (c.flash) {
+          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work'); };
+          return (
+            <WordDeck key={cur.uid} cards={list} onDone={done}
+              body={(inner) => (
+                <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style="flash">
+                  <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span className="ln-kind" style={{ margin: 0 }}>{LESSON_KIND.words}</span><span style={{ flex: 1 }} />
+                    <ReportFlag context={() => stepContext(c, lesson, 'Слова')} />
+                  </div>
+                  {inner}
+                </div></div>
+              )}
+              foot={(buttons) => <div className="ln-foot"><div className="ln-inner">{buttons}</div></div>} />
+          );
+        }
         return (
           <>
-            <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style={c.flash ? 'flash' : kind} key={c.id}>
+            <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style={kind} key={c.id}>
               <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <span className="ln-kind" style={{ margin: 0 }}>{eyebrow}</span><span style={{ flex: 1 }} />
                 <ReportFlag context={() => stepContext(c, lesson, eyebrow)} />
               </div>
-              {c.flash ? (
-                <FlashCard card={c} flipped={flipped} onFlip={() => { Audio.play('paper'); setFlipped((v) => !v); }} />
-              ) : kind === 'summary' ? (
+              {kind === 'summary' ? (
                 <Card>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <Rosette size={54} opacity={0.6}><span className="ds-num" style={{ fontSize: 20, fontWeight: 700, color: 'var(--u-ink)' }}>{cardIdx + 1}</span></Rosette>
@@ -737,9 +751,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
               )}
             </div></div>
             <div className="ln-foot"><div className="ln-inner">
-              {c.flash && !flipped
-                ? <Button variant="secondary" wide onClick={() => { Audio.play('paper'); setFlipped(true); }}>Перевернуть</Button>
-                : <Button wide onClick={go}>{last ? (kind === 'summary' ? 'К тесту юнита' : 'Понятно') : 'Дальше'}</Button>}
+              <Button wide onClick={go}>{last ? (kind === 'summary' ? 'К тесту юнита' : 'Понятно') : 'Дальше'}</Button>
             </div></div>
           </>
         );
