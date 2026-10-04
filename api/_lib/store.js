@@ -217,3 +217,24 @@ export async function setReport(entry) {
   }
   return true;
 }
+
+/* Удаление аккаунта («Удалить аккаунт и все данные» в профиле): профиль, прогресс,
+   сохранения, рекорды, строки вызова дня за последний месяц и сообщения об ошибках.
+   Сессии отдельно не ищем: без пользователя они больше не открывают профиль и сами
+   истекают через полгода. */
+const lastDays = (n) => Array.from({ length: n }, (_, k) => new Date(Date.now() - k * 86400000).toISOString().slice(0, 10));
+export async function deleteUserData({ login, playerId }) {
+  const keys = [`user:${login}`, ...(playerId ? [`profile:${playerId}`, `solo:${playerId}`, `tycoon:${playerId}`] : [])];
+  if (redis) {
+    await redis.del(...keys);
+    await redis.hdel('records:tycoon', login);
+    if (playerId) for (const day of lastDays(32)) await redis.hdel(`daily:${day}`, playerId);
+  } else {
+    keys.forEach((k) => mem.delete(k));
+    const rec = { ...mem.get('records:tycoon') }; delete rec[login]; mem.set('records:tycoon', rec);
+    if (playerId) lastDays(32).forEach((day) => { const b = { ...mem.get(`daily:${day}`) }; delete b[playerId]; mem.set(`daily:${day}`, b); });
+  }
+  const mine = (await getReports()).filter((r) => r.login === login).map((r) => r.id);
+  for (const id of mine) await deleteReport(id);
+  return true;
+}

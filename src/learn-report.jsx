@@ -18,7 +18,8 @@ export const REASONS = [
   ['answer', 'Ошибка в ответе'], ['accept', 'Мой ответ должен быть засчитан'], ['typo', 'Опечатка или ошибка в тексте'],
   ['unclear', 'Непонятно объяснено'], ['broken', 'Не работает'],
 ];
-const REASON_BY_ID = Object.fromEntries(REASONS);
+// «filter» — «Это ошибка фильтра» с экрана регистрации: в списке есть, в выборе причины — нет
+const REASON_BY_ID = { ...Object.fromEntries(REASONS), filter: 'Фильтр не пропустил имя' };
 // eslint-disable-next-line no-undef
 export const BUILD = typeof __BUILD__ !== 'undefined' ? __BUILD__ : 'dev';
 

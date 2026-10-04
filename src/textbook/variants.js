@@ -285,6 +285,20 @@ T.push({ id: 'v-el-point', chapter: 'elasticity', level: 2, source: 'el-point', 
   };
 } });
 
+// эластичность в одной точке прямой спроса — одним ответом (усложнение для «Практики» Пути)
+T.push({ id: 'v-el-pt1', chapter: 'elasticity', level: 2, source: 'el-point', gen: (rand) => {
+  const k = draw(rand, () => { const b = ri(rand, 1, 5); const top = ri(rand, 20, 80); return { a: b * top, b, top, P: ri(rand, 2, top - 2) }; },
+    ({ a, b, P }) => { const e = (b * P) / (a - b * P); return differs(1 / e, e, DEC) && a - b * P > 0; });
+  const Q = k.a - k.b * k.P; const e = (k.b * k.P) / Q;
+  return {
+    statement: `Спрос $Q = ${k.a} - ${k.b}P$, цена ${k.P} крон. Найдите модуль эластичности спроса в этой точке${hundredths}.`,
+    parts: [{ answer: e, tol: DEC, pos: true }],
+    traps: [{ part: 0, value: 1 / e, text: 'Перевёрнуто: в точке $|E| = bP/Q$, а не $Q/(bP)$.' }],
+    solution: `Сначала количество: $Q = ${k.a} - ${k.b} \\cdot ${k.P} = ${Q}$. Эластичность в точке прямой $|E| = bP/Q = ${k.b} \\cdot ${k.P}/${Q} \\approx ${m(e)}$ — спрос ${e > 1 ? 'эластичный' : e < 1 ? 'неэластичный' : 'единичной эластичности'}.`,
+    check: ([x]) => near(x, (k.b * k.P) / (k.a - k.b * k.P)),
+  };
+} });
+
 // издержки: переменные и средние
 T.push({ id: 'v-costs-types', chapter: 'costs', level: 1, source: 'costs-types', gen: (rand) => {
   const k = { F: ri(rand, 100, 800, 50), v: ri(rand, 5, 40), w: pick(rand, [0.5, 1, 2]), Q: ri(rand, 5, 30) };

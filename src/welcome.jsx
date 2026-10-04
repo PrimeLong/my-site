@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { authenticate, RecoveryCodeView, StorageWarning } from './account.jsx';
+import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox } from './account.jsx';
+import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
@@ -48,7 +49,7 @@ function Hello({ go }) {
         <Guilloche height={26} />
         <div style={{ margin: '18px 0 6px' }}><Rosette size={210} opacity={0.4}><Mascot mood="wave" size={120} /></Rosette></div>
         <h1 className="ds-h1" style={{ fontSize: 36, letterSpacing: '.02em' }}>Инфлатия</h1>
-        <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика · пять минут в день</div>
+        <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика пять минут в день</div>
         <div className="ds-sub" style={{ fontSize: 16.5, lineHeight: 1.5, maxWidth: 320, margin: '12px 0 18px' }}>
           Дорога по стране маленькими уроками — вместе с Инфлей.
         </div>
@@ -101,6 +102,7 @@ function AuthForm({ mode, go, plan }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shown, setShown] = useState(null);
@@ -117,7 +119,7 @@ function AuthForm({ mode, go, plan }) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const r = await authenticate(mode, { login, password, name, code });
+      const r = await authenticate(mode, { login, password, name, code, consent });
       Audio.play('up');
       if (r.recoveryCode) setShown(r); else finish();
     } catch (err) { setError(err.message); Audio.play('down'); setBusy(false); }
@@ -135,7 +137,7 @@ function AuthForm({ mode, go, plan }) {
     );
   }
   const title = { register: 'Создайте аккаунт', login: 'Вход', recover: 'Новый пароль по коду' }[mode];
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12);
+  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12) && (mode !== 'register' || consent);
   return (
     <div className="wl" data-testid={`welcome-${mode}`}>
       <Top onBack={() => go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello')} />
@@ -163,7 +165,8 @@ function AuthForm({ mode, go, plan }) {
             <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
           </label>
         )}
-        {error && <div className="wl-err" role="alert">{error}</div>}
+        {mode === 'register' && <div style={{ marginTop: 12 }}><ConsentBox on={consent} set={setConsent} /></div>}
+        {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div className="wl-err" role="alert">{error}</div>)}
         <div style={{ flex: 1 }} />
         <div className="wl-foot">
           <Button type="submit" wide disabled={busy || !canSubmit}>

@@ -127,8 +127,8 @@ describe('вступительный тест', () => {
     plan.items.forEach((it) => expect(['swipe', 'rush']).not.toContain(it.kind));
   });
   it('юнит открыт, если в пятёрке не больше одной ошибки; первая проваленная пятёрка останавливает', () => {
-    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'consumer']);
-    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'consumer']);
+    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'consumer']);
+    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'consumer']);
     expect(placementOpened(plan.items, answer({ 'supply-demand': 2 }))).toEqual(['scarcity']);
     expect(placementOpened(plan.items, answer({ scarcity: 2 }))).toEqual([]);
     const first = answer({ scarcity: 2 });
@@ -362,7 +362,8 @@ describe('правки: печать «Без помарок», испытани
     expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).toContain('a:perfect');
   });
   it('испытание месяца персональное: от цели в минутах и прошлого месяца, без «заниматься 2 дня»', () => {
-    const FLOOR = { minutes: 60, lessons: 5, perfect: 3, xp: 100 };
+    // нижние планки высокие: испытание месяца — трудное, не «3 урока без ошибок»
+    const FLOOR = { minutes: 150, lessons: 15, perfect: 8, xp: 300 };
     const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29'));
     const m = monthChallenge(late, at('2026-09-29'));
     expect(m.daysLeft).toBe(2);
@@ -390,6 +391,10 @@ describe('правки: печать «Без помарок», испытани
     const hard = monthChallenge(busy, at('2026-09-29'));
     expect(hard.target).toBeGreaterThan(calm.target);
     expect(hard.why).toContain('В прошлом месяце');
+    // «чуть больше» — правда: цель строго больше прошлого месяца (раньше бывало «в прошлом — 5», а цель 3)
+    const [, before, now] = hard.why.match(/В прошлом месяце — (\d+), теперь (\d+)/).map(Number);
+    expect(now).toBe(hard.target);
+    expect(hard.target).toBeGreaterThan(before);
   });
   it('калькулятор: скобки, приоритет, унарный минус, степень, запятая; неполное и деление на ноль — ничего', () => {
     expect(evalExpr('100/50')).toBe(2);

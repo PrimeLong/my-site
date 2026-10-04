@@ -6,7 +6,7 @@
    профилем на любое устройство — playerId профиля становится playerId устройства.
    Почты нет, поэтому забытый пароль восстанавливается кодом, который показывается
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
-import { getUser, setUser, setSession, delSession, hasKv, hit } from './_lib/store.js';
+import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData } from './_lib/store.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
@@ -51,6 +51,8 @@ async function handleRequest(req, res) {
     if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) {
       return res.status(400).json({ error: 'Пароль — не короче 6 символов' });
     }
+    // регистрация — только с согласием со страницей «Данные и конфиденциальность»
+    if (body.consent !== true) return res.status(400).json({ error: 'Отметьте согласие со страницей «Данные и конфиденциальность»' });
     const name = cleanName(body.name) || login;
     // ни логин, ни имя — без грубых слов (их видят в сетевых партиях и в сообщениях об ошибках)
     if (isRude(login) || isRude(name)) return res.status(400).json({ error: RUDE_NAME });
@@ -64,7 +66,7 @@ async function handleRequest(req, res) {
     // почты у игры нет, поэтому доступ восстанавливается кодом, который показываем один раз
     const recoveryCode = newRecoveryCode();
     const user = { login, name, emblem: 'star', salt, hash, ...hashRecovery(recoveryCode), epoch: 0, playerId,
-      createdAt: Date.now(), stats: emptyStats(), fails: 0, lockUntil: 0 };
+      createdAt: Date.now(), consentAt: Date.now(), stats: emptyStats(), fails: 0, lockUntil: 0 };
     await setUser(login, user);
     const token = await openSession(user);
     return res.status(200).json({ token, profile: publicProfile(user), recoveryCode, storage: storage() });
@@ -145,6 +147,26 @@ async function handleRequest(req, res) {
     const next = { ...user, ...hashRecovery(recoveryCode) };
     await setUser(user.login, next);
     return res.status(200).json({ recoveryCode, profile: publicProfile(next) });
+  }
+  /* «Скачать мои данные»: всё, что хранится о профиле, одним JSON — без хэшей пароля и кода
+     восстановления (это не данные человека, а замок от них). */
+  if (action === 'export') {
+    const pid = user.playerId;
+    const rec = (await getRecords('tycoon'))[user.login];
+    return res.status(200).json({
+      exportedAt: new Date().toISOString(),
+      account: { ...publicProfile(user), consentAt: user.consentAt || null },
+      progress: pid ? await getProfile(pid) : null,
+      saves: pid ? { solo: await getSoloSlots(pid), tycoon: await getTycoonSlots(pid) } : null,
+      records: rec ? { tycoon: typeof rec === 'string' ? JSON.parse(rec) : rec } : {},
+      reports: (await getReports()).filter((r) => r.login === user.login),
+    });
+  }
+  // «Удалить аккаунт и все данные» — только с паролем
+  if (action === 'delete') {
+    if (!checkPassword(body.password, user)) return res.status(403).json({ error: 'Пароль не подходит' });
+    await deleteUserData({ login: user.login, playerId: user.playerId });
+    return res.status(200).json({ ok: true });
   }
   if (action === 'logout') {
     await delSession(body.token);

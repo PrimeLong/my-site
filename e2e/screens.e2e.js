@@ -75,7 +75,8 @@ async function answer(page, wrong = false) {
     await playGame(page);
     return kind;
   }
-  await page.getByRole('button', { name: 'Проверить' }).click();
+  if (kind === 'open') await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
+  await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   return kind;
 }
 const next = (page) => page.getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -112,6 +113,9 @@ for (const theme of ['light', 'dark']) {
       for (const g of ['Цель', 'Минут в день', 'Знания']) await page.getByRole('group', { name: g }).getByRole('button').first().click();
       await page.getByRole('button', { name: 'Продолжить' }).click();
       await shot(page, '03-welcome-register', theme);
+      await page.getByTestId('consent-privacy').click();
+      await shot(page, '03a-privacy', theme);
+      await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
       await page.getByRole('button', { name: 'Назад' }).click(); await page.getByRole('button', { name: 'Назад' }).click();
       await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
       await shot(page, '04-welcome-login', theme);
@@ -163,7 +167,7 @@ for (const theme of ['light', 'dark']) {
       await passCards(page); await answer(page); await next(page); await passCards(page);
       await page.getByTestId('ex').getByRole('slider', { name: 'Цена' }).fill('17');
       await shot(page, '18-price', theme);
-      await answer(page); await next(page);
+      await answer(page); await next(page); await passCards(page);
       await answer(page);
       await shot(page, '19-point', theme);
       await next(page); await passCards(page);
@@ -315,7 +319,7 @@ for (const theme of ['light', 'dark']) {
         try {
           const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
           const at = Date.now() - 86400000;
-          ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-sum', ...ids].forEach((id) => { p.learn.lessons[id] = { at, runs: 1, best: 90 }; });
+          ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-sum', 'el-sum', ...ids].forEach((id) => { p.learn.lessons[id] = { at, runs: 1, best: 90 }; });
           localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
         } catch { /* нет хранилища */ }
       }, CS);

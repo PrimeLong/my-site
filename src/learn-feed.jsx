@@ -16,7 +16,7 @@ import { Inline } from './textbook.jsx';
 import { Guilloche } from './ds-art.jsx';
 import { useReducedMotion } from './ds-art.jsx';
 import { Portrait } from './learn-play.jsx';
-import { CAST } from './learn/cast.js';
+import { CAST, DEFAULT_VOICE } from './learn/cast.js';
 import { plainText } from './textbook/content.js';
 
 export const FEED_CSS = `
@@ -121,20 +121,22 @@ function Words({ text, at }) {
 
 function Message({ entry, mode, speech, picture, skipTitle, flag }) {
   const { card, live, revealed, index } = entry;
-  const who = card.who ? CAST[card.who] : null;
-  const [shown, setShown] = useState(false);
   const listen = mode === 'listen';
+  // шаг без героя — голос рассказчика (в эфире — ведущей), со своим аватаром
+  const whoId = card.who || DEFAULT_VOICE[listen ? 'listen' : 'story'];
+  const who = CAST[whoId];
+  const [shown, setShown] = useState(false);
   const speaking = speech.now.key === entry.key;
   // аудиоурок: текст скрыт, пока его не открыли или пока не отвечен вопрос после сообщения
   const visible = !listen || !speech.voice || shown || revealed;
   const text = msgText(card);
   return (
     <div className={`fd-msg ${live ? 'fd-new' : ''}`} data-testid={live ? 'lesson-card' : 'feed-msg'} data-style={mode} data-key={entry.key}>
-      {who ? <Portrait who={card.who} size={44} /> : <span className="fd-ava" aria-hidden="true">{listen ? <Radio size={20} /> : <Newspaper size={20} />}</span>}
+      <Portrait who={whoId} size={44} />
       <div className={`fd-bubble ${speaking ? 'speaking' : ''}`}>
         <div className="fd-who">
-          <b>{who ? who.name : listen ? 'Эфир' : '«Вестник»'}</b>
-          {who && <span>{who.role}</span>}
+          <b>{who.name}</b>
+          <span>{who.role}</span>
           <span className="ln-kind">сообщение {index}</span>
           <span style={{ flex: 1 }} />{flag}
         </div>
@@ -173,7 +175,8 @@ function RadioSet({ entry, speech, picture, skipTitle, flag }) {
   return (
     <div className={`fd-set ${live ? 'fd-new' : ''}`} data-testid={live ? 'lesson-card' : 'feed-msg'} data-style="listen" data-key={entry.key} data-speaking={String(speaking)}>
       <div className="fd-set-top">
-        <span className="fd-onair">в эфире</span><span className="ln-kind" style={{ margin: 0 }}>· сюжет {index}</span><span style={{ flex: 1 }} />{flag}
+        <Portrait who={card.who || DEFAULT_VOICE.listen} size={26} />
+        <span className="fd-onair">в эфире</span><span className="ln-kind" style={{ margin: 0 }}>· {(CAST[card.who] || CAST[DEFAULT_VOICE.listen]).name} · сюжет {index}</span><span style={{ flex: 1 }} />{flag}
       </div>
       <div className="fd-set-main">
         <button type="button" className="fd-play" data-testid="feed-play" aria-label={`${speaking ? 'Читаю' : 'Слушать'}: сюжет ${index}`} onClick={() => speech.speak(entry.key, text)}>

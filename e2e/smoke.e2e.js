@@ -60,7 +60,7 @@ async function startSoloGame(page, role = 'Глава Центрального �
 
 test('меню открывается, шрифты свои, внешних запросов нет', async ({ page }) => {
   const { errors, external } = await openApp(page);
-  await expect(page.getByRole('heading', { name: 'Inflatia' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Инфлатия' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
   expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');
@@ -413,6 +413,13 @@ test('вход: первый запуск — приветствие, цель, 
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
   await reg.getByLabel('Имя').fill('Анна');
+  // без согласия со страницей «Данные и конфиденциальность» аккаунт не создать; страница открывается из галочки
+  await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await reg.getByTestId('consent-privacy').click();
+  await expect(page.getByTestId('privacy')).toContainText('Что мы храним');
+  await expect(page.getByTestId('privacy')).toContainText('Upstash');
+  await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
+  await reg.getByTestId('consent').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   // почты нет — код восстановления показывается один раз
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
@@ -1179,10 +1186,13 @@ async function answerExercise(page, { wrong = false } = {}) {
     await svg.click({ position: { x: ((pl.x0 + (q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (pr / pl.pMax) * pl.h) / pl.vh) * box.height } });
   } else if (kind === 'swipe' || kind === 'rush') {
     await playRound(page, () => wrong);
+  } else if (kind === 'open') {
+    // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор
+    await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
   }
-  if (!['swipe', 'rush'].includes(kind)) await page.getByRole('button', { name: 'Проверить' }).click();
+  if (!['swipe', 'rush'].includes(kind)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
-  await expect(fb).toHaveAttribute('data-ok', String(!wrong));
+  await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
   return kind;
 }
 // пройти урок до экрана итогов; wrongAt — номера упражнений, где ошибиться нарочно
@@ -1206,11 +1216,14 @@ async function passCards(page) {
   let n = 0;
   const card = page.getByTestId('lesson-card');
   // подпись карточки: вид, «Слово 2 из 8», перевёрнута ли — по ней видно, что нажатие сработало
-  const sig = async () => {
-    if (!(await card.isVisible())) return 'gone';
-    const flip = card.locator('[data-flipped]');
-    return `${await card.getAttribute('data-style')}|${await card.locator('.ln-kind').innerText()}|${(await flip.count()) ? await flip.getAttribute('data-flipped') : ''}`;
-  };
+  // читается одним вызовом в странице: карточка может смениться между шагами, и тогда
+  // getAttribute по исчезнувшему элементу ждал бы бесконечно
+  const sig = () => page.evaluate(() => {
+    const c = document.querySelector('[data-testid="lesson-card"]');
+    if (!c || !c.checkVisibility()) return 'gone';
+    const kind = c.querySelector('.ln-kind'); const flip = c.querySelector('[data-flipped]');
+    return `${c.dataset.style}|${kind ? kind.innerText : ''}|${flip ? flip.dataset.flipped : ''}`;
+  });
   while (await card.isVisible()) {
     n += 1;
     const before = await sig();
@@ -1239,11 +1252,15 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(6);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — юниты 1–3 (14, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(3);
+  // Путь начинается с юнита 1; уроками — четыре юнита (14, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(4);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(34);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(6);
+  await expect(path.getByTestId('path-lesson')).toHaveCount(44);
+  await expect(path.locator('[data-kind="intro"]')).toHaveCount(8);
+  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность), Средний (потребитель)
+  await expect(path.getByTestId('path-level')).toHaveCount(3);
+  await expect(path.getByTestId('path-level').nth(1)).toContainText('Базовый');
+  await expect(path.getByTestId('path-unit').nth(2)).toHaveAttribute('data-unit', 'elasticity');
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1251,7 +1268,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(soon).toContainText('мест строятся');
   await expect(path.getByTestId('path-soon-list')).toHaveCount(0);
   await soon.getByRole('button').first().click();
-  await expect(path.getByTestId('path-soon-list')).toContainText('Эластичность');
+  await expect(path.getByTestId('path-soon-list')).toContainText('Издержки');
   await expectNoSidewaysScroll(page);
 
   // нажатие на кружок — только карточка урока: название, вид, минуты и опыт
@@ -1606,6 +1623,13 @@ test('мини-игра: одна игра на минуту — очки с м�
   await expect(ex).toHaveAttribute('data-kind', 'rush');
   await expect(ex.getByTestId('game')).toHaveAttribute('data-phase', 'ready');
   await expect(ex.getByTestId('game')).toContainText('засчитывается от 8 верных');
+  // до таймера — «Как играть» и пробный заголовок без очков: ответ с объяснением
+  await expect(ex.getByTestId('game-howto')).toContainText('Как играть');
+  await expect(ex.getByTestId('game-start')).toHaveText(/Сразу к игре/);
+  const trialSide = await ex.locator('.lp-trial-card').getAttribute('data-answer');
+  await ex.locator(`[data-trial="${trialSide}"]`).click();
+  await expect(ex.getByTestId('game-trial-result')).toHaveAttribute('data-ok', 'true');
+  await expect(ex.getByTestId('game-start')).toHaveText(/Старт/);
   await ex.getByTestId('game-start').click();
   const card = ex.getByTestId('game-card');
   // четыре верных, ошибка, шесть верных: 10+10+10+20, серия сброшена, 10+10+10+20+20+20
@@ -1805,6 +1829,7 @@ test('вход: программа — вступительный тест, су
   const reg = page.getByTestId('welcome-register');
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByTestId('consent').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
   await expect(page.getByTestId('path')).toBeVisible();
@@ -2092,5 +2117,29 @@ test('мир: выключенная музыка не включается по
   await page.locator('button[title^="Музыка"]').click();
   const row2 = page.locator('div', { has: page.locator('span', { hasText: /^Музыка$/ }) }).last();
   await expect(row2.getByRole('button', { name: 'выкл' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// «Открыть теорию» из карточки урока: учебник поверх Пути — внизу отмечен «Учебник», «Путь» возвращает на дорогу
+test('теория из карточки урока: внизу отмечен «Учебник», вкладка «Путь» закрывает учебник', async ({ page }) => {
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
+      'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum', 'cs-i1', 'cs-l1', 'cs-i2', 'cs-l2', 'cs-w'];
+    if (!localStorage.getItem('ems-textbook-v1')) localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await page.locator('[data-testid=path-lesson][data-lesson="cs-s1"]').click();
+  await expect(page.getByTestId('theory-notice')).toBeVisible();
+  await page.getByTestId('theory-open').click();
+  await expect(page.getByTestId('learn-book')).toBeVisible();
+  const nav = page.getByTestId('bottom-nav');
+  await expect(nav.locator('[data-tab="book"]')).toHaveAttribute('aria-current', 'page');
+  await expect(nav.locator('[data-tab="path"]')).not.toHaveAttribute('aria-current', 'page');
+  await nav.locator('[data-tab="path"]').click();
+  await expect(page.getByTestId('learn-book')).toHaveCount(0);
+  await expect(page.getByTestId('path')).toBeVisible();
+  await expect(nav.locator('[data-tab="path"]')).toHaveAttribute('aria-current', 'page');
   expect(errors).toEqual([]);
 });

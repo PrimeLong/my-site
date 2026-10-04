@@ -1,9 +1,9 @@
-/* Логотип Inflatia: монета, надутая как воздушный шарик, — деньги, которые
+/* Логотип Инфлатии: монета, надутая как воздушный шарик, — деньги, которые
    «надуваются», — с колонной «I» посередине. Те же контуры, что в public/favicon.svg
    (и в иконках, собранных из неё scripts/icons.mjs); меняя знак, меняйте оба. */
 import React from 'react';
 
-export function InflatiaMark({ size = 48, title = 'Inflatia' }) {
+export function InflatiaMark({ size = 48, title = 'Инфлатия' }) {
   // у каждого экземпляра свой id градиента: два логотипа на странице не должны делить один
   const gid = `inflatia-g-${React.useId().replace(/:/g, '')}`;
   return (

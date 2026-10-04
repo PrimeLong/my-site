@@ -24,8 +24,8 @@ const shot = async (html, w, h, out) => {
 await shot(`<img src="${mark}" style="width:1024px;height:1024px;display:block">`, 1024, 1024, 'inflatia-mark-1024.png');
 const lockup = (color, sub) => `<div style="width:1600px;height:480px;display:flex;align-items:center;gap:48px;padding:0 60px;box-sizing:border-box">
   <img src="${mark}" style="width:380px;height:380px">
-  <div><div style="font-family:'PT Serif';font-weight:700;font-size:200px;line-height:1;color:${color}">Inflatia</div>
-  <div style="margin-top:22px;font-family:'PT Sans';font-size:38px;letter-spacing:0.22em;text-transform:uppercase;color:${sub}">Симулятор государства и бизнеса</div></div></div>`;
+  <div><div style="font-family:'PT Serif';font-weight:700;font-size:200px;line-height:1;color:${color}">Инфлатия</div>
+  <div style="margin-top:22px;font-family:'PT Sans';font-size:38px;letter-spacing:0.22em;text-transform:uppercase;color:${sub}">Экономика пять минут в день</div></div></div>`;
 await shot(lockup('#E8C766', '#C9A227'), 1600, 480, 'inflatia-logo-dark-bg.png');
 await shot(lockup('#1B1204', '#8A6D12'), 1600, 480, 'inflatia-logo-light-bg.png');
 await b.close();

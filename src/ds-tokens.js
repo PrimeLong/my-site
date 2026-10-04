@@ -18,13 +18,13 @@ export const DS_THEMES = {
     isDark: false,
     paper: '#F3EEE2', card: '#FFFCF5', card2: '#ECE5D4', ink: '#1C2125', ink2: '#4A5157', ink3: '#62696F',
     rule: '#D6CCB7', rule2: '#B3A78E', ok: '#2D7A4B', okInk: '#1C5433', okBg: '#E2F0E3', bad: '#B0392D', badInk: '#8A2A20', badBg: '#F7E1DC', okBtn: '#2D7A4B', badBtn: '#B0392D',
-    gold: '#9C7218', goldSoft: '#C9A24A', sel: '#E6ECF5', selInk: '#1E3C66', selRule: '#5F82B3', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
+    gold: '#9C7218', goldSoft: '#C9A24A', sel: '#F4E6D2', selInk: '#5A3212', selRule: '#B5793F', blue: '#3E6FA8', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
   },
   ink: {
     isDark: true,
     paper: '#14181C', card: '#1C2227', card2: '#242B32', ink: '#EEE7D7', ink2: '#BDB5A5', ink3: '#A29A8B',
     rule: '#353D45', rule2: '#4D5660', ok: '#62B882', okInk: '#AEE3C1', okBg: '#1B3226', bad: '#E2806F', badInk: '#F4BCB2', badBg: '#3A221E', okBtn: '#2B7048', badBtn: '#A23E32',
-    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#22324A', selInk: '#D2E2F8', selRule: '#6A8FC2', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
+    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#3A2B1D', selInk: '#F2DCBC', selRule: '#C98A55', blue: '#6A8FC2', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
   },
 };
 
@@ -37,20 +37,21 @@ export const DS_SIZE = { xs: 12.5, s: 14, m: 16, l: 18, xl: 22, xxl: 28, hero: 3
    по часовой вдоль берега, потом внутренним кольцом к центру — без пересечений. Цвет — как у купюры своего достоинства (белый текст
    на нём читается с контрастом не ниже 4.5:1), здание — гравюра (src/ds.jsx, Engraving),
    region — округ карты, at — точка места на карте (поле 1000×720 из src/lib/mapgeo.js). */
+// места по порядку Пути (юниты по уровням): дорога обходит страну петлёй, не пересекая себя
 export const PLACES = {
   scarcity: { place: 'Мастерская', building: 'workshop', color: '#4B692C', region: 'industry', at: [245, 310], note: 'хлеб или станки' },
   'supply-demand': { place: 'Рынок', building: 'market', color: '#86461F', region: 'capital', at: [320, 220], note: 'кофе, мука и цены' },
-  consumer: { place: 'Универмаг', building: 'store', color: '#2C5A8E', region: 'capital', at: [440, 180], note: 'выбор покупателя' },
-  elasticity: { place: 'Лавка', building: 'store', color: '#65408F', region: 'agri', at: [565, 170], note: 'реакция на цену' },
-  production: { place: 'Завод', building: 'factory', color: '#5A5650', region: 'industry', at: [690, 195], note: 'труд и капитал' },
-  costs: { place: 'Пекарня', building: 'bakery', color: '#7A5616', region: 'agri', at: [785, 300], note: 'издержки и прибыль' },
-  'competition-monopoly': { place: 'Биржа', building: 'exchange', color: '#A0372A', region: 'finance', at: [690, 395], note: 'конкуренция и монополия' },
-  monopolistic: { place: 'Ярмарка', building: 'market', color: '#86446A', region: 'agri', at: [700, 515], note: 'похожие товары' },
-  oligopoly: { place: 'Картель', building: 'factory', color: '#356653', region: 'mining', at: [610, 590], note: 'несколько крупных' },
-  labor: { place: 'Биржа труда', building: 'ministry', color: '#4F5D80', region: 'industry', at: [490, 615], note: 'зарплаты и занятость' },
-  'market-failures': { place: 'Порт', building: 'port', color: '#26677A', region: 'port', at: [370, 600], note: 'внешние эффекты и налоги' },
-  gdp: { place: 'Статуправление', building: 'tower', color: '#465689', region: 'capital', at: [270, 548], note: 'как считают ВВП' },
-  'money-banks': { place: 'Банк', building: 'bank', color: '#1D6860', region: 'finance', at: [275, 450], note: 'деньги и кредит' },
+  consumer: { place: 'Универмаг', building: 'store', color: '#2C5A8E', region: 'capital', at: [785, 300], note: 'выбор покупателя' },
+  elasticity: { place: 'Кофейня', building: 'store', color: '#65408F', region: 'agri', at: [440, 180], note: 'реакция на цену' },
+  production: { place: 'Завод', building: 'factory', color: '#5A5650', region: 'industry', at: [690, 395], note: 'труд и капитал' },
+  costs: { place: 'Пекарня', building: 'bakery', color: '#7A5616', region: 'agri', at: [700, 515], note: 'издержки и прибыль' },
+  'competition-monopoly': { place: 'Биржа', building: 'exchange', color: '#A0372A', region: 'finance', at: [610, 590], note: 'конкуренция и монополия' },
+  monopolistic: { place: 'Ярмарка', building: 'market', color: '#86446A', region: 'agri', at: [490, 615], note: 'похожие товары' },
+  oligopoly: { place: 'Картель', building: 'factory', color: '#356653', region: 'mining', at: [270, 548], note: 'несколько крупных' },
+  labor: { place: 'Биржа труда', building: 'ministry', color: '#4F5D80', region: 'industry', at: [370, 600], note: 'зарплаты и занятость' },
+  'market-failures': { place: 'Порт', building: 'port', color: '#26677A', region: 'port', at: [585, 180], note: 'внешние эффекты и налоги' },
+  gdp: { place: 'Статуправление', building: 'tower', color: '#465689', region: 'capital', at: [275, 450], note: 'как считают ВВП' },
+  'money-banks': { place: 'Банк', building: 'bank', color: '#1D6860', region: 'finance', at: [690, 195], note: 'деньги и кредит' },
   'is-lm': { place: 'Казначейство', building: 'bank', color: '#65572B', region: 'capital', at: [350, 360], note: 'ставка и выпуск' },
   'ad-as': { place: 'Промзона', building: 'factory', color: '#763B3B', region: 'industry', at: [465, 300], note: 'спрос и предложение в целом' },
   phillips: { place: 'Профсоюз', building: 'ministry', color: '#4B5B2D', region: 'industry', at: [590, 290], note: 'инфляция и безработица' },
@@ -92,7 +93,8 @@ export const appColors = (t) => ({
   paper: t.card2, paperText: t.ink, paperMuted: t.ink2, paperRule: t.rule2,
   gold: t.gold, goldSoft: t.gold, goldDim: `color-mix(in srgb, ${t.gold} 16%, transparent)`, ink: t.isDark ? '#0E1114' : '#1C2125',
   teal: t.ok, tealDim: t.okBg, rust: t.bad, rustDim: t.badBg,
-  blue: t.selRule, blueDim: t.sel, sel: t.sel, selText: t.selInk, selBorder: t.selRule,
+  // выбранное — в тёплой гамме бумаги (не синим); синий остаётся только для линий графиков
+  blue: t.blue || t.selRule, blueDim: `color-mix(in srgb, ${t.blue || t.selRule} 14%, ${t.card})`, sel: t.sel, selText: t.selInk, selBorder: t.selRule,
 });
 
 /* Настройки обучения на устройстве: тёмная тема (по умолчанию светлая), музыка (по

@@ -4,9 +4,10 @@ import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
   UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
+  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
+import { placeOf } from '../../ds-tokens.js';
 import { collectMath, collectBlocks } from '../../textbook/markdown.js';
 import { CHAPTER_BLOCKS } from '../../textbook/content.js';
 import { plainText } from '../../textbook/content.js';
@@ -16,14 +17,45 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-const PATH = ['scarcity', 'supply-demand', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity), Средний (consumer)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — юниты 1–3, с самого начала курса', () => {
+it('на Пути уроками — четыре юнита по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
-  expect(UNITS.slice(0, 3).map((u) => u.id)).toEqual(PATH);
+  // юниты идут по уровням; внутри уровня — по порядку глав учебника
+  const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
+  expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  expect(levelOf('scarcity').title).toBe('Начальный');
+  expect(levelOf('elasticity').title).toBe('Базовый');
+  expect(levelOf('consumer').title).toBe('Средний');
+  expect(LEVELS.map((l) => l.title)).toEqual(['Начальный', 'Базовый', 'Средний', 'Продвинутый', 'Профессиональный']);
+});
+
+// карта «Дорога по Инфлатии»: места идут по порядку Пути, дорога не пересекает себя,
+// здания и подписи мест с уроками не наезжают друг на друга
+it('карта Пути: дорога без самопересечений, места с уроками не перекрываются', () => {
+  const pts = UNITS.map((u) => placeOf(u.id).at);
+  const cross = (a, b, c, d) => {
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+  };
+  for (let i = 0; i + 1 < pts.length; i += 1) {
+    for (let j = i + 2; j + 1 < pts.length; j += 1) expect(cross(pts[i], pts[i + 1], pts[j], pts[j + 1]), `${UNITS[i].id}–${UNITS[j].id}`).toBe(false);
+  }
+  const on = pilotUnits().map((u) => ({ id: u.id, ...placeOf(u.id) }));
+  for (let i = 0; i < on.length; i += 1) {
+    for (let j = i + 1; j < on.length; j += 1) {
+      const [a, b] = [on[i], on[j]];
+      const [dx, dy] = [Math.abs(a.at[0] - b.at[0]), Math.abs(a.at[1] - b.at[1])];
+      // круг здания r=50; подпись — 28px, ~16px на букву
+      expect(Math.hypot(dx, dy), `${a.id}/${b.id}: здания`).toBeGreaterThanOrEqual(100);
+      const labelsMeet = dx < (a.place.length + b.place.length) * 8 + 8 && dy < 34;
+      expect(labelsMeet, `${a.id}/${b.id}: подписи`).toBe(false);
+    }
+  }
 });
 
 // девять исходных видов упражнений — в каждом юните Пути
@@ -56,9 +88,15 @@ describe.each(PATH)('юнит %s', (unitId) => {
         const { words, sentences } = stepOk(c);
         expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
         expect(sentences, `${c.idea.id}: ${sentences} предложений`).toBeLessThanOrEqual(3);
-        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && CAST[c.idea.who]), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
+        // в истории шаг без героя — рассказчик со своим аватаром (docs/world.md)
+        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && (!c.idea.who || CAST[c.idea.who])), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
         const next = i + 1 < l.inner.length ? l.inner[i + 1].at : l.exercises.length;
-        expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
+        // в истории до вопроса — не больше двух сообщений подряд (реплика героя и слова рассказчика), в остальных — одно
+        if (l.kind === 'story') {
+          const run = l.inner.filter((d) => d.at === c.at).length;
+          expect(run, `${c.idea.id}: подряд без вопроса`).toBeLessThanOrEqual(2);
+          if (i + 1 === l.inner.length) expect(l.exercises.length - c.at, `${c.idea.id}: после последнего шага — вопрос`).toBeGreaterThanOrEqual(1);
+        } else expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
       });
       expect(l.inner[0].at).toBe(0);
     });
@@ -234,6 +272,13 @@ describe('упражнения: ровно один верный ответ', ()
           expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
+        case 'open': {
+          // открытый вопрос: короткая отписка не принимается, продуманный ответ — засчитан; разбор есть всегда
+          expect(ready(inst, 'да')).toBe(false);
+          expect(check(inst, 'Я бы ввёл студенческую карту, потому что…').ok).toBe(true);
+          expect(inst.explain && inst.explain.length).toBeTruthy();
+          break;
+        }
         default: throw new Error(inst.kind);
       }
       expect(answerText(inst).length).toBeGreaterThan(0);
@@ -284,8 +329,10 @@ describe.each(PATH)('юнит %s: полноценный — все восемь
     expect(game[0].chart).toBeTruthy();
     game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
     const [st] = of('story');
-    st.inner.forEach((c) => expect(CAST[c.idea.who], c.idea.id).toBeTruthy());
-    expect(new Set(st.inner.map((c) => c.idea.who)).size).toBeGreaterThanOrEqual(3);
+    // шаг без героя — голос рассказчика; первый шаг — герой, героев не меньше трёх
+    st.inner.forEach((c) => expect(!c.idea.who || CAST[c.idea.who], c.idea.id).toBeTruthy());
+    expect(CAST[st.idea.who]).toBeTruthy();
+    expect(new Set(st.inner.map((c) => c.idea.who).filter(Boolean)).size).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -341,9 +388,13 @@ describe('юнит «Спрос и предложение»: все виды у�
   });
   it('«История»: шаги ведут герои — Маша из кофейни, Гриша из пекарни и Вера Павловна из министерства', () => {
     const [st] = of('story');
-    const who = st.inner.map((c) => c.idea.who);
+    const who = st.inner.map((c) => c.idea.who).filter(Boolean);
     who.forEach((x) => expect(CAST[x], x).toBeTruthy());
-    expect(new Set(who)).toEqual(new Set(['masha', 'grisha', 'vera']));
+    // по библии мира: Маша, Гриша, Вера Павловна и Тимур — глаза ученика; авторский текст — рассказчик
+    expect(new Set(who)).toEqual(new Set(['masha', 'grisha', 'vera', 'timur']));
+    expect(st.inner.some((c) => !c.idea.who)).toBe(true);
+    // в конце — открытый вопрос «Как бы вы поступили…?» с разбором
+    expect(st.exercises[st.exercises.length - 1].kind).toBe('open');
     // в истории — новые взаимодействия: цена ползунком, точка равновесия и кривая пальцем
     expect(st.exercises.map((e) => e.kind)).toEqual(expect.arrayContaining(['price', 'point', 'curve']));
   });
@@ -538,10 +589,12 @@ describe('мини-игра: одна на урок, карточки двига
         if (g.chart === 'ppf') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['x', 'y'].includes(it.effect) ? 'left' : 'right');
         // бюджет: доход сдвигает линию (влево), цена поворачивает (вправо)
         if (g.chart === 'budget') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['out', 'in'].includes(it.effect) ? 'left' : 'right');
+        // эластичность: неэластичный — влево, эластичный — вправо
+        if (g.chart === 'elastic') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'in' ? 'left' : 'right');
       });
       // эффект виден на графике: каждая сторона и оба направления встречаются
       const effs = new Set(g.items.map((it) => it.effect));
-      expect(effs.size, g.id).toBeGreaterThanOrEqual(4);
+      expect(effs.size, g.id).toBeGreaterThanOrEqual(Math.min(4, ROUND_EFFECTS[g.chart].length));
     });
   });
   it('очки: 10 за верный ответ, каждые три подряд — множитель выше (не больше ×4), ошибка обнуляет серию', () => {
@@ -580,7 +633,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });

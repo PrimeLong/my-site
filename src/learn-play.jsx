@@ -6,7 +6,7 @@
    карточки не летают, подсветка текста не бежит. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy,
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy, GraduationCap, Radio, Feather,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
@@ -56,6 +56,8 @@ export const PLAY_CSS = `
   .lp-word-def.open { animation: lp-def .35s ease-out both; }
   @keyframes lp-def { from { opacity: 0; transform: translateY(6px); filter: blur(3px) } to { opacity: 1; transform: none; filter: none } }
   .lp-word-hide { width: 100%; border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 18px 12px; color: var(--ds-ink3); font-size: 15px; background: none; cursor: pointer; font-family: inherit; }
+  .lp-word-hint .fine { display: none; }
+  @media (hover: hover) and (pointer: fine) { .lp-word-hint .fine { display: inline; } .lp-word-hint .touch { display: none; } .lp-word { cursor: grab; } }
   .lp-word-dots { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
   .lp-word-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--ds-rule); }
   .lp-word-dots i.know { background: var(--u); }
@@ -66,6 +68,12 @@ export const PLAY_CSS = `
   .lp-op { color: var(--u-ink); font-weight: 700; }
   .lp-game-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 13.5px; margin-top: 4px; }
   .lp-game-rules span { display: inline-flex; align-items: center; gap: 4px; }
+  /* «Как играть» перед стартом: три шага и пробный заголовок без таймера */
+  .lp-howto { border: 1px solid var(--ds-rule2); border-radius: 6px; background: var(--ds-card); padding: 12px 14px; margin: 10px 0; }
+  .lp-howto ol { margin: 6px 0 0; padding-left: 20px; font-size: 14.5px; line-height: 1.45; }
+  .lp-howto li { margin: 3px 0; }
+  .lp-trial { border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 10px 12px; margin: 10px 0; }
+  .lp-trial-card { font: 700 17px/1.35 var(--ds-serif); text-align: center; margin: 6px 0 10px; }
   .lp-game-hud { display: flex; align-items: center; gap: 8px; margin: -4px 0 2px; }
   .lp-game-score { font-size: 26px; font-weight: 700; color: var(--u-ink); min-width: 48px; }
   .lp-combo { font: 700 14px var(--ds-mono); color: #fff; background: var(--u); border-radius: 999px; padding: 2px 9px; animation: lp-combo .35s ease-out; }
@@ -295,11 +303,14 @@ const EFFECT_LABEL = {
   x: 'Точка — к хлебу', y: 'Точка — к станкам',
 };
 const BUDGET_LABEL = { out: 'Доход вырос', in: 'Доход упал', ox: 'Товар X дешевле', ix: 'Товар X дороже', oy: 'Товар Y дешевле', iy: 'Товар Y дороже' };
-const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : EFFECT_LABEL[eff]);
+const ELASTIC_LABEL = { in: 'Неэластичный: выручка растёт', el: 'Эластичный: выручка падает' };
+const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : EFFECT_LABEL[eff]);
 const BUDGET0 = { I: 100, px: 1.25, py: 1.25 };
 const MARKET_STEP = 16;
 // состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
 function applyEffect(chart, st, eff) {
+  // эластичность: крутая или пологая кривая спроса через одну точку
+  if (chart === 'elastic') return { e: eff === 'in' ? 0.4 : eff === 'el' ? 2.5 : st.e };
   if (chart === 'market') {
     const d = { D: st.D * 0.6, S: st.S * 0.6 };
     if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
@@ -325,7 +336,7 @@ function applyEffect(chart, st, eff) {
   if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
   return { rx, ry, t };
 }
-const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : { rx: 100, ry: 100, t: 0.5 });
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : { rx: 100, ry: 100, t: 0.5 });
 // плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
 function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
@@ -365,6 +376,34 @@ function BudgetGameChart({ st }) {
       <circle cx={sx(xm)} cy={sy(0)} r="4.5" fill="var(--u)" /><circle cx={sx(0)} cy={sy(ym)} r="4.5" fill="var(--u)" />
       <text x={sx(xm)} y={H - B - 8} textAnchor="middle" className="lp-ax">{Math.round(xm)}</text>
       <text x={L + 8} y={sy(ym) + 4} className="lp-ax">{Math.round(ym)}</text>
+    </svg>
+  );
+}
+/* Эластичность в игре: спрос через точку «цена 20, покупают 60». Крутая кривая — неэластичный
+   спрос, пологая — эластичный. Прямоугольники — выручка сейчас и после подорожания на 10%. */
+function ElasticGameChart({ st }) {
+  const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
+  const QM = 140; const PM = 40;
+  const sx = (q) => L + (Math.max(0, Math.min(q, QM)) / QM) * (W - L - R); const sy = (p) => H - B - (Math.max(0, Math.min(p, PM)) / PM) * (H - B - T);
+  const b = 3 * st.e; // |E| = b·P/Q в точке (60, 20)
+  const qAt = (p) => 60 - b * (p - 20);
+  const p1 = 22; const q1 = Math.max(0, qAt(p1));
+  const r0 = 20 * 60; const r1 = p1 * q1;
+  const up = r1 >= r0;
+  return (
+    <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Спрос ${st.e < 1 ? 'неэластичный' : 'эластичный'}: выручка после подорожания ${Math.round(r1)} против ${r0}`}
+      data-testid="game-chart" data-chart="elastic" data-state={JSON.stringify({ e: Math.round(st.e * 100) / 100, up })}>
+      <rect x={sx(0)} y={sy(20)} width={sx(60) - sx(0)} height={sy(0) - sy(20)} fill="var(--ds-ink3)" opacity=".12" />
+      <rect x={sx(0)} y={sy(p1)} width={sx(q1) - sx(0)} height={sy(0) - sy(p1)} fill="none" stroke={up ? 'var(--ds-ok)' : 'var(--ds-bad)'} strokeWidth="2" strokeDasharray="5 4" />
+      <line x1={sx(qAt(PM))} y1={sy(PM)} x2={sx(qAt(0))} y2={sy(0)} stroke="var(--u)" strokeWidth="4" strokeLinecap="round" />
+      <circle cx={sx(60)} cy={sy(20)} r="4.5" fill="var(--u)" />
+      <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <text x={W - R} y={H - 8} textAnchor="end" className="lp-ax">Q</text>
+      <text x={L - 6} y={T + 8} textAnchor="end" className="lp-ax">P</text>
+      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: up ? 'var(--ds-ok)' : 'var(--ds-bad)', fontWeight: 700 }}>
+        выручка при +10% цены: {up ? '↑' : '↓'} {Math.round(r1)}
+      </text>
     </svg>
   );
 }
@@ -463,23 +502,58 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const down = (e) => { if (phase !== 'play' || inst.kind !== 'swipe') return; start.current = e.clientX; if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId); };
   const move = (e) => { if (start.current != null) setDx(e.clientX - start.current); };
   const up = () => { if (start.current == null) return; const d = dx; start.current = null; if (Math.abs(d) > 80) decide(d > 0 ? 'right' : 'left'); else setDx(0); };
+  /* Пробный ход: один заголовок без таймера и без очков — ответ с объяснением, график показывает
+     сдвиг. Перед стартом график возвращается на место. */
+  const sample = inst.items.find((x) => x.effect) || inst.items[0];
+  const [trial, setTrial] = useState(null);
+  const tryIt = (side) => {
+    if (trial) return;
+    const ok = side === sample.side;
+    Audio.play(ok ? 'coin' : 'down');
+    setTrial({ ok });
+    if (sample.effect) setSt(applyEffect(inst.chart, startState(inst.chart), sample.effect));
+  };
+  const begin = () => { Audio.play('click'); setSt(startState(inst.chart)); setPhase('play'); };
+  const sideHint = inst.kind === 'swipe' ? `кнопки внизу, стрелки ← → или смахните карточку` : 'кнопки внизу или стрелки ↑ ↓ на клавиатуре';
   const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
   const chart = inst.chart === 'market'
-    ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок кофе в игре" /><PriceTicker prices={prices} /></>
-    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : null;
+    ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок в игре: спрос и предложение" /><PriceTicker prices={prices} /></>
+    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : inst.chart === 'elastic' ? <ElasticGameChart st={shown} /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (
         <>
           {intro}
+          <div className="lp-howto" data-testid="game-howto">
+            <div className="ds-eyebrow">Как играть</div>
+            <ol>
+              <li>Появляется заголовок новости.</li>
+              <li>Решите: {inst.labels[sides[0]].toLowerCase()} или {inst.labels[sides[1]].toLowerCase()}? Отвечайте — {sideHint}.</li>
+              <li>График покажет, что сдвинулось. Три верных подряд — очки ×2, дальше ещё больше; ошибка обнуляет серию.</li>
+            </ol>
+          </div>
           {chart}
+          <div className="lp-trial" data-testid="game-trial">
+            <div className="ds-eyebrow">Пробный заголовок — без таймера</div>
+            <div className="lp-trial-card" data-answer={testing() ? sample.side : undefined}><Inline nodes={sample.text} /></div>
+            {!trial ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {sides.map((sd) => <button key={sd} type="button" className="ds-opt lp-side" data-trial={sd} onClick={() => tryIt(sd)}>{inst.labels[sd]}</button>)}
+              </div>
+            ) : (
+              <div style={{ fontSize: 14.5, lineHeight: 1.45 }} data-testid="game-trial-result" data-ok={String(trial.ok)}>
+                <b style={{ color: trial.ok ? 'var(--ds-ok)' : 'var(--ds-bad)' }}>{trial.ok ? 'Верно.' : 'Не совсем.'}</b>{' '}
+                Ответ — «{inst.labels[sample.side]}»{sample.effect ? `: ${effectLabel(inst.chart, sample.effect).toLowerCase()}, это видно на графике` : ''}. В игре так же — только быстро.
+              </div>
+            )}
+          </div>
           <div className="lp-game-rules ds-sub">
             <span><Timer size={14} aria-hidden="true" /> {seconds} секунд</span>
             <span>засчитывается от 8 верных при точности от 70%</span>
             {best > 0 && <span data-testid="game-best"><Trophy size={14} aria-hidden="true" /> рекорд: {best}</span>}
           </div>
           <div style={{ textAlign: 'center', marginTop: 10 }}>
-            <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setPhase('play'); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
+            <button type="button" className="ds-btn" data-testid="game-start" onClick={begin}><Play size={16} style={{ verticalAlign: -3 }} /> {trial ? 'Старт' : 'Сразу к игре'}</button>
           </div>
         </>
       )}
@@ -534,19 +608,35 @@ function shuffleList(list) {
 }
 
 /* ------------------------------ КАРТОЧКИ ВИДОВ УРОКОВ ------------------------------ */
-const CAST_ICON = { coffee: Coffee, croissant: Croissant, landmark: Landmark, 'scroll-text': ScrollText };
+const CAST_ICON = { coffee: Coffee, croissant: Croissant, landmark: Landmark, 'scroll-text': ScrollText, graduation: GraduationCap, radio: Radio, feather: Feather };
+// причёски: у каждого героя своя
+const HAIR = {
+  vera: 'M19 27c0-10 6-15 13-15s13 5 13 15c-3-5-8-7-13-7s-10 2-13 7z',
+  masha: 'M18 30c-1-12 6-18 14-18s15 6 14 18c-2-6-6-9-9-10-3 3-10 5-19 10z',
+  host: 'M17 36c-2-14 5-23 15-23s17 9 15 23c-1-7-4-12-7-14-5 2-12 3-18 4-2 3-4 6-5 10z',
+  timur: 'M20 25c0-8 5-12 12-12s12 4 12 12c-2-2-5-4-9-4l-1 3-2-3c-5 0-9 2-12 4z',
+};
 // портрет героя: лицо, причёска его цвета и значок его дела
 export function Portrait({ who, size = 64 }) {
   const c = CAST[who];
   if (!c) return null;
   const Icon = CAST_ICON[c.icon] || Coffee;
+  // рассказчик — не человек в кадре: вместо лица перо
+  if (c.nofs) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: size, height: size, flexShrink: 0, borderRadius: '50%',
+        background: `color-mix(in srgb, ${c.color} 12%, var(--ds-card))`, border: `2px solid ${c.color}`, color: c.color }} data-testid="portrait" data-who={who}>
+        <Icon size={size * 0.46} aria-hidden="true" />
+      </span>
+    );
+  }
   return (
     <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flexShrink: 0 }} data-testid="portrait" data-who={who}>
       <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
         <circle cx="32" cy="32" r="31" fill={`color-mix(in srgb, ${c.color} 18%, white)`} stroke={c.color} strokeWidth="2" />
         <path d="M14 58c2-11 9-16 18-16s16 5 18 16" fill={c.color} />
         <circle cx="32" cy="28" r="12.5" fill="#F6D2B8" />
-        <path d={who === 'vera' ? 'M19 27c0-10 6-15 13-15s13 5 13 15c-3-5-8-7-13-7s-10 2-13 7z' : who === 'masha' ? 'M18 30c-1-12 6-18 14-18s15 6 14 18c-2-6-6-9-9-10-3 3-10 5-19 10z' : 'M20 24c1-7 6-10 12-10s11 3 12 10c-4-3-8-4-12-4s-8 1-12 4z'} fill={c.hair} />
+        <path d={HAIR[who] || 'M20 24c1-7 6-10 12-10s11 3 12 10c-4-3-8-4-12-4s-8 1-12 4z'} fill={c.hair} />
         <circle cx="27.5" cy="29" r="1.6" fill="#3B2A20" /><circle cx="36.5" cy="29" r="1.6" fill="#3B2A20" />
         <path d="M28 34c2.4 2 5.6 2 8 0" stroke="#3B2A20" strokeWidth="1.6" fill="none" strokeLinecap="round" />
       </svg>
@@ -613,9 +703,15 @@ export function WordDeck({ cards, onDone, body, foot }) {
   });
   if (!card) return null;
   const left = queue.length - 1;
-  const onDown = (e) => { if (open && !out) drag.current = { x: e.clientX }; };
+  /* Смахивание и мышью: карточка захватывает указатель (рука может уйти за её край), порог —
+     треть ширины пальцем и 50 px мышью; на ПК подсказка — стрелки ← →. */
+  const onDown = (e) => {
+    if (!open || out) return;
+    drag.current = { x: e.clientX, mouse: e.pointerType === 'mouse' };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* старый браузер */ }
+  };
   const onMove = (e) => { if (drag.current) setDx(e.clientX - drag.current.x); };
-  const onUp = () => { if (!drag.current) return; const d = dx; drag.current = null; if (Math.abs(d) > 80) decide(d > 0); else setDx(0); };
+  const onUp = () => { if (!drag.current) return; const d = dx; const lim = drag.current.mouse ? 50 : 80; drag.current = null; if (Math.abs(d) > lim) decide(d > 0); else setDx(0); };
   const style = dx && !out ? { transform: `translateX(${dx}px) rotate(${dx / 30}deg)`, transition: 'none' } : undefined;
   return (
     <>
@@ -629,7 +725,7 @@ export function WordDeck({ cards, onDone, body, foot }) {
             <span>Слово {idx + 1} из {cards.length}</span>
             {repeat && <span className="ds-badge" style={{ textTransform: 'none', letterSpacing: 0 }}>ещё раз</span>}
             <span style={{ flex: 1 }} />
-            {open && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>смахните →</span>}
+            {open && <span className="lp-word-hint" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}><span className="touch">смахните →</span><span className="fine">← → на клавиатуре</span></span>}
           </div>
           <div className="lp-word-term">{card.title}</div>
           <div className="lp-word-rule" />
