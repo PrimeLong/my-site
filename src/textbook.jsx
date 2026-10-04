@@ -25,6 +25,7 @@ import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, wea
 import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
 import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 import { formulaSymbols } from './textbook/symbols.js';
+import { plural } from './lib/plural.js';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -1394,7 +1395,6 @@ function Journal({ days }) {
     </div>
   );
 }
-const plural = (n, one, few, many) => { const m10 = n % 10; const m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many; };
 function StatsPage({ ctx }) {
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
   const secs = ready.reduce((acc, c) => { const sp = sectionProgress(ctx.progress, c.id); return { done: acc.done + sp.done, total: acc.total + sp.total }; }, { done: 0, total: 0 });

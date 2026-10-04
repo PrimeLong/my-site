@@ -60,3 +60,10 @@ export const STINGER_GAIN_DB = {
   restoration: 4,
   prices_stopped: 3.5,
 };
+// звуки ответов — к одной громкости (scripts/loudness.mjs --sfx --write)
+export const SFX_GAIN_DB = {
+  coin: 4,
+  down: -1,
+  up: -1,
+  register: -1.5,
+};

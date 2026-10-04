@@ -8,7 +8,7 @@
 ========================================================================================= */
 import { clamp } from '../lib/catalog.js';
 import { hz, LH, BASS_LINES, TRACKS, MOOD_PLAYLISTS, ROLE_PLAYLISTS, MOOD_LABEL, REGIME_MOOD, STINGERS } from './tracks.js';
-import { TRACK_GAIN_DB, STINGER_GAIN_DB } from './loudness.js';
+import { TRACK_GAIN_DB, STINGER_GAIN_DB, SFX_GAIN_DB } from './loudness.js';
 
 /* Настроение саундтрека по состоянию страны. Порядок — от самого властного к фону:
    тоталитаризм и война перекрывают всё; программа стабилизации, которой начали
@@ -958,26 +958,29 @@ export function createAudioEngine(options = {}) {
     }
   };
 
-  /* ---------------------------- ЗВУКИ ИНТЕРФЕЙСА ---------------------------- */
+  /* ---------------------------- ЗВУКИ ИНТЕРФЕЙСА ----------------------------
+     Каждый звук идёт через свою поправку громкости (SFX_GAIN_DB, scripts/loudness.mjs):
+     звуки ответов — верно, неверно, касса в конце урока — звучат одинаково громко. */
+  let sfxOut = null;
   const tone = (freq, t0, dur, gain, wave) => {
     const o = ctx.createOscillator(); const g = ctx.createGain();
     o.type = wave || 'sine'; o.frequency.setValueAtTime(freq, t0);
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), t0 + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(sfxBus); o.start(t0); o.stop(t0 + dur + 0.05);
+    o.connect(g); g.connect(sfxOut || sfxBus); o.start(t0); o.stop(t0 + dur + 0.05);
   };
   const SFX = {
     tick: () => tone(1250, now(), 0.035, 0.028, 'triangle'),
     click: () => { const t = now(); tone(760, t, 0.05, 0.045, 'square'); tone(1140, t + 0.015, 0.05, 0.025, 'triangle'); },
     tab: () => tone(560, now(), 0.06, 0.032, 'triangle'),
-    paper: () => { const t = now(); noiseHit(t, 0.28, 0.055, 'bandpass', 2600, 0.7, sfxBus); noiseHit(t + 0.09, 0.22, 0.035, 'bandpass', 3400, 0.9, sfxBus); },
+    paper: () => { const t = now(); noiseHit(t, 0.28, 0.055, 'bandpass', 2600, 0.7, sfxOut || sfxBus); noiseHit(t + 0.09, 0.22, 0.035, 'bandpass', 3400, 0.9, sfxOut || sfxBus); },
     stamp: () => {
       const t = now(); const o = ctx.createOscillator(); const g = ctx.createGain();
       o.type = 'sine'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(52, t + 0.16);
       g.gain.setValueAtTime(0.14, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-      o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.35);
-      noiseHit(t, 0.09, 0.08, 'bandpass', 1800, 0.6, sfxBus);
+      o.connect(g); g.connect(sfxOut || sfxBus); o.start(t); o.stop(t + 0.35);
+      noiseHit(t, 0.09, 0.08, 'bandpass', 1800, 0.6, sfxOut || sfxBus);
     },
     up: () => { const t = now(); [523.25, 659.25, 783.99].forEach((f, i) => tone(f, t + i * 0.075, 0.4, 0.04, 'triangle')); },
     down: () => { const t = now(); [659.25, 523.25, 392.0].forEach((f, i) => tone(f, t + i * 0.085, 0.45, 0.04, 'triangle')); },
@@ -987,14 +990,23 @@ export function createAudioEngine(options = {}) {
     // касса в конце урока: щелчок ящика, звонок и ссыпающиеся монеты
     register: () => {
       const t = now();
-      noiseHit(t, 0.07, 0.07, 'bandpass', 900, 0.9, sfxBus);
+      noiseHit(t, 0.07, 0.07, 'bandpass', 900, 0.9, sfxOut || sfxBus);
       tone(2093, t + 0.06, 0.7, 0.045, 'sine'); tone(2637, t + 0.06, 0.55, 0.025, 'sine'); tone(4186, t + 0.06, 0.25, 0.01, 'sine');
       [0.32, 0.38, 0.45, 0.5, 0.58].forEach((d, i) => tone(1500 + i * 140, t + d, 0.06, 0.018, 'triangle'));
     },
   };
+  // сыграть звук через его поправку громкости
+  const playSfx = (name) => {
+    const fn = SFX[name]; if (!fn) return;
+    const g = ctx.createGain(); g.gain.value = Math.pow(10, (options.sfxGain === false ? 0 : SFX_GAIN_DB[name] || 0) / 20); g.connect(sfxBus);
+    sfxOut = g;
+    try { fn(); } finally { sfxOut = null; }
+  };
 
   return {
     opts,
+    // для замера громкости (scripts/loudness.mjs): звук в офлайн-контексте, без resume
+    sfxOffline(name) { if (ensure()) playSfx(name); },
     trackName: () => track.name,
     nowPlaying: () => ({ id: track.id, name: track.name, subtitle: track.subtitle, mood: track.mood,
       moodLabel: MOOD_LABEL[track.mood], bpm: Math.round(track.bpm * tempoMod), locked: lockedMood }),
@@ -1027,7 +1039,7 @@ export function createAudioEngine(options = {}) {
       if (!opts.sfx) return;
       if (name === 'tick') { const t = Date.now(); if (t - lastTick < 70) return; lastTick = t; }
       if (!ensure()) return; resume();
-      const fn = SFX[name]; if (fn) { try { fn(); } catch { /* тишина важнее падения */ } }
+      try { playSfx(name); } catch { /* тишина важнее падения */ }
     },
     startMusic() {
       if (!ensure()) return; resume();
@@ -1111,13 +1123,13 @@ export function createAudioEngine(options = {}) {
       // заставка — это музыка: звучит, если включена музыка, даже при выключенных звуках интерфейса
       const staged = !!(stinger && opts.music && playStinger(stinger));
       if (!opts.sfx) return;
-      SFX.stamp();
-      setTimeout(() => { if (bigNews && !staged) SFX.news(); }, 240);
+      playSfx('stamp');
+      setTimeout(() => { if (bigNews && !staged) playSfx('news'); }, 240);
       setTimeout(() => {
         if (staged) return;
-        if (newCrisis) SFX.alarm();
-        else if (wellbeingDelta > 0.6) SFX.up();
-        else if (wellbeingDelta < -0.6) SFX.down();
+        if (newCrisis) playSfx('alarm');
+        else if (wellbeingDelta > 0.6) playSfx('up');
+        else if (wellbeingDelta < -0.6) playSfx('down');
       }, 430);
     },
   };
@@ -1158,6 +1170,26 @@ export async function renderStingerOffline(id, { sampleRate = 22050 } = {}) {
   eng.stingerOffline(id);
   return ctx.startRendering();
 }
+
+/* Отрендерить звук интерфейса — для замера громкости звуков ответов. */
+export const SFX_NAMES = ['coin', 'down', 'up', 'register', 'tick', 'click', 'tab', 'paper', 'stamp', 'news', 'alarm'];
+export async function renderSfxOffline(name, { sampleRate = 22050, sfxGain = false } = {}) {
+  const OAC = typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+  if (!OAC) return null;
+  const ctx = new OAC(2, Math.ceil(2 * sampleRate), sampleRate);
+  const eng = createAudioEngine({ context: ctx, bypassCompressor: true, sfxGain });
+  eng.opts.volume = 1;
+  eng.sfxOffline(name);
+  return ctx.startRendering();
+}
+// громкость короткого звука: RMS только по звучащей части (выше −60 дБ), иначе тишина вокруг занижает замер
+export const measureShort = (buf) => {
+  const x = buf.getChannelData(0); let peak = 0; for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
+  const thr = Math.max(peak * 0.001, 1e-6); let sum = 0; let n = 0;
+  for (let i = 0; i < x.length; i++) if (Math.abs(x[i]) > thr) { sum += x[i] * x[i]; n += 1; }
+  const db = (v) => Math.round(20 * Math.log10(Math.max(v, 1e-9)) * 10) / 10;
+  return { rms: db(Math.sqrt(sum / Math.max(1, n))), peak: db(peak) };
+};
 
 /* Громкость буфера: RMS в дБ полной шкалы (по окнам 400 мс, тихие окна отброшены,
    как в стробируемой громкости), пик и крест-фактор. */

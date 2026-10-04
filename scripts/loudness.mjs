@@ -7,10 +7,11 @@
      npm run loudness            — таблица: сырая громкость, действующая и новая поправка
      npm run loudness -- --write — пересчитать поправки в src/audio/loudness.js
      npm run loudness -- dawn    — только выбранные пьесы
+     npm run loudness -- --sfx --write — только звуки интерфейса: поправки SFX_GAIN_DB
 
    Поправки считаются от сырого сигнала (без компрессора и без старых поправок), так что
    повторный запуск с --write сходится к тем же числам, а не накапливает ошибку. */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 import { chromium } from '@playwright/test';
@@ -29,6 +30,25 @@ const MAX_BOOST = 6; const MAX_CUT = 9;
 const MOOD_OFFSET = { frost: -1.5, calm: -0.5, slump: -0.5, crisis: 1, war: 0.5, totalitarian: 1, authoritarian: 0.5 };
 const WORKERS = 4;
 
+/* Звуки ответов (верно, неверно, касса в конце урока, «вверх») — к одной громкости. Цель —
+   их средняя сырая громкость: общий уровень не меняется, выравнивается разброс. Остальные
+   звуки (интерфейс и события партии) только замеряются — их баланс подобран на слух в игре. */
+const ANSWER_SFX = ['coin', 'down', 'up', 'register'];
+async function measureSfx(page) {
+  const sfx = await page.evaluate(async () => {
+    const eng = await import('/src/audio/engine.js');
+    const out = [];
+    for (const id of eng.SFX_NAMES) out.push({ id, ...eng.measureShort(await eng.renderSfxOffline(id)) });
+    return out;
+  });
+  const answerTarget = Math.round((sfx.filter((x) => ANSWER_SFX.includes(x.id)).reduce((a, x) => a + x.rms, 0) / ANSWER_SFX.length) * 2) / 2;
+  sfx.forEach((x) => {
+    x.gain = ANSWER_SFX.includes(x.id) ? Math.max(-MAX_CUT, Math.min(MAX_BOOST, Math.round((answerTarget - x.rms) * 2) / 2)) : 0;
+    console.log(`звук ${x.id.padEnd(10)} ${String(x.rms).padStart(6)} дБ  пик ${String(x.peak).padStart(5)}  → поправка ${x.gain}${ANSWER_SFX.includes(x.id) ? '  (звук ответа)' : ''}`);
+  });
+  return sfx;
+}
+
 const server = await createServer({ root, logLevel: 'error', server: { port: 5199, strictPort: false } });
 await server.listen();
 const url = server.resolvedUrls.local[0];
@@ -42,6 +62,17 @@ try {
     await page.goto(url);
     return page;
   }));
+  if (args.includes('--sfx')) {
+    const sfx = await measureSfx(ctxs[0]);
+    if (write) {
+      const file = new URL('../src/audio/loudness.js', import.meta.url);
+      const cur = readFileSync(file, 'utf8');
+      const block = `// звуки ответов — к одной громкости (scripts/loudness.mjs --sfx --write)\nexport const SFX_GAIN_DB = {\n${sfx.filter((x) => ANSWER_SFX.includes(x.id)).map((x) => `  ${x.id}: ${x.gain},`).join('\n')}\n};\n`;
+      writeFileSync(file, cur.replace(/(\/\/ звуки [^\n]*\n)?export const SFX_GAIN_DB = \{[^}]*\};\n?/, block));
+      console.log('поправки звуков записаны в src/audio/loudness.js');
+    }
+    process.exitCode = 0;
+  } else {
   const ids = await ctxs[0].evaluate(async () => Object.keys((await import('/src/audio/tracks.js')).TRACKS));
   const current = await ctxs[0].evaluate(async () => (await import('/src/audio/loudness.js')).TRACK_GAIN_DB);
   const list = only.length ? ids.filter((id) => only.includes(id)) : ids;
@@ -84,6 +115,7 @@ try {
     x.gain = Math.max(-MAX_CUT, Math.min(MAX_BOOST, Math.round((TARGET + 1 - x.rms) * 2) / 2));
     console.log(`заставка ${x.id.padEnd(15)} ${String(x.rms).padStart(6)} дБ  пик ${String(x.peak).padStart(5)}  → поправка ${x.gain}`);
   });
+  const sfx = await measureSfx(ctxs[0]);
   const med = [...rows].sort((a, b) => a.raw.rms - b.raw.rms)[rows.length >> 1].raw.rms;
   console.log(`\nмедиана сырой громкости ${med} дБ`);
   const spreadOf = (xs) => (Math.max(...xs) - Math.min(...xs)).toFixed(1);
@@ -99,8 +131,13 @@ ${body}
 export const STINGER_GAIN_DB = {
 ${stingers.map((x) => `  ${x.id}: ${x.gain},`).join('\n')}
 };
+// звуки ответов — к одной громкости (scripts/loudness.mjs --sfx --write)
+export const SFX_GAIN_DB = {
+${sfx.filter((x) => ANSWER_SFX.includes(x.id)).map((x) => `  ${x.id}: ${x.gain},`).join('\n')}
+};
 `);
     console.log('поправки записаны в src/audio/loudness.js');
+  }
   }
 } finally {
   await browser.close();

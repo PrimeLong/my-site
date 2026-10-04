@@ -52,6 +52,7 @@ import { ArtStyle, Guilloche, Rosette, Stamp, Chest, PostStamp, Engraving, Engra
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { ProfileModal } from './account.jsx';
+import { plural } from './lib/plural.js';
 
 export { SCREENS } from './learn/screens.js';
 
@@ -178,7 +179,6 @@ const testAnswer = (inst) => {
 const noopCtx = { progress: { problems: {}, read: {} }, go: () => {}, onAnswer: () => {} };
 const vibrate = (p) => { try { if (navigator.vibrate) navigator.vibrate(p); } catch { /* нет вибрации */ } };
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-const plural = (n, one, few, many) => { const a = n % 10; const b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
 
 /* ------------------------------ ПРОГРЕСС ------------------------------ */
 function useLearn() {

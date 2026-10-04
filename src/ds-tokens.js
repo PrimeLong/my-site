@@ -18,13 +18,13 @@ export const DS_THEMES = {
     isDark: false,
     paper: '#F3EEE2', card: '#FFFCF5', card2: '#ECE5D4', ink: '#1C2125', ink2: '#4A5157', ink3: '#62696F',
     rule: '#D6CCB7', rule2: '#B3A78E', ok: '#2D7A4B', okInk: '#1C5433', okBg: '#E2F0E3', bad: '#B0392D', badInk: '#8A2A20', badBg: '#F7E1DC', okBtn: '#2D7A4B', badBtn: '#B0392D',
-    gold: '#9C7218', goldSoft: '#C9A24A', sel: '#E6ECF5', selInk: '#1E3C66', selRule: '#5F82B3', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
+    gold: '#9C7218', goldSoft: '#C9A24A', sel: '#F4E6D2', selInk: '#5A3212', selRule: '#B5793F', blue: '#3E6FA8', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
   },
   ink: {
     isDark: true,
     paper: '#14181C', card: '#1C2227', card2: '#242B32', ink: '#EEE7D7', ink2: '#BDB5A5', ink3: '#A29A8B',
     rule: '#353D45', rule2: '#4D5660', ok: '#62B882', okInk: '#AEE3C1', okBg: '#1B3226', bad: '#E2806F', badInk: '#F4BCB2', badBg: '#3A221E', okBtn: '#2B7048', badBtn: '#A23E32',
-    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#22324A', selInk: '#D2E2F8', selRule: '#6A8FC2', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
+    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#3A2B1D', selInk: '#F2DCBC', selRule: '#C98A55', blue: '#6A8FC2', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
   },
 };
 
@@ -92,7 +92,8 @@ export const appColors = (t) => ({
   paper: t.card2, paperText: t.ink, paperMuted: t.ink2, paperRule: t.rule2,
   gold: t.gold, goldSoft: t.gold, goldDim: `color-mix(in srgb, ${t.gold} 16%, transparent)`, ink: t.isDark ? '#0E1114' : '#1C2125',
   teal: t.ok, tealDim: t.okBg, rust: t.bad, rustDim: t.badBg,
-  blue: t.selRule, blueDim: t.sel, sel: t.sel, selText: t.selInk, selBorder: t.selRule,
+  // выбранное — в тёплой гамме бумаги (не синим); синий остаётся только для линий графиков
+  blue: t.blue || t.selRule, blueDim: `color-mix(in srgb, ${t.blue || t.selRule} 14%, ${t.card})`, sel: t.sel, selText: t.selInk, selBorder: t.selRule,
 });
 
 /* Настройки обучения на устройстве: тёмная тема (по умолчанию светлая), музыка (по

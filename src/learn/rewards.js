@@ -4,6 +4,8 @@
    Модуль чистый: всё считается из состояния учёбы (learn-state.js); каждая награда выдаётся
    под ключом (claimed) — ни дважды, ни на двух устройствах. Экраны — src/learn.jsx. */
 import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf, DIAMOND_ACCURACY, goalMinutes, goalToday } from '../textbook/learn-state.js';
+import { plural } from '../lib/plural.js';
+export { plural };
 
 // детерминированная «случайность» из строки: FNV-1a → [0, 1)
 export function hash01(str) {
@@ -12,7 +14,6 @@ export function hash01(str) {
   return (h >>> 0) / 4294967296;
 }
 const sum = (m) => Object.values(m || {}).reduce((a, b) => a + b, 0);
-export const plural = (n, one, few, many) => { const a = n % 10; const b = n % 100; return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many; };
 export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монеты', 'монет');
 
 /* ------------------------------ МОНЕТЫ ------------------------------ */
