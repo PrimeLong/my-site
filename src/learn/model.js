@@ -120,3 +120,21 @@ export function modelReadout(st, open) {
   }
   return { m, mode: 'equilibrium', eq, p: eq.p, qd: eq.q, qs: eq.q, sold: eq.q, shortage: 0 };
 }
+
+/* ------------------------------ ГЛАГОЛЫ УЧЁБЫ ------------------------------
+   Что ученик делает в задании (docs/mechanics.md): ответить, исследовать, предсказывать, строить,
+   решать, объяснять. model — шаг, где он что-то делает с моделью (кривой, рынком, цепочкой), а не
+   только отвечает. Правило на будущее: в уроке не меньше двух разных глаголов и хотя бы один шаг
+   с моделью. */
+export const VERBS = {
+  choice: { verb: 'ответить' }, gap: { verb: 'ответить' }, tf: { verb: 'ответить' }, match: { verb: 'ответить' }, sort: { verb: 'ответить' },
+  calc: { verb: 'ответить' }, shift: { verb: 'предсказывать' }, news: { verb: 'предсказывать' }, tiles: { verb: 'строить' },
+  curve: { verb: 'строить', model: true }, point: { verb: 'строить', model: true }, price: { verb: 'исследовать', model: true },
+  swipe: { verb: 'предсказывать', model: true }, rush: { verb: 'предсказывать', model: true },
+  open: { verb: 'объяснять' }, domino: { verb: 'строить', model: true }, discover: { verb: 'исследовать', model: true },
+};
+// глаголы урока: его шаги «Открой сам» и свои упражнения (практика берёт «Домино» всегда)
+export function lessonVerbs(lesson) {
+  const kinds = [...lesson.inner.filter((c) => c.discover).map(() => 'discover'), ...lesson.exercises.filter((e) => !e.diamond).map((e) => e.kind)];
+  return { verbs: [...new Set(kinds.map((k) => VERBS[k].verb))], model: kinds.some((k) => VERBS[k].model) };
+}

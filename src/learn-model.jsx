@@ -137,7 +137,7 @@ function useDayClock(key, reduced) {
 }
 
 /* ------------------------------ ГРАФИК ------------------------------ */
-const CW = 320; const CH = 210; const L = 38; const R = 12; const T = 10; const B = 34;
+const CW = 320; const CH = 218; const L = 38; const R = 12; const T = 20; const B = 34;
 const PWc = CW - L - R;
 function Frame({ qMax, pMax, qStep, pStep, qLabel = 'чашек в день', pLabel = 'цена, кр.', children, label, testid, ch = CH }) {
   const PHc = ch - T - B;
@@ -150,7 +150,7 @@ function Frame({ qMax, pMax, qStep, pStep, qLabel = 'чашек в день', pL
       {ticksQ.map((q) => <text key={`q${q}`} x={x(q)} y={T + PHc + 14} textAnchor="middle">{q}</text>)}
       <line x1={L} y1={T} x2={L} y2={T + PHc} stroke="var(--ds-ink2)" strokeWidth="2" />
       <line x1={L} y1={T + PHc} x2={L + PWc} y2={T + PHc} stroke="var(--ds-ink2)" strokeWidth="2" />
-      <text className="lm-ax" x={L + 4} y={T + 9}>{pLabel}</text>
+      <text className="lm-ax" x={L - 4} y={T - 9}>{pLabel}</text>
       <text className="lm-ax" x={L + PWc} y={T + PHc + 28} textAnchor="end">{qLabel}</text>
       {children({ x, y, base: T + PHc })}
     </svg>
@@ -259,7 +259,7 @@ export function ModelChart({ r, open, st }) {
           <path d={linePts((p) => mqd(m, p), qMax, pMax, x, y)} stroke="#3E6FA8" strokeWidth="3.5" fill="none" strokeLinecap="round" data-curve-line="D" />
           {open.has('supply') && <path d={linePts((p) => mqs(m, p), qMax, pMax, x, y)} stroke="#C0602A" strokeWidth="3.5" fill="none" strokeLinecap="round" data-curve-line="S" />}
           {r.mode === 'demand' && (
-            <g data-testid="model-price">
+            <g data-testid="model-price-line">
               <line x1={L} x2={L + PWc} y1={y(r.p)} y2={y(r.p)} stroke="var(--u)" strokeWidth="1.6" strokeDasharray="4 4" />
               <circle cx={x(r.qd)} cy={y(r.p)} r="5.5" fill="#3E6FA8" />
             </g>
@@ -441,7 +441,7 @@ function DominoScene({ inst, sc }) {
   const short = sc.ceil ? Math.max(0, qd - qs) : 0;
   return (
     <div className="lm-scene" data-testid="domino-scene" data-da={sc.dA} data-dc={sc.dC}>
-      <Frame qMax={qMax} pMax={pMax} qStep={20} pStep={10} label="Сцена: рынок капучино" testid="domino-chart" ch={150}>
+      <Frame qMax={qMax} pMax={pMax} qStep={20} pStep={10} label="Сцена: рынок капучино" testid="domino-chart" ch={160}>
         {({ x, y, base }) => (
           <>
             {sc.dA !== 0 && <path d={linePts((p) => mqd(m0, p), qMax, pMax, x, y)} stroke="#3E6FA8" strokeOpacity=".4" strokeWidth="2.2" strokeDasharray="5 5" fill="none" />}

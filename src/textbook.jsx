@@ -34,6 +34,7 @@ const APPENDIX_BY_ID = Object.fromEntries(APPENDICES.map((a) => [a.id, a]));
 const fmtNum = (v) => String(Math.round(v * 1000) / 1000).replace('.', ',').replace('-', '−');
 
 export const TEXTBOOK_CSS = `
+  .tb-sticky-top { position: sticky; top: 0; z-index: 30; background: var(--ds-paper, var(--tb-bg, #fff)); margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--ds-rule, transparent); }
   .tb-body { font-size: 14.5px; line-height: 1.68; color: var(--c-text); }
   .tb-body p { margin: 0 0 12px; }
   .tb-body h2 { font-family: 'PT Serif', Georgia, serif; font-size: 20px; font-weight: 700; color: var(--c-gold-soft); margin: 28px 0 10px; }
@@ -108,7 +109,7 @@ export const TEXTBOOK_CSS = `
     .ln-textbook.wide { max-width: 1240px !important; }
     .ln-textbook.wide .tbl-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
     .ln-textbook.wide .tb-ch-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 36px; align-items: start; }
-    .ln-textbook.wide .tb-ch-aside { position: sticky; top: 12px; max-height: calc(100vh - 110px); overflow: auto; }
+    .ln-textbook.wide .tb-ch-aside { position: sticky; top: 64px; max-height: calc(100vh - 160px); overflow: auto; }
     .ln-textbook.wide .tb-ch-main { max-width: 860px; }
     .ln-textbook.wide .tb-body { font-size: 16px; }
   }
@@ -400,7 +401,7 @@ export function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
       );
     }
     switch (b.type) {
-      case 'h2': h2No += 1; return <h2 key={i} id={top ? b.anchor || `sec-${h2No}` : undefined} style={{ scrollMarginTop: 12 }}><Inline nodes={b.inline} ctx={ctx} /></h2>;
+      case 'h2': h2No += 1; return <h2 key={i} id={top ? b.anchor || `sec-${h2No}` : undefined} style={{ scrollMarginTop: 64 }}><Inline nodes={b.inline} ctx={ctx} /></h2>;
       case 'h3': return <h3 key={i}><Inline nodes={b.inline} ctx={ctx} /></h3>;
       case 'p': return <p key={i}><Inline nodes={b.inline} ctx={ctx} /></p>;
       case 'ul': return <ul key={i}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ul>;
@@ -647,11 +648,27 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   // решение открыто по кнопке; после ответа, если задача его открывает, — само, пока его не скроют
   const [solMode, setSolMode] = useState(null);
   const [hintsShown, setHintsShown] = useState(0);
+  /* задача, решённая раньше (и не пришедшая на повтор), свёрнута в строку «решена» — сборник не
+     приходится листать через уже сделанное; развернуть — по нажатию */
+  const [solvedBefore] = useState(() => !!(rec && rec.ok && !(rec.due && rec.due <= Date.now())));
+  const [expanded, setExpanded] = useState(false);
   const hints = block.hints || [];
   const status = rec ? (rec.ok ? 'решена' : 'не решена') : null;
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
+  if (solvedBefore && !expanded) {
+    return (
+      <div id={`problem-${block.id}`} className="ems-panel" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true">
+        <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', fontSize: 13.5 }} aria-expanded="false"
+          data-testid="tb-problem-expand" onClick={() => { Audio.play('click'); setExpanded(true); }}>
+          <Check size={14} style={{ color: COLOR.teal, flexShrink: 0 }} aria-hidden="true" />
+          <span style={{ flex: 1 }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span> — решена{rec.due ? `, повтор ${daysUntil(rec.due)}` : ''}</span>
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+      </div>
+    );
+  }
   return (
-    <div className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind}>
+    <div id={`problem-${block.id}`} className="ems-panel" style={{ padding: 14, margin: '12px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
         <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
         <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
@@ -770,14 +787,29 @@ function TbCalc({ onUse, label = 'В ответ' }) {
     </div>
   );
 }
-// кнопка «Калькулятор» и сам калькулятор под полями ответа; at — поле, куда пойдёт результат
-function CalcToggle({ onUse }) {
+// кнопка «Калькулятор» и сам калькулятор под полями ответа; в задаче из нескольких шагов видно,
+// в какое поле пойдёт результат (labels, target), и его можно выбрать (onTarget)
+function CalcToggle({ onUse, labels = null, target = 0, onTarget = null }) {
   const [open, setOpen] = useState(false);
+  const multi = labels && labels.length > 1;
   return (
     <>
       <button type="button" className="ems-btn" style={{ padding: '7px 12px', fontSize: 13 }} aria-expanded={open} data-testid="tb-calc-open"
         onClick={() => { Audio.play('click'); setOpen((x) => !x); }}><Calculator size={14} style={{ verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />Калькулятор</button>
-      {open && <div style={{ flexBasis: '100%' }}><TbCalc onUse={(x) => onUse(x)} /></div>}
+      {open && (
+        <div style={{ flexBasis: '100%' }}>
+          {multi && onTarget && (
+            <div role="group" aria-label="Куда вставить результат" style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: COLOR.muted, marginBottom: 6 }}>
+              Куда:
+              {labels.map((l, k) => (
+                <button key={k} type="button" className="tb-chip" aria-pressed={k === target} data-testid="tb-calc-target" data-target={k}
+                  style={k === target ? { borderColor: COLOR.gold, color: COLOR.text } : undefined} onClick={() => { Audio.play('tick'); onTarget(k); }}>{l}</button>
+              ))}
+            </div>
+          )}
+          <TbCalc onUse={(x) => onUse(x)} label={multi ? `В ответ ${labels[target]}` : 'В ответ'} />
+        </div>
+      )}
     </>
   );
 }
@@ -808,9 +840,18 @@ function NumberProblem({ block, no, ctx, from }) {
     setSure(null);
   };
   const setAt = (k, v) => { setInputs((xs) => xs.map((x, j) => (j === k ? v : x))); setVerdict(null); };
-  // результат калькулятора — в поле, где был курсор, иначе в первое пустое
+  /* результат калькулятора — в поле, где был курсор (или выбранное), иначе в первое пустое; после
+     вставки цель переходит к следующему пустому полю — так результаты идут в а), б), в) по очереди */
   const [focus, setFocus] = useState(null);
-  const useCalc = (v) => { const k = focus != null ? focus : Math.max(0, inputs.findIndex((x) => !String(x).trim())); setAt(k, v); };
+  const firstEmpty = inputs.findIndex((x) => !String(x).trim());
+  const target = focus != null ? focus : Math.max(0, firstEmpty);
+  const useCalc = (v) => {
+    const after = inputs.map((x, j) => (j === target ? v : x));
+    setAt(target, v);
+    const next = after.findIndex((x, j) => j > target && !String(x).trim());
+    const any = after.findIndex((x) => !String(x).trim());
+    setFocus(next >= 0 ? next : any >= 0 ? any : target);
+  };
   return (
     <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}
       given={parts.map((pt, k) => `${pt.label ? `${pt.label} ` : ''}${inputs[k]}`).join('; ')}>
@@ -829,7 +870,7 @@ function NumberProblem({ block, no, ctx, from }) {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />
           <button type="submit" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }}>Проверить</button>
-          <CalcToggle onUse={useCalc} />
+          <CalcToggle onUse={useCalc} labels={multi ? parts.map((pt) => pt.label) : null} target={target} onTarget={setFocus} />
         </div>
       </form>
     </ProblemFrame>
@@ -967,6 +1008,18 @@ function PageNav({ ctx }) {
 }
 
 const scrollToId = (id, smooth = true) => { const el = document.getElementById(id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' }); return !!el; };
+/* «Задачи» главы — прокрутка не к началу сборника, а к задаче, которую ученик сейчас решает:
+   начатой и ещё не решённой, иначе к первой нетронутой. Её нет на экране (уровень свёрнут) — к
+   началу раздела. */
+const isProblemsSection = (x) => x && x.title.trim().toLowerCase() === 'задачи';
+export function currentProblem(chapterId, progress) {
+  const ids = problemsOf(chapterId); const rec = (id) => (progress.problems || {})[id];
+  return ids.find((id) => rec(id) && !rec(id).ok) || ids.find((id) => !rec(id)) || null;
+}
+const scrollToSection = (x, chapterId, progress, smooth = true) => {
+  const cur = isProblemsSection(x) ? currentProblem(chapterId, progress) : null;
+  return (cur && scrollToId(`problem-${cur}`, smooth)) || scrollToId(x.id, smooth);
+};
 
 /* Оглавление главы по разделам: сколько минут читать каждый и пройден ли он (ответ
    «совпало» на вопрос в конце раздела). Сверху — прогресс главы по разделам. */
@@ -986,7 +1039,7 @@ function SectionNav({ sections, ctx }) {
           const ok = x.recall && sectionDone(ctx.progress, x);
           return (
             <li key={x.id}>
-              <button type="button" className="tb-secnav-row" onClick={() => scrollToId(x.id)}>
+              <button type="button" className="tb-secnav-row" data-testid="tb-secnav-row" onClick={() => scrollToSection(x, ctx.chapter, ctx.progress)}>
                 <span className={`tb-secnav-no${ok ? ' done' : ''}`} aria-hidden="true">{ok ? <Check size={12} /> : k + 1}</span>
                 <span>{x.title}</span>
                 {x.recall ? <span className="tb-secnav-min">≈{x.minutes} мин</span> : <span />}
@@ -1014,7 +1067,7 @@ function ChapterPage({ id, ctx }) {
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
         <div className="tb-ch-grid">
-          <aside className="tb-ch-aside"><SectionNav sections={CHAPTER_SECTIONS[id]} ctx={ctx} /></aside>
+          <aside className="tb-ch-aside"><SectionNav sections={CHAPTER_SECTIONS[id]} ctx={{ ...ctx, chapter: id }} /></aside>
           <div className="tb-ch-main tb-body"><Blocks blocks={blocks} ctx={{ ...ctx, chapter: id }} top /></div>
         </div>
       ) : (
@@ -1614,7 +1667,7 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
-export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null, reportFlag = null, asTab = false }) {
+export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null, reportFlag = null, asTab = false, homeTick = 0 }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
   const [stack, setStack] = useState([]);
@@ -1671,7 +1724,8 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
   React.useEffect(() => {
     if (!page.anchor || typeof document === 'undefined') return undefined;
     let n = 0; let raf = 0;
-    const tick = () => { n += 1; if (!scrollToId(page.anchor, false) && !scrollToId(`card-${page.anchor}`, false) && n < 30) raf = requestAnimationFrame(tick); };
+    const sec = page.kind === 'chapter' ? (CHAPTER_SECTIONS[page.id] || []).find((x) => x.id === page.anchor) : null;
+    const tick = () => { n += 1; if (!(sec ? scrollToSection(sec, page.id, progress, false) : scrollToId(page.anchor, false)) && !scrollToId(`card-${page.anchor}`, false) && n < 30) raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [page]);
@@ -1680,10 +1734,14 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     if (page.anchor || typeof window === 'undefined' || !window.scrollTo) return undefined;
     const y = readJSON(SCROLL_KEY, {})[pageKey(page)] || 0;
     let n = 0; let raf = 0;
-    // графики и формулы дорисовываются не сразу — несколько кадров догоняем нужную высоту
+    // графики и формулы дорисовываются не сразу — несколько кадров догоняем нужную высоту;
+    // ученик сам что-то нажал или прокрутил — догонять перестаём, его действие важнее
     const tick = () => { window.scrollTo(0, y); n += 1; if (n < 20 && Math.abs(window.scrollY - y) > 2) raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const stop = () => cancelAnimationFrame(raf);
+    const evs = ['pointerdown', 'wheel', 'touchstart', 'keydown'];
+    evs.forEach((ev) => window.addEventListener(ev, stop, { passive: true, capture: true }));
+    return () => { stop(); evs.forEach((ev) => window.removeEventListener(ev, stop, { capture: true })); };
   }, [page]);
   const go = (next, { push = true } = {}) => {
     // уходя, запомнить, где остановились на этой странице
@@ -1694,6 +1752,12 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     // «продолжить» — глава или приложение; оглавление и «на сегодня» место чтения не меняют
     update((p) => setLast(p, next.kind === 'chapter' || next.kind === 'appendix' ? { kind: next.kind, id: next.id } : p.last));
   };
+  // повторное нажатие на вкладку «Учебник» — на главную страницу учебника (оглавление), к началу
+  React.useEffect(() => {
+    if (!homeTick) return;
+    if (page.kind !== 'toc') { go({ kind: 'toc' }, { push: false }); setStack([]); }
+    if (typeof window !== 'undefined' && window.scrollTo) requestAnimationFrame(() => window.scrollTo(0, 0));
+  }, [homeTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const back = () => {
     const prev = stack[stack.length - 1];
     if (!prev) { go({ kind: 'toc' }, { push: false }); return; }
@@ -1737,9 +1801,12 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     const onBackTap = () => { Audio.play('paper'); if (stack.length || asTab) back(); else onExit(); };
     return (
       <div className="ln-textbook wide" style={{ maxWidth: 760, margin: '0 auto', padding: '6px 16px 40px' }}>
-        <TopBar back={canBack ? <IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBackTap} /> : null}
-          title={<><span className="ds-eyebrow" style={{ display: 'block' }}>Учебник</span>{cur.kind === 'toc' ? 'Оглавление' : pageTitle(cur)}</>}
-          right={reportSlot ? reportSlot(cur) : null} />
+        {/* верхняя панель с «назад» прилипает к верху: из длинной темы не нужно листать наверх */}
+        <div className="tb-sticky-top" data-testid="tb-topbar">
+          <TopBar back={canBack ? <IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBackTap} /> : null}
+            title={<><span className="ds-eyebrow" style={{ display: 'block' }}>Учебник</span>{cur.kind === 'toc' ? 'Оглавление' : pageTitle(cur)}</>}
+            right={reportSlot ? reportSlot(cur) : null} />
+        </div>
         {pages}
       </div>
     );

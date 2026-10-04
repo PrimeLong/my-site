@@ -109,7 +109,7 @@ const CSS = `
      встряска после ошибки и свайп карточки двигают его вбок (без overflow-x: hidden из-за
      overflow-y: auto появлялся горизонтальный ползунок), а появление шага — не сдвигом вниз
      (сдвиг на 14 px на миг давал вертикальный), а проявлением */
-  .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 14px 16px 24px; }
+  .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 14px 16px 24px; }
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
   .ln-inner { max-width: 560px; margin: 0 auto; }
@@ -536,6 +536,14 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
     start: Date.now() - (rs ? rs.elapsed || 0 : 0), itemStart: Date.now(), retries: rs ? rs.retries : 0,
   });
   const [started, setStarted] = useState(!!rs);
+  /* урок — слой поверх страницы: пока он открыт, страница под ним не прокручивается и не
+     показывает свой ползунок (на ПК он висел сбоку урока, даже когда прокручивать нечего) */
+  useEffect(() => {
+    if (hidden || typeof document === 'undefined') return undefined;
+    const els = [document.documentElement, document.body]; const was = els.map((el) => el.style.overflow);
+    els.forEach((el) => { el.style.overflow = 'hidden'; });
+    return () => { els.forEach((el, k) => { el.style.overflow = was[k]; }); };
+  }, [hidden]);
   const retryable = run.mode === 'lesson' || run.mode === 'practice';
   const total = plan.items.length;
   const cur = queue[pos];
@@ -1358,7 +1366,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <Mascot mood={hello} size={44} />
         <div className="ds-sub" style={{ fontSize: 15, lineHeight: 1.4 }}>
-          {rec && rec.why === 'weak' ? `Рекомендуем сейчас: «${recTitle}» — здесь было больше всего ошибок.`
+          {rec && rec.weak ? `Слабое место — «${LESSON_BY_ID[rec.weak.lessonId].title}»: его задачи первыми придут в «Повторение». А дальше по Пути — «${recTitle}».`
             : g.done >= g.goal ? 'Цель дня выполнена — можно и дальше.' : sleepy ? 'Инфля заскучала. Одна остановка — и снова в пути.' : first && first.current ? `Следующая остановка: «${first.current.title}»` : 'Уроки по 3–5 минут.'}
         </div>
       </div>
@@ -1575,7 +1583,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
    Корень экранов обучения. Учебник — подэкран поверх вкладки (или поверх итогов урока):
    его «назад» возвращает туда, откуда открыли. Нижняя панель — в корне приложения. */
 const MORNING_KEY = 'ems-learn-morning';
-export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0 }) {
+export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0 }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
   const [sheet, setSheet] = useState(null);
@@ -1624,7 +1632,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports} style={book || reports ? { display: 'none' } : undefined}>
         {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           visible={!run && !sheet && !book && !chest && !morning} />}
-        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab {...bookHandlers} {...bookReports} /></div>}
+        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
         {tab === 'tasks' && <TasksView learn={learn} onStart={start} onOpenBook={openBook} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}

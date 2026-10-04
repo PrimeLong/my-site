@@ -367,7 +367,7 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
     const r = piggyTake(learn, now);
     if (!r.ok) { onMsg({ ok: false, text: r.reason }); return; }
     Audio.play(r.early ? 'paper' : 'register'); update(() => r.s, { settle: true });
-    onMsg({ ok: true, text: r.early ? `Забрано ${r.payout} ${coinsWord(r.payout)}: раньше срока процент сгорел (−${r.lost}).` : `Забрано ${r.payout} ${coinsWord(r.payout)} — с процентами за неделю.` });
+    onMsg({ ok: true, text: !r.early ? `Забрано ${r.payout} ${coinsWord(r.payout)} — с процентами за неделю.` : r.lost ? `Забрано ${r.payout} ${coinsWord(r.payout)}: раньше срока процент сгорел (−${r.lost}).` : `Забрано ${r.payout} ${coinsWord(r.payout)}: проценты не успели набежать.` });
   };
   return (
     <Card style={{ margin: '0 0 14px' }} data-testid="shop-piggy" data-open={String(!!st)}>

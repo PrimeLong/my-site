@@ -2,8 +2,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   DAY, dayResult, hiddenDemand, distinctPrices, lineShown, discoverDone, fitDemand,
-  MODEL_PARTS, MODEL_NEWS, MODEL_DEFAULT, BASE, modelParts, modelProgress, modelReadout, partsOfLesson,
+  MODEL_PARTS, MODEL_NEWS, MODEL_DEFAULT, BASE, modelParts, modelProgress, modelReadout, partsOfLesson, VERBS, lessonVerbs,
 } from '../model.js';
+import { KIND_LABEL } from '../course.js';
 import { UNIT_BY_ID, LESSON_BY_ID, LESSONS, buildLesson } from '../course.js';
 import { seeded } from '../../textbook/variants.js';
 
@@ -128,6 +129,19 @@ describe('«Домино»', () => {
           own.forEach((d) => expect(ids, `${id} s=${s} ${level}`).toContain(d));
         });
       }
+    });
+  });
+});
+
+describe('глаголы учёбы (docs/mechanics.md)', () => {
+  it('у каждого вида задания есть глагол', () => {
+    Object.keys(KIND_LABEL).forEach((k) => expect(VERBS[k], k).toBeTruthy());
+  });
+  it('supply-demand: в уроке два разных глагола и хотя бы один шаг с моделью (кроме «Слов», игры, повторения и итогов)', () => {
+    UNIT_BY_ID['supply-demand'].lessons.filter((l) => ['intro', 'practice', 'story', 'listen'].includes(l.kind)).forEach((l) => {
+      const v = lessonVerbs(l);
+      expect(v.verbs.length, `${l.id}: ${v.verbs.join(', ')}`).toBeGreaterThanOrEqual(2);
+      expect(v.model, `${l.id}: нет шага с моделью`).toBe(true);
     });
   });
 });

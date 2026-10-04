@@ -163,11 +163,20 @@ export function drillSetup(drill) {
    (ВВП, курс, индексы) — один общий множитель, так что темпы роста между кварталами
    сохраняются. Цели задачи считаются только по её собственным кварталам. */
 const LEVEL_KEYS = new Set(['gdp', 'potentialGdp', 'productivity', 'stockIndex', 'bondIndex', 'exchangeRate', 'realExchangeRate', 'humanCapitalIndex', 'infrastructureIndex']);
+/* Инфляция не разгоняется сама по себе. Если к завязке она выросла сильно (гиперинфляция:
+   с 4% до 34%), вводный отрезок рассказывает связную историю: сначала экономика перегрета —
+   разрыв выпуска растёт, рост ВВП выше обычного, безработица ниже, — инфляция и ожидания
+   разгоняются; потом ЦБ поднимает ставку, перегрев гаснет, и к старту разрыв возвращается к
+   завязке, а инфляция остаётся высокой — её держат ожидания. Раньше каждый ряд тянулся к
+   завязке сам по себе, и на графике было «инфляция 34%, разрыв 0,1%» без всякой причины. */
+export const OVERHEAT = { minJump: 3, perPoint: 0.12, max: 4, okun: 0.4 };
+export const overheatAmp = (jump) => (jump > OVERHEAT.minJump ? Math.min(OVERHEAT.max, jump * OVERHEAT.perPoint) : 0);
 export function drillPrehistory(drill, quarters = 8, { difficulty = 'medium', cbPersona = 'pragmatic', mofPersona = 'technocrat', presPersona = 'technocrat' } = {}) {
   const run = makePrehistory({ quarters, difficulty, cbPersona, mofPersona, presPersona });
   const end = run.economy;
   const to = makeInitialEconomy(drill.scenario, drill.overrides);
   const n = run.prehistory.length;
+  const amp = overheatAmp((to.inflation || 0) - (end.inflation || 0));
   return run.prehistory.map((sim, k) => {
     const t = (k + 1) / (n + 1);
     const w = t * t * (3 - 2 * t);
@@ -179,6 +188,14 @@ export function drillPrehistory(drill, quarters = 8, { difficulty = 'medium', cb
         row[key] = a >= 0 && b >= 0 ? Math.max(0, v) : v;
       } else if (b !== undefined) row[key] = b;
     });
+    if (amp > 0) {
+      // горб перегрева: растёт в первой половине отрезка и гаснет к старту; рост ВВП — его наклон (годовых)
+      const hump = amp * Math.sin(Math.PI * t);
+      const slope = amp * Math.PI * Math.cos(Math.PI * t) * (4 / (n + 1)) * 0.5;
+      if (Number.isFinite(row.outputGap)) row.outputGap += hump;
+      if (Number.isFinite(row.gdpGrowth)) row.gdpGrowth += slope;
+      if (Number.isFinite(row.unemployment)) row.unemployment = Math.max(0, row.unemployment - OVERHEAT.okun * hump);
+    }
     return row;
   });
 }

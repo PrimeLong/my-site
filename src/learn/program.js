@@ -34,15 +34,15 @@ export function weakLessons(s, below = 0.7) {
     .sort((a, b) => a.acc - b.acc || (a.id < b.id ? -1 : 1));
 }
 
-/* «Рекомендуем сейчас» — одна остановка на Пути: урок с самой слабой точностью (ниже 60%),
-   если он открыт; иначе — следующая остановка. why: 'weak' или 'next'. */
+/* «Рекомендуем сейчас» — отметка на Пути: всегда следующая непройденная остановка, над пройденным
+   уроком она не висит. Слабое место (пройденный урок с точностью ниже 60%) — отдельно, строкой над
+   Путём: его задачи и так первыми идут в «Повторение» и практику. */
 export function recommend(s, states = pathState(s)) {
   const cur = (states.find((x) => x.current) || {}).current || null;
+  if (!cur) return null;
   const open = new Set(states.flatMap((st) => st.lessons.filter((l) => l.open).map((l) => l.id)));
   const weak = weakLessons(s, 0.6).find((w) => open.has(w.id));
-  if (weak) return { lessonId: weak.id, why: 'weak', acc: weak.acc };
-  if (cur) return { lessonId: cur.id, why: 'next' };
-  return null;
+  return { lessonId: cur.id, why: 'next', ...(weak ? { weak: { lessonId: weak.id, acc: weak.acc } } : {}) };
 }
 
 // то, что наградам нужно знать о курсе: пройдено уроков и юнитов, сколько видов уроков
