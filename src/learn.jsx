@@ -30,6 +30,7 @@ import {
   goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
+import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
   REWARD_CSS, WalletStat, QuestsCard, MonthCard, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
@@ -484,6 +485,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const [queue, setQueue] = useState(() => (rs ? rs.queue : plan.items));
   const [pos, setPos] = useState(rs ? rs.pos : 0);
   const cardsSeen = useRef(new Set(rs ? rs.cardsSeen : []));
+  // голос Инфли: какие фразы уже звучали в этом уроке и сколько ошибок подряд
+  const said = useRef(new Set());
+  const wrongRun = useRef(0);
   const cardFor = (item) => (item && plan.cards && plan.cards[item.uid] && !cardsSeen.current.has(item.uid) ? plan.cards[item.uid] : null);
   const [stage, setStage] = useState(() => (cardFor((rs ? rs.queue : plan.items)[rs ? rs.pos : 0]) ? 'card' : 'work'));
   // карточки перед упражнением идут подряд: шаг, слово, пункт итогов
@@ -569,7 +573,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
       else a.solved.add(orig);
     }
     setAnim((x) => ({ k: x.k + 1, kind: r.ok ? 'flash' : 'shake' }));
-    setFb({ ok: r.ok, why: r.why });
+    wrongRun.current = r.ok ? 0 : wrongRun.current + 1;
+    const say = pickPhrase(situation({ ok: r.ok, streak: r.ok && firstTime ? run3 + 1 : 0, hinted: !!a.hinted[orig], retry: !!cur.retry, wrongRun: wrongRun.current }), said.current);
+    setFb({ ok: r.ok, why: r.why, say });
   };
   const finish = () => {
     const a = acc.current;
@@ -660,7 +666,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
   const kindName = cur ? KIND_LABEL[cur.kind] : '';
   // плашка ответа в нижней панели — одна на все виды уроков: её видно без прокрутки
   const verdictBar = inst && fb && !fb.empty ? (
-    <AnswerBar ok={fb.ok} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Засчитано' : 'Не засчитано') : inst.kind === 'open' ? 'Ответ записан' : null} className={fb.ok ? 'ds-flash' : ''} key={`fb${anim.k}`}>
+    <AnswerBar ok={fb.ok} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Засчитано' : 'Не засчитано') : inst.kind === 'open' ? 'Ответ записан' : null}
+      say={GAME_KINDS.includes(inst.kind) || inst.kind === 'open' ? null : fb.say} className={fb.ok ? 'ds-flash' : ''} key={`fb${anim.k}`}>
       <div style={{ marginTop: 10 }} data-testid="ex-feedback" data-ok={String(fb.ok)}>
         {inst.kind === 'open' && inst.explain && (
           <div className="tb-body" style={{ fontSize: 15, color: 'inherit' }} data-testid="open-review"><b>Разбор.</b> <Blocks blocks={inst.explain} ctx={noopCtx} /></div>
@@ -879,7 +886,12 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
               <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 4px' }}>
                 <Rosette size={128} opacity={0.5}><Mascot mood={run.mode === 'check' && !result.pass ? 'cheer' : result.accuracy >= 60 ? 'party' : 'cheer'} size={70} /></Rosette>
               </div>
-              <h2 className="ds-h1">{run.mode === 'check' ? (result.pass ? 'Проверка сдана' : 'Почти получилось') : run.mode === 'practice' ? 'Практика окончена' : run.mode === 'placement' ? 'Тест пройден' : 'Урок пройден'}</h2>
+              <h2 className="ds-h1">{run.mode === 'check' ? (result.pass ? 'Проверка сдана' : 'Проверка пока не сдана') : run.mode === 'practice' ? 'Практика окончена' : run.mode === 'placement' ? 'Тест пройден' : 'Урок пройден'}</h2>
+              {run.mode !== 'placement' && (
+                <div className="ds-h3" style={{ color: 'var(--u-ink)', marginTop: 4 }} data-testid="result-say">
+                  {pickPhrase(endKind({ mistakes: result.mistakes, accuracy: result.accuracy, failedCheck: run.mode === 'check' && !result.pass }), new Set())}
+                </div>
+              )}
               <div className="ds-sub" style={{ fontSize: 15.5, margin: '6px 0 16px' }} data-testid="result-text">
                 {run.mode === 'placement' ? (result.opened.length
                   ? `Открыто сразу: ${result.opened.map((u) => `«${placeOf(u).place}»`).join(', ')}. ${result.opened.length >= UNITS.filter((u) => u.lessons.length).length ? 'Пройденные уроки можно взять на алмазном уровне.' : 'Путь продолжится со следующего места.'}`
@@ -887,7 +899,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
                     : lesson && lesson.kind === 'game' ? (result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана — попробуйте ещё раз, планка та же.')
-                      : result.mistakes === 0 ? 'Без единой ошибки.' : result.accuracy >= 90 ? (result.mistakes === 1 ? 'Всего одна ошибка — она уже разобрана.' : `Ошибок всего ${result.mistakes} — они разобраны и вернутся в практике.`) : 'Ошибки разобраны — они вернутся в практике.'}
+                      : result.mistakes === 0 ? 'Все ответы — с первой попытки.' : `Ошибок с первой попытки: ${result.mistakes}.`}
                 {diamond && <div style={{ marginTop: 6, color: 'var(--u-ink)', fontWeight: 700 }} data-testid="result-diamond">
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}
@@ -924,7 +936,7 @@ const stepContext = (card, lesson, where) => ({
 function FeedVerdict({ inst, fb }) {
   return (
     <div className={`ln-verdict ${fb.ok ? 'ok' : 'bad'}`} data-ok={String(fb.ok)}>
-      <span className="ds-answer-stamp">{fb.ok ? 'Верно' : 'Не совсем'}</span>
+      <span className="ds-answer-stamp">{fb.say || (fb.ok ? 'Верно' : 'Не совсем')}</span>
       {!fb.ok && <span style={{ fontSize: 14.5, marginLeft: 8 }}>Правильно: <b>{answerText(inst)}</b></span>}
     </div>
   );

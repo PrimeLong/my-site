@@ -104,6 +104,9 @@ export const DS_CSS = `
     border-radius: 3px; transform: rotate(-4deg); box-shadow: inset 0 0 0 2px transparent, inset 0 0 0 3px currentColor; }
   .ds-answer.ok .ds-answer-stamp { color: var(--ds-ok); }
   .ds-answer.bad .ds-answer-stamp { color: var(--ds-bad); }
+  .ds-answer-say { display: inline-block; font: 700 18px/1.3 var(--ds-serif); animation: ds-stamp .32s ease-out 1 both; }
+  .ds-answer.ok .ds-answer-say { color: var(--ds-ok); }
+  .ds-answer.bad .ds-answer-say { color: var(--ds-bad); }
 
   /* шторка снизу, верхняя панель, нижняя панель вкладок */
   .ds-sheet-back { position: fixed; inset: 0; z-index: 320; background: rgba(28,20,8,.48); display: flex; align-items: flex-end; justify-content: center; }
@@ -201,11 +204,14 @@ export function Field({ label, ...rest }) {
   return <label className="ds-label">{label}<input className="ds-field" {...rest} /></label>;
 }
 // плашка ответа: оттиск штампа, заголовок и пояснение
-export function AnswerBar({ ok, stamp, children, className, ...rest }) {
+// say — фраза Инфли (src/learn/voice.js) вместо штампа «Верно» / «Не совсем»
+export function AnswerBar({ ok, stamp, say = null, children, className, ...rest }) {
   return (
     <div className={cx('ds-answer', ok ? 'ok' : 'bad', className)} {...rest}>
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
-        <span className="ds-answer-stamp">{stamp || (ok ? 'Верно' : 'Не совсем')}</span>
+        {say && !stamp
+          ? <span className="ds-answer-say" data-testid="infla-say">{say}</span>
+          : <span className="ds-answer-stamp">{stamp || (ok ? 'Верно' : 'Не совсем')}</span>}
         {children}
       </div>
     </div>
