@@ -146,14 +146,18 @@ export function parseBlocks(text) {
         // при повторном, усложнённом прохождении урока
         // hard="задачи var:тип" — задачи семинарского и олимпиадного уровня на тему этого урока: из них
         // берутся усложнения (алмазный уровень, сильному ученику) в этом уроке и дальше по юниту
-        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, ...chartAttrs } = attrs;
+        // discover=demand — шаг «Открой сам» (со словом more): ученик сам исследует модель; встаёт
+        // первым шагом урока, до карточки-идеи (DISCOVER_KINDS)
+        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, discover, ...chartAttrs } = attrs;
+        if (discover && !DISCOVER_KINDS.includes(discover)) throw new Error(`Неизвестный шаг «Открой сам» ${discover} в ${attrs.id}`);
+        if (discover && !words.includes('more')) throw new Error(`Шаг «Открой сам» ${attrs.id} — со словом more`);
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
         const wordLines = kind === 'words' ? body.filter((l) => /^-\s/.test(l.trim())) : [];
         const terms = wordLines.map((l) => { const t = l.trim().slice(2); const k = t.indexOf(':'); return { term: t.slice(0, k).trim(), text: t.slice(k + 1).trim() }; });
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), hard: split(hard),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
-          kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}),
+          kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}), ...(discover ? { discover } : {}),
           ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));
@@ -325,9 +329,17 @@ export const parseChapter = (text) => parseBlocks(text);
      curve a b c d answer="D+" only=D — сдвинуть кривую пальцем (only — на графике одна кривая), ловушки «!! S+ | почему»;
      price a b c d start=10 — двигать цену, пока не исчезнут дефицит и избыток;
      point a b c d dA=… dC=… — поставить точку (нового) равновесия;
-     у match — seconds=… — пары на время. */
+     у match — seconds=… — пары на время.
+   «Домино» (domino headline="…") — цепочка причин: новость «Вестника» сверху, строки «+ звено [эффект]»
+     — верные звенья по порядку (событие → что меняется → какая кривая и куда → цена → количество → кого
+     коснётся), «!! карточка | почему не следует» — правдоподобные ложные карточки с объяснением, как у
+     ловушек. Звеньев 4–5, всего карточек 7–8. Эффект — что звено делает со сценой: D+ D- S+ S- (кривая
+     сдвигается), P и Q (стрелка цены и количества), ceil (потолок цены 15 крон), street (люди на улице). */
 export const LESSON_KINDS = ['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary'];
-const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point', 'open'];
+// шаги «Открой сам»: demand — день в кофейне, точки «цена — сколько купили» складываются в кривую спроса
+export const DISCOVER_KINDS = ['demand'];
+const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point', 'open', 'domino'];
+export const DOMINO_EFFECTS = ['D+', 'D-', 'S+', 'S-', 'P', 'Q', 'ceil', 'street'];
 const MARKET = ['a', 'b', 'c', 'd', 'dA', 'dC'];
 const market = (attrs) => Object.fromEntries(MARKET.map((k) => [k, attrs[k] != null ? Number(attrs[k]) : (k === 'dA' || k === 'dC' ? 0 : NaN)]));
 function parseExercise(kind, attrs, body) {
@@ -380,6 +392,28 @@ function parseExercise(kind, attrs, body) {
     ex.chart = chart; ex.chartAttrs = chartAttrs; ex.answer = answer;
     ex.choices = options ? options.split(/\s+/).filter(Boolean) : null;
     ex.traps = traps.map((t) => ({ key: t.key, why: t.why }));
+  }
+  if (kind === 'domino') {
+    if (!attrs.headline) throw new Error(`В «Домино» ${attrs.id} нет новости (headline)`);
+    ex.headline = attrs.headline;
+    // scene=demand — на сцене только спрос и цена кофейни (предложения ученик ещё не знает)
+    ex.scene = attrs.scene || 'market';
+    if (!['market', 'demand'].includes(ex.scene)) throw new Error(`В «Домино» ${attrs.id}: сцена ${ex.scene} — market или demand`);
+    ex.links = main.filter((l) => /^\+\s/.test(l.trim())).map((l) => {
+      const m = /^(.*?)\s*(?:\[([^\]]+)\])?\s*$/.exec(l.trim().slice(1).trim());
+      const effects = m[2] ? m[2].split(/\s+/) : [];
+      effects.forEach((e) => { if (!DOMINO_EFFECTS.includes(e)) throw new Error(`В «Домино» ${attrs.id}: неизвестный эффект ${e}`); });
+      if (m[1].includes('|')) throw new Error(`В «Домино» ${attrs.id}: у верного звена не бывает «почему»`);
+      return { raw: m[1], text: parseInline(m[1]), effects };
+    });
+    ex.decoys = traps.map((t) => {
+      if (!t.why) throw new Error(`В «Домино» ${attrs.id}: у ложной карточки «${t.key}» нет объяснения`);
+      return { raw: t.key, text: parseInline(t.key), why: t.why };
+    });
+    if (main.some((l) => /^-\s/.test(l.trim()))) throw new Error(`В «Домино» ${attrs.id} ложные карточки — строками «!! карточка | почему»`);
+    if (ex.links.length < 4 || ex.links.length > 5) throw new Error(`В «Домино» ${attrs.id} звеньев ${ex.links.length}, нужно 4–5`);
+    const total = ex.links.length + ex.decoys.length;
+    if (total < 7 || total > 8) throw new Error(`В «Домино» ${attrs.id} карточек ${total}, нужно 7–8`);
   }
   if (kind === 'news') {
     ex.headline = attrs.headline || '';
@@ -443,7 +477,8 @@ const inlinesOf = (b) => [
   ...(b.steps || []).flatMap((st) => [st.title, st.up, st.down]), ...(b.hints || []), ...(b.points || []),
   ...(b.traps || []).map((t) => t.text || t.why).filter(Boolean),
   ...(b.type === 'idea' ? [b.text] : []),
-  ...(b.type === 'ex' || b.type === 'round' ? [...(b.options || []).flatMap((o) => [o.text, o.why]), ...(b.items || []).map((x) => x.text), ...(b.pairs || []).flat().map((x) => x.text)].filter(Boolean) : []),
+  ...(b.type === 'ex' || b.type === 'round' ? [...(b.options || []).flatMap((o) => [o.text, o.why]), ...(b.items || []).map((x) => x.text), ...(b.pairs || []).flat().map((x) => x.text),
+    ...(b.links || []).map((x) => x.text), ...(b.decoys || []).flatMap((x) => [x.text, x.why])].filter(Boolean) : []),
 ];
 function walkInline(nodes, fn) {
   nodes.forEach((n) => { fn(n); if (n.c) walkInline(n.c, fn); });
