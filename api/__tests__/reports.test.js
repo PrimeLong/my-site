@@ -10,7 +10,8 @@ const call = (handler, body, ip = `10.9.0.${ipN++}`) => new Promise((resolve) =>
   handler({ method: 'POST', query: {}, headers: { 'x-forwarded-for': ip }, body }, res);
 });
 let n = 0;
-const uniq = (p) => `${p}${Date.now().toString(36).slice(-4)}${n++}`;
+// логины без времени и случайностей: одинаковые при каждом запуске
+const uniq = (p) => `${p}rep${n++}`;
 const register = async (login) => (await call(accountHandler, { action: 'register', login, password: 'secret1', name: 'Анна', playerId: `dev-${login}` })).data.token;
 const send = (session, extra = {}, ip) => call(reportsHandler, { action: 'send', session, reason: 'answer', comment: 'в ответе 25, а должно быть 20',
   context: { screen: 'exercise', exercise: 'sd-l1:x', lesson: 'sd-l1', answer: '25', correct: '20', build: 'abc1234', device: 'test' }, ...extra }, ip);
@@ -56,7 +57,7 @@ describe('сообщения об ошибках', () => {
   it('грубое сообщение не принимается; старые грубые помечены, владелец может удалить', async () => {
     const rude = await send(userToken, { comment: 'Это пиздец блять какая МАША' });
     expect(rude.status).toBe(400);
-    expect(rude.data.error).toContain('грубых');
+    expect(rude.data.error).toContain('грубых слов');
     const { data: sent } = await send(userToken, { comment: 'Тут нужен калькулятор' });
     const list = await call(reportsHandler, { action: 'list', session: ownerToken, status: 'new' });
     expect(list.data.reports.find((x) => x.id === sent.id).rude).toBe(false);
@@ -69,6 +70,17 @@ describe('сообщения об ошибках', () => {
   it('логин и имя с грубыми словами не регистрируются', async () => {
     expect((await call(accountHandler, { action: 'register', login: uniq('ok'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
     expect((await call(accountHandler, { action: 'register', login: `fuck${n++}`, password: 'secret1', name: 'Анна' })).status).toBe(400);
+  });
+
+  it('«Это ошибка фильтра»: без аккаунта, с логином и именем, владелец видит его в списке', async () => {
+    const r = await call(reportsHandler, { action: 'filter', login: 'glebakov', name: 'Глеб', screen: 'register' });
+    expect(r.status).toBe(200);
+    const list = await call(reportsHandler, { action: 'list', session: ownerToken, status: 'new' });
+    const got = list.data.reports.find((x) => x.reason === 'filter' && x.login === 'glebakov');
+    expect(got && got.name).toBe('Глеб');
+    expect((await call(reportsHandler, { action: 'filter' })).status).toBe(400);
+    // хорошие имена фильтр больше не трогает
+    expect((await call(accountHandler, { action: 'register', login: uniq('glebakov'), password: 'secret1', name: 'Глеб' })).status).toBe(200);
   });
 
   it(`не больше ${REPORTS_PER_HOUR} сообщений в час с профиля`, async () => {

@@ -4,8 +4,9 @@
 import React, { useState } from 'react';
 import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle } from 'lucide-react';
 import {
-  accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew,
+  accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter,
 } from './lib/client.js';
+import { RUDE_NAME } from './lib/moderation.js';
 import {
   COLOR, Audio, useEscapeClose, getPlayerId, syncProfile, readLocalProgress, writeLocalProgress, PLAYER_ID_KEY,
 } from './MacroSimulator.jsx';
@@ -157,6 +158,25 @@ export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохрани�
 
 /* Вход, регистрация и восстановление доступа. reason — зачем просим войти (например,
    перед сетевой игрой). */
+/* Имя или логин не прошли фильтр грубых слов. Текст отказа нейтральный; если человек уверен,
+   что фильтр ошибся, — «Это ошибка фильтра» отправляет сообщение владельцам (без аккаунта). */
+export function NameRefused({ text, login, name, screen = 'register' }) {
+  const [state, setState] = useState('idle'); // idle | busy | sent
+  const appeal = async () => {
+    setState('busy');
+    try { await reportFilter(login, name, screen); } catch { /* сообщение не ушло — не мешаем регистрации */ }
+    setState('sent');
+  };
+  return (
+    <div role="alert" data-testid="name-refused" style={{ fontSize: 14, color: 'var(--ds-ink)', lineHeight: 1.45 }}>
+      <div style={{ color: 'var(--ds-bad)' }}>{text}</div>
+      {state === 'sent'
+        ? <div style={{ marginTop: 6, color: 'var(--ds-ink2)' }} data-testid="name-appeal-sent">Спасибо, проверим. Пока можно выбрать другое имя.</div>
+        : <button type="button" className="ds-chip" style={{ marginTop: 8 }} disabled={state === 'busy'} onClick={appeal} data-testid="name-appeal">Это ошибка фильтра</button>}
+    </div>
+  );
+}
+
 export function AuthModal({ onClose, onDone, reason }) {
   const [tab, setTab] = useState('register');   // register | login | recover
   const [login, setLogin] = useState('');
@@ -236,7 +256,7 @@ export function AuthModal({ onClose, onDone, reason }) {
             устройстве, и они будут там.
           </div>
         )}
-        {error && <div style={{ fontSize: 14, color: 'var(--ds-bad)' }}>{error}</div>}
+        {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div style={{ fontSize: 14, color: 'var(--ds-bad)' }}>{error}</div>)}
         <button type="submit" className="ds-btn" disabled={busy || !canSubmit} style={{ marginTop: 2 }}>
           {busy ? 'Минутку…' : tab === 'register' ? 'Создать профиль' : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
         </button>
@@ -374,7 +394,7 @@ export function ProfileModal({ onClose, onSwitched }) {
           <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || !oldPw}  onClick={newCode}>Получить новый код</button>
         </div>
       )}
-      {error && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>{error}</div>}
+      {error && (error === RUDE_NAME ? <div style={{ marginBottom: 8 }}><NameRefused text={error} name={name} screen="profile" /></div> : <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>{error}</div>)}
       {note && <div style={{ fontSize: 14, color: 'var(--ds-ok)', marginBottom: 8 }}>{note}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         <button className="ds-btn ds-btn--secondary ds-btn--small" aria-pressed={panel === 'password'} 

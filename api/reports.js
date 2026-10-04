@@ -15,6 +15,7 @@ export const REASONS = {
   typo: 'Опечатка или ошибка в тексте',
   unclear: 'Непонятно объяснено',
   broken: 'Не работает',
+  filter: 'Фильтр не пропустил имя',
 };
 export const REPORTS_PER_HOUR = 20;
 const clientIp = (req) => String((req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip'])) || 'local').split(',')[0].trim();
@@ -40,9 +41,22 @@ async function handleRequest(req, res) {
   let body;
   try { body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {}); }
   catch { return res.status(400).json({ error: 'Некорректный JSON' }); }
+  const action = body.action || 'send';
+
+  /* «Это ошибка фильтра»: имя или логин не прошли проверку на грубые слова, а человек
+     считает, что зря. Аккаунта ещё нет — сессия не нужна; частота — по адресу. */
+  if (action === 'filter') {
+    if (await hit(`report-filter:${clientIp(req)}`, 3600) > 5) return res.status(429).json({ error: 'Уже получили — спасибо, разберём' });
+    const login = str(body.login, 40); const name = str(body.name, 40);
+    if (!login && !name) return res.status(400).json({ error: 'Нечего проверять' });
+    const entry = { id: `${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`, at: Date.now(), login: login || '—', name: name || '—', status: 'new',
+      reason: 'filter', comment: 'Фильтр грубых слов не пропустил имя или логин — проверьте, не ошибка ли', context: { screen: str(body.screen, 60) || 'register' } };
+    await setReport(entry);
+    return res.status(200).json({ ok: true });
+  }
+
   const user = await userBySession(body.session);
   if (!user) return res.status(401).json({ error: 'Сообщить об ошибке можно после входа в профиль' });
-  const action = body.action || 'send';
 
   if (action === 'me') return res.status(200).json({ owner: isOwner(user) });
 

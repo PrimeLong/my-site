@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { authenticate, RecoveryCodeView, StorageWarning } from './account.jsx';
+import { authenticate, RecoveryCodeView, StorageWarning, NameRefused } from './account.jsx';
+import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
@@ -163,7 +164,7 @@ function AuthForm({ mode, go, plan }) {
             <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
           </label>
         )}
-        {error && <div className="wl-err" role="alert">{error}</div>}
+        {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div className="wl-err" role="alert">{error}</div>)}
         <div style={{ flex: 1 }} />
         <div className="wl-foot">
           <Button type="submit" wide disabled={busy || !canSubmit}>

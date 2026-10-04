@@ -13,7 +13,8 @@ const call = (handler, body, ip = `10.0.0.${ipN++}`) => new Promise((resolve) =>
 const acc = (body) => call(accountHandler, body);
 const room = (body) => call(roomHandler, body);
 let n = 0;
-const uniq = (p) => `${p}${Date.now().toString(36).slice(-4)}${n++}`;
+// логины без времени и случайностей: одинаковые при каждом запуске (фильтр грубых слов не должен зависеть от часов)
+const uniq = (p) => `${p}acc${n++}`;
 
 describe('профиль: регистрация и вход', () => {
   it('регистрация отдаёт сессию и профиль без пароля; логин нельзя занять дважды', async () => {
