@@ -586,7 +586,7 @@ const TutorialHub = React.lazy(() => import('./tutorial.jsx').then((m) => ({ def
 export const SAVE_VERSION = 3;
 
 export function validateSnapshot(data) {
-  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение Inflatia.');
+  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение Инфлатии.');
   if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Сохранение повреждено: не хватает состояния экономики.');
   if (data.v > SAVE_VERSION) throw new Error('Сохранение сделано в более новой версии симулятора.');
   return data;
@@ -1363,7 +1363,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
           <InflatiaMark size={54} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 className="ds-h1 menu-title">Inflatia</h1>
+            <h1 className="ds-h1 menu-title">Инфлатия</h1>
             <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>Симулятор государства и бизнеса</div>
           </div>
           {!inShell && profileSlot}

@@ -49,7 +49,7 @@ function Hello({ go }) {
         <Guilloche height={26} />
         <div style={{ margin: '18px 0 6px' }}><Rosette size={210} opacity={0.4}><Mascot mood="wave" size={120} /></Rosette></div>
         <h1 className="ds-h1" style={{ fontSize: 36, letterSpacing: '.02em' }}>Инфлатия</h1>
-        <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика · пять минут в день</div>
+        <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика пять минут в день</div>
         <div className="ds-sub" style={{ fontSize: 16.5, lineHeight: 1.5, maxWidth: 320, margin: '12px 0 18px' }}>
           Дорога по стране маленькими уроками — вместе с Инфлей.
         </div>

@@ -2551,7 +2551,7 @@ export function ResultCardModal({ data, onClose }) {
   };
   const copyText = async () => {
     const lines = [
-      'Inflatia — симулятор государства и бизнеса',
+      'Инфлатия — экономика пять минут в день',
       `Роль: ${data.roleLabel}`,
       `Отыграно: ${data.quarterIndex} ${data.quarterWord} (${data.years} лет)`,
       `Итог: ${data.outcome}`,
