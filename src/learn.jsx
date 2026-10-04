@@ -858,7 +858,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
                     : lesson && lesson.kind === 'game' ? (result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана — попробуйте ещё раз, планка та же.')
-                      : result.accuracy >= 90 ? 'Почти без ошибок.' : 'Ошибки разобраны — они вернутся в практике.'}
+                      : result.mistakes === 0 ? 'Без единой ошибки.' : result.accuracy >= 90 ? (result.mistakes === 1 ? 'Всего одна ошибка — она уже разобрана.' : `Ошибок всего ${result.mistakes} — они разобраны и вернутся в практике.`) : 'Ошибки разобраны — они вернутся в практике.'}
                 {diamond && <div style={{ marginTop: 6, color: 'var(--u-ink)', fontWeight: 700 }} data-testid="result-diamond">
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}

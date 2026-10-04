@@ -58,11 +58,19 @@ export const REWARD_CSS = `
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
   .rw-item { position: relative; }
   .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad); color: #fff; font: 700 11.5px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
-  .rw-rare { position: absolute; top: -8px; left: -6px; transform: rotate(-6deg); background: #2E8FB8; color: #fff; font: 700 11px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; }
+  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #2E8FB8, #5A4E80); color: #fff; font: 700 11px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
+  /* редкая вещь: золотистая карточка, по ней пробегает блик, Инфля в ней крупнее */
+  .rw-item[data-rare="true"] { border-color: #C9A43A;
+    background: linear-gradient(110deg, transparent 35%, rgba(255, 246, 214, .75) 48%, transparent 61%) 0 0 / 260% 100% no-repeat, color-mix(in srgb, var(--ds-card) 84%, #E3B53C);
+    box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--ds-card) 84%, #E3B53C), inset 0 0 0 4px #C9A43A, 0 2px 10px rgba(201, 164, 58, .28);
+    animation: rw-shine 5s ease-in-out infinite; }
+  .rw-item[data-rare="true"][data-owned="true"] { animation: none; }
+  @keyframes rw-shine { 0%, 55% { background-position: 130% 0, 0 0 } 100% { background-position: -30% 0, 0 0 } }
+  .rw-note { font: italic 12px/1.3 var(--ds-sans); color: var(--ds-ink2); }
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #2E8FB8; }
-  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open { animation: none; } .rw-bar > i { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"] { animation: none; } .rw-bar > i { transition: none; } }
 `;
 
 const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem };
@@ -206,9 +214,10 @@ function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal 
   return (
     <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare ? 'true' : undefined}>
       {deal && !owned && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
-      {o.rare && <span className="rw-rare">редкое</span>}
-      <Mascot mood="hello" size={50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
+      {o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
+      <Mascot mood="hello" size={o.rare ? 62 : 50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
       <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{o.title}</div>
+      {o.note && <div className="rw-note">{o.note}</div>}
       {owned
         ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)}>{on ? 'Снять' : 'Надеть'}</Button>
         : <>

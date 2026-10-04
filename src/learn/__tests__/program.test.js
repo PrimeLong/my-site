@@ -217,15 +217,27 @@ describe('лавка и заморозки', () => {
     expect(new Set(days).size).toBeGreaterThan(4);
     expect(priceOf(a.deal, day, emptyLearn())).toBe(Math.ceil(priceOf(a.deal, day) * 0.7));
     expect(priceOf(a.showcase[1], day, emptyLearn())).toBe(priceOf(a.showcase[1], day));
-    // купленное с витрины уходит — на её место встаёт следующая вещь
+    // покупка витрину дня не меняет: купленное остаётся на месте («Надеть»), скидка — на той же вещи
     const r = buy(rich, a.showcase[2], T).s;
-    expect(shopDay(r, day).showcase).not.toContain(a.showcase[2]);
-    expect(shopDay(r, day).showcase).toHaveLength(SHOWCASE_SIZE);
+    expect(shopDay(r, day)).toEqual(shopDay(rich, day));
+    const r2 = buy(rich, a.deal, T).s;
+    expect(shopDay(r2, day).deal).toBe(a.deal);
+    // назавтра купленное уходит — на его место встаёт следующая вещь
+    const next = addDays(day, 1);
+    expect(shopDay(r, next).showcase).not.toContain(a.showcase[2]);
+    expect(shopDay(r, next).showcase).toHaveLength(SHOWCASE_SIZE);
     // вещи не с витрины сегодня не купить; редкие — всегда
     const off = OUTFITS.find((o) => !o.rare && !a.showcase.includes(o.id));
     expect(buy(rich, off.id, T).reason).toMatch(/витрин/);
     expect(buy(rich, a.rare[0], T).ok).toBe(true);
     expect(DEAL_OFF).toBe(0.3);
+  });
+  it('редкие вещи: у каждой своя подпись про анимацию; купленный «Золотой слиток» становится шаром «Инфляция»', () => {
+    OUTFITS.filter((o) => o.rare).forEach((o) => expect(o.note, o.id).toBeTruthy());
+    expect(OUTFITS.find((o) => o.id === 'goldbar')).toBeUndefined();
+    const s = normalizeLearn({ owned: { goldbar: T, cap: T }, wear: { hand: 'goldbar', head: 'cap', at: T } });
+    expect(s.owned).toEqual({ balloon: T, cap: T });
+    expect(outfitOf(s).hand).toBe('balloon');
   });
   it('«двойной опыт»: полчаса после покупки, второй раз во время действия не купить', () => {
     const r = buy(rich, BOOST.id, T);

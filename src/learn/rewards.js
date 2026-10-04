@@ -58,7 +58,7 @@ export const rateHistory = (day, n = 14) => Array.from({ length: n }, (_, k) => 
    Наряды Инфли — по одному на голову, лицо, шею, в руку и рамку. Обычные вещи стоят от 150
    до 1500 крон и меняются каждый день: на витрине дня — шесть из тех, что ещё не куплены, и
    одна из них — со скидкой дня 30%. Купленное всегда в гардеробе. Редкие вещи (от 2500 крон) —
-   в витрине ювелира всегда: на них копят. Заморозка серии и «двойной опыт» — всегда в продаже. */
+   в витрине ювелира всегда: на них копят; у каждой своя анимация (src/mascot.jsx). Заморозка серии и «двойной опыт» — всегда в продаже. */
 export const FREEZE = { id: 'freeze', title: 'Заморозка серии', crowns: 60, text: `Спасёт серию, если за неделю пропущено больше одного дня. В запасе — не больше ${MAX_FREEZES}.` };
 export const BOOST = { id: 'boost', title: 'Двойной опыт', crowns: 150, minutes: 30, text: 'Полчаса после покупки уроки дают вдвое больше опыта.' };
 export const OUTFITS = [
@@ -67,32 +67,35 @@ export const OUTFITS = [
   { id: 'ushanka', slot: 'head', title: 'Ушанка ревизора', crowns: 320 },
   { id: 'bowler', slot: 'head', title: 'Котелок биржевика', crowns: 450 },
   { id: 'tophat', slot: 'head', title: 'Цилиндр банкира', crowns: 900 },
-  { id: 'crown', slot: 'head', title: 'Корона казначея', crowns: 4500, rare: true },
+  { id: 'crown', slot: 'head', title: 'Корона казначея', note: 'Камни вспыхивают по очереди', crowns: 4500, rare: true },
   { id: 'glasses', slot: 'face', title: 'Очки бухгалтера', crowns: 180 },
   { id: 'pince', slot: 'face', title: 'Пенсне профессора', crowns: 380 },
   { id: 'monocle', slot: 'face', title: 'Монокль', crowns: 650 },
   { id: 'bowtie', slot: 'neck', title: 'Бабочка', crowns: 160 },
   { id: 'scarf', slot: 'neck', title: 'Шарф', crowns: 260 },
   { id: 'tie', slot: 'neck', title: 'Галстук министра', crowns: 480 },
-  { id: 'medal', slot: 'neck', title: 'Орден «За финансовую грамотность»', crowns: 2800, rare: true },
+  { id: 'medal', slot: 'neck', title: 'Орден «За финансовую грамотность»', note: 'Качается на ленте и блестит', crowns: 2800, rare: true },
   { id: 'paper', slot: 'hand', title: 'Свежий «Вестник»', crowns: 200 },
   { id: 'abacus', slot: 'hand', title: 'Счёты', crowns: 420 },
   { id: 'briefcase', slot: 'hand', title: 'Портфель с отчётом', crowns: 750 },
   { id: 'cane', slot: 'hand', title: 'Трость с набалдашником', crowns: 1500 },
-  { id: 'goldbar', slot: 'hand', title: 'Золотой слиток', crowns: 6000, rare: true },
+  { id: 'balloon', slot: 'hand', title: 'Шар «Инфляция»', note: 'То надувается, то сдувается — как цены', crowns: 6000, rare: true },
   { id: 'frame-guilloche', slot: 'frame', title: 'Рамка-гильош', crowns: 400 },
   { id: 'frame-gold', slot: 'frame', title: 'Золотой багет', crowns: 1200 },
-  { id: 'frame-diamond', slot: 'frame', title: 'Алмазная огранка', crowns: 5000, rare: true },
+  { id: 'frame-diamond', slot: 'frame', title: 'Алмазная огранка', note: 'Грани медленно плывут по кругу', crowns: 5000, rare: true },
 ];
 export const OUTFIT_BY_ID = Object.fromEntries(OUTFITS.map((o) => [o.id, o]));
 export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея', hand: 'В руке', frame: 'Рамка' };
 export const SHOWCASE_SIZE = 6;
 export const DEAL_OFF = 0.3;
 const itemOf = (id) => (id === FREEZE.id ? FREEZE : id === BOOST.id ? BOOST : OUTFIT_BY_ID[id]);
-/* Витрина дня: порядок обычных вещей задаёт дата (у всех учеников один), купленные
-   пропускаются; скидка дня — на первую вещь витрины. */
+/* Витрина дня: порядок обычных вещей задаёт дата (у всех учеников один), купленные до
+   сегодняшнего дня пропускаются; скидка дня — на первую вещь витрины. Купленное сегодня
+   остаётся на своём месте («Надеть»): витрина и скидка дня от покупки не меняются, только
+   в полночь. */
 export function shopDay(s, day) {
-  const owned = (s && s.owned) || {};
+  const owned = {};
+  Object.entries((s && s.owned) || {}).forEach(([id, at]) => { if (!(typeof at === 'number' && at > 0 && dayOf(at) === day)) owned[id] = at; });
   const order = OUTFITS.filter((o) => !o.rare).map((o) => ({ o, k: hash01(`shop:${day}:${o.id}`) })).sort((a, b) => a.k - b.k).map((x) => x.o.id);
   const showcase = order.filter((id) => !owned[id]).slice(0, SHOWCASE_SIZE);
   return { showcase, deal: showcase[0] || null, rare: OUTFITS.filter((o) => o.rare).map((o) => o.id) };

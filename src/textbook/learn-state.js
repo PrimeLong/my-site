@@ -352,6 +352,9 @@ function claimedMap(v) {
   const out = {}; [...rest, ...quests].forEach((k) => { out[k] = all[k]; });
   return out;
 }
+// переименованные вещи лавки: купленное остаётся у ученика под новым именем
+const RENAMED = { goldbar: 'balloon' };
+const renamed = (m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [RENAMED[k] || k, v]));
 function normalizeProgram(r) {
   const e = emptyLearn();
   const p = obj(r.profile); const pl = obj(r.placement); const w = obj(r.wear);
@@ -376,8 +379,8 @@ function normalizeProgram(r) {
     recent: typeof r.recent === 'string' && /^[01]*$/.test(r.recent) ? r.recent.slice(-MAX_RECENT) : '', recentAt: cnt(r.recentAt, 1e14),
     coins: dayMap(r.coins, 1e6), spent: dayMap(r.spent, 1e6), freezeBuy: dayMap(r.freezeBuy, MAX_FREEZES * 5),
     frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
-    claimed: claimedMap(r.claimed), owned: tsMap(r.owned, 60),
-    wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? w[sl] : null])), at: cnt(w.at, 1e14) },
+    claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
+    wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
   };
 }
