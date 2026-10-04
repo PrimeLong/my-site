@@ -1609,6 +1609,13 @@ test('мини-игра: одна игра на минуту — очки с м�
   await expect(ex).toHaveAttribute('data-kind', 'rush');
   await expect(ex.getByTestId('game')).toHaveAttribute('data-phase', 'ready');
   await expect(ex.getByTestId('game')).toContainText('засчитывается от 8 верных');
+  // до таймера — «Как играть» и пробный заголовок без очков: ответ с объяснением
+  await expect(ex.getByTestId('game-howto')).toContainText('Как играть');
+  await expect(ex.getByTestId('game-start')).toHaveText(/Сразу к игре/);
+  const trialSide = await ex.locator('.lp-trial-card').getAttribute('data-answer');
+  await ex.locator(`[data-trial="${trialSide}"]`).click();
+  await expect(ex.getByTestId('game-trial-result')).toHaveAttribute('data-ok', 'true');
+  await expect(ex.getByTestId('game-start')).toHaveText(/Старт/);
   await ex.getByTestId('game-start').click();
   const card = ex.getByTestId('game-card');
   // четыре верных, ошибка, шесть верных: 10+10+10+20, серия сброшена, 10+10+10+20+20+20

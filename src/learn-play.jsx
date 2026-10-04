@@ -66,6 +66,12 @@ export const PLAY_CSS = `
   .lp-op { color: var(--u-ink); font-weight: 700; }
   .lp-game-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 13.5px; margin-top: 4px; }
   .lp-game-rules span { display: inline-flex; align-items: center; gap: 4px; }
+  /* «Как играть» перед стартом: три шага и пробный заголовок без таймера */
+  .lp-howto { border: 1px solid var(--ds-rule2); border-radius: 6px; background: var(--ds-card); padding: 12px 14px; margin: 10px 0; }
+  .lp-howto ol { margin: 6px 0 0; padding-left: 20px; font-size: 14.5px; line-height: 1.45; }
+  .lp-howto li { margin: 3px 0; }
+  .lp-trial { border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 10px 12px; margin: 10px 0; }
+  .lp-trial-card { font: 700 17px/1.35 var(--ds-serif); text-align: center; margin: 6px 0 10px; }
   .lp-game-hud { display: flex; align-items: center; gap: 8px; margin: -4px 0 2px; }
   .lp-game-score { font-size: 26px; font-weight: 700; color: var(--u-ink); min-width: 48px; }
   .lp-combo { font: 700 14px var(--ds-mono); color: #fff; background: var(--u); border-radius: 999px; padding: 2px 9px; animation: lp-combo .35s ease-out; }
@@ -463,23 +469,58 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const down = (e) => { if (phase !== 'play' || inst.kind !== 'swipe') return; start.current = e.clientX; if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId); };
   const move = (e) => { if (start.current != null) setDx(e.clientX - start.current); };
   const up = () => { if (start.current == null) return; const d = dx; start.current = null; if (Math.abs(d) > 80) decide(d > 0 ? 'right' : 'left'); else setDx(0); };
+  /* Пробный ход: один заголовок без таймера и без очков — ответ с объяснением, график показывает
+     сдвиг. Перед стартом график возвращается на место. */
+  const sample = inst.items.find((x) => x.effect) || inst.items[0];
+  const [trial, setTrial] = useState(null);
+  const tryIt = (side) => {
+    if (trial) return;
+    const ok = side === sample.side;
+    Audio.play(ok ? 'coin' : 'down');
+    setTrial({ ok });
+    if (sample.effect) setSt(applyEffect(inst.chart, startState(inst.chart), sample.effect));
+  };
+  const begin = () => { Audio.play('click'); setSt(startState(inst.chart)); setPhase('play'); };
+  const sideHint = inst.kind === 'swipe' ? `кнопки внизу, стрелки ← → или смахните карточку` : 'кнопки внизу или стрелки ↑ ↓ на клавиатуре';
   const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
   const chart = inst.chart === 'market'
-    ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок кофе в игре" /><PriceTicker prices={prices} /></>
+    ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок в игре: спрос и предложение" /><PriceTicker prices={prices} /></>
     : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (
         <>
           {intro}
+          <div className="lp-howto" data-testid="game-howto">
+            <div className="ds-eyebrow">Как играть</div>
+            <ol>
+              <li>Появляется заголовок новости.</li>
+              <li>Решите: {inst.labels[sides[0]].toLowerCase()} или {inst.labels[sides[1]].toLowerCase()}? Отвечайте — {sideHint}.</li>
+              <li>График покажет, что сдвинулось. Три верных подряд — очки ×2, дальше ещё больше; ошибка обнуляет серию.</li>
+            </ol>
+          </div>
           {chart}
+          <div className="lp-trial" data-testid="game-trial">
+            <div className="ds-eyebrow">Пробный заголовок — без таймера</div>
+            <div className="lp-trial-card" data-answer={testing() ? sample.side : undefined}><Inline nodes={sample.text} /></div>
+            {!trial ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {sides.map((sd) => <button key={sd} type="button" className="ds-opt lp-side" data-trial={sd} onClick={() => tryIt(sd)}>{inst.labels[sd]}</button>)}
+              </div>
+            ) : (
+              <div style={{ fontSize: 14.5, lineHeight: 1.45 }} data-testid="game-trial-result" data-ok={String(trial.ok)}>
+                <b style={{ color: trial.ok ? 'var(--ds-ok)' : 'var(--ds-bad)' }}>{trial.ok ? 'Верно.' : 'Не совсем.'}</b>{' '}
+                Ответ — «{inst.labels[sample.side]}»{sample.effect ? `: ${effectLabel(inst.chart, sample.effect).toLowerCase()}, это видно на графике` : ''}. В игре так же — только быстро.
+              </div>
+            )}
+          </div>
           <div className="lp-game-rules ds-sub">
             <span><Timer size={14} aria-hidden="true" /> {seconds} секунд</span>
             <span>засчитывается от 8 верных при точности от 70%</span>
             {best > 0 && <span data-testid="game-best"><Trophy size={14} aria-hidden="true" /> рекорд: {best}</span>}
           </div>
           <div style={{ textAlign: 'center', marginTop: 10 }}>
-            <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setPhase('play'); }}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
+            <button type="button" className="ds-btn" data-testid="game-start" onClick={begin}><Play size={16} style={{ verticalAlign: -3 }} /> {trial ? 'Старт' : 'Сразу к игре'}</button>
           </div>
         </>
       )}
