@@ -413,6 +413,13 @@ test('вход: первый запуск — приветствие, цель, 
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
   await reg.getByLabel('Имя').fill('Анна');
+  // без согласия со страницей «Данные и конфиденциальность» аккаунт не создать; страница открывается из галочки
+  await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await reg.getByTestId('consent-privacy').click();
+  await expect(page.getByTestId('privacy')).toContainText('Что мы храним');
+  await expect(page.getByTestId('privacy')).toContainText('Upstash');
+  await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
+  await reg.getByTestId('consent').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   // почты нет — код восстановления показывается один раз
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
@@ -1815,6 +1822,7 @@ test('вход: программа — вступительный тест, су
   const reg = page.getByTestId('welcome-register');
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByTestId('consent').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
   await expect(page.getByTestId('path')).toBeVisible();

@@ -135,7 +135,7 @@ export const deleteTycoonSlot = (playerId, slot) =>
 
 /* Профиль игрока: регистрация, вход, изменение имени и значка, выход. */
 const ACCOUNT_API = '/api/account';
-export const accountRegister = (login, password, name, playerId) => post({ action: 'register', login, password, name, playerId }, ACCOUNT_API);
+export const accountRegister = (login, password, name, playerId, consent = false) => post({ action: 'register', login, password, name, playerId, consent }, ACCOUNT_API);
 export const accountLogin = (login, password) => post({ action: 'login', login, password }, ACCOUNT_API);
 export const accountMe = (token) => post({ action: 'me', token }, ACCOUNT_API);
 export const accountUpdate = (token, patch) => post({ action: 'update', token, ...patch }, ACCOUNT_API);
@@ -143,6 +143,8 @@ export const accountPassword = (token, oldPassword, newPassword) => post({ actio
 export const accountLogout = (token) => post({ action: 'logout', token }, ACCOUNT_API);
 export const accountRecover = (login, code, newPassword) => post({ action: 'recover', login, code, newPassword }, ACCOUNT_API);
 export const accountRecoveryNew = (token, password) => post({ action: 'recovery_new', token, password }, ACCOUNT_API);
+export const accountExport = (token) => post({ action: 'export', token }, ACCOUNT_API);
+export const accountDelete = (token, password) => post({ action: 'delete', token, password }, ACCOUNT_API);
 
 /* Таблица рекордов «Своего дела» (api/records.js): записаться можно только из профиля. */
 const RECORDS_API = '/api/records';

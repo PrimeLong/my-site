@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Flame, Coins, Target, Lock, Check, Gem, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
-  Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
+  Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
 } from 'lucide-react';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
@@ -31,6 +31,7 @@ import {
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
+import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
   REWARD_CSS, WalletStat, QuestsCard, MonthCard, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
@@ -1428,6 +1429,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
   const [music, setMusic] = useState(learnMusic);
   const [sfx, setSfx] = useState(learnSfx);
   const [account, setAccount] = useState(false);
+  const [privacy, setPrivacy] = useState(false);
   const states = pathState(learn);
   const arrow = <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />;
   const lessonsDone = Object.keys(learn.lessons).filter((id) => lessonDone(learn, id)).length;
@@ -1473,7 +1475,9 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
         text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
-      <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход" onClick={() => setAccount(true)} />
+      <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход; скачать или удалить свои данные" onClick={() => setAccount(true)} />
+      <MenuCard icon={ShieldCheck} tone="var(--ds-ink2)" title={PRIVACY_TITLE} data-testid="prof-privacy" right={arrow} text="Что хранится, где, зачем и сколько" onClick={() => { Audio.play('paper'); setPrivacy(true); }} />
+      {privacy && <PrivacyPage onClose={() => setPrivacy(false)} />}
       <Card style={{ margin: '12px 0' }} data-testid="prof-settings">
         <div className="ds-h3" style={{ marginBottom: 4 }}>Настройки</div>
         {[

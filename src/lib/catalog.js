@@ -234,7 +234,7 @@ export const SCENARIOS = [
      старт, дальше кварталы партии. На графике это пунктир «как было»: вы против
      Волкера, против Анкары, против Афин и против Москвы-2014. Данные округлены до
      десятых (годовые темпы, % — по открытым рядам ФРС, TurkStat, ELSTAT, ЦБ РФ и Росстата). */
-  { id: 'volcker', title: 'Вы против Волкера', short: 'США, 1979–1982', level: 3, levelLabel: 'Трудный', historical: true,
+  { id: 'volcker', title: 'США, 1979–1982', short: 'Инфляция и доверие к центральному банку', level: 3, levelLabel: 'Трудный', historical: true,
     levelNote: 'Инфляция двузначная и въелась в ожидания. Волкер задавил её ставкой под 20% — ценой двух рецессий и безработицы выше 10%.',
     desc: 'Конец 1970-х: инфляция 12% и растёт, ожидания отвязаны, доверия к ЦБ почти нет. Реальный ФРС поднял ставку до 19% и держал, пока цены не сломались. Сможете дешевле?',
     shadow: { name: 'ФРС при Волкере', from: 'III кв. 1979',
@@ -245,9 +245,9 @@ export const SCENARIOS = [
     overrides: { inflation: 11.8, coreInflation: 10.5, inflationExpectations: 10, cbCredibility: 28, keyRate: 10.9,
       lendingRate: 13.5, depositRate: 9, wageGrowth: 9.5, unemployment: 5.9, consumerConfidence: 38, businessConfidence: 42,
       approval: 40, politicalTension: 22 } },
-  { id: 'turkey2021', title: 'Вы против Анкары', short: 'Турция, 2021–2023', level: 3, levelLabel: 'Трудный', historical: true,
+  { id: 'turkey2021', title: 'Турция, 2021–2023', short: 'Снижение ставки при высокой инфляции', level: 3, levelLabel: 'Трудный', historical: true,
     levelNote: 'Инфляция под 20%, а президент требует снижать ставку. В реальности ставку снизили с 19% до 8,5% — инфляция ушла за 80%, лира обвалилась.',
-    desc: 'Осень 2021-го: инфляция 20%, президент считает, что высокая ставка разгоняет цены, и требует снижения. Реальный ЦБ послушался. Удержите цены — или хотя бы не повторите 85%?',
+    desc: 'Осень 2021-го: инфляция 20%, а ставку снижают, считая, что высокая ставка сама разгоняет цены. В реальности инфляция дошла до 85%. Удержите цены лучше?',
     shadow: { name: 'ЦБ Турции', from: 'III кв. 2021',
       inflation: [19.6, 36.1, 61.1, 78.6, 83.5, 64.3, 50.5, 38.2, 61.5, 64.8],
       keyRate: [18, 14, 14, 14, 12, 9, 8.5, 15, 30, 42.5],
@@ -256,7 +256,7 @@ export const SCENARIOS = [
     overrides: { inflation: 19.6, coreInflation: 17, inflationExpectations: 17, cbCredibility: 30, keyRate: 18,
       lendingRate: 21, depositRate: 16, wageGrowth: 18, unemployment: 11.5, nairu: 10.8, riskPremium: 3.6, reserves: 110,
       consumerConfidence: 36, businessConfidence: 44, approval: 42, politicalTension: 26, regime: 'currency' } },
-  { id: 'greece2010', title: 'Вы против Афин', short: 'Греция, 2010–2013', level: 3, levelLabel: 'Трудный', historical: true,
+  { id: 'greece2010', title: 'Греция, 2010–2013', short: 'Долговой кризис без своей ставки', level: 3, levelLabel: 'Трудный', historical: true,
     // своего ЦБ у страны в валютном союзе нет — играть за него нечем
     noRoles: ['central_bank'],
     levelNote: 'Долг под 130% ВВП, дефицит 15%, рынок закрыт. Валютный союз: курс и ставку не выбрать, роль ЦБ недоступна. Реальная Греция прошла через жёсткую экономию: ВВП −25%, безработица 27%.',
@@ -272,7 +272,7 @@ export const SCENARIOS = [
       // евро: своего курса и своей ставки нет, ставку ведёт ЕЦБ (реальный путь 2010–2013)
       keyRate: 1, fxRegime: 'union',
       currencyUnion: { name: 'ЕЦБ', ratePath: [1, 1, 1, 1, 1, 1.25, 1.5, 1.25, 1, 1, 0.75, 0.75, 0.75, 0.5, 0.5, 0.25] } } },
-  { id: 'russia2014', title: 'Вы против декабря 2014-го', short: 'Россия, 2014–2016', level: 3, levelLabel: 'Трудный', historical: true,
+  { id: 'russia2014', title: 'Россия, 2014–2016', short: 'Обвал курса и отток капитала', level: 3, levelLabel: 'Трудный', historical: true,
     levelNote: 'Нефть упала вдвое, санкции закрыли рынки, рубль падает. 16 декабря ЦБ поднял ставку с 10,5% до 17% за ночь.',
     desc: 'Осень 2014-го: нефть дешевеет, санкции, отток капитала, рубль теряет треть. Реальный ЦБ отпустил курс и поднял ставку до 17%. Инфляция всё равно дошла до 17%, ВВП ушёл в минус.',
     shadow: { name: 'ЦБ России', from: 'III кв. 2014',

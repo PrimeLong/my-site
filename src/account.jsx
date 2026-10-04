@@ -4,8 +4,9 @@
 import React, { useState } from 'react';
 import { Star, Crown, Landmark, Coins, Shield, Anchor, Factory, Wheat, User, LogIn, LogOut, KeyRound, X, Copy, Check, AlertTriangle } from 'lucide-react';
 import {
-  accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter,
+  accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter, accountExport, accountDelete,
 } from './lib/client.js';
+import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
 import { RUDE_NAME } from './lib/moderation.js';
 import {
   COLOR, Audio, useEscapeClose, getPlayerId, syncProfile, readLocalProgress, writeLocalProgress, PLAYER_ID_KEY,
@@ -76,9 +77,9 @@ const adoptProfile = (token, profile) => {
 /* Регистрация, вход и восстановление одной функцией — для окна профиля и для экранов
    первого запуска (src/welcome.jsx). mode: register | login | recover. Возвращает
    { profile, playerId, recoveryCode, storage }. */
-export async function authenticate(mode, { login, password, name = '', code = '' }) {
+export async function authenticate(mode, { login, password, name = '', code = '', consent = false }) {
   const lg = String(login || '').trim().toLowerCase();
-  const r = mode === 'register' ? await accountRegister(lg, password, String(name).trim(), getPlayerId())
+  const r = mode === 'register' ? await accountRegister(lg, password, String(name).trim(), getPlayerId(), consent)
     : mode === 'recover' ? await accountRecover(lg, code, password)
       : await accountLogin(lg, password);
   if (!r || !r.token || !r.profile) throw new Error('Сервер не ответил');
@@ -158,6 +159,22 @@ export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохрани�
 
 /* Вход, регистрация и восстановление доступа. reason — зачем просим войти (например,
    перед сетевой игрой). */
+/* Согласие при регистрации: галочка и ссылка на страницу «Данные и конфиденциальность». */
+export function ConsentBox({ on, set }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
+      <input type="checkbox" id="consent" checked={on} onChange={(e) => set(e.target.checked)} data-testid="consent" style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: 'var(--u)' }} />
+      <label htmlFor="consent">
+        Я прочитал(а) страницу <button type="button" onClick={() => setOpen(true)} data-testid="consent-privacy"
+          style={{ background: 'none', border: 'none', padding: 0, color: 'var(--u-ink)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>«{PRIVACY_TITLE}»</button> и согласен(на) с ней.
+        Если мне меньше 14 лет — вместе с родителями.
+      </label>
+      {open && <PrivacyPage onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
+
 /* Имя или логин не прошли фильтр грубых слов. Текст отказа нейтральный; если человек уверен,
    что фильтр ошибся, — «Это ошибка фильтра» отправляет сообщение владельцам (без аккаунта). */
 export function NameRefused({ text, login, name, screen = 'register' }) {
@@ -183,6 +200,7 @@ export function AuthModal({ onClose, onDone, reason }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [storageMemory, setStorageMemory] = useState(false);
@@ -193,7 +211,7 @@ export function AuthModal({ onClose, onDone, reason }) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const r = await authenticate(tab, { login, password, name, code });
+      const r = await authenticate(tab, { login, password, name, code, consent });
       const playerId = r.playerId;
       Audio.play('up');
       const done = () => { if (onDone) onDone(r.profile, playerId); onClose(); };
@@ -210,7 +228,7 @@ export function AuthModal({ onClose, onDone, reason }) {
       </ModalShell>
     );
   }
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12);
+  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12) && (tab !== 'register' || consent);
   return (
     <ModalShell title={titles[tab]} label="Профиль игрока" icon={User} onClose={onClose}>
       {reason && <div style={{ fontSize: 14, color: 'var(--ds-ink)', marginBottom: 12, lineHeight: 1.5 }}>{reason}</div>}
@@ -256,6 +274,7 @@ export function AuthModal({ onClose, onDone, reason }) {
             устройстве, и они будут там.
           </div>
         )}
+        {tab === 'register' && <ConsentBox on={consent} set={setConsent} />}
         {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div style={{ fontSize: 14, color: 'var(--ds-bad)' }}>{error}</div>)}
         <button type="submit" className="ds-btn" disabled={busy || !canSubmit} style={{ marginTop: 2 }}>
           {busy ? 'Минутку…' : tab === 'register' ? 'Создать профиль' : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
@@ -282,10 +301,31 @@ export function ProfileModal({ onClose, onSwitched }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
-  const [panel, setPanel] = useState(null);     // null | 'password' | 'recovery'
+  const [panel, setPanel] = useState(null);     // null | 'password' | 'recovery' | 'delete'
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [shownCode, setShownCode] = useState(null);
+  const [privacy, setPrivacy] = useState(false);
+  // «Скачать мои данные»: всё о профиле с сервера — одним файлом JSON
+  const download = async () => {
+    setBusy(true); setError('');
+    try {
+      const data = await accountExport(account.token);
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a'); a.href = url; a.download = `inflatia-${account.login}-data.json`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNote('Файл с вашими данными скачан.');
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  // «Удалить аккаунт и все данные»: с паролем; потом устройство возвращается к гостевому профилю
+  const removeAll = async () => {
+    setBusy(true); setError('');
+    try {
+      await accountDelete(account.token, oldPw);
+      const id = await leaveProfile();
+      Audio.play('down'); onSwitched(id); onClose();
+    } catch (e) { setError(e.message); setBusy(false); }
+  };
   React.useEffect(() => {
     if (!account) return undefined;
     let alive = true;
@@ -394,6 +434,15 @@ export function ProfileModal({ onClose, onSwitched }) {
           <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || !oldPw}  onClick={newCode}>Получить новый код</button>
         </div>
       )}
+      {panel === 'delete' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }} data-testid="account-delete-panel">
+          <div style={{ fontSize: 14, color: 'var(--ds-bad)', lineHeight: 1.5 }}>
+            Удалятся профиль, прогресс, сохранения, рекорды и ваши сообщения об ошибках. Отменить это нельзя. Введите пароль, чтобы подтвердить.
+          </div>
+          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" data-testid="account-delete-password" />
+          <button className="ds-btn ds-btn--small" style={{ background: 'var(--ds-bad-btn)', borderColor: 'var(--ds-bad-btn)' }} disabled={busy || !oldPw} onClick={removeAll} data-testid="account-delete-confirm">Удалить навсегда</button>
+        </div>
+      )}
       {error && (error === RUDE_NAME ? <div style={{ marginBottom: 8 }}><NameRefused text={error} name={name} screen="profile" /></div> : <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>{error}</div>)}
       {note && <div style={{ fontSize: 14, color: 'var(--ds-ok)', marginBottom: 8 }}>{note}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -403,6 +452,16 @@ export function ProfileModal({ onClose, onSwitched }) {
           onClick={() => { setOldPw(''); setPanel(panel === 'recovery' ? null : 'recovery'); }}>Код восстановления</button>
         <button className="ds-btn ds-btn--secondary ds-btn--small" style={{ marginLeft: 'auto' }} onClick={logout}><LogOut size={12} style={{ verticalAlign: -2, marginRight: 5 }} />Выйти</button>
       </div>
+      <div style={{ borderTop: '1px dotted var(--ds-rule2)', marginTop: 14, paddingTop: 10 }} data-testid="account-data">
+        <div style={{ fontSize: 13, color: 'var(--ds-ink3)', marginBottom: 6 }}>Ваши данные</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy} onClick={download} data-testid="account-export">Скачать мои данные</button>
+          <button className="ds-btn ds-btn--secondary ds-btn--small" aria-pressed={panel === 'delete'} data-testid="account-delete"
+            onClick={() => { setOldPw(''); setPanel(panel === 'delete' ? null : 'delete'); }}>Удалить аккаунт и все данные</button>
+          <button type="button" className="ds-btn ds-btn--ghost ds-btn--small" onClick={() => setPrivacy(true)} data-testid="account-privacy">{PRIVACY_TITLE}</button>
+        </div>
+      </div>
+      {privacy && <PrivacyPage onClose={() => setPrivacy(false)} />}
     </ModalShell>
   );
 }

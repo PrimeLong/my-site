@@ -113,6 +113,9 @@ for (const theme of ['light', 'dark']) {
       for (const g of ['Цель', 'Минут в день', 'Знания']) await page.getByRole('group', { name: g }).getByRole('button').first().click();
       await page.getByRole('button', { name: 'Продолжить' }).click();
       await shot(page, '03-welcome-register', theme);
+      await page.getByTestId('consent-privacy').click();
+      await shot(page, '03a-privacy', theme);
+      await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
       await page.getByRole('button', { name: 'Назад' }).click(); await page.getByRole('button', { name: 'Назад' }).click();
       await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
       await shot(page, '04-welcome-login', theme);
