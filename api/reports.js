@@ -4,7 +4,8 @@
    варианта, ответ ученика и правильный ответ, версия сборки, экран, устройство.
    Читают и разбирают сообщения только владельцы — логины из переменной окружения
    OWNER_LOGINS (через запятую). */
-import { getReports, setReport, hit, hasKv } from './_lib/store.js';
+import { getReports, setReport, deleteReport, hit, hasKv } from './_lib/store.js';
+import { isRude, RUDE_MESSAGE } from '../src/lib/moderation.js';
 import { userBySession } from './_lib/accounts.js';
 import { randomBytes } from 'node:crypto';
 
@@ -48,6 +49,7 @@ async function handleRequest(req, res) {
   if (action === 'send') {
     const r = sanitizeReport(body);
     if (!r) return res.status(400).json({ error: 'Выберите причину' });
+    if (isRude(r.comment)) return res.status(400).json({ error: RUDE_MESSAGE });
     if (await hit(`report:${user.login}`, 3600) > REPORTS_PER_HOUR || await hit(`report-ip:${clientIp(req)}`, 3600) > REPORTS_PER_HOUR * 3) {
       return res.status(429).json({ error: 'Слишком много сообщений за час — спасибо, попробуйте чуть позже' });
     }
@@ -62,7 +64,9 @@ async function handleRequest(req, res) {
     const status = body.status === 'done' ? 'done' : body.status === 'all' ? 'all' : 'new';
     const all = (await getReports()).sort((a, b) => b.at - a.at);
     const counts = { new: all.filter((x) => x.status !== 'done').length, done: all.filter((x) => x.status === 'done').length };
-    return res.status(200).json({ reports: all.filter((x) => status === 'all' || (status === 'done' ? x.status === 'done' : x.status !== 'done')), counts });
+    // грубые сообщения (присланные до модерации) помечены — их можно сразу удалить
+    const shown = all.filter((x) => status === 'all' || (status === 'done' ? x.status === 'done' : x.status !== 'done')).map((x) => ({ ...x, rude: isRude(x.comment) || isRude(x.name) || isRude(x.login) }));
+    return res.status(200).json({ reports: shown, counts });
   }
   if (action === 'status') {
     const all = await getReports();
@@ -71,6 +75,11 @@ async function handleRequest(req, res) {
     const next = { ...r, status: body.status === 'done' ? 'done' : 'new', doneBy: body.status === 'done' ? user.login : null, doneAt: body.status === 'done' ? Date.now() : null };
     await setReport(next);
     return res.status(200).json({ report: next });
+  }
+  if (action === 'delete') {
+    if (typeof body.id !== 'string') return res.status(400).json({ error: 'Нет id' });
+    await deleteReport(body.id);
+    return res.status(200).json({ ok: true });
   }
   return res.status(400).json({ error: 'Неизвестное действие' });
 }

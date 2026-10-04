@@ -13,7 +13,7 @@ import { Inline } from './textbook.jsx';
 import { equilibrium, marketAxes, qd, qs, gameScore, comboOf } from './learn/course.js';
 import { CAST } from './learn/cast.js';
 import { useReducedMotion } from './ds-art.jsx';
-import { evalExpr, fmtResult } from './learn/calc.js';
+import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 
 export const PLAY_CSS = `
   .lp-chart { width: 100%; max-width: 380px; display: block; margin: 6px auto 10px; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -585,6 +585,7 @@ export function Calculator({ onUse = null, disabled = false, useLabel = 'В от
     if (k === 'C') setExpr('');
     else if (k === 'del') setExpr((e) => e.slice(0, -1));
     else if (k === '=') { if (v != null) setExpr(fmtResult(v).replace('−', '-')); }
+    else if (k === '√') setExpr((e) => pressRoot(e));
     else setExpr((e) => (e.length < 40 ? e + k : e));
   };
   const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', '√', '=']];

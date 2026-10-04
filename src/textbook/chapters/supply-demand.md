@@ -153,7 +153,7 @@ $$Q_D = a - bP, \qquad a > 0,\ b > 0.$$
 3. $4 + 6 + 0 = 10$ стаканов в неделю.
 :::
 
-:::idea id=sd-l1 title="Спрос: закон и сдвиги" chart=demand a=100 b=2 p=20 variants="v-sd-qd" auto="sd-tf-shift"
+:::idea id=sd-l1 title="Спрос: закон и сдвиги" chart=demand a=100 b=2 p=20 variants="v-sd-qd" auto="sd-tf-shift" hard="sd-market-demand sd-tf-law"
 Спрос — это вся зависимость между ценой и тем, сколько хотят купить. Закон спроса: при прочих равных чем выше цена, тем меньше покупают, — кривая наклонена вниз. В формуле $Q_D = 100 - 2P$ каждый рубль цены отнимает две единицы покупок, а при цене 50 не покупает никто.
 :::
 
@@ -459,7 +459,7 @@ $$Q_S = c + dP, \qquad d > 0.$$
 3. Дефицит — разность: $90 - 60 = 30$ единиц.
 :::
 
-:::idea id=sd-l3 title="Предложение и равновесие" chart=supply-demand a=100 b=2 c=-20 d=4 cost=1 auto="sd-graph-flour sd-equilibrium sd-tf-law sd-cost-shock sd-floor" variants="v-sd-eqp v-sd-floor"
+:::idea id=sd-l3 title="Предложение и равновесие" chart=supply-demand a=100 b=2 c=-20 d=4 cost=1 auto="sd-graph-flour sd-equilibrium sd-tf-law sd-cost-shock sd-floor" variants="v-sd-eqp v-sd-floor" hard="sd-cost-shock sd-both-shift var:v-sd-floor"
 Предложение — сколько продавцы готовы продать при каждой цене. Закон предложения: выше цена — больше продают, кривая наклонена вверх. Если каждая единица обходится дороже, кривая поднимается на столько же вверх — это то же, что сдвиг влево: при каждой цене продают меньше.
 :::
 

@@ -162,3 +162,4 @@ export const sendReport = (session, reason, comment, context) => post({ action: 
 export const reportsMe = (session) => post({ action: 'me', session }, REPORTS_API);
 export const listReports = (session, status) => post({ action: 'list', session, status }, REPORTS_API);
 export const setReportStatus = (session, id, status) => post({ action: 'status', session, id, status }, REPORTS_API);
+export const deleteReport = (session, id) => post({ action: 'delete', session, id }, REPORTS_API);

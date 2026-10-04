@@ -224,16 +224,36 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
   const pick = (v) => { if (!locked) { Audio.play('tick'); setResp(v); } };
   const optClass = (key, correct) => (!fb ? '' : correct ? 'right' : key === resp && !fb.ok ? 'wrong' : '');
   switch (inst.kind) {
-    case 'choice':
+    case 'choice': {
+      // варианты — числа: задача на расчёт, и калькулятор нужен так же, как в «Расчёте»
+      const numOf = (o) => { const m = String(o.raw).replace('−', '-').match(/^-?\d+(?:[.,]\d+)?/); return m ? Number(m[0].replace(',', '.')) : null; };
+      const numeric = inst.options.every((o) => numOf(o) != null);
       return (
         <div>
           <div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
+          {numeric && !locked && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+              <button type="button" className="ds-chip" aria-pressed={!!inst._calc} data-testid="calc-open" onClick={() => { Audio.play('tick'); inst._setCalc(!inst._calc); }}>
+                <Calculator size={15} style={{ verticalAlign: -3, marginRight: 4 }} aria-hidden="true" />Калькулятор
+              </button>
+            </div>
+          )}
+          {numeric && inst._calc && !locked && (
+            <div style={{ marginBottom: 12 }}>
+              <CalcPad useLabel="Выбрать ответ" onUse={(v) => {
+                const x = Number(v.replace(',', '.'));
+                const hit = inst.options.find((o) => Math.abs(numOf(o) - x) <= 0.011 * Math.max(1, Math.abs(x)));
+                if (hit) { pick(hit.key); inst._setCalc(false); }
+              }} />
+            </div>
+          )}
           {inst.options.map((o) => (
             <button key={o.key} type="button" className={`ds-opt ${optClass(o.key, o.correct)}`} aria-pressed={resp === o.key} data-key={o.key} disabled={locked}
               onClick={() => pick(o.key)}><Inline nodes={o.text} ctx={ctx} /></button>
           ))}
         </div>
       );
+    }
     case 'gap': {
       const chosen = inst.options.find((o) => o.key === resp);
       return (

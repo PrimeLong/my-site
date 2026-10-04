@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { LESSON_BY_ID, UNIT_BY_ID, EXERCISES, buildLesson, buildPractice, buildPlacement, placementOpened, placementFailed, pathState, pilotUnits, PLACE_PER_UNIT, PRACTICE_MIN, HARD_IN_PRACTICE } from '../course.js';
 import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts, theoryNotice } from '../program.js';
-import { evalExpr, fmtResult } from '../calc.js';
+import { evalExpr, fmtResult, pressRoot } from '../calc.js';
 import {
   balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
   settle, monthChallenge, achievementsOf, hash01, COIN,
@@ -453,5 +453,20 @@ describe('напоминание о теории перед уроком', () =>
     expect(theoryNotice(l1, emptyLearn(), { read: {}, problems: {} }, [l1.section])).toBeNull();
     // сам урок «Знакомство» теорию даёт
     expect(theoryNotice(LESSON_BY_ID['sc-i1'], emptyLearn(), { read: {}, problems: {} })).toBeNull();
+  });
+});
+
+describe('корень как на обычном калькуляторе', () => {
+  it('число, потом √ — корень сразу; скобка, потом √ — корень из скобки; иначе — знак перед числом', () => {
+    expect(pressRoot('16')).toBe('4');
+    expect(pressRoot('9+16')).toBe('9+4');
+    expect(pressRoot('2')).toBe('1,4142');
+    expect(evalExpr(pressRoot('2'))).toBeCloseTo(1.4142, 4);
+    expect(pressRoot('√16')).toBe('2');
+    expect(pressRoot('(9+16)')).toBe('√(9+16)');
+    expect(evalExpr(pressRoot('3*(9+16)'))).toBe(15);
+    expect(pressRoot('')).toBe('√');
+    expect(pressRoot('5+')).toBe('5+√');
+    expect(evalExpr(`${pressRoot('5+')}9`)).toBe(8);
   });
 });

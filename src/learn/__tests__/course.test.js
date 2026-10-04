@@ -696,3 +696,57 @@ describe('«Слушай»: вопрос без пересказа, вне эф�
     }));
   });
 });
+
+/* Связность: урок не спрашивает того, чему ещё не учил. Ни в обычном прохождении, ни сильному
+   ученику, ни на алмазном уровне, ни в повторе после ошибки в урок не попадает задача из
+   урока дальше по Пути или задача семинарского уровня на тему, которой ещё не было. */
+describe('последовательность уроков: задачи только из пройденного', () => {
+  PATH.forEach((unitId) => {
+    const unit = UNIT_BY_ID[unitId];
+    it(`${unitId}: в каждом уроке — только свои задачи, задачи прошлых уроков и усложнения на их темы`, () => {
+      const problems = [];
+      unit.lessons.forEach((l) => {
+        if (l.kind === 'review' || l.kind === 'summary') return;
+        const before = unit.lessons.filter((x) => x.no <= l.no);
+        const known = new Set(before.flatMap((x) => x.exercises.map((e) => e.id)));
+        const hard = new Set(before.flatMap((x) => x.hard));
+        const ok = (id) => known.has(id) || hard.has(id) || (id.startsWith('auto:') && hard.has(id.slice(5)));
+        const look = (it, how) => {
+          const id = it.of || it.id;
+          if (ok(id)) return;
+          const src = EXERCISES[id];
+          if (src ? src.unitId !== unitId || UNIT_BY_ID[unitId].lessons.find((x) => x.id === src.lesson).no > l.no : !ok(id)) problems.push(`${l.id} (${how}): ${id}`);
+        };
+        for (let s = 1; s <= 8; s += 1) {
+          [['обычно', {}], ['сильному', { level: 'hard' }], ['алмаз', { diamond: true }]].forEach(([how, opts]) => {
+            const { items } = buildLesson(l.id, seeded(s * 31 + 7), opts);
+            items.forEach((it) => {
+              look(it, how);
+              if (!GAME_KINDS.includes(it.kind)) look(retryOf(it, seeded(s), items.map((x) => x.of || x.id)), `${how}, повтор`);
+            });
+          });
+        }
+      });
+      expect([...new Set(problems)]).toEqual([]);
+    });
+  });
+  it('у каждой «Практики» есть усложнения на уже пройденные темы', () => {
+    PATH.forEach((unitId) => UNIT_BY_ID[unitId].lessons.filter((l) => l.kind === 'practice').forEach((l) => {
+      const hard = UNIT_BY_ID[unitId].lessons.filter((x) => x.no <= l.no).flatMap((x) => x.hard);
+      expect(hard.length, l.id).toBeGreaterThanOrEqual(2);
+    }));
+  });
+});
+
+describe('«История» вне урока', () => {
+  it('во вступительном тесте, проверке и повторении перед вопросом «Истории» — шаг, после которого он шёл', () => {
+    PATH.forEach((id) => UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'story').forEach((l) => l.exercises.forEach((e, k) => {
+      const step = l.inner.filter((c) => c.at <= k).pop();
+      expect(e.context, e.id).toEqual(step.idea.text);
+      const out = instantiate(EXERCISES[e.id], seeded(1), { check: true });
+      expect(out.prompt[0], e.id).toEqual({ type: 'p', inline: step.idea.text });
+      // в самом уроке шаг на экране — условие без повтора
+      expect(instantiate(EXERCISES[e.id], seeded(1)).prompt[0]).not.toEqual({ type: 'p', inline: step.idea.text });
+    })));
+  });
+});
