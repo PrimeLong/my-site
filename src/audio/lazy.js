@@ -69,9 +69,10 @@ export const Audio = {
   playTrack: deferred('playTrack'),
   quarterSequence: deferred('quarterSequence', { drop: true }),
   stinger(id) { if (real) return real.stinger(id); load(); return 0; },
-  setVolume(v) { opts.volume = v; if (real) real.setVolume(v); },
-  setSfx(v) { opts.sfx = v; if (real) real.setSfx(v); },
-  setMusic(v) { opts.music = v; if (real) real.setMusic(v); else if (v) { queue.push(['setMusic', [v]]); load(); } },
+  // настройки меняет и экран (сохранённые настройки «Мира»), поэтому панель звука узнаёт о них через notify
+  setVolume(v) { opts.volume = v; if (real) real.setVolume(v); notify(); },
+  setSfx(v) { opts.sfx = v; if (real) real.setSfx(v); notify(); },
+  setMusic(v) { opts.music = v; if (real) real.setMusic(v); else if (v) { queue.push(['setMusic', [v]]); load(); } notify(); },
   nowPlaying() { return real ? real.nowPlaying() : { name: 'Саундтрек загрузится по первому клику', subtitle: '', moodLabel: '', bpm: '—', locked: null }; },
   playlist() { return real ? real.playlist() : []; },
   onChange(fn) {

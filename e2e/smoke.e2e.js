@@ -2062,3 +2062,18 @@ test.describe('офлайн', () => {
     await context.setOffline(false);
   });
 });
+
+// «Мир»: выключенная музыка остаётся выключенной после перезагрузки страницы
+test('мир: выключенная музыка не включается после перезагрузки', async ({ page }) => {
+  const { errors } = await openApp(page);
+  const soundBtn = page.locator('button[title^="Музыка"]');
+  await soundBtn.click();
+  const row = page.locator('div', { has: page.locator('span', { hasText: /^Музыка$/ }) }).last();
+  await row.getByRole('button', { name: 'вкл' }).click();
+  await expect(row.getByRole('button', { name: 'выкл' })).toBeVisible();
+  await gotoApp(page);
+  await page.locator('button[title^="Музыка"]').click();
+  const row2 = page.locator('div', { has: page.locator('span', { hasText: /^Музыка$/ }) }).last();
+  await expect(row2.getByRole('button', { name: 'выкл' })).toBeVisible();
+  expect(errors).toEqual([]);
+});

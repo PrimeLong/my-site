@@ -18,7 +18,7 @@ import {
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon } from './account.jsx';
-import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx } from './ds-tokens.js';
+import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
@@ -489,10 +489,11 @@ export function useExclusiveDropdown(width) {
 export function AudioControls() {
   const DD_WIDTH = 268;
   const { open, setOpen, toggle, btnRef, pos } = useExclusiveDropdown(DD_WIDTH);
-  const [music, setMusic] = useState(Audio.opts.music);
-  const [sfx, setSfx] = useState(Audio.opts.sfx);
-  const [vol, setVol] = useState(Audio.opts.volume);
+  // музыку, звуки и громкость читаем из движка при каждом рисовании: их ставит и экран
+  // (настройки «Мира» и обучения после перезагрузки), не только эта панель
   const [, forceRender] = useState(0);
+  const { music, sfx, volume: vol } = Audio.opts;
+  const setMusic = () => forceRender((n) => n + 1); const setSfx = setMusic; const setVol = setMusic;
   React.useEffect(() => Audio.onChange(() => forceRender((n) => n + 1)), []);
   const anyOn = music || sfx;
   const np = Audio.nowPlaying();
@@ -554,8 +555,8 @@ export function AudioControls() {
               {moods.map(([id, label]) => (<option key={id} value={id}>{label}</option>))}
             </select>
           </div>
-          {[['Музыка', music, (v) => { setMusic(v); Audio.setMusic(v); }, Music],
-            ['Интерфейс и события', sfx, (v) => { setSfx(v); Audio.setSfx(v); if (v) Audio.play('click'); }, Volume2]].map(([label, val, set, Icon]) => (
+          {[['Музыка', music, (v) => { setMusic(v); Audio.setMusic(v); setWorldMusic(v); }, Music],
+            ['Интерфейс и события', sfx, (v) => { setSfx(v); Audio.setSfx(v); setWorldSfx(v); if (v) Audio.play('click'); }, Volume2]].map(([label, val, set, Icon]) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
                 <Icon size={12} color={val ? COLOR.gold : COLOR.faint} />
                 <span style={{ fontSize: 12, color: val ? COLOR.text : COLOR.muted, flex: 1 }}>{label}</span>
@@ -566,7 +567,7 @@ export function AudioControls() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9 }}>
             <span style={{ fontSize: 12, color: COLOR.muted, width: 54 }}>Громкость</span>
             <input type="range" className="ems-slider" min={0} max={1} step={0.05} value={vol}
-              onChange={(e) => { const v = parseFloat(e.target.value); setVol(v); Audio.setVolume(v); }} />
+              onChange={(e) => { const v = parseFloat(e.target.value); setVol(v); Audio.setVolume(v); setWorldVolume(v); }} />
           </div>
           <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 9, lineHeight: 1.45 }}>
             {Object.keys(TRACKS).length} пьес в {new Set(Object.values(TRACKS).map((t) => t.mood)).size} настроениях. Каждая состоит из нескольких частей с разной оркестровкой, на повторах играется с вариациями, а темп дышит экономикой — при высокой инфляции музыка разгоняется. Смена настроения не обрывает пьесу: она затихает за такт и передаёт место следующей. На выборы, переворот, падение и возвращение демократии и остановленные цены звучат короткие заставки.
@@ -2027,18 +2028,15 @@ export default function MacroSimulator() {
   // обучение — в своей светлой (или тёмной по выбору) теме; «канцелярия» — только в «Мире»
   applyTheme(learning ? learnThemeId() : theme);
   /* Звук: в обучении музыка по умолчанию выключена (своя настройка в профиле), звуки
-     ответов — отдельный переключатель, по умолчанию включён. Уходя в «Мир», возвращаем
-     его настройки — там музыка играет как раньше. */
-  const worldAudio = React.useRef(null);
+     ответов — отдельный переключатель, по умолчанию включён. В «Мире» — его настройки из
+     панели звука; они сохраняются, так что выключенная музыка не заиграет после перезагрузки.
+     Меняем только то, что отличается: setMusic(true) грузит звуковой движок, а он нужен не
+     раньше первого клика. */
   React.useEffect(() => {
-    if (learning) {
-      if (!worldAudio.current) worldAudio.current = { music: Audio.opts.music, sfx: Audio.opts.sfx };
-      // setMusic(false) сам останавливает музыку и не грузит звуковой движок раньше времени
-      Audio.setMusic(learnMusic()); Audio.setSfx(learnSfx());
-    } else if (worldAudio.current) {
-      Audio.setMusic(worldAudio.current.music); Audio.setSfx(worldAudio.current.sfx);
-      worldAudio.current = null;
-    }
+    const music = learning ? learnMusic() : worldMusic(); const sfx = learning ? learnSfx() : worldSfx();
+    if (Audio.opts.music !== music) Audio.setMusic(music);
+    if (Audio.opts.sfx !== sfx) Audio.setSfx(sfx);
+    if (!learning && Audio.opts.volume !== worldVolume()) Audio.setVolume(worldVolume());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learning, learnTick]);
   const setTheme = (id) => { applyTheme(id); setThemeState(id); };
