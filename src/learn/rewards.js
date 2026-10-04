@@ -196,25 +196,26 @@ export const achievementKey = (id) => `a:${id}`;
 /* ------------------------------ ИСПЫТАНИЕ МЕСЯЦА ------------------------------ */
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.startsWith(month));
-/* Испытание ПЕРСОНАЛЬНОЕ: цель считается от самого ученика.
+/* Испытание ПЕРСОНАЛЬНОЕ и трудное: цель считается от самого ученика, но с запасом.
    — Темп: цель дня в минутах → сколько это уроков, опыта, уроков без ошибок за день; за
-     месяц — примерно за 60% его дней (занятия не каждый день — тоже нормально).
-   — История: если в прошлом месяце сделано больше — цель «чуть больше прошлого» (+15%), но не
-     больше полутора темпов; сделано меньше — цель по темпу, без наказаний.
-   — Пришёл посреди месяца — темп считается по оставшимся дням, но не ниже нижней планки
-     (иначе получается «заниматься 2 дня»). Испытания «просто заходить N дней» нет. */
+     месяц — примерно за три дня из четырёх. Испытание месяца — не «отметиться», а
+     постараться: нижние планки высокие (не «3 урока без ошибок»).
+   — История: если в прошлом месяце сделано больше темпа — цель всегда БОЛЬШЕ прошлого
+     (+15%, не меньше чем на единицу шага), иначе «теперь чуть больше» было бы неправдой.
+   — Пришёл посреди месяца — темп считается по оставшимся дням, но не ниже нижней планки.
+     Испытания «просто заходить N дней» нет. */
 const MONTH_KINDS = [
-  { id: 'minutes', floor: 60, round: 10, pace: (m) => m, title: (t) => `Заниматься ${t} минут в этом месяце`, unit: () => 'мин',
+  { id: 'minutes', floor: 150, round: 10, pace: (m) => m, title: (t) => `Заниматься ${t} минут в этом месяце`, unit: () => 'мин',
     have: (s, m) => Math.floor(inMonth(s.daily, m).reduce((a, [, d]) => a + (d.s || 0), 0) / 60) },
-  { id: 'lessons', floor: 5, round: 1, pace: (m) => m / 5, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
+  { id: 'lessons', floor: 15, round: 1, pace: (m) => m / 4, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
     have: (s, m) => inMonth(s.done, m).reduce((a, [, v]) => a + v, 0) },
-  { id: 'perfect', floor: 3, round: 1, pace: (m) => m / 40, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без ошибок в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
+  { id: 'perfect', floor: 8, round: 1, pace: (m) => m / 20, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без ошибок в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
     have: (s, m) => inMonth(s.daily, m).reduce((a, [, d]) => a + d.p, 0) },
-  { id: 'xp', floor: 100, round: 10, pace: (m) => m * 3, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
+  { id: 'xp', floor: 300, round: 10, pace: (m) => m * 4, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
     have: (s, m) => inMonth(s.xp, m).reduce((a, [, v]) => a + v, 0) },
 ];
 export const MONTH_COINS = 100;
-const ACTIVE_SHARE = 0.6;
+const ACTIVE_SHARE = 0.75;
 // первый день ученика: регистрация или самое раннее занятие
 const firstDay = (s) => {
   const days = [...Object.keys(s.done || {}), ...Object.keys(s.xp || {})].sort();
@@ -232,14 +233,18 @@ export function monthChallenge(s, now = Date.now()) {
   const mins = goalMinutes(s);
   const byPace = kind.pace(mins) * span * ACTIVE_SHARE;
   const before = kind.have(s, prevMonth(month));
-  const raw = before > byPace ? Math.min(before * 1.15, byPace * 1.5) : byPace;
-  const target = Math.max(kind.floor, Math.round(raw / kind.round) * kind.round);
+  const up = (x) => Math.ceil(x / kind.round) * kind.round;
+  // прошлый месяц выше темпа — цель строго больше прошлого: +15%, минимум на один шаг
+  const fromHistory = before > byPace ? Math.max(up(before * 1.15), before + kind.round) : 0;
+  const target = Math.max(kind.floor, up(byPace), fromHistory);
   const have = Math.min(target, kind.have(s, month));
   const key = `m:${month}`;
   // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
   const daysLeft = last - d.getDate() + 1;
   // почему именно столько — чтобы цель читалась как своя, а не взятая с потолка
-  const why = before > byPace ? `В прошлом месяце — ${before}: теперь чуть больше.` : `По вашей цели — ${mins} минут в день.`;
+  const why = fromHistory && target === fromHistory ? `В прошлом месяце — ${before}, теперь ${target}: чуть больше.`
+    : target === kind.floor && up(byPace) < kind.floor ? `По вашей цели — ${mins} минут в день, но испытание месяца — с запасом: больше обычного темпа.`
+      : `По вашей цели — ${mins} минут в день, примерно три дня из четырёх.`;
   return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
     done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft, why };
 }

@@ -1998,6 +1998,9 @@ export default function MacroSimulator() {
   const [learnTick, setLearnTick] = useState(0);
   // вернулись из Лаборатории, партии или «Своего дела», открытых из учебника, — снова в учебник
   const [reopenBook, setReopenBook] = useState(false);
+  // учебник открыт поверх вкладки обучения: внизу подсвечен «Учебник»; closeTick закрывает его
+  const [bookOver, setBookOver] = useState(false);
+  const [closeTick, setCloseTick] = useState(0);
   const [labLever, setLabLever] = useState('keyRate');
   // учебник: откуда открыта Лаборатория ({ lever, cb, mode, scenario }), куда вернуться,
   // задание для «Своего дела» и предвыбор сценария/старта в анкете
@@ -2139,6 +2142,7 @@ export default function MacroSimulator() {
               <GlobalStyle />
               <Suspense fallback={<GameFallback />}>
                 <LearnTab tab={tab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
+                  onBookOver={setBookOver} closeTick={closeTick}
                   bookHandlers={{
                     onOpenLab: (init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); },
                     onStartDrill: startDrill,
@@ -2155,7 +2159,9 @@ export default function MacroSimulator() {
               </Suspense>
             </div>
           )}
-          <BottomNav tab={tab} onTab={setTab} />
+          {/* учебник поверх вкладки (например, «Открыть теорию» из карточки урока) — внизу отмечен «Учебник»;
+              нажатие на вкладку закрывает его */}
+          <BottomNav tab={bookOver && tab !== 'world' ? 'book' : tab} onTab={(t) => { if (bookOver) { setBookOver(false); setCloseTick((k) => k + 1); } setTab(t); }} />
         </div>
       );
     }

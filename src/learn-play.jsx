@@ -56,6 +56,8 @@ export const PLAY_CSS = `
   .lp-word-def.open { animation: lp-def .35s ease-out both; }
   @keyframes lp-def { from { opacity: 0; transform: translateY(6px); filter: blur(3px) } to { opacity: 1; transform: none; filter: none } }
   .lp-word-hide { width: 100%; border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 18px 12px; color: var(--ds-ink3); font-size: 15px; background: none; cursor: pointer; font-family: inherit; }
+  .lp-word-hint .fine { display: none; }
+  @media (hover: hover) and (pointer: fine) { .lp-word-hint .fine { display: inline; } .lp-word-hint .touch { display: none; } .lp-word { cursor: grab; } }
   .lp-word-dots { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
   .lp-word-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--ds-rule); }
   .lp-word-dots i.know { background: var(--u); }
@@ -670,9 +672,15 @@ export function WordDeck({ cards, onDone, body, foot }) {
   });
   if (!card) return null;
   const left = queue.length - 1;
-  const onDown = (e) => { if (open && !out) drag.current = { x: e.clientX }; };
+  /* Смахивание и мышью: карточка захватывает указатель (рука может уйти за её край), порог —
+     треть ширины пальцем и 50 px мышью; на ПК подсказка — стрелки ← →. */
+  const onDown = (e) => {
+    if (!open || out) return;
+    drag.current = { x: e.clientX, mouse: e.pointerType === 'mouse' };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* старый браузер */ }
+  };
   const onMove = (e) => { if (drag.current) setDx(e.clientX - drag.current.x); };
-  const onUp = () => { if (!drag.current) return; const d = dx; drag.current = null; if (Math.abs(d) > 80) decide(d > 0); else setDx(0); };
+  const onUp = () => { if (!drag.current) return; const d = dx; const lim = drag.current.mouse ? 50 : 80; drag.current = null; if (Math.abs(d) > lim) decide(d > 0); else setDx(0); };
   const style = dx && !out ? { transform: `translateX(${dx}px) rotate(${dx / 30}deg)`, transition: 'none' } : undefined;
   return (
     <>
@@ -686,7 +694,7 @@ export function WordDeck({ cards, onDone, body, foot }) {
             <span>Слово {idx + 1} из {cards.length}</span>
             {repeat && <span className="ds-badge" style={{ textTransform: 'none', letterSpacing: 0 }}>ещё раз</span>}
             <span style={{ flex: 1 }} />
-            {open && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>смахните →</span>}
+            {open && <span className="lp-word-hint" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}><span className="touch">смахните →</span><span className="fine">← → на клавиатуре</span></span>}
           </div>
           <div className="lp-word-term">{card.title}</div>
           <div className="lp-word-rule" />

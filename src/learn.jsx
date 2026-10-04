@@ -48,7 +48,7 @@ import { ReportFlag, ReportsView, REPORT_CSS, exerciseContext, flatText } from '
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette, Stamp, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { ProfileModal } from './account.jsx';
@@ -1011,6 +1011,10 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
           <div className="ds-num ds-sub" style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 14 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Timer size={15} aria-hidden="true" />≈{info.min} мин</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Coins size={15} aria-hidden="true" />до {info.xp} XP</span>
+            {/* пройденный урок — короткая отметка в строке билета, без печати поверх */}
+            {l.done && <span data-testid="lesson-done-mark" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: l.diamond ? DIAMOND_COLOR : 'var(--ds-ok)', fontWeight: 700 }}>
+              {l.diamond ? <Gem size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}{l.diamond ? 'алмаз' : 'пройден'}
+            </span>}
           </div>
         </div>
         <div className="ln-ticket-stub">
@@ -1018,9 +1022,7 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
           <span className="ds-num" style={{ fontSize: 12 }}>№ {String(l.no).padStart(2, '0')}</span>
         </div>
       </div>
-      {l.done && <div style={{ display: 'flex', justifyContent: 'center', marginTop: -18, pointerEvents: 'none' }}>
-        {l.diamond ? <Stamp text="АЛМАЗ" center={<Gem size={20} />} size={70} color={DIAMOND_COLOR} /> : <Stamp text="ПРОЙДЕНО" center={<Check size={20} />} size={70} color="var(--ds-bad)" />}
-      </div>}
+
       <div style={{ marginTop: 16 }}>
         {!l.open ? (
           <div className="ds-sub" style={{ fontSize: 15, textAlign: 'center' }} data-testid="lesson-sheet-locked">
@@ -1152,12 +1154,12 @@ const ROW = 118; const ZIG = [0, 64, 92, 64, 0, -64, -92, -64];
    верстовой столб с номером урока; в начале юнита — указатель с названием места. У пройденных
    остановок убранство в цвете юнита («дорога оживает»), у закрытых — серое. Чисто украшение:
    скрыто от чтения с экрана и не ловит нажатий. */
-function Prop({ kind, x, y, alive, no }) {
+function Prop({ kind, x, y, alive, no, scale = 1, flip = false }) {
   const ink = alive ? 'var(--u-ink)' : 'var(--ds-ink3)';
   const fill = alive ? 'var(--u)' : 'var(--ds-rule2)';
   const o = alive ? 1 : 0.55;
   return (
-    <g transform={`translate(${x},${y})`} opacity={o} className="ln-prop" data-prop={kind}>
+    <g transform={`translate(${x},${y}) scale(${flip ? -scale : scale},${scale})`} opacity={o} className="ln-prop" data-prop={kind}>
       {kind === 'tree' && <>
         <line x1="0" y1="2" x2="0" y2="22" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
         <circle cx="0" cy="-8" r="13" fill={fill} fillOpacity=".22" stroke={ink} strokeWidth="1.6" />
@@ -1186,7 +1188,23 @@ function Prop({ kind, x, y, alive, no }) {
     </g>
   );
 }
-const PROPS = ['tree', 'lamp', 'bush', 'mile'];
+/* Расстановка без линейки: вид, смещение, размер и соседи у каждой остановки свои, но
+   постоянные — из хэша id урока (дорога не «пляшет» при каждом открытии). Иногда у
+   остановки пусто, иногда дерево с кустом; верстовой столб — изредка, с номером урока. */
+const hashOf = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const rng = (seed) => { let x = seed || 1; return () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return ((x >>> 0) % 10000) / 10000; }; };
+function propsFor(id, i, W, y, left) {
+  const r = rng(hashOf(id));
+  if (r() < 0.18) return [];
+  const pick = r();
+  const kind = i % 5 === 3 && pick < 0.5 ? 'mile' : pick < 0.45 ? 'tree' : pick < 0.7 ? 'bush' : pick < 0.9 ? 'lamp' : 'tree';
+  const side = (dx) => (left ? dx : W - dx);
+  const main = { kind, x: side(22 + r() * 26), y: y - 14 + r() * 26, scale: 0.78 + r() * 0.36, flip: kind !== 'mile' && r() < 0.5 };
+  const out = [main];
+  // у дерева иногда куст рядом — пара, а не одиночка
+  if (kind === 'tree' && r() < 0.45) out.push({ kind: 'bush', x: main.x + (left ? 1 : -1) * (14 + r() * 10), y: main.y + 8 + r() * 6, scale: 0.55 + r() * 0.2, flip: r() < 0.5 });
+  return out;
+}
 function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, chest = null, onChest }) {
   const W = 300;
   // пройденный юнит — в конце дороги сундук
@@ -1205,7 +1223,7 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
           // на другой стороне дороги от остановки; у остановки посередине — по очереди слева и справа
           const z = ZIG[i % ZIG.length];
           const left = z > 0 || (z === 0 && i % 8 === 0);
-          return <Prop key={l.id} kind={PROPS[i % PROPS.length]} x={left ? 30 : W - 30} y={pts[i][1] - 4} alive={l.done} no={l.no} />;
+          return propsFor(l.id, i, W, pts[i][1] - 4, left).map((pp, k) => <Prop key={`${l.id}:${k}`} {...pp} alive={l.done} no={l.no} />);
         })}
       </svg>
       {st.lessons.map((l, i) => {
@@ -1498,7 +1516,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
    Корень экранов обучения. Учебник — подэкран поверх вкладки (или поверх итогов урока):
    его «назад» возвращает туда, откуда открыли. Нижняя панель — в корне приложения. */
 const MORNING_KEY = 'ems-learn-morning';
-export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {} }) {
+export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0 }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
   const [sheet, setSheet] = useState(null);
@@ -1516,6 +1534,10 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   const openBook = (page, resume = false) => { setBook({ page, resume }); setBookKey((k) => k + 1); window.scrollTo(0, 0); };
   // смена вкладки закрывает подэкраны
   useEffect(() => { setBook(null); setSheet(null); setChest(null); setReports(false); }, [tab]);
+  // нажата вкладка внизу, пока открыт учебник поверх (в том числе та же самая) — закрываем его
+  useEffect(() => { if (closeTick) { setBook(null); setSheet(null); } }, [closeTick]);
+  // учебник поверх вкладки — нижняя панель отмечает «Учебник»
+  useEffect(() => { onBookOver(!!book && !run); }, [book, run]); // eslint-disable-line react-hooks/exhaustive-deps
   // вернулись из Лаборатории или партии, открытой из учебника, — снова в учебник, на то же место
   useEffect(() => { if (reopenBook) { openBook(null, true); onBookReopened(); } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenBook]);
