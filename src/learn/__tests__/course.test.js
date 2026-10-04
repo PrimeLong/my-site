@@ -56,9 +56,15 @@ describe.each(PATH)('юнит %s', (unitId) => {
         const { words, sentences } = stepOk(c);
         expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
         expect(sentences, `${c.idea.id}: ${sentences} предложений`).toBeLessThanOrEqual(3);
-        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && CAST[c.idea.who]), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
+        // в истории шаг без героя — рассказчик со своим аватаром (docs/world.md)
+        expect(c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && (!c.idea.who || CAST[c.idea.who])), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
         const next = i + 1 < l.inner.length ? l.inner[i + 1].at : l.exercises.length;
-        expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
+        // в истории до вопроса — не больше двух сообщений подряд (реплика героя и слова рассказчика), в остальных — одно
+        if (l.kind === 'story') {
+          const run = l.inner.filter((d) => d.at === c.at).length;
+          expect(run, `${c.idea.id}: подряд без вопроса`).toBeLessThanOrEqual(2);
+          if (i + 1 === l.inner.length) expect(l.exercises.length - c.at, `${c.idea.id}: после последнего шага — вопрос`).toBeGreaterThanOrEqual(1);
+        } else expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
       });
       expect(l.inner[0].at).toBe(0);
     });
@@ -234,6 +240,13 @@ describe('упражнения: ровно один верный ответ', ()
           expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
+        case 'open': {
+          // открытый вопрос: короткая отписка не принимается, продуманный ответ — засчитан; разбор есть всегда
+          expect(ready(inst, 'да')).toBe(false);
+          expect(check(inst, 'Я бы ввёл студенческую карту, потому что…').ok).toBe(true);
+          expect(inst.explain && inst.explain.length).toBeTruthy();
+          break;
+        }
         default: throw new Error(inst.kind);
       }
       expect(answerText(inst).length).toBeGreaterThan(0);
@@ -284,8 +297,10 @@ describe.each(PATH)('юнит %s: полноценный — все восемь
     expect(game[0].chart).toBeTruthy();
     game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
     const [st] = of('story');
-    st.inner.forEach((c) => expect(CAST[c.idea.who], c.idea.id).toBeTruthy());
-    expect(new Set(st.inner.map((c) => c.idea.who)).size).toBeGreaterThanOrEqual(3);
+    // шаг без героя — голос рассказчика; первый шаг — герой, героев не меньше трёх
+    st.inner.forEach((c) => expect(!c.idea.who || CAST[c.idea.who], c.idea.id).toBeTruthy());
+    expect(CAST[st.idea.who]).toBeTruthy();
+    expect(new Set(st.inner.map((c) => c.idea.who).filter(Boolean)).size).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -341,9 +356,13 @@ describe('юнит «Спрос и предложение»: все виды у�
   });
   it('«История»: шаги ведут герои — Маша из кофейни, Гриша из пекарни и Вера Павловна из министерства', () => {
     const [st] = of('story');
-    const who = st.inner.map((c) => c.idea.who);
+    const who = st.inner.map((c) => c.idea.who).filter(Boolean);
     who.forEach((x) => expect(CAST[x], x).toBeTruthy());
-    expect(new Set(who)).toEqual(new Set(['masha', 'grisha', 'vera']));
+    // по библии мира: Маша, Гриша, Вера Павловна и Тимур — глаза ученика; авторский текст — рассказчик
+    expect(new Set(who)).toEqual(new Set(['masha', 'grisha', 'vera', 'timur']));
+    expect(st.inner.some((c) => !c.idea.who)).toBe(true);
+    // в конце — открытый вопрос «Как бы вы поступили…?» с разбором
+    expect(st.exercises[st.exercises.length - 1].kind).toBe('open');
     // в истории — новые взаимодействия: цена ползунком, точка равновесия и кривая пальцем
     expect(st.exercises.map((e) => e.kind)).toEqual(expect.arrayContaining(['price', 'point', 'curve']));
   });

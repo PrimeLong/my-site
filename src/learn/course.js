@@ -13,14 +13,17 @@ import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
-export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60 };
+export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, open: 30 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполни пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', match: 'Сопоставь пары', sort: 'Разложи по корзинам', calc: 'Быстрый расчёт',
   tiles: 'Собери определение', curve: 'Сдвинь кривую', price: 'Найди цену', point: 'Отметь равновесие',
-  swipe: 'Мини-игра', rush: 'Мини-игра на время',
+  swipe: 'Мини-игра', rush: 'Мини-игра на время', open: 'Как бы вы поступили?',
 };
+/* Открытый вопрос в конце истории: письменный ответ и разбор. Неверного ответа у него нет — он
+   не идёт ни в ошибки, ни в повторение, ни в проверку юнита. */
+export const OPEN_MIN = 15;
 // мини-игры: у них свой счёт внутри, в проверку юнита и повторение они не идут
 export const GAME_KINDS = ['swipe', 'rush'];
 /* Мини-игра урока — одна, на минуту (на алмазном уровне — 45 секунд): карточки идут по кругу,
@@ -114,6 +117,7 @@ function fromBlock(b) {
     case 'curve': return { ...e, market: b.market, answer: b.answer, only: b.only, traps: b.traps };
     case 'price': return { ...e, market: b.market, start: b.start };
     case 'point': return { ...e, market: b.market };
+    case 'open': return e;
     default: throw new Error(b.kind);
   }
 }
@@ -259,6 +263,7 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
     case 'curve': return { ...base, market: ex.market, answer: ex.answer, only: ex.only || null, traps: ex.traps || [], step: CURVE_STEP };
     case 'price': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, start: ex.start, answer: Math.round(eq.p * 100) / 100 }; }
     case 'point': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, answer: { q: eq.q, p: eq.p } }; }
+    case 'open': return { ...base, noRetry: true };
     case 'swipe': case 'rush':
       return { ...base, title: ex.title, labels: ex.labels, seconds: extra.seconds || ex.seconds || SECONDS[ex.kind], chart: ex.chart || null, ...(ex.market ? { market: ex.market } : {}),
         items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, side: it.side, effect: it.effect || null })), rand) };
@@ -309,6 +314,8 @@ export function check(inst, resp) {
       return { ok, why: ok ? null : text('Равновесие — там, где кривые пересекаются: объём спроса равен объёму предложения.') };
     }
     case 'swipe': case 'rush': return { ok: gameOk(inst, resp), why: null };
+    // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
+    case 'open': return { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
     default: return { ok: false, why: null };
   }
 }
@@ -337,6 +344,7 @@ export function ready(inst, resp) {
     case 'curve': return !!(resp.D || resp.S);
     case 'point': return Number.isFinite(resp.q) && Number.isFinite(resp.p);
     case 'swipe': case 'rush': return !!resp.done;
+    case 'open': return String(resp).trim().length >= OPEN_MIN;
     default: return true;
   }
 }
@@ -356,6 +364,7 @@ export function answerText(inst) {
     case 'price': return `цена ${fmt(inst.answer)}`;
     case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
     case 'swipe': case 'rush': return `не меньше ${GAME_PASS} верных при точности от 70%`;
+    case 'open': return 'свой ответ — пара продуманных предложений';
     default: return '';
   }
 }
@@ -377,7 +386,7 @@ export const POINT_SECONDS = 10;
 export const PRACTICE_OWN = 10;
 export const REVIEW_SIZE = 12;
 // упражнения, годные для повторения и проверок: в одно действие, без игрового счёта
-const reviewable = (e) => !GAME_KINDS.includes(e.kind);
+const reviewable = (e) => !GAME_KINDS.includes(e.kind) && e.kind !== 'open';
 // и без алмазных: их видели только те, кто проходил урок на алмазном уровне
 const basic = (e) => reviewable(e) && !e.diamond;
 const stepCards = (lesson, items, inner = lesson.inner) => {

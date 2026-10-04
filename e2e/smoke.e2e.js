@@ -1179,10 +1179,13 @@ async function answerExercise(page, { wrong = false } = {}) {
     await svg.click({ position: { x: ((pl.x0 + (q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (pr / pl.pMax) * pl.h) / pl.vh) * box.height } });
   } else if (kind === 'swipe' || kind === 'rush') {
     await playRound(page, () => wrong);
+  } else if (kind === 'open') {
+    // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор
+    await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
   }
-  if (!['swipe', 'rush'].includes(kind)) await page.getByRole('button', { name: 'Проверить' }).click();
+  if (!['swipe', 'rush'].includes(kind)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
-  await expect(fb).toHaveAttribute('data-ok', String(!wrong));
+  await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
   return kind;
 }
 // пройти урок до экрана итогов; wrongAt — номера упражнений, где ошибиться нарочно

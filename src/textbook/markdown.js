@@ -327,7 +327,7 @@ export const parseChapter = (text) => parseBlocks(text);
      point a b c d dA=… dC=… — поставить точку (нового) равновесия;
      у match — seconds=… — пары на время. */
 export const LESSON_KINDS = ['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary'];
-const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point'];
+const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point', 'open'];
 const MARKET = ['a', 'b', 'c', 'd', 'dA', 'dC'];
 const market = (attrs) => Object.fromEntries(MARKET.map((k) => [k, attrs[k] != null ? Number(attrs[k]) : (k === 'dA' || k === 'dC' ? 0 : NaN)]));
 function parseExercise(kind, attrs, body) {
@@ -349,6 +349,7 @@ function parseExercise(kind, attrs, body) {
     if (attrs.answer !== 'true' && attrs.answer !== 'false') throw new Error(`В упражнении ${attrs.id} answer — true или false`);
     ex.answer = attrs.answer === 'true';
   }
+  if (kind === 'open' && !explain) throw new Error(`У открытого вопроса ${attrs.id} нет разбора после ---`);
   if (kind === 'match' && attrs.seconds) ex.seconds = Number(attrs.seconds);
   if (kind === 'tiles') {
     const tiles = (o) => o.raw.split(/\s\|\s/).map((x) => x.trim()).filter(Boolean);

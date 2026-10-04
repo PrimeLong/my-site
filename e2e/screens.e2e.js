@@ -75,7 +75,8 @@ async function answer(page, wrong = false) {
     await playGame(page);
     return kind;
   }
-  await page.getByRole('button', { name: 'Проверить' }).click();
+  if (kind === 'open') await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
+  await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   return kind;
 }
 const next = (page) => page.getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -163,7 +164,7 @@ for (const theme of ['light', 'dark']) {
       await passCards(page); await answer(page); await next(page); await passCards(page);
       await page.getByTestId('ex').getByRole('slider', { name: 'Цена' }).fill('17');
       await shot(page, '18-price', theme);
-      await answer(page); await next(page);
+      await answer(page); await next(page); await passCards(page);
       await answer(page);
       await shot(page, '19-point', theme);
       await next(page); await passCards(page);
