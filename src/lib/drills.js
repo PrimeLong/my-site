@@ -9,7 +9,7 @@
    topic — раздел страницы «игра ↔ учебник», к которому привязана задача;
    impulses — стартовые импульсы (шок, который уже в пути). */
 import { makeImpulse, makeInitialEconomy, quarterLabel } from './engine.js';
-import { PRE_KEYS } from './autopilot.js';
+import { PRE_KEYS, makePrehistory } from './autopilot.js';
 
 export const DRILLS = [
   { id: 'disinflation', title: 'Инфляция с 12% до 4%', topic: 'phillips', role: 'central_bank', quarters: 8, scenario: 'sandbox',
@@ -154,28 +154,33 @@ export function drillSetup(drill) {
     president: { enabled: false, persona: 'technocrat' } };
 }
 
-/* Вводный отрезок задачи: в обычной партии перед стартом три года страну ведут боты, и на
-   графике видно, куда шла экономика. Задача начинается со своей завязки, и график был
-   пустым. Здесь — восемь кварталов пути от обычной экономики к стартовому положению
-   задачи: сначала почти ровно, ближе к старту — всё быстрее (плавная кривая). Это
-   иллюстрация «как страна сюда пришла», а не расчёт движка; цели задачи считаются только
-   по её собственным кварталам. */
-export function drillPrehistory(drill, quarters = 8) {
-  const from = makeInitialEconomy('sandbox');
+/* Вводный отрезок задачи (и кризисного вызова дня): в обычной партии перед стартом три года
+   страну ведут боты, и на графике видно, куда шла экономика. Задача начинается со своей
+   завязки — здесь её предыстория. Раньше это была гладкая кривая от обычной экономики к
+   завязке: прямые линии, ВВП и курс без единого изменения. Теперь кварталы настоящие: боты
+   ведут обычную экономику (makePrehistory — рост, колебания, связанные показатели), а к
+   старту её плавно сводит в завязку — ставки и доли получают нарастающую добавку, уровни
+   (ВВП, курс, индексы) — один общий множитель, так что темпы роста между кварталами
+   сохраняются. Цели задачи считаются только по её собственным кварталам. */
+const LEVEL_KEYS = new Set(['gdp', 'potentialGdp', 'productivity', 'stockIndex', 'bondIndex', 'exchangeRate', 'realExchangeRate', 'humanCapitalIndex', 'infrastructureIndex']);
+export function drillPrehistory(drill, quarters = 8, { difficulty = 'medium', cbPersona = 'pragmatic', mofPersona = 'technocrat', presPersona = 'technocrat' } = {}) {
+  const run = makePrehistory({ quarters, difficulty, cbPersona, mofPersona, presPersona });
+  const end = run.economy;
   const to = makeInitialEconomy(drill.scenario, drill.overrides);
-  const rows = [];
-  for (let k = 0; k < quarters; k++) {
-    const t = (k + 1) / (quarters + 1);
+  const n = run.prehistory.length;
+  return run.prehistory.map((sim, k) => {
+    const t = (k + 1) / (n + 1);
     const w = t * t * (3 - 2 * t);
-    const row = { q: k - quarters + 1, label: quarterLabel(k - quarters + 1), pre: true, drillLeadIn: true };
+    const row = { q: sim.q, label: sim.label, pre: true, drillLeadIn: true };
     PRE_KEYS.forEach((key) => {
-      const a = from[key]; const b = to[key];
-      if (Number.isFinite(a) && Number.isFinite(b)) row[key] = a + (b - a) * w;
-      else if (b !== undefined) row[key] = b;
+      const a = sim[key]; const e = end[key]; const b = to[key];
+      if (Number.isFinite(a) && Number.isFinite(e) && Number.isFinite(b)) {
+        const v = LEVEL_KEYS.has(key) && e > 0 && b > 0 ? a * (b / e) : a + (b - e) * w;
+        row[key] = a >= 0 && b >= 0 ? Math.max(0, v) : v;
+      } else if (b !== undefined) row[key] = b;
     });
-    rows.push(row);
-  }
-  return rows;
+    return row;
+  });
 }
 
 // стартовые импульсы задачи: шок, который уже в пути
