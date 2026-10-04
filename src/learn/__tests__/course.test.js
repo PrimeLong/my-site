@@ -7,6 +7,7 @@ import {
   GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
+import { placeOf } from '../../ds-tokens.js';
 import { collectMath, collectBlocks } from '../../textbook/markdown.js';
 import { CHAPTER_BLOCKS } from '../../textbook/content.js';
 import { plainText } from '../../textbook/content.js';
@@ -31,6 +32,30 @@ it('на Пути уроками — четыре юнита по уровням
   expect(levelOf('elasticity').title).toBe('Базовый');
   expect(levelOf('consumer').title).toBe('Средний');
   expect(LEVELS.map((l) => l.title)).toEqual(['Начальный', 'Базовый', 'Средний', 'Продвинутый', 'Профессиональный']);
+});
+
+// карта «Дорога по Инфлатии»: места идут по порядку Пути, дорога не пересекает себя,
+// здания и подписи мест с уроками не наезжают друг на друга
+it('карта Пути: дорога без самопересечений, места с уроками не перекрываются', () => {
+  const pts = UNITS.map((u) => placeOf(u.id).at);
+  const cross = (a, b, c, d) => {
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+  };
+  for (let i = 0; i + 1 < pts.length; i += 1) {
+    for (let j = i + 2; j + 1 < pts.length; j += 1) expect(cross(pts[i], pts[i + 1], pts[j], pts[j + 1]), `${UNITS[i].id}–${UNITS[j].id}`).toBe(false);
+  }
+  const on = pilotUnits().map((u) => ({ id: u.id, ...placeOf(u.id) }));
+  for (let i = 0; i < on.length; i += 1) {
+    for (let j = i + 1; j < on.length; j += 1) {
+      const [a, b] = [on[i], on[j]];
+      const [dx, dy] = [Math.abs(a.at[0] - b.at[0]), Math.abs(a.at[1] - b.at[1])];
+      // круг здания r=50; подпись — 28px, ~16px на букву
+      expect(Math.hypot(dx, dy), `${a.id}/${b.id}: здания`).toBeGreaterThanOrEqual(100);
+      const labelsMeet = dx < (a.place.length + b.place.length) * 8 + 8 && dy < 34;
+      expect(labelsMeet, `${a.id}/${b.id}: подписи`).toBe(false);
+    }
+  }
 });
 
 // девять исходных видов упражнений — в каждом юните Пути

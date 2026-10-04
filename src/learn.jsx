@@ -1215,7 +1215,7 @@ function propsFor(id, i, W, y, left) {
   const pick = r();
   const kind = i % 5 === 3 && pick < 0.5 ? 'mile' : pick < 0.45 ? 'tree' : pick < 0.7 ? 'bush' : pick < 0.9 ? 'lamp' : 'tree';
   const side = (dx) => (left ? dx : W - dx);
-  const main = { kind, x: side(22 + r() * 26), y: y - 14 + r() * 26, scale: 0.78 + r() * 0.36, flip: kind !== 'mile' && r() < 0.5 };
+  const main = { kind, x: side(26 + r() * 42), y: y - 30 + r() * 56, scale: 0.72 + r() * 0.44, flip: kind !== 'mile' && r() < 0.5 };
   const out = [main];
   // у дерева иногда куст рядом — пара, а не одиночка
   if (kind === 'tree' && r() < 0.45) out.push({ kind: 'bush', x: main.x + (left ? 1 : -1) * (14 + r() * 10), y: main.y + 8 + r() * 6, scale: 0.55 + r() * 0.2, flip: r() < 0.5 });

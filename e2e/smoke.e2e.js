@@ -1216,11 +1216,14 @@ async function passCards(page) {
   let n = 0;
   const card = page.getByTestId('lesson-card');
   // подпись карточки: вид, «Слово 2 из 8», перевёрнута ли — по ней видно, что нажатие сработало
-  const sig = async () => {
-    if (!(await card.isVisible())) return 'gone';
-    const flip = card.locator('[data-flipped]');
-    return `${await card.getAttribute('data-style')}|${await card.locator('.ln-kind').innerText()}|${(await flip.count()) ? await flip.getAttribute('data-flipped') : ''}`;
-  };
+  // читается одним вызовом в странице: карточка может смениться между шагами, и тогда
+  // getAttribute по исчезнувшему элементу ждал бы бесконечно
+  const sig = () => page.evaluate(() => {
+    const c = document.querySelector('[data-testid="lesson-card"]');
+    if (!c || !c.checkVisibility()) return 'gone';
+    const kind = c.querySelector('.ln-kind'); const flip = c.querySelector('[data-flipped]');
+    return `${c.dataset.style}|${kind ? kind.innerText : ''}|${flip ? flip.dataset.flipped : ''}`;
+  });
   while (await card.isVisible()) {
     n += 1;
     const before = await sig();
@@ -1249,11 +1252,15 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(6);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — юниты 1–3 (14, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(3);
+  // Путь начинается с юнита 1; уроками — четыре юнита (14, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(4);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(34);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(6);
+  await expect(path.getByTestId('path-lesson')).toHaveCount(44);
+  await expect(path.locator('[data-kind="intro"]')).toHaveCount(8);
+  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность), Средний (потребитель)
+  await expect(path.getByTestId('path-level')).toHaveCount(3);
+  await expect(path.getByTestId('path-level').nth(1)).toContainText('Базовый');
+  await expect(path.getByTestId('path-unit').nth(2)).toHaveAttribute('data-unit', 'elasticity');
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1261,7 +1268,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(soon).toContainText('мест строятся');
   await expect(path.getByTestId('path-soon-list')).toHaveCount(0);
   await soon.getByRole('button').first().click();
-  await expect(path.getByTestId('path-soon-list')).toContainText('Эластичность');
+  await expect(path.getByTestId('path-soon-list')).toContainText('Издержки');
   await expectNoSidewaysScroll(page);
 
   // нажатие на кружок — только карточка урока: название, вид, минуты и опыт
