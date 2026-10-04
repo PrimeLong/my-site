@@ -294,7 +294,7 @@ T.push({ id: 'v-el-pt1', chapter: 'elasticity', level: 2, source: 'el-point', ge
     statement: `Спрос $Q = ${k.a} - ${k.b}P$, цена ${k.P} крон. Найдите модуль эластичности спроса в этой точке${hundredths}.`,
     parts: [{ answer: e, tol: DEC, pos: true }],
     traps: [{ part: 0, value: 1 / e, text: 'Перевёрнуто: в точке $|E| = bP/Q$, а не $Q/(bP)$.' }],
-    solution: `Сначала количество: $Q = ${k.a} - ${k.b} \cdot ${k.P} = ${Q}$. Эластичность в точке прямой $|E| = bP/Q = ${k.b} \cdot ${k.P}/${Q} \approx ${m(e)}$ — спрос ${e > 1 ? 'эластичный' : e < 1 ? 'неэластичный' : 'единичной эластичности'}.`,
+    solution: `Сначала количество: $Q = ${k.a} - ${k.b} \\cdot ${k.P} = ${Q}$. Эластичность в точке прямой $|E| = bP/Q = ${k.b} \\cdot ${k.P}/${Q} \\approx ${m(e)}$ — спрос ${e > 1 ? 'эластичный' : e < 1 ? 'неэластичный' : 'единичной эластичности'}.`,
     check: ([x]) => near(x, (k.b * k.P) / (k.a - k.b * k.P)),
   };
 } });
