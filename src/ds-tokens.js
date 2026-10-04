@@ -41,7 +41,7 @@ export const PLACES = {
   scarcity: { place: 'Мастерская', building: 'workshop', color: '#4B692C', region: 'industry', at: [245, 310], note: 'хлеб или станки' },
   'supply-demand': { place: 'Рынок', building: 'market', color: '#86461F', region: 'capital', at: [320, 220], note: 'кофе, мука и цены' },
   consumer: { place: 'Универмаг', building: 'store', color: '#2C5A8E', region: 'capital', at: [440, 180], note: 'выбор покупателя' },
-  elasticity: { place: 'Лавка', building: 'store', color: '#65408F', region: 'agri', at: [565, 170], note: 'реакция на цену' },
+  elasticity: { place: 'Кофейня', building: 'store', color: '#65408F', region: 'agri', at: [565, 170], note: 'реакция на цену' },
   production: { place: 'Завод', building: 'factory', color: '#5A5650', region: 'industry', at: [690, 195], note: 'труд и капитал' },
   costs: { place: 'Пекарня', building: 'bakery', color: '#7A5616', region: 'agri', at: [785, 300], note: 'издержки и прибыль' },
   'competition-monopoly': { place: 'Биржа', building: 'exchange', color: '#A0372A', region: 'finance', at: [690, 395], note: 'конкуренция и монополия' },

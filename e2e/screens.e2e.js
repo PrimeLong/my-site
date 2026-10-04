@@ -319,7 +319,7 @@ for (const theme of ['light', 'dark']) {
         try {
           const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
           const at = Date.now() - 86400000;
-          ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-sum', ...ids].forEach((id) => { p.learn.lessons[id] = { at, runs: 1, best: 90 }; });
+          ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-sum', 'el-sum', ...ids].forEach((id) => { p.learn.lessons[id] = { at, runs: 1, best: 90 }; });
           localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
         } catch { /* нет хранилища */ }
       }, CS);

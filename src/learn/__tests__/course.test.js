@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
   UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
+  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
 import { collectMath, collectBlocks } from '../../textbook/markdown.js';
@@ -16,14 +16,21 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-const PATH = ['scarcity', 'supply-demand', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity), Средний (consumer)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — юниты 1–3, с самого начала курса', () => {
+it('на Пути уроками — четыре юнита по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
-  expect(UNITS.slice(0, 3).map((u) => u.id)).toEqual(PATH);
+  // юниты идут по уровням; внутри уровня — по порядку глав учебника
+  const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
+  expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  expect(levelOf('scarcity').title).toBe('Начальный');
+  expect(levelOf('elasticity').title).toBe('Базовый');
+  expect(levelOf('consumer').title).toBe('Средний');
+  expect(LEVELS.map((l) => l.title)).toEqual(['Начальный', 'Базовый', 'Средний', 'Продвинутый', 'Профессиональный']);
 });
 
 // девять исходных видов упражнений — в каждом юните Пути
@@ -557,10 +564,12 @@ describe('мини-игра: одна на урок, карточки двига
         if (g.chart === 'ppf') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['x', 'y'].includes(it.effect) ? 'left' : 'right');
         // бюджет: доход сдвигает линию (влево), цена поворачивает (вправо)
         if (g.chart === 'budget') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['out', 'in'].includes(it.effect) ? 'left' : 'right');
+        // эластичность: неэластичный — влево, эластичный — вправо
+        if (g.chart === 'elastic') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'in' ? 'left' : 'right');
       });
       // эффект виден на графике: каждая сторона и оба направления встречаются
       const effs = new Set(g.items.map((it) => it.effect));
-      expect(effs.size, g.id).toBeGreaterThanOrEqual(4);
+      expect(effs.size, g.id).toBeGreaterThanOrEqual(Math.min(4, ROUND_EFFECTS[g.chart].length));
     });
   });
   it('очки: 10 за верный ответ, каждые три подряд — множитель выше (не больше ×4), ошибка обнуляет серию', () => {
@@ -599,7 +608,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });

@@ -303,11 +303,14 @@ const EFFECT_LABEL = {
   x: 'Точка — к хлебу', y: 'Точка — к станкам',
 };
 const BUDGET_LABEL = { out: 'Доход вырос', in: 'Доход упал', ox: 'Товар X дешевле', ix: 'Товар X дороже', oy: 'Товар Y дешевле', iy: 'Товар Y дороже' };
-const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : EFFECT_LABEL[eff]);
+const ELASTIC_LABEL = { in: 'Неэластичный: выручка растёт', el: 'Эластичный: выручка падает' };
+const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : EFFECT_LABEL[eff]);
 const BUDGET0 = { I: 100, px: 1.25, py: 1.25 };
 const MARKET_STEP = 16;
 // состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
 function applyEffect(chart, st, eff) {
+  // эластичность: крутая или пологая кривая спроса через одну точку
+  if (chart === 'elastic') return { e: eff === 'in' ? 0.4 : eff === 'el' ? 2.5 : st.e };
   if (chart === 'market') {
     const d = { D: st.D * 0.6, S: st.S * 0.6 };
     if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
@@ -333,7 +336,7 @@ function applyEffect(chart, st, eff) {
   if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
   return { rx, ry, t };
 }
-const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : { rx: 100, ry: 100, t: 0.5 });
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : { rx: 100, ry: 100, t: 0.5 });
 // плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
 function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
@@ -373,6 +376,34 @@ function BudgetGameChart({ st }) {
       <circle cx={sx(xm)} cy={sy(0)} r="4.5" fill="var(--u)" /><circle cx={sx(0)} cy={sy(ym)} r="4.5" fill="var(--u)" />
       <text x={sx(xm)} y={H - B - 8} textAnchor="middle" className="lp-ax">{Math.round(xm)}</text>
       <text x={L + 8} y={sy(ym) + 4} className="lp-ax">{Math.round(ym)}</text>
+    </svg>
+  );
+}
+/* Эластичность в игре: спрос через точку «цена 20, покупают 60». Крутая кривая — неэластичный
+   спрос, пологая — эластичный. Прямоугольники — выручка сейчас и после подорожания на 10%. */
+function ElasticGameChart({ st }) {
+  const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
+  const QM = 140; const PM = 40;
+  const sx = (q) => L + (Math.max(0, Math.min(q, QM)) / QM) * (W - L - R); const sy = (p) => H - B - (Math.max(0, Math.min(p, PM)) / PM) * (H - B - T);
+  const b = 3 * st.e; // |E| = b·P/Q в точке (60, 20)
+  const qAt = (p) => 60 - b * (p - 20);
+  const p1 = 22; const q1 = Math.max(0, qAt(p1));
+  const r0 = 20 * 60; const r1 = p1 * q1;
+  const up = r1 >= r0;
+  return (
+    <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Спрос ${st.e < 1 ? 'неэластичный' : 'эластичный'}: выручка после подорожания ${Math.round(r1)} против ${r0}`}
+      data-testid="game-chart" data-chart="elastic" data-state={JSON.stringify({ e: Math.round(st.e * 100) / 100, up })}>
+      <rect x={sx(0)} y={sy(20)} width={sx(60) - sx(0)} height={sy(0) - sy(20)} fill="var(--ds-ink3)" opacity=".12" />
+      <rect x={sx(0)} y={sy(p1)} width={sx(q1) - sx(0)} height={sy(0) - sy(p1)} fill="none" stroke={up ? 'var(--ds-ok)' : 'var(--ds-bad)'} strokeWidth="2" strokeDasharray="5 4" />
+      <line x1={sx(qAt(PM))} y1={sy(PM)} x2={sx(qAt(0))} y2={sy(0)} stroke="var(--u)" strokeWidth="4" strokeLinecap="round" />
+      <circle cx={sx(60)} cy={sy(20)} r="4.5" fill="var(--u)" />
+      <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <text x={W - R} y={H - 8} textAnchor="end" className="lp-ax">Q</text>
+      <text x={L - 6} y={T + 8} textAnchor="end" className="lp-ax">P</text>
+      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: up ? 'var(--ds-ok)' : 'var(--ds-bad)', fontWeight: 700 }}>
+        выручка при +10% цены: {up ? '↑' : '↓'} {Math.round(r1)}
+      </text>
     </svg>
   );
 }
@@ -487,7 +518,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
   const chart = inst.chart === 'market'
     ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок в игре: спрос и предложение" /><PriceTicker prices={prices} /></>
-    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : null;
+    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : inst.chart === 'elastic' ? <ElasticGameChart st={shown} /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (

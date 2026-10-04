@@ -214,7 +214,27 @@ function lessonsOf(chapterId) {
   return out;
 }
 
-export const UNITS = CHAPTERS.map((c) => ({ id: c.id, title: c.title, part: c.part, ready: c.status === 'ready', lessons: lessonsOf(c.id) }));
+/* УРОВНИ: юниты Пути разбиты на пять ступеней, от терминов до полноценного анализа. Путь идёт
+   по уровням, внутри уровня — по порядку глав учебника. */
+export const LEVELS = [
+  { id: 'start', title: 'Начальный', text: 'Знаешь основные термины: деньги, цена, доход, расход.' },
+  { id: 'basic', title: 'Базовый', text: 'Понимаешь спрос, предложение, рынок, налоги, инфляцию.' },
+  { id: 'middle', title: 'Средний', text: 'Можешь анализировать графики, бюджет, прибыль и экономические ситуации.' },
+  { id: 'advanced', title: 'Продвинутый', text: 'Понимаешь экономические модели, статистику и сложные процессы.' },
+  { id: 'pro', title: 'Профессиональный', text: 'Умеешь проводить полноценный экономический анализ.' },
+];
+export const UNIT_LEVEL = {
+  scarcity: 'start',
+  'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic',
+  consumer: 'middle', production: 'middle', costs: 'middle', 'competition-monopoly': 'middle', monopolistic: 'middle', labor: 'middle',
+  oligopoly: 'advanced', gdp: 'advanced', 'is-lm': 'advanced', 'ad-as': 'advanced', phillips: 'advanced',
+  policy: 'pro', growth: 'pro', 'open-economy': 'pro', 'public-debt': 'pro', inequality: 'pro',
+};
+export const LEVEL_BY_ID = Object.fromEntries(LEVELS.map((l, k) => [l.id, { ...l, no: k + 1 }]));
+export const levelOf = (unitId) => LEVEL_BY_ID[UNIT_LEVEL[unitId] || 'pro'];
+const levelRank = (id) => LEVELS.findIndex((l) => l.id === (UNIT_LEVEL[id] || 'pro'));
+export const UNITS = CHAPTERS.map((c, k) => ({ id: c.id, title: c.title, part: c.part, ready: c.status === 'ready', lessons: lessonsOf(c.id), level: UNIT_LEVEL[c.id] || 'pro', order: k }))
+  .sort((a, b) => levelRank(a.id) - levelRank(b.id) || a.order - b.order);
 export const UNIT_BY_ID = Object.fromEntries(UNITS.map((u) => [u.id, u]));
 export const LESSONS = UNITS.flatMap((u) => u.lessons);
 export const LESSON_BY_ID = Object.fromEntries(LESSONS.map((l) => [l.id, l]));

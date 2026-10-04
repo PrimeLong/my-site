@@ -397,10 +397,12 @@ function parseExercise(kind, attrs, body) {
    на КПВ (chart=ppf) — out / in (кривая наружу или внутрь), ox / oy и ix / iy (наружу или внутрь
    только по оси хлеба или станков), x / y (точка едет по кривой к хлебу или к станкам);
    на бюджетной линии (chart=budget) — out / in (доход вырос или упал: сдвиг параллельно),
-   ox / ix и oy / iy (товар X или Y подешевел или подорожал: поворот).
+   ox / ix и oy / iy (товар X или Y подешевел или подорожал: поворот);
+   на эластичности (chart=elastic) — in / el (спрос неэластичный: кривая крутая, выручка от
+   подорожания растёт; эластичный: кривая пологая, выручка падает).
    Текст до пунктов — условие игры. */
 const ROUND_KINDS = ['swipe', 'rush'];
-export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'] };
+export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
   if (!attrs.id) throw new Error(`У игры ${kind} нет id`);

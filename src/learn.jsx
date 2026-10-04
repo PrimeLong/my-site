@@ -22,7 +22,7 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
-  UNITS, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf,
 } from './learn/course.js';
 import {
@@ -155,6 +155,8 @@ const CSS = `
   .ln-cal-sum b { display: block; font-size: 24px; color: var(--u-ink); }
   .ln-cal-sum span { font-size: 12.5px; color: var(--ds-ink3); }
   .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
+  .ln-level { display: flex; align-items: center; gap: 12px; margin: 22px 0 10px; padding: 10px 2px; border-top: 2px solid var(--ds-rule2); border-bottom: 1px dotted var(--ds-rule2); }
+  .ln-level-no { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--ds-ink2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--ds-ink2); }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
 `;
 
@@ -1147,6 +1149,20 @@ function Atlas({ states, onPick }) {
   );
 }
 
+/* Полоса уровня над первым юнитом уровня: номер ступени, название и что ученик умеет. */
+function LevelBand({ level }) {
+  return (
+    <div className="ln-level" data-testid="path-level" data-level={level.id}>
+      <span className="ln-level-no ds-num">{level.no}</span>
+      <div style={{ minWidth: 0 }}>
+        <div className="ds-eyebrow">Уровень {level.no} из {LEVELS.length}</div>
+        <div className="ds-h3">{level.title}</div>
+        <div className="ds-sub" style={{ fontSize: 13.5, lineHeight: 1.35 }}>{level.text}</div>
+      </div>
+    </div>
+  );
+}
+
 /* Остановки юнита на дороге: жетоны вдоль извилистой дороги. Пройденная — в цвете юнита с
    сургучной печатью, текущая — с золотым кольцом и флажком «Вы здесь», закрытая — пунктир. */
 const ROW = 118; const ZIG = [0, 64, 92, 64, 0, -64, -92, -64];
@@ -1313,10 +1329,15 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
       <Atlas states={states} onPick={pick} />
-      {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }) => {
+      {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }, k, list) => {
         const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];
+        // первый юнит уровня — над ним полоса уровня: «Базовый — понимаешь спрос, предложение…»
+        const lv = levelOf(u.id);
+        const newLevel = k === 0 || list[k - 1].u.level !== u.level;
         return (
-        <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} style={{ '--u': pl.color, scrollMarginTop: 12 }}>
+        <React.Fragment key={u.id}>
+        {newLevel && <LevelBand level={lv} />}
+        <section id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} style={{ '--u': pl.color, scrollMarginTop: 12 }}>
           {/* шапка юнита — как купюра своего достоинства: гильош, номер, место и здание */}
           <Card className="ln-bill">
             <Guilloche height={16} opacity={0.45} />
@@ -1343,6 +1364,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
           {!folded && <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
             chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />}
         </section>
+        </React.Fragment>
         );
       })}
       {soon.length > 0 && (
@@ -1357,7 +1379,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
             <div style={{ padding: '0 14px 10px' }} data-testid="path-soon-list">
               {soon.map(({ u, no }) => (
                 <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px dotted var(--ds-rule2)' }} data-unit={u.id}>
-                  <span style={{ flex: 1, fontSize: 14.5 }}><b style={{ fontFamily: 'var(--ds-serif)' }}>{placeOf(u.id).place}</b> <span className="ds-faint">· юнит {no} · {u.title}</span></span>
+                  <span style={{ flex: 1, fontSize: 14.5 }}><b style={{ fontFamily: 'var(--ds-serif)' }}>{placeOf(u.id).place}</b> <span className="ds-faint">· юнит {no} · {levelOf(u.id).title} · {u.title}</span></span>
                   {u.ready && <Button variant="ghost" small data-nav-target={`book:chapter:${u.id}`} onClick={() => onOpenBook({ kind: 'chapter', id: u.id })}>Гайд</Button>}
                 </div>
               ))}
