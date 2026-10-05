@@ -89,7 +89,7 @@ function Showcase({ theme }) {
           <Card>
             <Heading level={3} title="Карточка-документ" sub="Двойная линейка по краю, как у бланка." />
             <Row label="Серия сейчас" value="3 дн." />
-            <Row label="Всего опыта" value="120 XP" />
+            <Row label="Всего опыта" value="120" />
           </Card>
           <MenuCard icon={BookOpenText} tone="#3E6FA8" title="Карточка-кнопка" text="Значок, заголовок, пояснение" />
           <Panel>Панель — утопленный фон для вторичного.</Panel>

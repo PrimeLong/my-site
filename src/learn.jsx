@@ -49,6 +49,7 @@ import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx, modelBadge }
 import { hasModel, partsOfLesson } from './learn/model.js';
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
+import { inCrowns, sceneInCrowns } from './learn/money.js';
 import { ReportFlag, ReportsView, AnalyticsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
@@ -225,7 +226,8 @@ function MiniChart({ type, attrs, values = null }) {
   const def = CHARTS[type];
   if (!def) return null;
   const v = { ...chartDefaults(type, attrs), ...values };
-  return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={def.build(attrs, v)} /></div>;
+  // на Пути деньги — в кронах (src/learn/money.js)
+  return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={sceneInCrowns(def.build(attrs, v))} /></div>;
 }
 const PICS = {
   clock: Clock, scale: Scale, hourglass: Hourglass, ticket: Ticket, 'trending-up': TrendingUp, 'circle-check': CircleCheck, medal: Medal,
@@ -769,15 +771,15 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
               foot={(buttons) => <div className="ln-foot"><div className="ln-inner">{buttons}</div></div>} />
           );
         }
-        // «Открой сам» — исследование со своей кнопкой: дальше — с четырёх разных цен
+        // «Откройте сами» — исследование со своей кнопкой: дальше — с четырёх разных цен
         if (c.discover) {
           return (
             <DiscoverDay key={`${cur.uid}:${c.id}`} card={c} onDone={go}
               body={(inner) => (
                 <div className="ln-body"><div className="ln-inner ds-rise" data-testid="lesson-card" data-style="discover">
                   <div className="ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <span className="ln-kind" style={{ margin: 0 }}>Открой сам</span><span style={{ flex: 1 }} />
-                    <ReportFlag context={() => stepContext(c, lesson, 'Открой сам')} />
+                    <span className="ln-kind" style={{ margin: 0 }}>Откройте сами</span><span style={{ flex: 1 }} />
+                    <ReportFlag context={() => stepContext(c, lesson, 'Откройте сами')} />
                   </div>
                   {inner}
                 </div></div>
@@ -1023,7 +1025,7 @@ function StepLegend({ nodes, unitId }) {
   return (
     <div className="ln-legend" data-testid="step-legend">
       <div className="ds-eyebrow" style={{ fontSize: 10.5, marginBottom: 2 }}>Обозначения</div>
-      {list.map((x) => <div key={x.key}><Inline nodes={[{ t: 'math', v: x.key }]} ctx={noopCtx} /> — {x.text}</div>)}
+      {list.map((x) => <div key={x.key}><Inline nodes={[{ t: 'math', v: x.key }]} ctx={noopCtx} /> — {inCrowns(x.text)}</div>)}
     </div>
   );
 }
@@ -1057,7 +1059,7 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
           <div className="ds-h2" style={{ marginTop: 4 }}>{bareTitle(l.title)}</div>
           <div className="ds-num ds-sub" style={{ display: 'flex', gap: 14, marginTop: 10, fontSize: 14 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Timer size={15} aria-hidden="true" />≈{info.min} мин</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Coins size={15} aria-hidden="true" />до {info.xp} XP</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Coins size={15} aria-hidden="true" />до {info.xp} опыта</span>
             {/* пройденный урок — короткая отметка в строке билета, без печати поверх */}
             {l.done && <span data-testid="lesson-done-mark" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: l.diamond ? DIAMOND_COLOR : 'var(--ds-ok)', fontWeight: 700 }}>
               {l.diamond ? <Gem size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}{l.diamond ? 'алмаз' : 'пройден'}
@@ -1112,7 +1114,7 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
               return weak ? [plainBtn, gemBtn] : [gemBtn, plainBtn];
             })()}
             <div className="ds-sub" style={{ fontSize: 13.5, textAlign: 'center' }} data-testid="lesson-diamond-info">
-              Алмазный уровень: задачи сложнее{lesson.inner.some((c) => c.diamond) ? ', теория глубже' : ''}, ≈{gemInfo.min} мин, до {gemInfo.xp} XP и {l.diamond ? '5' : '25–35'} монет.
+              Алмазный уровень: задачи сложнее{lesson.inner.some((c) => c.diamond) ? ', теория глубже' : ''}, ≈{gemInfo.min} мин, до {gemInfo.xp} опыта и {l.diamond ? '5' : '25–35'} монет.
               {weak && ' Тема пока даётся трудно — сначала стоит повторить.'}
             </div>
           </div>
@@ -1134,7 +1136,7 @@ function TopStats({ learn }) {
   return (
     <div className="ln-stats" data-testid="path-stats">
       <span className="ln-stat" title="Серия дней"><Flame size={17} color={st.days ? 'var(--ds-bad)' : 'var(--ds-ink3)'} aria-hidden="true" /><span data-testid="streak">{st.days}</span><small>дн.</small></span>
-      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" />{totalXp}<small>XP</small></span>
+      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" />{totalXp}<small>опыт</small></span>
       <WalletStat learn={learn} />
       <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" />{Math.min(g.done, g.goal)}/{g.goal}<small>мин</small></span>
     </div>
@@ -1535,8 +1537,8 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
         <div className="ds-h3" style={{ marginBottom: 6 }}>Рекорды</div>
         <Row label="Серия сейчас" value={`${st.days} дн.${st.freezesUsed.length ? ` · прощено: ${st.freezesUsed.length}` : ''}`} data-testid="prof-streak" />
         <Row label="Самая длинная серия" value={`${longestStreak(learn)} дн.`} />
-        <Row label="Лучшая неделя" value={bw.xp ? `${bw.xp} XP` : '—'} />
-        <Row label="Всего опыта" value={`${stats.totalXp} XP`} />
+        <Row label="Лучшая неделя" value={bw.xp ? `${bw.xp} опыта` : '—'} />
+        <Row label="Всего опыта" value={`${stats.totalXp}`} />
         <Row label="Монет в кошельке" value={`${balance(learn)}`} data-testid="prof-coins" />
         <Row label="Заморозок в запасе" value={`${ownedFreezes(learn)}`} />
         <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>

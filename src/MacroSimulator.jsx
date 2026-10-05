@@ -654,39 +654,39 @@ export const ROLES_PLAYED_KEY = 'ems-roles-played';
 export const NETWORK_PLAYED_KEY = 'ems-network-played';
 
 export const ACHIEVEMENTS = [
-  { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
-  { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройди вызов дня до конца, не проиграв.' },
-  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'В «Своём деле» утрой стоимость компании против стартовой.' },
-  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'В «Своём деле» выбери при старте кризисный сценарий (валютный кризис, ипотечный пузырь или гиперинфляцию — не открытую партию) и продержи компанию 12 кварталов без банкротства.' },
-  { id: 'tycoon_chain', icon: Wheat, title: 'От поля до полки', desc: 'Собери свою хлебную цепочку: ферма, мельница, хлебозавод и магазин.' },
-  { id: 'tycoon_billion', icon: Crown, title: 'Миллиардер', desc: 'Доведи стоимость своей компании до миллиарда.' },
-  { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
-  { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
-  { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
-  { id: 'gdp_double', icon: TrendingUp, title: 'Удвоение', desc: 'Удвой реальный ВВП от старта партии.' },
-  { id: 'low_unemployment', icon: Users, title: 'Полная занятость', desc: 'Опусти безработицу ниже 4%.' },
-  { id: 'debt_control', icon: Scale, title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизь госдолг ниже 35% ВВП.' },
-  { id: 'survived_crisis', icon: ShieldCheck, title: 'Пережили бурю', desc: 'Выведи страну из кризисного режима обратно к норме.' },
-  { id: 'won_election', icon: Vote, title: 'Мандат доверия', desc: 'Останься у власти на выборах.' },
-  { id: 'all_roles', icon: Layers, title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
-  { id: 'network_played', icon: Share2, title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
-  { id: 'margin_call', icon: AlertTriangle, title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
-  { id: 'tutorial_done', icon: GraduationCap, title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
-  { id: 'tutorial_course_done', icon: Award, title: 'Экономист', desc: 'Пройди базовый курс целиком, вместе с экзаменом.' },
-  { id: 'course_trader', icon: BarChart3, title: 'Аналитик', desc: 'Пройди курс частного инвестора целиком, вместе с экзаменом.' },
-  { id: 'course_president', icon: Landmark, title: 'Государственный ум', desc: 'Пройди курс президента целиком, вместе с экзаменом.' },
-  { id: 'course_all', icon: Medal, title: 'Красный диплом', desc: 'Пройди три курса с экзаменами: экономическую политику, частного инвестора и президента.' },
-  { id: 'promises_kept', icon: Handshake, title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
-  { id: 'reformer', icon: Hammer, title: 'Реформатор', desc: 'Проведи три структурные реформы за одну партию (президент).' },
-  { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
-  { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
-  { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получи экстренное финансирование МВФ вместо дефолта.' },
-  { id: 'prices_stopped', icon: Award, title: 'Цены остановлены', desc: 'Доведи стабилизационную программу до конца: верни инфляцию из гиперинфляции к цели.' },
-  { id: 'hardest_way_out', icon: Crown, title: 'Выход есть', desc: 'Сохрани демократию 16 кварталов в самом трудном сценарии — «Гиперинфляции».' },
-  { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введи санкции против торгового партнёра.' },
-  { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договорись о едином рынке с соседями.' },
-  { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Соверши сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
-  { id: 'public_room_played', icon: DoorOpen, title: 'Открытая дверь', desc: 'Доиграй хотя бы один квартал в открытой (публичной) сетевой комнате.' },
+  { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Завершите первый квартал у руля экономики.' },
+  { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройдите вызов дня до конца, не проиграв.' },
+  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'В «Своём деле» утройте стоимость компании против стартовой.' },
+  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'В «Своём деле» выберите при старте кризисный сценарий (валютный кризис, ипотечный пузырь или гиперинфляцию — не открытую партию) и продержите компанию 12 кварталов без банкротства.' },
+  { id: 'tycoon_chain', icon: Wheat, title: 'От поля до полки', desc: 'Соберите свою хлебную цепочку: ферма, мельница, хлебозавод и магазин.' },
+  { id: 'tycoon_billion', icon: Crown, title: 'Миллиардер', desc: 'Доведите стоимость своей компании до миллиарда.' },
+  { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержитесь 20 кварталов в одной партии.' },
+  { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержитесь 40 кварталов в одной партии.' },
+  { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержите инфляцию рядом с целью 8 кварталов подряд.' },
+  { id: 'gdp_double', icon: TrendingUp, title: 'Удвоение', desc: 'Удвойте реальный ВВП от старта партии.' },
+  { id: 'low_unemployment', icon: Users, title: 'Полная занятость', desc: 'Опустите безработицу ниже 4%.' },
+  { id: 'debt_control', icon: Scale, title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизьте госдолг ниже 35% ВВП.' },
+  { id: 'survived_crisis', icon: ShieldCheck, title: 'Пережили бурю', desc: 'Выведите страну из кризисного режима обратно к норме.' },
+  { id: 'won_election', icon: Vote, title: 'Мандат доверия', desc: 'Останьтесь у власти на выборах.' },
+  { id: 'all_roles', icon: Layers, title: 'Все ветви власти', desc: 'Доведите до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
+  { id: 'network_played', icon: Share2, title: 'На двоих', desc: 'Доиграйте хотя бы один квартал в партии по сети.' },
+  { id: 'margin_call', icon: AlertTriangle, title: 'Маржин-колл', desc: 'Переживите принудительное закрытие позиций брокером и продолжите торговать.' },
+  { id: 'tutorial_done', icon: GraduationCap, title: 'Курс молодого бойца', desc: 'Пройдите первый модуль обучения.' },
+  { id: 'tutorial_course_done', icon: Award, title: 'Экономист', desc: 'Пройдите базовый курс целиком, вместе с экзаменом.' },
+  { id: 'course_trader', icon: BarChart3, title: 'Аналитик', desc: 'Пройдите курс частного инвестора целиком, вместе с экзаменом.' },
+  { id: 'course_president', icon: Landmark, title: 'Государственный ум', desc: 'Пройдите курс президента целиком, вместе с экзаменом.' },
+  { id: 'course_all', icon: Medal, title: 'Красный диплом', desc: 'Пройдите три курса с экзаменами: экономическую политику, частного инвестора и президента.' },
+  { id: 'promises_kept', icon: Handshake, title: 'Слово держат', desc: 'Дойдите до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
+  { id: 'reformer', icon: Hammer, title: 'Реформатор', desc: 'Проведите три структурные реформы за одну партию (президент).' },
+  { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верните парламент, который сами же и распустили.' },
+  { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведите страну до тоталитарного режима.' },
+  { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получите экстренное финансирование МВФ вместо дефолта.' },
+  { id: 'prices_stopped', icon: Award, title: 'Цены остановлены', desc: 'Доведите стабилизационную программу до конца: верните инфляцию из гиперинфляции к цели.' },
+  { id: 'hardest_way_out', icon: Crown, title: 'Выход есть', desc: 'Сохраните демократию 16 кварталов в самом трудном сценарии — «Гиперинфляции».' },
+  { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введите санкции против торгового партнёра.' },
+  { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договоритесь о едином рынке с соседями.' },
+  { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Совершите сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
+  { id: 'public_room_played', icon: DoorOpen, title: 'Открытая дверь', desc: 'Доиграйте хотя бы один квартал в открытой (публичной) сетевой комнате.' },
 ];
 
 export const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -1361,7 +1361,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
           <InflatiaMark size={54} />
           <div style={{ minWidth: 0, flex: 1 }}>
             <h1 className="ds-h1 menu-title">Инфлатия</h1>
-            <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>Симулятор государства и бизнеса</div>
+            {/* один слоган везде (docs/world.md); раздел — «Мир: страна, где знания проверяются в деле» */}
+            <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>экономика пять минут в день</div>
+            <div className="menu-section-title" data-testid="world-title" style={{ fontSize: 14, color: COLOR.muted, marginTop: 4 }}>Мир: страна, где знания проверяются в деле</div>
           </div>
           {!inShell && profileSlot}
         </div>

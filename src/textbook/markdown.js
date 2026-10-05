@@ -146,11 +146,11 @@ export function parseBlocks(text) {
         // при повторном, усложнённом прохождении урока
         // hard="задачи var:тип" — задачи семинарского и олимпиадного уровня на тему этого урока: из них
         // берутся усложнения (алмазный уровень, сильному ученику) в этом уроке и дальше по юниту
-        // discover=demand — шаг «Открой сам» (со словом more): ученик сам исследует модель; встаёт
+        // discover=demand — шаг «Откройте сами» (со словом more): ученик сам исследует модель; встаёт
         // первым шагом урока, до карточки-идеи (DISCOVER_KINDS)
         const { id: _id, title, chart, auto, variants, kind, pic, who, hard, discover, ...chartAttrs } = attrs;
-        if (discover && !DISCOVER_KINDS.includes(discover)) throw new Error(`Неизвестный шаг «Открой сам» ${discover} в ${attrs.id}`);
-        if (discover && !words.includes('more')) throw new Error(`Шаг «Открой сам» ${attrs.id} — со словом more`);
+        if (discover && !DISCOVER_KINDS.includes(discover)) throw new Error(`Неизвестный шаг «Откройте сами» ${discover} в ${attrs.id}`);
+        if (discover && !words.includes('more')) throw new Error(`Шаг «Откройте сами» ${attrs.id} — со словом more`);
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
         const wordLines = kind === 'words' ? body.filter((l) => /^-\s/.test(l.trim())) : [];
@@ -336,7 +336,7 @@ export const parseChapter = (text) => parseBlocks(text);
      ловушек. Звеньев 4–5, всего карточек 7–8. Эффект — что звено делает со сценой: D+ D- S+ S- (кривая
      сдвигается), P и Q (стрелка цены и количества), ceil (потолок цены 15 крон), street (люди на улице). */
 export const LESSON_KINDS = ['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary'];
-// шаги «Открой сам»: demand — день в кофейне, точки «цена — сколько купили» складываются в кривую спроса
+// шаги «Откройте сами»: demand — день в кофейне, точки «цена — сколько купили» складываются в кривую спроса
 export const DISCOVER_KINDS = ['demand'];
 const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news', 'tiles', 'curve', 'price', 'point', 'open', 'domino'];
 export const DOMINO_EFFECTS = ['D+', 'D-', 'S+', 'S-', 'P', 'Q', 'ceil', 'street'];

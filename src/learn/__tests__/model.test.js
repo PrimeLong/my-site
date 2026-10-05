@@ -1,4 +1,4 @@
-// «Открой сам» и живая модель юнита: скрытый спрос дня, точки → линия, детали модели по урокам
+// «Откройте сами» и живая модель юнита: скрытый спрос дня, точки → линия, детали модели по урокам
 import { describe, it, expect } from 'vitest';
 import {
   DAY, dayResult, hiddenDemand, distinctPrices, lineShown, discoverDone, fitDemand,
@@ -10,7 +10,7 @@ import { seeded } from '../../textbook/variants.js';
 
 const days = (list) => list.map(([price, bought]) => ({ price, bought }));
 
-describe('«Открой сам»: день в «Зерне»', () => {
+describe('«Откройте сами»: день в «Зерне»', () => {
   it('покупателей считает скрытый спрос с шумом не больше ±4 человек; цена — от 10 до 35', () => {
     [10, 20, 35].forEach((p) => {
       const lo = dayResult(p, () => 0); const hi = dayResult(p, () => 0.999999);
@@ -42,7 +42,7 @@ describe('«Открой сам»: день в «Зерне»', () => {
     expect(Math.abs(noisy.b - DAY.b)).toBeLessThan(0.6);
     expect(fitDemand(days([[20, 60], [20, 58]]))).toBeNull();
   });
-  it('первый урок юнита начинается с «Открой сам», потом — карточка-идея', () => {
+  it('первый урок юнита начинается с «Откройте сами», потом — карточка-идея', () => {
     const l = LESSON_BY_ID['sd-i1'];
     expect(l.inner[0].discover).toBe(true);
     expect(l.inner[0].idea.discover).toBe('demand');
@@ -51,7 +51,7 @@ describe('«Открой сам»: день в «Зерне»', () => {
     const first = plan.cards[plan.items[0].uid];
     expect(first[0].discover).toBe('demand');
     expect(first[1]).toBe(l.idea);
-    // «Открой сам» только в supply-demand: остальные юниты не тронуты
+    // «Откройте сами» только в supply-demand: остальные юниты не тронуты
     Object.values(LESSON_BY_ID).filter((x) => x.unitId !== 'supply-demand').forEach((x) => expect(x.inner.some((c) => c.discover), x.id).toBe(false));
   });
 });

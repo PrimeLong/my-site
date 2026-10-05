@@ -100,7 +100,7 @@ async function playGame(page, { seconds = 5, max = Infinity } = {}) {
   }
   await expect(ex.getByTestId('game-final')).toBeVisible({ timeout: (seconds + 5) * 1000 });
 }
-// «Открой сам»: четыре дня с разными ценами
+// «Откройте сами»: четыре дня с разными ценами
 async function playDiscover(page, prices = [12, 18, 26, 33]) {
   const d = page.getByTestId('discover');
   for (const p of prices) {
@@ -110,7 +110,7 @@ async function playDiscover(page, prices = [12, 18, 26, 33]) {
   }
   await expect(page.getByTestId('discover-next')).toBeEnabled({ timeout: 4000 });
 }
-// карточки перед упражнением: шаг, слово, пункт итогов, «Открой сам»
+// карточки перед упражнением: шаг, слово, пункт итогов, «Откройте сами»
 async function passCards(page) {
   const card = page.getByTestId('lesson-card');
   for (let i = 0; i < 24 && await card.isVisible(); i += 1) {
@@ -367,9 +367,9 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
-    test(`новые глаголы: «Открой сам», живая модель, «Домино», копилка (${theme})`, async ({ page }) => {
+    test(`новые глаголы: «Откройте сами», живая модель, «Домино», копилка (${theme})`, async ({ page }) => {
       test.setTimeout(180_000);
-      // пройдено всё до юнита 2: первый урок «Рынка» — с «Открой сам»
+      // пройдено всё до юнита 2: первый урок «Рынка» — с «Откройте сами»
       const errors = await setup(page, { theme, learn: { coins: { '2026-01-01': 400 } } });
       await page.addInitScript(() => {
         try {

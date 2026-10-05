@@ -1338,7 +1338,7 @@ async function playLesson(page, { wrongAt = [] } = {}) {
   return { kinds, retries, cards };
 }
 const withTestFlag = (page) => page.addInitScript(() => { window.__INFLATIA_TEST__ = true; });
-// «Открой сам»: четыре разные цены — четыре дня в «Зерне», точки на графике, линия, «Дальше»
+// «Откройте сами»: четыре разные цены — четыре дня в «Зерне», точки на графике, линия, «Дальше»
 async function playDiscover(page, prices = [12, 18, 26, 33]) {
   const d = page.getByTestId('discover');
   for (const p of prices) {
@@ -1364,7 +1364,7 @@ async function passCards(page) {
   });
   while (await card.isVisible()) {
     n += 1;
-    // «Открой сам»: четыре дня с разными ценами — потом «Дальше»
+    // «Откройте сами»: четыре дня с разными ценами — потом «Дальше»
     if (await card.getAttribute('data-style') === 'discover') { await playDiscover(page); continue; }
     const before = await sig();
     // в «Словах» в подвале две кнопки — «Ещё раз» и «Знаю»: берём последнюю
@@ -1416,7 +1416,7 @@ test('путь: карточка урока, «Знакомство» шагам
   const sheet = page.getByTestId('lesson-sheet');
   await expect(sheet).toContainText('Знакомство');
   await expect(sheet).toContainText(/≈\d+ мин/);
-  await expect(sheet).toContainText(/до \d+ XP/);
+  await expect(sheet).toContainText(/до \d+ опыта/);
   await sheet.getByRole('button', { name: 'Закрыть' }).click();
   await expect(sheet).toHaveCount(0);
   // урок открывается и нажатием на название; до первого ответа выйти можно молча — ничего не засчитано
@@ -2316,7 +2316,7 @@ test('теория из карточки урока: внизу отмечен �
   expect(errors).toEqual([]);
 });
 
-test('новые глаголы: «Открой сам», живая модель на Пути, «Домино» в практике, копилка Инфли и цена отказа', async ({ page }) => {
+test('новые глаголы: «Откройте сами», живая модель на Пути, «Домино» в практике, копилка Инфли и цена отказа', async ({ page }) => {
   test.setTimeout(180_000);
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -2337,7 +2337,7 @@ test('новые глаголы: «Открой сам», живая модел�
   await expect(model).toHaveAttribute('data-open', '0');
   await expect(model.getByTestId('model-empty')).toContainText('Знакомство: спрос');
 
-  // «Открой сам» — первый шаг первого урока юнита, до карточки-идеи
+  // «Откройте сами» — первый шаг первого урока юнита, до карточки-идеи
   await startLesson(page, 'sd-i1');
   // урок — слой поверх страницы: страница под ним не прокручивается и не показывает свой ползунок
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).toBe('hidden');
