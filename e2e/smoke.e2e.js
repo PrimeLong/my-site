@@ -1857,12 +1857,13 @@ test('лента «Слушай»: текст скрыт, «прослушать
   await unitDone(page);
   // русский голос браузера — подмена: запоминаем, что читали, и сразу «дочитываем»
   await page.addInitScript(() => {
-    window.__spoken = [];
-    const voice = { lang: 'ru-RU', name: 'Тест', default: true };
+    window.__spoken = []; window.__heard = [];
+    // три русских голоса: у ведущей Лады — женский, со своим темпом и высотой
+    const voices = [{ lang: 'ru-RU', name: 'Тест', default: true }, { lang: 'ru-RU', name: 'Milena' }, { lang: 'ru-RU', name: 'Yuri' }];
     window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; } };
     Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
-      getVoices: () => [voice], addEventListener() {}, removeEventListener() {}, cancel() {},
-      speak(u) { window.__spoken.push(u.text); setTimeout(() => { if (u.onboundary) u.onboundary({ charIndex: 0 }); }, 50); setTimeout(() => u.onend && u.onend(), 400); },
+      getVoices: () => voices, addEventListener() {}, removeEventListener() {}, cancel() {},
+      speak(u) { window.__spoken.push(u.text); window.__heard.push({ name: u.voice && u.voice.name, rate: u.rate, pitch: u.pitch }); setTimeout(() => { if (u.onboundary) u.onboundary({ charIndex: 0 }); }, 50); setTimeout(() => u.onend && u.onend(), 400); },
     } });
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
@@ -1873,6 +1874,9 @@ test('лента «Слушай»: текст скрыт, «прослушать
   // новое сообщение эфира читается само; текст скрыт до «показать текст»
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.__spoken[0])).toContain('морозы');
+  // эфир ведёт Лада: её голос (женский), темп и высота; под эфиром — подпись про синтез
+  expect(await page.evaluate(() => window.__heard[0])).toEqual({ name: 'Milena', rate: 1.04, pitch: 1.12 });
+  await expect(feed.getByTestId('voice-caption')).toHaveText('голос синтезирован браузером');
   await expect(live.getByTestId('feed-hidden')).toBeVisible();
   await live.getByTestId('feed-toggle').click();
   await expect(live.getByTestId('listen-text')).toContainText('морозы');

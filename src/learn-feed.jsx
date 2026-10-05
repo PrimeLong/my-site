@@ -17,6 +17,7 @@ import { Guilloche } from './ds-art.jsx';
 import { useReducedMotion } from './ds-art.jsx';
 import { Portrait } from './learn-play.jsx';
 import { CAST, DEFAULT_VOICE } from './learn/cast.js';
+import { voiceFor, VOICE_CAPTION } from './learn/voices.js';
 import { plainText } from './textbook/content.js';
 
 export const FEED_CSS = `
@@ -38,6 +39,7 @@ export const FEED_CSS = `
   .fd-title { font: 700 15px/1.3 var(--ds-serif); margin: 2px 0 4px; }
   .fd-text { font-size: 16px; line-height: 1.55; }
   .fd-hidden { font: 13.5px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .02em; }
+  .fd-voice-note { font: 12px/1.3 var(--ds-sans); color: var(--ds-ink2); margin-top: 2px; }
   .fd-tools { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
   .fd-tool { background: none; border: none; padding: 2px 0; font: 700 13px var(--ds-sans); color: var(--u-ink); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   .fd-word.on { background: color-mix(in srgb, var(--u) 28%, transparent); border-radius: 3px; }
@@ -70,10 +72,11 @@ export const FEED_CSS = `
   @media (prefers-reduced-motion: reduce) { .fd-new { animation: none; } .fd-bubble { transition: none; } .fd-set .fd-eq i, .fd-onair::before { animation: none !important; } }
 `;
 
-/* Голос: одна озвучка на ленту. speak(key, text) читает сообщение и подсвечивает слово;
-   без голоса — подсветка в темпе чтения вслух (около 2,6 слова в секунду). */
-const ruVoice = () => {
-  try { const s = window.speechSynthesis; if (!s) return null; return s.getVoices().find((v) => /^ru/i.test(v.lang)) || null; } catch { return null; }
+/* Голос: одна озвучка на ленту. speak(key, text, who) читает сообщение голосом героя
+   (src/learn/voices.js: свой темп, высота и голос) и подсвечивает слово; без голоса —
+   подсветка в темпе чтения вслух (около 2,6 слова в секунду). */
+const browserVoices = () => {
+  try { const s = window.speechSynthesis; return s ? s.getVoices() : []; } catch { return []; }
 };
 const splitWords = (text) => {
   const words = text.split(/\s+/).filter(Boolean);
@@ -82,17 +85,20 @@ const splitWords = (text) => {
 };
 function useSpeech() {
   const reduced = useReducedMotion();
-  const [voice, setVoice] = useState(ruVoice);
+  const [voices, setVoices] = useState(browserVoices);
+  const [broken, setBroken] = useState(false);
+  // voice — есть ли русский голос вообще; какой именно, решает voiceFor по герою
+  const voice = !broken && voices.some((v) => /^ru/i.test(v.lang));
   const [now, setNow] = useState({ key: null, at: -1 });
   const timer = useRef(null);
   useEffect(() => {
     const s = typeof window !== 'undefined' ? window.speechSynthesis : null;
     if (!s || !s.addEventListener) return undefined;
-    const f = () => setVoice(ruVoice());
+    const f = () => setVoices(browserVoices());
     s.addEventListener('voiceschanged', f);
     return () => { s.removeEventListener('voiceschanged', f); try { s.cancel(); } catch { /* нет голоса */ } clearInterval(timer.current); };
   }, []);
-  const speak = (key, text) => {
+  const speak = (key, text, who = 'narrator') => {
     Audio.prime();
     const { words, starts } = splitWords(text);
     clearInterval(timer.current);
@@ -105,12 +111,13 @@ function useSpeech() {
     try {
       const s = window.speechSynthesis; s.cancel();
       const u = new SpeechSynthesisUtterance(text);
-      u.voice = voice; u.lang = voice.lang; u.rate = 0.95;
+      const v = voiceFor(who, voices);
+      u.voice = v.voice; u.lang = v.voice.lang; u.rate = v.rate; u.pitch = v.pitch;
       u.onboundary = (e) => { const k = starts.findIndex((p, i) => e.charIndex >= p && (i === starts.length - 1 || e.charIndex < starts[i + 1])); if (k >= 0) setNow({ key, at: k }); };
       u.onend = () => setNow((n) => (n.key === key ? { key: null, at: -1 } : n));
-      u.onerror = () => { setNow({ key: null, at: -1 }); setVoice(null); };
+      u.onerror = () => { setNow({ key: null, at: -1 }); setBroken(true); };
       setNow({ key, at: 0 }); s.speak(u);
-    } catch { setVoice(null); }
+    } catch { setBroken(true); }
   };
   return { voice, now, speak };
 }
@@ -151,7 +158,7 @@ function Message({ entry, mode, speech, picture, skipTitle, flag }) {
         {visible && picture}
         {listen && (
           <div className="fd-tools">
-            <button type="button" className="fd-tool" data-testid="feed-play" aria-label={`Прослушать сообщение ${index}`} onClick={() => speech.speak(entry.key, text)}>
+            <button type="button" className="fd-tool" data-testid="feed-play" aria-label={`Прослушать сообщение ${index}`} onClick={() => speech.speak(entry.key, text, whoId)}>
               {speaking ? <Volume2 size={15} aria-hidden="true" /> : <Headphones size={15} aria-hidden="true" />}{speaking ? 'читаю…' : 'прослушать'}
             </button>
             {speech.voice && !revealed && (
@@ -181,7 +188,7 @@ function RadioSet({ entry, speech, picture, skipTitle, flag }) {
         <span className="fd-onair">в эфире</span><span className="ln-kind" style={{ margin: 0 }}>· {(CAST[card.who] || CAST[DEFAULT_VOICE.listen]).name} · сюжет {index}</span><span style={{ flex: 1 }} />{flag}
       </div>
       <div className="fd-set-main">
-        <button type="button" className="fd-play" data-testid="feed-play" aria-label={`${speaking ? 'Читаю' : 'Слушать'}: сюжет ${index}`} onClick={() => speech.speak(entry.key, text)}>
+        <button type="button" className="fd-play" data-testid="feed-play" aria-label={`${speaking ? 'Читаю' : 'Слушать'}: сюжет ${index}`} onClick={() => speech.speak(entry.key, text, card.who || DEFAULT_VOICE.listen)}>
           {speaking ? <Volume2 size={28} aria-hidden="true" /> : <Play size={28} aria-hidden="true" style={{ marginLeft: 3 }} />}
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -239,7 +246,7 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
   useEffect(() => {
     if (!last) return;
     if (mode !== 'listen' && lastRef.current && lastRef.current.scrollIntoView) lastRef.current.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: last.kind === 'q' ? 'start' : 'nearest' });
-    if (mode === 'listen' && last.kind === 'msg' && last.live && speech.voice) speech.speak(last.key, msgText(last.card));
+    if (mode === 'listen' && last.kind === 'msg' && last.live && speech.voice) speech.speak(last.key, msgText(last.card), last.card.who || DEFAULT_VOICE.listen);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastKey]);
   if (mode === 'listen') {
@@ -254,6 +261,7 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
           <Guilloche height={14} opacity={0.45} />
           <div className="fd-mast-name"><Radio size={14} aria-hidden="true" />Радио Инфлатии · эфир</div>
           <h2 className="ds-h2">{title}</h2>
+          {speech.voice && <div className="fd-voice-note" data-testid="voice-caption">{VOICE_CAPTION}</div>}
         </div>
         {/* значок сюжета в приёмнике не нужен — только график, если он есть: вопрос остаётся рядом */}
         {cur && <RadioSet entry={cur} speech={speech} picture={cur.card.chart ? picture(cur.card) : null} skipTitle={skipTitle} flag={flagFor(cur)} />}
