@@ -132,11 +132,18 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '02-welcome-goal', theme);
       for (const g of ['Цель', 'Минут в день', 'Знания']) await page.getByRole('group', { name: g }).getByRole('button').first().click();
       await page.getByRole('button', { name: 'Продолжить' }).click();
+      // гость: сразу первый урок; выйти — и с Пути «Сохраните прогресс» → регистрация
+      await expect(page.getByTestId('lesson')).toBeVisible();
+      await shot(page, '02a-guest-lesson', theme);
+      await page.getByRole('button', { name: 'Выйти из урока' }).click();
+      await shot(page, '02b-guest-path', theme);
+      await page.getByTestId('guest-register').click();
       await shot(page, '03-welcome-register', theme);
       await page.getByTestId('consent-privacy').click();
       await shot(page, '03a-privacy', theme);
       await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
-      await page.getByRole('button', { name: 'Назад' }).click(); await page.getByRole('button', { name: 'Назад' }).click();
+      await page.evaluate(() => localStorage.removeItem('ems-guest'));
+      await page.reload({ waitUntil: 'networkidle' });
       await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
       await shot(page, '04-welcome-login', theme);
       expect(errors).toEqual([]);

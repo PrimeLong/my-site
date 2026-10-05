@@ -1,7 +1,7 @@
-/* ПЕРВЫЙ ЗАПУСК И ВХОД. Без аккаунта в приложении только эти экраны: приветствие с
-   Инфлей → «Начать» → цель и минуты в день → регистрация → Путь. «У меня уже есть
-   аккаунт» → вход (и восстановление по коду, если забыт пароль). Прогресс хранится в
-   аккаунте: после входа устройство переходит на профиль (см. authenticate в account.jsx).
+/* ПЕРВЫЙ ЗАПУСК И ВХОД. Приветствие с Инфлей (три обещания и мини-задача) → «Начать» →
+   цель и минуты в день → сразу первый урок, без аккаунта (гость, src/lib/guest.js). После
+   урока — «Сохраните прогресс» → регистрация: аккаунт забирает прогресс устройства.
+   «У меня уже есть аккаунт» → вход (и восстановление по коду, если забыт пароль).
    У каждого экрана один «назад» — стрелка вверху слева. */
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
@@ -15,11 +15,19 @@ import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
 import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import { setGoal, setProfile, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES } from './textbook/learn-state.js';
+import { startGuest, endGuest } from './lib/guest.js';
 
 // ответы первого запуска: после регистрации они уходят в программу ученика (learn.profile)
 const ONBOARD_KEY = 'ems-onboarding';
 export const loadOnboarding = () => { try { return JSON.parse(localStorage.getItem(ONBOARD_KEY) || 'null'); } catch { return null; } };
 const saveOnboarding = (v) => { try { localStorage.setItem(ONBOARD_KEY, JSON.stringify(v)); } catch { /* приватный режим */ } };
+
+// программа ученика: цель, минуты (из них — цель дня и задание дня) и знания (вступительный тест)
+function applyPlan(plan) {
+  if (!plan || !plan.minutes) return;
+  const p = loadProgress();
+  saveProgress({ ...p, learn: setGoal(setProfile(p.learn, plan), LESSONS_FOR_MINUTES[plan.minutes] || 1) });
+}
 
 export const GOALS = Object.entries(PROFILE_GOAL_LABEL).map(([id, label]) => ({ id, label }));
 export const MINUTES = [5, 10, 15, 20];
@@ -42,19 +50,50 @@ function Top({ onBack }) {
   );
 }
 
+// три обещания приветствия и мини-задача: попробовать до любых вопросов о себе
+export const VALUE_POINTS = [
+  ['Пять минут в день', 'Короткие уроки: одна мысль, график, вопрос — и сразу ответ.'],
+  ['Экономика вокруг вас', 'Кофейня у метро, пекарня, банк и министерство — герои одного города.'],
+  ['Знания в деле', 'В «Мире» вы ведёте страну и видите, как работают ставка, бюджет и рынок.'],
+];
+const TRY = { q: 'Капучино у метро подорожал с 20 до 25 крон. Что будет с числом проданных чашек?',
+  options: [['Станет меньше', true], ['Станет больше', false], ['Не изменится', false]],
+  ok: 'Верно: чем дороже, тем меньше покупают. Это закон спроса — с него начинается первый юнит.',
+  no: 'Не совсем: при более высокой цене часть гостей откажется от чашки. Это закон спроса — с него начинается первый юнит.' };
+function TryTask() {
+  const [pick, setPick] = useState(null);
+  const right = pick != null && TRY.options[pick][1];
+  return (
+    <div className="ds-card" data-testid="welcome-try" style={{ textAlign: 'left', padding: '12px 14px', width: '100%', maxWidth: 380, margin: '0 auto' }}>
+      <div className="ds-eyebrow" style={{ marginBottom: 4 }}>Попробуйте</div>
+      <div style={{ fontSize: 15.5, lineHeight: 1.45, marginBottom: 10 }}>{TRY.q}</div>
+      <div style={{ display: 'grid', gap: 6 }}>
+        {TRY.options.map(([label], k) => (
+          <button key={label} type="button" className="ds-opt" aria-pressed={pick === k} disabled={pick != null && pick !== k}
+            onClick={() => { Audio.prime(); Audio.play(TRY.options[k][1] ? 'up' : 'click'); setPick(k); }} style={{ margin: 0 }}>{label}</button>
+        ))}
+      </div>
+      {pick != null && <div role="status" data-testid="welcome-try-say" style={{ fontSize: 14.5, lineHeight: 1.45, marginTop: 10, color: right ? 'var(--ds-ok)' : 'var(--ds-ink2)' }}>{right ? TRY.ok : TRY.no}</div>}
+    </div>
+  );
+}
+
 function Hello({ go }) {
   return (
     <div className="wl" data-testid="welcome">
       {/* титул — как купюра: гильош, розетка-водяной знак, Инфля в середине */}
       <div className="wl-body" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <Guilloche height={26} />
-        <div style={{ margin: '18px 0 6px' }}><Rosette size={210} opacity={0.4}><Mascot mood="wave" size={120} /></Rosette></div>
-        <h1 className="ds-h1" style={{ fontSize: 36, letterSpacing: '.02em' }}>Инфлатия</h1>
+        <div style={{ margin: '12px 0 4px' }}><Rosette size={150} opacity={0.4}><Mascot mood="wave" size={92} /></Rosette></div>
+        <h1 className="ds-h1" style={{ fontSize: 34, letterSpacing: '.02em' }}>Инфлатия</h1>
         <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика пять минут в день</div>
-        <div className="ds-sub" style={{ fontSize: 16.5, lineHeight: 1.5, maxWidth: 320, margin: '12px 0 18px' }}>
-          Дорога по стране маленькими уроками — вместе с Инфлей.
-        </div>
-        <Guilloche height={26} />
+        <ul data-testid="welcome-values" style={{ listStyle: 'none', padding: 0, margin: '14px 0', textAlign: 'left', maxWidth: 380, display: 'grid', gap: 8 }}>
+          {VALUE_POINTS.map(([t, d]) => (
+            <li key={t} style={{ fontSize: 15, lineHeight: 1.4 }}><b>{t}.</b> <span className="ds-sub">{d}</span></li>
+          ))}
+        </ul>
+        <TryTask />
+        <div style={{ marginTop: 14, width: '100%' }}><Guilloche height={20} /></div>
       </div>
       <div className="wl-foot">
         <Button wide onClick={() => { Audio.prime(); Audio.play('click'); go('goal'); }}>Начать</Button>
@@ -90,7 +129,7 @@ function Goal({ go, plan, setPlan }) {
         </div>
       </div>
       <div className="wl-foot">
-        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); go('register'); }}>Продолжить</Button>
+        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); startGuest(); }}>Продолжить</Button>
       </div>
     </div>
   );
@@ -98,7 +137,7 @@ function Goal({ go, plan, setPlan }) {
 
 /* Форма регистрации, входа или восстановления. После регистрации и восстановления
    показываем код восстановления — почты у игры нет, без кода забытый пароль не вернуть. */
-function AuthForm({ mode, go, plan }) {
+function AuthForm({ mode, go, plan, onCancel = null }) {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -110,12 +149,9 @@ function AuthForm({ mode, go, plan }) {
   const [error, setError] = useState('');
   const [shown, setShown] = useState(null);
   const finish = () => {
-    // программа ученика: цель, минуты (из них — цель дня и задание дня) и знания (вступительный тест)
-    if (mode === 'register' && plan.minutes) {
-      const p = loadProgress();
-      saveProgress({ ...p, learn: setGoal(setProfile(p.learn, plan), LESSONS_FOR_MINUTES[plan.minutes] || 1) });
-    }
-    // аккаунт уже сохранён — приложение само перейдёт на Путь
+    if (mode === 'register' && plan.minutes) applyPlan(plan);
+    // аккаунт уже сохранён и забрал прогресс гостя (тот же playerId) — гостем больше не считаем
+    endGuest();
     window.dispatchEvent(new Event('ems-account-ready'));
   };
   const kidYear = mode === 'register' && validBirthYear(birthYearOf(year)) && needsParent(birthYearOf(year));
@@ -147,11 +183,11 @@ function AuthForm({ mode, go, plan }) {
     && (mode !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
     <div className="wl" data-testid={parentStep ? 'welcome-parent' : `welcome-${mode}`}>
-      <Top onBack={() => (parentStep ? setParentStep(false) : go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello'))} />
+      <Top onBack={() => (parentStep ? setParentStep(false) : onCancel && mode === 'register' ? onCancel() : go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello'))} />
       <form className="wl-body" onSubmit={submit}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <Mascot mood={mode === 'register' ? 'joy' : 'hello'} size={52} />
-          <Heading level={1} eyebrow={mode === 'register' ? 'Шаг 2 из 2' : 'Аккаунт'} title={parentStep ? 'Подтверждение родителя' : title} />
+          <Heading level={1} eyebrow={mode === 'register' ? (onCancel ? 'Сохраните прогресс' : 'Шаг 2 из 2') : 'Аккаунт'} title={parentStep ? 'Подтверждение родителя' : title} />
         </div>
         {parentStep ? <ParentStep value={consents} set={setConsents} /> : (<>
           {mode === 'register' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Прогресс, серия и опыт хранятся в аккаунте — войдите на другом устройстве, и всё будет там.</div>}
@@ -189,8 +225,8 @@ function AuthForm({ mode, go, plan }) {
   );
 }
 
-export function Welcome() {
-  const [screen, setScreen] = useState('hello');
+export function Welcome({ initialScreen = 'hello', onCancel = null }) {
+  const [screen, setScreen] = useState(initialScreen);
   const [plan, setPlan] = useState(() => loadOnboarding() || { goal: null, minutes: null, knows: false });
   const go = (s) => { setScreen(s); window.scrollTo(0, 0); };
   return (
@@ -199,7 +235,7 @@ export function Welcome() {
       <style>{CSS}</style>
       {screen === 'hello' && <Hello go={go} />}
       {screen === 'goal' && <Goal go={go} plan={plan} setPlan={setPlan} />}
-      {(screen === 'register' || screen === 'login' || screen === 'recover') && <AuthForm key={screen} mode={screen} go={go} plan={plan} />}
+      {(screen === 'register' || screen === 'login' || screen === 'recover') && <AuthForm key={screen} mode={screen} go={go} plan={plan} onCancel={screen === initialScreen ? onCancel : null} />}
     </DsRoot>
   );
 }

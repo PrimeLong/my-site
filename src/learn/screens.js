@@ -4,10 +4,11 @@
    путей в одно место (e2e «навигация» обходит эту карту и проверяет оба правила).
    testid — как экран узнаётся на странице. */
 export const SCREENS = {
-  // без аккаунта — только эти экраны
+  // без аккаунта — эти экраны; после цели гость сразу попадает в первый урок (src/lib/guest.js),
+  // а регистрация открывается с Пути или итогов урока — «Сохраните прогресс»
   welcome: { gate: true, root: true, title: 'Приветствие', testid: 'welcome' },
   'welcome-goal': { gate: true, from: ['welcome'], back: 'welcome', title: 'Цель и минуты', testid: 'welcome-goal' },
-  'welcome-register': { gate: true, from: ['welcome-goal'], back: 'welcome-goal', title: 'Регистрация', testid: 'welcome-register' },
+  'welcome-register': { gate: true, from: ['path', 'lesson'], back: 'path', title: 'Регистрация', testid: 'welcome-register' },
   'welcome-login': { gate: true, from: ['welcome'], back: 'welcome', title: 'Вход', testid: 'welcome-login' },
   'welcome-recover': { gate: true, from: ['welcome-login'], back: 'welcome-login', title: 'Новый пароль по коду', testid: 'welcome-recover' },
   // после входа: вкладки нижней панели

@@ -425,13 +425,30 @@ const accountApi = (req) => {
   if (body && body.action === 'update') return JSON.stringify({ profile: { ...profile, emblem: body.emblem || 'star' } });
   return '{}';
 };
+/* Гостевой старт: после цели — сразу первый урок без аккаунта. Выйти из урока и с Пути
+   открыть регистрацию («Сохраните прогресс»). */
+async function guestToRegister(page) {
+  await expect(page.getByTestId('lesson')).toBeVisible();
+  await page.getByRole('button', { name: 'Выйти из урока' }).click();
+  const ask = page.getByRole('dialog', { name: 'Выйти из урока?' });
+  if (await ask.isVisible().catch(() => false)) await ask.getByRole('button', { name: 'Выйти', exact: true }).click();
+  await page.getByTestId('guest-save').getByTestId('guest-register').click();
+  await expect(page.getByTestId('welcome-register')).toBeVisible();
+  return page.getByTestId('welcome-register');
+}
 // без аккаунта не открыто ничего, кроме приветствия, входа и регистрации
 async function expectGateOnly(page) {
   for (const id of ['bottom-nav', 'shell', 'path', 'tasks', 'learn-profile', 'world', 'lesson', 'learn-book']) await expect(page.getByTestId(id)).toHaveCount(0);
 }
 
-test('вход: первый запуск — приветствие, цель, регистрация, Путь; выход, вход и восстановление', async ({ page }) => {
+test('вход: первый запуск — приветствие, цель, урок гостем, «Сохраните прогресс», регистрация; выход, вход и восстановление', async ({ page }) => {
+  test.setTimeout(120_000);
+  await withTestFlag(page);
   const { errors, external } = await openApp(page, '/', accountApi, { tab: null });
+  // приветствие: три обещания и мини-задача с ответом сразу
+  await expect(page.getByTestId('welcome-values').locator('li')).toHaveCount(3);
+  await page.getByTestId('welcome-try').getByRole('button', { name: 'Станет меньше' }).click();
+  await expect(page.getByTestId('welcome-try-say')).toContainText('закон спроса');
   const hello = page.getByTestId('welcome');
   await expect(hello).toBeVisible();
   await expect(hello.getByTestId('mascot')).toHaveAttribute('data-mood', 'wave');
@@ -446,7 +463,14 @@ test('вход: первый запуск — приветствие, цель, 
   await goal.getByRole('group', { name: 'Минут в день' }).getByRole('button', { name: '10 минут' }).click();
   await goal.getByRole('group', { name: 'Знания' }).getByRole('button', { name: 'Начинаю с нуля' }).click();
   await goal.getByRole('button', { name: 'Продолжить' }).click();
+  // гостевой старт: сразу первый урок, без аккаунта; после урока — «Сохраните прогресс»
+  await expect(page.getByTestId('lesson')).toBeVisible();
+  await playLesson(page);
+  const save = page.getByTestId('lesson-result').getByTestId('guest-save');
+  await expect(save).toContainText('Сохраните прогресс');
+  await save.getByTestId('guest-register').click();
   const reg = page.getByTestId('welcome-register');
+  await expect(reg).toContainText('Сохраните прогресс');
   await expect(reg.locator('[data-nav="back"]')).toHaveCount(1);
   await expectNoSidewaysScroll(page);
   await reg.getByLabel('Логин').fill('anna');
@@ -474,9 +498,12 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
   await expectGateOnly(page);
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
-  // сразу Путь; цель дня — минуты занятий (10 минут)
+  // Путь; цель дня — минуты занятий (10 минут); урок гостя перешёл в аккаунт и засчитан
   await expect(page.getByTestId('path')).toBeVisible();
-  await expect(page.getByTestId('goal')).toContainText('0/10');
+  await expect(page.getByTestId('goal')).toContainText('/10');
+  await expect(page.getByTestId('guest-save')).toHaveCount(0);
+  expect(await page.evaluate(() => (JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.lessons['sc-i1'] || {}).runs)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => localStorage.getItem('ems-guest'))).toBeNull();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ems-onboarding')))).toEqual({ goal: 'exam', minutes: 10, knows: false });
 
   // аккаунт — в профиле; выход возвращает на приветствие
@@ -527,7 +554,7 @@ test('вход: до 14 лет — отдельный шаг «Подтверж�
   const goal = page.getByTestId('welcome-goal');
   for (const g of ['Цель', 'Минут в день', 'Знания']) await goal.getByRole('group', { name: g }).getByRole('button').first().click();
   await goal.getByRole('button', { name: 'Продолжить' }).click();
-  const reg = page.getByTestId('welcome-register');
+  const reg = await guestToRegister(page);
   await reg.getByLabel('Логин').fill('kid');
   await reg.getByLabel('Пароль').fill('secret1');
   await reg.getByTestId('birth-year').fill(String(new Date().getFullYear() - 12));
@@ -1939,7 +1966,7 @@ test('вход: программа — вступительный тест, су
   await goal.getByRole('group', { name: 'Минут в день' }).getByRole('button', { name: '15 минут' }).click();
   await goal.getByRole('group', { name: 'Знания' }).getByRole('button', { name: 'Кое-что знаю' }).click();
   await goal.getByRole('button', { name: 'Продолжить' }).click();
-  const reg = page.getByTestId('welcome-register');
+  const reg = await guestToRegister(page);
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
   await reg.getByTestId('birth-year').fill('2000');
@@ -2149,11 +2176,21 @@ test('вход: экраны до входа — у каждого один «н
   await page.getByRole('button', { name: 'Начать' }).click();
   await expectScreen(page, 'welcome-goal', seen);
   for (const g of ['Цель', 'Минут в день', 'Знания']) await page.getByRole('group', { name: g }).getByRole('button').first().click();
+  await clickBack(page);
+  await expectScreen(page, 'welcome', seen);
+  await page.getByRole('button', { name: 'Начать' }).click();
+  for (const g of ['Цель', 'Минут в день', 'Знания']) await page.getByRole('group', { name: g }).getByRole('button').first().click();
   await page.getByRole('button', { name: 'Продолжить' }).click();
+  // гость: урок → Путь → «Сохраните прогресс» → регистрация; «назад» с неё — обратно на Путь
+  await guestToRegister(page);
   await expectScreen(page, 'welcome-register', seen);
   await clickBack(page);
-  await expectScreen(page, 'welcome-goal', seen);
-  await clickBack(page);
+  await expect(page.getByTestId('path')).toBeVisible();
+  await page.getByTestId('guest-register').click();
+  await expectScreen(page, 'welcome-register', seen);
+  // выйти из гостя нельзя кнопкой, но вход доступен: сбросим гостя и вернёмся к приветствию
+  await page.evaluate(() => localStorage.removeItem('ems-guest'));
+  await page.reload({ waitUntil: 'networkidle' });
   await expectScreen(page, 'welcome', seen);
   await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
   await expectScreen(page, 'welcome-login', seen);

@@ -17,12 +17,13 @@ import {
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
 } from 'lucide-react';
+import { askSave } from './lib/guest.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
-  UNITS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LESSONS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf,
 } from './learn/course.js';
 import {
@@ -485,7 +486,7 @@ function newPlan(run, learn) {
   if (run.mode === 'placement') return { items: buildPlacement().items, cards: {} };
   return { items: buildPractice(learn.mistakes.map((m) => m.id), Math.random, { weak: weakLessons(learn).map((w) => w.id) }).items, cards: {} };
 }
-function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
+function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false }) {
   const rs = run.resume || null;
   const [plan] = useState(() => (rs ? rs.plan : newPlan(run, learn)));
   const lesson = run.lessonId ? LESSON_BY_ID[run.lessonId] : null;
@@ -956,6 +957,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden }) {
             </div>
             <Guilloche height={22} />
           </Card>
+          {guest && <GuestSave learn={learn} afterLesson />}
           <div style={{ display: 'grid', gap: 6, marginTop: 16 }}>
             <Button wide data-nav="back" onClick={onClose}>Дальше</Button>
             {lesson && (
@@ -1583,7 +1585,22 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
    Корень экранов обучения. Учебник — подэкран поверх вкладки (или поверх итогов урока):
    его «назад» возвращает туда, откуда открыли. Нижняя панель — в корне приложения. */
 const MORNING_KEY = 'ems-learn-morning';
-export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0 }) {
+/* Гость (src/lib/guest.js): прогресс пока только на этом устройстве — карточка зовёт создать
+   аккаунт. После урока — на итогах, потом — вверху Пути. Регистрация заберёт прогресс. */
+function GuestSave({ learn, afterLesson = false }) {
+  const done = Object.values(learn.lessons || {}).filter((l) => l && l.runs > 0).length;
+  return (
+    <Card data-testid="guest-save" style={{ margin: afterLesson ? '14px 0 0' : '0 0 12px', textAlign: 'left' }}>
+      <div style={{ fontWeight: 700, fontSize: 16 }}>Сохраните прогресс</div>
+      <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.45, margin: '4px 0 10px' }}>
+        {done ? `${done} ${plural(done, 'урок', 'урока', 'уроков')} и монеты пока хранятся только в этом браузере.` : 'Пока прогресс хранится только в этом браузере.'} Создайте аккаунт — и он будет с вами на любом устройстве.
+      </div>
+      <Button wide small data-testid="guest-register" onClick={() => { Audio.play('click'); askSave(); }}>Создать аккаунт</Button>
+    </Card>
+  );
+}
+
+export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {} }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
   const [sheet, setSheet] = useState(null);
@@ -1609,6 +1626,9 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   useEffect(() => { if (reopenBook) { openBook(null, true); onBookReopened(); } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenBook]);
   const start = (r) => { setSheet(null); setRun(r); };
+  // гость: после выбора цели — сразу первый урок Пути, без карточки урока
+  useEffect(() => { if (firstLesson) { onFirstLesson(); start({ mode: 'lesson', lessonId: LESSONS[0].id }); } // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstLesson]);
   // «Сообщить об ошибке» в учебнике: на странице (вверху) и у каждой задачи
   const bookReports = {
     reportSlot: (cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />,
@@ -1630,6 +1650,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports} style={book || reports ? { display: 'none' } : undefined}>
+        {tab === 'path' && guest && <GuestSave learn={learn} />}
         {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           visible={!run && !sheet && !book && !chest && !morning} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
@@ -1642,7 +1663,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update} onClose={() => setChest(null)} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook} />}
-      {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book}
+      {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
     </DsRoot>
     </OutfitContext.Provider>

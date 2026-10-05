@@ -18,6 +18,7 @@ import {
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
+import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
@@ -1990,13 +1991,22 @@ export default function MacroSimulator() {
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
-  const [gate, setGate] = useState(() => !loadAccount());
+  /* Гость (src/lib/guest.js): «Начать» → цель → сразу первый урок, без аккаунта. Регистрация —
+     после урока («Сохраните прогресс»): тогда ворота открываются на экране регистрации. */
+  const [guest, setGuest] = useState(() => !loadAccount() && isGuest());
+  const [gate, setGate] = useState(() => !loadAccount() && !isGuest());
+  const [gateScreen, setGateScreen] = useState('hello');
+  const [firstLesson, setFirstLesson] = useState(false);
   React.useEffect(() => {
-    const ready = () => { setGate(false); setView('menu'); setTabRaw('path'); window.scrollTo(0, 0); };
+    const ready = () => { setGate(false); setGuest(false); setView('menu'); setTabRaw('path'); window.scrollTo(0, 0); };
+    const guestStart = () => { setGuest(true); setGate(false); setView('menu'); setTabRaw('path'); setFirstLesson(true); window.scrollTo(0, 0); };
+    const guestSave = () => { setGateScreen('register'); setGate(true); window.scrollTo(0, 0); };
     window.addEventListener('ems-account-ready', ready);
-    return () => window.removeEventListener('ems-account-ready', ready);
+    window.addEventListener(GUEST_START, guestStart);
+    window.addEventListener(GUEST_SAVE, guestSave);
+    return () => { window.removeEventListener('ems-account-ready', ready); window.removeEventListener(GUEST_START, guestStart); window.removeEventListener(GUEST_SAVE, guestSave); };
   }, []);
-  React.useEffect(() => { if (!account) setGate(true); }, [account]);
+  React.useEffect(() => { if (!account && !guest) { setGateScreen('hello'); setGate(true); } }, [account, guest]);
   // детский режим и имя — с сервера при каждом запуске (профиль мог поменяться на другом устройстве)
   React.useEffect(() => { refreshAccount(); }, []);
   // тёмная тема обучения переключается в профиле — перерисовать оболочку
@@ -2033,7 +2043,7 @@ export default function MacroSimulator() {
   React.useEffect(() => {
     try { if (tycoon) localStorage.setItem(LAST_SCREEN_KEY, 'tycoon'); else localStorage.removeItem(LAST_SCREEN_KEY); } catch { /* приватный режим */ }
   }, [tycoon]);
-  const showGate = gate || !account;
+  const showGate = gate || (!account && !guest);
   const learning = showGate || (view === 'menu' && !setup && !network && !tycoon && tab !== 'world');
   // обучение — в своей светлой (или тёмной по выбору) теме; «канцелярия» — только в «Мире»
   applyTheme(learning ? learnThemeId() : theme);
@@ -2149,7 +2159,7 @@ export default function MacroSimulator() {
               <GlobalStyle />
               <Suspense fallback={<GameFallback />}>
                 <LearnTab tab={tab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
-                  onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome}
+                  onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome} guest={guest} firstLesson={firstLesson} onFirstLesson={() => setFirstLesson(false)}
                   bookHandlers={{
                     onOpenLab: (init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); },
                     onStartDrill: startDrill,
@@ -2201,7 +2211,7 @@ export default function MacroSimulator() {
     return (
       <div className="ems-root" data-testid="gate">
         <GlobalStyle />
-        <Suspense fallback={<GameFallback />}><Welcome /></Suspense>
+        <Suspense fallback={<GameFallback />}><Welcome key={gateScreen} initialScreen={gateScreen} onCancel={guest ? () => setGate(false) : null} /></Suspense>
       </div>
     );
   }
