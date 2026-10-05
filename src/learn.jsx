@@ -54,7 +54,7 @@ import { ReportFlag, ReportsView, AnalyticsView, REPORT_CSS, exerciseContext, fl
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { ProfileModal } from './account.jsx';
@@ -66,6 +66,8 @@ export { SCREENS } from './learn/screens.js';
 const CSS = `
   .ln-root { padding: 12px 16px 104px; }
   .ln-wrap { max-width: 560px; margin: 0 auto; }
+  .ln-path-wide { max-width: 1120px; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 28px; align-items: start; }
+  .ln-path-side { position: sticky; top: 12px; max-height: calc(100vh - 110px); overflow: auto; padding-bottom: 8px; }
   .ln-stats { display: flex; gap: 6px; padding: 2px 0 12px; }
   .ln-stat { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--ds-rule2); border-radius: 3px;
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
@@ -1368,10 +1370,15 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openIds.join(), visible]);
   const pick = (id) => { const el = document.getElementById(`unit-${id}`); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' }); };
+  /* ПК (от 1024 px): две колонки — слева карта и юниты, справа закреплены задания дня и живая
+     модель текущего юнита (под самим юнитом её тогда нет). На телефоне — одна колонка. */
+  const wide = useWide();
+  const sideModel = wide ? ((states.find((x) => x.current && hasModel(x.course.id)) || states.find((x) => hasModel(x.course.id)) || { course: {} }).course.id || null) : null;
   return (
-    <div className="ln-wrap" data-testid="path">
+    <div className={`ln-wrap${wide ? ' ln-path-wide' : ''}`} data-testid="path" data-layout={wide ? 'columns' : 'column'}>
+      <div className="ln-path-main">
       <TopStats learn={learn} />
-      <TasksEntry learn={learn} onOpen={onTasks} />
+      {!wide && <TasksEntry learn={learn} onOpen={onTasks} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <Mascot mood={hello} size={44} />
         <div className="ds-sub" style={{ fontSize: 15, lineHeight: 1.4 }}>
@@ -1414,7 +1421,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             <Guilloche height={16} opacity={0.45} />
           </Card>
           {/* живая модель юнита: собирается урок за уроком — главный видимый прогресс юнита */}
-          {hasModel(u.id) && <Card style={{ marginTop: 10 }}><MarketModel unitId={u.id} learn={learn} compact /></Card>}
+          {hasModel(u.id) && u.id !== sideModel && <Card style={{ marginTop: 10 }}><MarketModel unitId={u.id} learn={learn} compact /></Card>}
           {!folded && <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
             chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />}
         </section>
@@ -1440,6 +1447,14 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             </div>
           )}
         </Card>
+      )}
+      </div>
+      {wide && (
+        <aside className="ln-path-side" data-testid="path-side" aria-label="Задания дня и живая модель">
+          <TasksEntry learn={learn} onOpen={onTasks} />
+          <QuestsCard learn={learn} testid="side-quests" />
+          {sideModel && <Card><MarketModel unitId={sideModel} learn={learn} compact /></Card>}
+        </aside>
       )}
     </div>
   );

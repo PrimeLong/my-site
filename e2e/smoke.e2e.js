@@ -2504,3 +2504,58 @@ test('учебник: калькулятор по полям а → б → в, �
   await expect(page.getByTestId('textbook')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('ПК от 1024 px: Путь в две колонки, у главы учебника оглавление сбоку', async ({ page, isMobile }) => {
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  const noScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+  if (isMobile) {
+    // телефон: одна колонка, карточка «Задания» наверху Пути, живая модель — под своим юнитом
+    await expect(path).toHaveAttribute('data-layout', 'column');
+    await expect(page.getByTestId('path-side')).toHaveCount(0);
+    await expect(path.getByTestId('tasks-card')).toBeVisible();
+  } else {
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(path).toHaveAttribute('data-layout', 'columns');
+      const side = page.getByTestId('path-side');
+      // справа: задания (карточка и задания дня) и живая модель текущего юнита — ровно одна на Пути
+      await expect(side.getByTestId('tasks-card')).toBeVisible();
+      await expect(side.getByTestId('side-quests').getByTestId('quest')).toHaveCount(3);
+      await expect(side.getByTestId('unit-model')).toHaveCount(1);
+      await expect(path.getByTestId('unit-model')).toHaveCount(1);
+      await expect(path.getByTestId('tasks-card')).toHaveCount(1);
+      // колонки рядом: правая начинается правее левой и не уезжает вбок
+      const main = await path.locator('.ln-path-main').boundingBox();
+      const box = await side.boundingBox();
+      expect(box.x).toBeGreaterThan(main.x + main.width - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(await noScroll()).toBe(true);
+    }
+    // уже 1024 — одна колонка
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await expect(path).toHaveAttribute('data-layout', 'column');
+    await expect(page.getByTestId('path-side')).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 900 });
+  }
+  // учебник: у главы сбоку оглавление всех глав, открытая отмечена; переход — по клику
+  await openTab(page, 'book');
+  await page.getByTestId('textbook').getByRole('button', { name: /Спрос и предложение/ }).click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'supply-demand');
+  const toc = page.getByTestId('tb-side-toc');
+  if (isMobile) {
+    await expect(toc).toHaveCount(0);
+  } else {
+    await expect(toc).toBeVisible();
+    await expect(toc.locator('[aria-current="page"]')).toContainText('Спрос и предложение');
+    const tb = await toc.boundingBox();
+    const body = await page.locator('.tb-ch-main').boundingBox();
+    expect(tb.x + tb.width).toBeLessThanOrEqual(body.x);
+    await toc.getByRole('button', { name: /Эластичность/ }).click();
+    await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'elasticity');
+    await expect(toc.locator('[aria-current="page"]')).toContainText('Эластичность');
+    expect(await noScroll()).toBe(true);
+  }
+  expect(errors).toEqual([]);
+});

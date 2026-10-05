@@ -9,6 +9,7 @@ import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, R
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
+import { useWide } from './ds-art.jsx';
 import { LEVERS, SCENARIOS } from './lib/engine.js';
 import { LAB_LEVERS } from './lib/lab.js';
 import { DRILLS, drillSetup } from './lib/drills.js';
@@ -104,8 +105,16 @@ export const TEXTBOOK_CSS = `
   .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .tbl-ch-bar i { display: block; height: 100%; background: var(--ds-ok); }
   .tbl-more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  /* ПК: учебник во весь экран — оглавление в две колонки, у главы слева закреплённый список разделов */
-  @media (min-width: 1100px) {
+  /* оглавление сбоку у главы (ПК): все главы по частям, открытая отмечена, под ним — разделы главы */
+  .tb-chtoc { border: 1px solid var(--c-border); background: var(--c-panel-alt); padding: 10px 12px 6px; margin: 0 0 12px; }
+  .tb-chtoc-part { font-size: 12px; font-weight: 700; color: var(--c-muted); margin: 8px 0 2px; }
+  .tb-chtoc-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; padding: 5px 2px; background: none; border: none; color: var(--c-text); font: inherit; font-size: 13.5px; line-height: 1.3; text-align: left; cursor: pointer; border-radius: 4px; }
+  .tb-chtoc-row:hover { background: var(--c-panel); }
+  .tb-chtoc-row[aria-current="page"] { font-weight: 700; color: var(--u-ink, var(--c-gold-soft)); cursor: default; }
+  .tb-chtoc-row[data-status="draft"] { color: var(--c-muted); }
+  /* ПК (от 1024 px): учебник во весь экран — оглавление в две колонки, у главы слева закреплены
+     оглавление и список разделов */
+  @media (min-width: 1024px) {
     .ln-textbook.wide { max-width: 1240px !important; }
     .ln-textbook.wide .tbl-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
     .ln-textbook.wide .tb-ch-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 36px; align-items: start; }
@@ -1052,7 +1061,37 @@ function SectionNav({ sections, ctx }) {
   );
 }
 
+function ChapterToc({ current, ctx }) {
+  let n = 0;
+  return (
+    <nav className="tb-chtoc" aria-label="Оглавление учебника" data-testid="tb-side-toc">
+      <div className="tb-secnav-head"><span>Оглавление</span></div>
+      {PARTS.map((p) => (
+        <div key={p.id}>
+          <div className="tb-chtoc-part">{p.title}</div>
+          <ol className="tb-secnav-list">
+            {p.chapters.map((c) => {
+              n += 1;
+              const on = c.id === current;
+              return (
+                <li key={c.id}>
+                  <button type="button" className="tb-chtoc-row" aria-current={on ? 'page' : undefined} data-status={c.status}
+                    onClick={() => { if (on) return; Audio.play('paper'); ctx.go({ kind: 'chapter', id: c.id }); }}>
+                    <span className={`tb-secnav-no${ctx.progress.read[c.id] ? ' done' : ''}`} aria-hidden="true">{ctx.progress.read[c.id] ? <Check size={12} /> : n}</span>
+                    <span>{c.title}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 function ChapterPage({ id, ctx }) {
+  const wide = useWide();
   const ch = CHAPTER_BY_ID[id];
   const blocks = CHAPTER_BLOCKS[id];
   const idx = CHAPTERS.findIndex((c) => c.id === id);
@@ -1067,7 +1106,10 @@ function ChapterPage({ id, ctx }) {
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
         <div className="tb-ch-grid">
-          <aside className="tb-ch-aside"><SectionNav sections={CHAPTER_SECTIONS[id]} ctx={{ ...ctx, chapter: id }} /></aside>
+          <aside className="tb-ch-aside">
+            {wide && ctx.embedded && <ChapterToc current={id} ctx={ctx} />}
+            <SectionNav sections={CHAPTER_SECTIONS[id]} ctx={{ ...ctx, chapter: id }} />
+          </aside>
           <div className="tb-ch-main tb-body"><Blocks blocks={blocks} ctx={{ ...ctx, chapter: id }} top /></div>
         </div>
       ) : (

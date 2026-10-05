@@ -117,12 +117,12 @@ export function TasksEntry({ learn, onOpen, now = Date.now() }) {
 }
 
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------ */
-export function QuestsCard({ learn, now = Date.now() }) {
+export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
   const quests = questsFor(learn, now);
   const g = goalToday(learn, now);
   const done = quests.filter((q) => q.done).length;
   return (
-    <Card style={{ margin: '0 0 14px' }} data-testid="quests">
+    <Card style={{ margin: '0 0 14px' }} data-testid={testid}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div className="ds-h3">Задания дня</div>
         <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="quests-done">{done}/3</span>

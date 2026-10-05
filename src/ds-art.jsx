@@ -6,17 +6,23 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Mascot, OutfitContext, mascotHeight } from './mascot.jsx';
 
-export function useReducedMotion() {
-  const q = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  const [reduced, setReduced] = useState(() => !!(q && q.matches));
+// медиазапрос как состояние: меняется вместе с окном или настройкой системы
+export function useMedia(query) {
+  const q = useMemo(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query) : null), [query]);
+  const [on, setOn] = useState(() => !!(q && q.matches));
   useEffect(() => {
     if (!q) return undefined;
-    const f = () => setReduced(q.matches);
+    const f = () => setOn(q.matches);
+    f();
     if (q.addEventListener) q.addEventListener('change', f);
     return () => { if (q.removeEventListener) q.removeEventListener('change', f); };
   }, [q]);
-  return reduced;
+  return on;
 }
+export const useReducedMotion = () => useMedia('(prefers-reduced-motion: reduce)');
+// ПК: от 1024 px Путь — в две колонки, у учебника оглавление сбоку
+export const WIDE_QUERY = '(min-width: 1024px)';
+export const useWide = () => useMedia(WIDE_QUERY);
 
 export const ART_CSS = `
   @keyframes ds-smoke { 0% { transform: translate(0, 0) scale(.6); opacity: 0 } 25% { opacity: .55 } 100% { transform: translate(6px, -22px) scale(1.5); opacity: 0 } }
