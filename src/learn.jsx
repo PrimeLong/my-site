@@ -18,6 +18,7 @@ import {
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
 } from 'lucide-react';
 import { askSave } from './lib/guest.js';
+import { track } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
@@ -48,7 +49,7 @@ import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx, modelBadge }
 import { hasModel, partsOfLesson } from './learn/model.js';
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
-import { ReportFlag, ReportsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
+import { ReportFlag, ReportsView, AnalyticsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet } from './ds.jsx';
@@ -559,11 +560,13 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     if (r.empty) { setFb({ ok: false, why: null, empty: true }); return; }
     const a = acc.current;
     // урок начат — с первого ответа
-    if (!started) { setStarted(true); update(startLesson); }
+    if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
     const firstTime = !(orig in a.first);
     const ms = Date.now() - a.itemStart;
     if (firstTime) {
       a.first[orig] = r.ok;
+      // аналитика без персональных данных: верно ли с первой попытки — по упражнению (api/events.js)
+      track(r.ok ? 'ex_first_try_ok' : 'ex_first_try_fail', { exercise: String(cur.of || cur.id), ok: r.ok, ms });
       setLog((l) => [...l, r.ok]);
       if (r.ok && run3 >= 1) setPulse((p) => p + 1);
       // встреченное упражнение: в повторение и проверки первыми пойдут те, что виделись реже
@@ -611,6 +614,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     const done = { accuracy, now, seconds: ms / 1000, kind: lesson ? lesson.kind : null, mode: run.mode };
     let apply;
     if (run.mode === 'lesson') {
+      track('lesson_done', { lesson: run.lessonId, ms });
       xp = lessonXp({ firstTry: firstOk, replay, diamond });
       apply = (s) => finishLesson(s, run.lessonId, { xp, ...done, diamond });
       dropResume(run.lessonId);
@@ -1500,7 +1504,7 @@ function StudyWeeks({ learn }) {
   );
 }
 
-function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onReports }) {
+function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onReports, onAnalytics = () => {} }) {
   // владельцы (OWNER_LOGINS на сервере) видят сообщения об ошибках
   const [owner, setOwner] = useState(false);
   useEffect(() => {
@@ -1562,6 +1566,8 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
         text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
+      {owner && <MenuCard icon={Target} tone="var(--u-ink)" title="Аналитика" data-testid="prof-analytics" data-nav-target="analytics" right={arrow}
+        text="Воронка за 30 дней и 20 самых трудных упражнений — без персональных данных" onClick={() => { Audio.play('paper'); onAnalytics(); }} />}
       <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход; скачать или удалить свои данные" onClick={() => setAccount(true)} />
       <MenuCard icon={ShieldCheck} tone="var(--ds-ink2)" title={PRIVACY_TITLE} data-testid="prof-privacy" right={arrow} text="Что хранится, где, зачем и сколько" onClick={() => { Audio.play('paper'); setPrivacy(true); }} />
       {privacy && <PrivacyPage onClose={() => setPrivacy(false)} />}
@@ -1607,6 +1613,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   const [book, setBook] = useState(null);
   const [bookKey, setBookKey] = useState(0);
   const [reports, setReports] = useState(false);
+  const [analytics, setAnalytics] = useState(false);
   const [chest, setChest] = useState(null);
   // утренний экран серии: один раз в день, при первом открытии Пути, если серия уже идёт
   const [morning, setMorning] = useState(() => {
@@ -1617,7 +1624,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   });
   const openBook = (page, resume = false) => { setBook({ page, resume }); setBookKey((k) => k + 1); window.scrollTo(0, 0); };
   // смена вкладки закрывает подэкраны
-  useEffect(() => { setBook(null); setSheet(null); setChest(null); setReports(false); }, [tab]);
+  useEffect(() => { setBook(null); setSheet(null); setChest(null); setReports(false); setAnalytics(false); }, [tab]);
   // нажата вкладка внизу, пока открыт учебник поверх (в том числе та же самая) — закрываем его
   useEffect(() => { if (closeTick) { setBook(null); setSheet(null); } }, [closeTick]);
   // учебник поверх вкладки — нижняя панель отмечает «Учебник»
@@ -1649,7 +1656,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         </div>
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
-      <div inert={!!run || !!sheet || !!book || !!chest || morning || reports} style={book || reports ? { display: 'none' } : undefined}>
+      <div inert={!!run || !!sheet || !!book || !!chest || morning || reports || analytics} style={book || reports || analytics ? { display: 'none' } : undefined}>
         {tab === 'path' && guest && <GuestSave learn={learn} />}
         {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           visible={!run && !sheet && !book && !chest && !morning} />}
@@ -1657,9 +1664,10 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
         {tab === 'tasks' && <TasksView learn={learn} onStart={start} onOpenBook={openBook} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}
-          onReports={() => { setReports(true); window.scrollTo(0, 0); }} />}
+          onReports={() => { setReports(true); window.scrollTo(0, 0); }} onAnalytics={() => { setAnalytics(true); window.scrollTo(0, 0); }} />}
       </div>
       {reports && <ReportsView onBack={() => { Audio.play('paper'); setReports(false); }} />}
+      {analytics && <AnalyticsView onBack={() => { Audio.play('paper'); setAnalytics(false); }} />}
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update} onClose={() => setChest(null)} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook} />}

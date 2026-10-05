@@ -238,3 +238,35 @@ export async function deleteUserData({ login, playerId }) {
   for (const id of mine) await deleteReport(id);
   return true;
 }
+
+/* Счётчики аналитики (api/events.js): без логина и адреса — только числа. Ключи событий
+   живут 120 дней; счётчики упражнений и их список — бессрочно (их немного). */
+const COUNTER_TTL = 60 * 60 * 24 * 120;
+export async function bumpCounters(keys, ttlSeconds = COUNTER_TTL) {
+  if (redis) {
+    for (const k of keys) {
+      const n = await redis.incr(`cnt:${k}`);
+      if (n === 1 && ttlSeconds) await redis.expire(`cnt:${k}`, ttlSeconds);
+    }
+    return true;
+  }
+  keys.forEach((k) => mem.set(`cnt:${k}`, (mem.get(`cnt:${k}`) || 0) + 1));
+  return true;
+}
+export async function readCounters(keys) {
+  if (!keys.length) return {};
+  if (redis) {
+    const vals = await redis.mget(...keys.map((k) => `cnt:${k}`));
+    return Object.fromEntries(keys.map((k, i) => [k, Number(vals[i]) || 0]));
+  }
+  return Object.fromEntries(keys.map((k) => [k, mem.get(`cnt:${k}`) || 0]));
+}
+export async function addToSet(name, member) {
+  if (redis) return redis.sadd(`set:${name}`, member);
+  const s = mem.get(`set:${name}`) || new Set(); s.add(member); mem.set(`set:${name}`, s);
+  return true;
+}
+export async function setMembers(name) {
+  if (redis) return (await redis.smembers(`set:${name}`)) || [];
+  return [...(mem.get(`set:${name}`) || [])];
+}

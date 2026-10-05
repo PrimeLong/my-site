@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, Suspense } from 'react';
 import {
   syncProgress, fetchRoom,
-  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot,
+  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot, track,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
@@ -19,6 +19,7 @@ import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
 import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
+import { checkReturn } from './lib/retention.js';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
@@ -2009,6 +2010,8 @@ export default function MacroSimulator() {
   React.useEffect(() => { if (!account && !guest) { setGateScreen('hello'); setGate(true); } }, [account, guest]);
   // детский режим и имя — с сервера при каждом запуске (профиль мог поменяться на другом устройстве)
   React.useEffect(() => { refreshAccount(); }, []);
+  // воронка: вернулся ли человек на следующий день и через неделю (src/lib/retention.js)
+  React.useEffect(() => { checkReturn(track); }, []);
   // тёмная тема обучения переключается в профиле — перерисовать оболочку
   const [learnTick, setLearnTick] = useState(0);
   // вернулись из Лаборатории, партии или «Своего дела», открытых из учебника, — снова в учебник

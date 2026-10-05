@@ -11,7 +11,7 @@ import { Flag, ArrowLeft, Check, Copy, RotateCcw, X, Trash2 } from 'lucide-react
 import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton, Card, Sheet, TopBar, Heading } from './ds.jsx';
 import { loadAccount } from './account.jsx';
-import { sendReport, listReports, setReportStatus, deleteReport } from './lib/client.js';
+import { sendReport, listReports, setReportStatus, deleteReport, eventsReport } from './lib/client.js';
 import { isRude, RUDE_MESSAGE } from './lib/moderation.js';
 
 export const REASONS = [
@@ -137,6 +137,47 @@ export function reportText(r) {
   Object.entries(CTX_LABEL).forEach(([k, label]) => { if (r.context && r.context[k]) lines.push(`${label}: ${r.context[k]}`); });
   lines.push(`id: ${r.id}`);
   return lines.join('\n');
+}
+
+/* Аналитика для владельцев (api/events.js): воронка за 30 дней и 20 самых трудных упражнений —
+   только счётчики, без логинов и адресов. */
+export function AnalyticsView({ onBack }) {
+  const account = loadAccount();
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { eventsReport(account && account.token).then(setData).catch((e) => setErr(e.message)); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const top = data ? Math.max(1, ...data.funnel.map((f) => f.count)) : 1;
+  return (
+    <div className="rw-page" data-testid="analytics" role="dialog" aria-label="Аналитика">
+      <div className="rw-page-in">
+        <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Аналитика" />
+        <div className="ds-sub" style={{ fontSize: 14, margin: '8px 0 12px' }}>Только счётчики: без логинов, имён и адресов. Данные — за последние 30 дней.</div>
+        {err && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14 }}>{err}</div>}
+        <Card style={{ marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Воронка</div>
+          {!data ? <div className="ds-sub">Загружаем…</div> : (
+            <div data-testid="analytics-funnel" style={{ display: 'grid', gap: 6 }}>
+              {data.funnel.map((f) => (
+                <div key={f.event} data-event={f.event} style={{ fontSize: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{f.label}</span><b className="ds-num">{f.count}</b></div>
+                  <div style={{ height: 6, background: 'var(--ds-card2)', marginTop: 3 }}><div style={{ height: '100%', width: `${(f.count / top) * 100}%`, background: 'var(--u)' }} /></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>20 самых трудных упражнений</div>
+          {!data ? <div className="ds-sub">Загружаем…</div> : !data.hardest.length ? <div className="ds-sub" data-testid="analytics-empty">Пока мало ответов: в список попадают упражнения, где ответили хотя бы 5 раз.</div> : (
+            <ol data-testid="analytics-hardest" style={{ margin: 0, paddingLeft: 22, fontSize: 14, display: 'grid', gap: 4 }}>
+              {data.hardest.map((x) => <li key={x.id}><span className="ds-num">{x.id}</span> — верно с первой попытки {Math.round(x.share * 100)}% ({x.correct} из {x.total})</li>)}
+            </ol>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
 }
 
 export function ReportsView({ onBack }) {

@@ -168,3 +168,14 @@ export const setReportStatus = (session, id, status) => post({ action: 'status',
 export const deleteReport = (session, id) => post({ action: 'delete', session, id }, REPORTS_API);
 // «Это ошибка фильтра»: имя не прошло проверку на грубые слова — без аккаунта
 export const reportFilter = (login, name, screen) => post({ action: 'filter', login, name, screen }, REPORTS_API);
+
+/* Аналитика без персональных данных (api/events.js): событие и, если есть, урок, упражнение,
+   верно ли с первой попытки и время. Ни логина, ни playerId — только счётчики. Ошибки не
+   важны: аналитика не должна мешать учёбе. */
+export function track(event, extra = {}) {
+  try {
+    if (typeof fetch !== 'function') return;
+    fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, ...extra }), keepalive: true }).catch(() => {});
+  } catch { /* нет сети — не важно */ }
+}
+export const eventsReport = (session) => post({ action: 'report', session }, '/api/events');

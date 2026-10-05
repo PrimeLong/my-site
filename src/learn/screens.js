@@ -28,5 +28,7 @@ export const SCREENS = {
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
   // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
   reports: { from: ['profile'], back: 'profile', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },
+  // и аналитика без персональных данных: воронка и трудные упражнения (api/events.js)
+  analytics: { from: ['profile'], back: 'profile', owner: true, title: 'Аналитика', testid: 'analytics' },
 };
 export const TABS = Object.keys(SCREENS).filter((k) => SCREENS[k].root && !SCREENS[k].gate);

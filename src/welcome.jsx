@@ -16,6 +16,7 @@ import { dsThemeId } from './ds-tokens.js';
 import { loadProgress, saveProgress } from './textbook/progress.js';
 import { setGoal, setProfile, PROFILE_GOAL_LABEL, LESSONS_FOR_MINUTES } from './textbook/learn-state.js';
 import { startGuest, endGuest } from './lib/guest.js';
+import { track } from './lib/client.js';
 
 // ответы первого запуска: после регистрации они уходят в программу ученика (learn.profile)
 const ONBOARD_KEY = 'ems-onboarding';
@@ -96,7 +97,7 @@ function Hello({ go }) {
         <div style={{ marginTop: 14, width: '100%' }}><Guilloche height={20} /></div>
       </div>
       <div className="wl-foot">
-        <Button wide onClick={() => { Audio.prime(); Audio.play('click'); go('goal'); }}>Начать</Button>
+        <Button wide onClick={() => { Audio.prime(); Audio.play('click'); track('welcome_start'); go('goal'); }}>Начать</Button>
         <Button variant="secondary" wide onClick={() => { Audio.prime(); Audio.play('click'); go('login'); }}>У меня уже есть аккаунт</Button>
       </div>
     </div>
@@ -129,7 +130,7 @@ function Goal({ go, plan, setPlan }) {
         </div>
       </div>
       <div className="wl-foot">
-        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); startGuest(); }}>Продолжить</Button>
+        <Button wide disabled={!ok} onClick={() => { Audio.play('click'); saveOnboarding(plan); applyPlan(plan); track('goal_done'); startGuest(); }}>Продолжить</Button>
       </div>
     </div>
   );
@@ -150,6 +151,7 @@ function AuthForm({ mode, go, plan, onCancel = null }) {
   const [shown, setShown] = useState(null);
   const finish = () => {
     if (mode === 'register' && plan.minutes) applyPlan(plan);
+    if (mode === 'register') track('register_done');
     // аккаунт уже сохранён и забрал прогресс гостя (тот же playerId) — гостем больше не считаем
     endGuest();
     window.dispatchEvent(new Event('ems-account-ready'));

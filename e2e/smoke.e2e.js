@@ -1897,8 +1897,15 @@ test('сообщить об ошибке: флажок на упражнении
       if (body.action === 'me') return JSON.stringify({ owner: true });
       if (body.action === 'list') return JSON.stringify({ reports: body.status === 'done' ? [] : reports, counts: { new: 2, done: 0 } });
     }
+    // аналитика: события уходят без логина и сессии; отчёт — владельцу
+    if (req.url().includes('/api/events') && body) {
+      if (body.action === 'report') return JSON.stringify({ funnel: [{ event: 'welcome_start', label: 'Нажали «Начать»', count: 40 }, { event: 'lesson_done', label: 'Прошли урок', count: 25 }],
+        hardest: [{ id: 'sd-q2', total: 12, correct: 3, share: 0.25 }] });
+      events.push(body);
+    }
     return '{}';
   };
+  const events = [];
   const { errors } = await openApp(page, '/', api, { tab: 'path' });
   await startLesson(page, 'sc-i1');
   await page.getByRole('button', { name: 'Понятно' }).click();
@@ -1949,6 +1956,16 @@ test('сообщить об ошибке: флажок на упражнении
   await view.locator('[data-filter="done"]').click();
   await expect(view.getByTestId('reports-empty')).toBeVisible();
   await view.getByRole('button', { name: 'Назад' }).click();
+  await expect(page.getByTestId('learn-profile')).toBeVisible();
+  // аналитика без персональных данных: в событиях нет ни логина, ни сессии
+  expect(events.some((e) => e.event === 'lesson_start' && e.lesson === 'sc-i1')).toBe(true);
+  expect(events.some((e) => e.event === 'ex_first_try_fail' && e.exercise)).toBe(true);
+  events.forEach((e) => { expect(e.session).toBeUndefined(); expect(e.login).toBeUndefined(); expect(e.playerId).toBeUndefined(); });
+  await page.getByTestId('prof-analytics').click();
+  const an = page.getByTestId('analytics');
+  await expect(an.getByTestId('analytics-funnel').locator('[data-event]')).toHaveCount(2);
+  await expect(an.getByTestId('analytics-hardest')).toContainText('sd-q2 — верно с первой попытки 25% (3 из 12)');
+  await an.getByRole('button', { name: 'Назад' }).click();
   await expect(page.getByTestId('learn-profile')).toBeVisible();
   expect(errors).toEqual([]);
 });
