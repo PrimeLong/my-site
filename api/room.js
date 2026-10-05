@@ -4,6 +4,7 @@
 import { randomUUID, randomBytes } from 'node:crypto';
 import { getRoom, setRoom, withRoom, hasKv, addPublicRoom, removePublicRoom, listPublicRoomIds } from './_lib/store.js';
 import { userBySession, bumpStats } from './_lib/accounts.js';
+import { kidsModeOf } from '../src/lib/age.js';
 
 import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, botFinanceMinistry,
   describeHumanCbAction, describeHumanMofAction, redescribeCbAction, redescribeMofAction,
@@ -177,7 +178,8 @@ function sanitizePresident(v, economy) {
 const SCENARIO_IDS = new Set(SCENARIOS.filter((sc) => !sc.noRoles).map((sc) => sc.id));
 export function freshRoom(opts) {
   const scenario = SCENARIO_IDS.has(opts.scenario) ? opts.scenario : 'sandbox';
-  const economy = makeInitialEconomy(scenario);
+  // детский режим (src/lib/age.js): партия без войн, переворотов и несвободных режимов
+  const economy = { ...makeInitialEconomy(scenario), ...(opts.kids ? { kidsMode: true } : {}) };
   const mode = opts.mode === 'trader' ? 'trader' : 'policy';
   const seats = SEATS_BY_MODE[mode];
   const zip = (v) => Object.fromEntries(seats.map((sx) => [sx, v]));
@@ -621,7 +623,7 @@ async function handleRequest(req, res) {
           president: !!r.president, quarterIndex: r.quarterIndex, created: r.created,
           seatsTotal: seatsList.length, seatsFree: seatsList.filter((sx) => !r.seats[sx]).length,
           activeCrises: (r.economy && r.economy.activeCrises) || [],
-          scenario: r.scenario || 'sandbox',
+          scenario: r.scenario || 'sandbox', kids: !!(r.economy && r.economy.kidsMode),
         });
       }
       rooms.sort((a, b) => b.created - a.created);
@@ -663,7 +665,7 @@ async function handleRequest(req, res) {
     const president = body.president === null || (body.president && body.president.enabled === false)
       ? null : (body.president || {});
     const base = freshRoom({ id, mode: body.mode, difficulty: body.difficulty, goalCb: body.goalCb, goalMof: body.goalMof,
-      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public, scenario: body.scenario });
+      cbPersona: body.cbPersona, mofPersona: body.mofPersona, president, public: !!body.public, scenario: body.scenario, kids: !!body.kids });
     const room = { ...base, presidentPlan: planPresident(base, base.economy, {}) };
     await setRoom(id, room);
     if (room.isPublic) await addPublicRoom(id);
@@ -682,6 +684,8 @@ async function handleRequest(req, res) {
       if (!seatsFor(room).includes(seat)) return { error: 'Эта роль недоступна в этом режиме партии', status: 400 };
       if (seat === 'president' && !room.president) return { error: 'В этой комнате президента нет', status: 400 };
       if (room.seats[seat]) return { error: 'Место уже занято', status: 409 };
+      // игроку в детском режиме — только партии в детском режиме
+      if (kidsModeOf(user) && !(room.economy && room.economy.kidsMode)) return { error: 'Эта партия без детского режима — выберите другую', status: 403 };
       const denied = seatAccessError(room, seat, user.login);
       if (denied) return { error: denied, status: 409 };
       firstTime = !(room.everJoined || []).includes(user.login);

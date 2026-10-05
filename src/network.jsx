@@ -10,7 +10,7 @@ import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
   AchievementsModal, Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
-  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
+  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, accountKidsMode, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
 import {
   ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, ChartFallback, ChartPanel,
@@ -39,6 +39,8 @@ function NetworkLobby({ onEnter }) {
   // по сети играют только с профилем: место в комнате закрепляется за ним,
   // и выйти, чтобы тут же зайти «другим игроком», не выйдет (см. api/room.js)
   const account = useAccount();
+  // детский режим: свои комнаты — детские, в браузере — только детские (сервер проверяет то же)
+  const kidsMode = accountKidsMode(account);
   const [showAuth, setShowAuth] = useState(false);
   const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
@@ -167,7 +169,7 @@ function NetworkLobby({ onEnter }) {
         cbPersona: custom ? asId(cbPersona) : undefined,
         mofPersona: custom ? asId(mofPersona) : undefined,
         president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined },
-        scenario: custom ? netScenario : 'sandbox' });
+        scenario: custom ? netScenario : 'sandbox', kids: kidsMode });
       setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
       setSeat(seatsForMode(mode)[0]);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -473,11 +475,11 @@ function NetworkLobby({ onEnter }) {
             <div style={{ fontSize: 12, color: COLOR.faint }}>Сейчас открытых комнат нет — создайте свою на вкладке «Создать комнату» и включите «Общедоступная».</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {publicRooms.map((r) => (
+              {publicRooms.filter((r) => !kidsMode || r.kids).map((r) => (
                 <div key={r.id} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px',
                   background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                   <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{r.id}</span>
-                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
+                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}{r.kids ? ' · детская' : ''}</span>
                   {r.scenario && r.scenario !== 'sandbox' && (() => {
                     const sc = SCENARIOS.find((x) => x.id === r.scenario);
                     return sc ? <span style={{ color: sc.level >= 4 ? COLOR.rust : COLOR.gold }} title={sc.levelNote}>{sc.title} · {sc.levelLabel.toLowerCase()}</span> : null;

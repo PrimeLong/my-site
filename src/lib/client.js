@@ -135,7 +135,8 @@ export const deleteTycoonSlot = (playerId, slot) =>
 
 /* Профиль игрока: регистрация, вход, изменение имени и значка, выход. */
 const ACCOUNT_API = '/api/account';
-export const accountRegister = (login, password, name, playerId, consent = false) => post({ action: 'register', login, password, name, playerId, consent }, ACCOUNT_API);
+// fields: login, password, name, playerId, consent, birthYear
+export const accountRegister = (fields) => post({ action: 'register', ...fields }, ACCOUNT_API);
 export const accountLogin = (login, password) => post({ action: 'login', login, password }, ACCOUNT_API);
 export const accountMe = (token) => post({ action: 'me', token }, ACCOUNT_API);
 export const accountUpdate = (token, patch) => post({ action: 'update', token, ...patch }, ACCOUNT_API);

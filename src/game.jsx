@@ -18,7 +18,7 @@ import {
   fmtIndex, fmtMln, quarterLabel, defaultDecisions, getCbPersona, personaAfterElection,
   getMofPersona, MAP_REGIONS, botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   redescribeMofAction, simulateQuarter, makeInitialEconomy, leverPreview, pickPromises,
-  evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
+  evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, kidsBlocked, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
   botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
@@ -31,7 +31,7 @@ import {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
   GlobalStyle, THEMES, StateSeal, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
-  isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount,
+  isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount, accountKidsMode,
   DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel, loadFold, saveFold,
 } from './MacroSimulator.jsx';
 
@@ -1399,7 +1399,8 @@ function RegimeLadder({ economy }) {
   const regime = economy.politicalRegime || 'democracy';
   const tension = Math.round(economy.politicalTension || 0);
   const info = POLITICAL_REGIME_INFO[regime] || {};
-  const next = regime === 'democracy'
+  // детский режим: дальше конфликта ветвей власти лестница не идёт (docs/world.md)
+  const next = economy.kidsMode && regime !== 'democracy' ? null : regime === 'democracy'
     ? { label: 'конфликт ветвей власти', need: 'напряжённость ≥ 62', at: 62 }
     : regime === 'crisis'
       ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
@@ -1553,7 +1554,8 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
     + (directive ? PRES_DIRECTIVE_COST : 0);
   const free = capital - reserved;
   const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const groupActions = (g) => PRESIDENT_ACTIONS.filter((a) => a.group === g);
+  // детский режим: указов о войне, роспуске парламента, подавлении и параде в списке нет
+  const groupActions = (g) => PRESIDENT_ACTIONS.filter((a) => a.group === g && !(economy.kidsMode && kidsBlocked(a)));
   const cbP = getCbPersona(cbPersonaId); const mofP = getMofPersona(mofPersonaId);
 
   const staffBlock = (kind, list, current, pending, setPending, tenure) => {
@@ -1620,7 +1622,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
       <RegimeLadder economy={economy} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, margin: '12px 0 10px' }}>
-        {PRES_TABS.filter((t) => !(t.id === 'war' && economy.economyOnly)).map((t) => (
+        {PRES_TABS.filter((t) => !(t.id === 'war' && (economy.economyOnly || economy.kidsMode))).map((t) => (
           <button type="button" key={t.id} className={`ems-tab ${tab === t.id ? 'active' : ''}`} aria-pressed={tab === t.id} style={{ fontSize: 12, padding: '4px 9px' }}
             onClick={() => { Audio.play('tab'); setTab(t.id); }}>{t.label}</button>
         ))}
@@ -4406,10 +4408,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     return daily ? runSeeded(daily, 'pre', make) : make();
   }, []);
   const initEconomy = useMemo(() => {
-    if (initial) return initial.economy;
+    // детский режим «Мира» — по профилю (до 16 лет всегда); и для сохранённой партии тоже
+    const kids = !!setup.kidsMode || accountKidsMode();
+    if (initial) return kids ? { ...initial.economy, kidsMode: true } : initial.economy;
     const e0 = pre ? pre.economy : runSeeded(seedSrc, 'start', () => makeInitialEconomy(setup.scenario, drill ? drill.overrides : null));
     // «Только экономика» — настройка партии: война заморожена (см. simulateQuarter)
-    return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
+    return { ...e0, ...(setup.economyOnly ? { economyOnly: true } : {}), ...(kids ? { kidsMode: true } : {}) };
   }, []);
   // у задачи — вводный отрезок: как страна пришла к завязке (см. drillPrehistory)
   const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory

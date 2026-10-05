@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox } from './account.jsx';
+import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, BirthYearField, birthYearOf } from './account.jsx';
+import { validBirthYear } from './lib/age.js';
 import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
@@ -103,6 +104,7 @@ function AuthForm({ mode, go, plan }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [consent, setConsent] = useState(false);
+  const [year, setYear] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shown, setShown] = useState(null);
@@ -119,7 +121,7 @@ function AuthForm({ mode, go, plan }) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const r = await authenticate(mode, { login, password, name, code, consent });
+      const r = await authenticate(mode, { login, password, name, code, consent, birthYear: birthYearOf(year) });
       Audio.play('up');
       if (r.recoveryCode) setShown(r); else finish();
     } catch (err) { setError(err.message); Audio.play('down'); setBusy(false); }
@@ -137,7 +139,8 @@ function AuthForm({ mode, go, plan }) {
     );
   }
   const title = { register: 'Создайте аккаунт', login: 'Вход', recover: 'Новый пароль по коду' }[mode];
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12) && (mode !== 'register' || consent);
+  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
+    && (mode !== 'register' || (consent && validBirthYear(birthYearOf(year))));
   return (
     <div className="wl" data-testid={`welcome-${mode}`}>
       <Top onBack={() => go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello')} />
@@ -165,6 +168,7 @@ function AuthForm({ mode, go, plan }) {
             <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
           </label>
         )}
+        {mode === 'register' && <BirthYearField value={year} set={setYear} />}
         {mode === 'register' && <div style={{ marginTop: 12 }}><ConsentBox on={consent} set={setConsent} /></div>}
         {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div className="wl-err" role="alert">{error}</div>)}
         <div style={{ flex: 1 }} />

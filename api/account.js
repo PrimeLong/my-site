@@ -8,6 +8,7 @@
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
 import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData } from './_lib/store.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
+import { validBirthYear, isKid } from '../src/lib/age.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
   newRecoveryCode, hashRecovery, checkRecovery, sessionValue,
@@ -53,6 +54,8 @@ async function handleRequest(req, res) {
     }
     // регистрация — только с согласием со страницей «Данные и конфиденциальность»
     if (body.consent !== true) return res.status(400).json({ error: 'Отметьте согласие со страницей «Данные и конфиденциальность»' });
+    // год рождения — для детского режима «Мира» (до 16 лет) и согласия родителя (до 14)
+    if (!validBirthYear(body.birthYear)) return res.status(400).json({ error: 'Укажите год рождения' });
     const name = cleanName(body.name) || login;
     // ни логин, ни имя — без грубых слов (их видят в сетевых партиях и в сообщениях об ошибках)
     if (isRude(login) || isRude(name)) return res.status(400).json({ error: RUDE_NAME });
@@ -66,7 +69,7 @@ async function handleRequest(req, res) {
     // почты у игры нет, поэтому доступ восстанавливается кодом, который показываем один раз
     const recoveryCode = newRecoveryCode();
     const user = { login, name, emblem: 'star', salt, hash, ...hashRecovery(recoveryCode), epoch: 0, playerId,
-      createdAt: Date.now(), consentAt: Date.now(), stats: emptyStats(), fails: 0, lockUntil: 0 };
+      birthYear: body.birthYear, createdAt: Date.now(), consentAt: Date.now(), stats: emptyStats(), fails: 0, lockUntil: 0 };
     await setUser(login, user);
     const token = await openSession(user);
     return res.status(200).json({ token, profile: publicProfile(user), recoveryCode, storage: storage() });
@@ -128,6 +131,20 @@ async function handleRequest(req, res) {
       next.name = n;
     }
     if (body.emblem !== undefined) { if (!EMBLEMS.has(body.emblem)) return res.status(400).json({ error: 'Нет такого значка' }); next.emblem = body.emblem; }
+    /* Год рождения задаётся один раз — профилям, заведённым до этого правила. Поменять его потом
+       нельзя: иначе детский режим снимался бы одной правкой. */
+    if (body.birthYear !== undefined) {
+      if (user.birthYear) return res.status(400).json({ error: 'Год рождения уже указан' });
+      if (!validBirthYear(body.birthYear)) return res.status(400).json({ error: 'Укажите год рождения' });
+      next.birthYear = body.birthYear;
+    }
+    // детский режим старше 16 — по выбору; до 16 он включён всегда
+    if (body.kidsMode !== undefined) {
+      if (typeof body.kidsMode !== 'boolean') return res.status(400).json({ error: 'Некорректный режим' });
+      const year = next.birthYear;
+      if (!body.kidsMode && (!year || isKid(year))) return res.status(403).json({ error: 'До 16 лет «Мир» — в детском режиме' });
+      next.kidsMode = body.kidsMode;
+    }
     await setUser(user.login, next);
     return res.status(200).json({ profile: publicProfile(next) });
   }

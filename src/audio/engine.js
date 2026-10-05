@@ -14,7 +14,13 @@ import { TRACK_GAIN_DB, STINGER_GAIN_DB, SFX_GAIN_DB } from './loudness.js';
    тоталитаризм и война перекрывают всё; программа стабилизации, которой начали
    верить, звучит поверх кризиса — слышно, что выход есть; ручное управление и
    предвыборная кампания окрашивают только некризисные времена. */
+// детский режим «Мира» (docs/world.md): без войны, тоталитаризма и ручного управления — и в музыке
+export const KIDS_HIDDEN_MOODS = ['war', 'totalitarian', 'authoritarian'];
 export const moodFor = (e) => {
+  if (e.kidsMode) { const m = moodForAdult(e); return KIDS_HIDDEN_MOODS.includes(m) ? 'calm' : m; }
+  return moodForAdult(e);
+};
+const moodForAdult = (e) => {
   if (e.politicalRegime === 'totalitarian') return 'totalitarian';
   const base = REGIME_MOOD[e.regime] || 'calm';
   if (base === 'war') return 'war';

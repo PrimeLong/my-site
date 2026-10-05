@@ -12,7 +12,7 @@ const call = (handler, body, ip = `10.9.0.${ipN++}`) => new Promise((resolve) =>
 let n = 0;
 // логины без времени и случайностей: одинаковые при каждом запуске
 const uniq = (p) => `${p}rep${n++}`;
-const register = async (login) => (await call(accountHandler, { action: 'register', consent: true, login, password: 'secret1', name: 'Анна', playerId: `dev-${login}` })).data.token;
+const register = async (login) => (await call(accountHandler, { action: 'register', consent: true, birthYear: 1990, login, password: 'secret1', name: 'Анна', playerId: `dev-${login}` })).data.token;
 const send = (session, extra = {}, ip) => call(reportsHandler, { action: 'send', session, reason: 'answer', comment: 'в ответе 25, а должно быть 20',
   context: { screen: 'exercise', exercise: 'sd-l1:x', lesson: 'sd-l1', answer: '25', correct: '20', build: 'abc1234', device: 'test' }, ...extra }, ip);
 
@@ -68,8 +68,8 @@ describe('сообщения об ошибках', () => {
   });
 
   it('логин и имя с грубыми словами не регистрируются', async () => {
-    expect((await call(accountHandler, { action: 'register', consent: true, login: uniq('ok'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
-    expect((await call(accountHandler, { action: 'register', consent: true, login: `fuck${n++}`, password: 'secret1', name: 'Анна' })).status).toBe(400);
+    expect((await call(accountHandler, { action: 'register', consent: true, birthYear: 1990, login: uniq('ok'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
+    expect((await call(accountHandler, { action: 'register', consent: true, birthYear: 1990, login: `fuck${n++}`, password: 'secret1', name: 'Анна' })).status).toBe(400);
   });
 
   it('«Это ошибка фильтра»: без аккаунта, с логином и именем, владелец видит его в списке', async () => {
@@ -80,7 +80,7 @@ describe('сообщения об ошибках', () => {
     expect(got && got.name).toBe('Глеб');
     expect((await call(reportsHandler, { action: 'filter' })).status).toBe(400);
     // хорошие имена фильтр больше не трогает
-    expect((await call(accountHandler, { action: 'register', consent: true, login: uniq('glebakov'), password: 'secret1', name: 'Глеб' })).status).toBe(200);
+    expect((await call(accountHandler, { action: 'register', consent: true, birthYear: 1990, login: uniq('glebakov'), password: 'secret1', name: 'Глеб' })).status).toBe(200);
   });
 
   it(`не больше ${REPORTS_PER_HOUR} сообщений в час с профиля`, async () => {

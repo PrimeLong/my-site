@@ -27,7 +27,7 @@ async function gotoApp(page, path = '/', tab = 'world') {
 const openTab = (page, tab) => page.getByTestId('bottom-nav').locator(`[data-tab="${tab}"]`).click();
 /* Вход обязателен: во всех тестах, кроме тестов первого запуска («вход: …»), пользователь уже
    вошёл — аккаунт лежит на устройстве до загрузки страницы. */
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star' };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 test.beforeEach(async ({ page }, info) => {
   if (info.title.startsWith('вход:')) return;
   await page.context().addInitScript((a) => { try { localStorage.setItem('ems-account', JSON.stringify(a)); } catch { /* нет хранилища */ } }, ACCOUNT);
@@ -286,6 +286,26 @@ test('президент ведёт наступление на карте: це
   expect(errors).toEqual([]);
 });
 
+test('детский режим «Мира»: без войны на карте и без вкладки «Война» у президента', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'логика та же, проверяется на ширине компьютера');
+  await page.context().addInitScript((a) => { try { localStorage.setItem('ems-account', JSON.stringify(a)); } catch { /* нет хранилища */ } }, { ...ACCOUNT, kidsMode: true });
+  const { errors } = await openApp(page);
+  await page.getByText('Партия у руля страны', { exact: true }).click();
+  await page.getByText('Президент', { exact: true }).click();
+  // вместо «Только экономика» — пояснение детского режима
+  await expect(page.getByTestId('kids-note')).toContainText('Без войн, переворотов');
+  await expect(page.getByRole('checkbox', { name: /Только экономика/ })).toHaveCount(0);
+  await page.getByRole('checkbox', { name: /Обучение по экрану/ }).uncheck();
+  await page.getByRole('button', { name: 'Принять полномочия' }).click();
+  await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Война', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Распустить парламент')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Карта', exact: true }).click();
+  await page.getByRole('button', { name: /^Норланд/ }).first().click();
+  await expect(page.getByRole('button', { name: /Объявить войну/ })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('вызов дня: карточка в меню, общий старт и счётчик кварталов', async ({ page }) => {
   const { errors } = await openApp(page);
   await expect(page.getByTestId('daily-card')).toContainText('Вызов дня');
@@ -413,6 +433,10 @@ test('вход: первый запуск — приветствие, цель, 
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
   await reg.getByLabel('Имя').fill('Анна');
+  // год рождения: до 16 лет «Мир» — в детском режиме, подсказка говорит об этом сразу
+  await reg.getByTestId('birth-year').fill('2013');
+  await expect(reg.getByText(/детском режиме/)).toBeVisible();
+  await reg.getByTestId('birth-year').fill('2000');
   // без согласия со страницей «Данные и конфиденциальность» аккаунт не создать; страница открывается из галочки
   await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
   await reg.getByTestId('consent-privacy').click();
@@ -1860,6 +1884,7 @@ test('вход: программа — вступительный тест, су
   const reg = page.getByTestId('welcome-register');
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByTestId('birth-year').fill('2000');
   await reg.getByTestId('consent').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   await page.getByRole('button', { name: 'Я сохранил код' }).click();

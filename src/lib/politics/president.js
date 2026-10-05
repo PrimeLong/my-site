@@ -524,9 +524,15 @@ export const PRESIDENT_ACTIONS = [
 export const PRES_BY_ID = {};
 PRESIDENT_ACTIONS.forEach((a) => { PRES_BY_ID[a.id] = a; });
 
+/* Детский режим «Мира» (игроку меньше 16 или режим включён в профиле): без войн, роспуска
+   парламента, силового подавления и военных парадов — остаётся экономика, выборы, реформы и
+   дипломатия. См. docs/world.md, раздел «Детский режим». */
+export const KIDS_BLOCKED_ACTIONS = new Set(['dissolve', 'crackdown', 'military_parade']);
+export const kidsBlocked = (a) => a.group === 'war' || KIDS_BLOCKED_ACTIONS.has(a.id);
 export const presActionAvailable = (a, s, cooldowns) => {
   // «Только экономика»: военные указы заморожены
   if (a.group === 'war' && s.economyOnly) return false;
+  if (s.kidsMode && kidsBlocked(a)) return false;
   if (a.once && (s.reforms || {})[a.id] !== undefined) return false;
   if ((cooldowns[`pres:${a.id}`] || 0) > 0) return false;
   if (a.requires && !a.requires(s)) return false;

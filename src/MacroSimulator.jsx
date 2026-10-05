@@ -17,13 +17,13 @@ import {
 // звуковой движок подгружается по первому клику — в стартовом файле только обёртка
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
-import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon } from './account.jsx';
+import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
-export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
+export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, accountKidsMode, EMBLEMS } from './account.jsx';
 
 export { Audio };
 
@@ -1542,6 +1542,8 @@ function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = nu
   const [tour, setTour] = useState(() => loadRolesPlayed().length === 0);
   // «Только экономика»: война заморожена — ни нападений, ни указов о ней, ни кнопок на карте
   const [economyOnly, setEconomyOnly] = useState(false);
+  // детский режим «Мира» (до 16 лет всегда, старше — в профиле): войн нет и так
+  const kidsMode = accountKidsMode(useAccount());
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -1864,7 +1866,13 @@ function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = nu
             </span>
           </label>
         )}
-        {role !== 'entrepreneur' && (
+        {role !== 'entrepreneur' && kidsMode && (
+          <div data-testid="kids-note" style={{ padding: '11px 13px', marginBottom: 12, borderRadius: 10, border: `1px solid ${COLOR.border}`, fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>
+            <span style={{ fontSize: 13, color: COLOR.text, fontWeight: 600 }}>Детский режим</span>
+            <span style={{ display: 'block', marginTop: 2 }}>Без войн, переворотов и несвободных режимов: экономика, выборы, реформы и торговля. Меняется в профиле.</span>
+          </div>
+        )}
+        {role !== 'entrepreneur' && !kidsMode && (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px', marginBottom: 12, borderRadius: 10,
             border: `1px solid ${economyOnly ? COLOR.gold : COLOR.border}`, background: economyOnly ? COLOR.goldDim : 'transparent', cursor: 'pointer' }}>
             <input type="checkbox" checked={economyOnly} onChange={(e) => { Audio.play('tick'); setEconomyOnly(e.target.checked); }}
@@ -1887,7 +1895,7 @@ function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = nu
             const presWanted = custom ? presPersona : 'random';
             // классика всегда начинается с открытой партии, даже если в
             // настраиваемом режиме до этого успели выбрать кризисный сценарий
-            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour, economyOnly,
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour, economyOnly, kidsMode,
               ...(role === 'entrepreneur' ? { sector } : {}),
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
@@ -1989,6 +1997,8 @@ export default function MacroSimulator() {
     return () => window.removeEventListener('ems-account-ready', ready);
   }, []);
   React.useEffect(() => { if (!account) setGate(true); }, [account]);
+  // детский режим и имя — с сервера при каждом запуске (профиль мог поменяться на другом устройстве)
+  React.useEffect(() => { refreshAccount(); }, []);
   // тёмная тема обучения переключается в профиле — перерисовать оболочку
   const [learnTick, setLearnTick] = useState(0);
   // вернулись из Лаборатории, партии или «Своего дела», открытых из учебника, — снова в учебник
