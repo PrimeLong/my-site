@@ -92,9 +92,9 @@ const CSS = `
   .ln-seal { position: absolute; right: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; background: var(--ds-bad); color: #fff; display: flex; align-items: center; justify-content: center;
     box-shadow: 0 0 0 2px var(--ds-paper), inset 0 0 0 2px rgba(255,255,255,.35); transform: rotate(-12deg); }
   /* урок, взятый на алмазном уровне: гранёный камень вместо цвета юнита */
-  .ln-token.diamond { background: linear-gradient(135deg, #8ED8F2 0%, #3FA2CC 45%, #2E8FB8 60%, #1D6A8E 100%); border-color: #1C5F80;
+  .ln-token.diamond { background: linear-gradient(135deg, #EDB3C0 0%, #B9576F 45%, #8A2F45 60%, #5E1E2F 100%); border-color: #5A1C2C;
     box-shadow: inset 0 0 0 4px rgba(255,255,255,0), inset 0 0 0 5px rgba(255,255,255,.7), 0 2px 8px rgba(46,143,184,.45); }
-  .ln-seal.diamond { background: #2E8FB8; }
+  .ln-seal.diamond { background: #8A2F45; }
   .ln-pin { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase;
     color: var(--ds-paper); background: var(--ds-ink); padding: 5px 8px 4px; border-radius: 2px; }
   .ln-pin.rec { background: var(--ds-gold); color: var(--ds-card); }

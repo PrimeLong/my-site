@@ -1581,6 +1581,8 @@ test('путь: выход после первого ответа — урок �
   await pathNode(page, 'sd-i1').click();
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-diamond-info')).toContainText('теория глубже');
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-start')).toHaveText('Повторить без усложнения');
+  // алмазный уровень — гранат из тёплой палитры, не холодный синий
+  expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#8a2f45');
   await page.getByTestId('lesson-diamond').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-diamond', 'true');
   // алмазные шаги — с формулами и строкой обозначений
@@ -2070,8 +2072,11 @@ test('вход: программа — вступительный тест, су
   await expect(page.locator('[data-testid=ach][data-ach="ace"]')).toHaveAttribute('data-got', 'false');
   await expect(page.locator('[data-testid=ach][data-ach="shop"]')).toHaveAttribute('data-got', 'true');
 
-  // назавтра: утренний экран серии — один раз в день
-  await page.evaluate(() => {
+  // назавтра: утренний экран серии — один раз в день. Состояние пишется до загрузки страницы:
+  // правка из page.evaluate могла быть затёрта сохранением, которое приложение успевало сделать
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('morning-seeded')) return;
+    sessionStorage.setItem('morning-seeded', '1');
     const p = JSON.parse(localStorage.getItem('ems-textbook-v1'));
     const d = new Date(Date.now() - 86400000); const y = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const t = new Date(); const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -2570,5 +2575,36 @@ test('ПК от 1024 px: Путь в две колонки, у главы уче
     await expect(toc.locator('[aria-current="page"]')).toContainText('Эластичность');
     expect(await noScroll()).toBe(true);
   }
+  expect(errors).toEqual([]);
+});
+
+test('«Мир» на компонентах дизайн-системы: тот же знак, шрифт и кнопки, что в обучении', async ({ page }) => {
+  // приветствие (до входа) и «Мир» — один знак рядом с одним начертанием названия
+  const brandOf = (loc) => loc.evaluate((el) => ({ font: getComputedStyle(el).fontFamily, mark: !!(el.querySelector('svg') || (el.parentElement && el.parentElement.parentElement && el.parentElement.parentElement.querySelector('svg[aria-hidden="true"]'))) }));
+  const { errors } = await openApp(page, '/', '{}', { tab: 'world' });
+  const world = page.getByTestId('world');
+  await expect(world).toHaveAttribute('data-ds-theme', 'world');
+  const w = await brandOf(world.getByTestId('brand'));
+  expect(w.mark).toBe(true);
+  expect(w.font).toContain('PT Serif');
+  // кнопки меню — из ds.jsx; старая игровая кнопка осталась только у общего регулятора звука
+  const old = await world.locator('button.ems-btn').count();
+  expect(old).toBeLessThanOrEqual(1);
+  expect(await world.locator('.ds-btn, .ds-card, .ds-chip').count()).toBeGreaterThan(4);
+  // основная кнопка на золоте «Мира» — тёмный текст, читается
+  const daily = world.getByTestId('daily-card');
+  if (await daily.count()) {
+    const c = await daily.locator('.ds-btn').first().evaluate((el) => getComputedStyle(el).color);
+    expect(c).toBe('rgb(27, 18, 4)');
+  }
+  // приветствие — тот же знак и шрифт
+  const p2 = await page.context().newPage();
+  await p2.route('**/api/**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await p2.addInitScript(() => { try { localStorage.removeItem('ems-account'); } catch { /* нет хранилища */ } });
+  await p2.goto('/', { waitUntil: 'networkidle' });
+  const b = await brandOf(p2.getByTestId('welcome').getByTestId('brand'));
+  expect(b.mark).toBe(true);
+  expect(b.font).toBe(w.font);
+  await p2.close();
   expect(errors).toEqual([]);
 });

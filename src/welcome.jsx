@@ -10,6 +10,7 @@ import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox
 import { validBirthYear, needsParent } from './lib/age.js';
 import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
+import { InflatiaMark } from './logo.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette } from './ds-art.jsx';
 import { dsThemeId } from './ds-tokens.js';
@@ -86,7 +87,8 @@ function Hello({ go }) {
       <div className="wl-body" style={{ alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <Guilloche height={26} />
         <div style={{ margin: '12px 0 4px' }}><Rosette size={150} opacity={0.4}><Mascot mood="wave" size={92} /></Rosette></div>
-        <h1 className="ds-h1" style={{ fontSize: 34, letterSpacing: '.02em' }}>Инфлатия</h1>
+        {/* один знак и одно начертание названия с «Миром» (src/logo.jsx) */}
+        <h1 className="ds-h1" style={{ fontSize: 34, letterSpacing: '.02em', display: 'flex', alignItems: 'center', gap: 10 }} data-testid="brand"><InflatiaMark size={40} title={null} />Инфлатия</h1>
         <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика пять минут в день</div>
         <ul data-testid="welcome-values" style={{ listStyle: 'none', padding: 0, margin: '14px 0', textAlign: 'left', maxWidth: 380, display: 'grid', gap: 8 }}>
           {VALUE_POINTS.map(([t, d]) => (

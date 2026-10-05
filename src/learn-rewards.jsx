@@ -64,7 +64,7 @@ export const REWARD_CSS = `
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
   .rw-item { position: relative; }
   .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad-btn); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
-  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #2E8FB8, #5A4E80); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
+  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #8A2F45, #6B4357); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
   /* редкая вещь: золотистая карточка, по ней пробегает блик, Инфля в ней крупнее */
   .rw-item[data-rare="true"] { border-color: #C9A43A;
     background: linear-gradient(110deg, transparent 35%, rgba(255, 246, 214, .75) 48%, transparent 61%) 0 0 / 260% 100% no-repeat, color-mix(in srgb, var(--ds-card) 84%, #E3B53C);
@@ -75,7 +75,7 @@ export const REWARD_CSS = `
   .rw-note { font: italic 12px/1.3 var(--ds-sans); color: var(--ds-ink2); }
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
-  .rw-goal > i { display: block; height: 100%; background: #2E8FB8; }
+  .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
   @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"] { animation: none; } .rw-bar > i { transition: none; } }
 `;
 

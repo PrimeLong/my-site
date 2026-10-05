@@ -1358,9 +1358,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         <MenuTicker />
         {/* шапка: печать, название и одна строка о том, что это */}
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
-          <InflatiaMark size={54} />
+          <InflatiaMark size={54} title={null} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 className="ds-h1 menu-title">Инфлатия</h1>
+            <h1 className="ds-h1 menu-title" data-testid="brand">Инфлатия</h1>
             {/* один слоган везде (docs/world.md); раздел — «Мир: страна, где знания проверяются в деле» */}
             <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>экономика пять минут в день</div>
             <div className="menu-section-title" data-testid="world-title" style={{ fontSize: 14, color: COLOR.muted, marginTop: 4 }}>Мир: страна, где знания проверяются в деле</div>
@@ -1400,12 +1400,12 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         )}
         {continues[1] && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
-            <button className="ems-btn menu-continue-alt ems-fade-in" style={{ flex: 1 }} onClick={continues[1].go}>
+            <button type="button" className="ds-card ds-card--button menu-continue-alt ems-fade-in" style={{ flex: 1 }} onClick={continues[1].go}>
               <span style={{ color: COLOR.faint }}>или</span> {continues[1].title} · <span style={{ color: COLOR.muted }}>{continues[1].sub}</span>
               <ChevronDown size={13} style={{ transform: 'rotate(-90deg)', marginLeft: 'auto' }} />
             </button>
             {continues[1].remove && (
-              <button className="ems-btn menu-continue-alt" style={{ width: 'auto', padding: '0 12px' }} aria-label="Удалить автосохранение «Своего дела»"
+              <button type="button" className="ds-card ds-card--button menu-continue-alt" style={{ width: 'auto', padding: '0 12px' }} aria-label="Удалить автосохранение «Своего дела»"
                 title="Удалить автосохранение" onClick={continues[1].remove}><X size={13} /></button>
             )}
           </div>
@@ -1425,9 +1425,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             </button>
             {savesOpen && (
               <div style={{ padding: '0 14px 14px' }}>
-                <div className="ems-seg" role="tablist" style={{ display: 'flex', marginBottom: 10 }}>
+                <div role="group" aria-label="Какие сохранения" style={{ display: 'flex', margin: '0 -4px 10px' }}>
                   {[['solo', 'Партии'], ['tycoon', 'Своё дело'], ['network', 'По сети']].filter(([id]) => savesCount[id] > 0 || id === 'solo').map(([id, label]) => (
-                    <button key={id} role="tab" aria-pressed={savesTab === id} style={{ flex: 1, padding: '6px 8px', fontSize: 12 }}
+                    <button key={id} type="button" className="ds-chip" aria-pressed={savesTab === id} style={{ flex: 1, fontSize: 13 }}
                       onClick={() => setSavesTab(id)}>{label} · {savesCount[id]}</button>
                   ))}
                 </div>
@@ -1440,16 +1440,16 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                           Слот {idx + 1} · {roleShort(slot.role)} · {quarterLabel(slot.quarterIndex || 1)}
                         </span>
                       </span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={slotBusy === idx}
-                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                      <Button small variant="secondary" disabled={slotBusy === idx}
+                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</Button>
                       <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
                     </div>
                   ) : null)) : <div style={{ fontSize: 12, color: COLOR.faint }}>Сохранённых партий на сервере нет — сохраняйте кнопкой «Партия» в игре.</div>)}
                   {savesTab === 'tycoon' && tycoonSlots.map((slot, idx) => (slot ? (
                     <div key={idx} className="ems-row-hover menu-slot">
                       <span style={{ flex: 1, minWidth: 0 }}>Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий</span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={tycoonBusy === idx}
-                        onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                      <Button small variant="secondary" disabled={tycoonBusy === idx}
+                        onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</Button>
                       <button onClick={() => removeTycoonSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
                     </div>
                   ) : null))}
@@ -1462,8 +1462,8 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                         <span style={{ flex: 1, minWidth: 0 }}>
                           Комната <b className="ems-mono">{slot.id}</b> · {rd.short}{preview && <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>}
                         </span>
-                        <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={networkSlotBusy === idx}
-                          onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Войти'}</button>
+                        <Button small variant="secondary" disabled={networkSlotBusy === idx}
+                          onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Войти'}</Button>
                       </div>
                     );
                   })}
@@ -1476,7 +1476,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 
         {/* 5. Мелкое: достижения, устройства, оформление, звук */}
         <div className="menu-footer ems-fade-in">
-          <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowAch(true); }}><Trophy size={13} color={COLOR.gold} />Достижения</button>
+          <Button small variant="ghost" icon={Trophy} onClick={() => { Audio.play('click'); setShowAch(true); }}>Достижения</Button>
           <label className="menu-chip menu-theme">
             <span style={{ fontSize: 12, color: COLOR.faint }}>Оформление</span>
             <select value={theme} onChange={(e) => { Audio.play('tab'); setTheme(e.target.value); }} aria-label="Оформление">
