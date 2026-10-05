@@ -6,8 +6,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
-import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, BirthYearField, birthYearOf } from './account.jsx';
-import { validBirthYear } from './lib/age.js';
+import { authenticate, RecoveryCodeView, StorageWarning, NameRefused, ConsentBox, ParentStep, consentsReady, BirthYearField, birthYearOf } from './account.jsx';
+import { validBirthYear, needsParent } from './lib/age.js';
 import { RUDE_NAME } from './lib/moderation.js';
 import { Mascot } from './mascot.jsx';
 import { DsRoot, Button, IconButton, Heading } from './ds.jsx';
@@ -103,8 +103,9 @@ function AuthForm({ mode, go, plan }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [consent, setConsent] = useState(false);
+  const [consents, setConsents] = useState({});
   const [year, setYear] = useState('');
+  const [parentStep, setParentStep] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [shown, setShown] = useState(null);
@@ -117,11 +118,14 @@ function AuthForm({ mode, go, plan }) {
     // аккаунт уже сохранён — приложение само перейдёт на Путь
     window.dispatchEvent(new Event('ems-account-ready'));
   };
+  const kidYear = mode === 'register' && validBirthYear(birthYearOf(year)) && needsParent(birthYearOf(year));
   const submit = async (e) => {
     e.preventDefault();
+    // до 14 лет — сначала отдельный шаг «Подтверждение родителя»
+    if (kidYear && !parentStep) { setParentStep(true); window.scrollTo(0, 0); return; }
     setBusy(true); setError('');
     try {
-      const r = await authenticate(mode, { login, password, name, code, consent, birthYear: birthYearOf(year) });
+      const r = await authenticate(mode, { login, password, name, code, consents, birthYear: birthYearOf(year) });
       Audio.play('up');
       if (r.recoveryCode) setShown(r); else finish();
     } catch (err) { setError(err.message); Audio.play('down'); setBusy(false); }
@@ -140,41 +144,43 @@ function AuthForm({ mode, go, plan }) {
   }
   const title = { register: 'Создайте аккаунт', login: 'Вход', recover: 'Новый пароль по коду' }[mode];
   const canSubmit = login.trim().length >= 3 && password.length >= 6 && (mode !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
-    && (mode !== 'register' || (consent && validBirthYear(birthYearOf(year))));
+    && (mode !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
-    <div className="wl" data-testid={`welcome-${mode}`}>
-      <Top onBack={() => go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello')} />
+    <div className="wl" data-testid={parentStep ? 'welcome-parent' : `welcome-${mode}`}>
+      <Top onBack={() => (parentStep ? setParentStep(false) : go(mode === 'register' ? 'goal' : mode === 'recover' ? 'login' : 'hello'))} />
       <form className="wl-body" onSubmit={submit}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <Mascot mood={mode === 'register' ? 'joy' : 'hello'} size={52} />
-          <Heading level={1} eyebrow={mode === 'register' ? 'Шаг 2 из 2' : 'Аккаунт'} title={title} />
+          <Heading level={1} eyebrow={mode === 'register' ? 'Шаг 2 из 2' : 'Аккаунт'} title={parentStep ? 'Подтверждение родителя' : title} />
         </div>
-        {mode === 'register' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Прогресс, серия и опыт хранятся в аккаунте — войдите на другом устройстве, и всё будет там.</div>}
-        {mode === 'recover' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Логин, код восстановления из регистрации и новый пароль.</div>}
-        <label className="ds-label">Логин
-          <input className="ds-field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" autoCapitalize="none" placeholder="латиница, цифры, _" />
-        </label>
-        {mode === 'recover' && (
-          <label className="ds-label">Код восстановления
-            <input className="ds-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
+        {parentStep ? <ParentStep value={consents} set={setConsents} /> : (<>
+          {mode === 'register' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Прогресс, серия и опыт хранятся в аккаунте — войдите на другом устройстве, и всё будет там.</div>}
+          {mode === 'recover' && <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.5, marginBottom: 14 }}>Логин, код восстановления из регистрации и новый пароль.</div>}
+          <label className="ds-label">Логин
+            <input className="ds-field" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" autoCapitalize="none" placeholder="латиница, цифры, _" />
           </label>
-        )}
-        <label className="ds-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
-          <input className="ds-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов" />
-        </label>
-        {mode === 'register' && (
-          <label className="ds-label">Имя
-            <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
+          {mode === 'recover' && (
+            <label className="ds-label">Код восстановления
+              <input className="ds-field" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} autoCapitalize="characters" placeholder="XXXX-XXXX-XXXX" />
+            </label>
+          )}
+          <label className="ds-label">{mode === 'recover' ? 'Новый пароль' : 'Пароль'}
+            <input className="ds-field" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'} placeholder="не короче 6 символов" />
           </label>
-        )}
-        {mode === 'register' && <BirthYearField value={year} set={setYear} />}
-        {mode === 'register' && <div style={{ marginTop: 12 }}><ConsentBox on={consent} set={setConsent} /></div>}
+          {mode === 'register' && (
+            <label className="ds-label">Имя
+              <input className="ds-field" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} placeholder="как вас называть" />
+            </label>
+          )}
+          {mode === 'register' && <BirthYearField value={year} set={setYear} />}
+          {mode === 'register' && <div style={{ marginTop: 12 }}><ConsentBox value={consents} set={setConsents} /></div>}
+        </>)}
         {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div className="wl-err" role="alert">{error}</div>)}
         <div style={{ flex: 1 }} />
         <div className="wl-foot">
           <Button type="submit" wide disabled={busy || !canSubmit}>
-            {busy ? 'Минутку…' : mode === 'register' ? 'Создать аккаунт' : mode === 'recover' ? 'Задать пароль' : 'Войти'}
+            {busy ? 'Минутку…' : mode === 'register' ? (kidYear && !parentStep ? 'Дальше: подтверждение родителя' : 'Создать аккаунт') : mode === 'recover' ? 'Задать пароль' : 'Войти'}
           </Button>
           {mode === 'login' && <Button variant="ghost" wide onClick={() => go('recover')}>Забыли пароль?</Button>}
         </div>

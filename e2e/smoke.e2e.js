@@ -437,13 +437,19 @@ test('вход: первый запуск — приветствие, цель, 
   await reg.getByTestId('birth-year').fill('2013');
   await expect(reg.getByText(/детском режиме/)).toBeVisible();
   await reg.getByTestId('birth-year').fill('2000');
-  // без согласия со страницей «Данные и конфиденциальность» аккаунт не создать; страница открывается из галочки
+  // две отдельные отметки: «ознакомлен со страницей» и «согласие на обработку данных»; без обеих аккаунт не создать
   await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
   await reg.getByTestId('consent-privacy').click();
   await expect(page.getByTestId('privacy')).toContainText('Что мы храним');
   await expect(page.getByTestId('privacy')).toContainText('Upstash');
+  await expect(page.getByTestId('privacy')).toContainText('за пределами России');
   await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
-  await reg.getByTestId('consent').check();
+  await reg.getByTestId('consent-terms').click();
+  await expect(page.getByTestId('terms')).toContainText('Учебная игра, не финансовый совет');
+  await page.getByTestId('terms').getByRole('button', { name: 'Закрыть' }).click();
+  await reg.getByTestId('consent-page').check();
+  await expect(reg.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await reg.getByTestId('consent-pd').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   // почты нет — код восстановления показывается один раз
   await expect(page.getByTestId('recovery-code')).toHaveText('ABCD-EFGH-JKMN');
@@ -489,6 +495,39 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('path')).toBeVisible();
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('вход: до 14 лет — отдельный шаг «Подтверждение родителя», сервер получает отметку и имя', async ({ page }) => {
+  let sent = null;
+  await openApp(page, '/', (req) => {
+    let body = null; try { body = req.postDataJSON(); } catch { body = null; }
+    if (body && body.action === 'register') sent = body;
+    return accountApi(req);
+  }, { tab: null });
+  await page.getByRole('button', { name: 'Начать' }).click();
+  const goal = page.getByTestId('welcome-goal');
+  for (const g of ['Цель', 'Минут в день', 'Знания']) await goal.getByRole('group', { name: g }).getByRole('button').first().click();
+  await goal.getByRole('button', { name: 'Продолжить' }).click();
+  const reg = page.getByTestId('welcome-register');
+  await reg.getByLabel('Логин').fill('kid');
+  await reg.getByLabel('Пароль').fill('secret1');
+  await reg.getByTestId('birth-year').fill(String(new Date().getFullYear() - 12));
+  await reg.getByTestId('consent-page').check();
+  await reg.getByTestId('consent-pd').check();
+  await reg.getByRole('button', { name: 'Дальше: подтверждение родителя' }).click();
+  const parent = page.getByTestId('welcome-parent');
+  await expect(parent.getByRole('heading', { name: 'Подтверждение родителя' })).toBeVisible();
+  await expect(parent.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await parent.getByTestId('parent-name').fill('Ольга Петрова');
+  await expect(parent.getByRole('button', { name: 'Создать аккаунт' })).toBeDisabled();
+  await parent.getByTestId('parent-consent').check();
+  // «назад» возвращает к форме, ответы не теряются
+  await parent.locator('[data-nav="back"]').click();
+  await expect(page.getByTestId('welcome-register').getByTestId('consent-pd')).toBeChecked();
+  await page.getByRole('button', { name: 'Дальше: подтверждение родителя' }).click();
+  await page.getByTestId('welcome-parent').getByRole('button', { name: 'Создать аккаунт' }).click();
+  await expect(page.getByTestId('recovery-code')).toBeVisible();
+  expect(sent).toMatchObject({ consentPage: true, consentPd: true, parentConsent: true, parentName: 'Ольга Петрова' });
 });
 
 test('вход: без аккаунта закрыто всё — и приглашение в сетевую комнату', async ({ page }) => {
@@ -1885,7 +1924,8 @@ test('вход: программа — вступительный тест, су
   await reg.getByLabel('Логин').fill('anna');
   await reg.getByLabel('Пароль').fill('secret1');
   await reg.getByTestId('birth-year').fill('2000');
-  await reg.getByTestId('consent').check();
+  await reg.getByTestId('consent-page').check();
+  await reg.getByTestId('consent-pd').check();
   await reg.getByRole('button', { name: 'Создать аккаунт' }).click();
   await page.getByRole('button', { name: 'Я сохранил код' }).click();
   await expect(page.getByTestId('path')).toBeVisible();

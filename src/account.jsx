@@ -7,8 +7,9 @@ import {
   accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter, accountExport, accountDelete,
 } from './lib/client.js';
 import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
+import { TermsPage, TERMS_TITLE } from './terms.jsx';
 import { RUDE_NAME } from './lib/moderation.js';
-import { validBirthYear, isKid, KIDS_AGE } from './lib/age.js';
+import { validBirthYear, isKid, needsParent, KIDS_AGE, PARENT_AGE } from './lib/age.js';
 import {
   COLOR, Audio, useEscapeClose, getPlayerId, syncProfile, readLocalProgress, writeLocalProgress, PLAYER_ID_KEY,
 } from './MacroSimulator.jsx';
@@ -92,9 +93,11 @@ const adoptProfile = (token, profile) => {
 /* Регистрация, вход и восстановление одной функцией — для окна профиля и для экранов
    первого запуска (src/welcome.jsx). mode: register | login | recover. Возвращает
    { profile, playerId, recoveryCode, storage }. */
-export async function authenticate(mode, { login, password, name = '', code = '', consent = false, birthYear = null }) {
+export async function authenticate(mode, { login, password, name = '', code = '', consents = {}, birthYear = null }) {
   const lg = String(login || '').trim().toLowerCase();
-  const r = mode === 'register' ? await accountRegister({ login: lg, password, name: String(name).trim(), playerId: getPlayerId(), consent, birthYear })
+  // consents: { page, pd, parent, parentName } — см. ConsentBox и ParentStep
+  const r = mode === 'register' ? await accountRegister({ login: lg, password, name: String(name).trim(), playerId: getPlayerId(), birthYear,
+    consentPage: !!consents.page, consentPd: !!consents.pd, parentConsent: !!consents.parent, parentName: consents.parentName || '' })
     : mode === 'recover' ? await accountRecover(lg, code, password)
       : await accountLogin(lg, password);
   if (!r || !r.token || !r.profile) throw new Error('Сервер не ответил');
@@ -174,18 +177,55 @@ export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохрани�
 
 /* Вход, регистрация и восстановление доступа. reason — зачем просим войти (например,
    перед сетевой игрой). */
-/* Согласие при регистрации: галочка и ссылка на страницу «Данные и конфиденциальность». */
-export function ConsentBox({ on, set }) {
-  const [open, setOpen] = useState(false);
+/* Согласия при регистрации — две отдельные отметки (docs/legal-todo.md, п. 4):
+   1) «ознакомлен(а)» со страницей «Данные и конфиденциальность» и пользовательским соглашением;
+   2) «согласие на обработку персональных данных» — что именно и зачем, одной фразой.
+   value: { page, pd }, set — новое значение целиком. */
+const linkStyle = { background: 'none', border: 'none', padding: 0, color: 'var(--u-ink)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' };
+const boxStyle = { width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: 'var(--u)' };
+export const consentsReady = (c, birthYear) => !!(c && c.page && c.pd && (!validBirthYear(birthYear) || !needsParent(birthYear) || (c.parent && String(c.parentName || '').trim().length >= 2)));
+export function ConsentBox({ value, set }) {
+  const [open, setOpen] = useState(null); // null | 'privacy' | 'terms'
+  const v = value || {};
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
-      <input type="checkbox" id="consent" checked={on} onChange={(e) => set(e.target.checked)} data-testid="consent" style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: 'var(--u)' }} />
-      <label htmlFor="consent">
-        Я прочитал(а) страницу <button type="button" onClick={() => setOpen(true)} data-testid="consent-privacy"
-          style={{ background: 'none', border: 'none', padding: 0, color: 'var(--u-ink)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>«{PRIVACY_TITLE}»</button> и согласен(на) с ней.
-        Если мне меньше 14 лет — вместе с родителями.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input type="checkbox" id="consent-page" checked={!!v.page} onChange={(e) => set({ ...v, page: e.target.checked })} data-testid="consent-page" style={boxStyle} />
+        <label htmlFor="consent-page">
+          Ознакомлен(а) со страницей <button type="button" onClick={() => setOpen('privacy')} data-testid="consent-privacy" style={linkStyle}>«{PRIVACY_TITLE}»</button> и{' '}
+          <button type="button" onClick={() => setOpen('terms')} data-testid="consent-terms" style={linkStyle}>«{TERMS_TITLE}»</button>: это учебная игра, не финансовый совет.
+        </label>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input type="checkbox" id="consent-pd" checked={!!v.pd} onChange={(e) => set({ ...v, pd: e.target.checked })} data-testid="consent-pd" style={boxStyle} />
+        <label htmlFor="consent-pd">
+          Согласие на обработку персональных данных: данных аккаунта, года рождения и прогресса учёбы — чтобы вести аккаунт, прогресс и сетевые партии.
+        </label>
+      </div>
+      {open === 'privacy' && <PrivacyPage onClose={() => setOpen(null)} />}
+      {open === 'terms' && <TermsPage onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
+/* Подтверждение родителя — отдельный шаг регистрации до 14 лет: отметка и имя родителя или
+   другого законного представителя. Сервер хранит время подтверждения (parentConsentAt) и имя. */
+export function ParentStep({ value, set }) {
+  const v = value || {};
+  return (
+    <div data-testid="parent-step" style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
+      <div style={{ fontSize: 15, color: 'var(--ds-ink)' }}>
+        Вам меньше {PARENT_AGE} лет — попросите родителя или другого законного представителя прочитать страницу данных и
+        подтвердить регистрацию.
+      </div>
+      <label className="ds-label">Имя родителя
+        <input className="ds-field" value={v.parentName || ''} onChange={(e) => set({ ...v, parentName: e.target.value.slice(0, 60) })}
+          placeholder="как к вам обращаться" maxLength={60} data-testid="parent-name" style={{ marginTop: 5 }} />
       </label>
-      {open && <PrivacyPage onClose={() => setOpen(false)} />}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input type="checkbox" id="parent-consent" checked={!!v.parent} onChange={(e) => set({ ...v, parent: e.target.checked })} data-testid="parent-consent" style={boxStyle} />
+        <label htmlFor="parent-consent">Я родитель или законный представитель, прочитал(а) страницу данных и согласен(на) на регистрацию ребёнка и обработку его данных.</label>
+      </div>
     </div>
   );
 }
@@ -233,19 +273,23 @@ export function AuthModal({ onClose, onDone, reason }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [consent, setConsent] = useState(false);
+  const [consents, setConsents] = useState({});
   const [year, setYear] = useState('');
+  const [parentStep, setParentStep] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [storageMemory, setStorageMemory] = useState(false);
   // после регистрации или восстановления сначала показываем новый код, потом закрываемся
   const [shownCode, setShownCode] = useState(null);
   const [finish, setFinish] = useState(null);
+  const kidYear = tab === 'register' && validBirthYear(birthYearOf(year)) && needsParent(birthYearOf(year));
   const submit = async (e) => {
     e.preventDefault();
+    // до 14 лет — сначала отдельный шаг «Подтверждение родителя»
+    if (kidYear && !parentStep) { setParentStep(true); return; }
     setBusy(true); setError('');
     try {
-      const r = await authenticate(tab, { login, password, name, code, consent, birthYear: birthYearOf(year) });
+      const r = await authenticate(tab, { login, password, name, code, consents, birthYear: birthYearOf(year) });
       const playerId = r.playerId;
       Audio.play('up');
       const done = () => { if (onDone) onDone(r.profile, playerId); onClose(); };
@@ -263,7 +307,7 @@ export function AuthModal({ onClose, onDone, reason }) {
     );
   }
   const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
-    && (tab !== 'register' || (consent && validBirthYear(birthYearOf(year))));
+    && (tab !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
     <ModalShell title={titles[tab]} label="Профиль игрока" icon={User} onClose={onClose}>
       {reason && <div style={{ fontSize: 14, color: 'var(--ds-ink)', marginBottom: 12, lineHeight: 1.5 }}>{reason}</div>}
@@ -310,10 +354,11 @@ export function AuthModal({ onClose, onDone, reason }) {
             устройстве, и они будут там.
           </div>
         )}
-        {tab === 'register' && <ConsentBox on={consent} set={setConsent} />}
+        {tab === 'register' && !parentStep && <ConsentBox value={consents} set={setConsents} />}
+        {tab === 'register' && parentStep && <ParentStep value={consents} set={setConsents} />}
         {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div style={{ fontSize: 14, color: 'var(--ds-bad)' }}>{error}</div>)}
         <button type="submit" className="ds-btn" disabled={busy || !canSubmit} style={{ marginTop: 2 }}>
-          {busy ? 'Минутку…' : tab === 'register' ? 'Создать профиль' : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
+          {busy ? 'Минутку…' : tab === 'register' ? (kidYear && !parentStep ? 'Дальше: подтверждение родителя' : 'Создать профиль') : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
         </button>
         {tab === 'login' && (
           <button type="button" className="ds-btn ds-btn--ghost" 
@@ -496,9 +541,11 @@ export function ProfileModal({ onClose, onSwitched }) {
           <button className="ds-btn ds-btn--secondary ds-btn--small" aria-pressed={panel === 'delete'} data-testid="account-delete"
             onClick={() => { setOldPw(''); setPanel(panel === 'delete' ? null : 'delete'); }}>Удалить аккаунт и все данные</button>
           <button type="button" className="ds-btn ds-btn--ghost ds-btn--small" onClick={() => setPrivacy(true)} data-testid="account-privacy">{PRIVACY_TITLE}</button>
+          <button type="button" className="ds-btn ds-btn--ghost ds-btn--small" onClick={() => setPrivacy('terms')} data-testid="account-terms">{TERMS_TITLE}</button>
         </div>
       </div>
-      {privacy && <PrivacyPage onClose={() => setPrivacy(false)} />}
+      {privacy === true && <PrivacyPage onClose={() => setPrivacy(false)} />}
+      {privacy === 'terms' && <TermsPage onClose={() => setPrivacy(false)} />}
     </ModalShell>
   );
 }

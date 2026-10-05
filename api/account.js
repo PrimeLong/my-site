@@ -8,7 +8,7 @@
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
 import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData } from './_lib/store.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
-import { validBirthYear, isKid } from '../src/lib/age.js';
+import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
   newRecoveryCode, hashRecovery, checkRecovery, sessionValue,
@@ -21,6 +21,12 @@ const LOCK_MS = 5 * 60 * 1000;
 const cleanName = (v) => {
   if (typeof v !== 'string') return null;
   const t = Array.from(v).filter((ch) => ch.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 24);
+  return t.length >= 2 ? t : null;
+};
+// имя родителя — как его ввели: от 2 до 60 символов, без управляющих
+const cleanParentName = (v) => {
+  if (typeof v !== 'string') return null;
+  const t = Array.from(v).filter((ch) => ch.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 60);
   return t.length >= 2 ? t : null;
 };
 const validPlayerId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 64;
@@ -52,10 +58,17 @@ async function handleRequest(req, res) {
     if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) {
       return res.status(400).json({ error: 'Пароль — не короче 6 символов' });
     }
-    // регистрация — только с согласием со страницей «Данные и конфиденциальность»
-    if (body.consent !== true) return res.status(400).json({ error: 'Отметьте согласие со страницей «Данные и конфиденциальность»' });
+    /* Две отдельные отметки: «ознакомлен со страницей» (данные и соглашение) и «согласие на обработку
+       персональных данных». До 14 лет — ещё подтверждение родителя: отметка и его имя. Достаточно ли
+       этого юридически — вопрос в docs/legal-todo.md. */
+    if (body.consentPage !== true) return res.status(400).json({ error: 'Отметьте, что ознакомились со страницей «Данные и конфиденциальность»' });
+    if (body.consentPd !== true) return res.status(400).json({ error: 'Нужно согласие на обработку персональных данных' });
     // год рождения — для детского режима «Мира» (до 16 лет) и согласия родителя (до 14)
     if (!validBirthYear(body.birthYear)) return res.status(400).json({ error: 'Укажите год рождения' });
+    const child = needsParent(body.birthYear);
+    const parentName = child ? cleanParentName(body.parentName) : null;
+    if (child && (body.parentConsent !== true || !parentName)) return res.status(400).json({ error: 'До 14 лет нужно подтверждение родителя: отметка и его имя' });
+    if (parentName && isRude(parentName)) return res.status(400).json({ error: RUDE_NAME });
     const name = cleanName(body.name) || login;
     // ни логин, ни имя — без грубых слов (их видят в сетевых партиях и в сообщениях об ошибках)
     if (isRude(login) || isRude(name)) return res.status(400).json({ error: RUDE_NAME });
@@ -69,7 +82,8 @@ async function handleRequest(req, res) {
     // почты у игры нет, поэтому доступ восстанавливается кодом, который показываем один раз
     const recoveryCode = newRecoveryCode();
     const user = { login, name, emblem: 'star', salt, hash, ...hashRecovery(recoveryCode), epoch: 0, playerId,
-      birthYear: body.birthYear, createdAt: Date.now(), consentAt: Date.now(), stats: emptyStats(), fails: 0, lockUntil: 0 };
+      birthYear: body.birthYear, createdAt: Date.now(), consentAt: Date.now(), pdConsentAt: Date.now(),
+      ...(child ? { parentConsentAt: Date.now(), parentName } : {}), stats: emptyStats(), fails: 0, lockUntil: 0 };
     await setUser(login, user);
     const token = await openSession(user);
     return res.status(200).json({ token, profile: publicProfile(user), recoveryCode, storage: storage() });
@@ -172,7 +186,8 @@ async function handleRequest(req, res) {
     const rec = (await getRecords('tycoon'))[user.login];
     return res.status(200).json({
       exportedAt: new Date().toISOString(),
-      account: { ...publicProfile(user), consentAt: user.consentAt || null },
+      account: { ...publicProfile(user), consentAt: user.consentAt || null, pdConsentAt: user.pdConsentAt || null,
+        parentConsentAt: user.parentConsentAt || null, parentName: user.parentName || null },
       progress: pid ? await getProfile(pid) : null,
       saves: pid ? { solo: await getSoloSlots(pid), tycoon: await getTycoonSlots(pid) } : null,
       records: rec ? { tycoon: typeof rec === 'string' ? JSON.parse(rec) : rec } : {},

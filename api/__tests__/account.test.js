@@ -19,23 +19,23 @@ const uniq = (p) => `${p}acc${n++}`;
 describe('профиль: регистрация и вход', () => {
   it('регистрация отдаёт сессию и профиль без пароля; логин нельзя занять дважды', async () => {
     const login = uniq('anna');
-    const r = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1', name: 'Анна', playerId: 'dev-1' });
+    const r = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', name: 'Анна', playerId: 'dev-1' });
     expect(r.status).toBe(200);
     expect(r.data.token).toBeTruthy();
     expect(r.data.profile).toMatchObject({ login, name: 'Анна', playerId: 'dev-1', emblem: 'star' });
     expect(r.data.profile.hash).toBeUndefined();
     expect(r.data.profile.salt).toBeUndefined();
-    expect((await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'other12' })).status).toBe(409);
+    expect((await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'other12' })).status).toBe(409);
   });
 
   it('плохой логин и короткий пароль отклоняются', async () => {
-    expect((await acc({ action: 'register', consent: true, birthYear: 1990, login: 'я', password: 'secret1' })).status).toBe(400);
-    expect((await acc({ action: 'register', consent: true, birthYear: 1990, login: uniq('bob'), password: '123' })).status).toBe(400);
+    expect((await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: 'я', password: 'secret1' })).status).toBe(400);
+    expect((await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('bob'), password: '123' })).status).toBe(400);
   });
 
   it('вход проверяет пароль, профиль приезжает с тем же playerId', async () => {
     const login = uniq('boris');
-    await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1', playerId: 'dev-b' });
+    await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', playerId: 'dev-b' });
     expect((await acc({ action: 'login', login, password: 'wrong11' })).status).toBe(401);
     expect((await acc({ action: 'login', login: uniq('nobody'), password: 'secret1' })).status).toBe(401);
     const ok = await acc({ action: 'login', login, password: 'secret1' });
@@ -45,14 +45,14 @@ describe('профиль: регистрация и вход', () => {
 
   it('после 8 неудач вход блокируется на время', async () => {
     const login = uniq('carl');
-    await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1' });
+    await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1' });
     for (let i = 0; i < 8; i++) await acc({ action: 'login', login, password: 'nope123' });
     expect((await acc({ action: 'login', login, password: 'secret1' })).status).toBe(429);
   });
 
   it('имя, значок и пароль меняются только со своей сессией; выход гасит сессию', async () => {
     const login = uniq('dina');
-    const { data: { token } } = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1' });
+    const { data: { token } } = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1' });
     expect((await acc({ action: 'update', token: 'чужой', name: 'Вор' })).status).toBe(401);
     const up = await acc({ action: 'update', token, name: 'Дина', emblem: 'crown' });
     expect(up.data.profile).toMatchObject({ name: 'Дина', emblem: 'crown' });
@@ -68,7 +68,7 @@ describe('профиль: регистрация и вход', () => {
 describe('профиль: восстановление доступа и сессии', () => {
   it('при регистрации выдаётся код восстановления; по нему задаётся новый пароль, старые сессии гаснут', async () => {
     const login = uniq('fedor');
-    const reg = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1' });
+    const reg = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1' });
     expect(reg.data.recoveryCode).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     expect(reg.data.profile.hasRecovery).toBe(true);
     const old = reg.data.token;
@@ -85,7 +85,7 @@ describe('профиль: восстановление доступа и сес�
 
   it('смена пароля закрывает другие сессии, а этому устройству выдаёт новую', async () => {
     const login = uniq('gleb');
-    const a = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1' });
+    const a = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1' });
     const b = await acc({ action: 'login', login, password: 'secret1' });
     const ch = await acc({ action: 'password', token: a.data.token, oldPassword: 'secret1', newPassword: 'newpass1' });
     expect(ch.data.token).toBeTruthy();
@@ -94,22 +94,22 @@ describe('профиль: восстановление доступа и сес�
   });
 
   it('новый код восстановления — только по паролю', async () => {
-    const { data: { token } } = await acc({ action: 'register', consent: true, birthYear: 1990, login: uniq('hana'), password: 'secret1' });
+    const { data: { token } } = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('hana'), password: 'secret1' });
     expect((await acc({ action: 'recovery_new', token, password: 'wrong11' })).status).toBe(403);
     expect((await acc({ action: 'recovery_new', token, password: 'secret1' })).data.recoveryCode).toBeTruthy();
   });
 
   it('с одного адреса — не больше пяти регистраций в час', async () => {
     const ip = '203.0.113.7';
-    for (let i = 0; i < 5; i++) expect((await call(accountHandler, { action: 'register', consent: true, birthYear: 1990, login: uniq('bot'), password: 'secret1' }, ip)).status).toBe(200);
-    expect((await call(accountHandler, { action: 'register', consent: true, birthYear: 1990, login: uniq('bot'), password: 'secret1' }, ip)).status).toBe(429);
+    for (let i = 0; i < 5; i++) expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('bot'), password: 'secret1' }, ip)).status).toBe(200);
+    expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('bot'), password: 'secret1' }, ip)).status).toBe(429);
   });
 });
 
 describe('вызов дня за профилем', () => {
   const entry = (extra) => ({ day: dailyKey(), score: 70, role: 'central_bank', quarters: 12, ...extra });
   it('строка из профиля подписана его именем и значком; гость чужое имя не займёт', async () => {
-    const reg = await acc({ action: 'register', consent: true, birthYear: 1990, login: uniq('ira'), password: 'secret1', name: 'Ирина Штерн', playerId: uniq('dev') });
+    const reg = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('ira'), password: 'secret1', name: 'Ирина Штерн', playerId: uniq('dev') });
     await acc({ action: 'update', token: reg.data.token, emblem: 'crown' });
     const r = await call(dailyHandler, entry({ playerId: 'whatever', name: 'Подмена', session: reg.data.token }));
     expect(r.data.you).toMatchObject({ name: 'Ирина Штерн', verified: true, emblem: 'crown' });
@@ -146,7 +146,7 @@ describe('места в сетевой комнате закреплены за 
   });
 
   it('вход в комнату без профиля не пускает; выйти и тут же зайти нельзя', async () => {
-    const reg = await acc({ action: 'register', consent: true, birthYear: 1990, login: uniq('eva'), password: 'secret1', name: 'Ева' });
+    const reg = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('eva'), password: 'secret1', name: 'Ева' });
     const session = reg.data.token;
     const created = await room({ action: 'create', mode: 'policy', difficulty: 'medium', president: null });
     const id = created.data.id;
@@ -169,7 +169,7 @@ describe('рекорды «Своего дела»', () => {
     const { default: records } = await import('../records.js');
     const rec = (body) => call(records, body);
     expect((await rec({ kind: 'tycoon', value: 500 })).status).toBe(401);
-    const reg = await acc({ action: 'register', consent: true, birthYear: 1990, login: uniq('tyc'), password: 'secret1', name: 'Магнат' });
+    const reg = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('tyc'), password: 'secret1', name: 'Магнат' });
     const a = await rec({ kind: 'tycoon', session: reg.data.token, value: 500, start: 'farm', quarters: 12 });
     expect(a.data.you).toMatchObject({ name: 'Магнат', value: 500, start: 'farm' });
     const b = await rec({ kind: 'tycoon', session: reg.data.token, value: 300 });
@@ -185,14 +185,14 @@ describe('данные и конфиденциальность', () => {
     const no = await acc({ action: 'register', login, password: 'secret1', name: 'Анна' });
     expect(no.status).toBe(400);
     expect(no.data.error).toContain('Данные и конфиденциальность');
-    const yes = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1', name: 'Анна' });
+    const yes = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', name: 'Анна' });
     expect(yes.status).toBe(200);
     const out = await acc({ action: 'export', token: yes.data.token });
     expect(out.data.account.consentAt).toBeGreaterThan(0);
   });
   it('«Скачать мои данные»: профиль, прогресс и сохранения одним JSON — без хэшей пароля и кода', async () => {
     const login = uniq('export');
-    const r = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1', name: 'Олег', playerId: `dev-${login}` });
+    const r = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', name: 'Олег', playerId: `dev-${login}` });
     const out = await acc({ action: 'export', token: r.data.token });
     expect(out.status).toBe(200);
     expect(out.data.account.login).toBe(login);
@@ -204,21 +204,21 @@ describe('данные и конфиденциальность', () => {
   });
   it('«Удалить аккаунт и все данные»: только с паролем; после удаления войти нельзя и логин свободен', async () => {
     const login = uniq('gone');
-    const r = await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret1', name: 'Вера' });
+    const r = await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret1', name: 'Вера' });
     expect((await acc({ action: 'delete', token: r.data.token, password: 'wrong1' })).status).toBe(403);
     expect((await acc({ action: 'delete', token: r.data.token, password: 'secret1' })).status).toBe(200);
     expect((await acc({ action: 'me', token: r.data.token })).status).toBe(401);
     expect((await acc({ action: 'login', login, password: 'secret1' })).status).toBe(401);
-    expect((await acc({ action: 'register', consent: true, birthYear: 1990, login, password: 'secret2', name: 'Вера' })).status).toBe(200);
+    expect((await acc({ action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login, password: 'secret2', name: 'Вера' })).status).toBe(200);
   });
 });
 
 describe('возраст и детский режим «Мира»', () => {
   const thisYear = new Date().getUTCFullYear();
   it('без года рождения не зарегистрироваться; до 16 детский режим включён и не снимается', async () => {
-    expect((await acc({ action: 'register', consent: true, login: uniq('noyear'), password: 'secret1' })).status).toBe(400);
-    expect((await acc({ action: 'register', consent: true, login: uniq('baby'), password: 'secret1', birthYear: thisYear - 2 })).status).toBe(400);
-    const kid = await acc({ action: 'register', consent: true, login: uniq('kid'), password: 'secret1', birthYear: thisYear - 13 });
+    expect((await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('noyear'), password: 'secret1' })).status).toBe(400);
+    expect((await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('baby'), password: 'secret1', birthYear: thisYear - 2 })).status).toBe(400);
+    const kid = await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('kid'), password: 'secret1', birthYear: thisYear - 13, parentConsent: true, parentName: 'Ольга Петрова' });
     expect(kid.status).toBe(200);
     expect(kid.data.profile).toMatchObject({ birthYear: thisYear - 13, kidsMode: true });
     const off = await acc({ action: 'update', token: kid.data.token, kidsMode: false });
@@ -227,7 +227,7 @@ describe('возраст и детский режим «Мира»', () => {
     expect((await acc({ action: 'update', token: kid.data.token, birthYear: 1990 })).status).toBe(400);
   });
   it('взрослому режим выключен, но его можно включить в профиле', async () => {
-    const r = await acc({ action: 'register', consent: true, login: uniq('adult'), password: 'secret1', birthYear: 1990 });
+    const r = await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('adult'), password: 'secret1', birthYear: 1990 });
     expect(r.data.profile.kidsMode).toBe(false);
     const on = await acc({ action: 'update', token: r.data.token, kidsMode: true });
     expect(on.status).toBe(200); expect(on.data.profile.kidsMode).toBe(true);
@@ -235,7 +235,7 @@ describe('возраст и детский режим «Мира»', () => {
     expect(back.data.profile.kidsMode).toBe(false);
   });
   it('игрок в детском режиме садится только в детскую партию', async () => {
-    const kid = await acc({ action: 'register', consent: true, login: uniq('kidnet'), password: 'secret1', birthYear: thisYear - 12 });
+    const kid = await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('kidnet'), password: 'secret1', birthYear: thisYear - 12, parentConsent: true, parentName: 'Ольга Петрова' });
     const adultRoom = await room({ action: 'create', mode: 'policy', difficulty: 'medium', president: null });
     const denied = await room({ action: 'join', id: adultRoom.data.id, seat: 'central_bank', session: kid.data.token });
     expect(denied.status).toBe(403);
@@ -243,5 +243,33 @@ describe('возраст и детский режим «Мира»', () => {
     expect(kidsRoom.data.room.economy.kidsMode).toBe(true);
     const ok = await room({ action: 'join', id: kidsRoom.data.id, seat: 'central_bank', session: kid.data.token });
     expect(ok.status).toBe(200);
+  });
+});
+
+describe('согласия при регистрации и подтверждение родителя', () => {
+  const thisYear = new Date().getUTCFullYear();
+  const base = () => ({ action: 'register', login: uniq('cons'), password: 'secret1' });
+  it('«ознакомлен со страницей» и «согласие на обработку данных» — две отдельные отметки, обе обязательны', async () => {
+    expect((await acc({ ...base(), birthYear: 1990, consentPd: true })).status).toBe(400);
+    expect((await acc({ ...base(), birthYear: 1990, consentPage: true })).status).toBe(400);
+    const ok = await acc({ ...base(), birthYear: 1990, consentPage: true, consentPd: true });
+    expect(ok.status).toBe(200);
+    const ex = await acc({ action: 'export', token: ok.data.token });
+    expect(ex.data.account.consentAt).toBeGreaterThan(0);
+    expect(ex.data.account.pdConsentAt).toBeGreaterThan(0);
+    expect(ex.data.account.parentConsentAt).toBeNull();
+  });
+  it('до 14 лет без родителя не зарегистрироваться; с отметкой и именем — сервер хранит parentConsentAt', async () => {
+    const kid = { ...base(), birthYear: thisYear - 12, consentPage: true, consentPd: true };
+    expect((await acc(kid)).status).toBe(400);
+    expect((await acc({ ...kid, login: uniq('cons'), parentConsent: true })).status).toBe(400);
+    expect((await acc({ ...kid, login: uniq('cons'), parentConsent: true, parentName: 'М' })).status).toBe(400);
+    const ok = await acc({ ...kid, login: uniq('cons'), parentConsent: true, parentName: 'Мария Иванова' });
+    expect(ok.status).toBe(200);
+    const ex = await acc({ action: 'export', token: ok.data.token });
+    expect(ex.data.account.parentConsentAt).toBeGreaterThan(0);
+    expect(ex.data.account.parentName).toBe('Мария Иванова');
+    // 15 лет — родитель не нужен
+    expect((await acc({ ...base(), birthYear: thisYear - 16, consentPage: true, consentPd: true })).status).toBe(200);
   });
 });
