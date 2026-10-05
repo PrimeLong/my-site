@@ -59,6 +59,11 @@ describe('обращение на «вы»', () => {
     expect(KIND_LABEL.price).toBe('Найдите цену');
     expect(KIND_LABEL.curve).toBe('Сдвиньте кривую');
   });
+  it('описания уровней Пути — на «вы»', async () => {
+    const { LEVELS } = await import('../course.js');
+    const TY2 = /(^|[^а-яё])(знаешь|понимаешь|можешь|умеешь|ты)([^а-яё]|$)/i;
+    LEVELS.forEach((l) => { expect(TY2.exec(l.text), l.text).toBeNull(); expect(l.text).toMatch(/^Вы /); });
+  });
   it('описания достижений «Мира» — на «вы»', async () => {
     const { readFileSync } = await import('node:fs');
     const src = readFileSync(new URL('../../MacroSimulator.jsx', import.meta.url), 'utf8');
