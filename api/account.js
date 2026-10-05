@@ -8,6 +8,7 @@
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
 import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData } from './_lib/store.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
+import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
 import {
   LOGIN_RE, cleanLogin, hashPassword, checkPassword, newToken, emptyStats, publicProfile, userBySession,
   newRecoveryCode, hashRecovery, checkRecovery, sessionValue,
@@ -15,11 +16,23 @@ import {
 import { randomUUID } from 'node:crypto';
 
 const EMBLEMS = new Set(['star', 'crown', 'landmark', 'coins', 'shield', 'anchor', 'factory', 'wheat']);
-const MAX_FAILS = 8;
-const LOCK_MS = 5 * 60 * 1000;
+/* Перебор пароля. Две защиты:
+   • с одного адреса — не больше LOGIN_PER_HOUR попыток входа в час, по любым логинам;
+   • у логина — нарастающая блокировка: каждые MAX_FAILS неверных паролей подряд закрывают
+     вход на всё больший срок (LOCK_STEPS), успешный вход сбрасывает счёт. */
+const MAX_FAILS = 5;
+export const LOGIN_PER_HOUR = 30;
+export const LOCK_STEPS = [60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000, 60 * 60 * 1000, 6 * 60 * 60 * 1000];
+export const lockFor = (level) => LOCK_STEPS[Math.min(Math.max(level, 1), LOCK_STEPS.length) - 1];
 const cleanName = (v) => {
   if (typeof v !== 'string') return null;
   const t = Array.from(v).filter((ch) => ch.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 24);
+  return t.length >= 2 ? t : null;
+};
+// имя родителя — как его ввели: от 2 до 60 символов, без управляющих
+const cleanParentName = (v) => {
+  if (typeof v !== 'string') return null;
+  const t = Array.from(v).filter((ch) => ch.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 60);
   return t.length >= 2 ? t : null;
 };
 const validPlayerId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 64;
@@ -51,8 +64,17 @@ async function handleRequest(req, res) {
     if (typeof body.password !== 'string' || body.password.length < 6 || body.password.length > 100) {
       return res.status(400).json({ error: 'Пароль — не короче 6 символов' });
     }
-    // регистрация — только с согласием со страницей «Данные и конфиденциальность»
-    if (body.consent !== true) return res.status(400).json({ error: 'Отметьте согласие со страницей «Данные и конфиденциальность»' });
+    /* Две отдельные отметки: «ознакомлен со страницей» (данные и соглашение) и «согласие на обработку
+       персональных данных». До 14 лет — ещё подтверждение родителя: отметка и его имя. Достаточно ли
+       этого юридически — вопрос в docs/legal-todo.md. */
+    if (body.consentPage !== true) return res.status(400).json({ error: 'Отметьте, что ознакомились со страницей «Данные и конфиденциальность»' });
+    if (body.consentPd !== true) return res.status(400).json({ error: 'Нужно согласие на обработку персональных данных' });
+    // год рождения — для детского режима «Мира» (до 16 лет) и согласия родителя (до 14)
+    if (!validBirthYear(body.birthYear)) return res.status(400).json({ error: 'Укажите год рождения' });
+    const child = needsParent(body.birthYear);
+    const parentName = child ? cleanParentName(body.parentName) : null;
+    if (child && (body.parentConsent !== true || !parentName)) return res.status(400).json({ error: 'До 14 лет нужно подтверждение родителя: отметка и его имя' });
+    if (parentName && isRude(parentName)) return res.status(400).json({ error: RUDE_NAME });
     const name = cleanName(body.name) || login;
     // ни логин, ни имя — без грубых слов (их видят в сетевых партиях и в сообщениях об ошибках)
     if (isRude(login) || isRude(name)) return res.status(400).json({ error: RUDE_NAME });
@@ -66,13 +88,17 @@ async function handleRequest(req, res) {
     // почты у игры нет, поэтому доступ восстанавливается кодом, который показываем один раз
     const recoveryCode = newRecoveryCode();
     const user = { login, name, emblem: 'star', salt, hash, ...hashRecovery(recoveryCode), epoch: 0, playerId,
-      createdAt: Date.now(), consentAt: Date.now(), stats: emptyStats(), fails: 0, lockUntil: 0 };
+      birthYear: body.birthYear, createdAt: Date.now(), consentAt: Date.now(), pdConsentAt: Date.now(),
+      ...(child ? { parentConsentAt: Date.now(), parentName } : {}), stats: emptyStats(), fails: 0, lockUntil: 0 };
     await setUser(login, user);
     const token = await openSession(user);
     return res.status(200).json({ token, profile: publicProfile(user), recoveryCode, storage: storage() });
   }
 
   if (action === 'login') {
+    if (await hit(`login:${clientIp(req)}`, 3600) > LOGIN_PER_HOUR) {
+      return res.status(429).json({ error: 'Слишком много попыток входа с этого адреса — попробуйте через час' });
+    }
     const login = cleanLogin(body.login);
     const user = LOGIN_RE.test(login) ? await getUser(login) : null;
     // несуществующий логин проверяем так же долго, как настоящий: по времени ответа
@@ -83,10 +109,11 @@ async function handleRequest(req, res) {
     }
     if (!checkPassword(body.password, user)) {
       const fails = (user.fails || 0) + 1;
-      await setUser(login, { ...user, fails: fails >= MAX_FAILS ? 0 : fails, lockUntil: fails >= MAX_FAILS ? Date.now() + LOCK_MS : 0 });
+      const level = fails >= MAX_FAILS ? (user.lockLevel || 0) + 1 : (user.lockLevel || 0);
+      await setUser(login, { ...user, fails: fails >= MAX_FAILS ? 0 : fails, lockLevel: level, lockUntil: fails >= MAX_FAILS ? Date.now() + lockFor(level) : 0 });
       return res.status(401).json({ error: 'Неверный логин или пароль' });
     }
-    if (user.fails) await setUser(login, { ...user, fails: 0, lockUntil: 0 });
+    if (user.fails || user.lockLevel) await setUser(login, { ...user, fails: 0, lockLevel: 0, lockUntil: 0 });
     const token = await openSession(user);
     return res.status(200).json({ token, profile: publicProfile(user), storage: storage() });
   }
@@ -128,6 +155,20 @@ async function handleRequest(req, res) {
       next.name = n;
     }
     if (body.emblem !== undefined) { if (!EMBLEMS.has(body.emblem)) return res.status(400).json({ error: 'Нет такого значка' }); next.emblem = body.emblem; }
+    /* Год рождения задаётся один раз — профилям, заведённым до этого правила. Поменять его потом
+       нельзя: иначе детский режим снимался бы одной правкой. */
+    if (body.birthYear !== undefined) {
+      if (user.birthYear) return res.status(400).json({ error: 'Год рождения уже указан' });
+      if (!validBirthYear(body.birthYear)) return res.status(400).json({ error: 'Укажите год рождения' });
+      next.birthYear = body.birthYear;
+    }
+    // детский режим старше 16 — по выбору; до 16 он включён всегда
+    if (body.kidsMode !== undefined) {
+      if (typeof body.kidsMode !== 'boolean') return res.status(400).json({ error: 'Некорректный режим' });
+      const year = next.birthYear;
+      if (!body.kidsMode && (!year || isKid(year))) return res.status(403).json({ error: 'До 16 лет «Мир» — в детском режиме' });
+      next.kidsMode = body.kidsMode;
+    }
     await setUser(user.login, next);
     return res.status(200).json({ profile: publicProfile(next) });
   }
@@ -155,7 +196,8 @@ async function handleRequest(req, res) {
     const rec = (await getRecords('tycoon'))[user.login];
     return res.status(200).json({
       exportedAt: new Date().toISOString(),
-      account: { ...publicProfile(user), consentAt: user.consentAt || null },
+      account: { ...publicProfile(user), consentAt: user.consentAt || null, pdConsentAt: user.pdConsentAt || null,
+        parentConsentAt: user.parentConsentAt || null, parentName: user.parentName || null },
       progress: pid ? await getProfile(pid) : null,
       saves: pid ? { solo: await getSoloSlots(pid), tycoon: await getTycoonSlots(pid) } : null,
       records: rec ? { tycoon: typeof rec === 'string' ? JSON.parse(rec) : rec } : {},

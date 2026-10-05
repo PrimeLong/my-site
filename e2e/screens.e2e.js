@@ -5,10 +5,11 @@
    открывается без ошибок и ничего не уезжает вбок. Запуск:
    npx playwright test e2e/screens.e2e.js --project=phone */
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
 
 const DIR = 'screens';
-const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star' };
+const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
 const DONE = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev'];
 
@@ -35,7 +36,34 @@ const shot = async (page, name, theme, opts = {}) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, `${name}: страницу можно прокрутить вбок`).toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${DIR}/${name}-${theme}.png`, fullPage: !!opts.full, animations: 'disabled' });
+  await a11y(page, `${name}-${theme}`);
 };
+/* Доступность каждого снятого экрана: текст интерфейса не мельче 12 px (подписи внутри
+   SVG-рисунков — часть рисунка и масштабируются вместе с ним) и axe без нарушений уровня
+   serious/critical (WCAG 2 A/AA: контраст, имена кнопок и полей, роли). */
+async function a11y(page, name) {
+  const small = await page.evaluate(() => {
+    const out = [];
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) {
+      const el = w.currentNode.parentElement;
+      // формулы KaTeX набраны по правилам математики: индексы и степени мельче основного текста
+      if (!el || !w.currentNode.textContent.replace(/[\s\u200b\u00ad]/g, '') || el.closest('svg, .katex')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 1 || r.height <= 1) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+      const px = parseFloat(cs.fontSize);
+      if (px < 11.95) out.push(`${px}px «${w.currentNode.textContent.trim().slice(0, 30)}» <${el.tagName.toLowerCase()} class="${el.className}">`);
+    }
+    return [...new Set(out)].slice(0, 12);
+  });
+  expect(small, `${name}: текст мельче 12 px`).toEqual([]);
+  const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  const bad = res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 4).map((n) => `${n.target.join(' ')}${n.any[0] && n.any[0].message ? ` — ${n.any[0].message.slice(0, 120)}` : ''}`).join('; ')}`);
+  expect(bad, `${name}: axe`).toEqual([]);
+}
 const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
 const openLesson = async (page, id) => {
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click().catch(() => {});
@@ -100,7 +128,7 @@ async function playGame(page, { seconds = 5, max = Infinity } = {}) {
   }
   await expect(ex.getByTestId('game-final')).toBeVisible({ timeout: (seconds + 5) * 1000 });
 }
-// «Открой сам»: четыре дня с разными ценами
+// «Откройте сами»: четыре дня с разными ценами
 async function playDiscover(page, prices = [12, 18, 26, 33]) {
   const d = page.getByTestId('discover');
   for (const p of prices) {
@@ -110,7 +138,7 @@ async function playDiscover(page, prices = [12, 18, 26, 33]) {
   }
   await expect(page.getByTestId('discover-next')).toBeEnabled({ timeout: 4000 });
 }
-// карточки перед упражнением: шаг, слово, пункт итогов, «Открой сам»
+// карточки перед упражнением: шаг, слово, пункт итогов, «Откройте сами»
 async function passCards(page) {
   const card = page.getByTestId('lesson-card');
   for (let i = 0; i < 24 && await card.isVisible(); i += 1) {
@@ -132,11 +160,18 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '02-welcome-goal', theme);
       for (const g of ['Цель', 'Минут в день', 'Знания']) await page.getByRole('group', { name: g }).getByRole('button').first().click();
       await page.getByRole('button', { name: 'Продолжить' }).click();
+      // гость: сразу первый урок; выйти — и с Пути «Сохраните прогресс» → регистрация
+      await expect(page.getByTestId('lesson')).toBeVisible();
+      await shot(page, '02a-guest-lesson', theme);
+      await page.getByRole('button', { name: 'Выйти из урока' }).click();
+      await shot(page, '02b-guest-path', theme);
+      await page.getByTestId('guest-register').click();
       await shot(page, '03-welcome-register', theme);
       await page.getByTestId('consent-privacy').click();
       await shot(page, '03a-privacy', theme);
       await page.getByTestId('privacy').getByRole('button', { name: 'Закрыть' }).click();
-      await page.getByRole('button', { name: 'Назад' }).click(); await page.getByRole('button', { name: 'Назад' }).click();
+      await page.evaluate(() => localStorage.removeItem('ems-guest'));
+      await page.reload({ waitUntil: 'networkidle' });
       await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
       await shot(page, '04-welcome-login', theme);
       expect(errors).toEqual([]);
@@ -248,7 +283,7 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('morning-go').click();
       await expect(page.getByTestId('placement-card')).toBeVisible();
       await shot(page, '36-path', theme);
-      await page.getByTestId('bottom-nav').locator('[data-tab="tasks"]').click();
+      await page.getByTestId('tasks-card').click();
       await expect(page.getByTestId('quests')).toBeVisible();
       await shot(page, '36a-tasks', theme, { full: true });
       await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
@@ -360,9 +395,9 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
-    test(`новые глаголы: «Открой сам», живая модель, «Домино», копилка (${theme})`, async ({ page }) => {
+    test(`новые глаголы: «Откройте сами», живая модель, «Домино», копилка (${theme})`, async ({ page }) => {
       test.setTimeout(180_000);
-      // пройдено всё до юнита 2: первый урок «Рынка» — с «Открой сам»
+      // пройдено всё до юнита 2: первый урок «Рынка» — с «Откройте сами»
       const errors = await setup(page, { theme, learn: { coins: { '2026-01-01': 400 } } });
       await page.addInitScript(() => {
         try {
@@ -429,7 +464,7 @@ for (const theme of ['light', 'dark']) {
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
       const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
-      await tab('tasks');
+      await page.getByTestId('tasks-card').click();
       await shot(page, '26-tasks', theme);
       await tab('profile');
       await shot(page, '27-profile', theme);

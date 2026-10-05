@@ -1,7 +1,7 @@
 /* Газета («Газета и хроника»), вынесенная из MacroSimulator.jsx в отдельный
    чанк: открывается по клику из панели новостей, а не с первого экрана,
    поэтому грузится лениво через React.lazy() в MacroSimulator.jsx — как и
-   src/charts.jsx и src/casino.jsx.
+   src/charts.jsx.
 
    COLOR/Audio/NEWS_CATEGORIES/catOf/ChainTrail — тот же самый общий
    объект/массив/функция/компонент, что и в MacroSimulator.jsx (экспортированы

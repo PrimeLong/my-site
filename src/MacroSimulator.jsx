@@ -1,14 +1,14 @@
 ﻿import React, { useState, useEffect, Suspense } from 'react';
 import {
   syncProgress, fetchRoom,
-  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot,
+  fetchSoloSlots, fetchSoloSlot, deleteSoloSlot, fetchDailyBoard, fetchTycoonSlots, fetchTycoonSlot, deleteTycoonSlot, track,
 } from './lib/client.js';
 import {
   Landmark, Coins, Globe2, TrendingUp, TrendingDown, Users, Scale, ShieldCheck, ChevronDown, X, Check,
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
-  GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers, PartyPopper,
+  GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
-  Route, ListChecks, UserRound, Map as MapIcon, ShoppingBag,
+  Route, UserRound, Map as MapIcon, ShoppingBag,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -17,13 +17,15 @@ import {
 // звуковой движок подгружается по первому клику — в стартовом файле только обёртка
 import { Audio } from './audio/lazy.js';
 import { InflatiaMark } from './logo.jsx';
-import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon } from './account.jsx';
+import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
+import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
+import { checkReturn } from './lib/retention.js';
 import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
-export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, EMBLEMS } from './account.jsx';
+export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, accountKidsMode, EMBLEMS } from './account.jsx';
 
 export { Audio };
 
@@ -299,7 +301,6 @@ export const GlobalStyle = () => (
     }
     .ems-market-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap:12px; }
     @media (max-width: 420px) { .ems-market-grid { grid-template-columns: minmax(0,1fr); } }
-    @media (max-width: 560px) { .ems-casino-grid { grid-template-columns: minmax(0,1fr) !important; } }
     @keyframes emsPulse { 0%,100% { opacity: var(--p, 0.2); } 50% { opacity: calc(var(--p, 0.2) * 2.1); } }
     .ems-pulse { animation: emsPulse 3.4s ease-in-out infinite; }
     @keyframes emsDiceRoll { 0% { transform: rotate(0deg) scale(1); } 25% { transform: rotate(-100deg) scale(1.1); } 50% { transform: rotate(140deg) scale(0.94); } 75% { transform: rotate(-60deg) scale(1.08); } 100% { transform: rotate(360deg) scale(1); } }
@@ -653,43 +654,39 @@ export const ROLES_PLAYED_KEY = 'ems-roles-played';
 export const NETWORK_PLAYED_KEY = 'ems-network-played';
 
 export const ACHIEVEMENTS = [
-  { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Заверши первый квартал у руля экономики.' },
-  { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройди вызов дня до конца, не проиграв.' },
-  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'В «Своём деле» утрой стоимость компании против стартовой.' },
-  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'В «Своём деле» выбери при старте кризисный сценарий (валютный кризис, ипотечный пузырь или гиперинфляцию — не открытую партию) и продержи компанию 12 кварталов без банкротства.' },
-  { id: 'tycoon_chain', icon: Wheat, title: 'От поля до полки', desc: 'Собери свою хлебную цепочку: ферма, мельница, хлебозавод и магазин.' },
-  { id: 'tycoon_billion', icon: Crown, title: 'Миллиардер', desc: 'Доведи стоимость своей компании до миллиарда.' },
-  { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержись 20 кварталов в одной партии.' },
-  { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержись 40 кварталов в одной партии.' },
-  { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержи инфляцию рядом с целью 8 кварталов подряд.' },
-  { id: 'gdp_double', icon: TrendingUp, title: 'Удвоение', desc: 'Удвой реальный ВВП от старта партии.' },
-  { id: 'low_unemployment', icon: Users, title: 'Полная занятость', desc: 'Опусти безработицу ниже 4%.' },
-  { id: 'debt_control', icon: Scale, title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизь госдолг ниже 35% ВВП.' },
-  { id: 'survived_crisis', icon: ShieldCheck, title: 'Пережили бурю', desc: 'Выведи страну из кризисного режима обратно к норме.' },
-  { id: 'won_election', icon: Vote, title: 'Мандат доверия', desc: 'Останься у власти на выборах.' },
-  { id: 'all_roles', icon: Layers, title: 'Все ветви власти', desc: 'Доведи до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
-  { id: 'network_played', icon: Share2, title: 'На двоих', desc: 'Доиграй хотя бы один квартал в партии по сети.' },
-  { id: 'casino_win', icon: Dices, title: 'Дебют в казино', desc: 'Выиграй свою первую ставку в казино.' },
-  // id прежние (открытые достижения сохраняются), смысл — закон больших чисел, а не куш
-  { id: 'casino_jackpot', icon: Coins, title: 'Закон больших чисел', desc: 'Сделай 30 ставок в казино и сравни итог со счётчиком матожидания.' },
-  { id: 'casino_ahead', icon: PartyPopper, title: 'Дом всегда выигрывает', desc: 'Сто ставок в казино: на такой дистанции итог почти наверняка сходится к ожидаемому проигрышу.' },
-  { id: 'margin_call', icon: AlertTriangle, title: 'Маржин-колл', desc: 'Переживи принудительное закрытие позиций брокером и продолжи торговать.' },
-  { id: 'tutorial_done', icon: GraduationCap, title: 'Курс молодого бойца', desc: 'Пройди первый модуль обучения.' },
-  { id: 'tutorial_course_done', icon: Award, title: 'Экономист', desc: 'Пройди базовый курс целиком, вместе с экзаменом.' },
-  { id: 'course_trader', icon: BarChart3, title: 'Аналитик', desc: 'Пройди курс частного инвестора целиком, вместе с экзаменом.' },
-  { id: 'course_president', icon: Landmark, title: 'Государственный ум', desc: 'Пройди курс президента целиком, вместе с экзаменом.' },
-  { id: 'course_all', icon: Medal, title: 'Красный диплом', desc: 'Пройди три курса с экзаменами: экономическую политику, частного инвестора и президента.' },
-  { id: 'promises_kept', icon: Handshake, title: 'Слово держат', desc: 'Дойди до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
-  { id: 'reformer', icon: Hammer, title: 'Реформатор', desc: 'Проведи три структурные реформы за одну партию (президент).' },
-  { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верни парламент, который сам же и распустил.' },
-  { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведи страну до тоталитарного режима.' },
-  { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получи экстренное финансирование МВФ вместо дефолта.' },
-  { id: 'prices_stopped', icon: Award, title: 'Цены остановлены', desc: 'Доведи стабилизационную программу до конца: верни инфляцию из гиперинфляции к цели.' },
-  { id: 'hardest_way_out', icon: Crown, title: 'Выход есть', desc: 'Сохрани демократию 16 кварталов в самом трудном сценарии — «Гиперинфляции».' },
-  { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введи санкции против торгового партнёра.' },
-  { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договорись о едином рынке с соседями.' },
-  { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Соверши сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
-  { id: 'public_room_played', icon: DoorOpen, title: 'Открытая дверь', desc: 'Доиграй хотя бы один квартал в открытой (публичной) сетевой комнате.' },
+  { id: 'first_quarter', icon: Play, title: 'Первый квартал', desc: 'Завершите первый квартал у руля экономики.' },
+  { id: 'daily_done', icon: Medal, title: 'Вызов принят', desc: 'Пройдите вызов дня до конца, не проиграв.' },
+  { id: 'biz_triple', icon: Factory, title: 'Своё дело', desc: 'В «Своём деле» утройте стоимость компании против стартовой.' },
+  { id: 'biz_survivor', icon: LifeBuoy, title: 'Выжить в кризис', desc: 'В «Своём деле» выберите при старте кризисный сценарий (валютный кризис, ипотечный пузырь или гиперинфляцию — не открытую партию) и продержите компанию 12 кварталов без банкротства.' },
+  { id: 'tycoon_chain', icon: Wheat, title: 'От поля до полки', desc: 'Соберите свою хлебную цепочку: ферма, мельница, хлебозавод и магазин.' },
+  { id: 'tycoon_billion', icon: Crown, title: 'Миллиардер', desc: 'Доведите стоимость своей компании до миллиарда.' },
+  { id: 'survivor_20', icon: Calendar, title: 'Ветеран', desc: 'Продержитесь 20 кварталов в одной партии.' },
+  { id: 'survivor_40', icon: BookOpen, title: 'Долгожитель', desc: 'Продержитесь 40 кварталов в одной партии.' },
+  { id: 'inflation_target', icon: Target, title: 'В яблочко', desc: 'Играя за Центробанк, удержите инфляцию рядом с целью 8 кварталов подряд.' },
+  { id: 'gdp_double', icon: TrendingUp, title: 'Удвоение', desc: 'Удвойте реальный ВВП от старта партии.' },
+  { id: 'low_unemployment', icon: Users, title: 'Полная занятость', desc: 'Опустите безработицу ниже 4%.' },
+  { id: 'debt_control', icon: Scale, title: 'Долговая дисциплина', desc: 'Играя за Минфин, снизьте госдолг ниже 35% ВВП.' },
+  { id: 'survived_crisis', icon: ShieldCheck, title: 'Пережили бурю', desc: 'Выведите страну из кризисного режима обратно к норме.' },
+  { id: 'won_election', icon: Vote, title: 'Мандат доверия', desc: 'Останьтесь у власти на выборах.' },
+  { id: 'all_roles', icon: Layers, title: 'Все ветви власти', desc: 'Доведите до конца хотя бы один квартал за Центробанк, Минфин, премьер-министра, президента и трейдера.' },
+  { id: 'network_played', icon: Share2, title: 'На двоих', desc: 'Доиграйте хотя бы один квартал в партии по сети.' },
+  { id: 'margin_call', icon: AlertTriangle, title: 'Маржин-колл', desc: 'Переживите принудительное закрытие позиций брокером и продолжите торговать.' },
+  { id: 'tutorial_done', icon: GraduationCap, title: 'Курс молодого бойца', desc: 'Пройдите первый модуль обучения.' },
+  { id: 'tutorial_course_done', icon: Award, title: 'Экономист', desc: 'Пройдите базовый курс целиком, вместе с экзаменом.' },
+  { id: 'course_trader', icon: BarChart3, title: 'Аналитик', desc: 'Пройдите курс частного инвестора целиком, вместе с экзаменом.' },
+  { id: 'course_president', icon: Landmark, title: 'Государственный ум', desc: 'Пройдите курс президента целиком, вместе с экзаменом.' },
+  { id: 'course_all', icon: Medal, title: 'Красный диплом', desc: 'Пройдите три курса с экзаменами: экономическую политику, частного инвестора и президента.' },
+  { id: 'promises_kept', icon: Handshake, title: 'Слово держат', desc: 'Дойдите до выборов, сдержав все три предвыборных обещания (премьер-министр или президент).' },
+  { id: 'reformer', icon: Hammer, title: 'Реформатор', desc: 'Проведите три структурные реформы за одну партию (президент).' },
+  { id: 'own_hands', icon: HeartHandshake, title: 'Своими руками', desc: 'Играя за президента, верните парламент, который сами же и распустили.' },
+  { id: 'iron_president', icon: Gavel, title: 'Железная рука', desc: 'Играя за президента, доведите страну до тоталитарного режима.' },
+  { id: 'imf_bailout', icon: LifeBuoy, title: 'Спасательный круг', desc: 'Играя за Минфин, получите экстренное финансирование МВФ вместо дефолта.' },
+  { id: 'prices_stopped', icon: Award, title: 'Цены остановлены', desc: 'Доведите стабилизационную программу до конца: верните инфляцию из гиперинфляции к цели.' },
+  { id: 'hardest_way_out', icon: Crown, title: 'Выход есть', desc: 'Сохраните демократию 16 кварталов в самом трудном сценарии — «Гиперинфляции».' },
+  { id: 'diplomacy_sanctions', icon: Ban, title: 'Экономическое давление', desc: 'Играя за президента, введите санкции против торгового партнёра.' },
+  { id: 'trade_bloc_join', icon: Globe2, title: 'Открытые границы', desc: 'Играя за президента, договоритесь о едином рынке с соседями.' },
+  { id: 'cds_trade', icon: TrendingDown, title: 'Ставка на дефолт', desc: 'Совершите сделку по свопу на дефолт (CDS) в трейдерском терминале.' },
+  { id: 'public_room_played', icon: DoorOpen, title: 'Открытая дверь', desc: 'Доиграйте хотя бы один квартал в открытой (публичной) сетевой комнате.' },
 ];
 
 export const loadUnlockedAchievements = () => { try { return JSON.parse(localStorage.getItem(ACHIEVEMENTS_KEY) || '{}'); } catch { return {}; } };
@@ -1135,7 +1132,7 @@ function MenuTicker() {
       <span key={r.id} className="menu-tick-cell">
         <span style={{ color: COLOR.muted }}>{r.label}</span>{' '}
         <span className="ems-mono" style={{ color: COLOR.text }}>{r.v.toFixed(r.dec).replace('.', ',')}{r.unit}</span>{' '}
-        <span style={{ color: tone, fontSize: 10 }}>{up ? '▲' : down ? '▼' : '•'}</span>
+        <span style={{ color: tone, fontSize: 12 }}>{up ? '▲' : down ? '▼' : '•'}</span>
       </span>
     );
   });
@@ -1143,7 +1140,7 @@ function MenuTicker() {
   return (
     <div className="ems-fade-in menu-ticker" aria-hidden="true">
       <div className="menu-ticker-spark">
-        <div style={{ fontSize: 11, color: COLOR.faint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Инфляция, 4 года</div>
+        <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Инфляция, 4 года</div>
         <svg width="120" height="36" viewBox="0 0 120 36" style={{ display: 'block' }}>
           <polyline points={pts} fill="none" stroke={COLOR.gold} strokeWidth="1.6" strokeLinejoin="round" />
           <circle cx="120" cy={34 - ((infHist[infHist.length - 1] - lo) / (hi - lo)) * 30} r="2.4" fill={COLOR.goldSoft} />
@@ -1156,16 +1153,16 @@ function MenuTicker() {
   );
 }
 
-/* Нижняя панель главного экрана: шесть вкладок — Путь, Задания (задания дня, испытание месяца
-   и практика), Учебник, Лавка, Мир, Профиль; до каждой одно касание, на телефоне — под большим пальцем. Урок
+/* Нижняя панель главного экрана: пять вкладок — Путь, Учебник, Мир, Лавка, Профиль; до каждой
+   одно касание, на телефоне — под большим пальцем. «Задания» (задания дня, испытание месяца и
+   практика) — карточка наверху Пути, а не вкладка. Урок
    открывается поверх неё во весь экран. Открытая вкладка — не кнопка перехода: путь назад у
    подэкранов (учебник поверх вкладки) один — их собственный «назад». */
 const NAV_TABS = [
   { id: 'path', icon: Route, label: 'Путь' },
-  { id: 'tasks', icon: ListChecks, label: 'Задания' },
   { id: 'book', icon: BookOpenText, label: 'Учебник' },
-  { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
   { id: 'world', icon: MapIcon, label: 'Мир' },
+  { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
   { id: 'profile', icon: UserRound, label: 'Профиль' },
 ];
 function BottomNav({ tab, onTab, onReselect = null }) {
@@ -1337,7 +1334,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
               <span style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--u)', color: 'var(--ds-paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={19} aria-hidden="true" /></span>
               <div style={{ minWidth: 0 }}>
                 <div className="ds-h3">{m.title}</div>
-                <div className="ds-eyebrow" style={{ fontSize: 11, letterSpacing: '.08em', marginTop: 2 }}>{m.tag}</div>
+                <div className="ds-eyebrow" style={{ fontSize: 12, letterSpacing: '.08em', marginTop: 2 }}>{m.tag}</div>
               </div>
             </div>
             <div className="menu-mode-desc ds-sub" style={{ fontSize: 14, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>
@@ -1361,10 +1358,12 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         <MenuTicker />
         {/* шапка: печать, название и одна строка о том, что это */}
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
-          <InflatiaMark size={54} />
+          <InflatiaMark size={54} title={null} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 className="ds-h1 menu-title">Инфлатия</h1>
-            <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>Симулятор государства и бизнеса</div>
+            <h1 className="ds-h1 menu-title" data-testid="brand">Инфлатия</h1>
+            {/* один слоган везде (docs/world.md); раздел — «Мир: страна, где знания проверяются в деле» */}
+            <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>экономика пять минут в день</div>
+            <div className="menu-section-title" data-testid="world-title" style={{ fontSize: 14, color: COLOR.muted, marginTop: 4 }}>Мир: страна, где знания проверяются в деле</div>
           </div>
           {!inShell && profileSlot}
         </div>
@@ -1401,12 +1400,12 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         )}
         {continues[1] && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
-            <button className="ems-btn menu-continue-alt ems-fade-in" style={{ flex: 1 }} onClick={continues[1].go}>
+            <button type="button" className="ds-card ds-card--button menu-continue-alt ems-fade-in" style={{ flex: 1 }} onClick={continues[1].go}>
               <span style={{ color: COLOR.faint }}>или</span> {continues[1].title} · <span style={{ color: COLOR.muted }}>{continues[1].sub}</span>
               <ChevronDown size={13} style={{ transform: 'rotate(-90deg)', marginLeft: 'auto' }} />
             </button>
             {continues[1].remove && (
-              <button className="ems-btn menu-continue-alt" style={{ width: 'auto', padding: '0 12px' }} aria-label="Удалить автосохранение «Своего дела»"
+              <button type="button" className="ds-card ds-card--button menu-continue-alt" style={{ width: 'auto', padding: '0 12px' }} aria-label="Удалить автосохранение «Своего дела»"
                 title="Удалить автосохранение" onClick={continues[1].remove}><X size={13} /></button>
             )}
           </div>
@@ -1426,9 +1425,9 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
             </button>
             {savesOpen && (
               <div style={{ padding: '0 14px 14px' }}>
-                <div className="ems-seg" role="tablist" style={{ display: 'flex', marginBottom: 10 }}>
+                <div role="group" aria-label="Какие сохранения" style={{ display: 'flex', margin: '0 -4px 10px' }}>
                   {[['solo', 'Партии'], ['tycoon', 'Своё дело'], ['network', 'По сети']].filter(([id]) => savesCount[id] > 0 || id === 'solo').map(([id, label]) => (
-                    <button key={id} role="tab" aria-pressed={savesTab === id} style={{ flex: 1, padding: '6px 8px', fontSize: 12 }}
+                    <button key={id} type="button" className="ds-chip" aria-pressed={savesTab === id} style={{ flex: 1, fontSize: 13 }}
                       onClick={() => setSavesTab(id)}>{label} · {savesCount[id]}</button>
                   ))}
                 </div>
@@ -1441,16 +1440,16 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                           Слот {idx + 1} · {roleShort(slot.role)} · {quarterLabel(slot.quarterIndex || 1)}
                         </span>
                       </span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={slotBusy === idx}
-                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                      <Button small variant="secondary" disabled={slotBusy === idx}
+                        onClick={() => enterSlot(idx)}>{slotBusy === idx ? 'Загружаем…' : 'Играть'}</Button>
                       <button onClick={() => removeSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
                     </div>
                   ) : null)) : <div style={{ fontSize: 12, color: COLOR.faint }}>Сохранённых партий на сервере нет — сохраняйте кнопкой «Партия» в игре.</div>)}
                   {savesTab === 'tycoon' && tycoonSlots.map((slot, idx) => (slot ? (
                     <div key={idx} className="ems-row-hover menu-slot">
                       <span style={{ flex: 1, minWidth: 0 }}>Слот {idx + 1} · {quarterLabel(slot.quarterIndex || 1)} · {slot.buildings} зданий</span>
-                      <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={tycoonBusy === idx}
-                        onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</button>
+                      <Button small variant="secondary" disabled={tycoonBusy === idx}
+                        onClick={() => enterTycoonSlot(idx)}>{tycoonBusy === idx ? 'Загружаем…' : 'Играть'}</Button>
                       <button onClick={() => removeTycoonSlot(idx)} aria-label="Удалить сохранение" className="menu-x"><X size={12} /></button>
                     </div>
                   ) : null))}
@@ -1463,8 +1462,8 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
                         <span style={{ flex: 1, minWidth: 0 }}>
                           Комната <b className="ems-mono">{slot.id}</b> · {rd.short}{preview && <span style={{ color: COLOR.faint }}> · {quarterLabel(preview.quarterIndex)}</span>}
                         </span>
-                        <button className="ems-btn" style={{ padding: '4px 9px', fontSize: 12 }} disabled={networkSlotBusy === idx}
-                          onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Войти'}</button>
+                        <Button small variant="secondary" disabled={networkSlotBusy === idx}
+                          onClick={() => enterNetworkSlot(idx)}>{networkSlotBusy === idx ? 'Входим…' : 'Войти'}</Button>
                       </div>
                     );
                   })}
@@ -1477,7 +1476,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
 
         {/* 5. Мелкое: достижения, устройства, оформление, звук */}
         <div className="menu-footer ems-fade-in">
-          <button className="ems-btn menu-chip" onClick={() => { Audio.play('click'); setShowAch(true); }}><Trophy size={13} color={COLOR.gold} />Достижения</button>
+          <Button small variant="ghost" icon={Trophy} onClick={() => { Audio.play('click'); setShowAch(true); }}>Достижения</Button>
           <label className="menu-chip menu-theme">
             <span style={{ fontSize: 12, color: COLOR.faint }}>Оформление</span>
             <select value={theme} onChange={(e) => { Audio.play('tab'); setTheme(e.target.value); }} aria-label="Оформление">
@@ -1547,6 +1546,8 @@ function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = nu
   const [tour, setTour] = useState(() => loadRolesPlayed().length === 0);
   // «Только экономика»: война заморожена — ни нападений, ни указов о ней, ни кнопок на карте
   const [economyOnly, setEconomyOnly] = useState(false);
+  // детский режим «Мира» (до 16 лет всегда, старше — в профиле): войн нет и так
+  const kidsMode = accountKidsMode(useAccount());
   const [cbPersona, setCbPersona] = useState('pragmatic');
   const [mofPersona, setMofPersona] = useState('technocrat');
   /* Классика против настраиваемой партии. В классике характеры ведомств бросаются
@@ -1869,7 +1870,13 @@ function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = nu
             </span>
           </label>
         )}
-        {role !== 'entrepreneur' && (
+        {role !== 'entrepreneur' && kidsMode && (
+          <div data-testid="kids-note" style={{ padding: '11px 13px', marginBottom: 12, borderRadius: 10, border: `1px solid ${COLOR.border}`, fontSize: 12, color: COLOR.muted, lineHeight: 1.45 }}>
+            <span style={{ fontSize: 13, color: COLOR.text, fontWeight: 600 }}>Детский режим</span>
+            <span style={{ display: 'block', marginTop: 2 }}>Без войн, переворотов и несвободных режимов: экономика, выборы, реформы и торговля. Меняется в профиле.</span>
+          </div>
+        )}
+        {role !== 'entrepreneur' && !kidsMode && (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 13px', marginBottom: 12, borderRadius: 10,
             border: `1px solid ${economyOnly ? COLOR.gold : COLOR.border}`, background: economyOnly ? COLOR.goldDim : 'transparent', cursor: 'pointer' }}>
             <input type="checkbox" checked={economyOnly} onChange={(e) => { Audio.play('tick'); setEconomyOnly(e.target.checked); }}
@@ -1892,7 +1899,7 @@ function SetupScreen({ onStart, onBack, initialRole = null, initialScenario = nu
             const presWanted = custom ? presPersona : 'random';
             // классика всегда начинается с открытой партии, даже если в
             // настраиваемом режиме до этого успели выбрать кризисный сценарий
-            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour, economyOnly,
+            onStart({ role, difficulty, goal, scenario: custom ? scenario : 'sandbox', tour, economyOnly, kidsMode,
               ...(role === 'entrepreneur' ? { sector } : {}),
               cbPersona: cbWanted === 'random' ? pick(CB_PERSONAS) : cbWanted,
               mofPersona: mofWanted === 'random' ? pick(MOF_PERSONAS) : mofWanted,
@@ -1987,13 +1994,26 @@ export default function MacroSimulator() {
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
-  const [gate, setGate] = useState(() => !loadAccount());
+  /* Гость (src/lib/guest.js): «Начать» → цель → сразу первый урок, без аккаунта. Регистрация —
+     после урока («Сохраните прогресс»): тогда ворота открываются на экране регистрации. */
+  const [guest, setGuest] = useState(() => !loadAccount() && isGuest());
+  const [gate, setGate] = useState(() => !loadAccount() && !isGuest());
+  const [gateScreen, setGateScreen] = useState('hello');
+  const [firstLesson, setFirstLesson] = useState(false);
   React.useEffect(() => {
-    const ready = () => { setGate(false); setView('menu'); setTabRaw('path'); window.scrollTo(0, 0); };
+    const ready = () => { setGate(false); setGuest(false); setView('menu'); setTabRaw('path'); window.scrollTo(0, 0); };
+    const guestStart = () => { setGuest(true); setGate(false); setView('menu'); setTabRaw('path'); setFirstLesson(true); window.scrollTo(0, 0); };
+    const guestSave = () => { setGateScreen('register'); setGate(true); window.scrollTo(0, 0); };
     window.addEventListener('ems-account-ready', ready);
-    return () => window.removeEventListener('ems-account-ready', ready);
+    window.addEventListener(GUEST_START, guestStart);
+    window.addEventListener(GUEST_SAVE, guestSave);
+    return () => { window.removeEventListener('ems-account-ready', ready); window.removeEventListener(GUEST_START, guestStart); window.removeEventListener(GUEST_SAVE, guestSave); };
   }, []);
-  React.useEffect(() => { if (!account) setGate(true); }, [account]);
+  React.useEffect(() => { if (!account && !guest) { setGateScreen('hello'); setGate(true); } }, [account, guest]);
+  // детский режим и имя — с сервера при каждом запуске (профиль мог поменяться на другом устройстве)
+  React.useEffect(() => { refreshAccount(); }, []);
+  // воронка: вернулся ли человек на следующий день и через неделю (src/lib/retention.js)
+  React.useEffect(() => { checkReturn(track); }, []);
   // тёмная тема обучения переключается в профиле — перерисовать оболочку
   const [learnTick, setLearnTick] = useState(0);
   // вернулись из Лаборатории, партии или «Своего дела», открытых из учебника, — снова в учебник
@@ -2003,6 +2023,8 @@ export default function MacroSimulator() {
   const [closeTick, setCloseTick] = useState(0);
   // повторное нажатие на «Учебник», когда он уже открыт, — на главную страницу учебника
   const [bookHome, setBookHome] = useState(0);
+  // повторное нажатие на «Путь» закрывает экран «Задания» поверх Пути
+  const [pathHome, setPathHome] = useState(0);
   const [labLever, setLabLever] = useState('keyRate');
   // учебник: откуда открыта Лаборатория ({ lever, cb, mode, scenario }), куда вернуться,
   // задание для «Своего дела» и предвыбор сценария/старта в анкете
@@ -2028,7 +2050,7 @@ export default function MacroSimulator() {
   React.useEffect(() => {
     try { if (tycoon) localStorage.setItem(LAST_SCREEN_KEY, 'tycoon'); else localStorage.removeItem(LAST_SCREEN_KEY); } catch { /* приватный режим */ }
   }, [tycoon]);
-  const showGate = gate || !account;
+  const showGate = gate || (!account && !guest);
   const learning = showGate || (view === 'menu' && !setup && !network && !tycoon && tab !== 'world');
   // обучение — в своей светлой (или тёмной по выбору) теме; «канцелярия» — только в «Мире»
   applyTheme(learning ? learnThemeId() : theme);
@@ -2144,7 +2166,7 @@ export default function MacroSimulator() {
               <GlobalStyle />
               <Suspense fallback={<GameFallback />}>
                 <LearnTab tab={tab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
-                  onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome}
+                  onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome} pathHome={pathHome} guest={guest} firstLesson={firstLesson} onFirstLesson={() => setFirstLesson(false)}
                   bookHandlers={{
                     onOpenLab: (init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); },
                     onStartDrill: startDrill,
@@ -2164,7 +2186,7 @@ export default function MacroSimulator() {
           {/* учебник поверх вкладки (например, «Открыть теорию» из карточки урока) — внизу отмечен «Учебник»;
               нажатие на вкладку закрывает его */}
           <BottomNav tab={bookOver && tab !== 'world' ? 'book' : tab} onTab={(t) => { if (bookOver) { setBookOver(false); setCloseTick((k) => k + 1); } setTab(t); }}
-            onReselect={(t) => { if (t === 'book' && !bookOver) setBookHome((k) => k + 1); }} />
+            onReselect={(t) => { if (t === 'book' && !bookOver) setBookHome((k) => k + 1); if (t === 'path') setPathHome((k) => k + 1); }} />
         </div>
       );
     }
@@ -2196,7 +2218,7 @@ export default function MacroSimulator() {
     return (
       <div className="ems-root" data-testid="gate">
         <GlobalStyle />
-        <Suspense fallback={<GameFallback />}><Welcome /></Suspense>
+        <Suspense fallback={<GameFallback />}><Welcome key={gateScreen} initialScreen={gateScreen} onCancel={guest ? () => setGate(false) : null} /></Suspense>
       </div>
     );
   }

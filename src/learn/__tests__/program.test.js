@@ -5,7 +5,7 @@ import { LESSON_BY_ID, UNIT_BY_ID, EXERCISES, buildLesson, buildPractice, buildP
 import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts, theoryNotice } from '../program.js';
 import { evalExpr, fmtResult, pressRoot } from '../calc.js';
 import {
-  balance, earn, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
+  balance, earn, courseIncome, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
   settle, monthChallenge, achievementsOf, hash01, COIN,
 } from '../rewards.js';
 import {
@@ -176,7 +176,7 @@ describe('монеты и курс', () => {
     expect(Math.abs(mean - 1)).toBeLessThan(0.05);
     expect(new Set(hist).size).toBeGreaterThan(5);
     expect(rateOn('2026-09-28')).toBe(rateOn('2026-09-28'));
-    expect(priceOf('tophat', '2026-09-28')).toBe(Math.ceil(900 * rateOn('2026-09-28')));
+    expect(priceOf('tophat', '2026-09-28')).toBe(Math.ceil(140 * rateOn('2026-09-28')));
   });
 });
 
@@ -198,14 +198,14 @@ describe('лавка и заморозки', () => {
     const other = OUTFITS.find((x) => x.slot !== o.slot);
     expect(outfitOf(setWear(r.s, other.slot, id, T))[other.slot]).toBe(null);
   });
-  it('цены: обычные вещи — 150–1500 крон, редкие — от 2500; всю лавку за неделю не скупить', () => {
+  it('цены: обычные вещи — 25–240 крон, редкие — от 400; всю лавку за один курс не скупить', () => {
     OUTFITS.forEach((o) => {
-      if (o.rare) expect(o.crowns, o.id).toBeGreaterThanOrEqual(2500);
-      else { expect(o.crowns, o.id).toBeGreaterThanOrEqual(150); expect(o.crowns, o.id).toBeLessThanOrEqual(1500); }
+      if (o.rare) expect(o.crowns, o.id).toBeGreaterThanOrEqual(400);
+      else { expect(o.crowns, o.id).toBeGreaterThanOrEqual(25); expect(o.crowns, o.id).toBeLessThanOrEqual(240); }
     });
     const total = OUTFITS.reduce((a, o) => a + o.crowns, 0);
-    // старательный ученик: три урока без ошибок, все задания, цель — около 120 монет в день
-    expect(total / 120).toBeGreaterThan(90);
+    // цены — от заработка курса (docs/mechanics.md): вся лавка — больше двух курсов
+    expect(total).toBeGreaterThan(2 * courseIncome().total);
     expect(new Set(OUTFITS.map((o) => o.slot))).toEqual(new Set(['head', 'face', 'neck', 'hand', 'frame']));
     expect(OUTFITS.filter((o) => o.rare).length).toBeGreaterThanOrEqual(3);
   });

@@ -2,7 +2,7 @@
    вынесенная из MacroSimulator.jsx в отдельный чанк: открывается только по
    клике «Обучение» в главном меню, а не сразу при загрузке приложения,
    поэтому грузится лениво через React.lazy() в MacroSimulator.jsx — как и
-   src/casino.jsx и src/newspaper.jsx.
+   src/newspaper.jsx.
 
    COLOR/Audio/COURSE_PROGRESS_KEY/... — те же самые общие объекты/функции,
    что и в MacroSimulator.jsx (экспортированы оттуда), а не копия. */
@@ -2082,7 +2082,7 @@ const EXAM_MODULES = [
       },
       {
         title: 'Экзамен сдан', isFinal: true, lever: null, runsQuarter: false,
-        body: () => <p>Курс инвестора пройден: цена и позиция, плечо и обеспечение, портфель и <Term k="benchmark">бенчмарк</Term>. В настоящей партии добавятся случайные кризисы, опционы и казино — но правила те же.</p>,
+        body: () => <p>Курс инвестора пройден: цена и позиция, плечо и обеспечение, портфель и <Term k="benchmark">бенчмарк</Term>. В настоящей партии добавятся случайные кризисы и опционы — но правила те же.</p>,
       },
     ],
   },
@@ -2592,9 +2592,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                   const good = m.invert ? d < 0 : d > 0;
                   return (
                     <div key={key} className="ems-panel" style={{ padding: '6px 8px', borderRadius: 8 }}>
-                      <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.25 }}>{m.label}</div>
+                      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.25 }}>{m.label}</div>
                       <div className="ems-mono" style={{ fontSize: 14 }}>{m.fmt(economy[key])}
-                        {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 11, marginLeft: 4, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
+                        {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 12, marginLeft: 4, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
                       </div>
                     </div>
                   );

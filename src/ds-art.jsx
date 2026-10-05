@@ -6,17 +6,23 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Mascot, OutfitContext, mascotHeight } from './mascot.jsx';
 
-export function useReducedMotion() {
-  const q = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-  const [reduced, setReduced] = useState(() => !!(q && q.matches));
+// медиазапрос как состояние: меняется вместе с окном или настройкой системы
+export function useMedia(query) {
+  const q = useMemo(() => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query) : null), [query]);
+  const [on, setOn] = useState(() => !!(q && q.matches));
   useEffect(() => {
     if (!q) return undefined;
-    const f = () => setReduced(q.matches);
+    const f = () => setOn(q.matches);
+    f();
     if (q.addEventListener) q.addEventListener('change', f);
     return () => { if (q.removeEventListener) q.removeEventListener('change', f); };
   }, [q]);
-  return reduced;
+  return on;
 }
+export const useReducedMotion = () => useMedia('(prefers-reduced-motion: reduce)');
+// ПК: от 1024 px Путь — в две колонки, у учебника оглавление сбоку
+export const WIDE_QUERY = '(min-width: 1024px)';
+export const useWide = () => useMedia(WIDE_QUERY);
 
 export const ART_CSS = `
   @keyframes ds-smoke { 0% { transform: translate(0, 0) scale(.6); opacity: 0 } 25% { opacity: .55 } 100% { transform: translate(6px, -22px) scale(1.5); opacity: 0 } }
@@ -48,7 +54,7 @@ export const ART_CSS = `
       100% 97%, 95% 100%, 88% 97.5%, 80% 100%, 72% 98%, 64% 100%, 56% 97.5%, 48% 100%, 40% 98%, 31% 100%, 23% 97.5%, 15% 100%, 7% 98%, 0 100%); }
   .ds-dark .ds-clip { background: #2B2A25; color: #EDE6D3; }
   .ds-clip-mast { text-align: center; font: 700 12.5px/1.2 var(--ds-serif); letter-spacing: .22em; text-transform: uppercase; padding-bottom: 6px; border-bottom: 3px double currentColor; margin-bottom: 4px; }
-  .ds-clip-meta { display: flex; justify-content: space-between; font: 11.5px/1.3 var(--ds-mono); opacity: .75; margin-bottom: 12px; }
+  .ds-clip-meta { display: flex; justify-content: space-between; font: 12px/1.3 var(--ds-mono); opacity: .75; margin-bottom: 12px; }
   .ds-postage { display: inline-block; padding: 7px; background-color: var(--ds-card);
     background-image: radial-gradient(circle, var(--ds-paper) 3.2px, transparent 3.6px); background-size: 12px 12px; background-position: -6px -6px; filter: drop-shadow(0 1px 1px var(--ds-shade)); }
   .ds-postage-in { border: 1.5px solid var(--u); background: var(--ds-card); padding: 6px; text-align: center; position: relative; }
@@ -118,14 +124,16 @@ export function Stamp({ text = 'ПРОЙДЕНО', center = null, color = 'var(-
     </span>
   );
 }
-// почтовая марка для альбома: перфорация, рамка цвета юнита, номинал и подпись
+// почтовая марка для альбома: перфорация, рамка цвета юнита, номинал и подпись. Ещё не
+// заработанная марка — блёклый серый рисунок, но подпись и номер читаются полным контрастом
 export function PostStamp({ color, value, caption, children, dim = false, testid }) {
+  const ink = dim ? 'var(--ds-ink2)' : 'var(--u-ink)';
   return (
-    <span className="ds-postage" style={{ '--u': color, opacity: dim ? 0.45 : 1, filter: dim ? 'grayscale(1)' : undefined }} data-testid={testid}>
+    <span className="ds-postage" style={{ '--u': dim ? 'var(--ds-rule2)' : color }} data-testid={testid} data-dim={dim ? 'true' : undefined}>
       <span className="ds-postage-in" style={{ display: 'block', width: 92 }}>
-        {value != null && <span className="ds-num" style={{ position: 'absolute', top: 3, left: 5, fontSize: 12, fontWeight: 700, color: 'var(--u-ink)' }}>{value}</span>}
-        <span style={{ display: 'block', minHeight: 62 }}>{children}</span>
-        <span style={{ display: 'block', font: '700 10.5px/1.2 var(--ds-serif)', letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--u-ink)', marginTop: 2 }}>{caption}</span>
+        {value != null && <span className="ds-num" style={{ position: 'absolute', top: 3, left: 5, fontSize: 12, fontWeight: 700, color: ink }}>{value}</span>}
+        <span style={{ display: 'block', minHeight: 62, opacity: dim ? 0.45 : 1, filter: dim ? 'grayscale(1)' : undefined }}>{children}</span>
+        <span style={{ display: 'block', font: '700 12px/1.2 var(--ds-serif)', letterSpacing: '.04em', textTransform: 'uppercase', color: ink, marginTop: 2 }}>{caption}</span>
       </span>
     </span>
   );

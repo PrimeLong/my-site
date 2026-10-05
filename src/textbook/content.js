@@ -1,11 +1,15 @@
-/* Тексты глав: chapters/<id>.md, разобранные в дерево блоков. Файлы подтягиваются
-   сборщиком как строки (?raw) и едут в том же ленивом чанке, что и экран учебника.
-   Приложения, написанные текстом (appendices/<id>.md), — так же. */
+/* Тексты глав: chapters/<id>.md, разобранные в дерево блоков. Каждая глава — свой
+   динамический импорт (?raw): в сборке это отдельный маленький чанк, а не 600 КБ текста в
+   чанке учебника. Модуль ждёт все главы (await верхнего уровня), поэтому для тех, кто его
+   импортирует, CHAPTER_BLOCKS и остальное по-прежнему обычные синхронные данные; главы
+   грузятся параллельно и только тогда, когда открывается обучение или учебник.
+   Приложения, написанные текстом (appendices/<id>.md), маленькие — едут в чанке учебника. */
 import { parseChapter, collectBlocks } from './markdown.js';
 import { sectionsOf, plain } from './sections.js';
 import { CHAPTERS } from './toc.js';
 
-const RAW = import.meta.glob('./chapters/*.md', { query: '?raw', import: 'default', eager: true });
+const LOAD_CHAPTER = import.meta.glob('./chapters/*.md', { query: '?raw', import: 'default' });
+const RAW = Object.fromEntries(await Promise.all(Object.entries(LOAD_CHAPTER).map(async ([path, load]) => [path, await load()])));
 const RAW_APPENDIX = import.meta.glob('./appendices/*.md', { query: '?raw', import: 'default', eager: true });
 const byFile = (raw) => Object.fromEntries(Object.entries(raw).map(([path, text]) => [path.replace(/^.*\/|\.md$/g, ''), text]));
 

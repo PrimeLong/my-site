@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wallet, ShieldCheck, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap,
+  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap, ListChecks, ChevronRight,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
@@ -13,7 +13,7 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
@@ -27,6 +27,7 @@ export const REWARD_CSS = `
   .rw-quest { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 0; border-top: 1px dotted var(--ds-rule2); }
   .rw-quest:first-of-type { border-top: none; }
   .rw-ico { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--ds-rule2); color: var(--u-ink); background: var(--ds-card); }
+  .rw-tasks-entry { margin: 0 0 12px; padding: 12px 14px; }
   .rw-ico.ok { background: var(--ds-ok-btn); border-color: var(--ds-ok-btn); color: #fff; }
   .rw-coin { font: 700 13px var(--ds-mono); color: var(--ds-ink2); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   .rw-page { position: fixed; inset: 0; z-index: 250; overflow-y: auto; background: var(--ds-paper); padding: 8px 16px calc(40px + env(safe-area-inset-bottom)); }
@@ -36,21 +37,23 @@ export const REWARD_CSS = `
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule); }
   .rw-item[data-on="true"] { box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--u); }
   .rw-price { font: 700 14px var(--ds-mono); }
-  .rw-price small { font: 11.5px var(--ds-sans); color: var(--ds-ink3); margin-left: 4px; }
+  .rw-price small { font: 12px var(--ds-sans); color: var(--ds-ink3); margin-left: 4px; }
   .rw-dots { display: flex; justify-content: center; gap: 8px; }
-  .rw-forgone { font-size: 11.5px; line-height: 1.25; color: var(--ds-ink3); }
+  .rw-forgone { font-size: 12px; line-height: 1.25; color: var(--ds-ink3); }
   .rw-piggy-chart { width: 100%; display: block; margin: 6px 0 2px; }
-  .rw-piggy-chart text { font: 700 10px var(--ds-mono); fill: var(--ds-ink2); }
-  .rw-dot { width: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 11px var(--ds-sans); color: var(--ds-ink3); }
+  .rw-piggy-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
+  .rw-dot { width: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 12px var(--ds-sans); color: var(--ds-ink3); }
   .rw-dot i { width: 26px; height: 26px; border-radius: 50%; border: 1.5px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
   .rw-dot.done i { border: none; background: var(--ds-bad); color: #fff; }
   .rw-dot.frozen i { border: none; background: #3E6FA8; color: #fff; }
   .rw-dot.today { color: var(--ds-ink); }
   .rw-stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px 6px; justify-items: center; }
   .rw-stamp { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
-  .rw-stamp[data-got="false"] { opacity: .38; filter: grayscale(1); }
+  /* ещё не полученная печать: блёклый серый оттиск, а подпись читается полным контрастом */
+  .rw-stamp[data-got="false"] > svg, .rw-stamp[data-got="false"] > .ds-stamp { opacity: .38; filter: grayscale(1); }
+  .rw-stamp[data-got="false"] b { color: var(--ds-ink2); }
   .rw-stamp b { font: 700 12px/1.2 var(--ds-serif); }
-  .rw-stamp span { font: 11px/1.25 var(--ds-sans); color: var(--ds-ink3); }
+  .rw-stamp span { font: 12px/1.25 var(--ds-sans); color: var(--ds-ink2); }
   .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
   .rw-morning-in { flex: 1; max-width: 460px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
   .rw-big { font: 700 64px/1 var(--ds-serif); color: var(--ds-bad); }
@@ -60,8 +63,8 @@ export const REWARD_CSS = `
   .rw-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
   .rw-item { position: relative; }
-  .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad); color: #fff; font: 700 11.5px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
-  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #2E8FB8, #5A4E80); color: #fff; font: 700 11px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
+  .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad-btn); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
+  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #8A2F45, #6B4357); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
   /* редкая вещь: золотистая карточка, по ней пробегает блик, Инфля в ней крупнее */
   .rw-item[data-rare="true"] { border-color: #C9A43A;
     background: linear-gradient(110deg, transparent 35%, rgba(255, 246, 214, .75) 48%, transparent 61%) 0 0 / 260% 100% no-repeat, color-mix(in srgb, var(--ds-card) 84%, #E3B53C);
@@ -72,7 +75,7 @@ export const REWARD_CSS = `
   .rw-note { font: italic 12px/1.3 var(--ds-sans); color: var(--ds-ink2); }
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
-  .rw-goal > i { display: block; height: 100%; background: #2E8FB8; }
+  .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
   @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"] { animation: none; } .rw-bar > i { transition: none; } }
 `;
 
@@ -88,18 +91,40 @@ export function WalletStat({ learn }) {
   const b = balance(learn);
   return (
     <span className="ln-stat" title="Монеты — тратятся во вкладке «Лавка»" data-testid="wallet">
-      <Wallet size={17} color="var(--ds-gold)" aria-hidden="true" /><span data-testid="wallet-balance">{b}</span>
+      <Wallet size={17} color="var(--ds-gold)" aria-hidden="true" /><span className="ds-sr">Монеты: </span><span data-testid="wallet-balance">{b}</span>
     </span>
   );
 }
 
+/* Карточка «Задания» наверху Пути: сколько заданий дня сделано, цель в минутах и испытание
+   месяца — одной строкой. Касание открывает экран заданий (задания дня, испытание, практика). */
+export function TasksEntry({ learn, onOpen, now = Date.now() }) {
+  const quests = questsFor(learn, now);
+  const g = goalToday(learn, now);
+  const m = monthChallenge(learn, now);
+  const done = quests.filter((q) => q.done).length;
+  const goalOk = g.done >= g.goal;
+  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
+  return (
+    <button type="button" className="ds-card ds-card--button rw-tasks-entry" data-testid="tasks-card" data-nav-target="tasks" aria-label={`Задания. ${text}`}
+      onClick={() => { Audio.play('paper'); onOpen(); }}>
+      <span className={`rw-ico ${done === 3 && goalOk ? 'ok' : ''}`}>{done === 3 && goalOk ? <Check size={16} aria-hidden="true" /> : <ListChecks size={16} aria-hidden="true" />}</span>
+      <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <span style={{ display: 'block', fontWeight: 700, fontSize: 15.5 }}>Задания</span>
+        <span className="ds-sub" style={{ display: 'block', fontSize: 13, lineHeight: 1.35 }} data-testid="tasks-card-text">{text}</span>
+      </span>
+      <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />
+    </button>
+  );
+}
+
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------ */
-export function QuestsCard({ learn, now = Date.now() }) {
+export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
   const quests = questsFor(learn, now);
   const g = goalToday(learn, now);
   const done = quests.filter((q) => q.done).length;
   return (
-    <Card style={{ margin: '0 0 14px' }} data-testid="quests">
+    <Card style={{ margin: '0 0 14px' }} data-testid={testid}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <div className="ds-h3">Задания дня</div>
         <span className="ds-num ds-faint" style={{ fontSize: 13 }} data-testid="quests-done">{done}/3</span>
@@ -114,7 +139,7 @@ export function QuestsCard({ learn, now = Date.now() }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <CoinTag n={`+${COIN.goal}`} />
-          <div className="ds-num ds-faint" style={{ fontSize: 11.5 }}>{Math.min(g.done, g.goal)}/{g.goal} мин</div>
+          <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{Math.min(g.done, g.goal)}/{g.goal} мин</div>
         </div>
       </div>
         {quests.map((q) => {
@@ -128,7 +153,7 @@ export function QuestsCard({ learn, now = Date.now() }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <CoinTag n={`+${q.coins}`} />
-                <div className="ds-num ds-faint" style={{ fontSize: 11.5 }}>{q.have}/{q.target}</div>
+                <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{q.have}/{q.target}</div>
               </div>
             </div>
           );
@@ -202,7 +227,7 @@ function RateChart({ hist }) {
           {agoText(last - hover)} · {h.day.slice(8)}.{h.day.slice(5, 7)} · {fmtRate(h.rate)}
         </div>
       )}
-      <div className="ds-faint" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}><span>две недели назад</span><span>пунктир — 1,00</span><span>сегодня</span></div>
+      <div className="ds-faint" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span>две недели назад</span><span>пунктир — 1,00</span><span>сегодня</span></div>
     </div>
   );
 }
@@ -227,7 +252,7 @@ function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal 
           <div className="rw-price">{price < full && <s>{full}</s>}{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
           {/* цена отказа: чего стоит вещь, кроме монет */}
           <div className="rw-forgone" data-testid="shop-forgone" title={`Цена отказа: ${forgone(price).text} или +${forgone(price).week} в копилке за неделю`}>{forgone(price).text} · копилка дала бы +{forgone(price).week}</div>
-          {goal && b < price && <div className="rw-goal" aria-label={`Накоплено ${Math.floor((b / price) * 100)}%`}><i style={{ width: `${Math.min(100, (b / price) * 100)}%` }} /></div>}
+          {goal && b < price && <div className="rw-goal" role="progressbar" aria-label="Накоплено на покупку" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor((b / price) * 100)}><i style={{ width: `${Math.min(100, (b / price) * 100)}%` }} /></div>}
           <Button small variant="secondary" disabled={b < price} onClick={() => onBuy(o.id)}>Купить</Button>
         </>}
     </div>
@@ -352,6 +377,29 @@ function PiggyChart({ amount, day = null }) {
     </svg>
   );
 }
+/* Честно про проценты: 2% в день — 730% годовых, такого не бывает; а вот реальные 8% годовых —
+   1000 крон за 10 лет (docs/mechanics.md). */
+function RealRate() {
+  const pts = realCurve();
+  const W = 300; const H = 70; const pad = 14; const top = pts[pts.length - 1].value;
+  const x = (i) => pad + (i / (pts.length - 1)) * (W - pad * 2);
+  const y = (v) => H - 14 - ((v - 900) / (top - 900)) * (H - 30);
+  return (
+    <div data-testid="piggy-real" style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dotted var(--ds-rule2)' }}>
+      <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.4 }}>
+        {Math.round(PIGGY.rate * 100)}% в день ≈ {PIGGY_YEARLY}% годовых — в жизни так не бывает, а вот как выглядят реальные {Math.round(REAL_RATE * 100)}% годовых:
+      </div>
+      <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`1000 крон под ${Math.round(REAL_RATE * 100)}% годовых: через 10 лет ${top}`}>
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')} fill="none" stroke="var(--u-ink)" strokeWidth="1.6" />
+        {pts.map((p, i) => <circle key={p.year} cx={x(i)} cy={y(p.value)} r={i === 0 || i === pts.length - 1 ? 2.6 : 1.4} fill="var(--u-ink)" />)}
+        <text x={x(0)} y={y(1000) - 5} textAnchor="start">1000</text>
+        <text x={x(pts.length - 1)} y={y(top) - 5} textAnchor="end">{top}</text>
+        <text x={x(0)} y={H - 2} textAnchor="start">сейчас</text>
+        <text x={x(pts.length - 1)} y={H - 2} textAnchor="end">через 10 лет</text>
+      </svg>
+    </div>
+  );
+}
 function PiggyCard({ learn, update, now, b, onMsg }) {
   const st = piggyState(learn, now);
   const [amount, setAmount] = useState(() => Math.max(PIGGY.min, Math.min(100, Math.floor(b / 2))));
@@ -401,6 +449,7 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
       ) : (
         <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }}>Положить можно от {PIGGY.min} монет — их дают уроки.</div>
       )}
+      <RealRate />
     </Card>
   );
 }

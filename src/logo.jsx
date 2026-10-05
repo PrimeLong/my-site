@@ -7,7 +7,8 @@ export function InflatiaMark({ size = 48, title = 'Инфлатия' }) {
   // у каждого экземпляра свой id градиента: два логотипа на странице не должны делить один
   const gid = `inflatia-g-${React.useId().replace(/:/g, '')}`;
   return (
-    <svg viewBox="0 0 64 64" width={size} height={size} role="img" aria-label={title} style={{ flexShrink: 0, display: 'block' }}>
+    // title={null} — знак рядом с надписью «Инфлатия»: для чтения с экрана он лишний
+    <svg viewBox="0 0 64 64" width={size} height={size} {...(title ? { role: 'img', 'aria-label': title } : { 'aria-hidden': true })} style={{ flexShrink: 0, display: 'block' }}>
       <defs>
         <radialGradient id={gid} cx="36%" cy="28%" r="78%">
           <stop offset="0" stopColor="#FBE7A1" />

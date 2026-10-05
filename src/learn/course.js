@@ -11,14 +11,15 @@ import { collectBlocks, parseInline, parseBlocks, checkAnswer } from '../textboo
 import { TEMPLATE_BY_ID, TEMPLATES, templatesOf, seeded } from '../textbook/variants.js';
 import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
+import { pathBlocks } from './money.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
 export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, open: 30, domino: 35 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
-  choice: 'Выбор ответа', gap: 'Заполни пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
-  news: 'Газета', match: 'Сопоставь пары', sort: 'Разложи по корзинам', calc: 'Быстрый расчёт',
-  tiles: 'Собери определение', curve: 'Сдвинь кривую', price: 'Найди цену', point: 'Отметь равновесие',
+  choice: 'Выбор ответа', gap: 'Заполните пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
+  news: 'Газета', match: 'Сопоставьте пары', sort: 'Разложите по корзинам', calc: 'Быстрый расчёт',
+  tiles: 'Соберите определение', curve: 'Сдвиньте кривую', price: 'Найдите цену', point: 'Отметьте равновесие',
   swipe: 'Мини-игра', rush: 'Мини-игра на время', open: 'Как бы вы поступили?', domino: 'Домино',
 };
 /* «Домино»: ученик сам выкладывает цепочку причин; неверное звено роняет домино с этого места,
@@ -75,8 +76,9 @@ function sectionOf(chapterId, block) {
   return s ? s.id : null;
 }
 
-// автоупражнения из задач главы
-function fromProblem(pid) {
+// автоупражнения из задач главы: на Пути — в кронах и с героями (src/learn/money.js)
+const fromProblem = (pid) => pathBlocks(fromProblemRaw(pid));
+function fromProblemRaw(pid) {
   const p = PROBLEMS[pid];
   if (!p) throw new Error(`Нет задачи ${pid}`);
   const b = p.block;
@@ -188,9 +190,9 @@ function lessonsOf(chapterId) {
       if (b.who && !CAST[b.who]) throw new Error(`Нет героя ${b.who} (${b.id})`);
       if (cur.diamond && !b.diamond) throw new Error(`Обычный шаг ${b.id} после алмазного: алмазные шаги — в конце урока`);
       if (b.diamond) cur.diamond = true;
-      // «Открой сам» — первым шагом урока, до карточки-идеи: сначала ученик пробует сам, потом ему объясняют
+      // «Откройте сами» — первым шагом урока, до карточки-идеи: сначала ученик пробует сам, потом ему объясняют
       if (b.discover) {
-        if (cur.kind !== 'intro' || cur.exercises.length || cur.inner.length !== 1) throw new Error(`Шаг «Открой сам» ${b.id} — сразу после первой карточки «Знакомства»`);
+        if (cur.kind !== 'intro' || cur.exercises.length || cur.inner.length !== 1) throw new Error(`Шаг «Откройте сами» ${b.id} — сразу после первой карточки «Знакомства»`);
         cur.inner.unshift({ at: 0, idea: b, discover: true });
         return;
       }
@@ -228,11 +230,11 @@ function lessonsOf(chapterId) {
 /* УРОВНИ: юниты Пути разбиты на пять ступеней, от терминов до полноценного анализа. Путь идёт
    по уровням, внутри уровня — по порядку глав учебника. */
 export const LEVELS = [
-  { id: 'start', title: 'Начальный', text: 'Знаешь основные термины: деньги, цена, доход, расход.' },
-  { id: 'basic', title: 'Базовый', text: 'Понимаешь спрос, предложение, рынок, налоги, инфляцию.' },
-  { id: 'middle', title: 'Средний', text: 'Можешь анализировать графики, бюджет, прибыль и экономические ситуации.' },
-  { id: 'advanced', title: 'Продвинутый', text: 'Понимаешь экономические модели, статистику и сложные процессы.' },
-  { id: 'pro', title: 'Профессиональный', text: 'Умеешь проводить полноценный экономический анализ.' },
+  { id: 'start', title: 'Начальный', text: 'Вы знаете основные термины: деньги, цена, доход, расход.' },
+  { id: 'basic', title: 'Базовый', text: 'Вы понимаете спрос, предложение, рынок, налоги, инфляцию.' },
+  { id: 'middle', title: 'Средний', text: 'Вы умеете анализировать графики, бюджет, прибыль и экономические ситуации.' },
+  { id: 'advanced', title: 'Продвинутый', text: 'Вы понимаете экономические модели, статистику и сложные процессы.' },
+  { id: 'pro', title: 'Профессиональный', text: 'Вы умеете проводить полноценный экономический анализ.' },
 ];
 export const UNIT_LEVEL = {
   scarcity: 'start',
@@ -423,7 +425,7 @@ export const STEP_PICS = ['clock', 'scale', 'hourglass', 'ticket', 'trending-up'
   'coffee', 'wallet', 'link', 'utensils', 'boxes', 'users', 'snowflake', 'arrow-down-to-line', 'arrow-up-to-line', 'croissant', 'landmark', 'radio', 'flag'];
 // шаг читается секунд за пятнадцать, карточка слова — за восемь, пункт итогов — за десять
 export const STEP_SECONDS = 15;
-// «Открой сам»: пять-шесть дней в кофейне — около сорока пяти секунд
+// «Откройте сами»: пять-шесть дней в кофейне — около сорока пяти секунд
 export const DISCOVER_SECONDS = 45;
 const stepsSeconds = (inner) => inner.reduce((s, c) => s + (c.discover ? DISCOVER_SECONDS : STEP_SECONDS), 0);
 export const FLASH_SECONDS = 8;
@@ -681,7 +683,7 @@ function buildDiamond(lessonId, rand, opts) {
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
     const deep = lesson.inner.some((c) => c.diamond);
     if (!deep) hardItems(unitId, 2, rand, new Set(), lesson.no).forEach((it) => items.push(it));
-    // «Открой сам» на повторе не нужен: кривую ученик уже нашёл
+    // «Откройте сами» на повторе не нужен: кривую ученик уже нашёл
     const inner = lesson.inner.filter((c) => !c.discover);
     // карточки собираются до того, как mark скопирует упражнения: uid у копий тот же
     return mark({ lesson, items, cards: stepCards(lesson, items, inner), seconds: sum(items) + stepsSeconds(inner) });

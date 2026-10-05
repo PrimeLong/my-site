@@ -44,26 +44,26 @@ export function CircularFlow({ total = 1000 }) {
         {/* внешнее кольцо: товары и услуги — к семьям, труд и капитал — к фирмам */}
         <path d="M100,26 L22,26 L22,224 L96,224" {...real} markerEnd={`url(#m-b-${uid})`} />
         <path d="M240,224 L318,224 L318,26 L244,26" {...real} markerEnd={`url(#m-b-${uid})`} />
-        <text transform="translate(15,125) rotate(-90)" textAnchor="middle" fontSize={10.5} fill={COLOR.blue}>товары и услуги</text>
-        <text transform="translate(326,125) rotate(90)" textAnchor="middle" fontSize={10.5} fill={COLOR.blue}>труд и капитал</text>
+        <text transform="translate(15,125) rotate(-90)" textAnchor="middle" fontSize={12} fill={COLOR.blue}>товары и услуги</text>
+        <text transform="translate(326,125) rotate(90)" textAnchor="middle" fontSize={12} fill={COLOR.blue}>труд и капитал</text>
         {/* внутреннее кольцо: деньги */}
         <path d="M100,212 L62,212 L62,40 L96,40" fill="none" {...money('spend')} markerEnd={`url(#m-g-${uid})`} />
         <path d="M240,40 L278,40 L278,212 L244,212" fill="none" {...money('income')} markerEnd={`url(#m-g-${uid})`} />
         <g opacity={on('spend') ? 1 : 0.7}>
           <rect x={33} y={108} width={58} height={34} fill={COLOR.panelAlt} stroke={on('spend') ? COLOR.gold : 'none'} />
-          <text x={62} y={122} textAnchor="middle" fontSize={10.5} fill={COLOR.text}>расходы</text>
-          <text x={62} y={136} textAnchor="middle" fontSize={11.5} fill={COLOR.goldSoft} fontWeight={700}>{total}</text>
+          <text x={62} y={122} textAnchor="middle" fontSize={12} fill={COLOR.text}>расходы</text>
+          <text x={62} y={136} textAnchor="middle" fontSize={12} fill={COLOR.goldSoft} fontWeight={700}>{total}</text>
         </g>
         <g opacity={on('income') ? 1 : 0.7}>
           <rect x={249} y={108} width={58} height={34} fill={COLOR.panelAlt} stroke={on('income') ? COLOR.gold : 'none'} />
-          <text x={278} y={122} textAnchor="middle" fontSize={10.5} fill={COLOR.text}>доходы</text>
-          <text x={278} y={136} textAnchor="middle" fontSize={11.5} fill={COLOR.goldSoft} fontWeight={700}>{total}</text>
+          <text x={278} y={122} textAnchor="middle" fontSize={12} fill={COLOR.text}>доходы</text>
+          <text x={278} y={136} textAnchor="middle" fontSize={12} fill={COLOR.goldSoft} fontWeight={700}>{total}</text>
         </g>
         {box(6, 'Фирмы', on('value'))}
-        {on('value') && <text x={170} y={66} textAnchor="middle" fontSize={10.5} fill={COLOR.goldSoft}>добавленная стоимость {vaSum}</text>}
+        {on('value') && <text x={170} y={66} textAnchor="middle" fontSize={12} fill={COLOR.goldSoft}>добавленная стоимость {vaSum}</text>}
         {box(202, 'Домохозяйства', false)}
-        <text x={170} y={128} textAnchor="middle" fontSize={10.5} fill={COLOR.faint}>деньги — сплошные,</text>
-        <text x={170} y={142} textAnchor="middle" fontSize={10.5} fill={COLOR.faint}>товары и труд — пунктир</text>
+        <text x={170} y={128} textAnchor="middle" fontSize={12} fill={COLOR.faint}>деньги — сплошные,</text>
+        <text x={170} y={142} textAnchor="middle" fontSize={12} fill={COLOR.faint}>товары и труд — пунктир</text>
       </svg>
       <div className="ems-seg" role="group" aria-label="Способ счёта ВВП" style={{ display: 'flex', margin: '8px 0 6px' }}>
         {MODES.map((m) => (
@@ -90,11 +90,11 @@ function TAccount({ bank, changed }) {
       <div className="ems-serif" style={{ textAlign: 'center', fontSize: 14, padding: '5px 0', borderBottom: `1px solid ${COLOR.border}`, color: COLOR.goldSoft }}>{bank.name}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: 12.5 }}>
         <div style={{ borderRight: `1px solid ${COLOR.border}`, padding: 4 }}>
-          <div style={{ fontSize: 11, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Активы</div>
+          <div style={{ fontSize: 12, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Активы</div>
           {bank.assets.map(row)}
         </div>
         <div style={{ padding: 4 }}>
-          <div style={{ fontSize: 11, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Пассивы</div>
+          <div style={{ fontSize: 12, color: COLOR.faint, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>Пассивы</div>
           {bank.liab.map(row)}
         </div>
       </div>

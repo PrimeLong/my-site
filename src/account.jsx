@@ -7,7 +7,9 @@ import {
   accountRegister, accountLogin, accountMe, accountUpdate, accountPassword, accountLogout, accountRecover, accountRecoveryNew, reportFilter, accountExport, accountDelete,
 } from './lib/client.js';
 import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
+import { TermsPage, TERMS_TITLE } from './terms.jsx';
 import { RUDE_NAME } from './lib/moderation.js';
+import { validBirthYear, isKid, needsParent, KIDS_AGE, PARENT_AGE } from './lib/age.js';
 import {
   COLOR, Audio, useEscapeClose, getPlayerId, syncProfile, readLocalProgress, writeLocalProgress, PLAYER_ID_KEY,
 } from './MacroSimulator.jsx';
@@ -37,6 +39,20 @@ const saveAccount = (a) => {
 
 // сессия протухла на сервере — забываем её, устройство остаётся на своём профиле
 export const forgetAccount = () => saveAccount(null);
+
+/* Детский режим «Мира» (src/lib/age.js): его считает сервер, на устройстве лежит последний
+   ответ. Пока ответа нет (профиль заведён до этого правила или нет сети) — режим включён. */
+export const accountKidsMode = (a = loadAccount()) => !a || a.kidsMode !== false;
+const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false });
+// при запуске: подтянуть с сервера имя, значок и детский режим
+export const refreshAccount = async () => {
+  const a = loadAccount();
+  if (!a) return;
+  try {
+    const r = await accountMe(a.token);
+    if (r && r.profile && loadAccount()) saveAccount({ ...loadAccount(), ...fromProfile(r.profile) });
+  } catch { /* нет сети или сессия протухла — разберётся окно профиля */ }
+};
 
 // меню, лобби и шапка видят вход и выход сразу, без перезагрузки
 export function useAccount() {
@@ -69,7 +85,7 @@ const adoptProfile = (token, profile) => {
       localStorage.setItem(PLAYER_ID_KEY, profile.playerId);
     } catch { /* приватный режим */ }
   }
-  saveAccount({ token, login: profile.login, name: profile.name, emblem: profile.emblem });
+  saveAccount({ token, login: profile.login, ...fromProfile(profile) });
   syncProfile(profile.playerId || cur);
   return profile.playerId || cur;
 };
@@ -77,9 +93,11 @@ const adoptProfile = (token, profile) => {
 /* Регистрация, вход и восстановление одной функцией — для окна профиля и для экранов
    первого запуска (src/welcome.jsx). mode: register | login | recover. Возвращает
    { profile, playerId, recoveryCode, storage }. */
-export async function authenticate(mode, { login, password, name = '', code = '', consent = false }) {
+export async function authenticate(mode, { login, password, name = '', code = '', consents = {}, birthYear = null }) {
   const lg = String(login || '').trim().toLowerCase();
-  const r = mode === 'register' ? await accountRegister(lg, password, String(name).trim(), getPlayerId(), consent)
+  // consents: { page, pd, parent, parentName } — см. ConsentBox и ParentStep
+  const r = mode === 'register' ? await accountRegister({ login: lg, password, name: String(name).trim(), playerId: getPlayerId(), birthYear,
+    consentPage: !!consents.page, consentPd: !!consents.pd, parentConsent: !!consents.parent, parentName: consents.parentName || '' })
     : mode === 'recover' ? await accountRecover(lg, code, password)
       : await accountLogin(lg, password);
   if (!r || !r.token || !r.profile) throw new Error('Сервер не ответил');
@@ -159,19 +177,74 @@ export function RecoveryCodeView({ code, onDone, doneLabel = 'Я сохрани�
 
 /* Вход, регистрация и восстановление доступа. reason — зачем просим войти (например,
    перед сетевой игрой). */
-/* Согласие при регистрации: галочка и ссылка на страницу «Данные и конфиденциальность». */
-export function ConsentBox({ on, set }) {
-  const [open, setOpen] = useState(false);
+/* Согласия при регистрации — две отдельные отметки (docs/legal-todo.md, п. 4):
+   1) «ознакомлен(а)» со страницей «Данные и конфиденциальность» и пользовательским соглашением;
+   2) «согласие на обработку персональных данных» — что именно и зачем, одной фразой.
+   value: { page, pd }, set — новое значение целиком. */
+const linkStyle = { background: 'none', border: 'none', padding: 0, color: 'var(--u-ink)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' };
+const boxStyle = { width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: 'var(--u)' };
+export const consentsReady = (c, birthYear) => !!(c && c.page && c.pd && (!validBirthYear(birthYear) || !needsParent(birthYear) || (c.parent && String(c.parentName || '').trim().length >= 2)));
+export function ConsentBox({ value, set }) {
+  const [open, setOpen] = useState(null); // null | 'privacy' | 'terms'
+  const v = value || {};
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
-      <input type="checkbox" id="consent" checked={on} onChange={(e) => set(e.target.checked)} data-testid="consent" style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0, accentColor: 'var(--u)' }} />
-      <label htmlFor="consent">
-        Я прочитал(а) страницу <button type="button" onClick={() => setOpen(true)} data-testid="consent-privacy"
-          style={{ background: 'none', border: 'none', padding: 0, color: 'var(--u-ink)', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>«{PRIVACY_TITLE}»</button> и согласен(на) с ней.
-        Если мне меньше 14 лет — вместе с родителями.
-      </label>
-      {open && <PrivacyPage onClose={() => setOpen(false)} />}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input type="checkbox" id="consent-page" checked={!!v.page} onChange={(e) => set({ ...v, page: e.target.checked })} data-testid="consent-page" style={boxStyle} />
+        <label htmlFor="consent-page">
+          Ознакомлен(а) со страницей <button type="button" onClick={() => setOpen('privacy')} data-testid="consent-privacy" style={linkStyle}>«{PRIVACY_TITLE}»</button> и{' '}
+          <button type="button" onClick={() => setOpen('terms')} data-testid="consent-terms" style={linkStyle}>«{TERMS_TITLE}»</button>: это учебная игра, не финансовый совет.
+        </label>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input type="checkbox" id="consent-pd" checked={!!v.pd} onChange={(e) => set({ ...v, pd: e.target.checked })} data-testid="consent-pd" style={boxStyle} />
+        <label htmlFor="consent-pd">
+          Согласие на обработку персональных данных: данных аккаунта, года рождения и прогресса учёбы — чтобы вести аккаунт, прогресс и сетевые партии.
+        </label>
+      </div>
+      {open === 'privacy' && <PrivacyPage onClose={() => setOpen(null)} />}
+      {open === 'terms' && <TermsPage onClose={() => setOpen(null)} />}
     </div>
+  );
+}
+
+/* Подтверждение родителя — отдельный шаг регистрации до 14 лет: отметка и имя родителя или
+   другого законного представителя. Сервер хранит время подтверждения (parentConsentAt) и имя. */
+export function ParentStep({ value, set }) {
+  const v = value || {};
+  return (
+    <div data-testid="parent-step" style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 14, lineHeight: 1.45, color: 'var(--ds-ink2)' }}>
+      <div style={{ fontSize: 15, color: 'var(--ds-ink)' }}>
+        Вам меньше {PARENT_AGE} лет — попросите родителя или другого законного представителя прочитать страницу данных и
+        подтвердить регистрацию.
+      </div>
+      <label className="ds-label">Имя родителя
+        <input className="ds-field" value={v.parentName || ''} onChange={(e) => set({ ...v, parentName: e.target.value.slice(0, 60) })}
+          placeholder="как к вам обращаться" maxLength={60} data-testid="parent-name" style={{ marginTop: 5 }} />
+      </label>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+        <input type="checkbox" id="parent-consent" checked={!!v.parent} onChange={(e) => set({ ...v, parent: e.target.checked })} data-testid="parent-consent" style={boxStyle} />
+        <label htmlFor="parent-consent">Я родитель или законный представитель, прочитал(а) страницу данных и согласен(на) на регистрацию ребёнка и обработку его данных.</label>
+      </div>
+    </div>
+  );
+}
+
+/* Год рождения при регистрации: только год, без даты. До 16 лет «Мир» — в детском режиме
+   (docs/world.md). value — строка из поля, birthYearOf превращает её в число или null. */
+export const birthYearOf = (v) => (/^\d{4}$/.test(String(v).trim()) ? Number(String(v).trim()) : null);
+export function BirthYearField({ value, set }) {
+  const y = birthYearOf(value);
+  const bad = String(value).trim().length >= 4 && !validBirthYear(y);
+  return (
+    <label className="ds-label">Год рождения
+      <input className="ds-field" value={value} onChange={(e) => set(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+        inputMode="numeric" autoComplete="bday-year" placeholder="например, 2010" aria-invalid={bad || undefined}
+        data-testid="birth-year" style={{ marginTop: 5 }} />
+      <span style={{ display: 'block', fontSize: 13, color: bad ? 'var(--ds-bad)' : 'var(--ds-ink3)', marginTop: 4, fontWeight: 400 }}>
+        {bad ? 'Проверьте год' : y && isKid(y) ? `До ${KIDS_AGE} лет «Мир» работает в детском режиме: без войн и переворотов.` : 'Нужен для детского режима «Мира» — точную дату не спрашиваем.'}
+      </span>
+    </label>
   );
 }
 
@@ -200,18 +273,23 @@ export function AuthModal({ onClose, onDone, reason }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [consent, setConsent] = useState(false);
+  const [consents, setConsents] = useState({});
+  const [year, setYear] = useState('');
+  const [parentStep, setParentStep] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [storageMemory, setStorageMemory] = useState(false);
   // после регистрации или восстановления сначала показываем новый код, потом закрываемся
   const [shownCode, setShownCode] = useState(null);
   const [finish, setFinish] = useState(null);
+  const kidYear = tab === 'register' && validBirthYear(birthYearOf(year)) && needsParent(birthYearOf(year));
   const submit = async (e) => {
     e.preventDefault();
+    // до 14 лет — сначала отдельный шаг «Подтверждение родителя»
+    if (kidYear && !parentStep) { setParentStep(true); return; }
     setBusy(true); setError('');
     try {
-      const r = await authenticate(tab, { login, password, name, code, consent });
+      const r = await authenticate(tab, { login, password, name, code, consents, birthYear: birthYearOf(year) });
       const playerId = r.playerId;
       Audio.play('up');
       const done = () => { if (onDone) onDone(r.profile, playerId); onClose(); };
@@ -228,7 +306,8 @@ export function AuthModal({ onClose, onDone, reason }) {
       </ModalShell>
     );
   }
-  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12) && (tab !== 'register' || consent);
+  const canSubmit = login.trim().length >= 3 && password.length >= 6 && (tab !== 'recover' || code.replace(/[^A-Za-z0-9]/g, '').length >= 12)
+    && (tab !== 'register' || (validBirthYear(birthYearOf(year)) && consents.page && consents.pd && (!parentStep || consentsReady(consents, birthYearOf(year)))));
   return (
     <ModalShell title={titles[tab]} label="Профиль игрока" icon={User} onClose={onClose}>
       {reason && <div style={{ fontSize: 14, color: 'var(--ds-ink)', marginBottom: 12, lineHeight: 1.5 }}>{reason}</div>}
@@ -268,16 +347,18 @@ export function AuthModal({ onClose, onDone, reason }) {
               className="ds-field" style={{ marginTop: 5 }} />
           </label>
         )}
+        {tab === 'register' && <BirthYearField value={year} set={setYear} />}
         {tab === 'register' && (
           <div style={{ fontSize: 14, color: 'var(--ds-ink3)', lineHeight: 1.5 }}>
             Сохранения, достижения и пройденные курсы с этого устройства перейдут в профиль — войдите с ним на другом
             устройстве, и они будут там.
           </div>
         )}
-        {tab === 'register' && <ConsentBox on={consent} set={setConsent} />}
+        {tab === 'register' && !parentStep && <ConsentBox value={consents} set={setConsents} />}
+        {tab === 'register' && parentStep && <ParentStep value={consents} set={setConsents} />}
         {error && (error === RUDE_NAME ? <NameRefused text={error} login={login} name={name} /> : <div style={{ fontSize: 14, color: 'var(--ds-bad)' }}>{error}</div>)}
         <button type="submit" className="ds-btn" disabled={busy || !canSubmit} style={{ marginTop: 2 }}>
-          {busy ? 'Минутку…' : tab === 'register' ? 'Создать профиль' : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
+          {busy ? 'Минутку…' : tab === 'register' ? (kidYear && !parentStep ? 'Дальше: подтверждение родителя' : 'Создать профиль') : tab === 'recover' ? 'Задать новый пароль' : 'Войти'}
         </button>
         {tab === 'login' && (
           <button type="button" className="ds-btn ds-btn--ghost" 
@@ -332,7 +413,7 @@ export function ProfileModal({ onClose, onSwitched }) {
     accountMe(account.token).then((r) => {
       if (!alive || !r || !r.profile) return;
       setProfile(r.profile); setName(r.profile.name); setStorageMemory(r.storage === 'memory');
-      saveAccount({ ...account, name: r.profile.name, emblem: r.profile.emblem });
+      saveAccount({ ...account, ...fromProfile(r.profile) });
     }).catch((e) => {
       if (!alive) return;
       // сессия протухла или стёрта — честно выходим, а не делаем вид, что вошли
@@ -346,7 +427,7 @@ export function ProfileModal({ onClose, onSwitched }) {
     try {
       const r = await accountUpdate(account.token, patch);
       setProfile(r.profile);
-      saveAccount({ ...account, name: r.profile.name, emblem: r.profile.emblem });
+      saveAccount({ ...account, ...fromProfile(r.profile) });
       setNote('Сохранено'); Audio.play('click');
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
@@ -390,8 +471,9 @@ export function ProfileModal({ onClose, onSwitched }) {
             {profile && profile.createdAt ? ` · с ${new Date(profile.createdAt).toLocaleDateString('ru-RU')}` : ''}</div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
-        {[['Комнат', st && st.rooms], ['Кварталов по сети', st && st.quarters], ['Выходов из партий', st && st.leaves]].map(([lbl, v]) => (
+      {/* только то, что сыграно; «выходы из партий» не показываем: счётчик, который стыдит */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 14 }}>
+        {[['Комнат', st && st.rooms], ['Кварталов по сети', st && st.quarters]].map(([lbl, v]) => (
           <div key={lbl} style={{ background: 'var(--ds-card2)', border: '1px solid var(--ds-rule2)', padding: '8px 6px', textAlign: 'center' }}>
             <div className="ds-num" style={{ fontSize: 17, color: 'var(--u-ink)' }}>{v == null ? '—' : v}</div>
             <div style={{ fontSize: 14, color: 'var(--ds-ink3)', marginTop: 2 }}>{lbl}</div>
@@ -403,9 +485,9 @@ export function ProfileModal({ onClose, onSwitched }) {
           У профиля нет кода восстановления — без него забытый пароль не вернуть. Получите его кнопкой «Код восстановления» ниже.
         </div>
       )}
-      <div style={{ fontSize: 12, marginBottom: 5 }}>Имя в игре</div>
+      <label htmlFor="account-name" style={{ display: 'block', fontSize: 12, marginBottom: 5 }}>Имя в игре</label>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" />
+        <input id="account-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" />
         <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || name.trim() === account.name || name.trim().length < 2}
           style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => save({ name: name.trim() })}>Сохранить</button>
       </div>
@@ -420,17 +502,18 @@ export function ProfileModal({ onClose, onSwitched }) {
           );
         })}
       </div>
+      {profile && <KidsModeBox profile={profile} busy={busy} save={save} />}
       {panel === 'password' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          <input type="password" placeholder="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
-          <input type="password" placeholder="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
+          <input type="password" placeholder="Старый пароль" aria-label="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
+          <input type="password" placeholder="Новый пароль" aria-label="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
           <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || newPw.length < 6 || !oldPw}  onClick={changePw}>Сменить пароль</button>
         </div>
       )}
       {panel === 'recovery' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           <div style={{ fontSize: 14, color: 'var(--ds-ink2)', lineHeight: 1.5 }}>Новый код заменит прежний. Для этого нужен пароль.</div>
-          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
+          <input type="password" placeholder="Пароль" aria-label="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
           <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || !oldPw}  onClick={newCode}>Получить новый код</button>
         </div>
       )}
@@ -439,7 +522,7 @@ export function ProfileModal({ onClose, onSwitched }) {
           <div style={{ fontSize: 14, color: 'var(--ds-bad)', lineHeight: 1.5 }}>
             Удалятся профиль, прогресс, сохранения, рекорды и ваши сообщения об ошибках. Отменить это нельзя. Введите пароль, чтобы подтвердить.
           </div>
-          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" data-testid="account-delete-password" />
+          <input type="password" placeholder="Пароль" aria-label="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" data-testid="account-delete-password" />
           <button className="ds-btn ds-btn--small" style={{ background: 'var(--ds-bad-btn)', borderColor: 'var(--ds-bad-btn)' }} disabled={busy || !oldPw} onClick={removeAll} data-testid="account-delete-confirm">Удалить навсегда</button>
         </div>
       )}
@@ -459,10 +542,43 @@ export function ProfileModal({ onClose, onSwitched }) {
           <button className="ds-btn ds-btn--secondary ds-btn--small" aria-pressed={panel === 'delete'} data-testid="account-delete"
             onClick={() => { setOldPw(''); setPanel(panel === 'delete' ? null : 'delete'); }}>Удалить аккаунт и все данные</button>
           <button type="button" className="ds-btn ds-btn--ghost ds-btn--small" onClick={() => setPrivacy(true)} data-testid="account-privacy">{PRIVACY_TITLE}</button>
+          <button type="button" className="ds-btn ds-btn--ghost ds-btn--small" onClick={() => setPrivacy('terms')} data-testid="account-terms">{TERMS_TITLE}</button>
         </div>
       </div>
-      {privacy && <PrivacyPage onClose={() => setPrivacy(false)} />}
+      {privacy === true && <PrivacyPage onClose={() => setPrivacy(false)} />}
+      {privacy === 'terms' && <TermsPage onClose={() => setPrivacy(false)} />}
     </ModalShell>
+  );
+}
+
+/* Детский режим «Мира» в профиле: до 16 — включён, переключателя нет; старше — переключатель;
+   год рождения не указан (профиль заведён до этого правила) — поле, чтобы указать его один раз. */
+function KidsModeBox({ profile, busy, save }) {
+  const [year, setYear] = useState('');
+  const kid = profile.birthYear && isKid(profile.birthYear);
+  return (
+    <div data-testid="kids-mode" style={{ background: 'var(--ds-card2)', border: '1px solid var(--ds-rule2)', padding: '10px 12px', marginBottom: 14 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ds-ink)', marginBottom: 4 }}>Детский режим «Мира»</div>
+      <div style={{ fontSize: 13, color: 'var(--ds-ink2)', lineHeight: 1.5, marginBottom: 8 }}>
+        В партии нет войн, присоединения земель, переворотов и несвободных режимов — только экономика, выборы, реформы и торговля.
+      </div>
+      {!profile.birthYear ? (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}><BirthYearField value={year} set={setYear} /></div>
+          <button type="button" className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || !validBirthYear(birthYearOf(year))}
+            onClick={() => save({ birthYear: birthYearOf(year) })} style={{ marginBottom: 26 }}>Сохранить</button>
+        </div>
+      ) : kid ? (
+        <div style={{ fontSize: 13, color: 'var(--u-ink)' }} data-testid="kids-mode-forced">Включён: до {KIDS_AGE} лет режим не выключается.</div>
+      ) : (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: 'var(--ds-ink)' }}>
+          <input type="checkbox" checked={!!profile.kidsMode} disabled={busy} data-testid="kids-mode-toggle"
+            onChange={(e) => save({ kidsMode: e.target.checked })} style={{ width: 20, height: 20, accentColor: 'var(--u)' }} />
+          Включить детский режим
+        </label>
+      )}
+      {!profile.birthYear && <div style={{ fontSize: 13, color: 'var(--ds-ink3)', marginTop: 2 }}>Пока год не указан, режим включён. Год задаётся один раз.</div>}
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, R
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
+import { useWide } from './ds-art.jsx';
 import { LEVERS, SCENARIOS } from './lib/engine.js';
 import { LAB_LEVERS } from './lib/lab.js';
 import { DRILLS, drillSetup } from './lib/drills.js';
@@ -57,7 +58,9 @@ export const TEXTBOOK_CSS = `
   .tb-toc-row { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; background: none; border: none; border-top: 1px solid var(--c-hairline); color: var(--c-text); font: inherit; cursor: pointer; }
   .tb-toc-row:hover { background: var(--c-panel-alt); }
   .tb-toc-row[disabled] { cursor: pointer; }
-  .tb-chip { font-size: 11.5px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
+  .tb-chip { font-size: 12px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
+  /* чип-кнопка — без системного серого фона кнопки (в тёмной теме он съедал контраст) */
+  button.tb-chip { background: transparent; font-family: inherit; cursor: pointer; }
   .tb-legend { font-size: 13px; line-height: 1.6; color: var(--c-muted); margin: -6px 0 14px; padding-left: 10px; border-left: 2px solid var(--c-hairline); }
   .tb-calc { margin: 10px 0 4px; max-width: 300px; border: 1px solid var(--c-border); border-radius: 4px; padding: 8px; background: var(--c-panel-alt, rgba(0,0,0,.03)); }
   .tb-calc-screen { text-align: right; font-family: var(--ds-mono, monospace); padding: 4px 6px 6px; }
@@ -68,7 +71,7 @@ export const TEXTBOOK_CSS = `
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
   .tb-news { background: #E8DFC6; color: #241C12; border: 1px solid #8C6B3E; padding: 8px 12px 10px; margin: 6px 0 10px; }
-  .tb-news-mast { font-size: 10px; letter-spacing: .12em; color: #6B5A3E; border-bottom: 3px double #8C6B3E; padding-bottom: 4px; margin-bottom: 6px; }
+  .tb-news-mast { font-size: 12px; letter-spacing: .12em; color: #6B5A3E; border-bottom: 3px double #8C6B3E; padding-bottom: 4px; margin-bottom: 6px; }
   .tb-news-head { font-size: 17px; font-weight: 700; line-height: 1.2; }
   .tb-bar { height: 4px; background: var(--c-hairline); border-radius: 2px; overflow: hidden; }
   .tb-bar > span { display: block; height: 100%; background: var(--c-teal); }
@@ -80,13 +83,13 @@ export const TEXTBOOK_CSS = `
   .tb-secnav-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; padding: 7px 2px; background: none; border: none; border-top: 1px solid var(--c-hairline);
     color: var(--c-text); font: inherit; font-size: 13.5px; line-height: 1.35; text-align: left; cursor: pointer; }
   .tb-secnav-list li:first-child .tb-secnav-row { border-top: none; }
-  .tb-secnav-no { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--c-border); display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; color: var(--c-muted); }
+  .tb-secnav-no { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--c-border); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--c-muted); }
   .tb-secnav-no.done { background: var(--c-teal); border-color: var(--c-teal); color: #fff; }
-  .tb-secnav-min { font-size: 11.5px; color: var(--c-faint); white-space: nowrap; }
+  .tb-secnav-min { font-size: 12px; color: var(--c-faint); white-space: nowrap; }
   /* учебник внутри обучения: оглавление в стиле дизайн-системы */
   .tbl-continue { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer; padding: 14px 16px; margin: 0 0 12px; border-radius: 6px;
     background: var(--u); color: #fff; border: 1px solid color-mix(in srgb, var(--u) 70%, #000); border-bottom-width: 3px; font: inherit; }
-  .tbl-continue small { display: block; font: 700 11px/1.2 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
+  .tbl-continue small { display: block; font: 700 12px/1.2 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
   .tbl-continue b { display: block; font: 700 18px/1.25 var(--ds-serif); margin-top: 2px; }
   .tbl-stats { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; font-size: 13.5px; color: var(--ds-ink2); margin: 0 0 14px; }
   .tbl-stats b { color: var(--ds-ink); }
@@ -104,8 +107,16 @@ export const TEXTBOOK_CSS = `
   .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .tbl-ch-bar i { display: block; height: 100%; background: var(--ds-ok); }
   .tbl-more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  /* ПК: учебник во весь экран — оглавление в две колонки, у главы слева закреплённый список разделов */
-  @media (min-width: 1100px) {
+  /* оглавление сбоку у главы (ПК): все главы по частям, открытая отмечена, под ним — разделы главы */
+  .tb-chtoc { border: 1px solid var(--c-border); background: var(--c-panel-alt); padding: 10px 12px 6px; margin: 0 0 12px; }
+  .tb-chtoc-part { font-size: 12px; font-weight: 700; color: var(--c-muted); margin: 8px 0 2px; }
+  .tb-chtoc-row { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; padding: 5px 2px; background: none; border: none; color: var(--c-text); font: inherit; font-size: 13.5px; line-height: 1.3; text-align: left; cursor: pointer; border-radius: 4px; }
+  .tb-chtoc-row:hover { background: var(--c-panel); }
+  .tb-chtoc-row[aria-current="page"] { font-weight: 700; color: var(--u-ink, var(--c-gold-soft)); cursor: default; }
+  .tb-chtoc-row[data-status="draft"] { color: var(--c-muted); }
+  /* ПК (от 1024 px): учебник во весь экран — оглавление в две колонки, у главы слева закреплены
+     оглавление и список разделов */
+  @media (min-width: 1024px) {
     .ln-textbook.wide { max-width: 1240px !important; }
     .ln-textbook.wide .tbl-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
     .ln-textbook.wide .tb-ch-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 36px; align-items: start; }
@@ -500,14 +511,14 @@ export function ChartSvg({ scene }) {
       {niceTicks(x0, x1).map((t) => (
         <g key={`x${t}`}>
           <line x1={sx(t)} x2={sx(t)} y1={M.t} y2={H - M.b} stroke={COLOR.border} strokeOpacity={0.45} />
-          <text x={sx(t)} y={H - M.b + 14} fontSize={11} fill={COLOR.faint} textAnchor="middle">{fmtNum(t)}</text>
+          <text x={sx(t)} y={H - M.b + 14} fontSize={12} fill={COLOR.faint} textAnchor="middle">{fmtNum(t)}</text>
         </g>
       ))}
       {niceTicks(y0, y1).map((t) => (
         <g key={`y${t}`}>
           <line x1={M.l} x2={W - M.r} y1={sy(t)} y2={sy(t)} stroke={COLOR.border} strokeOpacity={0.45} />
           {/* у самого верха стоит подпись оси — число там не пишем, чтобы они не слиплись */}
-          {sy(t) - M.t > 9 && <text x={M.l - 6} y={sy(t) + 3.5} fontSize={11} fill={COLOR.faint} textAnchor="end">{fmtNum(t)}</text>}
+          {sy(t) - M.t > 9 && <text x={M.l - 6} y={sy(t) + 3.5} fontSize={12} fill={COLOR.faint} textAnchor="end">{fmtNum(t)}</text>}
         </g>
       ))}
       <line x1={M.l} x2={W - M.r} y1={H - M.b} y2={H - M.b} stroke={COLOR.muted} />
@@ -553,7 +564,7 @@ export function ChartSvg({ scene }) {
         const w = g.label.length * 6.4;
         const cx = Math.min(W - M.r - w / 2 - 2, Math.max(M.l + w / 2 + 4, P.reduce((a, [x]) => a + x, 0) / P.length));
         const cy = P.reduce((a, [, y]) => a + y, 0) / P.length;
-        return <text key={`pl${i}`} x={cx} y={cy + 4} fontSize={11.5} {...halo} fill={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} textAnchor="middle">{g.label}</text>;
+        return <text key={`pl${i}`} x={cx} y={cy + 4} fontSize={12} {...halo} fill={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} textAnchor="middle">{g.label}</text>;
       })}
       {scene.curves.filter((c) => c.label && !c.ghost).map((c) => {
         const at = labelAt(c.points, c.labelPos);
@@ -1052,7 +1063,37 @@ function SectionNav({ sections, ctx }) {
   );
 }
 
+function ChapterToc({ current, ctx }) {
+  let n = 0;
+  return (
+    <nav className="tb-chtoc" aria-label="Оглавление учебника" data-testid="tb-side-toc">
+      <div className="tb-secnav-head"><span>Оглавление</span></div>
+      {PARTS.map((p) => (
+        <div key={p.id}>
+          <div className="tb-chtoc-part">{p.title}</div>
+          <ol className="tb-secnav-list">
+            {p.chapters.map((c) => {
+              n += 1;
+              const on = c.id === current;
+              return (
+                <li key={c.id}>
+                  <button type="button" className="tb-chtoc-row" aria-current={on ? 'page' : undefined} data-status={c.status}
+                    onClick={() => { if (on) return; Audio.play('paper'); ctx.go({ kind: 'chapter', id: c.id }); }}>
+                    <span className={`tb-secnav-no${ctx.progress.read[c.id] ? ' done' : ''}`} aria-hidden="true">{ctx.progress.read[c.id] ? <Check size={12} /> : n}</span>
+                    <span>{c.title}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 function ChapterPage({ id, ctx }) {
+  const wide = useWide();
   const ch = CHAPTER_BY_ID[id];
   const blocks = CHAPTER_BLOCKS[id];
   const idx = CHAPTERS.findIndex((c) => c.id === id);
@@ -1067,7 +1108,10 @@ function ChapterPage({ id, ctx }) {
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
         <div className="tb-ch-grid">
-          <aside className="tb-ch-aside"><SectionNav sections={CHAPTER_SECTIONS[id]} ctx={{ ...ctx, chapter: id }} /></aside>
+          <aside className="tb-ch-aside">
+            {wide && ctx.embedded && <ChapterToc current={id} ctx={ctx} />}
+            <SectionNav sections={CHAPTER_SECTIONS[id]} ctx={{ ...ctx, chapter: id }} />
+          </aside>
           <div className="tb-ch-main tb-body"><Blocks blocks={blocks} ctx={{ ...ctx, chapter: id }} top /></div>
         </div>
       ) : (
@@ -1437,10 +1481,10 @@ function Journal({ days }) {
     <div data-testid="tb-journal">
       <div style={{ fontSize: 13, marginBottom: 8 }}>За четыре недели: занимались <b>{sum.days}</b> {plural(sum.days, 'день', 'дня', 'дней')}, всего <b>{sum.minutes}</b> мин.</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 36px))', gap: 4 }}>
-        {WEEKDAYS.map((d) => <span key={d} style={{ fontSize: 10.5, color: COLOR.faint, textAlign: 'center' }}>{d}</span>)}
+        {WEEKDAYS.map((d) => <span key={d} style={{ fontSize: 12, color: COLOR.faint, textAlign: 'center' }}>{d}</span>)}
         {weeks.flat().map((c) => (
           <span key={c.key} title={`${c.key}: ${c.minutes} мин`} data-minutes={c.minutes}
-            style={{ height: 26, border: `1px solid ${c.future ? 'transparent' : COLOR.hairline}`, background: shade(c.minutes), fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.minutes >= 30 ? COLOR.bg : COLOR.muted }}>
+            style={{ height: 26, border: `1px solid ${c.future ? 'transparent' : COLOR.hairline}`, background: shade(c.minutes), fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.minutes >= 30 ? COLOR.bg : COLOR.muted }}>
             {c.minutes > 0 ? c.minutes : ''}
           </span>
         ))}

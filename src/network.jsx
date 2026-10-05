@@ -4,23 +4,23 @@
    газета и торговый терминал. Общие компоненты, тема (COLOR), звук и
    помощники сохранений — те же объекты, что в MacroSimulator.jsx
    (экспортированы оттуда), а не копии. */
-import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, TrendingUp, Trophy, Users, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Trophy, Users, X } from 'lucide-react';
 import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
 import {
   AchievementsModal, Audio, AudioControls, AuthModal, COLOR, GlobalStyle, NETWORK_SLOT_COUNT, ROLE_ICON,
-  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
+  StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, accountKidsMode, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
 import {
-  ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, CasinoScreen, ChartFallback, ChartPanel,
+  ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, ChartFallback, ChartPanel,
   ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
   ChronicleModal, GameOverModal, Gauge, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID,
   LeverSlider, MAX_PINS, MetricRow, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel,
   PresidentWatchPanel, PressConferencePanel, PromisesPanel, QuarterStamp, RegimeBanner,
   ResultCardModal, KpiStrip, SummaryBar, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip, Fold, scoreSummary,
   Segmented, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
-  casinoAchievementIds, checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
+  checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
   loadAutoPaper, loadNetworkPortfolio, makeDashboardActions, markNetworkPlayed, priceOf,
   questProgressAchievementIds, recordRolePlayed, saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot,
   seatsForMode, settleQuarter, tradeBook, unlockAchievements, useAchievementToasts, useChartView,
@@ -39,6 +39,8 @@ function NetworkLobby({ onEnter }) {
   // по сети играют только с профилем: место в комнате закрепляется за ним,
   // и выйти, чтобы тут же зайти «другим игроком», не выйдет (см. api/room.js)
   const account = useAccount();
+  // детский режим: свои комнаты — детские, в браузере — только детские (сервер проверяет то же)
+  const kidsMode = accountKidsMode(account);
   const [showAuth, setShowAuth] = useState(false);
   const [code, setCode] = useState(linkedCode);
   const [difficulty, setDifficulty] = useState('medium');
@@ -167,7 +169,7 @@ function NetworkLobby({ onEnter }) {
         cbPersona: custom ? asId(cbPersona) : undefined,
         mofPersona: custom ? asId(mofPersona) : undefined,
         president: custom && !presEnabled ? null : { persona: custom ? asId(presPersona) : undefined },
-        scenario: custom ? netScenario : 'sandbox' });
+        scenario: custom ? netScenario : 'sandbox', kids: kidsMode });
       setCreated(r.id); setCreatedOwnerToken(r.ownerToken || null); setCode(r.id); setTab('join'); setStorageMode(r.storage || null);
       setSeat(seatsForMode(mode)[0]);
     } catch (e) { setError(e.message); } finally { setBusy(false); }
@@ -473,11 +475,11 @@ function NetworkLobby({ onEnter }) {
             <div style={{ fontSize: 12, color: COLOR.faint }}>Сейчас открытых комнат нет — создайте свою на вкладке «Создать комнату» и включите «Общедоступная».</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {publicRooms.map((r) => (
+              {publicRooms.filter((r) => !kidsMode || r.kids).map((r) => (
                 <div key={r.id} className="ems-row-hover" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px',
                   background: COLOR.panelAlt, border: `1px solid ${COLOR.border}`, fontSize: 12 }}>
                   <span className="ems-mono" style={{ color: COLOR.goldSoft }}>{r.id}</span>
-                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}</span>
+                  <span style={{ color: COLOR.text }}>{r.mode === 'trader' ? 'Рынок' : 'Политика'}{r.president ? ' · с президентом' : ''}{r.kids ? ' · детская' : ''}</span>
                   {r.scenario && r.scenario !== 'sandbox' && (() => {
                     const sc = SCENARIOS.find((x) => x.id === r.scenario);
                     return sc ? <span style={{ color: sc.level >= 4 ? COLOR.rust : COLOR.gold }} title={sc.levelNote}>{sc.title} · {sc.levelLabel.toLowerCase()}</span> : null;
@@ -567,21 +569,6 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
     });
   };
-  const onCasino = (net, bet = 0, ev = 0) => {
-    const casinoBets = (portfolio.casinoBets || 0) + 1;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
-      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
-  };
-  const [marketTab, setMarketTab] = useState('market');
-  // та же временная подмена плейлиста, что и в соло-игре — см. комментарий там.
-  // room.mode напрямую, а не isTraderRoom: та объявляется ниже по компоненту
-  React.useEffect(() => {
-    if (room.mode !== 'trader' || marketTab !== 'casino') return undefined;
-    const prevLocked = Audio.nowPlaying().locked;
-    Audio.setPlaylist('casino');
-    return () => { Audio.setPlaylist(prevLocked); };
-  }, [room.mode, marketTab]);
   // соперник должен видеть стоимость портфеля не только в момент «готов», а
   // вскоре после каждой сделки — иначе до конца квартала список эталонов
   // выглядит так, будто ничего не пишется, хотя сделка уже прошла
@@ -1338,15 +1325,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </Suspense> : (<>
           {isTraderRoom && (
             <>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[['market', 'Рынок', TrendingUp], ['casino', 'Казино', Dices]].map(([tid, label, Icon]) => (
-                  <button type="button" key={tid} className={`ems-tab ${marketTab === tid ? 'active' : ''}`} aria-pressed={marketTab === tid} style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    onClick={() => { Audio.play('tab'); setMarketTab(tid); }}><Icon size={13} />{label}</button>
-                ))}
-              </div>
-              {marketTab === 'market'
-                ? <Suspense fallback={<ChartFallback />}><TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} /></Suspense>
-                : <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>}
+              <Suspense fallback={<ChartFallback />}><TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} /></Suspense>
             </>
           )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />

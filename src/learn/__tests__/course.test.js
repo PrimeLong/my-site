@@ -89,7 +89,7 @@ describe.each(PATH)('юнит %s', (unitId) => {
         expect(words, `${c.idea.id}: ${words} слов`).toBeLessThanOrEqual(45);
         expect(sentences, `${c.idea.id}: ${sentences} предложений`).toBeLessThanOrEqual(3);
         // в истории шаг без героя — рассказчик со своим аватаром (docs/world.md)
-        // у «Открой сам» своя картинка — улица у метро и график, который строит сам ученик
+        // у «Откройте сами» своя картинка — улица у метро и график, который строит сам ученик
         expect(c.discover || c.idea.chart || STEP_PICS.includes(c.idea.pic) || (l.kind === 'story' && (!c.idea.who || CAST[c.idea.who])), `${c.idea.id}: график, картинка или герой`).toBeTruthy();
         const next = i + 1 < l.inner.length ? l.inner[i + 1].at : l.exercises.length;
         // в истории до вопроса — не больше двух сообщений подряд (реплика героя и слова рассказчика), в остальных — одно
@@ -97,7 +97,7 @@ describe.each(PATH)('юнит %s', (unitId) => {
           const run = l.inner.filter((d) => d.at === c.at).length;
           expect(run, `${c.idea.id}: подряд без вопроса`).toBeLessThanOrEqual(2);
           if (i + 1 === l.inner.length) expect(l.exercises.length - c.at, `${c.idea.id}: после последнего шага — вопрос`).toBeGreaterThanOrEqual(1);
-        // после «Открой сам» — карточка-идея урока: сначала ученик нашёл сам, потом это назвали
+        // после «Откройте сами» — карточка-идея урока: сначала ученик нашёл сам, потом это назвали
         } else if (c.discover) expect(l.inner[i + 1].idea, `${c.idea.id}: дальше — карточка-идея`).toBe(l.idea);
         else expect(next - c.at, `${c.idea.id}: вопрос сразу после шага`).toBeGreaterThanOrEqual(1);
       });
@@ -658,7 +658,7 @@ describe('алмазный уровень', () => {
       const extra = l.exercises.filter((e) => e.diamond).map((e) => e.id);
       expect(extra.length, l.id).toBeGreaterThanOrEqual(2);
       extra.forEach((id) => { expect(plainIds).not.toContain(id); expect(gemIds).toContain(id); });
-      // «Открой сам» на алмазном повторе не нужен: кривую ученик уже нашёл
+      // «Откройте сами» на алмазном повторе не нужен: кривую ученик уже нашёл
       expect(Object.values(gemPlan.cards).flat().length).toBe(l.inner.filter((c) => !c.discover).length);
       // алмазные упражнения не попадают в повторение и проверки тех, кто их не видел
       for (let s = 1; s <= 10; s += 1) {

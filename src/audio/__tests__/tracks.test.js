@@ -150,6 +150,15 @@ describe('настроение и заставки', () => {
     for (const m of ['campaign', 'stabilization', 'authoritarian']) expect(MOOD_PLAYLISTS[m].length).toBeGreaterThanOrEqual(2);
   });
 
+  it('детский режим: ни войны, ни тоталитаризма, ни ручного управления в музыке; казино-плейлиста нет', () => {
+    const kids = { ...base, kidsMode: true };
+    expect(moodFor({ ...kids, regime: 'war' })).toBe('calm');
+    expect(moodFor({ ...kids, politicalRegime: 'totalitarian' })).toBe('calm');
+    expect(moodFor({ ...kids, politicalRegime: 'authoritarian' })).toBe('calm');
+    expect(moodFor({ ...kids, regime: 'recession' })).toBe('slump');
+    expect(MOOD_PLAYLISTS.casino).toBeUndefined();
+  });
+
   it('заставка выбирается по самому значимому событию квартала', () => {
     expect(stingerFor(null, base)).toBe(null);
     expect(stingerFor(base, base)).toBe(null);

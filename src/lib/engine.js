@@ -9,7 +9,7 @@ import { QUINTILES, distributionStep, giniOf, groupRealIncome, initialDistributi
 import { STOCK_NORM, TAX_REF, TFP_SCALE, complianceFor, computeRevenue, computeScores, potentialFrom, taxBases, taxWedge } from './model/fiscal.js';
 import { CAMPAIGN_COST, CAMPAIGN_POINTS, POLL_WINDOW, PROMISE_POOL, botCampaignPlan, campaignBonus, campaignStep, electionForecast, evaluatePromise, pickPromises, sanitizeCampaignPlan, swingLabel } from './politics/elections.js';
 import { ACTION_GROUP_EFFECTS, SOCIAL_GROUPS, buildReport, coalitionOf, groupDemandStep, groupEpisodes, groupMemoryOf, groupStatus, groupStep, groupTurnoutShift, leverGroupEffects, propagandaEditorial, publicGroupDemand, regionBlurb, regionGroupSupport, regionVoteShares } from './politics/groups.js';
-import { APPOINT_COST, BOT_CORE_GROUPS, CB_FULL_TERM, DIRECTIVE_FULL, DIRECTIVE_PART, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_DIRECTIVE_COST, PRES_GROUP_LABEL, REFORM_RAMP, applyPresidentActions, appointmentEffects, botPresident, directiveProgress, directiveVerdict, getPresPersona, militaryCoupRisk, parliamentBlocksReform, politicalCapitalRegen, presActionAvailable, presidentSatisfactionNext, processPresidentialDirective, reformEffects, reformShare } from './politics/president.js';
+import { APPOINT_COST, BOT_CORE_GROUPS, CB_FULL_TERM, DIRECTIVE_FULL, DIRECTIVE_PART, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_DIRECTIVE_COST, PRES_GROUP_LABEL, REFORM_RAMP, applyPresidentActions, appointmentEffects, botPresident, directiveProgress, directiveVerdict, getPresPersona, militaryCoupRisk, parliamentBlocksReform, politicalCapitalRegen, presActionAvailable, kidsBlocked, presidentSatisfactionNext, processPresidentialDirective, reformEffects, reformShare } from './politics/president.js';
 import { REQUESTS, TAX_DEMAND_CAP, TAX_KEYS, askText, processRequest, reqAmount, taxSum } from './politics/requests.js';
 import { DIPLO_ACTIONS, NEIGHBOR_EVENTS, NEIGHBOR_IDS, RELATIONS_START, atWarWith, botDiplomacy, deshtAttackRoll, deshtWarMultiplier, diploActionAvailable, diplomacyStep, neighborEventView, peaceStep, relationEffects, relationTarget, relationsOf, sanitizeDiplomacy, ultimatumChance } from './world/diplomacy.js';
 import { ALL_REGIONS, ANNEX_REGIONS, ANNEX_REGION_OF, INTEGRATED_AT, INTEGRATION_COST, MAP_REGIONS, PARTISAN_BELOW, PROJECT_BY_ID, REGION_EVENTS, REGION_EVENT_BY_ID, REGION_PROJECTS, activeRegions, annexLoyalty, botRegionPlan, projectBlocker, projectSpendPct, regionById, regionStep, regionStress, votingRegions, warFrontRegion } from './world/regions.js';
@@ -676,10 +676,13 @@ const SKIPPABLE_STEPS = ['war', 'events'];
 function simulateQuarter(input, { skip = [] } = {}) {
   const { economy, decisions: rawDecisions0, pendingImpulses, eventCooldowns, difficulty, quarterIndex, stories, botAction, botActions, publicMode } = input;
   const noEvents = !!input.noEvents || skip.includes('events');
-  const noWar = skip.includes('war') || !!economy.economyOnly;
+  // детский режим: войны нет, переворотов и несвободных режимов тоже (см. kidsBlocked)
+  const kids = !!economy.kidsMode;
+  const noWar = skip.includes('war') || !!economy.economyOnly || kids;
   // войну не удалили — заморозили: указы группы «Война» в этом режиме не проходят
+  const blocked = (id) => PRES_BY_ID[id] && (kids ? kidsBlocked(PRES_BY_ID[id]) : PRES_BY_ID[id].group === 'war');
   const rawDecisions = noWar
-    ? { ...rawDecisions0, presidentActions: (rawDecisions0.presidentActions || []).filter((id) => !(PRES_BY_ID[id] && PRES_BY_ID[id].group === 'war')), warTarget: null }
+    ? { ...rawDecisions0, presidentActions: (rawDecisions0.presidentActions || []).filter((id) => !blocked(id)), warTarget: null }
     : rawDecisions0;
   const s = economy;
   /* Каждый серверлесс-вызов может начинаться с чистого счётчика __newsId (новый
@@ -1696,7 +1699,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
       const severity = clamp(-margin, 0, 50) / 50; // 0 при ничьей, 1 при рейтинге ~0
       const priorTension = clamp(Number.isFinite(s.politicalTension) ? s.politicalTension : 8, 0, 100);
       const coupChance = clamp(Math.pow(severity, 1.6) * 0.6 + (priorTension / 100) * 0.25, 0, 0.75);
-      coup = rng() < coupChance;
+      coup = !kids && rng() < coupChance;
     }
     electionResult = (riggedElection || coup) ? 'incumbent' : (margin >= 0 ? 'incumbent' : (voteShare < 42 ? 'landslide' : 'opposition'));
     /* Результат по округам считаем по состоянию НА ДЕНЬ ГОЛОСОВАНИЯ, то есть по
@@ -2027,7 +2030,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
      откуда обычные пороги уже сами доведут до демократии, если напряжение спадёт. */
   // переворот — такой же сознательный захват, как и указ: обратно «само» не отыграется
   let decreeRule = coup ? true : !!s.decreeRule;
-  if (pres.patch.dissolve) {
+  if (pres.patch.dissolve && !kids) {
     parliamentDissolved = true; decreeRule = true;
     if (politicalRegime === 'democracy' || politicalRegime === 'crisis') politicalRegime = 'authoritarian';
     cooldowns['political:transition'] = 4;
@@ -2039,7 +2042,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
   }
   // указ о полном контроле — прямой ход на верхнюю ступень, без броска кубика:
   // тоталитаризм должен быть решением, а не стечением обстоятельств
-  if (pres.patch.totalize && politicalRegime === 'authoritarian') {
+  if (pres.patch.totalize && politicalRegime === 'authoritarian' && !kids) {
     politicalRegime = 'totalitarian'; parliamentDissolved = true; decreeRule = true;
     cooldowns['political:transition'] = 6;
   }
@@ -2052,7 +2055,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
         `Взаимные вето и угроза импичмента парализуют принятие решений. Рейтинг власти ${Math.round(approval)} из 100 — почвы для компромисса всё меньше.`,
         { priority: 9, chain: ['Низкий рейтинг', 'Паралич власти', 'Конфликт ветвей власти'] }));
     } else if (politicalRegime === 'crisis') {
-      if (politicalTension >= 70 && rng() < 0.4) {
+      if (!kids && politicalTension >= 70 && rng() < 0.4) {
         politicalRegime = 'authoritarian'; parliamentDissolved = true;
         cooldowns['political:transition'] = 4;
         nextQueue.push(makeImpulse('businessConfidence', -10, 'Роспуск парламента: институты слабеют', 'default', difficulty, 'other'));
@@ -2066,7 +2069,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
         news.push(mkNews('gov', 'ПОЛИТИЧЕСКИЙ КРИЗИС ИСЧЕРПАН', 'Стороны нашли компромисс, парламент возвращается к обычной работе.', { priority: 7 }));
       }
     } else if (politicalRegime === 'authoritarian') {
-      if (politicalTension >= 80 && rng() < 0.38) {
+      if (!kids && politicalTension >= 80 && rng() < 0.38) {
         politicalRegime = 'totalitarian';
         cooldowns['political:transition'] = 6;
         nextQueue.push(makeImpulse('businessConfidence', -14, 'Установление тоталитарного контроля', 'default', difficulty, 'other'));
@@ -2225,6 +2228,7 @@ function simulateQuarter(input, { skip = [] } = {}) {
   const newEconomy = {
     // настройка партии «Только экономика» живёт в состоянии и переходит из квартала в квартал
     ...(s.economyOnly ? { economyOnly: true } : {}),
+    ...(s.kidsMode ? { kidsMode: true } : {}),
     ...(s.currencyUnion ? { currencyUnion: { ...s.currencyUnion, q: (s.currencyUnion.q || 0) + 1 } } : {}),
     distribution: DIST, gini: DIST.gini, povertyRate: DIST.povertyRate, povertyAbs: DIST.povertyAbs, guidance: GUID.next,
     firms: FIRMS_Q.firms, firmStress: FIRMS_Q.regionShift, ...(s.firmBoost ? { firmBoost: s.firmBoost } : {}),
@@ -2631,7 +2635,7 @@ export {
   describeHumanCbAction, describeHumanMofAction,
   PROMISE_POOL, pickPromises, evaluatePromise, PRESS_QUESTIONS, pickPressQuestion, pressSpeakerSeat, PRESS_OPTION_IDS,
   PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, REFORM_RAMP, reformShare, reformEffects,
-  presActionAvailable, applyPresidentActions, politicalCapitalRegen, parliamentBlocksReform,
+  presActionAvailable, kidsBlocked, applyPresidentActions, politicalCapitalRegen, parliamentBlocksReform,
   PRESIDENT_PERSONAS, getPresPersona, botPresident, presidentSatisfactionNext, militaryCoupRisk,
   directiveProgress, directiveVerdict, DIRECTIVE_FULL, DIRECTIVE_PART,
   processPresidentialDirective, PRES_DIRECTIVE_COST, askText, reqAmount, appointmentEffects, APPOINT_COST, CB_FULL_TERM,

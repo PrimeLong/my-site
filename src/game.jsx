@@ -9,16 +9,16 @@ import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight, X, Check,
   AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Save, Copy, Star, Flag, Megaphone, Sliders,
-  Dices, Trophy, Share2, Download, Crown, Gavel, Hammer, BookOpen, Map as MapIcon, Plus, GraduationCap,
+  Trophy, Share2, Download, Crown, Gavel, Hammer, BookOpen, Map as MapIcon, Plus, GraduationCap,
 } from 'lucide-react';
 import {
   ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, CB_PERSONAS, MOF_PERSONAS, REQUESTS,
   REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceBreach, regimeInfoText, regimeInfoLabel, POLITICAL_REGIME_INFO,
   gameChronicle, clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned,
-  fmtIndex, fmtMln, fmtMlnSigned, quarterLabel, defaultDecisions, getCbPersona, personaAfterElection,
+  fmtIndex, fmtMln, quarterLabel, defaultDecisions, getCbPersona, personaAfterElection,
   getMofPersona, MAP_REGIONS, botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   redescribeMofAction, simulateQuarter, makeInitialEconomy, leverPreview, pickPromises,
-  evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
+  evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, kidsBlocked, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
   REFORM_RAMP, processPresidentialDirective, PRES_DIRECTIVE_COST, APPOINT_COST, CB_FULL_TERM,
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
   botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
@@ -27,11 +27,12 @@ import {
 import { Audio, stingerFor } from './audio/engine.js';
 import { BookLink } from './booklink.jsx';
 import { LEVER_BOOK, WHY_BOOK, COMPASS_BOOK, bookForChain } from './lib/booklinks.js';
+import { advancedOpen, readLearnLevel, ADVANCED_TABS, ADVANCED_ROWS, ADVANCED_CHAPTERS, ADVANCED_QUARTER } from './lib/disclosure.js';
 import {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
   GlobalStyle, THEMES, StateSeal, ROLE_ICON, NETWORK_PLAYED_KEY, loadNetworkSlots, writeNetworkSlots,
-  isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount,
+  isNetworkPlayed, ROLES_PLAYED_KEY, getPlayerId, useEscapeClose, useExclusiveDropdown, useAccount, accountKidsMode,
   DailyBoard, loadDailyName, saveDailyName, recordDailyBest, dailyDateLabel, loadFold, saveFold,
 } from './MacroSimulator.jsx';
 
@@ -284,7 +285,14 @@ export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) =
 // экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
 export const SocietyView = React.lazy(() => import('./society.jsx').then((m) => ({ default: m.SocietyView })));
 
+/* Прогрессивное раскрытие (src/lib/disclosure.js): до 4-го квартала, если на Пути ещё нет
+   уровня «Средний», компас ставки, правило Тейлора, ссылки на IS-LM и риски спрятаны. По
+   умолчанию открыто — так в сетевой партии и везде вне экрана одиночной партии. */
+export const AdvancedContext = React.createContext(true);
+
 export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF, infTarget }) {
+  const advanced = React.useContext(AdvancedContext);
+  const books = (LEVER_BOOK[lever.id] || []).filter((to) => advanced || !ADVANCED_CHAPTERS.includes(to.chapter));
   const delta = lever.type === 'level' ? value - currentDisplay : value;
   // кому из групп общества нравится это значение, а кому нет (см. «Общество»)
   const groupFx = leverGroupEffects(lever.id, value, infTarget);
@@ -303,7 +311,7 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
         )}
       </div>
       {lever.hint && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 1 }}>{lever.hint}</div>}
-      {LEVER_BOOK[lever.id] && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>{LEVER_BOOK[lever.id].map((to) => <BookLink key={to.chapter} to={to} compact />)}</div>}
+      {books.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>{books.map((to) => <BookLink key={to.chapter} to={to} compact />)}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         <input type="range" className="ems-slider" style={trackStyle} min={lever.min} max={lever.max} step={lever.step}
           aria-label={`${lever.label}, текущее значение ${value}${lever.suffix}, допустимо от ${lever.min} до ${lever.max}, шаг ${lever.step}`}
@@ -1399,7 +1407,8 @@ function RegimeLadder({ economy }) {
   const regime = economy.politicalRegime || 'democracy';
   const tension = Math.round(economy.politicalTension || 0);
   const info = POLITICAL_REGIME_INFO[regime] || {};
-  const next = regime === 'democracy'
+  // детский режим: дальше конфликта ветвей власти лестница не идёт (docs/world.md)
+  const next = economy.kidsMode && regime !== 'democracy' ? null : regime === 'democracy'
     ? { label: 'конфликт ветвей власти', need: 'напряжённость ≥ 62', at: 62 }
     : regime === 'crisis'
       ? { label: 'авторитарный режим', need: 'напряжённость ≥ 70 (или указ о роспуске парламента)', at: 70 }
@@ -1553,7 +1562,8 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
     + (directive ? PRES_DIRECTIVE_COST : 0);
   const free = capital - reserved;
   const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const groupActions = (g) => PRESIDENT_ACTIONS.filter((a) => a.group === g);
+  // детский режим: указов о войне, роспуске парламента, подавлении и параде в списке нет
+  const groupActions = (g) => PRESIDENT_ACTIONS.filter((a) => a.group === g && !(economy.kidsMode && kidsBlocked(a)));
   const cbP = getCbPersona(cbPersonaId); const mofP = getMofPersona(mofPersonaId);
 
   const staffBlock = (kind, list, current, pending, setPending, tenure) => {
@@ -1620,7 +1630,7 @@ export function PresidentPanel({ economy, cooldowns, selected, setSelected, cbPe
       <RegimeLadder economy={economy} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, margin: '12px 0 10px' }}>
-        {PRES_TABS.filter((t) => !(t.id === 'war' && economy.economyOnly)).map((t) => (
+        {PRES_TABS.filter((t) => !(t.id === 'war' && (economy.economyOnly || economy.kidsMode))).map((t) => (
           <button type="button" key={t.id} className={`ems-tab ${tab === t.id ? 'active' : ''}`} aria-pressed={tab === t.id} style={{ fontSize: 12, padding: '4px 9px' }}
             onClick={() => { Audio.play('tab'); setTab(t.id); }}>{t.label}</button>
         ))}
@@ -1980,16 +1990,6 @@ export function questProgressAchievementIds({ quarterIndex, economy, history, ro
     if (completedReforms >= 3) ids.push('reformer');
     if (economy.politicalRegime === 'totalitarian') ids.push('iron_president');
   }
-  return ids;
-}
-
-/* Достижения казино учат не охоте за кушем, а закону больших чисел: чем больше
-   ставок, тем ближе итог к матожиданию — то есть к проигрышу. */
-export function casinoAchievementIds({ net, casinoBets = 0 }) {
-  const ids = [];
-  if (net > 0) ids.push('casino_win');
-  if (casinoBets >= 30) ids.push('casino_jackpot');
-  if (casinoBets >= 100) ids.push('casino_ahead');
   return ids;
 }
 
@@ -2405,7 +2405,6 @@ export function buildResultCard({ role, quarterIndex, economy, startEconomy, por
     stats.push(['Капитал', fmtMln(val)]);
     stats.push(['Доходность', `${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%`]);
     stats.push(['Сделок на рынке', String((portfolio.trades || []).length)]);
-    stats.push(['Итог казино', fmtMlnSigned(portfolio.casinoNet || 0)]);
   } else {
     const gdpChange = startEconomy && startEconomy.gdp > 0 ? ((economy.gdp / startEconomy.gdp) - 1) * 100 : null;
     stats.push(['ВВП с начала партии', gdpChange != null ? `${gdpChange >= 0 ? '+' : ''}${gdpChange.toFixed(0)}%` : '—']);
@@ -2909,7 +2908,7 @@ export const BORROW_FEE = 0.02;
       // годовая плата за короткую позицию
 
 export const emptyBook = () => ({ cash: 10, pos: {}, avg: {}, opts: [], realized: 0, history: [10],
-  startValue: 10, benchStart: null, marginCalls: 0, lastEvents: [], casinoNet: 0 });
+  startValue: 10, benchStart: null, marginCalls: 0, lastEvents: [] });
 
 export const priceOf = (instr, economy, live) => {
   const v = (live && Number.isFinite(live[instr.key])) ? live[instr.key] : economy[instr.key];
@@ -3137,14 +3136,6 @@ export function settleQuarter(book, economy) {
   b.lastEvents = events;
   return b;
 }
-
-/* =========================================================================================
-   КАЗИНО: отдельная вкладка для частного инвестора — рулетка, слоты, кости,
-   блэкджек и бинарные опционы. Играет на тот же капитал портфеля (book.cash),
-   выигрыш/проигрыш — через onResult(net), тем же путём, что и обычная сделка,
-   поэтому сразу видны в общей стоимости портфеля и в сравнении с соперником.
-========================================================================================= */
-export const CasinoScreen = React.lazy(() => import('./casino.jsx').then((m) => ({ default: m.CasinoScreen })));
 
 /* Панель ведомств для инвестора: только наблюдаемые факты и публичные заявления */
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
@@ -3986,6 +3977,7 @@ export function demandItems({ botAction, botAction2, botRole, economy, president
    Теперь это одна панель: режим (в кризис его всё равно подробно показывает
    RegimeBanner), пять рисков и, если есть, требования второй строкой. */
 export function SummaryBar({ economy, demands = [] }) {
+  const advanced = React.useContext(AdvancedContext);
   const info = REGIME_INFO[economy.regime] || REGIME_INFO.normal;
   const c = info.color === 'teal' ? COLOR.teal : info.color === 'gold' ? COLOR.gold : info.color === 'blue' ? COLOR.blue : COLOR.rust;
   const risks = [['Инфляционный', economy.inflationRisk], ['Банковский', economy.bankingRisk], ['Долговой', economy.debtRisk],
@@ -3996,9 +3988,9 @@ export function SummaryBar({ economy, demands = [] }) {
         <span title={regimeInfoText(info, economy)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: c, whiteSpace: 'nowrap' }}>
           <Activity size={14} />{regimeInfoLabel(info, economy)}
         </span>
-        <span className="ems-summary-sep" aria-hidden="true" />
-        <span className="ems-eyebrow">Риски</span>
-        {risks.map(([l, v]) => <RiskBadge key={l} label={l} value={v} />)}
+        {advanced && <span className="ems-summary-sep" aria-hidden="true" />}
+        {advanced && <span className="ems-eyebrow" data-testid="summary-risks">Риски</span>}
+        {advanced && risks.map(([l, v]) => <RiskBadge key={l} label={l} value={v} />)}
       </div>
       {demands.length > 0 && (
         <div className="ems-fade-in" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', alignItems: 'baseline', borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
@@ -4087,10 +4079,10 @@ export function PhoneKpiBar({ economy, kpiDelta }) {
         const good = m && m.invert ? d < 0 : d > 0;
         return (
           <div key={key} style={{ minWidth: 0, textAlign: 'center', flex: '1 1 0' }}>
-            <div style={{ fontSize: 11, color: COLOR.faint, whiteSpace: 'nowrap' }}>{label}</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, whiteSpace: 'nowrap' }}>{label}</div>
             <div className="ems-mono" style={{ fontSize: 13, color: COLOR.text, whiteSpace: 'nowrap' }}>
               {m && Number.isFinite(v) ? m.fmt(v) : '—'}
-              {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 10, marginLeft: 2, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
+              {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 12, marginLeft: 2, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
             </div>
           </div>
         );
@@ -4425,10 +4417,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     return daily ? runSeeded(daily, 'pre', make) : make();
   }, []);
   const initEconomy = useMemo(() => {
-    if (initial) return initial.economy;
+    // детский режим «Мира» — по профилю (до 16 лет всегда); и для сохранённой партии тоже
+    const kids = !!setup.kidsMode || accountKidsMode();
+    if (initial) return kids ? { ...initial.economy, kidsMode: true } : initial.economy;
     const e0 = pre ? pre.economy : runSeeded(seedSrc, 'start', () => makeInitialEconomy(setup.scenario, drill ? drill.overrides : null));
     // «Только экономика» — настройка партии: война заморожена (см. simulateQuarter)
-    return setup.economyOnly ? { ...e0, economyOnly: true } : e0;
+    return { ...e0, ...(setup.economyOnly ? { economyOnly: true } : {}), ...(kids ? { kidsMode: true } : {}) };
   }, []);
   // у задачи — вводный отрезок: как страна пришла к завязке (см. drillPrehistory)
   const [prehistory] = useState(() => (initial ? initial.prehistory || null : pre ? pre.prehistory
@@ -4465,16 +4459,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
   const [view, setView] = useState(setup.role === 'trader' ? 'market' : 'dash');
-  // на вкладке «Казино» музыка временно переключается на лаунж-плейлист
-  // независимо от режима экономики, а при выходе возвращается к тому, что
-  // играло (в том числе к ручному выбору игрока, если он был) — а не всегда
-  // к «по режиму экономики»
-  React.useEffect(() => {
-    if (view !== 'casino') return undefined;
-    const prevLocked = Audio.nowPlaying().locked;
-    Audio.setPlaylist('casino');
-    return () => { Audio.setPlaylist(prevLocked); };
-  }, [view]);
   const [flashKey, setFlashKey] = useState(0);
   const [shake, setShake] = useState(false);
   const [stampKey, setStampKey] = useState(0);
@@ -4582,12 +4566,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
     });
   };
-  const onCasino = (net, bet = 0, ev = 0) => {
-    const casinoBets = (portfolio.casinoBets || 0) + 1;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
-      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
-  };
   const prevEcon = history.length >= 2 ? history[history.length - 2]
     : prehistory && prehistory.length ? { ...initEconomy, ...prehistory[prehistory.length - 1] } : initEconomy;
   // график видит и предысторию (три года до игрока), остальная логика — только партию
@@ -4608,7 +4586,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     groups.includes('fiscal') && { id: 'fiscal-debt', label: 'Долг' },
   ].filter(Boolean);
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
-  const tabs = useMemo(() => tabsForBotRole(botRole), [botRole]);
+  const advanced = advancedOpen({ quarterIndex, level: readLearnLevel() });
+  const tabs = useMemo(() => tabsForBotRole(botRole).filter((t) => advanced || !ADVANCED_TABS.includes(t.id))
+    .map((t) => (advanced ? t : { ...t, rows: t.rows.filter((r) => !ADVANCED_ROWS.includes(r.key)) })), [botRole, advanced]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastCf, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
@@ -5086,6 +5066,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const shareKey = (id) => (id === 'shareHealth' ? 'health' : id === 'shareEducation' ? 'education' : id === 'shareScience' ? 'science' : id === 'shareDefense' ? 'defense' : 'admin');
 
   return (
+    <AdvancedContext.Provider value={advanced}>
     <div className={`ems-root${shake ? ' ems-shake' : ''}${dense ? ' ems-dense' : ''}`} lang="ru">
       <GlobalStyle />
       {irf && (
@@ -5243,12 +5224,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               узком экране благополучие выталкивалось за правый край */}
           <div className="ems-status" data-tour="status" style={narrow ? { width: '100%', boxSizing: 'border-box', justifyContent: 'space-between', gap: 8, padding: '6px 10px', minWidth: 0 } : undefined}>
             <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
-              <div className="ems-eyebrow" style={narrow ? { letterSpacing: '0.04em', fontSize: 11 } : undefined}>Период</div>
+              <div className="ems-eyebrow" style={narrow ? { letterSpacing: '0.04em', fontSize: 12 } : undefined}>Период</div>
               <div className="ems-mono ems-serif" style={{ fontSize: narrow ? 13 : 15, fontWeight: 600, marginTop: 2, ...(narrow ? { letterSpacing: '-0.02em' } : {}) }}>{quarterLabel(quarterIndex)}</div>
             </div>
             <span className="sep" />
             <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
-              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5, ...(narrow ? { letterSpacing: '0.04em', fontSize: 11 } : {}) }}>
+              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5, ...(narrow ? { letterSpacing: '0.04em', fontSize: 12 } : {}) }}>
                 <Flag size={10} className="shrink-0" />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{economy.noElections ? 'Выборов нет' : `Выборы${narrow ? '' : ' ·'} ${economy.quartersToElection} кв.`}</span>
               </div>
@@ -5265,7 +5246,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           </div>
           {/* вкладки экрана — сегментированный переключатель; на телефоне во всю ширину */}
           <div className="ems-seg" role="group" aria-label="Экран" data-tour="screens" style={narrow ? { width: '100%' } : { marginLeft: 'auto' }}>
-            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
+            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp]].map(([id, label, Icon]) => (
               <button key={id} aria-pressed={view === id} style={narrow ? { flex: 1, padding: '7px 4px', gap: 4, minWidth: 0 } : undefined}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
                 <Icon size={14} />{label}
@@ -5408,11 +5389,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           book={isTrader ? portfolio : null} onTrade={onTrade} />
       )}
 
-      {view === 'casino' && isTrader && (
-        <div style={{ padding: '0 18px 18px' }}>
-          <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>
-        </div>
-      )}
 
 
       {(() => {
@@ -5512,7 +5488,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
 
             {levTab === 'monetary-core' && (
               <div>
-                <RateCompass economy={economy} keyRate={economy.currencyUnion ? currencyUnionRate(economy) : decisions.keyRate} />
+                {advanced ? <RateCompass economy={economy} keyRate={economy.currencyUnion ? currencyUnionRate(economy) : decisions.keyRate} />
+                  : <div className="t-muted" data-testid="advanced-later" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>Компас ставки, правило Тейлора и риски откроются с {ADVANCED_QUARTER}-го квартала — или сразу, когда на Пути будет уровень «Средний».</div>}
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
@@ -5790,5 +5767,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       )}
       </div>
     </div>
+    </AdvancedContext.Provider>
   );
 }

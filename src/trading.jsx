@@ -2,7 +2,7 @@
    сам терминал и сводка портфеля), вынесенный из MacroSimulator.jsx в
    отдельный чанк: виден только трейдеру и только на вкладке «Рынок», а
    не сразу при загрузке приложения, поэтому грузится лениво через
-   React.lazy() в MacroSimulator.jsx — как и src/casino.jsx и src/tutorial.jsx.
+   React.lazy() в MacroSimulator.jsx — как и src/tutorial.jsx.
 
    COLOR/Audio/INSTR_BY_ID/... — те же самые общие объекты/функции, что и
    в MacroSimulator.jsx (экспортированы оттуда), а не копия. */

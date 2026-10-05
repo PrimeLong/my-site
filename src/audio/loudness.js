@@ -36,8 +36,6 @@ export const TRACK_GAIN_DB = {
   firstlesson: 2.5,
   chalkboard: 1,
   graduation: 0,
-  chips: -1.5,
-  croupier: -0.5,
   anthem: -1.5,
   rally: 0,
   doorbell: 2,
@@ -48,7 +46,6 @@ export const TRACK_GAIN_DB = {
   hoarfrost: 3,
   homefront: 0,
   parade: -3,
-  jackpot: -1,
   residence: 3,
 };
 export const STINGER_GAIN_DB = {

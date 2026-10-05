@@ -23,6 +23,11 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 950 } } },
     { name: 'phone', use: { ...devices['Pixel 7'] } },
+    /* iPhone в WebKit (Safari): главные сценарии — вход, Путь и урок, навигация, партия. Нужен
+       установленный WebKit (npx playwright install webkit); в CI ставится вместе с Chromium.
+       Локально без него: npx playwright test --project=desktop --project=phone */
+    { name: 'webkit', use: { ...devices['iPhone 13'] }, testMatch: /smoke\.e2e\.js$/,
+      grep: /меню открывается|навигация: у каждого экрана|путь: карточка урока|одиночная партия: квартал проходит|вход: экраны до входа/ },
   ],
   webServer: {
     command: 'npm run build && npx vite preview --port 4173 --strictPort',

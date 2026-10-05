@@ -16,15 +16,15 @@ export const DS_FONT = {
 export const DS_THEMES = {
   paper: {
     isDark: false,
-    paper: '#F3EEE2', card: '#FFFCF5', card2: '#ECE5D4', ink: '#1C2125', ink2: '#4A5157', ink3: '#62696F',
-    rule: '#D6CCB7', rule2: '#B3A78E', ok: '#2D7A4B', okInk: '#1C5433', okBg: '#E2F0E3', bad: '#B0392D', badInk: '#8A2A20', badBg: '#F7E1DC', okBtn: '#2D7A4B', badBtn: '#B0392D',
-    gold: '#9C7218', goldSoft: '#C9A24A', sel: '#F4E6D2', selInk: '#5A3212', selRule: '#B5793F', blue: '#3E6FA8', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
+    paper: '#F3EEE2', card: '#FFFCF5', card2: '#ECE5D4', ink: '#1C2125', ink2: '#4A5157', ink3: '#5A6167',
+    rule: '#D6CCB7', rule2: '#B3A78E', ok: '#276B42', okInk: '#1C5433', okBg: '#E2F0E3', bad: '#B0392D', badInk: '#8A2A20', badBg: '#F7E1DC', okBtn: '#2D7A4B', badBtn: '#B0392D',
+    gold: '#7D5A10', goldSoft: '#C9A24A', sel: '#F4E6D2', selInk: '#5A3212', selRule: '#B5793F', blue: '#345E92', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
   },
   ink: {
     isDark: true,
     paper: '#14181C', card: '#1C2227', card2: '#242B32', ink: '#EEE7D7', ink2: '#BDB5A5', ink3: '#A29A8B',
     rule: '#353D45', rule2: '#4D5660', ok: '#62B882', okInk: '#AEE3C1', okBg: '#1B3226', bad: '#E2806F', badInk: '#F4BCB2', badBg: '#3A221E', okBtn: '#2B7048', badBtn: '#A23E32',
-    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#3A2B1D', selInk: '#F2DCBC', selRule: '#C98A55', blue: '#6A8FC2', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
+    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#3A2B1D', selInk: '#F2DCBC', selRule: '#C98A55', blue: '#8FB3E0', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
   },
 };
 
@@ -41,30 +41,36 @@ export const DS_SIZE = { xs: 12.5, s: 14, m: 16, l: 18, xl: 22, xxl: 28, hero: 3
 export const PLACES = {
   scarcity: { place: 'Мастерская', building: 'workshop', color: '#4B692C', region: 'industry', at: [245, 310], note: 'хлеб или станки' },
   'supply-demand': { place: 'Рынок', building: 'market', color: '#86461F', region: 'capital', at: [320, 220], note: 'кофе, мука и цены' },
-  consumer: { place: 'Универмаг', building: 'store', color: '#2C5A8E', region: 'capital', at: [785, 300], note: 'выбор покупателя' },
-  elasticity: { place: 'Кофейня', building: 'store', color: '#65408F', region: 'agri', at: [440, 180], note: 'реакция на цену' },
-  production: { place: 'Завод', building: 'factory', color: '#5A5650', region: 'industry', at: [690, 395], note: 'труд и капитал' },
+  consumer: { place: 'Универмаг', building: 'store', color: '#7A3B4E', region: 'capital', at: [785, 300], note: 'выбор покупателя' },
+  elasticity: { place: 'Кофейня', building: 'store', color: '#9A4524', region: 'agri', at: [440, 180], note: 'реакция на цену' },
+  production: { place: 'Завод', building: 'factory', color: '#6B4A2A', region: 'industry', at: [690, 395], note: 'труд и капитал' },
   costs: { place: 'Пекарня', building: 'bakery', color: '#7A5616', region: 'agri', at: [700, 515], note: 'издержки и прибыль' },
   'competition-monopoly': { place: 'Биржа', building: 'exchange', color: '#A0372A', region: 'finance', at: [610, 590], note: 'конкуренция и монополия' },
   monopolistic: { place: 'Ярмарка', building: 'market', color: '#86446A', region: 'agri', at: [490, 615], note: 'похожие товары' },
-  oligopoly: { place: 'Картель', building: 'factory', color: '#356653', region: 'mining', at: [270, 548], note: 'несколько крупных' },
-  labor: { place: 'Биржа труда', building: 'ministry', color: '#4F5D80', region: 'industry', at: [370, 600], note: 'зарплаты и занятость' },
-  'market-failures': { place: 'Порт', building: 'port', color: '#26677A', region: 'port', at: [585, 180], note: 'внешние эффекты и налоги' },
-  gdp: { place: 'Статуправление', building: 'tower', color: '#465689', region: 'capital', at: [275, 450], note: 'как считают ВВП' },
-  'money-banks': { place: 'Банк', building: 'bank', color: '#1D6860', region: 'finance', at: [690, 195], note: 'деньги и кредит' },
+  oligopoly: { place: 'Картель', building: 'factory', color: '#5E5A24', region: 'mining', at: [270, 548], note: 'несколько крупных' },
+  labor: { place: 'Биржа труда', building: 'ministry', color: '#8A4A2E', region: 'industry', at: [370, 600], note: 'зарплаты и занятость' },
+  'market-failures': { place: 'Порт', building: 'port', color: '#6E3226', region: 'port', at: [585, 180], note: 'внешние эффекты и налоги' },
+  gdp: { place: 'Статуправление', building: 'tower', color: '#7D4E1E', region: 'capital', at: [275, 450], note: 'как считают ВВП' },
+  'money-banks': { place: 'Банк', building: 'bank', color: '#5C4A1E', region: 'finance', at: [690, 195], note: 'деньги и кредит' },
   'is-lm': { place: 'Казначейство', building: 'bank', color: '#65572B', region: 'capital', at: [350, 360], note: 'ставка и выпуск' },
   'ad-as': { place: 'Промзона', building: 'factory', color: '#763B3B', region: 'industry', at: [465, 300], note: 'спрос и предложение в целом' },
   phillips: { place: 'Профсоюз', building: 'ministry', color: '#4B5B2D', region: 'industry', at: [590, 290], note: 'инфляция и безработица' },
-  policy: { place: 'Центробанк', building: 'bank', color: '#563878', region: 'capital', at: [600, 420], note: 'ставка и бюджет' },
-  growth: { place: 'Электростанция', building: 'factory', color: '#2B5875', region: 'port', at: [485, 480], note: 'модель Солоу' },
+  policy: { place: 'Центробанк', building: 'bank', color: '#6B4357', region: 'capital', at: [600, 420], note: 'ставка и бюджет' },
+  growth: { place: 'Электростанция', building: 'factory', color: '#93503A', region: 'port', at: [485, 480], note: 'модель Солоу' },
   'open-economy': { place: 'Таможня', building: 'port', color: '#735030', region: 'port', at: [360, 500], note: 'курс и торговля' },
-  'public-debt': { place: 'Министерство', building: 'ministry', color: '#54436A', region: 'capital', at: [500, 385], note: 'долг государства' },
+  'public-debt': { place: 'Министерство', building: 'ministry', color: '#7A4A5E', region: 'capital', at: [500, 385], note: 'долг государства' },
   inequality: { place: 'Рабочий квартал', building: 'store', color: '#6A4838', region: 'periphery', at: [400, 410], note: 'доходы и бедность' },
 };
-export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#5A4E80', region: 'capital', at: [496, 372], note: '' };
+export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#6B4357', region: 'capital', at: [496, 372], note: '' };
 export const unitColor = (unitId) => placeOf(unitId).color;
-// алмазный уровень урока: свой цвет — холодный синий гранёного камня
-export const DIAMOND_COLOR = '#2E8FB8';
+/* Тёплая палитра (docs/world.md, «Цвета»): места юнитов, их кнопки и алмазный уровень. На
+   каждом цвете белый текст читается с контрастом не ниже 4,5:1 (src/learn/__tests__/palette.test.js). */
+export const WARM = {
+  ochre: '#7A5616', copper: '#86461F', terracotta: '#9A4524', brick: '#A0372A', garnet: '#8A2F45',
+  rosewood: '#7A3B4E', plum: '#86446A', wine: '#763B3B', umber: '#735030', olive: '#4B692C', moss: '#4B5B2D',
+};
+// алмазный уровень урока — гранат: камень, но из тёплой палитры
+export const DIAMOND_COLOR = WARM.garnet;
 
 // CSS-переменные темы: одна строка на корень экрана (ds-root)
 export function tokenVars(t, accent) {

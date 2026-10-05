@@ -11,7 +11,7 @@ import { Flag, ArrowLeft, Check, Copy, RotateCcw, X, Trash2 } from 'lucide-react
 import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton, Card, Sheet, TopBar, Heading } from './ds.jsx';
 import { loadAccount } from './account.jsx';
-import { sendReport, listReports, setReportStatus, deleteReport } from './lib/client.js';
+import { sendReport, listReports, setReportStatus, deleteReport, eventsReport } from './lib/client.js';
 import { isRude, RUDE_MESSAGE } from './lib/moderation.js';
 
 export const REASONS = [
@@ -84,7 +84,7 @@ function ReportSheet({ context, onClose }) {
           <div role="radiogroup" aria-label="Причина" style={{ display: 'grid', gap: 6, margin: '12px 0' }}>
             {REASONS.map(([id, label]) => (
               <button key={id} type="button" role="radio" aria-checked={reason === id} className="ds-opt" style={{ margin: 0 }} data-reason={id}
-                aria-pressed={reason === id} onClick={() => { Audio.play('tick'); setReason(id); }}>{label}</button>
+                onClick={() => { Audio.play('tick'); setReason(id); }}>{label}</button>
             ))}
           </div>
           <label className="ds-label">Комментарий — необязательно
@@ -139,6 +139,47 @@ export function reportText(r) {
   return lines.join('\n');
 }
 
+/* Аналитика для владельцев (api/events.js): воронка за 30 дней и 20 самых трудных упражнений —
+   только счётчики, без логинов и адресов. */
+export function AnalyticsView({ onBack }) {
+  const account = loadAccount();
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { eventsReport(account && account.token).then(setData).catch((e) => setErr(e.message)); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const top = data ? Math.max(1, ...data.funnel.map((f) => f.count)) : 1;
+  return (
+    <div className="rw-page" data-testid="analytics" role="dialog" aria-label="Аналитика">
+      <div className="rw-page-in">
+        <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Аналитика" />
+        <div className="ds-sub" style={{ fontSize: 14, margin: '8px 0 12px' }}>Только счётчики: без логинов, имён и адресов. Данные — за последние 30 дней.</div>
+        {err && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14 }}>{err}</div>}
+        <Card style={{ marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Воронка</div>
+          {!data ? <div className="ds-sub">Загружаем…</div> : (
+            <div data-testid="analytics-funnel" style={{ display: 'grid', gap: 6 }}>
+              {data.funnel.map((f) => (
+                <div key={f.event} data-event={f.event} style={{ fontSize: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{f.label}</span><b className="ds-num">{f.count}</b></div>
+                  <div style={{ height: 6, background: 'var(--ds-card2)', marginTop: 3 }}><div style={{ height: '100%', width: `${(f.count / top) * 100}%`, background: 'var(--u)' }} /></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>20 самых трудных упражнений</div>
+          {!data ? <div className="ds-sub">Загружаем…</div> : !data.hardest.length ? <div className="ds-sub" data-testid="analytics-empty">Пока мало ответов: в список попадают упражнения, где ответили хотя бы 5 раз.</div> : (
+            <ol data-testid="analytics-hardest" style={{ margin: 0, paddingLeft: 22, fontSize: 14, display: 'grid', gap: 4 }}>
+              {data.hardest.map((x) => <li key={x.id}><span className="ds-num">{x.id}</span> — верно с первой попытки {Math.round(x.share * 100)}% ({x.correct} из {x.total})</li>)}
+            </ol>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export function ReportsView({ onBack }) {
   const account = loadAccount();
   const [status, setStatus] = useState('new');
@@ -175,7 +216,7 @@ export function ReportsView({ onBack }) {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                   <b>{REASON_BY_ID[r.reason] || r.reason}</b>
                   <span className="ds-faint" style={{ fontSize: 12.5 }}>{fmtDate(r.at)} · {r.name || r.login}</span>
-                  {r.rude && <span className="ds-chip" style={{ color: 'var(--ds-bad)', borderColor: 'var(--ds-bad)', fontSize: 11.5, padding: '1px 8px' }} data-testid="report-rude-mark">грубость</span>}
+                  {r.rude && <span className="ds-chip" style={{ color: 'var(--ds-bad)', borderColor: 'var(--ds-bad)', fontSize: 12, padding: '1px 8px' }} data-testid="report-rude-mark">грубость</span>}
                 </div>
                 {r.comment && <div style={{ fontSize: 14.5, marginTop: 4 }}>{r.comment}</div>}
                 <div className="rp-ctx">{Object.entries(CTX_LABEL).filter(([k]) => r.context && r.context[k] && k !== 'device').map(([k, label]) => `${label}: ${r.context[k]}`).join('\n')}</div>

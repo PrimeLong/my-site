@@ -21,8 +21,8 @@ export const MODEL_CSS = `
   .lm-street { width: 100%; display: block; margin: 4px 0 8px; border: 1px solid var(--ds-rule2); border-radius: 4px; background: var(--ds-card); }
   .lm-street text { font-family: var(--ds-serif); }
   .lm-chart { width: 100%; max-width: 380px; display: block; margin: 4px auto 6px; }
-  .lm-chart text { font: 700 10.5px var(--ds-mono); fill: var(--ds-ink2); }
-  .lm-chart .lm-ax { font: 600 10.5px var(--ds-sans); fill: var(--ds-ink3); }
+  .lm-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
+  .lm-chart .lm-ax { font: 600 12px var(--ds-sans); fill: var(--ds-ink3); }
   .lm-range { width: 100%; accent-color: var(--u); height: 30px; }
   .lm-read { font-size: 15px; text-align: center; min-height: 22px; margin: 2px 0 6px; }
   .lm-read b { font-family: var(--ds-mono); }
@@ -36,14 +36,14 @@ export const MODEL_CSS = `
   .lm-part-head { display: flex; align-items: baseline; gap: 8px; font: 700 14.5px var(--ds-serif); }
   .lm-part-text { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink2); margin-top: 2px; }
   .lm-part.locked .lm-part-text { color: var(--ds-ink3); }
-  .lm-scale { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--ds-ink3); margin-top: -4px; }
+  .lm-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--ds-ink3); margin-top: -4px; }
   .lm-pips { display: inline-flex; gap: 3px; vertical-align: middle; }
   .lm-pips i { width: 9px; height: 9px; border-radius: 2px; border: 1.5px solid var(--u); }
   .lm-pips i.on { background: var(--u); }
   .lm-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; margin: 4px 0; }
   .lm-board div { border: 1px solid var(--ds-rule2); border-radius: 3px; padding: 4px 2px; background: var(--ds-card2); }
   .lm-board b { display: block; font: 700 17px var(--ds-mono); color: var(--u-ink); }
-  .lm-board span { font-size: 11.5px; color: var(--ds-ink3); }
+  .lm-board span { font-size: 12px; color: var(--ds-ink3); }
   @media (prefers-reduced-motion: reduce) { .lm-line { animation: none !important; stroke-dashoffset: 0 !important; } }
 `;
 
@@ -400,7 +400,7 @@ export const DOMINO_CSS = `
   .lm-scene .lm-chart { max-width: 290px; margin-bottom: 0; }
   .lm-scene .lm-street { max-width: 260px; margin: 0 auto 4px; }
   .lm-news { border: 1px solid var(--ds-rule2); background: var(--ds-card); padding: 8px 12px 10px; text-align: center; margin-bottom: 8px; }
-  .lm-news-mast { font: 700 11px var(--ds-serif); letter-spacing: .22em; text-transform: uppercase; border-bottom: 3px double var(--ds-ink2); padding-bottom: 4px; margin-bottom: 6px; color: var(--ds-ink2); }
+  .lm-news-mast { font: 700 12px var(--ds-serif); letter-spacing: .22em; text-transform: uppercase; border-bottom: 3px double var(--ds-ink2); padding-bottom: 4px; margin-bottom: 6px; color: var(--ds-ink2); }
   .lm-news-head { font: 700 19px/1.25 var(--ds-serif); }
   .lm-chain { display: grid; gap: 6px; margin: 8px 0; counter-reset: dom; }
   .lm-slot { position: relative; display: flex; align-items: stretch; min-height: 44px; border: 1.5px dashed var(--ds-rule2); border-radius: 5px; background: none; overflow: visible; }
@@ -418,7 +418,8 @@ export const DOMINO_CSS = `
   .lm-card { font: 14.5px/1.3 var(--ds-sans); text-align: left; padding: 9px 11px; border-radius: 4px; border: 1px solid var(--ds-rule2); border-bottom-width: 2px; background: var(--ds-card); color: var(--ds-ink); cursor: pointer; max-width: 100%; }
   .lm-card:disabled { cursor: default; }
   .lm-card.gone { text-decoration: line-through; color: var(--ds-ink3); background: none; border-style: dashed; }
-  .lm-why { border-left: 3px solid var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 7%, var(--ds-card)); padding: 8px 10px; font-size: 14.5px; line-height: 1.4; margin: 6px 0; }
+  .lm-done { border-left: 3px solid var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ok-ink); font-weight: 700; padding: 8px 10px; font-size: 15px; margin: 6px 0; }
+  .lm-why { border-left: 3px solid var(--ds-sel-rule); background: color-mix(in srgb, var(--ds-sel-rule) 12%, var(--ds-card)); padding: 8px 10px; font-size: 14.5px; line-height: 1.4; margin: 6px 0; }
   @media (prefers-reduced-motion: reduce) { .lm-slot.on.fresh, .lm-fall { animation: none !important; } .lm-fall { display: none; } }
 `;
 // сцена «Домино»: что сделали звенья, выложенные до сих пор
@@ -517,6 +518,9 @@ export function DominoEx({ inst, resp, setResp, locked, fb, onSubmit, prompt }) 
           );
         })}
       </div>
+      {r.placed.length === inst.chain.length && (
+        <div className="lm-done" data-testid="domino-done" data-falls={r.falls.length} aria-live="polite">Собрано, было падений: {r.falls.length}</div>
+      )}
       {fall && !locked && (
         <div className="lm-why" data-testid="domino-why" aria-live="polite">
           <b>Домино упало на звене {fall.at + 1}.</b> «{byKey[fall.key].raw}» — не следующее звено. <Inline nodes={fall.why} /> Продолжайте с этого места.

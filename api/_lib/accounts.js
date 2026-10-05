@@ -1,6 +1,7 @@
 /* Профили: хэш пароля, проверка сессии и статистика сетевой игры. Общий код для
    api/account.js (регистрация, вход, профиль) и api/room.js (место в комнате
    закрепляется за профилем, выходы и сыгранные кварталы копятся в статистике). */
+import { kidsModeOf } from '../../src/lib/age.js';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { getUser, setUser, getSession } from './store.js';
 
@@ -40,8 +41,11 @@ export const emptyStats = () => ({ rooms: 0, quarters: 0, leaves: 0, lastRoom: n
 // то, что можно показать о профиле: без хэша, соли и счётчика неудачных входов
 export function publicProfile(user) {
   if (!user) return null;
+  // год рождения видит только сам владелец профиля (publicProfile уходит только ему); kidsMode —
+  // детский режим «Мира» (src/lib/age.js)
   return { login: user.login, name: user.name, emblem: user.emblem || 'star', playerId: user.playerId,
-    createdAt: user.createdAt, stats: { ...emptyStats(), ...user.stats }, hasRecovery: !!user.recHash };
+    createdAt: user.createdAt, stats: { ...emptyStats(), ...user.stats }, hasRecovery: !!user.recHash,
+    birthYear: user.birthYear || null, kidsMode: kidsModeOf(user) };
 }
 
 export async function userBySession(token) {
