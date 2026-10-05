@@ -255,7 +255,7 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('morning-go').click();
       await expect(page.getByTestId('placement-card')).toBeVisible();
       await shot(page, '36-path', theme);
-      await page.getByTestId('bottom-nav').locator('[data-tab="tasks"]').click();
+      await page.getByTestId('tasks-card').click();
       await expect(page.getByTestId('quests')).toBeVisible();
       await shot(page, '36a-tasks', theme, { full: true });
       await page.getByTestId('bottom-nav').locator('[data-tab="shop"]').click();
@@ -436,7 +436,7 @@ for (const theme of ['light', 'dark']) {
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
       const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
-      await tab('tasks');
+      await page.getByTestId('tasks-card').click();
       await shot(page, '26-tasks', theme);
       await tab('profile');
       await shot(page, '27-profile', theme);

@@ -8,7 +8,7 @@ import {
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
-  Route, ListChecks, UserRound, Map as MapIcon, ShoppingBag,
+  Route, UserRound, Map as MapIcon, ShoppingBag,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -1153,16 +1153,16 @@ function MenuTicker() {
   );
 }
 
-/* Нижняя панель главного экрана: шесть вкладок — Путь, Задания (задания дня, испытание месяца
-   и практика), Учебник, Лавка, Мир, Профиль; до каждой одно касание, на телефоне — под большим пальцем. Урок
+/* Нижняя панель главного экрана: пять вкладок — Путь, Учебник, Мир, Лавка, Профиль; до каждой
+   одно касание, на телефоне — под большим пальцем. «Задания» (задания дня, испытание месяца и
+   практика) — карточка наверху Пути, а не вкладка. Урок
    открывается поверх неё во весь экран. Открытая вкладка — не кнопка перехода: путь назад у
    подэкранов (учебник поверх вкладки) один — их собственный «назад». */
 const NAV_TABS = [
   { id: 'path', icon: Route, label: 'Путь' },
-  { id: 'tasks', icon: ListChecks, label: 'Задания' },
   { id: 'book', icon: BookOpenText, label: 'Учебник' },
-  { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
   { id: 'world', icon: MapIcon, label: 'Мир' },
+  { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
   { id: 'profile', icon: UserRound, label: 'Профиль' },
 ];
 function BottomNav({ tab, onTab, onReselect = null }) {
@@ -2023,6 +2023,8 @@ export default function MacroSimulator() {
   const [closeTick, setCloseTick] = useState(0);
   // повторное нажатие на «Учебник», когда он уже открыт, — на главную страницу учебника
   const [bookHome, setBookHome] = useState(0);
+  // повторное нажатие на «Путь» закрывает экран «Задания» поверх Пути
+  const [pathHome, setPathHome] = useState(0);
   const [labLever, setLabLever] = useState('keyRate');
   // учебник: откуда открыта Лаборатория ({ lever, cb, mode, scenario }), куда вернуться,
   // задание для «Своего дела» и предвыбор сценария/старта в анкете
@@ -2164,7 +2166,7 @@ export default function MacroSimulator() {
               <GlobalStyle />
               <Suspense fallback={<GameFallback />}>
                 <LearnTab tab={tab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
-                  onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome} guest={guest} firstLesson={firstLesson} onFirstLesson={() => setFirstLesson(false)}
+                  onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome} pathHome={pathHome} guest={guest} firstLesson={firstLesson} onFirstLesson={() => setFirstLesson(false)}
                   bookHandlers={{
                     onOpenLab: (init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); },
                     onStartDrill: startDrill,
@@ -2184,7 +2186,7 @@ export default function MacroSimulator() {
           {/* учебник поверх вкладки (например, «Открыть теорию» из карточки урока) — внизу отмечен «Учебник»;
               нажатие на вкладку закрывает его */}
           <BottomNav tab={bookOver && tab !== 'world' ? 'book' : tab} onTab={(t) => { if (bookOver) { setBookOver(false); setCloseTick((k) => k + 1); } setTab(t); }}
-            onReselect={(t) => { if (t === 'book' && !bookOver) setBookHome((k) => k + 1); }} />
+            onReselect={(t) => { if (t === 'book' && !bookOver) setBookHome((k) => k + 1); if (t === 'path') setPathHome((k) => k + 1); }} />
         </div>
       );
     }

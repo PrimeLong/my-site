@@ -13,13 +13,14 @@ export const SCREENS = {
   'welcome-recover': { gate: true, from: ['welcome-login'], back: 'welcome-login', title: 'Новый пароль по коду', testid: 'welcome-recover' },
   // после входа: вкладки нижней панели
   path: { root: true, title: 'Путь', testid: 'path' },
-  tasks: { root: true, title: 'Задания', testid: 'tasks' },
   // вкладка «Учебник»: оглавление — корень; глава из оглавления — «назад» в оглавление
   bookTab: { root: true, title: 'Учебник', testid: 'book-tab' },
   shop: { root: true, title: 'Лавка', testid: 'shop' },
   world: { root: true, title: 'Мир', testid: 'world' },
   profile: { root: true, title: 'Профиль', testid: 'learn-profile' },
   // поверх вкладок
+  // «Задания» — не вкладка, а экран поверх Пути: карточка наверху Пути
+  tasks: { from: ['path'], back: 'path', title: 'Задания', testid: 'tasks' },
   lessonCard: { from: ['path'], back: 'path', title: 'Карточка урока', testid: 'lesson-sheet' },
   lesson: { from: ['lessonCard', 'path', 'tasks'], back: 'origin', title: 'Урок', testid: 'lesson' },
   bookPage: { from: ['bookTab'], back: 'bookTab', title: 'Страница учебника', testid: 'book-tab' },

@@ -13,7 +13,7 @@
    Карта экранов — src/learn/screens.js. */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, Flame, Coins, Target, Lock, Check, Gem, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
+  X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
 } from 'lucide-react';
@@ -36,7 +36,7 @@ import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
-  REWARD_CSS, WalletStat, QuestsCard, MonthCard, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
+  REWARD_CSS, WalletStat, QuestsCard, MonthCard, TasksEntry, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
@@ -53,7 +53,7 @@ import { inCrowns, sceneInCrowns } from './learn/money.js';
 import { ReportFlag, ReportsView, AnalyticsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
-import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet } from './ds.jsx';
+import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
@@ -1339,7 +1339,7 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
   );
 }
 
-function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visible }) {
+function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
   const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
@@ -1371,6 +1371,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
   return (
     <div className="ln-wrap" data-testid="path">
       <TopStats learn={learn} />
+      <TasksEntry learn={learn} onOpen={onTasks} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <Mascot mood={hello} size={44} />
         <div className="ds-sub" style={{ fontSize: 15, lineHeight: 1.4 }}>
@@ -1446,16 +1447,18 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, visib
 
 /* ------------------------------ ПРАКТИКА ------------------------------ */
 /* ------------------------------ ЗАДАНИЯ ------------------------------
-   Отдельная вкладка: цель дня в минутах и три задания дня, персональное испытание месяца,
-   ниже — практика: ошибки уроков, задачи вперемешку и итоговая проверка. */
-function TasksView({ learn, onStart, onOpenBook }) {
+   Экран поверх Пути (открывается карточкой «Задания» наверху): цель дня в минутах и три
+   задания дня, персональное испытание месяца, ниже — практика: ошибки уроков, задачи
+   вперемешку и итоговая проверка. Один «назад» — на Путь. */
+function TasksView({ learn, onStart, onOpenBook, onBack }) {
   const n = learn.mistakes.length;
   // задачи и вопросы учебника, которым подошёл срок повторения
   const [due] = useState(() => reviewQueue(loadProgress()).due.length);
   const arrow = <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />;
   return (
     <div className="ln-wrap" data-testid="tasks">
-      <Heading eyebrow="Задания" title="На сегодня и на месяц" sub="Задания дня обновляются в полночь и начинаются с нуля." style={{ marginBottom: 10 }} />
+      <TopBar back={<IconButton label="Назад, на Путь" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Задания" />
+      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня и на месяц. Задания дня обновляются в полночь и начинаются с нуля.</div>
       <QuestsCard learn={learn} />
       <MonthCard learn={learn} />
       <div data-testid="practice">
@@ -1608,7 +1611,7 @@ function GuestSave({ learn, afterLesson = false }) {
   );
 }
 
-export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {} }) {
+export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, pathHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {} }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
   const [sheet, setSheet] = useState(null);
@@ -1616,6 +1619,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   const [bookKey, setBookKey] = useState(0);
   const [reports, setReports] = useState(false);
   const [analytics, setAnalytics] = useState(false);
+  // «Задания» — экран поверх Пути (карточка наверху Пути)
+  const [tasks, setTasks] = useState(false);
   const [chest, setChest] = useState(null);
   // утренний экран серии: один раз в день, при первом открытии Пути, если серия уже идёт
   const [morning, setMorning] = useState(() => {
@@ -1626,9 +1631,10 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   });
   const openBook = (page, resume = false) => { setBook({ page, resume }); setBookKey((k) => k + 1); window.scrollTo(0, 0); };
   // смена вкладки закрывает подэкраны
-  useEffect(() => { setBook(null); setSheet(null); setChest(null); setReports(false); setAnalytics(false); }, [tab]);
+  useEffect(() => { setBook(null); setSheet(null); setChest(null); setReports(false); setAnalytics(false); setTasks(false); }, [tab]);
   // нажата вкладка внизу, пока открыт учебник поверх (в том числе та же самая) — закрываем его
   useEffect(() => { if (closeTick) { setBook(null); setSheet(null); } }, [closeTick]);
+  useEffect(() => { if (pathHome) setTasks(false); }, [pathHome]);
   // учебник поверх вкладки — нижняя панель отмечает «Учебник»
   useEffect(() => { onBookOver(!!book && !run); }, [book, run]); // eslint-disable-line react-hooks/exhaustive-deps
   // вернулись из Лаборатории или партии, открытой из учебника, — снова в учебник, на то же место
@@ -1659,12 +1665,12 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports || analytics} style={book || reports || analytics ? { display: 'none' } : undefined}>
-        {tab === 'path' && guest && <GuestSave learn={learn} />}
-        {tab === 'path' && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
-          visible={!run && !sheet && !book && !chest && !morning} />}
+        {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
+        {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
+          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} />}
+        {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
-        {tab === 'tasks' && <TasksView learn={learn} onStart={start} onOpenBook={openBook} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}
           onReports={() => { setReports(true); window.scrollTo(0, 0); }} onAnalytics={() => { setAnalytics(true); window.scrollTo(0, 0); }} />}
       </div>

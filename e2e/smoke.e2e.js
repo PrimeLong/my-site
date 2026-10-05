@@ -25,6 +25,13 @@ async function gotoApp(page, path = '/', tab = 'world') {
   if (tab && tab !== 'path' && await page.getByTestId('bottom-nav').isVisible()) await openTab(page, tab);
 }
 const openTab = (page, tab) => page.getByTestId('bottom-nav').locator(`[data-tab="${tab}"]`).click();
+// «Задания» — не вкладка, а экран поверх Пути: вкладка «Путь» (повторное нажатие закрывает
+// открытый подэкран) и карточка «Задания» наверху
+async function openTasks(page) {
+  await openTab(page, 'path');
+  await page.getByTestId('tasks-card').click();
+  await expect(page.getByTestId('tasks')).toBeVisible();
+}
 /* Вход обязателен: во всех тестах, кроме тестов первого запуска («вход: …»), пользователь уже
    вошёл — аккаунт лежит на устройстве до загрузки страницы. */
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
@@ -1113,8 +1120,8 @@ test('нижняя панель: «Мир» без учебных карточе
   await expect(page.getByTestId('menu-study')).toHaveCount(0);
   await expect(page.locator('[data-mode="textbook"]')).toHaveCount(0);
   await expect(page.locator('[data-mode="lab"]')).toBeVisible();
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Задания', 'Учебник', 'Лавка', 'Мир', 'Профиль']);
-  await openTab(page, 'tasks');
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Мир', 'Лавка', 'Профиль']);
+  await openTasks(page);
   await expect(page.getByTestId('practice-today')).toHaveCount(0);
   // повторять пока нечего — кнопка выключена
   await expect(page.getByTestId('practice-review')).toBeDisabled();
@@ -1155,7 +1162,7 @@ test('нижняя панель: «Мир» без учебных карточе
   await expect(page.getByTestId('chapter')).toBeVisible();
   await page.getByTestId('chapter').getByRole('button', { name: 'Отметить главу прочитанной' }).click();
   // вперемешку: теперь глава прочитана — сначала выбор модели, потом задача
-  await openTab(page, 'tasks');
+  await openTasks(page);
   await page.getByTestId('practice-mixed').click();
   const item = page.getByTestId('mixed-item').first();
   await expect(item).toContainText('какая модель нужна');
@@ -1389,7 +1396,7 @@ test('путь: карточка урока, «Знакомство» шагам
   const { errors, external } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
   await expect(path).toBeVisible();
-  await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(6);
+  await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
   // Путь начинается с юнита 1; уроками — четыре юнита (14, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
@@ -1467,8 +1474,8 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('streak')).toHaveText('1');
   // цель дня — минуты занятий (по умолчанию 10)
   await expect(page.getByTestId('goal')).toContainText(/\d+\/10\s*мин/);
-  // ошибка ушла в практику (вкладка «Задания»), статистика — в «Профиль»
-  await openTab(page, 'tasks');
+  // ошибка ушла в практику (экран «Задания» с Пути), статистика — в «Профиль»
+  await openTasks(page);
   await expect(page.getByTestId('practice-mistakes')).toBeEnabled();
   await openTab(page, 'profile');
   // «Мои четыре недели»: календарь и уроки; разбивки по типам упражнений нет
@@ -1552,7 +1559,7 @@ test('путь: выход после первого ответа — урок �
   await playLesson(page, { wrongAt: [2] });
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // практика: ошибка решается — и уходит из списка
-  await openTab(page, 'tasks');
+  await openTasks(page);
   await page.getByTestId('practice-mistakes').click();
   await playLesson(page);
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -1996,9 +2003,9 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('goal')).toContainText('0/15');
   await expect(page.getByTestId('wallet-balance')).toHaveText('0');
   await expect(page.getByTestId('chest')).toHaveCount(0);
-  // задания дня и испытание месяца — своя вкладка; испытание считается от цели в минутах
+  // задания дня и испытание месяца — экран «Задания» с карточки наверху Пути; испытание считается от цели в минутах
   await expect(page.getByTestId('quests')).toHaveCount(0);
-  await openTab(page, 'tasks');
+  await openTasks(page);
   await expect(page.getByTestId('quests').getByTestId('quest')).toHaveCount(3);
   await expect(page.getByTestId('goal-row')).toContainText('Цель дня: 15 минут занятий');
   await expect(page.getByTestId('month')).toBeVisible();
@@ -2146,13 +2153,19 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'chest', seen);
   await clickBack(page);
   await expectScreen(page, 'path', seen);
-  // Задания → задачи вперемешку → назад в Задания
-  await openTab(page, 'tasks');
+  // Путь → Задания (карточка наверху) → задачи вперемешку → назад в Задания → назад на Путь
+  await page.getByTestId('tasks-card').click();
   await expectScreen(page, 'tasks', seen);
   await page.getByTestId('practice-mixed').click();
   await expectScreen(page, 'book', seen);
   await clickBack(page);
   await expectScreen(page, 'tasks', seen);
+  await clickBack(page);
+  await expectScreen(page, 'path', seen);
+  // повторное нажатие на вкладку «Путь» тоже закрывает Задания
+  await page.getByTestId('tasks-card').click();
+  await openTab(page, 'path');
+  await expectScreen(page, 'path', seen);
   // вкладка «Учебник»: оглавление без «назад», глава — один «назад» в оглавление
   await openTab(page, 'book');
   await expectScreen(page, 'bookTab', seen);

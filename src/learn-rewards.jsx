@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wallet, ShieldCheck, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap,
+  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap, ListChecks, ChevronRight,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
@@ -27,6 +27,7 @@ export const REWARD_CSS = `
   .rw-quest { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 0; border-top: 1px dotted var(--ds-rule2); }
   .rw-quest:first-of-type { border-top: none; }
   .rw-ico { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--ds-rule2); color: var(--u-ink); background: var(--ds-card); }
+  .rw-tasks-entry { margin: 0 0 12px; padding: 12px 14px; }
   .rw-ico.ok { background: var(--ds-ok-btn); border-color: var(--ds-ok-btn); color: #fff; }
   .rw-coin { font: 700 13px var(--ds-mono); color: var(--ds-ink2); display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   .rw-page { position: fixed; inset: 0; z-index: 250; overflow-y: auto; background: var(--ds-paper); padding: 8px 16px calc(40px + env(safe-area-inset-bottom)); }
@@ -90,6 +91,28 @@ export function WalletStat({ learn }) {
     <span className="ln-stat" title="Монеты — тратятся во вкладке «Лавка»" data-testid="wallet">
       <Wallet size={17} color="var(--ds-gold)" aria-hidden="true" /><span data-testid="wallet-balance">{b}</span>
     </span>
+  );
+}
+
+/* Карточка «Задания» наверху Пути: сколько заданий дня сделано, цель в минутах и испытание
+   месяца — одной строкой. Касание открывает экран заданий (задания дня, испытание, практика). */
+export function TasksEntry({ learn, onOpen, now = Date.now() }) {
+  const quests = questsFor(learn, now);
+  const g = goalToday(learn, now);
+  const m = monthChallenge(learn, now);
+  const done = quests.filter((q) => q.done).length;
+  const goalOk = g.done >= g.goal;
+  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
+  return (
+    <button type="button" className="ds-card ds-card--button rw-tasks-entry" data-testid="tasks-card" data-nav-target="tasks" aria-label={`Задания. ${text}`}
+      onClick={() => { Audio.play('paper'); onOpen(); }}>
+      <span className={`rw-ico ${done === 3 && goalOk ? 'ok' : ''}`}>{done === 3 && goalOk ? <Check size={16} aria-hidden="true" /> : <ListChecks size={16} aria-hidden="true" />}</span>
+      <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <span style={{ display: 'block', fontWeight: 700, fontSize: 15.5 }}>Задания</span>
+        <span className="ds-sub" style={{ display: 'block', fontSize: 13, lineHeight: 1.35 }} data-testid="tasks-card-text">{text}</span>
+      </span>
+      <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />
+    </button>
   );
 }
 
