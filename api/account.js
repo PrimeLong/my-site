@@ -16,8 +16,14 @@ import {
 import { randomUUID } from 'node:crypto';
 
 const EMBLEMS = new Set(['star', 'crown', 'landmark', 'coins', 'shield', 'anchor', 'factory', 'wheat']);
-const MAX_FAILS = 8;
-const LOCK_MS = 5 * 60 * 1000;
+/* Перебор пароля. Две защиты:
+   • с одного адреса — не больше LOGIN_PER_HOUR попыток входа в час, по любым логинам;
+   • у логина — нарастающая блокировка: каждые MAX_FAILS неверных паролей подряд закрывают
+     вход на всё больший срок (LOCK_STEPS), успешный вход сбрасывает счёт. */
+const MAX_FAILS = 5;
+export const LOGIN_PER_HOUR = 30;
+export const LOCK_STEPS = [60 * 1000, 5 * 60 * 1000, 15 * 60 * 1000, 60 * 60 * 1000, 6 * 60 * 60 * 1000];
+export const lockFor = (level) => LOCK_STEPS[Math.min(Math.max(level, 1), LOCK_STEPS.length) - 1];
 const cleanName = (v) => {
   if (typeof v !== 'string') return null;
   const t = Array.from(v).filter((ch) => ch.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 24);
@@ -90,6 +96,9 @@ async function handleRequest(req, res) {
   }
 
   if (action === 'login') {
+    if (await hit(`login:${clientIp(req)}`, 3600) > LOGIN_PER_HOUR) {
+      return res.status(429).json({ error: 'Слишком много попыток входа с этого адреса — попробуйте через час' });
+    }
     const login = cleanLogin(body.login);
     const user = LOGIN_RE.test(login) ? await getUser(login) : null;
     // несуществующий логин проверяем так же долго, как настоящий: по времени ответа
@@ -100,10 +109,11 @@ async function handleRequest(req, res) {
     }
     if (!checkPassword(body.password, user)) {
       const fails = (user.fails || 0) + 1;
-      await setUser(login, { ...user, fails: fails >= MAX_FAILS ? 0 : fails, lockUntil: fails >= MAX_FAILS ? Date.now() + LOCK_MS : 0 });
+      const level = fails >= MAX_FAILS ? (user.lockLevel || 0) + 1 : (user.lockLevel || 0);
+      await setUser(login, { ...user, fails: fails >= MAX_FAILS ? 0 : fails, lockLevel: level, lockUntil: fails >= MAX_FAILS ? Date.now() + lockFor(level) : 0 });
       return res.status(401).json({ error: 'Неверный логин или пароль' });
     }
-    if (user.fails) await setUser(login, { ...user, fails: 0, lockUntil: 0 });
+    if (user.fails || user.lockLevel) await setUser(login, { ...user, fails: 0, lockLevel: 0, lockUntil: 0 });
     const token = await openSession(user);
     return res.status(200).json({ token, profile: publicProfile(user), storage: storage() });
   }

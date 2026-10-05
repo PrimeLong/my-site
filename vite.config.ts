@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import textbookSections from './scripts/textbook-sections-plugin.js'
 import serviceWorker from './scripts/sw-plugin.js'
 import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 
 // версия сборки для «Сообщить об ошибке»: коммит и дата (на Vercel коммит — из его переменной)
 const commit = (() => {
@@ -11,10 +12,17 @@ const commit = (() => {
 })()
 const BUILD = `${commit} · ${new Date().toISOString().slice(0, 10)}`
 
+// заголовки безопасности из vercel.json — и в vite preview: e2e-тесты идут под той же CSP, что и сайт
+const SITE_HEADERS: Record<string, string> = Object.fromEntries(
+  JSON.parse(readFileSync(new URL('./vercel.json', import.meta.url), 'utf8')).headers
+    .find((h: { source: string }) => h.source === '/(.*)').headers.map((h: { key: string, value: string }) => [h.key, h.value]),
+)
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), textbookSections(), serviceWorker()],
   define: { __BUILD__: JSON.stringify(BUILD) },
+  preview: { headers: SITE_HEADERS },
   build: {
     rolldownOptions: {
       output: {

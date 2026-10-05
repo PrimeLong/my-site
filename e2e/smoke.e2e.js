@@ -58,6 +58,25 @@ async function startSoloGame(page, role = 'Глава Центрального �
   await expect(page.getByRole('button', { name: 'Завершить квартал и применить решения' })).toBeVisible();
 }
 
+test('заголовки безопасности: CSP без нарушений на Пути, в уроке, учебнике, лавке и «Мире»', async ({ page }) => {
+  const violations = [];
+  await page.addInitScript(() => { document.addEventListener('securitypolicyviolation', (e) => { (window.__csp = window.__csp || []).push(`${e.violatedDirective} ${e.blockedURI}`); }); });
+  page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) violations.push(m.text()); });
+  const resp = await page.goto('/', { waitUntil: 'networkidle' });
+  const h = resp.headers();
+  expect(h['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(h['x-content-type-options']).toBe('nosniff');
+  expect(h['referrer-policy']).toBeTruthy();
+  expect(h['permissions-policy']).toBeTruthy();
+  await expect(page.getByTestId('path')).toBeVisible();
+  await startLesson(page, 'sc-i1');
+  await expect(page.getByTestId('lesson')).toBeVisible();
+  await page.goto('/', { waitUntil: 'networkidle' });
+  for (const tab of ['book', 'shop', 'world']) { await openTab(page, tab); await page.waitForTimeout(300); }
+  const caught = await page.evaluate(() => window.__csp || []);
+  expect([...violations, ...caught]).toEqual([]);
+});
+
 test('меню открывается, шрифты свои, внешних запросов нет', async ({ page }) => {
   const { errors, external } = await openApp(page);
   await expect(page.getByRole('heading', { name: 'Инфлатия' })).toBeVisible();
