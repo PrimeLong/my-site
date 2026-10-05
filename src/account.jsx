@@ -471,8 +471,9 @@ export function ProfileModal({ onClose, onSwitched }) {
             {profile && profile.createdAt ? ` · с ${new Date(profile.createdAt).toLocaleDateString('ru-RU')}` : ''}</div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 14 }}>
-        {[['Комнат', st && st.rooms], ['Кварталов по сети', st && st.quarters], ['Выходов из партий', st && st.leaves]].map(([lbl, v]) => (
+      {/* только то, что сыграно; «выходы из партий» не показываем: счётчик, который стыдит */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 14 }}>
+        {[['Комнат', st && st.rooms], ['Кварталов по сети', st && st.quarters]].map(([lbl, v]) => (
           <div key={lbl} style={{ background: 'var(--ds-card2)', border: '1px solid var(--ds-rule2)', padding: '8px 6px', textAlign: 'center' }}>
             <div className="ds-num" style={{ fontSize: 17, color: 'var(--u-ink)' }}>{v == null ? '—' : v}</div>
             <div style={{ fontSize: 14, color: 'var(--ds-ink3)', marginTop: 2 }}>{lbl}</div>

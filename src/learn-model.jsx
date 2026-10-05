@@ -418,7 +418,8 @@ export const DOMINO_CSS = `
   .lm-card { font: 14.5px/1.3 var(--ds-sans); text-align: left; padding: 9px 11px; border-radius: 4px; border: 1px solid var(--ds-rule2); border-bottom-width: 2px; background: var(--ds-card); color: var(--ds-ink); cursor: pointer; max-width: 100%; }
   .lm-card:disabled { cursor: default; }
   .lm-card.gone { text-decoration: line-through; color: var(--ds-ink3); background: none; border-style: dashed; }
-  .lm-why { border-left: 3px solid var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 7%, var(--ds-card)); padding: 8px 10px; font-size: 14.5px; line-height: 1.4; margin: 6px 0; }
+  .lm-done { border-left: 3px solid var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ok-ink); font-weight: 700; padding: 8px 10px; font-size: 15px; margin: 6px 0; }
+  .lm-why { border-left: 3px solid var(--ds-sel-rule); background: color-mix(in srgb, var(--ds-sel-rule) 12%, var(--ds-card)); padding: 8px 10px; font-size: 14.5px; line-height: 1.4; margin: 6px 0; }
   @media (prefers-reduced-motion: reduce) { .lm-slot.on.fresh, .lm-fall { animation: none !important; } .lm-fall { display: none; } }
 `;
 // сцена «Домино»: что сделали звенья, выложенные до сих пор
@@ -517,6 +518,9 @@ export function DominoEx({ inst, resp, setResp, locked, fb, onSubmit, prompt }) 
           );
         })}
       </div>
+      {r.placed.length === inst.chain.length && (
+        <div className="lm-done" data-testid="domino-done" data-falls={r.falls.length} aria-live="polite">Собрано, было падений: {r.falls.length}</div>
+      )}
       {fall && !locked && (
         <div className="lm-why" data-testid="domino-why" aria-live="polite">
           <b>Домино упало на звене {fall.at + 1}.</b> «{byKey[fall.key].raw}» — не следующее звено. <Inline nodes={fall.why} /> Продолжайте с этого места.

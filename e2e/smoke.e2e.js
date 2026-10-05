@@ -2183,6 +2183,8 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'profile', seen);
   await page.getByTestId('prof-account').click();
   await expectScreen(page, 'account', seen);
+  // в аккаунте нет счётчика, который стыдит
+  await expect(page.getByTestId('account')).not.toContainText('Выходов из партий');
   await clickBack(page);
   await expectScreen(page, 'profile', seen);
   // Мир — корень без «назад»; профиль игрока — только во вкладке «Профиль»
@@ -2410,7 +2412,18 @@ test('новые глаголы: «Откройте сами», живая мо�
       await expect(dom).toHaveAttribute('data-falls', '2');
       await expect(dom.locator('[data-testid="domino-card"][data-key^="f"]:disabled')).toHaveCount(1);
       for (const k of chain.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
+      // собранная цепочка — итог без оценки
+      await expect(dom.getByTestId('domino-done')).toHaveText('Собрано, было падений: 2');
       await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
+      // после ошибки — тёплый нейтральный тон, а не красный: «Дальше» в туши выбора
+      await expect(page.getByRole('button', { name: 'Дальше', exact: true })).toHaveClass(/ds-btn--warm/);
+      const tone = await page.getByTestId('ex-feedback').evaluate((el) => {
+        const bar = el.closest('.ds-answer');
+        const probe = (v) => { const s = document.createElement('span'); s.style.color = `var(${v})`; bar.appendChild(s); const c = getComputedStyle(s).color; s.remove(); return c; };
+        return { top: getComputedStyle(bar).borderTopColor, warm: probe('--ds-sel-rule'), bad: probe('--ds-bad') };
+      });
+      expect(tone.top).toBe(tone.warm);
+      expect(tone.top).not.toBe(tone.bad);
       await expect(page.getByTestId('ex-why')).toContainText('домино падало 2 раза');
       // сцена ожила: спрос сдвинулся вправо
       await expect(dom.getByTestId('domino-scene')).toHaveAttribute('data-da', '24');

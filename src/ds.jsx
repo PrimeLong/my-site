@@ -54,6 +54,10 @@ export const DS_CSS = `
   .ds-btn--ghost:active:not(:disabled) { transform: none; box-shadow: none; }
   .ds-btn--ok { --b: var(--ds-ok-btn); }
   .ds-btn--bad { --b: var(--ds-bad-btn); }
+  /* «Дальше» после ошибки — тёплая тушь выбора; в тёмной теме она светлая — текст тёмный */
+  .ds-btn--warm { --b: var(--ds-sel-ink); }
+  .ds-dark .ds-btn--warm { color: #2A1D05; }
+  .ds-dark .ds-btn--warm::after { border-color: rgba(42,29,5,.45); }
   .ds-btn--wide { width: 100%; }
   .ds-btn--small { min-height: 38px; padding: 7px 16px; font-size: 13px; }
   .ds-btn--small::after { inset: 4px 10px; }
@@ -82,7 +86,7 @@ export const DS_CSS = `
   .ds-opt:active:not(:disabled) { transform: translateY(1px); }
   .ds-opt[aria-pressed="true"] { border-color: var(--ds-sel-rule); border-left-color: var(--u); background: var(--ds-sel); color: var(--ds-sel-ink); }
   .ds-opt.right { border-color: var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ink); }
-  .ds-opt.wrong { border-color: var(--ds-bad); background: var(--ds-bad-bg); color: var(--ds-ink); }
+  .ds-opt.wrong { border-color: var(--ds-sel-rule); border-style: dashed; background: color-mix(in srgb, var(--ds-sel-rule) 10%, var(--ds-card)); color: var(--ds-ink); }
   .ds-opt:disabled { cursor: default; }
   .ds-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; padding: 8px 12px; margin: 4px; font: 15px/1.3 var(--ds-sans); color: var(--ds-ink);
     background: var(--ds-card); border: 1px solid var(--ds-rule2); border-bottom-width: 2px; border-radius: 3px; cursor: pointer; }
@@ -104,15 +108,16 @@ export const DS_CSS = `
   /* плашка ответа — оттиск штампа */
   .ds-answer { padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); border-top: 2px solid var(--ds-rule2); }
   .ds-answer.ok { background: var(--ds-ok-bg); border-top-color: var(--ds-ok); }
-  .ds-answer.bad { background: var(--ds-bad-bg); border-top-color: var(--ds-bad); }
+  /* после ошибки — тёплый нейтральный тон, а не красный (docs/mechanics.md, «Обратная связь») */
+  .ds-answer.bad { background: color-mix(in srgb, var(--ds-sel-rule) 14%, var(--ds-card)); border-top-color: var(--ds-sel-rule); }
   .ds-answer-stamp { display: inline-block; font: 700 15px/1 var(--ds-serif); letter-spacing: .16em; text-transform: uppercase; padding: 6px 10px 5px; border: 2.5px solid currentColor;
     border-radius: 3px; transform: rotate(-4deg); box-shadow: inset 0 0 0 2px transparent, inset 0 0 0 3px currentColor; }
   .ds-answer.ok .ds-answer-stamp { color: var(--ds-ok-ink); }
-  .ds-answer.bad .ds-answer-stamp { color: var(--ds-bad-ink); }
+  .ds-answer.bad .ds-answer-stamp { color: var(--ds-sel-ink); }
   .ds-answer-say { display: inline-block; font: 700 18px/1.3 var(--ds-serif); animation: ds-stamp .32s ease-out 1 both; }
   /* на светлой плашке ответа — тёмные оттенки «верно/неверно»: контраст не ниже 4,5:1 */
   .ds-answer.ok .ds-answer-say { color: var(--ds-ok-ink); }
-  .ds-answer.bad .ds-answer-say { color: var(--ds-bad-ink); }
+  .ds-answer.bad .ds-answer-say { color: var(--ds-sel-ink); }
 
   /* шторка снизу, верхняя панель, нижняя панель вкладок */
   .ds-sheet-back { position: fixed; inset: 0; z-index: 320; background: rgba(28,20,8,.48); display: flex; align-items: flex-end; justify-content: center; }
