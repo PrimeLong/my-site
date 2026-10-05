@@ -3,13 +3,14 @@
    • Задачи на 10 минут — список задач (сама партия идёт в обычном экране игры).
    Отдельный ленивый чанк: в меню и в партии этот код не нужен. */
 import React, { useMemo, useState } from 'react';
-import { ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { ComposedChart, LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { FlaskConical, Target } from 'lucide-react';
 import { COLOR, Audio, GlobalStyle } from './MacroSimulator.jsx';
 import { SCENARIOS, fmt1, fmtSigned1 } from './lib/engine.js';
 import { impulseResponse, impulseBand, peakOf, zeroTicks, LAB_LEVERS, LAB_METRICS, LEVEL_KEY, quarterLevelShift, defaultLabMode, defaultLabCb, TAYLOR_SMOOTH, SHOCK_DECAY } from './lib/lab.js';
 import { DRILLS, drillSetup, loadDrillRecords } from './lib/drills.js';
 import { GAME_CARDS } from './textbook/appendix.js';
+import { GAMES, SCALES, expectedValue, convergence, scaleRow } from './lib/casino-odds.js';
 
 /* Общая рамка страницы тренажёра: кнопка назад, заголовок, вводный абзац. */
 export function TrainerPage({ eyebrow, title, lede, onBack, children, icon: Icon = FlaskConical, wide = false, backLabel = '← Назад в меню' }) {
@@ -250,7 +251,103 @@ export function LabScreen({ onBack, initialLever = 'keyRate', initial = null }) 
             : ' Шумы выключены, поэтому отклик детерминирован — повторный расчёт даёт тот же результат до знака. Включите «на фоне шумов», чтобы увидеть, насколько он зависит от фона.'}
         </div>
       </div>
+      <CasinoOdds />
     </TrainerPage>
+  );
+}
+
+/* ---------------- ПОЧЕМУ КАЗИНО ВСЕГДА В ПЛЮСЕ ----------------
+   Не игра: ставок и наград нет. Пять гостей делают по 10, 100 или 1000 ставок по 1 кроне —
+   график показывает, как их средний результат на ставку прижимается к матожиданию. Таблица —
+   точный расчёт: сколько в среднем оставляют казино и какая доля гостей ещё в плюсе. */
+const GUEST_COLORS = () => [COLOR.teal, COLOR.blue, COLOR.gold, COLOR.rust, COLOR.goldSoft];
+const pct = (v, d = 1) => `${v.toFixed(d).replace('.', ',')}%`;
+export function CasinoOdds() {
+  const [gameId, setGameId] = useState('roulette');
+  const [n, setN] = useState(1000);
+  const [seed, setSeed] = useState(1);
+  const g = GAMES[gameId];
+  const ev = expectedValue(g) * 100;
+  const data = useMemo(() => convergence(g, n, 5, seed), [g, n, seed]);
+  const rows = useMemo(() => SCALES.map((k) => scaleRow(g, k)), [g]);
+  const colors = GUEST_COLORS();
+  return (
+    <div className="ems-panel" data-testid="lab-casino" style={{ padding: 14, marginTop: 12, fontSize: 13, lineHeight: 1.55 }}>
+      <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 6 }}>Почему казино всегда в плюсе</div>
+      <div style={{ color: COLOR.text, marginBottom: 10 }}>
+        У каждой ставки в казино средний результат чуть ниже нуля — это <b>матожидание</b>. На рулетке есть зелёный ноль:
+        на красное выпадает 18 ячеек из 37, а платят как за половину. Одному гостю может повезти на десяти ставках.
+        Но чем больше ставок, тем точнее средний итог совпадает с матожиданием — это <b>закон больших чисел</b>.
+        У казино ставок миллионы, поэтому его доход почти не зависит от удачи.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Игра</span>
+          <Seg label="Игра" value={gameId} onChange={setGameId} options={[{ id: 'roulette', label: 'рулетка, на красное' }, { id: 'binary', label: 'бинарный опцион' }]} />
+        </div>
+        <div style={{ fontSize: 12, color: COLOR.muted, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>Сколько ставок у каждого гостя</span>
+          <Seg label="Сколько ставок" value={String(n)} onChange={(v) => setN(Number(v))} options={SCALES.map((k) => ({ id: String(k), label: String(k) }))} />
+        </div>
+      </div>
+      <div className="row-between" style={{ alignItems: 'baseline', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: COLOR.muted }}>Средний результат на ставку у пяти гостей, % от ставки</span>
+        <button type="button" className="ems-btn" style={{ padding: '4px 10px', fontSize: 12 }} data-testid="lab-casino-reroll"
+          onClick={() => { Audio.play('click'); setSeed((x) => x + 1); }}>Другие пять гостей</button>
+      </div>
+      <div style={{ height: 190 }} data-testid="lab-casino-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={COLOR.hairline} strokeDasharray="2 4" vertical={false} />
+            <XAxis dataKey="k" tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} />
+            <YAxis tick={{ fill: COLOR.faint, fontSize: 12 }} stroke={COLOR.border} width={46} domain={[-100, 100]} ticks={[-100, -50, 0, 50, 100]} />
+            <ReferenceLine y={0} stroke={COLOR.faint} />
+            <ReferenceLine y={ev} stroke={COLOR.rust} strokeDasharray="5 4" label={{ value: `матожидание ${pct(ev)}`, fill: COLOR.rust, fontSize: 12, position: 'insideBottomRight' }} />
+            <Tooltip contentStyle={{ background: COLOR.panelRaised, border: `1px solid ${COLOR.border}`, fontSize: 12 }}
+              labelFormatter={(v) => `после ${v}-й ставки`} formatter={(v, name) => [pct(v), `гость ${Number(name.slice(1)) + 1}`]} />
+            {colors.map((c, i) => <Line key={i} type="monotone" dataKey={`g${i}`} stroke={c} strokeWidth={1.6} dot={false} isAnimationActive={false} />)}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+      <table data-testid="lab-casino-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 10 }}>
+        <thead>
+          <tr style={{ color: COLOR.muted, textAlign: 'left' }}>
+            <th style={{ padding: '4px 6px', fontWeight: 500 }}>Ставок по 1 кроне</th>
+            <th style={{ padding: '4px 6px', fontWeight: 500 }}>Казино оставляет себе в среднем</th>
+            <th style={{ padding: '4px 6px', fontWeight: 500 }}>Гостей в плюсе</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.n} style={{ borderTop: `1px solid ${COLOR.hairline}`, color: COLOR.text }}>
+              <td className="ems-mono" style={{ padding: '4px 6px' }}>{r.n}</td>
+              <td className="ems-mono" style={{ padding: '4px 6px' }}>{r.house.toFixed(r.n < 100 ? 2 : 1).replace('.', ',')} кр.</td>
+              <td className="ems-mono" style={{ padding: '4px 6px' }}>{pct(r.ahead * 100, 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ color: COLOR.muted, fontSize: 12, marginTop: 6 }}>
+        Доля гостей в плюсе посчитана точно, по формуле Бернулли. На 10 ставках «остался при своих» в плюс не засчитан, поэтому
+        цифры для 10 и 100 ставок близки. На 1000 ставках видно главное: везение гостей усредняется, а преимущество казино остаётся.
+      </div>
+      <div className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft, margin: '14px 0 6px' }}>Бинарные опционы — та же рулетка</div>
+      <div style={{ color: COLOR.text }} data-testid="lab-casino-binary">
+        Бинарный опцион обещает: угадайте, будет ли цена через минуту выше или ниже, и заработайте 85%. Звучит как торговля на бирже,
+        но устроено как казино:
+        <ul style={{ margin: '6px 0 0 18px', padding: 0 }}>
+          <li>за минуту цена ходит почти случайно — угадать можно примерно в половине случаев, как с монеткой;</li>
+          <li>за верный ответ платят 85% ставки, за неверный забирают 100%. Средний итог ставки: 0,5 · 85% − 0,5 · 100% = −7,5%.
+            Это почти втрое хуже рулетки;</li>
+          <li>чем чаще и быстрее ставки, тем быстрее работает закон больших чисел — против игрока;</li>
+          <li>другой стороной сделки обычно выступает сама площадка: ваш проигрыш — её доход, ей выгодно, чтобы вы играли больше.</li>
+        </ul>
+        <div style={{ marginTop: 6 }}>
+          Инвестиции работают иначе: акция — доля в бизнесе, облигация — долг с процентом. У них средний результат за годы выше нуля,
+          потому что деньги работают в экономике. У ставки на минуту средний результат ниже нуля, сколько бы раз её ни повторять.
+        </div>
+      </div>
+    </div>
   );
 }
 

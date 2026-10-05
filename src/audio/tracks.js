@@ -542,38 +542,6 @@ tr('graduation', 'Выпуск', 'рояль, бас, барабаны — эк�
   ],
 });
 
-/* ------------------------------- КАЗИНО ------------------------------- */
-// не привязана к режиму экономики — переключается локально при входе на
-// вкладку «Казино» (см. Audio.setPlaylist('casino')/(null)), поэтому обе
-// темы нарочно бодрые и «фоново-лаунжевые» вне зависимости от состояния
-// экономики за окном
-tr('chips', 'Фишки и блеск', 'свинг-фортепиано, контрабас, щётки', 'casino', {
-  bpm: 124, swing: 0.32, reverb: 0.3,
-  bassLine: 'walk', feel: 'swing',
-  A: H('C3 A3 C4 E4 | A2 G3 A3 C4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 A3 C4 E4 | A2 G3 A3 C4 | D3 C4 D4 F4 | G2 F3 G3 B3'),
-  B: H('F2 D3 F3 A3 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 A3 C4 E4'),
-  melA: MEL('0:E4:2 2:G4:2 4:C5:2 6:E5:2 8:D5:4 12:C5:4 16:C5:2 18:E5:2 20:A4:2 22:C5:2 24:B4:4 28:A4:4 32:F4:2 34:A4:2 36:D5:2 38:F5:2 40:E5:4 44:D5:4 48:D5:2 50:B4:2 52:G4:2 54:D5:2 56:B4:4 60:G4:4 64:E4:2 66:G4:2 68:C5:2 70:E5:2 72:D5:4 76:C5:4 80:C5:2 82:E5:2 84:A4:2 86:C5:2 88:B4:4 92:A4:4 96:F4:2 98:A4:2 100:D5:2 102:Eb5:2 104:D5:4 108:C5:4 112:D5:2 114:B4:2 116:G4:2 118:D5:2 120:G5:4 124:D5:4'),
-  melB: MEL('0:A4:2 2:C5:2 4:F5:2 6:A5:2 8:G5:4 12:F5:4 16:D5:2 18:F5:2 20:A5:2 22:C6:2 24:A5:4 28:F5:4 32:B4:2 34:D5:2 36:G5:2 38:B5:2 40:A5:4 44:G5:4 48:E5:2 50:G5:2 52:C6:2 54:E5:2 56:C5:6 62:E5:2'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass cello harp', 0.85, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('B', 'melB', 'drive', 'piano bass cello harp bells', 1.0, DR('x...x...x...x...', '....x...x...x...', 'xxxxxxxxxxxxxxxx')),
-    sec('A', 'melA', 'drive', 'piano bass cello harp bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'xxxxxxxxxxxxxxxx')),
-  ],
-});
-tr('croupier', 'Крупье', 'вибрафон, фортепиано, контрабас — джаз-лаунж', 'casino', {
-  bpm: 96, swing: 0.28, reverb: 0.4,
-  bassLine: 'walk', feel: 'swing',
-  A: H('D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4 | D3 C4 D4 F4 | G2 F3 G3 B3 | C3 B3 C4 E4 | A2 G3 A3 C#4'),
-  B: H('F2 E3 F3 A3 | E3 D4 E4 G4 | A2 G3 A3 C4 | A2 G3 A3 C#4'),
-  melA: MEL('0:D4:6 8:A4:4 12:F4:4 16:G4:6 24:B4:4 28:G4:4 32:C5:6 40:E5:4 44:C5:4 48:C#5:6 56:A4:4 60:E4:4 64:D4:6 72:A4:4 76:F4:4 80:G4:6 88:B4:4 92:G4:4 96:C5:6 104:E5:4 108:C5:4 112:C#5:6 120:D5:8'),
-  melB: MEL('0:A4:6 8:F4:4 12:E4:4 16:G4:6 24:E4:4 28:D4:4 32:A4:6 40:C5:4 44:A4:4 48:C#5:6 56:A4:8'),
-  sections: [
-    sec('A', 'melA', 'sustain', 'marimba bass cello timpani', 0.78, DR('x.......x.......', '....x.......x...', 'x...x...x...x...')),
-    sec('B', 'melB', 'sustain', 'marimba bass cello strings timpani', 0.92, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-    sec('A', 'melA', 'sustain', 'marimba bass cello strings bells timpani', 1.0, DR('x...x...x...x...', '....x.......x...', 'x.x.x.x.x.x.x.x.')),
-  ],
-});
-
 /* -------------------------------- ЗАГЛАВНАЯ -------------------------------- */
 /* Тема главного меню: рояль ведёт мелодию, струнные держат зал, барабаны почти
    не слышны — это ещё не партия, это дверь в кабинет. */
@@ -723,21 +691,6 @@ tr('parade', 'Парад', 'дисторшн-гитара, хор, литавр�
     sec('A', 'melA', 'flow', 'guitar growl choir timpani', 1.0, DR('x...x...x...x...', '....x...x...x.x.', 'xxxxxxxxxxxxxxxx')),
   ],
 });
-// Казино: большой выигрыш — быстрый свинг с духовыми и райдом
-tr('jackpot', 'Джекпот', 'свинг-рояль, духовые, контрабас, райд', 'casino', {
-  bpm: 138, swing: 0.3, reverb: 0.26,
-  bassLine: 'walk', feel: 'swing',
-  A: H('F2 A3 C4 E4 | D3 C4 F4 A4 | G2 F3 B3 D4 | C3 Bb3 E4 G4 | F2 A3 C4 E4 | Bb2 Ab3 D4 F4 | G2 F3 Bb3 D4 | C3 Bb3 E4 G4'),
-  B: H('Bb2 Ab3 D4 F4 | Bb2 Ab3 D4 F4 | F2 A3 C4 E4 | C3 Bb3 E4 G4'),
-  melA: MEL('0:A4:2 2:C5:2 4:F5:2 6:E5:2 8:C5:4 12:A4:4 16:D5:2 18:F5:2 20:A5:2 22:G5:2 24:F5:4 28:D5:4 32:B4:2 34:D5:2 36:F5:2 38:G5:2 40:F5:4 44:D5:4 48:E5:2 50:G5:2 52:Bb5:2 54:G5:2 56:E5:4 60:C5:4 64:A4:2 66:C5:2 68:F5:2 70:A5:2 72:G5:4 76:F5:4 80:D5:2 82:F5:2 84:Ab5:2 86:F5:2 88:D5:4 92:Bb4:4 96:Bb4:2 98:D5:2 100:F5:2 102:D5:2 104:G5:4 108:F5:4 112:E5:2 114:G5:2 116:Bb5:2 118:G5:2 120:C6:8'),
-  melB: MEL('0:F5:4 4:D5:4 8:Ab5:6 14:F5:2 16:D5:2 18:F5:2 20:Ab5:2 22:Bb5:2 24:Ab5:4 28:F5:4 32:E5:4 36:C5:4 40:A5:6 46:G5:2 48:G5:2 50:Bb5:2 52:C6:4 56:G5:8'),
-  sections: [
-    sec('A', 'melA', 'drive', 'piano bass brass', 0.85, DR('x...x...x...x...', '....x.......x...', 'r.r.r.r.r.r.r.r.', { ghost: true })),
-    sec('B', 'melB', 'drive', 'piano bass brass bells', 1.0, DR('x...x...x...x...', '....x.......x...', 'r.rrr.rrr.rrr.rr', { ghost: true })),
-    sec('A', 'melA', 'drive', 'piano bass brass strings', 1.0, DR('x...x...x...x...', '....x.......x.x.', 'r.rrr.rrr.rrr.rr', { ghost: true })),
-  ],
-});
-
 /* -------------------------------- ПРЕЗИДЕНТ -------------------------------- */
 // Своя тема у того, кто сидит в резиденции: торжественный ми-бемоль мажор без маршевости
 tr('residence', 'Резиденция', 'рояль, струнные, арфа, скрипка', 'calm', {
@@ -767,11 +720,10 @@ const MOOD_PLAYLISTS = {
   stabilization: ['anchor', 'firmhand'],
   authoritarian: ['decree', 'corridors'],
   totalitarian: ['ironmarch', 'parade', 'curfew'],
-  casino: ['chips', 'jackpot', 'croupier'],
 };
 const MOOD_LABEL = { calm: 'Спокойствие', boom: 'Подъём', slump: 'Спад', stag: 'Стагфляция', crisis: 'Кризис', frost: 'Дефляция',
   war: 'Война', campaign: 'Предвыборная кампания', stabilization: 'Стабилизация', authoritarian: 'Ручное управление',
-  totalitarian: 'Тоталитаризм', casino: 'Казино' };
+  totalitarian: 'Тоталитаризм' };
 const REGIME_MOOD = { normal: 'calm', overheating: 'boom', recession: 'slump', stagflation: 'stag',
   banking: 'crisis', debt: 'crisis', currency: 'crisis', deflation: 'frost', war: 'war', pandemic: 'crisis' };
 /* Плейлисты, привязанные к роли: у инвестора свой репертуар, у обучения — свой */

@@ -660,6 +660,16 @@ test('лаборатория: один рычаг, четыре графика �
   // фон: без шумов или на фоне шумов с полосой
   await page.getByRole('button', { name: /на фоне шумов/ }).click();
   await expect(page.getByTestId('lab-cb-note').locator('..')).toContainText('медиана');
+  // казино — не игра, а расчёт: пять гостей сходятся к матожиданию, ставок и наград нет
+  const casino = page.getByTestId('lab-casino');
+  await expect(casino).toContainText('Почему казино всегда в плюсе');
+  await expect(casino.getByTestId('lab-casino-chart').locator('.recharts-line')).toHaveCount(5);
+  await expect(casino.getByTestId('lab-casino-table').locator('tbody tr')).toHaveCount(3);
+  await expect(casino.getByTestId('lab-casino-table')).toContainText('27,0 кр.');
+  await casino.getByRole('button', { name: 'бинарный опцион' }).click();
+  await expect(casino.getByTestId('lab-casino-table')).toContainText('75,0 кр.');
+  await expect(casino.getByTestId('lab-casino-binary')).toContainText('−7,5%');
+  await expect(casino.getByRole('button', { name: /ставк/i })).toHaveCount(0);
   await expectNoSidewaysScroll(page);
   expect(errors).toEqual([]);
 });

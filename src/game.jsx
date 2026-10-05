@@ -9,13 +9,13 @@ import {
   Landmark, Coins, Globe2, TrendingUp, Users, Activity, Newspaper, Factory, Scale, Banknote,
   ShieldAlert, ChevronDown, ChevronUp, Info, RotateCcw, ArrowUpRight, ArrowDownRight, X, Check,
   AlertTriangle, Bot, Gauge as GaugeIcon, Target, Zap, Save, Copy, Star, Flag, Megaphone, Sliders,
-  Dices, Trophy, Share2, Download, Crown, Gavel, Hammer, BookOpen, Map as MapIcon, Plus, GraduationCap,
+  Trophy, Share2, Download, Crown, Gavel, Hammer, BookOpen, Map as MapIcon, Plus, GraduationCap,
 } from 'lucide-react';
 import {
   ROLES, DIFFICULTIES, GOALS, SCENARIOS, FX_REGIMES, LEVERS, CB_PERSONAS, MOF_PERSONAS, REQUESTS,
   REGIME_INFO, CRISIS_INFO, MANDATE_LABEL, GUIDANCE_OPTIONS, GUIDANCE_LABEL, guidanceBreach, regimeInfoText, regimeInfoLabel, POLITICAL_REGIME_INFO,
   gameChronicle, clamp, fmt1, fmt2, fmtSigned1, pctFmt, fmtSignedPct, fmtMoney, fmtMoneySigned,
-  fmtIndex, fmtMln, fmtMlnSigned, quarterLabel, defaultDecisions, getCbPersona, personaAfterElection,
+  fmtIndex, fmtMln, quarterLabel, defaultDecisions, getCbPersona, personaAfterElection,
   getMofPersona, MAP_REGIONS, botCentralBank, botFinanceMinistry, processRequest, redescribeCbAction,
   redescribeMofAction, simulateQuarter, makeInitialEconomy, leverPreview, pickPromises,
   evaluatePromise, pickPressQuestion, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_GROUP_LABEL, reformShare,
@@ -1983,16 +1983,6 @@ export function questProgressAchievementIds({ quarterIndex, economy, history, ro
   return ids;
 }
 
-/* Достижения казино учат не охоте за кушем, а закону больших чисел: чем больше
-   ставок, тем ближе итог к матожиданию — то есть к проигрышу. */
-export function casinoAchievementIds({ net, casinoBets = 0 }) {
-  const ids = [];
-  if (net > 0) ids.push('casino_win');
-  if (casinoBets >= 30) ids.push('casino_jackpot');
-  if (casinoBets >= 100) ids.push('casino_ahead');
-  return ids;
-}
-
 // очередь тостов «достижение открыто» — общая для соло- и сетевого экрана
 export function useAchievementToasts() {
   const [toast, setToast] = useState(null);
@@ -2405,7 +2395,6 @@ export function buildResultCard({ role, quarterIndex, economy, startEconomy, por
     stats.push(['Капитал', fmtMln(val)]);
     stats.push(['Доходность', `${ret >= 0 ? '+' : ''}${ret.toFixed(0)}%`]);
     stats.push(['Сделок на рынке', String((portfolio.trades || []).length)]);
-    stats.push(['Итог казино', fmtMlnSigned(portfolio.casinoNet || 0)]);
   } else {
     const gdpChange = startEconomy && startEconomy.gdp > 0 ? ((economy.gdp / startEconomy.gdp) - 1) * 100 : null;
     stats.push(['ВВП с начала партии', gdpChange != null ? `${gdpChange >= 0 ? '+' : ''}${gdpChange.toFixed(0)}%` : '—']);
@@ -2909,7 +2898,7 @@ export const BORROW_FEE = 0.02;
       // годовая плата за короткую позицию
 
 export const emptyBook = () => ({ cash: 10, pos: {}, avg: {}, opts: [], realized: 0, history: [10],
-  startValue: 10, benchStart: null, marginCalls: 0, lastEvents: [], casinoNet: 0 });
+  startValue: 10, benchStart: null, marginCalls: 0, lastEvents: [] });
 
 export const priceOf = (instr, economy, live) => {
   const v = (live && Number.isFinite(live[instr.key])) ? live[instr.key] : economy[instr.key];
@@ -3137,14 +3126,6 @@ export function settleQuarter(book, economy) {
   b.lastEvents = events;
   return b;
 }
-
-/* =========================================================================================
-   КАЗИНО: отдельная вкладка для частного инвестора — рулетка, слоты, кости,
-   блэкджек и бинарные опционы. Играет на тот же капитал портфеля (book.cash),
-   выигрыш/проигрыш — через onResult(net), тем же путём, что и обычная сделка,
-   поэтому сразу видны в общей стоимости портфеля и в сравнении с соперником.
-========================================================================================= */
-export const CasinoScreen = React.lazy(() => import('./casino.jsx').then((m) => ({ default: m.CasinoScreen })));
 
 /* Панель ведомств для инвестора: только наблюдаемые факты и публичные заявления */
 function InstitutionsPanel({ economy, cbAction, mofAction }) {
@@ -4465,16 +4446,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const [defeat, setDefeat] = useState(initial && initial.defeat ? initial.defeat : null);
   const [showGameOver, setShowGameOver] = useState(false);
   const [view, setView] = useState(setup.role === 'trader' ? 'market' : 'dash');
-  // на вкладке «Казино» музыка временно переключается на лаунж-плейлист
-  // независимо от режима экономики, а при выходе возвращается к тому, что
-  // играло (в том числе к ручному выбору игрока, если он был) — а не всегда
-  // к «по режиму экономики»
-  React.useEffect(() => {
-    if (view !== 'casino') return undefined;
-    const prevLocked = Audio.nowPlaying().locked;
-    Audio.setPlaylist('casino');
-    return () => { Audio.setPlaylist(prevLocked); };
-  }, [view]);
   const [flashKey, setFlashKey] = useState(0);
   const [shake, setShake] = useState(false);
   const [stampKey, setStampKey] = useState(0);
@@ -4581,12 +4552,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       const instr = INSTR_BY_ID[id];
       return { ...nb, trades: [...(b.trades || []), { q: quarterIndex, id, side, amt, price: priceOf(instr, economy, live) }].slice(-120) };
     });
-  };
-  const onCasino = (net, bet = 0, ev = 0) => {
-    const casinoBets = (portfolio.casinoBets || 0) + 1;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
-      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
   };
   const prevEcon = history.length >= 2 ? history[history.length - 2]
     : prehistory && prehistory.length ? { ...initEconomy, ...prehistory[prehistory.length - 1] } : initEconomy;
@@ -5265,7 +5230,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           </div>
           {/* вкладки экрана — сегментированный переключатель; на телефоне во всю ширину */}
           <div className="ems-seg" role="group" aria-label="Экран" data-tour="screens" style={narrow ? { width: '100%' } : { marginLeft: 'auto' }}>
-            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp], ...(isTrader ? [['casino', 'Казино', Dices]] : [])].map(([id, label, Icon]) => (
+            {[['dash', 'Панель', GaugeIcon], ['map', 'Карта', MapIcon], ['society', 'Общество', Users], ['market', 'Рынок', TrendingUp]].map(([id, label, Icon]) => (
               <button key={id} aria-pressed={view === id} style={narrow ? { flex: 1, padding: '7px 4px', gap: 4, minWidth: 0 } : undefined}
                 onClick={() => { Audio.play('tab'); setView(id); }}>
                 <Icon size={14} />{label}
@@ -5408,11 +5373,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           book={isTrader ? portfolio : null} onTrade={onTrade} />
       )}
 
-      {view === 'casino' && isTrader && (
-        <div style={{ padding: '0 18px 18px' }}>
-          <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>
-        </div>
-      )}
 
 
       {(() => {

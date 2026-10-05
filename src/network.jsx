@@ -4,7 +4,7 @@
    газета и торговый терминал. Общие компоненты, тема (COLOR), звук и
    помощники сохранений — те же объекты, что в MacroSimulator.jsx
    (экспортированы оттуда), а не копии. */
-import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Dices, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, TrendingUp, Trophy, Users, X } from 'lucide-react';
+import { AlertTriangle, BookOpen, Check, ChevronDown, Clock, Copy, Crown, Info, Map as MapIcon, Megaphone, Newspaper, RotateCcw, Share2, ShieldAlert, Trophy, Users, X } from 'lucide-react';
 import { CB_PERSONAS, SCENARIOS, DIFFICULTIES, FX_REGIMES, GOALS, LEVERS, MOF_PERSONAS, POLITICAL_REGIME_INFO, PRESIDENT_PERSONAS, clamp, defaultDecisions, fmtSignedPct, leverPreview, pctFmt, pickPressQuestion, pressSpeakerSeat, quarterLabel, scaleLever } from './lib/engine.js';
 import React, { Suspense, useMemo, useState } from 'react';
 import { cancelSubmission, createRoom, fetchRoom, joinRoom, kickFromRoom, leaveRoom, listPublicRooms, reportPortfolioValue, sendChatMessage, setRoomDifficulty, submitDecisions, watchRoom } from './lib/client.js';
@@ -13,14 +13,14 @@ import {
   StateSeal, clearNetworkSlotAt, emblemIcon, forgetAccount, useAccount, loadNetworkSlots, roomCodeFromUrl, seatRole, useNetworkSlotPreviews,
 } from './MacroSimulator.jsx';
 import {
-  ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, CasinoScreen, ChartFallback, ChartPanel,
+  ALL_METRICS, AchievementToast, Atmosphere, CabinetZone, ChartFallback, ChartPanel,
   ColumnResizeHandle, CountryMap, SocietyView, CrisisBar, DEFAULT_COLUMN_ORDER, GameOverBar,
   ChronicleModal, GameOverModal, Gauge, HeaderOverflowMenu, INDICATOR_TABS, INSTR_BY_ID,
   LeverSlider, MAX_PINS, MetricRow, NewsTerminal, NewspaperModal, PortfolioSummary, PresidentPanel,
   PresidentWatchPanel, PressConferencePanel, PromisesPanel, QuarterStamp, RegimeBanner,
   ResultCardModal, KpiStrip, SummaryBar, ScorePanel, FiscalLeverReadout, MonetaryLeverReadout, RegionEventStrip, Fold, scoreSummary,
   Segmented, StateZone, TradingTerminal, ViewSettings, WhyModal, bookValue, buildResultCard,
-  casinoAchievementIds, checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
+  checkDefeat, clearNetworkSlotFor, emptyBook, haptic, initDashboards,
   loadAutoPaper, loadNetworkPortfolio, makeDashboardActions, markNetworkPlayed, priceOf,
   questProgressAchievementIds, recordRolePlayed, saveAutoPaper, saveNetworkPortfolio, saveNetworkSlot,
   seatsForMode, settleQuarter, tradeBook, unlockAchievements, useAchievementToasts, useChartView,
@@ -567,21 +567,6 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
       return { ...nb, trades: [...(b.trades || []), { q: room.quarterIndex, id: instrId, side, amt, price: priceOf(instr, room.economy, liveQuotes) }].slice(-120) };
     });
   };
-  const onCasino = (net, bet = 0, ev = 0) => {
-    const casinoBets = (portfolio.casinoBets || 0) + 1;
-    setPortfolio((b) => ({ ...b, cash: Math.max(0, b.cash + net), realized: (b.realized || 0) + net, casinoNet: (b.casinoNet || 0) + net,
-      casinoBets: (b.casinoBets || 0) + 1, casinoWagered: (b.casinoWagered || 0) + bet, casinoExpected: (b.casinoExpected || 0) + bet * ev }));
-    pushAch(unlockAchievements(casinoAchievementIds({ net, casinoBets })));
-  };
-  const [marketTab, setMarketTab] = useState('market');
-  // та же временная подмена плейлиста, что и в соло-игре — см. комментарий там.
-  // room.mode напрямую, а не isTraderRoom: та объявляется ниже по компоненту
-  React.useEffect(() => {
-    if (room.mode !== 'trader' || marketTab !== 'casino') return undefined;
-    const prevLocked = Audio.nowPlaying().locked;
-    Audio.setPlaylist('casino');
-    return () => { Audio.setPlaylist(prevLocked); };
-  }, [room.mode, marketTab]);
   // соперник должен видеть стоимость портфеля не только в момент «готов», а
   // вскоре после каждой сделки — иначе до конца квартала список эталонов
   // выглядит так, будто ничего не пишется, хотя сделка уже прошла
@@ -1338,15 +1323,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
           </Suspense> : (<>
           {isTraderRoom && (
             <>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {[['market', 'Рынок', TrendingUp], ['casino', 'Казино', Dices]].map(([tid, label, Icon]) => (
-                  <button type="button" key={tid} className={`ems-tab ${marketTab === tid ? 'active' : ''}`} aria-pressed={marketTab === tid} style={{ padding: '6px 12px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
-                    onClick={() => { Audio.play('tab'); setMarketTab(tid); }}><Icon size={13} />{label}</button>
-                ))}
-              </div>
-              {marketTab === 'market'
-                ? <Suspense fallback={<ChartFallback />}><TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} /></Suspense>
-                : <Suspense fallback={<ChartFallback />}><CasinoScreen book={portfolio} onCasino={onCasino} /></Suspense>}
+              <Suspense fallback={<ChartFallback />}><TradingTerminal economy={economy} prev={prevEcon} history={room.history} book={portfolio} onTrade={onTrade} /></Suspense>
             </>
           )}
           <NewsTerminal items={room.news} onOpenPaper={() => setShowPaper(true)} />
