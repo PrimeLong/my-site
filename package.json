@@ -29,6 +29,7 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.56.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",

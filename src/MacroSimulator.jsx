@@ -1132,7 +1132,7 @@ function MenuTicker() {
       <span key={r.id} className="menu-tick-cell">
         <span style={{ color: COLOR.muted }}>{r.label}</span>{' '}
         <span className="ems-mono" style={{ color: COLOR.text }}>{r.v.toFixed(r.dec).replace('.', ',')}{r.unit}</span>{' '}
-        <span style={{ color: tone, fontSize: 10 }}>{up ? '▲' : down ? '▼' : '•'}</span>
+        <span style={{ color: tone, fontSize: 12 }}>{up ? '▲' : down ? '▼' : '•'}</span>
       </span>
     );
   });
@@ -1140,7 +1140,7 @@ function MenuTicker() {
   return (
     <div className="ems-fade-in menu-ticker" aria-hidden="true">
       <div className="menu-ticker-spark">
-        <div style={{ fontSize: 11, color: COLOR.faint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Инфляция, 4 года</div>
+        <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Инфляция, 4 года</div>
         <svg width="120" height="36" viewBox="0 0 120 36" style={{ display: 'block' }}>
           <polyline points={pts} fill="none" stroke={COLOR.gold} strokeWidth="1.6" strokeLinejoin="round" />
           <circle cx="120" cy={34 - ((infHist[infHist.length - 1] - lo) / (hi - lo)) * 30} r="2.4" fill={COLOR.goldSoft} />
@@ -1334,7 +1334,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
               <span style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--u)', color: 'var(--ds-paper)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={19} aria-hidden="true" /></span>
               <div style={{ minWidth: 0 }}>
                 <div className="ds-h3">{m.title}</div>
-                <div className="ds-eyebrow" style={{ fontSize: 11, letterSpacing: '.08em', marginTop: 2 }}>{m.tag}</div>
+                <div className="ds-eyebrow" style={{ fontSize: 12, letterSpacing: '.08em', marginTop: 2 }}>{m.tag}</div>
               </div>
             </div>
             <div className="menu-mode-desc ds-sub" style={{ fontSize: 14, lineHeight: 1.5, marginTop: 9 }}>{m.desc}</div>

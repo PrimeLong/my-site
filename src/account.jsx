@@ -484,9 +484,9 @@ export function ProfileModal({ onClose, onSwitched }) {
           У профиля нет кода восстановления — без него забытый пароль не вернуть. Получите его кнопкой «Код восстановления» ниже.
         </div>
       )}
-      <div style={{ fontSize: 12, marginBottom: 5 }}>Имя в игре</div>
+      <label htmlFor="account-name" style={{ display: 'block', fontSize: 12, marginBottom: 5 }}>Имя в игре</label>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" />
+        <input id="account-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} className="ds-field" />
         <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || name.trim() === account.name || name.trim().length < 2}
           style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => save({ name: name.trim() })}>Сохранить</button>
       </div>
@@ -504,15 +504,15 @@ export function ProfileModal({ onClose, onSwitched }) {
       {profile && <KidsModeBox profile={profile} busy={busy} save={save} />}
       {panel === 'password' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-          <input type="password" placeholder="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
-          <input type="password" placeholder="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
+          <input type="password" placeholder="Старый пароль" aria-label="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
+          <input type="password" placeholder="Новый пароль" aria-label="Новый пароль" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" className="ds-field" />
           <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || newPw.length < 6 || !oldPw}  onClick={changePw}>Сменить пароль</button>
         </div>
       )}
       {panel === 'recovery' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           <div style={{ fontSize: 14, color: 'var(--ds-ink2)', lineHeight: 1.5 }}>Новый код заменит прежний. Для этого нужен пароль.</div>
-          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
+          <input type="password" placeholder="Пароль" aria-label="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
           <button className="ds-btn ds-btn--secondary ds-btn--small" disabled={busy || !oldPw}  onClick={newCode}>Получить новый код</button>
         </div>
       )}
@@ -521,7 +521,7 @@ export function ProfileModal({ onClose, onSwitched }) {
           <div style={{ fontSize: 14, color: 'var(--ds-bad)', lineHeight: 1.5 }}>
             Удалятся профиль, прогресс, сохранения, рекорды и ваши сообщения об ошибках. Отменить это нельзя. Введите пароль, чтобы подтвердить.
           </div>
-          <input type="password" placeholder="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" data-testid="account-delete-password" />
+          <input type="password" placeholder="Пароль" aria-label="Пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" data-testid="account-delete-password" />
           <button className="ds-btn ds-btn--small" style={{ background: 'var(--ds-bad-btn)', borderColor: 'var(--ds-bad-btn)' }} disabled={busy || !oldPw} onClick={removeAll} data-testid="account-delete-confirm">Удалить навсегда</button>
         </div>
       )}

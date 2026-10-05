@@ -2592,9 +2592,9 @@ function TutorialModuleScreen({ module, isLastModule, onExit, onComplete, onGoNe
                   const good = m.invert ? d < 0 : d > 0;
                   return (
                     <div key={key} className="ems-panel" style={{ padding: '6px 8px', borderRadius: 8 }}>
-                      <div style={{ fontSize: 11, color: COLOR.muted, lineHeight: 1.25 }}>{m.label}</div>
+                      <div style={{ fontSize: 12, color: COLOR.muted, lineHeight: 1.25 }}>{m.label}</div>
                       <div className="ems-mono" style={{ fontSize: 14 }}>{m.fmt(economy[key])}
-                        {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 11, marginLeft: 4, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
+                        {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 12, marginLeft: 4, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
                       </div>
                     </div>
                   );

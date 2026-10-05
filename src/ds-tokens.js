@@ -16,15 +16,15 @@ export const DS_FONT = {
 export const DS_THEMES = {
   paper: {
     isDark: false,
-    paper: '#F3EEE2', card: '#FFFCF5', card2: '#ECE5D4', ink: '#1C2125', ink2: '#4A5157', ink3: '#62696F',
-    rule: '#D6CCB7', rule2: '#B3A78E', ok: '#2D7A4B', okInk: '#1C5433', okBg: '#E2F0E3', bad: '#B0392D', badInk: '#8A2A20', badBg: '#F7E1DC', okBtn: '#2D7A4B', badBtn: '#B0392D',
-    gold: '#9C7218', goldSoft: '#C9A24A', sel: '#F4E6D2', selInk: '#5A3212', selRule: '#B5793F', blue: '#3E6FA8', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
+    paper: '#F3EEE2', card: '#FFFCF5', card2: '#ECE5D4', ink: '#1C2125', ink2: '#4A5157', ink3: '#5A6167',
+    rule: '#D6CCB7', rule2: '#B3A78E', ok: '#276B42', okInk: '#1C5433', okBg: '#E2F0E3', bad: '#B0392D', badInk: '#8A2A20', badBg: '#F7E1DC', okBtn: '#2D7A4B', badBtn: '#B0392D',
+    gold: '#7D5A10', goldSoft: '#C9A24A', sel: '#F4E6D2', selInk: '#5A3212', selRule: '#B5793F', blue: '#345E92', shade: 'rgba(60,45,20,.14)', accent: '#8A4B22',
   },
   ink: {
     isDark: true,
     paper: '#14181C', card: '#1C2227', card2: '#242B32', ink: '#EEE7D7', ink2: '#BDB5A5', ink3: '#A29A8B',
     rule: '#353D45', rule2: '#4D5660', ok: '#62B882', okInk: '#AEE3C1', okBg: '#1B3226', bad: '#E2806F', badInk: '#F4BCB2', badBg: '#3A221E', okBtn: '#2B7048', badBtn: '#A23E32',
-    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#3A2B1D', selInk: '#F2DCBC', selRule: '#C98A55', blue: '#6A8FC2', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
+    gold: '#D8B25A', goldSoft: '#B8964A', sel: '#3A2B1D', selInk: '#F2DCBC', selRule: '#C98A55', blue: '#8FB3E0', shade: 'rgba(0,0,0,.45)', accent: '#C98A55',
   },
 };
 
@@ -64,7 +64,7 @@ export const PLACES = {
 export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#5A4E80', region: 'capital', at: [496, 372], note: '' };
 export const unitColor = (unitId) => placeOf(unitId).color;
 // алмазный уровень урока: свой цвет — холодный синий гранёного камня
-export const DIAMOND_COLOR = '#2E8FB8';
+export const DIAMOND_COLOR = '#236F8F';
 
 // CSS-переменные темы: одна строка на корень экрана (ds-root)
 export function tokenVars(t, accent) {

@@ -71,7 +71,7 @@ const CSS = `
   .ln-stats { display: flex; gap: 6px; padding: 2px 0 12px; }
   .ln-stat { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--ds-rule2); border-radius: 3px;
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
-  .ln-stat small { font: 11px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
+  .ln-stat small { font: 12px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
   .ln-atlas { position: relative; padding: 10px 10px 8px; margin: 4px 0 18px; }
   .ln-atlas svg text { font-family: var(--ds-serif); }
   .ln-bill { position: relative; overflow: hidden; padding: 0; margin: 20px 0 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
@@ -95,9 +95,9 @@ const CSS = `
   .ln-token.diamond { background: linear-gradient(135deg, #8ED8F2 0%, #3FA2CC 45%, #2E8FB8 60%, #1D6A8E 100%); border-color: #1C5F80;
     box-shadow: inset 0 0 0 4px rgba(255,255,255,0), inset 0 0 0 5px rgba(255,255,255,.7), 0 2px 8px rgba(46,143,184,.45); }
   .ln-seal.diamond { background: #2E8FB8; }
-  .ln-pin { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 11px/1 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase;
+  .ln-pin { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase;
     color: var(--ds-paper); background: var(--ds-ink); padding: 5px 8px 4px; border-radius: 2px; }
-  .ln-pin.rec { background: var(--ds-gold); color: #2A1D05; }
+  .ln-pin.rec { background: var(--ds-gold); color: var(--ds-card); }
   .ln-pin.rec::after { border-top-color: var(--ds-gold); }
   .ln-chest { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: inherit; cursor: pointer; font: 700 13.5px/1.25 var(--ds-serif); }
   .ln-chest-art { display: inline-flex; filter: drop-shadow(0 2px 2px var(--ds-shade)); transition: transform .15s; }
@@ -140,8 +140,8 @@ const CSS = `
   .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 3px; border-left: 3px solid; }
   .ln-verdict.ok { background: var(--ds-ok-bg); border-color: var(--ds-ok); }
   .ln-verdict.bad { background: var(--ds-bad-bg); border-color: var(--ds-bad); }
-  .ln-verdict.ok .ds-answer-stamp { color: var(--ds-ok); font-size: 13px; }
-  .ln-verdict.bad .ds-answer-stamp { color: var(--ds-bad); font-size: 13px; }
+  .ln-verdict.ok .ds-answer-stamp { color: var(--ds-ok-ink); font-size: 13px; }
+  .ln-verdict.bad .ds-answer-stamp { color: var(--ds-bad-ink); font-size: 13px; }
   .ln-book { min-height: 100vh; margin: -12px -16px 0; }
   /* кнопки учебника-справочника — те же, что у дизайн-системы: билет и бумажная кнопка */
   .ln-textbook .ems-btn { font: 700 13.5px/1.25 var(--ds-sans); border: 1px solid var(--ds-rule2); border-bottom-width: 2px; border-radius: 3px; background: var(--ds-card);
@@ -151,9 +151,9 @@ const CSS = `
   .ln-textbook .ems-btn.primary:hover { background: var(--u); filter: brightness(1.07); }
   .ln-textbook .ems-btn[aria-pressed="true"] { background: var(--ds-sel); color: var(--ds-sel-ink); border-color: var(--ds-sel-rule); }
   .ln-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; max-width: 360px; }
-  .ln-cal-wd { font: 700 11px/1 var(--ds-sans); color: var(--ds-ink3); text-align: center; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
+  .ln-cal-wd { font: 700 12px/1 var(--ds-sans); color: var(--ds-ink3); text-align: center; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
   .ln-cal-d { aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--ds-rule2); display: flex; align-items: center; justify-content: center;
-    font: 700 11px/1 var(--ds-mono); color: var(--ds-ink2); background: var(--ds-card); }
+    font: 700 12px/1 var(--ds-mono); color: var(--ds-ink2); background: var(--ds-card); }
   .ln-cal-d.t1 { background: color-mix(in srgb, var(--u) 22%, var(--ds-card)); }
   .ln-cal-d.t2 { background: color-mix(in srgb, var(--u) 50%, var(--ds-card)); color: var(--ds-ink); }
   .ln-cal-d.t3 { background: var(--u); color: #fff; border-color: transparent; }
@@ -951,9 +951,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                 </div>}
               </div>
               <div className="ln-tickets">
-                <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 10.5 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
-                <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 10.5 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
-                <div data-testid="result-time"><div className="ds-eyebrow" style={{ fontSize: 10.5 }}>Время</div><div className="v">{mmss(result.ms)}</div></div>
+                <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
+                <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
+                <div data-testid="result-time"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Время</div><div className="v">{mmss(result.ms)}</div></div>
               </div>
               <GainsList coins={result.coins} gains={result.gains} />
               {lesson && run.mode === 'lesson' && !replay && partsOfLesson(lesson.id).length > 0 && (
@@ -1026,7 +1026,7 @@ function StepLegend({ nodes, unitId }) {
   if (!list.length) return null;
   return (
     <div className="ln-legend" data-testid="step-legend">
-      <div className="ds-eyebrow" style={{ fontSize: 10.5, marginBottom: 2 }}>Обозначения</div>
+      <div className="ds-eyebrow" style={{ fontSize: 12, marginBottom: 2 }}>Обозначения</div>
       {list.map((x) => <div key={x.key}><Inline nodes={[{ t: 'math', v: x.key }]} ctx={noopCtx} /> — {inCrowns(x.text)}</div>)}
     </div>
   );
@@ -1136,11 +1136,12 @@ function TopStats({ learn }) {
   const st = streak(learn); const g = goalToday(learn);
   const totalXp = Object.values(learn.xp).reduce((a, b) => a + b, 0);
   return (
-    <div className="ln-stats" data-testid="path-stats">
-      <span className="ln-stat" title="Серия дней"><Flame size={17} color={st.days ? 'var(--ds-bad)' : 'var(--ds-ink3)'} aria-hidden="true" /><span data-testid="streak">{st.days}</span><small>дн.</small></span>
-      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" />{totalXp}<small>опыт</small></span>
+    // у каждого счётчика подпись для чтения с экрана: значок и сокращение её не заменяют
+    <div className="ln-stats" data-testid="path-stats" role="group" aria-label="Ваш прогресс">
+      <span className="ln-stat" title="Серия дней"><Flame size={17} color={st.days ? 'var(--ds-bad)' : 'var(--ds-ink3)'} aria-hidden="true" /><span className="ds-sr">Серия, дней: </span><span data-testid="streak">{st.days}</span><small aria-hidden="true">дн.</small></span>
+      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" /><span className="ds-sr">Опыт: </span>{totalXp}<small aria-hidden="true">опыт</small></span>
       <WalletStat learn={learn} />
-      <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" />{Math.min(g.done, g.goal)}/{g.goal}<small>мин</small></span>
+      <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" /><span className="ds-sr">Цель дня, минут занятий: </span>{Math.min(g.done, g.goal)}/{g.goal}<small aria-hidden="true">мин</small></span>
     </div>
   );
 }

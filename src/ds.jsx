@@ -41,6 +41,9 @@ export const DS_CSS = `
   .ds-btn:hover:not(:disabled) { filter: brightness(1.07); }
   .ds-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 2px 6px rgba(0,0,0,.38), inset 0 0 0 1px rgba(0,0,0,.3); }
   .ds-btn:focus-visible { -webkit-mask: none; mask: none; }
+  /* «Мир»: основная кнопка — золото тёмной темы, на нём белый текст не читается — тёмная тушь */
+  .ds[data-ds-theme="world"] .ds-btn:not(.ds-btn--secondary):not(.ds-btn--ghost):not(.ds-btn--ok):not(.ds-btn--bad):not(:disabled) { color: #1B1204; }
+  .ds[data-ds-theme="world"] .ds-btn:not(.ds-btn--secondary):not(.ds-btn--ghost):not(.ds-btn--ok):not(.ds-btn--bad)::after { border-color: rgba(27,18,4,.45); }
   .ds-btn:disabled { background: var(--ds-card2); color: var(--ds-ink3); box-shadow: inset 0 0 0 1px var(--ds-rule2); cursor: default; }
   .ds-btn:disabled::after { border-color: var(--ds-rule2); }
   .ds-btn--secondary { background: var(--ds-card); color: var(--u-ink); box-shadow: inset 0 0 0 1.5px var(--u-ink), 0 1px 0 var(--ds-shade); }
@@ -58,6 +61,8 @@ export const DS_CSS = `
   .ds-icon-btn:hover { background: var(--ds-card2); }
 
   /* карточка-документ, панель, строки */
+  /* текст только для чтения с экрана: подписи к значкам и числам */
+  .ds-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .ds-card { background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 6px; padding: 16px;
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule), 0 1px 2px var(--ds-shade); }
   .ds-card--flat { box-shadow: 0 1px 2px var(--ds-shade); }
@@ -69,7 +74,7 @@ export const DS_CSS = `
   .ds-row:last-child { border-bottom: none; }
   .ds-row > span:first-child { color: var(--ds-ink2); }
   .ds-row > b { font-family: var(--ds-mono); font-weight: 700; }
-  .ds-badge { display: inline-flex; align-items: center; gap: 4px; font: 700 11.5px/1 var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border: 1px solid currentColor; border-radius: 2px; color: var(--u-ink); }
+  .ds-badge { display: inline-flex; align-items: center; gap: 4px; font: 700 12px/1 var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border: 1px solid currentColor; border-radius: 2px; color: var(--u-ink); }
 
   /* варианты ответа, плитки, клавиши */
   .ds-opt { display: block; width: 100%; text-align: left; padding: 13px 14px 13px 16px; margin: 8px 0; font: 16px/1.45 var(--ds-sans); color: var(--ds-ink);
@@ -102,11 +107,12 @@ export const DS_CSS = `
   .ds-answer.bad { background: var(--ds-bad-bg); border-top-color: var(--ds-bad); }
   .ds-answer-stamp { display: inline-block; font: 700 15px/1 var(--ds-serif); letter-spacing: .16em; text-transform: uppercase; padding: 6px 10px 5px; border: 2.5px solid currentColor;
     border-radius: 3px; transform: rotate(-4deg); box-shadow: inset 0 0 0 2px transparent, inset 0 0 0 3px currentColor; }
-  .ds-answer.ok .ds-answer-stamp { color: var(--ds-ok); }
-  .ds-answer.bad .ds-answer-stamp { color: var(--ds-bad); }
+  .ds-answer.ok .ds-answer-stamp { color: var(--ds-ok-ink); }
+  .ds-answer.bad .ds-answer-stamp { color: var(--ds-bad-ink); }
   .ds-answer-say { display: inline-block; font: 700 18px/1.3 var(--ds-serif); animation: ds-stamp .32s ease-out 1 both; }
-  .ds-answer.ok .ds-answer-say { color: var(--ds-ok); }
-  .ds-answer.bad .ds-answer-say { color: var(--ds-bad); }
+  /* на светлой плашке ответа — тёмные оттенки «верно/неверно»: контраст не ниже 4,5:1 */
+  .ds-answer.ok .ds-answer-say { color: var(--ds-ok-ink); }
+  .ds-answer.bad .ds-answer-say { color: var(--ds-bad-ink); }
 
   /* шторка снизу, верхняя панель, нижняя панель вкладок */
   .ds-sheet-back { position: fixed; inset: 0; z-index: 320; background: rgba(28,20,8,.48); display: flex; align-items: flex-end; justify-content: center; }
@@ -120,7 +126,7 @@ export const DS_CSS = `
   .ds-nav button { flex: 1; min-width: 0; background: none; border: none; cursor: pointer; padding: 10px 2px 8px; display: flex; flex-direction: column; align-items: center; gap: 3px;
     color: var(--ds-ink3); font: 700 12px/1.1 var(--ds-sans); letter-spacing: .04em; position: relative; }
   .ds-nav button[aria-current="page"] { color: var(--u-ink); cursor: default; }
-  @media (max-width: 380px) { .ds-nav button { font-size: 11px; letter-spacing: 0; } }
+  @media (max-width: 380px) { .ds-nav button { font-size: 12px; letter-spacing: 0; } }
   .ds-nav button[aria-current="page"]::before { content: ''; position: absolute; top: 5px; width: 30px; height: 3px; border-radius: 1px; background: var(--u-ink); }
 
   /* короткие анимации по делу */

@@ -18,12 +18,15 @@ import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 
 export const PLAY_CSS = `
   .lp-chart { width: 100%; max-width: 380px; display: block; margin: 6px auto 10px; touch-action: none; user-select: none; -webkit-user-select: none; }
-  .lp-chart text { font: 700 11px var(--ds-mono); fill: var(--ds-ink2); }
+  .lp-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
   .lp-hit { cursor: grab; }
   .lp-hit:active { cursor: grabbing; }
   .lp-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 6px 0; }
   .lp-readout { text-align: center; font-size: 15px; margin: 4px 0 10px; min-height: 22px; }
   .lp-readout b { font-family: var(--ds-mono); }
+  /* спрос и предложение в подписи — оттенки линий графика, но с контрастом не ниже 4,5:1 в обеих темах */
+  .lp-dem { color: #345E92; } .lp-sup { color: #9A4A1C; }
+  .ds-dark .lp-dem { color: #8FB3E0; } .ds-dark .lp-sup { color: #E39A6B; }
   .lp-range { width: 100%; accent-color: var(--u); height: 32px; }
   .lp-tiles { min-height: 64px; border: 1px dashed var(--ds-rule2); border-radius: 4px; padding: 8px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; background: var(--ds-card2); }
   .lp-tile { font: 15px/1.2 var(--ds-serif); padding: 9px 12px; border-radius: 2px; border: 1px solid var(--ds-rule2); border-bottom-width: 2px; background: var(--ds-card); color: var(--ds-ink); cursor: pointer; }
@@ -49,7 +52,7 @@ export const PLAY_CSS = `
   @keyframes lp-word-in { from { transform: translateY(14px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
   .lp-word.out-r { transform: translateX(115%) rotate(9deg); opacity: 0; }
   .lp-word.out-l { transform: translateX(-115%) rotate(-9deg); opacity: 0; }
-  .lp-word-top { display: flex; align-items: center; gap: 8px; font: 700 11.5px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
+  .lp-word-top { display: flex; align-items: center; gap: 8px; font: 700 12px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
   .lp-word-term { font: 700 30px/1.15 var(--ds-serif); color: var(--u-ink); margin: 18px 0 6px; text-align: center; }
   .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
   .lp-word-def { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 18.5px; line-height: 1.45; }
@@ -220,8 +223,8 @@ export function PriceEx({ inst, resp, setResp, locked }) {
     <div data-testid="price-ex">
       <MarketChart m={inst.market} price={p} label={`Рынок при цене ${p}`} />
       <div className="lp-readout" data-testid="price-readout">
-        Цена <b>{p}</b>: хотят купить <b style={{ color: '#3E6FA8' }}>{Math.max(0, d)}</b>, продают <b style={{ color: '#C0602A' }}>{Math.max(0, s)}</b>
-        {gap > 0 ? <> — <b style={{ color: 'var(--ds-bad)' }}>дефицит {gap}</b></> : gap < 0 ? <> — <b style={{ color: '#C0602A' }}>избыток {-gap}</b></> : <> — <b style={{ color: 'var(--ds-ok)' }}>ни дефицита, ни избытка</b></>}
+        Цена <b>{p}</b>: хотят купить <b className="lp-dem">{Math.max(0, d)}</b>, продают <b className="lp-sup">{Math.max(0, s)}</b>
+        {gap > 0 ? <> — <b style={{ color: 'var(--ds-bad-ink)' }}>дефицит {gap}</b></> : gap < 0 ? <> — <b className="lp-sup">избыток {-gap}</b></> : <> — <b style={{ color: 'var(--ds-ok-ink)' }}>ни дефицита, ни избытка</b></>}
       </div>
       <input type="range" className="lp-range" min={0} max={ax.pMax} step={1} value={p} disabled={locked} aria-label="Цена"
         onChange={(e) => { Audio.play('tick'); setResp(Number(e.target.value)); }} />
@@ -437,7 +440,7 @@ function PriceTicker({ prices }) {
   const last = prices[prices.length - 1]; const prev = prices[prices.length - 2];
   return (
     <div className="lp-ticker" data-testid="price-ticker">
-      <span className="ds-eyebrow" style={{ fontSize: 10.5 }}>Цена</span>
+      <span className="ds-eyebrow" style={{ fontSize: 12 }}>Цена</span>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><polyline points={pts.join(' ')} fill="none" stroke="var(--u)" strokeWidth="2.5" strokeLinejoin="round" /></svg>
       <b className="ds-num" style={{ color: last > prev ? 'var(--ds-bad)' : last < prev ? 'var(--ds-ok)' : 'inherit' }}>{fmtResult(Math.round(last * 10) / 10)} {last > prev ? '↑' : last < prev ? '↓' : ''}</b>
     </div>
@@ -734,7 +737,7 @@ export function WordDeck({ cards, onDone, body, foot }) {
             : <div className="lp-word-def"><button type="button" className="lp-word-hide" onClick={(e) => { e.stopPropagation(); reveal(); }}>Вспомните, что это значит, — и откройте</button></div>}
         </div>
       </div>
-      <div className="lp-word-dots" data-testid="word-dots" aria-label={`Слов отмечено: ${Object.keys(marks).length} из ${cards.length}`}>
+      <div className="lp-word-dots" data-testid="word-dots" role="img" aria-label={`Слов отмечено: ${Object.keys(marks).length} из ${cards.length}`}>
         {cards.map((_, i) => <i key={i} className={`${marks[i] === 'know' || marks[i] === 'again-know' ? 'know' : marks[i] === 'again' ? 'again' : ''} ${i === idx ? 'cur' : ''}`} />)}
       </div>
       </>)}

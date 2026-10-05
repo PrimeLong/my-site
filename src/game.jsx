@@ -4070,10 +4070,10 @@ export function PhoneKpiBar({ economy, kpiDelta }) {
         const good = m && m.invert ? d < 0 : d > 0;
         return (
           <div key={key} style={{ minWidth: 0, textAlign: 'center', flex: '1 1 0' }}>
-            <div style={{ fontSize: 11, color: COLOR.faint, whiteSpace: 'nowrap' }}>{label}</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, whiteSpace: 'nowrap' }}>{label}</div>
             <div className="ems-mono" style={{ fontSize: 13, color: COLOR.text, whiteSpace: 'nowrap' }}>
               {m && Number.isFinite(v) ? m.fmt(v) : '—'}
-              {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 10, marginLeft: 2, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
+              {Number.isFinite(d) && Math.abs(d) > 1e-6 && <span style={{ fontSize: 12, marginLeft: 2, color: good ? COLOR.teal : COLOR.rust }}>{d > 0 ? '▲' : '▼'}</span>}
             </div>
           </div>
         );
@@ -5212,12 +5212,12 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
               узком экране благополучие выталкивалось за правый край */}
           <div className="ems-status" data-tour="status" style={narrow ? { width: '100%', boxSizing: 'border-box', justifyContent: 'space-between', gap: 8, padding: '6px 10px', minWidth: 0 } : undefined}>
             <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
-              <div className="ems-eyebrow" style={narrow ? { letterSpacing: '0.04em', fontSize: 11 } : undefined}>Период</div>
+              <div className="ems-eyebrow" style={narrow ? { letterSpacing: '0.04em', fontSize: 12 } : undefined}>Период</div>
               <div className="ems-mono ems-serif" style={{ fontSize: narrow ? 13 : 15, fontWeight: 600, marginTop: 2, ...(narrow ? { letterSpacing: '-0.02em' } : {}) }}>{quarterLabel(quarterIndex)}</div>
             </div>
             <span className="sep" />
             <div style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden' }}>
-              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5, ...(narrow ? { letterSpacing: '0.04em', fontSize: 11 } : {}) }}>
+              <div className="ems-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 5, ...(narrow ? { letterSpacing: '0.04em', fontSize: 12 } : {}) }}>
                 <Flag size={10} className="shrink-0" />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{economy.noElections ? 'Выборов нет' : `Выборы${narrow ? '' : ' ·'} ${economy.quartersToElection} кв.`}</span>
               </div>

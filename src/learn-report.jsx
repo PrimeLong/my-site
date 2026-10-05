@@ -84,7 +84,7 @@ function ReportSheet({ context, onClose }) {
           <div role="radiogroup" aria-label="Причина" style={{ display: 'grid', gap: 6, margin: '12px 0' }}>
             {REASONS.map(([id, label]) => (
               <button key={id} type="button" role="radio" aria-checked={reason === id} className="ds-opt" style={{ margin: 0 }} data-reason={id}
-                aria-pressed={reason === id} onClick={() => { Audio.play('tick'); setReason(id); }}>{label}</button>
+                onClick={() => { Audio.play('tick'); setReason(id); }}>{label}</button>
             ))}
           </div>
           <label className="ds-label">Комментарий — необязательно
@@ -216,7 +216,7 @@ export function ReportsView({ onBack }) {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                   <b>{REASON_BY_ID[r.reason] || r.reason}</b>
                   <span className="ds-faint" style={{ fontSize: 12.5 }}>{fmtDate(r.at)} · {r.name || r.login}</span>
-                  {r.rude && <span className="ds-chip" style={{ color: 'var(--ds-bad)', borderColor: 'var(--ds-bad)', fontSize: 11.5, padding: '1px 8px' }} data-testid="report-rude-mark">грубость</span>}
+                  {r.rude && <span className="ds-chip" style={{ color: 'var(--ds-bad)', borderColor: 'var(--ds-bad)', fontSize: 12, padding: '1px 8px' }} data-testid="report-rude-mark">грубость</span>}
                 </div>
                 {r.comment && <div style={{ fontSize: 14.5, marginTop: 4 }}>{r.comment}</div>}
                 <div className="rp-ctx">{Object.entries(CTX_LABEL).filter(([k]) => r.context && r.context[k] && k !== 'device').map(([k, label]) => `${label}: ${r.context[k]}`).join('\n')}</div>

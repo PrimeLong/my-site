@@ -1066,7 +1066,7 @@ const TerrainLayer = memo(function TerrainLayer({ annexKey, tunnel, halvik }) {
       {/* течение: светлые блики бегут вниз по реке к заливу */}
       <path d={`${mv(TRIBUTARY[0])}${curveTo(TRIBUTARY)}`} fill="none" stroke="#ffffff" strokeOpacity={0.45} strokeWidth={1.2} strokeLinecap="round" className="map-river-flow" />
       <path d={`${mv(RIVER[0])}${curveTo(RIVER)}`} fill="none" stroke="#ffffff" strokeOpacity={0.55} strokeWidth={1.6} strokeLinecap="round" className="map-river-flow" />
-      <text x={548} y={242} transform="rotate(-62 548 242)" style={{ fontSize: 11, fill: `${COLOR.blue}dd`, fontStyle: 'italic' }}>р. Велья</text>
+      <text x={548} y={242} transform="rotate(-62 548 242)" style={{ fontSize: 12, fill: `${COLOR.blue}dd`, fontStyle: 'italic' }}>р. Велья</text>
     </g>
   );
 });
@@ -1514,7 +1514,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
                     )}
                     <Icon x={x - 9} y={y - 9} width={18} height={18} color={taken ? COLOR.ink : open ? COLOR.rust : COLOR.faint} />
                     <text x={x} y={y + 32} textAnchor="middle" stroke={COLOR.bg} strokeWidth={3.2} paintOrder="stroke"
-                      style={{ fontSize: 11.5, fontWeight: 600, fill: taken ? COLOR.goldSoft : COLOR.text }}>{o.name}{!taken && open ? ` · ${Math.round(prog)}` : ''}</text>
+                      style={{ fontSize: 12, fontWeight: 600, fill: taken ? COLOR.goldSoft : COLOR.text }}>{o.name}{!taken && open ? ` · ${Math.round(prog)}` : ''}</text>
                   </g>
                 );
               })}
@@ -1543,7 +1543,7 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
               <g key={t.name} transform={lkT(t.at[0], t.at[1])}>
                 <circle cx={t.at[0]} cy={t.at[1]} r={2.4} fill={COLOR.muted} />
                 <text x={t.at[0] + 5} y={t.at[1] - 4} stroke={COLOR.bg} strokeWidth={2.6} paintOrder="stroke"
-                  style={{ fontSize: 10, fill: COLOR.faint }}>{t.name}</text>
+                  style={{ fontSize: 12, fill: COLOR.faint }}>{t.name}</text>
               </g>
             ))}
             {CITIES.map((c) => (
@@ -1652,8 +1652,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
             <g transform="translate(790,690)" style={{ opacity: zoom.zoom < 0.95 ? 0 : 1, transition: 'opacity .3s ease' }}>
               <rect x={0} y={-4} width={50} height={6} fill={COLOR.text} opacity={0.7} />
               <rect x={50} y={-4} width={50} height={6} fill="none" stroke={COLOR.text} strokeOpacity={0.7} />
-              <text x={0} y={16} style={{ fontSize: 11, fill: COLOR.muted }}>0</text>
-              <text x={100} y={16} textAnchor="end" style={{ fontSize: 11, fill: COLOR.muted }}>100 км</text>
+              <text x={0} y={16} style={{ fontSize: 12, fill: COLOR.muted }}>0</text>
+              <text x={100} y={16} textAnchor="end" style={{ fontSize: 12, fill: COLOR.muted }}>100 км</text>
             </g>
           </g>
         </svg>
@@ -2554,17 +2554,17 @@ export const BusinessMap = memo(function BusinessMap({ economy, selected, onSele
                 <g transform={`translate(${lx},${ly}) scale(${lk})`}>
                   <text textAnchor="middle" style={{ fontSize: 13, fill: COLOR.text, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>{r.short}</text>
                   {inf && inf.count > 0 && (
-                    <text y={15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.goldSoft, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
+                    <text y={15} textAnchor="middle" className="ems-mono" style={{ fontSize: 12, fill: COLOR.goldSoft, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
                       {inf.count} {inf.count === 1 ? 'здание' : inf.count < 5 ? 'здания' : 'зданий'}
                     </text>
                   )}
                   {highlight && highlight[r.id] != null && (
-                    <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.teal, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
+                    <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 12, fill: COLOR.teal, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
                       ×{highlight[r.id].toFixed(2)}
                     </text>
                   )}
                   {!highlight && demand && demand[r.id] && (
-                    <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 11, fill: COLOR.blue, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
+                    <text y={inf && inf.count ? 29 : 15} textAnchor="middle" className="ems-mono" style={{ fontSize: 12, fill: COLOR.blue, fontWeight: 600, paintOrder: 'stroke', stroke: COLOR.bg, strokeWidth: 3 }}>
                       {demand[r.id].label}
                     </text>
                   )}

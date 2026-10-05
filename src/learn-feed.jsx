@@ -29,6 +29,8 @@ export const FEED_CSS = `
   .fd-bubble { flex: 1; min-width: 0; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 3px 12px 12px 12px; padding: 9px 12px 10px;
     box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); transition: box-shadow .2s, border-color .2s; }
   .fd[data-mode="story"] .fd-bubble { font-family: var(--ds-serif); background: color-mix(in srgb, #F3E6C4 45%, var(--ds-card)); }
+  /* тёмная тема: светлая «бумага» под светлым текстом давала контраст ниже 4,5:1 — здесь лишь лёгкий тёплый оттенок */
+  .ds-dark .fd[data-mode="story"] .fd-bubble { background: color-mix(in srgb, #F3E6C4 7%, var(--ds-card)); }
   .fd-bubble.speaking { border-color: var(--u); box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--u); }
   .fd-who { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
   .fd-who b { font: 700 14px var(--ds-serif); color: var(--u-ink); }
@@ -46,7 +48,7 @@ export const FEED_CSS = `
   /* радиоприёмник «Слушай» */
   .fd-set { position: relative; border: 1px solid var(--ds-rule2); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card));
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule), 0 2px 4px var(--ds-shade); padding: 12px 14px 12px; }
-  .fd-set-top { display: flex; align-items: center; gap: 8px; font: 700 11.5px var(--ds-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ds-ink2); }
+  .fd-set-top { display: flex; align-items: center; gap: 8px; font: 700 12px var(--ds-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ds-ink2); }
   .fd-onair { display: inline-flex; align-items: center; gap: 5px; color: var(--ds-bad); }
   .fd-onair::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-bad) 25%, transparent); }
   .fd-set[data-speaking="true"] .fd-onair::before { animation: fd-blink 1s steps(2) infinite; }

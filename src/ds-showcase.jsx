@@ -47,14 +47,14 @@ function Showcase({ theme }) {
             {TOKENS.map((k) => (
               <div key={k} style={{ textAlign: 'center' }}>
                 <div style={{ height: 34, background: t[k], border: '1px solid var(--ds-rule2)', borderRadius: 3 }} />
-                <div className="ds-num ds-faint" style={{ fontSize: 10.5 }}>{k}</div>
+                <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{k}</div>
               </div>
             ))}
           </div>
           <div className="ds-sub" style={{ fontSize: 13.5, margin: '12px 0 6px' }}>Цвета юнитов — как купюры своего достоинства:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {Object.entries(PLACES).map(([id, p]) => (
-              <span key={id} title={id} style={{ background: p.color, color: '#fff', font: '700 11px var(--ds-sans)', padding: '5px 7px', borderRadius: 2 }}>{p.place}</span>
+              <span key={id} title={id} style={{ background: p.color, color: '#fff', font: '700 12px var(--ds-sans)', padding: '5px 7px', borderRadius: 2 }}>{p.place}</span>
             ))}
           </div>
         </Section>
@@ -66,7 +66,7 @@ function Showcase({ theme }) {
           <div className="ds-text">PT Sans — текст урока 17: спрос — это вся зависимость между ценой и количеством.</div>
           <div className="ds-num" style={{ fontSize: 20 }}>PT Mono — числа 1 234,5 ₽ · 83%</div>
           <div className="ds-eyebrow">Подпись капителью</div>
-          <div className="ds-faint ds-num" style={{ fontSize: 11 }}>{DS_FONT.serif.split(',')[0]} · {DS_FONT.sans.split(',')[0]} · {DS_FONT.mono.split(',')[0]}</div>
+          <div className="ds-faint ds-num" style={{ fontSize: 12 }}>{DS_FONT.serif.split(',')[0]} · {DS_FONT.sans.split(',')[0]} · {DS_FONT.mono.split(',')[0]}</div>
         </Section>
 
         <Section title="Кнопки — тиснёный билет">
@@ -127,7 +127,7 @@ function Showcase({ theme }) {
           <div className="ln-tickets" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 12 }}>
             {[['Опыт', <CountUp key="x" value={23} prefix="+" />], ['Точность', '83%'], ['Время', '3:12']].map(([k, v]) => (
               <div key={k} style={{ border: '1px dashed var(--ds-rule2)', borderRadius: 3, padding: '8px 4px', textAlign: 'center', background: 'var(--ds-card)' }}>
-                <div className="ds-eyebrow" style={{ fontSize: 10.5 }}>{k}</div><div className="ds-num" style={{ fontWeight: 700, fontSize: 21 }}>{v}</div>
+                <div className="ds-eyebrow" style={{ fontSize: 12 }}>{k}</div><div className="ds-num" style={{ fontWeight: 700, fontSize: 21 }}>{v}</div>
               </div>
             ))}
           </div>
@@ -149,7 +149,7 @@ function Showcase({ theme }) {
             {BUILDINGS.flatMap((b) => [false, true].map((alive) => (
               <div key={`${b}${alive}`} style={{ textAlign: 'center' }}>
                 <Engraving kind={b} alive={alive} size={80} color={PLACES['money-banks'].color} />
-                <div className="ds-num ds-faint" style={{ fontSize: 10.5 }}>{b}{alive ? ' · жив' : ''}</div>
+                <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{b}{alive ? ' · жив' : ''}</div>
               </div>
             )))}
           </div>

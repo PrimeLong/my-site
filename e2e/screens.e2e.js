@@ -5,6 +5,7 @@
    открывается без ошибок и ничего не уезжает вбок. Запуск:
    npx playwright test e2e/screens.e2e.js --project=phone */
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
 
 const DIR = 'screens';
@@ -35,7 +36,34 @@ const shot = async (page, name, theme, opts = {}) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, `${name}: страницу можно прокрутить вбок`).toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${DIR}/${name}-${theme}.png`, fullPage: !!opts.full, animations: 'disabled' });
+  await a11y(page, `${name}-${theme}`);
 };
+/* Доступность каждого снятого экрана: текст интерфейса не мельче 12 px (подписи внутри
+   SVG-рисунков — часть рисунка и масштабируются вместе с ним) и axe без нарушений уровня
+   serious/critical (WCAG 2 A/AA: контраст, имена кнопок и полей, роли). */
+async function a11y(page, name) {
+  const small = await page.evaluate(() => {
+    const out = [];
+    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) {
+      const el = w.currentNode.parentElement;
+      // формулы KaTeX набраны по правилам математики: индексы и степени мельче основного текста
+      if (!el || !w.currentNode.textContent.replace(/[\s\u200b\u00ad]/g, '') || el.closest('svg, .katex')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 1 || r.height <= 1) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+      const px = parseFloat(cs.fontSize);
+      if (px < 11.95) out.push(`${px}px «${w.currentNode.textContent.trim().slice(0, 30)}» <${el.tagName.toLowerCase()} class="${el.className}">`);
+    }
+    return [...new Set(out)].slice(0, 12);
+  });
+  expect(small, `${name}: текст мельче 12 px`).toEqual([]);
+  const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  const bad = res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 4).map((n) => `${n.target.join(' ')}${n.any[0] && n.any[0].message ? ` — ${n.any[0].message.slice(0, 120)}` : ''}`).join('; ')}`);
+  expect(bad, `${name}: axe`).toEqual([]);
+}
 const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
 const openLesson = async (page, id) => {
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click().catch(() => {});
