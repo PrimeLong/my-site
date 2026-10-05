@@ -5,6 +5,7 @@
    под ключом (claimed) — ни дважды, ни на двух устройствах. Экраны — src/learn.jsx. */
 import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf, DIAMOND_ACCURACY, goalMinutes, goalToday } from '../textbook/learn-state.js';
 import { plural } from '../lib/plural.js';
+import { LESSONS, UNITS } from './course.js';
 export { plural };
 
 // детерминированная «случайность» из строки: FNV-1a → [0, 1)
@@ -57,35 +58,37 @@ export const rateHistory = (day, n = 14) => Array.from({ length: n }, (_, k) => 
 /* ------------------------------ ЛАВКА ------------------------------
    Цены — в кронах; в монетах — по курсу дня, с округлением вверх. Всё в лавке — только
    за монеты уроков, без случайных выпадений.
-   Наряды Инфли — по одному на голову, лицо, шею, в руку и рамку. Обычные вещи стоят от 150
-   до 1500 крон и меняются каждый день: на витрине дня — шесть из тех, что ещё не куплены, и
-   одна из них — со скидкой дня 30%. Купленное всегда в гардеробе. Редкие вещи (от 2500 крон) —
+   Цены — от заработка курса (courseIncome ниже, правило — docs/mechanics.md): самая дорогая вещь
+   не дороже 70% того, что ученик получает за весь Путь.
+   Наряды Инфли — по одному на голову, лицо, шею, в руку и рамку. Обычные вещи стоят от 25
+   до 240 крон и меняются каждый день: на витрине дня — шесть из тех, что ещё не куплены, и
+   одна из них — со скидкой дня 30%. Купленное всегда в гардеробе. Редкие вещи (от 400 крон) —
    в витрине ювелира всегда: на них копят; у каждой своя анимация (src/mascot.jsx). Страховка серии и «двойной опыт» — всегда в продаже. */
 // «Страховка серии» (в данных — freeze): взнос монетами — и пропущенный день прощается
-export const FREEZE = { id: 'freeze', title: 'Страховка серии', crowns: 60, text: `Взнос — и один пропущенный день прощается, когда недельная поблажка уже потрачена. Полисов в запасе — не больше ${MAX_FREEZES}.` };
-export const BOOST = { id: 'boost', title: 'Двойной опыт', crowns: 150, minutes: 30, text: 'Полчаса после покупки уроки дают вдвое больше опыта.' };
+export const FREEZE = { id: 'freeze', title: 'Страховка серии', crowns: 20, text: `Взнос — и один пропущенный день прощается, когда недельная поблажка уже потрачена. Полисов в запасе — не больше ${MAX_FREEZES}.` };
+export const BOOST = { id: 'boost', title: 'Двойной опыт', crowns: 40, minutes: 30, text: 'Полчаса после покупки уроки дают вдвое больше опыта.' };
 export const OUTFITS = [
-  { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 150 },
-  { id: 'beret', slot: 'head', title: 'Берет гравёра', crowns: 220 },
-  { id: 'ushanka', slot: 'head', title: 'Ушанка ревизора', crowns: 320 },
-  { id: 'bowler', slot: 'head', title: 'Котелок биржевика', crowns: 450 },
-  { id: 'tophat', slot: 'head', title: 'Цилиндр банкира', crowns: 900 },
-  { id: 'crown', slot: 'head', title: 'Корона казначея', note: 'Камни вспыхивают по очереди', crowns: 4500, rare: true },
-  { id: 'glasses', slot: 'face', title: 'Очки бухгалтера', crowns: 180 },
-  { id: 'pince', slot: 'face', title: 'Пенсне профессора', crowns: 380 },
-  { id: 'monocle', slot: 'face', title: 'Монокль', crowns: 650 },
-  { id: 'bowtie', slot: 'neck', title: 'Бабочка', crowns: 160 },
-  { id: 'scarf', slot: 'neck', title: 'Шарф', crowns: 260 },
-  { id: 'tie', slot: 'neck', title: 'Галстук министра', crowns: 480 },
-  { id: 'medal', slot: 'neck', title: 'Орден «За финансовую грамотность»', note: 'Качается на ленте и блестит', crowns: 2800, rare: true },
-  { id: 'paper', slot: 'hand', title: 'Свежий «Вестник»', crowns: 200 },
-  { id: 'abacus', slot: 'hand', title: 'Счёты', crowns: 420 },
-  { id: 'briefcase', slot: 'hand', title: 'Портфель с отчётом', crowns: 750 },
-  { id: 'cane', slot: 'hand', title: 'Трость с набалдашником', crowns: 1500 },
-  { id: 'balloon', slot: 'hand', title: 'Шар «Инфляция»', note: 'То надувается, то сдувается — как цены', crowns: 6000, rare: true },
-  { id: 'frame-guilloche', slot: 'frame', title: 'Рамка-гильош', crowns: 400 },
-  { id: 'frame-gold', slot: 'frame', title: 'Золотой багет', crowns: 1200 },
-  { id: 'frame-diamond', slot: 'frame', title: 'Алмазная огранка', note: 'Грани медленно плывут по кругу', crowns: 5000, rare: true },
+  { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 25 },
+  { id: 'beret', slot: 'head', title: 'Берет гравёра', crowns: 35 },
+  { id: 'ushanka', slot: 'head', title: 'Ушанка ревизора', crowns: 50 },
+  { id: 'bowler', slot: 'head', title: 'Котелок биржевика', crowns: 70 },
+  { id: 'tophat', slot: 'head', title: 'Цилиндр банкира', crowns: 140 },
+  { id: 'crown', slot: 'head', title: 'Корона казначея', note: 'Камни вспыхивают по очереди', crowns: 600, rare: true },
+  { id: 'glasses', slot: 'face', title: 'Очки бухгалтера', crowns: 30 },
+  { id: 'pince', slot: 'face', title: 'Пенсне профессора', crowns: 60 },
+  { id: 'monocle', slot: 'face', title: 'Монокль', crowns: 100 },
+  { id: 'bowtie', slot: 'neck', title: 'Бабочка', crowns: 25 },
+  { id: 'scarf', slot: 'neck', title: 'Шарф', crowns: 40 },
+  { id: 'tie', slot: 'neck', title: 'Галстук министра', crowns: 75 },
+  { id: 'medal', slot: 'neck', title: 'Орден «За финансовую грамотность»', note: 'Качается на ленте и блестит', crowns: 450, rare: true },
+  { id: 'paper', slot: 'hand', title: 'Свежий «Вестник»', crowns: 30 },
+  { id: 'abacus', slot: 'hand', title: 'Счёты', crowns: 65 },
+  { id: 'briefcase', slot: 'hand', title: 'Портфель с отчётом', crowns: 120 },
+  { id: 'cane', slot: 'hand', title: 'Трость с набалдашником', crowns: 240 },
+  { id: 'balloon', slot: 'hand', title: 'Шар «Инфляция»', note: 'То надувается, то сдувается — как цены', crowns: 750, rare: true },
+  { id: 'frame-guilloche', slot: 'frame', title: 'Рамка-гильош', crowns: 60 },
+  { id: 'frame-gold', slot: 'frame', title: 'Золотой багет', crowns: 190 },
+  { id: 'frame-diamond', slot: 'frame', title: 'Алмазная огранка', note: 'Грани медленно плывут по кругу', crowns: 650, rare: true },
 ];
 export const OUTFIT_BY_ID = Object.fromEntries(OUTFITS.map((o) => [o.id, o]));
 export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея', hand: 'В руке', frame: 'Рамка' };
@@ -171,12 +174,44 @@ export function piggyTake(s, now = Date.now()) {
   return { s: { ...s, piggyOut: { ...s.piggyOut, [st.at]: st.payout } }, ok: true, payout: st.payout, early: !st.ripe, lost: st.ripe ? 0 : st.value - st.amount };
 }
 export const piggyUsed = (s) => Object.keys(s.piggy || {}).length > 0;
-/* Цена отказа: что ученик отдаёт за вещь — уроки, которые пришлось пройти ради этих монет
-   (урок впервые — 10 монет), и проценты, которые эти монеты принесли бы за неделю в копилке. */
+/* ЗАРАБОТОК КУРСА — от него считаются цены лавки (docs/mechanics.md, «Экономика наград»).
+   Ученик прошёл все уроки Пути: уроки впервые, половина без ошибок, проверка и сундук каждого
+   юнита, цель дня — по два урока в день, бонусы серии за эти дни и печати, которые даёт сам
+   курс. Задания дня и испытание месяца — сверху, их не считаем. */
+export const PATH_LESSONS = LESSONS.length;
+export const PATH_UNITS = UNITS.filter((u) => u.lessons.length).length;
+export const RATE_MAX = 1.25; // худший курс кроны (rateOn держит его в 0,8–1,25)
+const CHEST_AVG = 60;          // сундук — 40–80 монет
+const COURSE_STAMPS = ['first', 'perfect', 'streak3', 'streak7', 'unit', 'kinds', 'saver'];
+export function courseIncome(lessons = PATH_LESSONS, units = PATH_UNITS) {
+  const days = Math.ceil(lessons / 2);
+  const parts = {
+    lessons: lessons * COIN.lesson,
+    perfect: Math.floor(lessons / 2) * COIN.perfect,
+    checks: units * COIN.check,
+    chests: units * CHEST_AVG,
+    goals: days * COIN.goal,
+    streak: STREAK_BONUS.filter(([d]) => d <= days).reduce((a, [, c]) => a + c, 0),
+    stamps: ACHIEVEMENTS.filter((a) => COURSE_STAMPS.includes(a.id)).reduce((a, x) => a + x.coins, 0),
+  };
+  return { ...parts, total: Object.values(parts).reduce((a, b) => a + b, 0), days };
+}
+// средний заработок за урок: всё, что дал курс, делённое на его уроки (печати объявлены ниже — считаем лениво)
+let perLesson = 0;
+export const incomePerLesson = () => perLesson || (perLesson = Math.round(courseIncome().total / PATH_LESSONS));
+
+/* Цена отказа: что ученик отдаёт за вещь — сколько уроков работы (по среднему заработку за
+   урок, не больше уроков на Пути) и проценты, которые эти монеты принесли бы за неделю в копилке. */
 export function forgone(price) {
-  const lessons = Math.max(1, Math.round(price / COIN.lesson));
+  const lessons = Math.min(PATH_LESSONS, Math.max(1, Math.round(price / incomePerLesson())));
   return { lessons, week: piggyValue(price, PIGGY.days) - price, text: `≈ ${lessons} ${plural(lessons, 'урок', 'урока', 'уроков')}` };
 }
+
+/* Копилка — честно про проценты: 2% в день — это 730% годовых, в жизни так не бывает. Рядом —
+   как растут реальные 8% годовых: 1000 крон за 10 лет (сложный процент, раз в год). */
+export const PIGGY_YEARLY = Math.round(PIGGY.rate * 365 * 100);
+export const REAL_RATE = 0.08;
+export const realCurve = (amount = 1000, years = 10) => Array.from({ length: years + 1 }, (_, y) => ({ year: y, value: Math.round(amount * (1 + REAL_RATE) ** y) }));
 
 /* ------------------------------ ЗАДАНИЯ ДНЯ ------------------------------
    Три задания: одно про уроки, одно про ответы, одно про опыт или новый урок; какие именно —
@@ -217,7 +252,7 @@ export const STREAK_BONUS = [[3, 15], [7, 40], [14, 80], [30, 200], [60, 300], [
 export const ACHIEVEMENTS = [
   { id: 'first', icon: 'footprints', title: 'Первый шаг', text: 'Пройден первый урок', coins: 10, test: (s, c) => c.lessonsDone >= 1 },
   // только за урок, пройденный без ошибок сейчас: счётчик дня растёт в момент такого урока (не «лучший результат» старых прохождений)
-  { id: 'perfect', icon: 'check', title: 'Без помарок', text: 'Урок без единой ошибки', coins: 15, test: (s) => Object.values(s.daily || {}).some((d) => d.p > 0) },
+  { id: 'perfect', icon: 'check', title: 'Без помарок', text: 'Урок без единой ошибки', coins: 20, test: (s) => Object.values(s.daily || {}).some((d) => d.p > 0) },
   { id: 'streak3', icon: 'flame', title: 'Три дня подряд', text: 'Серия — три дня', coins: 10, test: (s, c) => c.longest >= 3 },
   { id: 'streak7', icon: 'flame', title: 'Неделя в пути', text: 'Серия — семь дней', coins: 30, test: (s, c) => c.longest >= 7 },
   { id: 'streak30', icon: 'flame', title: 'Месяц в пути', text: 'Серия — тридцать дней', coins: 100, test: (s, c) => c.longest >= 30 },
@@ -226,12 +261,12 @@ export const ACHIEVEMENTS = [
   // знания, показанные делом: проверка юнита без единой ошибки (вступительный тест сам по себе печать не даёт)
   { id: 'ace', icon: 'graduation', title: 'Знаток', text: 'Проверка юнита — без единой ошибки', coins: 30, test: (s) => Object.values(s.units || {}).some((u) => u.ace) },
   { id: 'quests', icon: 'scroll', title: 'Прилежание', text: 'Все задания дня — семь раз', coins: 40, test: (s) => Object.keys(s.claimed || {}).filter((k) => /^q:.*:all$/.test(k)).length >= 7 },
-  { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 5, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 },
+  { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 10, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 },
   { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },
   { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare) },
   { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
   { id: 'owl', icon: 'moon', title: 'Сова', text: 'Урок после десяти вечера', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 2) },
-  { id: 'saver', icon: 'piggy', title: 'Пятьсот монет', text: 'Заработано 500 монет', coins: 25, test: (s) => earned(s) >= 500 },
+  { id: 'saver', icon: 'piggy', title: 'Пятьсот монет', text: 'Заработано 500 монет', coins: 30, test: (s) => earned(s) >= 500 },
   { id: 'month', icon: 'calendar', title: 'Испытание месяца', text: 'Выполнено испытание месяца', coins: 30, test: (s) => Object.keys(s.claimed || {}).some((k) => k.startsWith('m:')) },
   { id: 'diamond', icon: 'gem', title: 'Огранщик', text: 'Урок взят на алмазном уровне', coins: 20, test: (s) => Object.values(s.lessons || {}).some((l) => l.diamond) },
   { id: 'diamond10', icon: 'gem', title: 'Ювелир', text: 'Десять уроков на алмазном уровне', coins: 60, test: (s) => Object.values(s.lessons || {}).filter((l) => l.diamond).length >= 10 },

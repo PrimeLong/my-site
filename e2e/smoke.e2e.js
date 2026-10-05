@@ -1945,7 +1945,10 @@ test('вход: программа — вступительный тест, су
   await shop.getByTestId('buy-freeze').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('Полис страховки серии');
   await expect(shop.getByTestId('freeze-owned')).toHaveText('1');
-  expect(Number(await shop.getByTestId('shop-balance').innerText().then((t) => t.replace(/\D/g, '')))).toBeLessThan(coins);
+  // монеты списаны (баланс может и подрасти: первая покупка открывает печать)
+  const spent = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.spent || {}).reduce((a, b) => a + b, 0));
+  expect(spent).toBeGreaterThan(0);
+  expect(coins).toBeGreaterThan(spent);
   await expectNoSidewaysScroll(page);
 
   // профиль: программа с ответами регистрации и печати-достижения
@@ -2302,6 +2305,8 @@ test('новые глаголы: «Открой сам», живая модел�
   const before = Number((await shop.getByTestId('shop-balance').innerText()).match(/\d+/)[0]);
   await piggy.getByTestId('piggy-amount').fill('100');
   await expect(piggy.getByTestId('piggy-chart')).toBeVisible();
+  // честно про проценты: 730% годовых так не бывает, рядом — реальные 8% годовых
+  await expect(piggy.getByTestId('piggy-real')).toContainText('730% годовых — в жизни так не бывает');
   await piggy.getByTestId('piggy-put').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('В копилке 100 монет. Через 7 дней станет 114.');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before - 100));

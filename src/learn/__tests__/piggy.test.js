@@ -1,6 +1,6 @@
 // Копилка Инфли (сложный процент), цена отказа, «Страховка серии» и предвосхищение тем
 import { describe, it, expect } from 'vitest';
-import { PIGGY, piggyState, piggyPut, piggyTake, piggyValue, piggyCurve, balance, earn, forgone, FREEZE, buy, COIN } from '../rewards.js';
+import { PIGGY, piggyState, piggyPut, piggyTake, piggyValue, piggyCurve, balance, earn, forgone, incomePerLesson, FREEZE, buy, COIN } from '../rewards.js';
 import { CALLBACKS, callbackFor } from '../callbacks.js';
 import { emptyLearn, normalizeLearn, mergeLearn } from '../../textbook/learn-state.js';
 import { LESSON_BY_ID } from '../course.js';
@@ -59,9 +59,12 @@ describe('копилка: сложный процент', () => {
 
 describe('цена отказа и страховка серии', () => {
   it('под ценой — сколько это уроков и сколько монеты принесли бы в копилке за неделю', () => {
-    expect(forgone(30)).toMatchObject({ lessons: 3, week: piggyValue(30, 7) - 30, text: '≈ 3 урока' });
+    // урок — средний заработок за урок курса (docs/mechanics.md), а не только 10 монет за сам урок
+    const per = incomePerLesson();
+    expect(forgone(3 * per)).toMatchObject({ lessons: 3, week: piggyValue(3 * per, 7) - 3 * per, text: '≈ 3 урока' });
     expect(forgone(4).lessons).toBe(1);
-    expect(forgone(10 * COIN.lesson).text).toBe('≈ 10 уроков');
+    expect(forgone(10 * per).text).toBe('≈ 10 уроков');
+    expect(COIN.lesson).toBeLessThan(per);
   });
   it('«Заморозка» стала «Страховкой серии»: взнос — и пропуск прощается', () => {
     expect(FREEZE.title).toBe('Страховка серии');

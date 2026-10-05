@@ -13,7 +13,7 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
@@ -352,6 +352,29 @@ function PiggyChart({ amount, day = null }) {
     </svg>
   );
 }
+/* Честно про проценты: 2% в день — 730% годовых, такого не бывает; а вот реальные 8% годовых —
+   1000 крон за 10 лет (docs/mechanics.md). */
+function RealRate() {
+  const pts = realCurve();
+  const W = 300; const H = 70; const pad = 14; const top = pts[pts.length - 1].value;
+  const x = (i) => pad + (i / (pts.length - 1)) * (W - pad * 2);
+  const y = (v) => H - 14 - ((v - 900) / (top - 900)) * (H - 30);
+  return (
+    <div data-testid="piggy-real" style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dotted var(--ds-rule2)' }}>
+      <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.4 }}>
+        {Math.round(PIGGY.rate * 100)}% в день ≈ {PIGGY_YEARLY}% годовых — в жизни так не бывает, а вот как выглядят реальные {Math.round(REAL_RATE * 100)}% годовых:
+      </div>
+      <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`1000 крон под ${Math.round(REAL_RATE * 100)}% годовых: через 10 лет ${top}`}>
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')} fill="none" stroke="var(--u-ink)" strokeWidth="1.6" />
+        {pts.map((p, i) => <circle key={p.year} cx={x(i)} cy={y(p.value)} r={i === 0 || i === pts.length - 1 ? 2.6 : 1.4} fill="var(--u-ink)" />)}
+        <text x={x(0)} y={y(1000) - 5} textAnchor="start">1000</text>
+        <text x={x(pts.length - 1)} y={y(top) - 5} textAnchor="end">{top}</text>
+        <text x={x(0)} y={H - 2} textAnchor="start">сейчас</text>
+        <text x={x(pts.length - 1)} y={H - 2} textAnchor="end">через 10 лет</text>
+      </svg>
+    </div>
+  );
+}
 function PiggyCard({ learn, update, now, b, onMsg }) {
   const st = piggyState(learn, now);
   const [amount, setAmount] = useState(() => Math.max(PIGGY.min, Math.min(100, Math.floor(b / 2))));
@@ -401,6 +424,7 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
       ) : (
         <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }}>Положить можно от {PIGGY.min} монет — их дают уроки.</div>
       )}
+      <RealRate />
     </Card>
   );
 }
