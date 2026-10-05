@@ -18,6 +18,7 @@ import {
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin,
 } from 'lucide-react';
 import { askSave } from './lib/guest.js';
+import { writeLearnLevel } from './lib/disclosure.js';
 import { track } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
@@ -1351,6 +1352,9 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   const g = goalToday(learn);
   const hello = g.done >= g.goal ? 'joy' : sleepy ? 'sleep' : 'hello';
   const first = states.find((x) => x.current) || states[0];
+  // уровень текущего юнита — «Миру» (хранится наибольший): с «Среднего» продвинутые панели партии открыты сразу
+  const levelNo = first ? LEVELS.indexOf(levelOf(first.course.id)) : 0;
+  useEffect(() => { writeLearnLevel(Math.max(0, levelNo)); }, [levelNo]);
   const soon = UNITS.map((u, k) => ({ u, no: k + 1 })).filter(({ u }) => !states.some((x) => x.course.id === u.id));
   const [soonOpen, setSoonOpen] = useState(false);
   /* Пройденный юнит с открытым сундуком сворачивается в одну карточку: новые модули не уезжают

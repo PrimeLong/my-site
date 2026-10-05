@@ -27,6 +27,7 @@ import {
 import { Audio, stingerFor } from './audio/engine.js';
 import { BookLink } from './booklink.jsx';
 import { LEVER_BOOK, WHY_BOOK, COMPASS_BOOK, bookForChain } from './lib/booklinks.js';
+import { advancedOpen, readLearnLevel, ADVANCED_TABS, ADVANCED_ROWS, ADVANCED_CHAPTERS, ADVANCED_QUARTER } from './lib/disclosure.js';
 import {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, AchievementsModal, AUTOSAVE_KEY, loadUnlockedAchievements,
   loadRolesPlayed, validateSnapshot, SAVE_VERSION, SOLO_SLOT_COUNT, AudioControls, COLOR, FONT,
@@ -284,7 +285,14 @@ export const CountryMap = React.lazy(() => import('./countrymap.jsx').then((m) =
 // экран «Общество» — тоже отдельным чанком: группы, коалиция, память о решениях
 export const SocietyView = React.lazy(() => import('./society.jsx').then((m) => ({ default: m.SocietyView })));
 
+/* Прогрессивное раскрытие (src/lib/disclosure.js): до 4-го квартала, если на Пути ещё нет
+   уровня «Средний», компас ставки, правило Тейлора, ссылки на IS-LM и риски спрятаны. По
+   умолчанию открыто — так в сетевой партии и везде вне экрана одиночной партии. */
+export const AdvancedContext = React.createContext(true);
+
 export function LeverSlider({ lever, currentDisplay, value, onChange, preview, onIRF, infTarget }) {
+  const advanced = React.useContext(AdvancedContext);
+  const books = (LEVER_BOOK[lever.id] || []).filter((to) => advanced || !ADVANCED_CHAPTERS.includes(to.chapter));
   const delta = lever.type === 'level' ? value - currentDisplay : value;
   // кому из групп общества нравится это значение, а кому нет (см. «Общество»)
   const groupFx = leverGroupEffects(lever.id, value, infTarget);
@@ -303,7 +311,7 @@ export function LeverSlider({ lever, currentDisplay, value, onChange, preview, o
         )}
       </div>
       {lever.hint && <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 1 }}>{lever.hint}</div>}
-      {LEVER_BOOK[lever.id] && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>{LEVER_BOOK[lever.id].map((to) => <BookLink key={to.chapter} to={to} compact />)}</div>}
+      {books.length > 0 && <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 3 }}>{books.map((to) => <BookLink key={to.chapter} to={to} compact />)}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
         <input type="range" className="ems-slider" style={trackStyle} min={lever.min} max={lever.max} step={lever.step}
           aria-label={`${lever.label}, текущее значение ${value}${lever.suffix}, допустимо от ${lever.min} до ${lever.max}, шаг ${lever.step}`}
@@ -3969,6 +3977,7 @@ export function demandItems({ botAction, botAction2, botRole, economy, president
    Теперь это одна панель: режим (в кризис его всё равно подробно показывает
    RegimeBanner), пять рисков и, если есть, требования второй строкой. */
 export function SummaryBar({ economy, demands = [] }) {
+  const advanced = React.useContext(AdvancedContext);
   const info = REGIME_INFO[economy.regime] || REGIME_INFO.normal;
   const c = info.color === 'teal' ? COLOR.teal : info.color === 'gold' ? COLOR.gold : info.color === 'blue' ? COLOR.blue : COLOR.rust;
   const risks = [['Инфляционный', economy.inflationRisk], ['Банковский', economy.bankingRisk], ['Долговой', economy.debtRisk],
@@ -3979,9 +3988,9 @@ export function SummaryBar({ economy, demands = [] }) {
         <span title={regimeInfoText(info, economy)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: c, whiteSpace: 'nowrap' }}>
           <Activity size={14} />{regimeInfoLabel(info, economy)}
         </span>
-        <span className="ems-summary-sep" aria-hidden="true" />
-        <span className="ems-eyebrow">Риски</span>
-        {risks.map(([l, v]) => <RiskBadge key={l} label={l} value={v} />)}
+        {advanced && <span className="ems-summary-sep" aria-hidden="true" />}
+        {advanced && <span className="ems-eyebrow" data-testid="summary-risks">Риски</span>}
+        {advanced && risks.map(([l, v]) => <RiskBadge key={l} label={l} value={v} />)}
       </div>
       {demands.length > 0 && (
         <div className="ems-fade-in" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', alignItems: 'baseline', borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 7 }}>
@@ -4577,7 +4586,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
     groups.includes('fiscal') && { id: 'fiscal-debt', label: 'Долг' },
   ].filter(Boolean);
   const [levTab, setLevTab] = useState(LEVER_TABS[0] ? LEVER_TABS[0].id : null);
-  const tabs = useMemo(() => tabsForBotRole(botRole), [botRole]);
+  const advanced = advancedOpen({ quarterIndex, level: readLearnLevel() });
+  const tabs = useMemo(() => tabsForBotRole(botRole).filter((t) => advanced || !ADVANCED_TABS.includes(t.id))
+    .map((t) => (advanced ? t : { ...t, rows: t.rows.filter((r) => !ADVANCED_ROWS.includes(r.key)) })), [botRole, advanced]);
   const snapshot = () => makeSnapshot({ setup: { ...setup, difficulty }, economy, history, decisions, pendingImpulses, eventCooldowns,
     quarterIndex, newsFeed, stories, lastReport, lastCf, lastReasons, botAction, botAction2, pinned, cbPersonaId, mofPersonaId,
     portfolio, lastResponse, dense, dashboards, activeDash, defeat, promises, presActions, lastDirective,
@@ -5055,6 +5066,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   const shareKey = (id) => (id === 'shareHealth' ? 'health' : id === 'shareEducation' ? 'education' : id === 'shareScience' ? 'science' : id === 'shareDefense' ? 'defense' : 'admin');
 
   return (
+    <AdvancedContext.Provider value={advanced}>
     <div className={`ems-root${shake ? ' ems-shake' : ''}${dense ? ' ems-dense' : ''}`} lang="ru">
       <GlobalStyle />
       {irf && (
@@ -5476,7 +5488,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
 
             {levTab === 'monetary-core' && (
               <div>
-                <RateCompass economy={economy} keyRate={economy.currencyUnion ? currencyUnionRate(economy) : decisions.keyRate} />
+                {advanced ? <RateCompass economy={economy} keyRate={economy.currencyUnion ? currencyUnionRate(economy) : decisions.keyRate} />
+                  : <div className="t-muted" data-testid="advanced-later" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>Компас ставки, правило Тейлора и риски откроются с {ADVANCED_QUARTER}-го квартала — или сразу, когда на Пути будет уровень «Средний».</div>}
                 {levers.filter((l) => l.group === 'monetary' && l.subgroup === 'core').map((l) => (
                   <LeverSlider key={l.id} lever={scaleLever(l, economy)} currentDisplay={economy[l.id]} value={decisions[l.id]}
                     onChange={(v) => setLever(l.id, v)} onIRF={(lv, val, base) => setIrf({ lever: lv, value: val, base })}
@@ -5754,5 +5767,6 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
       )}
       </div>
     </div>
+    </AdvancedContext.Provider>
   );
 }

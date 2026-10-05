@@ -1049,6 +1049,8 @@ test('учебник: оглавление, формулы KaTeX, график �
 
 test('игра → учебник: «Подробнее в учебнике» открывает раздел и возвращает в ту же партию', async ({ page, isMobile }) => {
   test.skip(isMobile, 'рычаги на телефоне в отдельной вкладке — логика та же');
+  // на Пути уже уровень «Средний» — компас ставки и IS-LM открыты с первого квартала
+  await page.addInitScript(() => { try { localStorage.setItem('ems-learn-level', '2'); } catch { /* нет хранилища */ } });
   const { errors, external } = await openApp(page);
   await startSoloGame(page);
   // у ставки — ссылки на IS-LM и AD-AS
@@ -2606,5 +2608,32 @@ test('«Мир» на компонентах дизайн-системы: тот
   expect(b.mark).toBe(true);
   expect(b.font).toBe(w.font);
   await p2.close();
+  expect(errors).toEqual([]);
+});
+
+test('первый экран партии: компас ставки, Тейлор, IS-LM и риски — с 4-го квартала', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'рычаги на телефоне в отдельной вкладке — логика та же');
+  const { errors } = await openApp(page);
+  await startSoloGame(page);
+  // 1-й квартал, на Пути уровня «Средний» нет: продвинутых панелей нет, вместо компаса — одна строка
+  await expect(page.getByTestId('advanced-later')).toContainText('с 4-го квартала');
+  await expect(page.getByTestId('rate-compass')).toHaveCount(0);
+  await expect(page.getByTestId('summary-risks')).toHaveCount(0);
+  await expect(page.getByTestId('book-link').filter({ hasText: 'IS-LM' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Риски', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Ставка по правилу Тейлора')).toHaveCount(0);
+  // три квартала спустя — 4-й квартал: всё на месте
+  const finish = page.getByRole('button', { name: 'Завершить квартал и применить решения' });
+  const close = page.getByRole('button', { name: 'Закрыть газету' });
+  for (let q = 0; q < 3; q += 1) {
+    await finish.click();
+    // газета может открыться сама — закрываем, чтобы не заслоняла рычаги
+    await close.waitFor({ state: 'visible', timeout: 2500 }).then(() => close.click()).catch(() => {});
+    await expect(finish).toBeEnabled();
+  }
+  await expect(page.getByTestId('rate-compass')).toBeVisible();
+  await expect(page.getByTestId('summary-risks')).toBeVisible();
+  await expect(page.getByTestId('advanced-later')).toHaveCount(0);
+  await expect(page.getByTestId('book-link').filter({ hasText: 'IS-LM' }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
