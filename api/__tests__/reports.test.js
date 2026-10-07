@@ -100,4 +100,10 @@ describe('сообщения об ошибках', () => {
     expect(r.context.answer).toBeUndefined();
     expect(sanitizeReport({ reason: 'x' })).toBe(null);
   });
+  it('причины про теорию и цитата из учебника', () => {
+    const r = sanitizeReport({ reason: 'theory', context: { screen: 'textbook', quote: 'q'.repeat(900) } });
+    expect(r.reason).toBe('theory');
+    expect(r.context.quote).toHaveLength(500);
+    expect(sanitizeReport({ reason: 'formula' }).reason).toBe('formula');
+  });
 });

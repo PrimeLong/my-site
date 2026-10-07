@@ -1932,6 +1932,12 @@ test('сообщить об ошибке: флажок на упражнении
   const sheet = page.getByTestId('report-sheet');
   await expect(sheet.getByTestId('report-send')).toBeDisabled();
   await sheet.locator('[data-reason="accept"]').click();
+  // выбранная причина видна: подсвечена и с галочкой, остальные — нет
+  const bg = (r) => sheet.locator(`[data-reason="${r}"]`).evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect(sheet.locator('[data-reason="accept"]')).toHaveAttribute('aria-checked', 'true');
+  expect(await bg('accept')).not.toBe(await bg('typo'));
+  await expect(sheet.locator('[data-reason="accept"] svg')).toHaveCount(1);
+  await expect(sheet.locator('[data-reason="typo"] svg')).toHaveCount(0);
   await sheet.getByLabel(/Комментарий/).fill('мне кажется, мой ответ верный');
   await sheet.getByTestId('report-send').click();
   await expect(page.getByTestId('report-thanks')).toContainText('Спасибо! Посмотрим');
@@ -1956,6 +1962,26 @@ test('сообщить об ошибке: флажок на упражнении
   await expect(page.getByTestId('learn-book').getByTestId('report-flag').first()).toBeVisible();
   // у каждой задачи учебника — своя кнопка «Сообщить об ошибке»
   expect(await page.getByTestId('learn-book').getByTestId('tb-report').count()).toBeGreaterThanOrEqual(3);
+  // флажок страницы учебника — про теорию, а не про ответ
+  await page.getByTestId('learn-book').getByTestId('report-flag').first().click();
+  await expect(page.getByTestId('report-sheet').locator('[data-reason="theory"]')).toBeVisible();
+  await expect(page.getByTestId('report-sheet').locator('[data-reason="accept"]')).toHaveCount(0);
+  await page.getByTestId('report-sheet').getByRole('button', { name: 'Закрыть' }).click();
+  // выделили фразу в тексте — внизу кнопка «Сообщить об ошибке в выделенном», цитата уходит с сообщением
+  const quote = await page.getByTestId('learn-book').evaluate((root) => {
+    const p = [...root.querySelectorAll('.ln-textbook p')].find((x) => x.textContent.trim().length > 40);
+    const node = [...p.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim().length > 12);
+    const r = document.createRange(); r.setStart(node, 0); r.setEnd(node, 12);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    return sel.toString().replace(/\s+/g, ' ').trim();
+  });
+  await page.getByTestId('report-quote-btn').click();
+  await expect(page.getByTestId('report-quote')).toContainText(quote);
+  await page.getByTestId('report-sheet').locator('[data-reason="unclear"]').click();
+  await page.getByTestId('report-send').click();
+  await expect(page.getByTestId('report-thanks')).toBeVisible();
+  expect(sent[1]).toMatchObject({ reason: 'unclear', context: { screen: 'textbook', quote } });
+  await page.getByRole('button', { name: 'Продолжить' }).click();
 
   // владелец: список сообщений, фильтр и «скопировать всё»
   await openTab(page, 'profile');

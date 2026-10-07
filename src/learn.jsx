@@ -51,7 +51,7 @@ import { hasModel, partsOfLesson } from './learn/model.js';
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
 import { inCrowns, sceneInCrowns } from './learn/money.js';
-import { ReportFlag, ReportsView, AnalyticsView, REPORT_CSS, exerciseContext, flatText } from './learn-report.jsx';
+import { ReportFlag, QuoteReport, ReportsView, AnalyticsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
@@ -1680,7 +1680,11 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   }, [firstLesson]);
   // «Сообщить об ошибке» в учебнике: на странице (вверху) и у каждой задачи
   const bookReports = {
-    reportSlot: (cur) => <ReportFlag context={() => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' })} />,
+    reportSlot: (cur) => {
+      const context = () => ({ screen: 'textbook', page: `${cur.kind}${cur.id ? `:${cur.id}` : ''}${cur.anchor ? `#${cur.anchor}` : ''}`, unit: cur.kind === 'chapter' ? cur.id : '' });
+      // флажок страницы — про теорию; выделенный в тексте кусок приложится цитатой
+      return <><ReportFlag context={context} reasons={THEORY_REASONS} /><QuoteReport context={context} /></>;
+    },
     reportFlag: (context) => <ReportFlag context={context} label="Сообщить об ошибке" withText />,
   };
   const accent = placeOf((pathState(learn).find((s) => s.current) || pathState(learn)[0] || { course: { id: 'supply-demand' } }).course.id).color;

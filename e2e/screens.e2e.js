@@ -461,6 +461,8 @@ for (const theme of ['light', 'dark']) {
     });
 
     test(`практика, профиль, справочник, мир, витрина (${theme})`, async ({ page }) => {
+      // три десятка снимков с проверкой axe — на медленной машине дольше минуты
+      test.setTimeout(120_000);
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
       const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
