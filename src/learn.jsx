@@ -32,7 +32,7 @@ import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
   goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
-import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive } from './learn/rewards.js';
+import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, policyActive, fixMonth } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
@@ -225,7 +225,7 @@ function useLearn() {
     const expired = takeExpiredResumes();
     if (expired.length) update((s) => expired.reduce((acc, r) => abandonLesson(acc, r.kind || 'choice', r.pos || 0), s));
     // купленные заморозки спасают серию сами — при открытии, если пропуск уже не покрыт недельной
-    update((s) => applyFreezes(s));
+    update((s) => fixMonth(chargePremiums(applyFreezes(s))));
     return () => { alive = false; if (timer.current) clearTimeout(timer.current); syncProfile(playerId).catch(() => {}); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId]);
@@ -1667,7 +1667,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
         <Row label="Лучшая неделя" value={bw.xp ? `${bw.xp} опыта` : '—'} />
         <Row label="Всего опыта" value={`${stats.totalXp}`} />
         <Row label="Монет в кошельке" value={`${balance(learn)}`} data-testid="prof-coins" />
-        <Row label="Страховок серии в запасе" value={`${ownedFreezes(learn)}`} />
+        <Row label="Страховка серии" value={policyActive(learn) ? 'полис действует' : ownedFreezes(learn) ? `старых полисов: ${ownedFreezes(learn)}` : 'нет'} />
         <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
       </Card>
       <ProgramCard learn={learn} update={update} onPlacement={() => onStart({ mode: 'placement' })} />

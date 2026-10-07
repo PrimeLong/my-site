@@ -211,8 +211,8 @@ test('разбор партии открывается из меню «⋯» и 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Кварталов у руля')).toBeVisible();
   await expectNoSidewaysScroll(page);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  // Escape закрывает разбор; диалог подписывается на клавиатуру после открытия — нажимаем, пока не закроется
+  await expect(async () => { await page.keyboard.press('Escape'); await expect(dialog).toBeHidden({ timeout: 1000 }); }).toPass({ timeout: 10_000 });
   expect(errors).toEqual([]);
 });
 
@@ -2109,14 +2109,25 @@ test('вход: программа — вступительный тест, су
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
   await expect(shop.getByTestId('rate-chart')).toBeVisible();
+  // подсказка графика курса у правого края не расширяет страницу (иначе телефон перемасштабирует её и панель внизу «уезжает»)
+  const chartBox = await shop.getByTestId('rate-chart').boundingBox();
+  for (const fx of [0.02, 0.5, 0.9, 0.99]) {
+    await shop.getByTestId('rate-chart').hover({ position: { x: Math.round(chartBox.width * fx), y: 30 } });
+    await expect(shop.getByTestId('rate-tip')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `подсказка на ${fx}`).toBe(true);
+  }
+  // страховка серии — полис: первый взнос сразу, дальше по неделям; расторгнуть можно в любой момент
   const coins = Number(await shop.getByTestId('shop-balance').innerText().then((t) => t.replace(/\D/g, '')));
-  await shop.getByTestId('buy-freeze').click();
-  await expect(shop.getByTestId('shop-msg')).toContainText('Полис страховки серии');
-  await expect(shop.getByTestId('freeze-owned')).toHaveText('1');
-  // монеты списаны (баланс может и подрасти: первая покупка открывает печать)
-  const spent = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.spent || {}).reduce((a, b) => a + b, 0));
-  expect(spent).toBeGreaterThan(0);
-  expect(coins).toBeGreaterThan(spent);
+  await shop.getByTestId('policy-take').click();
+  await expect(shop.getByTestId('shop-msg')).toContainText('Полис оформлен');
+  await expect(shop.getByTestId('policy-on')).toBeVisible();
+  await expect(shop.getByTestId('policy-stats')).toContainText('Всего взносов: 8');
+  const premiums = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.premiums || {}));
+  expect(premiums).toEqual([8]);
+  expect(coins).toBeGreaterThan(8);
+  await shop.getByTestId('policy-cancel').click();
+  await expect(shop.getByTestId('shop-freeze')).toHaveAttribute('data-policy', 'off');
+  await expect(shop.getByTestId('policy-take')).toBeVisible();
   await expectNoSidewaysScroll(page);
 
   // профиль: программа с ответами регистрации и печати-достижения

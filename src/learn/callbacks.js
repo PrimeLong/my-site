@@ -12,7 +12,7 @@ const USED = {
   // покупал в лавке — видел подпись цены отказа под ценой
   shop: (s) => Object.keys(s.owned || {}).length > 0 || sumMap(s.spent) > 0,
   piggy: (s) => piggyUsed(s),
-  insurance: (s) => sumMap(s.freezeBuy) > 0,
+  insurance: (s) => sumMap(s.freezeBuy) > 0 || sumMap(s.premiums) > 0,
 };
 const since = (s, uses) => {
   const first = uses === 'piggy' ? Math.min(...Object.keys(s.piggy || {}).map(Number)) : null;
@@ -25,7 +25,7 @@ export const CALLBACKS = [
   { id: 'compound', unit: 'money-banks', topic: 'сложный процент', step: null, uses: 'piggy',
     text: (s) => { const d = since(s, 'piggy'); return `${d ? `${daysText(d)} назад вы впервые положили монеты в копилку` : 'Вы уже пользовались копилкой Инфли'} — это и был сложный процент: 2% каждый день начислялись на накопленное. Вот как он устроен.`; } },
   { id: 'insurance', unit: null, topic: 'страхование', step: null, uses: 'insurance',
-    text: () => 'Помните «Страховку серии»? Вы платили немного заранее, чтобы не потерять много потом, — так устроено любое страхование.' },
+    text: () => 'Помните «Страховку серии»? Вы каждую неделю платили небольшой взнос, чтобы пропуск не оборвал серию, — так устроено любое страхование: премия, страховой случай, покрытие.' },
 ];
 // напоминание для шага урока: только если ученик уже пользовался механикой
 export function callbackFor(stepId, learn) {

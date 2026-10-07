@@ -21,7 +21,11 @@ const MAX_HINTED = 60;
    daily — счётчики дня для заданий дня: уроки, без ошибок, верные, секунды, серия, игры, практика;
    coins/spent — монеты по дням (заработано/потрачено), claimed — полученные награды (ключ → когда):
    одна награда не выдаётся дважды и на двух устройствах; owned — купленные вещи, wear — наряд Инфли;
-   freezeBuy — купленные полисы «Страховки серии» по дням, frozen — дни, которые спасла страховка;
+   freezeBuy — старые разовые полисы «Страховки серии» по дням, frozen — дни, которые они спасли;
+   policyAt / policyOff — когда полис страховки оформлен и когда прекращён (действует, если
+   policyAt > policyOff), policyLapse — когда прекращён из-за неоплаты взноса, premiums —
+   взносы по неделям { понедельник: монеты } (docs/mechanics.md, «Страховка серии»);
+   monthPlan — испытание месяца, закреплённое при первом показе { ГГГГ-ММ: { target, why, at } };
    seen — сколько раз ученик встречал каждое упражнение (чтобы реже повторять одно и то же);
    best — рекорды мини-игр (очки); lessons[id].diamond — когда урок взят на алмазном уровне;
    boost — до какого времени действует купленный «двойной опыт»;
@@ -32,6 +36,7 @@ export const emptyLearn = () => ({
   profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
   topics: {}, recent: '', recentAt: 0, daily: {},
   coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
+  policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
   seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {},
 });
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
@@ -58,7 +63,7 @@ export const dayOf = (ts) => {
 const dayTs = (key) => { const [y, mo, d] = key.split('-').map(Number); return new Date(y, mo - 1, d, 12).getTime(); };
 export const addDays = (key, n) => dayOf(dayTs(key) + n * DAY);
 // неделя с понедельника: ключ — дата понедельника
-const weekOf = (key) => { const t = new Date(dayTs(key)); const dow = (t.getDay() + 6) % 7; return addDays(key, -dow); };
+export const weekOf = (key) => { const t = new Date(dayTs(key)); const dow = (t.getDay() + 6) % 7; return addDays(key, -dow); };
 
 /* ------------------------------ ЗАПИСИ ------------------------------ */
 const upd = (s, patch) => ({ ...s, ...patch });
@@ -179,28 +184,35 @@ export const setGoal = (s, goal, now = Date.now()) => (GOALS.includes(goal) ? up
 
 /* ------------------------------ СЕРИЯ И РЕКОРДЫ ------------------------------ */
 const active = (s, key) => (s.done[key] || 0) > 0;
+/* Страховка серии: неделя покрыта, если за неё внесён взнос. В покрытой неделе прощается ещё
+   один пропуск сверх бесплатной недельной поблажки. */
+export const PREMIUM = 8;
+export const policyActive = (s) => (s.policyAt || 0) > (s.policyOff || 0);
+export const weekInsured = (s, week) => ((s.premiums || {})[week] || 0) > 0;
+const freeMisses = (s, week) => 1 + (weekInsured(s, week) ? 1 : 0);
 /* Серия на сегодня: считаем назад от сегодня (если сегодня урока ещё не было — от вчера,
-   сегодняшний день ещё не упущен). Пропуск в неделе, где заморозка ещё не потрачена, серию не
-   рвёт; второй пропуск в той же неделе — рвёт. */
+   сегодняшний день ещё не упущен). Пропуск в неделе, где поблажка ещё не потрачена, серию не
+   рвёт; второй пропуск в той же неделе рвёт — если неделя не покрыта страховкой. */
 export function streak(s, now = Date.now()) {
   const today = dayOf(now);
   let key = active(s, today) ? today : addDays(today, -1);
-  let n = 0; const frozenWeeks = new Set(); const used = []; let pending = [];
+  let n = 0; const misses = new Map(); const used = []; const insured = []; let pending = []; let pendingIns = [];
   for (let k = 0; k < MAX_DAYS; k += 1) {
     if (active(s, key)) {
-      n += 1; used.push(...pending); pending = [];
+      n += 1; used.push(...pending); insured.push(...pendingIns); pending = []; pendingIns = [];
     } else if ((s.frozen || {})[key]) {
-      // день спасла купленная заморозка: не рвёт серию и не тратит недельную
+      // день спасла старая разовая страховка: не рвёт серию и не тратит недельную поблажку
       pending.push(key);
     } else {
-      const w = weekOf(key);
-      if (frozenWeeks.has(w)) break;
-      frozenWeeks.add(w); pending.push(key);
+      const w = weekOf(key); const m = misses.get(w) || 0;
+      if (m >= freeMisses(s, w)) break;
+      misses.set(w, m + 1); pending.push(key);
+      if (m >= 1) pendingIns.push(key);
     }
     key = addDays(key, -1);
   }
-  // заморозки, за которыми дальше в прошлом не было занятий, ничего не спасли — не считаем
-  return { days: n, today: active(s, today), freezesUsed: used };
+  // пропуски, за которыми дальше в прошлом не было занятий, ничего не спасли — не считаем
+  return { days: n, today: active(s, today), freezesUsed: used, insuredDays: insured };
 }
 /* Купленные заморозки: куплено минус потрачено. Тратятся сами, при открытии приложения, —
    на пропуск, который недельная заморозка уже не покрывает, и только если за пропуском есть
@@ -213,13 +225,14 @@ export function applyFreezes(s, now = Date.now()) {
   if (!owned) return s;
   const frozen = s.frozen || {};
   let key = addDays(dayOf(now), -1);
-  const weeks = new Set(); const commit = []; let pending = []; let gap = 0;
+  const weeks = new Map(); const commit = []; let pending = []; let gap = 0;
   for (let k = 0; k < MAX_DAYS; k += 1) {
     if (active(s, key)) { commit.push(...pending); pending = []; gap = 0; } else if (!frozen[key]) {
       gap += 1;
       if (gap > 30) break;
-      const w = weekOf(key);
-      if (!weeks.has(w)) weeks.add(w);
+      const w = weekOf(key); const m = weeks.get(w) || 0;
+      // покрытое полисом и поблажкой — не трогаем, старые полисы — только на пропуск сверх этого
+      if (m < freeMisses(s, w)) weeks.set(w, m + 1);
       else if (owned > 0) { pending.push(key); owned -= 1; } else break;
     }
     key = addDays(key, -1);
@@ -230,9 +243,10 @@ export function applyFreezes(s, now = Date.now()) {
 // дни последней недели для экрана серии: занимался, спасён заморозкой, пропуск, сегодня
 export function weekDots(s, now = Date.now()) {
   const today = dayOf(now);
+  const insured = new Set(streak(s, now).insuredDays);
   return [6, 5, 4, 3, 2, 1, 0].map((back) => {
     const key = addDays(today, -back);
-    return { day: key, dow: (new Date(dayTs(key)).getDay() + 6) % 7, done: active(s, key), frozen: !!(s.frozen || {})[key], today: back === 0 };
+    return { day: key, dow: (new Date(dayTs(key)).getDay() + 6) % 7, done: active(s, key), frozen: !!(s.frozen || {})[key] || insured.has(key), today: back === 0 };
   });
 }
 // самая длинная серия за всю историю (с теми же заморозками)
@@ -302,6 +316,21 @@ const cnt = (v, hi = 1e7) => Math.max(0, Math.min(hi, Math.round(fin(v))));
 const okKey = (k) => typeof k === 'string' && k.length > 0 && k.length <= 64;
 const isDay = (k) => /^\d{4}-\d{2}-\d{2}$/.test(k);
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+// испытания месяцев: не больше 24 последних, цель — целое, «почему» — короткая строка
+const monthPlanMap = (v) => {
+  const out = {};
+  Object.keys(obj(v)).filter((k) => /^\d{4}-\d{2}$/.test(k)).sort().slice(-24).forEach((k) => {
+    const p = obj(v[k]); const target = cnt(p.target, 1e5);
+    if (target > 0) out[k] = { target, why: typeof p.why === 'string' ? p.why.slice(0, 200) : '', at: cnt(p.at, 1e14) };
+  });
+  return out;
+};
+// одно и то же испытание на двух устройствах: остаётся закреплённое раньше
+const mergeMonthPlan = (a, b) => {
+  const out = { ...a };
+  Object.entries(b).forEach(([k, p]) => { const c = out[k]; out[k] = !c || p.at < c.at || (p.at === c.at && p.target < c.target) ? p : c; });
+  return out;
+};
 const dayMap = (v, hi) => {
   const out = {};
   Object.keys(obj(v)).filter(isDay).sort().slice(-MAX_DAYS).forEach((k) => { const x = cnt(v[k], hi); if (x > 0) out[k] = x; });
@@ -386,6 +415,7 @@ function normalizeProgram(r) {
     recent: typeof r.recent === 'string' && /^[01]*$/.test(r.recent) ? r.recent.slice(-MAX_RECENT) : '', recentAt: cnt(r.recentAt, 1e14),
     coins: dayMap(r.coins, 1e6), spent: dayMap(r.spent, 1e6), freezeBuy: dayMap(r.freezeBuy, MAX_FREEZES * 5),
     frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
+    policyAt: cnt(r.policyAt, 1e14), policyOff: cnt(r.policyOff, 1e14), policyLapse: cnt(r.policyLapse, 1e14), premiums: dayMap(r.premiums, PREMIUM * 10), monthPlan: monthPlanMap(r.monthPlan),
     claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
@@ -409,6 +439,7 @@ function mergeProgram(x, y) {
     recent: laterRecent ? y.recent : x.recent, recentAt: Math.max(x.recentAt, y.recentAt),
     coins: maxMap(x.coins, y.coins), spent: maxMap(x.spent, y.spent), freezeBuy: maxMap(x.freezeBuy, y.freezeBuy),
     frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned),
+    policyAt: Math.max(x.policyAt, y.policyAt), policyOff: Math.max(x.policyOff, y.policyOff), policyLapse: Math.max(x.policyLapse, y.policyLapse), premiums: maxMap(x.premiums, y.premiums), monthPlan: mergeMonthPlan(x.monthPlan, y.monthPlan),
     seen: maxMap(x.seen, y.seen), best: maxMap(x.best, y.best), boost: Math.max(x.boost, y.boost),
     piggy: maxMap(x.piggy, y.piggy), piggyOut: maxMap(x.piggyOut, y.piggyOut),
   };
