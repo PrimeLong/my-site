@@ -57,6 +57,7 @@ export const PLAY_CSS = `
   .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
   .lp-word-def { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 18.5px; line-height: 1.45; }
   .lp-word-def.open { animation: lp-def .35s ease-out both; }
+  .lp-word-ex { display: block; margin-top: 12px; font-size: 15px; line-height: 1.4; color: var(--ds-ink2); }
   @keyframes lp-def { from { opacity: 0; transform: translateY(6px); filter: blur(3px) } to { opacity: 1; transform: none; filter: none } }
   .lp-word-hide { width: 100%; border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 18px 12px; color: var(--ds-ink3); font-size: 15px; background: none; cursor: pointer; font-family: inherit; }
   .lp-word-hint .fine { display: none; }
@@ -733,7 +734,7 @@ export function WordDeck({ cards, onDone, body, foot }) {
           <div className="lp-word-term">{card.title}</div>
           <div className="lp-word-rule" />
           {open
-            ? <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} /></span></div>
+            ? <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} />{card.example && <span className="lp-word-ex"><b>Пример:</b> <Inline nodes={card.example} /></span>}</span></div>
             : <div className="lp-word-def"><button type="button" className="lp-word-hide" onClick={(e) => { e.stopPropagation(); reveal(); }}>Вспомните, что это значит, — и откройте</button></div>}
         </div>
       </div>

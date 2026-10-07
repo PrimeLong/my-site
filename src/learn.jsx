@@ -246,7 +246,21 @@ function Pic({ name }) {
 
 /* ------------------------------ УПРАЖНЕНИЯ ------------------------------ */
 // «___» в тексте вопроса → выбранная плитка
-const fillBlank = (blocks, word) => JSON.parse(JSON.stringify(blocks), (k, v) => (k === 'v' && typeof v === 'string' && v.includes('___') ? v.replace('___', word) : v));
+// пропуск «___» в условии: подставляем выбранный вариант узлами (с формулами), а не сырым текстом
+const fillBlank = (blocks, word) => {
+  const fill = (x) => {
+    if (Array.isArray(x)) return x.flatMap((n) => {
+      if (n && n.t === 'text' && n.v.includes('___')) {
+        const k = n.v.indexOf('___');
+        return [{ t: 'text', v: n.v.slice(0, k) }, ...(typeof word === 'string' ? [{ t: 'text', v: word }] : [{ t: 'b', c: word }]), { t: 'text', v: n.v.slice(k + 3) }];
+      }
+      return [fill(n)];
+    });
+    if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, fill(v)]));
+    return x;
+  };
+  return fill(blocks);
+};
 
 function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit = () => {} }) {
   const pick = (v) => { if (!locked) { Audio.play('tick'); setResp(v); } };
@@ -286,7 +300,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
       const chosen = inst.options.find((o) => o.key === resp);
       return (
         <div>
-          <div className="ln-prompt ds-text tb-body"><Blocks blocks={fillBlank(inst.prompt, chosen ? `[${chosen.raw}]` : '_____')} ctx={ctx} /></div>
+          <div className="ln-prompt ds-text tb-body"><Blocks blocks={fillBlank(inst.prompt, chosen ? chosen.text : '_____')} ctx={ctx} /></div>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center' }}>
             {inst.options.map((o) => (
               <button key={o.key} type="button" className={`ds-chip ${optClass(o.key, o.correct)}`} aria-pressed={resp === o.key} data-key={o.key} disabled={locked}

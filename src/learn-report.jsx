@@ -31,6 +31,8 @@ export function flatText(x) {
   if (typeof x === 'object') {
     // текст, формула, термин со словарной подсказкой — всё, у чего есть строка v
     if (typeof x.v === 'string') return x.v;
+    // ссылка и термин: подпись, а без неё — цель («[[term:tea]]» → tea), иначе в жалобе дыра
+    if (x.t === 'link') return x.label || x.target || '';
     return Object.entries(x).filter(([k]) => k !== 'id' && k !== 'type' && k !== 't').map(([, v]) => (typeof v === 'object' ? flatText(v) : '')).filter(Boolean).join(' ');
   }
   return '';
