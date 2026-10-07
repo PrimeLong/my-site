@@ -423,6 +423,8 @@ for (const theme of ['light', 'dark']) {
         localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
       });
       await page.reload({ waitUntil: 'networkidle' });
+      const fold = page.getByTestId('model-fold').first();
+      if (await fold.isVisible()) await fold.click();
       const model = page.locator('[data-testid=unit-model]').first();
       await model.scrollIntoViewIfNeeded();
       await shot(page, '58-unit-model', theme);

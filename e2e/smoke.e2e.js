@@ -2408,7 +2408,9 @@ test('новые глаголы: «Откройте сами», живая мо�
   await expect(path.getByTestId('path-rec')).toHaveCount(1);
   await expect(pathNode(page, 'sd-i1').locator('xpath=..').getByTestId('path-rec')).toHaveCount(1);
   await expect(path).toContainText('Слабое место');
-  // живая модель юнита пока пуста: первая деталь — в первом уроке
+  // живая модель юнита пока пуста: первая деталь — в первом уроке; на телефоне модель свёрнута строкой
+  const fold = path.getByTestId('model-fold').first();
+  if (await fold.isVisible()) { await expect(fold).toContainText('Соберётся по ходу юнита'); await fold.click(); }
   const model = path.locator('[data-testid=unit-model]').first();
   await expect(model).toHaveAttribute('data-open', '0');
   await expect(model.getByTestId('model-empty')).toContainText('Знакомство: спрос');
@@ -2576,6 +2578,50 @@ test('учебник: калькулятор по полям а → б → в, �
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('Путь: открывается на рекомендованном уроке, пройденный юнит — строкой, место на карте ведёт к уроку, «К карте»', async ({ page, isMobile }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1'];
+    if (!localStorage.getItem('ems-textbook-v1')) localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: {
+      lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])), claimed: { 'c:scarcity': at }, coins: { '2026-01-01': 400 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  // сразу на рекомендованном уроке: он на экране, карта уехала вверх
+  const rec = path.locator('[data-testid=path-lesson][data-rec="true"]');
+  await expect(rec).toHaveAttribute('data-lesson', 'sd-w');
+  await expect(rec).toBeInViewport();
+  // пройденный юнит с открытым сундуком — одна строка, не выше 80 px; «Уроки: N» разворачивает
+  const sc = path.locator('[data-testid=path-unit][data-unit="scarcity"]');
+  await expect(sc).toHaveAttribute('data-folded', 'true');
+  expect((await sc.boundingBox()).height).toBeLessThan(80);
+  // кнопка «К карте» — пока карта за верхом экрана; касание возвращает к карте
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(page.getByTestId('to-map')).toBeVisible();
+  await page.getByTestId('to-map').click();
+  await expect(path.getByTestId('atlas')).toBeInViewport();
+  await expect(page.getByTestId('to-map')).toHaveCount(0);
+  // место на карте — к уроку этого юнита, который советует Путь
+  await path.locator('[data-testid=atlas-place][data-unit="supply-demand"]').click();
+  await expect(rec).toBeInViewport();
+  if (isMobile) {
+    // телефон: живая модель — свёрнутой строкой, раскрывается касанием
+    const fold = path.getByTestId('model-fold');
+    await expect(fold).toHaveCount(1);
+    expect((await fold.boundingBox()).height).toBeLessThan(80);
+    await expect(path.getByTestId('unit-model')).toHaveCount(0);
+    await fold.click();
+    await expect(path.getByTestId('unit-model')).toBeVisible();
+    await path.getByTestId('model-fold-close').click();
+    await expect(path.getByTestId('unit-model')).toHaveCount(0);
+  }
+  await sc.getByTestId('unit-fold').click();
+  await expect(sc).toHaveAttribute('data-folded', 'false');
+  await expect(sc.getByTestId('path-lesson')).toHaveCount(14);
   expect(errors).toEqual([]);
 });
 

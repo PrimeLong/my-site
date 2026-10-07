@@ -58,8 +58,8 @@ export const PLACES = {
   policy: { place: 'Центробанк', building: 'bank', color: '#6B4357', region: 'capital', at: [600, 420], note: 'ставка и бюджет' },
   growth: { place: 'Электростанция', building: 'factory', color: '#93503A', region: 'port', at: [485, 480], note: 'модель Солоу' },
   'open-economy': { place: 'Таможня', building: 'port', color: '#735030', region: 'port', at: [360, 500], note: 'курс и торговля' },
-  'public-debt': { place: 'Министерство', building: 'ministry', color: '#7A4A5E', region: 'capital', at: [500, 385], note: 'долг государства' },
-  inequality: { place: 'Рабочий квартал', building: 'store', color: '#6A4838', region: 'periphery', at: [400, 410], note: 'доходы и бедность' },
+  'public-debt': { place: 'Министерство', building: 'ministry', color: '#7A4A5E', region: 'capital', at: [400, 410], note: 'долг государства' },
+  inequality: { place: 'Рабочий квартал', building: 'store', color: '#6A4838', region: 'periphery', at: [500, 385], note: 'доходы и бедность' },
 };
 export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#6B4357', region: 'capital', at: [496, 372], note: '' };
 export const unitColor = (unitId) => placeOf(unitId).color;

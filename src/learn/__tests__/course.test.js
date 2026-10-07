@@ -45,6 +45,13 @@ it('карта Пути: дорога без самопересечений, м�
   for (let i = 0; i + 1 < pts.length; i += 1) {
     for (let j = i + 2; j + 1 < pts.length; j += 1) expect(cross(pts[i], pts[i + 1], pts[j], pts[j + 1]), `${UNITS[i].id}–${UNITS[j].id}`).toBe(false);
   }
+  // без резких поворотов «зигзагом» (буквой Z): дорога в каждом месте поворачивает не круче, чем на 130°
+  for (let i = 1; i + 1 < pts.length; i += 1) {
+    const [a, b, c] = [pts[i - 1], pts[i], pts[i + 1]];
+    const v1 = [a[0] - b[0], a[1] - b[1]]; const v2 = [c[0] - b[0], c[1] - b[1]];
+    const angle = (Math.acos((v1[0] * v2[0] + v1[1] * v2[1]) / Math.hypot(...v1) / Math.hypot(...v2)) * 180) / Math.PI;
+    expect(angle, `${UNITS[i].id}: угол дороги`).toBeGreaterThanOrEqual(50);
+  }
   const on = pilotUnits().map((u) => ({ id: u.id, ...placeOf(u.id) }));
   for (let i = 0; i < on.length; i += 1) {
     for (let j = i + 1; j < on.length; j += 1) {
