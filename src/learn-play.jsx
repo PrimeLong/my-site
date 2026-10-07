@@ -622,6 +622,7 @@ const HAIR = {
 };
 // портрет героя: лицо, причёска его цвета и значок его дела
 export function Portrait({ who, size = 64 }) {
+  const clip = `pt-${React.useId().replace(/:/g, '')}`;
   const c = CAST[who];
   if (!c) return null;
   const Icon = CAST_ICON[c.icon] || Coffee;
@@ -634,11 +635,19 @@ export function Portrait({ who, size = 64 }) {
       </span>
     );
   }
+  /* погрудный портрет в медальоне: плечи уходят за край круга, а не обрываются ровной линией
+     посреди него; шея соединяет голову с телом */
   return (
     <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flexShrink: 0 }} data-testid="portrait" data-who={who}>
       <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
-        <circle cx="32" cy="32" r="31" fill={`color-mix(in srgb, ${c.color} 18%, white)`} stroke={c.color} strokeWidth="2" />
-        <path d="M14 58c2-11 9-16 18-16s16 5 18 16" fill={c.color} />
+        <defs><clipPath id={clip}><circle cx="32" cy="32" r="30" /></clipPath></defs>
+        <circle cx="32" cy="32" r="31" fill={`color-mix(in srgb, ${c.color} 18%, white)`} />
+        <g clipPath={`url(#${clip})`}>
+          <path d="M28 36h8v9c-1.3 1.2-2.6 1.8-4 1.8s-2.7-.6-4-1.8z" fill="#E9BFA2" />
+          <path d="M3 72c0-17 12.5-27.5 29-27.5S61 55 61 72z" fill={c.color} />
+          <path d="M26.5 44.8l5.5 5.4 5.5-5.4" fill="none" stroke="#fff" strokeOpacity=".75" strokeWidth="1.6" strokeLinejoin="round" />
+        </g>
+        <circle cx="32" cy="32" r="31" fill="none" stroke={c.color} strokeWidth="2" />
         <circle cx="32" cy="28" r="12.5" fill="#F6D2B8" />
         <path d={HAIR[who] || 'M20 24c1-7 6-10 12-10s11 3 12 10c-4-3-8-4-12-4s-8 1-12 4z'} fill={c.hair} />
         <circle cx="27.5" cy="29" r="1.6" fill="#3B2A20" /><circle cx="36.5" cy="29" r="1.6" fill="#3B2A20" />

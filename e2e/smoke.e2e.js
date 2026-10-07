@@ -1840,8 +1840,18 @@ test('лента «История»: сообщения по одному, во�
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(feed.getByTestId('feed-q')).toHaveCount(1);
   await expect(feed.getByTestId('feed-msg')).toHaveCount(msgs);
-  // дальше — новые сообщения после вопроса
+  // дальше — новые сообщения после вопроса; лента сама доехала до низа — новое сообщение видно целиком
   await expect(page.getByTestId('lesson-card')).toBeVisible();
+  await expect.poll(() => page.locator('.ln-body').evaluate((sc) => {
+    const card = sc.querySelector('[data-testid="lesson-card"]').getBoundingClientRect(); const box = sc.getBoundingClientRect();
+    return card.bottom <= box.bottom + 1 || card.top <= box.top + 14;
+  })).toBe(true);
+  // шапка «Вестника» — без значка, название по центру
+  await expect(feed.locator('.fd-mast-name svg')).toHaveCount(0);
+  const mast = await feed.locator('.fd-mast-name').evaluate((el) => { const p = el.parentElement.getBoundingClientRect(); const r = document.createRange(); r.selectNodeContents(el); const t = r.getBoundingClientRect(); return [t.left - p.left, p.right - t.right]; });
+  expect(Math.abs(mast[0] - mast[1])).toBeLessThan(6);
+  // портрет — погрудный, в медальоне: тело обрезано кругом, а не прямой линией
+  await expect(feed.getByTestId('portrait').first().locator('clipPath')).toHaveCount(1);
   await expectNoSidewaysScroll(page);
   // второй вопрос встаёт в ленту под новыми сообщениями, первый — выше
   await passCards(page);
@@ -1894,6 +1904,20 @@ test('лента «Слушай»: текст скрыт, «прослушать
   const before = await page.evaluate(() => window.__spoken.length);
   await feed.getByTestId('feed-msg').first().getByTestId('feed-play').click();
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(before + 1);
+  // «Не могу слушать»: голос выключен на час — текст открыт, эфир сам не читается; «Включить звук» возвращает
+  await feed.getByTestId('no-listen').click();
+  await expect(feed).toHaveAttribute('data-voice', 'off');
+  await expect(feed.getByTestId('no-listen-on')).toContainText('Звук выключен на час');
+  const until = await page.evaluate(() => Number(localStorage.getItem('ems-no-listen-until')));
+  expect(until - Date.now()).toBeGreaterThan(50 * 60 * 1000);
+  const spoken = await page.evaluate(() => window.__spoken.length);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(page.getByTestId('lesson-card').getByTestId('listen-text')).toBeVisible();
+  await expect(page.getByTestId('lesson-card').getByTestId('feed-hidden')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__spoken.length)).toBe(spoken);
+  await feed.getByTestId('no-listen-off').click();
+  await expect(feed).toHaveAttribute('data-voice', 'on');
+  expect(await page.evaluate(() => localStorage.getItem('ems-no-listen-until'))).toBe(null);
   expect(errors).toEqual([]);
 });
 
