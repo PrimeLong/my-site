@@ -67,8 +67,13 @@ export const PLAY_CSS = `
   .lp-word-dots i.know { background: var(--u); }
   .lp-word-dots i.again { background: none; box-shadow: inset 0 0 0 2px var(--ds-gold); }
   .lp-word-dots i.cur { box-shadow: 0 0 0 2px var(--ds-paper), 0 0 0 3.5px var(--u); }
-  .lp-calc { max-width: 320px; margin: 0 auto; }
-  .lp-calc-screen { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 8px; text-align: right; }
+  .lp-calc { max-width: 340px; margin: 0 auto; }
+  .lp-calc-screen { display: flex; align-items: baseline; gap: 8px; border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 6px; min-height: 42px; }
+  .lp-calc-expr { flex: 1; min-width: 0; font-size: 16px; color: var(--ds-ink2); overflow-wrap: anywhere; }
+  .lp-calc-val { font-size: 21px; font-weight: 700; white-space: nowrap; }
+  .lp-calc-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .lp-calc-keys .ds-key { padding: 9px 0; font-size: 18px; }
+  .lp-calc-use { grid-column: span 3; min-height: 0; padding: 8px 6px; }
   .lp-op { color: var(--u-ink); font-weight: 700; }
   .lp-game-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 13.5px; margin-top: 4px; }
   .lp-game-rules span { display: inline-flex; align-items: center; gap: 4px; }
@@ -775,24 +780,23 @@ export function Calculator({ onUse = null, disabled = false, useLabel = 'В от
     else if (k === '√') setExpr((e) => pressRoot(e));
     else setExpr((e) => (e.length < 40 ? e + k : e));
   };
-  const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', '√', '=']];
+  /* Компактно, чтобы на телефоне задача и калькулятор помещались на один экран: экран в одну
+     строку (выражение слева, результат справа), пять колонок клавиш, «стереть» и «очистить» —
+     в той же сетке, «В ответ» — в последнем ряду. */
+  const KEYS = [['7', '8', '9', '÷', 'del'], ['4', '5', '6', '×', 'C'], ['1', '2', '3', '−', '('], ['0', ',', '^', '+', ')'], ['√', '=']];
+  const LABEL = { '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно', del: 'Стереть символ', C: 'Очистить' };
   return (
     <div className="lp-calc" data-testid="calculator">
       <div className="lp-calc-screen" aria-live="polite">
-        <div className="ds-num" data-testid="calc-expr" style={{ minHeight: 22, fontSize: 17, wordBreak: 'break-all' }}>{expr.replace(/-/g, '−') || ' '}</div>
-        <div className="ds-num" data-testid="calc-value" style={{ fontSize: 24, fontWeight: 700 }}>{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</div>
+        <span className="ds-num lp-calc-expr" data-testid="calc-expr">{expr.replace(/-/g, '−') || ' '}</span>
+        <span className="ds-num lp-calc-val" data-testid="calc-value">{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }} role="group" aria-label="Калькулятор">
+      <div className="lp-calc-keys" role="group" aria-label="Калькулятор">
         {KEYS.flat().map((k) => (
-          <button key={k} type="button" className={`ds-key ${'÷×−+^√='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k}
-            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно' })[k] || k}
-            onClick={() => press(k === '÷' ? '/' : k === '×' ? '*' : k === '−' ? '-' : k)}>{k}</button>
+          <button key={k} type="button" className={`ds-key ${'÷×−+^√='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k} aria-label={LABEL[k] || k}
+            onClick={() => press(k === '÷' ? '/' : k === '×' ? '*' : k === '−' ? '-' : k)}>{k === 'del' ? <Delete size={18} aria-hidden="true" /> : k}</button>
         ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-        <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Стереть символ" disabled={disabled} onClick={() => press('del')}><Delete size={18} /></button>
-        <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Очистить" data-calc="C" disabled={disabled} onClick={() => press('C')}>C</button>
-        {onUse && <button type="button" className="ds-btn" style={{ flex: 2.6 }} disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{useLabel}</button>}
+        {onUse && <button type="button" className="ds-btn lp-calc-use" disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{useLabel}</button>}
       </div>
     </div>
   );

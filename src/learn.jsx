@@ -126,6 +126,9 @@ const CSS = `
      встряска после ошибки и свайп карточки двигают его вбок (без overflow-x: hidden из-за
      overflow-y: auto появлялся горизонтальный ползунок), а появление шага — не сдвигом вниз
      (сдвиг на 14 px на миг давал вертикальный), а проявлением */
+  .ln-calc-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 10px; }
+  .ln-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 320px; margin: 0 auto; }
+  @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
   .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 14px 16px 24px; }
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
@@ -432,21 +435,24 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
       return (
         <div>
           <div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', margin: '10px 0 14px' }}>
-            <input value={val} onChange={(e) => !locked && setResp(e.target.value.replace(/[^0-9.,\-−/]/g, '').slice(0, 10))} inputMode="none" aria-label="Ответ числом"
-              className="ds-field ds-num" style={{ width: 180, fontSize: 26, textAlign: 'center', padding: '8px 10px' }} />
-            {inst.unit && <span style={{ fontSize: 16, color: 'var(--ds-ink2)' }} data-testid="calc-unit">{inst.unit}</span>}
+          {/* поле ответа и «Ответ / Калькулятор» — одной строкой: на телефоне задача и клавиши помещаются на экран */}
+          <div className="ln-calc-row">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <input value={val} onChange={(e) => !locked && setResp(e.target.value.replace(/[^0-9.,\-−/]/g, '').slice(0, 10))} inputMode="none" aria-label="Ответ числом"
+                className="ds-field ds-num" style={{ width: 132, fontSize: 22, textAlign: 'center', padding: '6px 8px' }} />
+              {inst.unit && <span style={{ fontSize: 15, color: 'var(--ds-ink2)' }} data-testid="calc-unit">{inst.unit}</span>}
+            </span>
+            {!locked && (
+              <span style={{ display: 'inline-flex', gap: 4 }} role="group" aria-label="Способ ввода">
+                <button type="button" className="ds-chip" style={{ margin: 0 }} aria-pressed={!inst._calc} onClick={() => inst._setCalc(false)}>Ответ</button>
+                <button type="button" className="ds-chip" style={{ margin: 0 }} aria-pressed={!!inst._calc} data-testid="calc-open" onClick={() => { Audio.play('tick'); inst._setCalc(true); }}>
+                  <Calculator size={15} style={{ verticalAlign: -3, marginRight: 4 }} aria-hidden="true" />Калькулятор
+                </button>
+              </span>
+            )}
           </div>
-          {!locked && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 10 }} role="group" aria-label="Способ ввода">
-              <button type="button" className="ds-chip" aria-pressed={!inst._calc} onClick={() => inst._setCalc(false)}>Ответ</button>
-              <button type="button" className="ds-chip" aria-pressed={!!inst._calc} data-testid="calc-open" onClick={() => { Audio.play('tick'); inst._setCalc(true); }}>
-                <Calculator size={15} style={{ verticalAlign: -3, marginRight: 4 }} aria-hidden="true" />Калькулятор
-              </button>
-            </div>
-          )}
           {inst._calc && !locked ? <CalcPad onUse={(v) => { setResp(v.slice(0, 10)); inst._setCalc(false); }} /> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, maxWidth: 320, margin: '0 auto' }} role="group" aria-label="Цифровая клавиатура">
+            <div className="ln-numpad" role="group" aria-label="Цифровая клавиатура">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0'].map((k) => <button key={k} type="button" className="ds-key" disabled={locked} onClick={() => press(k)}>{k}</button>)}
               <button type="button" className="ds-key" aria-label="Стереть" disabled={locked} onClick={() => press('del')}><Delete size={20} /></button>
               <button type="button" className="ds-key" style={{ gridColumn: 'span 3', fontSize: 15 }} disabled={locked} onClick={() => press(val.startsWith('-') ? '' : '-')}

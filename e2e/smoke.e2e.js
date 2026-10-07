@@ -1733,6 +1733,11 @@ test('юнит 1 «Ограниченность и выбор»: все виды
   const ex = page.getByTestId('ex');
   await expect(ex).toHaveAttribute('data-kind', 'calc');
   await ex.getByTestId('calc-open').click();
+  // условие и калькулятор целиком — на одном экране урока: от начала условия до «В ответ» не выше области урока
+  expect(await ex.evaluate((el) => {
+    const body = el.closest('.ln-body'); const p = el.querySelector('.ln-prompt').getBoundingClientRect(); const u = el.querySelector('[data-testid=calc-use]').getBoundingClientRect();
+    return u.bottom - p.top <= body.clientHeight;
+  })).toBe(true);
   for (const k of ['1', '0', '0', '÷', '5', '0']) await ex.locator(`[data-calc="${k}"]`).click();
   await expect(ex.getByTestId('calc-value')).toHaveText('= 2');
   await ex.getByTestId('calc-use').click();
