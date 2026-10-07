@@ -2,7 +2,7 @@
   "name": "macro-simulator",
   "private": true,
   "version": "0.1.0",
-  "description": "Инфлатия — экономика пять минут в день.",
+  "description": "Инфляция — экономика пять минут в день.",
   "type": "module",
   "scripts": {
     "dev": "vite",

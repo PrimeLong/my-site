@@ -28,7 +28,7 @@ const ogPage = `<html><head><style>${fonts} html,body{margin:0}</style></head>
     background:radial-gradient(ellipse at 28% 45%, #1C2740 0%, #0B0F17 62%);color:#E8E2D0;font-family:'PT Sans'">
     <img src="${mark}" style="width:300px;height:300px;flex-shrink:0">
     <div>
-      <div style="font-family:'PT Serif';font-weight:700;font-size:118px;line-height:1;color:#E8C766;letter-spacing:0.01em">Инфлатия</div>
+      <div style="font-family:'PT Serif';font-weight:700;font-size:118px;line-height:1;color:#E8C766;letter-spacing:0.01em">Инфляция</div>
       <div style="margin-top:18px;font-size:25px;letter-spacing:0.22em;text-transform:uppercase;color:#C9A227">Экономика пять минут в день</div>
       <div style="margin-top:34px;font-size:27px;line-height:1.45;color:#B9B3A2;max-width:640px">
         Короткие уроки с Инфлей, учебник с задачами и живая страна, где знания проверяются в деле.

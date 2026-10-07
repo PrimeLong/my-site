@@ -295,7 +295,7 @@ export function Engraving({ kind = 'store', alive = false, size = 120, color = '
       style={{ color: ink, display: 'block', flexShrink: 0 }}>{inner}</svg>
   );
 }
-// та же гравюра внутри другого рисунка (карта Инфлатии): x, y — левый верхний угол, scale — масштаб
+// та же гравюра внутри другого рисунка (карта Инфляции): x, y — левый верхний угол, scale — масштаб
 export function EngravingG({ kind = 'store', alive = false, x = 0, y = 0, scale = 1, color = 'var(--u)' }) {
   const { inner, ink } = useEngraving(kind, alive, color);
   return <g transform={`translate(${x},${y}) scale(${scale})`} style={{ color: ink }} data-kind={kind} data-alive={String(alive)}>{inner}</g>;
@@ -306,7 +306,7 @@ export function Clipping({ issue, rubric, children, testid }) {
   return (
     <div style={{ filter: 'drop-shadow(0 2px 3px var(--ds-shade))', transform: 'rotate(-.6deg)' }} data-testid={testid}>
       <div className="ds-clip">
-        <div className="ds-clip-mast">Вестник Инфлатии</div>
+        <div className="ds-clip-mast">Вестник Инфляции</div>
         <div className="ds-clip-meta"><span>{issue}</span><span>{rubric}</span></div>
         {children}
       </div>

@@ -1178,7 +1178,7 @@ function TopStats({ learn }) {
   );
 }
 
-/* Карта Инфлатии: берег, округа, река Велья, и дорога через места юнитов. Здание места —
+/* Карта Инфляции: берег, округа, река Велья, и дорога через места юнитов. Здание места —
    гравюра; пройденный юнит его «оживляет» (цвет, свет в окнах, дым). Нажатие по месту —
    прокрутка к юниту на дороге ниже. */
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
@@ -1193,10 +1193,10 @@ function Atlas({ states, onPick, learn = null }) {
   return (
     <Card className="ln-atlas" data-testid="atlas">
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, padding: '0 4px 6px' }}>
-        <div><div className="ds-eyebrow">Путь</div><div className="ds-h3">Дорога по Инфлатии</div></div>
+        <div><div className="ds-eyebrow">Путь</div><div className="ds-h3">Дорога по Инфляции</div></div>
         <span className="ds-faint ds-num" style={{ fontSize: 12 }}>{onPath.filter((x) => x.st.complete).length}/{UNITS.length} мест</span>
       </div>
-      <svg viewBox={`${MAP_BOX.x} ${MAP_BOX.y} ${MAP_BOX.w} ${MAP_BOX.h}`} width="100%" role="img" aria-label="Карта Инфлатии: места юнитов на дороге" style={{ display: 'block', borderRadius: 4 }}>
+      <svg viewBox={`${MAP_BOX.x} ${MAP_BOX.y} ${MAP_BOX.w} ${MAP_BOX.h}`} width="100%" role="img" aria-label="Карта Инфляции: места юнитов на дороге" style={{ display: 'block', borderRadius: 4 }}>
         <defs>
           <pattern id="ln-sea" width="16" height="12" patternUnits="userSpaceOnUse"><path d="M0,8 q4,-4 8,0 t8,0" fill="none" stroke="#5F82B3" strokeWidth="1.1" opacity=".45" /></pattern>
         </defs>

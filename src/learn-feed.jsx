@@ -294,7 +294,7 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
       <div className="fd" data-mode="listen" data-testid="listen-card" data-voice={speech.voice ? 'on' : 'off'}>
         <div className="fd-mast">
           <Guilloche height={14} opacity={0.45} />
-          <div className="fd-mast-name">Радио Инфлатии · эфир</div>
+          <div className="fd-mast-name">Радио Инфляции · эфир</div>
           <h2 className="ds-h2">{title}</h2>
           {speech.voice && <div className="fd-voice-note" data-testid="voice-caption">{VOICE_CAPTION}</div>}
           {speech.canVoice && (speech.muted
@@ -312,7 +312,7 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
     <div className="fd" data-mode={mode} data-testid={mode === 'listen' ? 'listen-card' : 'story-feed'} data-voice={speech.voice ? 'on' : 'off'}>
       <div className="fd-mast">
         <Guilloche height={14} opacity={0.45} />
-        <div className="fd-mast-name">{mode === 'listen' ? 'Радио Инфлатии · эфир' : 'Вестник Инфлатии · переписка'}</div>
+        <div className="fd-mast-name">{mode === 'listen' ? 'Радио Инфляции · эфир' : 'Вестник Инфляции · переписка'}</div>
         <h2 className="ds-h2">{title}</h2>
       </div>
       {entries.map((e) => (

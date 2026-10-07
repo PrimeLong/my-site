@@ -86,7 +86,7 @@ test('заголовки безопасности: CSP без нарушений
 
 test('меню открывается, шрифты свои, внешних запросов нет', async ({ page }) => {
   const { errors, external } = await openApp(page);
-  await expect(page.getByRole('heading', { name: 'Инфлатия' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Инфляция' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
   expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');

@@ -2550,7 +2550,7 @@ export function ResultCardModal({ data, onClose }) {
   };
   const copyText = async () => {
     const lines = [
-      'Инфлатия — экономика пять минут в день',
+      'Инфляция — экономика пять минут в день',
       `Роль: ${data.roleLabel}`,
       `Отыграно: ${data.quarterIndex} ${data.quarterWord} (${data.years} лет)`,
       `Итог: ${data.outcome}`,
