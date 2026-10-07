@@ -315,7 +315,7 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('placement-start').click();
       await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'placement');
       await shot(page, '41-placement', theme);
-      for (let i = 0; i < 20 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) { await answer(page); await next(page); }
+      for (let i = 0; i < 40 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) { await answer(page); await next(page); }
       await expect(page.getByTestId('lesson-result')).toBeVisible();
       await shot(page, '42-placement-result', theme, { wait: 1500 });
       await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();

@@ -1401,15 +1401,16 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — четыре юнита (14, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(4);
+  // Путь начинается с юнита 1; уроками — пять юнитов (14, 10, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(5);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(44);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(8);
-  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность), Средний (потребитель)
+  await expect(path.getByTestId('path-lesson')).toHaveCount(54);
+  await expect(path.locator('[data-kind="intro"]')).toHaveCount(10);
+  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность, порт), Средний (потребитель)
   await expect(path.getByTestId('path-level')).toHaveCount(3);
   await expect(path.getByTestId('path-level').nth(1)).toContainText('Базовый');
   await expect(path.getByTestId('path-unit').nth(2)).toHaveAttribute('data-unit', 'elasticity');
+  await expect(path.getByTestId('path-unit').nth(3)).toHaveAttribute('data-unit', 'market-failures');
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1686,6 +1687,47 @@ test('путь: юнит «Спрос и предложение» — кажды
   // новые взаимодействия вне историй: точка равновесия и сдвиг кривой в «Практиках»
   await startLesson(page, 'sd-l3');
   await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('путь: юнит «Порт» (провалы рынка) — каждый урок проходится, игра — рынок на графике', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
+      'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
+      'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = page.locator('[data-testid="path-unit"][data-unit="market-failures"]');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['mf-i1', 'mf-l1', 'mf-i2', 'mf-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «Слова»: на карточке излишка потребителя — пример
+  await startLesson(page, 'mf-w');
+  await page.getByTestId('word-show').click();
+  await expect(page.getByTestId('word-def')).toContainText('Пример:');
+  await playLesson(page);
+  await finish();
+  // «История»: открывает Вера Павловна (крючок в универмаг и открытый вопрос проверяет course.test.js)
+  await startLesson(page, 'mf-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'vera');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mf-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('газировк');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mf-g');
+  await expect(page.getByTestId('ex').getByTestId('market-chart')).toBeVisible();
+  await playLesson(page);
+  await finish();
+  for (const id of ['mf-rev', 'mf-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
   expect(errors).toEqual([]);
 });
 

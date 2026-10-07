@@ -17,13 +17,13 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity), Средний (consumer)
-const PATH = ['scarcity', 'supply-demand', 'elasticity', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures), Средний (consumer)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — четыре юнита по уровням: от Начального к Среднему', () => {
+it('на Пути уроками — пять юнитов по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
   // юниты идут по уровням; внутри уровня — по порядку глав учебника
   const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
@@ -388,6 +388,26 @@ describe('повтор без зубрёжки: вернувшаяся зада�
   });
 });
 
+describe('юнит «Порт»: провалы рынка', () => {
+  const unit = UNIT_BY_ID['market-failures'];
+  const of = (kind) => unit.lessons.filter((l) => l.kind === kind);
+  it('десять уроков всех видов в порядке Пути', () => {
+    expect(unit.lessons.map((l) => l.kind)).toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  });
+  it('«История»: Вера Павловна, Тимур, Гриша и Маша; в конце — крючок в универмаг и открытый вопрос', () => {
+    const [st] = of('story');
+    const who = st.inner.map((c) => c.idea.who).filter(Boolean);
+    expect(who[0]).toBe('vera');
+    expect(new Set(who)).toEqual(new Set(['masha', 'grisha', 'vera', 'timur']));
+    expect(plain(st.inner[st.inner.length - 1].idea.text)).toMatch(/универмаг/);
+    expect(st.exercises[st.exercises.length - 1].kind).toBe('open');
+  });
+  it('«Мини-игра»: одна игра на минуту', () => {
+    const [g] = of('game');
+    expect(buildLesson(g.id, seeded(4)).items.map((i) => i.kind)).toEqual(['rush']);
+  });
+});
+
 describe('юнит «Спрос и предложение»: все виды уроков', () => {
   const unit = UNIT_BY_ID[PILOT];
   const of = (kind) => unit.lessons.filter((l) => l.kind === kind);
@@ -657,7 +677,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });
