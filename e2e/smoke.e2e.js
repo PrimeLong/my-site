@@ -86,7 +86,7 @@ test('заголовки безопасности: CSP без нарушений
 
 test('меню открывается, шрифты свои, внешних запросов нет', async ({ page }) => {
   const { errors, external } = await openApp(page);
-  await expect(page.getByRole('heading', { name: 'Инфлатия' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Инфляция' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
   expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');
@@ -211,8 +211,8 @@ test('разбор партии открывается из меню «⋯» и 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Кварталов у руля')).toBeVisible();
   await expectNoSidewaysScroll(page);
-  await page.keyboard.press('Escape');
-  await expect(dialog).toBeHidden();
+  // Escape закрывает разбор; диалог подписывается на клавиатуру после открытия — нажимаем, пока не закроется
+  await expect(async () => { await page.keyboard.press('Escape'); await expect(dialog).toBeHidden({ timeout: 1000 }); }).toPass({ timeout: 10_000 });
   expect(errors).toEqual([]);
 });
 
@@ -1401,15 +1401,16 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
-  // Путь начинается с юнита 1; уроками — четыре юнита (14, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(4);
+  // Путь начинается с юнита 1; уроками — пять юнитов (14, 10, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(5);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(44);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(8);
-  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность), Средний (потребитель)
+  await expect(path.getByTestId('path-lesson')).toHaveCount(54);
+  await expect(path.locator('[data-kind="intro"]')).toHaveCount(10);
+  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность, порт), Средний (потребитель)
   await expect(path.getByTestId('path-level')).toHaveCount(3);
   await expect(path.getByTestId('path-level').nth(1)).toContainText('Базовый');
   await expect(path.getByTestId('path-unit').nth(2)).toHaveAttribute('data-unit', 'elasticity');
+  await expect(path.getByTestId('path-unit').nth(3)).toHaveAttribute('data-unit', 'market-failures');
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1689,6 +1690,47 @@ test('путь: юнит «Спрос и предложение» — кажды
   expect(errors).toEqual([]);
 });
 
+test('путь: юнит «Порт» (провалы рынка) — каждый урок проходится, игра — рынок на графике', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
+      'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
+      'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = page.locator('[data-testid="path-unit"][data-unit="market-failures"]');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['mf-i1', 'mf-l1', 'mf-i2', 'mf-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «Слова»: на карточке излишка потребителя — пример
+  await startLesson(page, 'mf-w');
+  await page.getByTestId('word-show').click();
+  await expect(page.getByTestId('word-def')).toContainText('Пример:');
+  await playLesson(page);
+  await finish();
+  // «История»: открывает Вера Павловна (крючок в универмаг и открытый вопрос проверяет course.test.js)
+  await startLesson(page, 'mf-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'vera');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mf-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('газировк');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mf-g');
+  await expect(page.getByTestId('ex').getByTestId('market-chart')).toBeVisible();
+  await playLesson(page);
+  await finish();
+  for (const id of ['mf-rev', 'mf-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  expect(errors).toEqual([]);
+});
+
 // юнит «Спрос и предложение» пройден — любой его урок открыт для повтора
 const unitDone = (page) => page.addInitScript(() => {
   if (localStorage.getItem('ems-textbook-v1')) return;
@@ -1733,6 +1775,11 @@ test('юнит 1 «Ограниченность и выбор»: все виды
   const ex = page.getByTestId('ex');
   await expect(ex).toHaveAttribute('data-kind', 'calc');
   await ex.getByTestId('calc-open').click();
+  // условие и калькулятор целиком — на одном экране урока: от начала условия до «В ответ» не выше области урока
+  expect(await ex.evaluate((el) => {
+    const body = el.closest('.ln-body'); const p = el.querySelector('.ln-prompt').getBoundingClientRect(); const u = el.querySelector('[data-testid=calc-use]').getBoundingClientRect();
+    return u.bottom - p.top <= body.clientHeight;
+  })).toBe(true);
   for (const k of ['1', '0', '0', '÷', '5', '0']) await ex.locator(`[data-calc="${k}"]`).click();
   await expect(ex.getByTestId('calc-value')).toHaveText('= 2');
   await ex.getByTestId('calc-use').click();
@@ -1840,8 +1887,18 @@ test('лента «История»: сообщения по одному, во�
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(feed.getByTestId('feed-q')).toHaveCount(1);
   await expect(feed.getByTestId('feed-msg')).toHaveCount(msgs);
-  // дальше — новые сообщения после вопроса
+  // дальше — новые сообщения после вопроса; лента сама доехала до низа — новое сообщение видно целиком
   await expect(page.getByTestId('lesson-card')).toBeVisible();
+  await expect.poll(() => page.locator('.ln-body').evaluate((sc) => {
+    const card = sc.querySelector('[data-testid="lesson-card"]').getBoundingClientRect(); const box = sc.getBoundingClientRect();
+    return card.bottom <= box.bottom + 1 || card.top <= box.top + 14;
+  })).toBe(true);
+  // шапка «Вестника» — без значка, название по центру
+  await expect(feed.locator('.fd-mast-name svg')).toHaveCount(0);
+  const mast = await feed.locator('.fd-mast-name').evaluate((el) => { const p = el.parentElement.getBoundingClientRect(); const r = document.createRange(); r.selectNodeContents(el); const t = r.getBoundingClientRect(); return [t.left - p.left, p.right - t.right]; });
+  expect(Math.abs(mast[0] - mast[1])).toBeLessThan(6);
+  // портрет — погрудный, в медальоне: тело обрезано кругом, а не прямой линией
+  await expect(feed.getByTestId('portrait').first().locator('clipPath')).toHaveCount(1);
   await expectNoSidewaysScroll(page);
   // второй вопрос встаёт в ленту под новыми сообщениями, первый — выше
   await passCards(page);
@@ -1894,6 +1951,20 @@ test('лента «Слушай»: текст скрыт, «прослушать
   const before = await page.evaluate(() => window.__spoken.length);
   await feed.getByTestId('feed-msg').first().getByTestId('feed-play').click();
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(before + 1);
+  // «Не могу слушать»: голос выключен на час — текст открыт, эфир сам не читается; «Включить звук» возвращает
+  await feed.getByTestId('no-listen').click();
+  await expect(feed).toHaveAttribute('data-voice', 'off');
+  await expect(feed.getByTestId('no-listen-on')).toContainText('Звук выключен на час');
+  const until = await page.evaluate(() => Number(localStorage.getItem('ems-no-listen-until')));
+  expect(until - Date.now()).toBeGreaterThan(50 * 60 * 1000);
+  const spoken = await page.evaluate(() => window.__spoken.length);
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(page.getByTestId('lesson-card').getByTestId('listen-text')).toBeVisible();
+  await expect(page.getByTestId('lesson-card').getByTestId('feed-hidden')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__spoken.length)).toBe(spoken);
+  await feed.getByTestId('no-listen-off').click();
+  await expect(feed).toHaveAttribute('data-voice', 'on');
+  expect(await page.evaluate(() => localStorage.getItem('ems-no-listen-until'))).toBe(null);
   expect(errors).toEqual([]);
 });
 
@@ -1932,6 +2003,12 @@ test('сообщить об ошибке: флажок на упражнении
   const sheet = page.getByTestId('report-sheet');
   await expect(sheet.getByTestId('report-send')).toBeDisabled();
   await sheet.locator('[data-reason="accept"]').click();
+  // выбранная причина видна: подсвечена и с галочкой, остальные — нет
+  const bg = (r) => sheet.locator(`[data-reason="${r}"]`).evaluate((el) => getComputedStyle(el).backgroundColor);
+  await expect(sheet.locator('[data-reason="accept"]')).toHaveAttribute('aria-checked', 'true');
+  expect(await bg('accept')).not.toBe(await bg('typo'));
+  await expect(sheet.locator('[data-reason="accept"] svg')).toHaveCount(1);
+  await expect(sheet.locator('[data-reason="typo"] svg')).toHaveCount(0);
   await sheet.getByLabel(/Комментарий/).fill('мне кажется, мой ответ верный');
   await sheet.getByTestId('report-send').click();
   await expect(page.getByTestId('report-thanks')).toContainText('Спасибо! Посмотрим');
@@ -1956,6 +2033,26 @@ test('сообщить об ошибке: флажок на упражнении
   await expect(page.getByTestId('learn-book').getByTestId('report-flag').first()).toBeVisible();
   // у каждой задачи учебника — своя кнопка «Сообщить об ошибке»
   expect(await page.getByTestId('learn-book').getByTestId('tb-report').count()).toBeGreaterThanOrEqual(3);
+  // флажок страницы учебника — про теорию, а не про ответ
+  await page.getByTestId('learn-book').getByTestId('report-flag').first().click();
+  await expect(page.getByTestId('report-sheet').locator('[data-reason="theory"]')).toBeVisible();
+  await expect(page.getByTestId('report-sheet').locator('[data-reason="accept"]')).toHaveCount(0);
+  await page.getByTestId('report-sheet').getByRole('button', { name: 'Закрыть' }).click();
+  // выделили фразу в тексте — внизу кнопка «Сообщить об ошибке в выделенном», цитата уходит с сообщением
+  const quote = await page.getByTestId('learn-book').evaluate((root) => {
+    const p = [...root.querySelectorAll('.ln-textbook p')].find((x) => x.textContent.trim().length > 40);
+    const node = [...p.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim().length > 12);
+    const r = document.createRange(); r.setStart(node, 0); r.setEnd(node, 12);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    return sel.toString().replace(/\s+/g, ' ').trim();
+  });
+  await page.getByTestId('report-quote-btn').click();
+  await expect(page.getByTestId('report-quote')).toContainText(quote);
+  await page.getByTestId('report-sheet').locator('[data-reason="unclear"]').click();
+  await page.getByTestId('report-send').click();
+  await expect(page.getByTestId('report-thanks')).toBeVisible();
+  expect(sent[1]).toMatchObject({ reason: 'unclear', context: { screen: 'textbook', quote } });
+  await page.getByRole('button', { name: 'Продолжить' }).click();
 
   // владелец: список сообщений, фильтр и «скопировать всё»
   await openTab(page, 'profile');
@@ -2059,14 +2156,25 @@ test('вход: программа — вступительный тест, су
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
   await expect(shop.getByTestId('rate-chart')).toBeVisible();
+  // подсказка графика курса у правого края не расширяет страницу (иначе телефон перемасштабирует её и панель внизу «уезжает»)
+  const chartBox = await shop.getByTestId('rate-chart').boundingBox();
+  for (const fx of [0.02, 0.5, 0.9, 0.99]) {
+    await shop.getByTestId('rate-chart').hover({ position: { x: Math.round(chartBox.width * fx), y: 30 } });
+    await expect(shop.getByTestId('rate-tip')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `подсказка на ${fx}`).toBe(true);
+  }
+  // страховка серии — полис: первый взнос сразу, дальше по неделям; расторгнуть можно в любой момент
   const coins = Number(await shop.getByTestId('shop-balance').innerText().then((t) => t.replace(/\D/g, '')));
-  await shop.getByTestId('buy-freeze').click();
-  await expect(shop.getByTestId('shop-msg')).toContainText('Полис страховки серии');
-  await expect(shop.getByTestId('freeze-owned')).toHaveText('1');
-  // монеты списаны (баланс может и подрасти: первая покупка открывает печать)
-  const spent = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.spent || {}).reduce((a, b) => a + b, 0));
-  expect(spent).toBeGreaterThan(0);
-  expect(coins).toBeGreaterThan(spent);
+  await shop.getByTestId('policy-take').click();
+  await expect(shop.getByTestId('shop-msg')).toContainText('Полис оформлен');
+  await expect(shop.getByTestId('policy-on')).toBeVisible();
+  await expect(shop.getByTestId('policy-stats')).toContainText('Всего взносов: 8');
+  const premiums = await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.premiums || {}));
+  expect(premiums).toEqual([8]);
+  expect(coins).toBeGreaterThan(8);
+  await shop.getByTestId('policy-cancel').click();
+  await expect(shop.getByTestId('shop-freeze')).toHaveAttribute('data-policy', 'off');
+  await expect(shop.getByTestId('policy-take')).toBeVisible();
   await expectNoSidewaysScroll(page);
 
   // профиль: программа с ответами регистрации и печати-достижения
@@ -2358,7 +2466,9 @@ test('новые глаголы: «Откройте сами», живая мо�
   await expect(path.getByTestId('path-rec')).toHaveCount(1);
   await expect(pathNode(page, 'sd-i1').locator('xpath=..').getByTestId('path-rec')).toHaveCount(1);
   await expect(path).toContainText('Слабое место');
-  // живая модель юнита пока пуста: первая деталь — в первом уроке
+  // живая модель юнита пока пуста: первая деталь — в первом уроке; на телефоне модель свёрнута строкой
+  const fold = path.getByTestId('model-fold').first();
+  if (await fold.isVisible()) { await expect(fold).toContainText('Соберётся по ходу юнита'); await fold.click(); }
   const model = path.locator('[data-testid=unit-model]').first();
   await expect(model).toHaveAttribute('data-open', '0');
   await expect(model.getByTestId('model-empty')).toContainText('Знакомство: спрос');
@@ -2526,6 +2636,50 @@ test('учебник: калькулятор по полям а → б → в, �
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('Путь: открывается на рекомендованном уроке, пройденный юнит — строкой, место на карте ведёт к уроку, «К карте»', async ({ page, isMobile }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1'];
+    if (!localStorage.getItem('ems-textbook-v1')) localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: {
+      lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])), claimed: { 'c:scarcity': at }, coins: { '2026-01-01': 400 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  // сразу на рекомендованном уроке: он на экране, карта уехала вверх
+  const rec = path.locator('[data-testid=path-lesson][data-rec="true"]');
+  await expect(rec).toHaveAttribute('data-lesson', 'sd-w');
+  await expect(rec).toBeInViewport();
+  // пройденный юнит с открытым сундуком — одна строка, не выше 80 px; «Уроки: N» разворачивает
+  const sc = path.locator('[data-testid=path-unit][data-unit="scarcity"]');
+  await expect(sc).toHaveAttribute('data-folded', 'true');
+  expect((await sc.boundingBox()).height).toBeLessThan(80);
+  // кнопка «К карте» — пока карта за верхом экрана; касание возвращает к карте
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(page.getByTestId('to-map')).toBeVisible();
+  await page.getByTestId('to-map').click();
+  await expect(path.getByTestId('atlas')).toBeInViewport();
+  await expect(page.getByTestId('to-map')).toHaveCount(0);
+  // место на карте — к уроку этого юнита, который советует Путь
+  await path.locator('[data-testid=atlas-place][data-unit="supply-demand"]').click();
+  await expect(rec).toBeInViewport();
+  if (isMobile) {
+    // телефон: живая модель — свёрнутой строкой, раскрывается касанием
+    const fold = path.getByTestId('model-fold');
+    await expect(fold).toHaveCount(1);
+    expect((await fold.boundingBox()).height).toBeLessThan(80);
+    await expect(path.getByTestId('unit-model')).toHaveCount(0);
+    await fold.click();
+    await expect(path.getByTestId('unit-model')).toBeVisible();
+    await path.getByTestId('model-fold-close').click();
+    await expect(path.getByTestId('unit-model')).toHaveCount(0);
+  }
+  await sc.getByTestId('unit-fold').click();
+  await expect(sc).toHaveAttribute('data-folded', 'false');
+  await expect(sc.getByTestId('path-lesson')).toHaveCount(14);
   expect(errors).toEqual([]);
 });
 

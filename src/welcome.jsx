@@ -88,7 +88,7 @@ function Hello({ go }) {
         <Guilloche height={26} />
         <div style={{ margin: '12px 0 4px' }}><Rosette size={150} opacity={0.4}><Mascot mood="wave" size={92} /></Rosette></div>
         {/* один знак и одно начертание названия с «Миром» (src/logo.jsx) */}
-        <h1 className="ds-h1" style={{ fontSize: 34, letterSpacing: '.02em', display: 'flex', alignItems: 'center', gap: 10 }} data-testid="brand"><InflatiaMark size={40} title={null} />Инфлатия</h1>
+        <h1 className="ds-h1" style={{ fontSize: 34, letterSpacing: '.02em', display: 'flex', alignItems: 'center', gap: 10 }} data-testid="brand"><InflatiaMark size={40} title={null} />Инфляция</h1>
         <div className="ds-eyebrow" style={{ marginTop: 6 }}>экономика пять минут в день</div>
         <ul data-testid="welcome-values" style={{ listStyle: 'none', padding: 0, margin: '14px 0', textAlign: 'left', maxWidth: 380, display: 'grid', gap: 8 }}>
           {VALUE_POINTS.map(([t, d]) => (

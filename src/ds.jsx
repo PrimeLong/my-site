@@ -84,7 +84,7 @@ export const DS_CSS = `
   .ds-opt { display: block; width: 100%; text-align: left; padding: 13px 14px 13px 16px; margin: 8px 0; font: 16px/1.45 var(--ds-sans); color: var(--ds-ink);
     background: var(--ds-card); border: 1px solid var(--ds-rule2); border-left: 4px solid var(--ds-rule2); border-radius: 3px; cursor: pointer; transition: border-color .12s, background .12s, transform .06s; }
   .ds-opt:active:not(:disabled) { transform: translateY(1px); }
-  .ds-opt[aria-pressed="true"] { border-color: var(--ds-sel-rule); border-left-color: var(--u); background: var(--ds-sel); color: var(--ds-sel-ink); }
+  .ds-opt[aria-pressed="true"], .ds-opt[aria-checked="true"] { border-color: var(--ds-sel-rule); border-left-color: var(--u); background: var(--ds-sel); color: var(--ds-sel-ink); }
   .ds-opt.right { border-color: var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ink); }
   .ds-opt.wrong { border-color: var(--ds-sel-rule); border-style: dashed; background: color-mix(in srgb, var(--ds-sel-rule) 10%, var(--ds-card)); color: var(--ds-ink); }
   .ds-opt:disabled { cursor: default; }

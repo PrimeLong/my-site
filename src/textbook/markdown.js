@@ -154,7 +154,11 @@ export function parseBlocks(text) {
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
         const wordLines = kind === 'words' ? body.filter((l) => /^-\s/.test(l.trim())) : [];
-        const terms = wordLines.map((l) => { const t = l.trim().slice(2); const k = t.indexOf(':'); return { term: t.slice(0, k).trim(), text: t.slice(k + 1).trim() }; });
+        // «- термин: определение | пример» — пример только на карточке колоды, не в плитках и парах
+        const terms = wordLines.map((l) => {
+          const t = l.trim().slice(2); const k = t.indexOf(':'); const def = t.slice(k + 1); const bar = def.indexOf('|');
+          return { term: t.slice(0, k).trim(), text: (bar < 0 ? def : def.slice(0, bar)).trim(), ...(bar < 0 ? {} : { example: def.slice(bar + 1).trim() }) };
+        });
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), hard: split(hard),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
           kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}), ...(discover ? { discover } : {}),
@@ -352,7 +356,9 @@ function parseExercise(kind, attrs, body) {
   const isTrap = (l) => l.trim().startsWith('!!');
   const special = (l) => isOpt(l) || isTrap(l);
   const prompt = parseBlocks(main.filter((l) => !special(l)).join('\n'));
-  const why = (t) => { const k = t.indexOf('|'); return k < 0 ? [t.trim(), null] : [t.slice(0, k).trim(), parseInline(t.slice(k + 1).trim())]; };
+  // «|» внутри формулы ($|E|$) — модуль, а не разделитель «вариант | почему»
+  const bar = (t) => { let m = false; for (let k = 0; k < t.length; k += 1) { if (t[k] === '$' && t[k - 1] !== '\\') m = !m; else if (t[k] === '|' && !m) return k; } return -1; };
+  const why = (t) => { const k = bar(t); return k < 0 ? [t.trim(), null] : [t.slice(0, k).trim(), parseInline(t.slice(k + 1).trim())]; };
   const ex = { type: 'ex', kind, id: attrs.id, attrs, prompt, explain, ...(attrs.context ? { context: parseInline(attrs.context) } : {}) };
   const opts = main.filter(isOpt).map((l) => { const t = l.trim(); const [text, w] = why(t.slice(1).trim()); return { raw: text, correct: t[0] === '+', why: w }; });
   const traps = main.filter(isTrap).map((l) => { const [v, w] = why(l.trim().replace(/^!!\s*/, '')); return { key: v, why: w }; });

@@ -18,8 +18,13 @@ export const REASONS = [
   ['answer', 'Ошибка в ответе'], ['accept', 'Мой ответ должен быть засчитан'], ['typo', 'Опечатка или ошибка в тексте'],
   ['unclear', 'Непонятно объяснено'], ['broken', 'Не работает'],
 ];
+// в учебнике — про теорию: ответа ученика там нет, а ошибиться может пример, формула или график
+export const THEORY_REASONS = [
+  ['theory', 'Ошибка в теории или примере'], ['formula', 'Ошибка в формуле или на графике'], ['typo', 'Опечатка или ошибка в тексте'],
+  ['unclear', 'Непонятно объяснено'], ['broken', 'Не работает'],
+];
 // «filter» — «Это ошибка фильтра» с экрана регистрации: в списке есть, в выборе причины — нет
-const REASON_BY_ID = { ...Object.fromEntries(REASONS), filter: 'Фильтр не пропустил имя' };
+const REASON_BY_ID = { ...Object.fromEntries(REASONS), ...Object.fromEntries(THEORY_REASONS), filter: 'Фильтр не пропустил имя' };
 // eslint-disable-next-line no-undef
 export const BUILD = typeof __BUILD__ !== 'undefined' ? __BUILD__ : 'dev';
 
@@ -31,6 +36,8 @@ export function flatText(x) {
   if (typeof x === 'object') {
     // текст, формула, термин со словарной подсказкой — всё, у чего есть строка v
     if (typeof x.v === 'string') return x.v;
+    // ссылка и термин: подпись, а без неё — цель («[[term:tea]]» → tea), иначе в жалобе дыра
+    if (x.t === 'link') return x.label || x.target || '';
     return Object.entries(x).filter(([k]) => k !== 'id' && k !== 'type' && k !== 't').map(([, v]) => (typeof v === 'object' ? flatText(v) : '')).filter(Boolean).join(' ');
   }
   return '';
@@ -51,7 +58,7 @@ export function exerciseContext(inst, { lesson = null, resp = null, correct = ''
   };
 }
 
-function ReportSheet({ context, onClose }) {
+function ReportSheet({ context, onClose, reasons = REASONS }) {
   const [reason, setReason] = useState(null);
   const [comment, setComment] = useState('');
   const [state, setState] = useState({ busy: false, done: false, error: '' });
@@ -78,13 +85,18 @@ function ReportSheet({ context, onClose }) {
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-            <Heading level={2} title="Сообщить об ошибке" sub="Что не так? Упражнение, ваш ответ и устройство приложатся сами." />
+            <Heading level={2} title="Сообщить об ошибке" sub={reasons === THEORY_REASONS ? 'Что не так в теории? Страница учебника и устройство приложатся сами.' : 'Что не так? Упражнение, ваш ответ и устройство приложатся сами.'} />
             <IconButton label="Закрыть" icon={X} onClick={onClose} size={22} />
           </div>
+          {context.quote
+            ? <blockquote className="rp-quote" data-testid="report-quote"><span className="ds-eyebrow">Выделенный текст</span>«{context.quote}»</blockquote>
+            : reasons === THEORY_REASONS && <p className="ds-sub" style={{ fontSize: 14, margin: '8px 0 0' }}>Можно выделить фразу в учебнике — она приложится к сообщению.</p>}
           <div role="radiogroup" aria-label="Причина" style={{ display: 'grid', gap: 6, margin: '12px 0' }}>
-            {REASONS.map(([id, label]) => (
-              <button key={id} type="button" role="radio" aria-checked={reason === id} className="ds-opt" style={{ margin: 0 }} data-reason={id}
-                onClick={() => { Audio.play('tick'); setReason(id); }}>{label}</button>
+            {reasons.map(([id, label]) => (
+              <button key={id} type="button" role="radio" aria-checked={reason === id} className="ds-opt rp-reason" style={{ margin: 0 }} data-reason={id}
+                onClick={() => { Audio.play('tick'); setReason(id); }}>
+                <span>{label}</span>{reason === id && <Check size={18} aria-hidden="true" />}
+              </button>
             ))}
           </div>
           <label className="ds-label">Комментарий — необязательно
@@ -100,7 +112,7 @@ function ReportSheet({ context, onClose }) {
 }
 
 /* Флажок. context — функция: контекст собирается в момент нажатия (ответ уже введён). */
-export function ReportFlag({ context, label = 'Сообщить об ошибке', style, withText = false }) {
+export function ReportFlag({ context, label = 'Сообщить об ошибке', style, withText = false, reasons = REASONS }) {
   const [open, setOpen] = useState(null);
   const btn = useRef(null);
   /* шторка — в корень экрана дизайн-системы (там её цвета и шрифты): внутри анимированной
@@ -112,8 +124,48 @@ export function ReportFlag({ context, label = 'Сообщить об ошибк�
         onClick={(e) => { e.stopPropagation(); Audio.play('tick'); setOpen(context()); }}>
         <Flag size={16} aria-hidden="true" />{withText && <span className="ln-flag-text">{label}</span>}
       </button>
-      {open && createPortal(<div className="ln-report-root"><ReportSheet context={open} onClose={() => setOpen(null)} /></div>, root || document.body)}
+      {open && createPortal(<div className="ln-report-root"><ReportSheet context={open} reasons={reasons} onClose={() => setOpen(null)} /></div>, root || document.body)}
     </>
+  );
+}
+/* Цитата из учебника: пока в тексте страницы что-то выделено, внизу экрана — кнопка
+   «Сообщить об ошибке» с этим текстом. Выделение запоминаем по selectionchange: нажатие на
+   кнопку (особенно пальцем) может его сбросить раньше, чем сработает onClick. */
+const selectedIn = (scope) => {
+  try {
+    const sel = window.getSelection();
+    const text = sel ? sel.toString().replace(/\s+/g, ' ').trim() : '';
+    if (text.length < 2 || !sel.anchorNode) return '';
+    const el = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+    return el && el.closest(scope) ? text.slice(0, 500) : '';
+  } catch { return ''; }
+};
+export function useSelectedText(scope) {
+  const [text, setText] = useState('');
+  useEffect(() => {
+    const on = () => setText(selectedIn(scope));
+    document.addEventListener('selectionchange', on);
+    return () => document.removeEventListener('selectionchange', on);
+  }, [scope]);
+  return text;
+}
+export function QuoteReport({ context, scope = '.ln-textbook' }) {
+  const quote = useSelectedText(scope);
+  const [open, setOpen] = useState(null);
+  const host = useRef(null);
+  const root = host.current && host.current.closest('.ds');
+  return (
+    <span ref={host} style={{ display: 'contents' }}>
+      {quote && !open && createPortal(
+        <div className="rp-quote-bar">
+          <button type="button" className="ds-btn" data-testid="report-quote-btn"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => { Audio.play('tick'); setOpen({ ...context(), quote }); }}>
+            <Flag size={16} aria-hidden="true" style={{ verticalAlign: -3, marginRight: 6 }} />Сообщить об ошибке в выделенном
+          </button>
+        </div>, root || document.body)}
+      {open && createPortal(<div className="ln-report-root"><ReportSheet context={open} reasons={THEORY_REASONS} onClose={() => setOpen(null)} /></div>, root || document.body)}
+    </span>
   );
 }
 export const REPORT_CSS = `
@@ -122,6 +174,11 @@ export const REPORT_CSS = `
   .ln-flag:has(.ln-flag-text) { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 6px 10px; margin: 0; line-height: 1; }
   .ln-flag-text { font: 600 12.5px/1 var(--ds-sans); }
   .ln-report-root { text-transform: none; letter-spacing: normal; font: 400 16px/1.45 var(--ds-sans); color: var(--ds-ink); text-align: left; }
+  .rp-reason { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .rp-quote { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--u); background: var(--ds-card2); font: italic 15px/1.45 var(--ds-serif); color: var(--ds-ink); max-height: 120px; overflow: auto; }
+  .rp-quote .ds-eyebrow { display: block; font-style: normal; margin-bottom: 2px; }
+  .rp-quote-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: none; width: max-content; max-width: calc(100% - 32px); }
+  .rp-quote-bar .ds-btn { box-shadow: 0 6px 18px rgba(0,0,0,.25); white-space: normal; }
   .rp-item { border-top: 1px dotted var(--ds-rule2); padding: 10px 0; }
   .rp-item:first-of-type { border-top: none; }
   .rp-ctx { font: 12.5px/1.45 var(--ds-mono); color: var(--ds-ink2); white-space: pre-wrap; word-break: break-word; margin-top: 6px; }
@@ -130,7 +187,7 @@ export const REPORT_CSS = `
 // одно сообщение текстом — для «скопировать всё»
 const fmtDate = (t) => new Date(t).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const CTX_LABEL = { screen: 'экран', mode: 'режим', kind: 'вид', lesson: 'урок', unit: 'юнит', exercise: 'упражнение', variant: 'вариант', step: 'шаг', page: 'страница',
-  prompt: 'условие', numbers: 'числа', answer: 'ответ ученика', correct: 'правильный ответ', build: 'сборка', device: 'устройство', viewport: 'экран, px' };
+  quote: 'цитата', prompt: 'условие', numbers: 'числа', answer: 'ответ ученика', correct: 'правильный ответ', build: 'сборка', device: 'устройство', viewport: 'экран, px' };
 export function reportText(r) {
   const lines = [`[${r.status === 'done' ? 'разобрано' : 'новое'}] ${fmtDate(r.at)} · ${r.name || r.login} (${r.login}) · ${REASON_BY_ID[r.reason] || r.reason}`];
   if (r.comment) lines.push(`комментарий: ${r.comment}`);

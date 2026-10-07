@@ -108,18 +108,34 @@ export function Rosette({ size = 96, color = 'var(--u-ink)', opacity = 0.7, chil
 
 /* Оттиск печати: двойной круг, надпись по кругу, в середине — значок или короткий текст.
    Печати — награды и отметки «пройдено». */
+/* Печать: двойное кольцо, надпись по кругу и знак в середине. Надпись растянута ровно на
+   окружность (textLength): без обрыва на стыке и без наезда букв; при короткой надписи она
+   повторяется через звёздочки. Поворот — внутри рисунка, а не CSS-поворотом всей картинки:
+   так края букв и колец сглаживаются, а не идут лесенкой. Знак в середине — тоже SVG. */
+const STAMP_R = 36.5;
+const STAMP_C = 2 * Math.PI * STAMP_R;
 export function Stamp({ text = 'ПРОЙДЕНО', center = null, color = 'var(--ds-bad)', size = 76, rotate = -12, style, testid }) {
   const id = `st${React.useId().replace(/:/g, '')}`;
+  // ширина буквы жирной антиквы 11 px — около 7,4 px; повторов столько, чтобы буквы шли плотно
+  const unit = `${text} ★ `;
+  const reps = Math.max(1, Math.round(STAMP_C / (unit.length * 7.4)));
+  // длинная надпись не помещается и одним разом — мельче шрифт, а не сжатые буквы без пробелов
+  const fontSize = Math.min(11, (11 * STAMP_C) / (reps * unit.length * 7.4));
   return (
-    <span style={{ display: 'inline-block', width: size, height: size, transform: `rotate(${rotate}deg)`, color, opacity: 0.9, ...style }} data-testid={testid}>
-      <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={text}>
-        <defs><path id={id} d="M50,50 m-38,0 a38,38 0 1,1 76,0 a38,38 0 1,1 -76,0" /></defs>
-        <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" strokeWidth="3.2" />
-        <circle cx="50" cy="50" r="31" fill="none" stroke="currentColor" strokeWidth="1.4" />
-        <text fill="currentColor" style={{ font: '700 11.5px var(--ds-serif)', letterSpacing: '.18em' }}><textPath href={`#${id}`} startOffset="0">{`${text} · ${text} ·`}</textPath></text>
-        <foreignObject x="24" y="24" width="52" height="52">
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'currentColor', font: '700 13px var(--ds-mono)' }}>{center}</div>
-        </foreignObject>
+    <span style={{ display: 'inline-block', width: size, height: size, color, ...style }} data-testid={testid}>
+      <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={text} shapeRendering="geometricPrecision" textRendering="geometricPrecision">
+        <defs><path id={id} d={`M50,50 m-${STAMP_R},0 a${STAMP_R},${STAMP_R} 0 1,1 ${2 * STAMP_R},0 a${STAMP_R},${STAMP_R} 0 1,1 -${2 * STAMP_R},0`} /></defs>
+        <g transform={`rotate(${rotate} 50 50)`} opacity="0.92">
+          <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" strokeWidth="0.8" />
+          <circle cx="50" cy="50" r="29.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+          <text fill="currentColor" fontFamily="var(--ds-serif)" fontWeight="700" fontSize={fontSize.toFixed(2)} dominantBaseline="middle">
+            <textPath href={`#${id}`} startOffset="0" textLength={STAMP_C - 0.5} lengthAdjust="spacing">{unit.repeat(reps).trim()} ★</textPath>
+          </text>
+          {typeof center === 'string' || typeof center === 'number'
+            ? <text x="50" y="51" textAnchor="middle" dominantBaseline="middle" fill="currentColor" fontFamily="var(--ds-mono)" fontWeight="700" fontSize="15">{center}</text>
+            : center && <svg x="38" y="38" width="24" height="24" viewBox="0 0 24 24" overflow="visible" style={{ color: 'currentColor' }}><g transform="translate(2 2)">{center}</g></svg>}
+        </g>
       </svg>
     </span>
   );
@@ -279,7 +295,7 @@ export function Engraving({ kind = 'store', alive = false, size = 120, color = '
       style={{ color: ink, display: 'block', flexShrink: 0 }}>{inner}</svg>
   );
 }
-// та же гравюра внутри другого рисунка (карта Инфлатии): x, y — левый верхний угол, scale — масштаб
+// та же гравюра внутри другого рисунка (карта Инфляции): x, y — левый верхний угол, scale — масштаб
 export function EngravingG({ kind = 'store', alive = false, x = 0, y = 0, scale = 1, color = 'var(--u)' }) {
   const { inner, ink } = useEngraving(kind, alive, color);
   return <g transform={`translate(${x},${y}) scale(${scale})`} style={{ color: ink }} data-kind={kind} data-alive={String(alive)}>{inner}</g>;
@@ -290,7 +306,7 @@ export function Clipping({ issue, rubric, children, testid }) {
   return (
     <div style={{ filter: 'drop-shadow(0 2px 3px var(--ds-shade))', transform: 'rotate(-.6deg)' }} data-testid={testid}>
       <div className="ds-clip">
-        <div className="ds-clip-mast">Вестник Инфлатии</div>
+        <div className="ds-clip-mast">Вестник Инфляции</div>
         <div className="ds-clip-meta"><span>{issue}</span><span>{rubric}</span></div>
         {children}
       </div>

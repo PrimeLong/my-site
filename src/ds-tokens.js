@@ -33,7 +33,7 @@ export const DS_SPACE = [0, 4, 8, 12, 16, 24, 32];
 export const DS_RADIUS = { s: 4, m: 8, l: 14 };
 export const DS_SIZE = { xs: 12.5, s: 14, m: 16, l: 18, xl: 22, xxl: 28, hero: 34 };
 
-/* Юниты — места на карте Инфлатии, по порядку курса дорога идёт спиралью: из Мастерской
+/* Юниты — места на карте Инфляции, по порядку курса дорога идёт спиралью: из Мастерской
    по часовой вдоль берега, потом внутренним кольцом к центру — без пересечений. Цвет — как у купюры своего достоинства (белый текст
    на нём читается с контрастом не ниже 4.5:1), здание — гравюра (src/ds.jsx, Engraving),
    region — округ карты, at — точка места на карте (поле 1000×720 из src/lib/mapgeo.js). */
@@ -58,8 +58,8 @@ export const PLACES = {
   policy: { place: 'Центробанк', building: 'bank', color: '#6B4357', region: 'capital', at: [600, 420], note: 'ставка и бюджет' },
   growth: { place: 'Электростанция', building: 'factory', color: '#93503A', region: 'port', at: [485, 480], note: 'модель Солоу' },
   'open-economy': { place: 'Таможня', building: 'port', color: '#735030', region: 'port', at: [360, 500], note: 'курс и торговля' },
-  'public-debt': { place: 'Министерство', building: 'ministry', color: '#7A4A5E', region: 'capital', at: [500, 385], note: 'долг государства' },
-  inequality: { place: 'Рабочий квартал', building: 'store', color: '#6A4838', region: 'periphery', at: [400, 410], note: 'доходы и бедность' },
+  'public-debt': { place: 'Министерство', building: 'ministry', color: '#7A4A5E', region: 'capital', at: [400, 410], note: 'долг государства' },
+  inequality: { place: 'Рабочий квартал', building: 'store', color: '#6A4838', region: 'periphery', at: [500, 385], note: 'доходы и бедность' },
 };
 export const placeOf = (unitId) => PLACES[unitId] || { place: 'Город', building: 'store', color: '#6B4357', region: 'capital', at: [496, 372], note: '' };
 export const unitColor = (unitId) => placeOf(unitId).color;

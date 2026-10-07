@@ -73,7 +73,17 @@ const OUTFIT = {
   paper: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><circle cx="54" cy="39" r="3.2" fill="#E8C766" /><path d="M50 26 L62 28.5 L59.5 46 L47.5 43.5 Z" fill="#F4ECD8" /><path d="M51 29.5 L60 31.4 M50.6 32.6 L59.4 34.5 M50.2 35.7 L58.9 37.6 M49.8 38.8 L58.4 40.7" stroke="#8A7A5C" strokeWidth=".8" /><path d="M51.2 27.6 L56 28.6" stroke="#A0372A" strokeWidth="1.6" /></g>,
   abacus: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><rect x="49" y="29" width="13" height="17" rx="1.5" fill="#B9874E" /><rect x="50.6" y="30.6" width="9.8" height="13.8" fill="#F4ECD8" />{[33.5, 37.5, 41.5].map((y) => <g key={y}><path d={`M50.6 ${y} H60.4`} stroke="#6B4E32" strokeWidth=".7" /><circle cx="52.6" cy={y} r="1.1" fill="#A0372A" strokeWidth=".5" /><circle cx="55" cy={y} r="1.1" fill="#A0372A" strokeWidth=".5" /><circle cx="58.6" cy={y} r="1.1" fill="#3E6FA8" strokeWidth=".5" /></g>)}<circle cx="51" cy="44.5" r="3" fill="#E8C766" /></g>,
   briefcase: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M52.5 35 Q52.5 31.5 55.5 31.5 Q58.5 31.5 58.5 35" fill="none" strokeWidth="1.4" /><rect x="48" y="35" width="15" height="12" rx="1.6" fill="#7A4A2A" /><path d="M48 39.5 H63" stroke="#4E2E18" /><rect x="54.3" y="38.4" width="2.4" height="2.4" fill="#E3B53C" strokeWidth=".6" /><circle cx="55.5" cy="33" r="2.6" fill="#E8C766" /></g>,
-  cane: <g stroke={INK} strokeWidth="1" strokeLinejoin="round"><path d="M56 30 L58.5 63" stroke="#3A2A1A" strokeWidth="2.2" strokeLinecap="round" /><circle cx="55.6" cy="28.4" r="3.2" fill="#E3B53C" /><circle cx="54.5" cy="27.4" r="1" fill="#FBE7A1" stroke="none" /><circle cx="56.5" cy="37" r="3" fill="#E8C766" /></g>,
+  /* трость: лакированное древко с бликом, металлический наконечник, литой набалдашник-«луковица»
+     с воротничком; рука держит древко ниже набалдашника — не путается с ним */
+  cane: <g stroke={INK} strokeWidth="1" strokeLinejoin="round">
+    <path d="M56.3 29 L59.3 63" stroke={INK} strokeWidth="3.6" strokeLinecap="round" /><path d="M56.3 29 L59.3 63" stroke="#7A4A26" strokeWidth="2.2" strokeLinecap="round" />
+    <path d="M56.6 33 L58.9 59" stroke="#C08A5A" strokeWidth=".7" strokeLinecap="round" />
+    <path d="M58.9 60.6 L59.4 64.2" stroke={INK} strokeWidth="3.2" strokeLinecap="round" /><path d="M58.9 60.6 L59.4 64.2" stroke="#C9CDD2" strokeWidth="1.9" strokeLinecap="round" />
+    <path d="M53.4 24.6 Q53 19.6 56 18.6 Q59 19.6 58.6 24.6 Q58.2 27 56 27.4 Q53.8 27 53.4 24.6 Z" fill="#E3B53C" />
+    <path d="M54.2 27.2 L57.8 27.2 L57.6 29.4 L54.4 29.4 Z" fill="#94700F" strokeWidth=".8" />
+    <path d="M55 20.6 Q54.4 22.6 54.7 24.6" fill="none" stroke="#FBE7A1" strokeWidth="1" strokeLinecap="round" />
+    <circle cx="57.6" cy="41" r="3" fill="#E8C766" />
+  </g>,
   // шар «Инфляция» на нитке: то надувается, то сдувается — как цены
   balloon: <g stroke={INK} strokeLinejoin="round"><path d="M54.5 41 Q51 33 56 26 Q60 20 57 15.5" fill="none" strokeWidth=".9" /><circle cx="54.5" cy="42" r="3.2" fill="#E8C766" strokeWidth="1" /><g className="infla-balloon"><ellipse cx="57" cy="3.5" rx="9.5" ry="11" fill="#C8442F" strokeWidth="1.1" /><path d="M55.4 14.3 L57 16 L58.6 14.3 Z" fill="#A0372A" strokeWidth=".8" /><path d="M51 -2 Q52.5 -5.5 56 -6" fill="none" stroke="#FFD9CC" strokeWidth="1.8" strokeLinecap="round" /><text x="57" y="7.8" textAnchor="middle" fontSize="11" fontWeight="700" fontFamily="sans-serif" fill="#FFF3E6" stroke="none">%</text></g></g>,
   // рамки — кольцо вокруг монеты

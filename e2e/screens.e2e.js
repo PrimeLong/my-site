@@ -315,7 +315,7 @@ for (const theme of ['light', 'dark']) {
       await page.getByTestId('placement-start').click();
       await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'placement');
       await shot(page, '41-placement', theme);
-      for (let i = 0; i < 20 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) { await answer(page); await next(page); }
+      for (let i = 0; i < 40 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) { await answer(page); await next(page); }
       await expect(page.getByTestId('lesson-result')).toBeVisible();
       await shot(page, '42-placement-result', theme, { wait: 1500 });
       await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -423,6 +423,8 @@ for (const theme of ['light', 'dark']) {
         localStorage.setItem('ems-textbook-v1', JSON.stringify(p));
       });
       await page.reload({ waitUntil: 'networkidle' });
+      const fold = page.getByTestId('model-fold').first();
+      if (await fold.isVisible()) await fold.click();
       const model = page.locator('[data-testid=unit-model]').first();
       await model.scrollIntoViewIfNeeded();
       await shot(page, '58-unit-model', theme);
@@ -461,6 +463,8 @@ for (const theme of ['light', 'dark']) {
     });
 
     test(`практика, профиль, справочник, мир, витрина (${theme})`, async ({ page }) => {
+      // три десятка снимков с проверкой axe — на медленной машине дольше минуты
+      test.setTimeout(120_000);
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
       const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();

@@ -57,6 +57,7 @@ export const PLAY_CSS = `
   .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
   .lp-word-def { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 18.5px; line-height: 1.45; }
   .lp-word-def.open { animation: lp-def .35s ease-out both; }
+  .lp-word-ex { display: block; margin-top: 12px; font-size: 15px; line-height: 1.4; color: var(--ds-ink2); }
   @keyframes lp-def { from { opacity: 0; transform: translateY(6px); filter: blur(3px) } to { opacity: 1; transform: none; filter: none } }
   .lp-word-hide { width: 100%; border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 18px 12px; color: var(--ds-ink3); font-size: 15px; background: none; cursor: pointer; font-family: inherit; }
   .lp-word-hint .fine { display: none; }
@@ -66,8 +67,13 @@ export const PLAY_CSS = `
   .lp-word-dots i.know { background: var(--u); }
   .lp-word-dots i.again { background: none; box-shadow: inset 0 0 0 2px var(--ds-gold); }
   .lp-word-dots i.cur { box-shadow: 0 0 0 2px var(--ds-paper), 0 0 0 3.5px var(--u); }
-  .lp-calc { max-width: 320px; margin: 0 auto; }
-  .lp-calc-screen { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 8px; text-align: right; }
+  .lp-calc { max-width: 340px; margin: 0 auto; }
+  .lp-calc-screen { display: flex; align-items: baseline; gap: 8px; border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 6px; min-height: 42px; }
+  .lp-calc-expr { flex: 1; min-width: 0; font-size: 16px; color: var(--ds-ink2); overflow-wrap: anywhere; }
+  .lp-calc-val { font-size: 21px; font-weight: 700; white-space: nowrap; }
+  .lp-calc-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .lp-calc-keys .ds-key { padding: 9px 0; font-size: 18px; }
+  .lp-calc-use { grid-column: span 3; min-height: 0; padding: 8px 6px; }
   .lp-op { color: var(--u-ink); font-weight: 700; }
   .lp-game-rules { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; font-size: 13.5px; margin-top: 4px; }
   .lp-game-rules span { display: inline-flex; align-items: center; gap: 4px; }
@@ -621,6 +627,7 @@ const HAIR = {
 };
 // портрет героя: лицо, причёска его цвета и значок его дела
 export function Portrait({ who, size = 64 }) {
+  const clip = `pt-${React.useId().replace(/:/g, '')}`;
   const c = CAST[who];
   if (!c) return null;
   const Icon = CAST_ICON[c.icon] || Coffee;
@@ -633,11 +640,19 @@ export function Portrait({ who, size = 64 }) {
       </span>
     );
   }
+  /* погрудный портрет в медальоне: плечи уходят за край круга, а не обрываются ровной линией
+     посреди него; шея соединяет голову с телом */
   return (
     <span style={{ position: 'relative', display: 'inline-block', width: size, height: size, flexShrink: 0 }} data-testid="portrait" data-who={who}>
       <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
-        <circle cx="32" cy="32" r="31" fill={`color-mix(in srgb, ${c.color} 18%, white)`} stroke={c.color} strokeWidth="2" />
-        <path d="M14 58c2-11 9-16 18-16s16 5 18 16" fill={c.color} />
+        <defs><clipPath id={clip}><circle cx="32" cy="32" r="30" /></clipPath></defs>
+        <circle cx="32" cy="32" r="31" fill={`color-mix(in srgb, ${c.color} 18%, white)`} />
+        <g clipPath={`url(#${clip})`}>
+          <path d="M28 36h8v9c-1.3 1.2-2.6 1.8-4 1.8s-2.7-.6-4-1.8z" fill="#E9BFA2" />
+          <path d="M3 72c0-17 12.5-27.5 29-27.5S61 55 61 72z" fill={c.color} />
+          <path d="M26.5 44.8l5.5 5.4 5.5-5.4" fill="none" stroke="#fff" strokeOpacity=".75" strokeWidth="1.6" strokeLinejoin="round" />
+        </g>
+        <circle cx="32" cy="32" r="31" fill="none" stroke={c.color} strokeWidth="2" />
         <circle cx="32" cy="28" r="12.5" fill="#F6D2B8" />
         <path d={HAIR[who] || 'M20 24c1-7 6-10 12-10s11 3 12 10c-4-3-8-4-12-4s-8 1-12 4z'} fill={c.hair} />
         <circle cx="27.5" cy="29" r="1.6" fill="#3B2A20" /><circle cx="36.5" cy="29" r="1.6" fill="#3B2A20" />
@@ -733,7 +748,7 @@ export function WordDeck({ cards, onDone, body, foot }) {
           <div className="lp-word-term">{card.title}</div>
           <div className="lp-word-rule" />
           {open
-            ? <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} /></span></div>
+            ? <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} />{card.example && <span className="lp-word-ex"><b>Пример:</b> <Inline nodes={card.example} /></span>}</span></div>
             : <div className="lp-word-def"><button type="button" className="lp-word-hide" onClick={(e) => { e.stopPropagation(); reveal(); }}>Вспомните, что это значит, — и откройте</button></div>}
         </div>
       </div>
@@ -765,24 +780,23 @@ export function Calculator({ onUse = null, disabled = false, useLabel = 'В от
     else if (k === '√') setExpr((e) => pressRoot(e));
     else setExpr((e) => (e.length < 40 ? e + k : e));
   };
-  const KEYS = [['7', '8', '9', '÷'], ['4', '5', '6', '×'], ['1', '2', '3', '−'], ['0', ',', '^', '+'], ['(', ')', '√', '=']];
+  /* Компактно, чтобы на телефоне задача и калькулятор помещались на один экран: экран в одну
+     строку (выражение слева, результат справа), пять колонок клавиш, «стереть» и «очистить» —
+     в той же сетке, «В ответ» — в последнем ряду. */
+  const KEYS = [['7', '8', '9', '÷', 'del'], ['4', '5', '6', '×', 'C'], ['1', '2', '3', '−', '('], ['0', ',', '^', '+', ')'], ['√', '=']];
+  const LABEL = { '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно', del: 'Стереть символ', C: 'Очистить' };
   return (
     <div className="lp-calc" data-testid="calculator">
       <div className="lp-calc-screen" aria-live="polite">
-        <div className="ds-num" data-testid="calc-expr" style={{ minHeight: 22, fontSize: 17, wordBreak: 'break-all' }}>{expr.replace(/-/g, '−') || ' '}</div>
-        <div className="ds-num" data-testid="calc-value" style={{ fontSize: 24, fontWeight: 700 }}>{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</div>
+        <span className="ds-num lp-calc-expr" data-testid="calc-expr">{expr.replace(/-/g, '−') || ' '}</span>
+        <span className="ds-num lp-calc-val" data-testid="calc-value">{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }} role="group" aria-label="Калькулятор">
+      <div className="lp-calc-keys" role="group" aria-label="Калькулятор">
         {KEYS.flat().map((k) => (
-          <button key={k} type="button" className={`ds-key ${'÷×−+^√='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k}
-            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно' })[k] || k}
-            onClick={() => press(k === '÷' ? '/' : k === '×' ? '*' : k === '−' ? '-' : k)}>{k}</button>
+          <button key={k} type="button" className={`ds-key ${'÷×−+^√='.includes(k) ? 'lp-op' : ''}`} disabled={disabled} data-calc={k} aria-label={LABEL[k] || k}
+            onClick={() => press(k === '÷' ? '/' : k === '×' ? '*' : k === '−' ? '-' : k)}>{k === 'del' ? <Delete size={18} aria-hidden="true" /> : k}</button>
         ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-        <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Стереть символ" disabled={disabled} onClick={() => press('del')}><Delete size={18} /></button>
-        <button type="button" className="ds-key" style={{ flex: 1 }} aria-label="Очистить" data-calc="C" disabled={disabled} onClick={() => press('C')}>C</button>
-        {onUse && <button type="button" className="ds-btn" style={{ flex: 2.6 }} disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{useLabel}</button>}
+        {onUse && <button type="button" className="ds-btn lp-calc-use" disabled={disabled || v == null} data-testid="calc-use" onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{useLabel}</button>}
       </div>
     </div>
   );

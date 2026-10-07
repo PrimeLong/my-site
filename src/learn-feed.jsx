@@ -10,7 +10,7 @@
    Плашка «верно / не совсем» у живого вопроса — в нижней панели урока, как у остальных
    упражнений: её видно без прокрутки. */
 import React, { useEffect, useRef, useState } from 'react';
-import { Headphones, Eye, EyeOff, Newspaper, Radio, Volume2, Play, RotateCcw, ChevronRight } from 'lucide-react';
+import { Headphones, Eye, EyeOff, Volume2, VolumeX, Play, RotateCcw, ChevronRight } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
 import { Guilloche } from './ds-art.jsx';
@@ -23,7 +23,8 @@ import { plainText } from './textbook/content.js';
 export const FEED_CSS = `
   .fd { display: flex; flex-direction: column; gap: 12px; }
   .fd-mast { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card); padding: 0 0 10px; text-align: center; overflow: hidden; }
-  .fd-mast-name { font: 700 12px/1 var(--ds-serif); letter-spacing: .28em; text-transform: uppercase; color: var(--ds-ink2); margin: 10px 0 4px; display: inline-flex; align-items: center; gap: 6px; }
+  /* название издания — строго по центру: разрядка добавляет пробел после последней буквы, слева — такой же */
+  .fd-mast-name { font: 700 12px/1 var(--ds-serif); letter-spacing: .28em; padding-left: .28em; text-transform: uppercase; color: var(--ds-ink2); margin: 10px 0 4px; }
   .fd-mast h2 { margin: 2px 12px 0; }
   .fd-msg { display: flex; gap: 10px; align-items: flex-start; }
   .fd-ava { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--ds-card2); color: var(--u-ink); border: 1.5px solid var(--ds-rule2); }
@@ -40,6 +41,8 @@ export const FEED_CSS = `
   .fd-text { font-size: 16px; line-height: 1.55; }
   .fd-hidden { font: 13.5px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .02em; }
   .fd-voice-note { font: 12px/1.3 var(--ds-sans); color: var(--ds-ink2); margin-top: 2px; }
+  .fd-voice-note .fd-tool { font-size: 12.5px; padding: 6px 4px; }
+  .fd-nolisten { margin-top: 6px; padding: 6px 8px; }
   .fd-tools { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
   .fd-tool { background: none; border: none; padding: 2px 0; font: 700 13px var(--ds-sans); color: var(--u-ink); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
   .fd-word.on { background: color-mix(in srgb, var(--u) 28%, transparent); border-radius: 3px; }
@@ -83,12 +86,26 @@ const splitWords = (text) => {
   const starts = []; words.reduce((pos, w) => { const k = text.indexOf(w, pos); starts.push(k); return k + w.length; }, 0);
   return { words, starts };
 };
+/* «Не могу слушать» (docs/mechanics.md, «Доступность»): голос выключается на час — текст
+   эфира открыт сразу, сам эфир не читается. Срок — на устройстве. */
+export const NO_LISTEN_KEY = 'ems-no-listen-until';
+export const NO_LISTEN_MS = 60 * 60 * 1000;
+const noListenUntil = () => { try { return Number(localStorage.getItem(NO_LISTEN_KEY)) || 0; } catch { return 0; } };
 function useSpeech() {
   const reduced = useReducedMotion();
   const [voices, setVoices] = useState(browserVoices);
   const [broken, setBroken] = useState(false);
-  // voice — есть ли русский голос вообще; какой именно, решает voiceFor по герою
-  const voice = !broken && voices.some((v) => /^ru/i.test(v.lang));
+  const [mutedUntil, setMutedUntil] = useState(noListenUntil);
+  const muted = mutedUntil > Date.now();
+  // canVoice — есть ли русский голос вообще; voice — читаем ли им сейчас (не выключен ли «Не могу слушать»)
+  const canVoice = !broken && voices.some((v) => /^ru/i.test(v.lang));
+  const voice = canVoice && !muted;
+  const setMuted = (on) => {
+    const until = on ? Date.now() + NO_LISTEN_MS : 0;
+    try { if (on) localStorage.setItem(NO_LISTEN_KEY, String(until)); else localStorage.removeItem(NO_LISTEN_KEY); } catch { /* приватный режим */ }
+    if (on) { try { window.speechSynthesis.cancel(); } catch { /* нет голоса */ } }
+    setMutedUntil(until);
+  };
   const [now, setNow] = useState({ key: null, at: -1 });
   const timer = useRef(null);
   useEffect(() => {
@@ -119,7 +136,7 @@ function useSpeech() {
       setNow({ key, at: 0 }); s.speak(u);
     } catch { setBroken(true); }
   };
-  return { voice, now, speak };
+  return { voice, canVoice, muted, setMuted, now, speak };
 }
 
 const msgText = (card) => plainText(card.text || []);
@@ -242,11 +259,29 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
   const lastRef = useRef(null);
   const last = entries[entries.length - 1];
   const lastKey = last ? last.key : null;
-  // новое сообщение или вопрос — прокрутка к нему; новое сообщение эфира — сразу читается голосом
+  /* Новое сообщение или вопрос — лента едет вниз до конца, чтобы его было видно целиком; но
+     если оно выше экрана — только до его начала: верх не уезжает. Прокрутка только вниз. Пока
+     последний шаг растёт (дорисовался график, под вопросом появился разбор) — догоняем его же.
+     Новое сообщение эфира — сразу читается голосом. */
   useEffect(() => {
-    if (!last) return;
-    if (mode !== 'listen' && lastRef.current && lastRef.current.scrollIntoView) lastRef.current.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: last.kind === 'q' ? 'start' : 'nearest' });
-    if (mode === 'listen' && last.kind === 'msg' && last.live && speech.voice) speech.speak(last.key, msgText(last.card), last.card.who || DEFAULT_VOICE.listen);
+    if (!last) return undefined;
+    if (mode === 'listen') {
+      if (last.kind === 'msg' && last.live && speech.voice) speech.speak(last.key, msgText(last.card), last.card.who || DEFAULT_VOICE.listen);
+      return undefined;
+    }
+    const el = lastRef.current;
+    if (!el) return undefined;
+    const follow = () => {
+      const sc = el.closest('.ln-body');
+      if (!sc) { if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); return; }
+      const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - 12;
+      const target = Math.min(sc.scrollHeight - sc.clientHeight, top);
+      if (target > sc.scrollTop + 1) sc.scrollTo({ top: target, behavior: reduced ? 'auto' : 'smooth' });
+    };
+    follow();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(follow) : null;
+    if (ro) ro.observe(el);
+    return () => { if (ro) ro.disconnect(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastKey]);
   if (mode === 'listen') {
@@ -259,9 +294,12 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
       <div className="fd" data-mode="listen" data-testid="listen-card" data-voice={speech.voice ? 'on' : 'off'}>
         <div className="fd-mast">
           <Guilloche height={14} opacity={0.45} />
-          <div className="fd-mast-name"><Radio size={14} aria-hidden="true" />Радио Инфлатии · эфир</div>
+          <div className="fd-mast-name">Радио Инфляции · эфир</div>
           <h2 className="ds-h2">{title}</h2>
           {speech.voice && <div className="fd-voice-note" data-testid="voice-caption">{VOICE_CAPTION}</div>}
+          {speech.canVoice && (speech.muted
+            ? <div className="fd-voice-note" data-testid="no-listen-on">Звук выключен на час — текст открыт. <button type="button" className="fd-tool" data-testid="no-listen-off" onClick={() => { Audio.play('tick'); speech.setMuted(false); }}>Включить звук</button></div>
+            : <button type="button" className="fd-tool fd-nolisten" data-testid="no-listen" onClick={() => { Audio.play('tick'); speech.setMuted(true); }}><VolumeX size={15} aria-hidden="true" />Не могу слушать</button>)}
         </div>
         {/* значок сюжета в приёмнике не нужен — только график, если он есть: вопрос остаётся рядом */}
         {cur && <RadioSet entry={cur} speech={speech} picture={cur.card.chart ? picture(cur.card) : null} skipTitle={skipTitle} flag={flagFor(cur)} />}
@@ -274,7 +312,7 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
     <div className="fd" data-mode={mode} data-testid={mode === 'listen' ? 'listen-card' : 'story-feed'} data-voice={speech.voice ? 'on' : 'off'}>
       <div className="fd-mast">
         <Guilloche height={14} opacity={0.45} />
-        <div className="fd-mast-name">{mode === 'listen' ? <><Radio size={14} aria-hidden="true" />Радио Инфлатии · эфир</> : <><Newspaper size={14} aria-hidden="true" />Вестник Инфлатии · переписка</>}</div>
+        <div className="fd-mast-name">{mode === 'listen' ? 'Радио Инфляции · эфир' : 'Вестник Инфляции · переписка'}</div>
         <h2 className="ds-h2">{title}</h2>
       </div>
       {entries.map((e) => (

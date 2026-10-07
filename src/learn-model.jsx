@@ -502,7 +502,7 @@ export function DominoEx({ inst, resp, setResp, locked, fb, onSubmit, prompt }) 
   };
   return (
     <div data-testid="domino" data-placed={r.placed.length} data-falls={r.falls.length}>
-      <div className="lm-news"><div className="lm-news-mast">Вестник Инфлатии</div><div className="lm-news-head" data-testid="domino-headline">{inst.headline}</div></div>
+      <div className="lm-news"><div className="lm-news-mast">Вестник Инфляции</div><div className="lm-news-head" data-testid="domino-headline">{inst.headline}</div></div>
       {prompt}
       <DominoScene inst={inst} sc={sc} />
       <div className="lm-chain" aria-label="Цепочка">

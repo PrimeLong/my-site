@@ -587,7 +587,7 @@ const TutorialHub = React.lazy(() => import('./tutorial.jsx').then((m) => ({ def
 export const SAVE_VERSION = 3;
 
 export function validateSnapshot(data) {
-  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение Инфлатии.');
+  if (!data || data.app !== 'economic-panel') throw new Error('Это не сохранение Инфляции.');
   if (!data.setup || !data.economy || !Array.isArray(data.history)) throw new Error('Сохранение повреждено: не хватает состояния экономики.');
   if (data.v > SAVE_VERSION) throw new Error('Сохранение сделано в более новой версии симулятора.');
   return data;
@@ -1092,7 +1092,7 @@ function DailyCard({ onStart }) {
 /* Живая строка над меню: пустовавшая треть экрана стала биржевым табло страны.
    Числа — не из движка (меню не грузит его ради украшения), а лёгкое случайное
    блуждание вокруг стартовых значений партии: инфляция, ставка, рост, курс, индекс
-   биржи и заголовки из жизни Инфлатии и соседей. Мини-график — инфляция за
+   биржи и заголовки из жизни Инфляции и соседей. Мини-график — инфляция за
    последние «кварталы» табло. При «уменьшить движение» строка стоит на месте. */
 const TICKER_HEADLINES = ['ЦБ сохранил ключевую ставку', 'Минфин разместил облигации на 40 млрд', 'Норланд наращивает рыбный экспорт',
   'Вестравия зовёт в торговый блок', 'Урожай в Приреченской выше ожиданий', 'Дешт снизил цены на нефть', 'Стройка метро в Велеграде идёт по графику',
@@ -1360,7 +1360,7 @@ function MainMenu({ theme, setTheme, onNewGame, onNetwork, onTutorial, onLoad, o
         <div className="ems-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 26 }}>
           <InflatiaMark size={54} title={null} />
           <div style={{ minWidth: 0, flex: 1 }}>
-            <h1 className="ds-h1 menu-title" data-testid="brand">Инфлатия</h1>
+            <h1 className="ds-h1 menu-title" data-testid="brand">Инфляция</h1>
             {/* один слоган везде (docs/world.md); раздел — «Мир: страна, где знания проверяются в деле» */}
             <div className="ems-hero-eyebrow menu-eyebrow" style={{ textAlign: 'left', marginTop: 3 }}>экономика пять минут в день</div>
             <div className="menu-section-title" data-testid="world-title" style={{ fontSize: 14, color: COLOR.muted, marginTop: 4 }}>Мир: страна, где знания проверяются в деле</div>

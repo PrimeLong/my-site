@@ -14,6 +14,8 @@ export const REASONS = {
   accept: 'Мой ответ должен быть засчитан',
   typo: 'Опечатка или ошибка в тексте',
   unclear: 'Непонятно объяснено',
+  theory: 'Ошибка в теории или примере',
+  formula: 'Ошибка в формуле или на графике',
   broken: 'Не работает',
   filter: 'Фильтр не пропустил имя',
 };
@@ -26,7 +28,7 @@ export const isOwner = (user) => !!user && ownerLogins().includes(String(user.lo
 const str = (v, max) => (typeof v === 'string' || typeof v === 'number' ? Array.from(String(v)).filter((ch) => ch === '\n' || ch.charCodeAt(0) >= 32).join('').trim().slice(0, max) : '');
 // контекст — плоский словарь коротких строк: что именно видел ученик
 const CTX_KEYS = { screen: 60, kind: 30, mode: 20, lesson: 64, unit: 64, exercise: 120, variant: 60, prompt: 1500, answer: 500, correct: 500,
-  numbers: 500, page: 200, build: 60, device: 200, viewport: 30, step: 200 };
+  numbers: 500, quote: 500, page: 200, build: 60, device: 200, viewport: 30, step: 200 };
 export function sanitizeReport(body) {
   const reason = typeof body.reason === 'string' && REASONS[body.reason] ? body.reason : null;
   if (!reason) return null;

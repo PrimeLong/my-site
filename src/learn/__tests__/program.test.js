@@ -128,8 +128,8 @@ describe('вступительный тест', () => {
     plan.items.forEach((it) => expect(['swipe', 'rush']).not.toContain(it.kind));
   });
   it('юнит открыт, если в пятёрке не больше одной ошибки; первая проваленная пятёрка останавливает', () => {
-    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'consumer']);
-    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'consumer']);
+    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'consumer']);
+    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'consumer']);
     expect(placementOpened(plan.items, answer({ 'supply-demand': 2 }))).toEqual(['scarcity']);
     expect(placementOpened(plan.items, answer({ scarcity: 2 }))).toEqual([]);
     const first = answer({ scarcity: 2 });
@@ -248,25 +248,23 @@ describe('лавка и заморозки', () => {
     expect(buy(r.s, BOOST.id, T + 60000).ok).toBe(false);
     expect(normalizeLearn(r.s).boost).toBe(T + BOOST.minutes * 60000);
   });
-  it('заморозок в запасе — не больше двух', () => {
-    let s = rich;
-    for (let k = 0; k < MAX_FREEZES; k += 1) { const r = buy(s, FREEZE.id, T); expect(r.ok).toBe(true); s = r.s; }
-    expect(ownedFreezes(s)).toBe(MAX_FREEZES);
-    expect(buy(s, FREEZE.id, T).ok).toBe(false);
+  it('разовых полисов больше не продают: страховка — полис со взносами', () => {
+    expect(buy(rich, FREEZE.id, T).ok).toBe(false);
+    expect(MAX_FREEZES).toBe(2);
   });
   it('купленная заморозка спасает второй пропуск в неделе, и только если за пропуском есть занятия', () => {
     // пн 21.09 и чт 24.09 занимался, вт и ср пропустил, пт–вс занимался; сегодня пн 28.09
     let s = ['2026-09-21', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27'].reduce((acc, d) => lessonOn(acc, 'sc-i1', d), emptyLearn());
     expect(streak(s, T).days).toBe(4);
-    s = earn(s, 100, null, T);
-    s = buy(s, FREEZE.id, T).s;
+    // старый разовый полис, купленный до полисов со взносами
+    s = { ...earn(s, 100, null, T), freezeBuy: { '2026-09-20': 1 } };
     const t = applyFreezes(s, T);
     expect(Object.keys(t.frozen)).toHaveLength(1);
     expect(streak(t, T).days).toBe(5);
     expect(ownedFreezes(t)).toBe(0);
     expect(applyFreezes(t, T)).toBe(t);
     // ни одного занятия за пропуском — заморозка не тратится
-    const empty = buy(earn(emptyLearn(), 100, null, T), FREEZE.id, T).s;
+    const empty = { ...earn(emptyLearn(), 100, null, T), freezeBuy: { '2026-09-20': 1 } };
     expect(applyFreezes(empty, T)).toBe(empty);
     // неделя экрана серии: семь дней, сегодня — последний
     const dots = weekDots(t, T);

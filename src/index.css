@@ -30,3 +30,12 @@ body {
      держится нижняя панель «Завершить квартал». */
   overflow-x: clip;
 }
+
+/* Кнопки — не текст: долгое нажатие пальцем не выделяет надпись и не открывает меню
+   «копировать» (iOS), двойной клик мышью тоже. Термин в тексте учебника (.tb-term) —
+   часть фразы: его выделять можно, иначе в цитате для «Сообщить об ошибке» дыра. */
+button, [role="button"]:not(.tb-term), [role="tab"], [role="radio"], [role="switch"], summary {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}

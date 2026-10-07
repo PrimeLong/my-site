@@ -444,7 +444,7 @@ const stepCards = (lesson, items, inner = lesson.inner) => {
 };
 const sum = (items) => items.reduce((a, it) => a + (it.seconds || SECONDS[it.kind]), 0);
 // карточки слов урока «Слова»: слово — на лицевой стороне, короткое определение — на обороте
-export const flashCards = (lesson) => lesson.terms.map((t) => ({ id: `${lesson.id}:card:${t.term}`, flash: true, term: t.term, title: termName(t.term), text: text(t.text) }));
+export const flashCards = (lesson) => lesson.terms.map((t) => ({ id: `${lesson.id}:card:${t.term}`, flash: true, term: t.term, title: termName(t.term), text: text(t.text), ...(t.example ? { example: text(t.example) } : {}) }));
 /* Меньше повторов: seen — сколько раз ученик уже встречал упражнение (learn.seen). В
    повторение, проверку и тест юнита первыми идут те, что он видел реже; задача, которая
    вернётся с новыми числами, повтором не считается. */

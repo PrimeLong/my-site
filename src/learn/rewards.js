@@ -3,7 +3,7 @@
    платите вы монетами по курсу дня — он колеблется вокруг единицы и тянется к ней обратно.
    Модуль чистый: всё считается из состояния учёбы (learn-state.js); каждая награда выдаётся
    под ключом (claimed) — ни дважды, ни на двух устройствах. Экраны — src/learn.jsx. */
-import { dayOf, addDays, streak, longestStreak, ownedFreezes, MAX_FREEZES, dailyOf, DIAMOND_ACCURACY, goalMinutes, goalToday } from '../textbook/learn-state.js';
+import { dayOf, addDays, streak, longestStreak, dailyOf, DIAMOND_ACCURACY, goalMinutes, goalToday, PREMIUM, policyActive, weekOf } from '../textbook/learn-state.js';
 import { plural } from '../lib/plural.js';
 import { LESSONS, UNITS } from './course.js';
 export { plural };
@@ -22,8 +22,8 @@ export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монет�
    юнита — 20. Алмазный уровень (от 80% верных): впервые — 25 (без ошибок — ещё 10), потом — 5. */
 export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, diamond: 25, diamondPerfect: 10, diamondReplay: 5, goal: 10, allQuests: 10 };
 export const earned = (s) => sum(s.coins);
-// в кошельке: заработано − потрачено − лежит в копилке + проценты забранных вкладов
-export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent) - piggyLocked(s) + piggyGain(s));
+// в кошельке: заработано − потрачено − взносы страховки − лежит в копилке + проценты забранных вкладов
+export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent) - sum(s.premiums) - piggyLocked(s) + piggyGain(s));
 export const hasClaim = (s, key) => !!(s.claimed || {})[key];
 // начислить монеты; с ключом — только один раз
 export function earn(s, n, key = null, now = Date.now()) {
@@ -64,8 +64,42 @@ export const rateHistory = (day, n = 14) => Array.from({ length: n }, (_, k) => 
    до 240 крон и меняются каждый день: на витрине дня — шесть из тех, что ещё не куплены, и
    одна из них — со скидкой дня 30%. Купленное всегда в гардеробе. Редкие вещи (от 400 крон) —
    в витрине ювелира всегда: на них копят; у каждой своя анимация (src/mascot.jsx). Страховка серии и «двойной опыт» — всегда в продаже. */
-// «Страховка серии» (в данных — freeze): взнос монетами — и пропущенный день прощается
-export const FREEZE = { id: 'freeze', title: 'Страховка серии', crowns: 20, text: `Взнос — и один пропущенный день прощается, когда недельная поблажка уже потрачена. Полисов в запасе — не больше ${MAX_FREEZES}.` };
+/* «Страховка серии» — полис с еженедельным взносом (docs/mechanics.md): оформить, платить
+   взносы, расторгнуть. Разовых полисов (в данных — freeze) больше не продаём: купленные раньше
+   тратятся как прежде (learn-state.js, applyFreezes). */
+export const FREEZE = { id: 'freeze', title: 'Страховка серии', crowns: 20, text: 'Полис с еженедельным взносом: пока взносы идут, второй пропуск в неделе прощается.' };
+export { PREMIUM, policyActive };
+const weeksFrom = (fromDay, toDay) => { const out = []; for (let w = weekOf(fromDay); w <= toDay; w = addDays(w, 7)) out.push(w); return out; };
+/* Взносы за все недели действия полиса, что ещё не оплачены (при открытии приложения и после
+   урока). Не хватило монет — полис прекращается: эта неделя не покрыта. */
+export function chargePremiums(s, now = Date.now()) {
+  if (!policyActive(s)) return s;
+  let t = s;
+  for (const w of weeksFrom(dayOf(s.policyAt), dayOf(now))) {
+    if ((t.premiums || {})[w]) continue;
+    if (balance(t) < PREMIUM) return { ...t, policyOff: now, policyLapse: now };
+    t = { ...t, premiums: { ...t.premiums, [w]: PREMIUM } };
+  }
+  return t;
+}
+// оформить полис: первый взнос — сразу, за текущую неделю (если она уже оплачена — без взноса)
+export function takePolicy(s, now = Date.now()) {
+  if (policyActive(s)) return { s, ok: false, reason: 'Полис уже действует' };
+  const paid = ((s.premiums || {})[weekOf(dayOf(now))] || 0) > 0;
+  if (!paid && balance(s) < PREMIUM) return { s, ok: false, reason: `На первый взнос не хватает ${PREMIUM - balance(s)} ${coinsWord(PREMIUM - balance(s))}` };
+  return { s: chargePremiums({ ...s, policyAt: now }, now), ok: true, price: paid ? 0 : PREMIUM };
+}
+// расторгнуть: оплаченная неделя остаётся покрытой, взносы не возвращаются
+export const cancelPolicy = (s, now = Date.now()) => (policyActive(s) ? { ...s, policyOff: now } : s);
+// для лавки: действует ли, до какого дня оплачено, сколько внесено, сколько дней спасено, прекращён ли за неуплату
+export function policyInfo(s, now = Date.now()) {
+  const weeks = Object.keys(s.premiums || {}).sort();
+  const last = weeks[weeks.length - 1] || null;
+  return {
+    active: policyActive(s), premium: PREMIUM, paidTotal: sum(s.premiums), paidUntil: last ? addDays(last, 6) : null,
+    saved: streak(s, now).insuredDays.length, lapsed: !policyActive(s) && (s.policyLapse || 0) > 0 && s.policyLapse >= (s.policyOff || 0),
+  };
+}
 export const BOOST = { id: 'boost', title: 'Двойной опыт', crowns: 40, minutes: 30, text: 'Полчаса после покупки уроки дают вдвое больше опыта.' };
 export const OUTFITS = [
   { id: 'cap', slot: 'head', title: 'Кепка торговца', crowns: 25 },
@@ -119,15 +153,14 @@ export function buy(s, id, now = Date.now()) {
   if (!item) return { s, ok: false, reason: 'Такого товара нет' };
   const day = dayOf(now);
   const price = priceOf(id, day, s);
-  if (id === FREEZE.id && ownedFreezes(s) >= MAX_FREEZES) return { s, ok: false, reason: `В запасе уже ${MAX_FREEZES} ${plural(MAX_FREEZES, 'полис', 'полиса', 'полисов')} страховки` };
+  if (id === FREEZE.id) return { s, ok: false, reason: 'Страховка серии теперь — полис с еженедельным взносом: оформите его в лавке' };
   if (id === BOOST.id && boostActive(s, now)) return { s, ok: false, reason: 'Двойной опыт уже действует' };
   const outfit = id !== FREEZE.id && id !== BOOST.id;
   if (outfit && (s.owned || {})[id]) return { s, ok: false, reason: 'Уже куплено' };
   if (outfit && !item.rare && !shopDay(s, day).showcase.includes(id)) return { s, ok: false, reason: 'Сегодня этого нет на витрине — загляните завтра' };
   if (balance(s) < price) return { s, ok: false, reason: `Не хватает ${price - balance(s)} ${coinsWord(price - balance(s))}` };
   let t = { ...s, spent: { ...s.spent, [day]: ((s.spent || {})[day] || 0) + price } };
-  if (id === FREEZE.id) t = { ...t, freezeBuy: { ...t.freezeBuy, [day]: ((t.freezeBuy || {})[day] || 0) + 1 } };
-  else if (id === BOOST.id) t = { ...t, boost: now + BOOST.minutes * 60000 };
+  if (id === BOOST.id) t = { ...t, boost: now + BOOST.minutes * 60000 };
   else t = { ...t, owned: { ...t.owned, [id]: now }, wear: { ...t.wear, [item.slot]: id, at: now } };
   return { s: t, ok: true, price };
 }
@@ -261,7 +294,7 @@ export const ACHIEVEMENTS = [
   // знания, показанные делом: проверка юнита без единой ошибки (вступительный тест сам по себе печать не даёт)
   { id: 'ace', icon: 'graduation', title: 'Знаток', text: 'Проверка юнита — без единой ошибки', coins: 30, test: (s) => Object.values(s.units || {}).some((u) => u.ace) },
   { id: 'quests', icon: 'scroll', title: 'Прилежание', text: 'Все задания дня — семь раз', coins: 40, test: (s) => Object.keys(s.claimed || {}).filter((k) => /^q:.*:all$/.test(k)).length >= 7 },
-  { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 10, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 },
+  { id: 'shop', icon: 'shopping', title: 'Первая покупка', text: 'Куплено что-то в лавке', coins: 10, test: (s) => Object.keys(s.owned || {}).length > 0 || Object.keys(s.freezeBuy || {}).length > 0 || (s.policyAt || 0) > 0 },
   { id: 'wardrobe', icon: 'shirt', title: 'Гардероб', text: 'У Инфли три наряда', coins: 20, test: (s) => Object.keys(s.owned || {}).length >= 3 },
   { id: 'rare', icon: 'gem', title: 'Коллекционер', text: 'Куплена редкая вещь из витрины ювелира', coins: 100, test: (s) => Object.keys(s.owned || {}).some((id) => OUTFIT_BY_ID[id] && OUTFIT_BY_ID[id].rare) },
   { id: 'early', icon: 'sunrise', title: 'Ранняя пташка', text: 'Урок до восьми утра', coins: 10, test: (s) => Object.values(s.daily || {}).some((d) => d.h & 1) },
@@ -316,17 +349,27 @@ export function monthChallenge(s, now = Date.now()) {
   const up = (x) => Math.ceil(x / kind.round) * kind.round;
   // прошлый месяц выше темпа — цель строго больше прошлого: +15%, минимум на один шаг
   const fromHistory = before > byPace ? Math.max(up(before * 1.15), before + kind.round) : 0;
-  const target = Math.max(kind.floor, up(byPace), fromHistory);
-  const have = Math.min(target, kind.have(s, month));
+  // цель месяца закреплена при первом показе (fixMonth): поменяли цель дня — испытание то же
+  const plan = (s.monthPlan || {})[month];
+  const target = plan ? plan.target : Math.max(kind.floor, up(byPace), fromHistory);
   const key = `m:${month}`;
+  // марка получена — испытание месяца выполнено до конца месяца, нового нет
+  const have = hasClaim(s, key) ? target : Math.min(target, kind.have(s, month));
   // сегодня тоже считается: 29-го в 30-дневном месяце осталось два дня
   const daysLeft = last - d.getDate() + 1;
   // почему именно столько — чтобы цель читалась как своя, а не взятая с потолка
-  const why = fromHistory && target === fromHistory ? `В прошлом месяце — ${before}, теперь ${target}: чуть больше.`
+  const why = plan && plan.why ? plan.why : fromHistory && target === fromHistory ? `В прошлом месяце — ${before}, теперь ${target}: чуть больше.`
     : target === kind.floor && up(byPace) < kind.floor ? `По вашей цели — ${mins} минут в день, но испытание месяца — с запасом: больше обычного темпа.`
       : `По вашей цели — ${mins} минут в день, примерно три дня из четырёх.`;
   return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
     done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft, why };
+}
+// закрепить испытание месяца: цель и «почему» считаются один раз — при первом показе в месяце
+export function fixMonth(s, now = Date.now()) {
+  const month = dayOf(now).slice(0, 7);
+  if ((s.monthPlan || {})[month]) return s;
+  const m = monthChallenge(s, now);
+  return { ...s, monthPlan: { ...s.monthPlan, [month]: { target: m.target, why: m.why, at: now } } };
 }
 // марки месяцев, которые уже получены: «m:ГГГГ-ММ» → подпись
 export const monthStamps = (s) => Object.keys(s.claimed || {}).filter((k) => k.startsWith('m:')).sort().map((k) => {
@@ -339,7 +382,7 @@ export const monthStamps = (s) => Object.keys(s.claimed || {}).filter((k) => k.s
 export function settle(s, ctx, now = Date.now()) {
   const gains = [];
   const give = (t, n, key, title, kind) => { const before = t; const next = earn(t, n, key, now); if (next !== before) gains.push({ key, coins: n, title, kind }); return next; };
-  let t = s;
+  let t = fixMonth(chargePremiums(s, now), now);
   const day = dayOf(now);
   const g = goalToday(t, now);
   if (g.done >= g.goal) t = give(t, COIN.goal, `g:${day}`, `Цель дня: ${g.goal} минут`, 'goal');

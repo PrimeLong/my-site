@@ -12,12 +12,12 @@ import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
-  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps,
+  balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, streak, ownedFreezes, weekDots, MAX_FREEZES, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday,
+  dayOf, addDays, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -212,6 +212,12 @@ function RateChart({ hist }) {
   const pick = (e) => { const b = e.currentTarget.getBoundingClientRect(); const px = ((e.clientX - b.left) / b.width) * W; const k = Math.round(((px - pad) / (W - pad * 2)) * (hist.length - 1)); setHover(Math.max(0, Math.min(hist.length - 1, k))); };
   const h = hover != null ? hist[hover] : null;
   const last = hist.length - 1;
+  /* подсказка не выходит за края графика: шире экрана документ — и телефон перемасштабирует
+     страницу, нижняя панель «уезжает» вниз (было у правого края, где подпись длиннее) */
+  const tip = useRef(null);
+  const [tipW, setTipW] = useState(150);
+  React.useLayoutEffect(() => { if (tip.current) setTipW(tip.current.offsetWidth); }, [hover]);
+  const tipLeft = h ? Math.max(0, Math.min(W - tipW, x(hover) - tipW / 2)) : 0;
   return (
     <div style={{ position: 'relative' }} ref={box}>
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="rw-rate" role="img" data-testid="rate-chart"
@@ -223,7 +229,7 @@ function RateChart({ hist }) {
         {h && <><line x1={x(hover)} x2={x(hover)} y1={pad / 2} y2={H - pad / 2} stroke="var(--ds-ink3)" strokeWidth="1" /><circle cx={x(hover)} cy={y(h.rate)} r="4.5" fill="var(--u-ink)" stroke="var(--ds-card)" strokeWidth="2" /></>}
       </svg>
       {h && (
-        <div className="ds-num" data-testid="rate-tip" style={{ position: 'absolute', top: -8, left: Math.min(W - 150, Math.max(0, x(hover) - 60)), background: 'var(--ds-ink)', color: 'var(--ds-paper)', fontSize: 12, padding: '3px 6px', borderRadius: 2, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+        <div ref={tip} className="ds-num" data-testid="rate-tip" style={{ position: 'absolute', top: -8, left: tipLeft, maxWidth: W, overflow: 'hidden', background: 'var(--ds-ink)', color: 'var(--ds-paper)', fontSize: 12, padding: '3px 6px', borderRadius: 2, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
           {agoText(last - hover)} · {h.day.slice(8)}.{h.day.slice(5, 7)} · {fmtRate(h.rate)}
         </div>
       )}
@@ -258,13 +264,48 @@ function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal 
     </div>
   );
 }
+/* «Страховка серии» — полис: взнос каждую неделю, второй пропуск в оплаченной неделе прощается.
+   Видно, сколько уже заплачено и сколько дней полис спас: окупается ли страховка. */
+const fmtDay = (d) => `${d.slice(8)}.${d.slice(5, 7)}`;
+function PolicyCard({ learn, update, now, b, onMsg }) {
+  const p = policyInfo(learn, now);
+  const old = ownedFreezes(learn);
+  const take = () => {
+    const r = takePolicy(learn, now);
+    if (!r.ok) { Audio.play('down'); onMsg({ ok: false, text: r.reason }); return; }
+    Audio.play('register'); update(() => r.s, { settle: true });
+    onMsg({ ok: true, text: r.price ? `Полис оформлен: первый взнос — ${r.price} ${coinsWord(r.price)}, дальше по ${PREMIUM} в неделю.` : 'Полис снова действует: эта неделя уже оплачена.' });
+  };
+  const cancel = () => { Audio.play('paper'); update((s) => cancelPolicy(s, now)); onMsg({ ok: true, text: `Полис расторгнут. Оплаченная неделя покрыта${p.paidUntil ? ` до ${fmtDay(p.paidUntil)}` : ''}.` }); };
+  return (
+    <Card style={{ margin: '8px 0 10px' }} data-testid="shop-freeze" data-policy={p.active ? 'on' : 'off'}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Rosette size={54} opacity={0.5}><ShieldCheck size={24} color="#3E6FA8" aria-hidden="true" /></Rosette>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700 }}>{FREEZE.title}{p.active && <span className="ds-badge" style={{ marginLeft: 6 }} data-testid="policy-on">полис действует</span>}</div>
+          <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>
+            Взнос — <b>{PREMIUM} {coinsWord(PREMIUM)} в неделю</b>, сам в начале недели. В оплаченной неделе прощается ещё один пропуск сверх бесплатной поблажки — это страховой случай. Расторгнуть можно в любой момент.
+          </div>
+        </div>
+      </div>
+      <div className="ds-sub" style={{ fontSize: 13, margin: '8px 0 0', lineHeight: 1.4 }} data-testid="policy-stats">
+        {p.active && p.paidUntil ? `Оплачено до ${fmtDay(p.paidUntil)}. ` : ''}Всего взносов: {p.paidTotal} {coinsWord(p.paidTotal)} · полис спас дней: {p.saved}{old ? ` · старых разовых полисов: ${old}` : ''}
+      </div>
+      {p.lapsed && <div role="status" data-testid="policy-lapsed" style={{ fontSize: 13.5, color: 'var(--ds-bad-ink)', marginTop: 6 }}>Полис прекращён: на взнос не хватило монет. Неоплаченная неделя не покрыта.</div>}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+        {p.active
+          ? <Button small variant="secondary" onClick={cancel} data-testid="policy-cancel">Расторгнуть</Button>
+          : <Button small disabled={b < PREMIUM} onClick={take} data-testid="policy-take">Оформить полис · {PREMIUM} мон.</Button>}
+      </div>
+    </Card>
+  );
+}
 export function ShopView({ learn, update, now = Date.now() }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);
   const b = balance(learn);
   const wear = outfitOf(learn);
-  const freezes = ownedFreezes(learn);
   const today = shopDay(learn, day);
   const boosted = boostActive(learn, now);
   const Trend = rate > prev ? TrendingUp : rate < prev ? TrendingDown : Minus;
@@ -273,7 +314,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
     if (!r.ok) { Audio.play('down'); setMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register');
     update(() => r.s, { settle: true });
-    setMsg({ ok: true, text: id === FREEZE.id ? `Полис страховки серии — за ${r.price} ${coinsWord(r.price)}.` : id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
+    setMsg({ ok: true, text: id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, wear[o.slot] === o.id ? null : o.id, now)); };
   const ownedList = OUTFITS.filter((o) => (learn.owned || {})[o.id]);
@@ -312,17 +353,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
         <PiggyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
 
         <Heading level={3} title="Полезное" />
-        <Card style={{ margin: '8px 0 10px' }} data-testid="shop-freeze">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Rosette size={54} opacity={0.5}><ShieldCheck size={24} color="#3E6FA8" aria-hidden="true" /></Rosette>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700 }}>{FREEZE.title} · полисов <span className="ds-num" data-testid="freeze-owned">{freezes}</span> из {MAX_FREEZES}</div>
-              <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>{FREEZE.text}</div>
-              <div className="rw-price">{priceOf(FREEZE.id, day)} <span style={{ fontWeight: 400 }}>мон.</span><small>{FREEZE.crowns} кр.</small></div>
-            </div>
-            <Button small disabled={freezes >= MAX_FREEZES} onClick={() => doBuy(FREEZE.id)} data-testid="buy-freeze">Купить</Button>
-          </div>
-        </Card>
+        <PolicyCard learn={learn} update={update} now={now} b={b} onMsg={setMsg} />
         <Card style={{ margin: '0 0 16px' }} data-testid="shop-boost">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Rosette size={54} opacity={0.5}><Zap size={24} color="var(--ds-gold)" aria-hidden="true" /></Rosette>
@@ -489,7 +520,7 @@ export function MorningStreak({ learn, onClose, now = Date.now() }) {
   const st = streak(learn, now);
   const hour = new Date(now).getHours();
   const hello = hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
-  const fr = ownedFreezes(learn);
+  const pol = policyInfo(learn, now);
   return (
     <div className="rw-morning" data-testid="morning" role="dialog" aria-label="Серия дней">
       <div className="rw-morning-in">
@@ -507,7 +538,7 @@ export function MorningStreak({ learn, onClose, now = Date.now() }) {
           ))}
         </div>
         <div className="ds-faint" style={{ fontSize: 13, marginTop: 14 }}>
-          <ShieldCheck size={13} style={{ verticalAlign: -2 }} aria-hidden="true" /> Полисов «Страховки серии»: {fr}. Один пропуск в неделю серию не рвёт и без них.
+          <ShieldCheck size={13} style={{ verticalAlign: -2 }} aria-hidden="true" /> {pol.active ? `Страховка серии действует: в эту неделю прощается ещё один пропуск. Взнос — ${pol.premium} ${coinsWord(pol.premium)} в неделю.` : 'Один пропуск в неделю серию не рвёт. Страховка серии в лавке прощает ещё один.'}
         </div>
         <Guilloche height={22} style={{ marginTop: 18 }} />
       </div>

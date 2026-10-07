@@ -1,6 +1,6 @@
 // Копилка Инфли (сложный процент), цена отказа, «Страховка серии» и предвосхищение тем
 import { describe, it, expect } from 'vitest';
-import { PIGGY, piggyState, piggyPut, piggyTake, piggyValue, piggyCurve, balance, earn, forgone, incomePerLesson, FREEZE, buy, COIN } from '../rewards.js';
+import { PIGGY, piggyState, piggyPut, piggyTake, piggyValue, piggyCurve, balance, earn, forgone, incomePerLesson, FREEZE, BOOST, buy, COIN, takePolicy } from '../rewards.js';
 import { CALLBACKS, callbackFor } from '../callbacks.js';
 import { emptyLearn, normalizeLearn, mergeLearn } from '../../textbook/learn-state.js';
 import { LESSON_BY_ID } from '../course.js';
@@ -66,11 +66,10 @@ describe('цена отказа и страховка серии', () => {
     expect(forgone(10 * per).text).toBe('≈ 10 уроков');
     expect(COIN.lesson).toBeLessThan(per);
   });
-  it('«Заморозка» стала «Страховкой серии»: взнос — и пропуск прощается', () => {
+  it('«Заморозка» стала «Страховкой серии»: полис со взносом — и пропуск прощается', () => {
     expect(FREEZE.title).toBe('Страховка серии');
     expect(FREEZE.text).toMatch(/прощается/);
-    const r = buy(rich(), FREEZE.id, T0);
-    expect(r.ok).toBe(true);
+    expect(takePolicy(rich(), T0).ok).toBe(true);
   });
 });
 
@@ -87,7 +86,7 @@ describe('предвосхищение: Инфля вспоминает меха
   });
   it('напоминает, только если ученик уже пользовался механикой', () => {
     expect(callbackFor('sc-i1-oc', emptyLearn())).toBeNull();
-    const shopper = buy(rich(), FREEZE.id, T0).s;
+    const shopper = buy(rich(), BOOST.id, T0).s;
     expect(callbackFor('sc-i1-oc', shopper).text).toMatch(/альтернативная стоимость/);
     const saver = piggyPut(rich(), 50, Date.now() - 14 * DAY).s;
     expect(CALLBACKS.find((c) => c.id === 'compound').text(saver)).toMatch(/^2 недели назад .* сложный процент/);
