@@ -87,7 +87,9 @@ export const PLAY_CSS = `
   @keyframes lp-combo { 0% { transform: scale(.4); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
   .lp-game-stage { position: relative; }
   .lp-game .lp-chart { margin: 0 auto 2px; max-width: 340px; }
-  .lp-effect { position: absolute; top: 6px; right: 8px; font: 700 13px var(--ds-sans); background: var(--ds-card); border: 1.5px solid var(--u); color: var(--u-ink); border-radius: 3px; padding: 3px 8px;
+  /* что сдвинулось — строкой под графиком, а не поверх него: не закрывает цены и подписи */
+  .lp-effect-row { min-height: 26px; display: flex; justify-content: center; align-items: center; }
+  .lp-effect { font: 700 13px var(--ds-sans); background: var(--ds-card); border: 1.5px solid var(--u); color: var(--u-ink); border-radius: 3px; padding: 3px 8px;
     animation: lp-effect 1.6s ease-out forwards; pointer-events: none; }
   @keyframes lp-effect { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
   .lp-game-card { min-height: 104px; margin: 8px 0 10px; font-size: 19px; }
@@ -403,6 +405,10 @@ function ElasticGameChart({ st }) {
   const sx = (q) => L + (Math.max(0, Math.min(q, QM)) / QM) * (W - L - R); const sy = (p) => H - B - (Math.max(0, Math.min(p, PM)) / PM) * (H - B - T);
   const b = 3 * st.e; // |E| = b·P/Q в точке (60, 20)
   const qAt = (p) => 60 - b * (p - 20);
+  const pAt = (q) => 20 - (q - 60) / b;
+  // концы прямой — там, где она входит в рамку графика и выходит из неё (а не по отдельности по осям: иначе наклон врёт)
+  const top = qAt(PM) >= 0 ? { q: qAt(PM), p: PM } : { q: 0, p: pAt(0) };
+  const bottom = qAt(0) <= QM ? { q: qAt(0), p: 0 } : { q: QM, p: pAt(QM) };
   const p1 = 22; const q1 = Math.max(0, qAt(p1));
   const r0 = 20 * 60; const r1 = p1 * q1;
   const up = r1 >= r0;
@@ -411,13 +417,14 @@ function ElasticGameChart({ st }) {
       data-testid="game-chart" data-chart="elastic" data-state={JSON.stringify({ e: Math.round(st.e * 100) / 100, up })}>
       <rect x={sx(0)} y={sy(20)} width={sx(60) - sx(0)} height={sy(0) - sy(20)} fill="var(--ds-ink3)" opacity=".12" />
       <rect x={sx(0)} y={sy(p1)} width={sx(q1) - sx(0)} height={sy(0) - sy(p1)} fill="none" stroke={up ? 'var(--ds-ok)' : 'var(--ds-bad)'} strokeWidth="2" strokeDasharray="5 4" />
-      <line x1={sx(qAt(PM))} y1={sy(PM)} x2={sx(qAt(0))} y2={sy(0)} stroke="var(--u)" strokeWidth="4" strokeLinecap="round" />
+      <line x1={sx(top.q)} y1={sy(top.p)} x2={sx(bottom.q)} y2={sy(bottom.p)} stroke="var(--u)" strokeWidth="4" strokeLinecap="round" data-testid="elastic-demand" />
       <circle cx={sx(60)} cy={sy(20)} r="4.5" fill="var(--u)" />
       <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
       <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
       <text x={W - R} y={H - 8} textAnchor="end" className="lp-ax">Q</text>
       <text x={L - 6} y={T + 8} textAnchor="end" className="lp-ax">P</text>
-      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: up ? 'var(--ds-ok)' : 'var(--ds-bad)', fontWeight: 700 }}>
+      {/* подложка цвета фона: крутая кривая спроса проходит под надписью, но не перечёркивает её */}
+      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: up ? 'var(--ds-ok)' : 'var(--ds-bad)', fontWeight: 700, stroke: 'var(--ds-paper)', strokeWidth: 5, paintOrder: 'stroke', strokeLinejoin: 'round' }}>
         выручка при +10% цены: {up ? '↑' : '↓'} {Math.round(r1)}
       </text>
     </svg>
@@ -585,10 +592,8 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
               <span className={`lp-pass${left ? '' : ' ok'}`} data-testid="game-pass" data-left={left}>{left ? `до зачёта: ${left}` : <><Check size={13} strokeWidth={3} aria-hidden="true" /> зачёт есть</>}</span>
             ); })()}
           </div>
-          <div className="lp-game-stage">
-            {chart}
-            {tag && <span className="lp-effect" key={`t${tag.k}`} data-testid="game-effect">{tag.text}</span>}
-          </div>
+          <div className="lp-game-stage">{chart}</div>
+          <div className="lp-effect-row">{tag && <span className="lp-effect" key={`t${tag.k}`} data-testid="game-effect">{tag.text}</span>}</div>
           <div style={{ position: 'relative' }}>
             {pop && <span className="lp-pop ds-num" key={`p${pop.k}`}>+{pop.v}</span>}
             <div className={`lp-card lp-game-card ${flash || ''}`} data-testid="game-card" data-answer={testing() ? item.side : undefined}
