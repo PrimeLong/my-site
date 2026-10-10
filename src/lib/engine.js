@@ -12,7 +12,7 @@ import { ACTION_GROUP_EFFECTS, SOCIAL_GROUPS, buildReport, coalitionOf, groupDem
 import { APPOINT_COST, BOT_CORE_GROUPS, CB_FULL_TERM, DIRECTIVE_FULL, DIRECTIVE_PART, PRESIDENT_ACTIONS, PRES_BY_ID, PRES_DIRECTIVE_COST, PRES_GROUP_LABEL, REFORM_RAMP, applyPresidentActions, appointmentEffects, botPresident, directiveProgress, directiveVerdict, getPresPersona, militaryCoupRisk, parliamentBlocksReform, politicalCapitalRegen, presActionAvailable, kidsBlocked, presidentSatisfactionNext, processPresidentialDirective, reformEffects, reformShare } from './politics/president.js';
 import { REQUESTS, TAX_DEMAND_CAP, TAX_KEYS, askText, processRequest, reqAmount, taxSum } from './politics/requests.js';
 import { DIPLO_ACTIONS, NEIGHBOR_EVENTS, NEIGHBOR_IDS, RELATIONS_START, atWarWith, botDiplomacy, deshtAttackRoll, deshtWarMultiplier, diploActionAvailable, diplomacyStep, neighborEventView, peaceStep, relationEffects, relationTarget, relationsOf, sanitizeDiplomacy, ultimatumChance } from './world/diplomacy.js';
-import { ALL_REGIONS, ANNEX_REGIONS, ANNEX_REGION_OF, INTEGRATED_AT, INTEGRATION_COST, MAP_REGIONS, PARTISAN_BELOW, PROJECT_BY_ID, REGION_EVENTS, REGION_EVENT_BY_ID, REGION_PROJECTS, activeRegions, annexLoyalty, botRegionPlan, projectBlocker, projectSpendPct, regionById, regionStep, regionStress, votingRegions, warFrontRegion } from './world/regions.js';
+import { ALL_REGIONS, ANNEX_REGIONS, ANNEX_REGION_OF, INTEGRATED_AT, INTEGRATION_COST, MAP_REGIONS, PARTISAN_BELOW, PROJECT_BY_ID, REGION_EVENTS, REGION_EVENT_BY_ID, REGION_PROJECTS, activeRegions, annexLoyalty, botRegionPlan, botPresidentRegion, regionEventOwner, projectBlocker, projectSpendPct, regionById, regionStep, regionStress, votingRegions, warFrontRegion } from './world/regions.js';
 import { ANNEX_EFFECT, DEFENSE_STANCES, DEF_ENEMY, DEF_FRONT, INTEGRATION_DONE, OBJECTIVE_VALUE, REVANCHE_WARN, WAR_OBJECTIVES, WAR_OBJECTIVE_BY_ID, WAR_STANCES, WAR_TARGETS, annexStep, botDefenseOrder, botFrontOrder, botTreaty, botWarOrder, defaultDefenseOrder, defaultFrontOrder, defaultWarOrder, defaultWarTarget, defenseStep, dropAnnexed, newDefenseCampaign, newWarCampaign, revancheGrowth, revancheStep, sanitizeIntegration, sanitizeTreaty, sanitizeWarTarget, treatyCost, warCampaignStep, warObjectiveOpen, warObjectivesFor, warStrength, warTargetAvailable, warTargetOf } from './world/war.js';
 
 /* ============================ УТИЛИТЫ ============================ */
@@ -2620,7 +2620,7 @@ export {
   ANNEX_REGIONS, ALL_REGIONS, regionById, activeRegions, votingRegions, annexLoyalty, sanitizeIntegration,
   PARTISAN_BELOW, INTEGRATED_AT, INTEGRATION_COST, INTEGRATION_DONE,
   SOCIAL_GROUPS, publicGroupDemand, ACTION_GROUP_EFFECTS, BOT_CORE_GROUPS, leverGroupEffects, groupStatus, coalitionOf, groupTurnoutShift, regionGroupSupport,
-  sanitizeTreaty, treatyCost, botTreaty,
+  sanitizeTreaty, treatyCost, botTreaty, botPresidentRegion, regionEventOwner,
   WAR_TARGETS, warTargetOf, warObjectivesFor, warTargetAvailable, defaultWarTarget, sanitizeWarTarget,
   NEIGHBOR_IDS, RELATIONS_START, DIPLO_ACTIONS, NEIGHBOR_EVENTS, relationsOf, relationTarget, relationEffects, deshtWarMultiplier, diploActionAvailable,
   ultimatumChance, neighborEventView, botDiplomacy, sanitizeDiplomacy, diplomacyStep, atWarWith, DEFENSE_STANCES, REVANCHE_WARN, revancheGrowth, defaultDefenseOrder, botDefenseOrder,
