@@ -74,7 +74,7 @@ export const TEXTBOOK_CSS = `
   .tb-key .tb-math { margin: 4px 0 8px; }
   .tb-key .tb-legend { margin: -4px 0 8px; }
   .tb-key-sum { border-top: 1px dashed var(--c-border); margin-top: 6px; padding-top: 8px; }
-  .tb-key-label { font: 700 11px/1.4 var(--ds-sans, sans-serif); letter-spacing: .07em; text-transform: uppercase; color: var(--c-gold-soft); }
+  .tb-key-label { font: 700 12px/1.4 var(--ds-sans, sans-serif); letter-spacing: .07em; text-transform: uppercase; color: var(--c-gold-soft); }
   .tb-legend { font-size: 13px; line-height: 1.6; color: var(--c-muted); margin: -6px 0 14px; padding-left: 10px; border-left: 2px solid var(--c-hairline); }
   .tb-calc { margin: 10px 0 4px; max-width: 300px; border: 1px solid var(--c-border); border-radius: 4px; padding: 8px; background: var(--c-panel-alt, rgba(0,0,0,.03)); }
   .tb-calc-screen { text-align: right; font-family: var(--ds-mono, monospace); padding: 4px 6px 6px; }
