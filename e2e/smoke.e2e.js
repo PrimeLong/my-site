@@ -53,7 +53,8 @@ async function toToc(page) {
 
 // ничего на странице не шире окна — ровно та жалоба «сайт можно увести вбок»
 async function expectNoSidewaysScroll(page) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  // с clientWidth, а не innerWidth: на телефоне широкая страница раздвигает и innerWidth, и сравнение молчит
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - Math.min(window.innerWidth, document.documentElement.clientWidth));
   expect(overflow, 'страницу можно прокрутить вбок').toBeLessThanOrEqual(1);
 }
 
@@ -2706,6 +2707,20 @@ test('Путь: открывается на рекомендованном ур�
   await sc.getByTestId('unit-fold').click();
   await expect(sc).toHaveAttribute('data-folded', 'false');
   await expect(sc.getByTestId('path-lesson')).toHaveCount(14);
+  expect(errors).toEqual([]);
+});
+
+test('узкий телефон 320 px: Путь без бокового скролла, нижняя панель целиком на экране', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'только телефон');
+  await withTestFlag(page);
+  await page.setViewportSize({ width: 320, height: 658 });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await expect(page.getByTestId('path')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  const nav = await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').boundingBox();
+  expect(nav.x + nav.width).toBeLessThanOrEqual(321);
+  await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab="profile"]')).toHaveAttribute('aria-current', 'page');
   expect(errors).toEqual([]);
 });
 

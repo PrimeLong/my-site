@@ -103,6 +103,8 @@ const CSS = `
     padding: 0; border-radius: 50%; border: 1px solid var(--ds-rule2); background: var(--ds-card); color: var(--u-ink); box-shadow: 0 4px 14px var(--ds-shade); cursor: pointer; }
   @media (min-width: 1024px) { .ln-to-map { right: max(16px, calc(50vw - 560px)); } }
   .ln-route { position: relative; margin: 0 auto; }
+  /* телефон уже 340 px (320 px — старые и маленькие): дорога чуть мельче, чтобы не вылезать за экран */
+  @media (max-width: 340px) { .ln-route { zoom: .9; } }
   .ln-route > svg { position: absolute; inset: 0; pointer-events: none; }
   .ln-stop { position: absolute; width: 170px; margin-left: -85px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 1.5px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
@@ -1285,6 +1287,9 @@ function LevelBand({ level }) {
 /* Остановки юнита на дороге: жетоны вдоль извилистой дороги. Пройденная — в цвете юнита с
    сургучной печатью, текущая — с золотым кольцом и флажком «Вы здесь», закрытая — пунктир. */
 const ROW = 118; const ZIG = [0, 64, 92, 64, 0, -64, -92, -64];
+// название остановки (170 px) не выходит за края дороги шириной W
+const STOP_HALF = 85;
+const titleShift = (x, W) => Math.max(0, STOP_HALF - x) - Math.max(0, x + STOP_HALF - W);
 /* Убранство дороги: у каждой остановки, на другой стороне от неё, — дерево, фонарь, куст или
    верстовой столб с номером урока; в начале юнита — указатель с названием места. У пройденных
    остановок убранство в цвете юнита («дорога оживает»), у закрытых — серое. Чисто украшение:
@@ -1389,7 +1394,10 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
                 ) : l.open ? <KindIcon size={26} /> : <Lock size={22} />}
             </button>
             {/* название — тоже кнопка урока: в жетон на телефоне попадают не всегда */}
+            {/* у остановки с краю дороги название сдвинуто внутрь: иначе оно вылезает за экран
+                узкого телефона, страница становится шире, и нижняя панель обрезается */}
             <button type="button" className={`ln-stop-title ${l.open ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true" data-testid="path-lesson-title" data-lesson={l.id}
+              style={{ transform: titleShift(pts[i][0], W) ? `translateX(${titleShift(pts[i][0], W)}px)` : undefined }}
               onClick={() => { Audio.play('click'); onLesson(l); }}>{l.title}</button>
           </div>
         );
