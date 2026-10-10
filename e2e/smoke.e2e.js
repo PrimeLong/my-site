@@ -2614,9 +2614,14 @@ test('учебник: калькулятор по полям а → б → в, �
   await pr.getByRole('button', { name: 'Проверить' }).click();
   await expect(pr.getByTestId('tb-verdict')).toContainText('Верно');
 
-  // «назад» закреплён сверху: из глубины главы он на виду
+  // «назад» закреплён сверху: из глубины главы он на виду; стрелка «наверх» — к началу главы
   await page.mouse.wheel(0, 2500);
   await expect(page.getByTestId('tb-topbar')).toBeInViewport();
+  await expect(page.getByTestId('tb-to-top')).toBeVisible();
+  await page.getByTestId('tb-to-top').click();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(5);
+  await expect(page.getByTestId('tb-to-top')).toHaveCount(0);
+  await page.mouse.wheel(0, 2500);
   // повторное нажатие на «Учебник» — на главную страницу учебника
   await page.getByTestId('bottom-nav').locator('[data-tab="book"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();

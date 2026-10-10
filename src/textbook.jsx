@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown, ArrowUp } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -35,6 +35,10 @@ const APPENDIX_BY_ID = Object.fromEntries(APPENDICES.map((a) => [a.id, a]));
 const fmtNum = (v) => String(Math.round(v * 1000) / 1000).replace('.', ',').replace('-', '−');
 
 export const TEXTBOOK_CSS = `
+  .tb-to-top { position: fixed; right: 12px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 30; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border-radius: 50%; border: 1px solid var(--ds-rule2, var(--c-border)); background: var(--ds-card, var(--c-panel)); color: var(--u-ink, var(--c-gold-soft)); box-shadow: 0 4px 14px var(--ds-shade, rgba(0,0,0,.18)); cursor: pointer; }
+  .tb-to-top.with-nav { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  @media (min-width: 1024px) { .tb-to-top { right: max(16px, calc(50vw - 560px)); } }
   .tb-sticky-top { position: sticky; top: 0; z-index: 30; background: var(--ds-paper, var(--tb-bg, #fff)); margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--ds-rule, transparent); }
   .tb-body { font-size: 14.5px; line-height: 1.68; color: var(--c-text); }
   .tb-body p { margin: 0 0 12px; }
@@ -1711,6 +1715,25 @@ function ReaderBar({ scale, setScale }) {
   );
 }
 
+/* Стрелка «наверх»: из середины длинной главы — к её началу в одно касание (как «к карте»
+   на Пути). Появляется, когда начало страницы ушло далеко за верх экрана. */
+function ToTop({ withNav = false }) {
+  const [show, setShow] = useState(false);
+  React.useEffect(() => {
+    const on = () => setShow(window.scrollY > 900);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
+  if (!show) return null;
+  return (
+    <button type="button" className={`tb-to-top${withNav ? ' with-nav' : ''}`} data-testid="tb-to-top" aria-label="Наверх, к началу страницы" title="Наверх"
+      onClick={() => { Audio.play('paper'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+      <ArrowUp size={22} aria-hidden="true" />
+    </button>
+  );
+}
+
 export function TextbookScreen({ onBack, onExit = null, resume = false, startPage = null, backLabel, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario, reportSlot = null, reportFlag = null, asTab = false, homeTick = 0 }) {
   const [progress, setProgress] = useState(loadProgress);
   const [page, setPage] = useState(() => startPage || (resume && progress.last ? progress.last : { kind: 'toc' }));
@@ -1852,6 +1875,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
             right={reportSlot ? reportSlot(cur) : null} />
         </div>
         {pages}
+        <ToTop withNav />
       </div>
     );
   }
@@ -1860,6 +1884,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
       onBack={onBack} backLabel={backLabel}
       lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
       {pages}
+      <ToTop />
     </TrainerPage>
   );
 }
