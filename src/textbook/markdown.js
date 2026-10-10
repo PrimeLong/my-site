@@ -255,11 +255,13 @@ export function parseBlocks(text) {
       continue;
     }
 
-    // выключная формула
+    // выключная формула; «$$!» — ключевая: её стоит запомнить (docs/mechanics.md, «Учебник»)
     if (trimmed.startsWith('$$')) {
       let tex = trimmed.slice(2);
+      const key = tex.startsWith('!') ? { key: true } : {};
+      if (key.key) tex = tex.slice(1);
       if (tex.trim().endsWith('$$') && tex.trim().length >= 2) {
-        blocks.push({ type: 'math', tex: tex.trim().slice(0, -2).trim() });
+        blocks.push({ type: 'math', tex: tex.trim().slice(0, -2).trim(), ...key });
         i += 1; continue;
       }
       i += 1;
@@ -268,7 +270,7 @@ export function parseBlocks(text) {
       if (i >= lines.length) throw new Error('Формула $$ не закрыта');
       acc.push(lines[i].trim().slice(0, -2));
       i += 1;
-      blocks.push({ type: 'math', tex: acc.join('\n').trim() });
+      blocks.push({ type: 'math', tex: acc.join('\n').trim(), ...key });
       continue;
     }
 

@@ -17,7 +17,7 @@ import { GLOSSARY, GLOSSARY_KEYS } from './textbook/glossary.js';
 import { GAME_CARDS, LIMITS } from './textbook/appendix.js';
 import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo, READY_CHAPTERS, PLANNED_CHAPTERS, TOC_LEVELS, chapterLevel } from './textbook/toc.js';
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
-import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf } from './textbook/content.js';
+import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, keyFormulas } from './textbook/content.js';
 import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
@@ -69,6 +69,12 @@ export const TEXTBOOK_CSS = `
   .tb-chip { font-size: 12px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
   /* чип-кнопка — без системного серого фона кнопки (в тёмной теме он съедал контраст) */
   button.tb-chip { background: transparent; font-family: inherit; cursor: pointer; }
+  /* ключевая формула главы — её стоит знать наизусть; остальные выводятся из таких */
+  .tb-key { border-left: 3px solid var(--c-gold); background: var(--c-panel-alt); padding: 6px 12px 2px; margin: 12px 0 14px; border-radius: 0 4px 4px 0; }
+  .tb-key .tb-math { margin: 4px 0 8px; }
+  .tb-key .tb-legend { margin: -4px 0 8px; }
+  .tb-key-sum { border-top: 1px dashed var(--c-border); margin-top: 6px; padding-top: 8px; }
+  .tb-key-label { font: 700 11px/1.4 var(--ds-sans, sans-serif); letter-spacing: .07em; text-transform: uppercase; color: var(--c-gold-soft); }
   .tb-legend { font-size: 13px; line-height: 1.6; color: var(--c-muted); margin: -6px 0 14px; padding-left: 10px; border-left: 2px solid var(--c-hairline); }
   .tb-calc { margin: 10px 0 4px; max-width: 300px; border: 1px solid var(--c-border); border-radius: 4px; padding: 8px; background: var(--c-panel-alt, rgba(0,0,0,.03)); }
   .tb-calc-screen { text-align: right; font-family: var(--ds-mono, monospace); padding: 4px 6px 6px; }
@@ -155,6 +161,7 @@ function DiagramBox({ b, ctx }) {
 }
 
 /* ------------------------------ ФОРМУЛЫ ------------------------------ */
+const KEY_FORMULA_HINT = 'Формулы с пометкой «Запомнить» нужны наизусть: на них держатся задачи главы. Остальные выводятся из них или нужны для справки — их достаточно понимать.';
 // «где P — цена, …» под выключной формулой главы: только буквы из этой формулы
 function SymbolLegend({ tex, chapter }) {
   const list = formulaSymbols(tex, chapter);
@@ -270,6 +277,13 @@ function BoxView({ b, ctx }) {
     <div className="tb-box" style={{ borderLeftColor: color }} data-testid={`tb-box-${b.kind}`}>
       <div className="tb-box-head" style={{ color }}><Icon size={13} />{b.title || k.label}</div>
       <Blocks blocks={b.children} ctx={ctx} />
+      {b.kind === 'summary' && ctx && ctx.chapter && keyFormulas(ctx.chapter).length > 0 && (
+        <div className="tb-key-sum" data-testid="tb-key-sum">
+          <div className="tb-key-label">Формулы, которые стоит запомнить</div>
+          {keyFormulas(ctx.chapter).map((tex) => <Tex key={tex} tex={tex} display />)}
+          <div style={{ fontSize: 13, color: 'var(--c-muted)', margin: '0 0 10px' }}>{KEY_FORMULA_HINT}</div>
+        </div>
+      )}
       {b.more && (
         <>
           <button type="button" className="tb-link" style={{ fontSize: 13, marginBottom: 10 }} aria-expanded={more}
@@ -432,7 +446,14 @@ export function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
       case 'p': return <p key={i}><Inline nodes={b.inline} ctx={ctx} /></p>;
       case 'ul': return <ul key={i}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ul>;
       case 'ol': return <ol key={i} start={b.start}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ol>;
-      case 'math': return <React.Fragment key={i}><Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}</React.Fragment>;
+      case 'math': return b.key
+        ? (
+          <div key={i} className="tb-key" data-testid="tb-key">
+            <div className="tb-key-label" title={KEY_FORMULA_HINT}>Запомнить</div>
+            <Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}
+          </div>
+        )
+        : <React.Fragment key={i}><Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}</React.Fragment>;
       case 'table': return (
         <div key={i} className="tb-table">
           <table>
