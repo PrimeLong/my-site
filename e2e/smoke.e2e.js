@@ -1803,6 +1803,46 @@ test('путь: юнит «Инфляция» — каждый урок прох
   expect(errors).toEqual([]);
 });
 
+test('лавка → сад: созревшее собирается в гербарий, семена садятся за монеты, растение растёт без приложения', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const now = Date.now(); const H = 3600000;
+    // ромашка посажена три часа назад (растёт два) — созрела; тюльпан — пять часов из восьми
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: now - 86400000, runs: 1, best: 90 } }, coins: { '2026-01-01': 500 },
+      garden: { [now - 3 * H]: 'chamomile@0', [now - 5 * H]: 'tulip@1' } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  const shop = page.getByTestId('shop');
+  await expect(shop.getByTestId('garden-ripe')).toHaveText('1');
+  await shop.getByTestId('shop-switch').locator('[data-view="garden"]').click();
+  await expect(shop).toHaveAttribute('data-view', 'garden');
+  const garden = page.getByTestId('garden');
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="chamomile"]')).toHaveAttribute('data-stage', 'bloom');
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"]')).toHaveAttribute('data-stage', 'bud');
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('ещё 3 ч');
+  // собрать — ромашка в гербарии, грядка свободна
+  await garden.getByTestId('garden-harvest').click();
+  await expect(garden.getByTestId('garden-msg')).toContainText('новое растение в гербарии');
+  await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-got', 'true');
+  await expect(garden.locator('[data-testid=herb-item][data-plant="orchid"]')).toHaveAttribute('data-got', 'false');
+  await expect(shop.getByTestId('garden-ripe')).toHaveCount(0);
+  // посадить подсолнух: монеты списаны по курсу, на грядке — семечко
+  const before = Number(await garden.getByTestId('garden-balance').innerText());
+  await garden.locator('[data-testid=garden-seed][data-plant="sunflower"] [data-testid=garden-plant]').click();
+  await expect(garden.getByTestId('garden-msg')).toContainText('Посадили: Подсолнух');
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="sunflower"]')).toHaveAttribute('data-stage', 'seed');
+  expect(Number(await garden.getByTestId('garden-balance').innerText())).toBeLessThan(before);
+  await expect(garden.getByTestId('garden-free')).toHaveText('4');
+  await expectNoSidewaysScroll(page);
+  // посадка сохранена в профиле: после перезагрузки подсолнух на месте
+  await page.reload({ waitUntil: 'networkidle' });
+  await openTab(page, 'shop');
+  await page.getByTestId('shop-switch').locator('[data-view="garden"]').click();
+  await expect(page.locator('[data-testid=garden-plot][data-plant="sunflower"]')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 // юнит «Спрос и предложение» пройден — любой его урок открыт для повтора
 const unitDone = (page) => page.addInitScript(() => {
   if (localStorage.getItem('ems-textbook-v1')) return;

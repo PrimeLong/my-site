@@ -11,6 +11,7 @@ import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
+import { ShopSwitch, GardenView } from './learn-garden.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
@@ -306,6 +307,8 @@ export function ShopView({ learn, update, now = Date.now() }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);
+  // «Лавка · Сад»: сад — в той же вкладке, переключателем вверху
+  const [view, setView] = useState('shop');
   const b = balance(learn);
   const wear = outfitOf(learn);
   const today = shopDay(learn, day);
@@ -322,8 +325,10 @@ export function ShopView({ learn, update, now = Date.now() }) {
   const ownedList = OUTFITS.filter((o) => (learn.owned || {})[o.id]);
   const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
   return (
-    <div className="ln-wrap" data-testid="shop">
+    <div className="ln-wrap" data-testid="shop" data-view={view}>
       <div>
+        <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} />
+        {view === 'garden' ? <GardenView learn={learn} update={update} /> : <>
         <Heading eyebrow="Лавка" title="Лавка Инфли" sub="Монеты — за уроки, серию и задания. Цены в кронах, платите по курсу дня." />
         <Card style={{ margin: '10px 0 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -382,6 +387,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
             </div>
           </div>
         ))}
+        </>}
       </div>
     </div>
   );
