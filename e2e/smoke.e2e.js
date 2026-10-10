@@ -1407,6 +1407,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button')).toHaveCount(5);
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
+  await expect(page.getByTestId('streak-chip')).toHaveAttribute('data-today', 'false');
   // Путь начинается с юнита 1; уроками — пять юнитов (14, 10, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
   await expect(path.getByTestId('path-unit')).toHaveCount(5);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
@@ -1470,6 +1471,8 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(result.getByTestId('result-xp').locator('[data-value]')).toHaveText(/^\+\d+$/);
   await expect(result.getByTestId('result-acc')).not.toContainText('100%');
   await expect(result).not.toContainText('Урок уже был пройден');
+  // первый урок дня — огонёк сохранён: крупно на итогах
+  await expect(result.getByTestId('result-streak')).toContainText('Огонёк сохранён: 1 день подряд');
   await expect(result.getByTestId('mascot')).toHaveAttribute('data-mood', 'party');
   // на итогах выход один
   await expect(page.getByTestId('lesson').locator('[data-nav="back"]')).toHaveCount(1);
@@ -1481,6 +1484,7 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(pathNode(page, 'sc-l1').getByTestId('unlock-anim')).toHaveCount(1);
   await expect(pathNode(page, 'sc-l1').getByTestId('unlock-anim')).toHaveCount(0, { timeout: 5000 });
   await expect(page.getByTestId('streak')).toHaveText('1');
+  await expect(page.getByTestId('streak-chip')).toHaveAttribute('data-today', 'true');
   // цель дня — минуты занятий (по умолчанию 10)
   await expect(page.getByTestId('goal')).toContainText(/\d+\/10\s*мин/);
   // ошибка ушла в практику (экран «Задания» с Пути), статистика — в «Профиль»

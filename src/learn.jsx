@@ -73,6 +73,14 @@ const CSS = `
   .ln-stat { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--ds-rule2); border-radius: 3px;
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
   .ln-stat small { font: 12px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
+  .ln-streak.on { background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border-color: color-mix(in srgb, var(--ds-bad) 55%, var(--ds-rule2)); color: var(--ds-bad); }
+  .ln-streak.on small { color: inherit; }
+  .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
+  .ln-flame-wrap { position: relative; display: inline-flex; }
+  .ln-flame-ok { position: absolute; right: -5px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--ds-ok); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+  .ln-streak-up { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border-radius: 4px;
+    background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border: 1px solid color-mix(in srgb, var(--ds-bad) 45%, var(--ds-rule2)); color: var(--ds-bad); font: 700 16px var(--ds-sans); text-align: left; }
+  .ln-streak-up .rw-flame { display: inline-flex; }
   .ln-atlas { position: relative; padding: 10px 10px 8px; margin: 4px 0 18px; }
   .ln-atlas svg text { font-family: var(--ds-serif); }
   .ln-bill { position: relative; overflow: hidden; padding: 0; margin: 20px 0 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
@@ -679,10 +687,13 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     const key = runKey({ mode: run.mode, lessonId: run.lessonId, replay, diamond, gem });
     const full = (s) => { const t = earn(apply(s), coins, key, now); return settle(t, courseCtx(t), now); };
     const preview = full(learn);
+    // первый урок дня продлил серию — огонёк загорается на итогах крупно
+    const before = streak(learn, now); const after = streak(preview.s, now);
+    const streakUp = !before.today && after.today ? after.days : 0;
     update((s) => full(s).s);
     // касса: урок сдан
     Audio.play('register'); vibrate([20, 30, 20, 30, 60]);
-    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted });
+    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted, streakUp });
     setStage('done');
   };
   const next = () => {
@@ -986,6 +997,12 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}
               </div>
+              {result.streakUp > 0 && (
+                <div className="ln-streak-up" data-testid="result-streak" role="status">
+                  <span className="rw-flame"><Flame size={34} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 30%, transparent)" aria-hidden="true" /></span>
+                  <span>Огонёк сохранён: {result.streakUp} {plural(result.streakUp, 'день', 'дня', 'дней')} подряд<br /><span style={{ font: '13.5px var(--ds-sans)', color: 'var(--ds-ink2)' }}>Сегодняшний день засчитан в серию.</span></span>
+                </div>
+              )}
               <div className="ln-tickets">
                 <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
@@ -1174,7 +1191,14 @@ function TopStats({ learn }) {
   return (
     // у каждого счётчика подпись для чтения с экрана: значок и сокращение её не заменяют
     <div className="ln-stats" data-testid="path-stats" role="group" aria-label="Ваш прогресс">
-      <span className="ln-stat" title="Серия дней"><Flame size={17} color={st.days ? 'var(--ds-bad)' : 'var(--ds-ink3)'} aria-hidden="true" /><span className="ds-sr">Серия, дней: </span><span data-testid="streak">{st.days}</span><small aria-hidden="true">дн.</small></span>
+      {/* огонёк: сегодня уже занимались — горит (цветной, с галочкой); ещё нет — блёклый, ждёт урока */}
+      <span className={`ln-stat ln-streak${st.today ? ' on' : st.days ? ' wait' : ''}`} data-testid="streak-chip" data-today={String(st.today)}
+        title={st.today ? 'Серия продлена сегодня' : st.days ? 'Сегодня ещё не занимались: один урок — и серия продлится' : 'Серия дней'}>
+        <span className="ln-flame-wrap"><Flame size={17} color={st.today ? 'var(--ds-bad)' : 'var(--ds-ink3)'} fill={st.today ? 'color-mix(in srgb, var(--ds-bad) 35%, transparent)' : 'none'} aria-hidden="true" />
+          {st.today && <i className="ln-flame-ok" aria-hidden="true"><Check size={9} strokeWidth={4} /></i>}</span>
+        <span className="ds-sr">Серия, дней: </span><span data-testid="streak">{st.days}</span><small aria-hidden="true">дн.</small>
+        <span className="ds-sr">{st.today ? ', сегодня продлена' : st.days ? ', сегодня ещё не продлена' : ''}</span>
+      </span>
       <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" /><span className="ds-sr">Опыт: </span>{totalXp}<small aria-hidden="true">опыт</small></span>
       <WalletStat learn={learn} />
       <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" /><span className="ds-sr">Цель дня, минут занятий: </span>{Math.min(g.done, g.goal)}/{g.goal}<small aria-hidden="true">мин</small></span>
