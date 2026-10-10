@@ -218,8 +218,23 @@ export async function setReport(entry) {
   return true;
 }
 
+/* Имена для лиг недели (src/learn/league.js): хэш league-names, поле — логин, значение — имя из
+   профиля. Только ученики старше 16, включившие «Показывать моё имя в лигах»; выключил —
+   поле удаляется. */
+export async function setLeagueName(login, name) {
+  if (redis) { if (name) await redis.hset('league-names', { [login]: name }); else await redis.hdel('league-names', login); return true; }
+  const m = { ...mem.get('league-names') };
+  if (name) m[login] = name; else delete m[login];
+  mem.set('league-names', m);
+  return true;
+}
+export async function getLeagueNames() {
+  if (redis) return (await redis.hgetall('league-names')) || {};
+  return { ...mem.get('league-names') };
+}
+
 /* Удаление аккаунта («Удалить аккаунт и все данные» в профиле): профиль, прогресс,
-   сохранения, рекорды, строки вызова дня за последний месяц и сообщения об ошибках.
+   сохранения, рекорды, имя в лигах, строки вызова дня за последний месяц и сообщения об ошибках.
    Сессии отдельно не ищем: без пользователя они больше не открывают профиль и сами
    истекают через полгода. */
 const lastDays = (n) => Array.from({ length: n }, (_, k) => new Date(Date.now() - k * 86400000).toISOString().slice(0, 10));
@@ -228,8 +243,10 @@ export async function deleteUserData({ login, playerId }) {
   if (redis) {
     await redis.del(...keys);
     await redis.hdel('records:tycoon', login);
+    await redis.hdel('league-names', login);
     if (playerId) for (const day of lastDays(32)) await redis.hdel(`daily:${day}`, playerId);
   } else {
+    const ln = { ...mem.get('league-names') }; delete ln[login]; mem.set('league-names', ln);
     keys.forEach((k) => mem.delete(k));
     const rec = { ...mem.get('records:tycoon') }; delete rec[login]; mem.set('records:tycoon', rec);
     if (playerId) lastDays(32).forEach((day) => { const b = { ...mem.get(`daily:${day}`) }; delete b[playerId]; mem.set(`daily:${day}`, b); });

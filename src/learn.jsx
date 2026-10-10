@@ -42,6 +42,7 @@ import {
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText } from './learn/terms.js';
+import { LeagueCard } from './learn-league.jsx';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
@@ -1636,7 +1637,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
    Экран поверх Пути (открывается карточкой «Задания» наверху): цель дня в минутах и три
    задания дня, персональное испытание месяца, ниже — практика: ошибки уроков, задачи
    вперемешку и итоговая проверка. Один «назад» — на Путь. */
-function TasksView({ learn, onStart, onOpenBook, onBack }) {
+function TasksView({ learn, update, onStart, onOpenBook, onBack }) {
   const n = learn.mistakes.length;
   // задачи и вопросы учебника, которым подошёл срок повторения
   const [due] = useState(() => reviewQueue(loadProgress()).due.length);
@@ -1644,8 +1645,9 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
   return (
     <div className="ln-wrap" data-testid="tasks">
       <TopBar back={<IconButton label="Назад, на Путь" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Задания" />
-      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня и на месяц. Задания дня обновляются в полночь и начинаются с нуля.</div>
+      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня, на неделю и на месяц. Задания дня обновляются в полночь и начинаются с нуля, лига — по понедельникам.</div>
       <QuestsCard learn={learn} />
+      <LeagueCard learn={learn} update={update} />
       <MonthCard learn={learn} />
       <div data-testid="practice">
         <div className="ds-h3" style={{ margin: '18px 0 6px' }}>Практика</div>
@@ -1858,7 +1860,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} homeTick={pathHome} />}
-        {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
+        {tab === 'path' && tasks && <TasksView learn={learn} update={update} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}

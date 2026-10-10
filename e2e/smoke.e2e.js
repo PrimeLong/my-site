@@ -1843,6 +1843,39 @@ test('лавка → сад: созревшее собирается в герб
   expect(errors).toEqual([]);
 });
 
+test('лига недели: место в таблице, зоны, награда за прошлую неделю — один раз', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const day = (k) => { const d = new Date(Date.now() + k * 86400000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    // восемь дней назад — много опыта (первое место прошлой недели), сегодня — немного
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, xp: { [day(-8)]: 3000, [day(0)]: 40 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await expect(page.getByTestId('tasks-card-text')).toContainText('Серебряная лига');
+  await page.getByTestId('tasks-card').click();
+  const lg = page.getByTestId('league');
+  await expect(lg).toHaveAttribute('data-league', 'silver');
+  await expect(lg.getByTestId('league-title')).toHaveText('Серебряная лига');
+  await expect(lg.getByTestId('league-status')).toContainText('40 опыта');
+  await expect(lg.getByTestId('league-note')).toContainText('боты');
+  await expect(lg.locator('[data-testid=league-row][data-me="true"]')).toHaveCount(1);
+  // награда за первое место в Бронзовой — 50 монет, забирается один раз
+  await expect(lg.getByTestId('league-reward')).toContainText('1-е место в Бронзовой лиге');
+  await lg.getByTestId('league-claim').click();
+  await expect(lg.getByTestId('league-msg')).toContainText('+50 монет');
+  await expect(lg.getByTestId('league-reward')).toHaveCount(0);
+  await expect(lg.getByTestId('league-last')).toContainText('повышение в Серебряную');
+  // вся таблица — двадцать учеников
+  await lg.getByTestId('league-all').click();
+  await expect(lg.getByTestId('league-row')).toHaveCount(20);
+  await expectNoSidewaysScroll(page);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByTestId('tasks-card').click();
+  await expect(page.getByTestId('league').getByTestId('league-reward')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 // юнит «Спрос и предложение» пройден — любой его урок открыт для повтора
 const unitDone = (page) => page.addInitScript(() => {
   if (localStorage.getItem('ems-textbook-v1')) return;

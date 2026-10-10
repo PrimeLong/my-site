@@ -12,6 +12,7 @@ import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import { ShopSwitch, GardenView } from './learn-garden.jsx';
+import { leagueLine } from './learn-league.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
@@ -107,7 +108,7 @@ export function TasksEntry({ learn, onOpen, now = Date.now() }) {
   const m = monthChallenge(learn, now);
   const done = quests.filter((q) => q.done).length;
   const goalOk = g.done >= g.goal;
-  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
+  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · ${leagueLine(learn, now)} · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
   return (
     <button type="button" className="ds-card ds-card--button rw-tasks-entry" data-testid="tasks-card" data-nav-target="tasks" aria-label={`Задания. ${text}`}
       onClick={() => { Audio.play('paper'); onOpen(); }}>

@@ -45,7 +45,7 @@ export function publicProfile(user) {
   // детский режим «Мира» (src/lib/age.js)
   return { login: user.login, name: user.name, emblem: user.emblem || 'star', playerId: user.playerId,
     createdAt: user.createdAt, stats: { ...emptyStats(), ...user.stats }, hasRecovery: !!user.recHash,
-    birthYear: user.birthYear || null, kidsMode: kidsModeOf(user) };
+    birthYear: user.birthYear || null, kidsMode: kidsModeOf(user), leaguePublic: user.leaguePublic === true };
 }
 
 export async function userBySession(token) {
