@@ -46,7 +46,7 @@ import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
-import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx, modelBadge } from './learn-model.jsx';
+import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx } from './learn-model.jsx';
 import { hasModel, partsOfLesson, modelProgress } from './learn/model.js';
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
@@ -1182,7 +1182,7 @@ function TopStats({ learn }) {
    гравюра; пройденный юнит его «оживляет» (цвет, свет в окнах, дым). Нажатие по месту —
    прокрутка к юниту на дороге ниже. */
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
-function Atlas({ states, onPick, learn = null }) {
+function Atlas({ states, onPick }) {
   const units = UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) }));
   const onPath = units.filter((x) => x.st);
   const route = units.map((x) => x.pl.at);
@@ -1223,10 +1223,6 @@ function Atlas({ states, onPick, learn = null }) {
               <circle cx={x} cy={y - 26} r="50" fill="var(--ds-card)" opacity=".85" />
               <EngravingG kind={pl.building} alive={alive} x={x - 54} y={y - 72} scale={0.9} color={pl.color} />
               <text x={x} y={y + 30} textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="7" paintOrder="stroke">{pl.place}</text>
-              {learn && hasModel(u.id) && (
-                <text x={x} y={y - 84} textAnchor="middle" fontSize="21" fill="var(--u-ink)" stroke="var(--ds-paper)" strokeWidth="6" paintOrder="stroke" data-testid="atlas-model"
-                  style={{ fontFamily: 'var(--ds-mono)' }}>{modelBadge(u.id, learn)}</text>
-              )}
             </g>
           );
         })}
@@ -1486,7 +1482,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
         </div>
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
-      <div ref={atlasRef}><Atlas states={states} onPick={pick} learn={learn} /></div>
+      <div ref={atlasRef}><Atlas states={states} onPick={pick} /></div>
       <ToMap target={atlasRef} />
       {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }, k, list) => {
         const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];

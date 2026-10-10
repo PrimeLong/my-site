@@ -385,8 +385,6 @@ export function MarketModel({ unitId, learn, compact = false, testid = 'unit-mod
     </div>
   );
 }
-// маленький значок прогресса модели — для карты Пути у остановки
-export const modelBadge = (unitId, learn) => { const p = modelProgress(unitId, learn); return p.total ? `модель ${p.open}/${p.total}` : null; };
 
 /* ------------------------------ ДОМИНО ------------------------------
    Сверху новость «Вестника», ниже — сцена (график и улица), пустые звенья и колода. Ученик

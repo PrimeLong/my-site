@@ -2501,9 +2501,9 @@ test('новые глаголы: «Откройте сами», живая мо�
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).overflow)).not.toBe('hidden');
 
-  // модель на Пути: деталь открыта, на карте — значок прогресса; закрытые — «откроется в уроке …»
+  // модель на Пути: деталь открыта, на карте счётчика модели нет (лишний шум); закрытые — «откроется в уроке …»
   await expect(model).toHaveAttribute('data-open', '1');
-  await expect(path.getByTestId('atlas-model').first()).toHaveText('модель 1/10');
+  await expect(path.getByTestId('atlas-model')).toHaveCount(0);
   await model.getByTestId('model-toggle').click();
   await expect(model.locator('[data-part="demand"]')).toHaveAttribute('data-open', 'true');
   await expect(model.locator('[data-part="income"]')).toContainText('Откроется в уроке «Спрос: закон и сдвиги»');
