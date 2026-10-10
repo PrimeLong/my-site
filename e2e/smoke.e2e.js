@@ -817,9 +817,11 @@ test('учебник: оглавление, формулы KaTeX, график �
   const { errors, external } = await openApp(page);
   await openBook(page);
   const toc = page.getByTestId('textbook');
-  await expect(toc.getByText('Микроэкономика', { exact: true })).toBeVisible();
-  await expect(toc.locator('[data-status="ready"]')).toHaveCount(15);
-  await expect(toc.locator('[data-status="planned"]')).toHaveCount(6);
+  // главы — по уровням курса; недописанные — свёрнутым списком «Готовятся» в конце
+  await expect(toc.getByTestId('tb-level-group')).toHaveCount(5);
+  await expect(toc.getByText('Уровень 2 · Базовый')).toBeVisible();
+  await expect(toc.locator('[data-status="ready"]')).toHaveCount(16);
+  await expect(toc.getByTestId('tb-planned')).toContainText('ещё 6 глав');
   await expectNoSidewaysScroll(page);
 
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
@@ -2176,8 +2178,10 @@ test('сообщить об ошибке: флажок на упражнении
   const bg = (r) => sheet.locator(`[data-reason="${r}"]`).evaluate((el) => getComputedStyle(el).backgroundColor);
   await expect(sheet.locator('[data-reason="accept"]')).toHaveAttribute('aria-checked', 'true');
   expect(await bg('accept')).not.toBe(await bg('typo'));
-  await expect(sheet.locator('[data-reason="accept"] svg')).toHaveCount(1);
-  await expect(sheet.locator('[data-reason="typo"] svg')).toHaveCount(0);
+  // у каждой причины круглый переключатель; выбранная — с точкой внутри
+  await expect(sheet.locator('[data-reason] .rp-radio')).toHaveCount(await sheet.locator('[data-reason]').count());
+  expect(await sheet.locator('[data-reason="accept"] .rp-radio').evaluate((el) => getComputedStyle(el, '::after').content)).not.toBe('none');
+  expect(await sheet.locator('[data-reason="typo"] .rp-radio').evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none');
   await sheet.getByLabel(/Комментарий/).fill('мне кажется, мой ответ верный');
   await sheet.getByTestId('report-send').click();
   await expect(page.getByTestId('report-thanks')).toContainText('Спасибо! Посмотрим');
