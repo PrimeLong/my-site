@@ -2635,6 +2635,8 @@ test('учебник: калькулятор по полям а → б → в, �
   await pr.getByRole('button', { name: 'Уверен', exact: true }).click();
   await pr.getByRole('button', { name: 'Проверить' }).click();
   await expect(pr.getByTestId('tb-verdict')).toContainText('Верно');
+  await expect(pr).toHaveAttribute('data-solved', 'true');
+  await expect(pr.getByTestId('tb-solved-chip')).toContainText('Решена');
 
   // «назад» закреплён сверху: из глубины главы он на виду; стрелка «наверх» — к началу главы
   await page.mouse.wheel(0, 2500);
@@ -2654,6 +2656,10 @@ test('учебник: калькулятор по полям а → б → в, �
   const done = ch.locator('[data-problem="pc-basic"]');
   await expect(done).toHaveAttribute('data-collapsed', 'true');
   await expect(done).toContainText('решена');
+  // решённая — заметна: зелёная кайма и отметка; в оглавлении главы — «решено N из M»
+  await expect(done).toHaveAttribute('data-solved', 'true');
+  await expect(done.locator('.tb-solved-mark')).toBeVisible();
+  await expect(ch.getByTestId('tb-secnav-solved')).toContainText(/решено [1-9]\d* из \d+/);
   await ch.getByTestId('tb-sections').getByRole('button', { name: 'Задачи' }).click();
   const curId = await ch.locator('[data-testid="tb-problem"]:not([data-collapsed="true"])').first().getAttribute('data-problem');
   await expect(ch.locator(`[data-problem="${curId}"]`)).toBeInViewport();

@@ -38,6 +38,10 @@ export const TEXTBOOK_CSS = `
   .tb-to-top { position: fixed; right: 12px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 30; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center;
     padding: 0; border-radius: 50%; border: 1px solid var(--ds-rule2, var(--c-border)); background: var(--ds-card, var(--c-panel)); color: var(--u-ink, var(--c-gold-soft)); box-shadow: 0 4px 14px var(--ds-shade, rgba(0,0,0,.18)); cursor: pointer; }
   .tb-to-top.with-nav { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  /* решённая задача — видно издалека: зелёная кайма слева, лёгкий зелёный фон, плашка «Решена» */
+  .tb-solved { border-left: 4px solid var(--c-teal, #2E7D5B) !important; background: color-mix(in srgb, var(--c-teal, #2E7D5B) 7%, var(--c-panel, #fff)) !important; }
+  .tb-solved-mark { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--c-teal, #2E7D5B); color: #fff; }
+  .tb-solved-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 10px; background: var(--c-teal, #2E7D5B); color: #fff; font: 700 12px/1.4 var(--ds-sans, sans-serif); }
   @media (min-width: 1024px) { .tb-to-top { right: max(16px, calc(50vw - 560px)); } }
   .tb-sticky-top { position: sticky; top: 0; z-index: 30; background: var(--ds-paper, var(--tb-bg, #fff)); margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--ds-rule, transparent); }
   .tb-body { font-size: 14.5px; line-height: 1.68; color: var(--c-text); }
@@ -673,26 +677,28 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
   if (solvedBefore && !expanded) {
     return (
-      <div id={`problem-${block.id}`} className="ems-panel" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true">
-        <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', fontSize: 13.5 }} aria-expanded="false"
+      <div id={`problem-${block.id}`} className="ems-panel tb-solved" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true" data-solved="true">
+        <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', fontSize: 13.5, textDecoration: 'none' }} aria-expanded="false"
           data-testid="tb-problem-expand" onClick={() => { Audio.play('click'); setExpanded(true); }}>
-          <Check size={14} style={{ color: COLOR.teal, flexShrink: 0 }} aria-hidden="true" />
-          <span style={{ flex: 1 }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span> — решена{rec.due ? `, повтор ${daysUntil(rec.due)}` : ''}</span>
+          <span className="tb-solved-mark" aria-hidden="true"><Check size={15} strokeWidth={3} /></span>
+          <span style={{ flex: 1, color: COLOR.text }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
+            {' — '}<b style={{ color: COLOR.teal }}>решена</b>{rec.due ? <span style={{ color: COLOR.muted }}>, повтор {daysUntil(rec.due)}</span> : ''}</span>
           <ChevronDown size={14} aria-hidden="true" />
         </button>
       </div>
     );
   }
   return (
-    <div id={`problem-${block.id}`} className="ems-panel" style={{ padding: 14, margin: '12px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind}>
+    <div id={`problem-${block.id}`} className={`ems-panel${rec && rec.ok ? ' tb-solved' : ''}`} style={{ padding: 14, margin: '12px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-solved={rec && rec.ok ? 'true' : undefined}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
         <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
         <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {block.news && <span className="tb-chip">по газете</span>}
           {LEVELS[block.level] && <span className="tb-chip" data-testid="tb-level">{LEVELS[block.level]}</span>}
           {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'пункта' : 'пунктов'}</span>}
-          {status && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
-            {status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
+          {status && (rec.ok
+            ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
+            : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>)}
         </span>
       </div>
       {block.news && (
@@ -1057,13 +1063,17 @@ function SectionNav({ sections, ctx }) {
       {study.length > 0 && <div className="tb-bar"><span style={{ width: `${(done / study.length) * 100}%` }} /></div>}
       <ol className="tb-secnav-list">
         {sections.map((x, k) => {
-          const ok = x.recall && sectionDone(ctx.progress, x);
+          // «Задачи» — сколько решено из скольких; все решены — галочка
+          const probs = isProblemsSection(x) ? problemsOf(ctx.chapter) : null;
+          const solvedN = probs ? probs.filter((id) => (ctx.progress.problems[id] || {}).ok).length : 0;
+          const ok = probs ? probs.length > 0 && solvedN === probs.length : x.recall && sectionDone(ctx.progress, x);
           return (
             <li key={x.id}>
               <button type="button" className="tb-secnav-row" data-testid="tb-secnav-row" onClick={() => scrollToSection(x, ctx.chapter, ctx.progress)}>
                 <span className={`tb-secnav-no${ok ? ' done' : ''}`} aria-hidden="true">{ok ? <Check size={12} /> : k + 1}</span>
                 <span>{x.title}</span>
-                {x.recall ? <span className="tb-secnav-min">≈{x.minutes} мин</span> : <span />}
+                {probs ? <span className="tb-secnav-min" data-testid="tb-secnav-solved" style={solvedN ? { color: COLOR.teal, fontWeight: 700 } : undefined}>решено {solvedN} из {probs.length}</span>
+                  : x.recall ? <span className="tb-secnav-min">≈{x.minutes} мин</span> : <span />}
               </button>
             </li>
           );
