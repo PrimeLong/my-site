@@ -951,7 +951,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await page.getByRole('button', { name: 'Мельче текст' }).click();
 
   await toToc(page);
-  await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 15');
+  await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 16');
   // уверенные ответы — на странице «Мой прогресс»: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
   await page.getByTestId('tb-stats-link').click();
   await expect(page.getByTestId('stats-confidence')).toContainText('верно 3 из 6 (50%)');
