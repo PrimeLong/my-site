@@ -880,6 +880,12 @@ test('учебник: оглавление, формулы KaTeX, график �
   await multi.getByTestId('tb-calc-open').click();
   await multi.getByRole('textbox', { name: 'Выражение для калькулятора' }).fill('√(300+100)');
   await expect(multi.getByTestId('tb-calc-value')).toHaveText('= 20');
+  // «=» — как в калькуляторе урока: выражение заменяется результатом, с ним можно считать дальше
+  const tbCalc = multi.getByTestId('tb-calc');
+  await tbCalc.locator('[data-calc="="]').click();
+  await expect(tbCalc.getByRole('textbox', { name: 'Выражение для калькулятора' })).toHaveValue('20');
+  for (const k of ['×', '2', '⌫', '1']) await tbCalc.locator(`[data-calc="${k}"]`).click();
+  await expect(multi.getByTestId('tb-calc-value')).toHaveText('= 20');
   await multi.getByTestId('tb-calc-use').click();
   await expect(multi.getByRole('textbox', { name: 'Задача 1, шаг б)' })).toHaveValue('20');
   // ловушка: типичный неверный ответ получает объяснение ошибки

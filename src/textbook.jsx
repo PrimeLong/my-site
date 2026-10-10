@@ -71,6 +71,7 @@ export const TEXTBOOK_CSS = `
   .tb-calc-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
   .tb-calc-keys button { font: 600 15px/1 var(--ds-mono, monospace); padding: 9px 0; border: 1px solid var(--c-border); border-radius: 3px; background: var(--c-panel, #fff); color: inherit; cursor: pointer; }
   .tb-calc-keys button.op { color: var(--c-gold, #9C7218); }
+  .tb-calc-keys button.tb-calc-use { grid-column: span 3; font: 600 12.5px/1.2 var(--ds-sans, sans-serif); padding: 6px; }
   .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
@@ -778,11 +779,20 @@ function okText(ctx, id, head, sawSolution) {
 /* Калькулятор задач учебника: выражение с клавиатуры или кнопками (+ − × ÷, степень, корень,
    скобки), результат — по ходу набора; «В ответ» вставляет его в поле, где стоял курсор
    (или в первое пустое). Подсказкой не считается: считать в уме никто не просит. */
-const TB_KEYS = ['7', '8', '9', '÷', '(', '4', '5', '6', '×', ')', '1', '2', '3', '−', '^', '0', ',', 'C', '+', '√'];
+// как в калькуляторе урока: «=» заменяет выражение результатом, «⌫» и «C» — в той же сетке
+const TB_KEYS = ['7', '8', '9', '÷', '⌫', '4', '5', '6', '×', 'C', '1', '2', '3', '−', '(', '0', ',', '^', '+', ')', '√', '='];
+const TB_LABEL = { '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно', C: 'Очистить', '⌫': 'Стереть символ' };
 function TbCalc({ onUse, label = 'В ответ' }) {
   const [expr, setExpr] = useState('');
   const v = evalExpr(expr);
-  const press = (k) => { Audio.play('tick'); if (k === 'C') setExpr(''); else if (k === '√') setExpr((e) => pressRoot(e)); else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e)); };
+  const press = (k) => {
+    Audio.play('tick');
+    if (k === 'C') setExpr('');
+    else if (k === '⌫') setExpr((e) => e.slice(0, -1));
+    else if (k === '=') { if (v != null) setExpr(fmtResult(v).replace('−', '-')); }
+    else if (k === '√') setExpr((e) => pressRoot(e));
+    else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e));
+  };
   return (
     <div className="tb-calc" data-testid="tb-calc">
       <input value={expr} onChange={(e) => setExpr(e.target.value.replace(/[^0-9.,+\-−*/×÷:^√()\s]/g, '').slice(0, 40))} aria-label="Выражение для калькулятора" placeholder="например, (120−60)/2"
@@ -790,13 +800,9 @@ function TbCalc({ onUse, label = 'В ответ' }) {
       <div className="tb-calc-screen" data-testid="tb-calc-value" style={{ fontSize: 18, fontWeight: 700 }}>{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</div>
       <div className="tb-calc-keys" role="group" aria-label="Калькулятор">
         {TB_KEYS.map((k) => (
-          <button key={k} type="button" className={'÷×−+^√()'.includes(k) ? 'op' : ''} data-calc={k} onClick={() => press(k)}
-            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', C: 'Очистить' })[k] || k}>{k}</button>
+          <button key={k} type="button" className={'÷×−+^√()='.includes(k) ? 'op' : ''} data-calc={k} onClick={() => press(k)} aria-label={TB_LABEL[k] || k}>{k}</button>
         ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-        <button type="button" className="ems-btn" style={{ padding: '6px 10px', fontSize: 12.5 }} aria-label="Стереть символ" onClick={() => { Audio.play('tick'); setExpr((e) => e.slice(0, -1)); }}>⌫</button>
-        <button type="button" className="ems-btn primary" style={{ flex: 1, padding: '6px 10px', fontSize: 12.5 }} disabled={v == null} data-testid="tb-calc-use"
+        <button type="button" className="ems-btn primary tb-calc-use" disabled={v == null} data-testid="tb-calc-use"
           onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{label}</button>
       </div>
     </div>
