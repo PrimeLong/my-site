@@ -13,7 +13,7 @@ import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
@@ -518,8 +518,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
 const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 export function MorningStreak({ learn, onClose, now = Date.now() }) {
   const st = streak(learn, now);
-  const hour = new Date(now).getHours();
-  const hello = hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
+  const hello = greetingAt(new Date(now).getHours());
   const pol = policyInfo(learn, now);
   return (
     <div className="rw-morning" data-testid="morning" role="dialog" aria-label="Серия дней">
