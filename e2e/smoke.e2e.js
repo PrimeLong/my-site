@@ -2653,10 +2653,12 @@ test('Путь: открывается на рекомендованном ур�
   const rec = path.locator('[data-testid=path-lesson][data-rec="true"]');
   await expect(rec).toHaveAttribute('data-lesson', 'sd-w');
   await expect(rec).toBeInViewport();
-  // пройденный юнит с открытым сундуком — одна строка, не выше 80 px; «Уроки: N» разворачивает
+  // пройденный юнит с открытым сундуком — одна строка, не выше 80 px; «Уроки» разворачивает, у узкого экрана название не наезжает на значки
   const sc = path.locator('[data-testid=path-unit][data-unit="scarcity"]');
   await expect(sc).toHaveAttribute('data-folded', 'true');
   expect((await sc.boundingBox()).height).toBeLessThan(80);
+  const titleBox = await sc.locator('.ln-mini-title').boundingBox();
+  expect(titleBox.x + titleBox.width).toBeLessThanOrEqual((await sc.getByTestId('unit-guide').boundingBox()).x + 1);
   // кнопка «К карте» — пока карта за верхом экрана; касание возвращает к карте
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect(page.getByTestId('to-map')).toBeVisible();

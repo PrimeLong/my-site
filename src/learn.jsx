@@ -80,7 +80,11 @@ const CSS = `
   .ln-bill-no { font: 700 30px/1 var(--ds-serif); color: var(--u-ink); }
   .ln-bill-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
   /* пройденный юнит свёрнут в одну строку: номер, место, алмазы, гайд и «уроки» */
-  .ln-bill-mini { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
+  .ln-mini-guide { width: 36px; height: 36px; }
+  .ln-bill-mini .ln-mini-fold { padding: 6px 4px; gap: 2px; }
+  .ln-mini-title { line-height: 1.2; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln-bill-mini > * { flex-shrink: 0; }
+  .ln-bill-mini { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
   .ln-mini-no { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 17px/1 var(--ds-serif);
     color: var(--u-ink); border: 1.5px solid var(--u-ink); box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px color-mix(in srgb, var(--u) 40%, transparent); }
   /* живая модель на телефоне — свёрнутой строкой; касание раскрывает */
@@ -1499,12 +1503,13 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             <Card className="ln-bill-mini">
               <span className="ln-mini-no" aria-hidden="true">{no}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="ds-h3" style={{ color: 'var(--u-ink)', lineHeight: 1.2 }}>{pl.place}</div>
+                <div className="ds-h3 ln-mini-title" style={{ color: 'var(--u-ink)' }}>{pl.place}</div>
                 <div className="ds-sub" style={{ fontSize: 13, whiteSpace: 'nowrap' }} data-testid="unit-diamonds"><span className="ds-sr">Юнит {no}, </span>пройден · <Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}<span className="ds-sr"> алмазов</span></div>
               </div>
-              <IconButton label="Гайд юнита" icon={BookOpenText} data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }} />
-              <Button variant="ghost" small icon={ChevronRight} data-testid="unit-fold" aria-expanded="false"
-                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>Уроки: {st.lessons.length}</Button>
+              <IconButton label="Гайд юнита" icon={BookOpenText} size={20} className="ln-mini-guide" data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }} />
+              <Button variant="ghost" small icon={ChevronRight} className="ln-mini-fold" data-testid="unit-fold" aria-expanded="false"
+                aria-label={`Показать уроки: ${st.lessons.length}`}
+                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>Уроки</Button>
             </Card>
           ) : (
           <Card className="ln-bill">
