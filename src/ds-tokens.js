@@ -52,6 +52,7 @@ export const PLACES = {
   'market-failures': { place: 'Порт', building: 'port', color: '#6E3226', region: 'port', at: [585, 180], note: 'внешние эффекты и налоги' },
   gdp: { place: 'Статуправление', building: 'tower', color: '#7D4E1E', region: 'capital', at: [275, 450], note: 'как считают ВВП' },
   'money-banks': { place: 'Банк', building: 'bank', color: '#5C4A1E', region: 'finance', at: [690, 195], note: 'деньги и кредит' },
+  inflation: { place: 'Гастроном', building: 'store', color: '#8E3B2E', region: 'capital', at: [800, 175], note: 'цены и корзина' },
   'is-lm': { place: 'Казначейство', building: 'bank', color: '#65572B', region: 'capital', at: [350, 360], note: 'ставка и выпуск' },
   'ad-as': { place: 'Промзона', building: 'factory', color: '#763B3B', region: 'industry', at: [465, 300], note: 'спрос и предложение в целом' },
   phillips: { place: 'Профсоюз', building: 'ministry', color: '#4B5B2D', region: 'industry', at: [590, 290], note: 'инфляция и безработица' },

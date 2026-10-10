@@ -90,6 +90,12 @@ export const PARTS = [
           { book: 'mankiwPrinciples', chapter: '«Денежная система» (The Monetary System) и «Рост денежной массы и инфляция» (Money Growth and Inflation)' },
           { book: 'mankiwMacro', chapter: '«Денежная система: что это такое и как она работает» (The Monetary System: What It Is and How It Works) и «Инфляция: причины, последствия и социальные издержки» (Inflation: Its Causes, Effects, and Social Costs)' },
         ] },
+      { id: 'inflation', title: 'Инфляция', status: 'ready',
+        summary: 'Что такое инфляция и как её считают по корзине, номинальные и реальные величины, кто выигрывает и проигрывает, инфляция спроса и издержек, ключевая ставка и цель по инфляции.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Измерение стоимости жизни» (Measuring the Cost of Living) и «Рост денежной массы и инфляция» (Money Growth and Inflation)' },
+          { book: 'mankiwMacro', chapter: '«Инфляция: причины, последствия и социальные издержки» (Inflation: Its Causes, Effects, and Social Costs)' },
+        ] },
       { id: 'is-lm', title: 'Модель IS-LM', status: 'ready',
         summary: 'Кейнсианский крест, кривые IS и LM, бюджетная и денежная политика, вытеснение, ловушка ликвидности, вывод кривой AD.',
         refs: [

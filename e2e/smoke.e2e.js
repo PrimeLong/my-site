@@ -2310,7 +2310,7 @@ test('навигация: у каждого экрана один «назад»
   const groups = page.getByTestId('tb-level-group');
   await expect(groups.first()).toHaveAttribute('data-level', 'start');
   await expect(groups.nth(1)).toContainText('Базовый');
-  expect(await groups.nth(1).locator('[data-chapter]').evaluateAll((els) => els.map((e) => e.dataset.chapter))).toEqual(['supply-demand', 'elasticity', 'market-failures', 'money-banks']);
+  expect(await groups.nth(1).locator('[data-chapter]').evaluateAll((els) => els.map((e) => e.dataset.chapter))).toEqual(['supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation']);
   await expect(page.getByTestId('textbook').getByText('Производство: производственная функция')).toHaveCount(0);
   await page.getByTestId('tb-planned').getByRole('button').click();
   await expect(page.getByTestId('tb-planned-list')).toContainText('Производство: производственная функция');

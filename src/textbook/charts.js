@@ -984,6 +984,52 @@ const gdpChart = {
   },
 };
 
+/* ---------------- ЦЕНЫ И ВКЛАД ----------------
+   Корзина стоит p0 и дорожает на π в год; вклад p0 растёт на ставку i в год. Через n лет
+   видно, что купит вклад: его реальная стоимость в сегодняшних ценах = вклад · p0 / цена. */
+const inflParams = (A) => ({ p0: num(A, 'p0', 100), pi: num(A, 'pi', 8), i: num(A, 'i', 10), n: num(A, 'n', 5) });
+export const inflationPath = (p0, pi, i, n) => {
+  const price = p0 * Math.pow(1 + pi / 100, n); const deposit = p0 * Math.pow(1 + i / 100, n);
+  return { price, deposit, real: (deposit * p0) / price, realRate: ((1 + i / 100) / (1 + pi / 100) - 1) * 100 };
+};
+const inflationChart = {
+  title: 'Цены и вклад',
+  vars: (A, v) => {
+    const p = inflParams(A); const r = inflationPath(p.p0, v.pi, v.i, p.n);
+    return { pi: `${r1(v.pi)}%`, i: `${r1(v.i)}%`, n: `${p.n}`, p0: `${p.p0}`, price: r1(r.price), deposit: r1(r.deposit), real: r1(r.real), rr: `${r1(r.realRate).replace('-', '−')}%` };
+  },
+  controls: (A) => {
+    const p = inflParams(A);
+    return [
+      { id: 'pi', label: 'Инфляция в год', min: 0, max: 30, step: 1, def: p.pi, fmt: (v) => `${v}%` },
+      { id: 'i', label: 'Ставка по вкладу в год', min: 0, max: 30, step: 1, def: p.i, fmt: (v) => `${v}%` },
+    ];
+  },
+  measure: (A, v) => { const p = inflParams(A); const r = inflationPath(p.p0, v.pi, v.i, p.n); return { price: r.price, deposit: r.deposit, real: r.real }; },
+  build: (A, v) => {
+    const p = inflParams(A);
+    const price = (t) => p.p0 * Math.pow(1 + v.pi / 100, t);
+    const dep = (t) => p.p0 * Math.pow(1 + v.i / 100, t);
+    const pts = (fn) => Array.from({ length: p.n * 4 + 1 }, (_, k) => ({ x: k / 4, y: fn(k / 4) }));
+    const r = inflationPath(p.p0, v.pi, v.i, p.n);
+    const top = Math.max(r.price, r.deposit, p.p0);
+    return {
+      xDomain: [0, p.n], yDomain: [0, Math.ceil((top * 1.15) / 20) * 20], xLabel: 'год', yLabel: 'руб.',
+      curves: [
+        { id: 'P', label: 'цена корзины', labelPos: 0.85, points: pts(price), color: 'rust' },
+        { id: 'D', label: 'вклад', labelPos: 0.55, points: pts(dep), color: 'blue' },
+      ],
+      points: [{ x: p.n, y: r.price, label: r1(r.price), small: true, below: r.price < r.deposit }, { x: p.n, y: r.deposit, label: r1(r.deposit), small: true, below: r.deposit <= r.price }],
+      readout: [
+        { label: `Корзина через ${p.n} лет`, value: r1(r.price) },
+        { label: `Вклад через ${p.n} лет`, value: r1(r.deposit) },
+        { label: 'Вклад в сегодняшних ценах', value: r1(r.real) },
+        { label: 'Реальная ставка в год', value: `${r1(r.realRate).replace('-', '−')}%` },
+      ],
+    };
+  },
+};
+
 /* ---------------- ДЕНЕЖНЫЙ МУЛЬТИПЛИКАТОР ----------------
    m = (1 + cr)/(cr + rr): cr — наличные к депозитам, rr — резервы к депозитам.
    Денежная масса M = m·B при денежной базе B. Кривая — мультипликатор при разных нормах резервов. */
@@ -1041,6 +1087,7 @@ extChart.measureNames = { Q: 'выпуск', dwl: 'безвозвратные п
 tradeChart.measureNames = { pies: 'пироги' };
 gdpChart.measureNames = { real: 'реальный ВВП', nominal: 'номинальный ВВП' };
 moneyChart.measureNames = { m: 'мультипликатор', M: 'денежная масса' };
+inflationChart.measureNames = { price: 'цена корзины', deposit: 'вклад', real: 'вклад в сегодняшних ценах' };
 
 /* ---------------- КРИВАЯ ФИЛЛИПСА ----------------
    Краткосрочная кривая: π = πᵉ − β·(u − u*) + s. Долгосрочная — вертикаль на u*.
@@ -1166,7 +1213,7 @@ phillipsChart.measureNames = { pi: 'инфляция', u: 'безработиц�
 taylorChart.measureNames = { i: 'ставка', real: 'реальная ставка' };
 solowChart.measureNames = { k: 'капитал на работника', y: 'выпуск на работника', c: 'потребление на работника', i: 'инвестиции на работника' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
 /* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
    текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
 const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));

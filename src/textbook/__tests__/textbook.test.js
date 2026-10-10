@@ -167,8 +167,8 @@ describe('оглавление', () => {
     expect(CHAPTERS.filter((c) => c.part === 'micro').map((c) => c.id))
       .toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'production', 'costs', 'competition-monopoly', 'monopolistic', 'oligopoly', 'labor', 'market-failures']);
     expect(CHAPTERS.filter((c) => c.part === 'macro').map((c) => c.id))
-      .toEqual(['gdp', 'money-banks', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth', 'open-economy', 'public-debt', 'inequality']);
-    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures', 'gdp', 'money-banks', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth']);
+      .toEqual(['gdp', 'money-banks', 'inflation', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth', 'open-economy', 'public-debt', 'inequality']);
+    expect(READY.map((c) => c.id)).toEqual(['scarcity', 'supply-demand', 'consumer', 'elasticity', 'costs', 'competition-monopoly', 'oligopoly', 'market-failures', 'gdp', 'money-banks', 'inflation', 'is-lm', 'ad-as', 'phillips', 'policy', 'growth']);
     expect(CHAPTERS.filter((c) => c.part === 'micro' && c.status !== 'ready').map((c) => c.id)).toEqual(['production', 'monopolistic', 'labor']);
   });
   it('у каждой готовой главы есть текст, у ненаписанной — нет; карточки приложения существуют', () => {
@@ -522,6 +522,16 @@ const INDEPENDENT = {
     return [first3.reduce((a, x) => a + x, 0), dep, M];
   },
   'mb-hyper': () => [(1.5 * 1.2 / 0.9 - 1) * 100, (1.5 / 0.9 - 1) * 100],
+  // инфляция: стоимость корзины суммой «количество × цена», рост — отношением, реальные величины — делением
+  'in-rate': () => (265 / 250 - 1) * 100,
+  'in-basket': () => { const q = [10, 8, 4]; const cost = (p) => p.reduce((s, x, k) => s + x * q[k], 0); return [cost([40, 75, 750]), cost([44, 80, 830]), (cost([44, 80, 830]) / cost([40, 75, 750]) - 1) * 100]; },
+  'in-wage': () => { const g = (43200 / 40000 - 1) * 100; return [g, g - 6]; },
+  'in-years': () => ([1.1, 1.2, 1.05].reduce((a, x) => a * x, 1) - 1) * 100,
+  'in-double': () => { let p = 1; for (let y = 0; y < 10; y += 1) p *= 1.07; return p; },
+  'in-indexation': () => [20000 * 1.05, (20000 * 1.05 / (20000 * 1.09) - 1) * 100],
+  'in-loan': () => [12 - 8, (1.12 / 1.15 - 1) * 100],
+  'in-hyper': () => { let p = 1; let first = 0; for (let mo = 1; mo <= 12; mo += 1) { p *= 1.3; if (!first && p > 2) first = mo; } return [p, (p - 1) * 100, first]; },
+  'in-tax': () => { const after = 10 * (1 - 0.13); return [after, ((1 + after / 100) / 1.08 - 1) * 100, ((1.10 / 1.08 - 1) * (1 - 0.13)) * 100]; },
   // ВВП: считаем из «сырых» данных — списками сделок, корзинами и множителями
   'gdp-exp': () => { const flows = { C: 600, I: 150, G: 200, Ex: 120, Im: 100, transfers: 80 }; return [flows.Ex - flows.Im, flows.C + flows.I + flows.G + flows.Ex - flows.Im]; },
   'gdp-va': () => { const sales = [100, 250, 600]; const va = sales.map((v, i) => v - (sales[i - 1] || 0)); return [va[1], va.reduce((a, x) => a + x, 0)]; },
@@ -1074,13 +1084,21 @@ describe('новые графики считают то же, что текст'
     expect(jointPies(p, 8).pies - jointPies(p, 9).pies).toBeCloseTo(2, 12);
     expect(jointPies(p, 4).pies).toBe(36);
   });
+  it('цены и вклад: подпись к графику главы об инфляции — корзина 146,9, вклад 161,1, в сегодняшних ценах 109,6; при 12% — 176,2 и 91,4', () => {
+    const m = CHARTS.inflation.measure({ p0: '100', n: '5' }, { pi: 8, i: 10 });
+    expect(m.price).toBeCloseTo(146.93, 2);
+    expect(m.deposit).toBeCloseTo(161.05, 2);
+    expect(m.real).toBeCloseTo(109.61, 2);
+    const hi = CHARTS.inflation.measure({ p0: '100', n: '5' }, { pi: 12, i: 10 });
+    expect([hi.price, hi.deposit, hi.real].map((x) => Math.round(x * 10) / 10)).toEqual([176.2, 161.1, 91.4]);
+  });
   it('номинальный и реальный ВВП: подпись к графику — через пять лет 162 и 110', () => {
     const m = CHARTS.gdp.measure({ y0: '100', n: '5' }, { g: 2, pi: 8 });
     expect(m.real).toBeCloseTo(110.4, 1);
     expect(m.nominal).toBeCloseTo(162.2, 1);
   });
   it('каждый новый график строится с ползунками по умолчанию и без NaN', () => {
-    ['budget', 'choice', 'demand', 'cross', 'externality', 'trade-ppf', 'gdp', 'money', 'ad-as'].forEach((type) => {
+    ['budget', 'choice', 'demand', 'cross', 'externality', 'trade-ppf', 'gdp', 'inflation', 'money', 'ad-as'].forEach((type) => {
       const scene = CHARTS[type].build({}, chartDefaults(type, {}));
       scene.curves.forEach((c) => c.points.forEach((pt) => { expect(Number.isFinite(pt.x), `${type}:${c.id}`).toBe(true); expect(Number.isFinite(pt.y), `${type}:${c.id}`).toBe(true); }));
       expect(scene.readout.length).toBeGreaterThan(0);
@@ -1089,7 +1107,7 @@ describe('новые графики считают то же, что текст'
 });
 
 describe('макроглавы: «проверьте в игре» и статистика', () => {
-  const MACRO_NEW = ['gdp', 'money-banks', 'ad-as', 'phillips', 'policy', 'growth'];
+  const MACRO_NEW = ['gdp', 'money-banks', 'inflation', 'ad-as', 'phillips', 'policy', 'growth'];
   it('в «проверьте в игре» — Лаборатория или задача и сценарий с исторической тенью', () => {
     MACRO_NEW.forEach((id) => {
       const acts = collectBlocks(CHAPTER_BLOCKS[id], (b) => b.type === 'box' && b.kind === 'try')[0].children.map(actionOf).filter(Boolean);

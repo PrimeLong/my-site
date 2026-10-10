@@ -478,6 +478,35 @@ T.push({ id: 'v-mb-qty', chapter: 'money-banks', level: 2, source: 'mb-qty-growt
     check: ([x]) => near((1 + x / 100) * (1 + k.gy / 100), 1 + k.gm / 100),
   };
 } });
+// инфляция: рост реальной зарплаты — приближённо, вычитанием
+T.push({ id: 'v-in-real', chapter: 'inflation', level: 1, source: 'in-wage', gen: (rand) => {
+  const k = draw(rand, () => ({ g: ri(rand, 3, 15), p: ri(rand, 2, 12) }), ({ g, p }) => g !== p);
+  return {
+    statement: `Зарплата выросла за год на ${k.g}%, а цены — на ${k.p}%. На сколько процентов примерно выросла реальная зарплата? Посчитайте приближённо — вычитанием.`,
+    parts: [{ answer: k.g - k.p, unit: '%' }],
+    traps: [
+      { part: 0, value: k.g + k.p, text: 'Инфляцию нужно вычесть, а не прибавить: рост цен съедает часть прибавки.' },
+      { part: 0, value: k.g, text: 'Это рост в деньгах — номинальный. Реальный — за вычетом инфляции.' },
+    ],
+    solution: `$${k.g} - ${k.p} = ${k.g - k.p}$%. ${k.g > k.p ? 'Зарплата обогнала цены.' : 'Цены обогнали зарплату: купить на неё можно меньше.'}`,
+    check: ([x]) => near(x + k.p, k.g),
+  };
+} });
+// инфляция: реальная ставка по кредиту — точно, по уравнению Фишера
+T.push({ id: 'v-in-realrate', chapter: 'inflation', level: 2, source: 'in-loan', gen: (rand) => {
+  const k = draw(rand, () => ({ i: ri(rand, 4, 24), p: ri(rand, 2, 20) }), ({ i, p }) => i !== p && differs(i - p, ((1 + i / 100) / (1 + p / 100) - 1) * 100, DEC));
+  const r = ((1 + k.i / 100) / (1 + k.p / 100) - 1) * 100;
+  return {
+    statement: `Кредит выдан на год под ${k.i}%, инфляция за год оказалась ${k.p}%. Какой была реальная ставка? Посчитайте точно${hundredths}.`,
+    parts: [{ answer: r, tol: DEC, unit: '%' }],
+    traps: [
+      { part: 0, value: k.i - k.p, text: `Это приближение $${k.i} - ${k.p}$. Точно: $(1 + i)/(1 + \\pi) - 1$.` },
+      { part: 0, value: k.i + k.p, text: 'Инфляцию вычитают, а не прибавляют: она съедает часть процентов.' },
+    ],
+    solution: `$1 + r = ${m(1 + k.i / 100)}/${m(1 + k.p / 100)} \\approx ${m(1 + r / 100)}$, реальная ставка ${f(r)}%.`,
+    check: ([x]) => near((1 + x / 100) * (1 + k.p / 100), 1 + k.i / 100),
+  };
+} });
 T.push({ id: 'v-islm-cross', chapter: 'is-lm', level: 1, source: 'islm-cross', gen: (rand) => {
   const k = draw(rand, () => ({ c: pick(rand, [0.5, 0.6, 0.75, 0.8]), T: ri(rand, 60, 200, 20), I: ri(rand, 100, 300, 10), G: ri(rand, 100, 300, 10), Y: ri(rand, 800, 2400, 20) }),
     ({ c, T: tx, I, G, Y }) => { const c0 = (1 - c) * Y + c * tx - I - G; return c0 >= 20 && c0 <= 400 && Number.isInteger(r2(c0)); });
