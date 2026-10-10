@@ -105,5 +105,6 @@ describe('сообщения об ошибках', () => {
     expect(r.reason).toBe('theory');
     expect(r.context.quote).toHaveLength(500);
     expect(sanitizeReport({ reason: 'formula' }).reason).toBe('formula');
+    expect(sanitizeReport({ reason: 'visual' }).reason).toBe('visual');
   });
 });
