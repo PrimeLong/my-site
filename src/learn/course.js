@@ -5,6 +5,7 @@
    из параллельных вариантов — быстрый расчёт с новыми числами. «Собери цепочку» нет: порядок
    слов в цепочке проверял больше русский язык, чем экономику. Модуль чистый: его читают
    тесты; экраны — src/learn.jsx. */
+import { LEVELS, UNIT_LEVEL } from '../textbook/levels.js';
 import { CHAPTERS, CHAPTER_BY_ID } from '../textbook/toc.js';
 import { CHAPTER_BLOCKS, CHAPTER_SECTIONS, PROBLEMS } from '../textbook/content.js';
 import { collectBlocks, parseInline, parseBlocks, checkAnswer } from '../textbook/markdown.js';
@@ -232,21 +233,9 @@ function lessonsOf(chapterId) {
 }
 
 /* УРОВНИ: юниты Пути разбиты на пять ступеней, от терминов до полноценного анализа. Путь идёт
-   по уровням, внутри уровня — по порядку глав учебника. */
-export const LEVELS = [
-  { id: 'start', title: 'Начальный', text: 'Вы знаете основные термины: деньги, цена, доход, расход.' },
-  { id: 'basic', title: 'Базовый', text: 'Вы понимаете спрос, предложение, рынок, налоги, инфляцию.' },
-  { id: 'middle', title: 'Средний', text: 'Вы умеете анализировать графики, бюджет, прибыль и экономические ситуации.' },
-  { id: 'advanced', title: 'Продвинутый', text: 'Вы понимаете экономические модели, статистику и сложные процессы.' },
-  { id: 'pro', title: 'Профессиональный', text: 'Вы умеете проводить полноценный экономический анализ.' },
-];
-export const UNIT_LEVEL = {
-  scarcity: 'start',
-  'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic',
-  consumer: 'middle', production: 'middle', costs: 'middle', 'competition-monopoly': 'middle', monopolistic: 'middle', labor: 'middle',
-  oligopoly: 'advanced', gdp: 'advanced', 'is-lm': 'advanced', 'ad-as': 'advanced', phillips: 'advanced',
-  policy: 'pro', growth: 'pro', 'open-economy': 'pro', 'public-debt': 'pro', inequality: 'pro',
-};
+   по уровням, внутри уровня — по порядку глав учебника. Сами уровни — в src/textbook/levels.js:
+   по ним же сгруппировано оглавление учебника. */
+export { LEVELS, UNIT_LEVEL };
 export const LEVEL_BY_ID = Object.fromEntries(LEVELS.map((l, k) => [l.id, { ...l, no: k + 1 }]));
 export const levelOf = (unitId) => LEVEL_BY_ID[UNIT_LEVEL[unitId] || 'pro'];
 const levelRank = (id) => LEVELS.findIndex((l) => l.id === (UNIT_LEVEL[id] || 'pro'));

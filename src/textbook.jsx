@@ -15,7 +15,7 @@ import { LAB_LEVERS } from './lib/lab.js';
 import { DRILLS, drillSetup } from './lib/drills.js';
 import { GLOSSARY, GLOSSARY_KEYS } from './textbook/glossary.js';
 import { GAME_CARDS, LIMITS } from './textbook/appendix.js';
-import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo } from './textbook/toc.js';
+import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo, READY_CHAPTERS, PLANNED_CHAPTERS, TOC_LEVELS, chapterLevel } from './textbook/toc.js';
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
 import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf } from './textbook/content.js';
 import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
@@ -113,6 +113,12 @@ export const TEXTBOOK_CSS = `
   .tbl-no.done { background: var(--ds-ok); border-color: var(--ds-ok); color: #fff; }
   .tbl-ch-title { font: 600 15px/1.3 var(--ds-sans); }
   .tbl-ch-title small { font-weight: 500; color: var(--ds-ink3); }
+  .tbl-level-text { font: 13px/1.4 var(--ds-sans); color: var(--ds-ink2); padding: 0 14px 6px; margin-top: -4px; }
+  .tbl-planned { padding: 0; }
+  .tbl-planned-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 12px 14px; background: none; border: none; cursor: pointer; font: 600 14px var(--ds-sans); color: var(--ds-ink2); }
+  .tbl-planned-list { list-style: none; margin: 0; padding: 0 14px 12px; display: grid; gap: 8px; }
+  .tbl-planned-list li { display: grid; gap: 2px; font: 13px/1.4 var(--ds-sans); color: var(--ds-ink3); }
+  .tbl-planned-list b { color: var(--ds-ink2); font-weight: 600; }
   .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .tbl-ch-bar i { display: block; height: 100%; background: var(--ds-ok); }
   .tbl-more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
@@ -1088,9 +1094,9 @@ function ChapterToc({ current, ctx }) {
   return (
     <nav className="tb-chtoc" aria-label="Оглавление учебника" data-testid="tb-side-toc">
       <div className="tb-secnav-head"><span>Оглавление</span></div>
-      {PARTS.map((p) => (
+      {TOC_LEVELS.map((p) => (
         <div key={p.id}>
-          <div className="tb-chtoc-part">{p.title}</div>
+          <div className="tb-chtoc-part">Уровень {p.no} · {p.title}</div>
           <ol className="tb-secnav-list">
             {p.chapters.map((c) => {
               n += 1;
@@ -1116,14 +1122,16 @@ function ChapterPage({ id, ctx }) {
   const wide = useWide();
   const ch = CHAPTER_BY_ID[id];
   const blocks = CHAPTER_BLOCKS[id];
-  const idx = CHAPTERS.findIndex((c) => c.id === id);
-  const prev = CHAPTERS[idx - 1]; const next = CHAPTERS[idx + 1];
+  // соседние главы — в порядке чтения (как на Пути), только готовые
+  const idx = READY_CHAPTERS.findIndex((c) => c.id === id);
+  const prev = idx > 0 ? READY_CHAPTERS[idx - 1] : null; const next = idx >= 0 ? READY_CHAPTERS[idx + 1] : null;
+  const lvl = chapterLevel(id);
   const read = !!ctx.progress.read[id];
   return (
     <div data-testid="chapter" data-chapter={id}>
       <PageNav ctx={ctx} />
       <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-        Глава {chapterNo(id)} · {PARTS.find((p) => p.id === ch.part).title}
+        Глава {chapterNo(id)} · {lvl ? `${lvl.title} уровень` : PARTS.find((p) => p.id === ch.part).title}
       </div>
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
@@ -1574,6 +1582,26 @@ function CheckPanel({ ctx }) {
    номер (или галочка, если глава прочитана), название, полоска пройденных разделов. Описания
    глав, уверенность ответов и «проверить себя» здесь лишние: проверки — во вкладке «Задания»,
    прогресс — по ссылке внизу. */
+/* Главы, которые ещё пишутся: не вперемешку с готовыми, а свёрнутым списком в конце —
+   чтобы в оглавлении не было недоделанных тем, по которым нечего читать. */
+function PlannedList() {
+  const [open, setOpen] = useState(false);
+  if (!PLANNED_CHAPTERS.length) return null;
+  return (
+    <section className="tbl-part tbl-planned" data-testid="tb-planned">
+      <button type="button" className="tbl-planned-head" aria-expanded={open} onClick={() => { Audio.play('tick'); setOpen((x) => !x); }}>
+        <span>Готовятся: ещё {PLANNED_CHAPTERS.length} {PLANNED_CHAPTERS.length < 5 ? 'главы' : 'глав'}</span>
+        <ChevronDown size={16} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} aria-hidden="true" />
+      </button>
+      {open && (
+        <ul className="tbl-planned-list" data-testid="tb-planned-list">
+          {PLANNED_CHAPTERS.map((c) => <li key={c.id}><b>{c.title}</b><span>{c.summary}</span></li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function LearnToc({ ctx }) {
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
   const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
@@ -1596,24 +1624,27 @@ function LearnToc({ ctx }) {
         <span>Задач решено: <b>{solved}</b> из {allProblems.length}</span>
         {due > 0 && <button type="button" className="tb-link" data-testid="tb-review-link" onClick={() => { Audio.play('click'); ctx.go({ kind: 'review' }); }}>На повторение: {due}</button>}
       </div>
+      {/* главы — по уровням курса и в его порядке: глава учебника и юнит Пути — одно место */}
       <div className="tbl-parts">
-        {PARTS.map((p) => (
-          <section key={p.id} className="tbl-part">
-            <h2 className="tbl-part-title">{p.title}</h2>
-            {p.chapters.map((c) => {
+        {TOC_LEVELS.map((lv) => (
+          <section key={lv.id} className="tbl-part" data-testid="tb-level-group" data-level={lv.id}>
+            <h2 className="tbl-part-title">Уровень {lv.no} · {lv.title}</h2>
+            <div className="tbl-level-text">{lv.text}</div>
+            {lv.chapters.map((c) => {
               n += 1;
               const readMark = !!ctx.progress.read[c.id];
               const sp = sectionProgress(ctx.progress, c.id);
               return (
-                <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
+                <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} data-chapter={c.id} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
                   <span className={`tbl-no${readMark ? ' done' : ''}`} aria-label={readMark ? 'прочитана' : undefined}>{readMark ? <Check size={14} aria-hidden="true" /> : n}</span>
-                  <span className="tbl-ch-title">{c.title}{c.status !== 'ready' && <small> · скоро</small>}</span>
+                  <span className="tbl-ch-title">{c.title}</span>
                   {sp.total > 0 ? <span className="tbl-ch-bar" title={`разделы ${sp.done}/${sp.total}`} aria-label={`разделы ${sp.done}/${sp.total}`}><i style={{ width: `${(sp.done / sp.total) * 100}%` }} /></span> : <span />}
                 </button>
               );
             })}
           </section>
         ))}
+        <PlannedList />
         <section className="tbl-part">
           <h2 className="tbl-part-title">Приложения</h2>
           {APPENDICES.map((a, i) => (
@@ -1657,9 +1688,10 @@ function TocPage({ ctx }) {
           onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>Продолжить: {last.title}</button>}
       </div>
       <CheckPanel ctx={ctx} />
-      {PARTS.map((p) => (
-        <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }}>
-          <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 8px' }}>{p.title}</div>
+      {TOC_LEVELS.map((p) => (
+        <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }} data-testid="tb-level-group" data-level={p.id}>
+          <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 2px' }}>Уровень {p.no} · {p.title}</div>
+          <div style={{ fontSize: 12.5, color: COLOR.muted, padding: '0 12px 8px' }}>{p.text}</div>
           {p.chapters.map((c) => {
             n += 1;
             const probs = problemsOf(c.id);
@@ -1674,7 +1706,6 @@ function TocPage({ ctx }) {
                   <span style={{ display: 'block', fontSize: 12, color: COLOR.faint, lineHeight: 1.45 }}>{c.summary}</span>
                 </span>
                 <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {c.status !== 'ready' && <span className="tb-chip">в работе</span>}
                   {readMark && <span className="tb-chip" style={{ color: COLOR.teal, borderColor: COLOR.teal }}><Check size={10} style={{ verticalAlign: -1 }} /> прочитана</span>}
                   {sp.total > 0 && <span className="tb-chip" style={sp.done === sp.total ? { color: COLOR.teal, borderColor: COLOR.teal } : undefined}>разделы {sp.done}/{sp.total}</span>}
                   {probs.length > 0 && <span className="tb-chip">задачи {sc.solved}/{sc.total}</span>}
@@ -1684,6 +1715,7 @@ function TocPage({ ctx }) {
           })}
         </div>
       ))}
+      <div className="tbl" style={{ marginBottom: 14 }}><PlannedList /></div>
       <div className="ems-panel" style={{ padding: '12px 0 4px' }}>
         <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 8px' }}>Приложения</div>
         {APPENDICES.map((a, i) => (

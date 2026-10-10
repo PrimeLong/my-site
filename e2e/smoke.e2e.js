@@ -2310,6 +2310,14 @@ test('навигация: у каждого экрана один «назад»
   // вкладка «Учебник»: оглавление без «назад», глава — один «назад» в оглавление
   await openTab(page, 'book');
   await expectScreen(page, 'bookTab', seen);
+  // оглавление — по уровням курса и в его порядке; недописанные главы — свёрнутым списком в конце
+  const groups = page.getByTestId('tb-level-group');
+  await expect(groups.first()).toHaveAttribute('data-level', 'start');
+  await expect(groups.nth(1)).toContainText('Базовый');
+  expect(await groups.nth(1).locator('[data-chapter]').evaluateAll((els) => els.map((e) => e.dataset.chapter))).toEqual(['supply-demand', 'elasticity', 'market-failures', 'money-banks']);
+  await expect(page.getByTestId('textbook').getByText('Производство: производственная функция')).toHaveCount(0);
+  await page.getByTestId('tb-planned').getByRole('button').click();
+  await expect(page.getByTestId('tb-planned-list')).toContainText('Производство: производственная функция');
   await page.getByTestId('textbook').getByRole('button', { name: /Спрос и предложение/ }).click();
   await expectScreen(page, 'bookPage', seen);
   await clickBack(page);

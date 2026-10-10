@@ -853,3 +853,15 @@ describe('«История» вне урока', () => {
     })));
   });
 });
+
+describe('учебник и Путь — один порядок', () => {
+  it('оглавление учебника идёт по уровням курса и в порядке Пути', async () => {
+    const { READY_CHAPTERS, TOC_LEVELS, PLANNED_CHAPTERS } = await import('../../textbook/toc.js');
+    expect(READY_CHAPTERS.map((c) => c.id)).toEqual(UNITS.filter((u) => u.ready).map((u) => u.id));
+    // уровни в оглавлении — те же, что на Пути, по порядку
+    expect(TOC_LEVELS.map((l) => l.id)).toEqual(LEVELS.map((l) => l.id).filter((id) => TOC_LEVELS.some((t) => t.id === id)));
+    TOC_LEVELS.forEach((l) => l.chapters.forEach((c) => expect(levelOf(c.id).id, c.id).toBe(l.id)));
+    // недописанные главы в уровни не попадают
+    PLANNED_CHAPTERS.forEach((c) => expect(TOC_LEVELS.some((l) => l.chapters.includes(c)), c.id).toBe(false));
+  });
+});
