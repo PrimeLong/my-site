@@ -134,7 +134,7 @@ describe.each(PATH)('юнит %s', (unitId) => {
         expect(rev / items.length, l.id).toBeLessThanOrEqual(0.4);
         expect(items[0].review).toBeFalsy();
         expect(SECONDS[items[0].kind]).toBeLessThanOrEqual(12);
-        items.filter((it) => it.review).forEach((it) => expect(EXERCISES[it.id].lesson).not.toBe(l.id));
+        items.filter((it) => it.review).forEach((it) => expect(EXERCISES[it.of || it.id].lesson).not.toBe(l.id));
       }
     });
     stepped.forEach((l) => {

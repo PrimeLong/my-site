@@ -276,6 +276,20 @@ T.push({ id: 'v-el-arc', chapter: 'elasticity', level: 1, source: 'el-arc', gen:
     check: ([x]) => near(x, ((k.Q1 - k.Q2) / (k.P2 - k.P1)) * ((k.P1 + k.P2) / (k.Q1 + k.Q2))),
   };
 } });
+// цена, при которой выручка максимальна (жалоба: одна и та же задача в повторах — теперь с новыми числами)
+T.push({ id: 'v-el-rmax', chapter: 'elasticity', level: 1, source: 'el-revenue-max', gen: (rand) => {
+  const b = pick(rand, [3, 4, 5]); const top = ri(rand, 10, 40) * 2; const a = b * top; const P = top / 2;
+  return {
+    statement: `Спрос $Q = ${a} - ${b}P$. При какой цене выручка максимальна?`,
+    parts: [{ answer: P, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: top, text: `При цене ${top} спрос равен нулю, и выручка тоже. Максимум — посередине прямой: $${a}/(2 \\cdot ${b})$.` },
+      { part: 0, value: a / 2, text: 'Это количество при максимуме выручки, а спрашивали цену.' },
+    ],
+    solution: `Выручка максимальна в середине прямой спроса: $P = a/(2b) = ${a}/(2 \\cdot ${b}) = ${P}$. Там $Q = ${a / 2}$ и $|E| = 1$.`,
+    check: ([x]) => { const R = (p) => p * (a - b * p); return R(x) >= R(x - 0.01) && R(x) >= R(x + 0.01); },
+  };
+} });
 // точечная эластичность линейного спроса
 T.push({ id: 'v-el-point', chapter: 'elasticity', level: 2, source: 'el-point', gen: (rand) => {
   const k = draw(rand, () => { const b = ri(rand, 1, 5); const top = ri(rand, 20, 80); return { a: b * top, b, top, P: ri(rand, 2, top - 2) }; },

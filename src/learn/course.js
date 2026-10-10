@@ -121,7 +121,7 @@ function fromBlock(b) {
     case 'tf': return { ...e, answer: b.answer, wrongWhy: null };
     case 'match': return { ...e, pairs: b.pairs };
     case 'sort': return { ...e, bins: b.bins, items: b.items };
-    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps };
+    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.source ? { source: b.source } : {}) };
     case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
     case 'tiles': return { ...e, solution: b.solution, extra: b.extra };
@@ -389,8 +389,20 @@ export function ready(inst, resp) {
   }
 }
 // правильный ответ словами — для красной плашки
+/* Формула строкой — для «Правильно: …» и сообщений об ошибке: без TeX-разметки, которую ученик
+   увидел бы как «0{,}3» или «\\cdot». */
+export function texPlain(tex) {
+  let t = String(tex);
+  for (let k = 0; k < 3; k += 1) {
+    t = t.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)').replace(/\\sqrt\{([^{}]*)\}/g, '√($1)').replace(/\\text\{([^{}]*)\}/g, '$1')
+      .replace(/\^\{([^{}]*)\}/g, '^$1').replace(/_\{([^{}]*)\}/g, '$1');
+  }
+  return t.replace(/\{,\}/g, ',').replace(/\\cdot/g, '·').replace(/\\times/g, '×').replace(/\\leq?/g, '≤').replace(/\\geq?/g, '≥').replace(/\\approx/g, '≈')
+    .replace(/\\pi/g, 'π').replace(/\\Delta\s?/g, 'Δ').replace(/\\%/g, '%').replace(/\\[,;! ]/g, ' ').replace(/\\left|\\right/g, '')
+    .replace(/\\[a-zA-Z]+/g, '').replace(/[{}]/g, '').replace(/\(([^()+\-·/ ]+)\)\/\(([^()+\-·/ ]+)\)/g, '$1/$2').replace(/\s+/g, ' ').trim();
+}
 export function answerText(inst) {
-  const plain = (nodes) => (nodes || []).map((n) => (n.t === 'text' || n.t === 'math' ? n.v : n.c ? plain(n.c) : '')).join('');
+  const plain = (nodes) => (nodes || []).map((n) => (n.t === 'text' ? n.v : n.t === 'math' ? texPlain(n.v) : n.c ? plain(n.c) : '')).join('');
   switch (inst.kind) {
     case 'choice': case 'gap': return plain(inst.options.find((o) => o.correct).text);
     case 'tf': return inst.answer ? 'Верно' : 'Неверно';

@@ -1098,7 +1098,7 @@ describe('новые графики считают то же, что текст'
     expect(m.nominal).toBeCloseTo(162.2, 1);
   });
   it('каждый новый график строится с ползунками по умолчанию и без NaN', () => {
-    ['budget', 'choice', 'demand', 'cross', 'externality', 'trade-ppf', 'gdp', 'inflation', 'money', 'ad-as'].forEach((type) => {
+    ['budget', 'choice', 'demand', 'market-demand', 'cross', 'externality', 'trade-ppf', 'gdp', 'inflation', 'money', 'ad-as'].forEach((type) => {
       const scene = CHARTS[type].build({}, chartDefaults(type, {}));
       scene.curves.forEach((c) => c.points.forEach((pt) => { expect(Number.isFinite(pt.x), `${type}:${c.id}`).toBe(true); expect(Number.isFinite(pt.y), `${type}:${c.id}`).toBe(true); }));
       expect(scene.readout.length).toBeGreaterThan(0);

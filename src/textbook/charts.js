@@ -783,14 +783,14 @@ const choiceChart = {
 
 /* ---------------- СПРОС: ВДОЛЬ КРИВОЙ И СДВИГ ----------------
    Q = a − b·P. Цена товара двигает точку вдоль кривой, доходы (и всё остальное) сдвигают кривую. */
-const demandParams = (A) => ({ a: num(A, 'a', 100), b: num(A, 'b', 2), P: num(A, 'p', 20) });
+const demandParams = (A) => ({ a: num(A, 'a', 100), b: num(A, 'b', 2), P: num(A, 'p', 20), dA: num(A, 'da', 0) });
 const demandChart = {
   title: 'Движение вдоль кривой и сдвиг кривой',
   controls: (A) => {
     const p = demandParams(A);
     return [
       { id: 'P', label: 'Цена самого товара', min: 0, max: Math.round((p.a / p.b) * 0.9), step: 1, def: p.P, fmt: (v) => `${v} руб.` },
-      { id: 'dA', label: 'Доходы покупателей: сдвиг спроса', min: -Math.round(p.a * 0.3), max: Math.round(p.a * 0.3), step: 5, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
+      { id: 'dA', label: 'Доходы покупателей: сдвиг спроса', min: -Math.round(p.a * 0.3), max: Math.round(p.a * 0.3), step: 5, def: p.dA, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
     ];
   },
   measure: (A, v) => { const p = demandParams(A); return { Q: Math.max(0, p.a + v.dA - p.b * v.P) }; },
@@ -811,6 +811,40 @@ const demandChart = {
         { x: q, y: v.P, label: 'сейчас', guide: true },
       ],
       readout: [{ label: 'Объём спроса', value: `${r1(q)} ед.` }, { label: 'Что произошло', value: what }],
+    };
+  },
+};
+
+/* ---------------- РЫНОЧНЫЙ СПРОС: СУММА ПО ГОРИЗОНТАЛИ ----------------
+   Три покупателя кофе (как в задаче sd-d1-market): при каждой цене складываем, сколько хочет
+   каждый; кто при этой цене не покупает, добавляет ноль — отсюда изломы рыночной кривой. */
+export const MARKET_BUYERS = [
+  { id: 'T', name: 'Тимур', choke: 250, slope: 25, color: 'teal' },
+  { id: 'G', name: 'Гриша', choke: 300, slope: 25, color: 'gold' },
+  { id: 'O', name: 'Олег', choke: 120, slope: 20, color: 'rust' },
+];
+const buyerQ = (b, P) => Math.max(0, (b.choke - P) / b.slope);
+export const marketQ = (P) => MARKET_BUYERS.reduce((a, b) => a + buyerQ(b, P), 0);
+const marketDemandChart = {
+  title: 'Рыночный спрос — сумма по горизонтали',
+  controls: (A) => [{ id: 'P', label: 'Цена стакана', min: 0, max: 290, step: 10, def: num(A, 'p', 150), fmt: (v) => `${v} руб.` }],
+  measure: (A, v) => ({ Q: marketQ(v.P) }),
+  build: (A, v) => {
+    const top = Math.max(...MARKET_BUYERS.map((b) => b.choke));
+    // изломы рыночной кривой — цены, при которых очередной покупатель входит в рынок
+    const kinks = [top, ...MARKET_BUYERS.map((b) => b.choke).filter((c) => c < top), 0].sort((a, b) => b - a);
+    const q = marketQ(v.P);
+    return {
+      xDomain: [0, Math.ceil(marketQ(0) / 5) * 5], yDomain: [0, 320], xLabel: 'Q, стаканов', yLabel: 'P',
+      curves: [
+        ...MARKET_BUYERS.map((b) => ({ id: b.id, label: b.name, points: [{ x: 0, y: b.choke }, { x: b.choke / b.slope, y: 0 }], color: b.color, dashed: true, labelPos: 'start' })),
+        { id: 'D', label: 'Рынок', points: kinks.map((P) => ({ x: marketQ(P), y: P })), color: 'blue', labelPos: 0.85 },
+      ],
+      points: [{ x: q, y: v.P, label: `${r1(q)}`, guide: true }],
+      readout: [
+        ...MARKET_BUYERS.map((b) => ({ label: b.name, value: `${r1(buyerQ(b, v.P))} ст.` })),
+        { label: 'Рынок: сумма', value: `${r1(q)} ст.` },
+      ],
     };
   },
 };
@@ -1213,7 +1247,7 @@ phillipsChart.measureNames = { pi: 'инфляция', u: 'безработиц�
 taylorChart.measureNames = { i: 'ставка', real: 'реальная ставка' };
 solowChart.measureNames = { k: 'капитал на работника', y: 'выпуск на работника', c: 'потребление на работника', i: 'инвестиции на работника' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, 'market-demand': marketDemandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
 /* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
    текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
 const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));

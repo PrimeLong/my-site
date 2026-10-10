@@ -324,7 +324,7 @@ export const parseChapter = (text) => parseBlocks(text);
      choice / gap — вопрос (в gap пропуск «___»), строки «+ верный вариант» и «- неверный | почему»;
      tf answer=true|false — утверждение;
      match — пары «- слева ↔ справа»; sort bins="А|Б" — «- пункт >> А»;
-     calc answer=… tol=… unit=… или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
+     calc answer=… tol=… unit=… [source=задача] или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
      shift chart=тип answer="S-" options="D+ D- S+ S-" — «куда сдвинется?», ловушки «!! D+ | почему»;
      news headline="…" vars="P:цена Q:количество" expect="P:+ Q:-" — «газета».
    Всё после строки «---» — объяснение, которое показывается после ответа.
@@ -393,6 +393,8 @@ function parseExercise(kind, attrs, body) {
     if (!ex.variant) {
       ex.answer = Number(attrs.answer); ex.tol = attrs.tol != null ? Number(attrs.tol) : null; ex.unit = attrs.unit || '';
       ex.traps = traps.map((t) => ({ value: parseNumber(t.key), why: t.why }));
+      // source=задача учебника: в повторах вернётся с новыми числами по её шаблону (variants.js)
+      if (attrs.source) ex.source = attrs.source;
     }
   }
   if (kind === 'shift') {
