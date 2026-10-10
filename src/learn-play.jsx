@@ -6,11 +6,11 @@
    карточки не летают, подсветка текста не бежит. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy, GraduationCap, Radio, Feather,
+  ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy, GraduationCap, Radio, Feather, Check,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
-import { equilibrium, marketAxes, qd, qs, gameScore, comboOf } from './learn/course.js';
+import { equilibrium, marketAxes, qd, qs, gameScore, comboOf, gameLeft, GAME_PASS } from './learn/course.js';
 import { CAST } from './learn/cast.js';
 import { useReducedMotion } from './ds-art.jsx';
 import { Button } from './ds.jsx';
@@ -94,6 +94,10 @@ export const PLAY_CSS = `
   @keyframes lp-effect { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
   .lp-game-card { min-height: 104px; margin: 8px 0 10px; font-size: 19px; }
   .lp-game-final { flex-direction: column; gap: 2px; min-height: 0; margin-top: 8px; }
+  .lp-pass { display: inline-flex; align-items: center; gap: 3px; font: 700 13px var(--ds-sans); padding: 2px 8px; border-radius: 10px; border: 1px dashed var(--ds-rule2); color: var(--ds-ink2); }
+  .lp-pass.ok { border-style: solid; border-color: var(--ds-ok); color: var(--ds-ok); background: color-mix(in srgb, var(--ds-ok) 10%, transparent); }
+  .lp-verdict { margin-top: 6px; font: 700 14.5px var(--ds-sans); color: var(--ds-bad); text-align: center; }
+  .lp-verdict.ok { color: var(--ds-ok); }
   .lp-side { margin: 0; text-align: center; font-weight: 700; min-height: 52px; }
   .lp-pop { position: absolute; left: 50%; top: 0; z-index: 2; font-size: 20px; font-weight: 700; color: var(--ds-ok); animation: lp-pop .7s ease-out forwards; pointer-events: none; }
   @keyframes lp-pop { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -26px) scale(1.15); } }
@@ -558,7 +562,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
           </div>
           <div className="lp-game-rules ds-sub">
             <span><Timer size={14} aria-hidden="true" /> {seconds} секунд</span>
-            <span>засчитывается от 8 верных при точности от 70%</span>
+            <span>зачёт — когда верных на {GAME_PASS} больше, чем ошибок</span>
             {best > 0 && <span data-testid="game-best"><Trophy size={14} aria-hidden="true" /> рекорд: {best}</span>}
           </div>
           <div style={{ textAlign: 'center', marginTop: 10 }}>
@@ -573,7 +577,10 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
             <span className="ds-num lp-game-score" data-testid="game-score">{score}</span>
             {combo > 1 && <span className="lp-combo" key={`c${combo}`} data-testid="game-combo">×{combo}</span>}
             <span style={{ flex: 1 }} />
-            <span className="ds-sub" style={{ fontSize: 13 }}>верно {answers.filter(Boolean).length} из {answers.length}</span>
+            {/* до зачёта — всё время на виду: набрал — отметка, дальше игра на очки и рекорд */}
+            {(() => { const left = gameLeft(answers.filter(Boolean).length, answers.length); return (
+              <span className={`lp-pass${left ? '' : ' ok'}`} data-testid="game-pass" data-left={left}>{left ? `до зачёта: ${left}` : <><Check size={13} strokeWidth={3} aria-hidden="true" /> зачёт есть</>}</span>
+            ); })()}
           </div>
           <div className="lp-game-stage">
             {chart}
@@ -603,6 +610,11 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
             <div className="ds-eyebrow">Время!</div>
             <div className="ds-num" style={{ fontSize: 34, fontWeight: 700, color: 'var(--u-ink)' }}>{r.score}</div>
             <div style={{ fontSize: 16 }}>очков · верно {r.right} из {r.answered} · лучшая серия {r.bestRun}</div>
+            {(() => { const left = gameLeft(r.right, r.answered); const wrong = r.answered - r.right; return (
+              <div className={`lp-verdict${left ? '' : ' ok'}`} data-testid="game-verdict" data-ok={String(!left)}>
+                {left ? `Не хватило ${left}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Засчитано: верных ${r.right}, ошибок ${wrong}`}
+              </div>
+            ); })()}
             {r.record && <div className="ds-badge" style={{ marginTop: 6 }} data-testid="game-record">Новый рекорд!</div>}
           </div>
         </>

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
   UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
+  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, gameLeft, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
 import { placeOf } from '../../ds-tokens.js';
@@ -278,7 +278,9 @@ describe('упражнения: ровно один верный ответ', ()
           expect(inst.items.length, ex.id).toBeGreaterThanOrEqual(12);
           expect(check(inst, { right: GAME_PASS, answered: GAME_PASS, done: true }).ok).toBe(true);
           expect(check(inst, { right: GAME_PASS - 1, answered: GAME_PASS - 1, done: true }).ok, 'меньше восьми верных').toBe(false);
-          expect(check(inst, { right: GAME_PASS, answered: 12, done: true }).ok, 'точность ниже 70%').toBe(false);
+          // зачёт — чистый счёт: верных минус ошибок не меньше восьми
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS + 1, done: true }).ok, '8 верных и ошибка — чистых 7').toBe(false);
+          expect(check(inst, { right: 20, answered: 30, done: true }).ok, '20 верных и 10 ошибок — чистых 10').toBe(true);
           expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
@@ -450,8 +452,11 @@ describe('юнит «Спрос и предложение»: все виды у�
     expect(rush.noRetry).toBe(true);
     expect(rush.seconds).toBe(60);
     expect(rush.chart).toBe('market');
-    expect(gameOk(rush, { right: 8, answered: 11, done: true })).toBe(true);
+    expect(gameOk(rush, { right: 10, answered: 12, done: true }), '10 верных, 2 ошибки — чистых 8').toBe(true);
+    expect(gameOk(rush, { right: 9, answered: 11, done: true }), '9 верных, 2 ошибки — чистых 7').toBe(false);
     expect(gameOk(rush, { right: 7, answered: 7, done: true }), 'меньше восьми верных').toBe(false);
+    expect(gameLeft(9, 12)).toBe(2);
+    expect(gameLeft(14, 17)).toBe(0);
   });
   it('«Повторение»: ошибки юнита первыми, раундов игр нет, 12–15 упражнений из прошлых уроков', () => {
     const [r] = of('review');

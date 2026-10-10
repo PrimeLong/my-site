@@ -1680,7 +1680,7 @@ test('путь: юнит «Спрос и предложение» — кажды
   const { kinds: gk, retries } = await playLesson(page, { wrongAt: [0] });
   expect([...gk]).toEqual(['rush']);
   expect(retries).toBe(0);
-  await expect(page.getByTestId('lesson-result')).toContainText('Игра не засчитана');
+  await expect(page.getByTestId('lesson-result')).toContainText('Урок пройден, но игра не засчитана: не хватило');
   await finish();
 
   // «Повторение» и «Итоги юнита»: пункты-карточки, потом тест юнита
@@ -1830,7 +1830,7 @@ test('мини-игра: одна игра на минуту — очки с м�
   const ex = page.getByTestId('ex');
   await expect(ex).toHaveAttribute('data-kind', 'rush');
   await expect(ex.getByTestId('game')).toHaveAttribute('data-phase', 'ready');
-  await expect(ex.getByTestId('game')).toContainText('засчитывается от 8 верных');
+  await expect(ex.getByTestId('game')).toContainText('зачёт — когда верных на 8 больше, чем ошибок');
   // до таймера — «Как играть» и пробный заголовок без очков: ответ с объяснением
   await expect(ex.getByTestId('game-howto')).toContainText('Как играть');
   await expect(ex.getByTestId('game-start')).toHaveText(/Сразу к игре/);
@@ -1848,16 +1848,20 @@ test('мини-игра: одна игра на минуту — очки с м�
     if (i === 4) await expect(ex.getByTestId('game-combo')).toHaveCount(0);
   }
   await expect(ex.getByTestId('game-score')).toHaveText('140');
+  // до зачёта — на виду: 10 верных и 1 ошибка — чистых 9, зачёт есть
+  await expect(ex.getByTestId('game-pass')).toHaveAttribute('data-left', '0');
+  await expect(ex.getByTestId('game-pass')).toContainText('зачёт есть');
   // каждая карточка двигает кривую: подпись сдвига и история цены
   await expect(ex.getByTestId('game-effect')).toBeVisible();
   await expect(ex.getByTestId('price-ticker')).toBeVisible();
   await page.clock.fastForward(61_000);
   await expect(ex.getByTestId('game-final')).toContainText('140');
   await expect(ex.getByTestId('game-final')).toContainText('верно 10 из 11');
+  await expect(ex.getByTestId('game-verdict')).toHaveText('Засчитано: верных 10, ошибок 1');
   await expect(page.getByTestId('game-result')).toContainText('Верно 10 из 11 · 140 очков');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
-  await expect(page.getByTestId('lesson-result')).toContainText('Игра засчитана');
+  await expect(page.getByTestId('lesson-result')).toContainText('Игра засчитана: верных 10, ошибок 1.');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
 
   // заново: рекорд на старте; три верных — меньше планки, игра не засчитана
@@ -1865,9 +1869,11 @@ test('мини-игра: одна игра на минуту — очки с м�
   await expect(ex.getByTestId('game-best')).toContainText('рекорд: 140');
   await ex.getByTestId('game-start').click();
   for (let i = 0; i < 3; i += 1) await ex.locator(`button[data-side="${await card.getAttribute('data-answer')}"]`).click();
+  await expect(ex.getByTestId('game-pass')).toHaveText('до зачёта: 5');
   await page.clock.fastForward(61_000);
   await expect(ex.getByTestId('game-final')).toContainText('верно 3 из 3');
-  await expect(page.getByTestId('game-result')).toContainText('Нужно: не меньше 8 верных');
+  await expect(ex.getByTestId('game-verdict')).toContainText('Не хватило 5');
+  await expect(page.getByTestId('game-result')).toContainText('верных минус ошибок — не меньше 8');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
   expect(errors).toEqual([]);
 });

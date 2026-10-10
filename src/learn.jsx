@@ -26,7 +26,7 @@ import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
   UNITS, LESSONS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
-  buildPlacement, placementOpened, placementFailed, retryOf,
+  buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
@@ -519,6 +519,14 @@ const RETRY_TEXT = {
   sibling: 'Похожий вопрос на ту же тему.',
   same: 'Эта задача уже была — попробуем ещё раз.',
 };
+// итог урока с игрой: засчитана — с цифрами; нет — сколько не хватило и что это значит
+const gameResultText = (result) => {
+  const g = result.game;
+  if (!g) return result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана.';
+  const wrong = g.answered - g.right;
+  if (g.ok) return `Игра засчитана: верных ${g.right}, ошибок ${wrong}.`;
+  return `Урок пройден, но игра не засчитана: не хватило ${gameLeft(g.right, g.answered)} (верных ${g.right}, ошибок ${wrong}). Нужно, чтобы верных было на ${GAME_PASS} больше, чем ошибок. Засчитанная игра даёт урок без помарок и алмаз.`;
+};
 // итог мини-игры для плашки
 const gameLine = (inst, r) => (r ? `Верно ${r.right} из ${r.answered} · ${r.score} очков${r.record ? ' — новый рекорд!' : ''}` : '');
 
@@ -621,6 +629,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       const seenId = cur.of || cur.id;
       update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null, run: r.ok ? run3 + 1 : 0 }), seenId));
       if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
+      if (GAME_KINDS.includes(cur.kind) && answer) a.game = { right: answer.right, answered: answer.answered, ok: r.ok };
     }
     if (r.ok) {
       a.solved.add(orig);
@@ -693,7 +702,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     update((s) => full(s).s);
     // касса: урок сдан
     Audio.play('register'); vibrate([20, 30, 20, 30, 60]);
-    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted, streakUp });
+    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted, streakUp, game: a.game || null });
     setStage('done');
   };
   const next = () => {
@@ -991,7 +1000,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   : 'Начнём с самого начала — так надёжнее. Первые уроки короткие.')
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
-                    : lesson && lesson.kind === 'game' ? (result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана — попробуйте ещё раз, планка та же.')
+                    : lesson && lesson.kind === 'game' ? gameResultText(result)
                       : result.mistakes === 0 ? 'Все ответы — с первой попытки.' : `Ошибок с первой попытки: ${result.mistakes}.`}
                 {diamond && <div style={{ marginTop: 6, color: 'var(--u-ink)', fontWeight: 700 }} data-testid="result-diamond">
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}

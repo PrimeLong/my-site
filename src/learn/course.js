@@ -32,8 +32,12 @@ export const OPEN_MIN = 15;
 // мини-игры: у них свой счёт внутри, в проверку юнита и повторение они не идут
 export const GAME_KINDS = ['swipe', 'rush'];
 /* Мини-игра урока — одна, на минуту (на алмазном уровне — 45 секунд): карточки идут по кругу,
-   пока не кончится время; засчитана — от восьми верных при точности от 70%. */
+   пока не кончится время; засчитана — чистый счёт от восьми: верных минус ошибок
+   (docs/mechanics.md, «Мини-игра — зачёт»). */
 export const GAME_PASS = 8;
+export const gameNet = (right, answered) => right - (answered - right);
+// сколько ещё чистых верных нужно до зачёта (0 — зачёт есть)
+export const gameLeft = (right, answered) => Math.max(0, GAME_PASS - gameNet(right, answered));
 export const GAME_SECONDS = 60;
 export const DIAMOND_GAME_SECONDS = 45;
 /* Рынок из упражнений с графиком: Q_D = a − bP + dA, Q_S = c + dP + dC. Равновесие — где
@@ -362,10 +366,10 @@ export function check(inst, resp) {
     default: return { ok: false, why: null };
   }
 }
-// мини-игра засчитана: не меньше восьми верных при точности от 70%
+// мини-игра засчитана: верных минус ошибок — не меньше восьми
 export function gameOk(inst, resp) {
   if (!resp || !resp.done) return false;
-  return resp.right >= GAME_PASS && resp.right >= 0.7 * resp.answered;
+  return gameLeft(resp.right, resp.answered) === 0;
 }
 /* Очки игры: за верный ответ — 10 × множитель серии (каждые три верных подряд — ещё +1, не
    больше ×4); ошибка серию обнуляет. */
@@ -407,7 +411,7 @@ export function answerText(inst) {
     case 'curve': return shiftLabel('supply-demand', inst.answer);
     case 'price': return `цена ${fmt(inst.answer)}`;
     case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
-    case 'swipe': case 'rush': return `не меньше ${GAME_PASS} верных при точности от 70%`;
+    case 'swipe': case 'rush': return `верных минус ошибок — не меньше ${GAME_PASS}`;
     case 'open': return 'свой ответ — пара продуманных предложений';
     case 'domino': return inst.chain.map((k) => plain(inst.deck.find((c) => c.key === k).text)).join(' → ');
     default: return '';
