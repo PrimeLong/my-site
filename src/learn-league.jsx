@@ -21,7 +21,7 @@ const LEAGUE_CSS = `
   .lg-ava { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 700 12px var(--ds-sans); flex: none; }
   .lg-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lg-xp { font: 700 13.5px var(--ds-mono); white-space: nowrap; }
-  .lg-zone { display: flex; align-items: center; gap: 6px; font: 700 11.5px var(--ds-sans); letter-spacing: .04em; text-transform: uppercase; padding: 6px 4px 2px; }
+  .lg-zone { display: flex; align-items: center; gap: 6px; font: 700 12px var(--ds-sans); letter-spacing: .04em; text-transform: uppercase; padding: 6px 4px 2px; }
   .lg-zone.up { color: var(--ds-ok); } .lg-zone.down { color: var(--ds-bad); }
   .lg-zone::after { content: ''; flex: 1; border-top: 1px dashed currentColor; opacity: .6; }
 `;
