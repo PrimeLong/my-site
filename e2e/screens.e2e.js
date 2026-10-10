@@ -20,6 +20,7 @@ async function setup(page, { theme, account = true, learn = null }) {
   await page.addInitScript(({ theme: th, account: acc, a, done, extra }) => {
     try {
       window.__INFLATIA_TEST__ = true;
+      localStorage.setItem('ems-storage-notice', '1');
       if (acc) localStorage.setItem('ems-account', JSON.stringify(a));
       if (th === 'dark') localStorage.setItem('ems-learn-dark', '1');
       if (!localStorage.getItem('ems-textbook-v1')) {

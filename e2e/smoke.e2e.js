@@ -36,6 +36,8 @@ async function openTasks(page) {
    вошёл — аккаунт лежит на устройстве до загрузки страницы. */
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 test.beforeEach(async ({ page }, info) => {
+  // уведомление о памяти браузера уже прочитано — кроме теста самого уведомления
+  if (!info.title.startsWith('память браузера:')) await page.context().addInitScript(() => { try { localStorage.setItem('ems-storage-notice', '1'); } catch { /* нет хранилища */ } });
   if (info.title.startsWith('вход:')) return;
   await page.context().addInitScript((a) => { try { localStorage.setItem('ems-account', JSON.stringify(a)); } catch { /* нет хранилища */ } }, ACCOUNT);
 });
@@ -2720,6 +2722,24 @@ test('Путь: открывается на рекомендованном ур�
   await sc.getByTestId('unit-fold').click();
   await expect(sc).toHaveAttribute('data-folded', 'false');
   await expect(sc.getByTestId('path-lesson')).toHaveCount(14);
+  expect(errors).toEqual([]);
+});
+
+test('память браузера: уведомление один раз — cookie нет, «Подробнее» ведёт на страницу данных', async ({ page }) => {
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const note = page.getByTestId('storage-notice');
+  await expect(note).toContainText('Cookie мы не используем');
+  await note.getByTestId('storage-notice-more').click();
+  await expect(page.getByTestId('privacy')).toContainText('Cookie и память браузера');
+  await page.getByTestId('privacy').locator('[data-nav="back"]').click();
+  await note.getByTestId('storage-notice-ok').click();
+  await expect(note).toHaveCount(0);
+  // после перезагрузки — не возвращается
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.getByTestId('path')).toBeVisible();
+  await expect(page.getByTestId('storage-notice')).toHaveCount(0);
+  expect(await page.evaluate(() => document.cookie)).toBe('');
   expect(errors).toEqual([]);
 });
 

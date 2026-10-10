@@ -19,6 +19,7 @@ async function prepare(page, { account = true } = {}) {
     let x = 42; Math.random = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
     try {
       window.__INFLATIA_TEST__ = true;
+      localStorage.setItem('ems-storage-notice', '1');
       if (acc) localStorage.setItem('ems-account', JSON.stringify(a));
       // утренний экран серии уже показан сегодня
       localStorage.setItem('ems-learn-morning', '2026-10-05');
