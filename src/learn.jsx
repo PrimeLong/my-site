@@ -1758,7 +1758,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
       <StudyWeeks learn={learn} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
-        text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
+        text="Что заметили ученики: новые и разобранные, «скопировать всё», разбор пачкой по id" onClick={() => { Audio.play('paper'); onReports(); }} />}
       {owner && <MenuCard icon={Target} tone="var(--u-ink)" title="Аналитика" data-testid="prof-analytics" data-nav-target="analytics" right={arrow}
         text="Воронка за 30 дней и 20 самых трудных упражнений — без персональных данных" onClick={() => { Audio.play('paper'); onAnalytics(); }} />}
       <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход; скачать или удалить свои данные" onClick={() => setAccount(true)} />

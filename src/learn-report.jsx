@@ -11,7 +11,7 @@ import { Flag, ArrowLeft, Check, Copy, RotateCcw, X, Trash2 } from 'lucide-react
 import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton, Card, Sheet, TopBar, Heading } from './ds.jsx';
 import { loadAccount } from './account.jsx';
-import { sendReport, listReports, setReportStatus, deleteReport, eventsReport } from './lib/client.js';
+import { sendReport, listReports, setReportStatus, setReportsStatus, purgeDoneReports, deleteReport, eventsReport } from './lib/client.js';
 import { isRude, RUDE_MESSAGE } from './lib/moderation.js';
 
 export const REASONS = [
@@ -185,6 +185,7 @@ export const REPORT_CSS = `
   .rp-quote-bar .ds-btn { box-shadow: 0 6px 18px rgba(0,0,0,.25); white-space: normal; }
   .rp-item { border-top: 1px dotted var(--ds-rule2); padding: 10px 0; }
   .rp-item:first-of-type { border-top: none; }
+  .rp-ids { width: 100%; box-sizing: border-box; font: 13.5px/1.45 var(--ds-mono); color: var(--ds-ink); background: var(--ds-paper); border: 1.5px solid var(--ds-rule2); border-radius: 4px; padding: 8px 10px; resize: vertical; }
   .rp-ctx { font: 12.5px/1.45 var(--ds-mono); color: var(--ds-ink2); white-space: pre-wrap; word-break: break-word; margin-top: 6px; }
 `;
 
@@ -252,6 +253,22 @@ export function ReportsView({ onBack }) {
   useEffect(load, [status]);
   const mark = async (r, s) => { Audio.play('tick'); try { await setReportStatus(account.token, r.id, s); load(); } catch (e) { setErr(e.message); } };
   const remove = async (r) => { Audio.play('tick'); try { await deleteReport(account.token, r.id); load(); } catch (e) { setErr(e.message); } };
+  // разбор пачкой: вставить id исправленных — они уходят в «Разобранные»; разобранные — удалить разом
+  const [ids, setIds] = useState('');
+  const [batchMsg, setBatchMsg] = useState('');
+  const [purgeAsk, setPurgeAsk] = useState(false);
+  const markMany = async () => {
+    Audio.play('tick'); setBatchMsg('');
+    try {
+      const r = await setReportsStatus(account.token, ids, 'done');
+      setBatchMsg(`Отмечено разобранными: ${r.changed}${r.missing.length ? ` · не нашлись: ${r.missing.join(', ')}` : ''}${r.ambiguous && r.ambiguous.length ? ` · вставьте id целиком: ${r.ambiguous.join(', ')}` : ''}`);
+      setIds(''); load();
+    } catch (e) { setErr(e.message); }
+  };
+  const purge = async () => {
+    Audio.play('tick'); setPurgeAsk(false);
+    try { const r = await purgeDoneReports(account.token); setBatchMsg(`Удалено разобранных: ${r.deleted}`); load(); } catch (e) { setErr(e.message); }
+  };
   const copyAll = async () => {
     const text = (data ? data.reports : []).map(reportText).join('\n\n———\n\n');
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setErr('Не удалось скопировать — браузер не дал доступа к буферу'); }
@@ -270,6 +287,21 @@ export function ReportsView({ onBack }) {
           <Button small variant="secondary" icon={Copy} disabled={!data || !data.reports.length} onClick={copyAll} data-testid="reports-copy">{copied ? 'Скопировано' : 'Скопировать всё'}</Button>
         </div>
         {err && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14 }}>{err}</div>}
+        <Card style={{ marginBottom: 12 }} data-testid="reports-batch">
+          <label htmlFor="rp-ids" style={{ display: 'block', fontWeight: 700, fontSize: 14.5, marginBottom: 6 }}>Исправлено — отметить пачкой</label>
+          <textarea id="rp-ids" className="rp-ids" rows={2} value={ids} onChange={(e) => setIds(e.target.value)} placeholder="id через пробел или с новой строки: munzqbpt muotbjnx …" data-testid="reports-ids" />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+            <Button small variant="secondary" icon={Check} disabled={!ids.trim()} onClick={markMany} data-testid="reports-mark-many">Отметить разобранными</Button>
+            {status === 'done' && data && data.counts && data.counts.done > 0 && (purgeAsk
+              ? <>
+                  <span style={{ fontSize: 14 }}>Удалить все разобранные ({data.counts.done})? Вернуть не выйдет.</span>
+                  <Button small variant="bad" icon={Trash2} onClick={purge} data-testid="reports-purge-yes">Да, удалить</Button>
+                  <Button small variant="ghost" onClick={() => setPurgeAsk(false)}>Отмена</Button>
+                </>
+              : <Button small variant="ghost" icon={Trash2} onClick={() => setPurgeAsk(true)} data-testid="reports-purge">Удалить все разобранные · {data.counts.done}</Button>)}
+          </div>
+          {batchMsg && <div role="status" style={{ fontSize: 13.5, marginTop: 6, color: 'var(--ds-ink2)' }} data-testid="reports-batch-msg">{batchMsg}</div>}
+        </Card>
         <Card>
           {!data ? <div className="ds-sub">Загружаем…</div> : !data.reports.length ? <div className="ds-sub" data-testid="reports-empty">{status === 'new' ? 'Новых сообщений нет.' : 'Разобранных пока нет.'}</div>
             : data.reports.map((r) => (

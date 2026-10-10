@@ -67,6 +67,33 @@ describe('сообщения об ошибках', () => {
     expect(after.data.reports.map((x) => x.id)).not.toContain(sent.id);
   });
 
+  it('разбор пачкой: исправленные — по списку id (целиком или до «-»), потом все разобранные удаляются разом', async () => {
+    const tick = () => new Promise((r) => { setTimeout(r, 3); });
+    const a = (await send(userToken, { comment: 'первое' })).data.id;
+    await tick();
+    // у второго своя миллисекунда — его короткое начало id ни с кем не совпадает
+    const b = (await send(userToken, { comment: 'второе' })).data.id;
+    await tick();
+    const c = (await send(userToken, { comment: 'третье' })).data.id;
+    // ученик так не может
+    expect((await call(reportsHandler, { action: 'status-many', session: userToken, ids: a })).status).toBe(403);
+    expect((await call(reportsHandler, { action: 'purge-done', session: userToken })).status).toBe(403);
+    expect((await call(reportsHandler, { action: 'status-many', session: ownerToken, ids: '  ' })).status).toBe(400);
+    // id целиком и короткое начало до «-», через пробел, запятую и перенос строки
+    const r = await call(reportsHandler, { action: 'status-many', session: ownerToken, ids: `${a},\n${b.split('-')[0]} nosuchid` });
+    expect(r.data).toEqual({ changed: 2, missing: ['nosuchid'], ambiguous: [] });
+    const done = await call(reportsHandler, { action: 'list', session: ownerToken, status: 'done' });
+    expect(done.data.reports.map((x) => x.id)).toEqual(expect.arrayContaining([a, b]));
+    expect(done.data.reports.find((x) => x.id === a).doneBy).toBeTruthy();
+    const purged = await call(reportsHandler, { action: 'purge-done', session: ownerToken });
+    expect(purged.data.deleted).toBeGreaterThanOrEqual(2);
+    const all = (await call(reportsHandler, { action: 'list', session: ownerToken, status: 'all' })).data.reports.map((x) => x.id);
+    expect(all).not.toContain(a);
+    expect(all).not.toContain(b);
+    // неразобранное осталось
+    expect(all).toContain(c);
+  });
+
   it('логин и имя с грубыми словами не регистрируются', async () => {
     expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('ok'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
     expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: `fuck${n++}`, password: 'secret1', name: 'Анна' })).status).toBe(400);

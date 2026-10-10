@@ -206,6 +206,19 @@ export async function deleteReport(id) {
   else { const m = { ...mem.get('reports') }; delete m[id]; mem.set('reports', m); }
   return true;
 }
+// несколько сообщений одной командой — разбор владельцем списком id
+export async function setReports(entries) {
+  if (!entries.length) return true;
+  if (redis) await redis.hset('reports', Object.fromEntries(entries.map((e) => [e.id, e])));
+  else mem.set('reports', { ...mem.get('reports'), ...Object.fromEntries(entries.map((e) => [e.id, e])) });
+  return true;
+}
+export async function deleteReports(ids) {
+  if (!ids.length) return true;
+  if (redis) await redis.hdel('reports', ...ids);
+  else { const m = { ...mem.get('reports') }; ids.forEach((id) => delete m[id]); mem.set('reports', m); }
+  return true;
+}
 export async function setReport(entry) {
   if (redis) await redis.hset('reports', { [entry.id]: entry });
   else mem.set('reports', { ...mem.get('reports'), [entry.id]: entry });
