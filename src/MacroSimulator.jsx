@@ -2186,7 +2186,13 @@ export default function MacroSimulator() {
           {/* учебник поверх вкладки (например, «Открыть теорию» из карточки урока) — внизу отмечен «Учебник»;
               нажатие на вкладку закрывает его */}
           <BottomNav tab={bookOver && tab !== 'world' ? 'book' : tab} onTab={(t) => { if (bookOver) { setBookOver(false); setCloseTick((k) => k + 1); } setTab(t); }}
-            onReselect={(t) => { if (t === 'book' && !bookOver) setBookHome((k) => k + 1); if (t === 'path') setPathHome((k) => k + 1); }} />
+            onReselect={(t) => {
+              /* повторное касание вкладки — как «назад» к её началу: учебник — в оглавление,
+                 Путь — к рекомендованному уроку, лавка и профиль — наверх */
+              if (t === 'book' && !bookOver) setBookHome((k) => k + 1);
+              if (t === 'path') setPathHome((k) => k + 1);
+              if ((t === 'shop' || t === 'profile') && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+            }} />
         </div>
       );
     }

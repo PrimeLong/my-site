@@ -1425,7 +1425,7 @@ const focusLesson = (root, unitId = null) => {
   return scope.querySelector('[data-testid="path-lesson"][data-rec="true"]') || scope.querySelector('.ln-token.cur') || scope.querySelector('[data-testid="path-lesson"][data-state="open"]');
 };
 
-function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible }) {
+function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0 }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
   const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
@@ -1469,6 +1469,12 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     const el = focusLesson(rootRef.current);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
   }, []);
+  // повторное касание вкладки «Путь» — снова к рекомендованному уроку, где бы ни был экран
+  useEffect(() => {
+    if (!homeTick) return;
+    const el = focusLesson(rootRef.current);
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  }, [homeTick]); // eslint-disable-line react-hooks/exhaustive-deps
   /* ПК (от 1024 px): две колонки — слева карта и юниты, справа закреплены задания дня и живая
      модель текущего юнита (под самим юнитом её тогда нет). На телефоне — одна колонка. */
   const wide = useWide();
@@ -1802,7 +1808,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports || analytics} style={book || reports || analytics ? { display: 'none' } : undefined}>
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
-          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} />}
+          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} homeTick={pathHome} />}
         {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}

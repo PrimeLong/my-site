@@ -2670,6 +2670,9 @@ test('Путь: открывается на рекомендованном ур�
   await page.getByTestId('to-map').click();
   await expect(path.getByTestId('atlas')).toBeInViewport();
   await expect(page.getByTestId('to-map')).toHaveCount(0);
+  // повторное касание вкладки «Путь» — снова к рекомендованному уроку
+  await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
+  await expect(rec).toBeInViewport();
   // место на карте — к уроку этого юнита, который советует Путь
   await path.locator('[data-testid=atlas-place][data-unit="supply-demand"]').click();
   await expect(rec).toBeInViewport();
