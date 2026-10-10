@@ -123,21 +123,23 @@ const STAMP_R = 36.5;
 const STAMP_C = 2 * Math.PI * STAMP_R;
 export function Stamp({ text = 'ПРОЙДЕНО', center = null, color = 'var(--ds-bad)', size = 76, rotate = -12, style, testid }) {
   const id = `st${React.useId().replace(/:/g, '')}`;
-  // ширина буквы жирной антиквы 11 px — около 7,4 px; повторов столько, чтобы буквы шли плотно
+  /* буквы не мельче 12,5 единиц поля (на печати 64 px — около 8 px): мелкий текст по кругу
+     на телефоне рвался. Повторов — сколько влезает целиком; не влезает и один раз — буквы
+     сжимаются по ширине, а не шрифт мельчает */
   const unit = `${text} ★ `;
-  const reps = Math.max(1, Math.round(STAMP_C / (unit.length * 7.4)));
-  // длинная надпись не помещается и одним разом — мельче шрифт, а не сжатые буквы без пробелов
-  const fontSize = Math.min(11, (11 * STAMP_C) / (reps * unit.length * 7.4));
+  const fontSize = 12.5; const glyph = fontSize * 0.68;
+  const reps = Math.max(1, Math.floor(STAMP_C / (unit.length * glyph)));
+  const squeeze = reps * unit.length * glyph > STAMP_C;
   return (
     <span style={{ display: 'inline-block', width: size, height: size, color, ...style }} data-testid={testid}>
       <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={text} shapeRendering="geometricPrecision" textRendering="geometricPrecision">
         <defs><path id={id} d={`M50,50 m-${STAMP_R},0 a${STAMP_R},${STAMP_R} 0 1,1 ${2 * STAMP_R},0 a${STAMP_R},${STAMP_R} 0 1,1 -${2 * STAMP_R},0`} /></defs>
-        <g transform={`rotate(${rotate} 50 50)`} opacity="0.92">
+        <g transform={`rotate(${rotate} 50 50)`}>
           <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" strokeWidth="3" />
           <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" strokeWidth="0.8" />
           <circle cx="50" cy="50" r="29.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-          <text fill="currentColor" fontFamily="var(--ds-serif)" fontWeight="700" fontSize={fontSize.toFixed(2)} dominantBaseline="middle">
-            <textPath href={`#${id}`} startOffset="0" textLength={STAMP_C - 0.5} lengthAdjust="spacing">{unit.repeat(reps).trim()} ★</textPath>
+          <text fill="currentColor" fontFamily="var(--ds-serif)" fontWeight="700" fontSize={fontSize} dominantBaseline="middle">
+            <textPath href={`#${id}`} startOffset="0" textLength={STAMP_C - 0.5} lengthAdjust={squeeze ? 'spacingAndGlyphs' : 'spacing'}>{unit.repeat(reps).trim()} ★</textPath>
           </text>
           {typeof center === 'string' || typeof center === 'number'
             ? <text x="50" y="51" textAnchor="middle" dominantBaseline="middle" fill="currentColor" fontFamily="var(--ds-mono)" fontWeight="700" fontSize="15">{center}</text>
@@ -147,6 +149,46 @@ export function Stamp({ text = 'ПРОЙДЕНО', center = null, color = 'var(-
     </span>
   );
 }
+/* Печать-медаль за достижение — сургучная печать без мелкого текста по кругу (он рвался
+   на телефоне): got — круг цвета печати с волнистым краем, двойная белая кайма и крупный значок
+   белым; не получена — пунктирный контур, бледный значок и замок, чтобы сразу было видно, что
+   её ещё нет. Подпись — обычным текстом под печатью. */
+const SEAL_EDGE = (() => {
+  const pts = [];
+  for (let k = 0; k < 96; k += 1) {
+    const a = (k / 96) * Math.PI * 2; const r = 45 + 2.2 * Math.cos(a * 16);
+    pts.push(`${(50 + r * Math.cos(a)).toFixed(2)},${(50 + r * Math.sin(a)).toFixed(2)}`);
+  }
+  return `M${pts.join('L')}Z`;
+})();
+export function Medal({ icon = null, color = 'var(--u)', size = 72, got = true, label, testid }) {
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} role="img" aria-label={label} data-testid={testid} data-got={String(got)}
+      shapeRendering="geometricPrecision" style={{ display: 'block', overflow: 'visible' }}>
+      {got ? (
+        <>
+          <path d={SEAL_EDGE} fill={color} />
+          <path d={SEAL_EDGE} fill="#000" opacity=".1" transform="translate(1.5 2)" style={{ mixBlendMode: 'multiply' }} />
+          <path d={SEAL_EDGE} fill={color} />
+          <circle cx="50" cy="50" r="36" fill="none" stroke="#fff" strokeWidth="2.2" opacity=".85" />
+          <circle cx="50" cy="50" r="31.5" fill="none" stroke="#fff" strokeWidth="1" opacity=".6" />
+          <ellipse cx="38" cy="30" rx="14" ry="7" fill="#fff" opacity=".16" transform="rotate(-30 38 30)" />
+          {icon && <svg x="30" y="30" width="40" height="40" viewBox="0 0 24 24" overflow="visible" style={{ color: '#fff' }}>{icon}</svg>}
+        </>
+      ) : (
+        <>
+          <circle cx="50" cy="50" r="44" fill="var(--ds-card2)" stroke="var(--ds-ink3)" strokeWidth="2.4" strokeDasharray="5 5" />
+          {icon && <svg x="32" y="32" width="36" height="36" viewBox="0 0 24 24" overflow="visible" style={{ color: 'var(--ds-ink3)', opacity: 0.55 }}>{icon}</svg>}
+          <circle cx="78" cy="78" r="13" fill="var(--ds-card)" stroke="var(--ds-ink3)" strokeWidth="2" />
+          <g transform="translate(70.5 70) scale(.62)" fill="none" stroke="var(--ds-ink2)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </g>
+        </>
+      )}
+    </svg>
+  );
+}
+
 // почтовая марка для альбома: перфорация, рамка цвета юнита, номинал и подпись. Ещё не
 // заработанная марка — блёклый серый рисунок, но подпись и номер читаются полным контрастом
 export function PostStamp({ color, value, caption, children, dim = false, testid }) {

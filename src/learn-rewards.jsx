@@ -10,7 +10,7 @@ import {
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
-import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
+import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
@@ -50,8 +50,8 @@ export const REWARD_CSS = `
   .rw-stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px 6px; justify-items: center; }
   .rw-stamp { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
   /* ещё не полученная печать: блёклый серый оттиск, а подпись читается полным контрастом */
-  .rw-stamp[data-got="false"] > svg, .rw-stamp[data-got="false"] > .ds-stamp { opacity: .38; filter: grayscale(1); }
-  .rw-stamp[data-got="false"] b { color: var(--ds-ink2); }
+  .rw-stamp[data-got="false"] b { color: var(--ds-ink2); font-weight: 600; }
+  .rw-stamp[data-got="false"] span { color: var(--ds-ink3); }
   .rw-stamp b { font: 700 12px/1.2 var(--ds-serif); }
   .rw-stamp span { font: 12px/1.25 var(--ds-sans); color: var(--ds-ink2); }
   .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
@@ -548,29 +548,42 @@ export function MorningStreak({ learn, onClose, now = Date.now() }) {
   );
 }
 
-/* ------------------------------ ПЕЧАТИ ------------------------------ */
+/* ------------------------------ ПЕЧАТИ ------------------------------
+   Полученные — цветные сургучные печати, первыми; ещё не полученные — отдельно, пунктирным
+   контуром с замком и подписью «как получить»: что есть, а чего нет, видно с первого взгляда. */
 export function Achievements({ learn }) {
   const list = achievementsOf(learn);
   const months = monthStamps(learn);
+  const got = list.filter((a) => a.got); const rest = list.filter((a) => !a.got);
+  const item = (a) => {
+    const Icon = ACH_ICON[a.icon] || Check;
+    return (
+      <div key={a.id} className="rw-stamp" data-testid="ach" data-ach={a.id} data-got={String(a.got)} title={a.text}>
+        <Medal icon={<Icon size={24} strokeWidth={a.got ? 2.2 : 1.8} />} got={a.got} color="var(--u)" size={68} label={`${a.title}: ${a.got ? 'получена' : 'ещё не получена'}`} />
+        <b>{a.title}</b><span>{a.got ? a.text : a.how || a.text}</span>
+      </div>
+    );
+  };
   return (
     <div data-testid="achievements">
-      <div className="rw-stamps">
-        {list.map((a) => {
-          const Icon = ACH_ICON[a.icon] || Check;
-          return (
-            <div key={a.id} className="rw-stamp" data-testid="ach" data-ach={a.id} data-got={String(a.got)} title={a.text}>
-              <Stamp text={a.title.toUpperCase()} center={<Icon size={20} aria-hidden="true" />} size={72} rotate={a.got ? -8 : 0} color={a.got ? 'var(--u-ink)' : 'var(--ds-ink3)'} />
-              <b>{a.title}</b><span>{a.text}</span>
+      <div className="ds-eyebrow" style={{ margin: '2px 0 8px' }} data-testid="ach-got-count">Получено: {got.length + months.length} из {list.length + months.length}</div>
+      {(got.length > 0 || months.length > 0) ? (
+        <div className="rw-stamps">
+          {got.map(item)}
+          {months.map((m) => (
+            <div key={m.key} className="rw-stamp" data-testid="ach-month" data-got="true">
+              <Medal icon={<CalendarDays size={24} strokeWidth={2.2} />} got color="var(--ds-gold)" size={68} label={`Марка месяца: ${m.name}`} />
+              <b>{m.name}</b><span>марка месяца</span>
             </div>
-          );
-        })}
-        {months.map((m) => (
-          <div key={m.key} className="rw-stamp" data-testid="ach-month" data-got="true">
-            <Stamp text="ИСПЫТАНИЕ МЕСЯЦА" center={<CalendarDays size={20} aria-hidden="true" />} size={72} rotate={6} color="var(--ds-gold)" />
-            <b>{m.name}</b><span>марка месяца</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : <div className="ds-sub" style={{ fontSize: 14 }}>Пока ни одной — первая печать за первый пройденный урок.</div>}
+      {rest.length > 0 && (
+        <>
+          <div className="ds-eyebrow" style={{ margin: '16px 0 8px', color: 'var(--ds-ink2)' }}>Ещё не получены</div>
+          <div className="rw-stamps rw-stamps-locked">{rest.map(item)}</div>
+        </>
+      )}
     </div>
   );
 }

@@ -2202,6 +2202,11 @@ test('вход: программа — вступительный тест, су
   // печать «Знаток» — только за проверку юнита без ошибок, вступительный тест её не даёт
   await expect(page.locator('[data-testid=ach][data-ach="ace"]')).toHaveAttribute('data-got', 'false');
   await expect(page.locator('[data-testid=ach][data-ach="shop"]')).toHaveAttribute('data-got', 'true');
+  // полученная печать — цветная, без мелкого текста по кругу; неполученная — отдельно, с замком и «как получить»
+  await expect(page.locator('[data-testid=ach][data-ach="shop"] svg[data-got="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid=ach][data-ach="ace"] svg[data-got="false"]')).toHaveCount(1);
+  await expect(page.locator('.rw-stamps-locked [data-ach="ace"]')).toContainText('Сдайте проверку юнита без единой ошибки');
+  await expect(page.getByTestId('achievements').locator('textPath')).toHaveCount(0);
 
   // назавтра: утренний экран серии — один раз в день. Состояние пишется до загрузки страницы:
   // правка из page.evaluate могла быть затёрта сохранением, которое приложение успевало сделать
