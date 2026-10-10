@@ -59,7 +59,9 @@ export const REWARD_CSS = `
   .rw-big { font: 700 64px/1 var(--ds-serif); color: var(--ds-bad); }
   .rw-flame { animation: rw-flame .9s ease-out 1 both; }
   @keyframes rw-flame { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.12); opacity: 1 } 100% { transform: scale(1) } }
-  .rw-chest-open { animation: ds-stamp .4s ease-out 1 both; }
+  /* сундук при открытии чуть подпрыгивает и пружинит — без поворота и крена */
+  .rw-chest-open { animation: rw-chest-pop .5s ease-out 1 both; transform-origin: 50% 90%; }
+  @keyframes rw-chest-pop { 0% { transform: none; } 30% { transform: scale(1.08, .92); } 60% { transform: scale(.96, 1.05) translateY(-4px); } 100% { transform: none; } }
   .rw-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
   .rw-item { position: relative; }
@@ -498,7 +500,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
         {opened && <CoinShower seed={n} n={18} />}
         <div className="ds-eyebrow">Сундук юнита · {place}</div>
         <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }} className={opened ? 'rw-chest-open' : ''}>
-          <Chest size={132} open={opened} spent={was && !opened} label={opened ? 'Сундук открыт: монеты' : was ? 'Сундук пуст' : 'Сундук закрыт'} />
+          <Chest size={132} open={opened} animate spent={was && !opened} label={opened ? 'Сундук открыт: монеты' : was ? 'Сундук пуст' : 'Сундук закрыт'} />
         </div>
         {opened ? (
           <><div className="ds-h2" data-testid="chest-coins">+{n} {coinsWord(n)}</div><div className="ds-sub" style={{ fontSize: 14.5, margin: '4px 0 14px' }}>Место на карте ваше — монеты в кошельке.</div>

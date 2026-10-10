@@ -37,6 +37,13 @@ export const ART_CSS = `
   .ds-appear { animation: ds-appear .4s ease-out 1; }
   .ds-chest-glow { animation: ds-chest-glow 1.6s ease-in-out infinite alternate; transform-origin: 32px 30px; }
   @keyframes ds-chest-glow { from { opacity: .6; } to { opacity: 1; } }
+  /* открытие: закрытая крышка складывается к петлям, откинутая встаёт за коробом, монеты подскакивают */
+  .ds-lid-off { transform-origin: 32px 30px; animation: ds-lid-off .22s ease-in 1 both; }
+  .ds-lid-on { transform-origin: 32px 30px; animation: ds-lid-on .38s cubic-bezier(.3,1.5,.6,1) .18s 1 both; }
+  .ds-coin-pop { animation: ds-coin-pop .45s cubic-bezier(.3,1.6,.6,1) var(--d, .3s) 1 both; }
+  @keyframes ds-lid-off { from { transform: scaleY(1); } to { transform: scaleY(0); opacity: 0; } }
+  @keyframes ds-lid-on { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  @keyframes ds-coin-pop { from { transform: translateY(7px); opacity: 0; } to { transform: none; opacity: 1; } }
   .ds-coins { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 400; perspective: 600px; }
   .ds-coins i { position: absolute; top: 0; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #F7DC8A, #C9971F 60%, #8E6612);
     box-shadow: inset 0 0 0 2px rgba(120,80,10,.55), inset 0 0 0 4px rgba(255,236,170,.6); animation: ds-fall var(--t) cubic-bezier(.3,.6,.45,1) var(--d) 1 forwards; }
@@ -354,53 +361,62 @@ export function InflaMeter({ streak = 0, mood = 'hello', size = 40 }) {
   );
 }
 
-// монеты в конце урока — вместо конфетти; при «уменьшить движение» их нет
-/* Сундук юнита: деревянный, с коваными полосами и замком. open — крышка откинута, внутри
-   монеты и свечение; spent — уже открыт и пуст (крышка откинута, внутри темно). */
-export function Chest({ size = 64, open = false, spent = false, label = 'Сундук' }) {
+/* Сундук юнита: деревянный, с коваными полосами и замком. open — крышка откинута назад (за
+   коробом видна её внутренняя сторона), из короба горкой видны монеты и свет; spent — уже открыт
+   и пуст. Открытие при animate: крышка складывается к петлям, откинутая встаёт за коробом, монеты
+   подскакивают — сундук не поворачивается и не кренится. */
+export function Chest({ size = 64, open = false, spent = false, label = 'Сундук', animate = false }) {
   const reduced = useReducedMotion();
   const id = useMemo(() => `chest${Math.random().toString(36).slice(2, 8)}`, []);
   const lid = open || spent;
+  const anim = animate && open && !spent && !reduced;
   return (
     <svg viewBox="0 0 64 64" width={size} height={size} role="img" aria-label={label} data-testid="chest-art" data-open={String(lid)} style={{ overflow: 'visible' }}>
       <defs>
         <linearGradient id={`${id}w`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#B4723A" /><stop offset="1" stopColor="#7A4420" /></linearGradient>
         <linearGradient id={`${id}l`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#C98446" /><stop offset="1" stopColor="#8E5228" /></linearGradient>
+        <linearGradient id={`${id}i`} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#5A3214" /><stop offset="1" stopColor="#7E4A22" /></linearGradient>
         <radialGradient id={`${id}g`} cx="50%" cy="60%" r="60%"><stop offset="0" stopColor="#FFF1B8" stopOpacity=".95" /><stop offset="1" stopColor="#FFD24A" stopOpacity="0" /></radialGradient>
       </defs>
       <ellipse cx="32" cy="58.5" rx="25" ry="3.2" fill="#000" opacity=".12" />
-      {/* короб */}
-      <rect x="7" y="30" width="50" height="27" rx="3" fill={`url(#${id}w)`} stroke="#3B2210" strokeWidth="1.6" />
-      <path d="M7 38 H57 M7 49 H57" stroke="#5C3416" strokeWidth=".9" opacity=".55" />
-      {/* внутри — монеты и свет, когда открыт */}
+      {/* откинутая крышка — за коробом: видна её внутренняя сторона */}
       {lid && (
-        <g>
-          <path d="M9 31 H55 V35 H9 Z" fill={spent ? '#2A170A' : '#5A3212'} />
-          {!spent && <>
-            <ellipse cx="32" cy="27" rx="26" ry="16" fill={`url(#${id}g)`} className={reduced ? '' : 'ds-chest-glow'} />
-            {[[18, 30], [24, 28.6], [30, 29.6], [36, 28.2], [42, 29.4], [47, 30.4], [27, 31], [39, 31]].map(([x, y], k) => (
-              <ellipse key={k} cx={x} cy={y} rx="3.6" ry="1.9" fill="#E3B53C" stroke="#94700F" strokeWidth=".7" />
-            ))}
-          </>}
+        <g className={anim ? 'ds-lid-on' : ''} data-part="lid-open">
+          <path d="M8 30 L11 9 Q32 4 53 9 L56 30 Z" fill={`url(#${id}i)`} stroke="#3B2210" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M12 12 Q32 8 52 12" stroke="#A86A36" strokeWidth="1" fill="none" opacity=".7" />
+          <path d="M16 30 L17 9.6 L21 9 L20 30 Z M44 30 L43 9 L47 9.6 L48 30 Z" fill="#4E4A45" stroke="#2C2A27" strokeWidth=".7" />
         </g>
       )}
+      {/* свет и горка монет над коробом */}
+      {lid && !spent && <ellipse cx="32" cy="24" rx="27" ry="17" fill={`url(#${id}g)`} className={reduced ? '' : 'ds-chest-glow'} />}
+      {lid && !spent && [[14, 30, 0.30], [20, 28.4, 0.36], [26, 27.2, 0.42], [32, 26.6, 0.34], [38, 27.2, 0.40], [44, 28.4, 0.32], [50, 30, 0.38], [23, 25.6, 0.48], [32, 24.8, 0.52], [41, 25.6, 0.46], [28, 23.6, 0.58], [36, 23.6, 0.56]].map(([x, y, d], k) => (
+        <ellipse key={k} cx={x} cy={y} rx="3.8" ry="2" fill="#E3B53C" stroke="#94700F" strokeWidth=".7" className={anim ? 'ds-coin-pop' : ''} style={anim ? { '--d': `${d}s` } : undefined} />
+      ))}
+      {/* короб; открытый — сверху тёмная щель внутрь */}
+      <rect x="7" y="30" width="50" height="27" rx="3" fill={`url(#${id}w)`} stroke="#3B2210" strokeWidth="1.6" />
+      {lid && <path d="M8.5 31 H55.5 V33.4 H8.5 Z" fill={spent ? '#2A170A' : '#4A2810'} />}
+      <path d="M7 38 H57 M7 49 H57" stroke="#5C3416" strokeWidth=".9" opacity=".55" />
       {/* кованые полосы и уголки */}
       <rect x="15" y="30" width="5" height="27" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
       <rect x="44" y="30" width="5" height="27" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
       {[[17.5, 34], [17.5, 53], [46.5, 34], [46.5, 53]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r=".9" fill="#C8C2B8" />)}
-      {/* замок */}
-      <rect x="27.5" y="31" width="9" height="10" rx="1.6" fill="#D9A92E" stroke="#6E4E0A" strokeWidth="1" />
-      <path d="M32 34.4 a1.4 1.4 0 1 1 0.01 0 M32 35.6 V38.4" stroke="#3B2A08" strokeWidth="1.3" strokeLinecap="round" fill="#3B2A08" />
-      {/* крышка: закрыта — сводом над коробом, открыта — откинута назад */}
-      <g style={{ transformOrigin: '32px 30px', transform: lid ? 'translateY(-6px) scaleY(-.55)' : 'none', transition: reduced ? 'none' : 'transform .5s cubic-bezier(.3,1.5,.6,1)' }}>
-        <path d="M7 30 V22 Q7 12 32 12 Q57 12 57 22 V30 Z" fill={`url(#${id}l)`} stroke="#3B2210" strokeWidth="1.6" strokeLinejoin="round" />
-        <path d="M9 21 Q32 13 55 21" stroke="#E2A866" strokeWidth="1.2" fill="none" opacity=".6" />
-        <path d="M15 30 V18.5 Q17 15 20 14.4 V30 Z M44 14.4 Q47 15 49 18.5 V30 H44 Z" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
-      </g>
+      {/* замок: у открытого — отщёлкнут (дужка поднята) */}
+      <rect x="27.5" y="33" width="9" height="10" rx="1.6" fill="#D9A92E" stroke="#6E4E0A" strokeWidth="1" />
+      <path d="M32 36.4 a1.4 1.4 0 1 1 0.01 0 M32 37.6 V40.4" stroke="#3B2A08" strokeWidth="1.3" strokeLinecap="round" fill="#3B2A08" />
+      {/* закрытая крышка — сводом над коробом; при открытии складывается к петлям */}
+      {(!lid || anim) && (
+        <g className={anim ? 'ds-lid-off' : ''} data-part="lid-closed">
+          <path d="M7 30 V22 Q7 12 32 12 Q57 12 57 22 V30 Z" fill={`url(#${id}l)`} stroke="#3B2210" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M9 21 Q32 13 55 21" stroke="#E2A866" strokeWidth="1.2" fill="none" opacity=".6" />
+          <path d="M15 30 V18.5 Q17 15 20 14.4 V30 Z M44 14.4 Q47 15 49 18.5 V30 H44 Z" fill="#5E5A55" stroke="#2C2A27" strokeWidth=".8" />
+          <rect x="29" y="27" width="6" height="5" rx="1" fill="#D9A92E" stroke="#6E4E0A" strokeWidth=".8" />
+        </g>
+      )}
     </svg>
   );
 }
 
+// монеты в конце урока — вместо конфетти; при «уменьшить движение» их нет
 export function CoinShower({ n = 26, seed = 1 }) {
   const reduced = useReducedMotion();
   const [bits] = useState(() => {
