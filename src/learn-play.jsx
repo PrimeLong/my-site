@@ -632,7 +632,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
 const fmtPct = (x) => `${x.toFixed(1).replace('.', ',').replace('-', '−')}%`;
 function KeepGauge({ infl, rate }) {
   const lo = 0; const hi = 12; const X = (v) => 8 + ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * 284;
-  const ok = inBand(infl);
+  const ok = inBand(infl, KEEP.slack);
   return (
     <svg viewBox="0 0 300 64" width="100%" role="img" aria-label={`Инфляция ${fmtPct(infl)}, коридор 3–5%, ставка ${rate}%`} data-testid="keep-gauge" data-infl={infl.toFixed(2)} style={{ display: 'block' }}>
       <rect x="8" y="26" width="284" height="14" rx="7" fill="var(--ds-rule)" />
@@ -647,7 +647,7 @@ function KeepGauge({ infl, rate }) {
   );
 }
 function KeepSpark({ history }) {
-  const lo = -2; const hi = 12; const W = 300; const H = 70;
+  const lo = 0; const hi = 10; const W = 300; const H = 90;
   const Y = (v) => H - 4 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * (H - 8);
   const pts = history.map((v, i) => `${(i / Math.max(1, 59)) * W},${Y(v).toFixed(1)}`).join(' ');
   return (
@@ -671,7 +671,9 @@ export function KeepRound({ inst, onDone, locked, result = null, best = 0, intro
   const nextAt = useRef(0);
   const done = useRef(false);
   const seconds = testing() && window.__INFLATIA_GAME_SECONDS__ ? Number(window.__INFLATIA_GAME_SECONDS__) : inst.seconds;
-  const now = () => Date.now() - t0.current;
+  // в тестах игру можно ускорить: игровое время идёт в speed раз быстрее настоящего
+  const speed = testing() && window.__INFLATIA_GAME_SPEED__ ? Number(window.__INFLATIA_GAME_SPEED__) : 1;
+  const now = () => (Date.now() - t0.current) * speed;
   const deal = (s, at) => {
     const item = deck.current[idx.current % deck.current.length];
     idx.current += 1;
@@ -693,7 +695,7 @@ export function KeepRound({ inst, onDone, locked, result = null, best = 0, intro
       if (s.news && s.news.done && !(was && was.done)) { Audio.play(s.news.ok ? 'coin' : 'down'); nextAt.current = t + KEEP.gapMs + (s.news.ok ? 0 : 400); }
       if (s.news && s.news.done && t >= nextAt.current) s = deal(s, t);
       put(s);
-    }, KEEP.tickMs);
+    }, KEEP.tickMs / speed);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -740,7 +742,7 @@ export function KeepRound({ inst, onDone, locked, result = null, best = 0, intro
       )}
       {phase === 'play' && (
         <>
-          <TimerBar seconds={seconds} running={!locked} onEnd={finish} />
+          <TimerBar seconds={seconds / speed} running={!locked} onEnd={finish} />
           <div className="lp-game-hud">
             <span className="ds-num lp-game-score" data-testid="game-score">{score}</span>
             {combo > 1 && <span className="lp-combo" key={`c${combo}`} data-testid="game-combo">×{combo}</span>}

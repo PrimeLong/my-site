@@ -52,3 +52,17 @@ describe('держи инфляцию: слабая новость', () => {
     expect(keepNews(keepStart(), { key: 'a', effect: -3 }, 0).news.need).toBe('down');
   });
 });
+
+describe('держи инфляцию: уровень на краю коридора', () => {
+  it('уровень ровно 3% — инфляция подходит к нему снизу и раунд всё равно засчитан', () => {
+    // инфляция 1%, уровень — 3%: плавно она к 3% не дойдёт, но устоится рядом
+    let st = { ...keepStart(), infl: 1 };
+    st = keepNews(st, { key: 'a', effect: -1 }, 0);
+    expect(keepGoal(st)).toBe(3);
+    expect(st.news.need).toBe('hold');
+    st = run(st, 4000, KEEP.tickMs);
+    expect(st.infl).toBeLessThan(3);
+    expect(st.answers).toEqual([true]);
+  });
+});
+
