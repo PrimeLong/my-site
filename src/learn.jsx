@@ -43,7 +43,7 @@ import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText } from './learn/terms.js';
 import {
-  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WordDeck, Calculator as CalcPad,
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
 import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx } from './learn-model.jsx';
@@ -210,7 +210,7 @@ const testAnswer = (inst) => {
     case 'news': return JSON.stringify(inst.expect);
     case 'tiles': return JSON.stringify(inst.solution);
     case 'curve': case 'price': case 'point': return JSON.stringify(inst.answer);
-    case 'swipe': case 'rush': return JSON.stringify('game');
+    case 'swipe': case 'rush': case 'keep': return JSON.stringify('game');
     case 'open': return JSON.stringify('open');
     case 'domino': return JSON.stringify(inst.chain);
     default: return undefined;
@@ -502,6 +502,14 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
       // цепочка собрана — задание уходит на проверку само
       return <DominoEx inst={inst} resp={resp} setResp={(v) => !locked && setResp(v)} locked={locked} fb={fb} onSubmit={onSubmit}
         prompt={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>} />;
+    case 'keep':
+      return (
+        <div>
+          <div className="ds-h2" style={{ marginBottom: 6 }}>{inst.title}</div>
+          <KeepRound inst={inst} locked={locked} result={resp} best={inst._best || 0} intro={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>}
+            onDone={(r) => { setResp(r); onSubmit(r); }} />
+        </div>
+      );
     case 'swipe': case 'rush': {
       return (
         <div>

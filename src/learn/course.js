@@ -15,13 +15,13 @@ import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
-export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, open: 30, domino: 35 };
+export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, keep: 60, open: 30, domino: 35 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполните пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', match: 'Сопоставьте пары', sort: 'Разложите по корзинам', calc: 'Быстрый расчёт',
   tiles: 'Соберите определение', curve: 'Сдвиньте кривую', price: 'Найдите цену', point: 'Отметьте равновесие',
-  swipe: 'Мини-игра', rush: 'Мини-игра на время', open: 'Как бы вы поступили?', domino: 'Домино',
+  swipe: 'Мини-игра', rush: 'Мини-игра на время', keep: 'Держи инфляцию', open: 'Как бы вы поступили?', domino: 'Домино',
 };
 /* «Домино»: ученик сам выкладывает цепочку причин; неверное звено роняет домино с этого места,
    разбор — и он продолжает с верного места. Проверяется само, когда цепочка собрана: засчитано,
@@ -31,7 +31,7 @@ export const SELF_CHECK = ['domino'];
    не идёт ни в ошибки, ни в повторение, ни в проверку юнита. */
 export const OPEN_MIN = 15;
 // мини-игры: у них свой счёт внутри, в проверку юнита и повторение они не идут
-export const GAME_KINDS = ['swipe', 'rush'];
+export const GAME_KINDS = ['swipe', 'rush', 'keep'];
 /* Мини-игра урока — одна, на минуту (на алмазном уровне — 45 секунд): карточки идут по кругу,
    пока не кончится время; засчитана — чистый счёт от восьми: верных минус ошибок
    (docs/mechanics.md, «Мини-игра — зачёт»). */
@@ -295,6 +295,9 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
       const decoys = ex.decoys.map((d, k) => ({ key: `f${k}`, text: d.text, raw: d.raw, why: d.why, link: null }));
       return { ...base, headline: ex.headline, scene: ex.scene, chain: links.map((l) => l.key), deck: shuffle([...links, ...decoys], rand) };
     }
+    case 'keep':
+      return { ...base, title: ex.title, seconds: extra.seconds || ex.seconds || SECONDS.keep,
+        items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, effect: it.effect })), rand) };
     case 'swipe': case 'rush':
       return { ...base, title: ex.title, labels: ex.labels, seconds: extra.seconds || ex.seconds || SECONDS[ex.kind], chart: ex.chart || null, ...(ex.market ? { market: ex.market } : {}),
         items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, side: it.side, effect: it.effect || null })), rand) };
@@ -344,7 +347,7 @@ export function check(inst, resp) {
       const ok = !!resp && Math.abs(resp.q - inst.answer.q) <= ax.qMax * 0.06 && Math.abs(resp.p - inst.answer.p) <= ax.pMax * 0.06;
       return { ok, why: ok ? null : text('Равновесие — там, где кривые пересекаются: объём спроса равен объёму предложения.') };
     }
-    case 'swipe': case 'rush': return { ok: gameOk(inst, resp), why: null };
+    case 'swipe': case 'rush': case 'keep': return { ok: gameOk(inst, resp), why: null };
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
     case 'open': return { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
     case 'domino': {
@@ -379,7 +382,7 @@ export function ready(inst, resp) {
     case 'tiles': return Array.isArray(resp) && resp.length > 0;
     case 'curve': return !!(resp.D || resp.S);
     case 'point': return Number.isFinite(resp.q) && Number.isFinite(resp.p);
-    case 'swipe': case 'rush': return !!resp.done;
+    case 'swipe': case 'rush': case 'keep': return !!resp.done;
     case 'open': return String(resp).trim().length >= OPEN_MIN;
     case 'domino': return !!resp.done;
     default: return true;
@@ -400,7 +403,7 @@ export function answerText(inst) {
     case 'curve': return shiftLabel('supply-demand', inst.answer);
     case 'price': return `цена ${fmt(inst.answer)}`;
     case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
-    case 'swipe': case 'rush': return `верных минус ошибок — не меньше ${GAME_PASS}`;
+    case 'swipe': case 'rush': case 'keep': return `верных минус ошибок — не меньше ${GAME_PASS}`;
     case 'open': return 'свой ответ — пара продуманных предложений';
     case 'domino': return inst.chain.map((k) => plain(inst.deck.find((c) => c.key === k).text)).join(' → ');
     default: return '';

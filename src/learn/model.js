@@ -130,7 +130,7 @@ export const VERBS = {
   choice: { verb: 'ответить' }, gap: { verb: 'ответить' }, tf: { verb: 'ответить' }, match: { verb: 'ответить' }, sort: { verb: 'ответить' },
   calc: { verb: 'ответить' }, shift: { verb: 'предсказывать' }, news: { verb: 'предсказывать' }, tiles: { verb: 'строить' },
   curve: { verb: 'строить', model: true }, point: { verb: 'строить', model: true }, price: { verb: 'исследовать', model: true },
-  swipe: { verb: 'предсказывать', model: true }, rush: { verb: 'предсказывать', model: true },
+  swipe: { verb: 'предсказывать', model: true }, rush: { verb: 'предсказывать', model: true }, keep: { verb: 'решать', model: true },
   open: { verb: 'объяснять' }, domino: { verb: 'строить', model: true }, discover: { verb: 'исследовать', model: true },
 };
 // глаголы урока: его шаги «Откройте сами» и свои упражнения (практика берёт «Домино» всегда)

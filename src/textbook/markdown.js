@@ -440,8 +440,10 @@ function parseExercise(kind, attrs, body) {
    ox / ix и oy / iy (товар X или Y подешевел или подорожал: поворот);
    на эластичности (chart=elastic) — in / el (спрос неэластичный: кривая крутая, выручка от
    подорожания растёт; эластичный: кривая пологая, выручка падает).
-   Текст до пунктов — условие игры. */
-const ROUND_KINDS = ['swipe', 'rush'];
+   Текст до пунктов — условие игры.
+     keep — «Держи инфляцию» (src/learn/keep.js): заголовки «- текст >> +2» — на сколько пунктов
+     новость толкает инфляцию; ученик двигает ставку, чтобы вернуть инфляцию в коридор цели. */
+const ROUND_KINDS = ['swipe', 'rush', 'keep'];
 export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
@@ -450,6 +452,16 @@ function parseRound(kind, attrs, body) {
   if (chart && !ROUND_EFFECTS[chart]) throw new Error(`В игре ${attrs.id} неизвестный график ${chart}`);
   const item = (l) => /^-\s/.test(l.trim());
   const g = { type: 'round', kind, id: attrs.id, title: attrs.title || '', chart, ...(chart === 'market' ? { market: market(attrs) } : {}), prompt: parseBlocks(body.filter((l) => !item(l)).join('\n')), seconds: attrs.seconds ? Number(attrs.seconds) : null };
+  if (kind === 'keep') {
+    g.items = body.filter(item).map((l) => {
+      const [t, tail = ''] = l.trim().slice(2).split(/\s>>\s/);
+      const effect = Number(tail.trim().replace('−', '-'));
+      if (!Number.isFinite(effect) || effect === 0 || Math.abs(effect) > 4) throw new Error(`В игре ${attrs.id}: у «${t}» толчок должен быть числом от −4 до +4, не нулём`);
+      return { raw: t.trim(), text: parseInline(t.trim()), effect };
+    });
+    if (g.items.length < 3) throw new Error(`В игре ${attrs.id} меньше трёх пунктов`);
+    return g;
+  }
   const sides = kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
   g.labels = Object.fromEntries(sides.map((k) => [k, attrs[k] || k]));
   g.items = body.filter(item).map((l) => {
