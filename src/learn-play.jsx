@@ -50,8 +50,6 @@ export const PLAY_CSS = `
     transition: transform .26s ease-in, opacity .26s ease-in; border-top: 5px solid var(--u); }
   .lp-word.in { animation: lp-word-in .3s ease-out both; }
   @keyframes lp-word-in { from { transform: translateY(14px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
-  .lp-word.out-r { transform: translateX(115%) rotate(9deg); opacity: 0; }
-  .lp-word.out-l { transform: translateX(-115%) rotate(-9deg); opacity: 0; }
   .lp-word-top { display: flex; align-items: center; gap: 8px; font: 700 12px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
   .lp-word-term { font: 700 30px/1.15 var(--ds-serif); color: var(--u-ink); margin: 18px 0 6px; text-align: center; }
   .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
@@ -59,13 +57,12 @@ export const PLAY_CSS = `
   .lp-word-def.open { animation: lp-def .35s ease-out both; }
   .lp-word-ex { display: block; margin-top: 12px; font-size: 15px; line-height: 1.4; color: var(--ds-ink2); }
   @keyframes lp-def { from { opacity: 0; transform: translateY(6px); filter: blur(3px) } to { opacity: 1; transform: none; filter: none } }
-  .lp-word-hide { width: 100%; border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 18px 12px; color: var(--ds-ink3); font-size: 15px; background: none; cursor: pointer; font-family: inherit; }
+  .lp-word-tip { margin-top: 14px; font-size: 13.5px; line-height: 1.4; color: var(--ds-ink3); text-align: center; }
   .lp-word-hint .fine { display: none; }
   @media (hover: hover) and (pointer: fine) { .lp-word-hint .fine { display: inline; } .lp-word-hint .touch { display: none; } .lp-word { cursor: grab; } }
   .lp-word-dots { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
   .lp-word-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--ds-rule); }
   .lp-word-dots i.know { background: var(--u); }
-  .lp-word-dots i.again { background: none; box-shadow: inset 0 0 0 2px var(--ds-gold); }
   .lp-word-dots i.cur { box-shadow: 0 0 0 2px var(--ds-paper), 0 0 0 3.5px var(--u); }
   .lp-calc { max-width: 340px; margin: 0 auto; }
   .lp-calc-screen { display: flex; align-items: baseline; gap: 8px; border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card2); padding: 6px 10px; margin-bottom: 6px; min-height: 42px; }
@@ -695,85 +692,69 @@ export function StoryCard({ card, children }) {
    открыть (кнопка, касание карточки или пробел) и отметить «Знаю» или «Ещё раз». «Ещё раз»
    возвращает слово в конец колоды (один раз), «Знаю» — убирает. Можно и смахнуть:
    вправо — «Знаю», влево — «Ещё раз»; на клавиатуре — стрелки. Точки внизу — все слова урока. */
+/* «Слова» — знакомство со словами, а не проверка (docs/mechanics.md): каждое слово сразу со
+   значением и примером — до этого урока ученик мог его не встречать. Листать — «Дальше» и
+   «Назад», смахиванием или стрелками; после последнего — лёгкие упражнения на эти слова. */
 export function WordDeck({ cards, onDone, body, foot }) {
-  const [queue, setQueue] = useState(() => cards.map((_, i) => i));
-  const [marks, setMarks] = useState({});
-  const [open, setOpen] = useState(false);
-  const [out, setOut] = useState(null);
+  const [idx, setIdx] = useState(0);
+  const [seen, setSeen] = useState(() => new Set([0]));
   const [dx, setDx] = useState(0);
   const drag = useRef(null);
-  const reduced = useReducedMotion();
-  const idx = queue[0];
   const card = cards[idx];
-  const repeat = marks[idx] === 'again';
-  const reveal = () => { if (!open) { Audio.play('paper'); setOpen(true); } };
-  const decide = (know) => {
-    if (!open || out) return;
-    Audio.play(know ? 'tick' : 'paper');
-    setOut(know ? 'r' : 'l');
-    const finish = () => {
-      const again = !know && marks[idx] !== 'again';
-      const rest = queue.slice(1);
-      const nextQ = again ? [...rest, idx] : rest;
-      setMarks((m) => ({ ...m, [idx]: know ? (m[idx] === 'again' ? 'again-know' : 'know') : 'again' }));
-      setOut(null); setDx(0); setOpen(false);
-      if (!nextQ.length) onDone(); else setQueue(nextQ);
-    };
-    if (reduced) finish(); else setTimeout(finish, 260);
+  const last = idx === cards.length - 1;
+  const go = (d) => {
+    const n = idx + d;
+    if (n < 0) return;
+    Audio.play('paper'); setDx(0);
+    if (n >= cards.length) { onDone(); return; }
+    setIdx(n); setSeen((st) => new Set([...st, n]));
   };
   useEffect(() => {
     const onKey = (e) => {
       if (e.target && /INPUT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); reveal(); }
-      else if (e.key === 'ArrowRight') decide(true);
-      else if (e.key === 'ArrowLeft') decide(false);
+      if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(1); }
+      else if (e.key === 'ArrowLeft') go(-1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
   if (!card) return null;
-  const left = queue.length - 1;
-  /* Смахивание и мышью: карточка захватывает указатель (рука может уйти за её край), порог —
-     треть ширины пальцем и 50 px мышью; на ПК подсказка — стрелки ← →. */
+  // смахнуть влево — следующее слово, вправо — предыдущее (как листать страницы)
   const onDown = (e) => {
-    if (!open || out) return;
     drag.current = { x: e.clientX, mouse: e.pointerType === 'mouse' };
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* старый браузер */ }
   };
   const onMove = (e) => { if (drag.current) setDx(e.clientX - drag.current.x); };
-  const onUp = () => { if (!drag.current) return; const d = dx; const lim = drag.current.mouse ? 50 : 80; drag.current = null; if (Math.abs(d) > lim) decide(d > 0); else setDx(0); };
-  const style = dx && !out ? { transform: `translateX(${dx}px) rotate(${dx / 30}deg)`, transition: 'none' } : undefined;
+  const onUp = () => { if (!drag.current) return; const d = dx; const lim = drag.current.mouse ? 50 : 80; drag.current = null; if (Math.abs(d) > lim) go(d < 0 ? 1 : -1); else setDx(0); };
+  const style = dx ? { transform: `translateX(${dx}px) rotate(${dx / 40}deg)`, transition: 'none' } : undefined;
   return (
     <>
       {body(<>
       <div className="lp-deck">
-        {left > 0 && <div className="lp-deck-ghost" aria-hidden="true" />}
-        {left > 1 && <div className="lp-deck-ghost g2" aria-hidden="true" />}
-        <div className={`lp-word ${out ? `out-${out}` : 'in'}`} key={`${idx}-${repeat}`} style={style} data-testid="flash-card" data-flipped={String(open)}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onClick={() => { if (!open) reveal(); }}>
+        {!last && <div className="lp-deck-ghost" aria-hidden="true" />}
+        <div className="lp-word in" key={idx} style={style} data-testid="flash-card" data-word={idx}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
           <div className="lp-word-top">
-            <span>Слово {idx + 1} из {cards.length}</span>
-            {repeat && <span className="ds-badge" style={{ textTransform: 'none', letterSpacing: 0 }}>ещё раз</span>}
+            <span>Новое слово {idx + 1} из {cards.length}</span>
             <span style={{ flex: 1 }} />
-            {open && <span className="lp-word-hint" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}><span className="touch">смахните →</span><span className="fine">← → на клавиатуре</span></span>}
+            <span className="lp-word-hint" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}><span className="touch">← смахните</span><span className="fine">← → на клавиатуре</span></span>
           </div>
           <div className="lp-word-term">{card.title}</div>
           <div className="lp-word-rule" />
-          {open
-            ? <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} />{card.example && <span className="lp-word-ex"><b>Пример:</b> <Inline nodes={card.example} /></span>}</span></div>
-            : <div className="lp-word-def"><button type="button" className="lp-word-hide" onClick={(e) => { e.stopPropagation(); reveal(); }}>Вспомните, что это значит, — и откройте</button></div>}
+          <div className="lp-word-def open" data-testid="word-def"><span><Inline nodes={card.text} />{card.example && <span className="lp-word-ex"><b>Пример:</b> <Inline nodes={card.example} /></span>}</span></div>
+          {idx === 0 && <div className="lp-word-tip" data-testid="word-tip">Прочитайте и запомните: после слов — пара лёгких упражнений на них.</div>}
         </div>
       </div>
-      <div className="lp-word-dots" data-testid="word-dots" role="img" aria-label={`Слов отмечено: ${Object.keys(marks).length} из ${cards.length}`}>
-        {cards.map((_, i) => <i key={i} className={`${marks[i] === 'know' || marks[i] === 'again-know' ? 'know' : marks[i] === 'again' ? 'again' : ''} ${i === idx ? 'cur' : ''}`} />)}
+      <div className="lp-word-dots" data-testid="word-dots" role="img" aria-label={`Прочитано слов: ${seen.size} из ${cards.length}`}>
+        {cards.map((_, i) => <i key={i} className={`${seen.has(i) ? 'know' : ''} ${i === idx ? 'cur' : ''}`} />)}
       </div>
       </>)}
-      {foot(open
-        ? <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Button variant="secondary" onClick={() => decide(false)} data-testid="word-again">Ещё раз</Button>
-          <Button onClick={() => decide(true)} data-testid="word-know">Знаю</Button>
-        </div>
-        : <Button variant="secondary" wide onClick={reveal} data-testid="word-show">Показать значение</Button>)}
+      {foot(
+        <div style={{ display: 'grid', gridTemplateColumns: idx > 0 ? '1fr 2fr' : '1fr', gap: 10 }}>
+          {idx > 0 && <Button variant="secondary" onClick={() => go(-1)} data-testid="word-prev">Назад</Button>}
+          <Button onClick={() => go(1)} data-testid="word-next">{last ? 'К упражнениям' : 'Дальше'}</Button>
+        </div>,
+      )}
     </>
   );
 }

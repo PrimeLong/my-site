@@ -211,7 +211,7 @@ for (const theme of ['light', 'dark']) {
       // «Слова»: карточка, оборот, плитки
       await openLesson(page, 'sd-w');
       await shot(page, '14-words-card', theme);
-      await page.getByTestId('word-show').click();
+      await page.getByTestId('word-next').click();
       await shot(page, '15-words-flip', theme, { wait: 700 });
       await passCards(page);
       await shot(page, '16-words-tiles', theme);

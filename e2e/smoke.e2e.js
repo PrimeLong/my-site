@@ -1369,21 +1369,21 @@ async function playDiscover(page, prices = [12, 18, 26, 33]) {
 async function passCards(page) {
   let n = 0;
   const card = page.getByTestId('lesson-card');
-  // подпись карточки: вид, «Слово 2 из 8», перевёрнута ли — по ней видно, что нажатие сработало
+  // подпись карточки: вид и номер слова в «Словах» — по ней видно, что нажатие сработало
   // читается одним вызовом в странице: карточка может смениться между шагами, и тогда
   // getAttribute по исчезнувшему элементу ждал бы бесконечно
   const sig = () => page.evaluate(() => {
     const c = document.querySelector('[data-testid="lesson-card"]');
     if (!c || !c.checkVisibility()) return 'gone';
-    const kind = c.querySelector('.ln-kind'); const flip = c.querySelector('[data-flipped]');
-    return `${c.dataset.style}|${kind ? kind.innerText : ''}|${flip ? flip.dataset.flipped : ''}`;
+    const kind = c.querySelector('.ln-kind'); const word = c.querySelector('[data-word]');
+    return `${c.dataset.style}|${kind ? kind.innerText : ''}|${word ? word.dataset.word : ''}`;
   });
   while (await card.isVisible()) {
     n += 1;
     // «Откройте сами»: четыре дня с разными ценами — потом «Дальше»
     if (await card.getAttribute('data-style') === 'discover') { await playDiscover(page); continue; }
     const before = await sig();
-    // в «Словах» в подвале две кнопки — «Ещё раз» и «Знаю»: берём последнюю
+    // в «Словах» в подвале две кнопки — «Назад» и «Дальше»: берём последнюю
     await page.getByTestId('lesson').locator('.ln-foot button').last().click();
     await expect.poll(sig).not.toBe(before);
   }
@@ -1635,28 +1635,23 @@ test('путь: юнит «Спрос и предложение» — кажды
   expect(new Set(icons).size, 'восемь видов — восемь разных значков').toBe(8);
   const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
 
-  // «Слова»: колода — вспомнить, открыть значение, «Знаю» или «Ещё раз»; потом плитки и пары на время
+  // «Слова»: знакомство, а не проверка — значение и пример сразу, «Дальше» / «Назад»; потом плитки и пары на время
   await startLesson(page, 'sd-w');
   await expect(page.getByTestId('lesson-card')).toHaveAttribute('data-style', 'flash');
   const word = page.getByTestId('flash-card');
-  await expect(word).toHaveAttribute('data-flipped', 'false');
-  await expect(word.getByTestId('word-def')).toHaveCount(0);
-  await expect(word).toContainText('Слово 1 из 8');
-  await page.getByTestId('word-show').click();
+  await expect(word).toContainText('Новое слово 1 из 8');
   await expect(word.getByTestId('word-def')).toContainText('сколько покупатели готовы купить');
-  // «Ещё раз»: слово уходит в конец колоды и вернётся с пометкой
-  await page.getByTestId('word-again').click();
-  await expect(word).toContainText('Слово 2 из 8');
-  await expect(page.getByTestId('word-dots').locator('i.again')).toHaveCount(1);
-  // открыть можно и касанием карточки
-  await word.click();
-  await expect(word).toHaveAttribute('data-flipped', 'true');
-  await page.getByTestId('word-know').click();
-  await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(1);
-  for (let i = 0; i < 6; i += 1) { await page.getByTestId('word-show').click(); await page.getByTestId('word-know').click(); }
-  // последнее — отложенное слово, с пометкой «ещё раз»
-  await expect(word).toContainText('ещё раз');
-  await expect(word).toContainText('Спрос');
+  await expect(page.getByTestId('word-tip')).toBeVisible();
+  await expect(page.getByTestId('word-prev')).toHaveCount(0);
+  await page.getByTestId('word-next').click();
+  await expect(word).toContainText('Новое слово 2 из 8');
+  await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(2);
+  // назад — к прошлому слову
+  await page.getByTestId('word-prev').click();
+  await expect(word).toContainText('Новое слово 1 из 8');
+  for (let i = 0; i < 7; i += 1) await page.getByTestId('word-next').click();
+  await expect(word).toContainText('Новое слово 8 из 8');
+  await expect(page.getByTestId('word-next')).toHaveText('К упражнениям');
   const { kinds: wk } = await playLesson(page, { wrongAt: [0] });
   expect([...wk]).toEqual(expect.arrayContaining(['tiles', 'match', 'choice']));
   await finish();
@@ -1721,7 +1716,6 @@ test('путь: юнит «Порт» (провалы рынка) — кажды
   for (const id of ['mf-i1', 'mf-l1', 'mf-i2', 'mf-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
   // «Слова»: на карточке излишка потребителя — пример
   await startLesson(page, 'mf-w');
-  await page.getByTestId('word-show').click();
   await expect(page.getByTestId('word-def')).toContainText('Пример:');
   await playLesson(page);
   await finish();
