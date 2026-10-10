@@ -1323,6 +1323,8 @@ async function answerExercise(page, { wrong = false } = {}) {
     await svg.click({ position: { x: ((pl.x0 + (q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (pr / pl.pMax) * pl.h) / pl.vh) * box.height } });
   } else if (kind === 'swipe' || kind === 'rush') {
     await playRound(page, () => wrong);
+  } else if (kind === 'keep') {
+    await playKeep(page, { wrong });
   } else if (kind === 'open') {
     // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор
     await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
@@ -1334,7 +1336,7 @@ async function answerExercise(page, { wrong = false } = {}) {
     for (const k of ans.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
   }
   // мини-игра и «Домино» проверяются сами, когда доиграны
-  if (!['swipe', 'rush', 'domino'].includes(kind)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
+  if (!['swipe', 'rush', 'keep', 'domino'].includes(kind)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
   await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
   return kind;
@@ -1411,16 +1413,17 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
   await expect(page.getByTestId('streak-chip')).toHaveAttribute('data-today', 'false');
-  // Путь начинается с юнита 1; уроками — пять юнитов (14, 10, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(5);
+  // Путь начинается с юнита 1; уроками — шесть юнитов (14, 10, 10, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
+  await expect(path.getByTestId('path-unit')).toHaveCount(6);
   await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(54);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(10);
-  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность, порт), Средний (потребитель)
+  await expect(path.getByTestId('path-lesson')).toHaveCount(64);
+  await expect(path.locator('[data-kind="intro"]')).toHaveCount(12);
+  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность, порт, инфляция), Средний (потребитель)
   await expect(path.getByTestId('path-level')).toHaveCount(3);
   await expect(path.getByTestId('path-level').nth(1)).toContainText('Базовый');
   await expect(path.getByTestId('path-unit').nth(2)).toHaveAttribute('data-unit', 'elasticity');
   await expect(path.getByTestId('path-unit').nth(3)).toHaveAttribute('data-unit', 'market-failures');
+  await expect(path.getByTestId('path-unit').nth(4)).toHaveAttribute('data-unit', 'inflation');
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1738,6 +1741,68 @@ test('путь: юнит «Порт» (провалы рынка) — кажды
   expect(errors).toEqual([]);
 });
 
+test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
+      'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
+      'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = page.locator('[data-testid="path-unit"][data-unit="inflation"]');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['in-i1', 'in-l1', 'in-i2', 'in-l2', 'in-w']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «История»: копилка Тимура — ноутбук подорожал
+  await startLesson(page, 'in-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'timur');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'in-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('корзина');
+  await playLesson(page);
+  await finish();
+  // «Держи инфляцию»: шкала с коридором, график, ставка; по подсказкам — зачёт
+  await startLesson(page, 'in-g');
+  const ex = page.getByTestId('ex');
+  await expect(ex.getByTestId('game')).toHaveAttribute('data-kind', 'keep');
+  await expect(ex.getByTestId('keep-gauge')).toBeVisible();
+  await page.evaluate(() => { window.__INFLATIA_GAME_SPEED__ = 4; });
+  await ex.getByTestId('game-start').click();
+  await expect(ex.getByTestId('keep-rate')).toContainText('8%');
+  await expect(ex.getByTestId('keep-spark')).toBeVisible();
+  // стрелки клавиатуры двигают ставку
+  await page.keyboard.press('ArrowUp');
+  await expect(ex.getByTestId('keep-rate')).toContainText('9%');
+  await page.keyboard.press('ArrowDown');
+  await expect(ex.getByTestId('keep-rate')).toContainText('8%');
+  const final = ex.getByTestId('game-final');
+  while (!(await final.count())) {
+    const hint = await ex.getByTestId('game-card').getAttribute('data-hint', { timeout: 500 }).catch(() => null);
+    if (hint === 'up' || hint === 'down') await ex.locator(`button[data-side="${hint}"]`).click({ timeout: 500 }).catch(() => {});
+    else await page.waitForTimeout(80);
+  }
+  await expect(ex.getByTestId('game-verdict')).toHaveAttribute('data-ok', 'true');
+  await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
+  await page.getByRole('button', { name: 'Дальше', exact: true }).click();
+  await finish();
+  for (const id of ['in-rev', 'in-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // учебник: глава «Инфляция» в Базовом уровне, график «Цены и вклад» и словарь
+  await openTab(page, 'book');
+  await page.getByTestId('textbook').getByRole('button', { name: /Инфляция/ }).first().click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'inflation');
+  await expect(page.getByTestId('chapter')).toContainText('Базовый уровень');
+  await expect(page.getByTestId('chapter')).toContainText('потребительскую корзину');
+  await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
 // юнит «Спрос и предложение» пройден — любой его урок открыт для повтора
 const unitDone = (page) => page.addInitScript(() => {
   if (localStorage.getItem('ems-textbook-v1')) return;
@@ -1762,6 +1827,24 @@ async function playRound(page, wrong = () => false, { seconds = 6, max = Infinit
   }
   await expect(ex.getByTestId('game-final')).toBeVisible({ timeout: (seconds + 5) * 1000 });
   return kind;
+}
+
+/* «Держи инфляцию»: в тесте игровое время идёт вчетверо быстрее (window.__INFLATIA_GAME_SPEED__) —
+   минута игры за 15 секунд. Ставку двигаем по подсказке data-hint (куда нужно сейчас); wrong — не
+   трогать ставку вовсе: сильные новости тогда проваливаются. Проверка — сама по окончании игры. */
+async function playKeep(page, { wrong = false, speed = 4 } = {}) {
+  const ex = page.getByTestId('ex');
+  await page.evaluate((sp) => { window.__INFLATIA_GAME_SPEED__ = sp; }, speed);
+  await ex.getByTestId('game-start').click();
+  const card = ex.getByTestId('game-card');
+  const final = ex.getByTestId('game-final');
+  while (!(await final.count())) {
+    const hint = await card.getAttribute('data-hint', { timeout: 500 }).catch(() => null);
+    if (!wrong && (hint === 'up' || hint === 'down')) await ex.locator(`button[data-side="${hint}"]`).click({ timeout: 500 }).catch(() => {});
+    else await page.waitForTimeout(80);
+  }
+  await expect(final).toBeVisible();
+  return 'keep';
 }
 
 test('юнит 1 «Ограниченность и выбор»: все виды уроков, калькулятор в расчёте, повтор после ошибки — другой задачей', async ({ page }) => {

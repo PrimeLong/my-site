@@ -17,13 +17,13 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures), Средний (consumer)
-const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, inflation), Средний (consumer)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'inflation', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — пять юнитов по уровням: от Начального к Среднему', () => {
+it('на Пути уроками — шесть юнитов по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
   // юниты идут по уровням; внутри уровня — по порядку глав учебника
   const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
@@ -284,6 +284,17 @@ describe('упражнения: ровно один верный ответ', ()
           expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
+        case 'keep': {
+          // «Держи инфляцию»: новости толкают цены в обе стороны, толчок — от 1 до 4 пунктов; зачёт — как у всех игр
+          inst.items.forEach((it) => { expect(Number.isFinite(it.effect)).toBe(true); expect(Math.abs(it.effect)).toBeGreaterThanOrEqual(1); expect(Math.abs(it.effect)).toBeLessThanOrEqual(4); });
+          expect(inst.items.some((it) => it.effect > 0) && inst.items.some((it) => it.effect < 0), ex.id).toBe(true);
+          expect(new Set(inst.items.map((x) => x.raw)).size).toBe(inst.items.length);
+          expect(inst.items.length, ex.id).toBeGreaterThanOrEqual(12);
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS, done: true }).ok).toBe(true);
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS + 1, done: true }).ok).toBe(false);
+          expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
+          break;
+        }
         case 'open': {
           // открытый вопрос: короткая отписка не принимается, продуманный ответ — засчитан; разбор есть всегда
           expect(ready(inst, 'да')).toBe(false);
@@ -352,7 +363,8 @@ describe.each(PATH)('юнит %s: полноценный — все восемь
     const game = buildLesson(g.id, seeded(4)).items;
     expect(game.length).toBe(1);
     expect(GAME_KINDS).toContain(game[0].kind);
-    expect(game[0].chart).toBeTruthy();
+    // у «Держи инфляцию» свой живой график — шкала и линия инфляции, без кривых рынка
+    expect(game[0].chart || game[0].kind === 'keep').toBeTruthy();
     game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
     const [st] = of('story');
     // шаг без героя — голос рассказчика; первый шаг — герой, героев не меньше трёх
@@ -619,7 +631,7 @@ describe('мотивация: опыт, серия с заморозкой, ре
    с верной стороной: на рынке рост спроса или падение предложения поднимает цену; на КПВ
    сдвиг кривой — «сдвиг», точка по кривой — «движение». */
 describe('мини-игра: одна на урок, карточки двигают график', () => {
-  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind));
+  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind) && e.kind !== 'keep');
   it('в каждом юните Пути — ровно одна игра, на минуту', () => {
     PATH.forEach((id) => {
       const g = UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'game');
@@ -682,7 +694,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });
