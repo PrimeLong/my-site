@@ -75,6 +75,7 @@ const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').las
 // на Пути один юнит: нужный — через плашку и список юнитов, если его ещё нет на экране
 const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
 const showUnit = async (page, unit) => {
+  await page.waitForTimeout(150);
   if (await page.locator(`[data-testid=path-unit][data-unit="${unit}"]`).count()) return;
   await page.getByTestId('unit-switch-open').click();
   await page.getByTestId('unit-picker').locator(`[data-testid=unit-pick][data-unit="${unit}"]`).click();

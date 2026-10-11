@@ -1411,6 +1411,8 @@ const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'ma
 // на Пути один юнит: нужный — через плашку и список юнитов, если его ещё нет на экране
 async function showUnit(page, id) {
   const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
+  // повторное касание вкладки «Путь» возвращает к текущему юниту — даём ему отработать
+  await page.waitForTimeout(150);
   if (await unit.count()) return unit;
   await page.getByTestId('unit-switch-open').click();
   await page.getByTestId('unit-picker').locator(`[data-testid=unit-pick][data-unit="${id}"]`).click();
@@ -2968,6 +2970,8 @@ test('Путь: открывается на рекомендованном ур�
   await expect(page.getByTestId('to-map')).toHaveCount(0);
   // повторное касание вкладки «Путь» — снова текущий юнит и рекомендованный урок
   // у пройденного места дымит труба — оно всё время чуть движется, поэтому без ожидания неподвижности
+  // (но после того, как плавная прокрутка к карте закончилась)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').click({ force: true });
   await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'scarcity');
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
