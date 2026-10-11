@@ -153,3 +153,79 @@ describe('жалобы из выгрузки: учебник', () => {
     expect(JSON.stringify(RECALLS['mf-r-tax'].block)).toMatch(/большую часть/);
   });
 });
+
+describe('жалобы из выгрузки: новые числа в повторах (mv3hqkqi) и налог Пигу на картинке (mv3gw37a)', () => {
+  const words = (x) => texts(x).join('');
+  it('формулы параметров: арифметика, сравнения, «и» как произведение; без eval', async () => {
+    const { evalFormula } = await import('../../textbook/markdown.js');
+    expect(evalFormula('t*dq/2', { t: 6, dq: 8 })).toBe(24);
+    expect(evalFormula('2^3 - (1 + 1)')).toBe(6);
+    expect(evalFormula('(a>1)*(a<5)', { a: 3 })).toBe(1);
+    expect(evalFormula('dq*3<q0', { dq: 8, q0: 20 })).toBe(0);
+    expect(() => evalFormula('alert(1)')).toThrow();
+    expect(() => evalFormula('x+1', {})).toThrow(/Неизвестный параметр/);
+  });
+  it('в тексте — число с согласованным словом, в формуле — запятая для TeX', async () => {
+    const { substituteVary } = await import('../../textbook/markdown.js');
+    expect(substituteVary('Налог {=t|крона|кроны|крон}, продали {=q|чашку|чашки|чашек}', { t: 21, q: 52 })).toBe('Налог 21 крона, продали 52 чашки');
+    expect(substituteVary('$\\tfrac12 \\cdot {=t/4}$ и {=t/4}', { t: 10 })).toBe('$\\tfrac12 \\cdot 2{,}5$ и 2,5');
+  });
+  it('ошибка в задаче с параметрами ловится при сборке: ответ не по формуле или ловушка равна ответу', () => {
+    expect(() => parseBlocks(':::ex calc id=x answer=5 vary="a=2:1..3" calc="a*2"\nСколько {=a}?\n:::')).toThrow(/calc по умолчанию даёт 4/);
+    expect(() => parseBlocks(':::ex calc id=x answer=4 vary="a=2:1..3" calc="a*2"\nСколько {=a}?\n!! {=a+a} | Неверно\n:::')).toThrow(/ловушка/);
+  });
+  it('все задачи с параметрами: в 100 наборах чисел ответ — целое > 0, ловушки не совпадают с ответом, подстановок не осталось', async () => {
+    const { varyInstance } = await import('../../textbook/markdown.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const list = Object.values(EXERCISES).filter((e) => e.vary);
+    expect(list.length).toBeGreaterThanOrEqual(10);
+    list.forEach((e) => {
+      const rand = seeded(7);
+      const answers = new Set();
+      for (let k = 0; k < 100; k += 1) {
+        const v = varyInstance(e.vary, rand);
+        expect(Number.isFinite(v.answer) && v.answer > 0, e.id).toBe(true);
+        v.traps.forEach((t) => expect(Math.abs(t.value - v.answer), e.id).toBeGreaterThan(1e-6));
+        expect(JSON.stringify([v.prompt, v.explain, v.traps]), e.id).not.toMatch(/\{=/);
+        answers.add(v.answer);
+      }
+      expect(answers.size, e.id).toBeGreaterThan(2);
+    });
+  });
+  it('алмазный повтор «Налог и излишек»: задача о потерях каждый раз с новыми числами, ответ сходится с условием', async () => {
+    const { buildLesson } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const seen = new Set();
+    for (let s = 1; s <= 10; s += 1) {
+      const it = buildLesson('mf-i1', seeded(s), { diamond: true }).items.find((x) => x.id === 'mf-d1-dwl');
+      const [, t, q0, q1] = words(it.prompt).match(/Налог (\d+) \S+ с чашки\. Без налога продавали (\d+) \S+, с налогом — (\d+)/).map(Number);
+      expect(it.answer).toBe((t * (q0 - q1)) / 2);
+      seen.add(words(it.prompt));
+    }
+    expect(seen.size).toBeGreaterThan(5);
+  });
+  it('первый проход урока — числа как в тексте главы, повтор пройденного урока — новые', async () => {
+    const { buildLesson } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    expect(buildLesson('mf-i1', seeded(3)).items.find((x) => x.id === 'mf-q1-area').answer).toBe(900);
+    const again = new Set([1, 2, 3, 4, 5, 6].map((s) => buildLesson('mf-i1', seeded(s), { replay: true }).items.find((x) => x.id === 'mf-q1-area').answer));
+    expect(again.size).toBeGreaterThan(2);
+  });
+  it('в повторении задача с параметрами считается «с новыми числами», а не повтором', async () => {
+    const { freshCopy } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const it = freshCopy(EXERCISES['mf-d1-dwl'], seeded(11));
+    expect([it.fresh, it.of]).toEqual(['numbers', 'mf-d1-dwl']);
+  });
+  it('шаг «Налог Пигу» показывает рынок уже с налогом: издержки подняты, прежние — бледной линией', async () => {
+    const { CHARTS, chartDefaults } = await import('../../textbook/charts.js');
+    const c = LESSONS.flatMap((l) => l.inner).find((x) => x.idea.id === 'mf-i2-pigou');
+    const v = chartDefaults(c.idea.chart, c.idea.attrs);
+    expect(v.pigou).toBe(true);
+    const scene = CHARTS[c.idea.chart].build(c.idea.attrs, v);
+    expect(scene.curves.find((x) => x.id === 'MC0').ghost).toBe(true);
+    expect(scene.curves.find((x) => x.id === 'MC').label).toBe('MC + налог');
+    expect(scene.readout.find((r) => r.label === 'Налог Пигу с единицы').value).toBe('20');
+    expect(scene.readout.find((r) => r.label === 'Безвозвратные потери').value).toBe('0');
+  });
+});

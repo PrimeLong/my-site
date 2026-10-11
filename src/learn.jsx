@@ -549,7 +549,8 @@ const gameLine = (inst, r) => (r ? `Верно ${r.right} из ${r.answered} · 
    в течение суток (resume). */
 // урок собирается под ученика: уровень сложности, ошибки, подсказки и слабые темы (src/learn/program.js)
 function newPlan(run, learn) {
-  if (run.mode === 'lesson') { const p = buildLesson(run.lessonId, Math.random, { ...lessonOpts(learn), diamond: !!run.diamond }); return { items: p.items, cards: p.cards, seconds: p.seconds, diamond: !!run.diamond }; }
+  // урок уже пройден — расчёты в нём с новыми числами
+  if (run.mode === 'lesson') { const p = buildLesson(run.lessonId, Math.random, { ...lessonOpts(learn), diamond: !!run.diamond, replay: !!((learn.lessons || {})[run.lessonId] || {}).runs }); return { items: p.items, cards: p.cards, seconds: p.seconds, diamond: !!run.diamond }; }
   if (run.mode === 'check') { const p = buildUnitCheck(run.unitId, Math.random, { seen: learn.seen || {} }); return { items: p.items, cards: {}, passMistakes: p.passMistakes }; }
   if (run.mode === 'placement') return { items: buildPlacement().items, cards: {} };
   return { items: buildPractice(learn.mistakes.map((m) => m.id), Math.random, { weak: weakLessons(learn).map((w) => w.id) }).items, cards: {} };

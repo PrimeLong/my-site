@@ -41,6 +41,7 @@
      tycoon — задание в «Своём деле», chapter — глава, card — карточка «игра ↔ учебник»,
      appendix — приложение (cards, limits, glossary). */
 import { DIAGRAM_KINDS } from './diagrams.js';
+import { plural } from '../lib/plural.js';
 
 export const LINK_KINDS = ['lever', 'term', 'drill', 'scenario', 'lab', 'tycoon', 'chapter', 'card', 'appendix'];
 // ссылки-действия: абзац из одной такой ссылки рисуется кнопкой
@@ -325,6 +326,9 @@ export const parseChapter = (text) => parseBlocks(text);
      tf answer=true|false — утверждение;
      match — пары «- слева ↔ справа»; sort bins="А|Б" — «- пункт >> А»;
      calc answer=… tol=… unit=… [source=задача] или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
+       vary="t=6:3..9 q0=60:50..80:5" calc="t*dq/2" [when="dq<q0"] — расчёт с параметрами: в тексте, ловушках
+       и разборе {=выражение} подставляется по параметрам (имя=по умолчанию:от..до[:шаг]), calc — формула
+       ответа; с параметрами по умолчанию — как написано, в повторах — новые числа (varyInstance);
      shift chart=тип answer="S-" options="D+ D- S+ S-" — «куда сдвинется?», ловушки «!! D+ | почему»;
      news headline="…" vars="P:цена Q:количество" expect="P:+ Q:-" — «газета».
    Всё после строки «---» — объяснение, которое показывается после ответа.
@@ -348,9 +352,92 @@ const EX_KINDS = ['choice', 'gap', 'tf', 'match', 'sort', 'calc', 'shift', 'news
 export const DOMINO_EFFECTS = ['D+', 'D-', 'S+', 'S-', 'P', 'Q', 'ceil', 'street'];
 const MARKET = ['a', 'b', 'c', 'd', 'dA', 'dC'];
 const market = (attrs) => Object.fromEntries(MARKET.map((k) => [k, attrs[k] != null ? Number(attrs[k]) : (k === 'dA' || k === 'dC' ? 0 : NaN)]));
+/* ------------------------------ РАСЧЁТ С ПАРАМЕТРАМИ ------------------------------
+   vary="имя=по умолчанию:от..до[:шаг] …", calc — формула ответа, when — условие на параметры.
+   Формулы — числа, имена параметров, + − * / ^, скобки и сравнения (< > <= >= == != дают 1 или 0;
+   «и» — произведение скобок); без eval. В тексте {=формула} или {=формула|крона|кроны|крон} — с
+   согласованным словом. */
+export function parseVary(spec) {
+  return String(spec || '').trim().split(/\s+/).filter(Boolean).map((part) => {
+    const m = /^([a-zA-Z]\w*)=(-?[\d.]+):(-?[\d.]+)\.\.(-?[\d.]+)(?::([\d.]+))?$/.exec(part);
+    if (!m) throw new Error(`Параметр «${part}»: нужно имя=по умолчанию:от..до[:шаг]`);
+    return { name: m[1], def: Number(m[2]), min: Number(m[3]), max: Number(m[4]), step: m[5] ? Number(m[5]) : 1 };
+  });
+}
+export function evalFormula(expr, vars = {}) {
+  const src = String(expr); let i = 0;
+  const ws = () => { while (src[i] === ' ') i += 1; };
+  const num = () => {
+    ws();
+    if (src[i] === '(') { i += 1; const v = cmp(); ws(); if (src[i] !== ')') throw new Error(`Нет «)» в «${src}»`); i += 1; return v; }
+    if (src[i] === '-' || src[i] === '−') { i += 1; return -pow(); }
+    const m = /^\d+(?:[.,]\d+)?/.exec(src.slice(i));
+    if (m) { i += m[0].length; return Number(m[0].replace(',', '.')); }
+    const n = /^[a-zA-Z]\w*/.exec(src.slice(i));
+    if (n) { i += n[0].length; if (!(n[0] in vars)) throw new Error(`Неизвестный параметр «${n[0]}» в «${src}»`); return vars[n[0]]; }
+    throw new Error(`Не разобрать «${src}» с позиции ${i}`);
+  };
+  const pow = () => { const b = num(); ws(); if (src[i] === '^') { i += 1; return b ** pow(); } return b; };
+  const mul = () => { let v = pow(); for (;;) { ws(); if (src[i] === '*' || src[i] === '×') { i += 1; v *= pow(); } else if (src[i] === '/' || src[i] === ':') { i += 1; v /= pow(); } else return v; } };
+  const add = () => { let v = mul(); for (;;) { ws(); if (src[i] === '+') { i += 1; v += mul(); } else if (src[i] === '-' || src[i] === '−') { i += 1; v -= mul(); } else return v; } };
+  const cmp = () => { const a = add(); ws(); const op = /^(<=|>=|<|>|==|!=)/.exec(src.slice(i)); if (!op) return a; i += op[0].length; const b = add(); return { '<': a < b, '>': a > b, '<=': a <= b, '>=': a >= b, '==': a === b, '!=': a !== b }[op[0]] ? 1 : 0; };
+  const v = cmp(); ws();
+  if (i < src.length) throw new Error(`Лишнее в «${src}» с позиции ${i}`);
+  return v;
+}
+// число для текста: до сотых, запятая; в формуле — {,}
+const fmtVary = (x, math) => { const r = Math.round(x * 100) / 100; const t = String(Object.is(r, -0) ? 0 : r).replace('.', math ? '{,}' : ','); return r < 0 && !math ? t.replace('-', '−') : t; };
+// подставить {=выражение} или {=выражение|одна|две|пять} в строку: внутри $…$ — в виде для формулы
+export function substituteVary(line, vars) {
+  let out = ''; let math = false; let k = 0;
+  while (k < line.length) {
+    if (line[k] === '$' && line[k - 1] !== '\\') { math = !math; out += '$'; k += 1; continue; }
+    if (line[k] === '{' && line[k + 1] === '=') {
+      let depth = 1; let j = k + 2;
+      while (j < line.length && depth) { if (line[j] === '{') depth += 1; else if (line[j] === '}') depth -= 1; j += 1; }
+      const [expr, ...forms] = line.slice(k + 2, j - 1).split('|');
+      const x = evalFormula(expr, vars);
+      out += fmtVary(x, math) + (forms.length === 3 ? ` ${Number.isInteger(Math.round(x * 100) / 100) ? plural(Math.round(x), ...forms.map((f) => f.trim())) : forms[1].trim()}` : ''); k = j; continue;
+    }
+    out += line[k]; k += 1;
+  }
+  return out;
+}
+const varyOk = (when, vars) => !when || evalFormula(when, vars) === 1;
+// ловушка не должна совпасть с ответом, иначе «ошибка» засчитается верной
+const trapsApart = (ex) => (ex.traps || []).every((t) => Math.abs(t.value - ex.answer) > 1e-6);
+// упражнение с данными параметрами: текст, ловушки и разбор с подставленными числами, ответ — по calc
+function varyParse(v, vars) {
+  const answer = Math.round(evalFormula(v.calc, vars) * 1e6) / 1e6;
+  return parseExercise(v.kind, { ...v.attrs, answer: String(answer) }, v.body.map((l) => substituteVary(l, vars)));
+}
+// новые числа: параметры наугад из своих диапазонов (с условием when); не вышло — по умолчанию
+export function varyInstance(v, rand = Math.random) {
+  const pick = (p) => { const n = Math.floor((p.max - p.min) / p.step + 1e-9) + 1; return Math.round((p.min + p.step * Math.floor(rand() * n)) * 1e6) / 1e6; };
+  for (let t = 0; t < 60; t += 1) {
+    const vars = Object.fromEntries(v.params.map((p) => [p.name, pick(p)]));
+    if (!varyOk(v.when, vars)) continue;
+    const ex = varyParse(v, vars);
+    if (trapsApart(ex)) return { ...ex, vars };
+  }
+  const vars = Object.fromEntries(v.params.map((p) => [p.name, p.def]));
+  return { ...varyParse(v, vars), vars };
+}
 function parseExercise(kind, attrs, body) {
   if (!EX_KINDS.includes(kind)) throw new Error(`Неизвестное упражнение :::ex ${kind}`);
   if (!attrs.id) throw new Error(`У упражнения ${kind} нет id`);
+  if (attrs.vary) {
+    if (kind !== 'calc' || !attrs.calc) throw new Error(`Параметры (vary) — только у расчёта с формулой calc: ${attrs.id}`);
+    const { vary: spec, calc, when, ...rest } = attrs;
+    const params = parseVary(spec);
+    const v = { kind, attrs: rest, body, params, calc, when: when || null };
+    const defs = Object.fromEntries(params.map((p) => [p.name, p.def]));
+    if (!varyOk(v.when, defs)) throw new Error(`В ${attrs.id} параметры по умолчанию не проходят when`);
+    const ex = varyParse(v, defs);
+    if (!trapsApart(ex)) throw new Error(`В ${attrs.id} ловушка по умолчанию совпадает с ответом`);
+    if (rest.answer != null && Math.abs(Number(rest.answer) - ex.answer) > 1e-6) throw new Error(`В ${attrs.id} answer=${rest.answer}, а calc по умолчанию даёт ${ex.answer}`);
+    return { ...ex, attrs, vary: v };
+  }
   const sep = body.findIndex((l) => l.trim() === '---');
   const main = sep >= 0 ? body.slice(0, sep) : body;
   const explain = sep >= 0 ? parseBlocks(body.slice(sep + 1).join('\n')) : null;
