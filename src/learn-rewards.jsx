@@ -354,12 +354,12 @@ function Wardrobe({ learn, wear, onWear }) {
                   return <button key={k} type="button" role="tab" aria-selected={slot === k} disabled={!n} data-slot={k} onClick={() => { Audio.play('tick'); setSlot(k); }}>{SLOT_LABEL[k]} <b>{n}</b></button>;
                 })}
               </div>
-              <div className="rw-tiles" role="list" aria-label={`Вещи: ${SLOT_LABEL[slot].toLowerCase()}`}>
-                <button type="button" className="rw-tile none" role="listitem" aria-pressed={!wear[slot]} data-testid="wardrobe-none" onClick={() => onWear(slot, null)}>Без вещи</button>
+              <div className="rw-tiles" role="group" aria-label={`Вещи: ${SLOT_LABEL[slot].toLowerCase()}`}>
+                <button type="button" className="rw-tile none" aria-pressed={!wear[slot]} data-testid="wardrobe-none" onClick={() => onWear(slot, null)}>Без вещи</button>
                 {here.map((o) => {
                   const on = wear[o.slot] === o.id;
                   return (
-                    <button key={o.id} type="button" className="rw-tile" role="listitem" aria-pressed={on} data-item={o.id} data-on={String(on)} onClick={() => onWear(o.slot, on ? null : o.id)}>
+                    <button key={o.id} type="button" className="rw-tile" aria-pressed={on} data-item={o.id} data-on={String(on)} onClick={() => onWear(o.slot, on ? null : o.id)}>
                       {on && <span className="rw-on" aria-hidden="true"><Check size={13} /></span>}
                       <Mascot mood="hello" size={50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
                       <span>{o.title}</span>
