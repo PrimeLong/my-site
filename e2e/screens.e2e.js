@@ -374,7 +374,7 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
-    test(`модуль 3: свёрнутый юнит, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
+    test(`модуль 3: список юнитов, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
       const CS = ['cs-i1', 'cs-l1', 'cs-i2', 'cs-l2', 'cs-w'];
       const errors = await setup(page, { theme, learn: { claimed: { 'c:scarcity': Date.now() - 86400000 } } });
       await page.addInitScript((ids) => {
@@ -386,9 +386,12 @@ for (const theme of ['light', 'dark']) {
         } catch { /* нет хранилища */ }
       }, CS);
       await page.goto('/', { waitUntil: 'networkidle' });
-      await expect(page.locator('[data-testid=path-unit][data-unit="scarcity"]')).toHaveAttribute('data-folded', 'true');
-      await shot(page, '53-path-folded', theme);
-      await page.locator('[data-testid=path-unit][data-unit="consumer"]').scrollIntoViewIfNeeded();
+      // плашка юнита → список: пройденный, открытые, закрытые — с тестом; оттуда — в юнит 7
+      await page.getByTestId('unit-switch-open').click();
+      await expect(page.getByTestId('unit-picker')).toBeVisible();
+      await shot(page, '53-path-units', theme);
+      await page.locator('[data-testid=unit-pick][data-unit="consumer"]').click();
+      await expect(page.locator('[data-testid=path-unit][data-unit="consumer"]')).toBeVisible();
       await shot(page, '54-path-consumer', theme);
       await page.locator('[data-testid=path-lesson][data-lesson="cs-s1"]').click();
       await expect(page.getByTestId('theory-notice')).toBeVisible();

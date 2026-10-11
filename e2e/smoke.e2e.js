@@ -1406,8 +1406,19 @@ async function passCards(page) {
 }
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
+// на Пути один юнит: нужный — через плашку и список юнитов, если его ещё нет на экране
+async function showUnit(page, id) {
+  const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
+  if (await unit.count()) return unit;
+  await page.getByTestId('unit-switch-open').click();
+  await page.getByTestId('unit-picker').locator(`[data-testid=unit-pick][data-unit="${id}"]`).click();
+  await expect(unit).toBeVisible();
+  return unit;
+}
 // карточка урока → «Начать» (или «Продолжить»)
 async function startLesson(page, id, button = /Начать|Повторить/) {
+  await showUnit(page, UNIT_OF[id.split('-')[0]]);
   await pathNode(page, id).click();
   const sheet = page.getByTestId('lesson-sheet');
   await expect(sheet).toHaveAttribute('data-lesson', id);
@@ -1424,17 +1435,25 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(page.getByTestId('bottom-nav').getByRole('button', { name: 'Теория' })).toHaveCount(0);
   await expect(page.getByTestId('streak')).toHaveText('0');
   await expect(page.getByTestId('streak-chip')).toHaveAttribute('data-today', 'false');
-  // Путь начинается с юнита 1; уроками — шесть юнитов (14, 10, 10, 10, 10 и 10 уроков, все восемь видов), остальные свёрнуты в одну строку
-  await expect(path.getByTestId('path-unit')).toHaveCount(6);
-  await expect(path.getByTestId('path-unit').first()).toHaveAttribute('data-unit', 'scarcity');
-  await expect(path.getByTestId('path-lesson')).toHaveCount(64);
-  await expect(path.locator('[data-kind="intro"]')).toHaveCount(12);
-  // юниты по уровням: Начальный, Базовый (спрос и предложение, эластичность, порт, инфляция), Средний (потребитель)
-  await expect(path.getByTestId('path-level')).toHaveCount(3);
-  await expect(path.getByTestId('path-level').nth(1)).toContainText('Базовый');
-  await expect(path.getByTestId('path-unit').nth(2)).toHaveAttribute('data-unit', 'elasticity');
-  await expect(path.getByTestId('path-unit').nth(3)).toHaveAttribute('data-unit', 'market-failures');
-  await expect(path.getByTestId('path-unit').nth(4)).toHaveAttribute('data-unit', 'inflation');
+  // на Пути один юнит — первый (14 уроков); плашка «Юнит 1 из …», назад некуда, следующий закрыт
+  await expect(path.getByTestId('path-unit')).toHaveCount(1);
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'scarcity');
+  await expect(path.getByTestId('unit-switch')).toContainText('Юнит 1 из');
+  await expect(path.getByTestId('unit-prev')).toBeDisabled();
+  await expect(path.getByTestId('unit-next')).toHaveAttribute('data-locked', 'true');
+  await expect(path.getByTestId('path-lesson')).toHaveCount(14);
+  await expect(path.getByTestId('path-level')).toHaveCount(1);
+  // в списке юнитов — шесть с уроками по уровням: Начальный, Базовый (спрос и предложение, эластичность,
+  // порт, инфляция), Средний (потребитель); закрытые — с тестом, строящиеся — без действий
+  await path.getByTestId('unit-switch-open').click();
+  const picker = page.getByTestId('unit-picker');
+  expect(await picker.locator('[data-testid=unit-pick]:not([data-state=soon])').evaluateAll((els) => els.map((e) => `${e.dataset.unit}:${e.dataset.state}`)))
+    .toEqual(['scarcity:open', 'supply-demand:locked', 'elasticity:locked', 'market-failures:locked', 'inflation:locked', 'consumer:locked']);
+  await expect(picker.getByTestId('unit-pick-test')).toHaveCount(5);
+  await expect(picker.locator('[data-testid=unit-pick][data-state=soon]').first()).toContainText('строится');
+  await expectNoSidewaysScroll(page);
+  await picker.locator('[data-nav="back"]').click();
+  await expect(picker).toHaveCount(0);
   await expect(path.locator('[data-state="open"]')).toHaveCount(1);
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
   await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-kind', 'intro');
@@ -1642,7 +1661,7 @@ test('путь: юнит «Спрос и предложение» — кажды
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const unit = page.locator('[data-testid="path-unit"][data-unit="supply-demand"]');
+  const unit = await showUnit(page, 'supply-demand');
   // у каждого вида — свой значок на Пути
   await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
   const kinds = await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind));
@@ -1724,7 +1743,7 @@ test('путь: юнит «Порт» (провалы рынка) — кажды
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const unit = page.locator('[data-testid="path-unit"][data-unit="market-failures"]');
+  const unit = await showUnit(page, 'market-failures');
   await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
   expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
     .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
@@ -1764,7 +1783,7 @@ test('путь: юнит «Инфляция» — каждый урок прох
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const unit = page.locator('[data-testid="path-unit"][data-unit="inflation"]');
+  const unit = await showUnit(page, 'inflation');
   await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
   expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
     .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
@@ -1979,7 +1998,7 @@ test('юнит 1 «Ограниченность и выбор»: все виды
   await withTestFlag(page);
   await unitDone(page);
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const unit = page.locator('[data-testid="path-unit"][data-unit="scarcity"]');
+  const unit = await showUnit(page, 'scarcity');
   const kinds = await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind));
   expect(new Set(kinds)).toEqual(new Set(['intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']));
   const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); };
@@ -2359,8 +2378,9 @@ test('вход: программа — вступительный тест, су
   await expect(page.getByTestId('placement-card')).toHaveCount(0);
   await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="open"]')).toHaveCount(14);
   await expect(page.locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"][data-state="done"]')).toHaveCount(0);
-  await expect(pathNode(page, 'sd-i1')).toHaveAttribute('data-state', 'open');
   await expect(page.getByTestId('path-rec')).toHaveText(/рекомендуем/i);
+  await showUnit(page, 'supply-demand');
+  await expect(pathNode(page, 'sd-i1')).toHaveAttribute('data-state', 'open');
   // сундук — только за по-настоящему пройденный юнит
   await expect(page.getByTestId('chest')).toHaveCount(0);
 
@@ -2475,6 +2495,14 @@ test('навигация: у каждого экрана один «назад»
   });
   const { errors } = await openApp(page, '/', accountApi, { tab: 'path' });
   const seen = new Set();
+  await expectScreen(page, 'path', seen);
+  // на Пути текущий юнит 2; плашка юнита → список юнитов → пройденный юнит 1
+  await expect(page.getByTestId('path-unit')).toHaveAttribute('data-unit', 'supply-demand');
+  await page.getByTestId('unit-switch-open').click();
+  await expectScreen(page, 'unitPicker', seen);
+  await page.locator('[data-testid=unit-pick][data-unit="scarcity"]').click();
+  await expect(page.getByTestId('unit-picker')).toHaveCount(0);
+  await expect(page.getByTestId('path-unit')).toHaveAttribute('data-unit', 'scarcity');
   await expectScreen(page, 'path', seen);
   // Путь → карточка урока → назад
   await pathNode(page, 'sc-i1').click();
@@ -2890,7 +2918,7 @@ test('учебник: калькулятор по полям а → б → в, �
   expect(errors).toEqual([]);
 });
 
-test('Путь: открывается на рекомендованном уроке, пройденный юнит — строкой, место на карте ведёт к уроку, «К карте»', async ({ page, isMobile }) => {
+test('Путь: открывается на рекомендованном уроке, один юнит и плашка-переключатель, место на карте ведёт к уроку, «К карте»', async ({ page, isMobile }) => {
   await withTestFlag(page);
   await page.addInitScript(() => {
     const at = Date.now() - 86400000;
@@ -2904,24 +2932,50 @@ test('Путь: открывается на рекомендованном ур�
   const rec = path.locator('[data-testid=path-lesson][data-rec="true"]');
   await expect(rec).toHaveAttribute('data-lesson', 'sd-w');
   await expect(rec).toBeInViewport();
-  // пройденный юнит с открытым сундуком — одна строка, не выше 80 px; «Уроки» разворачивает, у узкого экрана название не наезжает на значки
-  const sc = path.locator('[data-testid=path-unit][data-unit="scarcity"]');
-  await expect(sc).toHaveAttribute('data-folded', 'true');
-  expect((await sc.boundingBox()).height).toBeLessThan(80);
-  const titleBox = await sc.locator('.ln-mini-title').boundingBox();
-  expect(titleBox.x + titleBox.width).toBeLessThanOrEqual((await sc.getByTestId('unit-guide').boundingBox()).x + 1);
+  // на экране только текущий юнит; плашка юнита закреплена наверху и видна рядом с уроком
+  await expect(path.getByTestId('path-unit')).toHaveCount(1);
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'supply-demand');
+  const plate = path.getByTestId('unit-switch');
+  await expect(plate).toBeInViewport();
+  await expect(plate).toContainText('Рынок');
+  expect((await plate.boundingBox()).y).toBeLessThan(4);
+  await expect(path.getByTestId('unit-next')).toHaveAttribute('data-locked', 'true');
+  // стрелка назад — к пройденному юниту; вперёд — к текущему
+  await path.getByTestId('unit-prev').click();
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'scarcity');
+  await expect(path.getByTestId('path-unit').getByTestId('path-lesson')).toHaveCount(14);
+  await expect(path.getByTestId('unit-prev')).toBeDisabled();
+  await path.getByTestId('unit-next').click();
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'supply-demand');
+  // замок у следующего — список юнитов, тот закрытый — с тестом
+  await path.getByTestId('unit-next').click();
+  const picker = page.getByTestId('unit-picker');
+  await expect(picker).toBeVisible();
+  await expect(picker.locator('[data-testid=unit-pick][data-unit="elasticity"]').getByTestId('unit-pick-test')).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  await picker.locator('[data-nav="back"]').click();
+  await expect(picker).toHaveCount(0);
+  // на карте выбранное место — в кольце
+  await expect(path.locator('[data-testid=atlas-place][data-unit="supply-demand"]')).toHaveAttribute('data-selected', 'true');
   // кнопка «К карте» — пока карта за верхом экрана; касание возвращает к карте
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect(page.getByTestId('to-map')).toBeVisible();
   await page.getByTestId('to-map').click();
   await expect(path.getByTestId('atlas')).toBeInViewport();
   await expect(page.getByTestId('to-map')).toHaveCount(0);
-  // повторное касание вкладки «Путь» — снова к рекомендованному уроку
+  // повторное касание вкладки «Путь» — снова текущий юнит и рекомендованный урок
+  await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').click();
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'scarcity');
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
   await expect(rec).toBeInViewport();
-  // место на карте — к уроку этого юнита, который советует Путь
+  // место на карте — к уроку этого юнита, который советует Путь; закрытое место — список с тестом
+  await page.evaluate(() => window.scrollTo(0, 0));
   await path.locator('[data-testid=atlas-place][data-unit="supply-demand"]').click();
   await expect(rec).toBeInViewport();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await path.locator('[data-testid=atlas-place][data-unit="elasticity"]').click();
+  await expect(picker).toBeVisible();
+  await picker.locator('[data-nav="back"]').click();
   if (isMobile) {
     // телефон: живая модель — свёрнутой строкой, раскрывается касанием
     const fold = path.getByTestId('model-fold');
@@ -2933,9 +2987,43 @@ test('Путь: открывается на рекомендованном ур�
     await path.getByTestId('model-fold-close').click();
     await expect(path.getByTestId('unit-model')).toHaveCount(0);
   }
-  await sc.getByTestId('unit-fold').click();
-  await expect(sc).toHaveAttribute('data-folded', 'false');
-  await expect(sc.getByTestId('path-lesson')).toHaveCount(14);
+  expect(errors).toEqual([]);
+});
+
+test('Путь: тест закрытого юнита из списка — сдан, и Путь сразу на нём; пропущенный юнит остаётся закрытым', async ({ page }) => {
+  test.setTimeout(120_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const path = page.getByTestId('path');
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'supply-demand');
+  // прыжок через юнит: тест «Порта» (юнит 4), «Кофейня» (юнит 3) остаётся закрытой
+  await path.getByTestId('unit-switch-open').click();
+  const picker = page.getByTestId('unit-picker');
+  await picker.locator('[data-testid=unit-pick][data-unit="market-failures"]').getByTestId('unit-pick-test').click();
+  await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'check');
+  await playLesson(page);
+  await expect(page.getByTestId('lesson-result')).toContainText('Проверка сдана');
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'market-failures');
+  await expect(path.getByTestId('unit-switch')).toContainText('Порт');
+  await expect(path.locator('[data-testid=path-lesson][data-state="locked"]')).toHaveCount(0);
+  await path.getByTestId('unit-switch-open').click();
+  expect(await picker.locator('[data-testid=unit-pick]:not([data-state=soon])').evaluateAll((els) => els.map((e) => `${e.dataset.unit}:${e.dataset.state}`)))
+    .toEqual(['scarcity:done', 'supply-demand:open', 'elasticity:locked', 'market-failures:open', 'inflation:open', 'consumer:locked']);
+  await expect(picker.locator('[data-testid=unit-pick][data-unit="market-failures"]')).toContainText('сдан тестом');
+  await picker.locator('[data-nav="back"]').click();
+  // назад от «Порта» — закрытая «Кофейня»: вместо стрелки замок, касание — список с её тестом
+  await expect(path.getByTestId('unit-prev')).toHaveAttribute('data-locked', 'true');
+  await path.getByTestId('unit-prev').click();
+  await expect(picker.locator('[data-testid=unit-pick][data-unit="elasticity"]').getByTestId('unit-pick-test')).toBeVisible();
+  await picker.locator('[data-nav="back"]').click();
+  await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'market-failures');
   expect(errors).toEqual([]);
 });
 
