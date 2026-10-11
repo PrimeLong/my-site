@@ -326,6 +326,7 @@ export const parseChapter = (text) => parseBlocks(text);
      tf answer=true|false — утверждение;
      match — пары «- слева ↔ справа»; sort bins="А|Б" — «- пункт >> А»;
      calc answer=… tol=… unit=… [source=задача] или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
+       unit="чашка|чашки|чашек" — единица, согласованная с ответом;
        vary="t=6:3..9 q0=60:50..80:5" calc="t*dq/2" [when="dq<q0"] — расчёт с параметрами: в тексте, ловушках
        и разборе {=выражение} подставляется по параметрам (имя=по умолчанию:от..до[:шаг]), calc — формула
        ответа; с параметрами по умолчанию — как написано, в повторах — новые числа (varyInstance);
@@ -354,9 +355,10 @@ const MARKET = ['a', 'b', 'c', 'd', 'dA', 'dC'];
 const market = (attrs) => Object.fromEntries(MARKET.map((k) => [k, attrs[k] != null ? Number(attrs[k]) : (k === 'dA' || k === 'dC' ? 0 : NaN)]));
 /* ------------------------------ РАСЧЁТ С ПАРАМЕТРАМИ ------------------------------
    vary="имя=по умолчанию:от..до[:шаг] …", calc — формула ответа, when — условие на параметры.
-   Формулы — числа, имена параметров, + − * / ^, скобки и сравнения (< > <= >= == != дают 1 или 0;
+   Формулы — числа, имена параметров, + − * / ^, % (остаток), скобки и сравнения (< > <= >= == != дают 1 или 0;
    «и» — произведение скобок); без eval. В тексте {=формула} или {=формула|крона|кроны|крон} — с
-   согласованным словом. */
+   согласованным словом, {|формула|крона|кроны|крон} — одно слово (после числа в формуле), {?условие|да|нет}
+   и {?формула|<0|=0|>0} — текст по условию. */
 export function parseVary(spec) {
   return String(spec || '').trim().split(/\s+/).filter(Boolean).map((part) => {
     const m = /^([a-zA-Z]\w*)=(-?[\d.]+):(-?[\d.]+)\.\.(-?[\d.]+)(?::([\d.]+))?$/.exec(part);
@@ -378,26 +380,45 @@ export function evalFormula(expr, vars = {}) {
     throw new Error(`Не разобрать «${src}» с позиции ${i}`);
   };
   const pow = () => { const b = num(); ws(); if (src[i] === '^') { i += 1; return b ** pow(); } return b; };
-  const mul = () => { let v = pow(); for (;;) { ws(); if (src[i] === '*' || src[i] === '×') { i += 1; v *= pow(); } else if (src[i] === '/' || src[i] === ':') { i += 1; v /= pow(); } else return v; } };
+  const mul = () => { let v = pow(); for (;;) { ws(); if (src[i] === '*' || src[i] === '×') { i += 1; v *= pow(); } else if (src[i] === '/' || src[i] === ':') { i += 1; v /= pow(); } else if (src[i] === '%') { i += 1; v %= pow(); } else return v; } };
   const add = () => { let v = mul(); for (;;) { ws(); if (src[i] === '+') { i += 1; v += mul(); } else if (src[i] === '-' || src[i] === '−') { i += 1; v -= mul(); } else return v; } };
   const cmp = () => { const a = add(); ws(); const op = /^(<=|>=|<|>|==|!=)/.exec(src.slice(i)); if (!op) return a; i += op[0].length; const b = add(); return { '<': a < b, '>': a > b, '<=': a <= b, '>=': a >= b, '==': a === b, '!=': a !== b }[op[0]] ? 1 : 0; };
   const v = cmp(); ws();
   if (i < src.length) throw new Error(`Лишнее в «${src}» с позиции ${i}`);
   return v;
 }
-// число для текста: до сотых, запятая; в формуле — {,}
-const fmtVary = (x, math) => { const r = Math.round(x * 100) / 100; const t = String(Object.is(r, -0) ? 0 : r).replace('.', math ? '{,}' : ','); return r < 0 && !math ? t.replace('-', '−') : t; };
-// подставить {=выражение} или {=выражение|одна|две|пять} в строку: внутри $…$ — в виде для формулы
+// число для текста: до 4 знаков после запятой, от 10 000 — с пробелами по разрядам; в формуле — {,} и \,
+const fmtVary = (x, math) => {
+  const r = Math.round(x * 1e4) / 1e4;
+  const [int, frac] = String(Math.abs(r)).split('.');
+  const grouped = int.length > 4 ? int.replace(/\B(?=(\d{3})+$)/g, math ? '\\,' : '\u00a0') : int;
+  const t = grouped + (frac ? (math ? '{,}' : ',') + frac : '');
+  return r < 0 ? (math ? '-' : '−') + t : t;
+};
+// подставить в строку: {=формула}, {=формула|одна|две|пять} — число (со словом), {|формула|одна|две|пять} —
+// одно слово, {?формула|да|нет} — текст по условию (> 0 — первый), {?формула|меньше нуля|ноль|больше нуля} —
+// по знаку. Внутри $…$ числа — в виде для формулы
+const closeAt = (line, k) => { let depth = 1; let j = k + 2; while (j < line.length && depth) { if (line[j] === '{') depth += 1; else if (line[j] === '}') depth -= 1; j += 1; } return j; };
+const splitTop = (str) => { const parts = ['']; let depth = 0; for (const ch of str) { if (ch === '{') depth += 1; if (ch === '}') depth -= 1; if (ch === '|' && depth === 0) parts.push(''); else parts[parts.length - 1] += ch; } return parts; };
+const wordFor = (x, forms) => { const r = Math.round(x * 100) / 100; const f = forms.map((w) => w.trim()); return Number.isInteger(r) ? plural(r, ...f) : f[1]; };
 export function substituteVary(line, vars) {
   let out = ''; let math = false; let k = 0;
   while (k < line.length) {
     if (line[k] === '$' && line[k - 1] !== '\\') { math = !math; out += '$'; k += 1; continue; }
-    if (line[k] === '{' && line[k + 1] === '=') {
-      let depth = 1; let j = k + 2;
-      while (j < line.length && depth) { if (line[j] === '{') depth += 1; else if (line[j] === '}') depth -= 1; j += 1; }
+    const tag = line[k] === '{' ? line[k + 1] : '';
+    if ((tag === '|' || tag === '?') && !math) {
+      const j = closeAt(line, k);
+      const [expr, ...rest] = splitTop(line.slice(k + 2, j - 1));
+      const x = Math.round(evalFormula(expr, vars) * 1e9) / 1e9;
+      if (tag === '|') out += wordFor(x, rest);
+      else out += substituteVary(rest.length === 3 ? rest[x < 0 ? 0 : x === 0 ? 1 : 2] : rest[x > 0 ? 0 : 1] || '', vars);
+      k = j; continue;
+    }
+    if (tag === '=') {
+      const j = closeAt(line, k);
       const [expr, ...forms] = line.slice(k + 2, j - 1).split('|');
       const x = evalFormula(expr, vars);
-      out += fmtVary(x, math) + (forms.length === 3 ? ` ${Number.isInteger(Math.round(x * 100) / 100) ? plural(Math.round(x), ...forms.map((f) => f.trim())) : forms[1].trim()}` : ''); k = j; continue;
+      out += fmtVary(x, math) + (forms.length === 3 ? ` ${wordFor(x, forms)}` : ''); k = j; continue;
     }
     out += line[k]; k += 1;
   }
@@ -408,7 +429,10 @@ const varyOk = (when, vars) => !when || evalFormula(when, vars) === 1;
 const trapsApart = (ex) => (ex.traps || []).every((t) => Math.abs(t.value - ex.answer) > 1e-6);
 // упражнение с данными параметрами: текст, ловушки и разбор с подставленными числами, ответ — по calc
 function varyParse(v, vars) {
-  const answer = Math.round(evalFormula(v.calc, vars) * 1e6) / 1e6;
+  // с допуском tol ответ — до его знаков (tol=0.01 → до сотых), иначе — до миллионных
+  const tol = Number(v.attrs.tol);
+  const digits = tol > 0 ? Math.max(0, Math.ceil(-Math.log10(tol) - 1e-9)) : 6;
+  const answer = Math.round(evalFormula(v.calc, vars) * 10 ** digits) / 10 ** digits;
   return parseExercise(v.kind, { ...v.attrs, answer: String(answer) }, v.body.map((l) => substituteVary(l, vars)));
 }
 // новые числа: параметры наугад из своих диапазонов (с условием when); не вышло — по умолчанию
@@ -478,7 +502,10 @@ function parseExercise(kind, attrs, body) {
   if (kind === 'calc') {
     ex.variant = attrs.variant || null;
     if (!ex.variant) {
-      ex.answer = Number(attrs.answer); ex.tol = attrs.tol != null ? Number(attrs.tol) : null; ex.unit = attrs.unit || '';
+      // unit="чашка|чашки|чашек" — единица по числу: у поля — «чашек», в ответе — «2 чашки»
+      const forms = String(attrs.unit || '').split('|').map((f) => f.trim());
+      ex.answer = Number(attrs.answer); ex.tol = attrs.tol != null ? Number(attrs.tol) : null; ex.unit = forms[forms.length - 1];
+      if (forms.length === 3) ex.units = forms;
       ex.traps = traps.map((t) => ({ value: parseNumber(t.key), why: t.why }));
       // source=задача учебника: в повторах вернётся с новыми числами по её шаблону (variants.js)
       if (attrs.source) ex.source = attrs.source;

@@ -169,12 +169,30 @@ describe('жалобы из выгрузки: новые числа в повт�
     const { substituteVary } = await import('../../textbook/markdown.js');
     expect(substituteVary('Налог {=t|крона|кроны|крон}, продали {=q|чашку|чашки|чашек}', { t: 21, q: 52 })).toBe('Налог 21 крона, продали 52 чашки');
     expect(substituteVary('$\\tfrac12 \\cdot {=t/4}$ и {=t/4}', { t: 10 })).toBe('$\\tfrac12 \\cdot 2{,}5$ и 2,5');
+    expect(substituteVary('$x = {=q}$ {|q|чашка|чашки|чашек}; {=n} и ${=n}$', { q: 3, n: 12500 })).toBe('$x = 3$ чашки; 12\u00a0500 и $12\\,500$');
+  });
+  it('текст по условию: «эластичный» или «неэластичный» — по числам задачи', async () => {
+    const { substituteVary } = await import('../../textbook/markdown.js');
+    const line = 'спрос {?1-e|эластичный|с единичной эластичностью|неэластичный}, {?e>1|выручка падает|выручка не падает: {=e}}';
+    expect(substituteVary(line, { e: 2 })).toBe('спрос эластичный, выручка падает');
+    expect(substituteVary(line, { e: 1 })).toBe('спрос с единичной эластичностью, выручка не падает: 1');
+    expect(substituteVary(line, { e: 0.5 })).toBe('спрос неэластичный, выручка не падает: 0,5');
+  });
+  it('единица в ответе согласована с числом: «Правильно: 2 чашки»', async () => {
+    const { instantiate, answerText } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const ex = EXERCISES['cs-d1-rest'];
+    expect(ex.unit).toBe('чашек');
+    expect(answerText(instantiate(ex, seeded(1)))).toBe('6 чашек');
+    const forms = new Set();
+    for (let s = 1; s <= 30; s += 1) { const it = instantiate(ex, seeded(s), { renumber: true }); forms.add(answerText(it).replace(/\d+ /, '')); }
+    expect([...forms].sort()).toEqual(['чашек', 'чашки']);
   });
   it('ошибка в задаче с параметрами ловится при сборке: ответ не по формуле или ловушка равна ответу', () => {
     expect(() => parseBlocks(':::ex calc id=x answer=5 vary="a=2:1..3" calc="a*2"\nСколько {=a}?\n:::')).toThrow(/calc по умолчанию даёт 4/);
     expect(() => parseBlocks(':::ex calc id=x answer=4 vary="a=2:1..3" calc="a*2"\nСколько {=a}?\n!! {=a+a} | Неверно\n:::')).toThrow(/ловушка/);
   });
-  it('все задачи с параметрами: в 100 наборах чисел ответ — целое > 0, ловушки не совпадают с ответом, подстановок не осталось', async () => {
+  it('все задачи с параметрами: в 100 наборах чисел ответ — число не 0, ловушки не совпадают с ответом, подстановок не осталось', async () => {
     const { varyInstance } = await import('../../textbook/markdown.js');
     const { seeded } = await import('../../textbook/variants.js');
     const list = Object.values(EXERCISES).filter((e) => e.vary);
@@ -184,7 +202,7 @@ describe('жалобы из выгрузки: новые числа в повт�
       const answers = new Set();
       for (let k = 0; k < 100; k += 1) {
         const v = varyInstance(e.vary, rand);
-        expect(Number.isFinite(v.answer) && v.answer > 0, e.id).toBe(true);
+        expect(Number.isFinite(v.answer) && v.answer !== 0, e.id).toBe(true);
         v.traps.forEach((t) => expect(Math.abs(t.value - v.answer), e.id).toBeGreaterThan(1e-6));
         expect(JSON.stringify([v.prompt, v.explain, v.traps]), e.id).not.toMatch(/\{=/);
         answers.add(v.answer);

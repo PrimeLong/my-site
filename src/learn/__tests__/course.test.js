@@ -768,7 +768,7 @@ describe('меньше повторов в юните', () => {
   });
   it('«Повторение» берёт сначала невиденное: виденные много раз уходят в конец', () => {
     const [r] = UNIT_BY_ID[PILOT].lessons.filter((l) => l.kind === 'review');
-    const pool = UNIT_BY_ID[PILOT].lessons.filter((l) => l.no < r.no).flatMap((l) => l.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source);
+    const pool = UNIT_BY_ID[PILOT].lessons.filter((l) => l.no < r.no).flatMap((l) => l.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source && !e.vary);
     // половину пула ученик видел по три раза
     const seen = Object.fromEntries(pool.filter((_, k) => k % 2 === 0).map((e) => [e.id, 3]));
     for (let s = 1; s <= 10; s += 1) {
@@ -781,7 +781,7 @@ describe('меньше повторов в юните', () => {
   });
   it('повторение в «Практике» и проверка юнита тоже предпочитают невиденное', () => {
     const l = UNIT_BY_ID[PILOT].lessons.filter((x) => x.kind === 'practice').slice(-1)[0];
-    const prev = UNIT_BY_ID[PILOT].lessons.filter((x) => x.no < l.no).flatMap((x) => x.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source);
+    const prev = UNIT_BY_ID[PILOT].lessons.filter((x) => x.no < l.no).flatMap((x) => x.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source && !e.vary);
     const seen = Object.fromEntries(prev.slice(0, Math.floor(prev.length * 0.6)).map((e) => [e.id, 5]));
     for (let s = 1; s <= 10; s += 1) {
       const rev = buildLesson(l.id, seeded(s), { seen }).items.filter((it) => it.review && prev.some((e) => e.id === (it.of || it.id)));

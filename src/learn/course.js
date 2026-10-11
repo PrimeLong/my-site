@@ -13,6 +13,7 @@ import { TEMPLATE_BY_ID, TEMPLATES, templatesOf, seeded } from '../textbook/vari
 import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
+import { plural } from '../lib/plural.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
 export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, keep: 60, open: 30, domino: 35 };
@@ -121,7 +122,7 @@ function fromBlock(b) {
     case 'tf': return { ...e, answer: b.answer, wrongWhy: null };
     case 'match': return { ...e, pairs: b.pairs };
     case 'sort': return { ...e, bins: b.bins, items: b.items };
-    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.source ? { source: b.source } : {}), ...(b.vary ? { vary: b.vary } : {}) };
+    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.units ? { units: b.units } : {}), ...(b.source ? { source: b.source } : {}), ...(b.vary ? { vary: b.vary } : {}) };
     case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
     case 'tiles': return { ...e, solution: b.solution, extra: b.extra };
@@ -281,9 +282,9 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
       if (ex.vary && extra.renumber) {
         const r = varyInstance(ex.vary, seeded(Math.floor(rand() * 2 ** 31) + 1));
         const pr = outOfAir(ex, extra) ? [{ type: 'p', inline: ex.context }, ...r.prompt] : r.prompt;
-        return { ...base, prompt: pr, explain: r.explain || null, answer: r.answer, tol: r.tol, unit: r.unit, traps: r.traps || [], vars: r.vars };
+        return { ...base, prompt: pr, explain: r.explain || null, answer: r.answer, tol: r.tol, unit: r.unit, ...(r.units ? { units: r.units } : {}), traps: r.traps || [], vars: r.vars };
       }
-      return { ...base, answer: ex.answer, tol: ex.tol, unit: ex.unit, traps: ex.traps || [] };
+      return { ...base, answer: ex.answer, tol: ex.tol, unit: ex.unit, ...(ex.units ? { units: ex.units } : {}), traps: ex.traps || [] };
     }
     case 'shift': return { ...base, chart: ex.chart, chartAttrs: ex.chartAttrs, answer: ex.answer, choices: ex.choices.map((key) => ({ key, label: shiftLabel(ex.chart, key), button: shiftButton(ex.chart, key) })), traps: ex.traps || [] };
     case 'news': return { ...base, headline: ex.headline, vars: ex.vars, expect: ex.expect };
@@ -414,7 +415,8 @@ export function answerText(inst) {
     case 'tf': return inst.answer ? 'Верно' : 'Неверно';
     case 'match': return inst.left.map((l) => `${plain(l.text)} — ${plain(inst.right.find((r) => r.key === l.key).text)}`).join('; ');
     case 'sort': return inst.bins.map((b) => `${b}: ${inst.items.filter((it) => it.bin === b).map((it) => plain(it.text)).join(', ')}`).join('; ');
-    case 'calc': return withUnit(inst.answer, inst.unit);
+    // единица по числу: «2 чашки», «5 чашек», «2,5 чашки»
+    case 'calc': return inst.units ? `${fmt(inst.answer)} ${Number.isInteger(inst.answer) ? plural(inst.answer, ...inst.units) : inst.units[1]}` : withUnit(inst.answer, inst.unit);
     case 'shift': return shiftLabel(inst.chart, inst.answer);
     case 'news': return inst.vars.map((v) => `${v.label} ${({ '+': '↑', '-': '↓', 0: '—' })[inst.expect[v.key]]}`).join(', ');
     case 'tiles': return inst.solution.map((k) => inst.tiles.find((t) => t.key === k).text).join(' ');
