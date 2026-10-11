@@ -6,11 +6,11 @@ import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts, theoryNotice
 import { evalExpr, fmtResult, pressRoot } from '../calc.js';
 import {
   balance, earn, courseIncome, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
-  settle, monthChallenge, achievementsOf, hash01, COIN,
+  settle, monthChallenge, achievementsOf, hash01, COIN, goalCoins,
 } from '../rewards.js';
 import {
   emptyLearn, recordAttempt, finishLesson, setProfile, setPlacement, passUnit, normalizeLearn, mergeLearn, streak, applyFreezes, ownedFreezes,
-  dayOf, addDays, weekDots, dailyOf, MAX_FREEZES, goalToday,
+  dayOf, addDays, weekDots, dailyOf, MAX_FREEZES, goalToday, goalMinutes, pendingGoal,
 } from '../../textbook/learn-state.js';
 
 const at = (day, h = 12) => { const [y, m, d] = day.split('-').map(Number); return new Date(y, m - 1, d, h).getTime(); };
@@ -30,6 +30,40 @@ describe('ответы при регистрации', () => {
     const older = setProfile(emptyLearn(), { goal: 'self', minutes: 5, knows: false }, T - 10);
     expect(mergeLearn(older, s).profile.goal).toBe('olymp');
     expect(mergeLearn(s, older).profile.goal).toBe('olymp');
+  });
+});
+
+describe('цель дня: награда по минутам, новая цель — с завтрашнего дня', () => {
+  it('за цель — столько монет, сколько минут: 5 → 5, 10 → 10, 20 → 20', () => {
+    expect([5, 10, 15, 20].map(goalCoins)).toEqual([5, 10, 15, 20]);
+    const run = (min) => {
+      let st = setProfile(emptyLearn(), { minutes: min }, T);
+      st = { ...st, daily: { [dayOf(T)]: { ...dailyOf(st, T), s: min * 60 } } };
+      return settle(st, courseCtx(st), T).gains.find((g) => g.kind === 'goal');
+    };
+    expect(run(5).coins).toBe(5);
+    expect(run(20).coins).toBe(20);
+  });
+  it('сменили цель днём — сегодня прежняя цель и задания, новая с завтра; вернули прежнюю — сразу без отложенной', () => {
+    const first = setProfile(emptyLearn(), { minutes: 20 }, T);
+    // первая цель при регистрации — сразу
+    expect(goalMinutes(first, T)).toBe(20);
+    const qBefore = questsFor(first, T).map((q) => q.target);
+    const low = setProfile(first, { minutes: 5 }, T + 3600e3);
+    expect(goalMinutes(low, T + 3600e3)).toBe(20);
+    expect(goalToday(low, T + 3600e3).goal).toBe(20);
+    expect(questsFor(low, T + 3600e3).map((q) => q.target)).toEqual(qBefore);
+    expect(pendingGoal(low, T + 3600e3)).toEqual({ minutes: 5, since: addDays(dayOf(T), 1) });
+    // назавтра — новая
+    expect(goalMinutes(low, T + 86400e3)).toBe(5);
+    expect(pendingGoal(low, T + 86400e3)).toBe(null);
+    // передумали в тот же день — отложенной цели нет
+    const back = setProfile(low, { minutes: 20 }, T + 7200e3);
+    expect(pendingGoal(back, T + 7200e3)).toBe(null);
+    expect(goalMinutes(back, T + 7200e3)).toBe(20);
+    // отложенная цель переживает чистку профиля и слияние устройств
+    expect(goalMinutes(normalizeLearn(JSON.parse(JSON.stringify(low))), T + 3600e3)).toBe(20);
+    expect(goalMinutes(mergeLearn(first, low), T + 3600e3)).toBe(20);
   });
 });
 

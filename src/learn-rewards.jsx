@@ -15,10 +15,11 @@ import { ShopSwitch, GardenView } from './learn-garden.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
+  goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday,
+  dayOf, addDays, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -160,7 +161,7 @@ export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
           <Bar have={g.done} target={g.goal} ok={g.done >= g.goal} />
         </div>
         <div style={{ textAlign: 'right' }}>
-          <CoinTag n={`+${COIN.goal}`} />
+          <CoinTag n={`+${goalCoins(g.goal)}`} />
           <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{Math.min(g.done, g.goal)}/{g.goal} мин</div>
         </div>
       </div>
@@ -678,6 +679,9 @@ export function ProgramCard({ learn, update, onPlacement }) {
   const level = skillLevel(learn);
   const setMinutes = (m) => { Audio.play('tick'); update((s) => setProfile(s, { minutes: m })); };
   const mins = goalMinutes(learn);
+  const next = pendingGoal(learn);
+  // выбранная кнопка — цель, которую выбрали (новая действует с завтра)
+  const chosen = next ? next.minutes : mins;
   return (
     <Card style={{ margin: '12px 0' }} data-testid="prof-program">
       <div className="ds-h3" style={{ marginBottom: 8 }}>Моя программа</div>
@@ -688,8 +692,11 @@ export function ProgramCard({ learn, update, onPlacement }) {
       <div className="ds-eyebrow" style={{ margin: '12px 0 6px' }}>Цель дня · минут занятий</div>
       <div className="rw-chip-row" role="group" aria-label="Минут в день">
         {PROFILE_MINUTES.map((m) => (
-          <button key={m} type="button" className="ds-chip" aria-pressed={mins === m} onClick={() => setMinutes(m)}>{m} мин</button>
+          <button key={m} type="button" className="ds-chip" aria-pressed={chosen === m} data-minutes={m} onClick={() => setMinutes(m)}>{m} мин</button>
         ))}
+      </div>
+      <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }} data-testid="prof-goal-note">
+        {next ? `Сегодня цель — ${mins} мин. Новая, ${next.minutes} мин, — с завтрашнего дня.` : `За выполненную цель — ${goalCoins(mins)} ${coinsWord(goalCoins(mins))}: столько, сколько минут. Новая цель начинает действовать с завтрашнего дня.`}
       </div>
       <Row label="Уровень заданий" value={LEVEL_NAME[level]} data-testid="prof-level" data-level={level} />
       <div className="ds-faint" style={{ fontSize: 13, marginTop: 4 }}>{LEVEL_TEXT[level]}</div>
