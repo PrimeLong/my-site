@@ -2967,7 +2967,8 @@ test('Путь: открывается на рекомендованном ур�
   await expect(path.getByTestId('atlas')).toBeInViewport();
   await expect(page.getByTestId('to-map')).toHaveCount(0);
   // повторное касание вкладки «Путь» — снова текущий юнит и рекомендованный урок
-  await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').click();
+  // у пройденного места дымит труба — оно всё время чуть движется, поэтому без ожидания неподвижности
+  await path.locator('[data-testid=atlas-place][data-unit="scarcity"]').click({ force: true });
   await expect(path.getByTestId('path-unit')).toHaveAttribute('data-unit', 'scarcity');
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
   await expect(rec).toBeInViewport();
