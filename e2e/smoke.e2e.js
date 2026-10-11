@@ -1618,7 +1618,7 @@ test('путь: выход после первого ответа — урок �
 
   // проверка юнита: сдана — все уроки открыты, но пройденными становятся только уроками
   await openTab(page, 'path');
-  await path.locator('[data-testid="path-unit"][data-unit="supply-demand"]').getByTestId('unit-check').click();
+  await (await showUnit(page, 'supply-demand')).getByTestId('unit-check').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'check');
   await playLesson(page);
   await expect(page.getByTestId('lesson-result')).toContainText('Проверка сдана');
