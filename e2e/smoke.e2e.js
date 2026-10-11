@@ -1805,7 +1805,7 @@ test('путь: юнит «Инфляция» — каждый урок прох
   expect(errors).toEqual([]);
 });
 
-test('лавка → сад: созревшее собирается в гербарий, семена садятся за монеты, растение растёт без приложения', async ({ page }) => {
+test('лавка → сад: урожай с редкостью — продать или оставить, семена садятся за монеты, растение растёт без приложения', async ({ page }) => {
   await withTestFlag(page);
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
@@ -1822,13 +1822,26 @@ test('лавка → сад: созревшее собирается в герб
   const garden = page.getByTestId('garden');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="chamomile"]')).toHaveAttribute('data-stage', 'bloom');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"]')).toHaveAttribute('data-stage', 'bud');
-  await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('ещё 3 ч');
-  // собрать — ромашка в гербарии, грядка свободна
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('3 ч');
+  // шансы редкостей урожая — на экране
+  await expect(garden.getByTestId('garden-odds').first()).toContainText('легендарный — 2%');
+  // собрать — урожай с редкостью, грядка свободна, ромашка в гербарии
   await garden.getByTestId('garden-harvest').click();
-  await expect(garden.getByTestId('garden-msg')).toContainText('новое растение в гербарии');
-  await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-got', 'true');
+  const result = garden.getByTestId('garden-result');
+  await expect(result).toContainText('Новое растение в гербарии');
+  await expect(result.locator('[data-grade]').first()).toBeVisible();
+  await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-kept', '1');
   await expect(garden.locator('[data-testid=herb-item][data-plant="orchid"]')).toHaveAttribute('data-got', 'false');
+  await expect(garden.getByTestId('garden-crop')).toHaveCount(1);
   await expect(shop.getByTestId('garden-ripe')).toHaveCount(0);
+  // продать — монеты в кошелёк, в коллекции пусто, но ромашка уже выращена
+  const coins0 = Number(await garden.getByTestId('garden-balance').innerText());
+  await result.getByTestId('garden-result-sell').click();
+  await expect(garden.getByTestId('garden-msg')).toContainText('Продано: Ромашка');
+  expect(Number(await garden.getByTestId('garden-balance').innerText())).toBeGreaterThan(coins0);
+  await expect(garden.getByTestId('garden-crop')).toHaveCount(0);
+  await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-got', 'true');
+  await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-kept', '0');
   // посадить подсолнух: монеты списаны по курсу, на грядке — семечко
   const before = Number(await garden.getByTestId('garden-balance').innerText());
   await garden.locator('[data-testid=garden-seed][data-plant="sunflower"] [data-testid=garden-plant]').click();
