@@ -1424,21 +1424,32 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
   );
 }
 
-/* Живая модель на Пути телефона — одной строкой: что это, сколько деталей собрано; касание
-   раскрывает саму модель (улица, график, ползунки), «Свернуть» — обратно. */
-function ModelFold({ unitId, learn }) {
-  const [open, setOpen] = useState(false);
+/* Живая модель юнита: свёрнутая — одной строкой (что это, сколько деталей собрано), касание
+   раскрывает саму модель (улица, график, ползунки), «Свернуть» — обратно. На телефоне она
+   свёрнута, пока её не откроют; на ПК (side — правая колонка) открыта, но тоже сворачивается,
+   и выбор запоминается на устройстве. */
+const MODEL_SIDE_KEY = 'ems-model-side-open';
+function ModelFold({ unitId, learn, side = false }) {
+  const [open, setOpenRaw] = useState(() => {
+    if (!side) return false;
+    try { return localStorage.getItem(MODEL_SIDE_KEY) !== '0'; } catch { return true; }
+  });
+  const setOpen = (v) => {
+    setOpenRaw(v);
+    if (side) { try { localStorage.setItem(MODEL_SIDE_KEY, v ? '1' : '0'); } catch { /* приватный режим */ } }
+  };
   const prog = modelProgress(unitId, learn);
+  const gap = side ? 0 : 10;
   if (open) {
     return (
-      <Card style={{ marginTop: 10 }}>
+      <Card style={{ marginTop: gap }} data-testid="model-open">
         <MarketModel unitId={unitId} learn={learn} compact />
         <Button variant="ghost" small icon={ChevronDown} data-testid="model-fold-close" style={{ marginTop: 6 }} onClick={() => { Audio.play('paper'); setOpen(false); }}>Свернуть модель</Button>
       </Card>
     );
   }
   return (
-    <Card style={{ marginTop: 10, padding: 0 }}>
+    <Card style={{ marginTop: gap, padding: 0 }}>
       <button type="button" className="ln-fold-row" data-testid="model-fold" data-open={prog.open} aria-expanded="false" onClick={() => { Audio.play('paper'); setOpen(true); }}>
         <Coffee size={20} color="var(--u-ink)" aria-hidden="true" />
         <span style={{ flex: 1, minWidth: 0 }}>
@@ -1625,7 +1636,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
         <aside className="ln-path-side" data-testid="path-side" aria-label="Задания дня и живая модель">
           <TasksEntry learn={learn} onOpen={onTasks} />
           <QuestsCard learn={learn} testid="side-quests" />
-          {sideModel && <Card><MarketModel unitId={sideModel} learn={learn} compact /></Card>}
+          {sideModel && <ModelFold unitId={sideModel} learn={learn} side />}
         </aside>
       )}
     </div>

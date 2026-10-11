@@ -3006,6 +3006,15 @@ test('ПК от 1024 px: Путь в две колонки, у главы уче
       expect(box.x + box.width).toBeLessThanOrEqual(width);
       expect(await noScroll()).toBe(true);
     }
+    // живая модель на ПК сворачивается в строку и разворачивается обратно; выбор запоминается
+    const side = page.getByTestId('path-side');
+    await side.getByTestId('model-fold-close').click();
+    await expect(side.getByTestId('unit-model')).toHaveCount(0);
+    await expect(side.getByTestId('model-fold')).toBeVisible();
+    await page.reload({ waitUntil: 'networkidle' });
+    await expect(page.getByTestId('path-side').getByTestId('model-fold')).toBeVisible();
+    await page.getByTestId('path-side').getByTestId('model-fold').click();
+    await expect(page.getByTestId('path-side').getByTestId('unit-model')).toHaveCount(1);
     // уже 1024 — одна колонка
     await page.setViewportSize({ width: 1000, height: 900 });
     await expect(path).toHaveAttribute('data-layout', 'column');
