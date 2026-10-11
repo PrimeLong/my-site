@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown, ArrowUp } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -15,9 +15,9 @@ import { LAB_LEVERS } from './lib/lab.js';
 import { DRILLS, drillSetup } from './lib/drills.js';
 import { GLOSSARY, GLOSSARY_KEYS } from './textbook/glossary.js';
 import { GAME_CARDS, LIMITS } from './textbook/appendix.js';
-import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo } from './textbook/toc.js';
+import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo, READY_CHAPTERS, PLANNED_CHAPTERS, TOC_LEVELS, chapterLevel } from './textbook/toc.js';
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
-import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf } from './textbook/content.js';
+import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, keyFormulas } from './textbook/content.js';
 import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
@@ -35,6 +35,14 @@ const APPENDIX_BY_ID = Object.fromEntries(APPENDICES.map((a) => [a.id, a]));
 const fmtNum = (v) => String(Math.round(v * 1000) / 1000).replace('.', ',').replace('-', '−');
 
 export const TEXTBOOK_CSS = `
+  .tb-to-top { position: fixed; right: 12px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 30; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border-radius: 50%; border: 1px solid var(--ds-rule2, var(--c-border)); background: var(--ds-card, var(--c-panel)); color: var(--u-ink, var(--c-gold-soft)); box-shadow: 0 4px 14px var(--ds-shade, rgba(0,0,0,.18)); cursor: pointer; }
+  .tb-to-top.with-nav { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  /* решённая задача — видно издалека: зелёная кайма слева, лёгкий зелёный фон, плашка «Решена» */
+  .tb-solved { border-left: 4px solid var(--c-teal, #2E7D5B) !important; background: color-mix(in srgb, var(--c-teal, #2E7D5B) 7%, var(--c-panel, #fff)) !important; }
+  .tb-solved-mark { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--c-teal, #2E7D5B); color: #fff; }
+  .tb-solved-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 10px; background: var(--c-teal, #2E7D5B); color: #fff; font: 700 12px/1.4 var(--ds-sans, sans-serif); }
+  @media (min-width: 1024px) { .tb-to-top { right: max(16px, calc(50vw - 560px)); } }
   .tb-sticky-top { position: sticky; top: 0; z-index: 30; background: var(--ds-paper, var(--tb-bg, #fff)); margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--ds-rule, transparent); }
   .tb-body { font-size: 14.5px; line-height: 1.68; color: var(--c-text); }
   .tb-body p { margin: 0 0 12px; }
@@ -61,12 +69,19 @@ export const TEXTBOOK_CSS = `
   .tb-chip { font-size: 12px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
   /* чип-кнопка — без системного серого фона кнопки (в тёмной теме он съедал контраст) */
   button.tb-chip { background: transparent; font-family: inherit; cursor: pointer; }
+  /* ключевая формула главы — её стоит знать наизусть; остальные выводятся из таких */
+  .tb-key { border-left: 3px solid var(--c-gold); background: var(--c-panel-alt); padding: 6px 12px 2px; margin: 12px 0 14px; border-radius: 0 4px 4px 0; }
+  .tb-key .tb-math { margin: 4px 0 8px; }
+  .tb-key .tb-legend { margin: -4px 0 8px; }
+  .tb-key-sum { border-top: 1px dashed var(--c-border); margin-top: 6px; padding-top: 8px; }
+  .tb-key-label { font: 700 12px/1.4 var(--ds-sans, sans-serif); letter-spacing: .07em; text-transform: uppercase; color: var(--c-gold-soft); }
   .tb-legend { font-size: 13px; line-height: 1.6; color: var(--c-muted); margin: -6px 0 14px; padding-left: 10px; border-left: 2px solid var(--c-hairline); }
   .tb-calc { margin: 10px 0 4px; max-width: 300px; border: 1px solid var(--c-border); border-radius: 4px; padding: 8px; background: var(--c-panel-alt, rgba(0,0,0,.03)); }
   .tb-calc-screen { text-align: right; font-family: var(--ds-mono, monospace); padding: 4px 6px 6px; }
   .tb-calc-keys { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
   .tb-calc-keys button { font: 600 15px/1 var(--ds-mono, monospace); padding: 9px 0; border: 1px solid var(--c-border); border-radius: 3px; background: var(--c-panel, #fff); color: inherit; cursor: pointer; }
   .tb-calc-keys button.op { color: var(--c-gold, #9C7218); }
+  .tb-calc-keys button.tb-calc-use { grid-column: span 3; font: 600 12.5px/1.2 var(--ds-sans, sans-serif); padding: 6px; }
   .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
@@ -104,6 +119,12 @@ export const TEXTBOOK_CSS = `
   .tbl-no.done { background: var(--ds-ok); border-color: var(--ds-ok); color: #fff; }
   .tbl-ch-title { font: 600 15px/1.3 var(--ds-sans); }
   .tbl-ch-title small { font-weight: 500; color: var(--ds-ink3); }
+  .tbl-level-text { font: 13px/1.4 var(--ds-sans); color: var(--ds-ink2); padding: 0 14px 6px; margin-top: -4px; }
+  .tbl-planned { padding: 0; }
+  .tbl-planned-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 12px 14px; background: none; border: none; cursor: pointer; font: 600 14px var(--ds-sans); color: var(--ds-ink2); }
+  .tbl-planned-list { list-style: none; margin: 0; padding: 0 14px 12px; display: grid; gap: 8px; }
+  .tbl-planned-list li { display: grid; gap: 2px; font: 13px/1.4 var(--ds-sans); color: var(--ds-ink3); }
+  .tbl-planned-list b { color: var(--ds-ink2); font-weight: 600; }
   .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .tbl-ch-bar i { display: block; height: 100%; background: var(--ds-ok); }
   .tbl-more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
@@ -140,6 +161,7 @@ function DiagramBox({ b, ctx }) {
 }
 
 /* ------------------------------ ФОРМУЛЫ ------------------------------ */
+const KEY_FORMULA_HINT = 'Формулы с пометкой «Запомнить» нужны наизусть: на них держатся задачи главы. Остальные выводятся из них или нужны для справки — их достаточно понимать.';
 // «где P — цена, …» под выключной формулой главы: только буквы из этой формулы
 function SymbolLegend({ tex, chapter }) {
   const list = formulaSymbols(tex, chapter);
@@ -255,6 +277,13 @@ function BoxView({ b, ctx }) {
     <div className="tb-box" style={{ borderLeftColor: color }} data-testid={`tb-box-${b.kind}`}>
       <div className="tb-box-head" style={{ color }}><Icon size={13} />{b.title || k.label}</div>
       <Blocks blocks={b.children} ctx={ctx} />
+      {b.kind === 'summary' && ctx && ctx.chapter && keyFormulas(ctx.chapter).length > 0 && (
+        <div className="tb-key-sum" data-testid="tb-key-sum">
+          <div className="tb-key-label">Формулы, которые стоит запомнить</div>
+          {keyFormulas(ctx.chapter).map((tex) => <Tex key={tex} tex={tex} display />)}
+          <div style={{ fontSize: 13, color: 'var(--c-muted)', margin: '0 0 10px' }}>{KEY_FORMULA_HINT}</div>
+        </div>
+      )}
       {b.more && (
         <>
           <button type="button" className="tb-link" style={{ fontSize: 13, marginBottom: 10 }} aria-expanded={more}
@@ -417,7 +446,14 @@ export function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
       case 'p': return <p key={i}><Inline nodes={b.inline} ctx={ctx} /></p>;
       case 'ul': return <ul key={i}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ul>;
       case 'ol': return <ol key={i} start={b.start}>{b.items.map((it, j) => <li key={j}><Inline nodes={it} ctx={ctx} /></li>)}</ol>;
-      case 'math': return <React.Fragment key={i}><Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}</React.Fragment>;
+      case 'math': return b.key
+        ? (
+          <div key={i} className="tb-key" data-testid="tb-key">
+            <div className="tb-key-label" title={KEY_FORMULA_HINT}>Запомнить</div>
+            <Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}
+          </div>
+        )
+        : <React.Fragment key={i}><Tex tex={b.tex} display />{ctx && ctx.chapter && <SymbolLegend tex={b.tex} chapter={ctx.chapter} />}</React.Fragment>;
       case 'table': return (
         <div key={i} className="tb-table">
           <table>
@@ -668,26 +704,28 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
   if (solvedBefore && !expanded) {
     return (
-      <div id={`problem-${block.id}`} className="ems-panel" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true">
-        <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', fontSize: 13.5 }} aria-expanded="false"
+      <div id={`problem-${block.id}`} className="ems-panel tb-solved" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true" data-solved="true">
+        <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', fontSize: 13.5, textDecoration: 'none' }} aria-expanded="false"
           data-testid="tb-problem-expand" onClick={() => { Audio.play('click'); setExpanded(true); }}>
-          <Check size={14} style={{ color: COLOR.teal, flexShrink: 0 }} aria-hidden="true" />
-          <span style={{ flex: 1 }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span> — решена{rec.due ? `, повтор ${daysUntil(rec.due)}` : ''}</span>
+          <span className="tb-solved-mark" aria-hidden="true"><Check size={15} strokeWidth={3} /></span>
+          <span style={{ flex: 1, color: COLOR.text }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
+            {' — '}<b style={{ color: COLOR.teal }}>решена</b>{rec.due ? <span style={{ color: COLOR.muted }}>, повтор {daysUntil(rec.due)}</span> : ''}</span>
           <ChevronDown size={14} aria-hidden="true" />
         </button>
       </div>
     );
   }
   return (
-    <div id={`problem-${block.id}`} className="ems-panel" style={{ padding: 14, margin: '12px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind}>
+    <div id={`problem-${block.id}`} className={`ems-panel${rec && rec.ok ? ' tb-solved' : ''}`} style={{ padding: 14, margin: '12px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-solved={rec && rec.ok ? 'true' : undefined}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
         <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
         <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           {block.news && <span className="tb-chip">по газете</span>}
           {LEVELS[block.level] && <span className="tb-chip" data-testid="tb-level">{LEVELS[block.level]}</span>}
           {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'пункта' : 'пунктов'}</span>}
-          {status && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
-            {status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
+          {status && (rec.ok
+            ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
+            : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>)}
         </span>
       </div>
       {block.news && (
@@ -774,11 +812,20 @@ function okText(ctx, id, head, sawSolution) {
 /* Калькулятор задач учебника: выражение с клавиатуры или кнопками (+ − × ÷, степень, корень,
    скобки), результат — по ходу набора; «В ответ» вставляет его в поле, где стоял курсор
    (или в первое пустое). Подсказкой не считается: считать в уме никто не просит. */
-const TB_KEYS = ['7', '8', '9', '÷', '(', '4', '5', '6', '×', ')', '1', '2', '3', '−', '^', '0', ',', 'C', '+', '√'];
+// как в калькуляторе урока: «=» заменяет выражение результатом, «⌫» и «C» — в той же сетке
+const TB_KEYS = ['7', '8', '9', '÷', '⌫', '4', '5', '6', '×', 'C', '1', '2', '3', '−', '(', '0', ',', '^', '+', ')', '√', '='];
+const TB_LABEL = { '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', '=': 'Равно', C: 'Очистить', '⌫': 'Стереть символ' };
 function TbCalc({ onUse, label = 'В ответ' }) {
   const [expr, setExpr] = useState('');
   const v = evalExpr(expr);
-  const press = (k) => { Audio.play('tick'); if (k === 'C') setExpr(''); else if (k === '√') setExpr((e) => pressRoot(e)); else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e)); };
+  const press = (k) => {
+    Audio.play('tick');
+    if (k === 'C') setExpr('');
+    else if (k === '⌫') setExpr((e) => e.slice(0, -1));
+    else if (k === '=') { if (v != null) setExpr(fmtResult(v).replace('−', '-')); }
+    else if (k === '√') setExpr((e) => pressRoot(e));
+    else setExpr((e) => (e.length < 40 ? e + ({ '÷': '/', '×': '*', '−': '-' }[k] || k) : e));
+  };
   return (
     <div className="tb-calc" data-testid="tb-calc">
       <input value={expr} onChange={(e) => setExpr(e.target.value.replace(/[^0-9.,+\-−*/×÷:^√()\s]/g, '').slice(0, 40))} aria-label="Выражение для калькулятора" placeholder="например, (120−60)/2"
@@ -786,13 +833,9 @@ function TbCalc({ onUse, label = 'В ответ' }) {
       <div className="tb-calc-screen" data-testid="tb-calc-value" style={{ fontSize: 18, fontWeight: 700 }}>{v != null ? `= ${fmtResult(v)}` : expr ? '…' : '0'}</div>
       <div className="tb-calc-keys" role="group" aria-label="Калькулятор">
         {TB_KEYS.map((k) => (
-          <button key={k} type="button" className={'÷×−+^√()'.includes(k) ? 'op' : ''} data-calc={k} onClick={() => press(k)}
-            aria-label={({ '÷': 'Разделить', '×': 'Умножить', '−': 'Вычесть', '+': 'Прибавить', '^': 'Степень', '√': 'Квадратный корень', C: 'Очистить' })[k] || k}>{k}</button>
+          <button key={k} type="button" className={'÷×−+^√()='.includes(k) ? 'op' : ''} data-calc={k} onClick={() => press(k)} aria-label={TB_LABEL[k] || k}>{k}</button>
         ))}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-        <button type="button" className="ems-btn" style={{ padding: '6px 10px', fontSize: 12.5 }} aria-label="Стереть символ" onClick={() => { Audio.play('tick'); setExpr((e) => e.slice(0, -1)); }}>⌫</button>
-        <button type="button" className="ems-btn primary" style={{ flex: 1, padding: '6px 10px', fontSize: 12.5 }} disabled={v == null} data-testid="tb-calc-use"
+        <button type="button" className="ems-btn primary tb-calc-use" disabled={v == null} data-testid="tb-calc-use"
           onClick={() => { Audio.play('click'); onUse(fmtResult(v).replace('−', '-')); }}>{label}</button>
       </div>
     </div>
@@ -1047,13 +1090,17 @@ function SectionNav({ sections, ctx }) {
       {study.length > 0 && <div className="tb-bar"><span style={{ width: `${(done / study.length) * 100}%` }} /></div>}
       <ol className="tb-secnav-list">
         {sections.map((x, k) => {
-          const ok = x.recall && sectionDone(ctx.progress, x);
+          // «Задачи» — сколько решено из скольких; все решены — галочка
+          const probs = isProblemsSection(x) ? problemsOf(ctx.chapter) : null;
+          const solvedN = probs ? probs.filter((id) => (ctx.progress.problems[id] || {}).ok).length : 0;
+          const ok = probs ? probs.length > 0 && solvedN === probs.length : x.recall && sectionDone(ctx.progress, x);
           return (
             <li key={x.id}>
               <button type="button" className="tb-secnav-row" data-testid="tb-secnav-row" onClick={() => scrollToSection(x, ctx.chapter, ctx.progress)}>
                 <span className={`tb-secnav-no${ok ? ' done' : ''}`} aria-hidden="true">{ok ? <Check size={12} /> : k + 1}</span>
                 <span>{x.title}</span>
-                {x.recall ? <span className="tb-secnav-min">≈{x.minutes} мин</span> : <span />}
+                {probs ? <span className="tb-secnav-min" data-testid="tb-secnav-solved" style={solvedN ? { color: COLOR.teal, fontWeight: 700 } : undefined}>решено {solvedN} из {probs.length}</span>
+                  : x.recall ? <span className="tb-secnav-min">≈{x.minutes} мин</span> : <span />}
               </button>
             </li>
           );
@@ -1068,9 +1115,9 @@ function ChapterToc({ current, ctx }) {
   return (
     <nav className="tb-chtoc" aria-label="Оглавление учебника" data-testid="tb-side-toc">
       <div className="tb-secnav-head"><span>Оглавление</span></div>
-      {PARTS.map((p) => (
+      {TOC_LEVELS.map((p) => (
         <div key={p.id}>
-          <div className="tb-chtoc-part">{p.title}</div>
+          <div className="tb-chtoc-part">Уровень {p.no} · {p.title}</div>
           <ol className="tb-secnav-list">
             {p.chapters.map((c) => {
               n += 1;
@@ -1096,14 +1143,16 @@ function ChapterPage({ id, ctx }) {
   const wide = useWide();
   const ch = CHAPTER_BY_ID[id];
   const blocks = CHAPTER_BLOCKS[id];
-  const idx = CHAPTERS.findIndex((c) => c.id === id);
-  const prev = CHAPTERS[idx - 1]; const next = CHAPTERS[idx + 1];
+  // соседние главы — в порядке чтения (как на Пути), только готовые
+  const idx = READY_CHAPTERS.findIndex((c) => c.id === id);
+  const prev = idx > 0 ? READY_CHAPTERS[idx - 1] : null; const next = idx >= 0 ? READY_CHAPTERS[idx + 1] : null;
+  const lvl = chapterLevel(id);
   const read = !!ctx.progress.read[id];
   return (
     <div data-testid="chapter" data-chapter={id}>
       <PageNav ctx={ctx} />
       <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-        Глава {chapterNo(id)} · {PARTS.find((p) => p.id === ch.part).title}
+        Глава {chapterNo(id)} · {lvl ? `${lvl.title} уровень` : PARTS.find((p) => p.id === ch.part).title}
       </div>
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
       {blocks ? (
@@ -1554,6 +1603,26 @@ function CheckPanel({ ctx }) {
    номер (или галочка, если глава прочитана), название, полоска пройденных разделов. Описания
    глав, уверенность ответов и «проверить себя» здесь лишние: проверки — во вкладке «Задания»,
    прогресс — по ссылке внизу. */
+/* Главы, которые ещё пишутся: не вперемешку с готовыми, а свёрнутым списком в конце —
+   чтобы в оглавлении не было недоделанных тем, по которым нечего читать. */
+function PlannedList() {
+  const [open, setOpen] = useState(false);
+  if (!PLANNED_CHAPTERS.length) return null;
+  return (
+    <section className="tbl-part tbl-planned" data-testid="tb-planned">
+      <button type="button" className="tbl-planned-head" aria-expanded={open} onClick={() => { Audio.play('tick'); setOpen((x) => !x); }}>
+        <span>Готовятся: ещё {PLANNED_CHAPTERS.length} {PLANNED_CHAPTERS.length < 5 ? 'главы' : 'глав'}</span>
+        <ChevronDown size={16} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} aria-hidden="true" />
+      </button>
+      {open && (
+        <ul className="tbl-planned-list" data-testid="tb-planned-list">
+          {PLANNED_CHAPTERS.map((c) => <li key={c.id}><b>{c.title}</b><span>{c.summary}</span></li>)}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function LearnToc({ ctx }) {
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
   const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
@@ -1576,24 +1645,27 @@ function LearnToc({ ctx }) {
         <span>Задач решено: <b>{solved}</b> из {allProblems.length}</span>
         {due > 0 && <button type="button" className="tb-link" data-testid="tb-review-link" onClick={() => { Audio.play('click'); ctx.go({ kind: 'review' }); }}>На повторение: {due}</button>}
       </div>
+      {/* главы — по уровням курса и в его порядке: глава учебника и юнит Пути — одно место */}
       <div className="tbl-parts">
-        {PARTS.map((p) => (
-          <section key={p.id} className="tbl-part">
-            <h2 className="tbl-part-title">{p.title}</h2>
-            {p.chapters.map((c) => {
+        {TOC_LEVELS.map((lv) => (
+          <section key={lv.id} className="tbl-part" data-testid="tb-level-group" data-level={lv.id}>
+            <h2 className="tbl-part-title">Уровень {lv.no} · {lv.title}</h2>
+            <div className="tbl-level-text">{lv.text}</div>
+            {lv.chapters.map((c) => {
               n += 1;
               const readMark = !!ctx.progress.read[c.id];
               const sp = sectionProgress(ctx.progress, c.id);
               return (
-                <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
+                <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} data-chapter={c.id} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
                   <span className={`tbl-no${readMark ? ' done' : ''}`} aria-label={readMark ? 'прочитана' : undefined}>{readMark ? <Check size={14} aria-hidden="true" /> : n}</span>
-                  <span className="tbl-ch-title">{c.title}{c.status !== 'ready' && <small> · скоро</small>}</span>
+                  <span className="tbl-ch-title">{c.title}</span>
                   {sp.total > 0 ? <span className="tbl-ch-bar" title={`разделы ${sp.done}/${sp.total}`} aria-label={`разделы ${sp.done}/${sp.total}`}><i style={{ width: `${(sp.done / sp.total) * 100}%` }} /></span> : <span />}
                 </button>
               );
             })}
           </section>
         ))}
+        <PlannedList />
         <section className="tbl-part">
           <h2 className="tbl-part-title">Приложения</h2>
           {APPENDICES.map((a, i) => (
@@ -1637,9 +1709,10 @@ function TocPage({ ctx }) {
           onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: last.id }); }}>Продолжить: {last.title}</button>}
       </div>
       <CheckPanel ctx={ctx} />
-      {PARTS.map((p) => (
-        <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }}>
-          <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 8px' }}>{p.title}</div>
+      {TOC_LEVELS.map((p) => (
+        <div key={p.id} className="ems-panel" style={{ padding: '12px 0 4px', marginBottom: 14 }} data-testid="tb-level-group" data-level={p.id}>
+          <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 2px' }}>Уровень {p.no} · {p.title}</div>
+          <div style={{ fontSize: 12.5, color: COLOR.muted, padding: '0 12px 8px' }}>{p.text}</div>
           {p.chapters.map((c) => {
             n += 1;
             const probs = problemsOf(c.id);
@@ -1654,7 +1727,6 @@ function TocPage({ ctx }) {
                   <span style={{ display: 'block', fontSize: 12, color: COLOR.faint, lineHeight: 1.45 }}>{c.summary}</span>
                 </span>
                 <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  {c.status !== 'ready' && <span className="tb-chip">в работе</span>}
                   {readMark && <span className="tb-chip" style={{ color: COLOR.teal, borderColor: COLOR.teal }}><Check size={10} style={{ verticalAlign: -1 }} /> прочитана</span>}
                   {sp.total > 0 && <span className="tb-chip" style={sp.done === sp.total ? { color: COLOR.teal, borderColor: COLOR.teal } : undefined}>разделы {sp.done}/{sp.total}</span>}
                   {probs.length > 0 && <span className="tb-chip">задачи {sc.solved}/{sc.total}</span>}
@@ -1664,6 +1736,7 @@ function TocPage({ ctx }) {
           })}
         </div>
       ))}
+      <div className="tbl" style={{ marginBottom: 14 }}><PlannedList /></div>
       <div className="ems-panel" style={{ padding: '12px 0 4px' }}>
         <div className="ems-serif" style={{ fontSize: 17, color: COLOR.goldSoft, padding: '0 12px 8px' }}>Приложения</div>
         {APPENDICES.map((a, i) => (
@@ -1708,6 +1781,25 @@ function ReaderBar({ scale, setScale }) {
         onClick={() => setScale(SCALES[Math.min(SCALES.length - 1, i + 1)])}>A+</button>
       <AudioControls />
     </div>
+  );
+}
+
+/* Стрелка «наверх»: из середины длинной главы — к её началу в одно касание (как «к карте»
+   на Пути). Появляется, когда начало страницы ушло далеко за верх экрана. */
+function ToTop({ withNav = false }) {
+  const [show, setShow] = useState(false);
+  React.useEffect(() => {
+    const on = () => setShow(window.scrollY > 900);
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
+  if (!show) return null;
+  return (
+    <button type="button" className={`tb-to-top${withNav ? ' with-nav' : ''}`} data-testid="tb-to-top" aria-label="Наверх, к началу страницы" title="Наверх"
+      onClick={() => { Audio.play('paper'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+      <ArrowUp size={22} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -1852,6 +1944,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
             right={reportSlot ? reportSlot(cur) : null} />
         </div>
         {pages}
+        <ToTop withNav />
       </div>
     );
   }
@@ -1860,6 +1953,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
       onBack={onBack} backLabel={backLabel}
       lede={cur.kind === 'toc' ? 'Первый год экономического факультета: микро, потом макро. В каждой главе — теория с формулами и графиком, разбор на числах, задачи с решениями и «проверьте в игре»: где эту модель видно в Лаборатории, задачах на 10 минут или в «Своём деле». Учебная модель и то, как это устроено в игре, всегда разведены: в игре коэффициенты подобраны вручную, в учебнике — стандартные модели.' : null}>
       {pages}
+      <ToTop />
     </TrainerPage>
   );
 }

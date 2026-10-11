@@ -6,7 +6,7 @@
    профилем на любое устройство — playerId профиля становится playerId устройства.
    Почты нет, поэтому забытый пароль восстанавливается кодом, который показывается
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
-import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData } from './_lib/store.js';
+import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData, setLeagueName, getLeagueNames } from './_lib/store.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
 import {
@@ -169,8 +169,22 @@ async function handleRequest(req, res) {
       if (!body.kidsMode && (!year || isKid(year))) return res.status(403).json({ error: 'До 16 лет «Мир» — в детском режиме' });
       next.kidsMode = body.kidsMode;
     }
+    /* «Показывать моё имя в лигах» — только с 16 лет; имя уходит в общий список имён лиг
+       (другие ученики могут увидеть его на месте бота, с выдуманным опытом) */
+    if (body.leaguePublic !== undefined) {
+      if (typeof body.leaguePublic !== 'boolean') return res.status(400).json({ error: 'Некорректная настройка' });
+      if (body.leaguePublic && (!next.birthYear || isKid(next.birthYear))) return res.status(403).json({ error: 'Показывать имя в лигах можно с 16 лет' });
+      next.leaguePublic = body.leaguePublic;
+    }
     await setUser(user.login, next);
+    if (next.leaguePublic || user.leaguePublic) await setLeagueName(user.login, next.leaguePublic && !isRude(next.name) ? next.name : null);
     return res.status(200).json({ profile: publicProfile(next) });
+  }
+  // имена учеников, разрешивших показ в лигах: до тридцати случайных, без своего и без грубых
+  if (action === 'league-names') {
+    const all = Object.entries(await getLeagueNames()).filter(([login, name]) => login !== user.login && typeof name === 'string' && !isRude(name)).map(([, name]) => name);
+    for (let i = all.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+    return res.status(200).json({ names: all.slice(0, 30) });
   }
   if (action === 'password') {
     if (!checkPassword(body.oldPassword, user)) return res.status(403).json({ error: 'Старый пароль не подходит' });

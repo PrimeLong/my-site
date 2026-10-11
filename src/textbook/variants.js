@@ -276,6 +276,20 @@ T.push({ id: 'v-el-arc', chapter: 'elasticity', level: 1, source: 'el-arc', gen:
     check: ([x]) => near(x, ((k.Q1 - k.Q2) / (k.P2 - k.P1)) * ((k.P1 + k.P2) / (k.Q1 + k.Q2))),
   };
 } });
+// цена, при которой выручка максимальна (жалоба: одна и та же задача в повторах — теперь с новыми числами)
+T.push({ id: 'v-el-rmax', chapter: 'elasticity', level: 1, source: 'el-revenue-max', gen: (rand) => {
+  const b = pick(rand, [3, 4, 5]); const top = ri(rand, 10, 40) * 2; const a = b * top; const P = top / 2;
+  return {
+    statement: `Спрос $Q = ${a} - ${b}P$. При какой цене выручка максимальна?`,
+    parts: [{ answer: P, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: top, text: `При цене ${top} спрос равен нулю, и выручка тоже. Максимум — посередине прямой: $${a}/(2 \\cdot ${b})$.` },
+      { part: 0, value: a / 2, text: 'Это количество при максимуме выручки, а спрашивали цену.' },
+    ],
+    solution: `Выручка максимальна в середине прямой спроса: $P = a/(2b) = ${a}/(2 \\cdot ${b}) = ${P}$. Там $Q = ${a / 2}$ и $|E| = 1$.`,
+    check: ([x]) => { const R = (p) => p * (a - b * p); return R(x) >= R(x - 0.01) && R(x) >= R(x + 0.01); },
+  };
+} });
 // точечная эластичность линейного спроса
 T.push({ id: 'v-el-point', chapter: 'elasticity', level: 2, source: 'el-point', gen: (rand) => {
   const k = draw(rand, () => { const b = ri(rand, 1, 5); const top = ri(rand, 20, 80); return { a: b * top, b, top, P: ri(rand, 2, top - 2) }; },
@@ -476,6 +490,35 @@ T.push({ id: 'v-mb-qty', chapter: 'money-banks', level: 2, source: 'mb-qty-growt
     ],
     solution: `$MV = PY$: $1 + \\pi = ${m(1 + k.gm / 100)}/${m(1 + k.gy / 100)}$, $\\pi \\approx ${m(pi)}\\%$.`,
     check: ([x]) => near((1 + x / 100) * (1 + k.gy / 100), 1 + k.gm / 100),
+  };
+} });
+// инфляция: рост реальной зарплаты — приближённо, вычитанием
+T.push({ id: 'v-in-real', chapter: 'inflation', level: 1, source: 'in-wage', gen: (rand) => {
+  const k = draw(rand, () => ({ g: ri(rand, 3, 15), p: ri(rand, 2, 12) }), ({ g, p }) => g !== p);
+  return {
+    statement: `Зарплата выросла за год на ${k.g}%, а цены — на ${k.p}%. На сколько процентов примерно выросла реальная зарплата? Посчитайте приближённо — вычитанием.`,
+    parts: [{ answer: k.g - k.p, unit: '%' }],
+    traps: [
+      { part: 0, value: k.g + k.p, text: 'Инфляцию нужно вычесть, а не прибавить: рост цен съедает часть прибавки.' },
+      { part: 0, value: k.g, text: 'Это рост в деньгах — номинальный. Реальный — за вычетом инфляции.' },
+    ],
+    solution: `$${k.g} - ${k.p} = ${k.g - k.p}$%. ${k.g > k.p ? 'Зарплата обогнала цены.' : 'Цены обогнали зарплату: купить на неё можно меньше.'}`,
+    check: ([x]) => near(x + k.p, k.g),
+  };
+} });
+// инфляция: реальная ставка по кредиту — точно, по уравнению Фишера
+T.push({ id: 'v-in-realrate', chapter: 'inflation', level: 2, source: 'in-loan', gen: (rand) => {
+  const k = draw(rand, () => ({ i: ri(rand, 4, 24), p: ri(rand, 2, 20) }), ({ i, p }) => i !== p && differs(i - p, ((1 + i / 100) / (1 + p / 100) - 1) * 100, DEC));
+  const r = ((1 + k.i / 100) / (1 + k.p / 100) - 1) * 100;
+  return {
+    statement: `Кредит выдан на год под ${k.i}%, инфляция за год оказалась ${k.p}%. Какой была реальная ставка? Посчитайте точно${hundredths}.`,
+    parts: [{ answer: r, tol: DEC, unit: '%' }],
+    traps: [
+      { part: 0, value: k.i - k.p, text: `Это приближение $${k.i} - ${k.p}$. Точно: $(1 + i)/(1 + \\pi) - 1$.` },
+      { part: 0, value: k.i + k.p, text: 'Инфляцию вычитают, а не прибавляют: она съедает часть процентов.' },
+    ],
+    solution: `$1 + r = ${m(1 + k.i / 100)}/${m(1 + k.p / 100)} \\approx ${m(1 + r / 100)}$, реальная ставка ${f(r)}%.`,
+    check: ([x]) => near((1 + x / 100) * (1 + k.p / 100), 1 + k.i / 100),
   };
 } });
 T.push({ id: 'v-islm-cross', chapter: 'is-lm', level: 1, source: 'islm-cross', gen: (rand) => {

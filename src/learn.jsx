@@ -26,7 +26,7 @@ import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
   UNITS, LESSONS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
-  buildPlacement, placementOpened, placementFailed, retryOf,
+  buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
@@ -42,11 +42,12 @@ import {
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText } from './learn/terms.js';
+import { LeagueCard } from './learn-league.jsx';
 import {
-  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WordDeck, Calculator as CalcPad,
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
-import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx, modelBadge } from './learn-model.jsx';
+import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx } from './learn-model.jsx';
 import { hasModel, partsOfLesson, modelProgress } from './learn/model.js';
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
@@ -73,6 +74,14 @@ const CSS = `
   .ln-stat { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 4px; border: 1px solid var(--ds-rule2); border-radius: 3px;
     background: var(--ds-card); font: 700 15px var(--ds-mono); white-space: nowrap; box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); }
   .ln-stat small { font: 12px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .04em; }
+  .ln-streak.on { background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border-color: color-mix(in srgb, var(--ds-bad) 55%, var(--ds-rule2)); color: var(--ds-bad); }
+  .ln-streak.on small { color: inherit; }
+  .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
+  .ln-flame-wrap { position: relative; display: inline-flex; }
+  .ln-flame-ok { position: absolute; right: -5px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--ds-ok); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+  .ln-streak-up { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border-radius: 4px;
+    background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border: 1px solid color-mix(in srgb, var(--ds-bad) 45%, var(--ds-rule2)); color: var(--ds-bad); font: 700 16px var(--ds-sans); text-align: left; }
+  .ln-streak-up .rw-flame { display: inline-flex; }
   .ln-atlas { position: relative; padding: 10px 10px 8px; margin: 4px 0 18px; }
   .ln-atlas svg text { font-family: var(--ds-serif); }
   .ln-bill { position: relative; overflow: hidden; padding: 0; margin: 20px 0 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
@@ -80,7 +89,11 @@ const CSS = `
   .ln-bill-no { font: 700 30px/1 var(--ds-serif); color: var(--u-ink); }
   .ln-bill-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
   /* пройденный юнит свёрнут в одну строку: номер, место, алмазы, гайд и «уроки» */
-  .ln-bill-mini { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
+  .ln-mini-guide { width: 36px; height: 36px; }
+  .ln-bill-mini .ln-mini-fold { padding: 6px 4px; gap: 2px; }
+  .ln-mini-title { line-height: 1.2; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln-bill-mini > * { flex-shrink: 0; }
+  .ln-bill-mini { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
   .ln-mini-no { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 17px/1 var(--ds-serif);
     color: var(--u-ink); border: 1.5px solid var(--u-ink); box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px color-mix(in srgb, var(--u) 40%, transparent); }
   /* живая модель на телефоне — свёрнутой строкой; касание раскрывает */
@@ -91,6 +104,8 @@ const CSS = `
     padding: 0; border-radius: 50%; border: 1px solid var(--ds-rule2); background: var(--ds-card); color: var(--u-ink); box-shadow: 0 4px 14px var(--ds-shade); cursor: pointer; }
   @media (min-width: 1024px) { .ln-to-map { right: max(16px, calc(50vw - 560px)); } }
   .ln-route { position: relative; margin: 0 auto; }
+  /* телефон уже 340 px (320 px — старые и маленькие): дорога чуть мельче, чтобы не вылезать за экран */
+  @media (max-width: 340px) { .ln-route { zoom: .9; } }
   .ln-route > svg { position: absolute; inset: 0; pointer-events: none; }
   .ln-stop { position: absolute; width: 170px; margin-left: -85px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 1.5px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
@@ -196,7 +211,7 @@ const testAnswer = (inst) => {
     case 'news': return JSON.stringify(inst.expect);
     case 'tiles': return JSON.stringify(inst.solution);
     case 'curve': case 'price': case 'point': return JSON.stringify(inst.answer);
-    case 'swipe': case 'rush': return JSON.stringify('game');
+    case 'swipe': case 'rush': case 'keep': return JSON.stringify('game');
     case 'open': return JSON.stringify('open');
     case 'domino': return JSON.stringify(inst.chain);
     default: return undefined;
@@ -488,6 +503,14 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
       // цепочка собрана — задание уходит на проверку само
       return <DominoEx inst={inst} resp={resp} setResp={(v) => !locked && setResp(v)} locked={locked} fb={fb} onSubmit={onSubmit}
         prompt={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>} />;
+    case 'keep':
+      return (
+        <div>
+          <div className="ds-h2" style={{ marginBottom: 6 }}>{inst.title}</div>
+          <KeepRound inst={inst} locked={locked} result={resp} best={inst._best || 0} intro={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>}
+            onDone={(r) => { setResp(r); onSubmit(r); }} />
+        </div>
+      );
     case 'swipe': case 'rush': {
       return (
         <div>
@@ -506,6 +529,14 @@ const RETRY_TEXT = {
   numbers: 'Похожая задача с новыми числами — решите её сами.',
   sibling: 'Похожий вопрос на ту же тему.',
   same: 'Эта задача уже была — попробуем ещё раз.',
+};
+// итог урока с игрой: засчитана — с цифрами; нет — сколько не хватило и что это значит
+const gameResultText = (result) => {
+  const g = result.game;
+  if (!g) return result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана.';
+  const wrong = g.answered - g.right;
+  if (g.ok) return `Игра засчитана: верных ${g.right}, ошибок ${wrong}.`;
+  return `Урок пройден, но игра не засчитана: не хватило ${gameLeft(g.right, g.answered)} (верных ${g.right}, ошибок ${wrong}). Нужно, чтобы верных было на ${GAME_PASS} больше, чем ошибок. Засчитанная игра даёт урок без помарок и алмаз.`;
 };
 // итог мини-игры для плашки
 const gameLine = (inst, r) => (r ? `Верно ${r.right} из ${r.answered} · ${r.score} очков${r.record ? ' — новый рекорд!' : ''}` : '');
@@ -609,6 +640,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       const seenId = cur.of || cur.id;
       update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null, run: r.ok ? run3 + 1 : 0 }), seenId));
       if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
+      if (GAME_KINDS.includes(cur.kind) && answer) a.game = { right: answer.right, answered: answer.answered, ok: r.ok };
     }
     if (r.ok) {
       a.solved.add(orig);
@@ -675,10 +707,13 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     const key = runKey({ mode: run.mode, lessonId: run.lessonId, replay, diamond, gem });
     const full = (s) => { const t = earn(apply(s), coins, key, now); return settle(t, courseCtx(t), now); };
     const preview = full(learn);
+    // первый урок дня продлил серию — огонёк загорается на итогах крупно
+    const before = streak(learn, now); const after = streak(preview.s, now);
+    const streakUp = !before.today && after.today ? after.days : 0;
     update((s) => full(s).s);
     // касса: урок сдан
     Audio.play('register'); vibrate([20, 30, 20, 30, 60]);
-    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted });
+    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted, streakUp, game: a.game || null });
     setStage('done');
   };
   const next = () => {
@@ -976,12 +1011,18 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   : 'Начнём с самого начала — так надёжнее. Первые уроки короткие.')
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
-                    : lesson && lesson.kind === 'game' ? (result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана — попробуйте ещё раз, планка та же.')
+                    : lesson && lesson.kind === 'game' ? gameResultText(result)
                       : result.mistakes === 0 ? 'Все ответы — с первой попытки.' : `Ошибок с первой попытки: ${result.mistakes}.`}
                 {diamond && <div style={{ marginTop: 6, color: 'var(--u-ink)', fontWeight: 700 }} data-testid="result-diamond">
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}
               </div>
+              {result.streakUp > 0 && (
+                <div className="ln-streak-up" data-testid="result-streak" role="status">
+                  <span className="rw-flame"><Flame size={34} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 30%, transparent)" aria-hidden="true" /></span>
+                  <span>Огонёк сохранён: {result.streakUp} {plural(result.streakUp, 'день', 'дня', 'дней')} подряд<br /><span style={{ font: '13.5px var(--ds-sans)', color: 'var(--ds-ink2)' }}>Сегодняшний день засчитан в серию.</span></span>
+                </div>
+              )}
               <div className="ln-tickets">
                 <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
@@ -1170,7 +1211,14 @@ function TopStats({ learn }) {
   return (
     // у каждого счётчика подпись для чтения с экрана: значок и сокращение её не заменяют
     <div className="ln-stats" data-testid="path-stats" role="group" aria-label="Ваш прогресс">
-      <span className="ln-stat" title="Серия дней"><Flame size={17} color={st.days ? 'var(--ds-bad)' : 'var(--ds-ink3)'} aria-hidden="true" /><span className="ds-sr">Серия, дней: </span><span data-testid="streak">{st.days}</span><small aria-hidden="true">дн.</small></span>
+      {/* огонёк: сегодня уже занимались — горит (цветной, с галочкой); ещё нет — блёклый, ждёт урока */}
+      <span className={`ln-stat ln-streak${st.today ? ' on' : st.days ? ' wait' : ''}`} data-testid="streak-chip" data-today={String(st.today)}
+        title={st.today ? 'Серия продлена сегодня' : st.days ? 'Сегодня ещё не занимались: один урок — и серия продлится' : 'Серия дней'}>
+        <span className="ln-flame-wrap"><Flame size={17} color={st.today ? 'var(--ds-bad)' : 'var(--ds-ink3)'} fill={st.today ? 'color-mix(in srgb, var(--ds-bad) 35%, transparent)' : 'none'} aria-hidden="true" />
+          {st.today && <i className="ln-flame-ok" aria-hidden="true"><Check size={9} strokeWidth={4} /></i>}</span>
+        <span className="ds-sr">Серия, дней: </span><span data-testid="streak">{st.days}</span><small aria-hidden="true">дн.</small>
+        <span className="ds-sr">{st.today ? ', сегодня продлена' : st.days ? ', сегодня ещё не продлена' : ''}</span>
+      </span>
       <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" /><span className="ds-sr">Опыт: </span>{totalXp}<small aria-hidden="true">опыт</small></span>
       <WalletStat learn={learn} />
       <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" /><span className="ds-sr">Цель дня, минут занятий: </span>{Math.min(g.done, g.goal)}/{g.goal}<small aria-hidden="true">мин</small></span>
@@ -1182,7 +1230,7 @@ function TopStats({ learn }) {
    гравюра; пройденный юнит его «оживляет» (цвет, свет в окнах, дым). Нажатие по месту —
    прокрутка к юниту на дороге ниже. */
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
-function Atlas({ states, onPick, learn = null }) {
+function Atlas({ states, onPick }) {
   const units = UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) }));
   const onPath = units.filter((x) => x.st);
   const route = units.map((x) => x.pl.at);
@@ -1223,10 +1271,6 @@ function Atlas({ states, onPick, learn = null }) {
               <circle cx={x} cy={y - 26} r="50" fill="var(--ds-card)" opacity=".85" />
               <EngravingG kind={pl.building} alive={alive} x={x - 54} y={y - 72} scale={0.9} color={pl.color} />
               <text x={x} y={y + 30} textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="7" paintOrder="stroke">{pl.place}</text>
-              {learn && hasModel(u.id) && (
-                <text x={x} y={y - 84} textAnchor="middle" fontSize="21" fill="var(--u-ink)" stroke="var(--ds-paper)" strokeWidth="6" paintOrder="stroke" data-testid="atlas-model"
-                  style={{ fontFamily: 'var(--ds-mono)' }}>{modelBadge(u.id, learn)}</text>
-              )}
             </g>
           );
         })}
@@ -1252,6 +1296,9 @@ function LevelBand({ level }) {
 /* Остановки юнита на дороге: жетоны вдоль извилистой дороги. Пройденная — в цвете юнита с
    сургучной печатью, текущая — с золотым кольцом и флажком «Вы здесь», закрытая — пунктир. */
 const ROW = 118; const ZIG = [0, 64, 92, 64, 0, -64, -92, -64];
+// название остановки (170 px) не выходит за края дороги шириной W
+const STOP_HALF = 85;
+const titleShift = (x, W) => Math.max(0, STOP_HALF - x) - Math.max(0, x + STOP_HALF - W);
 /* Убранство дороги: у каждой остановки, на другой стороне от неё, — дерево, фонарь, куст или
    верстовой столб с номером урока; в начале юнита — указатель с названием места. У пройденных
    остановок убранство в цвете юнита («дорога оживает»), у закрытых — серое. Чисто украшение:
@@ -1356,7 +1403,10 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
                 ) : l.open ? <KindIcon size={26} /> : <Lock size={22} />}
             </button>
             {/* название — тоже кнопка урока: в жетон на телефоне попадают не всегда */}
+            {/* у остановки с краю дороги название сдвинуто внутрь: иначе оно вылезает за экран
+                узкого телефона, страница становится шире, и нижняя панель обрезается */}
             <button type="button" className={`ln-stop-title ${l.open ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true" data-testid="path-lesson-title" data-lesson={l.id}
+              style={{ transform: titleShift(pts[i][0], W) ? `translateX(${titleShift(pts[i][0], W)}px)` : undefined }}
               onClick={() => { Audio.play('click'); onLesson(l); }}>{l.title}</button>
           </div>
         );
@@ -1425,7 +1475,7 @@ const focusLesson = (root, unitId = null) => {
   return scope.querySelector('[data-testid="path-lesson"][data-rec="true"]') || scope.querySelector('.ln-token.cur') || scope.querySelector('[data-testid="path-lesson"][data-state="open"]');
 };
 
-function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible }) {
+function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0 }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
   const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
@@ -1469,6 +1519,12 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     const el = focusLesson(rootRef.current);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
   }, []);
+  // повторное касание вкладки «Путь» — снова к рекомендованному уроку, где бы ни был экран
+  useEffect(() => {
+    if (!homeTick) return;
+    const el = focusLesson(rootRef.current);
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  }, [homeTick]); // eslint-disable-line react-hooks/exhaustive-deps
   /* ПК (от 1024 px): две колонки — слева карта и юниты, справа закреплены задания дня и живая
      модель текущего юнита (под самим юнитом её тогда нет). На телефоне — одна колонка. */
   const wide = useWide();
@@ -1486,7 +1542,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
         </div>
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
-      <div ref={atlasRef}><Atlas states={states} onPick={pick} learn={learn} /></div>
+      <div ref={atlasRef}><Atlas states={states} onPick={pick} /></div>
       <ToMap target={atlasRef} />
       {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }, k, list) => {
         const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];
@@ -1503,12 +1559,13 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             <Card className="ln-bill-mini">
               <span className="ln-mini-no" aria-hidden="true">{no}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="ds-h3" style={{ color: 'var(--u-ink)', lineHeight: 1.2 }}>{pl.place}</div>
+                <div className="ds-h3 ln-mini-title" style={{ color: 'var(--u-ink)' }}>{pl.place}</div>
                 <div className="ds-sub" style={{ fontSize: 13, whiteSpace: 'nowrap' }} data-testid="unit-diamonds"><span className="ds-sr">Юнит {no}, </span>пройден · <Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}<span className="ds-sr"> алмазов</span></div>
               </div>
-              <IconButton label="Гайд юнита" icon={BookOpenText} data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }} />
-              <Button variant="ghost" small icon={ChevronRight} data-testid="unit-fold" aria-expanded="false"
-                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>Уроки: {st.lessons.length}</Button>
+              <IconButton label="Гайд юнита" icon={BookOpenText} size={20} className="ln-mini-guide" data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }} />
+              <Button variant="ghost" small icon={ChevronRight} className="ln-mini-fold" data-testid="unit-fold" aria-expanded="false"
+                aria-label={`Показать уроки: ${st.lessons.length}`}
+                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>Уроки</Button>
             </Card>
           ) : (
           <Card className="ln-bill">
@@ -1580,7 +1637,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
    Экран поверх Пути (открывается карточкой «Задания» наверху): цель дня в минутах и три
    задания дня, персональное испытание месяца, ниже — практика: ошибки уроков, задачи
    вперемешку и итоговая проверка. Один «назад» — на Путь. */
-function TasksView({ learn, onStart, onOpenBook, onBack }) {
+function TasksView({ learn, update, onStart, onOpenBook, onBack }) {
   const n = learn.mistakes.length;
   // задачи и вопросы учебника, которым подошёл срок повторения
   const [due] = useState(() => reviewQueue(loadProgress()).due.length);
@@ -1588,8 +1645,9 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
   return (
     <div className="ln-wrap" data-testid="tasks">
       <TopBar back={<IconButton label="Назад, на Путь" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Задания" />
-      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня и на месяц. Задания дня обновляются в полночь и начинаются с нуля.</div>
+      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня, на неделю и на месяц. Задания дня обновляются в полночь и начинаются с нуля, лига — по понедельникам.</div>
       <QuestsCard learn={learn} />
+      <LeagueCard learn={learn} update={update} />
       <MonthCard learn={learn} />
       <div data-testid="practice">
         <div className="ds-h3" style={{ margin: '18px 0 6px' }}>Практика</div>
@@ -1700,7 +1758,7 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
       <StudyWeeks learn={learn} />
       <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
       {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
-        text="Что заметили ученики: новые и разобранные, «скопировать всё»" onClick={() => { Audio.play('paper'); onReports(); }} />}
+        text="Что заметили ученики: новые и разобранные, «скопировать всё», разбор пачкой по id" onClick={() => { Audio.play('paper'); onReports(); }} />}
       {owner && <MenuCard icon={Target} tone="var(--u-ink)" title="Аналитика" data-testid="prof-analytics" data-nav-target="analytics" right={arrow}
         text="Воронка за 30 дней и 20 самых трудных упражнений — без персональных данных" onClick={() => { Audio.play('paper'); onAnalytics(); }} />}
       <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход; скачать или удалить свои данные" onClick={() => setAccount(true)} />
@@ -1801,8 +1859,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       <div inert={!!run || !!sheet || !!book || !!chest || morning || reports || analytics} style={book || reports || analytics ? { display: 'none' } : undefined}>
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
-          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} />}
-        {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
+          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} homeTick={pathHome} />}
+        {tab === 'path' && tasks && <TasksView learn={learn} update={update} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}

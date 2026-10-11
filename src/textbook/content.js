@@ -34,6 +34,8 @@ CHAPTERS.forEach((c) => {
     collectBlocks(s.blocks, (b) => b.type === 'recall').forEach((b) => { RECALLS[b.id] = { chapter: c.id, section: s.id, block: b }; });
   });
 });
+// ключевые формулы главы ($$! … $$) — их стоит знать наизусть; итог главы повторяет их списком
+export const keyFormulas = (chapterId) => collectBlocks(CHAPTER_BLOCKS[chapterId] || [], (b) => b.type === 'math' && b.key).map((b) => b.tex);
 export const problemsOf = (chapterId) => Object.keys(PROBLEMS).filter((id) => PROBLEMS[id].chapter === chapterId);
 // разделы, по которым считается прогресс (с вопросом на вспоминание)
 export const studySections = (chapterId) => (CHAPTER_SECTIONS[chapterId] || []).filter((s) => s.recall);

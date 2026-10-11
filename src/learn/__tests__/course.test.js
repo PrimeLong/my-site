@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
   UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
+  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, gameLeft, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
 import { placeOf } from '../../ds-tokens.js';
@@ -17,13 +17,13 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures), Средний (consumer)
-const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, inflation), Средний (consumer)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'inflation', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — пять юнитов по уровням: от Начального к Среднему', () => {
+it('на Пути уроками — шесть юнитов по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
   // юниты идут по уровням; внутри уровня — по порядку глав учебника
   const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
@@ -134,7 +134,7 @@ describe.each(PATH)('юнит %s', (unitId) => {
         expect(rev / items.length, l.id).toBeLessThanOrEqual(0.4);
         expect(items[0].review).toBeFalsy();
         expect(SECONDS[items[0].kind]).toBeLessThanOrEqual(12);
-        items.filter((it) => it.review).forEach((it) => expect(EXERCISES[it.id].lesson).not.toBe(l.id));
+        items.filter((it) => it.review).forEach((it) => expect(EXERCISES[it.of || it.id].lesson).not.toBe(l.id));
       }
     });
     stepped.forEach((l) => {
@@ -278,7 +278,20 @@ describe('упражнения: ровно один верный ответ', ()
           expect(inst.items.length, ex.id).toBeGreaterThanOrEqual(12);
           expect(check(inst, { right: GAME_PASS, answered: GAME_PASS, done: true }).ok).toBe(true);
           expect(check(inst, { right: GAME_PASS - 1, answered: GAME_PASS - 1, done: true }).ok, 'меньше восьми верных').toBe(false);
-          expect(check(inst, { right: GAME_PASS, answered: 12, done: true }).ok, 'точность ниже 70%').toBe(false);
+          // зачёт — чистый счёт: верных минус ошибок не меньше восьми
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS + 1, done: true }).ok, '8 верных и ошибка — чистых 7').toBe(false);
+          expect(check(inst, { right: 20, answered: 30, done: true }).ok, '20 верных и 10 ошибок — чистых 10').toBe(true);
+          expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
+          break;
+        }
+        case 'keep': {
+          // «Держи инфляцию»: новости толкают цены в обе стороны, толчок — от 1 до 4 пунктов; зачёт — как у всех игр
+          inst.items.forEach((it) => { expect(Number.isFinite(it.effect)).toBe(true); expect(Math.abs(it.effect)).toBeGreaterThanOrEqual(1); expect(Math.abs(it.effect)).toBeLessThanOrEqual(4); });
+          expect(inst.items.some((it) => it.effect > 0) && inst.items.some((it) => it.effect < 0), ex.id).toBe(true);
+          expect(new Set(inst.items.map((x) => x.raw)).size).toBe(inst.items.length);
+          expect(inst.items.length, ex.id).toBeGreaterThanOrEqual(12);
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS, done: true }).ok).toBe(true);
+          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS + 1, done: true }).ok).toBe(false);
           expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
@@ -350,7 +363,8 @@ describe.each(PATH)('юнит %s: полноценный — все восемь
     const game = buildLesson(g.id, seeded(4)).items;
     expect(game.length).toBe(1);
     expect(GAME_KINDS).toContain(game[0].kind);
-    expect(game[0].chart).toBeTruthy();
+    // у «Держи инфляцию» свой живой график — шкала и линия инфляции, без кривых рынка
+    expect(game[0].chart || game[0].kind === 'keep').toBeTruthy();
     game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
     const [st] = of('story');
     // шаг без героя — голос рассказчика; первый шаг — герой, героев не меньше трёх
@@ -450,8 +464,11 @@ describe('юнит «Спрос и предложение»: все виды у�
     expect(rush.noRetry).toBe(true);
     expect(rush.seconds).toBe(60);
     expect(rush.chart).toBe('market');
-    expect(gameOk(rush, { right: 8, answered: 11, done: true })).toBe(true);
+    expect(gameOk(rush, { right: 10, answered: 12, done: true }), '10 верных, 2 ошибки — чистых 8').toBe(true);
+    expect(gameOk(rush, { right: 9, answered: 11, done: true }), '9 верных, 2 ошибки — чистых 7').toBe(false);
     expect(gameOk(rush, { right: 7, answered: 7, done: true }), 'меньше восьми верных').toBe(false);
+    expect(gameLeft(9, 12)).toBe(2);
+    expect(gameLeft(14, 17)).toBe(0);
   });
   it('«Повторение»: ошибки юнита первыми, раундов игр нет, 12–15 упражнений из прошлых уроков', () => {
     const [r] = of('review');
@@ -614,7 +631,7 @@ describe('мотивация: опыт, серия с заморозкой, ре
    с верной стороной: на рынке рост спроса или падение предложения поднимает цену; на КПВ
    сдвиг кривой — «сдвиг», точка по кривой — «движение». */
 describe('мини-игра: одна на урок, карточки двигают график', () => {
-  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind));
+  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind) && e.kind !== 'keep');
   it('в каждом юните Пути — ровно одна игра, на минуту', () => {
     PATH.forEach((id) => {
       const g = UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'game');
@@ -677,7 +694,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });
@@ -846,5 +863,17 @@ describe('«История» вне урока', () => {
       // в самом уроке шаг на экране — условие без повтора
       expect(instantiate(EXERCISES[e.id], seeded(1)).prompt[0]).not.toEqual({ type: 'p', inline: step.idea.text });
     })));
+  });
+});
+
+describe('учебник и Путь — один порядок', () => {
+  it('оглавление учебника идёт по уровням курса и в порядке Пути', async () => {
+    const { READY_CHAPTERS, TOC_LEVELS, PLANNED_CHAPTERS } = await import('../../textbook/toc.js');
+    expect(READY_CHAPTERS.map((c) => c.id)).toEqual(UNITS.filter((u) => u.ready).map((u) => u.id));
+    // уровни в оглавлении — те же, что на Пути, по порядку
+    expect(TOC_LEVELS.map((l) => l.id)).toEqual(LEVELS.map((l) => l.id).filter((id) => TOC_LEVELS.some((t) => t.id === id)));
+    TOC_LEVELS.forEach((l) => l.chapters.forEach((c) => expect(levelOf(c.id).id, c.id).toBe(l.id)));
+    // недописанные главы в уровни не попадают
+    PLANNED_CHAPTERS.forEach((c) => expect(TOC_LEVELS.some((l) => l.chapters.includes(c)), c.id).toBe(false));
   });
 });

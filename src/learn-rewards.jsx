@@ -10,10 +10,12 @@ import {
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
-import { Rosette, Stamp, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
+import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
+import { ShopSwitch, GardenView } from './learn-garden.jsx';
+import { leagueLine } from './learn-league.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
@@ -50,8 +52,8 @@ export const REWARD_CSS = `
   .rw-stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px 6px; justify-items: center; }
   .rw-stamp { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
   /* ещё не полученная печать: блёклый серый оттиск, а подпись читается полным контрастом */
-  .rw-stamp[data-got="false"] > svg, .rw-stamp[data-got="false"] > .ds-stamp { opacity: .38; filter: grayscale(1); }
-  .rw-stamp[data-got="false"] b { color: var(--ds-ink2); }
+  .rw-stamp[data-got="false"] b { color: var(--ds-ink2); font-weight: 600; }
+  .rw-stamp[data-got="false"] span { color: var(--ds-ink3); }
   .rw-stamp b { font: 700 12px/1.2 var(--ds-serif); }
   .rw-stamp span { font: 12px/1.25 var(--ds-sans); color: var(--ds-ink2); }
   .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
@@ -59,7 +61,9 @@ export const REWARD_CSS = `
   .rw-big { font: 700 64px/1 var(--ds-serif); color: var(--ds-bad); }
   .rw-flame { animation: rw-flame .9s ease-out 1 both; }
   @keyframes rw-flame { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.12); opacity: 1 } 100% { transform: scale(1) } }
-  .rw-chest-open { animation: ds-stamp .4s ease-out 1 both; }
+  /* сундук при открытии чуть подпрыгивает и пружинит — без поворота и крена */
+  .rw-chest-open { animation: rw-chest-pop .5s ease-out 1 both; transform-origin: 50% 90%; }
+  @keyframes rw-chest-pop { 0% { transform: none; } 30% { transform: scale(1.08, .92); } 60% { transform: scale(.96, 1.05) translateY(-4px); } 100% { transform: none; } }
   .rw-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
   .rw-item { position: relative; }
@@ -104,7 +108,7 @@ export function TasksEntry({ learn, onOpen, now = Date.now() }) {
   const m = monthChallenge(learn, now);
   const done = quests.filter((q) => q.done).length;
   const goalOk = g.done >= g.goal;
-  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
+  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · ${leagueLine(learn, now)} · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
   return (
     <button type="button" className="ds-card ds-card--button rw-tasks-entry" data-testid="tasks-card" data-nav-target="tasks" aria-label={`Задания. ${text}`}
       onClick={() => { Audio.play('paper'); onOpen(); }}>
@@ -304,6 +308,8 @@ export function ShopView({ learn, update, now = Date.now() }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);
+  // «Лавка · Сад»: сад — в той же вкладке, переключателем вверху
+  const [view, setView] = useState('shop');
   const b = balance(learn);
   const wear = outfitOf(learn);
   const today = shopDay(learn, day);
@@ -320,8 +326,10 @@ export function ShopView({ learn, update, now = Date.now() }) {
   const ownedList = OUTFITS.filter((o) => (learn.owned || {})[o.id]);
   const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
   return (
-    <div className="ln-wrap" data-testid="shop">
+    <div className="ln-wrap" data-testid="shop" data-view={view}>
       <div>
+        <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} />
+        {view === 'garden' ? <GardenView learn={learn} update={update} /> : <>
         <Heading eyebrow="Лавка" title="Лавка Инфли" sub="Монеты — за уроки, серию и задания. Цены в кронах, платите по курсу дня." />
         <Card style={{ margin: '10px 0 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -380,6 +388,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
             </div>
           </div>
         ))}
+        </>}
       </div>
     </div>
   );
@@ -498,7 +507,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
         {opened && <CoinShower seed={n} n={18} />}
         <div className="ds-eyebrow">Сундук юнита · {place}</div>
         <div style={{ display: 'flex', justifyContent: 'center', margin: '10px 0' }} className={opened ? 'rw-chest-open' : ''}>
-          <Chest size={132} open={opened} spent={was && !opened} label={opened ? 'Сундук открыт: монеты' : was ? 'Сундук пуст' : 'Сундук закрыт'} />
+          <Chest size={132} open={opened} animate spent={was && !opened} label={opened ? 'Сундук открыт: монеты' : was ? 'Сундук пуст' : 'Сундук закрыт'} />
         </div>
         {opened ? (
           <><div className="ds-h2" data-testid="chest-coins">+{n} {coinsWord(n)}</div><div className="ds-sub" style={{ fontSize: 14.5, margin: '4px 0 14px' }}>Место на карте ваше — монеты в кошельке.</div>
@@ -518,8 +527,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
 const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 export function MorningStreak({ learn, onClose, now = Date.now() }) {
   const st = streak(learn, now);
-  const hour = new Date(now).getHours();
-  const hello = hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
+  const hello = greetingAt(new Date(now).getHours());
   const pol = policyInfo(learn, now);
   return (
     <div className="rw-morning" data-testid="morning" role="dialog" aria-label="Серия дней">
@@ -547,29 +555,42 @@ export function MorningStreak({ learn, onClose, now = Date.now() }) {
   );
 }
 
-/* ------------------------------ ПЕЧАТИ ------------------------------ */
+/* ------------------------------ ПЕЧАТИ ------------------------------
+   Полученные — цветные сургучные печати, первыми; ещё не полученные — отдельно, пунктирным
+   контуром с замком и подписью «как получить»: что есть, а чего нет, видно с первого взгляда. */
 export function Achievements({ learn }) {
   const list = achievementsOf(learn);
   const months = monthStamps(learn);
+  const got = list.filter((a) => a.got); const rest = list.filter((a) => !a.got);
+  const item = (a) => {
+    const Icon = ACH_ICON[a.icon] || Check;
+    return (
+      <div key={a.id} className="rw-stamp" data-testid="ach" data-ach={a.id} data-got={String(a.got)} title={a.text}>
+        <Medal icon={<Icon size={24} strokeWidth={a.got ? 2.2 : 1.8} />} got={a.got} color="var(--u)" size={68} label={`${a.title}: ${a.got ? 'получена' : 'ещё не получена'}`} />
+        <b>{a.title}</b><span>{a.got ? a.text : a.how || a.text}</span>
+      </div>
+    );
+  };
   return (
     <div data-testid="achievements">
-      <div className="rw-stamps">
-        {list.map((a) => {
-          const Icon = ACH_ICON[a.icon] || Check;
-          return (
-            <div key={a.id} className="rw-stamp" data-testid="ach" data-ach={a.id} data-got={String(a.got)} title={a.text}>
-              <Stamp text={a.title.toUpperCase()} center={<Icon size={20} aria-hidden="true" />} size={72} rotate={a.got ? -8 : 0} color={a.got ? 'var(--u-ink)' : 'var(--ds-ink3)'} />
-              <b>{a.title}</b><span>{a.text}</span>
+      <div className="ds-eyebrow" style={{ margin: '2px 0 8px' }} data-testid="ach-got-count">Получено: {got.length + months.length} из {list.length + months.length}</div>
+      {(got.length > 0 || months.length > 0) ? (
+        <div className="rw-stamps">
+          {got.map(item)}
+          {months.map((m) => (
+            <div key={m.key} className="rw-stamp" data-testid="ach-month" data-got="true">
+              <Medal icon={<CalendarDays size={24} strokeWidth={2.2} />} got color="var(--ds-gold)" size={68} label={`Марка месяца: ${m.name}`} />
+              <b>{m.name}</b><span>марка месяца</span>
             </div>
-          );
-        })}
-        {months.map((m) => (
-          <div key={m.key} className="rw-stamp" data-testid="ach-month" data-got="true">
-            <Stamp text="ИСПЫТАНИЕ МЕСЯЦА" center={<CalendarDays size={20} aria-hidden="true" />} size={72} rotate={6} color="var(--ds-gold)" />
-            <b>{m.name}</b><span>марка месяца</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : <div className="ds-sub" style={{ fontSize: 14 }}>Пока ни одной — первая печать за первый пройденный урок.</div>}
+      {rest.length > 0 && (
+        <>
+          <div className="ds-eyebrow" style={{ margin: '16px 0 8px', color: 'var(--ds-ink2)' }}>Ещё не получены</div>
+          <div className="rw-stamps rw-stamps-locked">{rest.map(item)}</div>
+        </>
+      )}
     </div>
   );
 }

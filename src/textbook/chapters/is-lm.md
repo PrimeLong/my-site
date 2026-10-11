@@ -32,7 +32,7 @@ $$Y = \frac{C_0 - cT + I + G}{1 - c}.$$
 
 Отсюда **[[term:multiplier|мультипликаторы]]**:
 
-$$\begin{gathered}\frac{\Delta Y}{\Delta G} = \frac{1}{1 - c}, \\ \frac{\Delta Y}{\Delta T} = -\frac{c}{1 - c}, \\ \frac{\Delta Y}{\Delta G}\Big|_{\Delta G = \Delta T} = 1.\end{gathered}$$
+$$!\begin{gathered}\frac{\Delta Y}{\Delta G} = \frac{1}{1 - c}, \\ \frac{\Delta Y}{\Delta T} = -\frac{c}{1 - c}, \\ \frac{\Delta Y}{\Delta G}\Big|_{\Delta G = \Delta T} = 1.\end{gathered}$$
 
 Рубль госзакупок сразу становится чьим-то доходом, из него тратится $c$, из этого — ещё $c^2$, и так далее: $1 + c + c^2 + \ldots = 1/(1 - c)$. Снижение налогов действует слабее: первый рубль частично сберегают. Если расходы и налоги растут на одну сумму, выпуск растёт на ту же сумму — мультипликатор сбалансированного бюджета равен единице.
 

@@ -1079,7 +1079,7 @@ const TerrainLayer = memo(function TerrainLayer({ annexKey, tunnel, halvik }) {
 /* campaignPlan/onCampaignPlan — штабы кампании на этот квартал ({ regionId: штабов });
    campaignPlanner — кто распределяет их за игрока без права решать. */
 /* treatyPlan/onTreatyPlan — условия мира, которые президент предложит Норланду в этом квартале. */
-export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner,
+export function CountryMap({ economy, plan, onPlan, planner, onEventPlan = undefined, eventPlanner = undefined, warOrder, onWarOrder, warPlanner, campaignPlan, onCampaignPlan, campaignPlanner,
   treatyPlan, onTreatyPlan, treatyPlanner, diploPlan, onDiploPlan, diploPlanner, warPlan = null, onWarPlan = null }) {
   // выбранная страна (сосед или своя): вместо карточки области — карточка страны
   const [country, setCountry] = useState(null);
@@ -1726,7 +1726,8 @@ export function CountryMap({ economy, plan, onPlan, planner, warOrder, onWarOrde
           );
         })()}
         {economy.regionEvent && (
-          <RegionEventPanel event={economy.regionEvent} economy={economy} plan={plan} onPlan={onPlan} planner={planner}
+          <RegionEventPanel event={economy.regionEvent} economy={economy} plan={plan}
+            onPlan={onEventPlan !== undefined ? onEventPlan : onPlan} planner={eventPlanner !== undefined ? eventPlanner : planner}
             onFocus={() => setSelected(economy.regionEvent.region)} />
         )}
         {!economy.regionEvent && economy.lastRegionResolution && (
@@ -2120,7 +2121,7 @@ function RegionEventPanel({ event, economy, plan, onPlan, planner, onFocus }) {
       <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 8, lineHeight: 1.45 }}>
         {onPlan
           ? (chosen ? 'Ответ применится в конце квартала.' : `Без ответа: «${def ? def.label.toLowerCase() : 'переждать'}».`)
-          : `Отвечает ${planner || 'Минфин'} — решение станет известно в конце квартала.`}
+          : `${event.owner === 'president' ? 'Это политическое решение — ' : ''}Отвечает ${planner || 'Минфин'} — решение станет известно в конце квартала.`}
       </div>
     </div>
   );

@@ -273,3 +273,27 @@ describe('согласия при регистрации и подтвержде
     expect((await acc({ ...base(), birthYear: thisYear - 16, consentPage: true, consentPd: true })).status).toBe(200);
   });
 });
+
+describe('имя в лигах недели — только с согласия и с 16 лет', () => {
+  const thisYear = new Date().getUTCFullYear();
+  it('по умолчанию выключено; включил — имя видят другие, но не сам; выключил — пропало', async () => {
+    const a = await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('league'), password: 'secret1', name: 'Лигина', birthYear: 1995 });
+    const b = await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('viewer'), password: 'secret1', name: 'Зритель', birthYear: 1995 });
+    expect(a.data.profile.leaguePublic).toBe(false);
+    expect((await acc({ action: 'league-names', token: b.data.token })).data.names).not.toContain('Лигина');
+    const on = await acc({ action: 'update', token: a.data.token, leaguePublic: true });
+    expect(on.status).toBe(200); expect(on.data.profile.leaguePublic).toBe(true);
+    expect((await acc({ action: 'league-names', token: b.data.token })).data.names).toContain('Лигина');
+    expect((await acc({ action: 'league-names', token: a.data.token })).data.names).not.toContain('Лигина');
+    // новое имя — новое и в лигах
+    await acc({ action: 'update', token: a.data.token, name: 'Лигина Н.' });
+    expect((await acc({ action: 'league-names', token: b.data.token })).data.names).toContain('Лигина Н.');
+    await acc({ action: 'update', token: a.data.token, leaguePublic: false });
+    const names = (await acc({ action: 'league-names', token: b.data.token })).data.names;
+    expect(names).not.toContain('Лигина'); expect(names).not.toContain('Лигина Н.');
+  });
+  it('до 16 лет включить нельзя', async () => {
+    const kid = await acc({ action: 'register', consentPage: true, consentPd: true, login: uniq('kidleague'), password: 'secret1', birthYear: thisYear - 14, parentConsent: true, parentName: 'Ольга Петрова' });
+    expect((await acc({ action: 'update', token: kid.data.token, leaguePublic: true })).status).toBe(403);
+  });
+});

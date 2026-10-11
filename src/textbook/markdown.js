@@ -255,11 +255,13 @@ export function parseBlocks(text) {
       continue;
     }
 
-    // выключная формула
+    // выключная формула; «$$!» — ключевая: её стоит запомнить (docs/mechanics.md, «Учебник»)
     if (trimmed.startsWith('$$')) {
       let tex = trimmed.slice(2);
+      const key = tex.startsWith('!') ? { key: true } : {};
+      if (key.key) tex = tex.slice(1);
       if (tex.trim().endsWith('$$') && tex.trim().length >= 2) {
-        blocks.push({ type: 'math', tex: tex.trim().slice(0, -2).trim() });
+        blocks.push({ type: 'math', tex: tex.trim().slice(0, -2).trim(), ...key });
         i += 1; continue;
       }
       i += 1;
@@ -268,7 +270,7 @@ export function parseBlocks(text) {
       if (i >= lines.length) throw new Error('Формула $$ не закрыта');
       acc.push(lines[i].trim().slice(0, -2));
       i += 1;
-      blocks.push({ type: 'math', tex: acc.join('\n').trim() });
+      blocks.push({ type: 'math', tex: acc.join('\n').trim(), ...key });
       continue;
     }
 
@@ -322,7 +324,7 @@ export const parseChapter = (text) => parseBlocks(text);
      choice / gap — вопрос (в gap пропуск «___»), строки «+ верный вариант» и «- неверный | почему»;
      tf answer=true|false — утверждение;
      match — пары «- слева ↔ справа»; sort bins="А|Б" — «- пункт >> А»;
-     calc answer=… tol=… unit=… или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
+     calc answer=… tol=… unit=… [source=задача] или variant=тип — быстрый расчёт, ловушки «!! значение | почему»;
      shift chart=тип answer="S-" options="D+ D- S+ S-" — «куда сдвинется?», ловушки «!! D+ | почему»;
      news headline="…" vars="P:цена Q:количество" expect="P:+ Q:-" — «газета».
    Всё после строки «---» — объяснение, которое показывается после ответа.
@@ -391,6 +393,8 @@ function parseExercise(kind, attrs, body) {
     if (!ex.variant) {
       ex.answer = Number(attrs.answer); ex.tol = attrs.tol != null ? Number(attrs.tol) : null; ex.unit = attrs.unit || '';
       ex.traps = traps.map((t) => ({ value: parseNumber(t.key), why: t.why }));
+      // source=задача учебника: в повторах вернётся с новыми числами по её шаблону (variants.js)
+      if (attrs.source) ex.source = attrs.source;
     }
   }
   if (kind === 'shift') {
@@ -440,8 +444,10 @@ function parseExercise(kind, attrs, body) {
    ox / ix и oy / iy (товар X или Y подешевел или подорожал: поворот);
    на эластичности (chart=elastic) — in / el (спрос неэластичный: кривая крутая, выручка от
    подорожания растёт; эластичный: кривая пологая, выручка падает).
-   Текст до пунктов — условие игры. */
-const ROUND_KINDS = ['swipe', 'rush'];
+   Текст до пунктов — условие игры.
+     keep — «Держи инфляцию» (src/learn/keep.js): заголовки «- текст >> +2» — на сколько пунктов
+     новость толкает инфляцию; ученик двигает ставку, чтобы вернуть инфляцию в коридор цели. */
+const ROUND_KINDS = ['swipe', 'rush', 'keep'];
 export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
@@ -450,6 +456,16 @@ function parseRound(kind, attrs, body) {
   if (chart && !ROUND_EFFECTS[chart]) throw new Error(`В игре ${attrs.id} неизвестный график ${chart}`);
   const item = (l) => /^-\s/.test(l.trim());
   const g = { type: 'round', kind, id: attrs.id, title: attrs.title || '', chart, ...(chart === 'market' ? { market: market(attrs) } : {}), prompt: parseBlocks(body.filter((l) => !item(l)).join('\n')), seconds: attrs.seconds ? Number(attrs.seconds) : null };
+  if (kind === 'keep') {
+    g.items = body.filter(item).map((l) => {
+      const [t, tail = ''] = l.trim().slice(2).split(/\s>>\s/);
+      const effect = Number(tail.trim().replace('−', '-'));
+      if (!Number.isFinite(effect) || effect === 0 || Math.abs(effect) > 4) throw new Error(`В игре ${attrs.id}: у «${t}» толчок должен быть числом от −4 до +4, не нулём`);
+      return { raw: t.trim(), text: parseInline(t.trim()), effect };
+    });
+    if (g.items.length < 3) throw new Error(`В игре ${attrs.id} меньше трёх пунктов`);
+    return g;
+  }
   const sides = kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
   g.labels = Object.fromEntries(sides.map((k) => [k, attrs[k] || k]));
   g.items = body.filter(item).map((l) => {

@@ -146,6 +146,7 @@ export const accountRecover = (login, code, newPassword) => post({ action: 'reco
 export const accountRecoveryNew = (token, password) => post({ action: 'recovery_new', token, password }, ACCOUNT_API);
 export const accountExport = (token) => post({ action: 'export', token }, ACCOUNT_API);
 export const accountDelete = (token, password) => post({ action: 'delete', token, password }, ACCOUNT_API);
+export const accountLeagueNames = (token) => post({ action: 'league-names', token }, ACCOUNT_API);
 
 /* Таблица рекордов «Своего дела» (api/records.js): записаться можно только из профиля. */
 const RECORDS_API = '/api/records';
@@ -166,6 +167,9 @@ export const reportsMe = (session) => post({ action: 'me', session }, REPORTS_AP
 export const listReports = (session, status) => post({ action: 'list', session, status }, REPORTS_API);
 export const setReportStatus = (session, id, status) => post({ action: 'status', session, id, status }, REPORTS_API);
 export const deleteReport = (session, id) => post({ action: 'delete', session, id }, REPORTS_API);
+// пачкой: отметить разобранными по списку id (строка или массив) и удалить все разобранные
+export const setReportsStatus = (session, ids, status) => post({ action: 'status-many', session, ids, status }, REPORTS_API);
+export const purgeDoneReports = (session) => post({ action: 'purge-done', session }, REPORTS_API);
 // «Это ошибка фильтра»: имя не прошло проверку на грубые слова — без аккаунта
 export const reportFilter = (login, name, screen) => post({ action: 'filter', login, name, screen }, REPORTS_API);
 

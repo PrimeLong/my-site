@@ -356,7 +356,7 @@ export function MarketModel({ unitId, learn, compact = false, testid = 'unit-mod
               <div><b>{Math.round(r.p * r.sold)}</b><span>выручка, кр.</span></div>
             </div>
           )}
-          {assembled && <div style={{ display: 'flex', justifyContent: 'center' }} data-testid="model-seal"><Stamp text="МОДЕЛЬ СОБРАНА" size={64} color="var(--u-ink)" rotate={-6} /></div>}
+          {assembled && <div style={{ display: 'flex', justifyContent: 'center' }} data-testid="model-seal"><Stamp text="МОДЕЛЬ СОБРАНА" size={84} color="var(--u-ink)" rotate={-6} /></div>}
           {compact && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4 }}>
               <Button variant="ghost" small data-testid="model-toggle" aria-expanded={controls} onClick={() => { Audio.play('paper'); setControls((v) => !v); }}>
@@ -385,8 +385,6 @@ export function MarketModel({ unitId, learn, compact = false, testid = 'unit-mod
     </div>
   );
 }
-// маленький значок прогресса модели — для карты Пути у остановки
-export const modelBadge = (unitId, learn) => { const p = modelProgress(unitId, learn); return p.total ? `модель ${p.open}/${p.total}` : null; };
 
 /* ------------------------------ ДОМИНО ------------------------------
    Сверху новость «Вестника», ниже — сцена (график и улица), пустые звенья и колода. Ученик

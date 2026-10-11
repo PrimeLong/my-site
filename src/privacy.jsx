@@ -2,7 +2,7 @@
    открывается из регистрации (согласие — галочкой), из профиля и из окна аккаунта. Там же —
    права: скачать свои данные (JSON) и удалить аккаунт со всеми данными. Среди учеников есть
    школьники, поэтому текст — простыми словами, без мелкого шрифта. */
-import React from 'react';
+import React, { useState } from 'react';
 import { X } from 'lucide-react';
 
 export const PRIVACY_TITLE = 'Данные и конфиденциальность';
@@ -24,10 +24,16 @@ export const PRIVACY_SECTIONS = [
     'Физически это дата-центры Vercel и Upstash за пределами России. Регион базы Upstash выбирается при её создании (у Upstash есть регионы в США, Европе и Азии); у Vercel и Upstash нет дата-центров в России.',
     'Часть данных — настройки, прогресс без входа, музыка и тема — хранится только в вашем браузере (localStorage).',
   ] },
+  { title: 'Cookie и память браузера', items: [
+    'Cookie Инфляция не ставит: ни своих, ни рекламных, ни счётчиков посещений.',
+    'В памяти браузера на этом устройстве (localStorage) лежит то, без чего приложение не работает: ключ входа, прогресс до входа в аккаунт, настройки, тема, громкость музыки и отметка, что вы прочитали уведомление о памяти браузера.',
+    'Эти записи не уходят третьим лицам и не нужны для рекламы. Стереть их можно, выйдя из аккаунта или очистив данные сайта в настройках браузера.',
+  ] },
   { title: 'Зачем', items: [
     'Чтобы прогресс был с вами на любом устройстве, а повторение подбирало то, что пора повторить.',
     'Чтобы место в сетевой партии и рекорды были закреплены за вами.',
     'Чтобы исправлять ошибки в уроках по вашим сообщениям.',
+    'Имя из профиля другие ученики видят в лигах недели, только если вы сами включили «Показывать моё имя в лигах» (с 16 лет); выключили — имя убирается из списка.',
     'Рекламы нет. Данные не продаются и не передаются третьим лицам, кроме хостинга (Vercel) и базы (Upstash), которые их хранят.',
   ] },
   { title: 'Сколько', items: [
@@ -40,7 +46,7 @@ export const PRIVACY_SECTIONS = [
   ] },
   { title: 'Ваши права', items: [
     '«Скачать мои данные» в окне аккаунта — всё, что хранится о вашем профиле, одним файлом JSON.',
-    '«Удалить аккаунт и все данные» там же — с подтверждением паролем. Удаляются профиль, прогресс, сохранения, рекорды, строки вызова дня и ваши сообщения об ошибках. Отменить удаление нельзя.',
+    '«Удалить аккаунт и все данные» там же — с подтверждением паролем. Удаляются профиль, прогресс, сохранения, рекорды, имя в лигах, строки вызова дня и ваши сообщения об ошибках. Отменить удаление нельзя.',
     'Вопросы — через «Сообщить об ошибке» в любом уроке.',
   ] },
   { title: 'Если вам меньше 14 лет', items: [
@@ -52,7 +58,7 @@ export const PRIVACY_SECTIONS = [
 export function PrivacyPage({ onClose }) {
   return (
     <div role="dialog" aria-label={PRIVACY_TITLE} data-testid="privacy"
-      style={{ position: 'fixed', inset: 0, zIndex: 400, overflowY: 'auto', background: 'var(--ds-paper)', color: 'var(--ds-ink)', padding: '12px 16px calc(32px + env(safe-area-inset-bottom))' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 400, overflowY: 'auto', background: 'var(--ds-paper, #F6F1E6)', color: 'var(--ds-ink, #2A2420)', padding: '12px 16px calc(32px + env(safe-area-inset-bottom))' }}>
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
           <h1 className="ds-h1" style={{ flex: 1, fontSize: 26, margin: 0 }}>{PRIVACY_TITLE}</h1>
@@ -70,8 +76,38 @@ export function PrivacyPage({ onClose }) {
             </ul>
           </section>
         ))}
-        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 5 октября 2026 года.</p>
+        <p className="ds-faint" style={{ fontSize: 13, marginTop: 18 }}>Редакция от 10 октября 2026 года.</p>
       </div>
     </div>
+  );
+}
+
+/* Уведомление о памяти браузера: один раз, при первом открытии. Cookie приложение не ставит,
+   но вход и прогресс лежат в localStorage — об этом говорим прямо и даём ссылку на страницу
+   данных. Нужно ли что-то сверх уведомления — вопрос юристу (docs/legal-todo.md, № 9). */
+export const STORAGE_NOTICE_KEY = 'ems-storage-notice';
+export function StorageNotice() {
+  const [hidden, setHidden] = useState(() => { try { return !!localStorage.getItem(STORAGE_NOTICE_KEY); } catch { return true; } });
+  const [more, setMore] = useState(false);
+  if (hidden) return null;
+  const ok = () => { try { localStorage.setItem(STORAGE_NOTICE_KEY, String(Date.now())); } catch { /* приватный режим */ } setHidden(true); };
+  return (
+    <>
+      <div role="region" aria-label="Память браузера" data-testid="storage-notice"
+        style={{ position: 'fixed', left: 12, right: 12, bottom: 'calc(82px + env(safe-area-inset-bottom))', zIndex: 300, maxWidth: 520, margin: '0 auto',
+          background: '#FFFDF6', color: '#2A2420', border: '1px solid #CDBFA3', borderRadius: 8, boxShadow: '0 6px 22px rgba(40,30,15,.22)', padding: '12px 14px',
+          font: '14px/1.45 "PT Sans", system-ui, sans-serif' }}>
+        <div style={{ marginBottom: 10 }}>
+          <b>Cookie мы не используем.</b> Вход и прогресс хранятся в памяти браузера на этом устройстве — без рекламы и слежки.
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button type="button" data-testid="storage-notice-more" onClick={() => setMore(true)}
+            style={{ background: 'none', border: '1px solid #CDBFA3', borderRadius: 4, padding: '7px 12px', font: 'inherit', color: 'inherit', cursor: 'pointer' }}>Подробнее</button>
+          <button type="button" data-testid="storage-notice-ok" onClick={ok}
+            style={{ background: '#86461F', border: '1px solid #86461F', borderRadius: 4, padding: '7px 16px', font: '700 14px "PT Sans", system-ui, sans-serif', color: '#fff', cursor: 'pointer' }}>Понятно</button>
+        </div>
+      </div>
+      {more && <PrivacyPage onClose={() => setMore(false)} />}
+    </>
   );
 }

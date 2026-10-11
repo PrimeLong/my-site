@@ -722,6 +722,9 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
     : otherSeat === 'president' ? COLOR.gold : COLOR.blue;
   const levers = LEVERS.filter((l) => roleDef.groups.includes(l.group)).filter((l) => !l.onlyIf || l.onlyIf(decisions));
   const economy = room.economy;
+  // политическое событие в области решает президент (живой или бот), а не Минфин
+  const presidentEvent = !!(economy && economy.regionEvent && economy.regionEvent.owner === 'president');
+  const canAnswerRegion = presidentEvent ? seat === 'president' : canPlanMap;
   const prevEcon = room.history.length >= 2 ? room.history[room.history.length - 2] : economy;
   const setLever = (id2, v) => setDecisions((d) => ({ ...d, [id2]: v }));
   const pressSpeaker = isTraderRoom ? null : pressSpeakerSeat(room.occupied);
@@ -1026,7 +1029,7 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
         <SummaryBar economy={economy} />
         <RegimeBanner economy={economy} crisisOnly />
         {economy.regionEvent && centerView !== 'map' && (
-          <RegionEventStrip event={economy.regionEvent} answered={!!decisions.regionResponse} canAnswer={canPlanMap}
+          <RegionEventStrip event={economy.regionEvent} answered={!!decisions.regionResponse} canAnswer={canAnswerRegion}
             onOpen={() => { Audio.play('tab'); setCenterView('map'); }} />
         )}
       </div>
@@ -1305,6 +1308,8 @@ export function NetworkGameScreen({ network, theme, setTheme, onExit }) {
             <CountryMap economy={economy}
               plan={{ startProject: decisions.startProject || null, regionResponse: decisions.regionResponse || null, integrate: decisions.integrate ?? null }}
               onPlan={canPlanMap && !sent ? (pl) => setDecisions((d) => ({ ...d, ...pl })) : null}
+              onEventPlan={presidentEvent ? (isPresidentSeat && !sent ? (pl) => setDecisions((d) => ({ ...d, ...pl })) : null) : undefined}
+              eventPlanner={presidentEvent ? (room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : 'президент (бот)') : undefined}
               warOrder={decisions.warOrder || null}
               onWarOrder={isPresidentSeat && !sent ? (wo) => setDecisions((d) => ({ ...d, warOrder: wo })) : null}
               warPlanner={room.president && room.president.human ? `президент (${room.names.president || 'игрок'})` : room.president ? 'президент (бот)' : 'Генштаб по уставу'}

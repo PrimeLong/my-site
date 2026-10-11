@@ -43,7 +43,7 @@ export const forgetAccount = () => saveAccount(null);
 /* Детский режим «Мира» (src/lib/age.js): его считает сервер, на устройстве лежит последний
    ответ. Пока ответа нет (профиль заведён до этого правила или нет сети) — режим включён. */
 export const accountKidsMode = (a = loadAccount()) => !a || a.kidsMode !== false;
-const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false });
+const fromProfile = (profile) => ({ name: profile.name, emblem: profile.emblem, kidsMode: profile.kidsMode !== false, leaguePublic: profile.leaguePublic === true });
 // при запуске: подтянуть с сервера имя, значок и детский режим
 export const refreshAccount = async () => {
   const a = loadAccount();
@@ -503,6 +503,7 @@ export function ProfileModal({ onClose, onSwitched }) {
         })}
       </div>
       {profile && <KidsModeBox profile={profile} busy={busy} save={save} />}
+      {profile && <LeagueNameBox profile={profile} busy={busy} save={save} />}
       {panel === 'password' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           <input type="password" placeholder="Старый пароль" aria-label="Старый пароль" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" className="ds-field" />
@@ -578,6 +579,27 @@ function KidsModeBox({ profile, busy, save }) {
         </label>
       )}
       {!profile.birthYear && <div style={{ fontSize: 13, color: 'var(--ds-ink3)', marginTop: 2 }}>Пока год не указан, режим включён. Год задаётся один раз.</div>}
+    </div>
+  );
+}
+
+/* Имя в лигах недели (src/learn/league.js): по умолчанию выключено; с 16 лет — переключатель.
+   Честно пишем, что будет: имя может появиться у других учеников на месте бота с выдуманным опытом. */
+function LeagueNameBox({ profile, busy, save }) {
+  const allowed = profile.birthYear && !isKid(profile.birthYear);
+  return (
+    <div data-testid="league-name" style={{ background: 'var(--ds-card2)', border: '1px solid var(--ds-rule2)', padding: '10px 12px', marginBottom: 14 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ds-ink)', marginBottom: 4 }}>Имя в лигах недели</div>
+      <div style={{ fontSize: 13, color: 'var(--ds-ink2)', lineHeight: 1.5, marginBottom: 8 }}>
+        Соперники в лигах — ученики-боты. Если включить, ваше имя из профиля может появиться у других учеников на месте бота — с выдуманным опытом. Логин и значок не показываются.
+      </div>
+      {allowed ? (
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, color: 'var(--ds-ink)' }}>
+          <input type="checkbox" checked={!!profile.leaguePublic} disabled={busy} data-testid="league-name-toggle"
+            onChange={(e) => save({ leaguePublic: e.target.checked })} style={{ width: 20, height: 20, accentColor: 'var(--u)' }} />
+          Показывать моё имя в лигах
+        </label>
+      ) : <div style={{ fontSize: 13, color: 'var(--ds-ink3)' }} data-testid="league-name-locked">Доступно с {KIDS_AGE} лет.</div>}
     </div>
   );
 }

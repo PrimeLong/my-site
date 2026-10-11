@@ -5,6 +5,7 @@
    из параллельных вариантов — быстрый расчёт с новыми числами. «Собери цепочку» нет: порядок
    слов в цепочке проверял больше русский язык, чем экономику. Модуль чистый: его читают
    тесты; экраны — src/learn.jsx. */
+import { LEVELS, UNIT_LEVEL } from '../textbook/levels.js';
 import { CHAPTERS, CHAPTER_BY_ID } from '../textbook/toc.js';
 import { CHAPTER_BLOCKS, CHAPTER_SECTIONS, PROBLEMS } from '../textbook/content.js';
 import { collectBlocks, parseInline, parseBlocks, checkAnswer } from '../textbook/markdown.js';
@@ -14,13 +15,13 @@ import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
-export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, open: 30, domino: 35 };
+export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, keep: 60, open: 30, domino: 35 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполните пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', match: 'Сопоставьте пары', sort: 'Разложите по корзинам', calc: 'Быстрый расчёт',
   tiles: 'Соберите определение', curve: 'Сдвиньте кривую', price: 'Найдите цену', point: 'Отметьте равновесие',
-  swipe: 'Мини-игра', rush: 'Мини-игра на время', open: 'Как бы вы поступили?', domino: 'Домино',
+  swipe: 'Мини-игра', rush: 'Мини-игра на время', keep: 'Держи инфляцию', open: 'Как бы вы поступили?', domino: 'Домино',
 };
 /* «Домино»: ученик сам выкладывает цепочку причин; неверное звено роняет домино с этого места,
    разбор — и он продолжает с верного места. Проверяется само, когда цепочка собрана: засчитано,
@@ -30,10 +31,14 @@ export const SELF_CHECK = ['domino'];
    не идёт ни в ошибки, ни в повторение, ни в проверку юнита. */
 export const OPEN_MIN = 15;
 // мини-игры: у них свой счёт внутри, в проверку юнита и повторение они не идут
-export const GAME_KINDS = ['swipe', 'rush'];
+export const GAME_KINDS = ['swipe', 'rush', 'keep'];
 /* Мини-игра урока — одна, на минуту (на алмазном уровне — 45 секунд): карточки идут по кругу,
-   пока не кончится время; засчитана — от восьми верных при точности от 70%. */
+   пока не кончится время; засчитана — чистый счёт от восьми: верных минус ошибок
+   (docs/mechanics.md, «Мини-игра — зачёт»). */
 export const GAME_PASS = 8;
+export const gameNet = (right, answered) => right - (answered - right);
+// сколько ещё чистых верных нужно до зачёта (0 — зачёт есть)
+export const gameLeft = (right, answered) => Math.max(0, GAME_PASS - gameNet(right, answered));
 export const GAME_SECONDS = 60;
 export const DIAMOND_GAME_SECONDS = 45;
 /* Рынок из упражнений с графиком: Q_D = a − bP + dA, Q_S = c + dP + dC. Равновесие — где
@@ -116,7 +121,7 @@ function fromBlock(b) {
     case 'tf': return { ...e, answer: b.answer, wrongWhy: null };
     case 'match': return { ...e, pairs: b.pairs };
     case 'sort': return { ...e, bins: b.bins, items: b.items };
-    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps };
+    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.source ? { source: b.source } : {}) };
     case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
     case 'tiles': return { ...e, solution: b.solution, extra: b.extra };
@@ -228,21 +233,9 @@ function lessonsOf(chapterId) {
 }
 
 /* УРОВНИ: юниты Пути разбиты на пять ступеней, от терминов до полноценного анализа. Путь идёт
-   по уровням, внутри уровня — по порядку глав учебника. */
-export const LEVELS = [
-  { id: 'start', title: 'Начальный', text: 'Вы знаете основные термины: деньги, цена, доход, расход.' },
-  { id: 'basic', title: 'Базовый', text: 'Вы понимаете спрос, предложение, рынок, налоги, инфляцию.' },
-  { id: 'middle', title: 'Средний', text: 'Вы умеете анализировать графики, бюджет, прибыль и экономические ситуации.' },
-  { id: 'advanced', title: 'Продвинутый', text: 'Вы понимаете экономические модели, статистику и сложные процессы.' },
-  { id: 'pro', title: 'Профессиональный', text: 'Вы умеете проводить полноценный экономический анализ.' },
-];
-export const UNIT_LEVEL = {
-  scarcity: 'start',
-  'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic',
-  consumer: 'middle', production: 'middle', costs: 'middle', 'competition-monopoly': 'middle', monopolistic: 'middle', labor: 'middle',
-  oligopoly: 'advanced', gdp: 'advanced', 'is-lm': 'advanced', 'ad-as': 'advanced', phillips: 'advanced',
-  policy: 'pro', growth: 'pro', 'open-economy': 'pro', 'public-debt': 'pro', inequality: 'pro',
-};
+   по уровням, внутри уровня — по порядку глав учебника. Сами уровни — в src/textbook/levels.js:
+   по ним же сгруппировано оглавление учебника. */
+export { LEVELS, UNIT_LEVEL };
 export const LEVEL_BY_ID = Object.fromEntries(LEVELS.map((l, k) => [l.id, { ...l, no: k + 1 }]));
 export const levelOf = (unitId) => LEVEL_BY_ID[UNIT_LEVEL[unitId] || 'pro'];
 const levelRank = (id) => LEVELS.findIndex((l) => l.id === (UNIT_LEVEL[id] || 'pro'));
@@ -302,6 +295,9 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
       const decoys = ex.decoys.map((d, k) => ({ key: `f${k}`, text: d.text, raw: d.raw, why: d.why, link: null }));
       return { ...base, headline: ex.headline, scene: ex.scene, chain: links.map((l) => l.key), deck: shuffle([...links, ...decoys], rand) };
     }
+    case 'keep':
+      return { ...base, title: ex.title, seconds: extra.seconds || ex.seconds || SECONDS.keep,
+        items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, effect: it.effect })), rand) };
     case 'swipe': case 'rush':
       return { ...base, title: ex.title, labels: ex.labels, seconds: extra.seconds || ex.seconds || SECONDS[ex.kind], chart: ex.chart || null, ...(ex.market ? { market: ex.market } : {}),
         items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, side: it.side, effect: it.effect || null })), rand) };
@@ -351,7 +347,7 @@ export function check(inst, resp) {
       const ok = !!resp && Math.abs(resp.q - inst.answer.q) <= ax.qMax * 0.06 && Math.abs(resp.p - inst.answer.p) <= ax.pMax * 0.06;
       return { ok, why: ok ? null : text('Равновесие — там, где кривые пересекаются: объём спроса равен объёму предложения.') };
     }
-    case 'swipe': case 'rush': return { ok: gameOk(inst, resp), why: null };
+    case 'swipe': case 'rush': case 'keep': return { ok: gameOk(inst, resp), why: null };
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
     case 'open': return { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
     case 'domino': {
@@ -362,10 +358,10 @@ export function check(inst, resp) {
     default: return { ok: false, why: null };
   }
 }
-// мини-игра засчитана: не меньше восьми верных при точности от 70%
+// мини-игра засчитана: верных минус ошибок — не меньше восьми
 export function gameOk(inst, resp) {
   if (!resp || !resp.done) return false;
-  return resp.right >= GAME_PASS && resp.right >= 0.7 * resp.answered;
+  return gameLeft(resp.right, resp.answered) === 0;
 }
 /* Очки игры: за верный ответ — 10 × множитель серии (каждые три верных подряд — ещё +1, не
    больше ×4); ошибка серию обнуляет. */
@@ -386,15 +382,27 @@ export function ready(inst, resp) {
     case 'tiles': return Array.isArray(resp) && resp.length > 0;
     case 'curve': return !!(resp.D || resp.S);
     case 'point': return Number.isFinite(resp.q) && Number.isFinite(resp.p);
-    case 'swipe': case 'rush': return !!resp.done;
+    case 'swipe': case 'rush': case 'keep': return !!resp.done;
     case 'open': return String(resp).trim().length >= OPEN_MIN;
     case 'domino': return !!resp.done;
     default: return true;
   }
 }
 // правильный ответ словами — для красной плашки
+/* Формула строкой — для «Правильно: …» и сообщений об ошибке: без TeX-разметки, которую ученик
+   увидел бы как «0{,}3» или «\\cdot». */
+export function texPlain(tex) {
+  let t = String(tex);
+  for (let k = 0; k < 3; k += 1) {
+    t = t.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, '($1)/($2)').replace(/\\sqrt\{([^{}]*)\}/g, '√($1)').replace(/\\text\{([^{}]*)\}/g, '$1')
+      .replace(/\^\{([^{}]*)\}/g, '^$1').replace(/_\{([^{}]*)\}/g, '$1');
+  }
+  return t.replace(/\{,\}/g, ',').replace(/\\cdot/g, '·').replace(/\\times/g, '×').replace(/\\leq?/g, '≤').replace(/\\geq?/g, '≥').replace(/\\approx/g, '≈')
+    .replace(/\\pi/g, 'π').replace(/\\Delta\s?/g, 'Δ').replace(/\\%/g, '%').replace(/\\[,;! ]/g, ' ').replace(/\\left|\\right/g, '')
+    .replace(/\\[a-zA-Z]+/g, '').replace(/[{}]/g, '').replace(/\(([^()+\-·/ ]+)\)\/\(([^()+\-·/ ]+)\)/g, '$1/$2').replace(/\s+/g, ' ').trim();
+}
 export function answerText(inst) {
-  const plain = (nodes) => (nodes || []).map((n) => (n.t === 'text' || n.t === 'math' ? n.v : n.c ? plain(n.c) : '')).join('');
+  const plain = (nodes) => (nodes || []).map((n) => (n.t === 'text' ? n.v : n.t === 'math' ? texPlain(n.v) : n.c ? plain(n.c) : '')).join('');
   switch (inst.kind) {
     case 'choice': case 'gap': return plain(inst.options.find((o) => o.correct).text);
     case 'tf': return inst.answer ? 'Верно' : 'Неверно';
@@ -407,7 +415,7 @@ export function answerText(inst) {
     case 'curve': return shiftLabel('supply-demand', inst.answer);
     case 'price': return `цена ${fmt(inst.answer)}`;
     case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
-    case 'swipe': case 'rush': return `не меньше ${GAME_PASS} верных при точности от 70%`;
+    case 'swipe': case 'rush': case 'keep': return `верных минус ошибок — не меньше ${GAME_PASS}`;
     case 'open': return 'свой ответ — пара продуманных предложений';
     case 'domino': return inst.chain.map((k) => plain(inst.deck.find((c) => c.key === k).text)).join(' → ');
     default: return '';

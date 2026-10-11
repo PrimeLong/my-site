@@ -365,9 +365,26 @@ export const REGION_EVENTS = [
     ] },
 ];
 export const REGION_EVENT_BY_ID = Object.fromEntries(REGION_EVENTS.map((e) => [e.id, e]));
+/* Кто отвечает на событие. Минфин — за то, что стоит денег и касается бюджета (стройки,
+   госзаказ, гарантии вкладов, таможня). Политические события — митинг, подполье, школы на
+   родном языке, армия на пожарах — решает президент: игрок за президента сам, иначе бот по
+   характеру; министру финансов они только видны. */
+const PRESIDENT_EVENTS = new Set(['capital_rally', 'wildfire', 'nordholm_underground', 'halvik_schools']);
+export const regionEventOwner = (id) => (PRESIDENT_EVENTS.has(id) ? 'president' : 'government');
+// ответ бота-президента на политическое событие: популист и реформатор идут навстречу,
+// силовик выбирает жёсткий вариант, технократ — спокойный и недорогой
+export function botPresidentRegion(s, personaId = 'technocrat') {
+  const ev = s.regionEvent ? REGION_EVENT_BY_ID[s.regionEvent.id] : null;
+  if (!ev || regionEventOwner(ev.id) !== 'president') return null;
+  const byTone = (t) => ev.options.find((o) => o.tone === t);
+  const pick = personaId === 'strongman' ? (byTone('hard') || byTone('generous'))
+    : personaId === 'technocrat' ? (byTone('cheap') || byTone('generous'))
+      : (byTone('generous') || byTone('cheap'));
+  return (pick || ev.options.find((o) => o.id === ev.defaultOption)).id;
+}
 // то, что видит интерфейс: без функций, с текстом на момент события
 export function publicRegionEvent(ev, s, q) {
-  return { id: ev.id, region: ev.region, title: ev.title, text: ev.text(s), q, defaultOption: ev.defaultOption,
+  return { id: ev.id, region: ev.region, title: ev.title, text: ev.text(s), q, defaultOption: ev.defaultOption, owner: regionEventOwner(ev.id),
     options: ev.options.map((o) => ({ id: o.id, label: o.label, effect: o.effect, spend: o.spend, shock: o.shock, tone: o.tone, loyalty: o.loyalty || 0 })) };
 }
 
@@ -437,7 +454,7 @@ export function regionStep(s, decisions, difficulty, quarterIndex, noEvents = fa
       regionEvent = publicRegionEvent(ev, s, quarterIndex);
       cooldown = 2;
       const region = regionById(ev.region);
-      out.news.push(['crisis', `${region.name.toUpperCase()}: ${ev.title.toUpperCase()}`, `${regionEvent.text} Решение — за правительством: ответ нужен в следующем квартале.`, 8]);
+      out.news.push(['crisis', `${region.name.toUpperCase()}: ${ev.title.toUpperCase()}`, `${regionEvent.text} Решение — за ${regionEventOwner(ev.id) === 'president' ? 'президентом' : 'правительством'}: ответ нужен в следующем квартале.`, 8]);
     }
   }
   return { ...out, projects, projectsBuilt: built, regionMods: mods, regionShock: shock, regionEvent,

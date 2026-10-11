@@ -783,14 +783,14 @@ const choiceChart = {
 
 /* ---------------- СПРОС: ВДОЛЬ КРИВОЙ И СДВИГ ----------------
    Q = a − b·P. Цена товара двигает точку вдоль кривой, доходы (и всё остальное) сдвигают кривую. */
-const demandParams = (A) => ({ a: num(A, 'a', 100), b: num(A, 'b', 2), P: num(A, 'p', 20) });
+const demandParams = (A) => ({ a: num(A, 'a', 100), b: num(A, 'b', 2), P: num(A, 'p', 20), dA: num(A, 'da', 0) });
 const demandChart = {
   title: 'Движение вдоль кривой и сдвиг кривой',
   controls: (A) => {
     const p = demandParams(A);
     return [
       { id: 'P', label: 'Цена самого товара', min: 0, max: Math.round((p.a / p.b) * 0.9), step: 1, def: p.P, fmt: (v) => `${v} руб.` },
-      { id: 'dA', label: 'Доходы покупателей: сдвиг спроса', min: -Math.round(p.a * 0.3), max: Math.round(p.a * 0.3), step: 5, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
+      { id: 'dA', label: 'Доходы покупателей: сдвиг спроса', min: -Math.round(p.a * 0.3), max: Math.round(p.a * 0.3), step: 5, def: p.dA, fmt: (v) => `${v > 0 ? '+' : ''}${v} ед.` },
     ];
   },
   measure: (A, v) => { const p = demandParams(A); return { Q: Math.max(0, p.a + v.dA - p.b * v.P) }; },
@@ -811,6 +811,40 @@ const demandChart = {
         { x: q, y: v.P, label: 'сейчас', guide: true },
       ],
       readout: [{ label: 'Объём спроса', value: `${r1(q)} ед.` }, { label: 'Что произошло', value: what }],
+    };
+  },
+};
+
+/* ---------------- РЫНОЧНЫЙ СПРОС: СУММА ПО ГОРИЗОНТАЛИ ----------------
+   Три покупателя кофе (как в задаче sd-d1-market): при каждой цене складываем, сколько хочет
+   каждый; кто при этой цене не покупает, добавляет ноль — отсюда изломы рыночной кривой. */
+export const MARKET_BUYERS = [
+  { id: 'T', name: 'Тимур', choke: 250, slope: 25, color: 'teal' },
+  { id: 'G', name: 'Гриша', choke: 300, slope: 25, color: 'gold' },
+  { id: 'O', name: 'Олег', choke: 120, slope: 20, color: 'rust' },
+];
+const buyerQ = (b, P) => Math.max(0, (b.choke - P) / b.slope);
+export const marketQ = (P) => MARKET_BUYERS.reduce((a, b) => a + buyerQ(b, P), 0);
+const marketDemandChart = {
+  title: 'Рыночный спрос — сумма по горизонтали',
+  controls: (A) => [{ id: 'P', label: 'Цена стакана', min: 0, max: 290, step: 10, def: num(A, 'p', 150), fmt: (v) => `${v} руб.` }],
+  measure: (A, v) => ({ Q: marketQ(v.P) }),
+  build: (A, v) => {
+    const top = Math.max(...MARKET_BUYERS.map((b) => b.choke));
+    // изломы рыночной кривой — цены, при которых очередной покупатель входит в рынок
+    const kinks = [top, ...MARKET_BUYERS.map((b) => b.choke).filter((c) => c < top), 0].sort((a, b) => b - a);
+    const q = marketQ(v.P);
+    return {
+      xDomain: [0, Math.ceil(marketQ(0) / 5) * 5], yDomain: [0, 320], xLabel: 'Q, стаканов', yLabel: 'P',
+      curves: [
+        ...MARKET_BUYERS.map((b) => ({ id: b.id, label: b.name, points: [{ x: 0, y: b.choke }, { x: b.choke / b.slope, y: 0 }], color: b.color, dashed: true, labelPos: 'start' })),
+        { id: 'D', label: 'Рынок', points: kinks.map((P) => ({ x: marketQ(P), y: P })), color: 'blue', labelPos: 0.85 },
+      ],
+      points: [{ x: q, y: v.P, label: `${r1(q)}`, guide: true }],
+      readout: [
+        ...MARKET_BUYERS.map((b) => ({ label: b.name, value: `${r1(buyerQ(b, v.P))} ст.` })),
+        { label: 'Рынок: сумма', value: `${r1(q)} ст.` },
+      ],
     };
   },
 };
@@ -984,6 +1018,52 @@ const gdpChart = {
   },
 };
 
+/* ---------------- ЦЕНЫ И ВКЛАД ----------------
+   Корзина стоит p0 и дорожает на π в год; вклад p0 растёт на ставку i в год. Через n лет
+   видно, что купит вклад: его реальная стоимость в сегодняшних ценах = вклад · p0 / цена. */
+const inflParams = (A) => ({ p0: num(A, 'p0', 100), pi: num(A, 'pi', 8), i: num(A, 'i', 10), n: num(A, 'n', 5) });
+export const inflationPath = (p0, pi, i, n) => {
+  const price = p0 * Math.pow(1 + pi / 100, n); const deposit = p0 * Math.pow(1 + i / 100, n);
+  return { price, deposit, real: (deposit * p0) / price, realRate: ((1 + i / 100) / (1 + pi / 100) - 1) * 100 };
+};
+const inflationChart = {
+  title: 'Цены и вклад',
+  vars: (A, v) => {
+    const p = inflParams(A); const r = inflationPath(p.p0, v.pi, v.i, p.n);
+    return { pi: `${r1(v.pi)}%`, i: `${r1(v.i)}%`, n: `${p.n}`, p0: `${p.p0}`, price: r1(r.price), deposit: r1(r.deposit), real: r1(r.real), rr: `${r1(r.realRate).replace('-', '−')}%` };
+  },
+  controls: (A) => {
+    const p = inflParams(A);
+    return [
+      { id: 'pi', label: 'Инфляция в год', min: 0, max: 30, step: 1, def: p.pi, fmt: (v) => `${v}%` },
+      { id: 'i', label: 'Ставка по вкладу в год', min: 0, max: 30, step: 1, def: p.i, fmt: (v) => `${v}%` },
+    ];
+  },
+  measure: (A, v) => { const p = inflParams(A); const r = inflationPath(p.p0, v.pi, v.i, p.n); return { price: r.price, deposit: r.deposit, real: r.real }; },
+  build: (A, v) => {
+    const p = inflParams(A);
+    const price = (t) => p.p0 * Math.pow(1 + v.pi / 100, t);
+    const dep = (t) => p.p0 * Math.pow(1 + v.i / 100, t);
+    const pts = (fn) => Array.from({ length: p.n * 4 + 1 }, (_, k) => ({ x: k / 4, y: fn(k / 4) }));
+    const r = inflationPath(p.p0, v.pi, v.i, p.n);
+    const top = Math.max(r.price, r.deposit, p.p0);
+    return {
+      xDomain: [0, p.n], yDomain: [0, Math.ceil((top * 1.15) / 20) * 20], xLabel: 'год', yLabel: 'руб.',
+      curves: [
+        { id: 'P', label: 'цена корзины', labelPos: 0.85, points: pts(price), color: 'rust' },
+        { id: 'D', label: 'вклад', labelPos: 0.55, points: pts(dep), color: 'blue' },
+      ],
+      points: [{ x: p.n, y: r.price, label: r1(r.price), small: true, below: r.price < r.deposit }, { x: p.n, y: r.deposit, label: r1(r.deposit), small: true, below: r.deposit <= r.price }],
+      readout: [
+        { label: `Корзина через ${p.n} лет`, value: r1(r.price) },
+        { label: `Вклад через ${p.n} лет`, value: r1(r.deposit) },
+        { label: 'Вклад в сегодняшних ценах', value: r1(r.real) },
+        { label: 'Реальная ставка в год', value: `${r1(r.realRate).replace('-', '−')}%` },
+      ],
+    };
+  },
+};
+
 /* ---------------- ДЕНЕЖНЫЙ МУЛЬТИПЛИКАТОР ----------------
    m = (1 + cr)/(cr + rr): cr — наличные к депозитам, rr — резервы к депозитам.
    Денежная масса M = m·B при денежной базе B. Кривая — мультипликатор при разных нормах резервов. */
@@ -1041,6 +1121,7 @@ extChart.measureNames = { Q: 'выпуск', dwl: 'безвозвратные п
 tradeChart.measureNames = { pies: 'пироги' };
 gdpChart.measureNames = { real: 'реальный ВВП', nominal: 'номинальный ВВП' };
 moneyChart.measureNames = { m: 'мультипликатор', M: 'денежная масса' };
+inflationChart.measureNames = { price: 'цена корзины', deposit: 'вклад', real: 'вклад в сегодняшних ценах' };
 
 /* ---------------- КРИВАЯ ФИЛЛИПСА ----------------
    Краткосрочная кривая: π = πᵉ − β·(u − u*) + s. Долгосрочная — вертикаль на u*.
@@ -1166,7 +1247,7 @@ phillipsChart.measureNames = { pi: 'инфляция', u: 'безработиц�
 taylorChart.measureNames = { i: 'ставка', real: 'реальная ставка' };
 solowChart.measureNames = { k: 'капитал на работника', y: 'выпуск на работника', c: 'потребление на работника', i: 'инвестиции на работника' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, 'market-demand': marketDemandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
 /* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
    текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
 const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));

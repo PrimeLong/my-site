@@ -23,6 +23,7 @@ import {
   makeImpulse, askText, getPresPersona, botWarOrder, botCampaignPlan, electionForecast,
   botDefenseOrder, botFrontOrder, DEF_ENEMY, botTreaty, botDiplomacy, neighborEventView, WAR_TARGETS, warTargetOf, SOCIAL_GROUPS, ACTION_GROUP_EFFECTS, leverGroupEffects, botPresident,
   directiveProgress, directiveVerdict, militaryCoupRisk, parliamentBlocksReform, scaleLever, currencyUnionRate, taylorRate,
+  botPresidentRegion, regionEventOwner,
 } from './lib/engine.js';
 import { Audio, stingerFor } from './audio/engine.js';
 import { BookLink } from './booklink.jsx';
@@ -4520,6 +4521,9 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
   /* Решения на карте: стройка и ответ на событие в округе. Принимают их Минфин и
      президент; за остальных это делает бот-Минфин. Живут квартал. */
   const [regionPlan, setRegionPlan] = useState({ startProject: null, regionResponse: null });
+  // политическое событие в области (митинг, подполье, школы, пожары) — решение президента, не Минфина
+  const presidentEvent = !!(economy.regionEvent && regionEventOwner(economy.regionEvent.id) === 'president');
+  const canAnswerRegion = presidentEvent ? isPresident : canPlanMap;
   // приказ армии на квартал в наступательной войне — отдаёт его президент
   const [warOrder, setWarOrder] = useState(null);
   // штабы кампании по областям на этот квартал — их расставляет президент
@@ -4752,6 +4756,10 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         groupResponse: regionPlan.groupResponse || null,
         // программа интеграции новых земель: не трогали — продолжается прошлая
         integrate: Array.isArray(regionPlan.integrate) ? regionPlan.integrate : null };
+    }
+    // политическое событие в области решает президент: игрок-президент — сам, иначе бот по характеру
+    if (presidentEvent) {
+      eff = { ...eff, regionResponse: isPresident ? (regionPlan.regionResponse || null) : botPresidentRegion(economy, presEnabled ? presPersonaId : 'technocrat') };
     }
     let action = botRole === 'central_bank' ? cbAction : botRole === 'ministry_finance' ? mofAction : cbAction;
     // официальный запрос второму ведомству
@@ -5273,7 +5281,7 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
           president: presEnabled && presidentPlan && presidentPlan.directive && presidentPlan.directive.toPlayer ? presidentPlan : null })} />
         <RegimeBanner economy={economy} crisisOnly />
         {economy.regionEvent && view !== 'map' && (
-          <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canPlanMap}
+          <RegionEventStrip event={economy.regionEvent} answered={!!regionPlan.regionResponse} canAnswer={canAnswerRegion}
             onOpen={() => { Audio.play('tab'); setView('map'); }} />
         )}
         {/* событие от соседа — напоминание только президенту: отвечает он */}
@@ -5366,6 +5374,8 @@ export function GameScreen({ setup, initial, onRestart, onLoadState, theme, setT
         <Suspense fallback={<ChartFallback />}>
           <CountryMap economy={economy} plan={regionPlan} onPlan={canPlanMap && !defeat ? setRegionPlan : null}
             planner={`Минфин (бот, ${getMofPersona(mofPersonaId).name.toLowerCase()})`}
+            onEventPlan={presidentEvent ? (isPresident && !defeat ? setRegionPlan : null) : undefined}
+            eventPlanner={presidentEvent ? (presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'президент') : undefined}
             warOrder={warOrder} onWarOrder={!defeat && (isPresident || (canCommandDefense && economy.warType !== 'offensive')) ? setWarOrder : null}
             warPlanner={presEnabled ? `президент (бот, ${getPresPersona(presPersonaId).name.toLowerCase()})` : 'Генштаб по уставу'}
             campaignPlan={campaignPlan} onCampaignPlan={isPresident && !defeat ? setCampaignPlan : null}

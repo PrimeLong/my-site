@@ -29,7 +29,8 @@ const MAX_HINTED = 60;
    seen — сколько раз ученик встречал каждое упражнение (чтобы реже повторять одно и то же);
    best — рекорды мини-игр (очки); lessons[id].diamond — когда урок взят на алмазном уровне;
    boost — до какого времени действует купленный «двойной опыт»;
-   piggy / piggyOut — вклады в копилку Инфли { время вклада: монеты } и забранные { время вклада: выдано }. */
+   piggy / piggyOut — вклады в копилку Инфли { время вклада: монеты } и забранные { время вклада: выдано };
+   garden / harvest — сад Инфли: посадки { время посадки: 'растение@грядка' } и собранные { время посадки: когда собрали }. */
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
@@ -37,7 +38,7 @@ export const emptyLearn = () => ({
   topics: {}, recent: '', recentAt: 0, daily: {},
   coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
-  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {},
+  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, garden: {}, harvest: {},
 });
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
@@ -388,6 +389,18 @@ const piggyMap = (v) => {
   Object.keys(obj(v)).filter((k) => /^\d{10,15}$/.test(k)).sort().slice(-40).forEach((k) => { const x = cnt(v[k], 1e6); if (x) out[k] = x; });
   return out;
 };
+// сад: ключ — время посадки (мс); посадка — «растение@грядка», сбор — когда собрали; храним последние двести
+const TIME_KEY = /^\d{10,15}$/;
+const gardenMap = (v) => {
+  const out = {};
+  Object.keys(obj(v)).filter((k) => TIME_KEY.test(k) && typeof v[k] === 'string' && /^[a-z]{2,20}@\d{1,2}$/.test(v[k])).sort().slice(-200).forEach((k) => { out[k] = v[k]; });
+  return out;
+};
+const harvestMap = (v) => {
+  const out = {};
+  Object.keys(obj(v)).filter((k) => TIME_KEY.test(k)).sort().slice(-200).forEach((k) => { const x = cnt(v[k], 1e14); if (x) out[k] = x; });
+  return out;
+};
 // переименованные вещи лавки: купленное остаётся у ученика под новым именем
 const RENAMED = { goldbar: 'balloon' };
 const renamed = (m) => Object.fromEntries(Object.entries(m).map(([k, v]) => [RENAMED[k] || k, v]));
@@ -419,7 +432,7 @@ function normalizeProgram(r) {
     claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
-    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut),
+    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest),
   };
 }
 // слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
@@ -442,6 +455,9 @@ function mergeProgram(x, y) {
     policyAt: Math.max(x.policyAt, y.policyAt), policyOff: Math.max(x.policyOff, y.policyOff), policyLapse: Math.max(x.policyLapse, y.policyLapse), premiums: maxMap(x.premiums, y.premiums), monthPlan: mergeMonthPlan(x.monthPlan, y.monthPlan),
     seen: maxMap(x.seen, y.seen), best: maxMap(x.best, y.best), boost: Math.max(x.boost, y.boost),
     piggy: maxMap(x.piggy, y.piggy), piggyOut: maxMap(x.piggyOut, y.piggyOut),
+    // посадки с одним временем одинаковы; при расхождении побеждает меньшая строка — слияние симметрично
+    garden: Object.fromEntries([...new Set([...Object.keys(x.garden), ...Object.keys(y.garden)])].map((k) => [k, [x.garden[k], y.garden[k]].filter(Boolean).sort()[0]])),
+    harvest: minTs(x.harvest, y.harvest),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),

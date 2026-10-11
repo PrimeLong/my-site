@@ -5,6 +5,8 @@
    Ссылки на учебники даны по названию главы, а не по номеру: номера меняются от
    издания к изданию (и в переводах), названия — почти нет. В скобках — оригинал. */
 
+import { LEVELS, UNIT_LEVEL } from './levels.js';
+
 export const BOOKS = {
   mankiwPrinciples: 'Н. Г. Мэнкью. «Принципы экономикс»',
   mankiwMacro: 'Н. Г. Мэнкью. «Макроэкономика»',
@@ -88,6 +90,12 @@ export const PARTS = [
           { book: 'mankiwPrinciples', chapter: '«Денежная система» (The Monetary System) и «Рост денежной массы и инфляция» (Money Growth and Inflation)' },
           { book: 'mankiwMacro', chapter: '«Денежная система: что это такое и как она работает» (The Monetary System: What It Is and How It Works) и «Инфляция: причины, последствия и социальные издержки» (Inflation: Its Causes, Effects, and Social Costs)' },
         ] },
+      { id: 'inflation', title: 'Инфляция', status: 'ready',
+        summary: 'Что такое инфляция и как её считают по корзине, номинальные и реальные величины, кто выигрывает и проигрывает, инфляция спроса и издержек, ключевая ставка и цель по инфляции.',
+        refs: [
+          { book: 'mankiwPrinciples', chapter: '«Измерение стоимости жизни» (Measuring the Cost of Living) и «Рост денежной массы и инфляция» (Money Growth and Inflation)' },
+          { book: 'mankiwMacro', chapter: '«Инфляция: причины, последствия и социальные издержки» (Inflation: Its Causes, Effects, and Social Costs)' },
+        ] },
       { id: 'is-lm', title: 'Модель IS-LM', status: 'ready',
         summary: 'Кейнсианский крест, кривые IS и LM, бюджетная и денежная политика, вытеснение, ловушка ликвидности, вывод кривой AD.',
         refs: [
@@ -137,8 +145,19 @@ export const PARTS = [
 
 export const CHAPTERS = PARTS.flatMap((p) => p.chapters.map((c) => ({ ...c, part: p.id })));
 export const CHAPTER_BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c]));
-// номер главы в сквозной нумерации
-export const chapterNo = (id) => CHAPTERS.findIndex((c) => c.id === id) + 1;
+/* Порядок чтения — как на Пути: по уровням (Начальный, Базовый…), внутри уровня — по
+   оглавлению выше. Оглавление учебника сгруппировано по тем же уровням; главы «в работе» в
+   него не попадают — они в отдельном свёрнутом списке «Готовятся». */
+const levelRank = (id) => LEVELS.findIndex((l) => l.id === (UNIT_LEVEL[id] || 'pro'));
+export const READY_CHAPTERS = CHAPTERS.map((c, k) => ({ c, k })).filter(({ c }) => c.status === 'ready')
+  .sort((a, b) => levelRank(a.c.id) - levelRank(b.c.id) || a.k - b.k).map(({ c }) => c);
+export const PLANNED_CHAPTERS = CHAPTERS.filter((c) => c.status !== 'ready');
+export const TOC_LEVELS = LEVELS.map((l, k) => ({ ...l, no: k + 1, chapters: READY_CHAPTERS.filter((c) => (UNIT_LEVEL[c.id] || 'pro') === l.id) }))
+  .filter((l) => l.chapters.length);
+export const chapterLevel = (id) => TOC_LEVELS.find((l) => l.chapters.some((c) => c.id === id)) || null;
+// номер главы — в порядке чтения: сначала готовые по уровням, потом те, что в работе
+const NUMBERED = [...READY_CHAPTERS, ...PLANNED_CHAPTERS];
+export const chapterNo = (id) => NUMBERED.findIndex((c) => c.id === id) + 1;
 
 // приложения — после глав, в одном порядке чтения с ними
 export const APPENDICES = [

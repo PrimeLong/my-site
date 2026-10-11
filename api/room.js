@@ -14,7 +14,7 @@ import { makeInitialEconomy, defaultDecisions, simulateQuarter, botCentralBank, 
   pickPromises, evaluatePromise, personaAfterElection, getCbPersona, getMofPersona,
   CB_PERSONAS, MOF_PERSONAS, PRESIDENT_PERSONAS, pressSpeakerSeat, PRESS_OPTION_IDS, scaleLever, SCENARIOS, REGION_PROJECTS, projectBlocker, WAR_STANCES, warObjectiveOpen, botWarOrder,
   sanitizeCampaignPlan, botCampaignPlan, sanitizeIntegration, DEFENSE_STANCES, sanitizeTreaty, botTreaty, botDefenseOrder, botFrontOrder, DEF_FRONT,
-  sanitizeDiplomacy, botDiplomacy } from './_lib/engine.js';
+  sanitizeDiplomacy, botDiplomacy, botPresidentRegion, regionEventOwner } from './_lib/engine.js';
 
 /* Места в комнате закреплены за профилем. Вышедший игрок может вернуться только на
    своё место и не раньше чем через REJOIN_COOLDOWN; пока он не вернулся, место
@@ -334,6 +334,12 @@ export function resolveQuarter(room) {
   const presRegion = subs.president && subs.president.president ? subs.president.president.region : null;
   eff.startProject = (presRegion && presRegion.startProject) || mofDecisions.startProject || null;
   eff.regionResponse = (presRegion && presRegion.regionResponse) || mofDecisions.regionResponse || null;
+  // политическое событие (митинг, подполье, школы, пожары) решает президент, а не Минфин:
+  // живой президент — сам, иначе бот-президент по характеру (без президента — технократ)
+  if (room.economy.regionEvent && regionEventOwner(room.economy.regionEvent.id) === 'president') {
+    eff.regionResponse = room.seats.president ? ((presRegion && presRegion.regionResponse) || null)
+      : botPresidentRegion(room.economy, room.president ? room.president.persona : 'technocrat');
+  }
   eff.integrate = presRegion && presRegion.integrate != null ? presRegion.integrate : mofDecisions.integrate ?? null;
   eff.groupResponse = (presRegion && presRegion.groupResponse) || mofDecisions.groupResponse || null;
   // наступательная война: приказ живого президента, иначе — бота-президента по характеру
