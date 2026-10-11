@@ -8,6 +8,12 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
 
+// Мир и Профиль — под вкладкой «⋯»: касание открывает выбор из двух
+async function openMore(page, id) {
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  await page.getByTestId('more-menu').locator(`[data-tab="${id}"]`).click();
+}
+
 const DIR = 'screens';
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
@@ -320,7 +326,7 @@ for (const theme of ['light', 'dark']) {
       await expect(page.getByTestId('lesson-result')).toBeVisible();
       await shot(page, '42-placement-result', theme, { wait: 1500 });
       await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
-      await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+      await openMore(page, 'profile');
       await page.getByTestId('prof-program').scrollIntoViewIfNeeded();
       await shot(page, '43-profile-program', theme);
       await page.getByTestId('achievements').scrollIntoViewIfNeeded();
@@ -353,7 +359,7 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '49-report-thanks', theme);
       await page.getByRole('button', { name: 'Продолжить' }).click();
       await exitLesson(page);
-      await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+      await openMore(page, 'profile');
       await page.getByTestId('prof-reports').click();
       await shot(page, '50-reports', theme);
       // юнит 1: «История» Гриши и калькулятор в расчёте
@@ -468,9 +474,11 @@ for (const theme of ['light', 'dark']) {
       test.setTimeout(120_000);
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
-      const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
+      const tab = (id) => (id === 'world' || id === 'profile' ? openMore(page, id) : page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click());
       await page.getByTestId('tasks-card').click();
       await shot(page, '26-tasks', theme);
+      await tab('league');
+      await shot(page, '26b-league', theme);
       await tab('profile');
       await shot(page, '27-profile', theme);
       await shot(page, '28-profile-full', theme, { full: true });

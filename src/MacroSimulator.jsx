@@ -8,7 +8,7 @@ import {
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
-  Route, UserRound, Map as MapIcon, ShoppingBag,
+  Route, UserRound, Map as MapIcon, ShoppingBag, Ellipsis,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -1153,24 +1153,58 @@ function MenuTicker() {
   );
 }
 
-/* Нижняя панель главного экрана: пять вкладок — Путь, Учебник, Мир, Лавка, Профиль; до каждой
-   одно касание, на телефоне — под большим пальцем. «Задания» (задания дня, испытание месяца и
-   практика) — карточка наверху Пути, а не вкладка. Урок
-   открывается поверх неё во весь экран. Открытая вкладка — не кнопка перехода: путь назад у
-   подэкранов (учебник поверх вкладки) один — их собственный «назад». */
-const NAV_TABS = [
-  { id: 'path', icon: Route, label: 'Путь' },
-  { id: 'book', icon: BookOpenText, label: 'Учебник' },
-  { id: 'world', icon: MapIcon, label: 'Мир' },
-  { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
-  { id: 'profile', icon: UserRound, label: 'Профиль' },
+/* Нижняя панель главного экрана: Путь, Учебник, Лиги, Лавка и «⋯» — до каждой одно касание, на
+   телефоне — под большим пальцем. «⋯» открывает выбор из двух: Мир или Профиль; пока открыт один
+   из них, отмечена «⋯» с его названием. «Задания» (задания дня, испытание месяца и практика) —
+   карточка наверху Пути, а не вкладка. Урок открывается поверх неё во весь экран. Открытая
+   вкладка — не кнопка перехода: путь назад у подэкранов (учебник поверх вкладки) один — их
+   собственный «назад». */
+const MORE_TABS = [
+  { id: 'world', icon: MapIcon, label: 'Мир', text: 'Игра: партия, Лаборатория, Своё дело' },
+  { id: 'profile', icon: UserRound, label: 'Профиль', text: 'Серия, печати, настройки, аккаунт' },
 ];
 function BottomNav({ tab, onTab, onReselect = null }) {
   const learning = tab !== 'world';
+  const [menu, setMenu] = useState(false);
+  const inMore = MORE_TABS.find((t) => t.id === tab);
+  const tabs = [
+    { id: 'path', icon: Route, label: 'Путь' },
+    { id: 'book', icon: BookOpenText, label: 'Учебник' },
+    { id: 'league', icon: Trophy, label: 'Лиги' },
+    { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
+    { id: 'more', icon: Ellipsis, label: inMore ? inMore.label : 'Ещё', menu: true, open: menu },
+  ];
+  useEffect(() => {
+    if (!menu) return undefined;
+    const esc = (e) => { if (e.key === 'Escape') setMenu(false); };
+    const away = (e) => { if (!e.target.closest || !e.target.closest('[data-testid="bottom-nav"]')) setMenu(false); };
+    document.addEventListener('keydown', esc); document.addEventListener('pointerdown', away);
+    return () => { document.removeEventListener('keydown', esc); document.removeEventListener('pointerdown', away); };
+  }, [menu]);
+  const go = (t) => {
+    Audio.prime(); Audio.play('tab');
+    if (t === 'more') { setMenu((x) => !x); return; }
+    setMenu(false); onTab(t);
+  };
   // та же панель из дизайн-системы: в обучении — бумага (или тушь), в «Мире» — его тёмная тема
   return (
     <DsRoot theme={dsThemeId()} world={learning ? null : COLOR} style={{ background: 'none' }}>
-      <Tabs tabs={NAV_TABS} active={tab} onTab={(t) => { Audio.prime(); Audio.play('tab'); onTab(t); }} onReselect={onReselect ? (t) => { Audio.play('tab'); onReselect(t); } : null} />
+      <Tabs tabs={tabs} active={inMore ? 'more' : tab} onTab={go}
+        onReselect={(t) => { if (t === 'more') { go('more'); return; } if (onReselect) { Audio.play('tab'); onReselect(t); } }}>
+        {menu && (
+          <div className="ds-more" role="menu" aria-label="Ещё" data-testid="more-menu">
+            {MORE_TABS.map((t) => {
+              const Icon = t.icon; const on = tab === t.id;
+              return (
+                <button key={t.id} type="button" role="menuitem" data-tab={t.id} aria-current={on ? 'page' : undefined} data-nav-target={on ? undefined : `tab:${t.id}`}
+                  onClick={() => { setMenu(false); if (on) { if (onReselect) onReselect(t.id); return; } Audio.play('tab'); onTab(t.id); }}>
+                  <Icon size={22} aria-hidden="true" /><span>{t.label}<small>{t.text}</small></span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Tabs>
     </DsRoot>
   );
 }
@@ -2191,7 +2225,7 @@ export default function MacroSimulator() {
                  Путь — к рекомендованному уроку, лавка и профиль — наверх */
               if (t === 'book' && !bookOver) setBookHome((k) => k + 1);
               if (t === 'path') setPathHome((k) => k + 1);
-              if ((t === 'shop' || t === 'profile') && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+              if ((t === 'shop' || t === 'profile' || t === 'league') && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
             }} />
         </div>
       );

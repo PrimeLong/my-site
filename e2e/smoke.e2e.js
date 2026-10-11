@@ -24,7 +24,16 @@ async function gotoApp(page, path = '/', tab = 'world') {
   await page.goto(path, { waitUntil: 'networkidle' });
   if (tab && tab !== 'path' && await page.getByTestId('bottom-nav').isVisible()) await openTab(page, tab);
 }
-const openTab = (page, tab) => page.getByTestId('bottom-nav').locator(`[data-tab="${tab}"]`).click();
+/* вкладки нижней панели; Мир и Профиль — под «⋯»: касание открывает выбор из двух */
+async function openTab(page, tab) {
+  const nav = page.getByTestId('bottom-nav');
+  if (tab === 'world' || tab === 'profile') {
+    await nav.locator('[data-tab="more"]').click();
+    await nav.getByTestId('more-menu').locator(`[data-tab="${tab}"]`).click();
+    return;
+  }
+  await nav.locator(`[data-tab="${tab}"]`).click();
+}
 // «Задания» — не вкладка, а экран поверх Пути: вкладка «Путь» (повторное нажатие закрывает
 // открытый подэкран) и карточка «Задания» наверху
 async function openTasks(page) {
@@ -1858,7 +1867,9 @@ test('лавка → сад: урожай с редкостью — продат
   expect(errors).toEqual([]);
 });
 
-test('лига недели: место в таблице, зоны, награда за прошлую неделю — один раз', async ({ page }) => {
+test('лиги: отдельная вкладка — медаль, что нужно сейчас, все лиги, три зоны, награда — окном и один раз', async ({ page }) => {
+  // среда: неделя лиги идёт (понедельник — суббота), в воскресенье — перерыв
+  await page.clock.setFixedTime(new Date('2026-10-14T12:00:00'));
   await withTestFlag(page);
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;
@@ -1866,28 +1877,56 @@ test('лига недели: место в таблице, зоны, награ�
     // восемь дней назад — много опыта (первое место прошлой недели), сегодня — немного
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, xp: { [day(-8)]: 3000, [day(0)]: 40 } } }));
   });
-  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  await expect(page.getByTestId('tasks-card-text')).toContainText('Серебряная лига');
-  await page.getByTestId('tasks-card').click();
+  const { errors } = await openApp(page, '/', '{}', { tab: 'league' });
   const lg = page.getByTestId('league');
   await expect(lg).toHaveAttribute('data-league', 'silver');
+  await expect(lg).toHaveAttribute('data-rest', 'false');
   await expect(lg.getByTestId('league-title')).toHaveText('Серебряная лига');
   await expect(lg.getByTestId('league-status')).toContainText('40 опыта');
+  await expect(lg.getByTestId('league-when')).toContainText('4 дня до итогов');
+  await expect(lg.getByTestId('league-goal')).toHaveAttribute('data-kind', /stay|down|up/);
   await expect(lg.getByTestId('league-note')).toContainText('боты');
+  // все семь лиг: Бронзовая пройдена, Серебряная — здесь, дальше — закрыты
+  await expect(lg.getByTestId('league-tier')).toHaveCount(7);
+  await expect(lg.locator('[data-testid=league-tier][data-tier="bronze"]')).toHaveAttribute('data-state', 'passed');
+  await expect(lg.locator('[data-testid=league-tier][data-tier="silver"]')).toHaveAttribute('data-state', 'now');
+  await expect(lg.locator('[data-testid=league-tier][data-tier="diamond"]')).toHaveAttribute('data-state', 'locked');
+  // таблица — вся группа, в трёх зонах: повышение, «остаётесь», понижение
+  await expect(lg.getByTestId('league-row')).toHaveCount(20);
+  await expect(lg.getByTestId('league-zone')).toHaveCount(3);
+  await expect(lg.locator('[data-testid=league-zone][data-zone="stay"]')).toContainText('Остаётесь в лиге');
+  await expect(lg.locator('[data-testid=league-zone][data-zone="up"] [data-testid=league-row]')).toHaveCount(5);
   await expect(lg.locator('[data-testid=league-row][data-me="true"]')).toHaveCount(1);
-  // награда за первое место в Бронзовой — 50 монет, забирается один раз
+  // награда за первое место в Бронзовой — 50 монет: окно вручения, один раз
   await expect(lg.getByTestId('league-reward')).toContainText('1-е место в Бронзовой лиге');
   await lg.getByTestId('league-claim').click();
-  await expect(lg.getByTestId('league-msg')).toContainText('+50 монет');
+  const sheet = page.getByTestId('league-reward-sheet');
+  await expect(sheet.getByTestId('league-msg')).toContainText('+50 монет');
+  await expect(sheet).toContainText('Повышение');
+  await sheet.getByTestId('league-reward-ok').click();
   await expect(lg.getByTestId('league-reward')).toHaveCount(0);
   await expect(lg.getByTestId('league-last')).toContainText('повышение в Серебряную');
-  // вся таблица — двадцать учеников
-  await lg.getByTestId('league-all').click();
-  await expect(lg.getByTestId('league-row')).toHaveCount(20);
   await expectNoSidewaysScroll(page);
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByTestId('tasks-card').click();
+  await openTab(page, 'league');
   await expect(page.getByTestId('league').getByTestId('league-reward')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('лиги: в воскресенье перерыв — итоги недели, опыт в лигу не идёт', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-18T12:00:00'));
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    // вся неделя с понедельника — много опыта: первое место и повышение
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, xp: { '2026-10-12': 3000 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'league' });
+  const lg = page.getByTestId('league');
+  await expect(lg).toHaveAttribute('data-rest', 'true');
+  await expect(lg.getByTestId('league-when')).toContainText('Перерыв');
+  await expect(lg.getByTestId('league-goal')).toContainText('повышение в Серебряную лигу');
+  await expect(lg.getByTestId('league-reward')).toContainText('1-е место в Бронзовой лиге');
   expect(errors).toEqual([]);
 });
 
@@ -2454,7 +2493,9 @@ test('навигация: у каждого экрана один «назад»
   await expect(page.getByTestId('tb-toc')).toHaveCount(0);
   await clickBack(page);
   await expectScreen(page, 'path', seen);
-  // лавка — вкладка нижней панели; Путь → сундук → назад
+  // лиги и лавка — вкладки нижней панели; Путь → сундук → назад
+  await openTab(page, 'league');
+  await expectScreen(page, 'league', seen);
   await openTab(page, 'shop');
   await expectScreen(page, 'shop', seen);
   await openTab(page, 'path');
@@ -2923,10 +2964,17 @@ test('узкий телефон 320 px: Путь без бокового скр�
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await expect(page.getByTestId('path')).toBeVisible();
   await expectNoSidewaysScroll(page);
-  const nav = await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').boundingBox();
+  // последняя вкладка «⋯» целиком на экране; её меню — тоже
+  const nav = await page.getByTestId('bottom-nav').locator('[data-tab="more"]').boundingBox();
   expect(nav.x + nav.width).toBeLessThanOrEqual(321);
-  await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab="profile"]')).toHaveAttribute('aria-current', 'page');
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  const menu = await page.getByTestId('more-menu').boundingBox();
+  expect(menu.x).toBeGreaterThanOrEqual(0);
+  expect(menu.x + menu.width).toBeLessThanOrEqual(321);
+  await page.getByTestId('more-menu').locator('[data-tab="profile"]').click();
+  await expect(page.getByTestId('learn-profile')).toBeVisible();
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab="more"]')).toContainText('Профиль');
   expect(errors).toEqual([]);
 });
 

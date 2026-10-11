@@ -15,7 +15,9 @@ export const SCREENS = {
   path: { root: true, title: 'Путь', testid: 'path' },
   // вкладка «Учебник»: оглавление — корень; глава из оглавления — «назад» в оглавление
   bookTab: { root: true, title: 'Учебник', testid: 'book-tab' },
+  league: { root: true, title: 'Лиги', testid: 'league' },
   shop: { root: true, title: 'Лавка', testid: 'shop' },
+  // Мир и Профиль — под вкладкой «⋯»: выбор из двух
   world: { root: true, title: 'Мир', testid: 'world' },
   profile: { root: true, title: 'Профиль', testid: 'learn-profile' },
   // поверх вкладок
