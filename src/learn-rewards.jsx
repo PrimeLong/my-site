@@ -12,14 +12,14 @@ import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import { ShopSwitch, GardenView } from './learn-garden.jsx';
-import { leagueLine } from './learn-league.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
+  goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
 import {
-  dayOf, addDays, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday,
+  dayOf, addDays, streak, ownedFreezes, weekDots, setProfile, PROFILE_GOALS, PROFILE_MINUTES, PROFILE_GOAL_LABEL, goalMinutes, goalToday, pendingGoal,
 } from './textbook/learn-state.js';
 
 export const REWARD_CSS = `
@@ -38,6 +38,25 @@ export const REWARD_CSS = `
   .rw-item { border: 1px solid var(--ds-rule2); border-radius: 4px; background: var(--ds-card); padding: 10px 10px 12px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px;
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule); }
   .rw-item[data-on="true"] { box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--u); }
+  /* гардероб — примерочная: Инфля в зеркале, вкладки по местам, плитки купленных вещей */
+  .rw-ward { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 520px) { .rw-ward { grid-template-columns: 170px minmax(0, 1fr); align-items: start; } }
+  .rw-mirror { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .rw-mirror-glass { width: 150px; height: 176px; border-radius: 75px 75px 18px 18px; display: grid; place-items: center;
+    background: radial-gradient(ellipse at 40% 30%, color-mix(in srgb, #fff 55%, var(--ds-card)), var(--ds-card2) 70%);
+    border: 6px solid #B8923A; box-shadow: inset 0 0 0 2px rgba(255,255,255,.6), 0 0 0 2px #7D5A10, 0 6px 14px var(--ds-shade); }
+  .rw-worn { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 100%; }
+  .rw-worn span { font: 12px var(--ds-sans); padding: 2px 8px; border-radius: 999px; background: var(--ds-card2); color: var(--ds-ink2); }
+  .rw-slots { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .rw-slots button { border: 1.5px solid var(--ds-rule2); background: var(--ds-card); border-radius: 999px; padding: 7px 12px; min-height: 40px; font: 700 13.5px var(--ds-sans); color: var(--ds-ink2); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  .rw-slots button[aria-selected="true"] { border-color: var(--u); color: var(--u-ink); background: var(--ds-sel); }
+  .rw-slots button:disabled { opacity: .45; cursor: default; }
+  .rw-slots b { font: 700 12px var(--ds-mono); }
+  .rw-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .rw-tile { border: 1.5px solid var(--ds-rule2); border-radius: 8px; background: var(--ds-card); padding: 6px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font: 700 12.5px/1.2 var(--ds-sans); color: var(--ds-ink); position: relative; min-height: 112px; }
+  .rw-tile[aria-pressed="true"] { border-color: var(--u); box-shadow: 0 0 0 2px color-mix(in srgb, var(--u) 35%, transparent); }
+  .rw-tile .rw-on { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--u); color: #fff; display: grid; place-items: center; }
+  .rw-tile.none { color: var(--ds-ink3); justify-content: center; border-style: dashed; }
   .rw-price { font: 700 14px var(--ds-mono); }
   .rw-price small { font: 12px var(--ds-sans); color: var(--ds-ink3); margin-left: 4px; }
   .rw-dots { display: flex; justify-content: center; gap: 8px; }
@@ -108,7 +127,7 @@ export function TasksEntry({ learn, onOpen, now = Date.now() }) {
   const m = monthChallenge(learn, now);
   const done = quests.filter((q) => q.done).length;
   const goalOk = g.done >= g.goal;
-  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · ${leagueLine(learn, now)} · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
+  const text = `Задания дня: ${done} из 3 · цель ${Math.min(g.done, g.goal)}/${g.goal} мин · испытание месяца ${m.claimed ? 'выполнено' : `${m.have} из ${m.target}`}`;
   return (
     <button type="button" className="ds-card ds-card--button rw-tasks-entry" data-testid="tasks-card" data-nav-target="tasks" aria-label={`Задания. ${text}`}
       onClick={() => { Audio.play('paper'); onOpen(); }}>
@@ -142,7 +161,7 @@ export function QuestsCard({ learn, now = Date.now(), testid = 'quests' }) {
           <Bar have={g.done} target={g.goal} ok={g.done >= g.goal} />
         </div>
         <div style={{ textAlign: 'right' }}>
-          <CoinTag n={`+${COIN.goal}`} />
+          <CoinTag n={`+${goalCoins(g.goal)}`} />
           <div className="ds-num ds-faint" style={{ fontSize: 12 }}>{Math.min(g.done, g.goal)}/{g.goal} мин</div>
         </div>
       </div>
@@ -304,6 +323,58 @@ function PolicyCard({ learn, update, now, b, onMsg }) {
     </Card>
   );
 }
+/* ГАРДЕРОБ — примерочная: Инфля в зеркале во всём надетом, вкладки по местам (голова, лицо,
+   шея, в руке, рамка) и плитки купленных вещей. Касание плитки надевает вещь или снимает её,
+   «Без вещи» — снять с этого места, «Снять всё» — всё сразу. Открыто место последней покупки. */
+function Wardrobe({ learn, wear, onWear }) {
+  const owned = learn.owned || {};
+  const list = OUTFITS.filter((o) => owned[o.id]);
+  const slots = Object.keys(SLOT_LABEL);
+  const latest = list.slice().sort((a, b) => (owned[b.id] || 0) - (owned[a.id] || 0))[0];
+  const [slot, setSlot] = useState(latest ? latest.slot : slots[0]);
+  // новая покупка — сразу её место: купленную вещь видно и можно примерить
+  const latestId = latest ? latest.id : null;
+  useEffect(() => { if (latest) setSlot(latest.slot); }, [latestId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const here = list.filter((o) => o.slot === slot);
+  const worn = slots.filter((k) => wear[k]).map((k) => OUTFIT_BY_ID[wear[k]]).filter(Boolean);
+  return (
+    <Card style={{ margin: '10px 0 16px' }} data-testid="shop-wardrobe">
+      <div className="rw-ward">
+        <div className="rw-mirror">
+          <div className="rw-mirror-glass"><Mascot mood="joy" size={110} outfit={wear} label={worn.length ? `Инфля в зеркале: ${worn.map((o) => o.title).join(', ')}` : 'Инфля в зеркале, без нарядов'} /></div>
+          <div className="rw-worn" data-testid="wardrobe-worn">{worn.length ? worn.map((o) => <span key={o.id}>{o.title}</span>) : <span>ничего не надето</span>}</div>
+          {worn.length > 0 && <Button small variant="ghost" data-testid="wardrobe-clear" onClick={() => slots.forEach((k) => wear[k] && onWear(k, null))}>Снять всё</Button>}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          {list.length ? (
+            <>
+              <div className="rw-slots" role="tablist" aria-label="Место вещи">
+                {slots.map((k) => {
+                  const n = list.filter((o) => o.slot === k).length;
+                  return <button key={k} type="button" role="tab" aria-selected={slot === k} disabled={!n} data-slot={k} onClick={() => { Audio.play('tick'); setSlot(k); }}>{SLOT_LABEL[k]} <b>{n}</b></button>;
+                })}
+              </div>
+              <div className="rw-tiles" role="group" aria-label={`Вещи: ${SLOT_LABEL[slot].toLowerCase()}`}>
+                <button type="button" className="rw-tile none" aria-pressed={!wear[slot]} data-testid="wardrobe-none" onClick={() => onWear(slot, null)}>Без вещи</button>
+                {here.map((o) => {
+                  const on = wear[o.slot] === o.id;
+                  return (
+                    <button key={o.id} type="button" className="rw-tile" aria-pressed={on} data-item={o.id} data-on={String(on)} onClick={() => onWear(o.slot, on ? null : o.id)}>
+                      {on && <span className="rw-on" aria-hidden="true"><Check size={13} /></span>}
+                      <Mascot mood="hello" size={50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
+                      <span>{o.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : <div className="ds-sub" style={{ fontSize: 14.5 }}>Пока пусто — купленные вещи будут здесь, и их можно будет примерить.</div>}
+          <div className="ds-sub" style={{ fontSize: 13, marginTop: 10 }} data-testid="wardrobe-count">В гардеробе вещей: {list.length} из {OUTFITS.length}.</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
 export function ShopView({ learn, update, now = Date.now() }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
@@ -323,7 +394,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
     setMsg({ ok: true, text: id === BOOST.id ? `Двойной опыт на ${BOOST.minutes} минут — за ${r.price} ${coinsWord(r.price)}.` : `Куплено за ${r.price} ${coinsWord(r.price)} — Инфля уже в обновке.` });
   };
   const toggle = (o) => { Audio.play('paper'); update((s) => setWear(s, o.slot, wear[o.slot] === o.id ? null : o.id, now)); };
-  const ownedList = OUTFITS.filter((o) => (learn.owned || {})[o.id]);
+  const putOn = (slot, id) => { Audio.play('paper'); update((s) => setWear(s, slot, id, now)); };
   const itemProps = { learn, day, wear, b, onBuy: doBuy, onToggle: toggle };
   return (
     <div className="ln-wrap" data-testid="shop" data-view={view}>
@@ -379,15 +450,8 @@ export function ShopView({ learn, update, now = Date.now() }) {
           {today.rare.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal {...itemProps} />)}
         </div>
 
-        <Heading level={3} title="Гардероб" sub={ownedList.length ? 'Купленное можно снять и надеть снова: по одной вещи на голову, лицо, шею, в руку и рамку.' : 'Пока пусто — купленные вещи будут здесь.'} />
-        {Object.keys(SLOT_LABEL).filter((slot) => ownedList.some((o) => o.slot === slot)).map((slot) => (
-          <div key={slot} style={{ margin: '10px 0 14px' }} data-testid="shop-wardrobe">
-            <div className="ds-eyebrow" style={{ marginBottom: 6 }}>{SLOT_LABEL[slot]}</div>
-            <div className="rw-items">
-              {ownedList.filter((o) => o.slot === slot).map((o) => <ShopItem key={o.id} o={o} {...itemProps} />)}
-            </div>
-          </div>
-        ))}
+        <Heading level={3} title="Гардероб" sub="Примерочная: по одной вещи на голову, лицо, шею, в руку и рамку. Касание — надеть или снять." />
+        <Wardrobe learn={learn} wear={wear} onWear={putOn} />
         </>}
       </div>
     </div>
@@ -618,6 +682,9 @@ export function ProgramCard({ learn, update, onPlacement }) {
   const level = skillLevel(learn);
   const setMinutes = (m) => { Audio.play('tick'); update((s) => setProfile(s, { minutes: m })); };
   const mins = goalMinutes(learn);
+  const next = pendingGoal(learn);
+  // выбранная кнопка — цель, которую выбрали (новая действует с завтра)
+  const chosen = next ? next.minutes : mins;
   return (
     <Card style={{ margin: '12px 0' }} data-testid="prof-program">
       <div className="ds-h3" style={{ marginBottom: 8 }}>Моя программа</div>
@@ -628,8 +695,11 @@ export function ProgramCard({ learn, update, onPlacement }) {
       <div className="ds-eyebrow" style={{ margin: '12px 0 6px' }}>Цель дня · минут занятий</div>
       <div className="rw-chip-row" role="group" aria-label="Минут в день">
         {PROFILE_MINUTES.map((m) => (
-          <button key={m} type="button" className="ds-chip" aria-pressed={mins === m} onClick={() => setMinutes(m)}>{m} мин</button>
+          <button key={m} type="button" className="ds-chip" aria-pressed={chosen === m} data-minutes={m} onClick={() => setMinutes(m)}>{m} мин</button>
         ))}
+      </div>
+      <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }} data-testid="prof-goal-note">
+        {next ? `Сегодня цель — ${mins} мин. Новая, ${next.minutes} мин, — с завтрашнего дня.` : `За выполненную цель — ${goalCoins(mins)} ${coinsWord(goalCoins(mins))}: столько, сколько минут. Новая цель начинает действовать с завтрашнего дня.`}
       </div>
       <Row label="Уровень заданий" value={LEVEL_NAME[level]} data-testid="prof-level" data-level={level} />
       <div className="ds-faint" style={{ fontSize: 13, marginTop: 4 }}>{LEVEL_TEXT[level]}</div>

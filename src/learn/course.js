@@ -8,11 +8,12 @@
 import { LEVELS, UNIT_LEVEL } from '../textbook/levels.js';
 import { CHAPTERS, CHAPTER_BY_ID } from '../textbook/toc.js';
 import { CHAPTER_BLOCKS, CHAPTER_SECTIONS, PROBLEMS } from '../textbook/content.js';
-import { collectBlocks, parseInline, parseBlocks, checkAnswer } from '../textbook/markdown.js';
+import { collectBlocks, parseInline, parseBlocks, checkAnswer, varyInstance } from '../textbook/markdown.js';
 import { TEMPLATE_BY_ID, TEMPLATES, templatesOf, seeded } from '../textbook/variants.js';
 import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
+import { plural } from '../lib/plural.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
 export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, keep: 60, open: 30, domino: 35 };
@@ -121,7 +122,7 @@ function fromBlock(b) {
     case 'tf': return { ...e, answer: b.answer, wrongWhy: null };
     case 'match': return { ...e, pairs: b.pairs };
     case 'sort': return { ...e, bins: b.bins, items: b.items };
-    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.source ? { source: b.source } : {}) };
+    case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.units ? { units: b.units } : {}), ...(b.source ? { source: b.source } : {}), ...(b.vary ? { vary: b.vary } : {}) };
     case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
     case 'tiles': return { ...e, solution: b.solution, extra: b.extra };
@@ -277,7 +278,13 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
         return { ...base, variant: ex.variant, source: tpl.source, prompt: parseBlocks(v.statement), explain: parseBlocks(v.solution), answer: pt.answer, tol: pt.tol != null ? pt.tol : null, unit: pt.unit || '',
           traps: v.traps.filter((t) => t.part === 0).map((t) => ({ value: t.value, why: text(t.text) })) };
       }
-      return { ...base, answer: ex.answer, tol: ex.tol, unit: ex.unit, traps: ex.traps || [] };
+      // расчёт с параметрами: в повторах (renumber) — те же условия с новыми числами
+      if (ex.vary && extra.renumber) {
+        const r = varyInstance(ex.vary, seeded(Math.floor(rand() * 2 ** 31) + 1));
+        const pr = outOfAir(ex, extra) ? [{ type: 'p', inline: ex.context }, ...r.prompt] : r.prompt;
+        return { ...base, prompt: pr, explain: r.explain || null, answer: r.answer, tol: r.tol, unit: r.unit, ...(r.units ? { units: r.units } : {}), traps: r.traps || [], vars: r.vars };
+      }
+      return { ...base, answer: ex.answer, tol: ex.tol, unit: ex.unit, ...(ex.units ? { units: ex.units } : {}), traps: ex.traps || [] };
     }
     case 'shift': return { ...base, chart: ex.chart, chartAttrs: ex.chartAttrs, answer: ex.answer, choices: ex.choices.map((key) => ({ key, label: shiftLabel(ex.chart, key), button: shiftButton(ex.chart, key) })), traps: ex.traps || [] };
     case 'news': return { ...base, headline: ex.headline, vars: ex.vars, expect: ex.expect };
@@ -408,7 +415,8 @@ export function answerText(inst) {
     case 'tf': return inst.answer ? 'Верно' : 'Неверно';
     case 'match': return inst.left.map((l) => `${plain(l.text)} — ${plain(inst.right.find((r) => r.key === l.key).text)}`).join('; ');
     case 'sort': return inst.bins.map((b) => `${b}: ${inst.items.filter((it) => it.bin === b).map((it) => plain(it.text)).join(', ')}`).join('; ');
-    case 'calc': return withUnit(inst.answer, inst.unit);
+    // единица по числу: «2 чашки», «5 чашек», «2,5 чашки»
+    case 'calc': return inst.units ? `${fmt(inst.answer)} ${Number.isInteger(inst.answer) ? plural(inst.answer, ...inst.units) : inst.units[1]}` : withUnit(inst.answer, inst.unit);
     case 'shift': return shiftLabel(inst.chart, inst.answer);
     case 'news': return inst.vars.map((v) => `${v.label} ${({ '+': '↑', '-': '↓', 0: '—' })[inst.expect[v.key]]}`).join(', ');
     case 'tiles': return inst.solution.map((k) => inst.tiles.find((t) => t.key === k).text).join(' ');
@@ -456,7 +464,7 @@ export const flashCards = (lesson) => lesson.terms.map((t) => ({ id: `${lesson.i
 /* Меньше повторов: seen — сколько раз ученик уже встречал упражнение (learn.seen). В
    повторение, проверку и тест юнита первыми идут те, что он видел реже; задача, которая
    вернётся с новыми числами, повтором не считается. */
-const canRenumber = (e) => !!(e.variant || (e.source && TEMPLATE_BY_SOURCE[e.source]));
+const canRenumber = (e) => !!(e.variant || e.vary || (e.source && TEMPLATE_BY_SOURCE[e.source]));
 const timesSeen = (e, seen) => (canRenumber(e) ? 0 : (seen[e.id] || 0));
 const bySeen = (list, seen, rand) => shuffle(list, rand).map((e, k) => [e, timesSeen(e, seen), k]).sort((a, b) => a[1] - b[1] || a[2] - b[2]).map((x) => x[0]);
 
@@ -514,6 +522,7 @@ function siblingOf(ex, avoid, rand) {
 }
 export function freshCopy(ex, rand = Math.random, extra = {}, { avoid = new Set(), sibling = true } = {}) {
   if (ex.variant) return instantiate(ex, rand, { ...extra, fresh: 'numbers', of: ex.id });
+  if (ex.vary) return instantiate(ex, rand, { ...extra, fresh: 'numbers', of: ex.id, renumber: true });
   const tpl = ex.source && TEMPLATE_BY_SOURCE[ex.source];
   if (tpl) return instantiate({ id: `var:${tpl}`, kind: 'calc', variant: tpl, lesson: ex.lesson, unitId: ex.unitId }, rand, { ...extra, fresh: 'numbers', of: ex.id });
   const sib = sibling ? siblingOf(ex, avoid, rand) : null;
@@ -570,12 +579,13 @@ function hardPool(unitId, upto = Infinity) {
 }
 export const HARD_IN_PRACTICE = 2;
 const ownOf = (lesson) => lesson.exercises.filter((e) => !e.diamond).map((e) => EXERCISES[e.id]);
-function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = 'normal', weak = [], seen = {} }) {
+function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = 'normal', weak = [], seen = {}, replay = false }) {
   const lesson = LESSON_BY_ID[lessonId];
   const unit = UNIT_BY_ID[lesson.unitId];
   if (['intro', 'story', 'listen'].includes(lesson.kind)) {
-    // шаги и вопросы строго по порядку, без повторения: это первая встреча с темой
-    const items = ownOf(lesson).map((e) => instantiate(e, rand));
+    // шаги и вопросы строго по порядку, без повторения: это первая встреча с темой; повтор урока —
+    // расчёты с новыми числами
+    const items = ownOf(lesson).map((e) => instantiate(e, rand, replay ? { renumber: true } : {}));
     const inner = lesson.inner.filter((c) => !c.diamond);
     return { lesson, items, cards: stepCards(lesson, items, inner), seconds: sum(items) + stepsSeconds(inner) };
   }
@@ -666,6 +676,17 @@ export function buildUnitCheck(unitId, rand = Math.random, { seen = {} } = {}) {
   const unit = UNIT_BY_ID[unitId];
   return { course: unit, items: unitTest(unit, Infinity, rand, seen), passMistakes: 1 };
 }
+/* Тест уровня — по материалу уровня: задачи всех его юнитов с уроками вперемешку, поровну от
+   каждого (около 12), зачёт — не больше одной ошибки на шесть задач. Сдан — все юниты уровня
+   сданы (passUnit), и открывается следующий уровень. */
+export const LEVEL_TEST_SIZE = 12;
+export const levelUnits = (levelId) => pilotUnits().filter((u) => u.level === levelId);
+export function buildLevelCheck(levelId, rand = Math.random, { seen = {} } = {}) {
+  const units = levelUnits(levelId);
+  const per = Math.max(2, Math.ceil(LEVEL_TEST_SIZE / Math.max(1, units.length)));
+  const items = shuffle(units.flatMap((u) => unitTest(u, Infinity, rand, seen).slice(0, per)), rand).slice(0, Math.max(LEVEL_TEST_SIZE, units.length * 2));
+  return { level: LEVEL_BY_ID[levelId], units: units.map((u) => u.id), items, passMistakes: Math.max(1, Math.floor(items.length / 6)) };
+}
 
 /* ------------------------------ АЛМАЗНЫЙ УРОВЕНЬ ------------------------------
    Пройденный урок можно пройти ещё раз — усложнённым. Что меняется по видам:
@@ -688,7 +709,8 @@ function buildDiamond(lessonId, rand, opts) {
   const unitId = lesson.unitId;
   const mark = (p) => ({ ...p, diamond: true, items: p.items.map((it) => ({ ...it, diamond: true })) });
   if (['intro', 'story', 'listen'].includes(lesson.kind)) {
-    const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand));
+    // алмазный повтор — расчёты с параметрами приходят с новыми числами
+    const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand, { renumber: true }));
     const deep = lesson.inner.some((c) => c.diamond);
     if (!deep) hardItems(unitId, 2, rand, new Set(), lesson.no).forEach((it) => items.push(it));
     // «Откройте сами» на повторе не нужен: кривую ученик уже нашёл

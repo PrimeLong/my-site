@@ -23,6 +23,8 @@ export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монет�
 /* За урок впервые — 10 (без ошибок — ещё 5), повтор — 2, практика — 5, сданная проверка
    юнита — 20. Алмазный уровень (от 80% верных): впервые — 25 (без ошибок — ещё 10), потом — 5. */
 export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, diamond: 25, diamondPerfect: 10, diamondReplay: 5, goal: 10, allQuests: 10 };
+// цель дня — столько монет, сколько минут в цели (10 минут — COIN.goal)
+export const goalCoins = (minutes) => Math.round((minutes * COIN.goal) / 10);
 export const earned = (s) => sum(s.coins);
 // в кошельке: заработано − потрачено − взносы страховки − лежит в копилке + проценты забранных вкладов
 export const balance = (s) => Math.max(0, sum(s.coins) - sum(s.spent) - sum(s.premiums) - piggyLocked(s) + piggyGain(s));
@@ -225,7 +227,7 @@ export function courseIncome(lessons = PATH_LESSONS, units = PATH_UNITS) {
     perfect: Math.floor(lessons / 2) * COIN.perfect,
     checks: units * COIN.check,
     chests: units * CHEST_AVG,
-    goals: days * COIN.goal,
+    goals: days * goalCoins(10),
     streak: STREAK_BONUS.filter(([d]) => d <= days).reduce((a, [, c]) => a + c, 0),
     stamps: ACHIEVEMENTS.filter((a) => COURSE_STAMPS.includes(a.id)).reduce((a, x) => a + x.coins, 0),
   };
@@ -255,11 +257,11 @@ export const realCurve = (amount = 1000, years = 10) => Array.from({ length: yea
    Выполнено — монеты сразу, все три — ещё бонус. */
 const newToday = (s, day) => Object.values(s.lessons || {}).filter((l) => l && l.runs > 0 && l.at && dayOf(l.at) === day).length;
 const QUEST = {
-  lessons: { coins: 10, target: (s) => Math.max(2, Math.round(goalMinutes(s) / 5)), have: (d) => d.l, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')}` },
-  perfect: { coins: 20, target: (s) => (goalMinutes(s) >= 15 ? 2 : 1), have: (d) => d.p, title: (t) => (t === 1 ? 'Урок без ошибок' : `${t} урока без ошибок`) },
-  correct: { coins: 10, target: (s) => (goalMinutes(s) >= 15 ? 20 : 12), have: (d) => d.c, title: (t) => `${t} верных ответов` },
-  run: { coins: 15, target: (s) => (goalMinutes(s) >= 15 ? 10 : 6), have: (d) => d.r, title: (t) => `${t} верных ответов подряд` },
-  xp: { coins: 10, target: (s) => goalMinutes(s) * 3, have: (d, s, day) => (s.xp || {})[day] || 0, title: (t) => `Набрать ${t} опыта` },
+  lessons: { coins: 10, target: (s, now) => Math.max(2, Math.round(goalMinutes(s, now) / 5)), have: (d) => d.l, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')}` },
+  perfect: { coins: 20, target: (s, now) => (goalMinutes(s, now) >= 15 ? 2 : 1), have: (d) => d.p, title: (t) => (t === 1 ? 'Урок без ошибок' : `${t} урока без ошибок`) },
+  correct: { coins: 10, target: (s, now) => (goalMinutes(s, now) >= 15 ? 20 : 12), have: (d) => d.c, title: (t) => `${t} верных ответов` },
+  run: { coins: 15, target: (s, now) => (goalMinutes(s, now) >= 15 ? 10 : 6), have: (d) => d.r, title: (t) => `${t} верных ответов подряд` },
+  xp: { coins: 10, target: (s, now) => goalMinutes(s, now) * 3, have: (d, s, day) => (s.xp || {})[day] || 0, title: (t) => `Набрать ${t} опыта` },
   fresh: { coins: 15, target: () => 1, have: (d, s, day) => newToday(s, day), title: () => 'Пройти новый урок на Пути' },
 };
 export const QUEST_ICON = { lessons: 'map', perfect: 'check', correct: 'coins', run: 'flame', xp: 'spark', fresh: 'target' };
@@ -268,7 +270,7 @@ export function questsFor(s, now = Date.now()) {
   const pick = (list, salt) => list[Math.floor(hash01(`${day}:${salt}`) * list.length)];
   const ids = [pick(['lessons', 'perfect'], 'a'), pick(['correct', 'run'], 'b'), pick(['xp', 'fresh'], 'c')];
   return ids.map((id) => {
-    const q = QUEST[id]; const target = q.target(s); const have = Math.min(target, q.have(d, s, day));
+    const q = QUEST[id]; const target = q.target(s, now); const have = Math.min(target, q.have(d, s, day));
     const key = `q:${day}:${id}`;
     return { id, key, title: q.title(target), have, target, done: have >= target, claimed: hasClaim(s, key), coins: q.coins };
   });
@@ -345,7 +347,7 @@ export function monthChallenge(s, now = Date.now()) {
   const start = firstDay(s) || day;
   const from = start.slice(0, 7) === month ? Number(start.slice(8)) : start < month ? 1 : d.getDate();
   const span = last - from + 1;
-  const mins = goalMinutes(s);
+  const mins = goalMinutes(s, now);
   const byPace = kind.pace(mins) * span * ACTIVE_SHARE;
   const before = kind.have(s, prevMonth(month));
   const up = (x) => Math.ceil(x / kind.round) * kind.round;
@@ -387,7 +389,7 @@ export function settle(s, ctx, now = Date.now()) {
   let t = fixMonth(chargePremiums(s, now), now);
   const day = dayOf(now);
   const g = goalToday(t, now);
-  if (g.done >= g.goal) t = give(t, COIN.goal, `g:${day}`, `Цель дня: ${g.goal} минут`, 'goal');
+  if (g.done >= g.goal) t = give(t, goalCoins(g.goal), `g:${day}`, `Цель дня: ${g.goal} минут`, 'goal');
   const st = streak(t, now).days;
   STREAK_BONUS.forEach(([n, c]) => { if (st >= n) t = give(t, c, `st:${n}`, `Серия: ${n} ${plural(n, 'день', 'дня', 'дней')}`, 'streak'); });
   const quests = questsFor(t, now);

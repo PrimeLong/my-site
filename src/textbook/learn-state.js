@@ -47,7 +47,19 @@ export const PROFILE_GOAL_LABEL = { exam: 'Поступление в вуз', ol
 export const LESSONS_FOR_MINUTES = { 5: 1, 10: 2, 15: 3, 20: 5 };
 /* Цель дня — в минутах (из ответа при регистрации, меняется в профиле): скорость у всех
    разная, а время занятий честно сравнивается само с собой. По умолчанию — 10 минут. */
-export const goalMinutes = (s) => (s.profile && PROFILE_MINUTES.includes(s.profile.minutes) ? s.profile.minutes : 10);
+/* Цель дня в минутах. Новая цель действует с завтрашнего дня: profile.since — день, с которого
+   она действует, profile.prev — прежняя цель (до since). Первая цель — сразу. */
+export function goalMinutes(s, now = Date.now()) {
+  const p = s.profile || {};
+  const cur = PROFILE_MINUTES.includes(p.minutes) ? p.minutes : 10;
+  if (p.since && PROFILE_MINUTES.includes(p.prev) && dayOf(now) < p.since) return p.prev;
+  return cur;
+}
+// новая цель ещё не действует: { minutes, since } — иначе null
+export function pendingGoal(s, now = Date.now()) {
+  const p = s.profile || {};
+  return p.since && dayOf(now) < p.since && PROFILE_MINUTES.includes(p.minutes) && p.minutes !== p.prev ? { minutes: p.minutes, since: p.since } : null;
+}
 export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame'];
 const MAX_SEEN = 800;
 const MAX_BEST = 40;
@@ -101,9 +113,17 @@ export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
 // ответы при регистрации — из них цель дня и задания; меняются в профиле
 export function setProfile(s, { goal, minutes, knows }, now = Date.now()) {
   const p = s.profile || emptyLearn().profile;
+  const nextMin = PROFILE_MINUTES.includes(minutes) ? minutes : p.minutes;
+  // смена цели в минутах — с завтрашнего дня; сегодня — та, что действует сейчас
+  let since = p.since || null; let prev = PROFILE_MINUTES.includes(p.prev) ? p.prev : null;
+  if (PROFILE_MINUTES.includes(minutes) && PROFILE_MINUTES.includes(p.minutes) && minutes !== p.minutes) {
+    const today = goalMinutes(s, now);
+    if (minutes === today) { since = null; prev = null; } else { since = addDays(dayOf(now), 1); prev = today; }
+  }
   return upd(s, { profile: {
-    goal: PROFILE_GOALS.includes(goal) ? goal : p.goal, minutes: PROFILE_MINUTES.includes(minutes) ? minutes : p.minutes,
+    goal: PROFILE_GOALS.includes(goal) ? goal : p.goal, minutes: nextMin,
     knows: typeof knows === 'boolean' ? knows : p.knows, at: now,
+    ...(since && prev ? { since, prev } : {}),
   } });
 }
 // вступительный тест пройден: открытые им юниты — как сданные проверкой
@@ -265,7 +285,7 @@ export function bestWeek(s) {
   return Object.entries(weeks).reduce((b, [w, x]) => (x > b.xp ? { week: w, xp: x } : b), { week: null, xp: 0 });
 }
 // сделано сегодня против дневной цели: минуты занятий (уроки — для подписи)
-export const goalToday = (s, now = Date.now()) => ({ done: Math.floor(dayEntry(s, dayOf(now)).s / 60), goal: goalMinutes(s), lessons: s.done[dayOf(now)] || 0 });
+export const goalToday = (s, now = Date.now()) => ({ done: Math.floor(dayEntry(s, dayOf(now)).s / 60), goal: goalMinutes(s, now), lessons: s.done[dayOf(now)] || 0 });
 // спит ли талисман: вчера занятий не было и сегодня ещё не было
 export const missedYesterday = (s, now = Date.now()) => {
   const today = dayOf(now);
@@ -422,6 +442,7 @@ function normalizeProgram(r) {
     profile: {
       goal: PROFILE_GOALS.includes(p.goal) ? p.goal : e.profile.goal, minutes: PROFILE_MINUTES.includes(p.minutes) ? p.minutes : e.profile.minutes,
       knows: p.knows === true, at: cnt(p.at, 1e14),
+      ...(isDay(p.since) && PROFILE_MINUTES.includes(p.prev) ? { since: p.since, prev: p.prev } : {}),
     },
     placement: { at: cnt(pl.at, 1e14), opened: (Array.isArray(pl.opened) ? pl.opened : []).filter(okKey).slice(0, 40) },
     topics, daily,

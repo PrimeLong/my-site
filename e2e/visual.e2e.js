@@ -27,7 +27,15 @@ async function prepare(page, { account = true } = {}) {
   }, { acc: account, a: ACCOUNT });
   return errors;
 }
-const tab = (page, id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
+// Мир и Профиль — под вкладкой «⋯»
+async function tab(page, id) {
+  if (id === 'world' || id === 'profile') {
+    await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+    await page.getByTestId('more-menu').locator(`[data-tab="${id}"]`).click();
+    return;
+  }
+  await page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
+}
 
 test.describe('визуальные эталоны', () => {
   test.beforeEach(({ isMobile, browserName }) => { test.skip(!isMobile || browserName !== 'chromium', 'эталоны — телефон в Chromium'); });

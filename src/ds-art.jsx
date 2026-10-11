@@ -295,6 +295,50 @@ const B = {
       <rect x="26" y="70" width="30" height="12" fill={h.hatch} stroke="currentColor" strokeWidth=".8" /><rect x="64" y="70" width="14" height="12" fill={h.hatch} stroke="currentColor" strokeWidth=".8" />
     </>
   ),
+  // кофейня: домик со скатной крышей, вывеска-чашка с паром, маркиз над окном, столик с зонтом
+  cafe: (h) => (
+    <>
+      <rect x="14" y="44" width="64" height="38" fill={h.body} stroke="currentColor" strokeWidth="1.1" />
+      <path d="M10,46 L46,24 L82,46 Z" fill={h.alive ? h.wash : h.hatch} stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="46" cy="37" r="6.5" fill={h.alive ? h.accent : 'none'} stroke="currentColor" strokeWidth=".9" />
+      <path d="M42.5,35 h7 v3.2 a3.5,3.5 0 0 1 -7,0 Z M49.5,36 a1.6,1.6 0 0 1 0,3" fill={h.alive ? '#fff' : 'none'} stroke={h.alive ? '#fff' : 'currentColor'} strokeWidth=".8" />
+      {[0, 1, 2, 3].map((k) => <path key={k} d={`M${20 + k * 8},52 h8 v3 a4,4 0 0 1 -8,0 Z`} fill={h.alive ? (k % 2 ? h.wash : h.accent) : (k % 2 ? 'none' : h.hatch)} stroke="currentColor" strokeWidth=".7" />)}
+      <rect x="20" y="60" width="32" height="14" fill={h.alive ? h.gold : 'none'} stroke="currentColor" strokeWidth=".9" /><line x1="36" y1="60" x2="36" y2="74" stroke="currentColor" strokeWidth=".6" />
+      <rect x="58" y="58" width="13" height="24" fill={h.hatch} stroke="currentColor" strokeWidth=".9" />
+      <path d="M88,48 Q99,38 110,48 Z" fill={h.alive ? h.accent : h.hatch} stroke="currentColor" strokeWidth=".9" />
+      <line x1="99" y1="48" x2="99" y2="74" stroke="currentColor" strokeWidth="1" />
+      <ellipse cx="99" cy="74" rx="10" ry="2.4" fill={h.body} stroke="currentColor" strokeWidth=".9" />
+      <line x1="99" y1="76" x2="99" y2="82" stroke="currentColor" strokeWidth="1" />
+      {[86, 112].map((x) => <path key={x} d={`M${x},82 v-8 h${x < 99 ? 5 : -5}`} fill="none" stroke="currentColor" strokeWidth=".9" />)}
+      {h.alive && [0, 1].map((k) => <path key={k} d={`M${44 + k * 4},29 q-2,-3 0,-6`} fill="none" stroke="currentColor" strokeWidth=".6" opacity=".6" />)}
+    </>
+  ),
+  // гастроном: вывеска на крыше, полосатый маркиз с фестонами, витрины с товаром, ценник у входа
+  grocery: (h) => (
+    <>
+      <rect x="12" y="40" width="96" height="42" fill={h.body} stroke="currentColor" strokeWidth="1.1" />
+      <rect x="8" y="34" width="104" height="6" fill={h.alive ? h.wash : h.hatch} stroke="currentColor" strokeWidth="1" />
+      <line x1="38" y1="34" x2="38" y2="28" stroke="currentColor" strokeWidth="1" /><line x1="82" y1="34" x2="82" y2="28" stroke="currentColor" strokeWidth="1" />
+      <rect x="26" y="16" width="68" height="13" rx="2" fill={h.alive ? h.accent : h.hatch} stroke="currentColor" strokeWidth="1" />
+      <text x="60" y="25.5" textAnchor="middle" fontSize="7.2" fontWeight="700" letterSpacing=".6" fill={h.alive ? '#fff' : 'currentColor'} style={{ fontFamily: 'var(--ds-sans, sans-serif)' }}>ГАСТРОНОМ</text>
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
+        <path key={k} d={`M${16 + k * 11},44 h11 v4 a5.5,5.5 0 0 1 -11,0 Z`} fill={h.alive ? (k % 2 ? h.wash : h.accent) : (k % 2 ? 'none' : h.hatch)} stroke="currentColor" strokeWidth=".7" />
+      ))}
+      {[[18, 52], [68, 102]].map(([x0, x1]) => <rect key={x0} x={x0} y="56" width={x1 - x0} height="20" fill="none" stroke="currentColor" strokeWidth=".9" />)}
+      <g stroke="currentColor" strokeWidth=".7">
+        <path d="M22,75 v-8 q0,-2 1.5,-3 v-3 h2 v3 q1.5,1 1.5,3 v8 Z" fill={h.alive ? h.wash : 'none'} />
+        <path d="M30,75 v-8 q0,-2 1.5,-3 v-3 h2 v3 q1.5,1 1.5,3 v8 Z" fill={h.alive ? h.accent : 'none'} />
+        <ellipse cx="43" cy="72" rx="6" ry="3" fill={h.alive ? h.gold : 'none'} /><path d="M39,71 l2,-1.5 M43,70.5 l2,-1.5" fill="none" />
+        <rect x="72" y="66" width="8" height="9" rx="1.5" fill={h.alive ? h.wash : 'none'} /><rect x="71.5" y="64" width="9" height="2.5" fill={h.body} />
+        {[[86, 72], [91, 72], [88.5, 67.5]].map(([cx, cy]) => <circle key={`${cx}${cy}`} cx={cx} cy={cy} r="2.6" fill={h.alive ? h.accent : 'none'} />)}
+        <rect x="95" y="64" width="5" height="11" fill={h.alive ? h.gold : 'none'} />
+      </g>
+      <rect x="54" y="58" width="12" height="24" fill={h.hatch} stroke="currentColor" strokeWidth=".9" />
+      <line x1="60" y1="58" x2="60" y2="82" stroke="currentColor" strokeWidth=".5" />
+      <line x1="104" y1="40" x2="104" y2="50" stroke="currentColor" strokeWidth=".6" />
+      <path d="M100,50 h8 v7 l-4,3 l-4,-3 Z" fill={h.alive ? h.gold : 'none'} stroke="currentColor" strokeWidth=".8" /><circle cx="104" cy="52.5" r=".9" fill="currentColor" />
+    </>
+  ),
   factory: (h) => (
     <>
       <rect x="10" y="50" width="100" height="32" fill={h.body} stroke="currentColor" strokeWidth="1.1" />

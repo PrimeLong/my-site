@@ -133,6 +133,14 @@ export const DS_CSS = `
   .ds-nav button[aria-current="page"] { color: var(--u-ink); cursor: default; }
   @media (max-width: 380px) { .ds-nav button { font-size: 12px; letter-spacing: 0; } }
   .ds-nav button[aria-current="page"]::before { content: ''; position: absolute; top: 5px; width: 30px; height: 3px; border-radius: 1px; background: var(--u-ink); }
+  /* меню «⋯» над нижней панелью: выбор из двух — Мир или Профиль */
+  .ds-nav .ds-more { position: absolute; bottom: calc(100% + 8px); right: max(8px, calc(50% - 272px)); z-index: 121; min-width: 200px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+    background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 8px; box-shadow: 0 10px 28px rgba(0, 0, 0, .22); }
+  .ds-nav .ds-more button { flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 12px 14px; min-height: 48px; border-radius: 6px; color: var(--ds-ink); font: 700 15.5px var(--ds-sans); letter-spacing: 0; cursor: pointer; }
+  .ds-nav .ds-more button:hover, .ds-nav .ds-more button:focus-visible { background: var(--ds-card2); }
+  .ds-nav .ds-more button[aria-current="page"] { color: var(--u-ink); }
+  .ds-nav .ds-more button[aria-current="page"]::before { display: none; }
+  .ds-nav .ds-more small { display: block; font: 400 12.5px var(--ds-sans); color: var(--ds-ink3); }
 
   /* короткие анимации по делу */
   @keyframes ds-shake { 0%, 100% { transform: translateX(0) } 25% { transform: translateX(-6px) } 50% { transform: translateX(5px) } 75% { transform: translateX(-3px) } }
@@ -240,14 +248,16 @@ export function TopBar({ back = null, title, right = null }) {
 }
 // нижняя панель вкладок: открытая вкладка — не кнопка перехода
 // onReselect — нажатие на уже открытую вкладку (например, «Учебник» — вернуться на его главную)
-export function Tabs({ tabs, active, onTab, onReselect = null, label = 'Разделы' }) {
+export function Tabs({ tabs, active, onTab, onReselect = null, label = 'Разделы', children = null }) {
   return (
     <nav aria-label={label} data-testid="bottom-nav" className="ds-nav">
+      {children}
       <div className="ds-nav-in">
         {tabs.map((t) => {
           const on = active === t.id; const Icon = t.icon;
           return (
-            <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on ? undefined : `tab:${t.id}`}
+            <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on || t.menu ? undefined : `tab:${t.id}`}
+              aria-haspopup={t.menu ? 'menu' : undefined} aria-expanded={t.menu ? !!t.open : undefined}
               onClick={() => { if (!on) onTab(t.id); else if (onReselect) onReselect(t.id); }}>
               <Icon size={22} strokeWidth={on ? 2.2 : 1.7} aria-hidden="true" /><span>{t.label}</span>
             </button>

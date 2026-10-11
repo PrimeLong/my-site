@@ -8,6 +8,12 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import fs from 'node:fs';
 
+// Мир и Профиль — под вкладкой «⋯»: касание открывает выбор из двух
+async function openMore(page, id) {
+  await page.getByTestId('bottom-nav').locator('[data-tab="more"]').click();
+  await page.getByTestId('more-menu').locator(`[data-tab="${id}"]`).click();
+}
+
 const DIR = 'screens';
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 // пройдено всё, кроме «Итогов юнита»: на Пути видно и пройденное, и текущее; любой урок открыт для повтора
@@ -66,9 +72,23 @@ async function a11y(page, name) {
   expect(bad, `${name}: axe`).toEqual([]);
 }
 const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
+// на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита нет на экране
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', inflation: 'basic', consumer: 'middle' };
+const showUnit = async (page, unit) => {
+  await page.waitForTimeout(150);
+  if (await page.locator(`[data-testid=path-unit][data-unit="${unit}"]`).count()) return;
+  await page.getByTestId('level-switch-open').click();
+  await page.getByTestId('level-picker').locator(`[data-testid=level-pick][data-level="${LEVEL_OF[unit]}"]`).click();
+  await expect(page.locator(`[data-testid=path-unit][data-unit="${unit}"]`)).toBeVisible();
+};
+const pathLesson = async (page, id) => {
+  await showUnit(page, UNIT_OF[id.split('-')[0]]);
+  return page.locator(`[data-testid=path-lesson][data-lesson="${id}"]`);
+};
 const openLesson = async (page, id) => {
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click().catch(() => {});
-  await page.locator(`[data-testid=path-lesson][data-lesson="${id}"]`).click();
+  await (await pathLesson(page, id)).click();
   await page.getByTestId('lesson-start').click();
   await expect(page.getByTestId('lesson')).toBeVisible();
 };
@@ -187,7 +207,7 @@ for (const theme of ['light', 'dark']) {
       await page.locator('[data-testid="path-unit"][data-unit="supply-demand"]').scrollIntoViewIfNeeded();
       await shot(page, '06-path-route', theme);
       // билет урока, шаг «Знакомства», упражнение, верный ответ, вопрос о выходе
-      await page.locator('[data-testid=path-lesson][data-lesson="sd-i2"]').click();
+      await (await pathLesson(page, 'sd-i2')).click();
       await shot(page, '07-lesson-ticket', theme);
       await page.getByTestId('lesson-start').click();
       await shot(page, '08-intro-step', theme);
@@ -255,7 +275,7 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '24b-game-ppf', theme, { wait: 600 });
       await exitLesson(page);
       // алмазный уровень: билет пройденного урока и алмазный шаг с обозначениями (sd-i2 прерван выше — у него «Продолжить»)
-      await page.locator('[data-testid=path-lesson][data-lesson="sd-i1"]').click();
+      await (await pathLesson(page, 'sd-i1')).click();
       await shot(page, '25a-diamond-ticket', theme);
       await page.getByTestId('lesson-diamond').click();
       for (let i = 0; i < 30 && !(await page.getByTestId('step-legend').isVisible()); i += 1) {
@@ -305,6 +325,7 @@ for (const theme of ['light', 'dark']) {
       await page.locator(`[data-testid=shop-wardrobe] [data-item="${bought}"]`).scrollIntoViewIfNeeded();
       await shot(page, '38-shop-bought', theme);
       await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
+      await showUnit(page, 'scarcity');
       await page.getByTestId('chest').first().scrollIntoViewIfNeeded();
       await page.getByTestId('chest').first().click();
       await shot(page, '39-chest', theme);
@@ -320,7 +341,7 @@ for (const theme of ['light', 'dark']) {
       await expect(page.getByTestId('lesson-result')).toBeVisible();
       await shot(page, '42-placement-result', theme, { wait: 1500 });
       await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
-      await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+      await openMore(page, 'profile');
       await page.getByTestId('prof-program').scrollIntoViewIfNeeded();
       await shot(page, '43-profile-program', theme);
       await page.getByTestId('achievements').scrollIntoViewIfNeeded();
@@ -353,7 +374,7 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '49-report-thanks', theme);
       await page.getByRole('button', { name: 'Продолжить' }).click();
       await exitLesson(page);
-      await page.getByTestId('bottom-nav').locator('[data-tab="profile"]').click();
+      await openMore(page, 'profile');
       await page.getByTestId('prof-reports').click();
       await shot(page, '50-reports', theme);
       // юнит 1: «История» Гриши и калькулятор в расчёте
@@ -368,7 +389,7 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
-    test(`модуль 3: свёрнутый юнит, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
+    test(`модуль 3: список уровней, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
       const CS = ['cs-i1', 'cs-l1', 'cs-i2', 'cs-l2', 'cs-w'];
       const errors = await setup(page, { theme, learn: { claimed: { 'c:scarcity': Date.now() - 86400000 } } });
       await page.addInitScript((ids) => {
@@ -380,11 +401,14 @@ for (const theme of ['light', 'dark']) {
         } catch { /* нет хранилища */ }
       }, CS);
       await page.goto('/', { waitUntil: 'networkidle' });
-      await expect(page.locator('[data-testid=path-unit][data-unit="scarcity"]')).toHaveAttribute('data-folded', 'true');
-      await shot(page, '53-path-folded', theme);
-      await page.locator('[data-testid=path-unit][data-unit="consumer"]').scrollIntoViewIfNeeded();
+      // плашка уровня → список уровней: пройденные, открытые, следующий — с тестом; оттуда — на «Средний»
+      await page.getByTestId('level-switch-open').click();
+      await expect(page.getByTestId('level-picker')).toBeVisible();
+      await shot(page, '53-path-levels', theme);
+      await page.locator('[data-testid=level-pick][data-level="middle"]').click();
+      await expect(page.locator('[data-testid=path-unit][data-unit="consumer"]')).toBeVisible();
       await shot(page, '54-path-consumer', theme);
-      await page.locator('[data-testid=path-lesson][data-lesson="cs-s1"]').click();
+      await (await pathLesson(page, 'cs-s1')).click();
       await expect(page.getByTestId('theory-notice')).toBeVisible();
       await shot(page, '55-theory-notice', theme);
       await page.getByTestId('theory-known').click();
@@ -468,9 +492,11 @@ for (const theme of ['light', 'dark']) {
       test.setTimeout(120_000);
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
-      const tab = (id) => page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click();
+      const tab = (id) => (id === 'world' || id === 'profile' ? openMore(page, id) : page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click());
       await page.getByTestId('tasks-card').click();
       await shot(page, '26-tasks', theme);
+      await tab('league');
+      await shot(page, '26b-league', theme);
       await tab('profile');
       await shot(page, '27-profile', theme);
       await shot(page, '28-profile-full', theme, { full: true });

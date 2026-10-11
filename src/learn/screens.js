@@ -15,7 +15,9 @@ export const SCREENS = {
   path: { root: true, title: 'Путь', testid: 'path' },
   // вкладка «Учебник»: оглавление — корень; глава из оглавления — «назад» в оглавление
   bookTab: { root: true, title: 'Учебник', testid: 'book-tab' },
+  league: { root: true, title: 'Лиги', testid: 'league' },
   shop: { root: true, title: 'Лавка', testid: 'shop' },
+  // Мир и Профиль — под вкладкой «⋯»: выбор из двух
   world: { root: true, title: 'Мир', testid: 'world' },
   profile: { root: true, title: 'Профиль', testid: 'learn-profile' },
   // поверх вкладок
@@ -27,6 +29,8 @@ export const SCREENS = {
   book: { from: ['path', 'tasks', 'profile', 'lesson', 'lessonCard'], back: 'origin', title: 'Учебник поверх экрана', testid: 'learn-book' },
   account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
+  // плашка уровня наверху Пути → список уровней: перейти в открытый или сдать тест уровня
+  levelPicker: { from: ['path'], back: 'path', title: 'Уровни Пути', testid: 'level-picker' },
   // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
   reports: { from: ['profile'], back: 'profile', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },
   // и аналитика без персональных данных: воронка и трудные упражнения (api/events.js)

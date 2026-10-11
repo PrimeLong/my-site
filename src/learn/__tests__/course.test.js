@@ -768,7 +768,7 @@ describe('меньше повторов в юните', () => {
   });
   it('«Повторение» берёт сначала невиденное: виденные много раз уходят в конец', () => {
     const [r] = UNIT_BY_ID[PILOT].lessons.filter((l) => l.kind === 'review');
-    const pool = UNIT_BY_ID[PILOT].lessons.filter((l) => l.no < r.no).flatMap((l) => l.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source);
+    const pool = UNIT_BY_ID[PILOT].lessons.filter((l) => l.no < r.no).flatMap((l) => l.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source && !e.vary);
     // половину пула ученик видел по три раза
     const seen = Object.fromEntries(pool.filter((_, k) => k % 2 === 0).map((e) => [e.id, 3]));
     for (let s = 1; s <= 10; s += 1) {
@@ -781,7 +781,7 @@ describe('меньше повторов в юните', () => {
   });
   it('повторение в «Практике» и проверка юнита тоже предпочитают невиденное', () => {
     const l = UNIT_BY_ID[PILOT].lessons.filter((x) => x.kind === 'practice').slice(-1)[0];
-    const prev = UNIT_BY_ID[PILOT].lessons.filter((x) => x.no < l.no).flatMap((x) => x.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source);
+    const prev = UNIT_BY_ID[PILOT].lessons.filter((x) => x.no < l.no).flatMap((x) => x.exercises).filter((e) => !GAME_KINDS.includes(e.kind) && !e.diamond && !e.variant && !e.source && !e.vary);
     const seen = Object.fromEntries(prev.slice(0, Math.floor(prev.length * 0.6)).map((e) => [e.id, 5]));
     for (let s = 1; s <= 10; s += 1) {
       const rev = buildLesson(l.id, seeded(s), { seen }).items.filter((it) => it.review && prev.some((e) => e.id === (it.of || it.id)));
@@ -875,5 +875,23 @@ describe('учебник и Путь — один порядок', () => {
     TOC_LEVELS.forEach((l) => l.chapters.forEach((c) => expect(levelOf(c.id).id, c.id).toBe(l.id)));
     // недописанные главы в уровни не попадают
     PLANNED_CHAPTERS.forEach((c) => expect(TOC_LEVELS.some((l) => l.chapters.includes(c)), c.id).toBe(false));
+  });
+});
+
+describe('тест уровня', () => {
+  it('задачи из всех юнитов уровня поровну, около 12; зачёт — одна ошибка на шесть задач', async () => {
+    const { buildLevelCheck, levelUnits } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const ids = levelUnits('basic').map((u) => u.id);
+    expect(ids).toEqual(['supply-demand', 'elasticity', 'market-failures', 'inflation']);
+    const p = buildLevelCheck('basic', seeded(5));
+    expect(p.items).toHaveLength(12);
+    expect(p.passMistakes).toBe(2);
+    expect(new Set(p.items.map((it) => it.unitId))).toEqual(new Set(ids));
+    p.items.forEach((it) => expect(it.check).toBe(true));
+    // уровень из одного юнита — его проверка целиком
+    const start = buildLevelCheck('start', seeded(5));
+    expect(new Set(start.items.map((it) => it.unitId))).toEqual(new Set(['scarcity']));
+    expect(start.passMistakes).toBe(1);
   });
 });

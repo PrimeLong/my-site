@@ -1,7 +1,8 @@
-/* ЛИГИ НЕДЕЛИ (docs/mechanics.md, «Лиги»). Неделя — с понедельника по воскресенье. В группе
-   двадцать учеников: вы и девятнадцать соперников. Место — по опыту за неделю. В конце недели
-   первые пять поднимаются в следующую лигу, последние пять опускаются; в Бронзовой опускаться
-   некуда, в Алмазной — подниматься. Первые три места получают монеты.
+/* ЛИГИ НЕДЕЛИ (docs/mechanics.md, «Лиги»). Неделя лиги — с понедельника по субботу, воскресенье —
+   перерыв: итоги и награды, опыт в лигу не идёт. В группе двадцать учеников: вы и девятнадцать
+   соперников. Место — по опыту за шесть дней. По итогам первые пять поднимаются в следующую лигу,
+   последние пять опускаются, остальные остаются; в Бронзовой опускаться некуда, в Алмазной —
+   подниматься. Первые три места получают монеты.
 
    Соперники — ученики-боты: имя, ритм занятий и опыт за неделю задаёт зерно (неделя, лига,
    место в группе), так что таблица одна и та же на всех устройствах и растёт в течение недели
@@ -30,6 +31,9 @@ export const PROMOTE = 5;
 export const DEMOTE = 5;
 // монеты за первые три места — кратны цене урока (10 монет)
 export const PLACE_COINS = [50, 30, 20];
+// дни соревнования: понедельник — суббота; седьмой день недели — перерыв
+export const LEAGUE_DAYS = 6;
+export const isBreakDay = (now = Date.now()) => { const day = dayOf(now); return day === addDays(weekOf(day), LEAGUE_DAYS); };
 const MAX_WEEKS = 104;
 
 // генератор с зерном из строки: одна и та же неделя и лига — одни и те же соперники
@@ -69,7 +73,7 @@ function rivals(week, league, realNames = []) {
     const style = r();
     // почти бросил — 8%, обычный — по медиане лиги с разбросом
     const total = style < 0.08 ? Math.round(r() * 20) : Math.round(lg.median * Math.exp((r() + r() + r() - 1.5) * 0.9));
-    const days = Array.from({ length: 7 }, (_, d) => (style < 0.3 ? (d >= 5 ? 3 : 0.3) : style < 0.55 ? (r() < 0.75 ? 1 : 0) : 0.6 + r()));
+    const days = Array.from({ length: LEAGUE_DAYS }, (_, d) => (style < 0.3 ? (d >= 4 ? 3 : 0.3) : style < 0.55 ? (r() < 0.75 ? 1 : 0) : 0.6 + r()));
     const sum = days.reduce((a, x) => a + x, 0) || 1;
     let name = pickName();
     if (realSlots.has(k) && real.length) { const j = Math.floor(rr() * real.length); name = real.splice(j, 1)[0]; }
@@ -77,18 +81,19 @@ function rivals(week, league, realNames = []) {
   });
 }
 /* Опыт соперника к моменту now: прошедшие дни целиком, сегодняшний — по часам. В будущее и в
-   прошлое недели не заглядывает: после воскресенья — весь итог. */
+   прошлое недели не заглядывает: после субботы — весь итог. */
 function rivalXp(rv, week, now) {
   const today = dayOf(now);
   let xp = 0;
-  for (let d = 0; d < 7; d += 1) {
+  for (let d = 0; d < LEAGUE_DAYS; d += 1) {
     const day = addDays(week, d);
     if (day < today) xp += rv.total * rv.share[d];
     else if (day === today) { const h = new Date(now).getHours() + new Date(now).getMinutes() / 60; xp += rv.total * rv.share[d] * Math.min(1, Math.max(0, (h - 7) / 15)); }
   }
   return Math.round(xp);
 }
-export const weekXp = (learn, week) => Array.from({ length: 7 }, (_, d) => (learn.xp || {})[addDays(week, d)] || 0).reduce((a, x) => a + x, 0);
+// опыт недели лиги — понедельник … суббота; воскресенье — перерыв
+export const weekXp = (learn, week) => Array.from({ length: LEAGUE_DAYS }, (_, d) => (learn.xp || {})[addDays(week, d)] || 0).reduce((a, x) => a + x, 0);
 const tierIndex = (id) => LEAGUES.findIndex((l) => l.id === id);
 // зона места: up — поднимутся, down — опустятся
 export function zoneOf(place, league) {
@@ -100,16 +105,19 @@ export function zoneOf(place, league) {
 /* Таблица группы: вы и соперники, по убыванию опыта. При равенстве вы — ниже бота: место надо
    взять опытом. */
 export function standings(learn, week, league, now = Date.now(), realNames = []) {
-  const done = dayOf(now) > addDays(week, 6);
+  const done = dayOf(now) > addDays(week, LEAGUE_DAYS - 1);
   const rows = rivals(week, league, realNames).map((rv) => ({ ...rv, xp: done ? rv.total : rivalXp(rv, week, now) }));
   rows.push({ id: 'me', name: 'Вы', me: true, xp: weekXp(learn, week) });
   rows.sort((a, b) => b.xp - a.xp || (a.me ? 1 : b.me ? -1 : 0));
   return rows.map((row, k) => ({ ...row, place: k + 1, zone: zoneOf(k + 1, league) }));
 }
 /* Лига ученика неделя за неделей — от первой недели с опытом до прошлой. Возвращает нынешнюю
-   лигу, таблицу текущей недели и историю: место, переход и награду каждой прошлой недели. */
+   лигу, таблицу текущей недели и историю: место, переход и награду каждой прошлой недели.
+   В воскресенье (перерыв) неделя уже подведена: она в истории, а таблица — её итог (rest: true),
+   league — лига, в которой неделю играли, next — куда она ведёт. */
 export function leagueState(learn, now = Date.now(), realNames = []) {
   const thisWeek = weekOf(dayOf(now));
+  const rest = isBreakDay(now);
   const days = Object.keys(learn.xp || {}).filter((d) => (learn.xp[d] || 0) > 0).sort();
   let league = 'bronze';
   const history = [];
@@ -117,7 +125,7 @@ export function leagueState(learn, now = Date.now(), realNames = []) {
     let w = weekOf(days[0]);
     const oldest = addDays(thisWeek, -7 * MAX_WEEKS);
     if (w < oldest) w = oldest;
-    for (; w < thisWeek; w = addDays(w, 7)) {
+    for (; w < thisWeek || (rest && w === thisWeek); w = addDays(w, 7)) {
       const xp = weekXp(learn, w);
       if (!xp) continue;
       const table = standings(learn, w, league, now);
@@ -128,14 +136,19 @@ export function leagueState(learn, now = Date.now(), realNames = []) {
       league = next;
     }
   }
-  const table = standings(learn, thisWeek, league, now, realNames);
+  // в перерыв на экране — итог этой недели в той лиге, где её играли
+  const restWeek = rest && history.length && history[history.length - 1].week === thisWeek ? history[history.length - 1] : null;
+  const shown = restWeek ? restWeek.league : league;
+  const table = standings(learn, thisWeek, shown, now, realNames);
   const me = table.find((row) => row.me);
+  const others = table.filter((row) => !row.me);
   // сколько опыта до зоны повышения (до пятого места) — 0, если уже там
-  const fifth = table.filter((row) => !row.me)[PROMOTE - 1];
-  const toPromote = me.zone === 'up' || tierIndex(league) === LEAGUES.length - 1 ? 0 : Math.max(1, fifth.xp - me.xp + 1);
-  // дней до конца недели, считая сегодняшний: в понедельник — 7, в воскресенье — 1
-  const daysLeft = 7 - Array.from({ length: 7 }, (_, d) => addDays(thisWeek, d)).indexOf(dayOf(now));
-  return { league, week: thisWeek, table, me, toPromote, daysLeft, history, joined: weekXp(learn, thisWeek) > 0 };
+  const toPromote = rest || me.zone === 'up' || tierIndex(shown) === LEAGUES.length - 1 ? 0 : Math.max(1, others[PROMOTE - 1].xp - me.xp + 1);
+  // сколько опыта, чтобы выйти из зоны понижения (обогнать 15-го)
+  const toSafe = rest || me.zone !== 'down' ? 0 : Math.max(1, others[GROUP - DEMOTE - 1].xp - me.xp + 1);
+  // дней до итогов, считая сегодняшний: в понедельник — 6, в субботу — 1, в воскресенье (перерыв) — 0
+  const daysLeft = rest ? 0 : LEAGUE_DAYS - Array.from({ length: LEAGUE_DAYS }, (_, d) => addDays(thisWeek, d)).indexOf(dayOf(now));
+  return { league: shown, next: league, rest, week: thisWeek, table, me, toPromote, toSafe, daysLeft, history, joined: weekXp(learn, thisWeek) > 0 };
 }
 // невыданные награды прошлых недель
 export const pendingRewards = (learn, now = Date.now()) => leagueState(learn, now).history.filter((h) => h.coins > 0 && !hasClaim(learn, `lg:${h.week}`));

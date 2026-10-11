@@ -13,7 +13,7 @@
    Карта экранов — src/learn/screens.js. */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
+  X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown,
 } from 'lucide-react';
@@ -25,7 +25,7 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
-  UNITS, LESSONS, LEVELS, levelOf, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
@@ -42,7 +42,7 @@ import {
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText } from './learn/terms.js';
-import { LeagueCard } from './learn-league.jsx';
+import { LeagueView } from './learn-league.jsx';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
@@ -94,8 +94,29 @@ const CSS = `
   .ln-mini-title { line-height: 1.2; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ln-bill-mini > * { flex-shrink: 0; }
   .ln-bill-mini { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
-  .ln-mini-no { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 17px/1 var(--ds-serif);
+  /* плашка уровня наверху Пути: стрелки к соседним уровням, касание — список уровней */
+  .ln-switch { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 6px; margin: 4px -4px 8px; padding: 6px 4px;
+    background: color-mix(in srgb, var(--ds-paper) 92%, transparent); backdrop-filter: blur(6px); }
+  .ln-switch-arrow { width: 40px; height: 40px; flex-shrink: 0; color: var(--u-ink); }
+  .ln-switch-arrow:disabled { opacity: .3; cursor: default; }
+  .ln-switch-plate { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px; border-radius: 10px; cursor: pointer; text-align: left; font: inherit; color: var(--ds-ink);
+    background: color-mix(in srgb, var(--u) 9%, var(--ds-card)); border: 1.5px solid color-mix(in srgb, var(--u) 45%, var(--ds-rule2)); box-shadow: 0 2px 0 color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); }
+  .ln-switch-plate:active { transform: translateY(1px); box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); }
+  .ln-switch-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .ln-switch-place { font: 700 18px/1.2 var(--ds-serif); color: var(--u-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln-switch-count { font: 600 12.5px/1 var(--ds-sans); color: var(--ds-ink2); margin-left: 4px; }
+  .ln-unit-no { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 17px/1 var(--ds-serif);
     color: var(--u-ink); border: 1.5px solid var(--u-ink); box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px color-mix(in srgb, var(--u) 40%, transparent); }
+  .ln-pick { display: flex; flex-direction: column; gap: 6px; max-height: min(58vh, 520px); overflow-y: auto; margin: 0 -4px; padding: 2px 4px; }
+  .ln-pick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 10px; text-align: left; font: inherit; color: var(--ds-ink);
+    background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); border: 1.5px solid var(--ds-rule2); }
+  button.ln-pick-row { cursor: pointer; }
+  .ln-pick-row[aria-current="true"] { border-color: var(--u-ink); box-shadow: inset 0 0 0 1px var(--u-ink); }
+  .ln-pick-row[data-state="locked"] { background: var(--ds-card); }
+  .ln-pick-row[data-state="locked"] .ln-unit-no { color: var(--ds-ink3); border-color: var(--ds-ink3); }
+  .ln-pick-txt { flex: 1; min-width: 0; }
+  .ln-pick-title { font: 700 16px/1.25 var(--ds-serif); }
+  .ln-pick-sub { font-size: 13px; color: var(--ds-ink2); line-height: 1.3; }
   /* живая модель на телефоне — свёрнутой строкой; касание раскрывает */
   .ln-fold-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 10px 12px; text-align: left; cursor: pointer; color: var(--ds-ink); font: inherit; }
   .ln-fold-row .lm-pips { margin-right: 4px; }
@@ -193,8 +214,7 @@ const CSS = `
   .ln-cal-sum b { display: block; font-size: 24px; color: var(--u-ink); }
   .ln-cal-sum span { font-size: 12.5px; color: var(--ds-ink3); }
   .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
-  .ln-level { display: flex; align-items: center; gap: 12px; margin: 22px 0 10px; padding: 10px 2px; border-top: 2px solid var(--ds-rule2); border-bottom: 1px dotted var(--ds-rule2); }
-  .ln-level-no { width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--ds-ink2); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: var(--ds-ink2); }
+  .ln-level-text { font-size: 13.5px; line-height: 1.35; margin: -2px 2px 4px; }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
 `;
 
@@ -549,8 +569,10 @@ const gameLine = (inst, r) => (r ? `Верно ${r.right} из ${r.answered} · 
    в течение суток (resume). */
 // урок собирается под ученика: уровень сложности, ошибки, подсказки и слабые темы (src/learn/program.js)
 function newPlan(run, learn) {
-  if (run.mode === 'lesson') { const p = buildLesson(run.lessonId, Math.random, { ...lessonOpts(learn), diamond: !!run.diamond }); return { items: p.items, cards: p.cards, seconds: p.seconds, diamond: !!run.diamond }; }
-  if (run.mode === 'check') { const p = buildUnitCheck(run.unitId, Math.random, { seen: learn.seen || {} }); return { items: p.items, cards: {}, passMistakes: p.passMistakes }; }
+  // урок уже пройден — расчёты в нём с новыми числами
+  if (run.mode === 'lesson') { const p = buildLesson(run.lessonId, Math.random, { ...lessonOpts(learn), diamond: !!run.diamond, replay: !!((learn.lessons || {})[run.lessonId] || {}).runs }); return { items: p.items, cards: p.cards, seconds: p.seconds, diamond: !!run.diamond }; }
+  // проверка юнита или тест уровня (levelId): сдан — юнит или все юниты уровня сданы
+  if (run.mode === 'check') { const p = run.levelId ? buildLevelCheck(run.levelId, Math.random, { seen: learn.seen || {} }) : buildUnitCheck(run.unitId, Math.random, { seen: learn.seen || {} }); return { items: p.items, cards: {}, passMistakes: p.passMistakes }; }
   if (run.mode === 'placement') return { items: buildPlacement().items, cards: {} };
   return { items: buildPractice(learn.mistakes.map((m) => m.id), Math.random, { weak: weakLessons(learn).map((w) => w.id) }).items, cards: {} };
 }
@@ -689,7 +711,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     } else if (run.mode === 'check') {
       pass = mistakes <= plan.passMistakes;
       xp = firstOk * XP.correct;
-      apply = (s) => { const t = finishLesson(s, null, { xp, ...done }); return pass ? passUnit(t, run.unitId, { ace: mistakes === 0, now }) : t; };
+      const ids = run.levelId ? levelUnits(run.levelId).map((u) => u.id) : [run.unitId];
+      apply = (s) => { const t = finishLesson(s, null, { xp, ...done }); return pass ? ids.reduce((x, id) => passUnit(x, id, { ace: mistakes === 0, now }), t) : t; };
     } else if (run.mode === 'placement') {
       // открытые тестом юниты — как сданные проверкой; тест не засчитывается уроком дня
       opened = placementOpened(plan.items, a.first);
@@ -756,7 +779,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const marked = useMemo(() => (cur ? { ...cur, prompt: markTerms(cur.prompt) } : null), [cur]);
   respRef.current = resp;
   const inst = marked ? { ...marked, _sel: sel, _setSel: setSel, _resp: respRef, _calc: calcOpen, _setCalc: setCalcOpen, _best: (learn.best || {})[marked.id] || 0 } : null;
-  const title = run.mode === 'lesson' ? `${diamond ? 'Алмазный уровень: ' : ''}${lesson.title}` : run.mode === 'check' ? 'Проверка юнита' : run.mode === 'placement' ? 'Вступительный тест' : 'Практика';
+  const title = run.mode === 'lesson' ? `${diamond ? 'Алмазный уровень: ' : ''}${lesson.title}` : run.mode === 'check' ? (run.levelId ? `Тест уровня «${LEVEL_BY_ID[run.levelId].title}»` : 'Проверка юнита') : run.mode === 'placement' ? 'Вступительный тест' : 'Практика';
 
   const kindName = cur ? KIND_LABEL[cur.kind] : '';
   // плашка ответа в нижней панели — одна на все виды уроков: её видно без прокрутки
@@ -1009,6 +1032,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                 {run.mode === 'placement' ? (result.opened.length
                   ? `Открыто сразу: ${result.opened.map((u) => `«${placeOf(u).place}»`).join(', ')}. ${result.opened.length >= UNITS.filter((u) => u.lessons.length).length ? 'Пройденные уроки можно взять на алмазном уровне.' : 'Путь продолжится со следующего места.'}`
                   : 'Начнём с самого начала — так надёжнее. Первые уроки короткие.')
+                  : run.mode === 'check' && run.levelId ? (result.pass ? `${nextLevelText(run.levelId)} Уроки пройденного уровня тоже открыты.` : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки уровня никуда не делись.`)
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
                     : lesson && lesson.kind === 'game' ? gameResultText(result)
@@ -1230,7 +1254,8 @@ function TopStats({ learn }) {
    гравюра; пройденный юнит его «оживляет» (цвет, свет в окнах, дым). Нажатие по месту —
    прокрутка к юниту на дороге ниже. */
 const MAP_BOX = { x: 130, y: 70, w: 780, h: 610 };
-function Atlas({ states, onPick }) {
+// sel — юниты, которые сейчас на экране Пути (выбранный уровень): их места в сплошном кольце
+function Atlas({ states, sel = [], onPick }) {
   const units = UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) }));
   const onPath = units.filter((x) => x.st);
   const route = units.map((x) => x.pl.at);
@@ -1265,9 +1290,11 @@ function Atlas({ states, onPick }) {
           const alive = st.complete; const here = cur && cur.u.id === u.id;
           const [x, y] = pl.at;
           return (
-            <g key={u.id} style={{ '--u': pl.color, cursor: 'pointer' }} data-testid="atlas-place" data-unit={u.id} data-alive={String(alive)}
-              onClick={() => onPick(u.id)} role="button" aria-label={`${pl.place}: к юниту`}>
+            <g key={u.id} style={{ '--u': pl.color, cursor: 'pointer' }} data-testid="atlas-place" data-unit={u.id} data-alive={String(alive)} data-selected={String(sel.includes(u.id))}
+              onClick={() => onPick(u.id)} role="button" aria-label={`${pl.place}: к юниту`} aria-current={sel.includes(u.id) ? 'true' : undefined}>
               {here && <circle cx={x} cy={y - 26} r="58" fill="none" stroke="var(--ds-gold)" strokeWidth="3.5" strokeDasharray="5 6" />}
+              {/* юнит, который сейчас на экране Пути, — в сплошном кольце своего цвета */}
+              {sel.includes(u.id) && <circle cx={x} cy={y - 26} r="53" fill="none" stroke="var(--u)" strokeWidth="5" />}
               <circle cx={x} cy={y - 26} r="50" fill="var(--ds-card)" opacity=".85" />
               <EngravingG kind={pl.building} alive={alive} x={x - 54} y={y - 72} scale={0.9} color={pl.color} />
               <text x={x} y={y + 30} textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="7" paintOrder="stroke">{pl.place}</text>
@@ -1279,19 +1306,8 @@ function Atlas({ states, onPick }) {
   );
 }
 
-/* Полоса уровня над первым юнитом уровня: номер ступени, название и что ученик умеет. */
-function LevelBand({ level }) {
-  return (
-    <div className="ln-level" data-testid="path-level" data-level={level.id}>
-      <span className="ln-level-no ds-num">{level.no}</span>
-      <div style={{ minWidth: 0 }}>
-        <div className="ds-eyebrow">Уровень {level.no} из {LEVELS.length}</div>
-        <div className="ds-h3">{level.title}</div>
-        <div className="ds-sub" style={{ fontSize: 13.5, lineHeight: 1.35 }}>{level.text}</div>
-      </div>
-    </div>
-  );
-}
+// после сданного теста уровня: какой уровень открылся
+const nextLevelText = (levelId) => { const k = LEVELS.findIndex((l) => l.id === levelId); const next = LEVELS[k + 1]; return next ? `Уровень «${next.title}» открыт — Путь уже на нём.` : 'Это последний уровень курса.'; };
 
 /* Остановки юнита на дороге: жетоны вдоль извилистой дороги. Пройденная — в цвете юнита с
    сургучной печатью, текущая — с золотым кольцом и флажком «Вы здесь», закрытая — пунктир. */
@@ -1424,21 +1440,32 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
   );
 }
 
-/* Живая модель на Пути телефона — одной строкой: что это, сколько деталей собрано; касание
-   раскрывает саму модель (улица, график, ползунки), «Свернуть» — обратно. */
-function ModelFold({ unitId, learn }) {
-  const [open, setOpen] = useState(false);
+/* Живая модель юнита: свёрнутая — одной строкой (что это, сколько деталей собрано), касание
+   раскрывает саму модель (улица, график, ползунки), «Свернуть» — обратно. На телефоне она
+   свёрнута, пока её не откроют; на ПК (side — правая колонка) открыта, но тоже сворачивается,
+   и выбор запоминается на устройстве. */
+const MODEL_SIDE_KEY = 'ems-model-side-open';
+function ModelFold({ unitId, learn, side = false }) {
+  const [open, setOpenRaw] = useState(() => {
+    if (!side) return false;
+    try { return localStorage.getItem(MODEL_SIDE_KEY) !== '0'; } catch { return true; }
+  });
+  const setOpen = (v) => {
+    setOpenRaw(v);
+    if (side) { try { localStorage.setItem(MODEL_SIDE_KEY, v ? '1' : '0'); } catch { /* приватный режим */ } }
+  };
   const prog = modelProgress(unitId, learn);
+  const gap = side ? 0 : 10;
   if (open) {
     return (
-      <Card style={{ marginTop: 10 }}>
+      <Card style={{ marginTop: gap }} data-testid="model-open">
         <MarketModel unitId={unitId} learn={learn} compact />
         <Button variant="ghost" small icon={ChevronDown} data-testid="model-fold-close" style={{ marginTop: 6 }} onClick={() => { Audio.play('paper'); setOpen(false); }}>Свернуть модель</Button>
       </Card>
     );
   }
   return (
-    <Card style={{ marginTop: 10, padding: 0 }}>
+    <Card style={{ marginTop: gap, padding: 0 }}>
       <button type="button" className="ln-fold-row" data-testid="model-fold" data-open={prog.open} aria-expanded="false" onClick={() => { Audio.play('paper'); setOpen(true); }}>
         <Coffee size={20} color="var(--u-ink)" aria-hidden="true" />
         <span style={{ flex: 1, minWidth: 0 }}>
@@ -1475,6 +1502,123 @@ const focusLesson = (root, unitId = null) => {
   return scope.querySelector('[data-testid="path-lesson"][data-rec="true"]') || scope.querySelector('.ln-token.cur') || scope.querySelector('[data-testid="path-lesson"][data-state="open"]');
 };
 
+/* Юниты Пути: номер, место, уровень; reach — в юните есть открытый урок. */
+const pathUnits = (states) => UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id), lv: levelOf(u.id) }))
+  .filter((x) => x.st).map((x) => ({ ...x, reach: x.st.lessons.some((l) => l.open) }));
+/* Уровни Пути: юниты с уроками на каждом уровне; open — в уровне есть открытый урок (туда можно
+   перейти), done — сколько юнитов пройдено или сдано, soon — готовых юнитов пока нет. test — у
+   первого закрытого уровня после открытых: его открывает тест предыдущего уровня (prev). */
+function pathLevels(list) {
+  const rows = LEVELS.map((lv, k) => {
+    const units = list.filter((x) => x.u.level === lv.id);
+    return { lv: { ...lv, no: k + 1 }, units, open: units.some((x) => x.reach), done: units.filter((x) => x.st.complete || x.st.tested).length, soon: !units.length };
+  });
+  const real = rows.filter((x) => !x.soon);
+  const k = real.findIndex((x) => !x.open);
+  if (k > 0) real[k].test = real[k - 1].lv.id;
+  return rows;
+}
+const levelColor = (row) => (row.units[0] ? row.units[0].pl.color : 'var(--ds-ink3)');
+function levelStatus(row, levels) {
+  if (row.soon) return 'строится — гайды готовых глав уже можно читать';
+  const cur = row.units.find((x) => x.st.current);
+  if (row.done === row.units.length && row.units.every((x) => x.st.complete)) return `пройден · юнитов ${row.units.length} из ${row.units.length}`;
+  if (row.open) return `${cur ? `сейчас: «${cur.st.current.title}» · ` : ''}юнитов пройдено ${row.done} из ${row.units.length}`;
+  if (row.test) return `тест по уровню «${LEVEL_BY_ID[row.test].title}»: сдадите — этот уровень откроется`;
+  const before = levels.slice(0, row.lv.no - 1).reverse().find((x) => !x.soon && !x.open);
+  return `закрыт · сначала откройте уровень «${(before || row).lv.title}»`;
+}
+
+/* Плашка уровня наверху Пути: номер, название, «из скольких» и сколько юнитов пройдено.
+   ‹ — на уровень назад, › — на следующий, если он открыт; закрыт — замок, касание открывает
+   список уровней с тестом. Касание плашки — тот же список. */
+function LevelSwitch({ levels, sel, onSel, onOpen }) {
+  const real = levels.filter((x) => !x.soon);
+  const k = real.findIndex((x) => x.lv.id === sel);
+  const cur = real[k]; const prev = real[k - 1]; const next = real[k + 1];
+  const nextLocked = !!(next && !next.open);
+  const prevLocked = !!(prev && !prev.open);
+  return (
+    <div className="ln-switch" data-testid="level-switch" data-level={sel} style={{ '--u': levelColor(cur) }}>
+      <IconButton label={!prev ? 'Это первый уровень' : prevLocked ? `Уровень «${prev.lv.title}» закрыт` : `Уровень назад: «${prev.lv.title}»`} icon={prevLocked ? Lock : ChevronLeft} size={prevLocked ? 20 : 24}
+        className="ln-switch-arrow" data-testid="level-prev" data-locked={String(prevLocked)} disabled={!prev}
+        onClick={() => { if (!prev) return; Audio.play('paper'); if (prevLocked) onOpen(prev.lv.id); else onSel(prev.lv.id); }} />
+      <button type="button" className="ln-switch-plate" data-testid="level-switch-open" aria-haspopup="dialog" aria-label={`Уровень ${cur.lv.no} из ${LEVELS.length}: ${cur.lv.title}. Выбрать уровень`}
+        onClick={() => { Audio.play('paper'); onOpen(); }}>
+        <span className="ln-unit-no" aria-hidden="true">{cur.lv.no}</span>
+        <span className="ln-switch-txt">
+          <span className="ds-eyebrow">Уровень {cur.lv.no} из {LEVELS.length}</span>
+          <span className="ln-switch-place">{cur.lv.title} <span className="ln-switch-count">юнитов {cur.done} из {cur.units.length}</span></span>
+        </span>
+        <ChevronDown size={20} color="var(--ds-ink3)" aria-hidden="true" />
+      </button>
+      <IconButton label={!next ? 'Дальше уровни строятся' : nextLocked ? `Уровень «${next.lv.title}» закрыт: пройти тест` : `Следующий уровень: «${next.lv.title}»`} icon={nextLocked ? Lock : ChevronRight} size={nextLocked ? 20 : 24}
+        className="ln-switch-arrow" data-testid="level-next" data-locked={String(nextLocked)} disabled={!next}
+        onClick={() => { if (!next) return; Audio.play('paper'); if (nextLocked) onOpen(next.lv.id); else onSel(next.lv.id); }} />
+    </div>
+  );
+}
+
+/* Список уровней: в открытый — перейти, у первого закрытого — «Пройти тест» (тест предыдущего
+   уровня), дальние закрытые — после него, уровни без готовых юнитов — «строится». */
+function LevelPicker({ levels, sel, focus, onSel, onTest, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current && ref.current.querySelector(`[data-level="${focus || sel}"]`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }, [focus, sel]);
+  return (
+    <Sheet label="Уровни Пути" onClose={onClose} testid="level-picker">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <IconButton label="Закрыть" icon={X} data-nav="back" onClick={onClose} />
+        <div className="ds-h3" style={{ flex: 1 }}>Уровни Пути</div>
+      </div>
+      <div className="ds-sub" style={{ fontSize: 13.5, margin: '0 0 10px' }}>На Пути — юниты одного уровня. Назад можно всегда; следующий уровень откроется, когда пройдёте уроки уровня или сдадите его тест.</div>
+      <div className="ln-pick" ref={ref}>
+        {levels.map((x) => {
+          const state = x.soon ? 'soon' : x.open ? (x.units.every((y) => y.st.complete) ? 'done' : 'open') : 'locked';
+          const body = (
+            <>
+              <span className="ln-unit-no" aria-hidden="true">{x.lv.no}</span>
+              <span className="ln-pick-txt">
+                <span className="ln-pick-title" style={{ display: 'block', color: x.open ? 'var(--u-ink)' : 'var(--ds-ink2)' }}>{x.lv.title}</span>
+                <span className="ln-pick-sub" style={{ display: 'block' }}>{x.lv.text}</span>
+                {x.units.length > 0 && <span className="ln-pick-sub" style={{ display: 'block' }}>Юниты: {x.units.map((y) => y.pl.place).join(' · ')}</span>}
+                <span className="ln-pick-sub" style={{ display: 'block', fontWeight: 600 }} data-testid="level-pick-status">{levelStatus(x, levels)}</span>
+                {x.test && (
+                  <span style={{ display: 'block', marginTop: 8 }}>
+                    <Button small variant={x.lv.id === focus ? 'primary' : 'secondary'} icon={Sparkles} data-testid="level-pick-test" data-nav-target={`check:level:${x.test}`}
+                      onClick={() => { Audio.prime(); onTest(x.test, x.lv.id); }}>Пройти тест</Button>
+                  </span>
+                )}
+              </span>
+            </>
+          );
+          if (x.open) {
+            return (
+              <button key={x.lv.id} type="button" className="ln-pick-row" data-testid="level-pick" data-level={x.lv.id} data-state={state} aria-current={x.lv.id === sel ? 'true' : undefined}
+                style={{ '--u': levelColor(x) }} onClick={() => { Audio.play('paper'); onSel(x.lv.id); }}>
+                {body}
+                {x.lv.id === sel ? <Check size={20} color="var(--u-ink)" aria-label="сейчас на экране" /> : <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />}
+              </button>
+            );
+          }
+          return (
+            <div key={x.lv.id} className="ln-pick-row" data-testid="level-pick" data-level={x.lv.id} data-state={state}
+              style={{ '--u': levelColor(x), ...(x.soon ? { background: 'transparent', borderStyle: 'dashed' } : {}) }}>
+              {body}
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
+  );
+}
+
+/* Выбранный уровень Пути помнится и после ухода на другую вкладку (экран Пути при этом
+   закрывается) — пока не сменился текущий уровень; jump — уровень, который откроет сдаваемый тест. */
+let pathMem = { level: null, cur: null, jump: null };
+
 function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0 }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
@@ -1487,9 +1631,27 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   // уровень текущего юнита — «Миру» (хранится наибольший): с «Среднего» продвинутые панели партии открыты сразу
   const levelNo = first ? LEVELS.indexOf(levelOf(first.course.id)) : 0;
   useEffect(() => { writeLearnLevel(Math.max(0, levelNo)); }, [levelNo]);
-  const soon = UNITS.map((u, k) => ({ u, no: k + 1 })).filter(({ u }) => !states.some((x) => x.course.id === u.id));
   const [soonOpen, setSoonOpen] = useState(false);
-  /* Пройденный юнит с открытым сундуком сворачивается в одну карточку: новые модули не уезжают
+  /* На Пути — юниты одного уровня. По умолчанию — уровень, где ученик сейчас (иначе последний
+     открытый); выбранный вручную держится, пока текущий уровень не сменился. Сданный тест
+     уровня — сразу на открытом им уровне. */
+  const list = pathUnits(states);
+  const levels = pathLevels(list);
+  const curUnit = first && first.current ? list.find((x) => x.u.id === first.course.id) : [...list].reverse().find((x) => x.reach) || list[0];
+  const curLevel = curUnit ? curUnit.u.level : null;
+  const [chosen, setChosenState] = useState(() => (pathMem.cur === curLevel ? pathMem.level : null));
+  const setChosen = (id) => { pathMem = { ...pathMem, level: id, cur: curLevel }; setChosenState(id); };
+  const [picker, setPicker] = useState(null); // null — закрыт, иначе { focus }
+  useEffect(() => { if (pathMem.cur !== curLevel) { pathMem = { ...pathMem, level: null, cur: curLevel }; setChosenState(null); } }, [curLevel]);
+  const openLevel = (id) => levels.some((x) => x.lv.id === id && x.open);
+  useEffect(() => {
+    const id = pathMem.jump;
+    if (id && openLevel(id)) { pathMem = { level: id, cur: curLevel, jump: null }; setChosenState(id); }
+  });
+  const sel = chosen && openLevel(chosen) ? chosen : curLevel;
+  const selRow = levels.find((x) => x.lv.id === sel);
+  const shown = list.filter((x) => x.u.level === sel);
+  /* Пройденный юнит с открытым сундуком сворачивается в одну карточку: уровень не уезжает
      вниз длинной лентой. Развернуть — по кнопке, на время этого экрана. */
   const [unfolded, setUnfolded] = useState({});
   const resumes = new Set(resumeIds());
@@ -1506,29 +1668,38 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openIds.join(), visible]);
-  /* Касание места на карте — к уроку этого юнита, который Путь советует (или к самому юниту,
-     если он свёрнут). При открытии Путь сразу стоит на рекомендованном уроке — посередине экрана. */
+  /* Выбор уровня в списке — его юниты на экране, к уроку, который советует Путь; касание места
+     на карте — к этому юниту (уровень закрыт — список уровней с тестом). При открытии Путь
+     сразу стоит на рекомендованном уроке — посередине экрана. */
   const rootRef = useRef(null);
   const atlasRef = useRef(null);
-  const pick = (id) => {
-    const lesson = focusLesson(rootRef.current, id);
-    const el = lesson || document.getElementById(`unit-${id}`);
-    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: lesson ? 'center' : 'start' });
+  const [scrollTo, setScrollTo] = useState({ n: 0, unit: null });
+  const show = (levelId, unit = null) => { setPicker(null); setChosen(levelId); setScrollTo((x) => ({ n: x.n + 1, unit })); };
+  const pick = (unitId) => {
+    const x = list.find((y) => y.u.id === unitId);
+    if (x && openLevel(x.u.level)) show(x.u.level, unitId); else if (x) setPicker({ focus: x.u.level });
   };
+  useEffect(() => {
+    if (!scrollTo.n) return;
+    const lesson = focusLesson(rootRef.current, scrollTo.unit);
+    const el = lesson || (scrollTo.unit && document.getElementById(`unit-${scrollTo.unit}`));
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: lesson ? 'center' : 'start' });
+  }, [scrollTo]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const el = focusLesson(rootRef.current);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
   }, []);
-  // повторное касание вкладки «Путь» — снова к рекомендованному уроку, где бы ни был экран
+  // повторное касание вкладки «Путь» — снова текущий уровень и рекомендованный урок, где бы ни был экран
   useEffect(() => {
     if (!homeTick) return;
-    const el = focusLesson(rootRef.current);
-    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
-  }, [homeTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* ПК (от 1024 px): две колонки — слева карта и юниты, справа закреплены задания дня и живая
-     модель текущего юнита (под самим юнитом её тогда нет). На телефоне — одна колонка. */
+    setChosen(null); setPicker(null); setScrollTo((x) => ({ n: x.n + 1, unit: null }));
+  }, [homeTick]);
+  // строящиеся юниты выбранного уровня — строкой внизу; будущих уровней на Пути не видно
+  const soon = UNITS.map((u, k) => ({ u, no: k + 1 })).filter(({ u }) => u.level === sel && !states.some((x) => x.course.id === u.id));
+  /* ПК (от 1024 px): две колонки — слева карта и юниты уровня, справа закреплены задания дня и
+     живая модель юнита этого уровня (под самим юнитом её тогда нет). На телефоне — одна колонка. */
   const wide = useWide();
-  const sideModel = wide ? ((states.find((x) => x.current && hasModel(x.course.id)) || states.find((x) => hasModel(x.course.id)) || { course: {} }).course.id || null) : null;
+  const sideModel = wide ? ((shown.find((x) => hasModel(x.u.id)) || { u: {} }).u.id || null) : null;
   return (
     <div ref={rootRef} className={`ln-wrap${wide ? ' ln-path-wide' : ''}`} data-testid="path" data-layout={wide ? 'columns' : 'column'}>
       <div className="ln-path-main">
@@ -1542,22 +1713,24 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
         </div>
       </div>
       {askPlacement && <PlacementCard onStart={() => onStart({ mode: 'placement' })} onSkip={() => { Audio.play('paper'); update((s) => setPlacement(s, [])); }} />}
-      <div ref={atlasRef}><Atlas states={states} onPick={pick} /></div>
+      <div ref={atlasRef}><Atlas states={states} sel={shown.map((x) => x.u.id)} onPick={pick} /></div>
       <ToMap target={atlasRef} />
-      {UNITS.map((u, k) => ({ u, no: k + 1, st: states.find((x) => x.course.id === u.id), pl: placeOf(u.id) })).filter((x) => x.st).map(({ u, no, st, pl }, k, list) => {
+      {selRow && <LevelSwitch levels={levels} sel={sel} onSel={show} onOpen={(focus = null) => setPicker({ focus })} />}
+      {picker && <LevelPicker levels={levels} sel={sel} focus={picker.focus} onSel={show} onClose={() => setPicker(null)}
+        onTest={(levelId, target) => {
+          setPicker(null); pathMem = { ...pathMem, jump: target };
+          onStart({ mode: 'check', levelId, unitId: (levels.find((x) => x.lv.id === levelId).units[0] || { u: {} }).u.id });
+        }} />}
+      {selRow && <div className="ds-sub ln-level-text" data-testid="path-level" data-level={sel}>{selRow.lv.text}</div>}
+      {shown.map(({ u, no, st, pl }) => {
         const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];
-        // первый юнит уровня — над ним полоса уровня: «Базовый — понимаешь спрос, предложение…»
-        const lv = levelOf(u.id);
-        const newLevel = k === 0 || list[k - 1].u.level !== u.level;
         return (
-        <React.Fragment key={u.id}>
-        {newLevel && <LevelBand level={lv} />}
-        <section id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} style={{ '--u': pl.color, scrollMarginTop: 12 }}>
+        <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} style={{ '--u': pl.color, scrollMarginTop: 64 }}>
           {/* шапка юнита — как купюра своего достоинства: гильош, номер, место и здание;
               пройденный и свёрнутый — одной строкой */}
           {folded ? (
             <Card className="ln-bill-mini">
-              <span className="ln-mini-no" aria-hidden="true">{no}</span>
+              <span className="ln-unit-no" aria-hidden="true">{no}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="ds-h3 ln-mini-title" style={{ color: 'var(--u-ink)' }}>{pl.place}</div>
                 <div className="ds-sub" style={{ fontSize: 13, whiteSpace: 'nowrap' }} data-testid="unit-diamonds"><span className="ds-sr">Юнит {no}, </span>пройден · <Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}<span className="ds-sr"> алмазов</span></div>
@@ -1597,14 +1770,13 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
           {!folded && <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
             chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />}
         </section>
-        </React.Fragment>
         );
       })}
       {soon.length > 0 && (
         <Card flat style={{ padding: 0, marginTop: 8 }} data-testid="path-soon">
           <button type="button" className="ln-soon-head" aria-expanded={soonOpen} onClick={() => { Audio.play('paper'); setSoonOpen((v) => !v); }}>
             <MapPin size={18} color="var(--ds-ink3)" aria-hidden="true" />
-            <span style={{ flex: 1 }}><span className="ds-h3" style={{ display: 'block' }}>Дальше по дороге: {soon.length} {plural(soon.length, 'место строится', 'места строятся', 'мест строятся')}</span>
+            <span style={{ flex: 1 }}><span className="ds-h3" style={{ display: 'block' }}>Ещё в этом уровне: {soon.length} {plural(soon.length, 'место строится', 'места строятся', 'мест строятся')}</span>
               <span className="ds-faint" style={{ fontSize: 13 }}>гайды готовых глав уже можно читать</span></span>
             <ChevronRight size={18} style={{ transform: soonOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} aria-hidden="true" />
           </button>
@@ -1612,7 +1784,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             <div style={{ padding: '0 14px 10px' }} data-testid="path-soon-list">
               {soon.map(({ u, no }) => (
                 <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px dotted var(--ds-rule2)' }} data-unit={u.id}>
-                  <span style={{ flex: 1, fontSize: 14.5 }}><b style={{ fontFamily: 'var(--ds-serif)' }}>{placeOf(u.id).place}</b> <span className="ds-faint">· юнит {no} · {levelOf(u.id).title} · {u.title}</span></span>
+                  <span style={{ flex: 1, fontSize: 14.5 }}><b style={{ fontFamily: 'var(--ds-serif)' }}>{placeOf(u.id).place}</b> <span className="ds-faint">· юнит {no} · {u.title}</span></span>
                   {u.ready && <Button variant="ghost" small data-nav-target={`book:chapter:${u.id}`} onClick={() => onOpenBook({ kind: 'chapter', id: u.id })}>Гайд</Button>}
                 </div>
               ))}
@@ -1625,7 +1797,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
         <aside className="ln-path-side" data-testid="path-side" aria-label="Задания дня и живая модель">
           <TasksEntry learn={learn} onOpen={onTasks} />
           <QuestsCard learn={learn} testid="side-quests" />
-          {sideModel && <Card><MarketModel unitId={sideModel} learn={learn} compact /></Card>}
+          {sideModel && <ModelFold unitId={sideModel} learn={learn} side />}
         </aside>
       )}
     </div>
@@ -1637,7 +1809,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
    Экран поверх Пути (открывается карточкой «Задания» наверху): цель дня в минутах и три
    задания дня, персональное испытание месяца, ниже — практика: ошибки уроков, задачи
    вперемешку и итоговая проверка. Один «назад» — на Путь. */
-function TasksView({ learn, update, onStart, onOpenBook, onBack }) {
+function TasksView({ learn, onStart, onOpenBook, onBack }) {
   const n = learn.mistakes.length;
   // задачи и вопросы учебника, которым подошёл срок повторения
   const [due] = useState(() => reviewQueue(loadProgress()).due.length);
@@ -1645,9 +1817,8 @@ function TasksView({ learn, update, onStart, onOpenBook, onBack }) {
   return (
     <div className="ln-wrap" data-testid="tasks">
       <TopBar back={<IconButton label="Назад, на Путь" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Задания" />
-      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня, на неделю и на месяц. Задания дня обновляются в полночь и начинаются с нуля, лига — по понедельникам.</div>
+      <div className="ds-sub" style={{ fontSize: 14, margin: '6px 0 12px' }}>На сегодня, на неделю и на месяц. Задания дня обновляются в полночь и начинаются с нуля.</div>
       <QuestsCard learn={learn} />
-      <LeagueCard learn={learn} update={update} />
       <MonthCard learn={learn} />
       <div data-testid="practice">
         <div className="ds-h3" style={{ margin: '18px 0 6px' }}>Практика</div>
@@ -1860,9 +2031,10 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
           onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} homeTick={pathHome} />}
-        {tab === 'path' && tasks && <TasksView learn={learn} update={update} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
+        {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
         {tab === 'shop' && <ShopView learn={learn} update={update} />}
+        {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
         {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}
           onReports={() => { setReports(true); window.scrollTo(0, 0); }} onAnalytics={() => { setAnalytics(true); window.scrollTo(0, 0); }} />}
       </div>

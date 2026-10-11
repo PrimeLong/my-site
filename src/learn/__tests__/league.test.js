@@ -65,13 +65,50 @@ describe('лига: переходы и награды', () => {
     expect(claimLeague(r.s, now).coins).toBe(0);
     expect(balance(claimLeague(mergeLearn(r.s, s), now).s)).toBe(50);
   });
-  it('опыт недели — сумма дней с понедельника по воскресенье; до повышения — сколько не хватает до пятого места', () => {
-    const s = withXp({ [addDays(MON, -1)]: 99, [MON]: 10, [addDays(MON, 6)]: 5, [addDays(MON, 7)]: 77 });
-    expect(weekXp(s, MON)).toBe(15);
+  it('опыт недели лиги — понедельник … суббота, воскресенье не считается; до повышения — сколько не хватает до пятого места', () => {
+    const s = withXp({ [addDays(MON, -1)]: 99, [MON]: 10, [addDays(MON, 5)]: 4, [addDays(MON, 6)]: 5, [addDays(MON, 7)]: 77 });
+    expect(weekXp(s, MON)).toBe(14);
     const st = leagueState(withXp({ [MON]: 1 }), at(addDays(MON, 4)));
     expect(st.league).toBe('bronze');
+    expect(st.rest).toBe(false);
     expect(st.toPromote).toBeGreaterThan(0);
-    expect(st.daysLeft).toBe(3);
+    // в пятницу до итогов два дня: пятница и суббота
+    expect(st.daysLeft).toBe(2);
+    expect(leagueState(withXp({ [MON]: 1 }), at(MON)).daysLeft).toBe(6);
     expect(LEAGUES.map((l) => l.title)).toEqual(['Бронзовая', 'Серебряная', 'Золотая', 'Сапфировая', 'Рубиновая', 'Изумрудная', 'Алмазная']);
+  });
+});
+
+describe('лига: перерыв в воскресенье', () => {
+  it('в воскресенье неделя уже подведена: итог в истории, награду можно забрать, таблица — окончательная', () => {
+    const s = withXp({ [MON]: 3000 });
+    const sun = at(addDays(MON, 6), 15);
+    const st = leagueState(s, sun);
+    expect(st.rest).toBe(true);
+    expect(st.daysLeft).toBe(0);
+    expect(st.league).toBe('bronze');
+    expect(st.next).toBe('silver');
+    expect(st.me.place).toBe(1);
+    expect(st.history.map((h) => h.week)).toEqual([MON]);
+    expect(pendingRewards(s, sun)).toHaveLength(1);
+    // таблица в перерыв не растёт: соперники в 15:00 и в 23:00 с тем же опытом
+    expect(leagueState(s, at(addDays(MON, 6), 23)).table.map((r) => r.xp)).toEqual(st.table.map((r) => r.xp));
+    // в понедельник — уже новая неделя в Серебряной
+    const mon = leagueState(s, at(addDays(MON, 7)));
+    expect(mon).toMatchObject({ rest: false, league: 'silver', next: 'silver' });
+  });
+  it('опыт воскресенья не меняет итог недели', () => {
+    const a = leagueState(withXp({ [MON]: 30 }), at(addDays(MON, 6)));
+    const b = leagueState(withXp({ [MON]: 30, [addDays(MON, 6)]: 5000 }), at(addDays(MON, 6)));
+    expect(b.me.place).toBe(a.me.place);
+    expect(b.history).toEqual(a.history);
+  });
+  it('в зоне понижения видно, сколько опыта нужно, чтобы выбраться', () => {
+    const s = withXp({ [MON]: 3000, [addDays(MON, 7)]: 1 });
+    const st = leagueState(s, at(addDays(MON, 12)));
+    expect(st.league).toBe('silver');
+    expect(st.me.zone).toBe('down');
+    const fifteenth = st.table.filter((r) => !r.me)[GROUP - 5 - 1];
+    expect(st.toSafe).toBe(fifteenth.xp - st.me.xp + 1);
   });
 });

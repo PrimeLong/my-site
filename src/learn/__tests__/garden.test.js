@@ -1,9 +1,10 @@
 /* Сад Инфли: семена за монеты по курсу дня, растение растёт по часам — и офлайн; редкое растёт
    дольше; собранное уходит в гербарий; посадки и сборы переживают слияние устройств. */
 import { describe, it, expect } from 'vitest';
-import { PLANTS, PLANT_BY_ID, RARITY_ORDER, GARDEN_PLOTS, plant, harvest, herbarium, gardenPlots, growth, growMs, plantPrice, leftText, ripeCount } from '../garden.js';
+import { PLANTS, PLANT_BY_ID, RARITY_ORDER, GARDEN_PLOTS, GRADES, plant, harvest, herbarium, grown, collection, gardenPlots, growth, growMs, plantPrice, leftText, ripeCount,
+  gradeOf, sell, salePrice, soldToday, marketFactor } from '../garden.js';
 import { emptyLearn, normalizeLearn, mergeLearn, dayOf } from '../../textbook/learn-state.js';
-import { balance, earn, courseIncome, RATE_MAX } from '../rewards.js';
+import { balance, earn, courseIncome, RATE_MAX, rateOn } from '../rewards.js';
 
 const T = new Date(2026, 9, 10, 12).getTime();
 const HOUR = 3600000;
@@ -45,6 +46,9 @@ describe('сад: посадка и рост', () => {
     expect(growth(g, T - 5 * HOUR).p).toBe(0);
     expect(leftText(growth(g, T + 20 * HOUR + 30 * 60000).left)).toBe('ещё 3 ч 30 мин');
     expect(leftText(growMs('moneytree'))).toBe('ещё 4 дн');
+    // на грядке — коротко: без «ещё», от трёх часов без минут
+    expect(leftText(12 * HOUR + 60000, { short: true })).toBe('12 ч');
+    expect(leftText(2 * HOUR + 20 * 60000, { short: true })).toBe('2 ч 20 мин');
   });
   it('собрать можно только созревшее; собранное — в гербарии, грядка свободна', () => {
     const { s, at } = plant(rich(), 'chamomile', T);
@@ -85,5 +89,60 @@ describe('сад: профиль и два устройства', () => {
     // оба посадили в первую грядку — позднее растение переезжает на свободную
     const { plots } = gardenPlots(mergeLearn(a.s, b.s));
     expect(plots.filter(Boolean).map((p) => [p.plant, p.plot])).toEqual([['chamomile', 0], ['tulip', 1]]);
+  });
+});
+
+describe('сад: редкость урожая и рынок', () => {
+  // посадить и вырастить: { s, at } уже собранного урожая
+  const grow = (s0, id, t) => { const p = plant(s0, id, t); return { s: harvest(p.s, p.at, t + growMs(id)).s, at: p.at }; };
+  it('шансы редкостей — как написано на экране; в среднем урожай чуть дороже семян', () => {
+    expect(GRADES.reduce((a, g) => a + g.p, 0)).toBeCloseTo(1, 10);
+    const n = 20000; const got = {};
+    for (let k = 0; k < n; k += 1) { const g = gradeOf(T + k * 7919); got[g] = (got[g] || 0) + 1; }
+    GRADES.forEach((g) => expect(Math.abs(got[g.id] / n - g.p), g.id).toBeLessThan(0.012));
+    const ev = GRADES.reduce((a, g) => a + g.p * g.mult, 0);
+    expect(ev).toBeGreaterThan(1.05);
+    expect(ev).toBeLessThan(1.15);
+    // редкость — от времени посадки: собрать на другом устройстве — та же
+    expect(gradeOf(T + 123)).toBe(gradeOf(String(T + 123)));
+  });
+  it('урожай можно продать: монеты по цене семян × редкость по курсу дня; второй раз — нельзя', () => {
+    const { s, at } = grow(rich(), 'tulip', T);
+    const r0 = harvest(plant(rich(), 'tulip', T).s, plant(rich(), 'tulip', T).at, T + growMs('tulip'));
+    expect(r0.grade).toBe(gradeOf(r0.at));
+    const now = T + growMs('tulip') + 1000;
+    const price = salePrice(s, at, now);
+    const mult = GRADES.find((g) => g.id === gradeOf(at)).mult;
+    expect(price.coins).toBe(Math.floor(PLANT_BY_ID.tulip.crowns * mult * rateOn(dayOf(now))));
+    const r = sell(s, at, now);
+    expect(r.ok).toBe(true);
+    expect(balance(r.s)).toBe(balance(s) + price.coins);
+    expect(sell(r.s, at, now)).toMatchObject({ ok: false, reason: 'Уже продано' });
+    // проданное ушло из коллекции, но растение остаётся выращенным
+    expect(herbarium(r.s)).toEqual({});
+    expect(grown(r.s)).toEqual({ tulip: 1 });
+    expect(collection(s)).toEqual({ tulip: { [gradeOf(at)]: 1 } });
+  });
+  it('спрос насыщается: каждая продажа того же растения за день — на 15% дешевле, не ниже половины; назавтра снова полная', () => {
+    let s = rich(20000);
+    const ats = [];
+    for (let k = 0; k < 5; k += 1) { const g = grow(s, 'chamomile', T + k); s = g.s; ats.push(g.at); }
+    const now = T + 3 * HOUR;
+    expect(marketFactor(s, 'chamomile', now)).toBe(1);
+    ats.forEach((at, k) => {
+      expect(soldToday(s, 'chamomile', now)).toBe(k);
+      expect(marketFactor(s, 'chamomile', now)).toBeCloseTo(Math.max(0.5, 1 - 0.15 * k), 10);
+      s = sell(s, at, now).s;
+    });
+    // другое растение — свой спрос
+    expect(marketFactor(s, 'tulip', now)).toBe(1);
+    expect(marketFactor(s, 'chamomile', now + 24 * HOUR)).toBe(1);
+  });
+  it('продажа на одном устройстве — продано и после слияния', () => {
+    const { s, at } = grow(rich(), 'peony', T);
+    const sold = sell(s, at, T + 30 * HOUR).s;
+    const m = mergeLearn(s, sold);
+    expect(herbarium(m)).toEqual({});
+    expect(sell(m, at, T + 31 * HOUR).ok).toBe(false);
   });
 });
