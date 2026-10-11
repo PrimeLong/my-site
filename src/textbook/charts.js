@@ -909,7 +909,8 @@ const extChart = {
     const p = extParams(A);
     return [
       { id: 'e', label: 'Ущерб соседям от единицы', min: 0, max: Math.round(p.e * 2), step: 1, def: p.e, fmt: (v) => `${v} руб.` },
-      { id: 'pigou', label: 'Налог Пигу = ущербу', toggle: true, def: false },
+      // pigou=1 — налог уже введён (шаг «Налог Пигу» показывает итог, а не исходный рынок)
+      { id: 'pigou', label: 'Налог Пигу = ущербу', toggle: true, def: A.pigou === '1' || A.pigou === 'true' },
     ];
   },
   measure: (A, v) => { const p = extParams(A); const m = externality({ ...p, e: v.e }, v.pigou ? v.e : 0); return { Q: m.qm, dwl: m.dwl }; },
@@ -923,6 +924,8 @@ const extChart = {
       polys,
       curves: [
         { id: 'D', label: 'спрос', labelPos: 0.08, points: line((q) => p.a - q, 0, Qmax), color: 'blue' },
+        // с налогом прежние частные издержки остаются бледным пунктиром: видно, насколько налог их поднял
+        ...(v.pigou && tax > 0 ? [{ id: 'MC0', points: line((q) => p.c0 + q, 0, Qmax), color: 'teal', ghost: true }] : []),
         { id: 'MC', label: v.pigou ? 'MC + налог' : 'MC частные', labelPos: 0.2, points: line((q) => p.c0 + tax + q, 0, Qmax), color: 'teal' },
         ...(e > 0 ? [{ id: 'SMC', label: 'MC общества', labelPos: 0.6, points: line((q) => p.c0 + e + q, 0, Qmax), color: 'rust', dashed: true }] : []),
       ],
@@ -934,6 +937,7 @@ const extChart = {
         { label: 'Выпуск рынка', value: r1(m.qm) },
         { label: 'Оптимум для общества', value: r1(m.qo) },
         { label: 'Безвозвратные потери', value: r1(m.dwl) },
+        ...(v.pigou ? [{ label: 'Налог Пигу с единицы', value: r1(tax) }] : []),
       ],
     };
   },
