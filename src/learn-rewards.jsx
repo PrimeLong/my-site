@@ -332,6 +332,9 @@ function Wardrobe({ learn, wear, onWear }) {
   const slots = Object.keys(SLOT_LABEL);
   const latest = list.slice().sort((a, b) => (owned[b.id] || 0) - (owned[a.id] || 0))[0];
   const [slot, setSlot] = useState(latest ? latest.slot : slots[0]);
+  // новая покупка — сразу её место: купленную вещь видно и можно примерить
+  const latestId = latest ? latest.id : null;
+  useEffect(() => { if (latest) setSlot(latest.slot); }, [latestId]); // eslint-disable-line react-hooks/exhaustive-deps
   const here = list.filter((o) => o.slot === slot);
   const worn = slots.filter((k) => wear[k]).map((k) => OUTFIT_BY_ID[wear[k]]).filter(Boolean);
   return (
