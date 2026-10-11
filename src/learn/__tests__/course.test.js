@@ -877,3 +877,21 @@ describe('учебник и Путь — один порядок', () => {
     PLANNED_CHAPTERS.forEach((c) => expect(TOC_LEVELS.some((l) => l.chapters.includes(c)), c.id).toBe(false));
   });
 });
+
+describe('тест уровня', () => {
+  it('задачи из всех юнитов уровня поровну, около 12; зачёт — одна ошибка на шесть задач', async () => {
+    const { buildLevelCheck, levelUnits } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const ids = levelUnits('basic').map((u) => u.id);
+    expect(ids).toEqual(['supply-demand', 'elasticity', 'market-failures', 'inflation']);
+    const p = buildLevelCheck('basic', seeded(5));
+    expect(p.items).toHaveLength(12);
+    expect(p.passMistakes).toBe(2);
+    expect(new Set(p.items.map((it) => it.unitId))).toEqual(new Set(ids));
+    p.items.forEach((it) => expect(it.check).toBe(true));
+    // уровень из одного юнита — его проверка целиком
+    const start = buildLevelCheck('start', seeded(5));
+    expect(new Set(start.items.map((it) => it.unitId))).toEqual(new Set(['scarcity']));
+    expect(start.passMistakes).toBe(1);
+  });
+});

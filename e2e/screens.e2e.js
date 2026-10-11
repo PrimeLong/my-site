@@ -72,13 +72,14 @@ async function a11y(page, name) {
   expect(bad, `${name}: axe`).toEqual([]);
 }
 const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
-// на Пути один юнит: нужный — через плашку и список юнитов, если его ещё нет на экране
+// на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита нет на экране
 const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', inflation: 'basic', consumer: 'middle' };
 const showUnit = async (page, unit) => {
   await page.waitForTimeout(150);
   if (await page.locator(`[data-testid=path-unit][data-unit="${unit}"]`).count()) return;
-  await page.getByTestId('unit-switch-open').click();
-  await page.getByTestId('unit-picker').locator(`[data-testid=unit-pick][data-unit="${unit}"]`).click();
+  await page.getByTestId('level-switch-open').click();
+  await page.getByTestId('level-picker').locator(`[data-testid=level-pick][data-level="${LEVEL_OF[unit]}"]`).click();
   await expect(page.locator(`[data-testid=path-unit][data-unit="${unit}"]`)).toBeVisible();
 };
 const pathLesson = async (page, id) => {
@@ -388,7 +389,7 @@ for (const theme of ['light', 'dark']) {
       expect(errors).toEqual([]);
     });
 
-    test(`модуль 3: список юнитов, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
+    test(`модуль 3: список уровней, напоминание о теории, шаг урока (${theme})`, async ({ page }) => {
       const CS = ['cs-i1', 'cs-l1', 'cs-i2', 'cs-l2', 'cs-w'];
       const errors = await setup(page, { theme, learn: { claimed: { 'c:scarcity': Date.now() - 86400000 } } });
       await page.addInitScript((ids) => {
@@ -400,11 +401,11 @@ for (const theme of ['light', 'dark']) {
         } catch { /* нет хранилища */ }
       }, CS);
       await page.goto('/', { waitUntil: 'networkidle' });
-      // плашка юнита → список: пройденный, открытые, закрытые — с тестом; оттуда — в юнит 7
-      await page.getByTestId('unit-switch-open').click();
-      await expect(page.getByTestId('unit-picker')).toBeVisible();
-      await shot(page, '53-path-units', theme);
-      await page.locator('[data-testid=unit-pick][data-unit="consumer"]').click();
+      // плашка уровня → список уровней: пройденные, открытые, следующий — с тестом; оттуда — на «Средний»
+      await page.getByTestId('level-switch-open').click();
+      await expect(page.getByTestId('level-picker')).toBeVisible();
+      await shot(page, '53-path-levels', theme);
+      await page.locator('[data-testid=level-pick][data-level="middle"]').click();
       await expect(page.locator('[data-testid=path-unit][data-unit="consumer"]')).toBeVisible();
       await shot(page, '54-path-consumer', theme);
       await (await pathLesson(page, 'cs-s1')).click();

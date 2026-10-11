@@ -29,8 +29,8 @@ export const SCREENS = {
   book: { from: ['path', 'tasks', 'profile', 'lesson', 'lessonCard'], back: 'origin', title: 'Учебник поверх экрана', testid: 'learn-book' },
   account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
-  // плашка юнита наверху Пути → список юнитов: перейти в открытый или сдать тест закрытого
-  unitPicker: { from: ['path'], back: 'path', title: 'Юниты Пути', testid: 'unit-picker' },
+  // плашка уровня наверху Пути → список уровней: перейти в открытый или сдать тест уровня
+  levelPicker: { from: ['path'], back: 'path', title: 'Уровни Пути', testid: 'level-picker' },
   // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
   reports: { from: ['profile'], back: 'profile', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },
   // и аналитика без персональных данных: воронка и трудные упражнения (api/events.js)

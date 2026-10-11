@@ -676,6 +676,17 @@ export function buildUnitCheck(unitId, rand = Math.random, { seen = {} } = {}) {
   const unit = UNIT_BY_ID[unitId];
   return { course: unit, items: unitTest(unit, Infinity, rand, seen), passMistakes: 1 };
 }
+/* Тест уровня — по материалу уровня: задачи всех его юнитов с уроками вперемешку, поровну от
+   каждого (около 12), зачёт — не больше одной ошибки на шесть задач. Сдан — все юниты уровня
+   сданы (passUnit), и открывается следующий уровень. */
+export const LEVEL_TEST_SIZE = 12;
+export const levelUnits = (levelId) => pilotUnits().filter((u) => u.level === levelId);
+export function buildLevelCheck(levelId, rand = Math.random, { seen = {} } = {}) {
+  const units = levelUnits(levelId);
+  const per = Math.max(2, Math.ceil(LEVEL_TEST_SIZE / Math.max(1, units.length)));
+  const items = shuffle(units.flatMap((u) => unitTest(u, Infinity, rand, seen).slice(0, per)), rand).slice(0, Math.max(LEVEL_TEST_SIZE, units.length * 2));
+  return { level: LEVEL_BY_ID[levelId], units: units.map((u) => u.id), items, passMistakes: Math.max(1, Math.floor(items.length / 6)) };
+}
 
 /* ------------------------------ АЛМАЗНЫЙ УРОВЕНЬ ------------------------------
    Пройденный урок можно пройти ещё раз — усложнённым. Что меняется по видам:
