@@ -72,9 +72,21 @@ async function a11y(page, name) {
   expect(bad, `${name}: axe`).toEqual([]);
 }
 const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
+// на Пути один юнит: нужный — через плашку и список юнитов, если его ещё нет на экране
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
+const showUnit = async (page, unit) => {
+  if (await page.locator(`[data-testid=path-unit][data-unit="${unit}"]`).count()) return;
+  await page.getByTestId('unit-switch-open').click();
+  await page.getByTestId('unit-picker').locator(`[data-testid=unit-pick][data-unit="${unit}"]`).click();
+  await expect(page.locator(`[data-testid=path-unit][data-unit="${unit}"]`)).toBeVisible();
+};
+const pathLesson = async (page, id) => {
+  await showUnit(page, UNIT_OF[id.split('-')[0]]);
+  return page.locator(`[data-testid=path-lesson][data-lesson="${id}"]`);
+};
 const openLesson = async (page, id) => {
   await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click().catch(() => {});
-  await page.locator(`[data-testid=path-lesson][data-lesson="${id}"]`).click();
+  await (await pathLesson(page, id)).click();
   await page.getByTestId('lesson-start').click();
   await expect(page.getByTestId('lesson')).toBeVisible();
 };
@@ -193,7 +205,7 @@ for (const theme of ['light', 'dark']) {
       await page.locator('[data-testid="path-unit"][data-unit="supply-demand"]').scrollIntoViewIfNeeded();
       await shot(page, '06-path-route', theme);
       // билет урока, шаг «Знакомства», упражнение, верный ответ, вопрос о выходе
-      await page.locator('[data-testid=path-lesson][data-lesson="sd-i2"]').click();
+      await (await pathLesson(page, 'sd-i2')).click();
       await shot(page, '07-lesson-ticket', theme);
       await page.getByTestId('lesson-start').click();
       await shot(page, '08-intro-step', theme);
@@ -261,7 +273,7 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '24b-game-ppf', theme, { wait: 600 });
       await exitLesson(page);
       // алмазный уровень: билет пройденного урока и алмазный шаг с обозначениями (sd-i2 прерван выше — у него «Продолжить»)
-      await page.locator('[data-testid=path-lesson][data-lesson="sd-i1"]').click();
+      await (await pathLesson(page, 'sd-i1')).click();
       await shot(page, '25a-diamond-ticket', theme);
       await page.getByTestId('lesson-diamond').click();
       for (let i = 0; i < 30 && !(await page.getByTestId('step-legend').isVisible()); i += 1) {
@@ -311,6 +323,7 @@ for (const theme of ['light', 'dark']) {
       await page.locator(`[data-testid=shop-wardrobe] [data-item="${bought}"]`).scrollIntoViewIfNeeded();
       await shot(page, '38-shop-bought', theme);
       await page.getByTestId('bottom-nav').locator('[data-tab="path"]').click();
+      await showUnit(page, 'scarcity');
       await page.getByTestId('chest').first().scrollIntoViewIfNeeded();
       await page.getByTestId('chest').first().click();
       await shot(page, '39-chest', theme);
@@ -393,7 +406,7 @@ for (const theme of ['light', 'dark']) {
       await page.locator('[data-testid=unit-pick][data-unit="consumer"]').click();
       await expect(page.locator('[data-testid=path-unit][data-unit="consumer"]')).toBeVisible();
       await shot(page, '54-path-consumer', theme);
-      await page.locator('[data-testid=path-lesson][data-lesson="cs-s1"]').click();
+      await (await pathLesson(page, 'cs-s1')).click();
       await expect(page.getByTestId('theory-notice')).toBeVisible();
       await shot(page, '55-theory-notice', theme);
       await page.getByTestId('theory-known').click();

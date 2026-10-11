@@ -1142,7 +1142,8 @@ test('нижняя панель: «Мир» без учебных карточе
   await expect(page.getByTestId('menu-study')).toHaveCount(0);
   await expect(page.locator('[data-mode="textbook"]')).toHaveCount(0);
   await expect(page.locator('[data-mode="lab"]')).toBeVisible();
-  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Мир', 'Лавка', 'Профиль']);
+  // Мир открыт — «⋯» подписана его именем
+  await expect(page.getByTestId('bottom-nav').locator('[data-tab]')).toHaveText(['Путь', 'Учебник', 'Лиги', 'Лавка', 'Мир']);
   await openTasks(page);
   await expect(page.getByTestId('practice-today')).toHaveCount(0);
   // повторять пока нечего — кнопка выключена
@@ -1559,6 +1560,7 @@ test('путь: выход после первого ответа — урок �
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
+  await showUnit(page, 'supply-demand');
   await expect(pathNode(page, 'sd-l3')).toHaveAttribute('data-state', 'open');
   // открыть и сразу закрыть — не считается
   await startLesson(page, 'sd-l3');
@@ -2704,6 +2706,7 @@ test('теория из карточки урока: внизу отмечен �
     if (!localStorage.getItem('ems-textbook-v1')) localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await showUnit(page, 'consumer');
   await page.locator('[data-testid=path-lesson][data-lesson="cs-s1"]').click();
   await expect(page.getByTestId('theory-notice')).toBeVisible();
   await page.getByTestId('theory-open').click();
@@ -3068,6 +3071,13 @@ test('узкий телефон 320 px: Путь без бокового скр�
 
 test('ПК от 1024 px: Путь в две колонки, у главы учебника оглавление сбоку', async ({ page, isMobile }) => {
   await withTestFlag(page);
+  // юнит 1 пройден — на Пути «Рынок» с живой моделью
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const path = page.getByTestId('path');
   const noScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
@@ -3081,7 +3091,7 @@ test('ПК от 1024 px: Путь в две колонки, у главы уче
       await page.setViewportSize({ width, height: 900 });
       await expect(path).toHaveAttribute('data-layout', 'columns');
       const side = page.getByTestId('path-side');
-      // справа: задания (карточка и задания дня) и живая модель текущего юнита — ровно одна на Пути
+      // справа: задания (карточка и задания дня) и живая модель юнита на экране — ровно одна на Пути
       await expect(side.getByTestId('tasks-card')).toBeVisible();
       await expect(side.getByTestId('side-quests').getByTestId('quest')).toHaveCount(3);
       await expect(side.getByTestId('unit-model')).toHaveCount(1);

@@ -1559,7 +1559,7 @@ function UnitPicker({ list, sel, focus, onSel, onTest, onClose }) {
           // юнит ещё строится: уроков нет — одна строка без действий
           if (x.soon) {
             return (
-              <div key={x.u.id} className="ln-pick-row" data-testid="unit-pick" data-unit={x.u.id} data-state="soon" style={{ '--u': x.pl.color, padding: '6px 10px', opacity: 0.75 }}>
+              <div key={x.u.id} className="ln-pick-row" data-testid="unit-pick" data-unit={x.u.id} data-state="soon" style={{ '--u': x.pl.color, padding: '6px 10px', background: 'transparent', borderStyle: 'dashed' }}>
                 <span className="ln-unit-no" aria-hidden="true" style={{ width: 28, height: 28, fontSize: 14, color: 'var(--ds-ink3)', borderColor: 'var(--ds-ink3)' }}>{x.no}</span>
                 <span className="ln-pick-sub" style={{ flex: 1, minWidth: 0 }}><b style={{ fontFamily: 'var(--ds-serif)' }}>{x.pl.place}</b> · {x.lv.title} · строится</span>
               </div>
@@ -1595,6 +1595,10 @@ function UnitPicker({ list, sel, focus, onSel, onTest, onClose }) {
   );
 }
 
+/* Выбранный юнит Пути помнится и после ухода на другую вкладку (экран Пути при этом
+   закрывается) — пока не сменился текущий юнит; jump — юнит, тест которого сейчас сдают. */
+let pathMem = { unit: null, cur: null, jump: null };
+
 function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0 }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
@@ -1614,12 +1618,15 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
      сразу на нём. */
   const list = pathUnits(states);
   const curId = first && first.current ? first.course.id : ([...list].reverse().find((x) => x.reach) || list[0] || { u: { id: null } }).u.id;
-  const [chosen, setChosen] = useState(null);
+  const [chosen, setChosenState] = useState(() => (pathMem.cur === curId ? pathMem.unit : null));
+  const setChosen = (id) => { pathMem = { ...pathMem, unit: id, cur: curId }; setChosenState(id); };
   const [picker, setPicker] = useState(null); // null — закрыт, иначе { focus }
-  const [jump, setJump] = useState(null);
-  useEffect(() => { setChosen(null); }, [curId]);
+  useEffect(() => { if (pathMem.cur !== curId) { pathMem = { ...pathMem, unit: null, cur: curId }; setChosenState(null); } }, [curId]);
   const tested = learn.units || {};
-  useEffect(() => { if (jump && tested[jump]) { setChosen(jump); setJump(null); } }, [jump, tested]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const id = pathMem.jump;
+    if (id && tested[id]) { pathMem = { unit: id, cur: curId, jump: null }; setChosenState(id); }
+  });
   const sel = (chosen && list.some((x) => x.u.id === chosen && x.reach) ? chosen : curId);
   const resumes = new Set(resumeIds());
   /* Замок открывшегося урока анимируется один раз, когда Путь снова на виду (урок и билет
@@ -1679,7 +1686,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
       <ToMap target={atlasRef} />
       {sel && <UnitSwitch list={list} sel={sel} onSel={show} onOpen={(focus = null) => setPicker({ focus })} />}
       {picker && <UnitPicker list={list} sel={sel} focus={picker.focus} onSel={show} onClose={() => setPicker(null)}
-        onTest={(id) => { setPicker(null); setJump(id); onStart({ mode: 'check', unitId: id }); }} />}
+        onTest={(id) => { setPicker(null); pathMem = { ...pathMem, jump: id }; onStart({ mode: 'check', unitId: id }); }} />}
       {list.filter((x) => x.u.id === sel).map(({ u, no, st, pl }) => {
         // первый юнит уровня — над ним полоса уровня: «Базовый — понимаешь спрос, предложение…»
         const lv = levelOf(u.id);
