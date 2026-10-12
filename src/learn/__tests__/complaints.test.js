@@ -247,3 +247,19 @@ describe('жалобы из выгрузки: новые числа в повт�
     expect(scene.readout.find((r) => r.label === 'Безвозвратные потери').value).toBe('0');
   });
 });
+
+describe('жалобы из выгрузки: задачи семинарского уровня (mv4j2khb)', () => {
+  it('в алмазном «Повторении» задача учебника с шаблоном приходит с новыми числами и не дважды', async () => {
+    const { buildLesson } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const answers = new Set();
+    for (let s = 1; s <= 30; s += 1) {
+      const hard = buildLesson('sc-rev', seeded(s), { diamond: true }).items.filter((it) => it.hard);
+      hard.forEach((it) => expect(it.id, it.id).not.toBe('auto:sc-ppf-cost'));
+      const ppf = hard.filter((it) => it.variant === 'v-sc-ppf');
+      expect(ppf.length).toBeLessThanOrEqual(1);
+      ppf.forEach((it) => answers.add(it.answer));
+    }
+    expect(answers.size).toBeGreaterThan(2);
+  });
+});
