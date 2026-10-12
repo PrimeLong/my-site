@@ -509,7 +509,7 @@ const INDEPENDENT = {
   },
   // деньги: мультипликатор — суммой раундов «кредит → вклад», а не формулой
   'mb-base': () => [300 + 100, 300 + 1200, (300 + 1200) / (300 + 100)],
-  'mb-qty': () => (200 * 5) / 500,
+  'mb-barter': () => (10 * 9) / 2,
   'mb-deposit': () => {
     let dep = 0; let inflow = 1000; for (let i = 0; i < 400; i++) { dep += inflow; inflow *= 0.8; }
     return [dep, dep - 1000];

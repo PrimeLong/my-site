@@ -1427,8 +1427,8 @@ async function passCards(page) {
 }
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
-const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
-const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', inflation: 'basic', consumer: 'middle' };
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle' };
 // на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита ещё нет на экране
 async function showUnit(page, id) {
   const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
@@ -1819,7 +1819,7 @@ test('путь: юнит «Порт» (провалы рынка) — кажды
   expect(errors).toEqual([]);
 });
 
-test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+test('путь: юнит «Банк» (деньги и банки) — каждый урок проходится, игра — рынок кредитов на графике', async ({ page }) => {
   test.setTimeout(300_000);
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -1828,6 +1828,47 @@ test('путь: юнит «Инфляция» — каждый урок прох
       'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
       'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
       'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'money-banks');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['mb-i1', 'mb-l1', 'mb-i2', 'mb-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «Слова»: на карточке бартера — пример
+  await startLesson(page, 'mb-w');
+  await expect(page.getByTestId('word-def')).toContainText('Пример:');
+  await playLesson(page);
+  await finish();
+  // «История»: очередь у «Златобанка» глазами Тимура
+  await startLesson(page, 'mb-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'timur');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mb-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('денежная масса');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mb-g');
+  await expect(page.getByTestId('ex').getByTestId('market-chart')).toBeVisible();
+  await playLesson(page);
+  await finish();
+  for (const id of ['mb-rev', 'mb-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  expect(errors).toEqual([]);
+});
+
+test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
+      'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
+      'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum',
+      'mb-i1', 'mb-l1', 'mb-i2', 'mb-l2', 'mb-w', 'mb-s1', 'mb-radio', 'mb-g', 'mb-rev', 'mb-sum'];
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });

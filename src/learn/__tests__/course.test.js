@@ -17,13 +17,13 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, inflation), Средний (consumer)
-const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'inflation', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, money-banks, inflation), Средний (consumer)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — шесть юнитов по уровням: от Начального к Среднему', () => {
+it('на Пути уроками — семь юнитов по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
   // юниты идут по уровням; внутри уровня — по порядку глав учебника
   const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
@@ -694,7 +694,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mb-i1', 'mb-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });
@@ -883,7 +883,7 @@ describe('тест уровня', () => {
     const { buildLevelCheck, levelUnits } = await import('../course.js');
     const { seeded } = await import('../../textbook/variants.js');
     const ids = levelUnits('basic').map((u) => u.id);
-    expect(ids).toEqual(['supply-demand', 'elasticity', 'market-failures', 'inflation']);
+    expect(ids).toEqual(['supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation']);
     const p = buildLevelCheck('basic', seeded(5));
     expect(p.items).toHaveLength(12);
     expect(p.passMistakes).toBe(2);
