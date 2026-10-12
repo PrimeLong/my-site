@@ -763,6 +763,8 @@ describe('графические задачи и «верно или невер�
     const base = chartDefaults(g.chart, g.attrs);
     const m = def.measure(g.attrs, base);
     g.expect.forEach((e) => { expect(Object.keys(m)).toContain(e.key); expect(['+', '-', '0', '?']).toContain(e.dir); });
+    // прогноз до сдвига: у каждой величины задачи — имя по-русски (жалоба mv3wais6)
+    g.expect.filter((e) => e.dir !== '?').forEach((e) => expect((def.measureNames || {})[e.key], `${g.id}: ${e.key}`).toMatch(/[а-яё]/));
     expect(Object.keys(g.reference).length).toBeGreaterThan(0);
     Object.keys(g.reference).forEach((k) => { expect(g.controls || ids).toContain(k); expect(g.still).not.toContain(k); });
     const v = { ...base, ...g.reference };

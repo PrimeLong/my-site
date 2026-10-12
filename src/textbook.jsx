@@ -84,6 +84,10 @@ export const TEXTBOOK_CSS = `
   .tb-calc-keys button.tb-calc-use { grid-column: span 3; font: 600 12.5px/1.2 var(--ds-sans, sans-serif); padding: 6px; }
   .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
+  .tb-guess { margin: 4px 0 10px; }
+  .tb-guess-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+  .tb-guess-name { font-size: 13px; min-width: 9.5em; color: var(--c-text); }
+  @media (max-width: 560px) { .tb-guess-name { flex-basis: 100%; } .tb-guess-row { margin: 8px 0; } }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
   .tb-news { background: #E8DFC6; color: #241C12; border: 1px solid #8C6B3E; padding: 8px 12px 10px; margin: 6px 0 10px; }
   .tb-news-mast { font-size: 12px; letter-spacing: .12em; color: #6B5A3E; border-bottom: 3px double #8C6B3E; padding-bottom: 4px; margin-bottom: 6px; }
@@ -995,38 +999,63 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   );
 }
 
-// графическая: игрок двигает кривые, проверяются направления величин графика
+// графическая: сначала прогноз — куда пойдёт каждая величина, потом сдвиг ползунком и проверка
+// на графике (жалоба mv3wais6: при одном ползунке любой сдвиг сам давал «верный» ответ, а
+// «уверен / не уверен» здесь ни к чему — его роль играет прогноз)
+const GUESS_DIRS = [['+', '↑ растёт'], ['-', '↓ падает'], ['0', '= не меняется']];
+const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+function GraphGuess({ rows, names, value, onChange }) {
+  return (
+    <div className="tb-guess" data-testid="tb-guess">
+      <div style={{ fontSize: 12.5, color: COLOR.muted, marginBottom: 6 }}>Сначала прогноз: что станет с каждой величиной? Потом проверьте себя ползунком.</div>
+      {rows.map((e) => {
+        const name = names[e.key] || e.key;
+        return (
+          <div key={e.key} className="tb-guess-row" role="group" aria-label={`Прогноз: ${name}`} data-key={e.key}>
+            <span className="tb-guess-name">{capital(name)}</span>
+            {GUESS_DIRS.map(([d, label]) => (
+              <button key={d} type="button" className="tb-pick" aria-pressed={value[e.key] === d} aria-label={`${name}: ${DIR_WORD[d]}`}
+                onClick={() => { Audio.play('tick'); onChange({ ...value, [e.key]: d }); }}>{label}</button>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function GraphProblem({ block, no, ctx, from }) {
   const def = CHARTS[block.chart];
   const [values, setValues] = useState(() => chartDefaults(block.chart, block.attrs));
   const [verdict, setVerdict] = useState(null);
   const [saw, setSaw] = useState(false);
-  const [sure, setSure] = useState(null);
+  const [guess, setGuess] = useState({});
   const names = def.measureNames || {};
-  const answer = block.expect.filter((e) => e.dir !== '?').map((e) => `${names[e.key] || e.key}: ${DIR_WORD[e.dir]}`).join(', ');
+  const rows = block.expect.filter((e) => e.dir !== '?');
+  const answer = rows.map((e) => `${names[e.key] || e.key}: ${DIR_WORD[e.dir]}`).join(', ');
   const submit = () => {
+    if (rows.some((e) => !guess[e.key])) { setVerdict({ bad: true, text: 'Сначала отметьте прогноз для каждой величины.' }); return; }
     const r = checkGraph(block.chart, block.attrs, values, { expect: block.expect, still: block.still });
-    if (!r.moved) { setVerdict({ bad: true, text: 'Сначала сдвиньте кривую ползунком.' }); return; }
-    if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
+    if (!r.moved) { setVerdict({ bad: true, text: 'Теперь сдвиньте кривую ползунком и проверьте прогноз на графике.' }); return; }
+    const missed = rows.filter((e) => guess[e.key] !== String(e.dir));
+    const ok = r.ok && !missed.length;
     const got = r.rows.map((x) => `${names[x.key] || x.key} ${DIR_WORD[x.got]}${x.ok ? '' : ' ✗'}`).join(', ');
     const extra = r.touched.length ? ` Условие не меняет: ${r.touched.map((k) => (def.controls(block.attrs).find((c) => c.id === k) || {}).label || k).join(', ')} — верните ползунок.` : '';
-    Audio.play(r.ok ? 'stamp' : 'tick');
-    const text = r.ok ? okText(ctx, block.id, `Верно: ${got}`, saw) : `На графике: ${got}.${extra} ${WRONG}`;
-    ctx.onAnswer(block.id, r.ok, { sawSolution: saw, confident: sure });
+    const wrongGuess = missed.map((e) => `${names[e.key] || e.key} ${DIR_WORD[e.dir]}, а не ${DIR_WORD[guess[e.key]]}`).join('; ');
+    Audio.play(ok ? 'stamp' : 'tick');
+    const text = ok ? okText(ctx, block.id, `Верно: ${got}`, saw)
+      : r.ok ? `Сдвиг верный, а прогноз — нет: ${wrongGuess}. ${WRONG}` : `На графике: ${got}.${extra} ${WRONG}`;
+    ctx.onAnswer(block.id, ok, { sawSolution: saw });
     // ловушка графической задачи — сдвинут «не тот» ползунок
     const d0 = chartDefaults(block.chart, block.attrs);
     const traps = r.ok ? [] : (block.traps || []).filter((tr) => Math.abs((values[tr.control] || 0) - (d0[tr.control] || 0)) > 1e-9);
-    setVerdict({ ok: r.ok, text, traps });
-    setSure(null);
+    setVerdict({ ok, text, traps });
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)} given={JSON.stringify(values)}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)} given={JSON.stringify({ guess, values })}>
+      <GraphGuess rows={rows} names={names} value={guess} onChange={(g) => { setGuess(g); setVerdict(null); }} />
       <ChartBox type={block.chart} attrs={block.attrs} ctx={ctx} values={values} onValues={(v) => { setValues(v); setVerdict(null); }}
         only={block.controls} framed={false} />
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />
-        <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} onClick={submit}>Проверить сдвиг</button>
-      </div>
+      <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} onClick={submit}>Проверить прогноз</button>
     </ProblemFrame>
   );
 }

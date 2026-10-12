@@ -922,18 +922,24 @@ test('учебник: оглавление, формулы KaTeX, график �
   await tf.getByRole('button', { name: 'Совпало', exact: true }).click();
   await expect(tf.getByTestId('tb-verdict')).toContainText('Засчитано');
   await expect(tf).toContainText('Закон спроса при этом выполняется');
-  // графическая: сдвинуть не ту кривую — неверно, нужную — верно
+  // графическая: сначала прогноз, потом сдвиг; не та кривая или не тот прогноз — неверно
   const gr = ch.locator('[data-problem="sd-graph-flour"]');
-  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
-  await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала сдвиньте');
+  await expect(gr.getByRole('button', { name: 'Уверен', exact: true })).toHaveCount(0);
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала отметьте прогноз');
+  await gr.getByRole('button', { name: 'цена: растёт' }).click();
+  await gr.getByRole('button', { name: 'количество: растёт' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Теперь сдвиньте');
   await gr.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('-20');
-  await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
-  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Пока неверно');
   await gr.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('0');
   await gr.getByRole('slider', { name: 'Сдвиг предложения' }).fill('-20');
-  await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
-  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Сдвиг верный, а прогноз — нет: количество падает, а не растёт');
+  await gr.getByRole('button', { name: 'количество: падает' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Верно: цена растёт, количество падает');
   await ch.getByRole('button', { name: 'Отметить главу прочитанной' }).click();
   await expect(ch.getByRole('button', { name: /Глава прочитана/ })).toBeVisible();
@@ -961,9 +967,10 @@ test('учебник: оглавление, формулы KaTeX, график �
 
   await toToc(page);
   await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 16');
-  // уверенные ответы — на странице «Мой прогресс»: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
+  // уверенные ответы — на странице «Мой прогресс»: два из четырёх верны (включая задачу в несколько шагов),
+  // неуверенный — верен; у задачи на графике вместо уверенности прогноз, в счёт она не идёт
   await page.getByTestId('tb-stats-link').click();
-  await expect(page.getByTestId('stats-confidence')).toContainText('верно 3 из 6 (50%)');
+  await expect(page.getByTestId('stats-confidence')).toContainText('верно 2 из 4 (50%)');
   await expect(page.getByTestId('stats-confidence')).toContainText('неуверенные: верно 1 из 2');
   await toToc(page);
   // «На сегодня» больше нет: вопрос на вспоминание — в конце раздела главы; ответ «совпало» проходит раздел
