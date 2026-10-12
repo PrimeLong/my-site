@@ -188,6 +188,16 @@ const CSS = `
   .ln-foot.fb { padding: 0; border-top: none; }
   .ln-kind { margin-bottom: 8px; }
   .ln-prompt { margin-bottom: 12px; }
+  /* урок на телефоне — крупнее: экран почти пустой, а читать и попадать пальцем должно быть легко */
+  @media (max-width: 600px) {
+    .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
+    .ln-body .ln-prompt { margin-bottom: 14px; }
+    .ln-body .ds-opt { font-size: 18px; line-height: 1.4; padding: 16px 14px 16px 16px; margin: 10px 0; }
+    .ln-body .ds-h1 { font-size: 28px !important; }
+    .ln-body .ds-eyebrow { font-size: 13px; }
+    .ln-body .ln-legend, .ln-body .ln-key { font-size: 16px; }
+    .ln-body .ln-key-tex { font-size: 22px; }
+  }
   .tb-term { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help; text-decoration: underline dotted var(--u-ink); text-underline-offset: 4px; text-decoration-thickness: 2px; }
   .ln-term-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--ds-card); border-top: 1px solid var(--ds-rule2); border-radius: 10px 10px 0 0;
     padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: inset 0 3px 0 var(--ds-card), inset 0 4px 0 var(--u), 0 -10px 30px rgba(0,0,0,.2); }
