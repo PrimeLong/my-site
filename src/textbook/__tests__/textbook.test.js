@@ -629,7 +629,7 @@ const INDEPENDENT = {
   'sc-oc': () => 6 / 2,
   'sc-inside': () => [Math.sqrt(4225 - 25 * 25) - 52, Math.sqrt(4225 - 52 * 52) - 25],
   'sc-hours': () => { let h = 8; for (const r of [5000, 3500, 2500, 1500]) { if (r < 2800) break; h += 1; } return h; },
-  'sc-sunk': () => [3 - 2, 1.5],
+  'sc-sunk': () => [3 - 2, 1.5, 1.5 - (3 - 2)],
   'sc-joint': () => {
     // перебор часов на рубашки у Ани (a) и Бориса (b): больше всего пирогов при заданных рубашках
     const most = (need) => {
