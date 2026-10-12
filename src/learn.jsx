@@ -41,7 +41,7 @@ import {
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
-import { markTerms, termTitle, termText } from './learn/terms.js';
+import { markTerms, termTitle, termText, termFormula } from './learn/terms.js';
 import { LeagueView } from './learn-league.jsx';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
@@ -186,6 +186,7 @@ const CSS = `
   .ln-ticket-stub::before, .ln-ticket-stub::after { content: ''; position: absolute; left: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--ds-card2); }
   .ln-ticket-stub::before { top: -9px; } .ln-ticket-stub::after { bottom: -9px; }
   .ln-album { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ln-key-tex { font-size: 19px; text-align: center; margin-top: 4px; overflow-x: auto; overflow-y: hidden; }
   .ln-legend { margin-top: 12px; padding: 8px 10px; border-left: 3px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 0 3px 3px 0; }
   .ln-how { background: none; border: none; padding: 4px 0; margin-top: 6px; font: 700 14px var(--ds-sans); color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
   .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 3px; border-left: 3px solid; }
@@ -1003,6 +1004,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
             <div className="ds-eyebrow">Словарь</div>
             <div className="ds-h2" style={{ marginTop: 2 }}>{termTitle(term)}</div>
             <div className="ds-text" style={{ fontSize: 15.5, margin: '8px 0 14px' }}>{termText(term)}</div>
+            {termFormula(term) && <div className="ln-key-tex" style={{ margin: '-4px 0 14px' }} data-testid="term-formula"><Inline nodes={[{ t: 'math', v: termFormula(term) }]} ctx={noopCtx} /></div>}
             <Button variant="secondary" wide onClick={() => setTerm(null)} autoFocus>Понятно</Button>
           </div>
         </div>

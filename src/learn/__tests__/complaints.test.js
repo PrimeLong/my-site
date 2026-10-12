@@ -143,7 +143,7 @@ describe('жалобы из выгрузки: учебник', () => {
     const { keyFormulas } = await import('../../textbook/content.js');
     const { CHAPTERS } = await import('../../textbook/toc.js');
     // цена покупателей при налоге — итоговая формула, но задачи уроков решают прямо по ней (mv3vifty)
-    expect(keyFormulas('market-failures')).toEqual(['P_d - P_s = t.', 'P_d = \\frac{a - c + d\\,t}{b + d}, \\qquad P_s = P_d - t.', 'DWL = \\tfrac12\\, t\\,(Q_0 - Q_t).']);
+    expect(keyFormulas('market-failures')).toEqual(['P_d - P_s = t.', 'P_d = \\frac{a - c + d\\,t}{b + d}, \\qquad P_s = P_d - t.', 'DWL = \\tfrac12\\, t\\,(Q_0 - Q_t).', 'P = MC + \\text{ущерб с единицы}.']);
     CHAPTERS.forEach((c) => expect(keyFormulas(c.id).length, c.id).toBeLessThanOrEqual(4));
   });
   it('теорема Коуза: понятно, что именно «нужно» (mv1rhkbr); вопрос про бремя — без двусмысленности (muzajz73)', async () => {
@@ -268,5 +268,17 @@ describe('жалобы из выгрузки: задачи семинарско�
     const e = EXERCISES['sc-e4-slope'];
     expect(['', '3', '5', '1', '2,5', '-'].map((v) => unitFor(e, v))).toEqual(['станков', 'станка', 'станков', 'станок', 'станка', 'станков']);
     expect(unitFor({ unit: 'руб.' }, '3')).toBe('руб.');
+  });
+});
+
+describe('жалобы из выгрузки: общественно оптимальный выпуск (mv3wxy9b, mv3wu6mz)', () => {
+  it('«общественно оптимальный выпуск» — в словаре с формулой, в главе и нажимается в задаче', async () => {
+    const { GLOSSARY } = await import('../../textbook/glossary.js');
+    const { termsIn, termFormula } = await import('../terms.js');
+    const { CHAPTER_BLOCKS } = await import('../../textbook/content.js');
+    expect(GLOSSARY.socialopt.title).toBe('Общественно оптимальный выпуск');
+    expect(termFormula('socialopt')).toContain('MC');
+    expect(JSON.stringify(CHAPTER_BLOCKS['market-failures'])).toContain('"kind":"term","target":"socialopt"');
+    expect([...termsIn(EXERCISES['auto:mf-pigou'].prompt)]).toContain('socialopt');
   });
 });

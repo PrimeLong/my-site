@@ -192,7 +192,7 @@ function TermLink({ id, label }) {
       <span className="tb-term" role="button" tabIndex={0} title={`${g.title} — ${g.text}`}
         onClick={() => { Audio.play('tick'); setOpen((v) => !v); }}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((v) => !v); } }}>{label || g.title.toLowerCase()}</span>
-      {open && <span className="tb-def"><b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}</span>}
+      {open && <span className="tb-def"><b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}{g.formula && <span style={{ display: 'block', textAlign: 'center', margin: '6px 0 2px' }}><Tex tex={g.formula} /></span>}</span>}
     </span>
   );
 }
@@ -1274,6 +1274,7 @@ function GlossaryAppendix() {
         <div key={g.title} className="ems-panel" style={{ padding: '10px 12px', marginBottom: 7 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: COLOR.goldSoft, marginBottom: 3 }}>{g.title}</div>
           <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.55 }}>{g.text}</div>
+          {g.formula && <div style={{ marginTop: 4, fontSize: 13.5 }}><Tex tex={g.formula} /></div>}
         </div>
       ))}
       {!list.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Ничего не нашлось.</div>}
