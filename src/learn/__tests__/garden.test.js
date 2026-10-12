@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { PLANTS, PLANT_BY_ID, RARITY_ORDER, GARDEN_PLOTS, GRADES, plant, harvest, herbarium, grown, collection, gardenPlots, growth, growMs, plantPrice, leftText, ripeCount,
   gradeOf, sell, salePrice, soldToday, marketFactor, paidPrice, cropGroups, sellAll } from '../garden.js';
 import { emptyLearn, normalizeLearn, mergeLearn, dayOf } from '../../textbook/learn-state.js';
-import { balance, earn, courseIncome, RATE_MAX, rateOn } from '../rewards.js';
+import { balance, earn, courseIncome, RATE_MAX, rateOn, weekDemand } from '../rewards.js';
 
 const T = new Date(2026, 9, 10, 12).getTime();
 const HOUR = 3600000;
@@ -113,7 +113,8 @@ describe('сад: редкость урожая и рынок', () => {
     const now = T + growMs('tulip') + 1000;
     const price = salePrice(s, at, now);
     const mult = GRADES.find((g) => g.id === gradeOf(at)).mult;
-    expect(price.coins).toBe(Math.floor(PLANT_BY_ID.tulip.crowns * mult * rateOn(dayOf(now))));
+    expect(price.coins).toBe(Math.floor(PLANT_BY_ID.tulip.crowns * mult * weekDemand(dayOf(now)) * rateOn(dayOf(now))));
+    expect(price.demand).toBe(weekDemand(dayOf(now)));
     const r = sell(s, at, now);
     expect(r.ok).toBe(true);
     expect(balance(r.s)).toBe(balance(s) + price.coins);

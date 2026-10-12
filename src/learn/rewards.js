@@ -176,26 +176,40 @@ export function setWear(s, slot, id, now = Date.now()) {
 export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head || null, face: w.face || null, neck: w.neck || null, hand: w.hand || null, frame: w.frame || null }; };
 
 /* ------------------------------ КОПИЛКА ИНФЛИ ------------------------------
-   Монеты можно положить под 2% в день на 7 дней. Процент начисляется на накопленное, а не только
-   на вложенное, — это сложный процент: за неделю 1000 монет вырастают до 1148, а не до 1140, как
-   при простых 20 монетах в день. Забрать раньше срока можно, но процент сгорает — вернётся вложенное. Вклад один за
-   раз. piggy — вклады { время вклада: монеты }, piggyOut — забранные { время вклада: сколько
-   выдано }: ключи времени не пересекаются, и слияние устройств — просто объединение. */
+   Монеты можно положить на 7 дней под ставку недели (в среднем 2% в день). Процент начисляется на
+   накопленное, а не только на вложенное, — это сложный процент: при 2% за неделю 1000 монет
+   вырастают до 1148, а не до 1140, как при простых 20 монетах в день. Забрать раньше срока можно,
+   но процент сгорает — вернётся вложенное. Вклад один за раз. piggy — вклады { время вклада:
+   монеты }, piggyOut — забранные { время вклада: сколько выдано }: ключи времени не пересекаются,
+   и слияние устройств — просто объединение. */
 export const PIGGY = { rate: 0.02, days: 7, min: 10 };
 const DAY_MS = 86400000;
+/* СТАВКА НЕДЕЛИ (docs/mechanics.md, «Копилка и сад»): центральный банк меняет её по понедельникам
+   не больше чем на шаг — по кругу 2 → 2,5 → 3 → 3 → 2,5 → 2 → 1,5 → 1 → 1 → 1,5%. Вклад держит
+   ставку недели, когда его положили; спрос на рынке сада от ставки обратный: дорого копить —
+   дёшево продавать. */
+export const RATE_STEPS = [0.01, 0.015, 0.02, 0.025, 0.03];
+export const DEMAND_STEPS = [1.15, 1.08, 1, 0.93, 0.86];
+const RATE_CYCLE = [2, 3, 4, 4, 3, 2, 1, 0, 0, 1];
+const weekNo = (day) => Math.round(new Date(`${weekOf(day)}T12:00:00`).getTime() / (7 * DAY_MS));
+export const rateStep = (day) => RATE_CYCLE[((weekNo(day) % RATE_CYCLE.length) + RATE_CYCLE.length) % RATE_CYCLE.length];
+export const weekRate = (day) => RATE_STEPS[rateStep(day)];
+export const weekDemand = (day) => DEMAND_STEPS[rateStep(day)];
+const depositRate = (at) => weekRate(dayOf(at));
 const deposits = (s) => Object.entries(s.piggy || {}).map(([at, amount]) => ({ at: Number(at), amount, out: (s.piggyOut || {})[at] || 0 }));
 export function piggyLocked(s) { return deposits(s).filter((d) => !d.out).reduce((a, d) => a + d.amount, 0); }
 export function piggyGain(s) { return deposits(s).filter((d) => d.out).reduce((a, d) => a + Math.max(0, d.out - d.amount), 0); }
-// сколько стоит вклад через days дней: монеты — целые, дробь копится, но выдаётся по целой части
-export const piggyValue = (amount, days) => Math.floor(amount * (1 + PIGGY.rate) ** Math.min(days, PIGGY.days) + 1e-9);
-export const piggyCurve = (amount) => Array.from({ length: PIGGY.days + 1 }, (_, d) => ({ day: d, value: amount * (1 + PIGGY.rate) ** d }));
+// сколько стоит вклад через days дней под ставку rate: монеты — целые, дробь копится, но выдаётся по целой части
+export const piggyValue = (amount, days, rate = PIGGY.rate) => Math.floor(amount * (1 + rate) ** Math.min(days, PIGGY.days) + 1e-9);
+export const piggyCurve = (amount, rate = PIGGY.rate) => Array.from({ length: PIGGY.days + 1 }, (_, d) => ({ day: d, value: amount * (1 + rate) ** d }));
 // открытый вклад: сколько дней лежит, сколько стоит сейчас, сколько дадут, если забрать сейчас
 export function piggyState(s, now = Date.now()) {
   const open = deposits(s).filter((d) => !d.out).sort((a, b) => b.at - a.at)[0];
   if (!open) return null;
   const days = Math.min(PIGGY.days, Math.max(0, Math.floor((now - open.at) / DAY_MS)));
   const ripe = days >= PIGGY.days;
-  return { at: open.at, amount: open.amount, days, ripe, value: piggyValue(open.amount, days), final: piggyValue(open.amount, PIGGY.days), payout: ripe ? piggyValue(open.amount, PIGGY.days) : open.amount,
+  const rate = depositRate(open.at);
+  return { at: open.at, amount: open.amount, rate, days, ripe, value: piggyValue(open.amount, days, rate), final: piggyValue(open.amount, PIGGY.days, rate), payout: ripe ? piggyValue(open.amount, PIGGY.days, rate) : open.amount,
     ripeAt: open.at + PIGGY.days * DAY_MS };
 }
 export function piggyPut(s, amount, now = Date.now()) {
@@ -203,7 +217,7 @@ export function piggyPut(s, amount, now = Date.now()) {
   if (piggyState(s, now)) return { s, ok: false, reason: 'В копилке уже лежит вклад — сначала заберите его' };
   if (n < PIGGY.min) return { s, ok: false, reason: `Положить можно от ${PIGGY.min} монет` };
   if (balance(s) < n) return { s, ok: false, reason: `Не хватает ${n - balance(s)} ${coinsWord(n - balance(s))}` };
-  return { s: { ...s, piggy: { ...s.piggy, [now]: n } }, ok: true, amount: n };
+  return { s: { ...s, piggy: { ...s.piggy, [now]: n } }, ok: true, amount: n, rate: depositRate(now) };
 }
 export function piggyTake(s, now = Date.now()) {
   const st = piggyState(s, now);

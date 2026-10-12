@@ -10,7 +10,7 @@
    { время посадки: когда собрали }. Что растёт на грядках, считается из этих двух таблиц.
    Продажа — монеты с ключом sell:<время посадки> (claimed): дважды не продать, и устройства
    сходятся сами. Редкость урожая — из времени посадки, хранить её не нужно. */
-import { rateOn, balance, coinsWord, earn, hasClaim, hash01 } from './rewards.js';
+import { rateOn, balance, coinsWord, earn, hasClaim, hash01, weekDemand } from './rewards.js';
 import { dayOf } from '../textbook/learn-state.js';
 
 const HOUR = 3600000;
@@ -158,7 +158,8 @@ export function soldToday(s, id, now = Date.now()) {
     .filter(([k]) => { const v = (s.garden || {})[k.slice(5)]; return v && parse(v).plant === id; }).length;
 }
 export const marketFactor = (s, id, now = Date.now()) => Math.max(MARKET_FLOOR, 1 - MARKET_DROP * soldToday(s, id, now));
-// цена урожая сейчас: в кронах и в монетах по курсу дня (вниз)
+/* цена урожая сейчас: семена × редкость × насыщение спроса за день × спрос недели (от ставки
+   центробанка: высокая ставка — люди копят, цены ниже), в кронах и в монетах по курсу дня (вниз) */
 export function salePrice(s, at, now = Date.now()) {
   const v = (s.garden || {})[at];
   if (!v) return null;
@@ -166,8 +167,9 @@ export function salePrice(s, at, now = Date.now()) {
   const p = PLANT_BY_ID[id];
   if (!p) return null;
   const factor = marketFactor(s, id, now);
-  const crowns = p.crowns * GRADE_BY_ID[gradeOf(at)].mult * factor;
-  return { crowns: Math.round(crowns * 10) / 10, coins: Math.floor(crowns * rateOn(dayOf(now))), factor };
+  const demand = weekDemand(dayOf(now));
+  const crowns = p.crowns * GRADE_BY_ID[gradeOf(at)].mult * factor * demand;
+  return { crowns: Math.round(crowns * 10) / 10, coins: Math.floor(crowns * rateOn(dayOf(now))), factor, demand };
 }
 // за сколько куплены семена этого урожая: цена в день посадки
 export function paidPrice(s, at) {
