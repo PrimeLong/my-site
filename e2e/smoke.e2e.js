@@ -1695,7 +1695,16 @@ test('путь: юнит «Спрос и предложение» — кажды
   await expect(word.getByTestId('word-def')).toContainText('сколько покупатели готовы купить');
   await expect(page.getByTestId('word-tip')).toBeVisible();
   await expect(page.getByTestId('word-prev')).toHaveCount(0);
-  await page.getByTestId('word-next').click();
+  // карточку тянут мышью: едет за курсором и наклоняется, сверху «Дальше»; отпустили — следующее слово
+  const wb = await word.boundingBox();
+  await page.mouse.move(wb.x + wb.width / 2, wb.y + wb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wb.x + wb.width / 2 - 70, wb.y + wb.height / 2, { steps: 6 });
+  await expect(word).not.toHaveAttribute('data-dx', '0');
+  expect(await word.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  await expect(word.locator('.lp-swipe-tag.next')).toBeVisible();
+  await page.mouse.move(wb.x + wb.width / 2 - 170, wb.y + wb.height / 2, { steps: 6 });
+  await page.mouse.up();
   await expect(word).toContainText('Новое слово 2 из 8');
   await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(2);
   // назад — к прошлому слову
