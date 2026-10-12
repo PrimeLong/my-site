@@ -282,3 +282,12 @@ describe('жалобы из выгрузки: общественно оптим�
     expect([...termsIn(EXERCISES['auto:mf-pigou'].prompt)]).toContain('socialopt');
   });
 });
+
+describe('жалобы из выгрузки: формула шага урока (mv3wjucx)', () => {
+  it('у алмазного шага, после которого считают, есть формула «Запомнить»', () => {
+    const missing = LESSONS.flatMap((l) => l.inner.filter((c) => c.idea.diamond && (l.exercises[c.at] || {}).kind === 'calc' && !c.idea.remember).map((c) => c.idea.id));
+    expect(missing).toEqual([]);
+    const opt = LESSONS.flatMap((l) => l.inner).find((c) => c.idea.id === 'mf-i2-d-opt').idea;
+    expect(opt.remember).toBe('P = MC + \\text{ущерб с единицы}');
+  });
+});

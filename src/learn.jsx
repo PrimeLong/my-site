@@ -186,6 +186,8 @@ const CSS = `
   .ln-ticket-stub::before, .ln-ticket-stub::after { content: ''; position: absolute; left: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--ds-card2); }
   .ln-ticket-stub::before { top: -9px; } .ln-ticket-stub::after { bottom: -9px; }
   .ln-album { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ln-key { margin-top: 14px; padding: 8px 12px 10px; border: 2px solid var(--u); border-radius: 10px; background: color-mix(in srgb, var(--u) 8%, var(--ds-card)); }
+  .ln-key .ds-eyebrow { color: var(--u-ink); }
   .ln-key-tex { font-size: 19px; text-align: center; margin-top: 4px; overflow-x: auto; overflow-y: hidden; }
   .ln-legend { margin-top: 12px; padding: 8px 10px; border-left: 3px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 0 3px 3px 0; }
   .ln-how { background: none; border: none; padding: 4px 0; margin-top: 6px; font: 700 14px var(--ds-sans); color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
@@ -904,7 +906,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                     <h2 className="ds-h1" style={{ flex: 1, fontSize: 25 }}>{heading}</h2>
                   </div>
                   <div className="ds-text" style={{ marginTop: 14 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
-                  <StepLegend nodes={c.text} unitId={unitId} />
+                  {c.remember && <StepRemember tex={c.remember} />}
+                  <StepLegend nodes={c.remember ? [...c.text, { t: 'math', v: c.remember }] : c.text} unitId={unitId} />
                   {picture}
                   {/* Инфля вспоминает механику лавки, которой ученик уже пользовался: тема знакома на деле */}
                   {(() => { const cb = callbackFor(c.id, learn); return cb ? <div className="lm-say" data-testid="step-callback" data-callback={cb.id}><Mascot mood="joy" size={38} /><span>{cb.text}</span></div> : null; })()}
@@ -1120,6 +1123,15 @@ function StepsExplain({ blocks }) {
 /* Обозначения под шагом с формулами: каждая буква — что она значит (src/textbook/symbols.js).
    Шаг «В формуле Q_D = 100 − 2P …» — и под ним «Q_D — объём спроса…; P — цена…». */
 const mathIn = (nodes, out = []) => { (nodes || []).forEach((n) => { if (n.t === 'math') out.push(n.v); else if (n.c) mathIn(n.c, out); }); return out; };
+// формула шага, по которой считают упражнения после него, — с пометкой «Запомнить», как в главе
+function StepRemember({ tex }) {
+  return (
+    <div className="ln-key" data-testid="step-remember">
+      <div className="ds-eyebrow" style={{ fontSize: 12 }}>Запомнить</div>
+      <div className="ln-key-tex"><Inline nodes={[{ t: 'math', v: tex }]} ctx={noopCtx} /></div>
+    </div>
+  );
+}
 function StepLegend({ nodes, unitId }) {
   const list = symbolsOf(mathIn(nodes), unitId);
   if (!list.length) return null;

@@ -120,7 +120,7 @@ $$MRS = \frac{MU_x}{MU_y},$$
 - столько же | Так было бы у прямой кривой безразличия. Обычно она выпукла: норма замещения убывает.
 :::
 
-:::idea id=cs-i1-d-calc more diamond title="Бюджет на числах" chart=budget i=120 px=2 py=1
+:::idea id=cs-i1-d-calc more diamond title="Бюджет на числах" chart=budget i=120 px=2 py=1 remember="p_x\,x + p_y\,y = I"
 Деньги, потраченные на один товар, уходят из бюджета другого. Сначала вычтите расходы на купленное, остаток разделите на цену второго товара.
 :::
 
@@ -134,7 +134,7 @@ $$MRS = \frac{MU_x}{MU_y},$$
 3. Кофе: ${=k*pc} / {=pc} = {=k}$ {|k|чашка|чашки|чашек}.
 :::
 
-:::idea id=cs-i1-d-turn more diamond title="Цена вдвое — максимум вдвое" chart=budget i=120 px=4 py=1
+:::idea id=cs-i1-d-turn more diamond title="Цена вдвое — максимум вдвое" chart=budget i=120 px=4 py=1 remember="x_{\max} = \frac{I}{p_x}, \qquad y_{\max} = \frac{I}{p_y}"
 Цена $X$ выросла вдвое — максимум $X$ на весь доход уменьшился вдвое, а максимум $Y$ остался прежним. Линия стала вдвое круче.
 :::
 
@@ -337,7 +337,7 @@ $$x^* = \frac{\alpha I}{p_x}, \qquad y^* = \frac{(1 - \alpha) I}{p_y}:$$
 - не меняется | Доля постоянна у полезности Кобба — Дугласа, но у еды она с ростом дохода падает.
 :::
 
-:::idea id=cs-i2-d-cd more diamond title="Постоянные доли дохода" pic=scale
+:::idea id=cs-i2-d-cd more diamond title="Постоянные доли дохода" pic=scale remember="x^* = \frac{\alpha I}{p_x}"
 У полезности Кобба — Дугласа на каждый товар уходит постоянная доля дохода. Количество товара — эта доля дохода, делённая на его цену.
 :::
 
@@ -350,7 +350,7 @@ $$x^* = \frac{\alpha I}{p_x}, \qquad y^* = \frac{(1 - \alpha) I}{p_y}:$$
 3. Чашек: ${=10*s*m} / {=p} = {=10*s*m/p}$.
 :::
 
-:::idea id=cs-i2-d-slutsky more diamond title="Два эффекта на числах" chart=consumer alpha=0.5 i=120 px=2 py=1
+:::idea id=cs-i2-d-slutsky more diamond title="Два эффекта на числах" chart=consumer alpha=0.5 i=120 px=2 py=1 remember="\text{эффект дохода} = \text{всё изменение} - \text{эффект замещения}"
 Чтобы разделить эффекты, доход мысленно компенсируют: старый набор снова по карману. Изменение спроса при таком доходе — эффект замещения, остальное — эффект дохода.
 :::
 

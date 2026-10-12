@@ -1640,15 +1640,17 @@ test('путь: выход после первого ответа — урок �
   expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#8a2f45');
   await page.getByTestId('lesson-diamond').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-diamond', 'true');
-  // алмазные шаги — с формулами и строкой обозначений
-  let legend = false;
+  // алмазные шаги — с формулами, плашкой «Запомнить» и строкой обозначений
+  let legend = false; let remember = false;
   for (let i = 0; i < 40 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) {
     if (await page.getByTestId('step-legend').isVisible()) legend = true;
+    if (await page.getByTestId('step-remember').isVisible()) remember = true;
     if (await page.getByTestId('lesson-card').isVisible()) { await page.getByTestId('lesson').locator('.ln-foot button').click(); continue; }
     await answerExercise(page);
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   expect(legend).toBe(true);
+  expect(remember).toBe(true);
   await expect(page.getByTestId('result-diamond')).toContainText('Алмазный уровень взят');
   await expect(page.getByTestId('result-coins')).toContainText(/За урок\+(25|35)/);
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();

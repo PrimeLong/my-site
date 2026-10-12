@@ -149,7 +149,8 @@ export function parseBlocks(text) {
         // берутся усложнения (алмазный уровень, сильному ученику) в этом уроке и дальше по юниту
         // discover=demand — шаг «Откройте сами» (со словом more): ученик сам исследует модель; встаёт
         // первым шагом урока, до карточки-идеи (DISCOVER_KINDS)
-        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, discover, ...chartAttrs } = attrs;
+        // remember="TeX" — формула шага с пометкой «Запомнить»: по ней считают упражнения после шага
+        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, discover, remember, ...chartAttrs } = attrs;
         if (discover && !DISCOVER_KINDS.includes(discover)) throw new Error(`Неизвестный шаг «Откройте сами» ${discover} в ${attrs.id}`);
         if (discover && !words.includes('more')) throw new Error(`Шаг «Откройте сами» ${attrs.id} — со словом more`);
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
@@ -163,7 +164,7 @@ export function parseBlocks(text) {
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), hard: split(hard),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
           kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}), ...(discover ? { discover } : {}),
-          ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}) });
+          ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}), ...(remember ? { remember } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));
       } else if (name === 'round') {

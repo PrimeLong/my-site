@@ -130,7 +130,7 @@ $$Q_D = a - bP, \qquad a > 0,\ b > 0.$$
 - Останется на месте | Доходы — одна из «прочих» переменных: их рост сдвигает кривую.
 :::
 
-:::idea id=sd-i1-d-shift more diamond title="Сдвиг в числах" chart=demand a=100 b=2 p=20 da=20
+:::idea id=sd-i1-d-shift more diamond title="Сдвиг в числах" chart=demand a=100 b=2 p=20 da=20 remember="Q_D = (a + \text{прибавка}) - bP"
 Сдвиг спроса меняет свободный член формулы. Было $Q_D = 100 - 2P$; если при каждой цене хотят на 20 единиц больше, стало $Q_D = 120 - 2P$.
 :::
 
@@ -144,7 +144,7 @@ $$Q_D = a - bP, \qquad a > 0,\ b > 0.$$
 3. При цене {=p}: ${=a+s} - {=b} \cdot {=p} = {=a+s-b*p}$ {|a+s-b*p|единица|единицы|единиц}.
 :::
 
-:::idea id=sd-i1-d-market more diamond title="Рыночный спрос" chart=market-demand p=150
+:::idea id=sd-i1-d-market more diamond title="Рыночный спрос" chart=market-demand p=150 remember="\text{рыночный спрос} = \text{сумма спросов всех покупателей при этой цене}"
 Рыночный спрос складывают по горизонтали: при каждой цене суммируют, сколько хочет купить каждый покупатель. Кто при этой цене не покупает, добавляет ноль.
 :::
 
@@ -446,7 +446,7 @@ $$Q_S = c + dP, \qquad d > 0.$$
 - Ничего не изменится | Пол выше равновесной цены не даёт рынку прийти к равновесию.
 :::
 
-:::idea id=sd-i2-d-solve more diamond title="Равновесие из формул" chart=supply-demand a=120 b=2 c=0 d=4
+:::idea id=sd-i2-d-solve more diamond title="Равновесие из формул" chart=supply-demand a=120 b=2 c=0 d=4 remember="P^* = \frac{a - c}{b + d}"
 В равновесии объём спроса равен объёму предложения. Приравняйте формулы и решите уравнение: при $Q_D = 120 - 2P$ и $Q_S = 4P$ выходит $120 - 2P = 4P$.
 :::
 
@@ -461,7 +461,7 @@ $$Q_S = c + dP, \qquad d > 0.$$
 3. $P = {=P}$ кр.; объём $Q = {=d} \cdot {=P} = {=d*P}$.
 :::
 
-:::idea id=sd-i2-d-gap more diamond title="Дефицит в числах" pic=arrow-down-to-line
+:::idea id=sd-i2-d-gap more diamond title="Дефицит в числах" pic=arrow-down-to-line remember="\text{дефицит} = Q_D - Q_S \ \text{при потолке цены}"
 Чтобы найти дефицит при потолке цены, подставьте потолок в обе формулы. Дефицит — разность: сколько хотят купить минус сколько готовы продать.
 :::
 
