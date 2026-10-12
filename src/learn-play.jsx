@@ -868,20 +868,22 @@ export function StoryCard({ card, children }) {
    вправо — «Знаю», влево — «Ещё раз»; на клавиатуре — стрелки. Точки внизу — все слова урока. */
 /* «Слова» — знакомство со словами, а не проверка (docs/mechanics.md): каждое слово сразу со
    значением и примером — до этого урока ученик мог его не встречать. Листать — «Дальше» и
-   «Назад», смахиванием или стрелками; после последнего — лёгкие упражнения на эти слова. */
+   «Назад», стрелками или смахиванием: смахнуть в любую сторону — следующее слово (запоминать
+   направление не нужно), вернуться — «Назад»; после последнего — лёгкие упражнения на эти слова. */
 export function WordDeck({ cards, onDone, body, foot }) {
   const [idx, setIdx] = useState(0);
   const [seen, setSeen] = useState(() => new Set([0]));
   const [dx, setDx] = useState(0);
-  const [fly, setFly] = useState(0); // карточка улетает: −1 влево (дальше), 1 вправо (назад)
+  const [fly, setFly] = useState(0); // карточка улетает: −1 влево, 1 вправо — в ту сторону, куда смахнули
   const [dir, setDir] = useState(0); // откуда въезжает новая: 1 — справа, −1 — слева
   const drag = useRef(null);
   const card = cards[idx];
   const last = idx === cards.length - 1;
-  const go = (d) => {
+  // from — откуда въезжает новая карточка: по умолчанию «дальше» справа, «назад» слева
+  const go = (d, from = d) => {
     const n = idx + d;
     if (n < 0) return;
-    Audio.play('paper'); setDx(0); setFly(0); setDir(d);
+    Audio.play('paper'); setDx(0); setFly(0); setDir(from);
     if (n >= cards.length) { onDone(); return; }
     setIdx(n); setSeen((st) => new Set([...st, n]));
   };
@@ -895,9 +897,9 @@ export function WordDeck({ cards, onDone, body, foot }) {
     return () => window.removeEventListener('keydown', onKey);
   });
   if (!card) return null;
-  /* смахнуть влево — следующее слово, вправо — предыдущее (как листать страницы). Карточка едет
-     за пальцем или мышью и наклоняется, сверху — «Дальше» или «Назад»; отпустили дальше порога —
-     улетает в ту же сторону, и новая въезжает с другой; не дотянули — пружинит обратно. */
+  /* смахнуть в любую сторону — следующее слово. Карточка едет за пальцем или мышью и наклоняется,
+     сверху — «Дальше»; отпустили дальше порога — улетает в ту же сторону, а новая въезжает с
+     другой; не дотянули — пружинит обратно. Назад — кнопкой «Назад» или стрелкой влево. */
   const onDown = (e) => {
     if (fly || (e.pointerType === 'mouse' && e.button !== 0)) return;
     drag.current = { x: e.clientX, mouse: e.pointerType === 'mouse' };
@@ -905,17 +907,15 @@ export function WordDeck({ cards, onDone, body, foot }) {
   };
   const onMove = (e) => {
     if (!drag.current) return;
-    const d = e.clientX - drag.current.x;
-    // у первого слова «назад» некуда — карточка тянется вправо туго
-    setDx(idx === 0 && d > 0 ? d / 4 : d);
+    setDx(e.clientX - drag.current.x);
   };
   const onUp = () => {
     if (!drag.current) return;
     const d = dx; const lim = drag.current.mouse ? 60 : 80; drag.current = null;
-    const step = d < 0 ? 1 : -1;
-    if (Math.abs(d) <= lim || idx + step < 0) { setDx(0); return; }
-    setFly(d < 0 ? -1 : 1);
-    setTimeout(() => go(step), 190);
+    if (Math.abs(d) <= lim) { setDx(0); return; }
+    const side = d < 0 ? -1 : 1;
+    setFly(side);
+    setTimeout(() => go(1, -side), 190);
   };
   const style = fly ? { transform: `translateX(${fly * 130}%) rotate(${fly * 16}deg)`, opacity: 0, transition: 'transform .19s ease-in, opacity .19s ease-in' }
     : dx ? { transform: `translateX(${dx}px) rotate(${dx / 30}deg)`, transition: 'none' }
@@ -928,12 +928,11 @@ export function WordDeck({ cards, onDone, body, foot }) {
         {!last && <div className="lp-deck-ghost" aria-hidden="true" />}
         <div className={`lp-word in${dx || fly ? ' drag' : ''}`} key={idx} style={style} data-testid="flash-card" data-word={idx} data-dx={Math.round(dx)}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDragStart={(e) => e.preventDefault()}>
-          {dx < 0 && <span className="lp-swipe-tag next" style={{ opacity: pull }} aria-hidden="true">{last ? 'К упражнениям' : 'Дальше'}</span>}
-          {dx > 0 && idx > 0 && <span className="lp-swipe-tag prev" style={{ opacity: pull }} aria-hidden="true">Назад</span>}
+          {dx !== 0 && <span className={`lp-swipe-tag ${dx < 0 ? 'next' : 'prev'}`} style={{ opacity: pull }} aria-hidden="true">{last ? 'К упражнениям' : 'Дальше'}</span>}
           <div className="lp-word-top">
             <span>Новое слово {idx + 1} из {cards.length}</span>
             <span style={{ flex: 1 }} />
-            <span className="lp-word-hint" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}><span className="touch">← смахните</span><span className="fine">← → на клавиатуре</span></span>
+            <span className="lp-word-hint" style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}><span className="touch">смахните ↔</span><span className="fine">← → на клавиатуре</span></span>
           </div>
           <div className="lp-word-term">{card.title}</div>
           <div className="lp-word-rule" />

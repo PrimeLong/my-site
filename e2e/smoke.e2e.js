@@ -1720,10 +1720,19 @@ test('путь: юнит «Спрос и предложение» — кажды
   await page.mouse.up();
   await expect(word).toContainText('Новое слово 2 из 8');
   await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(2);
-  // назад — к прошлому слову
+  // смахнуть вправо — тоже дальше: направление запоминать не нужно
+  const wb2 = await word.boundingBox();
+  await page.mouse.move(wb2.x + wb2.width / 2, wb2.y + wb2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wb2.x + wb2.width / 2 + 70, wb2.y + wb2.height / 2, { steps: 6 });
+  await expect(word.locator('.lp-swipe-tag')).toHaveText('Дальше');
+  await page.mouse.move(wb2.x + wb2.width / 2 + 170, wb2.y + wb2.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect(word).toContainText('Новое слово 3 из 8');
+  // назад — кнопкой, к прошлому слову
   await page.getByTestId('word-prev').click();
-  await expect(word).toContainText('Новое слово 1 из 8');
-  for (let i = 0; i < 7; i += 1) await page.getByTestId('word-next').click();
+  await expect(word).toContainText('Новое слово 2 из 8');
+  for (let i = 0; i < 6; i += 1) await page.getByTestId('word-next').click();
   await expect(word).toContainText('Новое слово 8 из 8');
   await expect(page.getByTestId('word-next')).toHaveText('К упражнениям');
   const { kinds: wk } = await playLesson(page, { wrongAt: [0] });

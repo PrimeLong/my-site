@@ -34,7 +34,7 @@ export const STATS_CSS = `
   .st-bars { position: relative; margin: 8px 0 0; padding: 0 0 4px; }
   .st-bars-plot { position: relative; height: 112px; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--ds-rule2, var(--c-border, #ccc)); }
   .st-goal { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--ds-ink3, var(--c-faint, #888)); opacity: .55; pointer-events: none; }
-  .st-goal span { position: absolute; right: 0; bottom: 2px; font: 11.5px/1 var(--ds-sans, sans-serif); color: var(--ds-ink3, var(--c-faint, #777)); background: var(--ds-card, var(--c-panel, #fff)); padding: 0 0 0 4px; }
+  .st-goal span { position: absolute; right: 0; bottom: 2px; font: 12px/1 var(--ds-sans, sans-serif); color: var(--ds-ink3, var(--c-faint, #777)); background: var(--ds-card, var(--c-panel, #fff)); padding: 0 0 0 4px; }
   .st-col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
   .st-col i { display: block; width: 100%; max-width: 24px; border-radius: 4px 4px 0 0; background: color-mix(in srgb, var(--st-tone, var(--u, #4B692C)) 42%, var(--ds-card, var(--c-panel, #fff))); transition: height .5s ease; }
   .st-col.met i { background: var(--st-tone, var(--u, #4B692C)); }
@@ -43,7 +43,7 @@ export const STATS_CSS = `
   .st-col.today::after { content: ''; position: absolute; bottom: -9px; left: 50%; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--ds-gold, #C9A227); }
   .st-col.sel i { outline: 2px solid var(--ds-ink, #222); outline-offset: 1px; }
   .st-weeks { display: flex; margin-top: 12px; }
-  .st-weeks span { flex: 1 1 0; font: 11.5px/1.2 var(--ds-sans, sans-serif); color: var(--ds-ink3, var(--c-faint, #777)); border-left: 1px solid var(--ds-rule, var(--c-hairline, #ddd)); padding-left: 4px; white-space: nowrap; overflow: hidden; }
+  .st-weeks span { flex: 1 1 0; font: 12px/1.2 var(--ds-sans, sans-serif); color: var(--ds-ink3, var(--c-faint, #777)); border-left: 1px solid var(--ds-rule, var(--c-hairline, #ddd)); padding-left: 4px; white-space: nowrap; overflow: hidden; }
   .st-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); z-index: 3; padding: 6px 9px; border-radius: 6px; pointer-events: none; white-space: nowrap;
     background: var(--ds-ink, #222); color: var(--ds-card, #fff); font: 12.5px/1.35 var(--ds-sans, sans-serif); box-shadow: 0 4px 12px rgba(0,0,0,.2); }
   .st-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font: 12px/1.3 var(--ds-sans, sans-serif); color: var(--ds-ink3, var(--c-faint, #777)); }
