@@ -311,3 +311,14 @@ describe('жалобы из выгрузки: плитки с двумя вер�
     expect(() => parseBlocks(':::idea id=x-w kind=words title="Слова"\nСлова.\n- demand: сколько / покупатели ~ сколько / продавцы\n:::')).toThrow(/из тех же плиток/);
   });
 });
+
+describe('жалобы из выгрузки: общая КПВ (mv54yu3v)', () => {
+  it('до задачи sc-joint в главе разобрано, как построить общую КПВ', async () => {
+    const fs = await import('node:fs');
+    const md = fs.readFileSync(new URL('../../textbook/chapters/scarcity.md', import.meta.url), 'utf8');
+    const how = md.indexOf('### Как построить общую КПВ');
+    expect(how).toBeGreaterThan(0);
+    expect(how).toBeLessThan(md.indexOf('id=sc-joint'));
+    expect(md.slice(how, how + 2500)).toMatch(/\(8; 32\)/);
+  });
+});
