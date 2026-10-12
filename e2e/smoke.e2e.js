@@ -3018,6 +3018,27 @@ test('Путь: открывается на рекомендованном ур�
   expect(errors).toEqual([]);
 });
 
+test('Путь: проверку пройденного юнита можно пройти ещё раз — уроки остаются пройденными', async ({ page }) => {
+  test.setTimeout(120_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'scarcity');
+  await unit.getByTestId('unit-check').click();
+  await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'check');
+  await expect(page.getByTestId('lesson')).toHaveAttribute('aria-label', 'Проверка юнита');
+  await playLesson(page);
+  await expect(page.getByTestId('lesson-result')).toContainText('Юнит не забыт');
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(page.getByTestId('path').locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"]:not([data-state="done"])')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('Путь: тест уровня — сдан, и Путь сразу на следующем уровне; уроки сданного уровня открыты', async ({ page }) => {
   test.setTimeout(150_000);
   await withTestFlag(page);

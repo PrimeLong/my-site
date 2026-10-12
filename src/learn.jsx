@@ -1038,6 +1038,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   ? `Открыто сразу: ${result.opened.map((u) => `«${placeOf(u).place}»`).join(', ')}. ${result.opened.length >= UNITS.filter((u) => u.lessons.length).length ? 'Пройденные уроки можно взять на алмазном уровне.' : 'Путь продолжится со следующего места.'}`
                   : 'Начнём с самого начала — так надёжнее. Первые уроки короткие.')
                   : run.mode === 'check' && run.levelId ? (result.pass ? `${nextLevelText(run.levelId)} Уроки пройденного уровня тоже открыты.` : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки уровня никуда не делись.`)
+                  : run.mode === 'check' && run.review ? (result.pass ? 'Юнит не забыт: знания на месте.' : `Ошибок с первой попытки: ${result.mistakes}, для зачёта — не больше ${plan.passMistakes}. Стоит повторить уроки юнита — они открыты.`)
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
                     : lesson && lesson.kind === 'game' ? gameResultText(result)
@@ -1768,7 +1769,8 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             </div>
             <div className="ln-bill-btns">
               <Button variant="secondary" small icon={BookOpenText} data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }}>Гайд юнита</Button>
-              {!st.complete && <Button variant="secondary" small icon={Sparkles} data-testid="unit-check" data-nav-target={`check:${u.id}`} onClick={() => { Audio.prime(); onStart({ mode: 'check', unitId: u.id }); }}>Проверка юнита</Button>}
+              {/* и у пройденного юнита: проверить себя можно в любой момент */}
+              <Button variant="secondary" small icon={Sparkles} data-testid="unit-check" data-nav-target={`check:${u.id}`} onClick={() => { Audio.prime(); onStart({ mode: 'check', unitId: u.id, ...(st.complete ? { review: true } : {}) }); }}>Проверка юнита</Button>
               {st.complete && hasClaim(learn, chestKey(u.id)) && (
                 <Button variant="ghost" small icon={ChevronRight} data-testid="unit-fold" aria-expanded={!folded}
                   onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: !m[u.id] })); }}>{folded ? `Уроки: ${st.lessons.length}` : 'Свернуть'}</Button>
