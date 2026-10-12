@@ -1,6 +1,6 @@
 /* САД ИНФЛИ (docs/mechanics.md, «Сад»). Семена покупают за монеты по курсу дня, как вещи в лавке;
    растение растёт само, по часам, — и пока приложение закрыто. Чем реже растение, тем дольше оно
-   растёт и тем дороже семена. У собранного растения — редкость урожая (шансы показаны на экране):
+   растёт и тем дороже семена. У собранного растения — редкость урожая (шансы на экране не пишем):
    его можно оставить в гербарии или продать на рынке. Цена — цена семян × редкость, и она падает
    с каждой продажей того же растения за день: спрос насыщается. В среднем урожай приносит около
    9% сверх цены семян — небольшой доход, а не вклад.
@@ -38,13 +38,16 @@ export const PLANTS = [
     note: 'Растёт четыре дня. Деньги на деревьях не растут — а вот продать дерево можно дорого.' },
 ];
 export const PLANT_BY_ID = Object.fromEntries(PLANTS.map((p) => [p.id, p]));
-/* Редкость урожая: шанс и множитель цены на рынке. В среднем ×1,089 — около 9% сверх семян. */
+/* Редкость урожая: шанс и множитель цены на рынке. В среднем ×1,093 — около 9% сверх семян.
+   Небывалый — один урожай из тысячи; он взял последнюю тысячную у легендарного, поэтому редкость
+   уже собранного урожая не поменялась (кроме тех, что стали небывалыми). */
 export const GRADES = [
   { id: 'plain', title: 'обычный', p: 0.55, mult: 1, color: '#5E5A4E' },
   { id: 'good', title: 'хороший', p: 0.25, mult: 1.1, color: '#4B692C' },
   { id: 'fine', title: 'отборный', p: 0.12, mult: 1.2, color: '#2F5D8C' },
   { id: 'rare', title: 'редкий', p: 0.06, mult: 1.4, color: '#86446A' },
-  { id: 'legend', title: 'легендарный', p: 0.02, mult: 1.8, color: '#8A2F45' },
+  { id: 'legend', title: 'легендарный', p: 0.019, mult: 1.8, color: '#8A6416' },
+  { id: 'myth', title: 'небывалый', p: 0.001, mult: 6, color: '#1F5F6B' },
 ];
 export const GRADE_BY_ID = Object.fromEntries(GRADES.map((g) => [g.id, g]));
 export const MARKET_DROP = 0.15;
@@ -166,6 +169,25 @@ export function salePrice(s, at, now = Date.now()) {
   const crowns = p.crowns * GRADE_BY_ID[gradeOf(at)].mult * factor;
   return { crowns: Math.round(crowns * 10) / 10, coins: Math.floor(crowns * rateOn(dayOf(now))), factor };
 }
+// за сколько куплены семена этого урожая: цена в день посадки
+export function paidPrice(s, at) {
+  const v = (s.garden || {})[at];
+  if (!v) return null;
+  const { plant: id } = parse(v);
+  return PLANT_BY_ID[id] ? plantPrice(id, dayOf(Number(at))) : null;
+}
+/* Урожай одной строкой на растение и редкость: { plant, grade, ats (новые первыми), paid: [min, max] }.
+   Строки — от последнего сбора: что собрали только что, то и сверху. */
+export function cropGroups(s) {
+  const out = new Map();
+  crops(s).filter((c) => !c.sold).forEach((c) => {
+    const key = `${c.plant}:${c.grade}`;
+    if (!out.has(key)) out.set(key, { key, plant: c.plant, grade: c.grade, ats: [], paid: [Infinity, 0] });
+    const g = out.get(key); const p = paidPrice(s, c.at);
+    g.ats.push(c.at); g.paid = [Math.min(g.paid[0], p), Math.max(g.paid[1], p)];
+  });
+  return [...out.values()];
+}
 // продать урожай: монеты по цене рынка, ключ не даёт продать дважды
 export function sell(s, at, now = Date.now()) {
   const key = String(at);
@@ -177,3 +199,9 @@ export function sell(s, at, now = Date.now()) {
 }
 // сколько грядок созрело — для значка на вкладке
 export const ripeCount = (s, now = Date.now()) => gardenPlots(s).plots.filter((g) => g && growth(g, now).ripe).length;
+// продать несколько подряд: каждая продажа того же растения снижает цену следующей
+export function sellAll(s, ats, now = Date.now()) {
+  let t = s; let coins = 0; let n = 0;
+  ats.forEach((at) => { const r = sell(t, at, now); if (r.ok) { t = r.s; coins += r.coins; n += 1; } });
+  return { s: t, ok: n > 0, coins, n };
+}

@@ -2,7 +2,7 @@
    дольше; собранное уходит в гербарий; посадки и сборы переживают слияние устройств. */
 import { describe, it, expect } from 'vitest';
 import { PLANTS, PLANT_BY_ID, RARITY_ORDER, GARDEN_PLOTS, GRADES, plant, harvest, herbarium, grown, collection, gardenPlots, growth, growMs, plantPrice, leftText, ripeCount,
-  gradeOf, sell, salePrice, soldToday, marketFactor } from '../garden.js';
+  gradeOf, sell, salePrice, soldToday, marketFactor, paidPrice, cropGroups, sellAll } from '../garden.js';
 import { emptyLearn, normalizeLearn, mergeLearn, dayOf } from '../../textbook/learn-state.js';
 import { balance, earn, courseIncome, RATE_MAX, rateOn } from '../rewards.js';
 
@@ -144,5 +144,41 @@ describe('сад: редкость урожая и рынок', () => {
     const m = mergeLearn(s, sold);
     expect(herbarium(m)).toEqual({});
     expect(sell(m, at, T + 31 * HOUR).ok).toBe(false);
+  });
+});
+
+describe('сад: сверхредкий урожай, цена покупки и урожай одной строкой', () => {
+  const grow = (s0, id, t) => { const p = plant(s0, id, t); return { s: harvest(p.s, p.at, t + growMs(id)).s, at: p.at }; };
+  it('самая редкая редкость — реально редкая: один урожай из тысячи, и он самый дорогой', () => {
+    const last = GRADES[GRADES.length - 1];
+    expect(last).toMatchObject({ id: 'myth', title: 'небывалый' });
+    expect(last.p).toBeLessThanOrEqual(0.001);
+    GRADES.slice(0, -1).forEach((g) => { expect(g.p).toBeGreaterThan(last.p); expect(g.mult).toBeLessThan(last.mult); });
+    // небывалый взял тысячную у легендарного: редкость прежних урожаев не сдвинулась
+    expect(GRADES.slice(0, 4).reduce((a, g) => a + g.p, 0)).toBeCloseTo(0.98, 10);
+  });
+  it('за сколько куплены семена — цена в день посадки', () => {
+    const p = plant(rich(), 'tulip', T);
+    expect(paidPrice(p.s, p.at)).toBe(p.price);
+    expect(paidPrice(p.s, 123)).toBe(null);
+  });
+  it('одинаковый урожай — одной строкой ×N, новые сверху; продать все — с насыщением спроса', () => {
+    let s = rich(20000); const ats = [];
+    // 30 ромашек: строк столько, сколько разных редкостей, а не 30
+    for (let k = 0; k < 30; k += 1) { const g = grow(s, 'chamomile', T + k * 7919); s = g.s; ats.push(g.at); }
+    const groups = cropGroups(s);
+    expect(groups.length).toBe(new Set(ats.map(gradeOf)).size);
+    expect(groups.reduce((a, g) => a + g.ats.length, 0)).toBe(30);
+    groups.forEach((g) => { expect(g.paid[0]).toBeLessThanOrEqual(g.paid[1]); g.ats.forEach((at) => expect(gradeOf(at)).toBe(g.grade)); });
+    const t = grow(s, 'tulip', T + 40 * 7919);
+    expect(cropGroups(t.s)[0]).toMatchObject({ plant: 'tulip', ats: [t.at] });
+    const now = T + 30 * HOUR;
+    const g = groups[0];
+    const one = sell(s, g.ats[0], now);
+    const all = sellAll(s, g.ats, now);
+    expect(all).toMatchObject({ ok: true, n: g.ats.length });
+    expect(balance(all.s)).toBe(balance(s) + all.coins);
+    if (g.ats.length > 1) expect(all.coins).toBeLessThan(one.coins * g.ats.length);
+    expect(cropGroups(all.s).find((x) => x.key === g.key)).toBeUndefined();
   });
 });
