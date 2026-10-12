@@ -1868,8 +1868,15 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=garden-plot][data-plant="chamomile"]')).toHaveAttribute('data-stage', 'bloom');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"]')).toHaveAttribute('data-stage', 'bud');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('3 ч');
-  // шансы редкостей урожая — на экране
-  await expect(garden.getByTestId('garden-odds').first()).toContainText('легендарный — 2%');
+  // шансов редкости на экране нет — только редкости и во сколько раз дороже урожай
+  await expect(garden.getByTestId('garden-odds').first()).not.toContainText('%');
+  await expect(garden.getByTestId('garden-grades')).toContainText('небывалый ×6');
+  // на пакетике видно, можно ли купить: «Посадить» — или что мешает, и кнопка выключена
+  const seedStates = await garden.getByTestId('garden-seed').evaluateAll((els) => els.map((e) => { const b = e.querySelector('[data-testid=garden-plant]'); return [e.dataset.state, b.textContent, b.disabled]; }));
+  seedStates.forEach(([st, text, off]) => {
+    if (st === 'ok') expect([text, off]).toEqual(['Посадить', false]);
+    else { expect(off).toBe(true); expect(text).toMatch(/^(Не хватает \d+|Грядки заняты)$/); }
+  });
   // собрать — урожай с редкостью, грядка свободна, ромашка в гербарии
   await garden.getByTestId('garden-harvest').click();
   const result = garden.getByTestId('garden-result');
@@ -1878,6 +1885,9 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-kept', '1');
   await expect(garden.locator('[data-testid=herb-item][data-plant="orchid"]')).toHaveAttribute('data-got', 'false');
   await expect(garden.getByTestId('garden-crop')).toHaveCount(1);
+  // в урожае — за сколько куплены семена, цена на рынке и разница
+  await expect(garden.getByTestId('garden-crop-price')).toContainText(/семена — \d+ · на рынке — \d+/);
+  await expect(garden.getByTestId('garden-crop').getByTestId('garden-profit')).toBeVisible();
   await expect(shop.getByTestId('garden-ripe')).toHaveCount(0);
   // продать — монеты в кошелёк, в коллекции пусто, но ромашка уже выращена
   const coins0 = Number(await garden.getByTestId('garden-balance').innerText());
