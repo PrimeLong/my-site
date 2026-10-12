@@ -11,10 +11,10 @@ import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
-import { ShopSwitch, GardenView } from './learn-garden.jsx';
+import { ShopSwitch, GardenView, RateWeek } from './learn-garden.jsx';
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, PIGGY_YEARLY, REAL_RATE, realCurve,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
   goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
@@ -62,6 +62,18 @@ export const REWARD_CSS = `
   .rw-dots { display: flex; justify-content: center; gap: 8px; }
   .rw-forgone { font-size: 12px; line-height: 1.25; color: var(--ds-ink3); }
   .rw-piggy-chart { width: 100%; display: block; margin: 6px 0 2px; }
+  .rw-book { border: 1px solid var(--ds-rule2); border-radius: 6px; background: var(--ds-card); padding: 8px 12px 12px;
+    background-image: repeating-linear-gradient(transparent 0 27px, color-mix(in srgb, var(--u) 10%, transparent) 27px 28px); }
+  .rw-book-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font: 14.5px var(--ds-sans); padding: 3px 0; border-bottom: 1px dotted var(--ds-rule2); }
+  .rw-book-row b { font-size: 16px; } .rw-book-row small { font: 12.5px var(--ds-mono); color: var(--ds-ok); }
+  .rw-book-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 8px 0 2px; }
+  .rw-book-days i { height: 8px; border-radius: 4px; background: var(--ds-rule); }
+  .rw-book-days i.on { background: var(--u); }
+  .rw-presets { display: flex; gap: 6px; margin: 2px 0 4px; }
+  .rw-presets button { flex: 1; min-height: 36px; border: 1.5px solid var(--ds-rule2); border-radius: 999px; background: var(--ds-card2); font: 700 13.5px var(--ds-sans); color: var(--ds-ink2); cursor: pointer; }
+  .rw-book .ds-btn { margin-top: 8px; }
+  .rw-real { margin-top: 10px; padding-top: 8px; border-top: 1px dotted var(--ds-rule2); }
+  .rw-real summary { cursor: pointer; font: 700 14px var(--ds-sans); color: var(--u-ink); }
   .rw-piggy-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
   .rw-dot { width: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 12px var(--ds-sans); color: var(--ds-ink3); }
   .rw-dot i { width: 26px; height: 26px; border-radius: 50%; border: 1.5px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
@@ -461,39 +473,47 @@ export function ShopView({ learn, update, now = Date.now() }) {
 }
 
 /* ------------------------------ КОПИЛКА ИНФЛИ ------------------------------
-   Положить монеты под 2% в день на неделю; график — как растёт вклад по дням: столбик каждого дня
-   чуть выше прошлого не на 2 монеты, а на 2% от уже накопленного. Забрать раньше — процент сгорит. */
-function PiggyChart({ amount, day = null }) {
-  const pts = piggyCurve(amount);
-  const W = 300; const H = 92; const pad = 18; const top = pts[pts.length - 1].value; const lo = amount * 0.97;
+   Сберкнижка: положить монеты на неделю под ставку недели; рост по дням — столбики, каждый чуть
+   выше прошлого не на одно и то же число, а на процент от уже накопленного. Забрать раньше —
+   процент сгорит. Ставка и что она значит для сада — плашка «Ставка недели» сверху. */
+const fmtPct = (r) => `${String(Math.round(r * 1000) / 10).replace('.', ',')}%`;
+function PiggyChart({ amount, rate, day = null }) {
+  const pts = piggyCurve(amount, rate);
+  const W = 300; const H = 96; const pad = 14; const top = pts[pts.length - 1].value; const lo = amount * 0.97;
   const bw = (W - pad * 2) / pts.length;
-  const h = (v) => ((v - lo) / (top - lo)) * (H - 30);
+  const h = (v) => ((v - lo) / (top - lo)) * (H - 42);
   return (
     <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" data-testid="piggy-chart"
-      aria-label={`Вклад ${amount}: через неделю ${piggyValue(amount, PIGGY.days)}`}>
-      {pts.map((p) => (
-        <g key={p.day}>
-          <rect x={pad + p.day * bw + 3} y={H - 14 - h(p.value)} width={bw - 6} height={h(p.value) + 1} rx="1.5"
-            fill={day != null && p.day <= day ? 'var(--u)' : 'color-mix(in srgb, var(--u) 28%, var(--ds-card))'} stroke="var(--u-ink)" strokeWidth={day === p.day ? 1.6 : 0.6} />
-          <text x={pad + p.day * bw + bw / 2} y={H - 3} textAnchor="middle">{p.day === 0 ? 'сейч.' : `д${p.day}`}</text>
-        </g>
-      ))}
-      <text x={pad + 7 * bw + bw / 2} y={H - 18 - h(top)} textAnchor="middle">{Math.floor(top + 1e-9)}</text>
-      <text x={pad + bw / 2} y={H - 18 - h(amount)} textAnchor="middle">{amount}</text>
+      aria-label={`Вклад ${amount} под ${fmtPct(rate)} в день: через неделю ${piggyValue(amount, PIGGY.days, rate)}`}>
+      {pts.map((p) => {
+        const past = day != null && p.day <= day;
+        return (
+          <g key={p.day}>
+            <rect x={pad + p.day * bw + 4} y={H - 15 - h(p.value)} width={bw - 8} height={h(p.value) + 1} rx="3"
+              fill={past ? 'var(--u)' : 'color-mix(in srgb, var(--u) 22%, var(--ds-card))'} stroke="var(--u-ink)" strokeWidth={day === p.day ? 1.8 : 0.6} />
+            {/* монетки сверху столбика — сколько прибавилось за день */}
+            {p.day > 0 && <circle cx={pad + p.day * bw + bw / 2} cy={H - 19 - h(p.value)} r="3.2" fill="#E3B23C" stroke="#7D5A10" strokeWidth=".8" opacity={past || day == null ? 1 : 0.45} />}
+            <text x={pad + p.day * bw + bw / 2} y={H - 3} textAnchor="middle">{p.day === 0 ? 'сейч.' : `д${p.day}`}</text>
+          </g>
+        );
+      })}
+      <text x={pad + 7 * bw + bw / 2} y={H - 25 - h(top)} textAnchor="middle">{Math.floor(top + 1e-9)}</text>
+      <text x={pad + bw / 2} y={H - 22 - h(amount)} textAnchor="middle">{amount}</text>
     </svg>
   );
 }
-/* Честно про проценты: 2% в день — 730% годовых, такого не бывает; а вот реальные 8% годовых —
-   1000 крон за 10 лет (docs/mechanics.md). */
-function RealRate() {
+/* Честно про проценты: ставка в день — сотни процентов годовых, такого не бывает; а вот реальные
+   8% годовых — 1000 крон за 10 лет (docs/mechanics.md). Свёрнуто: «Это много или мало?» */
+function RealRate({ rate }) {
   const pts = realCurve();
   const W = 300; const H = 70; const pad = 14; const top = pts[pts.length - 1].value;
   const x = (i) => pad + (i / (pts.length - 1)) * (W - pad * 2);
   const y = (v) => H - 14 - ((v - 900) / (top - 900)) * (H - 30);
   return (
-    <div data-testid="piggy-real" style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dotted var(--ds-rule2)' }}>
-      <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.4 }}>
-        {Math.round(PIGGY.rate * 100)}% в день ≈ {PIGGY_YEARLY}% годовых — в жизни так не бывает, а вот как выглядят реальные {Math.round(REAL_RATE * 100)}% годовых:
+    <details className="rw-real" data-testid="piggy-real">
+      <summary>Это много или мало?</summary>
+      <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.4, marginTop: 6 }}>
+        {fmtPct(rate)} в день ≈ {Math.round(rate * 365 * 100)}% годовых — в жизни так не бывает, а вот как выглядят реальные {Math.round(REAL_RATE * 100)}% годовых:
       </div>
       <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`1000 крон под ${Math.round(REAL_RATE * 100)}% годовых: через 10 лет ${top}`}>
         <polyline points={pts.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')} fill="none" stroke="var(--u-ink)" strokeWidth="1.6" />
@@ -503,11 +523,14 @@ function RealRate() {
         <text x={x(0)} y={H - 2} textAnchor="start">сейчас</text>
         <text x={x(pts.length - 1)} y={H - 2} textAnchor="end">через 10 лет</text>
       </svg>
-    </div>
+    </details>
   );
 }
+const PRESETS = [['¼', 0.25], ['½', 0.5], ['Всё', 1]];
 function PiggyCard({ learn, update, now, b, onMsg }) {
   const st = piggyState(learn, now);
+  const day = dayOf(now);
+  const rateNow = weekRate(day);
   const [amount, setAmount] = useState(() => Math.max(PIGGY.min, Math.min(100, Math.floor(b / 2))));
   const can = b >= PIGGY.min;
   const n = Math.max(PIGGY.min, Math.min(amount, b));
@@ -515,7 +538,7 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
     const r = piggyPut(learn, n, now);
     if (!r.ok) { Audio.play('down'); onMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register'); update(() => r.s, { settle: true });
-    onMsg({ ok: true, text: `В копилке ${r.amount} ${coinsWord(r.amount)}. Через ${PIGGY.days} дней станет ${piggyValue(r.amount, PIGGY.days)}.` });
+    onMsg({ ok: true, text: `В копилке ${r.amount} ${coinsWord(r.amount)} под ${fmtPct(r.rate)} в день. Через ${PIGGY.days} дней станет ${piggyValue(r.amount, PIGGY.days, r.rate)}.` });
   };
   const take = () => {
     const r = piggyTake(learn, now);
@@ -524,38 +547,48 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
     onMsg({ ok: true, text: !r.early ? `Забрано ${r.payout} ${coinsWord(r.payout)} — с процентами за неделю.` : r.lost ? `Забрано ${r.payout} ${coinsWord(r.payout)}: раньше срока процент сгорел (−${r.lost}).` : `Забрано ${r.payout} ${coinsWord(r.payout)}: проценты не успели набежать.` });
   };
   return (
-    <Card style={{ margin: '0 0 14px' }} data-testid="shop-piggy" data-open={String(!!st)}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <Rosette size={54} opacity={0.5}><PiggyBank size={24} color="var(--u-ink)" aria-hidden="true" /></Rosette>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700 }}>Копилка Инфли</div>
-          <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>
-            {Math.round(PIGGY.rate * 100)}% в день на накопленное, срок — {PIGGY.days} дней. Раньше срока забрать можно, но процент сгорит.
+    <Card className="rw-piggy" style={{ margin: '0 0 14px', padding: 0, overflow: 'hidden' }} data-testid="shop-piggy" data-open={String(!!st)}>
+      <Guilloche height={14} opacity={0.45} />
+      <div style={{ padding: '10px 14px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Rosette size={58} opacity={0.5}><PiggyBank size={26} color="var(--u-ink)" aria-hidden="true" /></Rosette>
+          <div style={{ flex: 1 }}>
+            <div className="ds-eyebrow">Сберкнижка</div>
+            <div className="ds-h3">Копилка Инфли</div>
+            <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>Надёжно: процент известен заранее и не зависит от удачи. Деньги заперты на {PIGGY.days} дней — раньше срока процент сгорит.</div>
           </div>
         </div>
-      </div>
-      {st ? (
-        <>
-          <PiggyChart amount={st.amount} day={st.days} />
-          <div style={{ fontSize: 14.5, margin: '2px 0 8px' }} data-testid="piggy-state">
-            Положено <b className="ds-num">{st.amount}</b>, день {st.days} из {PIGGY.days}: сейчас <b className="ds-num">{st.value}</b>{st.ripe ? ' — срок вышел, можно забирать.' : `, через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')} — ${st.final}.`}
+        <RateWeek day={day} focus="piggy" />
+        {st ? (
+          <div className="rw-book" data-testid="piggy-open">
+            <div className="rw-book-row"><span>Положено</span><b className="ds-num">{st.amount}</b></div>
+            <div className="rw-book-row"><span>Ставка вклада</span><b className="ds-num" data-testid="piggy-rate">{fmtPct(st.rate)} в день</b></div>
+            <div className="rw-book-days" aria-hidden="true">{Array.from({ length: PIGGY.days }, (_, k) => <i key={k} className={k < st.days ? 'on' : ''} />)}</div>
+            <PiggyChart amount={st.amount} rate={st.rate} day={st.days} />
+            <div style={{ fontSize: 14.5, margin: '2px 0 8px' }} data-testid="piggy-state">
+              День {st.days} из {PIGGY.days}: сейчас <b className="ds-num">{st.value}</b>{st.ripe ? ' — срок вышел, можно забирать.' : `, через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')} — ${st.final}.`}
+            </div>
+            <Button small wide={st.ripe} variant={st.ripe ? 'primary' : 'ghost'} data-testid="piggy-take" onClick={take}>
+              {st.ripe ? `Забрать ${st.payout} ${coinsWord(st.payout)}` : `Забрать раньше: только ${st.payout}`}
+            </Button>
           </div>
-          <Button small variant={st.ripe ? 'primary' : 'ghost'} data-testid="piggy-take" onClick={take}>
-            {st.ripe ? `Забрать ${st.payout} ${coinsWord(st.payout)}` : `Забрать раньше: только ${st.payout}`}
-          </Button>
-        </>
-      ) : can ? (
-        <>
-          <PiggyChart amount={n} />
-          <label className="ds-sub" style={{ fontSize: 14, display: 'block' }} htmlFor="piggy-amount">Положить: <b className="ds-num">{n}</b> {coinsWord(n)} → через неделю <b className="ds-num">{piggyValue(n, PIGGY.days)}</b></label>
-          <input id="piggy-amount" type="range" min={PIGGY.min} max={Math.max(PIGGY.min, b)} step={1} value={n} data-testid="piggy-amount" style={{ width: '100%', accentColor: 'var(--u)' }}
-            onChange={(e) => { Audio.play('tick'); setAmount(Number(e.target.value)); }} />
-          <Button small data-testid="piggy-put" onClick={put}>Положить {n} {coinsWord(n)}</Button>
-        </>
-      ) : (
-        <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }}>Положить можно от {PIGGY.min} монет — их дают уроки.</div>
-      )}
-      <RealRate />
+        ) : can ? (
+          <div className="rw-book" data-testid="piggy-form">
+            <label className="rw-book-row" htmlFor="piggy-amount"><span>Положить</span><b className="ds-num">{n} {coinsWord(n)}</b></label>
+            <input id="piggy-amount" type="range" min={PIGGY.min} max={Math.max(PIGGY.min, b)} step={1} value={n} data-testid="piggy-amount" style={{ width: '100%', accentColor: 'var(--u)' }}
+              onChange={(e) => { Audio.play('tick'); setAmount(Number(e.target.value)); }} />
+            <div className="rw-presets" role="group" aria-label="Сколько положить">
+              {PRESETS.map(([label, k]) => <button key={label} type="button" onClick={() => { Audio.play('tick'); setAmount(Math.max(PIGGY.min, Math.floor(b * k))); }}>{label}</button>)}
+            </div>
+            <PiggyChart amount={n} rate={rateNow} />
+            <div className="rw-book-row"><span>Через {PIGGY.days} дней</span><b className="ds-num" data-testid="piggy-final">{piggyValue(n, PIGGY.days, rateNow)} <small>(+{piggyValue(n, PIGGY.days, rateNow) - n})</small></b></div>
+            <Button small wide data-testid="piggy-put" onClick={put}>Положить {n} {coinsWord(n)}</Button>
+          </div>
+        ) : (
+          <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }}>Положить можно от {PIGGY.min} монет — их дают уроки.</div>
+        )}
+        <RealRate rate={st ? st.rate : rateNow} />
+      </div>
     </Card>
   );
 }

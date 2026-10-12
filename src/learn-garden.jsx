@@ -3,12 +3,12 @@
    урожай одной строкой на растение и редкость — с ценой покупки семян и рынка, гербарий.
    Редкость урожая видна на рисунке: ореол, искры, золотое или радужное сияние. */
 import React, { useEffect, useRef, useState } from 'react';
-import { Lock, Sprout, Clock, Coins, X, ArrowDown } from 'lucide-react';
+import { Lock, Sprout, Clock, Coins, X, ArrowDown, Landmark, PiggyBank } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, Heading } from './ds.jsx';
 import { PLANTS, PLANT_BY_ID, RARITY, GARDEN_PLOTS, GRADES, GRADE_BY_ID, MARKET_DROP, gardenPlots, growth, leftText, plant, harvest, herbarium, grown, collection,
   plantPrice, salePrice, sell, sellAll, soldToday, ripeCount, cropGroups, paidPrice, STAGE_LABEL } from './learn/garden.js';
-import { balance, coinsWord } from './learn/rewards.js';
+import { balance, coinsWord, RATE_STEPS, rateStep, weekRate, weekDemand, PIGGY } from './learn/rewards.js';
 import { dayOf } from './textbook/learn-state.js';
 import { plural } from './lib/plural.js';
 
@@ -18,6 +18,18 @@ const GARDEN_CSS = `
   .gd-switch button { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 9px 10px; font: 700 15px var(--ds-sans); color: var(--ds-ink2); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
   .gd-switch button[aria-selected="true"] { background: var(--ds-card); color: var(--ds-ink); box-shadow: 0 1px 3px var(--ds-shade); }
   .gd-switch .gd-ripe { font: 700 12px var(--ds-sans); color: #fff; background: var(--ds-ok); border-radius: 999px; padding: 1px 7px; }
+  /* ставка недели: шкала из пяти делений, что она значит для вклада и для рынка сада */
+  .rt-week { margin: 10px 0 12px; padding: 10px 12px; border: 1px solid var(--ds-rule2); border-radius: 8px; background: var(--ds-card2); }
+  .rt-top { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font: 14px var(--ds-sans); }
+  .rt-top b { font: 700 22px var(--ds-mono); color: var(--ds-ink); }
+  .rt-meter { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin: 6px 0 2px; }
+  .rt-meter i { height: 7px; border-radius: 2px; background: var(--ds-rule); }
+  .rt-meter i.on { background: linear-gradient(90deg, #4B692C, #B65F14 60%, #8A2F45); background-size: 500% 100%; }
+  .rt-scale { display: flex; justify-content: space-between; font: 12px var(--ds-mono); color: var(--ds-ink3); }
+  .rt-lines { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 4px; font: 13.5px var(--ds-sans); }
+  .rt-lines > span { display: inline-flex; align-items: center; gap: 5px; }
+  .rt-lines > span[data-on="true"] { font-weight: 700; }
+  .rt-hint { font: 13px/1.4 var(--ds-sans); color: var(--ds-ink2); }
   .gd-wallet { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
   .gd-wallet > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--ds-rule2); border-radius: 999px; background: var(--ds-card); font: 14px var(--ds-sans); }
   /* огород: трава, забор из штакетника, грядки с землёй и деревянные таблички */
@@ -50,7 +62,7 @@ const GARDEN_CSS = `
   .gd-packets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 20px; }
   .gd-packet { --r: #4B692C; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 8px 8px; text-align: center; overflow: hidden; border-radius: 3px 3px 8px 8px;
     border: 1px solid color-mix(in srgb, var(--r) 45%, var(--ds-rule2)); background: linear-gradient(color-mix(in srgb, var(--r) 12%, var(--ds-card)), var(--ds-card) 70%); }
-  .gd-packet-band { align-self: stretch; margin: 0 -8px 2px; padding: 4px 6px; background: var(--r); color: #fff; font: 700 11px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase;
+  .gd-packet-band { align-self: stretch; margin: 0 -8px 2px; padding: 4px 6px; background: var(--r); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .05em; text-transform: uppercase;
     -webkit-mask: radial-gradient(circle 4px at 50% 0, transparent 98%, #000) 0 0 / 10px 100%; }
   .gd-packet[data-rarity="legend"] .gd-packet-band { background: linear-gradient(90deg, #8A2F45, #C9A040, #8A2F45); background-size: 200% 100%; animation: gd-shine 3s linear infinite; }
   .gd-packet .gd-art { width: 74px; height: auto; }
@@ -58,7 +70,7 @@ const GARDEN_CSS = `
   .gd-packet-meta { font: 12.5px var(--ds-sans); color: var(--ds-ink2); }
   .gd-packet-note { font: italic 12px/1.35 var(--ds-sans); color: var(--ds-ink2); }
   .gd-packet-price { display: inline-flex; align-items: center; gap: 4px; margin: 3px 0 5px; font: 700 16px var(--ds-mono); }
-  .gd-packet-price small { font: 400 11.5px var(--ds-mono); color: var(--ds-ink3); }
+  .gd-packet-price small { font: 400 12px var(--ds-mono); color: var(--ds-ink3); }
   .gd-packet .ds-btn { margin-top: auto; }
   .gd-packet.off { opacity: .66; }
   .gd-packet.off .gd-art { filter: saturate(.35); }
@@ -333,8 +345,9 @@ export function GardenView({ learn, update }) {
         })}
       </div>
 
+      <RateWeek day={day} focus="garden" />
       <Heading level={3} title="Урожай" sub={keptN ? `Собрано и не продано: ${keptN}. Одинаковое лежит одной строкой.` : 'Соберите созревшее — урожай появится здесь.'} />
-      <div className="gd-odds" data-testid="garden-odds">Редкость урожая выпадает при сборе: чем реже, тем дороже на рынке. Цена — цена семян в кронах × редкость, по курсу дня.</div>
+      <div className="gd-odds" data-testid="garden-odds">Редкость урожая выпадает при сборе: чем реже, тем дороже на рынке. Цена — цена семян в кронах × редкость × спрос недели, по курсу дня.</div>
       <div className="gd-grades" data-testid="garden-grades">
         {GRADES.map((g) => <span key={g.id}><Grade id={g.id} /> {multText(g.mult)}</span>)}
       </div>
@@ -386,6 +399,28 @@ export function GardenView({ learn, update }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+/* СТАВКА НЕДЕЛИ — одна плашка в копилке и на рынке сада (docs/mechanics.md, «Копилка и сад»):
+   какая ставка, что она даёт вкладу за неделю и во сколько раз меняет цены урожая */
+const pct = (x, d = 1) => `${String(Math.round(x * 100 * 10 ** d) / 10 ** d).replace('.', ',')}%`;
+export function RateWeek({ day, focus = null }) {
+  const step = rateStep(day); const rate = weekRate(day); const demand = weekDemand(day);
+  const week = (1 + rate) ** PIGGY.days - 1;
+  const hint = step >= 3 ? 'Ставка высокая: копить выгодно, а цветы покупают хуже — цены на рынке ниже.'
+    : step <= 1 ? 'Ставка низкая: вклад даёт мало, зато цветы раскупают — цены на рынке выше.'
+      : 'Ставка обычная: и вклад, и рынок сада — как обычно.';
+  return (
+    <div className="rt-week" data-testid="rate-week" data-step={step} data-rate={rate}>
+      <div className="rt-top"><Landmark size={16} aria-hidden="true" style={{ alignSelf: 'center' }} />Ставка недели <b data-testid="rate-week-value">{pct(rate)}</b> в день</div>
+      <div className="rt-meter" aria-hidden="true">{RATE_STEPS.map((r, k) => <i key={r} className={k <= step ? 'on' : ''} style={{ backgroundPosition: `${k * 25}% 0` }} />)}</div>
+      <div className="rt-scale" aria-hidden="true"><span>{pct(RATE_STEPS[0])}</span><span>{pct(RATE_STEPS[RATE_STEPS.length - 1])}</span></div>
+      <div className="rt-lines">
+        <span data-on={String(focus === 'piggy')}><PiggyBank size={15} aria-hidden="true" />вклад за неделю: +{pct(week, 0)}</span>
+        <span data-on={String(focus === 'garden')} data-testid="rate-week-demand"><Sprout size={15} aria-hidden="true" />цены на рынке сада: ×{String(demand).replace('.', ',')}</span>
+      </div>
+      <div className="rt-hint">{hint} Новая ставка — с понедельника.</div>
     </div>
   );
 }

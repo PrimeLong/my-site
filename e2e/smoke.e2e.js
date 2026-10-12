@@ -2863,12 +2863,16 @@ test('новые глаголы: «Откройте сами», живая мо�
   const before = Number((await shop.getByTestId('shop-balance').innerText()).match(/\d+/)[0]);
   await piggy.getByTestId('piggy-amount').fill('100');
   await expect(piggy.getByTestId('piggy-chart')).toBeVisible();
-  // честно про проценты: 730% годовых так не бывает, рядом — реальные 8% годовых
-  await expect(piggy.getByTestId('piggy-real')).toContainText('730% годовых — в жизни так не бывает');
+  // ставка недели — на карточке копилки; честно про проценты («так не бывает», рядом реальные 8% годовых) — свёрнуто
+  await expect(piggy.getByTestId('rate-week')).toBeVisible();
+  await piggy.getByTestId('piggy-real').locator('summary').click();
+  await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых — в жизни так не бывает/);
   await piggy.getByTestId('piggy-put').click();
-  await expect(shop.getByTestId('shop-msg')).toContainText('В копилке 100 монет. Через 7 дней станет 114.');
+  // вклад — под ставку этой недели
+  await expect(shop.getByTestId('shop-msg')).toContainText(/В копилке 100 монет под \d+(,\d)?% в день\. Через 7 дней станет 1[0-2]\d\./);
+  await expect(piggy.getByTestId('piggy-rate')).toHaveText(await piggy.getByTestId('rate-week-value').innerText() + ' в день');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before - 100));
-  await expect(piggy.getByTestId('piggy-state')).toContainText('день 0 из 7');
+  await expect(piggy.getByTestId('piggy-state')).toContainText('День 0 из 7');
   await piggy.getByTestId('piggy-take').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('проценты не успели набежать');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before));
@@ -2882,7 +2886,7 @@ test('новые глаголы: «Откройте сами», живая мо�
   await openTab(page, 'shop');
   await expect(page.getByTestId('shop-piggy').getByTestId('piggy-state')).toContainText('срок вышел');
   await page.getByTestId('shop-piggy').getByTestId('piggy-take').click();
-  await expect(page.getByTestId('shop-msg')).toContainText('Забрано 114 монет — с процентами за неделю.');
+  await expect(page.getByTestId('shop-msg')).toContainText(/Забрано 1[0-2]\d монет — с процентами за неделю\./);
   expect(errors).toEqual([]);
 });
 
