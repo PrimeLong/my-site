@@ -408,6 +408,14 @@ export function texPlain(tex) {
     .replace(/\\pi/g, 'π').replace(/\\Delta\s?/g, 'Δ').replace(/\\%/g, '%').replace(/\\[,;! ]/g, ' ').replace(/\\left|\\right/g, '')
     .replace(/\\[a-zA-Z]+/g, '').replace(/[{}]/g, '').replace(/\(([^()+\-·/ ]+)\)\/\(([^()+\-·/ ]+)\)/g, '$1/$2').replace(/\s+/g, ' ').trim();
 }
+// единица у поля расчёта — по набранному числу: «3 станка», «5 станков» (жалоба mv4j067n);
+// пока поле пустое — «станков»
+export function unitFor(inst, val) {
+  if (!inst.units) return inst.unit;
+  const x = Number(String(val || '').replace(',', '.').replace('−', '-'));
+  if (!val || !Number.isFinite(x)) return inst.unit;
+  return Number.isInteger(x) ? plural(x, ...inst.units) : inst.units[1];
+}
 export function answerText(inst) {
   const plain = (nodes) => (nodes || []).map((n) => (n.t === 'text' ? n.v : n.t === 'math' ? texPlain(n.v) : n.c ? plain(n.c) : '')).join('');
   switch (inst.kind) {

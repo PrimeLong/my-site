@@ -25,7 +25,7 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
-  UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
@@ -475,7 +475,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <input value={val} onChange={(e) => !locked && setResp(e.target.value.replace(/[^0-9.,\-−/]/g, '').slice(0, 10))} inputMode="none" aria-label="Ответ числом"
                 className="ds-field ds-num" style={{ width: 132, fontSize: 22, textAlign: 'center', padding: '6px 8px' }} />
-              {inst.unit && <span style={{ fontSize: 15, color: 'var(--ds-ink2)' }} data-testid="calc-unit">{inst.unit}</span>}
+              {inst.unit && <span style={{ fontSize: 15, color: 'var(--ds-ink2)' }} data-testid="calc-unit">{unitFor(inst, val)}</span>}
             </span>
             {!locked && (
               <span style={{ display: 'inline-flex', gap: 4 }} role="group" aria-label="Способ ввода">

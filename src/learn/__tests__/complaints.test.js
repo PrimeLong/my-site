@@ -248,7 +248,7 @@ describe('жалобы из выгрузки: новые числа в повт�
   });
 });
 
-describe('жалобы из выгрузки: задачи семинарского уровня (mv4j2khb)', () => {
+describe('жалобы из выгрузки: задачи семинарского уровня и единицы (mv4j2khb, mv4j067n)', () => {
   it('в алмазном «Повторении» задача учебника с шаблоном приходит с новыми числами и не дважды', async () => {
     const { buildLesson } = await import('../course.js');
     const { seeded } = await import('../../textbook/variants.js');
@@ -261,5 +261,11 @@ describe('жалобы из выгрузки: задачи семинарско�
       ppf.forEach((it) => answers.add(it.answer));
     }
     expect(answers.size).toBeGreaterThan(2);
+  });
+  it('у поля ответа единица по набранному числу: «3 станка», «5 станков», «1 станок» (sc-e4-slope)', async () => {
+    const { unitFor } = await import('../course.js');
+    const e = EXERCISES['sc-e4-slope'];
+    expect(['', '3', '5', '1', '2,5', '-'].map((v) => unitFor(e, v))).toEqual(['станков', 'станка', 'станков', 'станок', 'станка', 'станков']);
+    expect(unitFor({ unit: 'руб.' }, '3')).toBe('руб.');
   });
 });
