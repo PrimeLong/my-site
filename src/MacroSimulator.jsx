@@ -50,16 +50,17 @@ export const THEMES = {
     rust: '#E08472', rustDim: 'rgba(224,132,114,0.14)',
     blue: '#82A3D0', blueDim: 'rgba(130,163,208,0.14)',
     sel: '#29404F', selText: '#F1F6F8', selBorder: '#4F7488' } },
+  // светлая тема «Мира» — по умолчанию (docs/world.md, «Один облик»): тот же тёплый светлый фон, что в обучении
   chamber: { id: 'chamber', name: 'Дневная канцелярия', dark: false, colors: {
-    bg: '#EFEADF', bgVignette: '#E7E1D2', panel: '#F7F3E9', panelAlt: '#EDE7D8', panelRaised: '#FFFCF4',
-    border: '#D3C9B2', borderStrong: '#B5A888', hairline: '#E0D8C6',
-    text: '#221F19', muted: '#5F5A4C', faint: '#67614F',
-    paper: '#FBF7EC', paperText: '#221F19', paperMuted: '#6B6653', paperRule: '#CDC2A6',
-    gold: '#735A0E', goldSoft: '#5E4A0B', goldDim: 'rgba(115,90,14,0.12)', ink: '#FBF7EC',
-    teal: '#2F6B57', tealDim: 'rgba(47,107,87,0.12)',
-    rust: '#94331F', rustDim: 'rgba(148,51,31,0.12)',
-    blue: '#2F5578', blueDim: 'rgba(47,85,120,0.12)',
-    sel: '#FFFFFF', selText: '#15130F', selBorder: '#8C7F62' } },
+    bg: '#FFF8EE', bgVignette: '#FFFDF8', panel: '#FFFFFF', panelAlt: '#FFF3E4', panelRaised: '#FFFFFF',
+    border: '#EEDFCB', borderStrong: '#DCC5A6', hairline: '#F3E8D8',
+    text: '#26201C', muted: '#5A5049', faint: '#6E645B',
+    paper: '#FFFDF8', paperText: '#26201C', paperMuted: '#6B6653', paperRule: '#E2CBAE',
+    gold: '#9A6300', goldSoft: '#7A4E00', goldDim: 'rgba(154,99,0,0.12)', ink: '#FFFDF8',
+    teal: '#17824A', tealDim: 'rgba(23,130,74,0.12)',
+    rust: '#C9372C', rustDim: 'rgba(201,55,44,0.10)',
+    blue: '#2F6FD6', blueDim: 'rgba(47,111,214,0.12)',
+    sel: '#FFFFFF', selText: '#15130F', selBorder: '#C2490B' } },
   contrast: { id: 'contrast', name: 'Высокий контраст', dark: true, colors: {
     bg: '#000000', bgVignette: '#000000', panel: '#0A0A0A', panelAlt: '#141414', panelRaised: '#1C1C1C',
     border: '#6A6A6A', borderStrong: '#A8A8A8', hairline: '#4A4A4A',
@@ -81,10 +82,10 @@ THEMES.learnDark = { id: 'learnDark', name: 'Обучение (тёмная)', d
 // темы для переключателя в «Мире» и в партии — без тем обучения
 export const WORLD_THEMES = Object.values(THEMES).filter((t) => !t.learn);
 
-export const COLOR = { ...THEMES.ink.colors, isDark: true };
+export const COLOR = { ...THEMES.chamber.colors, isDark: false };
 
 export function applyTheme(id) {
-  const t = THEMES[id] || THEMES.ink;
+  const t = THEMES[id] || THEMES.chamber;
   Object.assign(COLOR, t.colors, { isDark: t.dark });
 }
 
@@ -2008,7 +2009,7 @@ export default function MacroSimulator() {
   const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : loadAutosave()));
   const [setup, setSetup] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : (loadAutosave() || {}).setup || null));
   const [nonce, setNonce] = useState(0);
-  const [theme, setThemeState] = useState('ink');
+  const [theme, setThemeState] = useState('chamber');
   const [network, setNetwork] = useState(null);
   // 'menu' — главная страница; 'setup' — анкета новой одиночной партии;
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)

@@ -3354,16 +3354,18 @@ test('«Мир» на компонентах дизайн-системы: тот
   await expect(world).toHaveAttribute('data-ds-theme', 'world');
   const w = await brandOf(world.getByTestId('brand'));
   expect(w.mark).toBe(true);
-  expect(w.font).toContain('PT Serif');
+  // заголовки — PT Sans (docs/world.md, «Один облик»)
+  expect(w.font).toContain('PT Sans');
   // кнопки меню — из ds.jsx; старая игровая кнопка осталась только у общего регулятора звука
   const old = await world.locator('button.ems-btn').count();
   expect(old).toBeLessThanOrEqual(1);
   expect(await world.locator('.ds-btn, .ds-card, .ds-chip').count()).toBeGreaterThan(4);
-  // основная кнопка на золоте «Мира» — тёмный текст, читается
+  // «Мир» по умолчанию светлый; основная кнопка на тёмном золоте — белый текст, читается
+  await expect(world).not.toHaveClass(/ds-dark/);
   const daily = world.getByTestId('daily-card');
   if (await daily.count()) {
     const c = await daily.locator('.ds-btn').first().evaluate((el) => getComputedStyle(el).color);
-    expect(c).toBe('rgb(27, 18, 4)');
+    expect(c).toBe('rgb(255, 255, 255)');
   }
   // приветствие — тот же знак и шрифт
   const p2 = await page.context().newPage();
