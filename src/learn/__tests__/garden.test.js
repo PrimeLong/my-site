@@ -2,7 +2,7 @@
    дольше; собранное уходит в гербарий; посадки и сборы переживают слияние устройств. */
 import { describe, it, expect } from 'vitest';
 import { PLANTS, PLANT_BY_ID, RARITY_ORDER, GARDEN_PLOTS, GRADES, plant, harvest, herbarium, grown, collection, gardenPlots, growth, growMs, plantPrice, leftText, ripeCount,
-  gradeOf, sell, salePrice, soldToday, marketFactor, paidPrice, cropGroups, sellAll } from '../garden.js';
+  gradeOf, sell, salePrice, soldToday, marketFactor, paidPrice, cropGroups, sellAll, water, needsWater } from '../garden.js';
 import { emptyLearn, normalizeLearn, mergeLearn, dayOf } from '../../textbook/learn-state.js';
 import { balance, earn, courseIncome, RATE_MAX, rateOn, weekDemand } from '../rewards.js';
 
@@ -181,5 +181,56 @@ describe('сад: сверхредкий урожай, цена покупки �
     expect(balance(all.s)).toBe(balance(s) + all.coins);
     if (g.ats.length > 1) expect(all.coins).toBeLessThan(one.coins * g.ats.length);
     expect(cropGroups(all.s).find((x) => x.key === g.key)).toBeUndefined();
+  });
+});
+
+describe('сад: полив долгих растений', () => {
+  const T2 = new Date(2026, 9, 14, 8).getTime();
+  const rich2 = () => earn(emptyLearn(), 5000, null, T2);
+  it('поливать нужно только растения, которые растут сутки и дольше', () => {
+    expect(PLANTS.filter((p) => needsWater(p.id)).map((p) => p.id)).toEqual(['peony', 'lavender', 'orchid', 'moneytree']);
+    const { s } = plant(rich2(), 'tulip', T2);
+    expect(growth(gardenPlots(s).plots[0], T2 + 8 * HOUR).ripe).toBe(true);
+    expect(water(s, gardenPlots(s).plots[0].at, T2).ok).toBe(false);
+  });
+  it('без полива растение стоит после 12 часов, но не гибнет; полили — растёт дальше', () => {
+    const { s, at } = plant(rich2(), 'peony', T2);
+    const g = () => gardenPlots(s2).plots[0];
+    let s2 = s;
+    const st12 = growth(g(), T2 + 12 * HOUR);
+    expect(st12.p).toBeCloseTo(0.5);
+    const st20 = growth(g(), T2 + 20 * HOUR);
+    expect(st20.p).toBeCloseTo(0.5);
+    expect(st20.water.dry).toBe(true);
+    expect(st20.ripe).toBe(false);
+    // полили через 20 часов — ещё 12 часов роста: созреет к 32-му часу
+    s2 = water(s2, at, T2 + 20 * HOUR).s;
+    expect(growth(g(), T2 + 20 * HOUR).water).toMatchObject({ dry: false, left: 12 * HOUR });
+    expect(growth(g(), T2 + 20 * HOUR).ripeAt).toBe(T2 + 32 * HOUR);
+    expect(growth(g(), T2 + 31 * HOUR).ripe).toBe(false);
+    expect(growth(g(), T2 + 32 * HOUR).ripe).toBe(true);
+    expect(harvest(s2, at, T2 + 32 * HOUR).ok).toBe(true);
+  });
+  it('полив до того, как земля высохла, продлевает воду, а не складывает её', () => {
+    const { s, at } = plant(rich2(), 'lavender', T2);
+    const s2 = water(s, at, T2 + 6 * HOUR).s;
+    const g = gardenPlots(s2).plots[0];
+    expect(growth(g, T2 + 18 * HOUR).water.left).toBe(0);
+    expect(growth(g, T2 + 30 * HOUR).p).toBeCloseTo(18 / 30);
+  });
+  it('растение, посаженное до появления полива, растёт по-старому', () => {
+    const { s } = plant(rich(), 'peony', T);
+    const st = growth(gardenPlots(s).plots[0], T + 24 * HOUR);
+    expect(st.ripe).toBe(true);
+    expect(st.water).toBeUndefined();
+  });
+  it('поливы переживают слияние устройств', () => {
+    const { s, at } = plant(rich2(), 'orchid', T2);
+    const a = water(s, at, T2 + 10 * HOUR).s;
+    const b = water(s, at, T2 + 22 * HOUR).s;
+    const m = mergeLearn(normalizeLearn(a), normalizeLearn(b));
+    expect(Object.keys(m.water)).toHaveLength(2);
+    expect(mergeLearn(normalizeLearn(b), normalizeLearn(a)).water).toEqual(m.water);
+    expect(growth(gardenPlots(m).plots[0], T2 + 34 * HOUR).p).toBeCloseTo(34 / 48);
   });
 });

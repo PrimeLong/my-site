@@ -3,11 +3,11 @@
    урожай одной строкой на растение и редкость — с ценой покупки семян и рынка, гербарий.
    Редкость урожая видна на рисунке: ореол, искры, золотое или радужное сияние. */
 import React, { useEffect, useRef, useState } from 'react';
-import { Lock, Sprout, Clock, Coins, X, ArrowDown, Landmark, PiggyBank } from 'lucide-react';
+import { Lock, Sprout, Clock, Coins, X, ArrowDown, Landmark, PiggyBank, Droplet, Droplets } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, Heading } from './ds.jsx';
 import { PLANTS, PLANT_BY_ID, RARITY, GARDEN_PLOTS, GRADES, GRADE_BY_ID, MARKET_DROP, gardenPlots, growth, leftText, plant, harvest, herbarium, grown, collection,
-  plantPrice, salePrice, sell, sellAll, soldToday, ripeCount, cropGroups, paidPrice, STAGE_LABEL } from './learn/garden.js';
+  plantPrice, salePrice, sell, sellAll, soldToday, ripeCount, cropGroups, paidPrice, STAGE_LABEL, water, needsWater, WATER_HOURS } from './learn/garden.js';
 import { balance, coinsWord, RATE_STEPS, rateStep, weekRate, weekDemand, PIGGY } from './learn/rewards.js';
 import { dayOf } from './textbook/learn-state.js';
 import { plural } from './lib/plural.js';
@@ -57,6 +57,16 @@ const GARDEN_CSS = `
   .gd-bar { width: 100%; height: 5px; margin: 3px 0 2px; border-radius: 3px; background: #D9C69B; overflow: hidden; }
   .gd-bar span { display: block; height: 100%; background: #4B692C; }
   .gd-sign .ds-btn { width: 100%; margin-top: 3px; padding: 6px 4px; letter-spacing: 0; }
+  /* полив: капля с запасом воды; сухая грядка — светлая, в трещинах, растение поникло и не растёт */
+  .gd-water { display: flex; align-items: center; justify-content: center; gap: 3px; font: 12px var(--ds-mono); color: #2E5F8A; }
+  .gd-water.low { color: #A0522D; font-weight: 700; }
+  .gd-bed.dry .gd-soil::before { background: repeating-linear-gradient(0deg, #B08A5E 0 6px, #9C7650 6px 8px); }
+  .gd-bed.dry .gd-art { filter: saturate(.3) sepia(.35) brightness(.97); transform: scaleY(.88); transform-origin: 50% 100%; transition: transform .6s, filter .6s; }
+  .gd-sign .ds-btn.gd-pour { --b: #2E5F8A; }
+  .gd-rain { position: absolute; inset: 0 0 30% 0; pointer-events: none; overflow: hidden; }
+  .gd-rain i { position: absolute; top: -12%; width: 4px; height: 10px; border-radius: 2px 2px 3px 3px; background: #6FA8DC; opacity: 0; animation: gd-drop .8s ease-in both; }
+  @keyframes gd-drop { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .95; } 100% { transform: translateY(120px); opacity: 0; } }
+  .gd-packet-water { display: inline-flex; align-items: center; gap: 3px; font: 12px var(--ds-sans); color: #2E5F8A; }
   /* пакетики семян: цветная лента редкости растения, рисунок, цена, кнопка с причиной */
   .gd-packets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 20px; }
   .gd-packet { --r: #4B692C; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 8px 8px; text-align: center; overflow: hidden; border-radius: 3px 3px 8px 8px;
@@ -126,7 +136,7 @@ const GARDEN_CSS = `
   @keyframes gd-spin { to { transform: rotate(360deg); } }
   @keyframes gd-twinkle { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
   @keyframes gd-shine { to { background-position: 200% 0; } }
-  @media (prefers-reduced-motion: reduce) { .gd-sway, .gd-bed.ripe .gd-art, .gd-aura::before, .gd-aura::after, .gd-packet-band { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .gd-sway, .gd-bed.ripe .gd-art, .gd-aura::before, .gd-aura::after, .gd-packet-band, .gd-rain i { animation: none !important; } }
   @media (min-width: 720px) { .gd-herb, .gd-beds { grid-template-columns: repeat(6, minmax(0, 1fr)); } .gd-yard { padding: 34px 18px 16px; } .gd-beds { gap: 12px 14px; } }
 `;
 
@@ -262,6 +272,16 @@ export function GardenView({ learn, update }) {
     setMsg(null);
     setGot({ at: r.at, plant: r.plant, grade: r.grade, first: r.first });
   };
+  // полив: капли падают на грядку, растение снова растёт
+  const [rain, setRain] = useState(null);
+  const doWater = (at) => {
+    const r = water(learn, at, Date.now());
+    if (!r.ok) { Audio.play('down'); setMsg({ ok: false, text: r.reason }); return; }
+    Audio.play('tick');
+    update(() => r.s);
+    setRain(at); setTimeout(() => setRain((x) => (x === at ? null : x)), 900);
+    setMsg({ ok: true, text: `Полили: воды хватит на ${WATER_HOURS} ч.${r.wasDry ? ' Растение снова растёт.' : ''}` });
+  };
   const toSeeds = () => { Audio.play('tick'); if (seedsRef.current) seedsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   const shown = allCrops ? groups : groups.slice(0, CROPS_SHOWN);
   return (
@@ -303,17 +323,26 @@ export function GardenView({ learn, update }) {
                 </button>
               );
             }
-            const st = growth(g, now); const p = PLANT_BY_ID[g.plant];
+            const st = growth(g, now); const p = PLANT_BY_ID[g.plant]; const w = st.water;
+            // воды меньше чем на треть срока — пора поливать
+            const low = w && !st.ripe && w.left < (WATER_HOURS * 3600000) / 3;
             return (
-              <div key={g.at} className={`gd-bed${st.ripe ? ' ripe' : ''}`} data-testid="garden-plot" data-plant={g.plant} data-stage={st.stage}>
-                <div className="gd-soil"><PlantArt id={g.plant} stage={st.stage} pot={false} /></div>
+              <div key={g.at} className={`gd-bed${st.ripe ? ' ripe' : ''}${w && w.dry ? ' dry' : ''}`} data-testid="garden-plot" data-plant={g.plant} data-stage={st.stage} data-dry={w && w.dry ? 'true' : undefined}>
+                <div className="gd-soil">
+                  <PlantArt id={g.plant} stage={st.stage} pot={false} />
+                  {rain === g.at && <span className="gd-rain" aria-hidden="true">{[12, 30, 48, 66, 84, 22, 58, 76].map((x, k) => <i key={k} style={{ left: `${x}%`, animationDelay: `${k * 70}ms` }} />)}</span>}
+                </div>
                 <div className="gd-sign">
                   <div className="gd-name">{p.title}</div>
                   {st.ripe
                     ? <Button small data-testid="garden-harvest" onClick={() => doHarvest(g.at)}>Собрать</Button>
                     : <>
                       <div className="gd-bar" aria-hidden="true"><span style={{ width: `${Math.round(st.p * 100)}%` }} /></div>
-                      <div className="gd-left" data-testid="garden-left" aria-label={leftText(st.left)}><Clock size={11} aria-hidden="true" style={{ verticalAlign: -1 }} /> {leftText(st.left, { short: true })}</div>
+                      {w && w.dry
+                        ? <div className="gd-water low" data-testid="garden-dry" aria-label="Земля сухая — растение не растёт"><Droplet size={11} aria-hidden="true" /> сухо</div>
+                        : <div className="gd-left" data-testid="garden-left" aria-label={leftText(st.left)}><Clock size={11} aria-hidden="true" style={{ verticalAlign: -1 }} /> {leftText(st.left, { short: true })}</div>}
+                      {w && !w.dry && <div className={`gd-water${low ? ' low' : ''}`} data-testid="garden-water" aria-label={`Воды хватит: ${leftText(w.left)}`}><Droplets size={11} aria-hidden="true" /> {leftText(w.left, { short: true })}</div>}
+                      {w && (w.dry || low) && <Button small className="gd-pour" data-testid="garden-pour" onClick={() => doWater(g.at)}>Полить</Button>}
                     </>}
                 </div>
               </div>
@@ -334,6 +363,7 @@ export function GardenView({ learn, update }) {
               <PlantArt id={p.id} title={p.title} pot={false} />
               <div className="gd-packet-name">{p.title}</div>
               <div className="gd-packet-meta"><Clock size={11} aria-hidden="true" style={{ verticalAlign: -1 }} /> растёт {growText(p.hours)}</div>
+              {needsWater(p.id) && <div className="gd-packet-water" data-testid="garden-seed-water"><Droplets size={12} aria-hidden="true" /> поливать раз в {WATER_HOURS} ч</div>}
               {p.note && <div className="gd-packet-note">{p.note}</div>}
               <div className="gd-packet-price"><Coins size={14} aria-hidden="true" />{price}<small>· {p.crowns} кр.</small></div>
               <Button small wide variant={state === 'ok' ? 'primary' : 'secondary'} disabled={state !== 'ok'} data-testid="garden-plant" onClick={() => doPlant(p.id)}>
