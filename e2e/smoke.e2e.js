@@ -1519,8 +1519,10 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(result.getByTestId('result-xp').locator('[data-value]')).toHaveText(/^\+\d+$/);
   await expect(result.getByTestId('result-acc')).not.toContainText('100%');
   await expect(result).not.toContainText('Урок уже был пройден');
-  // первый урок дня — огонёк сохранён: крупно на итогах
-  await expect(result.getByTestId('result-streak')).toContainText('Огонёк сохранён: 1 день подряд');
+  // первый урок дня — серия на итогах: огонёк вспыхивает, счётчик дней перещёлкивается (без надписи)
+  await expect(result.getByTestId('result-streak')).toHaveAttribute('data-days', '1');
+  await expect(result.getByTestId('result-streak')).toHaveAttribute('aria-label', 'Серия: 1 день подряд');
+  await expect(result).not.toContainText('Огонёк сохранён');
   await expect(result.getByTestId('mascot')).toHaveAttribute('data-mood', 'party');
   // на итогах выход один
   await expect(page.getByTestId('lesson').locator('[data-nav="back"]')).toHaveCount(1);

@@ -79,9 +79,24 @@ const CSS = `
   .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
   .ln-flame-wrap { position: relative; display: inline-flex; }
   .ln-flame-ok { position: absolute; right: -5px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--ds-ok); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
-  .ln-streak-up { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border-radius: 4px;
-    background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border: 1px solid color-mix(in srgb, var(--ds-bad) 45%, var(--ds-rule2)); color: var(--ds-bad); font: 700 16px var(--ds-sans); text-align: left; }
-  .ln-streak-up .rw-flame { display: inline-flex; }
+  /* серия на итогах — без надписи: огонёк вспыхивает, разлетаются искры, счётчик дней перещёлкивается */
+  .ln-burst { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 0 0 14px; color: var(--ds-bad); }
+  .ln-burst-flame { position: relative; display: inline-flex; transform-origin: 50% 90%; animation: ln-ignite .8s cubic-bezier(.2, 1.5, .4, 1) both, ln-flicker 1.3s ease-in-out .8s 2; }
+  .ln-burst-flame::before { content: ''; position: absolute; inset: -14px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--ds-bad) 35%, transparent), transparent 70%); animation: ln-glow 1.6s ease-out .2s both; }
+  .ln-burst-flame svg { position: relative; }
+  .ln-burst-flame i { position: absolute; left: 50%; top: 45%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--ds-bad); opacity: 0; animation: ln-spark .9s ease-out .45s both; }
+  .ln-burst-num { position: relative; display: inline-block; height: 40px; min-width: 1.2ch; overflow: hidden; font: 800 36px/40px var(--ds-sans); font-variant-numeric: tabular-nums; }
+  .ln-burst-num > span { display: block; }
+  .ln-burst-num .old { position: absolute; left: 0; right: 0; animation: ln-num-out .45s ease-in .55s both; }
+  .ln-burst-num .new { animation: ln-num-in .5s cubic-bezier(.2, 1.4, .4, 1) .7s both; }
+  .ln-burst-cap { display: block; font: 700 13.5px var(--ds-sans); color: var(--ds-ink2); }
+  @keyframes ln-ignite { 0% { transform: scale(.2) translateY(12px); opacity: 0; filter: grayscale(1) } 60% { transform: scale(1.25); opacity: 1; filter: none } 100% { transform: scale(1) } }
+  @keyframes ln-flicker { 0%, 100% { transform: scale(1) rotate(0) } 30% { transform: scale(1.06, .95) rotate(-3deg) } 65% { transform: scale(.97, 1.05) rotate(2deg) } }
+  @keyframes ln-glow { 0% { opacity: 0; transform: scale(.4) } 40% { opacity: 1; transform: scale(1.1) } 100% { opacity: .35; transform: scale(1) } }
+  @keyframes ln-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(1) } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-36px) scale(.3) } }
+  @keyframes ln-num-out { to { transform: translateY(-100%); opacity: 0 } }
+  @keyframes ln-num-in { from { transform: translateY(100%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .ln-burst-flame, .ln-burst-flame::before, .ln-burst-num .new { animation: none; } .ln-burst-flame i, .ln-burst-num .old { display: none; } }
   .ln-atlas { position: relative; padding: 10px 10px 8px; margin: 4px 0 18px; }
   .ln-atlas svg text { font-family: var(--ds-serif); }
   .ln-bill { position: relative; overflow: hidden; padding: 0; margin: 20px 0 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
@@ -1047,12 +1062,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}
               </div>
-              {result.streakUp > 0 && (
-                <div className="ln-streak-up" data-testid="result-streak" role="status">
-                  <span className="rw-flame"><Flame size={34} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 30%, transparent)" aria-hidden="true" /></span>
-                  <span>Огонёк сохранён: {result.streakUp} {plural(result.streakUp, 'день', 'дня', 'дней')} подряд<br /><span style={{ font: '13.5px var(--ds-sans)', color: 'var(--ds-ink2)' }}>Сегодняшний день засчитан в серию.</span></span>
-                </div>
-              )}
+              {result.streakUp > 0 && <StreakBurst days={result.streakUp} />}
               <div className="ln-tickets">
                 <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
@@ -1124,6 +1134,22 @@ function StepsExplain({ blocks }) {
 /* Обозначения под шагом с формулами: каждая буква — что она значит (src/textbook/symbols.js).
    Шаг «В формуле Q_D = 100 − 2P …» — и под ним «Q_D — объём спроса…; P — цена…». */
 const mathIn = (nodes, out = []) => { (nodes || []).forEach((n) => { if (n.t === 'math') out.push(n.v); else if (n.c) mathIn(n.c, out); }); return out; };
+// серия на итогах урока: огонёк вспыхивает, счётчик дней перещёлкивается с прошлого на сегодняшний
+const SPARKS = [-70, -35, 0, 35, 70, 110, -110];
+function StreakBurst({ days }) {
+  return (
+    <div className="ln-burst" data-testid="result-streak" data-days={days} role="img" aria-label={`Серия: ${days} ${plural(days, 'день', 'дня', 'дней')} подряд`}>
+      <span className="ln-burst-flame">
+        {SPARKS.map((a) => <i key={a} style={{ '--a': `${a}deg` }} />)}
+        <Flame size={52} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 30%, transparent)" aria-hidden="true" />
+      </span>
+      <span style={{ textAlign: 'left' }} aria-hidden="true">
+        <span className="ln-burst-num"><span className="old">{days - 1}</span><span className="new">{days}</span></span>
+        <span className="ln-burst-cap">{plural(days, 'день', 'дня', 'дней')} подряд</span>
+      </span>
+    </div>
+  );
+}
 // формула шага, по которой считают упражнения после него, — с пометкой «Запомнить», как в главе
 function StepRemember({ tex }) {
   return (
