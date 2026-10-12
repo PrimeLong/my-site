@@ -27,6 +27,7 @@ import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
 import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 import { formulaSymbols } from './textbook/symbols.js';
 import { plural } from './lib/plural.js';
+import { markTerms } from './learn/terms.js';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -203,7 +204,7 @@ function TermLink({ id, label }) {
   if (!g) return <>{label}</>;
   return (
     <span>
-      <span className="tb-term" role="button" tabIndex={0} title={`${g.title} — ${g.text}`}
+      <span className="tb-term" role="button" tabIndex={0} title={`${g.title} — ${g.text}`} data-term={id}
         onClick={() => { Audio.play('tick'); setOpen((v) => !v); }}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((v) => !v); } }}>{label || g.title.toLowerCase()}</span>
       {open && <span className="tb-def"><b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}{g.formula && <span style={{ display: 'block', textAlign: 'center', margin: '6px 0 2px' }}><Tex tex={g.formula} /></span>}</span>}
@@ -264,7 +265,7 @@ export function Inline({ nodes, ctx }) {
     if (n.t === 'term') {
       return ctx && ctx.onTerm
         ? <button key={i} type="button" className="tb-term" data-term={n.id} onClick={(e) => { e.stopPropagation(); ctx.onTerm(n.id); }}>{n.v}</button>
-        : <React.Fragment key={i}>{n.v}</React.Fragment>;
+        : <TermLink key={i} id={n.id} label={n.v} />;
     }
     return null;
   });
@@ -318,6 +319,9 @@ function BoxView({ b, ctx }) {
 const shuffled = (n) => { const a = Array.from({ length: n }, (_, k) => k); for (let k = n - 1; k > 0; k -= 1) { const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; };
 function RecallCard({ b, ctx, from }) {
   const rec = ctx.progress.problems[b.id];
+  // что стало с повторением после ответа — для вердикта (расписание считаем до записи ответа)
+  const [after, setAfter] = useState(null);
+  const questions = useMemo(() => b.parts.map((p) => markTerms(p.question)), [b]);
   const mix = () => b.parts.map((p) => shuffled(p.options.length));
   const [order, setOrder] = useState(mix);
   const [picks, setPicks] = useState({});
@@ -343,7 +347,7 @@ function RecallCard({ b, ctx, from }) {
         const chosen = picks[i];
         return (
           <div key={i} className="tb-recall-part" data-testid="tb-recall-part" data-part={i}>
-            <Blocks blocks={p.question} ctx={ctx} />
+            <Blocks blocks={questions[i]} ctx={ctx} />
             <div className="tb-recall-opts" role="group" aria-label={`Варианты ответа${b.parts.length > 1 ? `, вопрос ${i + 1}` : ''}`}>
               {order[i].map((k) => {
                 const o = p.options[k];
@@ -719,17 +723,24 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const [solMode, setSolMode] = useState(null);
   const [hintsShown, setHintsShown] = useState(0);
   /* задача, решённая раньше (и не пришедшая на повтор), свёрнута в строку «решена» — сборник не
-     приходится листать через уже сделанное; развернуть — по нажатию, свернуть обратно — «Свернуть» */
-  const [solvedBefore] = useState(() => !!(rec && rec.ok && !(rec.due && rec.due <= Date.now())));
-  const [expanded, setExpanded] = useState(false);
+     приходится листать через уже сделанное; развернуть — по нажатию. Свернуть можно любую решённую
+     (и только что решённую) — кнопкой «Свернуть» вверху карточки и внизу, у «Решения»; свёрнутая
+     строка остаётся на виду. В повторении не сворачивают: карточка уходит сама (ReviewItem). */
+  const [collapsed, setCollapsed] = useState(() => !ctx.inReview && !!(rec && rec.ok && !(rec.due && rec.due <= Date.now())));
+  const canCollapse = !ctx.inReview && !!(rec && rec.ok);
+  const collapse = () => {
+    Audio.play('click'); setCollapsed(true);
+    setTimeout(() => { const el = document.getElementById(`problem-${block.id}`); if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' }); }, 0);
+  };
+  const statement = useMemo(() => markTerms(block.statement), [block]);
   const hints = block.hints || [];
   const status = rec ? (rec.ok ? 'решена' : 'не решена') : null;
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
-  if (solvedBefore && !expanded) {
+  if (collapsed) {
     return (
       <div id={`problem-${block.id}`} className="ems-panel tb-solved" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true" data-solved="true">
         <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', fontSize: 13.5, textDecoration: 'none' }} aria-expanded="false"
-          data-testid="tb-problem-expand" onClick={() => { Audio.play('click'); setExpanded(true); }}>
+          data-testid="tb-problem-expand" onClick={() => { Audio.play('click'); setCollapsed(false); }}>
           <span className="tb-solved-mark" aria-hidden="true"><Check size={15} strokeWidth={3} /></span>
           <span style={{ flex: 1, color: COLOR.text }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
             {' — '}<b style={{ color: COLOR.teal }}>решена</b>{rec.due ? <span style={{ color: COLOR.muted }}>, повтор {daysUntil(rec.due)}</span> : ''}</span>
@@ -749,9 +760,9 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
           {status && (rec.ok
             ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
             : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>)}
-          {solvedBefore && (
+          {canCollapse && (
             <button type="button" className="tb-chip tb-collapse" aria-expanded="true" data-testid="tb-problem-collapse"
-              onClick={() => { Audio.play('click'); setExpanded(false); }}><ChevronUp size={12} style={{ verticalAlign: -2 }} aria-hidden="true" /> Свернуть</button>
+              onClick={collapse}><ChevronUp size={12} style={{ verticalAlign: -2 }} aria-hidden="true" /> Свернуть</button>
           )}
         </span>
       </div>
@@ -761,7 +772,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
           <div className="ems-serif tb-news-head">{block.news}</div>
         </div>
       )}
-      <div className="tb-body"><Blocks blocks={block.statement} ctx={ctx} /></div>
+      <div className="tb-body"><Blocks blocks={statement} ctx={ctx} /></div>
       {children}
       {verdict && (
         <div data-testid="tb-verdict" style={{ fontSize: 13, marginTop: 8, color: verdict.bad ? COLOR.muted : verdict.ok ? COLOR.teal : COLOR.rust }}>
@@ -794,6 +805,10 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
         )}
         <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
           onClick={() => { Audio.play('click'); if (!open && onSolutionOpen) onSolutionOpen(); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+        {canCollapse && (
+          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded="true" data-testid="tb-problem-collapse-bottom"
+            onClick={collapse}><ChevronUp size={13} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />Свернуть задачу</button>
+        )}
         {ctx.reportFlag && <span style={{ marginLeft: 'auto' }} data-testid="tb-report">{ctx.reportFlag(() => problemContext(block, given, answerText))}</span>}
       </div>
       {open && (
