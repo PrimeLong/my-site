@@ -37,30 +37,23 @@ export const DS_CSS = `
     -webkit-mask: radial-gradient(circle 8px at 0 50%, transparent 7.5px, #000 8px) left / 51% 100% no-repeat, radial-gradient(circle 8px at 100% 50%, transparent 7.5px, #000 8px) right / 51% 100% no-repeat;
     mask: radial-gradient(circle 8px at 0 50%, transparent 7.5px, #000 8px) left / 51% 100% no-repeat, radial-gradient(circle 8px at 100% 50%, transparent 7.5px, #000 8px) right / 51% 100% no-repeat;
     transition: transform .08s ease, box-shadow .08s ease, filter .15s; }
-  .ds-btn::after { content: ''; position: absolute; inset: 5px 14px; border: 1px dashed rgba(255,255,255,.55); border-radius: 2px; pointer-events: none; }
   .ds-btn:hover:not(:disabled) { filter: brightness(1.07); }
   .ds-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 2px 6px rgba(0,0,0,.38), inset 0 0 0 1px rgba(0,0,0,.3); }
   .ds-btn:focus-visible { -webkit-mask: none; mask: none; }
   /* «Мир»: основная кнопка — золото тёмной темы, на нём белый текст не читается — тёмная тушь */
   .ds[data-ds-theme="world"] .ds-btn:not(.ds-btn--secondary):not(.ds-btn--ghost):not(.ds-btn--ok):not(.ds-btn--bad):not(:disabled) { color: #1B1204; }
-  .ds[data-ds-theme="world"] .ds-btn:not(.ds-btn--secondary):not(.ds-btn--ghost):not(.ds-btn--ok):not(.ds-btn--bad)::after { border-color: rgba(27,18,4,.45); }
   .ds-btn:disabled { background: var(--ds-card2); color: var(--ds-ink3); box-shadow: inset 0 0 0 1px var(--ds-rule2); cursor: default; }
-  .ds-btn:disabled::after { border-color: var(--ds-rule2); }
   .ds-btn--secondary { background: var(--ds-card); color: var(--u-ink); box-shadow: inset 0 0 0 1.5px var(--u-ink), 0 1px 0 var(--ds-shade); }
-  .ds-btn--secondary::after { border-color: color-mix(in srgb, var(--u-ink) 45%, transparent); }
   .ds-btn--ghost { background: none; color: var(--u-ink); box-shadow: none; -webkit-mask: none; mask: none; min-height: 40px; padding: 8px 10px;
     font: 700 15px/1.3 var(--ds-sans); letter-spacing: 0; text-transform: none; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
-  .ds-btn--ghost::after { display: none; }
   .ds-btn--ghost:active:not(:disabled) { transform: none; box-shadow: none; }
   .ds-btn--ok { --b: var(--ds-ok-btn); }
   .ds-btn--bad { --b: var(--ds-bad-btn); }
   /* «Дальше» после ошибки — тёплая тушь выбора; в тёмной теме она светлая — текст тёмный */
   .ds-btn--warm { --b: var(--ds-sel-ink); }
   .ds-dark .ds-btn--warm { color: #2A1D05; }
-  .ds-dark .ds-btn--warm::after { border-color: rgba(42,29,5,.45); }
   .ds-btn--wide { width: 100%; }
   .ds-btn--small { min-height: 38px; padding: 7px 16px; font-size: 13px; }
-  .ds-btn--small::after { inset: 4px 10px; }
   .ds-icon-btn { background: none; border: none; color: var(--ds-ink2); width: 42px; height: 42px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
   .ds-icon-btn:hover { background: var(--ds-card2); }
 
@@ -86,7 +79,12 @@ export const DS_CSS = `
   .ds-opt:active:not(:disabled) { transform: translateY(1px); }
   .ds-opt[aria-pressed="true"], .ds-opt[aria-checked="true"] { border-color: var(--ds-sel-rule); border-left-color: var(--u); background: var(--ds-sel); color: var(--ds-sel-ink); }
   .ds-opt.right { border-color: var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ink); }
-  .ds-opt.wrong { border-color: var(--ds-sel-rule); border-style: dashed; background: color-mix(in srgb, var(--ds-sel-rule) 10%, var(--ds-card)); color: var(--ds-ink); }
+  .ds-opt.wrong { border-color: var(--ds-sel-rule); border-left-color: var(--ds-sel-ink); background: color-mix(in srgb, var(--ds-sel-rule) 10%, var(--ds-card)); color: var(--ds-ink); }
+  /* верно/неверно видно не только по цвету: значок справа (вместо пунктирной рамки) */
+  .ds-opt.right, .ds-opt.wrong { position: relative; padding-right: 40px; }
+  .ds-opt.right::after, .ds-opt.wrong::after { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font: 700 18px/1 var(--ds-sans); }
+  .ds-opt.right::after { content: '✓'; color: var(--ds-ok); }
+  .ds-opt.wrong::after { content: '✕'; color: var(--ds-sel-ink); }
   .ds-opt:disabled { cursor: default; }
   .ds-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; padding: 8px 12px; margin: 4px; font: 15px/1.3 var(--ds-sans); color: var(--ds-ink);
     background: var(--ds-card); border: 1px solid var(--ds-rule2); border-bottom-width: 2px; border-radius: 3px; cursor: pointer; }

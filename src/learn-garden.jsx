@@ -57,7 +57,6 @@ const GARDEN_CSS = `
   .gd-bar { width: 100%; height: 5px; margin: 3px 0 2px; border-radius: 3px; background: #D9C69B; overflow: hidden; }
   .gd-bar span { display: block; height: 100%; background: #4B692C; }
   .gd-sign .ds-btn { width: 100%; margin-top: 3px; padding: 6px 4px; letter-spacing: 0; }
-  .gd-sign .ds-btn::after { inset: 3px 5px; }
   /* пакетики семян: цветная лента редкости растения, рисунок, цена, кнопка с причиной */
   .gd-packets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0 20px; }
   .gd-packet { --r: #4B692C; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 8px 8px; text-align: center; overflow: hidden; border-radius: 3px 3px 8px 8px;
