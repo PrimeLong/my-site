@@ -142,7 +142,8 @@ describe('жалобы из выгрузки: учебник', () => {
     expect(parseBlocks('$$x = 1$$')[0].key).toBeUndefined();
     const { keyFormulas } = await import('../../textbook/content.js');
     const { CHAPTERS } = await import('../../textbook/toc.js');
-    expect(keyFormulas('market-failures')).toEqual(['P_d - P_s = t.', 'DWL = \\tfrac12\\, t\\,(Q_0 - Q_t).']);
+    // цена покупателей при налоге — итоговая формула, но задачи уроков решают прямо по ней (mv3vifty)
+    expect(keyFormulas('market-failures')).toEqual(['P_d - P_s = t.', 'P_d = \\frac{a - c + d\\,t}{b + d}, \\qquad P_s = P_d - t.', 'DWL = \\tfrac12\\, t\\,(Q_0 - Q_t).']);
     CHAPTERS.forEach((c) => expect(keyFormulas(c.id).length, c.id).toBeLessThanOrEqual(4));
   });
   it('теорема Коуза: понятно, что именно «нужно» (mv1rhkbr); вопрос про бремя — без двусмысленности (muzajz73)', async () => {
