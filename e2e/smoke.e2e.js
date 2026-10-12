@@ -2928,6 +2928,9 @@ test('учебник: калькулятор по полям а → б → в, �
   await done.getByTestId('tb-problem-expand').click();
   await expect(done).not.toHaveAttribute('data-collapsed', 'true');
   await expect(done.getByRole('textbox').first()).toBeVisible();
+  // развёрнутую — и свернуть обратно
+  await done.getByTestId('tb-problem-collapse').click();
+  await expect(done).toHaveAttribute('data-collapsed', 'true');
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();

@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -69,6 +69,7 @@ export const TEXTBOOK_CSS = `
   .tb-chip { font-size: 12px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
   /* чип-кнопка — без системного серого фона кнопки (в тёмной теме он съедал контраст) */
   button.tb-chip { background: transparent; font-family: inherit; cursor: pointer; }
+  .tb-collapse { padding: 3px 10px; color: var(--c-text); }
   /* ключевая формула главы — её стоит знать наизусть; остальные выводятся из таких */
   .tb-key { border-left: 3px solid var(--c-gold); background: var(--c-panel-alt); padding: 6px 12px 2px; margin: 12px 0 14px; border-radius: 0 4px 4px 0; }
   .tb-key .tb-math { margin: 4px 0 8px; }
@@ -700,7 +701,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const [solMode, setSolMode] = useState(null);
   const [hintsShown, setHintsShown] = useState(0);
   /* задача, решённая раньше (и не пришедшая на повтор), свёрнута в строку «решена» — сборник не
-     приходится листать через уже сделанное; развернуть — по нажатию */
+     приходится листать через уже сделанное; развернуть — по нажатию, свернуть обратно — «Свернуть» */
   const [solvedBefore] = useState(() => !!(rec && rec.ok && !(rec.due && rec.due <= Date.now())));
   const [expanded, setExpanded] = useState(false);
   const hints = block.hints || [];
@@ -730,6 +731,10 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
           {status && (rec.ok
             ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
             : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>)}
+          {solvedBefore && (
+            <button type="button" className="tb-chip tb-collapse" aria-expanded="true" data-testid="tb-problem-collapse"
+              onClick={() => { Audio.play('click'); setExpanded(false); }}><ChevronUp size={12} style={{ verticalAlign: -2 }} aria-hidden="true" /> Свернуть</button>
+          )}
         </span>
       </div>
       {block.news && (
