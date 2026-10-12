@@ -42,6 +42,34 @@ export const TEXTBOOK_CSS = `
   /* решённая задача — видно издалека: зелёная кайма слева, лёгкий зелёный фон, плашка «Решена» */
   .tb-solved { border-left: 4px solid var(--c-teal, #2E7D5B) !important; background: color-mix(in srgb, var(--c-teal, #2E7D5B) 7%, var(--c-panel, #fff)) !important; }
   .tb-solved-mark { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--c-teal, #2E7D5B); color: #fff; }
+  /* повторение: карточка уходит — «вернётся» (ярлык-календарь, вправо) или «выучено» (печать, искры, растворяется) */
+  .rv-item { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .45s ease .2s; }
+  .rv-item.leaving { grid-template-rows: 0fr; }
+  .rv-in { min-height: 0; position: relative; }
+  .rv-item.leaving .rv-in { overflow: hidden; }
+  .rv-item.later.leaving .rv-in > :first-child { animation: rv-later .55s cubic-bezier(.5,0,.75,0) forwards; }
+  .rv-item.done.leaving .rv-in > :first-child { animation: rv-done .6s ease-in forwards; }
+  @keyframes rv-later { to { transform: translateX(70%) rotate(3deg); opacity: 0; } }
+  @keyframes rv-done { to { transform: translateY(-18px) scale(.94); opacity: 0; filter: blur(3px); } }
+  .rv-badge { position: absolute; top: 18px; right: 14px; z-index: 3; pointer-events: none; }
+  .rv-badge.later { display: flex; flex-direction: column; align-items: center; min-width: 74px; padding: 0 0 6px; border-radius: 6px; overflow: hidden;
+    background: var(--ds-card, #fff); border: 1.5px solid var(--c-blue, #3E6FA8); box-shadow: 0 6px 16px rgba(0,0,0,.18); animation: rv-pop .45s cubic-bezier(.3,1.6,.5,1) both; }
+  .rv-badge.later b { display: block; width: 100%; padding: 3px 8px; background: var(--c-blue, #3E6FA8); color: #fff; font: 700 12px/1.2 var(--ds-sans, sans-serif); letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+  .rv-badge.later span { font: 700 14px/1.3 var(--ds-sans, sans-serif); color: var(--c-text, #222); margin-top: 4px; padding: 0 8px; white-space: nowrap; }
+  .rv-badge.done { padding: 6px 14px; border: 3px double var(--c-teal, #2E7D5B); border-radius: 6px; color: var(--c-teal, #2E7D5B); background: color-mix(in srgb, var(--c-teal, #2E7D5B) 10%, var(--ds-card, #fff));
+    font: 800 18px/1 var(--ds-serif, Georgia, serif); letter-spacing: .12em; text-transform: uppercase; transform: rotate(-10deg); animation: rv-stamp .5s cubic-bezier(.2,1.5,.4,1) both; }
+  .rv-spark { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; border-radius: 50%; background: var(--ds-gold, #C9A227); animation: rv-spark .75s ease-out both; }
+  .rv-spark:nth-child(even) { background: var(--c-teal, #2E7D5B); width: 7px; height: 7px; }
+  @keyframes rv-pop { from { transform: translateY(-14px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes rv-stamp { from { transform: rotate(-10deg) scale(2.4); opacity: 0; } to { transform: rotate(-10deg) scale(1); opacity: 1; } }
+  @keyframes rv-spark { from { transform: translate(-50%, -50%) scale(1); opacity: 1; } to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.3); opacity: 0; } }
+  .rv-wrong { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin: -4px 0 12px; padding: 10px 12px; border-radius: 4px;
+    background: color-mix(in srgb, var(--c-rust, #A0522D) 9%, transparent); font-size: 13px; line-height: 1.45; color: var(--c-text); }
+  .rv-tally { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--c-teal, #2E7D5B); margin: 4px 0 8px; }
+  .rv-tally span { display: inline-flex; align-items: center; gap: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    .rv-item, .rv-item.leaving .rv-in > :first-child, .rv-badge, .rv-spark { animation-duration: .01s !important; transition-duration: .01s !important; }
+  }
   .tb-solved-chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 10px; background: var(--c-teal, #2E7D5B); color: #fff; font: 700 12px/1.4 var(--ds-sans, sans-serif); }
   @media (min-width: 1024px) { .tb-to-top { right: max(16px, calc(50vw - 560px)); } }
   .tb-sticky-top { position: sticky; top: 0; z-index: 30; background: var(--ds-paper, var(--tb-bg, #fff)); margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--ds-rule, transparent); }
@@ -261,7 +289,7 @@ export function Inline({ nodes, ctx }) {
     if (n.t === 'b') return <b key={i}><Inline nodes={n.c} ctx={ctx} /></b>;
     if (n.t === 'i') return <i key={i}><Inline nodes={n.c} ctx={ctx} /></i>;
     if (n.t === 'link') return <Link key={i} n={n} ctx={ctx} />;
-    // термин с подсказкой (упражнения Пути): нажатие открывает определение из словаря
+    // термин с подсказкой: на Пути — лист словаря (ctx.onTerm), в учебнике — определение прямо в тексте
     if (n.t === 'term') {
       return ctx && ctx.onTerm
         ? <button key={i} type="button" className="tb-term" data-term={n.id} onClick={(e) => { e.stopPropagation(); ctx.onTerm(n.id); }}>{n.v}</button>
@@ -316,6 +344,15 @@ function BoxView({ b, ctx }) {
    словами не нужно (docs/mechanics.md, «Учебник: вспомните»). Варианты — в случайном порядке;
    после выбора: верный подсвечен, у неверного — почему он неверен, и разбор учебника. Всё верно —
    раздел пройден; ошибка — вопрос вернётся на повторение через два дня, можно «Ещё раз». */
+// вердикт «Вспомните»: после ошибки верный ответ тут же раздел не засчитывает — вопрос вернётся в свой день
+function recallVerdict(ok, s) {
+  if (!ok) return 'Есть ошибка — вопрос вернётся на повторение через два дня. Прочитайте разбор и раздел.';
+  if (!s || s.why === 'clean') return 'Верно. Раздел пройден.';
+  if (s.why === 'early') return s.wasOk ? `Верно. Повторение остаётся по плану — ${daysUntil(s.due)}.` : `Верно — но в этот раз была ошибка, поэтому вопрос вернётся ${daysUntil(s.due)}. Тогда ответьте с первого раза, и раздел засчитается.`;
+  if (s.why === 'advance') return `Верно. Следующее повторение — ${daysUntil(s.due)}.`;
+  if (s.why === 'done') return 'Верно. Вопрос ушёл из повторения.';
+  return 'Верно.';
+}
 const shuffled = (n) => { const a = Array.from({ length: n }, (_, k) => k); for (let k = n - 1; k > 0; k -= 1) { const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; };
 function RecallCard({ b, ctx, from }) {
   const rec = ctx.progress.problems[b.id];
@@ -334,7 +371,7 @@ function RecallCard({ b, ctx, from }) {
     const all = b.parts.every((_, j) => next[j] != null);
     const good = all && b.parts.every((p, j) => p.options[next[j]].correct);
     Audio.play(!b.parts[i].options[k].correct ? 'tick' : all && good ? 'stamp' : 'click');
-    if (all) ctx.onAnswer(b.id, good, {});
+    if (all) { setAfter({ ...scheduleAfter(rec, good, Date.now()), wasOk: !!(rec && rec.ok) }); ctx.onAnswer(b.id, good, {}); }
   };
   return (
     <div className="tb-box" style={{ borderLeftColor: COLOR.blue }} data-testid="tb-recall" data-recall={b.id} data-answer={JSON.stringify(b.parts.map((p) => p.options.findIndex((o) => o.correct)))}>
@@ -372,9 +409,9 @@ function RecallCard({ b, ctx, from }) {
             <Blocks blocks={b.answer} ctx={ctx} />
           </div>
           <div data-testid="tb-recall-verdict" style={{ fontSize: 13, marginBottom: 10, color: ok ? COLOR.teal : COLOR.rust, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span>{ok ? 'Верно. Раздел пройден.' : 'Есть ошибка — вопрос вернётся на повторение через два дня. Прочитайте разбор и раздел.'}</span>
-            {!ok && <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} data-testid="tb-recall-again"
-              onClick={() => { Audio.play('click'); setOrder(mix()); setPicks({}); }}>Ещё раз</button>}
+            <span>{recallVerdict(ok, after)}</span>
+            {!ok && !ctx.inReview && <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} data-testid="tb-recall-again"
+              onClick={() => { Audio.play('click'); setOrder(mix()); setPicks({}); setAfter(null); }}>Ещё раз</button>}
           </div>
         </>
       )}
@@ -734,7 +771,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   };
   const statement = useMemo(() => markTerms(block.statement), [block]);
   const hints = block.hints || [];
-  const status = rec ? (rec.ok ? 'решена' : 'не решена') : null;
+  const status = rec ? (rec.ok ? 'решена' : 'была ошибка') : null;
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
   if (collapsed) {
     return (
@@ -845,7 +882,12 @@ const NEED_SURE = 'Сначала отметьте, уверены ли вы в 
 function okText(ctx, id, head, sawSolution) {
   const s = scheduleAfter(ctx.progress.problems[id], true, Date.now(), { sawSolution });
   if (s.why === 'solution') return `${endDot(head)} Решение было открыто, поэтому задача вернётся на повторение через два дня — попробуйте тогда сами.`;
-  if (s.why === 'early') return `${endDot(head)} Повторение остаётся по плану — ${daysUntil(s.due)}: ответ до срока расписание не меняет.`;
+  if (s.why === 'early') {
+    const prev = ctx.progress.problems[id];
+    // ошибся и тут же решил — не засчитано: задача вернётся в свой день
+    if (prev && !prev.ok) return `${endDot(head)} Но в этот раз была ошибка, поэтому решённой задача не считается: она вернётся ${daysUntil(s.due)}. Тогда решите её с первого раза.`;
+    return `${endDot(head)} Повторение остаётся по плану — ${daysUntil(s.due)}: ответ до срока расписание не меняет.`;
+  }
   if (s.why === 'advance') return `${endDot(head)} Следующее повторение — ${daysUntil(s.due)}.`;
   if (s.why === 'done') return `${endDot(head)} Задача ушла из повторения.`;
   return endDot(head);
@@ -1383,20 +1425,81 @@ const itemName = (id) => {
   if (RECALLS[id]) { const r = RECALLS[id]; const sec = CHAPTER_SECTIONS[r.chapter].find((x) => x.id === r.section); return `${CHAPTER_BY_ID[r.chapter].title}, «${sec ? sec.title : ''}»`; }
   return id;
 };
+/* Карточка повторения уходит после ответа, и по-разному:
+   - верно в свой день — ярлык-календарь «через 5 дней» (или 12), карточка уезжает вправо: ещё вернётся;
+   - верно на последнем шаге расписания — печать «Выучено», искры, карточка растворяется: ушла насовсем;
+   - ошибка — карточка остаётся с разбором; «Понятно» уносит её с ярлыком «через 2 дня». Ответ тут
+     же заново после ошибки повторение не снимает (scheduleAfter: ответ до срока ничего не меняет). */
+const REVIEW_PAUSE = 1300; // успеть увидеть «Верно»
+const REVIEW_MARK = 950; // ярлык или печать на карточке
+const REVIEW_LEAVE = 650; // уход и схлопывание места
+const SPARKS = [[-70, -40], [-40, -70], [0, -80], [45, -66], [75, -34], [-60, 10], [66, 14]];
+function ReviewItem({ id, ctx, onGone, children }) {
+  const rec = ctx.progress.problems[id];
+  const [start] = useState(() => (rec ? rec.lastAt || 0 : 0));
+  const [phase, setPhase] = useState('open');
+  const answered = !!rec && (rec.lastAt || 0) > start;
+  const outcome = !answered ? null : rec.due == null ? 'done' : rec.ok ? 'later' : 'wrong';
+  const days = rec && rec.due ? daysUntil(rec.due) : '';
+  const go = React.useCallback(() => {
+    setPhase('mark');
+    setTimeout(() => setPhase('leaving'), REVIEW_MARK);
+    setTimeout(() => { setPhase('gone'); onGone(id, outcome); }, REVIEW_MARK + REVIEW_LEAVE);
+  }, [id, outcome, onGone]);
+  React.useEffect(() => {
+    if (phase !== 'open' || (outcome !== 'done' && outcome !== 'later')) return undefined;
+    const t = setTimeout(go, REVIEW_PAUSE);
+    return () => clearTimeout(t);
+  }, [outcome, phase, go]);
+  if (phase === 'gone') return null;
+  const kind = outcome === 'done' ? 'done' : 'later';
+  return (
+    <div className={`rv-item ${kind}${phase === 'leaving' ? ' leaving' : ''}`} data-testid="review-item" data-item={id} data-phase={phase} data-outcome={outcome || undefined}>
+      <div className="rv-in">
+        {children}
+        {outcome === 'wrong' && phase === 'open' && (
+          <div className="rv-wrong">
+            <span>Ошибка засчитана: вопрос вернётся {days}. Ответ сейчас, после разбора, повторение не снимет.</span>
+            <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} data-testid="review-dismiss" onClick={() => { Audio.play('paper'); go(); }}>Понятно</button>
+          </div>
+        )}
+        {phase !== 'open' && (kind === 'done'
+          ? <div className="rv-badge done" data-testid="review-badge" aria-live="polite">Выучено{SPARKS.map(([dx, dy], k) => <i key={k} className="rv-spark" style={{ '--dx': `${dx}px`, '--dy': `${dy}px`, animationDelay: `${k * 30}ms` }} aria-hidden="true" />)}</div>
+          : <div className="rv-badge later" data-testid="review-badge" aria-live="polite"><b>вернётся</b><span>{days}</span></div>)}
+      </div>
+    </div>
+  );
+}
+
 function ReviewPanel({ ctx, due }) {
   const { later } = reviewQueue(ctx.progress);
-  const waiting = later.filter((x) => PROBLEMS[x.id] || RECALLS[x.id]);
+  const waiting = later.filter((x) => (PROBLEMS[x.id] || RECALLS[x.id]) && !due.includes(x.id));
+  // ушедшие за этот заход: выучено насовсем и отложено до следующего раза
+  const [gone, setGone] = useState({});
+  const onGone = React.useCallback((id, outcome) => setGone((g) => ({ ...g, [id]: outcome })), []);
+  const left = due.filter((id) => !gone[id]);
+  const learned = Object.values(gone).filter((x) => x === 'done').length;
+  const moved = Object.values(gone).length - learned;
+  const rctx = { ...ctx, inReview: true };
   return (
     <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="review">
-      <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 4 }}>На повторение{due.length ? ` · ${due.length}` : ''}</div>
+      <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 4 }}>На повторение{left.length ? ` · ${left.length}` : ''}</div>
       <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 6 }}>
         Задачи с неверным ответом и вопросы разделов, где ответ не совпал, возвращаются через 2 дня; верно на повторении — следующий раз через 5, потом через 12 дней, и вопрос уходит из списка.
       </div>
+      {(learned > 0 || moved > 0) && (
+        <div className="rv-tally" data-testid="review-tally">
+          {learned > 0 && <span><Check size={13} strokeWidth={3} aria-hidden="true" /> выучено: {learned}</span>}
+          {moved > 0 && <span>отложено до следующего раза: {moved}</span>}
+        </div>
+      )}
       {due.length === 0 && <div style={{ fontSize: 13 }}>Сегодня повторять нечего.</div>}
+      {due.length > 0 && left.length === 0 && <div style={{ fontSize: 13 }} data-testid="review-empty">На сегодня всё повторено.</div>}
       {due.map((id) => {
-        if (RECALLS[id]) return <RecallCard key={id} b={RECALLS[id].block} ctx={ctx} from={itemName(id)} />;
+        if (gone[id]) return null;
+        if (RECALLS[id]) return <ReviewItem key={id} id={id} ctx={ctx} onGone={onGone}><RecallCard b={RECALLS[id].block} ctx={rctx} from={itemName(id)} /></ReviewItem>;
         const { chapter, block } = PROBLEMS[id];
-        return <ProblemCard key={id} block={block} no={problemsOf(chapter).indexOf(id) + 1} from={CHAPTER_BY_ID[chapter].title} ctx={ctx} />;
+        return <ReviewItem key={id} id={id} ctx={ctx} onGone={onGone}><ProblemCard block={block} no={problemsOf(chapter).indexOf(id) + 1} from={CHAPTER_BY_ID[chapter].title} ctx={rctx} /></ReviewItem>;
       })}
       {waiting.length > 0 && (
         <div style={{ fontSize: 12, color: COLOR.faint, marginTop: 6 }}>

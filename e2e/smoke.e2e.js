@@ -873,8 +873,9 @@ test('учебник: оглавление, формулы KaTeX, график �
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 руб.');
   await expect(prob.getByTestId('tb-verdict')).not.toContainText('руб..');
-  // ошибся, потом ответил верно — повторение остаётся через два дня, а не отодвигается
-  await expect(prob.getByTestId('tb-verdict')).toContainText('по плану — через 2 дня');
+  // ошибся, потом ответил верно — повторение остаётся через два дня, и решённой задача не считается
+  await expect(prob.getByTestId('tb-verdict')).toContainText('вернётся через 2 дня');
+  await expect(prob).toContainText('была ошибка · повтор через 2 дня');
   await prob.getByRole('button', { name: 'Решение' }).click();
   await expect(prob).toContainText('Приравниваем объёмы');
   // задача в несколько шагов: засчитывается, только если верны все шаги
@@ -988,9 +989,15 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('вернётся на повторение');
   await recall.getByTestId('tb-recall-again').click();
   await expect(recall.getByTestId('tb-recall-answer')).toHaveCount(0);
-  // всё верно — раздел пройден
+  // тут же верно — но после ошибки раздел не засчитан: вопрос вернётся в свой день
   for (let i = 0; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
-  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('в этот раз была ошибка');
+  // следующий раздел: всё верно с первого раза — раздел пройден
+  const recall2 = page.getByTestId('chapter').getByTestId('tb-recall').nth(1);
+  await recall2.scrollIntoViewIfNeeded();
+  const rightKeys2 = JSON.parse(await recall2.getAttribute('data-answer'));
+  for (let i = 0; i < rightKeys2.length; i += 1) await recall2.getByTestId('tb-recall-part').nth(i).locator(`[data-key="${rightKeys2[i]}"]`).click();
+  await expect(recall2.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);
   await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[aria-label="разделы 1/4"]')).toHaveCount(1);
@@ -3076,6 +3083,60 @@ test('Путь: проверку пройденного юнита можно п
   await expect(page.getByTestId('lesson-result')).toContainText('Юнит не забыт');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(page.getByTestId('path').locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"]:not([data-state="done"])')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('повторение: ошибку не снять тут же, карточка уходит «вернётся» или «выучено», Путь и учебник — одно повторение', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3 * 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({
+      problems: {
+        'pc-basic': { tries: 1, ok: false, box: 0, due: Date.now() - 1000, lastAt: at },
+        'sc-oc': { tries: 2, ok: true, box: 2, due: Date.now() - 1000, lastAt: at },
+      },
+      learn: { mistakes: [{ id: 'auto:pc-basic', at }, { id: 'auto:sc-oc', at }] },
+    }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await openTasks(page);
+  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  await page.getByTestId('practice-review').click();
+  const review = page.getByTestId('review');
+  await expect(review.getByTestId('review-item')).toHaveCount(2);
+  // термин в условии нажимается — определение прямо в тексте
+  const pc = review.locator('[data-testid=review-item][data-item="pc-basic"]');
+  await pc.locator('[data-term]').first().click();
+  await expect(pc.locator('.tb-def').first()).toBeVisible();
+  // ошибка — карточка остаётся; тут же верно — повторение не снято
+  const solve = async (vals) => {
+    const inputs = pc.getByRole('textbox');
+    for (let k = 0; k < vals.length; k += 1) await inputs.nth(k).fill(vals[k]);
+    await pc.getByRole('button', { name: 'Уверен', exact: true }).click();
+    await pc.getByRole('button', { name: 'Проверить' }).click();
+  };
+  await solve(['1', '2', '3']);
+  await expect(pc).toHaveAttribute('data-outcome', 'wrong');
+  await solve(['10', '300', '40']);
+  await expect(pc.getByTestId('tb-verdict')).toContainText('в этот раз была ошибка');
+  await expect(pc).toHaveAttribute('data-outcome', 'wrong');
+  await pc.getByTestId('review-dismiss').click();
+  await expect(pc.getByTestId('review-badge')).toContainText('через 2 дня');
+  await expect(pc).toHaveCount(0);
+  // последний шаг расписания — «Выучено», и карточка исчезает
+  const oc = review.locator('[data-testid=review-item][data-item="sc-oc"]');
+  await oc.getByRole('textbox').fill('3');
+  await oc.getByRole('button', { name: 'Уверен', exact: true }).click();
+  await oc.getByRole('button', { name: 'Проверить' }).click();
+  await expect(oc.getByTestId('review-badge')).toContainText('Выучено');
+  await expect(oc).toHaveCount(0);
+  await expect(review.getByTestId('review-tally')).toContainText('выучено: 1');
+  await expect(review.getByTestId('review-tally')).toContainText('отложено до следующего раза: 1');
+  await expect(review.getByTestId('review-empty')).toBeVisible();
+  // одно повторение: решённая в учебнике задача ушла и из ошибок Пути, нерешённая — осталась
+  await bookBack(page);
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   expect(errors).toEqual([]);
 });
 

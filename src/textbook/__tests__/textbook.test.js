@@ -972,13 +972,16 @@ describe('прогресс и повторение', () => {
     const q = recordAnswer(emptyProgress(), 'y', true, t0);
     expect(q.problems.y).toMatchObject({ ok: true, box: null, due: null });
   });
-  it('верный ответ до срока повторения расписание не меняет (ошибся — посмотрел решение — ответил верно)', () => {
+  it('верный ответ до срока повторения расписание не меняет и решённой задачу не делает (ошибся — тут же ответил верно)', () => {
     let p = recordAnswer(emptyProgress(), 'x', false, t0);
     const due = p.problems.x.due;
     p = recordAnswer(p, 'x', true, t0 + 60 * 1000, { sawSolution: true });
-    expect(p.problems.x).toMatchObject({ ok: true, box: 0, due });
+    expect(p.problems.x).toMatchObject({ ok: false, box: 0, due });
     p = recordAnswer(p, 'x', true, t0 + DAY);
-    expect(p.problems.x.due).toBe(due);
+    expect(p.problems.x).toMatchObject({ ok: false, due });
+    // в свой день верный ответ засчитан: решена, следующий повтор через 5 дней
+    p = recordAnswer(p, 'x', true, due);
+    expect(p.problems.x).toMatchObject({ ok: true, box: 1, due: due + 5 * DAY });
   });
   it('верный ответ с подсмотренным решением засчитан, но задача вернётся через 2 дня', () => {
     const p = recordAnswer(emptyProgress(), 'y', true, t0, { sawSolution: true });
