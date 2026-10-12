@@ -2416,6 +2416,8 @@ test('вход: программа — вступительный тест, су
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
   await expect(shop.getByTestId('rate-chart')).toBeVisible();
+  // палец ведёт по графику — текст вокруг не выделяется
+  expect(await shop.locator('.rw-rate-box').evaluate((el) => getComputedStyle(el).userSelect || getComputedStyle(el).webkitUserSelect)).toBe('none');
   // подсказка графика курса у правого края не расширяет страницу (иначе телефон перемасштабирует её и панель внизу «уезжает»)
   const chartBox = await shop.getByTestId('rate-chart').boundingBox();
   for (const fx of [0.02, 0.5, 0.9, 0.99]) {

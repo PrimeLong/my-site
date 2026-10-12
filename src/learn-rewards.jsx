@@ -85,6 +85,8 @@ export const REWARD_CSS = `
   @keyframes rw-chest-pop { 0% { transform: none; } 30% { transform: scale(1.08, .92); } 60% { transform: scale(.96, 1.05) translateY(-4px); } 100% { transform: none; } }
   .rw-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .rw-rate { width: 100%; height: 64px; display: block; touch-action: none; }
+  /* палец ведёт по графику — подписи вокруг не выделяются и не всплывает меню «Копировать» */
+  .rw-rate-box, .rw-piggy-chart { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .rw-item { position: relative; }
   .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad-btn); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
   .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #8A2F45, #6B4357); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
@@ -242,7 +244,7 @@ function RateChart({ hist }) {
   React.useLayoutEffect(() => { if (tip.current) setTipW(tip.current.offsetWidth); }, [hover]);
   const tipLeft = h ? Math.max(0, Math.min(W - tipW, x(hover) - tipW / 2)) : 0;
   return (
-    <div style={{ position: 'relative' }} ref={box}>
+    <div className="rw-rate-box" style={{ position: 'relative' }} ref={box}>
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="rw-rate" role="img" data-testid="rate-chart"
         aria-label={`Курс за ${hist.length} дней: от ${fmtRate(Math.min(...hist.map((q) => q.rate)))} до ${fmtRate(Math.max(...hist.map((q) => q.rate)))} монеты за крону, сегодня ${fmtRate(hist[last].rate)}`}
         onPointerMove={pick} onPointerDown={pick} onPointerLeave={() => setHover(null)}>
