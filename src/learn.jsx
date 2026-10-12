@@ -16,14 +16,17 @@ import {
   X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown,
+  Star, CalendarDays,
 } from 'lucide-react';
+import { StatHero, StatTile, Meter, DayBars, STATS_CSS } from './learn-stats.jsx';
 import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
 import { track } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
-import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
+import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
+import { afterPathAnswer } from './textbook/review-sync.js';
 import {
   UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
@@ -55,7 +58,7 @@ import { inCrowns, sceneInCrowns } from './learn/money.js';
 import { ReportFlag, QuoteReport, ReportsView, AnalyticsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
-import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
+import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
@@ -98,10 +101,10 @@ const CSS = `
   @keyframes ln-num-in { from { transform: translateY(100%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
   @media (prefers-reduced-motion: reduce) { .ln-burst-flame, .ln-burst-flame::before, .ln-burst-num .new { animation: none; } .ln-burst-flame i, .ln-burst-num .old { display: none; } }
   .ln-atlas { position: relative; padding: 10px 10px 8px; margin: 4px 0 18px; }
-  .ln-atlas svg text { font-family: var(--ds-serif); }
+  .ln-atlas svg text { font-family: var(--ds-head); }
   .ln-bill { position: relative; overflow: hidden; padding: 0; margin: 20px 0 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
   .ln-bill-in { display: flex; align-items: center; gap: 12px; padding: 12px 14px 10px; }
-  .ln-bill-no { font: 700 30px/1 var(--ds-serif); color: var(--u-ink); }
+  .ln-bill-no { font: 700 30px/1 var(--ds-head); color: var(--u-ink); }
   .ln-bill-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
   /* пройденный юнит свёрнут в одну строку: номер, место, алмазы, гайд и «уроки» */
   .ln-mini-guide { width: 36px; height: 36px; }
@@ -114,62 +117,64 @@ const CSS = `
     background: color-mix(in srgb, var(--ds-paper) 92%, transparent); backdrop-filter: blur(6px); }
   .ln-switch-arrow { width: 40px; height: 40px; flex-shrink: 0; color: var(--u-ink); }
   .ln-switch-arrow:disabled { opacity: .3; cursor: default; }
-  .ln-switch-plate { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px; border-radius: 10px; cursor: pointer; text-align: left; font: inherit; color: var(--ds-ink);
-    background: color-mix(in srgb, var(--u) 9%, var(--ds-card)); border: 1.5px solid color-mix(in srgb, var(--u) 45%, var(--ds-rule2)); box-shadow: 0 2px 0 color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); }
-  .ln-switch-plate:active { transform: translateY(1px); box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); }
+  .ln-switch-plate { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 8px; border-radius: 16px; cursor: pointer; text-align: left; font: inherit; color: var(--ds-ink);
+    background: color-mix(in srgb, var(--u) 9%, var(--ds-card)); border: 2px solid color-mix(in srgb, var(--u) 40%, var(--ds-rule2)); box-shadow: 0 4px 0 color-mix(in srgb, var(--u) 35%, var(--ds-rule2)); margin-bottom: 4px; }
+  .ln-switch-plate:active { transform: translateY(3px); box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 35%, var(--ds-rule2)); }
   .ln-switch-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .ln-switch-place { font: 700 18px/1.2 var(--ds-serif); color: var(--u-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln-switch-place { font: 700 18px/1.2 var(--ds-head); color: var(--u-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ln-switch-count { font: 600 12.5px/1 var(--ds-sans); color: var(--ds-ink2); margin-left: 4px; }
-  .ln-unit-no { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 17px/1 var(--ds-serif);
-    color: var(--u-ink); border: 1.5px solid var(--u-ink); box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px color-mix(in srgb, var(--u) 40%, transparent); }
+  .ln-unit-no { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font: 700 17px/1 var(--ds-head);
+    color: #fff; background: var(--u); border: none; box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 68%, #000); }
   .ln-pick { display: flex; flex-direction: column; gap: 6px; max-height: min(58vh, 520px); overflow-y: auto; margin: 0 -4px; padding: 2px 4px; }
-  .ln-pick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 10px; text-align: left; font: inherit; color: var(--ds-ink);
-    background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); border: 1.5px solid var(--ds-rule2); }
+  .ln-pick-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 14px; text-align: left; font: inherit; color: var(--ds-ink);
+    background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); border: 2px solid var(--ds-rule2); }
   button.ln-pick-row { cursor: pointer; }
   .ln-pick-row[aria-current="true"] { border-color: var(--u-ink); box-shadow: inset 0 0 0 1px var(--u-ink); }
   .ln-pick-row[data-state="locked"] { background: var(--ds-card); }
-  .ln-pick-row[data-state="locked"] .ln-unit-no { color: var(--ds-ink3); border-color: var(--ds-ink3); }
+  .ln-pick-row[data-state="locked"] .ln-unit-no { color: var(--ds-ink3); background: var(--ds-card2); box-shadow: inset 0 0 0 2px var(--ds-rule2); }
   .ln-pick-txt { flex: 1; min-width: 0; }
-  .ln-pick-title { font: 700 16px/1.25 var(--ds-serif); }
+  .ln-pick-title { font: 700 16px/1.25 var(--ds-head); }
   .ln-pick-sub { font-size: 13px; color: var(--ds-ink2); line-height: 1.3; }
   /* живая модель на телефоне — свёрнутой строкой; касание раскрывает */
   .ln-fold-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 10px 12px; text-align: left; cursor: pointer; color: var(--ds-ink); font: inherit; }
   .ln-fold-row .lm-pips { margin-right: 4px; }
   /* «К карте»: появляется, когда карта уехала за верх экрана */
   .ln-to-map { position: fixed; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 30; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center;
-    padding: 0; border-radius: 50%; border: 1px solid var(--ds-rule2); background: var(--ds-card); color: var(--u-ink); box-shadow: 0 4px 14px var(--ds-shade); cursor: pointer; }
+    padding: 0; border-radius: 50%; border: 2px solid var(--ds-rule); background: var(--ds-card); color: var(--u-ink); box-shadow: 0 3px 0 var(--ds-rule2), 0 6px 16px var(--ds-shade); cursor: pointer; }
   @media (min-width: 1024px) { .ln-to-map { right: max(16px, calc(50vw - 560px)); } }
   .ln-route { position: relative; margin: 0 auto; }
   /* телефон уже 340 px (320 px — старые и маленькие): дорога чуть мельче, чтобы не вылезать за экран */
   @media (max-width: 340px) { .ln-route { zoom: .9; } }
   .ln-route > svg { position: absolute; inset: 0; pointer-events: none; }
   .ln-stop { position: absolute; width: 170px; margin-left: -85px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-  .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 1.5px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
-    display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 4px var(--ds-card), inset 0 0 0 5px var(--ds-rule), 0 2px 3px var(--ds-shade); transition: transform .08s; }
-  .ln-token:active { transform: translateY(1px); }
-  .ln-token.done { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000);
-    box-shadow: inset 0 0 0 4px var(--u), inset 0 0 0 5px rgba(255,255,255,.55), 0 2px 3px var(--ds-shade); }
-  .ln-token.locked { border-style: dashed; color: var(--ds-ink3); box-shadow: none; background: var(--ds-paper); }
-  .ln-token.cur { border-color: var(--ds-gold); border-width: 2.5px; color: var(--u-ink); }
-  .ln-token.cur::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--ds-gold); animation: ds-ring 1.8s ease-out infinite; pointer-events: none; }
-  .ln-seal { position: absolute; right: -4px; bottom: -4px; width: 24px; height: 24px; border-radius: 50%; background: var(--ds-bad); color: #fff; display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 0 2px var(--ds-paper), inset 0 0 0 2px rgba(255,255,255,.35); transform: rotate(-12deg); }
+  /* остановка Пути — объёмная монета: снизу кромка темнее, нажатие опускает её */
+  .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 3px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 0 var(--ds-rule2); margin-bottom: 5px; transition: transform .08s, box-shadow .08s; }
+  .ln-token:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ds-rule2); }
+  .ln-token.done { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 82%, #fff); box-shadow: 0 5px 0 color-mix(in srgb, var(--u) 68%, #000); }
+  .ln-token.done:active { box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 68%, #000); }
+  .ln-token.locked { border-style: dashed; color: var(--ds-ink3); box-shadow: none; background: var(--ds-card2); }
+  .ln-token.cur { border-color: var(--u); border-width: 3px; color: var(--u-ink); box-shadow: 0 5px 0 color-mix(in srgb, var(--u) 45%, var(--ds-rule2)); }
+  .ln-token.cur::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--u) 55%, transparent); animation: ds-ring 1.8s ease-out infinite; pointer-events: none; }
+  /* пройдено — золотая отметка (не красная: красный читается как ошибка) */
+  .ln-seal { position: absolute; right: -5px; bottom: -5px; width: 25px; height: 25px; border-radius: 50%; background: var(--ds-gold-soft); color: #3A2600; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 2.5px var(--ds-paper); transform: rotate(-12deg); }
   /* урок, взятый на алмазном уровне: гранёный камень вместо цвета юнита */
-  .ln-token.diamond { background: linear-gradient(135deg, #EDB3C0 0%, #B9576F 45%, #8A2F45 60%, #5E1E2F 100%); border-color: #5A1C2C;
-    box-shadow: inset 0 0 0 4px rgba(255,255,255,0), inset 0 0 0 5px rgba(255,255,255,.7), 0 2px 8px rgba(46,143,184,.45); }
-  .ln-seal.diamond { background: #8A2F45; }
-  .ln-pin { position: absolute; top: -28px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase;
-    color: var(--ds-paper); background: var(--ds-ink); padding: 5px 8px 4px; border-radius: 2px; }
+  .ln-token.diamond { background: linear-gradient(135deg, #FFC2D2 0%, #E5527B 45%, #B3123F 62%, #7A0C2B 100%); border-color: #FFD6E1;
+    box-shadow: 0 5px 0 #7A0C2B, 0 6px 14px rgba(179,18,63,.35); }
+  .ln-seal.diamond { background: #B3123F; color: #fff; }
+  .ln-pin { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 var(--ds-sans); letter-spacing: .08em; text-transform: uppercase;
+    color: #fff; background: var(--u); padding: 6px 10px 5px; border-radius: 10px; box-shadow: 0 2px 0 color-mix(in srgb, var(--u) 68%, #000); }
   .ln-pin.rec { background: var(--ds-gold); color: var(--ds-card); }
   .ln-pin.rec::after { border-top-color: var(--ds-gold); }
-  .ln-chest { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: inherit; cursor: pointer; font: 700 13.5px/1.25 var(--ds-serif); }
+  .ln-chest { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: inherit; cursor: pointer; font: 700 13.5px/1.25 var(--ds-head); }
   .ln-chest-art { display: inline-flex; filter: drop-shadow(0 2px 2px var(--ds-shade)); transition: transform .15s; }
   .ln-chest:hover .ln-chest-art { transform: translateY(-2px) rotate(-2deg); }
   .ln-chest[data-opened="false"] .ln-chest-art { animation: ln-chest-wiggle 2.8s ease-in-out infinite; }
   @keyframes ln-chest-wiggle { 0%, 82%, 100% { transform: none; } 86% { transform: rotate(-5deg); } 90% { transform: rotate(4deg); } 94% { transform: rotate(-2deg); } }
   @media (prefers-reduced-motion: reduce) { .ln-chest[data-opened="false"] .ln-chest-art { animation: none; } }
-  .ln-pin::after { content: ''; position: absolute; left: 50%; bottom: -4px; margin-left: -4px; border: 4px solid transparent; border-bottom: 0; border-top-color: var(--ds-ink); }
-  .ln-stop-title { background: none; border: none; padding: 2px 4px; font: 700 13.5px/1.25 var(--ds-serif); max-width: 170px; text-align: center; cursor: pointer; color: var(--ds-ink); }
+  .ln-pin::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--u); }
+  .ln-stop-title { background: none; border: none; padding: 2px 4px; font: 700 13.5px/1.25 var(--ds-head); max-width: 170px; text-align: center; cursor: pointer; color: var(--ds-ink); }
   .ln-stop-title.locked { color: var(--ds-ink3); }
   .ln-overlay { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; }
   .ln-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; max-width: 592px; width: 100%; margin: 0 auto; }
@@ -184,7 +189,7 @@ const CSS = `
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
   .ln-inner { max-width: 560px; margin: 0 auto; }
-  .ln-foot { border-top: 1px solid var(--ds-rule2); padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--ds-paper); }
+  .ln-foot { border-top: 2px solid var(--ds-rule); padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--ds-paper); }
   .ln-foot.fb { padding: 0; border-top: none; }
   .ln-kind { margin-bottom: 8px; }
   .ln-prompt { margin-bottom: 12px; }
@@ -199,49 +204,35 @@ const CSS = `
     .ln-body .ln-key-tex { font-size: 22px; }
   }
   .tb-term { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help; text-decoration: underline dotted var(--u-ink); text-underline-offset: 4px; text-decoration-thickness: 2px; }
-  .ln-term-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--ds-card); border-top: 1px solid var(--ds-rule2); border-radius: 10px 10px 0 0;
-    padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: inset 0 3px 0 var(--ds-card), inset 0 4px 0 var(--u), 0 -10px 30px rgba(0,0,0,.2); }
+  .ln-term-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--ds-card); border-top: 4px solid var(--u); border-radius: 22px 22px 0 0;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px rgba(60,30,0,.16); }
   .ln-tickets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .ln-tickets > div { border: 1px dashed var(--ds-rule2); border-radius: 3px; padding: 8px 4px; text-align: center; background: var(--ds-card); }
+  .ln-tickets > div { border: 2px solid var(--ds-rule); border-radius: 14px; padding: 8px 4px; text-align: center; background: var(--ds-card); }
   .ln-tickets .v { font: 700 21px var(--ds-mono); margin-top: 2px; }
-  .ln-ticket { display: flex; border: 1px solid var(--ds-rule2); border-radius: 4px; background: var(--ds-card); overflow: hidden; box-shadow: 0 2px 4px var(--ds-shade); }
+  .ln-ticket { display: flex; border: 2px solid var(--ds-rule); border-radius: 18px; background: var(--ds-card); overflow: hidden; box-shadow: 0 2px 0 var(--ds-rule); }
   .ln-ticket-main { flex: 1; min-width: 0; padding: 14px 14px 12px; }
-  .ln-ticket-stub { width: 86px; border-left: 2px dashed var(--ds-rule2); background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); display: flex; flex-direction: column; align-items: center;
+  .ln-ticket-stub { width: 86px; background: color-mix(in srgb, var(--u) 13%, var(--ds-card)); display: flex; flex-direction: column; align-items: center;
     justify-content: center; gap: 6px; color: var(--u-ink); position: relative; }
-  .ln-ticket-stub::before, .ln-ticket-stub::after { content: ''; position: absolute; left: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--ds-card2); }
-  .ln-ticket-stub::before { top: -9px; } .ln-ticket-stub::after { bottom: -9px; }
   .ln-album { display: flex; flex-wrap: wrap; gap: 10px; }
   .ln-key { margin-top: 14px; padding: 8px 12px 10px; border: 2px solid var(--u); border-radius: 10px; background: color-mix(in srgb, var(--u) 8%, var(--ds-card)); }
   .ln-key .ds-eyebrow { color: var(--u-ink); }
   .ln-key-tex { font-size: 19px; text-align: center; margin-top: 4px; overflow-x: auto; overflow-y: hidden; }
-  .ln-legend { margin-top: 12px; padding: 8px 10px; border-left: 3px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 0 3px 3px 0; }
+  .ln-legend { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 4px 12px 12px 4px; }
   .ln-how { background: none; border: none; padding: 4px 0; margin-top: 6px; font: 700 14px var(--ds-sans); color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
-  .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 3px; border-left: 3px solid; }
+  .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 4px 12px 12px 4px; border-left: 4px solid; }
   .ln-verdict.ok { background: var(--ds-ok-bg); border-color: var(--ds-ok); }
   .ln-verdict.bad { background: color-mix(in srgb, var(--ds-sel-rule) 14%, var(--ds-card)); border-color: var(--ds-sel-rule); }
   .ln-verdict.ok .ds-answer-stamp { color: var(--ds-ok-ink); font-size: 13px; }
   .ln-verdict.bad .ds-answer-stamp { color: var(--ds-sel-ink); font-size: 13px; }
   .ln-book { min-height: 100vh; margin: -12px -16px 0; }
-  /* кнопки учебника-справочника — те же, что у дизайн-системы: билет и бумажная кнопка */
-  .ln-textbook .ems-btn { font: 700 13.5px/1.25 var(--ds-sans); border: 1px solid var(--ds-rule2); border-bottom-width: 2px; border-radius: 3px; background: var(--ds-card);
+  /* кнопки учебника-справочника — те же, что у дизайн-системы: объёмные, со скруглением */
+  .ln-textbook .ems-btn { font: 700 13.5px/1.25 var(--ds-sans); border: 2px solid var(--ds-rule2); border-bottom-width: 4px; border-radius: 12px; background: var(--ds-card);
     color: var(--u-ink); box-shadow: none; letter-spacing: 0; }
   .ln-textbook .ems-btn:hover { background: var(--ds-card2); border-color: var(--ds-rule2); box-shadow: none; }
-  .ln-textbook .ems-btn.primary { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000); font: 700 13.5px/1.25 var(--ds-serif); letter-spacing: .06em; text-transform: uppercase; }
+  .ln-textbook .ems-btn.primary { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000); font: 700 13.5px/1.25 var(--ds-head); letter-spacing: .06em; text-transform: uppercase; }
   .ln-textbook .ems-btn.primary:hover { background: var(--u); filter: brightness(1.07); }
   .ln-textbook .ems-btn[aria-pressed="true"] { background: var(--ds-sel); color: var(--ds-sel-ink); border-color: var(--ds-sel-rule); }
-  .ln-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; max-width: 360px; }
-  .ln-cal-wd { font: 700 12px/1 var(--ds-sans); color: var(--ds-ink3); text-align: center; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
-  .ln-cal-d { aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--ds-rule2); display: flex; align-items: center; justify-content: center;
-    font: 700 12px/1 var(--ds-mono); color: var(--ds-ink2); background: var(--ds-card); }
-  .ln-cal-d.t1 { background: color-mix(in srgb, var(--u) 22%, var(--ds-card)); }
-  .ln-cal-d.t2 { background: color-mix(in srgb, var(--u) 50%, var(--ds-card)); color: var(--ds-ink); }
-  .ln-cal-d.t3 { background: var(--u); color: #fff; border-color: transparent; }
-  .ln-cal-d.today { outline: 2px solid var(--ds-ink); outline-offset: 1px; }
-  .ln-cal-d.future { opacity: .35; border-style: dashed; }
-  .ln-cal-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; text-align: center; }
-  .ln-cal-sum b { display: block; font-size: 24px; color: var(--u-ink); }
-  .ln-cal-sum span { font-size: 12.5px; color: var(--ds-ink3); }
-  .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
+  .ln-theory { border: 2px solid var(--ds-rule); border-left: 5px solid var(--u); border-radius: 6px 16px 16px 6px; background: var(--ds-card2); padding: 12px 14px; }
   .ln-level-text { font-size: 13.5px; line-height: 1.35; margin: -2px 2px 4px; }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
 `;
@@ -275,15 +266,24 @@ function useLearn() {
   const playerId = useMemo(getPlayerId, []);
   const timer = useRef(null);
   // opts.settle — после изменения выдать всё выполненное: задания дня, печати, бонусы серии
+  // opts.whole — fn получает весь прогресс (с задачами учебника), а не только Путь
   const update = (fn, opts = {}) => {
-    setProgress((p) => {
+    setProgress((mem) => {
+      const p = latestProgress(mem);
+      if (opts.whole) { const next = fn(p); return next === p ? mem : saveProgress(next); }
       let learn = fn(p.learn);
       if (opts.settle) learn = settle(learn, courseCtx(learn)).s;
-      return learn === p.learn ? p : saveProgress({ ...p, learn });
+      return learn === p.learn ? mem : saveProgress({ ...p, learn });
     });
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { timer.current = null; syncProfile(playerId).catch(() => {}); }, 2000);
   };
+  // учебник записал прогресс (ответ снял ошибку с повторения Пути) — перечитываем
+  useEffect(() => {
+    const reload = (e) => { if (e.detail) setProgress((p) => (p === e.detail ? p : e.detail)); };
+    window.addEventListener(PROGRESS_EVENT, reload);
+    return () => window.removeEventListener(PROGRESS_EVENT, reload);
+  }, []);
   useEffect(() => {
     let alive = true;
     syncProfile(playerId).then((pf) => { if (alive && pf) setProgress(loadProgress()); }).catch(() => {});
@@ -699,6 +699,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       if (run.mode === 'practice') update((s) => resolveMistake(s, baseId));
       // решено с подсказкой — невидимо уходит в «Повторение» пораньше; без подсказки — снимается
       update((s) => (a.hinted[orig] ? addHinted(s, baseId) : clearHinted(s, baseId)));
+      // та же задача ждёт повторения в учебнике — это и есть её повторение (review-sync.js)
+      if (!a.hinted[orig]) update((p) => afterPathAnswer(p, baseId), { whole: true });
       if (firstTime) setRun3((n) => n + 1);
       Audio.play('coin'); vibrate(15);
     } else {
@@ -1398,7 +1400,7 @@ function Prop({ kind, x, y, alive, no, scale = 1, flip = false }) {
       </>}
       {kind === 'mile' && <>
         <path d="M-9 22 V2 q0 -9 9 -9 q9 0 9 9 V22 Z" fill="var(--ds-card)" stroke={ink} strokeWidth="1.6" />
-        <text x="0" y="12" textAnchor="middle" fontSize="10" fontWeight="700" fill={ink} fontFamily="var(--ds-serif)">{no}</text>
+        <text x="0" y="12" textAnchor="middle" fontSize="10" fontWeight="700" fill={ink} fontFamily="var(--ds-head)">{no}</text>
         <line x1="-13" y1="22" x2="13" y2="22" stroke={ink} strokeWidth="1.2" />
       </>}
     </g>
@@ -1521,7 +1523,7 @@ function ModelFold({ unitId, learn, side = false }) {
         <Coffee size={20} color="var(--u-ink)" aria-hidden="true" />
         <span style={{ flex: 1, minWidth: 0 }}>
           <span className="ds-eyebrow" style={{ display: 'block' }}>Живая модель юнита</span>
-          <span style={{ font: '700 15px var(--ds-serif)' }}>{prog.open ? `Рынок капучино: ${prog.open} из ${prog.total} деталей` : 'Соберётся по ходу юнита'}</span>
+          <span style={{ font: '700 15px var(--ds-head)' }}>{prog.open ? `Рынок капучино: ${prog.open} из ${prog.total} деталей` : 'Соберётся по ходу юнита'}</span>
         </span>
         <ChevronRight size={18} color="var(--ds-ink3)" aria-hidden="true" />
       </button>
@@ -1836,7 +1838,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             <div style={{ padding: '0 14px 10px' }} data-testid="path-soon-list">
               {soon.map(({ u, no }) => (
                 <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px dotted var(--ds-rule2)' }} data-unit={u.id}>
-                  <span style={{ flex: 1, fontSize: 14.5 }}><b style={{ fontFamily: 'var(--ds-serif)' }}>{placeOf(u.id).place}</b> <span className="ds-faint">· юнит {no} · {u.title}</span></span>
+                  <span style={{ flex: 1, fontSize: 14.5 }}><b style={{ fontFamily: 'var(--ds-head)' }}>{placeOf(u.id).place}</b> <span className="ds-faint">· юнит {no} · {u.title}</span></span>
                   {u.ready && <Button variant="ghost" small data-nav-target={`book:chapter:${u.id}`} onClick={() => onOpenBook({ kind: 'chapter', id: u.id })}>Гайд</Button>}
                 </div>
               ))}
@@ -1892,30 +1894,25 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
 /* ------------------------------ ПРОФИЛЬ ------------------------------
    Личные рекорды, альбом марок (пройденный юнит — марка с его зданием), цель дня,
    статистика, учебник, аккаунт и настройки: тёмная тема, музыка, звуки ответов. */
-/* Четыре недели занятий: календарь — клетка дня темнее, чем больше минут; три числа под ним.
+/* Четыре недели занятий: минуты по дням столбиками (цель — линия, сегодня — отметка), под ними
+   три плитки — минуты, уроки, дни с занятиями — и точность с первого раза полосой.
    Без разбивки по типам упражнений: она мало что говорит ученику. */
-const WD = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 function StudyWeeks({ learn }) {
   const w = studyWeeks(learn);
   const goal = goalToday(learn).goal;
-  const tone = (m) => (m <= 0 ? 0 : m < goal / 2 ? 1 : m < goal ? 2 : 3);
   return (
     <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
-      <div className="ds-h3" style={{ marginBottom: 2 }}>Мои четыре недели</div>
-      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 10 }}>Клетка — день: чем темнее, тем больше минут. Полный цвет — цель дня ({goal} мин) выполнена.</div>
-      <div className="ln-cal" data-testid="prof-calendar">
-        {WD.map((d) => <span key={d} className="ln-cal-wd">{d}</span>)}
-        {w.days.map((d) => (
-          <span key={d.day} className={`ln-cal-d t${tone(d.minutes)}${d.today ? ' today' : ''}${d.future ? ' future' : ''}`} title={`${d.day}: ${d.minutes} мин, уроков ${d.lessons}`} data-minutes={d.minutes}>
-            {d.minutes > 0 ? d.minutes : ''}
-          </span>
-        ))}
+      <div className="ds-h3" style={{ marginBottom: 2 }}>Последние четыре недели</div>
+      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 4 }}>Минуты занятий по дням. Нажмите на столбик — день, минуты и уроки.</div>
+      <DayBars days={w.days.map((d) => ({ key: d.day, minutes: d.minutes, lessons: d.lessons, today: d.today, future: d.future }))} goal={goal} testid="prof-calendar" />
+      <div className="st-grid three" style={{ marginTop: 14 }}>
+        <StatTile icon={Clock} label="Минут" value={w.minutes} testid="prof-minutes" sub={w.active ? `≈ ${Math.round(w.minutes / w.active)} в день` : 'пока нет'} />
+        <StatTile icon={BookOpen} label="Уроков" value={w.lessons} testid="prof-lessons" sub="пройдено" />
+        <StatTile icon={CalendarDays} label="Дней" value={w.active} sub="с занятиями из 28" />
       </div>
-      <div className="ln-cal-sum">
-        <div><b className="ds-num" data-testid="prof-minutes">{w.minutes}</b><span>минут</span></div>
-        <div><b className="ds-num" data-testid="prof-lessons">{w.lessons}</b><span>{plural(w.lessons, 'урок', 'урока', 'уроков')}</span></div>
-        <div><b className="ds-num" data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b><span>верно с первого раза</span></div>
-      </div>
+      <Meter label="Верно с первого раза" share={w.accuracy} testid="prof-accuracy-meter"
+        text={<b data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b>}
+        note={w.accuracy == null ? 'Посчитаем после пяти ответов.' : 'По последним ответам в уроках.'} />
     </Card>
   );
 }
@@ -1947,15 +1944,18 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
         <Mascot mood={st.days >= 3 ? 'joy' : 'hello'} size={52} />
         <Heading eyebrow="Профиль" title="Личные рекорды" sub="Без лиг и соревнований — только ваш путь." />
       </div>
-      <Card style={{ margin: '12px 0' }}>
-        <div className="ds-h3" style={{ marginBottom: 6 }}>Рекорды</div>
-        <Row label="Серия сейчас" value={`${st.days} дн.${st.freezesUsed.length ? ` · прощено: ${st.freezesUsed.length}` : ''}`} data-testid="prof-streak" />
-        <Row label="Самая длинная серия" value={`${longestStreak(learn)} дн.`} />
-        <Row label="Лучшая неделя" value={bw.xp ? `${bw.xp} опыта` : '—'} />
-        <Row label="Всего опыта" value={`${stats.totalXp}`} />
-        <Row label="Монет в кошельке" value={`${balance(learn)}`} data-testid="prof-coins" />
-        <Row label="Страховка серии" value={policyActive(learn) ? 'полис действует' : ownedFreezes(learn) ? `старых полисов: ${ownedFreezes(learn)}` : 'нет'} />
-        <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
+      <Card style={{ margin: '12px 0' }} data-testid="prof-records">
+        <div className="ds-h3" style={{ marginBottom: 2 }}>Рекорды</div>
+        <StatHero icon={Flame} tone="#D9822B" value={st.days} testid="prof-streak" label={`${plural(st.days, 'день', 'дня', 'дней')} подряд — серия сейчас`}
+          sub={`Рекорд — ${longestStreak(learn)} дн.${st.freezesUsed.length ? ` · прощено пропусков: ${st.freezesUsed.length}` : ''}`} />
+        <div className="st-grid four">
+          <StatTile icon={Star} tone="#B8860B" label="Всего опыта" value={stats.totalXp} />
+          <StatTile icon={Trophy} tone="#9A6300" label="Лучшая неделя" value={bw.xp ? bw.xp : '—'} sub={bw.xp ? 'опыта' : 'ещё впереди'} />
+          <StatTile icon={Coins} tone="#8A6416" label="Монет" value={balance(learn)} testid="prof-coins" sub="в кошельке" />
+          <StatTile icon={ShieldCheck} tone="#2E5F8A" label="Страховка серии" value={policyActive(learn) ? 'есть' : ownedFreezes(learn) ? ownedFreezes(learn) : 'нет'}
+            sub={policyActive(learn) ? 'полис действует' : ownedFreezes(learn) ? 'старых полисов' : 'в лавке'} />
+        </div>
+        <div className="ds-faint" style={{ fontSize: 13, marginTop: 8 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
       </Card>
       <ProgramCard learn={learn} update={update} onPlacement={() => onStart({ mode: 'placement' })} />
 
@@ -2072,7 +2072,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     <OutfitContext.Provider value={outfit}>
     <DsRoot theme={dsThemeId()} accent={accent} page className="ln-root">
       <ArtStyle />
-      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS + STATS_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />

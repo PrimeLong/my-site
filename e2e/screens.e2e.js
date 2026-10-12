@@ -73,8 +73,8 @@ async function a11y(page, name) {
 }
 const foot = (page) => page.getByTestId('lesson').locator('.ln-foot button').last();
 // на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита нет на экране
-const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
-const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', inflation: 'basic', consumer: 'middle' };
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle' };
 const showUnit = async (page, unit) => {
   await page.waitForTimeout(150);
   if (await page.locator(`[data-testid=path-unit][data-unit="${unit}"]`).count()) return;

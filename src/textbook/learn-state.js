@@ -30,7 +30,8 @@ const MAX_HINTED = 60;
    best — рекорды мини-игр (очки); lessons[id].diamond — когда урок взят на алмазном уровне;
    boost — до какого времени действует купленный «двойной опыт»;
    piggy / piggyOut — вклады в копилку Инфли { время вклада: монеты } и забранные { время вклада: выдано };
-   garden / harvest — сад Инфли: посадки { время посадки: 'растение@грядка' } и собранные { время посадки: когда собрали }. */
+   garden / harvest — сад Инфли: посадки { время посадки: 'растение@грядка' } и собранные { время посадки: когда собрали };
+   water — поливы { время полива: время посадки }. */
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
@@ -38,7 +39,7 @@ export const emptyLearn = () => ({
   topics: {}, recent: '', recentAt: 0, daily: {},
   coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
-  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, garden: {}, harvest: {},
+  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, garden: {}, harvest: {}, water: {},
 });
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
@@ -416,6 +417,12 @@ const gardenMap = (v) => {
   Object.keys(obj(v)).filter((k) => TIME_KEY.test(k) && typeof v[k] === 'string' && /^[a-z]{2,20}@\d{1,2}$/.test(v[k])).sort().slice(-200).forEach((k) => { out[k] = v[k]; });
   return out;
 };
+// поливы: ключ — время полива, значение — время посадки; храним последние четыреста
+const waterMap = (v) => {
+  const out = {};
+  Object.keys(obj(v)).filter((k) => TIME_KEY.test(k) && TIME_KEY.test(String(v[k]))).sort().slice(-400).forEach((k) => { out[k] = String(v[k]); });
+  return out;
+};
 const harvestMap = (v) => {
   const out = {};
   Object.keys(obj(v)).filter((k) => TIME_KEY.test(k)).sort().slice(-200).forEach((k) => { const x = cnt(v[k], 1e14); if (x) out[k] = x; });
@@ -453,7 +460,7 @@ function normalizeProgram(r) {
     claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
-    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest),
+    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
   };
 }
 // слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
@@ -479,6 +486,7 @@ function mergeProgram(x, y) {
     // посадки с одним временем одинаковы; при расхождении побеждает меньшая строка — слияние симметрично
     garden: Object.fromEntries([...new Set([...Object.keys(x.garden), ...Object.keys(y.garden)])].map((k) => [k, [x.garden[k], y.garden[k]].filter(Boolean).sort()[0]])),
     harvest: minTs(x.harvest, y.harvest),
+    water: Object.fromEntries([...new Set([...Object.keys(x.water), ...Object.keys(y.water)])].map((k) => [k, [x.water[k], y.water[k]].filter(Boolean).sort()[0]])),
   };
 }
 /* Слияние двух устройств: счётчики — по максимуму (одно и то же занятие не удваивается),

@@ -101,7 +101,7 @@ test('меню открывается, шрифты свои, внешних з�
   await expect(page.getByRole('heading', { name: 'Инфляция' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
-  expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');
+  expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Sans');
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
   await expectNoSidewaysScroll(page);
@@ -873,8 +873,9 @@ test('учебник: оглавление, формулы KaTeX, график �
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Верно: 30 руб.');
   await expect(prob.getByTestId('tb-verdict')).not.toContainText('руб..');
-  // ошибся, потом ответил верно — повторение остаётся через два дня, а не отодвигается
-  await expect(prob.getByTestId('tb-verdict')).toContainText('по плану — через 2 дня');
+  // ошибся, потом ответил верно — повторение остаётся через два дня, и решённой задача не считается
+  await expect(prob.getByTestId('tb-verdict')).toContainText('вернётся через 2 дня');
+  await expect(prob).toContainText('была ошибка · повтор через 2 дня');
   await prob.getByRole('button', { name: 'Решение' }).click();
   await expect(prob).toContainText('Приравниваем объёмы');
   // задача в несколько шагов: засчитывается, только если верны все шаги
@@ -988,9 +989,15 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('вернётся на повторение');
   await recall.getByTestId('tb-recall-again').click();
   await expect(recall.getByTestId('tb-recall-answer')).toHaveCount(0);
-  // всё верно — раздел пройден
+  // тут же верно — но после ошибки раздел не засчитан: вопрос вернётся в свой день
   for (let i = 0; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
-  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('в этот раз была ошибка');
+  // следующий раздел: всё верно с первого раза — раздел пройден
+  const recall2 = page.getByTestId('chapter').getByTestId('tb-recall').nth(1);
+  await recall2.scrollIntoViewIfNeeded();
+  const rightKeys2 = JSON.parse(await recall2.getAttribute('data-answer'));
+  for (let i = 0; i < rightKeys2.length; i += 1) await recall2.getByTestId('tb-recall-part').nth(i).locator(`[data-key="${rightKeys2[i]}"]`).click();
+  await expect(recall2.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);
   await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[aria-label="разделы 1/4"]')).toHaveCount(1);
@@ -1420,8 +1427,8 @@ async function passCards(page) {
 }
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
-const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', in: 'inflation', cs: 'consumer' };
-const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', inflation: 'basic', consumer: 'middle' };
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle' };
 // на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита ещё нет на экране
 async function showUnit(page, id) {
   const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
@@ -1651,8 +1658,8 @@ test('путь: выход после первого ответа — урок �
   await pathNode(page, 'sd-i1').click();
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-diamond-info')).toContainText('теория глубже');
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-start')).toHaveText('Повторить без усложнения');
-  // алмазный уровень — гранат из тёплой палитры, не холодный синий
-  expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#8a2f45');
+  // алмазный уровень — малиновый гранат из тёплой палитры, не холодный синий
+  expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#b3123f');
   await page.getByTestId('lesson-diamond').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-diamond', 'true');
   // алмазные шаги — с формулами, плашкой «Запомнить» и строкой обозначений
@@ -1713,10 +1720,19 @@ test('путь: юнит «Спрос и предложение» — кажды
   await page.mouse.up();
   await expect(word).toContainText('Новое слово 2 из 8');
   await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(2);
-  // назад — к прошлому слову
+  // смахнуть вправо — тоже дальше: направление запоминать не нужно
+  const wb2 = await word.boundingBox();
+  await page.mouse.move(wb2.x + wb2.width / 2, wb2.y + wb2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wb2.x + wb2.width / 2 + 70, wb2.y + wb2.height / 2, { steps: 6 });
+  await expect(word.locator('.lp-swipe-tag')).toHaveText('Дальше');
+  await page.mouse.move(wb2.x + wb2.width / 2 + 170, wb2.y + wb2.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect(word).toContainText('Новое слово 3 из 8');
+  // назад — кнопкой, к прошлому слову
   await page.getByTestId('word-prev').click();
-  await expect(word).toContainText('Новое слово 1 из 8');
-  for (let i = 0; i < 7; i += 1) await page.getByTestId('word-next').click();
+  await expect(word).toContainText('Новое слово 2 из 8');
+  for (let i = 0; i < 6; i += 1) await page.getByTestId('word-next').click();
   await expect(word).toContainText('Новое слово 8 из 8');
   await expect(page.getByTestId('word-next')).toHaveText('К упражнениям');
   const { kinds: wk } = await playLesson(page, { wrongAt: [0] });
@@ -1803,7 +1819,7 @@ test('путь: юнит «Порт» (провалы рынка) — кажды
   expect(errors).toEqual([]);
 });
 
-test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+test('путь: юнит «Банк» (деньги и банки) — каждый урок проходится, игра — рынок кредитов на графике', async ({ page }) => {
   test.setTimeout(300_000);
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -1812,6 +1828,47 @@ test('путь: юнит «Инфляция» — каждый урок прох
       'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
       'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
       'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'money-banks');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['mb-i1', 'mb-l1', 'mb-i2', 'mb-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «Слова»: на карточке бартера — пример
+  await startLesson(page, 'mb-w');
+  await expect(page.getByTestId('word-def')).toContainText('Пример:');
+  await playLesson(page);
+  await finish();
+  // «История»: очередь у «Златобанка» глазами Тимура
+  await startLesson(page, 'mb-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'timur');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mb-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('денежная масса');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'mb-g');
+  await expect(page.getByTestId('ex').getByTestId('market-chart')).toBeVisible();
+  await playLesson(page);
+  await finish();
+  for (const id of ['mb-rev', 'mb-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  expect(errors).toEqual([]);
+});
+
+test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum',
+      'el-i1', 'el-l1', 'el-i2', 'el-l2', 'el-w', 'el-s1', 'el-radio', 'el-g', 'el-rev', 'el-sum',
+      'mf-i1', 'mf-l1', 'mf-i2', 'mf-l2', 'mf-w', 'mf-s1', 'mf-radio', 'mf-g', 'mf-rev', 'mf-sum',
+      'mb-i1', 'mb-l1', 'mb-i2', 'mb-l2', 'mb-w', 'mb-s1', 'mb-radio', 'mb-g', 'mb-rev', 'mb-sum'];
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
@@ -1919,6 +1976,12 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=garden-plot][data-plant="sunflower"]')).toHaveAttribute('data-stage', 'seed');
   expect(Number(await garden.getByTestId('garden-balance').innerText())).toBeLessThan(before);
   await expect(garden.getByTestId('garden-free')).toHaveText('4');
+  // долгим растениям нужен полив: на пакетике — «поливать раз в 12 ч», на грядке — запас воды
+  await expect(garden.locator('[data-testid=garden-seed][data-plant="peony"] [data-testid=garden-seed-water]')).toContainText('поливать раз в 12 ч');
+  await expect(garden.locator('[data-testid=garden-seed][data-plant="sunflower"] [data-testid=garden-seed-water]')).toHaveCount(0);
+  await garden.locator('[data-testid=garden-seed][data-plant="peony"] [data-testid=garden-plant]').click();
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="peony"] [data-testid=garden-water]')).toContainText('12 ч');
+  await expect(garden.locator('[data-testid=garden-plot][data-plant="peony"] [data-testid=garden-pour]')).toHaveCount(0);
   await expectNoSidewaysScroll(page);
   // посадка сохранена в профиле: после перезагрузки подсолнух на месте
   await page.reload({ waitUntil: 'networkidle' });
@@ -2961,9 +3024,13 @@ test('учебник: калькулятор по полям а → б → в, �
   await done.getByTestId('tb-problem-expand').click();
   await expect(done).not.toHaveAttribute('data-collapsed', 'true');
   await expect(done.getByRole('textbox').first()).toBeVisible();
-  // развёрнутую — и свернуть обратно
+  // развёрнутую — и свернуть обратно: кнопкой вверху карточки и внизу, у «Решения»
   await done.getByTestId('tb-problem-collapse').click();
   await expect(done).toHaveAttribute('data-collapsed', 'true');
+  await done.getByTestId('tb-problem-expand').click();
+  await done.getByTestId('tb-problem-collapse-bottom').click();
+  await expect(done).toHaveAttribute('data-collapsed', 'true');
+  await expect(done).toBeInViewport();
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();
@@ -3072,6 +3139,60 @@ test('Путь: проверку пройденного юнита можно п
   await expect(page.getByTestId('lesson-result')).toContainText('Юнит не забыт');
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(page.getByTestId('path').locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"]:not([data-state="done"])')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('повторение: ошибку не снять тут же, карточка уходит «вернётся» или «выучено», Путь и учебник — одно повторение', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3 * 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({
+      problems: {
+        'pc-basic': { tries: 1, ok: false, box: 0, due: Date.now() - 1000, lastAt: at },
+        'sc-oc': { tries: 2, ok: true, box: 2, due: Date.now() - 1000, lastAt: at },
+      },
+      learn: { mistakes: [{ id: 'auto:pc-basic', at }, { id: 'auto:sc-oc', at }] },
+    }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await openTasks(page);
+  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  await page.getByTestId('practice-review').click();
+  const review = page.getByTestId('review');
+  await expect(review.getByTestId('review-item')).toHaveCount(2);
+  // термин в условии нажимается — определение прямо в тексте
+  const pc = review.locator('[data-testid=review-item][data-item="pc-basic"]');
+  await pc.locator('[data-term]').first().click();
+  await expect(pc.locator('.tb-def').first()).toBeVisible();
+  // ошибка — карточка остаётся; тут же верно — повторение не снято
+  const solve = async (vals) => {
+    const inputs = pc.getByRole('textbox');
+    for (let k = 0; k < vals.length; k += 1) await inputs.nth(k).fill(vals[k]);
+    await pc.getByRole('button', { name: 'Уверен', exact: true }).click();
+    await pc.getByRole('button', { name: 'Проверить' }).click();
+  };
+  await solve(['1', '2', '3']);
+  await expect(pc).toHaveAttribute('data-outcome', 'wrong');
+  await solve(['10', '300', '40']);
+  await expect(pc.getByTestId('tb-verdict')).toContainText('в этот раз была ошибка');
+  await expect(pc).toHaveAttribute('data-outcome', 'wrong');
+  await pc.getByTestId('review-dismiss').click();
+  await expect(pc.getByTestId('review-badge')).toContainText('через 2 дня');
+  await expect(pc).toHaveCount(0);
+  // последний шаг расписания — «Выучено», и карточка исчезает
+  const oc = review.locator('[data-testid=review-item][data-item="sc-oc"]');
+  await oc.getByRole('textbox').fill('3');
+  await oc.getByRole('button', { name: 'Уверен', exact: true }).click();
+  await oc.getByRole('button', { name: 'Проверить' }).click();
+  await expect(oc.getByTestId('review-badge')).toContainText('Выучено');
+  await expect(oc).toHaveCount(0);
+  await expect(review.getByTestId('review-tally')).toContainText('выучено: 1');
+  await expect(review.getByTestId('review-tally')).toContainText('отложено до следующего раза: 1');
+  await expect(review.getByTestId('review-empty')).toBeVisible();
+  // одно повторение: решённая в учебнике задача ушла и из ошибок Пути, нерешённая — осталась
+  await bookBack(page);
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   expect(errors).toEqual([]);
 });
 
@@ -3233,16 +3354,18 @@ test('«Мир» на компонентах дизайн-системы: тот
   await expect(world).toHaveAttribute('data-ds-theme', 'world');
   const w = await brandOf(world.getByTestId('brand'));
   expect(w.mark).toBe(true);
-  expect(w.font).toContain('PT Serif');
+  // заголовки — PT Sans (docs/world.md, «Один облик»)
+  expect(w.font).toContain('PT Sans');
   // кнопки меню — из ds.jsx; старая игровая кнопка осталась только у общего регулятора звука
   const old = await world.locator('button.ems-btn').count();
   expect(old).toBeLessThanOrEqual(1);
   expect(await world.locator('.ds-btn, .ds-card, .ds-chip').count()).toBeGreaterThan(4);
-  // основная кнопка на золоте «Мира» — тёмный текст, читается
+  // «Мир» по умолчанию светлый; основная кнопка на тёмном золоте — белый текст, читается
+  await expect(world).not.toHaveClass(/ds-dark/);
   const daily = world.getByTestId('daily-card');
   if (await daily.count()) {
     const c = await daily.locator('.ds-btn').first().evaluate((el) => getComputedStyle(el).color);
-    expect(c).toBe('rgb(27, 18, 4)');
+    expect(c).toBe('rgb(255, 255, 255)');
   }
   // приветствие — тот же знак и шрифт
   const p2 = await page.context().newPage();

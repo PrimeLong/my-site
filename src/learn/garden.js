@@ -9,12 +9,22 @@
    garden — посадки { время посадки (мс): 'растение@грядка' }, harvest — собранные
    { время посадки: когда собрали }. Что растёт на грядках, считается из этих двух таблиц.
    Продажа — монеты с ключом sell:<время посадки> (claimed): дважды не продать, и устройства
-   сходятся сами. Редкость урожая — из времени посадки, хранить её не нужно. */
+   сходятся сами. Редкость урожая — из времени посадки, хранить её не нужно.
+
+   ПОЛИВ. Растения, которые растут сутки и дольше, нужно поливать: при посадке грядку поливают, воды
+   хватает на WATER_HOURS часов, дальше земля сохнет и растение стоит — не растёт, но и не гибнет.
+   Полили — снова растёт ещё WATER_HOURS часов. Растёт только «влажное» время: сколько часов роста
+   нужно растению, столько часов оно должно простоять во влажной земле. water — поливы
+   { время полива (мс): время посадки }, слияние устройств — объединение. Растения, посаженные
+   до появления полива (WATER_SINCE), растут по-старому. */
 import { rateOn, balance, coinsWord, earn, hasClaim, hash01, weekDemand } from './rewards.js';
 import { dayOf } from '../textbook/learn-state.js';
 
 const HOUR = 3600000;
 export const GARDEN_PLOTS = 6;
+export const WATER_HOURS = 12;
+export const WATER_FROM_HOURS = 24;
+export const WATER_SINCE = Date.UTC(2026, 9, 12, 12);
 // редкость: подпись и цвет плашки (тёплая палитра docs/world.md)
 export const RARITY = {
   common: { title: 'обычное', color: '#4B692C' },
@@ -61,6 +71,11 @@ export function gradeOf(at) {
 }
 export const plantPrice = (id, day) => Math.ceil(PLANT_BY_ID[id].crowns * rateOn(day));
 export const growMs = (id) => PLANT_BY_ID[id].hours * HOUR;
+// поливать нужно растения, которые растут сутки и дольше
+export const needsWater = (id) => PLANT_BY_ID[id].hours >= WATER_FROM_HOURS;
+const watered = (g) => needsWater(g.plant) && g.at >= WATER_SINCE;
+// поливы растения: времена по порядку
+export const watersOf = (s, at) => Object.entries(s.water || {}).filter(([, v]) => String(v) === String(at)).map(([t]) => Number(t)).sort((a, b) => a - b);
 
 const parse = (v) => { const [plant, plot] = String(v).split('@'); return { plant, plot: Number(plot) }; };
 /* Посадки, которые ещё на грядках. Если на двух устройствах посадили в одну грядку, позднее
@@ -73,7 +88,8 @@ export function gardenPlots(s) {
   const overflow = [];
   growing.forEach((g) => {
     const want = Number.isInteger(g.plot) && g.plot >= 0 && g.plot < GARDEN_PLOTS && !plots[g.plot] ? g.plot : plots.findIndex((p) => !p);
-    if (want >= 0) plots[want] = { ...g, plot: want }; else overflow.push(g);
+    const w = watered(g) ? { waters: watersOf(s, g.at) } : {};
+    if (want >= 0) plots[want] = { ...g, plot: want, ...w }; else overflow.push({ ...g, ...w });
   });
   return { plots, overflow };
 }
@@ -81,11 +97,46 @@ export function gardenPlots(s) {
    назад — растение не растёт «в минус»: доля не меньше нуля. */
 export const STAGES = ['seed', 'sprout', 'bud', 'bloom'];
 export const STAGE_LABEL = { seed: 'семечко', sprout: 'росток', bud: 'бутон', bloom: 'цветёт' };
+const stageOf = (p) => (p >= 1 ? 'bloom' : p >= 0.6 ? 'bud' : p >= 0.15 ? 'sprout' : 'seed');
+/* Влажное время растения к моменту now: объединение отрезков [полив, полив + WATER_HOURS] (первый
+   полив — при посадке), обрезанное посадкой и now; wetUntil — до какого времени земля влажная. */
+export function wetTime(g, now = Date.now()) {
+  const W = WATER_HOURS * HOUR;
+  const starts = [g.at, ...(g.waters || []).filter((t) => t >= g.at)].sort((a, b) => a - b);
+  let wet = 0; let end = g.at;
+  starts.forEach((t) => {
+    const a = Math.max(t, end); const b = Math.min(t + W, now);
+    if (b > a) wet += b - a;
+    end = Math.max(end, t + W);
+  });
+  return { wet, wetUntil: end };
+}
+/* growth: p — доля роста, stage, ripe, left — сколько ещё расти (для поливаемых — влажных часов),
+   ripeAt — когда созреет, если не придётся поливать (null — без полива не дорастёт).
+   Поливаемые ещё: water — { left: на сколько хватит воды, dry: земля сухая, need: полить, чтобы дорасти }. */
 export function growth(g, now = Date.now()) {
   const total = growMs(g.plant);
-  const p = Math.max(0, Math.min(1, (now - g.at) / total));
-  const stage = p >= 1 ? 'bloom' : p >= 0.6 ? 'bud' : p >= 0.15 ? 'sprout' : 'seed';
-  return { p, stage, ripe: p >= 1, left: Math.max(0, g.at + total - now), ripeAt: g.at + total };
+  if (!watered(g)) {
+    const p = Math.max(0, Math.min(1, (now - g.at) / total));
+    return { p, stage: stageOf(p), ripe: p >= 1, left: Math.max(0, g.at + total - now), ripeAt: g.at + total };
+  }
+  const { wet, wetUntil } = wetTime(g, now);
+  const p = Math.max(0, Math.min(1, wet / total));
+  const left = Math.max(0, total - wet);
+  const waterLeft = Math.max(0, wetUntil - now);
+  const ripe = p >= 1;
+  return { p, stage: stageOf(p), ripe, left, ripeAt: ripe ? now : left <= waterLeft ? now + left : null,
+    water: { left: waterLeft, dry: !ripe && waterLeft <= 0, need: !ripe && left > waterLeft } };
+}
+// полить: воды снова на WATER_HOURS часов; созревшее и то, чему полив не нужен, не поливают
+export function water(s, at, now = Date.now()) {
+  const g = gardenPlots(s).plots.find((x) => x && x.at === at);
+  if (!g) return { s, ok: false, reason: 'На грядке ничего нет' };
+  if (!g.waters) return { s, ok: false, reason: `${PLANT_BY_ID[g.plant].title} полива не просит` };
+  const st = growth(g, now);
+  if (st.ripe) return { s, ok: false, reason: 'Уже созрело — соберите' };
+  let t = now; while ((s.water || {})[t]) t += 1;
+  return { s: { ...s, water: { ...s.water, [t]: String(at) } }, ok: true, wasDry: st.water.dry };
 }
 // «ещё 3 ч 20 мин», «ещё 2 дн 4 ч», «ещё 12 мин»; short — для грядки: без «ещё», от трёх часов — без минут
 export function leftText(ms, { short = false } = {}) {

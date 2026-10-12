@@ -234,7 +234,7 @@ export function Welcome({ initialScreen = 'hello', onCancel = null }) {
   const [plan, setPlan] = useState(() => loadOnboarding() || { goal: null, minutes: null, knows: false });
   const go = (s) => { setScreen(s); window.scrollTo(0, 0); };
   return (
-    <DsRoot theme={dsThemeId()} page accent="#86461F">
+    <DsRoot theme={dsThemeId()} page accent="#C2490B">
       <ArtStyle />
       <style>{CSS}</style>
       {screen === 'hello' && <Hello go={go} />}

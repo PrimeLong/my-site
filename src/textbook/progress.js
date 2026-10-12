@@ -42,8 +42,20 @@ export function loadProgress() {
     return normalizeTextbook(JSON.parse(localStorage.getItem(TEXTBOOK_PROGRESS_KEY) || 'null'));
   } catch { return emptyProgress(); }
 }
+/* Учебник и Путь держат по своей копии прогресса в памяти, а пишут в одно хранилище. Каждое
+   изменение — поверх сохранённого (latestProgress), иначе один экран затрёт то, что записал
+   другой; после записи остальным копиям приходит событие PROGRESS_EVENT с записанным прогрессом. */
+export const PROGRESS_EVENT = 'ems-progress';
 export function saveProgress(p) {
   try { localStorage.setItem(TEXTBOOK_PROGRESS_KEY, JSON.stringify(p)); } catch { /* приватный режим */ }
+  if (typeof window !== 'undefined' && window.dispatchEvent) setTimeout(() => window.dispatchEvent(new CustomEvent(PROGRESS_EVENT, { detail: p })), 0);
+  return p;
+}
+export function latestProgress(p) {
+  try {
+    const raw = localStorage.getItem(TEXTBOOK_PROGRESS_KEY);
+    if (raw) return normalizeTextbook(JSON.parse(raw));
+  } catch { /* приватный режим — только копия в памяти */ }
   return p;
 }
 
@@ -147,8 +159,9 @@ export function mergeTextbook(a, b) {
 }
 
 /* Расписание после ответа. Переносит повторение дальше только верный самостоятельный ответ
-   в день повторения (или позже). Верный ответ до срока — например, сразу после того как
-   открыли решение, — расписание не трогает: ничего не изменилось. Верный ответ с
+   в день повторения (или позже). Верный ответ до срока — например, сразу после ошибки или
+   после того как открыли решение, — расписание не трогает и решённой задачу не делает:
+   ошибся — докажите через 2 дня (recordAnswer оставляет ok прежним). Верный ответ с
    подсмотренным решением засчитывается, но задача всё равно вернётся через 2 дня.
    Неверный — в первую коробку, через 2 дня. */
 export function scheduleAfter(prev, correct, now = Date.now(), { sawSolution = false } = {}) {
@@ -166,12 +179,14 @@ export function scheduleAfter(prev, correct, now = Date.now(), { sawSolution = f
 // ответ на задачу: обновляет счёт и расписание повторения
 export function recordAnswer(p, problemId, correct, now = Date.now(), opts = {}) {
   const prev = p.problems[problemId] || { tries: 0, ok: false, box: null, due: null };
-  const { box, due } = scheduleAfter(prev, correct, now, opts);
+  const { box, due, why } = scheduleAfter(prev, correct, now, opts);
   const c = { cn: prev.cn || 0, cok: prev.cok || 0, un: prev.un || 0, uok: prev.uok || 0 };
   if (opts.confident === true) { c.cn += 1; if (correct) c.cok += 1; }
   if (opts.confident === false) { c.un += 1; if (correct) c.uok += 1; }
   const conf = c.cn || c.un ? c : {};
-  return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok: !!correct, box, due, lastAt: now, ...conf } } };
+  // верно до срока после ошибки — не «решена»: повтор остаётся, и засчитают его в свой день
+  const ok = why === 'early' ? !!prev.ok : !!correct;
+  return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok, box, due, lastAt: now, ...conf } } };
 }
 
 // точность уверенных и неуверенных ответов по списку задач

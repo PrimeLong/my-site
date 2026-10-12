@@ -156,10 +156,17 @@ export function parseBlocks(text) {
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
         if (kind && !LESSON_KINDS.includes(kind)) throw new Error(`Неизвестный вид урока ${kind} в ${attrs.id}`);
         const wordLines = kind === 'words' ? body.filter((l) => /^-\s/.test(l.trim())) : [];
-        // «- термин: определение | пример» — пример только на карточке колоды, не в плитках и парах
+        // «- термин: определение | пример» — пример только на карточке колоды, не в плитках и парах.
+        // «/» в определении — границы плиток; «~ …» — другой верный порядок тех же плиток
         const terms = wordLines.map((l) => {
           const t = l.trim().slice(2); const k = t.indexOf(':'); const def = t.slice(k + 1); const bar = def.indexOf('|');
-          return { term: t.slice(0, k).trim(), text: (bar < 0 ? def : def.slice(0, bar)).trim(), ...(bar < 0 ? {} : { example: def.slice(bar + 1).trim() }) };
+          const term = t.slice(0, k).trim();
+          const orders = (bar < 0 ? def : def.slice(0, bar)).split(/\s~\s/).map((o) => o.split('/').map((x) => x.trim()).filter(Boolean));
+          const key = (o) => [...o].sort().join('\n');
+          if (orders.some((o) => key(o) !== key(orders[0]))) throw new Error(`В слове ${term}: порядки после «~» — из тех же плиток`);
+          const tiled = orders[0].length > 1;
+          return { term, text: orders[0].join(' '), ...(tiled ? { tiles: orders[0], ...(orders.length > 1 ? { orders: orders.slice(1) } : {}) } : {}),
+            ...(bar < 0 ? {} : { example: def.slice(bar + 1).trim() }) };
         });
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), hard: split(hard),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),

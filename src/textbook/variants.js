@@ -478,6 +478,21 @@ T.push({ id: 'v-mb-mult', chapter: 'money-banks', level: 1, source: 'mb-cash', g
     check: ([x, M]) => { const D = k.B / (k.cr + k.rr); return near(M, k.cr * D + D, 1e-3) && near(x, M / k.B, 1e-3); },
   };
 } });
+// вклад наличными: денежная масса растёт меньше вкладов — наличные уже были деньгами
+T.push({ id: 'v-mb-deposit', chapter: 'money-banks', level: 2, source: 'mb-deposit', gen: (rand) => {
+  const k = { X: ri(rand, 500, 5000, 500), rr: pick(rand, [0.05, 0.1, 0.2, 0.25]) };
+  const dM = k.X / k.rr - k.X;
+  return {
+    statement: `Человек положил в банк ${k.X} руб. наличными, которые держал дома. Норма резервов ${f(k.rr * 100)}%, наличных люди больше не держат, банки выдают в кредит всё сверх обязательных резервов, и все кредиты возвращаются в банки вкладами. На сколько самое большее вырастет денежная масса?`,
+    parts: [{ answer: dM, tol: 0, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: k.X / k.rr, text: `Это рост вкладов. Но наличные ${k.X} руб. уже были деньгами — они стали резервами и ушли из денежной массы.` },
+      { part: 0, value: k.X * (1 - k.rr), text: 'Это только первый кредит. Он вернётся вкладом, с него выдадут новый — и так по цепочке.' },
+    ],
+    solution: `Вклады вырастут на $${k.X}/${m(k.rr)} = ${m(k.X / k.rr)}$, наличные у людей уменьшатся на ${k.X}: денежная масса вырастет на $${m(k.X / k.rr)} - ${k.X} = ${m(dM)}$ руб.`,
+    check: ([x]) => near(x + k.X, k.X / k.rr),
+  };
+} });
 T.push({ id: 'v-mb-qty', chapter: 'money-banks', level: 2, source: 'mb-qty-growth', gen: (rand) => {
   const k = draw(rand, () => ({ gm: ri(rand, 5, 30), gy: ri(rand, 1, 6) }), ({ gm, gy }) => gm > gy + 1 && differs(gm - gy, ((1 + gm / 100) / (1 + gy / 100) - 1) * 100, DEC));
   const pi = ((1 + k.gm / 100) / (1 + k.gy / 100) - 1) * 100;

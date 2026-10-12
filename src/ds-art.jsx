@@ -56,11 +56,11 @@ export const ART_CSS = `
   .ds-level-n { font-size: 12.5px; font-weight: 700; color: var(--ds-ink2); min-width: 34px; text-align: right; }
   .ds-infla { display: inline-block; transform-origin: 50% 90%; transition: transform .45s cubic-bezier(.34,1.45,.5,1); }
   .ds-infla.deflate { transition: transform 1s cubic-bezier(.25,.8,.3,1); }
-  .ds-clip { position: relative; background: #F7F1E1; color: #1F1C17; padding: 18px 18px 20px; font-family: var(--ds-serif);
+  .ds-clip { position: relative; background: #F7F1E1; color: #1F1C17; padding: 18px 18px 20px; font-family: var(--ds-news);
     clip-path: polygon(0 3%, 4% 0, 9% 2%, 15% 0, 22% 2.5%, 30% 0, 38% 2%, 47% 0, 55% 2.5%, 63% 0, 71% 2%, 79% 0, 87% 2.5%, 94% 0, 100% 2%,
       100% 97%, 95% 100%, 88% 97.5%, 80% 100%, 72% 98%, 64% 100%, 56% 97.5%, 48% 100%, 40% 98%, 31% 100%, 23% 97.5%, 15% 100%, 7% 98%, 0 100%); }
   .ds-dark .ds-clip { background: #2B2A25; color: #EDE6D3; }
-  .ds-clip-mast { text-align: center; font: 700 12.5px/1.2 var(--ds-serif); letter-spacing: .22em; text-transform: uppercase; padding-bottom: 6px; border-bottom: 3px double currentColor; margin-bottom: 4px; }
+  .ds-clip-mast { text-align: center; font: 700 12.5px/1.2 var(--ds-news); letter-spacing: .22em; text-transform: uppercase; padding-bottom: 6px; border-bottom: 3px double currentColor; margin-bottom: 4px; }
   .ds-clip-meta { display: flex; justify-content: space-between; font: 12px/1.3 var(--ds-mono); opacity: .75; margin-bottom: 12px; }
   .ds-postage { display: inline-block; padding: 7px; background-color: var(--ds-card);
     background-image: radial-gradient(circle, var(--ds-paper) 3.2px, transparent 3.6px); background-size: 12px 12px; background-position: -6px -6px; filter: drop-shadow(0 1px 1px var(--ds-shade)); }
@@ -138,7 +138,7 @@ export function Stamp({ text = 'ПРОЙДЕНО', center = null, color = 'var(-
           <circle cx="50" cy="50" r="47" fill="none" stroke="currentColor" strokeWidth="3" />
           <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" strokeWidth="0.8" />
           <circle cx="50" cy="50" r="29.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-          <text fill="currentColor" fontFamily="var(--ds-serif)" fontWeight="700" fontSize={fontSize} dominantBaseline="middle">
+          <text fill="currentColor" fontFamily="var(--ds-head)" fontWeight="700" fontSize={fontSize} dominantBaseline="middle">
             <textPath href={`#${id}`} startOffset="0" textLength={STAMP_C - 0.5} lengthAdjust={squeeze ? 'spacingAndGlyphs' : 'spacing'}>{unit.repeat(reps).trim()} ★</textPath>
           </text>
           {typeof center === 'string' || typeof center === 'number'
@@ -198,7 +198,7 @@ export function PostStamp({ color, value, caption, children, dim = false, testid
       <span className="ds-postage-in" style={{ display: 'block', width: 92 }}>
         {value != null && <span className="ds-num" style={{ position: 'absolute', top: 3, left: 5, fontSize: 12, fontWeight: 700, color: ink }}>{value}</span>}
         <span style={{ display: 'block', minHeight: 62, opacity: dim ? 0.45 : 1, filter: dim ? 'grayscale(1)' : undefined }}>{children}</span>
-        <span style={{ display: 'block', font: '700 12px/1.2 var(--ds-serif)', letterSpacing: '.04em', textTransform: 'uppercase', color: ink, marginTop: 2 }}>{caption}</span>
+        <span style={{ display: 'block', font: '700 12px/1.2 var(--ds-head)', letterSpacing: '.04em', textTransform: 'uppercase', color: ink, marginTop: 2 }}>{caption}</span>
       </span>
     </span>
   );
