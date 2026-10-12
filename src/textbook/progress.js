@@ -42,8 +42,20 @@ export function loadProgress() {
     return normalizeTextbook(JSON.parse(localStorage.getItem(TEXTBOOK_PROGRESS_KEY) || 'null'));
   } catch { return emptyProgress(); }
 }
+/* Учебник и Путь держат по своей копии прогресса в памяти, а пишут в одно хранилище. Каждое
+   изменение — поверх сохранённого (latestProgress), иначе один экран затрёт то, что записал
+   другой; после записи остальным копиям приходит событие PROGRESS_EVENT с записанным прогрессом. */
+export const PROGRESS_EVENT = 'ems-progress';
 export function saveProgress(p) {
   try { localStorage.setItem(TEXTBOOK_PROGRESS_KEY, JSON.stringify(p)); } catch { /* приватный режим */ }
+  if (typeof window !== 'undefined' && window.dispatchEvent) setTimeout(() => window.dispatchEvent(new CustomEvent(PROGRESS_EVENT, { detail: p })), 0);
+  return p;
+}
+export function latestProgress(p) {
+  try {
+    const raw = localStorage.getItem(TEXTBOOK_PROGRESS_KEY);
+    if (raw) return normalizeTextbook(JSON.parse(raw));
+  } catch { /* приватный режим — только копия в памяти */ }
   return p;
 }
 

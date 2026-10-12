@@ -23,7 +23,8 @@ import { track } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
-import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
+import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
+import { afterPathAnswer } from './textbook/review-sync.js';
 import {
   UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
@@ -275,15 +276,24 @@ function useLearn() {
   const playerId = useMemo(getPlayerId, []);
   const timer = useRef(null);
   // opts.settle — после изменения выдать всё выполненное: задания дня, печати, бонусы серии
+  // opts.whole — fn получает весь прогресс (с задачами учебника), а не только Путь
   const update = (fn, opts = {}) => {
-    setProgress((p) => {
+    setProgress((mem) => {
+      const p = latestProgress(mem);
+      if (opts.whole) { const next = fn(p); return next === p ? mem : saveProgress(next); }
       let learn = fn(p.learn);
       if (opts.settle) learn = settle(learn, courseCtx(learn)).s;
-      return learn === p.learn ? p : saveProgress({ ...p, learn });
+      return learn === p.learn ? mem : saveProgress({ ...p, learn });
     });
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { timer.current = null; syncProfile(playerId).catch(() => {}); }, 2000);
   };
+  // учебник записал прогресс (ответ снял ошибку с повторения Пути) — перечитываем
+  useEffect(() => {
+    const reload = (e) => { if (e.detail) setProgress((p) => (p === e.detail ? p : e.detail)); };
+    window.addEventListener(PROGRESS_EVENT, reload);
+    return () => window.removeEventListener(PROGRESS_EVENT, reload);
+  }, []);
   useEffect(() => {
     let alive = true;
     syncProfile(playerId).then((pf) => { if (alive && pf) setProgress(loadProgress()); }).catch(() => {});
@@ -699,6 +709,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       if (run.mode === 'practice') update((s) => resolveMistake(s, baseId));
       // решено с подсказкой — невидимо уходит в «Повторение» пораньше; без подсказки — снимается
       update((s) => (a.hinted[orig] ? addHinted(s, baseId) : clearHinted(s, baseId)));
+      // та же задача ждёт повторения в учебнике — это и есть её повторение (review-sync.js)
+      if (!a.hinted[orig]) update((p) => afterPathAnswer(p, baseId), { whole: true });
       if (firstTime) setRun3((n) => n + 1);
       Audio.play('coin'); vibrate(15);
     } else {

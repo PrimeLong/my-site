@@ -2968,7 +2968,7 @@ test('учебник: калькулятор по полям а → б → в, �
   await done.getByTestId('tb-problem-expand').click();
   await expect(done).not.toHaveAttribute('data-collapsed', 'true');
   await expect(done.getByRole('textbox').first()).toBeVisible();
-  // развёрнутую — и свернуть обратно
+  // развёрнутую — и свернуть обратно: кнопкой вверху карточки и внизу, у «Решения»
   await done.getByTestId('tb-problem-collapse').click();
   await expect(done).toHaveAttribute('data-collapsed', 'true');
   await done.getByTestId('tb-problem-expand').click();

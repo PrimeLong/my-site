@@ -21,7 +21,8 @@ import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, p
 import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
-import { loadProgress, saveProgress, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
+import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
+import { afterBookAnswer } from './textbook/review-sync.js';
 import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
 import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
 import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
@@ -1485,7 +1486,7 @@ function ReviewPanel({ ctx, due }) {
     <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="review">
       <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 4 }}>На повторение{left.length ? ` · ${left.length}` : ''}</div>
       <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 6 }}>
-        Задачи с неверным ответом и вопросы разделов, где ответ не совпал, возвращаются через 2 дня; верно на повторении — следующий раз через 5, потом через 12 дней, и вопрос уходит из списка.
+        Задачи с неверным ответом и вопросы разделов, где ответ не совпал, возвращаются через 2 дня; верно на повторении — следующий раз через 5, потом через 12 дней, и вопрос уходит из списка. Те же задачи на Пути — одно повторение: решили там — уходят и отсюда.
       </div>
       {(learned > 0 || moved > 0) && (
         <div className="rv-tally" data-testid="review-tally">
@@ -1994,8 +1995,14 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
       syncProfile(playerId);
     };
   }, [playerId]);
+  // другой экран (Путь) записал прогресс — перечитываем свою копию
+  React.useEffect(() => {
+    const reload = (e) => { if (e.detail) setProgress((p) => (p === e.detail ? p : e.detail)); };
+    window.addEventListener(PROGRESS_EVENT, reload);
+    return () => window.removeEventListener(PROGRESS_EVENT, reload);
+  }, []);
   const update = (fn) => {
-    setProgress((p) => { const next = fn(p); return next === p ? p : saveProgress(next); });
+    setProgress((mem) => { const p = latestProgress(mem); const next = fn(p); return next === p ? mem : saveProgress(next); });
     if (syncTimer.current) clearTimeout(syncTimer.current);
     syncTimer.current = setTimeout(() => { syncTimer.current = null; syncProfile(playerId); }, 2000);
   };
@@ -2075,7 +2082,12 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
   const embedded = !!onExit || asTab;
   const ctx = {
     progress, go, back, embedded, prev: stack[stack.length - 1] || null, onOpenLab, onStartDrill, onOpenTycoon, onOpenScenario,
-    onAnswer: (id, ok, opts) => update((p) => recordAnswer(p, id, ok, Date.now(), opts)),
+    // ответ в учебнике; засчитанный — снимает ту же задачу и с повторения Пути (review-sync.js)
+    onAnswer: (id, ok, opts) => update((p) => {
+      const now = Date.now();
+      const { why } = scheduleAfter(p.problems[id], ok, now, opts);
+      return afterBookAnswer(recordAnswer(p, id, ok, now, opts), id, ok, why);
+    }),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
     reportFlag,
   };
