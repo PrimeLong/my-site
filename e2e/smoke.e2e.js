@@ -1478,7 +1478,7 @@ test('путь: карточка урока, «Знакомство» шагам
     .toEqual(['start:open', 'basic:locked', 'middle:locked', 'advanced:soon', 'pro:soon']);
   await expect(picker.getByTestId('level-pick-test')).toHaveCount(1);
   await expect(picker.locator('[data-testid=level-pick][data-level="basic"]')).toContainText('тест по уровню «Начальный»');
-  await expect(picker.locator('[data-testid=level-pick][data-level="basic"]')).toContainText('Рынок · Кофейня · Порт · Гастроном');
+  await expect(picker.locator('[data-testid=level-pick][data-level="basic"]')).toContainText('Рынок · Кофейня · Порт · Банк · Гастроном');
   await expect(picker.locator('[data-testid=level-pick][data-level="middle"]')).toContainText('сначала откройте уровень «Базовый»');
   await expect(picker.locator('[data-testid=level-pick][data-level="advanced"]')).toContainText('строится');
   await expectNoSidewaysScroll(page);
@@ -3051,8 +3051,8 @@ test('Путь: открывается на рекомендованном ур�
   const rec = path.locator('[data-testid=path-lesson][data-rec="true"]');
   await expect(rec).toHaveAttribute('data-lesson', 'sd-w');
   await expect(rec).toBeInViewport();
-  // на экране — юниты текущего уровня (Базовый: четыре юнита); плашка уровня закреплена наверху и видна рядом с уроком
-  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['supply-demand', 'elasticity', 'market-failures', 'inflation']);
+  // на экране — юниты текущего уровня (Базовый: пять юнитов); плашка уровня закреплена наверху и видна рядом с уроком
+  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation']);
   const plate = path.getByTestId('level-switch');
   await expect(plate).toBeInViewport();
   await expect(plate).toContainText('Базовый');
