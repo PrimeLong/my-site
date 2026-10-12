@@ -1,7 +1,7 @@
 // Исправленные жалобы учеников: каждая — проверка, чтобы ошибка не вернулась
 import { describe, it, expect } from 'vitest';
 import { parseBlocks } from '../../textbook/markdown.js';
-import { EXERCISES, LESSONS } from '../course.js';
+import { EXERCISES, LESSONS, instantiate, check } from '../course.js';
 import { makeVariant } from '../../textbook/variants.js';
 
 // все строки-тексты разобранного узла: формулы ($…$) в них уже вынесены в узлы math
@@ -289,5 +289,25 @@ describe('жалобы из выгрузки: формула шага урока
     expect(missing).toEqual([]);
     const opt = LESSONS.flatMap((l) => l.inner).find((c) => c.idea.id === 'mf-i2-d-opt').idea;
     expect(opt.remember).toBe('P = MC + \\text{ущерб с единицы}');
+  });
+});
+
+describe('жалобы из выгрузки: плитки с двумя верными порядками (mv5dk28k)', () => {
+  it('«из-за налога» не отрывается от «которые»: второго верного порядка нет', () => {
+    const ex = EXERCISES['mf-w:tiles:deadweight'];
+    expect(ex.solution).toEqual(['выгода от сделок,', 'которые из-за налога', 'не состоялись:', 'её не получил никто']);
+  });
+  it('другой верный порядок, названный автором после «~», засчитывается', () => {
+    const inst = instantiate(EXERCISES['cs-w:tiles:indifference'], () => 0.3);
+    const key = (txt) => inst.tiles.find((t) => t.text === txt).key;
+    expect(check(inst, ['наборы,', 'одинаково хорошие', 'для человека'].map(key)).ok).toBe(true);
+    expect(check(inst, ['наборы,', 'для человека', 'одинаково хорошие'].map(key)).ok).toBe(true);
+    expect(check(inst, ['для человека', 'наборы,', 'одинаково хорошие'].map(key)).ok).toBe(false);
+  });
+  it('у каждой плитки «Слов» — разметка автора, порядок после «~» — из тех же плиток', () => {
+    const tiles = Object.values(EXERCISES).filter((e) => e.kind === 'tiles');
+    expect(tiles.length).toBeGreaterThan(0);
+    tiles.forEach((e) => expect(e.solution.length, e.id).toBeGreaterThanOrEqual(3));
+    expect(() => parseBlocks(':::idea id=x-w kind=words title="Слова"\nСлова.\n- demand: сколько / покупатели ~ сколько / продавцы\n:::')).toThrow(/из тех же плиток/);
   });
 });

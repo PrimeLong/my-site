@@ -125,7 +125,7 @@ function fromBlock(b) {
     case 'calc': return b.variant ? { ...e, variant: b.variant } : { ...e, answer: b.answer, tol: b.tol, unit: b.unit, traps: b.traps, ...(b.units ? { units: b.units } : {}), ...(b.source ? { source: b.source } : {}), ...(b.vary ? { vary: b.vary } : {}) };
     case 'shift': return { ...e, chart: b.chart, chartAttrs: b.chartAttrs, answer: b.answer, choices: b.choices || shiftChoices(b.chart), traps: b.traps };
     case 'news': return { ...e, headline: b.headline, vars: b.vars, expect: b.expect };
-    case 'tiles': return { ...e, solution: b.solution, extra: b.extra };
+    case 'tiles': return { ...e, solution: b.solution, extra: b.extra, ...(b.orders ? { orders: b.orders } : {}) };
     case 'curve': return { ...e, market: b.market, answer: b.answer, only: b.only, traps: b.traps };
     case 'price': return { ...e, market: b.market, start: b.start };
     case 'point': return { ...e, market: b.market };
@@ -140,9 +140,10 @@ function fromGame(g) {
     chart: g.chart || null, ...(g.market ? { market: g.market } : {}) };
 }
 /* «Слова»: упражнения из слов урока — определение из плиток (первые три слова), пары «термин —
-   определение» на время (по четыре) и «какой это термин?» для остальных. Плитки — по два
-   слова определения; лишние плитки берутся из определения соседнего слова. */
-const chunk = (textStr) => { const w = textStr.split(/\s+/); const out = []; for (let k = 0; k < w.length; k += 2) out.push(w.slice(k, k + 2).join(' ')); return out; };
+   определение» на время (по четыре) и «какой это термин?» для остальных. Плитки размечает автор
+   («/» в определении) так, чтобы другого верного порядка не было, а если он есть — указывает его
+   после «~»; лишние плитки — первые две плитки определения соседнего слова. */
+const pairsOf = (textStr) => { const w = textStr.split(/\s+/); const out = []; for (let k = 0; k < w.length; k += 2) out.push(w.slice(k, k + 2).join(' ')); return out; };
 const termName = (id) => { if (!GLOSSARY[id]) throw new Error(`Нет термина ${id} в словаре`); return GLOSSARY[id].title; };
 function wordsExercises(lessonId, terms) {
   const out = [];
@@ -153,8 +154,9 @@ function wordsExercises(lessonId, terms) {
     const own = wordsOf(t.text);
     const other = terms.slice(k + 1).concat(terms.slice(0, k)).find((o) => ![...wordsOf(o.text)].some((w) => own.has(w)));
     if (!other) throw new Error(`Для плиток «${t.term}» нет слова без общих слов`);
+    if (!t.tiles) throw new Error(`Плитки «${t.term}»: разметьте определение «/» (${lessonId})`);
     out.push({ id: `${lessonId}:tiles:${t.term}`, kind: 'tiles', prompt: parseBlocks(`Соберите из плиток определение: **${termName(t.term)}**.`), explain: null,
-      solution: chunk(t.text), extra: chunk(other.text).slice(0, 2) });
+      solution: t.tiles, extra: (other.tiles || pairsOf(other.text)).slice(0, 2), ...(t.orders ? { orders: t.orders } : {}) });
   });
   for (let k = 0; k + 4 <= terms.length; k += 4) {
     const group = terms.slice(k, k + 4).map((t) => termName(t.term));
@@ -291,7 +293,9 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
     case 'tiles': {
       const sol = ex.solution.map((t, k) => ({ key: `t${k}`, text: t }));
       const extra = ex.extra.map((t, k) => ({ key: `x${k}`, text: t }));
-      return { ...base, tiles: shuffle([...sol, ...extra], rand), solution: sol.map((t) => t.key) };
+      // верный ответ сверяем текстом: подходит и другой порядок, названный автором
+      const answers = [ex.solution, ...(ex.orders || [])].map((o) => o.join(' '));
+      return { ...base, tiles: shuffle([...sol, ...extra], rand), solution: sol.map((t) => t.key), answers };
     }
     case 'curve': return { ...base, market: ex.market, answer: ex.answer, only: ex.only || null, traps: ex.traps || [], step: CURVE_STEP };
     case 'price': { const eq = equilibrium(ex.market); return { ...base, market: ex.market, start: ex.start, answer: Math.round(eq.p * 100) / 100 }; }
@@ -335,7 +339,12 @@ export function check(inst, resp) {
       return { ok: resp === inst.answer, why: resp !== inst.answer && tr ? tr.why : null };
     }
     case 'news': return { ok: !!resp && inst.vars.every((v) => resp[v.key] === inst.expect[v.key]), why: null };
-    case 'tiles': return { ok: Array.isArray(resp) && resp.length === inst.solution.length && resp.every((k, i) => k === inst.solution[i]), why: null };
+    case 'tiles': {
+      const said = Array.isArray(resp) ? resp.map((k) => (inst.tiles.find((t) => t.key === k) || {}).text).join(' ') : '';
+      // у урока, сохранённого до появления answers, — только порядок автора
+      const answers = inst.answers || [inst.solution.map((k) => (inst.tiles.find((t) => t.key === k) || {}).text).join(' ')];
+      return { ok: answers.includes(said), why: null };
+    }
     case 'curve': {
       // сдвинуть нужно одну кривую и в нужную сторону; вторая остаётся на месте
       const moved = ['D', 'S'].filter((k) => resp && resp[k]);
