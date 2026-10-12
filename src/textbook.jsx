@@ -29,6 +29,7 @@ import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
 import { formulaSymbols } from './textbook/symbols.js';
 import { plural } from './lib/plural.js';
 import { markTerms } from './learn/terms.js';
+import { StatTile, Meter, DayBars, STATS_CSS } from './learn-stats.jsx';
 
 const LEVER_BY_ID = Object.fromEntries(LEVERS.map((l) => [l.id, l]));
 const DRILL_BY_ID = Object.fromEntries(DRILLS.map((d) => [d.id, d]));
@@ -1693,23 +1694,15 @@ function MixedPage({ ctx }) {
 
 /* МОЙ ПРОГРЕСС: разделы, точность уверенных и неуверенных ответов, три слабые темы со
    ссылками и журнал занятий — дни и минуты за четыре недели, без серий и штрафов. */
-const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+/* Журнал занятий: минуты в учебнике по дням за четыре недели — столбиками (src/learn-stats.jsx). */
 function Journal({ days }) {
-  const weeks = journalWeeks(days);
+  const cells = journalWeeks(days).flat();
   const sum = journalSummary(days);
-  const shade = (m) => (m <= 0 ? 'transparent' : m < 10 ? 'rgba(80,160,150,.35)' : m < 30 ? 'rgba(80,160,150,.65)' : COLOR.teal);
+  const today = cells.filter((c) => !c.future).pop();
   return (
     <div data-testid="tb-journal">
-      <div style={{ fontSize: 13, marginBottom: 8 }}>За четыре недели: занимались <b>{sum.days}</b> {plural(sum.days, 'день', 'дня', 'дней')}, всего <b>{sum.minutes}</b> мин.</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 36px))', gap: 4 }}>
-        {WEEKDAYS.map((d) => <span key={d} style={{ fontSize: 12, color: COLOR.faint, textAlign: 'center' }}>{d}</span>)}
-        {weeks.flat().map((c) => (
-          <span key={c.key} title={`${c.key}: ${c.minutes} мин`} data-minutes={c.minutes}
-            style={{ height: 26, border: `1px solid ${c.future ? 'transparent' : COLOR.hairline}`, background: shade(c.minutes), fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.minutes >= 30 ? COLOR.bg : COLOR.muted }}>
-            {c.minutes > 0 ? c.minutes : ''}
-          </span>
-        ))}
-      </div>
+      <div style={{ fontSize: 13.5, marginBottom: 2 }}>За четыре недели: занимались <b>{sum.days}</b> {plural(sum.days, 'день', 'дня', 'дней')}, всего <b>{sum.minutes}</b> мин.</div>
+      <DayBars days={cells.map((c) => ({ key: c.key, minutes: c.minutes, today: today && c.key === today.key, future: c.future }))} tone="var(--c-teal, #2E7D5B)" />
     </div>
   );
 }
@@ -1719,25 +1712,37 @@ function StatsPage({ ctx }) {
   const conf = confidenceStats(ctx.progress, Object.keys(PROBLEMS));
   const weak = weakTopics(ctx.progress);
   const pct = (x) => (x.n ? `${Math.round((x.ok / x.n) * 100)}%` : '—');
+  const ids = Object.keys(PROBLEMS);
+  const solved = ids.filter((id) => (ctx.progress.problems[id] || {}).ok).length;
+  const due = dueItems(ctx.progress).length;
+  const read = ready.filter((c) => ctx.progress.read[c.id]).length;
   return (
     <div data-testid="stats">
       <PageNav ctx={ctx} />
       <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 12px', fontWeight: 700 }}>Мой прогресс</h1>
-      <div className="ems-panel" style={{ padding: 14, marginBottom: 14, fontSize: 13.5, lineHeight: 1.65 }}>
-        <div>Разделов пройдено: <b>{secs.done}</b> из {secs.total}</div>
-        <div data-testid="stats-confidence">
-          Уверенные ответы: {conf.sure.n ? <>верно <b>{conf.sure.ok}</b> из {conf.sure.n} ({pct(conf.sure)})</> : 'пока нет'}
-          {' · '}неуверенные: {conf.unsure.n ? <>верно <b>{conf.unsure.ok}</b> из {conf.unsure.n} ({pct(conf.unsure)})</> : 'пока нет'}
-        </div>
-        {conf.sure.n >= 5 && conf.sure.ok / conf.sure.n < 0.7 && <div style={{ color: COLOR.muted, fontSize: 12.5 }}>Уверенные ответы верны реже чем в 70% случаев — стоит чаще открывать решения и перечитывать разделы.</div>}
+      <div className="st-grid four" style={{ marginBottom: 14 }}>
+        <StatTile icon={BookOpen} tone="var(--c-blue, #3E6FA8)" label="Глав прочитано" value={`${read} из ${ready.length}`} />
+        <StatTile icon={Check} tone="var(--c-teal, #2E7D5B)" label="Задач решено" value={solved} sub={`из ${ids.length}`} testid="stats-solved" />
+        <StatTile icon={RotateCcw} tone="var(--c-rust, #A0522D)" label="На повторение" value={due} sub="подошёл срок" />
+        <StatTile icon={ListChecks} tone="var(--c-gold, #B8860B)" label="Разделов пройдено" value={secs.done} sub={`из ${secs.total}`} />
+      </div>
+      <div className="ems-panel" style={{ padding: 14, marginBottom: 14 }} data-testid="stats-confidence">
+        <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 2 }}>Можно ли себе доверять</div>
+        <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.5 }}>Перед ответом вы отмечаете «уверен» или «не уверен». Уверенные ответы должны быть верны почти всегда.</div>
+        <Meter label="Уверенные ответы" share={conf.sure.n ? conf.sure.ok / conf.sure.n : null} tone="var(--c-teal, #2E7D5B)"
+          text={conf.sure.n ? <>верно <b>{conf.sure.ok}</b> из {conf.sure.n} ({pct(conf.sure)})</> : 'пока нет'} />
+        <Meter label="Неуверенные" share={conf.unsure.n ? conf.unsure.ok / conf.unsure.n : null} tone="var(--c-blue, #3E6FA8)"
+          text={conf.unsure.n ? <>неуверенные: верно <b>{conf.unsure.ok}</b> из {conf.unsure.n} ({pct(conf.unsure)})</> : 'пока нет'} />
+        {conf.sure.n >= 5 && conf.sure.ok / conf.sure.n < 0.7 && <div style={{ color: COLOR.muted, fontSize: 12.5, marginTop: 6 }}>Уверенные ответы верны реже чем в 70% случаев — стоит чаще открывать решения и перечитывать разделы.</div>}
       </div>
       <div className="ems-panel" style={{ padding: 14, marginBottom: 14 }} data-testid="stats-weak">
         <div className="ems-serif" style={{ fontSize: 16, color: COLOR.goldSoft, marginBottom: 6 }}>Слабые темы</div>
         {weak.length === 0 && <div style={{ fontSize: 13 }}>Пока не видно: нужно хотя бы по два ответа в главе, и среди них ошибки.</div>}
         {weak.map((t) => (
-          <div key={t.chapter} style={{ fontSize: 13.5, marginBottom: 4 }}>
-            <button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: t.chapter })}>{CHAPTER_BY_ID[t.chapter].title}</button>
-            <span style={{ color: COLOR.muted }}> — неверно {t.wrong} из {t.tried}</span>
+          <div key={t.chapter} style={{ marginBottom: 6 }}>
+            <Meter tone="var(--c-rust, #A0522D)" share={t.wrong / t.tried}
+              label={<button type="button" className="tb-link" onClick={() => ctx.go({ kind: 'chapter', id: t.chapter })}>{CHAPTER_BY_ID[t.chapter].title}</button>}
+              text={<span style={{ color: COLOR.muted }}>неверно {t.wrong} из {t.tried}</span>} />
           </div>
         ))}
       </div>
@@ -2098,7 +2103,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
   const cur = valid ? pg : { kind: 'toc' };
   const pages = (
     <>
-      <style>{TEXTBOOK_CSS}</style>
+      <style>{TEXTBOOK_CSS + STATS_CSS}</style>
       {!(embedded && cur.kind === 'toc') && <ReaderBar scale={scale} setScale={setScale} />}
       <div style={{ zoom: scale }} data-testid="tb-content">
         {cur.kind === 'toc' && <TocPage ctx={ctx} />}

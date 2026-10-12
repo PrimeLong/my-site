@@ -16,7 +16,9 @@ import {
   X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
   Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown,
+  Star, CalendarDays,
 } from 'lucide-react';
+import { StatHero, StatTile, Meter, DayBars, STATS_CSS } from './learn-stats.jsx';
 import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
 import { track } from './lib/client.js';
@@ -56,7 +58,7 @@ import { inCrowns, sceneInCrowns } from './learn/money.js';
 import { ReportFlag, QuoteReport, ReportsView, AnalyticsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
 import { reportsMe } from './lib/client.js';
 import { loadAccount } from './account.jsx';
-import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Row, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
+import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
@@ -230,18 +232,6 @@ const CSS = `
   .ln-textbook .ems-btn.primary { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 70%, #000); font: 700 13.5px/1.25 var(--ds-serif); letter-spacing: .06em; text-transform: uppercase; }
   .ln-textbook .ems-btn.primary:hover { background: var(--u); filter: brightness(1.07); }
   .ln-textbook .ems-btn[aria-pressed="true"] { background: var(--ds-sel); color: var(--ds-sel-ink); border-color: var(--ds-sel-rule); }
-  .ln-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; max-width: 360px; }
-  .ln-cal-wd { font: 700 12px/1 var(--ds-sans); color: var(--ds-ink3); text-align: center; text-transform: uppercase; letter-spacing: .06em; padding-bottom: 2px; }
-  .ln-cal-d { aspect-ratio: 1; border-radius: 4px; border: 1px solid var(--ds-rule2); display: flex; align-items: center; justify-content: center;
-    font: 700 12px/1 var(--ds-mono); color: var(--ds-ink2); background: var(--ds-card); }
-  .ln-cal-d.t1 { background: color-mix(in srgb, var(--u) 22%, var(--ds-card)); }
-  .ln-cal-d.t2 { background: color-mix(in srgb, var(--u) 50%, var(--ds-card)); color: var(--ds-ink); }
-  .ln-cal-d.t3 { background: var(--u); color: #fff; border-color: transparent; }
-  .ln-cal-d.today { outline: 2px solid var(--ds-ink); outline-offset: 1px; }
-  .ln-cal-d.future { opacity: .35; border-style: dashed; }
-  .ln-cal-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; text-align: center; }
-  .ln-cal-sum b { display: block; font-size: 24px; color: var(--u-ink); }
-  .ln-cal-sum span { font-size: 12.5px; color: var(--ds-ink3); }
   .ln-theory { border: 1px solid var(--ds-rule2); border-left: 4px solid var(--u); border-radius: 4px; background: var(--ds-card2); padding: 12px 14px; }
   .ln-level-text { font-size: 13.5px; line-height: 1.35; margin: -2px 2px 4px; }
   .ln-soon-head { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; color: inherit; font: inherit; padding: 12px 14px; cursor: pointer; text-align: left; }
@@ -1904,30 +1894,25 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
 /* ------------------------------ ПРОФИЛЬ ------------------------------
    Личные рекорды, альбом марок (пройденный юнит — марка с его зданием), цель дня,
    статистика, учебник, аккаунт и настройки: тёмная тема, музыка, звуки ответов. */
-/* Четыре недели занятий: календарь — клетка дня темнее, чем больше минут; три числа под ним.
+/* Четыре недели занятий: минуты по дням столбиками (цель — линия, сегодня — отметка), под ними
+   три плитки — минуты, уроки, дни с занятиями — и точность с первого раза полосой.
    Без разбивки по типам упражнений: она мало что говорит ученику. */
-const WD = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 function StudyWeeks({ learn }) {
   const w = studyWeeks(learn);
   const goal = goalToday(learn).goal;
-  const tone = (m) => (m <= 0 ? 0 : m < goal / 2 ? 1 : m < goal ? 2 : 3);
   return (
     <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
-      <div className="ds-h3" style={{ marginBottom: 2 }}>Мои четыре недели</div>
-      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 10 }}>Клетка — день: чем темнее, тем больше минут. Полный цвет — цель дня ({goal} мин) выполнена.</div>
-      <div className="ln-cal" data-testid="prof-calendar">
-        {WD.map((d) => <span key={d} className="ln-cal-wd">{d}</span>)}
-        {w.days.map((d) => (
-          <span key={d.day} className={`ln-cal-d t${tone(d.minutes)}${d.today ? ' today' : ''}${d.future ? ' future' : ''}`} title={`${d.day}: ${d.minutes} мин, уроков ${d.lessons}`} data-minutes={d.minutes}>
-            {d.minutes > 0 ? d.minutes : ''}
-          </span>
-        ))}
+      <div className="ds-h3" style={{ marginBottom: 2 }}>Последние четыре недели</div>
+      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 4 }}>Минуты занятий по дням. Нажмите на столбик — день, минуты и уроки.</div>
+      <DayBars days={w.days.map((d) => ({ key: d.day, minutes: d.minutes, lessons: d.lessons, today: d.today, future: d.future }))} goal={goal} testid="prof-calendar" />
+      <div className="st-grid three" style={{ marginTop: 14 }}>
+        <StatTile icon={Clock} label="Минут" value={w.minutes} testid="prof-minutes" sub={w.active ? `≈ ${Math.round(w.minutes / w.active)} в день` : 'пока нет'} />
+        <StatTile icon={BookOpen} label="Уроков" value={w.lessons} testid="prof-lessons" sub="пройдено" />
+        <StatTile icon={CalendarDays} label="Дней" value={w.active} sub="с занятиями из 28" />
       </div>
-      <div className="ln-cal-sum">
-        <div><b className="ds-num" data-testid="prof-minutes">{w.minutes}</b><span>минут</span></div>
-        <div><b className="ds-num" data-testid="prof-lessons">{w.lessons}</b><span>{plural(w.lessons, 'урок', 'урока', 'уроков')}</span></div>
-        <div><b className="ds-num" data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b><span>верно с первого раза</span></div>
-      </div>
+      <Meter label="Верно с первого раза" share={w.accuracy} testid="prof-accuracy-meter"
+        text={<b data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b>}
+        note={w.accuracy == null ? 'Посчитаем после пяти ответов.' : 'По последним ответам в уроках.'} />
     </Card>
   );
 }
@@ -1959,15 +1944,18 @@ function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onRepo
         <Mascot mood={st.days >= 3 ? 'joy' : 'hello'} size={52} />
         <Heading eyebrow="Профиль" title="Личные рекорды" sub="Без лиг и соревнований — только ваш путь." />
       </div>
-      <Card style={{ margin: '12px 0' }}>
-        <div className="ds-h3" style={{ marginBottom: 6 }}>Рекорды</div>
-        <Row label="Серия сейчас" value={`${st.days} дн.${st.freezesUsed.length ? ` · прощено: ${st.freezesUsed.length}` : ''}`} data-testid="prof-streak" />
-        <Row label="Самая длинная серия" value={`${longestStreak(learn)} дн.`} />
-        <Row label="Лучшая неделя" value={bw.xp ? `${bw.xp} опыта` : '—'} />
-        <Row label="Всего опыта" value={`${stats.totalXp}`} />
-        <Row label="Монет в кошельке" value={`${balance(learn)}`} data-testid="prof-coins" />
-        <Row label="Страховка серии" value={policyActive(learn) ? 'полис действует' : ownedFreezes(learn) ? `старых полисов: ${ownedFreezes(learn)}` : 'нет'} />
-        <div className="ds-faint" style={{ fontSize: 13, marginTop: 6 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
+      <Card style={{ margin: '12px 0' }} data-testid="prof-records">
+        <div className="ds-h3" style={{ marginBottom: 2 }}>Рекорды</div>
+        <StatHero icon={Flame} tone="#D9822B" value={st.days} testid="prof-streak" label={`${plural(st.days, 'день', 'дня', 'дней')} подряд — серия сейчас`}
+          sub={`Рекорд — ${longestStreak(learn)} дн.${st.freezesUsed.length ? ` · прощено пропусков: ${st.freezesUsed.length}` : ''}`} />
+        <div className="st-grid four">
+          <StatTile icon={Star} tone="#B8860B" label="Всего опыта" value={stats.totalXp} />
+          <StatTile icon={Trophy} tone="#7A5616" label="Лучшая неделя" value={bw.xp ? bw.xp : '—'} sub={bw.xp ? 'опыта' : 'ещё впереди'} />
+          <StatTile icon={Coins} tone="#8A6416" label="Монет" value={balance(learn)} testid="prof-coins" sub="в кошельке" />
+          <StatTile icon={ShieldCheck} tone="#2E5F8A" label="Страховка серии" value={policyActive(learn) ? 'есть' : ownedFreezes(learn) ? ownedFreezes(learn) : 'нет'}
+            sub={policyActive(learn) ? 'полис действует' : ownedFreezes(learn) ? 'старых полисов' : 'в лавке'} />
+        </div>
+        <div className="ds-faint" style={{ fontSize: 13, marginTop: 8 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
       </Card>
       <ProgramCard learn={learn} update={update} onPlacement={() => onStart({ mode: 'placement' })} />
 
@@ -2084,7 +2072,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     <OutfitContext.Provider value={outfit}>
     <DsRoot theme={dsThemeId()} accent={accent} page className="ln-root">
       <ArtStyle />
-      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS + STATS_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />
