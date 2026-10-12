@@ -149,7 +149,8 @@ export function parseBlocks(text) {
         // берутся усложнения (алмазный уровень, сильному ученику) в этом уроке и дальше по юниту
         // discover=demand — шаг «Откройте сами» (со словом more): ученик сам исследует модель; встаёт
         // первым шагом урока, до карточки-идеи (DISCOVER_KINDS)
-        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, discover, ...chartAttrs } = attrs;
+        // remember="TeX" — формула шага с пометкой «Запомнить»: по ней считают упражнения после шага
+        const { id: _id, title, chart, auto, variants, kind, pic, who, hard, discover, remember, ...chartAttrs } = attrs;
         if (discover && !DISCOVER_KINDS.includes(discover)) throw new Error(`Неизвестный шаг «Откройте сами» ${discover} в ${attrs.id}`);
         if (discover && !words.includes('more')) throw new Error(`Шаг «Откройте сами» ${attrs.id} — со словом more`);
         const split = (x) => (x ? x.split(/\s+/).filter(Boolean) : []);
@@ -163,7 +164,7 @@ export function parseBlocks(text) {
         blocks.push({ type: 'idea', id: attrs.id, title: title || '', chart: chart || null, attrs: chartAttrs, auto: split(auto), variants: split(variants), hard: split(hard),
           text: parseInline(body.filter((l) => !wordLines.includes(l)).join(' ').trim()),
           kind: kind || 'practice', pic: pic || null, who: who || null, ...(terms.length ? { terms } : {}), ...(discover ? { discover } : {}),
-          ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}) });
+          ...(words.includes('more') ? { inner: true } : {}), ...(words.includes('diamond') ? { diamond: true } : {}), ...(remember ? { remember } : {}) });
       } else if (name === 'ex') {
         blocks.push(parseExercise(words[0], attrs, body));
       } else if (name === 'round') {
@@ -177,9 +178,28 @@ export function parseBlocks(text) {
         const caption = body.join(' ').trim();
         blocks.push({ type: 'chart', chart: words[0], attrs, caption: caption ? parseInline(caption) : null });
       } else if (name === 'recall') {
+        /* вопросы с вариантами: абзац вопроса, под ним «+ верный» и «- неверный | почему»; вопросов
+           может быть несколько подряд; после --- — разбор учебника. Писать ответ своими словами не
+           нужно: выбор проверяется сам (docs/mechanics.md, «Учебник: вспомните») */
         const sep = body.findIndex((l) => l.trim() === '---');
         if (sep < 0) throw new Error(`В вопросе ${attrs.id} нет ответа (строка ---)`);
-        blocks.push({ type: 'recall', id: attrs.id, question: parseBlocks(body.slice(0, sep).join('\n')), answer: parseBlocks(body.slice(sep + 1).join('\n')) });
+        const parts = []; let q = []; let opts = [];
+        const flush = () => {
+          if (!q.length && !opts.length) return;
+          if (!opts.length) throw new Error(`В вопросе ${attrs.id} нет вариантов ответа`);
+          if (opts.filter((o) => o.correct).length !== 1 || opts.length < 3) throw new Error(`В вопросе ${attrs.id}: нужен один верный вариант и хотя бы два неверных`);
+          if (opts.some((o) => !o.correct && !o.why)) throw new Error(`В вопросе ${attrs.id}: у неверного варианта нет объяснения (… | почему)`);
+          parts.push({ question: parseBlocks(q.join('\n')), options: opts }); q = []; opts = [];
+        };
+        body.slice(0, sep).forEach((l) => {
+          const m = /^([+-])\s+(.*)$/.exec(l.trim());
+          if (m) { const [text, w] = splitWhy(m[2]); opts.push({ raw: text, text: parseInline(text), correct: m[1] === '+', why: w }); return; }
+          if (opts.length) flush();
+          q.push(l);
+        });
+        flush();
+        if (!parts.length) throw new Error(`В вопросе ${attrs.id} нет вариантов ответа`);
+        blocks.push({ type: 'recall', id: attrs.id, parts, question: parts.flatMap((x) => x.question), answer: parseBlocks(body.slice(sep + 1).join('\n')) });
       } else if (name === 'flow') {
         const steps = []; const rest = [];
         body.forEach((l) => {
@@ -469,9 +489,7 @@ function parseExercise(kind, attrs, body) {
   const isTrap = (l) => l.trim().startsWith('!!');
   const special = (l) => isOpt(l) || isTrap(l);
   const prompt = parseBlocks(main.filter((l) => !special(l)).join('\n'));
-  // «|» внутри формулы ($|E|$) — модуль, а не разделитель «вариант | почему»
-  const bar = (t) => { let m = false; for (let k = 0; k < t.length; k += 1) { if (t[k] === '$' && t[k - 1] !== '\\') m = !m; else if (t[k] === '|' && !m) return k; } return -1; };
-  const why = (t) => { const k = bar(t); return k < 0 ? [t.trim(), null] : [t.slice(0, k).trim(), parseInline(t.slice(k + 1).trim())]; };
+  const why = splitWhy;
   const ex = { type: 'ex', kind, id: attrs.id, attrs, prompt, explain, ...(attrs.context ? { context: parseInline(attrs.context) } : {}) };
   const opts = main.filter(isOpt).map((l) => { const t = l.trim(); const [text, w] = why(t.slice(1).trim()); return { raw: text, correct: t[0] === '+', why: w }; });
   const traps = main.filter(isTrap).map((l) => { const [v, w] = why(l.trim().replace(/^!!\s*/, '')); return { key: v, why: w }; });
@@ -596,6 +614,9 @@ function parseRound(kind, attrs, body) {
 
 /* ------------------------------ ОБХОД ------------------------------ */
 // все блоки дерева, включая вложенные (врезки, условия и решения задач)
+// «вариант | почему»; «|» внутри формулы ($|E|$) — модуль, а не разделитель
+const splitBar = (t) => { let m = false; for (let k = 0; k < t.length; k += 1) { if (t[k] === '$' && t[k - 1] !== '\\') m = !m; else if (t[k] === '|' && !m) return k; } return -1; };
+function splitWhy(t) { const k = splitBar(t); return k < 0 ? [t.trim(), null] : [t.slice(0, k).trim(), parseInline(t.slice(k + 1).trim())]; }
 export function walkBlocks(blocks, fn) {
   blocks.forEach((b) => {
     fn(b);
@@ -613,6 +634,7 @@ const inlinesOf = (b) => [
   ...(b.steps || []).flatMap((st) => [st.title, st.up, st.down]), ...(b.hints || []), ...(b.points || []),
   ...(b.traps || []).map((t) => t.text || t.why).filter(Boolean),
   ...(b.type === 'idea' ? [b.text] : []),
+  ...(b.type === 'recall' ? b.parts.flatMap((x) => x.options.flatMap((o) => [o.text, o.why])).filter(Boolean) : []),
   ...(b.type === 'ex' || b.type === 'round' ? [...(b.options || []).flatMap((o) => [o.text, o.why]), ...(b.items || []).map((x) => x.text), ...(b.pairs || []).flat().map((x) => x.text),
     ...(b.links || []).map((x) => x.text), ...(b.decoys || []).flatMap((x) => [x.text, x.why])].filter(Boolean) : []),
 ];

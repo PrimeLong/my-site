@@ -142,7 +142,8 @@ describe('жалобы из выгрузки: учебник', () => {
     expect(parseBlocks('$$x = 1$$')[0].key).toBeUndefined();
     const { keyFormulas } = await import('../../textbook/content.js');
     const { CHAPTERS } = await import('../../textbook/toc.js');
-    expect(keyFormulas('market-failures')).toEqual(['P_d - P_s = t.', 'DWL = \\tfrac12\\, t\\,(Q_0 - Q_t).']);
+    // цена покупателей при налоге — итоговая формула, но задачи уроков решают прямо по ней (mv3vifty)
+    expect(keyFormulas('market-failures')).toEqual(['P_d - P_s = t.', 'P_d = \\frac{a - c + d\\,t}{b + d}, \\qquad P_s = P_d - t.', 'DWL = \\tfrac12\\, t\\,(Q_0 - Q_t).', 'P = MC + \\text{ущерб с единицы}.']);
     CHAPTERS.forEach((c) => expect(keyFormulas(c.id).length, c.id).toBeLessThanOrEqual(4));
   });
   it('теорема Коуза: понятно, что именно «нужно» (mv1rhkbr); вопрос про бремя — без двусмысленности (muzajz73)', async () => {
@@ -245,5 +246,48 @@ describe('жалобы из выгрузки: новые числа в повт�
     expect(scene.curves.find((x) => x.id === 'MC').label).toBe('MC + налог');
     expect(scene.readout.find((r) => r.label === 'Налог Пигу с единицы').value).toBe('20');
     expect(scene.readout.find((r) => r.label === 'Безвозвратные потери').value).toBe('0');
+  });
+});
+
+describe('жалобы из выгрузки: задачи семинарского уровня и единицы (mv4j2khb, mv4j067n)', () => {
+  it('в алмазном «Повторении» задача учебника с шаблоном приходит с новыми числами и не дважды', async () => {
+    const { buildLesson } = await import('../course.js');
+    const { seeded } = await import('../../textbook/variants.js');
+    const answers = new Set();
+    for (let s = 1; s <= 30; s += 1) {
+      const hard = buildLesson('sc-rev', seeded(s), { diamond: true }).items.filter((it) => it.hard);
+      hard.forEach((it) => expect(it.id, it.id).not.toBe('auto:sc-ppf-cost'));
+      const ppf = hard.filter((it) => it.variant === 'v-sc-ppf');
+      expect(ppf.length).toBeLessThanOrEqual(1);
+      ppf.forEach((it) => answers.add(it.answer));
+    }
+    expect(answers.size).toBeGreaterThan(2);
+  });
+  it('у поля ответа единица по набранному числу: «3 станка», «5 станков», «1 станок» (sc-e4-slope)', async () => {
+    const { unitFor } = await import('../course.js');
+    const e = EXERCISES['sc-e4-slope'];
+    expect(['', '3', '5', '1', '2,5', '-'].map((v) => unitFor(e, v))).toEqual(['станков', 'станка', 'станков', 'станок', 'станка', 'станков']);
+    expect(unitFor({ unit: 'руб.' }, '3')).toBe('руб.');
+  });
+});
+
+describe('жалобы из выгрузки: общественно оптимальный выпуск (mv3wxy9b, mv3wu6mz)', () => {
+  it('«общественно оптимальный выпуск» — в словаре с формулой, в главе и нажимается в задаче', async () => {
+    const { GLOSSARY } = await import('../../textbook/glossary.js');
+    const { termsIn, termFormula } = await import('../terms.js');
+    const { CHAPTER_BLOCKS } = await import('../../textbook/content.js');
+    expect(GLOSSARY.socialopt.title).toBe('Общественно оптимальный выпуск');
+    expect(termFormula('socialopt')).toContain('MC');
+    expect(JSON.stringify(CHAPTER_BLOCKS['market-failures'])).toContain('"kind":"term","target":"socialopt"');
+    expect([...termsIn(EXERCISES['auto:mf-pigou'].prompt)]).toContain('socialopt');
+  });
+});
+
+describe('жалобы из выгрузки: формула шага урока (mv3wjucx)', () => {
+  it('у алмазного шага, после которого считают, есть формула «Запомнить»', () => {
+    const missing = LESSONS.flatMap((l) => l.inner.filter((c) => c.idea.diamond && (l.exercises[c.at] || {}).kind === 'calc' && !c.idea.remember).map((c) => c.idea.id));
+    expect(missing).toEqual([]);
+    const opt = LESSONS.flatMap((l) => l.inner).find((c) => c.idea.id === 'mf-i2-d-opt').idea;
+    expect(opt.remember).toBe('P = MC + \\text{ущерб с единицы}');
   });
 });

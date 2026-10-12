@@ -922,18 +922,24 @@ test('учебник: оглавление, формулы KaTeX, график �
   await tf.getByRole('button', { name: 'Совпало', exact: true }).click();
   await expect(tf.getByTestId('tb-verdict')).toContainText('Засчитано');
   await expect(tf).toContainText('Закон спроса при этом выполняется');
-  // графическая: сдвинуть не ту кривую — неверно, нужную — верно
+  // графическая: сначала прогноз, потом сдвиг; не та кривая или не тот прогноз — неверно
   const gr = ch.locator('[data-problem="sd-graph-flour"]');
-  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
-  await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала сдвиньте');
+  await expect(gr.getByRole('button', { name: 'Уверен', exact: true })).toHaveCount(0);
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Сначала отметьте прогноз');
+  await gr.getByRole('button', { name: 'цена: растёт' }).click();
+  await gr.getByRole('button', { name: 'количество: растёт' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Теперь сдвиньте');
   await gr.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('-20');
-  await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
-  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Пока неверно');
   await gr.getByRole('slider', { name: 'Сдвиг спроса', exact: true }).fill('0');
   await gr.getByRole('slider', { name: 'Сдвиг предложения' }).fill('-20');
-  await gr.getByRole('button', { name: 'Уверен', exact: true }).click();
-  await gr.getByRole('button', { name: 'Проверить сдвиг' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(gr.getByTestId('tb-verdict')).toContainText('Сдвиг верный, а прогноз — нет: количество падает, а не растёт');
+  await gr.getByRole('button', { name: 'количество: падает' }).click();
+  await gr.getByRole('button', { name: 'Проверить прогноз' }).click();
   await expect(gr.getByTestId('tb-verdict')).toContainText('Верно: цена растёт, количество падает');
   await ch.getByRole('button', { name: 'Отметить главу прочитанной' }).click();
   await expect(ch.getByRole('button', { name: /Глава прочитана/ })).toBeVisible();
@@ -961,22 +967,29 @@ test('учебник: оглавление, формулы KaTeX, график �
 
   await toToc(page);
   await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 16');
-  // уверенные ответы — на странице «Мой прогресс»: три из шести верны (включая задачу в несколько шагов), неуверенный — верен
+  // уверенные ответы — на странице «Мой прогресс»: два из четырёх верны (включая задачу в несколько шагов),
+  // неуверенный — верен; у задачи на графике вместо уверенности прогноз, в счёт она не идёт
   await page.getByTestId('tb-stats-link').click();
-  await expect(page.getByTestId('stats-confidence')).toContainText('верно 3 из 6 (50%)');
+  await expect(page.getByTestId('stats-confidence')).toContainText('верно 2 из 4 (50%)');
   await expect(page.getByTestId('stats-confidence')).toContainText('неуверенные: верно 1 из 2');
   await toToc(page);
-  // «На сегодня» больше нет: вопрос на вспоминание — в конце раздела главы; ответ «совпало» проходит раздел
+  // «На сегодня» больше нет: «Вспомните» в конце раздела — вопросы с вариантами, писать ничего не нужно
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
   const recall = page.getByTestId('chapter').getByTestId('tb-recall').first();
   await recall.scrollIntoViewIfNeeded();
-  // сначала свой ответ: без него эталон не открыть, кроме как через «Не помню»
-  await expect(recall.getByRole('button', { name: 'Сверить с ответом' })).toBeDisabled();
-  await expect(recall.getByRole('button', { name: 'Вспомнил' })).toHaveCount(0);
-  await recall.getByRole('textbox').fill('при росте цены покупают меньше, при прочих равных');
-  await recall.getByRole('button', { name: 'Сверить с ответом' }).click();
+  await expect(recall.getByRole('textbox')).toHaveCount(0);
+  const rightKeys = JSON.parse(await recall.getAttribute('data-answer'));
+  const parts = recall.getByTestId('tb-recall-part');
+  // ошибка: почему вариант неверен, разбор, «Ещё раз»
+  await parts.nth(0).locator(`[data-key]:not([data-key="${rightKeys[0]}"])`).first().click();
+  await expect(parts.nth(0).getByTestId('tb-recall-why')).toBeVisible();
+  for (let i = 1; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
   await expect(recall.getByTestId('tb-recall-answer')).toBeVisible();
-  await recall.getByRole('button', { name: 'Совпало', exact: true }).click();
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('вернётся на повторение');
+  await recall.getByTestId('tb-recall-again').click();
+  await expect(recall.getByTestId('tb-recall-answer')).toHaveCount(0);
+  // всё верно — раздел пройден
+  for (let i = 0; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);
@@ -1512,8 +1525,10 @@ test('путь: карточка урока, «Знакомство» шагам
   await expect(result.getByTestId('result-xp').locator('[data-value]')).toHaveText(/^\+\d+$/);
   await expect(result.getByTestId('result-acc')).not.toContainText('100%');
   await expect(result).not.toContainText('Урок уже был пройден');
-  // первый урок дня — огонёк сохранён: крупно на итогах
-  await expect(result.getByTestId('result-streak')).toContainText('Огонёк сохранён: 1 день подряд');
+  // первый урок дня — серия на итогах: огонёк вспыхивает, счётчик дней перещёлкивается (без надписи)
+  await expect(result.getByTestId('result-streak')).toHaveAttribute('data-days', '1');
+  await expect(result.getByTestId('result-streak')).toHaveAttribute('aria-label', 'Серия: 1 день подряд');
+  await expect(result).not.toContainText('Огонёк сохранён');
   await expect(result.getByTestId('mascot')).toHaveAttribute('data-mood', 'party');
   // на итогах выход один
   await expect(page.getByTestId('lesson').locator('[data-nav="back"]')).toHaveCount(1);
@@ -1640,15 +1655,17 @@ test('путь: выход после первого ответа — урок �
   expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#8a2f45');
   await page.getByTestId('lesson-diamond').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-diamond', 'true');
-  // алмазные шаги — с формулами и строкой обозначений
-  let legend = false;
+  // алмазные шаги — с формулами, плашкой «Запомнить» и строкой обозначений
+  let legend = false; let remember = false;
   for (let i = 0; i < 40 && !(await page.getByTestId('lesson-result').isVisible()); i += 1) {
     if (await page.getByTestId('step-legend').isVisible()) legend = true;
+    if (await page.getByTestId('step-remember').isVisible()) remember = true;
     if (await page.getByTestId('lesson-card').isVisible()) { await page.getByTestId('lesson').locator('.ln-foot button').click(); continue; }
     await answerExercise(page);
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   expect(legend).toBe(true);
+  expect(remember).toBe(true);
   await expect(page.getByTestId('result-diamond')).toContainText('Алмазный уровень взят');
   await expect(page.getByTestId('result-coins')).toContainText(/За урок\+(25|35)/);
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -1684,7 +1701,16 @@ test('путь: юнит «Спрос и предложение» — кажды
   await expect(word.getByTestId('word-def')).toContainText('сколько покупатели готовы купить');
   await expect(page.getByTestId('word-tip')).toBeVisible();
   await expect(page.getByTestId('word-prev')).toHaveCount(0);
-  await page.getByTestId('word-next').click();
+  // карточку тянут мышью: едет за курсором и наклоняется, сверху «Дальше»; отпустили — следующее слово
+  const wb = await word.boundingBox();
+  await page.mouse.move(wb.x + wb.width / 2, wb.y + wb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wb.x + wb.width / 2 - 70, wb.y + wb.height / 2, { steps: 6 });
+  await expect(word).not.toHaveAttribute('data-dx', '0');
+  expect(await word.evaluate((el) => getComputedStyle(el).transform)).not.toBe('none');
+  await expect(word.locator('.lp-swipe-tag.next')).toBeVisible();
+  await page.mouse.move(wb.x + wb.width / 2 - 170, wb.y + wb.height / 2, { steps: 6 });
+  await page.mouse.up();
   await expect(word).toContainText('Новое слово 2 из 8');
   await expect(page.getByTestId('word-dots').locator('i.know')).toHaveCount(2);
   // назад — к прошлому слову
@@ -1857,8 +1883,15 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=garden-plot][data-plant="chamomile"]')).toHaveAttribute('data-stage', 'bloom');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"]')).toHaveAttribute('data-stage', 'bud');
   await expect(garden.locator('[data-testid=garden-plot][data-plant="tulip"] [data-testid=garden-left]')).toContainText('3 ч');
-  // шансы редкостей урожая — на экране
-  await expect(garden.getByTestId('garden-odds').first()).toContainText('легендарный — 2%');
+  // шансов редкости на экране нет — только редкости и во сколько раз дороже урожай
+  await expect(garden.getByTestId('garden-odds').first()).not.toContainText('%');
+  await expect(garden.getByTestId('garden-grades')).toContainText('небывалый ×6');
+  // на пакетике видно, можно ли купить: «Посадить» — или что мешает, и кнопка выключена
+  const seedStates = await garden.getByTestId('garden-seed').evaluateAll((els) => els.map((e) => { const b = e.querySelector('[data-testid=garden-plant]'); return [e.dataset.state, b.textContent, b.disabled]; }));
+  seedStates.forEach(([st, text, off]) => {
+    if (st === 'ok') expect([text, off]).toEqual(['Посадить', false]);
+    else { expect(off).toBe(true); expect(text).toMatch(/^(Не хватает \d+|Грядки заняты)$/); }
+  });
   // собрать — урожай с редкостью, грядка свободна, ромашка в гербарии
   await garden.getByTestId('garden-harvest').click();
   const result = garden.getByTestId('garden-result');
@@ -1867,6 +1900,9 @@ test('лавка → сад: урожай с редкостью — продат
   await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-kept', '1');
   await expect(garden.locator('[data-testid=herb-item][data-plant="orchid"]')).toHaveAttribute('data-got', 'false');
   await expect(garden.getByTestId('garden-crop')).toHaveCount(1);
+  // в урожае — за сколько куплены семена, цена на рынке и разница
+  await expect(garden.getByTestId('garden-crop-price')).toContainText(/семена — \d+ · на рынке — \d+/);
+  await expect(garden.getByTestId('garden-crop').getByTestId('garden-profit')).toBeVisible();
   await expect(shop.getByTestId('garden-ripe')).toHaveCount(0);
   // продать — монеты в кошелёк, в коллекции пусто, но ромашка уже выращена
   const coins0 = Number(await garden.getByTestId('garden-balance').innerText());
@@ -2407,6 +2443,8 @@ test('вход: программа — вступительный тест, су
   const shop = page.getByTestId('shop');
   await expect(shop.getByTestId('rate-value')).toContainText(/1 крона = \d,\d\d монеты/);
   await expect(shop.getByTestId('rate-chart')).toBeVisible();
+  // палец ведёт по графику — текст вокруг не выделяется
+  expect(await shop.locator('.rw-rate-box').evaluate((el) => getComputedStyle(el).userSelect || getComputedStyle(el).webkitUserSelect)).toBe('none');
   // подсказка графика курса у правого края не расширяет страницу (иначе телефон перемасштабирует её и панель внизу «уезжает»)
   const chartBox = await shop.getByTestId('rate-chart').boundingBox();
   for (const fx of [0.02, 0.5, 0.9, 0.99]) {
@@ -2840,12 +2878,16 @@ test('новые глаголы: «Откройте сами», живая мо�
   const before = Number((await shop.getByTestId('shop-balance').innerText()).match(/\d+/)[0]);
   await piggy.getByTestId('piggy-amount').fill('100');
   await expect(piggy.getByTestId('piggy-chart')).toBeVisible();
-  // честно про проценты: 730% годовых так не бывает, рядом — реальные 8% годовых
-  await expect(piggy.getByTestId('piggy-real')).toContainText('730% годовых — в жизни так не бывает');
+  // ставка недели — на карточке копилки; честно про проценты («так не бывает», рядом реальные 8% годовых) — свёрнуто
+  await expect(piggy.getByTestId('rate-week')).toBeVisible();
+  await piggy.getByTestId('piggy-real').locator('summary').click();
+  await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых — в жизни так не бывает/);
   await piggy.getByTestId('piggy-put').click();
-  await expect(shop.getByTestId('shop-msg')).toContainText('В копилке 100 монет. Через 7 дней станет 114.');
+  // вклад — под ставку этой недели
+  await expect(shop.getByTestId('shop-msg')).toContainText(/В копилке 100 монет под \d+(,\d)?% в день\. Через 7 дней станет 1[0-2]\d\./);
+  await expect(piggy.getByTestId('piggy-rate')).toHaveText(await piggy.getByTestId('rate-week-value').innerText() + ' в день');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before - 100));
-  await expect(piggy.getByTestId('piggy-state')).toContainText('день 0 из 7');
+  await expect(piggy.getByTestId('piggy-state')).toContainText('День 0 из 7');
   await piggy.getByTestId('piggy-take').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('проценты не успели набежать');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before));
@@ -2859,7 +2901,7 @@ test('новые глаголы: «Откройте сами», живая мо�
   await openTab(page, 'shop');
   await expect(page.getByTestId('shop-piggy').getByTestId('piggy-state')).toContainText('срок вышел');
   await page.getByTestId('shop-piggy').getByTestId('piggy-take').click();
-  await expect(page.getByTestId('shop-msg')).toContainText('Забрано 114 монет — с процентами за неделю.');
+  await expect(page.getByTestId('shop-msg')).toContainText(/Забрано 1[0-2]\d монет — с процентами за неделю\./);
   expect(errors).toEqual([]);
 });
 
@@ -2919,6 +2961,9 @@ test('учебник: калькулятор по полям а → б → в, �
   await done.getByTestId('tb-problem-expand').click();
   await expect(done).not.toHaveAttribute('data-collapsed', 'true');
   await expect(done.getByRole('textbox').first()).toBeVisible();
+  // развёрнутую — и свернуть обратно
+  await done.getByTestId('tb-problem-collapse').click();
+  await expect(done).toHaveAttribute('data-collapsed', 'true');
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();
@@ -3006,6 +3051,27 @@ test('Путь: открывается на рекомендованном ур�
     await path.getByTestId('model-fold-close').click();
     await expect(path.getByTestId('unit-model')).toHaveCount(0);
   }
+  expect(errors).toEqual([]);
+});
+
+test('Путь: проверку пройденного юнита можно пройти ещё раз — уроки остаются пройденными', async ({ page }) => {
+  test.setTimeout(120_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'scarcity');
+  await unit.getByTestId('unit-check').click();
+  await expect(page.getByTestId('lesson')).toHaveAttribute('data-mode', 'check');
+  await expect(page.getByTestId('lesson')).toHaveAttribute('aria-label', 'Проверка юнита');
+  await playLesson(page);
+  await expect(page.getByTestId('lesson-result')).toContainText('Юнит не забыт');
+  await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
+  await expect(page.getByTestId('path').locator('[data-testid="path-unit"][data-unit="scarcity"] [data-testid="path-lesson"]:not([data-state="done"])')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

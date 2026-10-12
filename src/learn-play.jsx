@@ -49,8 +49,13 @@ export const PLAY_CSS = `
   .lp-word { position: relative; z-index: 1; border: 1px solid var(--ds-rule2); border-radius: 6px; background: var(--ds-card); box-shadow: 0 3px 10px var(--ds-shade);
     padding: 18px 18px 20px; min-height: 250px; display: flex; flex-direction: column; touch-action: pan-y; user-select: none;
     transition: transform .26s ease-in, opacity .26s ease-in; border-top: 5px solid var(--u); }
-  .lp-word.in { animation: lp-word-in .3s ease-out both; }
-  @keyframes lp-word-in { from { transform: translateY(14px) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
+  /* появление — только «до» (backwards): после него карточкой двигает палец или мышь, а не анимация */
+  .lp-word.in { animation: lp-word-in .3s ease-out backwards; }
+  @keyframes lp-word-in { from { transform: translateX(var(--from, 0)) translateY(var(--rise, 14px)) scale(.97); opacity: 0 } to { transform: none; opacity: 1 } }
+  .lp-word.drag { cursor: grabbing; box-shadow: 0 10px 24px var(--ds-shade); }
+  .lp-swipe-tag { position: absolute; top: 46px; padding: 3px 10px; border: 2px solid var(--u); border-radius: 4px; font: 700 14px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--u-ink); background: var(--ds-card); pointer-events: none; }
+  .lp-swipe-tag.next { right: 14px; transform: rotate(8deg); }
+  .lp-swipe-tag.prev { left: 14px; transform: rotate(-8deg); }
   .lp-word-top { display: flex; align-items: center; gap: 8px; font: 700 12px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
   .lp-word-term { font: 700 30px/1.15 var(--ds-serif); color: var(--u-ink); margin: 18px 0 6px; text-align: center; }
   .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
@@ -868,13 +873,15 @@ export function WordDeck({ cards, onDone, body, foot }) {
   const [idx, setIdx] = useState(0);
   const [seen, setSeen] = useState(() => new Set([0]));
   const [dx, setDx] = useState(0);
+  const [fly, setFly] = useState(0); // карточка улетает: −1 влево (дальше), 1 вправо (назад)
+  const [dir, setDir] = useState(0); // откуда въезжает новая: 1 — справа, −1 — слева
   const drag = useRef(null);
   const card = cards[idx];
   const last = idx === cards.length - 1;
   const go = (d) => {
     const n = idx + d;
     if (n < 0) return;
-    Audio.play('paper'); setDx(0);
+    Audio.play('paper'); setDx(0); setFly(0); setDir(d);
     if (n >= cards.length) { onDone(); return; }
     setIdx(n); setSeen((st) => new Set([...st, n]));
   };
@@ -888,21 +895,41 @@ export function WordDeck({ cards, onDone, body, foot }) {
     return () => window.removeEventListener('keydown', onKey);
   });
   if (!card) return null;
-  // смахнуть влево — следующее слово, вправо — предыдущее (как листать страницы)
+  /* смахнуть влево — следующее слово, вправо — предыдущее (как листать страницы). Карточка едет
+     за пальцем или мышью и наклоняется, сверху — «Дальше» или «Назад»; отпустили дальше порога —
+     улетает в ту же сторону, и новая въезжает с другой; не дотянули — пружинит обратно. */
   const onDown = (e) => {
+    if (fly || (e.pointerType === 'mouse' && e.button !== 0)) return;
     drag.current = { x: e.clientX, mouse: e.pointerType === 'mouse' };
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* старый браузер */ }
   };
-  const onMove = (e) => { if (drag.current) setDx(e.clientX - drag.current.x); };
-  const onUp = () => { if (!drag.current) return; const d = dx; const lim = drag.current.mouse ? 50 : 80; drag.current = null; if (Math.abs(d) > lim) go(d < 0 ? 1 : -1); else setDx(0); };
-  const style = dx ? { transform: `translateX(${dx}px) rotate(${dx / 40}deg)`, transition: 'none' } : undefined;
+  const onMove = (e) => {
+    if (!drag.current) return;
+    const d = e.clientX - drag.current.x;
+    // у первого слова «назад» некуда — карточка тянется вправо туго
+    setDx(idx === 0 && d > 0 ? d / 4 : d);
+  };
+  const onUp = () => {
+    if (!drag.current) return;
+    const d = dx; const lim = drag.current.mouse ? 60 : 80; drag.current = null;
+    const step = d < 0 ? 1 : -1;
+    if (Math.abs(d) <= lim || idx + step < 0) { setDx(0); return; }
+    setFly(d < 0 ? -1 : 1);
+    setTimeout(() => go(step), 190);
+  };
+  const style = fly ? { transform: `translateX(${fly * 130}%) rotate(${fly * 16}deg)`, opacity: 0, transition: 'transform .19s ease-in, opacity .19s ease-in' }
+    : dx ? { transform: `translateX(${dx}px) rotate(${dx / 30}deg)`, transition: 'none' }
+      : dir ? { '--from': `${dir * 60}px`, '--rise': '0px' } : undefined;
+  const pull = Math.min(1, Math.abs(dx) / 80);
   return (
     <>
       {body(<>
       <div className="lp-deck">
         {!last && <div className="lp-deck-ghost" aria-hidden="true" />}
-        <div className="lp-word in" key={idx} style={style} data-testid="flash-card" data-word={idx}
-          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+        <div className={`lp-word in${dx || fly ? ' drag' : ''}`} key={idx} style={style} data-testid="flash-card" data-word={idx} data-dx={Math.round(dx)}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDragStart={(e) => e.preventDefault()}>
+          {dx < 0 && <span className="lp-swipe-tag next" style={{ opacity: pull }} aria-hidden="true">{last ? 'К упражнениям' : 'Дальше'}</span>}
+          {dx > 0 && idx > 0 && <span className="lp-swipe-tag prev" style={{ opacity: pull }} aria-hidden="true">Назад</span>}
           <div className="lp-word-top">
             <span>Новое слово {idx + 1} из {cards.length}</span>
             <span style={{ flex: 1 }} />

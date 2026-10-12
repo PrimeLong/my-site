@@ -25,7 +25,7 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, reviewQueue } from './textbook/progress.js';
 import {
-  UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, pathState,
+  UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
@@ -41,7 +41,7 @@ import {
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
-import { markTerms, termTitle, termText } from './learn/terms.js';
+import { markTerms, termTitle, termText, termFormula } from './learn/terms.js';
 import { LeagueView } from './learn-league.jsx';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
@@ -79,9 +79,24 @@ const CSS = `
   .ln-streak.wait { border-style: dashed; color: var(--ds-ink3); }
   .ln-flame-wrap { position: relative; display: inline-flex; }
   .ln-flame-ok { position: absolute; right: -5px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--ds-ok); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
-  .ln-streak-up { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0 0 14px; padding: 10px 12px; border-radius: 4px;
-    background: color-mix(in srgb, var(--ds-bad) 12%, var(--ds-card)); border: 1px solid color-mix(in srgb, var(--ds-bad) 45%, var(--ds-rule2)); color: var(--ds-bad); font: 700 16px var(--ds-sans); text-align: left; }
-  .ln-streak-up .rw-flame { display: inline-flex; }
+  /* серия на итогах — без надписи: огонёк вспыхивает, разлетаются искры, счётчик дней перещёлкивается */
+  .ln-burst { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 0 0 14px; color: var(--ds-bad); }
+  .ln-burst-flame { position: relative; display: inline-flex; transform-origin: 50% 90%; animation: ln-ignite .8s cubic-bezier(.2, 1.5, .4, 1) both, ln-flicker 1.3s ease-in-out .8s 2; }
+  .ln-burst-flame::before { content: ''; position: absolute; inset: -14px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--ds-bad) 35%, transparent), transparent 70%); animation: ln-glow 1.6s ease-out .2s both; }
+  .ln-burst-flame svg { position: relative; }
+  .ln-burst-flame i { position: absolute; left: 50%; top: 45%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--ds-bad); opacity: 0; animation: ln-spark .9s ease-out .45s both; }
+  .ln-burst-num { position: relative; display: inline-block; height: 40px; min-width: 1.2ch; overflow: hidden; font: 800 36px/40px var(--ds-sans); font-variant-numeric: tabular-nums; }
+  .ln-burst-num > span { display: block; }
+  .ln-burst-num .old { position: absolute; left: 0; right: 0; animation: ln-num-out .45s ease-in .55s both; }
+  .ln-burst-num .new { animation: ln-num-in .5s cubic-bezier(.2, 1.4, .4, 1) .7s both; }
+  .ln-burst-cap { display: block; font: 700 13.5px var(--ds-sans); color: var(--ds-ink2); }
+  @keyframes ln-ignite { 0% { transform: scale(.2) translateY(12px); opacity: 0; filter: grayscale(1) } 60% { transform: scale(1.25); opacity: 1; filter: none } 100% { transform: scale(1) } }
+  @keyframes ln-flicker { 0%, 100% { transform: scale(1) rotate(0) } 30% { transform: scale(1.06, .95) rotate(-3deg) } 65% { transform: scale(.97, 1.05) rotate(2deg) } }
+  @keyframes ln-glow { 0% { opacity: 0; transform: scale(.4) } 40% { opacity: 1; transform: scale(1.1) } 100% { opacity: .35; transform: scale(1) } }
+  @keyframes ln-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(1) } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-36px) scale(.3) } }
+  @keyframes ln-num-out { to { transform: translateY(-100%); opacity: 0 } }
+  @keyframes ln-num-in { from { transform: translateY(100%); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .ln-burst-flame, .ln-burst-flame::before, .ln-burst-num .new { animation: none; } .ln-burst-flame i, .ln-burst-num .old { display: none; } }
   .ln-atlas { position: relative; padding: 10px 10px 8px; margin: 4px 0 18px; }
   .ln-atlas svg text { font-family: var(--ds-serif); }
   .ln-bill { position: relative; overflow: hidden; padding: 0; margin: 20px 0 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
@@ -173,6 +188,16 @@ const CSS = `
   .ln-foot.fb { padding: 0; border-top: none; }
   .ln-kind { margin-bottom: 8px; }
   .ln-prompt { margin-bottom: 12px; }
+  /* урок на телефоне — крупнее: экран почти пустой, а читать и попадать пальцем должно быть легко */
+  @media (max-width: 600px) {
+    .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
+    .ln-body .ln-prompt { margin-bottom: 14px; }
+    .ln-body .ds-opt { font-size: 18px; line-height: 1.4; padding: 16px 14px 16px 16px; margin: 10px 0; }
+    .ln-body .ds-h1 { font-size: 28px !important; }
+    .ln-body .ds-eyebrow { font-size: 13px; }
+    .ln-body .ln-legend, .ln-body .ln-key { font-size: 16px; }
+    .ln-body .ln-key-tex { font-size: 22px; }
+  }
   .tb-term { background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help; text-decoration: underline dotted var(--u-ink); text-underline-offset: 4px; text-decoration-thickness: 2px; }
   .ln-term-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--ds-card); border-top: 1px solid var(--ds-rule2); border-radius: 10px 10px 0 0;
     padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: inset 0 3px 0 var(--ds-card), inset 0 4px 0 var(--u), 0 -10px 30px rgba(0,0,0,.2); }
@@ -186,6 +211,9 @@ const CSS = `
   .ln-ticket-stub::before, .ln-ticket-stub::after { content: ''; position: absolute; left: -9px; width: 16px; height: 16px; border-radius: 50%; background: var(--ds-card2); }
   .ln-ticket-stub::before { top: -9px; } .ln-ticket-stub::after { bottom: -9px; }
   .ln-album { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ln-key { margin-top: 14px; padding: 8px 12px 10px; border: 2px solid var(--u); border-radius: 10px; background: color-mix(in srgb, var(--u) 8%, var(--ds-card)); }
+  .ln-key .ds-eyebrow { color: var(--u-ink); }
+  .ln-key-tex { font-size: 19px; text-align: center; margin-top: 4px; overflow-x: auto; overflow-y: hidden; }
   .ln-legend { margin-top: 12px; padding: 8px 10px; border-left: 3px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 0 3px 3px 0; }
   .ln-how { background: none; border: none; padding: 4px 0; margin-top: 6px; font: 700 14px var(--ds-sans); color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
   .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 3px; border-left: 3px solid; }
@@ -475,7 +503,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <input value={val} onChange={(e) => !locked && setResp(e.target.value.replace(/[^0-9.,\-−/]/g, '').slice(0, 10))} inputMode="none" aria-label="Ответ числом"
                 className="ds-field ds-num" style={{ width: 132, fontSize: 22, textAlign: 'center', padding: '6px 8px' }} />
-              {inst.unit && <span style={{ fontSize: 15, color: 'var(--ds-ink2)' }} data-testid="calc-unit">{inst.unit}</span>}
+              {inst.unit && <span style={{ fontSize: 15, color: 'var(--ds-ink2)' }} data-testid="calc-unit">{unitFor(inst, val)}</span>}
             </span>
             {!locked && (
               <span style={{ display: 'inline-flex', gap: 4 }} role="group" aria-label="Способ ввода">
@@ -903,7 +931,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                     <h2 className="ds-h1" style={{ flex: 1, fontSize: 25 }}>{heading}</h2>
                   </div>
                   <div className="ds-text" style={{ marginTop: 14 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
-                  <StepLegend nodes={c.text} unitId={unitId} />
+                  {c.remember && <StepRemember tex={c.remember} />}
+                  <StepLegend nodes={c.remember ? [...c.text, { t: 'math', v: c.remember }] : c.text} unitId={unitId} />
                   {picture}
                   {/* Инфля вспоминает механику лавки, которой ученик уже пользовался: тема знакома на деле */}
                   {(() => { const cb = callbackFor(c.id, learn); return cb ? <div className="lm-say" data-testid="step-callback" data-callback={cb.id}><Mascot mood="joy" size={38} /><span>{cb.text}</span></div> : null; })()}
@@ -1003,6 +1032,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
             <div className="ds-eyebrow">Словарь</div>
             <div className="ds-h2" style={{ marginTop: 2 }}>{termTitle(term)}</div>
             <div className="ds-text" style={{ fontSize: 15.5, margin: '8px 0 14px' }}>{termText(term)}</div>
+            {termFormula(term) && <div className="ln-key-tex" style={{ margin: '-4px 0 14px' }} data-testid="term-formula"><Inline nodes={[{ t: 'math', v: termFormula(term) }]} ctx={noopCtx} /></div>}
             <Button variant="secondary" wide onClick={() => setTerm(null)} autoFocus>Понятно</Button>
           </div>
         </div>
@@ -1033,6 +1063,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   ? `Открыто сразу: ${result.opened.map((u) => `«${placeOf(u).place}»`).join(', ')}. ${result.opened.length >= UNITS.filter((u) => u.lessons.length).length ? 'Пройденные уроки можно взять на алмазном уровне.' : 'Путь продолжится со следующего места.'}`
                   : 'Начнём с самого начала — так надёжнее. Первые уроки короткие.')
                   : run.mode === 'check' && run.levelId ? (result.pass ? `${nextLevelText(run.levelId)} Уроки пройденного уровня тоже открыты.` : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки уровня никуда не делись.`)
+                  : run.mode === 'check' && run.review ? (result.pass ? 'Юнит не забыт: знания на месте.' : `Ошибок с первой попытки: ${result.mistakes}, для зачёта — не больше ${plan.passMistakes}. Стоит повторить уроки юнита — они открыты.`)
                   : run.mode === 'check' ? (result.pass ? 'Уроки юнита открыты — можно идти дальше.' : `Ошибок с первой попытки: ${result.mistakes}. Для зачёта — не больше ${plan.passMistakes}. Уроки юнита никуда не делись.`)
                   : lesson && lesson.kind === 'summary' ? `Тест юнита: верно ${Math.round((result.accuracy * total) / 100)} из ${total}. «${placeOf(unitId).place}» пройден.`
                     : lesson && lesson.kind === 'game' ? gameResultText(result)
@@ -1041,12 +1072,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                   {result.accuracy >= DIAMOND_ACCURACY ? '◆ Алмазный уровень взят' : `◆ Для алмаза нужно от ${DIAMOND_ACCURACY}% верных`}
                 </div>}
               </div>
-              {result.streakUp > 0 && (
-                <div className="ln-streak-up" data-testid="result-streak" role="status">
-                  <span className="rw-flame"><Flame size={34} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 30%, transparent)" aria-hidden="true" /></span>
-                  <span>Огонёк сохранён: {result.streakUp} {plural(result.streakUp, 'день', 'дня', 'дней')} подряд<br /><span style={{ font: '13.5px var(--ds-sans)', color: 'var(--ds-ink2)' }}>Сегодняшний день засчитан в серию.</span></span>
-                </div>
-              )}
+              {result.streakUp > 0 && <StreakBurst days={result.streakUp} />}
               <div className="ln-tickets">
                 <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
@@ -1118,6 +1144,31 @@ function StepsExplain({ blocks }) {
 /* Обозначения под шагом с формулами: каждая буква — что она значит (src/textbook/symbols.js).
    Шаг «В формуле Q_D = 100 − 2P …» — и под ним «Q_D — объём спроса…; P — цена…». */
 const mathIn = (nodes, out = []) => { (nodes || []).forEach((n) => { if (n.t === 'math') out.push(n.v); else if (n.c) mathIn(n.c, out); }); return out; };
+// серия на итогах урока: огонёк вспыхивает, счётчик дней перещёлкивается с прошлого на сегодняшний
+const SPARKS = [-70, -35, 0, 35, 70, 110, -110];
+function StreakBurst({ days }) {
+  return (
+    <div className="ln-burst" data-testid="result-streak" data-days={days} role="img" aria-label={`Серия: ${days} ${plural(days, 'день', 'дня', 'дней')} подряд`}>
+      <span className="ln-burst-flame">
+        {SPARKS.map((a) => <i key={a} style={{ '--a': `${a}deg` }} />)}
+        <Flame size={52} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 30%, transparent)" aria-hidden="true" />
+      </span>
+      <span style={{ textAlign: 'left' }} aria-hidden="true">
+        <span className="ln-burst-num"><span className="old">{days - 1}</span><span className="new">{days}</span></span>
+        <span className="ln-burst-cap">{plural(days, 'день', 'дня', 'дней')} подряд</span>
+      </span>
+    </div>
+  );
+}
+// формула шага, по которой считают упражнения после него, — с пометкой «Запомнить», как в главе
+function StepRemember({ tex }) {
+  return (
+    <div className="ln-key" data-testid="step-remember">
+      <div className="ds-eyebrow" style={{ fontSize: 12 }}>Запомнить</div>
+      <div className="ln-key-tex"><Inline nodes={[{ t: 'math', v: tex }]} ctx={noopCtx} /></div>
+    </div>
+  );
+}
 function StepLegend({ nodes, unitId }) {
   const list = symbolsOf(mathIn(nodes), unitId);
   if (!list.length) return null;
@@ -1754,7 +1805,8 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
             </div>
             <div className="ln-bill-btns">
               <Button variant="secondary" small icon={BookOpenText} data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }}>Гайд юнита</Button>
-              {!st.complete && <Button variant="secondary" small icon={Sparkles} data-testid="unit-check" data-nav-target={`check:${u.id}`} onClick={() => { Audio.prime(); onStart({ mode: 'check', unitId: u.id }); }}>Проверка юнита</Button>}
+              {/* и у пройденного юнита: проверить себя можно в любой момент */}
+              <Button variant="secondary" small icon={Sparkles} data-testid="unit-check" data-nav-target={`check:${u.id}`} onClick={() => { Audio.prime(); onStart({ mode: 'check', unitId: u.id, ...(st.complete ? { review: true } : {}) }); }}>Проверка юнита</Button>
               {st.complete && hasClaim(learn, chestKey(u.id)) && (
                 <Button variant="ghost" small icon={ChevronRight} data-testid="unit-fold" aria-expanded={!folded}
                   onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: !m[u.id] })); }}>{folded ? `Уроки: ${st.lessons.length}` : 'Свернуть'}</Button>

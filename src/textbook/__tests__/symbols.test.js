@@ -18,7 +18,7 @@ describe('обозначения в формулах', () => {
     });
   });
   it('в формулах шагов уроков Пути все буквы объяснены', () => {
-    pilotUnits().forEach((u) => u.lessons.forEach((l) => l.inner.forEach((c) => mathIn(c.idea.text).forEach((t) => {
+    pilotUnits().forEach((u) => u.lessons.forEach((l) => l.inner.forEach((c) => mathIn(c.idea.text).concat(c.idea.remember || []).forEach((t) => {
       expect(unexplained(t, u.id), `${c.idea.id}: ${t}`).toEqual([]);
     }))));
   });

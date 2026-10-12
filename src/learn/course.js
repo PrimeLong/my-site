@@ -408,6 +408,14 @@ export function texPlain(tex) {
     .replace(/\\pi/g, 'π').replace(/\\Delta\s?/g, 'Δ').replace(/\\%/g, '%').replace(/\\[,;! ]/g, ' ').replace(/\\left|\\right/g, '')
     .replace(/\\[a-zA-Z]+/g, '').replace(/[{}]/g, '').replace(/\(([^()+\-·/ ]+)\)\/\(([^()+\-·/ ]+)\)/g, '$1/$2').replace(/\s+/g, ' ').trim();
 }
+// единица у поля расчёта — по набранному числу: «3 станка», «5 станков» (жалоба mv4j067n);
+// пока поле пустое — «станков»
+export function unitFor(inst, val) {
+  if (!inst.units) return inst.unit;
+  const x = Number(String(val || '').replace(',', '.').replace('−', '-'));
+  if (!val || !Number.isFinite(x)) return inst.unit;
+  return Number.isInteger(x) ? plural(x, ...inst.units) : inst.units[1];
+}
 export function answerText(inst) {
   const plain = (nodes) => (nodes || []).map((n) => (n.t === 'text' ? n.v : n.t === 'math' ? texPlain(n.v) : n.c ? plain(n.c) : '')).join('');
   switch (inst.kind) {
@@ -571,13 +579,22 @@ function hardPool(unitId, upto = Infinity) {
     const autos = [];
     probs.forEach((pid) => { try { autos.push({ ...fromProblem(pid), lesson: null, unitId, level: PROBLEMS[pid].block.level }); } catch { /* многошаговая — в упражнение не годится */ } });
     const variants = templatesOf(unitId).filter((t) => t.level === 2 && t.gen(seeded(1)).parts.length === 1).map((t) => ({ id: `var:${t.id}`, kind: 'calc', variant: t.id, lesson: null, unitId, level: 2 }));
-    return { variants, autos, multi };
+    return { variants, autos: noTwins(autos, variants), multi };
   }
   const ids = [...new Set(unit.lessons.filter((l) => l.no <= upto).flatMap((l) => l.hard))];
   const list = ids.map((id) => hardEntry(unitId, id));
-  return { variants: list.filter((e) => e.variant), autos: list.filter((e) => !e.variant), multi };
+  const variants = list.filter((e) => e.variant);
+  return { variants, autos: noTwins(list.filter((e) => !e.variant), variants), multi };
 }
+// задача учебника с шаблоном приходит с новыми числами — это и есть шаблон: дважды в урок не берём
+const noTwins = (autos, variants) => autos.filter((e) => !(e.source && variants.some((v) => v.variant === TEMPLATE_BY_SOURCE[e.source])));
 export const HARD_IN_PRACTICE = 2;
+// задача семинарского уровня: у задачи учебника с шаблоном и у расчёта с параметрами — сразу новые
+// числа (жалоба mv4j2khb: в алмазном «Повторении» она приходила с числами из учебника), иначе — как есть
+function hardInstance(e, rand) {
+  const extra = { hard: e.level >= 3 ? 3 : 2 };
+  return !e.variant && canRenumber(e) ? freshCopy(e, rand, extra, { sibling: false }) : instantiate(e, rand, extra);
+}
 const ownOf = (lesson) => lesson.exercises.filter((e) => !e.diamond).map((e) => EXERCISES[e.id]);
 function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = 'normal', weak = [], seen = {}, replay = false }) {
   const lesson = LESSON_BY_ID[lessonId];
@@ -655,7 +672,7 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
     const hard = shuffle([...variants, ...autos], rand).slice(0, HARD_IN_PRACTICE);
     hard.forEach((e) => {
       const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard && !SELF_CHECK.includes(items[i].kind));
-      const it = instantiate(e, rand, { hard: e.level >= 3 ? 3 : 2 });
+      const it = hardInstance(e, rand);
       if (k != null && items.length >= 10) items.splice(k, 1, it); else items.push(it);
     });
   }
@@ -702,7 +719,7 @@ export const DIAMOND_HARD = 4;
 export const DIAMOND_PAIRS_SECONDS = 25;
 const hardItems = (unitId, n, rand, avoid = new Set(), upto = Infinity) => {
   const { variants, autos } = hardPool(unitId, upto);
-  return shuffle([...variants, ...autos].filter((e) => !avoid.has(e.id)), rand).slice(0, n).map((e) => instantiate(e, rand, { hard: e.level >= 3 ? 3 : 2 }));
+  return shuffle([...variants, ...autos].filter((e) => !avoid.has(e.id)), rand).slice(0, n).map((e) => hardInstance(e, rand));
 };
 function buildDiamond(lessonId, rand, opts) {
   const lesson = LESSON_BY_ID[lessonId];

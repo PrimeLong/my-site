@@ -40,6 +40,7 @@ export const TERM_FORMS = {
   incidence: [`налогов${L} брем${L}`, `брем${L} налога`],
   externality: [`внешн${L} эффект${L}`],
   pigou: [`(?:налог|субсиди)${L} пигу`],
+  socialopt: [`общественно оптимальн${L} (?:выпуск|объ[её]м)${L}`, `общественн${L} оптимум${L}`],
   publicgood: [`общественн${L} благ${L}`],
   freerider: [`безбилетник${L}`],
   coase: [`теорем${L} коуза`],
@@ -132,3 +133,4 @@ export function termsIn(x) {
 
 export const termTitle = (id) => (GLOSSARY[id] || {}).title || id;
 export const termText = (id) => (GLOSSARY[id] || {}).text || '';
+export const termFormula = (id) => (GLOSSARY[id] || {}).formula || '';

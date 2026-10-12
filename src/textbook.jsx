@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -58,6 +58,15 @@ export const TEXTBOOK_CSS = `
   .tb-table th, .tb-table td { border: 1px solid var(--c-border); padding: 6px 10px; text-align: left; vertical-align: top; }
   .tb-table th { color: var(--c-gold-soft); font-weight: 600; background: var(--c-panel-alt); }
   .tb-box { border: 1px solid var(--c-border); border-left-width: 3px; padding: 12px 14px 4px; margin: 16px 0; background: var(--c-panel-alt); }
+  .tb-recall-part { margin-bottom: 4px; }
+  .tb-recall-opts { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+  .tb-recall-opt { text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--c-border); border-left: 3px solid var(--c-border); border-radius: 4px; background: var(--c-panel); color: var(--c-text); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; }
+  @media (hover: hover) { .tb-recall-opt:hover:not(:disabled) { border-color: var(--c-gold); } }
+  .tb-recall-opt:disabled { cursor: default; }
+  .tb-recall-opt.right { border-color: var(--c-teal, #2E7D5B); background: color-mix(in srgb, var(--c-teal, #2E7D5B) 12%, var(--c-panel)); color: var(--c-text); }
+  .tb-recall-opt.wrong { border-color: var(--c-rust, #A4462A); border-style: dashed; background: color-mix(in srgb, var(--c-rust, #A4462A) 8%, var(--c-panel)); color: var(--c-text); }
+  .tb-recall-opt.dim { opacity: .62; }
+  .tb-recall-why { font-size: 13px; line-height: 1.5; color: var(--c-text); margin: -4px 0 10px; padding: 6px 10px; border-left: 3px solid var(--c-rust, #A4462A); background: color-mix(in srgb, var(--c-rust, #A4462A) 6%, transparent); }
   .tb-box-head { display: flex; align-items: center; gap: 7px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
   .tb-link { background: none; border: none; padding: 0; font: inherit; color: var(--c-gold-soft); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
   .tb-term { border-bottom: 1px dashed var(--c-gold); cursor: help; color: var(--c-gold-soft); }
@@ -69,6 +78,7 @@ export const TEXTBOOK_CSS = `
   .tb-chip { font-size: 12px; padding: 1px 7px; border: 1px solid var(--c-border); border-radius: 10px; color: var(--c-muted); white-space: nowrap; }
   /* чип-кнопка — без системного серого фона кнопки (в тёмной теме он съедал контраст) */
   button.tb-chip { background: transparent; font-family: inherit; cursor: pointer; }
+  .tb-collapse { padding: 3px 10px; color: var(--c-text); }
   /* ключевая формула главы — её стоит знать наизусть; остальные выводятся из таких */
   .tb-key { border-left: 3px solid var(--c-gold); background: var(--c-panel-alt); padding: 6px 12px 2px; margin: 12px 0 14px; border-radius: 0 4px 4px 0; }
   .tb-key .tb-math { margin: 4px 0 8px; }
@@ -84,6 +94,10 @@ export const TEXTBOOK_CSS = `
   .tb-calc-keys button.tb-calc-use { grid-column: span 3; font: 600 12.5px/1.2 var(--ds-sans, sans-serif); padding: 6px; }
   .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
   .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
+  .tb-guess { margin: 4px 0 10px; }
+  .tb-guess-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+  .tb-guess-name { font-size: 13px; min-width: 9.5em; color: var(--c-text); }
+  @media (max-width: 560px) { .tb-guess-name { flex-basis: 100%; } .tb-guess-row { margin: 8px 0; } }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
   .tb-news { background: #E8DFC6; color: #241C12; border: 1px solid #8C6B3E; padding: 8px 12px 10px; margin: 6px 0 10px; }
   .tb-news-mast { font-size: 12px; letter-spacing: .12em; color: #6B5A3E; border-bottom: 3px double #8C6B3E; padding-bottom: 4px; margin-bottom: 6px; }
@@ -192,7 +206,7 @@ function TermLink({ id, label }) {
       <span className="tb-term" role="button" tabIndex={0} title={`${g.title} — ${g.text}`}
         onClick={() => { Audio.play('tick'); setOpen((v) => !v); }}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((v) => !v); } }}>{label || g.title.toLowerCase()}</span>
-      {open && <span className="tb-def"><b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}</span>}
+      {open && <span className="tb-def"><b style={{ color: COLOR.goldSoft }}>{g.title}</b> — {g.text}{g.formula && <span style={{ display: 'block', textAlign: 'center', margin: '6px 0 2px' }}><Tex tex={g.formula} /></span>}</span>}
     </span>
   );
 }
@@ -297,58 +311,67 @@ function BoxView({ b, ctx }) {
   );
 }
 
-/* Вопрос на вспоминание в конце раздела: сначала короткий ответ своими словами, потом
-   эталон и честная сверка «совпало / не совпало». Без своего ответа эталон открывается только
-   через «Не помню» — это засчитывается как «не совпало»: вопрос вернётся через два дня,
-   раздел пока не пройден. */
-const MIN_RECALL = 12;
+/* «Вспомните» в конце раздела: вопросы с вариантами ответа — выбор проверяется сам, писать своими
+   словами не нужно (docs/mechanics.md, «Учебник: вспомните»). Варианты — в случайном порядке;
+   после выбора: верный подсвечен, у неверного — почему он неверен, и разбор учебника. Всё верно —
+   раздел пройден; ошибка — вопрос вернётся на повторение через два дня, можно «Ещё раз». */
+const shuffled = (n) => { const a = Array.from({ length: n }, (_, k) => k); for (let k = n - 1; k > 0; k -= 1) { const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; };
 function RecallCard({ b, ctx, from }) {
   const rec = ctx.progress.problems[b.id];
-  const [text, setText] = useState('');
-  const [stage, setStage] = useState('write'); // write → check → done
-  const [said, setSaid] = useState(null);
-  const ready = text.replace(/\s+/g, '').length >= MIN_RECALL;
-  const mark = (ok) => {
-    Audio.play(ok ? 'stamp' : 'tick');
-    ctx.onAnswer(b.id, ok, {});
-    setSaid(ok); setStage('done');
+  const mix = () => b.parts.map((p) => shuffled(p.options.length));
+  const [order, setOrder] = useState(mix);
+  const [picks, setPicks] = useState({});
+  const done = b.parts.every((_, i) => picks[i] != null);
+  const ok = done && b.parts.every((p, i) => p.options[picks[i]].correct);
+  const pick = (i, k) => {
+    if (picks[i] != null) return;
+    const next = { ...picks, [i]: k };
+    setPicks(next);
+    const all = b.parts.every((_, j) => next[j] != null);
+    const good = all && b.parts.every((p, j) => p.options[next[j]].correct);
+    Audio.play(!b.parts[i].options[k].correct ? 'tick' : all && good ? 'stamp' : 'click');
+    if (all) ctx.onAnswer(b.id, good, {});
   };
   return (
-    <div className="tb-box" style={{ borderLeftColor: COLOR.blue }} data-testid="tb-recall" data-recall={b.id}>
+    <div className="tb-box" style={{ borderLeftColor: COLOR.blue }} data-testid="tb-recall" data-recall={b.id} data-answer={JSON.stringify(b.parts.map((p) => p.options.findIndex((o) => o.correct)))}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
         <div className="tb-box-head" style={{ color: COLOR.blue, marginBottom: 6 }}><Brain size={13} />{from ? `${from} · ` : ''}Вспомните</div>
-        {rec && said == null && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
-          {rec.ok ? 'совпало' : 'не совпало'}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
+        {rec && !done && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
+          {rec.ok ? 'отвечено верно' : 'была ошибка'}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
       </div>
-      <Blocks blocks={b.question} ctx={ctx} />
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} disabled={stage !== 'write'}
-        aria-label="Ваш ответ на вопрос раздела" placeholder="Ответьте своими словами, одна-две фразы"
-        style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
-      {stage === 'write' && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} disabled={!ready}
-            onClick={() => { Audio.play('click'); setStage('check'); }}>Сверить с ответом</button>
-          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не помню</button>
-          {!ready && <span style={{ fontSize: 12, color: COLOR.faint }}>сначала свой ответ</span>}
-        </div>
-      )}
-      {stage !== 'write' && (
+      {b.parts.map((p, i) => {
+        const chosen = picks[i];
+        return (
+          <div key={i} className="tb-recall-part" data-testid="tb-recall-part" data-part={i}>
+            <Blocks blocks={p.question} ctx={ctx} />
+            <div className="tb-recall-opts" role="group" aria-label={`Варианты ответа${b.parts.length > 1 ? `, вопрос ${i + 1}` : ''}`}>
+              {order[i].map((k) => {
+                const o = p.options[k];
+                const st = chosen == null ? '' : o.correct ? 'right' : chosen === k ? 'wrong' : 'dim';
+                return (
+                  <button key={k} type="button" className={`tb-recall-opt ${st}`} data-key={k} aria-pressed={chosen === k} disabled={chosen != null} onClick={() => pick(i, k)}>
+                    {st === 'right' && <Check size={14} strokeWidth={3} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />}<Inline nodes={o.text} ctx={ctx} />
+                  </button>
+                );
+              })}
+            </div>
+            {chosen != null && !p.options[chosen].correct && (
+              <div className="tb-recall-why" data-testid="tb-recall-why"><b>Не то:</b> <Inline nodes={p.options[chosen].why} ctx={ctx} /></div>
+            )}
+          </div>
+        );
+      })}
+      {done && (
         <>
           <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 8 }} data-testid="tb-recall-answer">
-            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 4 }}>Ответ учебника</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 4 }}>Разбор учебника</div>
             <Blocks blocks={b.answer} ctx={ctx} />
           </div>
-          {stage === 'check' ? (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontSize: 13 }}>Ваш ответ говорит о том же?</span>
-              <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(true)}>Совпало</button>
-              <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не совпало</button>
-            </div>
-          ) : (
-            <div data-testid="tb-recall-verdict" style={{ fontSize: 13, marginBottom: 10, color: said ? COLOR.teal : COLOR.rust }}>
-              {said ? 'Раздел пройден.' : 'Вопрос вернётся на повторение через два дня. Перечитайте раздел — и дальше.'}
-            </div>
-          )}
+          <div data-testid="tb-recall-verdict" style={{ fontSize: 13, marginBottom: 10, color: ok ? COLOR.teal : COLOR.rust, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>{ok ? 'Верно. Раздел пройден.' : 'Есть ошибка — вопрос вернётся на повторение через два дня. Прочитайте разбор и раздел.'}</span>
+            {!ok && <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} data-testid="tb-recall-again"
+              onClick={() => { Audio.play('click'); setOrder(mix()); setPicks({}); }}>Ещё раз</button>}
+          </div>
         </>
       )}
     </div>
@@ -696,7 +719,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const [solMode, setSolMode] = useState(null);
   const [hintsShown, setHintsShown] = useState(0);
   /* задача, решённая раньше (и не пришедшая на повтор), свёрнута в строку «решена» — сборник не
-     приходится листать через уже сделанное; развернуть — по нажатию */
+     приходится листать через уже сделанное; развернуть — по нажатию, свернуть обратно — «Свернуть» */
   const [solvedBefore] = useState(() => !!(rec && rec.ok && !(rec.due && rec.due <= Date.now())));
   const [expanded, setExpanded] = useState(false);
   const hints = block.hints || [];
@@ -726,6 +749,10 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
           {status && (rec.ok
             ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
             : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>)}
+          {solvedBefore && (
+            <button type="button" className="tb-chip tb-collapse" aria-expanded="true" data-testid="tb-problem-collapse"
+              onClick={() => { Audio.play('click'); setExpanded(false); }}><ChevronUp size={12} style={{ verticalAlign: -2 }} aria-hidden="true" /> Свернуть</button>
+          )}
         </span>
       </div>
       {block.news && (
@@ -995,38 +1022,63 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   );
 }
 
-// графическая: игрок двигает кривые, проверяются направления величин графика
+// графическая: сначала прогноз — куда пойдёт каждая величина, потом сдвиг ползунком и проверка
+// на графике (жалоба mv3wais6: при одном ползунке любой сдвиг сам давал «верный» ответ, а
+// «уверен / не уверен» здесь ни к чему — его роль играет прогноз)
+const GUESS_DIRS = [['+', '↑ растёт'], ['-', '↓ падает'], ['0', '= не меняется']];
+const capital = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+function GraphGuess({ rows, names, value, onChange }) {
+  return (
+    <div className="tb-guess" data-testid="tb-guess">
+      <div style={{ fontSize: 12.5, color: COLOR.muted, marginBottom: 6 }}>Сначала прогноз: что станет с каждой величиной? Потом проверьте себя ползунком.</div>
+      {rows.map((e) => {
+        const name = names[e.key] || e.key;
+        return (
+          <div key={e.key} className="tb-guess-row" role="group" aria-label={`Прогноз: ${name}`} data-key={e.key}>
+            <span className="tb-guess-name">{capital(name)}</span>
+            {GUESS_DIRS.map(([d, label]) => (
+              <button key={d} type="button" className="tb-pick" aria-pressed={value[e.key] === d} aria-label={`${name}: ${DIR_WORD[d]}`}
+                onClick={() => { Audio.play('tick'); onChange({ ...value, [e.key]: d }); }}>{label}</button>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function GraphProblem({ block, no, ctx, from }) {
   const def = CHARTS[block.chart];
   const [values, setValues] = useState(() => chartDefaults(block.chart, block.attrs));
   const [verdict, setVerdict] = useState(null);
   const [saw, setSaw] = useState(false);
-  const [sure, setSure] = useState(null);
+  const [guess, setGuess] = useState({});
   const names = def.measureNames || {};
-  const answer = block.expect.filter((e) => e.dir !== '?').map((e) => `${names[e.key] || e.key}: ${DIR_WORD[e.dir]}`).join(', ');
+  const rows = block.expect.filter((e) => e.dir !== '?');
+  const answer = rows.map((e) => `${names[e.key] || e.key}: ${DIR_WORD[e.dir]}`).join(', ');
   const submit = () => {
+    if (rows.some((e) => !guess[e.key])) { setVerdict({ bad: true, text: 'Сначала отметьте прогноз для каждой величины.' }); return; }
     const r = checkGraph(block.chart, block.attrs, values, { expect: block.expect, still: block.still });
-    if (!r.moved) { setVerdict({ bad: true, text: 'Сначала сдвиньте кривую ползунком.' }); return; }
-    if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
+    if (!r.moved) { setVerdict({ bad: true, text: 'Теперь сдвиньте кривую ползунком и проверьте прогноз на графике.' }); return; }
+    const missed = rows.filter((e) => guess[e.key] !== String(e.dir));
+    const ok = r.ok && !missed.length;
     const got = r.rows.map((x) => `${names[x.key] || x.key} ${DIR_WORD[x.got]}${x.ok ? '' : ' ✗'}`).join(', ');
     const extra = r.touched.length ? ` Условие не меняет: ${r.touched.map((k) => (def.controls(block.attrs).find((c) => c.id === k) || {}).label || k).join(', ')} — верните ползунок.` : '';
-    Audio.play(r.ok ? 'stamp' : 'tick');
-    const text = r.ok ? okText(ctx, block.id, `Верно: ${got}`, saw) : `На графике: ${got}.${extra} ${WRONG}`;
-    ctx.onAnswer(block.id, r.ok, { sawSolution: saw, confident: sure });
+    const wrongGuess = missed.map((e) => `${names[e.key] || e.key} ${DIR_WORD[e.dir]}, а не ${DIR_WORD[guess[e.key]]}`).join('; ');
+    Audio.play(ok ? 'stamp' : 'tick');
+    const text = ok ? okText(ctx, block.id, `Верно: ${got}`, saw)
+      : r.ok ? `Сдвиг верный, а прогноз — нет: ${wrongGuess}. ${WRONG}` : `На графике: ${got}.${extra} ${WRONG}`;
+    ctx.onAnswer(block.id, ok, { sawSolution: saw });
     // ловушка графической задачи — сдвинут «не тот» ползунок
     const d0 = chartDefaults(block.chart, block.attrs);
     const traps = r.ok ? [] : (block.traps || []).filter((tr) => Math.abs((values[tr.control] || 0) - (d0[tr.control] || 0)) > 1e-9);
-    setVerdict({ ok: r.ok, text, traps });
-    setSure(null);
+    setVerdict({ ok, text, traps });
   };
   return (
-    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)} given={JSON.stringify(values)}>
+    <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={answer} onSolutionOpen={() => setSaw(true)} given={JSON.stringify({ guess, values })}>
+      <GraphGuess rows={rows} names={names} value={guess} onChange={(g) => { setGuess(g); setVerdict(null); }} />
       <ChartBox type={block.chart} attrs={block.attrs} ctx={ctx} values={values} onValues={(v) => { setValues(v); setVerdict(null); }}
         only={block.controls} framed={false} />
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />
-        <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} onClick={submit}>Проверить сдвиг</button>
-      </div>
+      <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} onClick={submit}>Проверить прогноз</button>
     </ProblemFrame>
   );
 }
@@ -1274,6 +1326,7 @@ function GlossaryAppendix() {
         <div key={g.title} className="ems-panel" style={{ padding: '10px 12px', marginBottom: 7 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: COLOR.goldSoft, marginBottom: 3 }}>{g.title}</div>
           <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.55 }}>{g.text}</div>
+          {g.formula && <div style={{ marginTop: 4, fontSize: 13.5 }}><Tex tex={g.formula} /></div>}
         </div>
       ))}
       {!list.length && <div style={{ fontSize: 12, color: COLOR.faint }}>Ничего не нашлось.</div>}

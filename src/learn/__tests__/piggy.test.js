@@ -1,6 +1,8 @@
 // Копилка Инфли (сложный процент), цена отказа, «Страховка серии» и предвосхищение тем
 import { describe, it, expect } from 'vitest';
-import { PIGGY, piggyState, piggyPut, piggyTake, piggyValue, piggyCurve, balance, earn, forgone, incomePerLesson, FREEZE, BOOST, buy, COIN, takePolicy } from '../rewards.js';
+import { PIGGY, piggyState, piggyPut, piggyTake, piggyValue, piggyCurve, balance, earn, forgone, incomePerLesson, FREEZE, BOOST, buy, COIN, takePolicy,
+  RATE_STEPS, DEMAND_STEPS, rateStep, weekRate, weekDemand } from '../rewards.js';
+import { dayOf, addDays } from '../../textbook/learn-state.js';
 import { CALLBACKS, callbackFor } from '../callbacks.js';
 import { emptyLearn, normalizeLearn, mergeLearn } from '../../textbook/learn-state.js';
 import { LESSON_BY_ID } from '../course.js';
@@ -26,17 +28,20 @@ describe('копилка: сложный процент', () => {
     const r = piggyPut(s0, 200, T0);
     expect(r.ok).toBe(true);
     expect(balance(r.s)).toBe(300);
-    expect(piggyState(r.s, T0 + 3 * DAY)).toMatchObject({ amount: 200, days: 3, ripe: false, value: piggyValue(200, 3), payout: 200 });
+    // ставка — недели, когда положили, и держится весь срок
+    const rate = weekRate(dayOf(T0));
+    expect(r.rate).toBe(rate);
+    expect(piggyState(r.s, T0 + 3 * DAY)).toMatchObject({ amount: 200, days: 3, ripe: false, rate, value: piggyValue(200, 3, rate), payout: 200 });
     const t = piggyTake(r.s, T0 + 7 * DAY + 1000);
     expect(t.ok).toBe(true); expect(t.early).toBe(false);
-    expect(t.payout).toBe(piggyValue(200, 7));
-    expect(balance(t.s)).toBe(300 + piggyValue(200, 7));
+    expect(t.payout).toBe(piggyValue(200, 7, rate));
+    expect(balance(t.s)).toBe(300 + piggyValue(200, 7, rate));
     expect(piggyState(t.s, T0 + 8 * DAY)).toBeNull();
   });
   it('забрать раньше срока можно, но процент сгорает', () => {
     const r = piggyPut(rich(), 200, T0);
     const t = piggyTake(r.s, T0 + 5 * DAY);
-    expect(t.early).toBe(true); expect(t.payout).toBe(200); expect(t.lost).toBe(piggyValue(200, 5) - 200);
+    expect(t.early).toBe(true); expect(t.payout).toBe(200); expect(t.lost).toBe(piggyValue(200, 5, weekRate(dayOf(T0))) - 200);
     expect(balance(t.s)).toBe(500);
   });
   it('вклад один за раз, от 10 монет и не больше, чем в кошельке', () => {
@@ -54,6 +59,30 @@ describe('копилка: сложный процент', () => {
     expect(piggyState(merged, T0 + 9 * DAY)).toBeNull();
     expect(balance(merged)).toBe(balance(taken));
     expect(mergeLearn(merged, merged)).toEqual(merged);
+  });
+});
+
+describe('ставка недели: копилка и сад — разные решения', () => {
+  const days = Array.from({ length: 7 * 30 }, (_, k) => addDays('2026-10-05', k));
+  it('ставка 1–3% в день, меняется только по понедельникам и не больше чем на шаг; в среднем 2%', () => {
+    days.forEach((d) => expect(RATE_STEPS).toContain(weekRate(d)));
+    for (let k = 1; k < days.length; k += 1) {
+      const a = rateStep(days[k - 1]); const b = rateStep(days[k]);
+      if (new Date(`${days[k]}T12:00:00`).getDay() !== 1) expect(b, days[k]).toBe(a);
+      else expect(Math.abs(b - a), days[k]).toBeLessThanOrEqual(1);
+    }
+    const weeks = days.filter((d, k) => k % 7 === 0).map(weekRate);
+    expect(weeks.reduce((a, r) => a + r, 0) / weeks.length).toBeCloseTo(0.02, 3);
+    expect(new Set(weeks).size).toBe(RATE_STEPS.length);
+  });
+  it('ставка выше — вклад выгоднее, а спрос на рынке сада ниже', () => {
+    for (let k = 1; k < RATE_STEPS.length; k += 1) {
+      expect(piggyValue(1000, 7, RATE_STEPS[k])).toBeGreaterThan(piggyValue(1000, 7, RATE_STEPS[k - 1]));
+      expect(DEMAND_STEPS[k]).toBeLessThan(DEMAND_STEPS[k - 1]);
+    }
+    days.forEach((d) => expect(weekDemand(d)).toBe(DEMAND_STEPS[rateStep(d)]));
+    // при средней ставке спрос обычный
+    expect(DEMAND_STEPS[RATE_STEPS.indexOf(0.02)]).toBe(1);
   });
 });
 
