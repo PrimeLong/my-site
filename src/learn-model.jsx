@@ -19,7 +19,7 @@ import {
 
 export const MODEL_CSS = `
   .lm-street { width: 100%; display: block; margin: 4px 0 8px; border: 1px solid var(--ds-rule2); border-radius: 4px; background: var(--ds-card); }
-  .lm-street text { font-family: var(--ds-serif); }
+  .lm-street text { font-family: var(--ds-head); }
   .lm-chart { width: 100%; max-width: 380px; display: block; margin: 4px auto 6px; }
   .lm-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
   .lm-chart .lm-ax { font: 600 12px var(--ds-sans); fill: var(--ds-ink3); }
@@ -33,7 +33,7 @@ export const MODEL_CSS = `
   .lm-parts { display: grid; gap: 8px; margin-top: 8px; }
   .lm-part { border: 1px solid var(--ds-rule2); border-radius: 5px; padding: 8px 10px; background: var(--ds-card); }
   .lm-part.locked { border-style: dashed; background: none; color: var(--ds-ink3); }
-  .lm-part-head { display: flex; align-items: baseline; gap: 8px; font: 700 14.5px var(--ds-serif); }
+  .lm-part-head { display: flex; align-items: baseline; gap: 8px; font: 700 14.5px var(--ds-head); }
   .lm-part-text { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink2); margin-top: 2px; }
   .lm-part.locked .lm-part-text { color: var(--ds-ink3); }
   .lm-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--ds-ink3); margin-top: -4px; }
@@ -398,8 +398,8 @@ export const DOMINO_CSS = `
   .lm-scene .lm-chart { max-width: 290px; margin-bottom: 0; }
   .lm-scene .lm-street { max-width: 260px; margin: 0 auto 4px; }
   .lm-news { border: 1px solid var(--ds-rule2); background: var(--ds-card); padding: 8px 12px 10px; text-align: center; margin-bottom: 8px; }
-  .lm-news-mast { font: 700 12px var(--ds-serif); letter-spacing: .22em; text-transform: uppercase; border-bottom: 3px double var(--ds-ink2); padding-bottom: 4px; margin-bottom: 6px; color: var(--ds-ink2); }
-  .lm-news-head { font: 700 19px/1.25 var(--ds-serif); }
+  .lm-news-mast { font: 700 12px var(--ds-news); letter-spacing: .22em; text-transform: uppercase; border-bottom: 3px double var(--ds-ink2); padding-bottom: 4px; margin-bottom: 6px; color: var(--ds-ink2); }
+  .lm-news-head { font: 700 19px/1.25 var(--ds-news); }
   .lm-chain { display: grid; gap: 6px; margin: 8px 0; counter-reset: dom; }
   .lm-slot { position: relative; display: flex; align-items: stretch; min-height: 44px; border: 1.5px dashed var(--ds-rule2); border-radius: 5px; background: none; overflow: visible; }
   .lm-slot .n { width: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font: 700 14px var(--ds-mono); color: var(--ds-ink3); border-right: 1.5px dashed var(--ds-rule2); }

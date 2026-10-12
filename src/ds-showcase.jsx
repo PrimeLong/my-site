@@ -60,9 +60,9 @@ function Showcase({ theme }) {
         </Section>
 
         <Section title="Шрифты и размеры">
-          <div className="ds-h1">PT Serif — заголовок 28</div>
-          <div className="ds-h2">PT Serif — заголовок 22</div>
-          <div className="ds-h3">PT Serif — заголовок 18</div>
+          <div className="ds-h1">PT Sans — заголовок 28</div>
+          <div className="ds-h2">PT Sans — заголовок 22</div>
+          <div className="ds-h3">PT Sans — заголовок 18</div>
           <div className="ds-text">PT Sans — текст урока 17: спрос — это вся зависимость между ценой и количеством.</div>
           <div className="ds-num" style={{ fontSize: 20 }}>PT Mono — числа 1 234,5 ₽ · 83%</div>
           <div className="ds-eyebrow">Подпись капителью</div>
@@ -158,7 +158,7 @@ function Showcase({ theme }) {
         <Section title="Вырезка из «Вестника» — история">
           <Clipping issue="№ 012" rubric="кофейня «Зерно»">
             <div className="ds-h2" style={{ marginBottom: 8 }}>Маша двигает цену</div>
-            <div className="ds-text" style={{ fontFamily: 'var(--ds-serif)' }}><b>Маша.</b> Ищу цену, при которой и очереди нет, и стаканы не остаются.</div>
+            <div className="ds-text" style={{ fontFamily: 'var(--ds-head)' }}><b>Маша.</b> Ищу цену, при которой и очереди нет, и стаканы не остаются.</div>
           </Clipping>
         </Section>
 

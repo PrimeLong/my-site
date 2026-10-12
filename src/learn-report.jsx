@@ -179,7 +179,7 @@ export const REPORT_CSS = `
   .rp-radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--ds-ink3); background: var(--ds-card); flex: none; display: grid; place-items: center; box-sizing: border-box; }
   .rp-reason[aria-checked="true"] .rp-radio { border-color: var(--u); }
   .rp-reason[aria-checked="true"] .rp-radio::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--u); }
-  .rp-quote { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--u); background: var(--ds-card2); font: italic 15px/1.45 var(--ds-serif); color: var(--ds-ink); max-height: 120px; overflow: auto; }
+  .rp-quote { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--u); background: var(--ds-card2); font: italic 15px/1.45 var(--ds-head); color: var(--ds-ink); max-height: 120px; overflow: auto; }
   .rp-quote .ds-eyebrow { display: block; font-style: normal; margin-bottom: 2px; }
   .rp-quote-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; background: none; width: max-content; max-width: calc(100% - 32px); }
   .rp-quote-bar .ds-btn { box-shadow: 0 6px 18px rgba(0,0,0,.25); white-space: normal; }

@@ -85,11 +85,11 @@ export const REWARD_CSS = `
   /* ещё не полученная печать: блёклый серый оттиск, а подпись читается полным контрастом */
   .rw-stamp[data-got="false"] b { color: var(--ds-ink2); font-weight: 600; }
   .rw-stamp[data-got="false"] span { color: var(--ds-ink3); }
-  .rw-stamp b { font: 700 12px/1.2 var(--ds-serif); }
+  .rw-stamp b { font: 700 12px/1.2 var(--ds-head); }
   .rw-stamp span { font: 12px/1.25 var(--ds-sans); color: var(--ds-ink2); }
   .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
   .rw-morning-in { flex: 1; max-width: 460px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  .rw-big { font: 700 64px/1 var(--ds-serif); color: var(--ds-bad); }
+  .rw-big { font: 700 64px/1 var(--ds-head); color: var(--ds-bad); }
   .rw-flame { animation: rw-flame .9s ease-out 1 both; }
   @keyframes rw-flame { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.12); opacity: 1 } 100% { transform: scale(1) } }
   /* сундук при открытии чуть подпрыгивает и пружинит — без поворота и крена */
@@ -101,7 +101,7 @@ export const REWARD_CSS = `
   .rw-rate-box, .rw-piggy-chart { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .rw-item { position: relative; }
   .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad-btn); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
-  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #8A2F45, #6B4357); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 3px var(--ds-shade); }
+  .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #B3123F, #9B2C8F); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 8px; box-shadow: 0 1px 3px var(--ds-shade); }
   /* редкая вещь: золотистая карточка, по ней пробегает блик, Инфля в ней крупнее */
   .rw-item[data-rare="true"] { border-color: #C9A43A;
     background: linear-gradient(110deg, transparent 35%, rgba(255, 246, 214, .75) 48%, transparent 61%) 0 0 / 260% 100% no-repeat, color-mix(in srgb, var(--ds-card) 84%, #E3B53C);

@@ -24,20 +24,20 @@ export const FEED_CSS = `
   .fd { display: flex; flex-direction: column; gap: 12px; }
   .fd-mast { border: 1px solid var(--ds-rule2); border-radius: 3px; background: var(--ds-card); padding: 0 0 10px; text-align: center; overflow: hidden; }
   /* название издания — строго по центру: разрядка добавляет пробел после последней буквы, слева — такой же */
-  .fd-mast-name { font: 700 12px/1 var(--ds-serif); letter-spacing: .28em; padding-left: .28em; text-transform: uppercase; color: var(--ds-ink2); margin: 10px 0 4px; }
+  .fd-mast-name { font: 700 12px/1 var(--ds-news); letter-spacing: .28em; padding-left: .28em; text-transform: uppercase; color: var(--ds-ink2); margin: 10px 0 4px; }
   .fd-mast h2 { margin: 2px 12px 0; }
   .fd-msg { display: flex; gap: 10px; align-items: flex-start; }
   .fd-ava { width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--ds-card2); color: var(--u-ink); border: 1.5px solid var(--ds-rule2); }
   .fd-bubble { flex: 1; min-width: 0; background: var(--ds-card); border: 1px solid var(--ds-rule2); border-radius: 3px 12px 12px 12px; padding: 9px 12px 10px;
     box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--ds-rule); transition: box-shadow .2s, border-color .2s; }
-  .fd[data-mode="story"] .fd-bubble { font-family: var(--ds-serif); background: color-mix(in srgb, #F3E6C4 45%, var(--ds-card)); }
+  .fd[data-mode="story"] .fd-bubble { font-family: var(--ds-head); background: color-mix(in srgb, #F3E6C4 45%, var(--ds-card)); }
   /* тёмная тема: светлая «бумага» под светлым текстом давала контраст ниже 4,5:1 — здесь лишь лёгкий тёплый оттенок */
   .ds-dark .fd[data-mode="story"] .fd-bubble { background: color-mix(in srgb, #F3E6C4 7%, var(--ds-card)); }
   .fd-bubble.speaking { border-color: var(--u); box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px var(--u); }
   .fd-who { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
-  .fd-who b { font: 700 14px var(--ds-serif); color: var(--u-ink); }
+  .fd-who b { font: 700 14px var(--ds-head); color: var(--u-ink); }
   .fd-who span { font: 12px var(--ds-sans); color: var(--ds-ink3); }
-  .fd-title { font: 700 15px/1.3 var(--ds-serif); margin: 2px 0 4px; }
+  .fd-title { font: 700 15px/1.3 var(--ds-head); margin: 2px 0 4px; }
   .fd-text { font-size: 16px; line-height: 1.55; }
   .fd-hidden { font: 13.5px var(--ds-sans); color: var(--ds-ink3); letter-spacing: .02em; }
   .fd-voice-note { font: 12px/1.3 var(--ds-sans); color: var(--ds-ink2); margin-top: 2px; }
@@ -62,7 +62,7 @@ export const FEED_CSS = `
   .fd-play { width: 64px; height: 64px; flex-shrink: 0; border-radius: 50%; border: none; cursor: pointer; background: var(--u); color: #fff; display: flex; align-items: center; justify-content: center;
     box-shadow: inset 0 0 0 3px var(--u), inset 0 0 0 5px rgba(255,255,255,.45), 0 3px 0 color-mix(in srgb, var(--u) 60%, #000); }
   .fd-play:active { transform: translateY(2px); box-shadow: inset 0 0 0 3px var(--u), inset 0 0 0 5px rgba(255,255,255,.45), 0 1px 0 color-mix(in srgb, var(--u) 60%, #000); }
-  .fd-set-title { font: 700 18px/1.25 var(--ds-serif); }
+  .fd-set-title { font: 700 18px/1.25 var(--ds-head); }
   .fd-eq { display: flex; align-items: flex-end; gap: 3px; height: 22px; margin-top: 6px; }
   .fd-eq i { width: 5px; height: 4px; border-radius: 1px; background: var(--u); opacity: .55; }
   .fd-set[data-speaking="true"] .fd-eq i { animation: fd-eq .9s ease-in-out infinite alternate; opacity: 1; }

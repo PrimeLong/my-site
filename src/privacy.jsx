@@ -104,7 +104,7 @@ export function StorageNotice() {
           <button type="button" data-testid="storage-notice-more" onClick={() => setMore(true)}
             style={{ background: 'none', border: '1px solid #CDBFA3', borderRadius: 4, padding: '7px 12px', font: 'inherit', color: 'inherit', cursor: 'pointer' }}>Подробнее</button>
           <button type="button" data-testid="storage-notice-ok" onClick={ok}
-            style={{ background: '#86461F', border: '1px solid #86461F', borderRadius: 4, padding: '7px 16px', font: '700 14px "PT Sans", system-ui, sans-serif', color: '#fff', cursor: 'pointer' }}>Понятно</button>
+            style={{ background: '#C2490B', border: '1px solid #C2490B', borderRadius: 10, padding: '7px 16px', font: '700 14px "PT Sans", system-ui, sans-serif', color: '#fff', cursor: 'pointer' }}>Понятно</button>
         </div>
       </div>
       {more && <PrivacyPage onClose={() => setMore(false)} />}

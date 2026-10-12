@@ -132,7 +132,8 @@ export const GlobalStyle = () => (
     .ems-root { color-scheme:${COLOR.isDark ? 'dark' : 'light'}; background:${COLOR.bg} radial-gradient(ellipse 1100px 620px at 50% -8%, ${COLOR.bgVignette} 0%, ${COLOR.bg} 70%); color:${COLOR.text}; font-family:${FONT.sans}; min-height:100vh; }
     .ems-root * { box-sizing: border-box; }
     .ems-root :focus-visible { outline: 2px solid ${COLOR.goldSoft}; outline-offset: 2px; }
-    .ems-serif { font-family:${FONT.serif}; }
+    /* заголовки — PT Sans (класс остался с прежним именем); засечки — только у газеты */
+    .ems-serif { font-family:${FONT.sans}; }
     .ems-mono { font-family:${FONT.mono}; font-variant-numeric: tabular-nums; }
     .ems-numeral { font-family:${FONT.numeral}; font-variant-numeric: tabular-nums; }
     .ems-btn.ghost { background:transparent; border-color:transparent; color:${COLOR.faint}; box-shadow:none; }

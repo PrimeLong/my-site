@@ -101,7 +101,7 @@ test('меню открывается, шрифты свои, внешних з�
   await expect(page.getByRole('heading', { name: 'Инфляция' })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   const families = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family));
-  expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Serif');
+  expect(families.map((f) => f.replace(/"/g, ''))).toContain('PT Sans');
   expect(external).toEqual([]);
   expect(errors).toEqual([]);
   await expectNoSidewaysScroll(page);
@@ -1658,8 +1658,8 @@ test('путь: выход после первого ответа — урок �
   await pathNode(page, 'sd-i1').click();
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-diamond-info')).toContainText('теория глубже');
   await expect(page.getByTestId('lesson-sheet').getByTestId('lesson-start')).toHaveText('Повторить без усложнения');
-  // алмазный уровень — гранат из тёплой палитры, не холодный синий
-  expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#8a2f45');
+  // алмазный уровень — малиновый гранат из тёплой палитры, не холодный синий
+  expect(await page.getByTestId('lesson-diamond').evaluate((el) => getComputedStyle(el).getPropertyValue('--u').trim().toLowerCase())).toBe('#b3123f');
   await page.getByTestId('lesson-diamond').click();
   await expect(page.getByTestId('lesson')).toHaveAttribute('data-diamond', 'true');
   // алмазные шаги — с формулами, плашкой «Запомнить» и строкой обозначений

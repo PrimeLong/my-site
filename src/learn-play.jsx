@@ -30,14 +30,14 @@ export const PLAY_CSS = `
   .ds-dark .lp-dem { color: #8FB3E0; } .ds-dark .lp-sup { color: #E39A6B; }
   .lp-range { width: 100%; accent-color: var(--u); height: 32px; }
   .lp-tiles { min-height: 64px; border: 1px dashed var(--ds-rule2); border-radius: 4px; padding: 8px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; background: var(--ds-card2); }
-  .lp-tile { font: 15px/1.2 var(--ds-serif); padding: 9px 12px; border-radius: 2px; border: 1px solid var(--ds-rule2); border-bottom-width: 2px; background: var(--ds-card); color: var(--ds-ink); cursor: pointer; }
+  .lp-tile { font: 15px/1.2 var(--ds-head); padding: 9px 12px; border-radius: 2px; border: 1px solid var(--ds-rule2); border-bottom-width: 2px; background: var(--ds-card); color: var(--ds-ink); cursor: pointer; }
   .lp-tile:active:not(:disabled) { transform: translateY(1px); }
   .lp-timer { height: 8px; border-radius: 1px; background: var(--ds-card2); border: 1px solid var(--ds-rule2); overflow: hidden; margin: 4px 0 12px; }
   .lp-timer > span { display: block; height: 100%; background: var(--u); transition: width .1s linear; }
   .lp-timer.low > span { background: var(--ds-bad); }
   .lp-card { position: relative; min-height: 150px; border-radius: 6px; border: 1px solid var(--ds-rule2); background: var(--ds-card);
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule), 0 2px 4px var(--ds-shade);
-    display: flex; align-items: center; justify-content: center; text-align: center; padding: 22px 18px; font: 700 20px/1.3 var(--ds-serif); margin: 10px 0 14px; touch-action: pan-y; user-select: none; }
+    display: flex; align-items: center; justify-content: center; text-align: center; padding: 22px 18px; font: 700 20px/1.3 var(--ds-head); margin: 10px 0 14px; touch-action: pan-y; user-select: none; }
   .lp-card.ok { border-color: var(--ds-ok); box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-ok); }
   .lp-card.bad { border-color: var(--ds-bad); box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-bad); }
   .lp-score { display: flex; justify-content: space-between; font: 700 13px var(--ds-mono); color: var(--ds-ink2); }
@@ -57,7 +57,7 @@ export const PLAY_CSS = `
   .lp-swipe-tag.next { right: 14px; transform: rotate(8deg); }
   .lp-swipe-tag.prev { left: 14px; transform: rotate(-8deg); }
   .lp-word-top { display: flex; align-items: center; gap: 8px; font: 700 12px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); }
-  .lp-word-term { font: 700 30px/1.15 var(--ds-serif); color: var(--u-ink); margin: 18px 0 6px; text-align: center; }
+  .lp-word-term { font: 700 30px/1.15 var(--ds-head); color: var(--u-ink); margin: 18px 0 6px; text-align: center; }
   .lp-word-rule { width: 56px; height: 2px; background: var(--u); opacity: .5; margin: 0 auto 16px; border-radius: 1px; }
   .lp-word-def { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 18.5px; line-height: 1.45; }
   .lp-word-def.open { animation: lp-def .35s ease-out both; }
@@ -85,7 +85,7 @@ export const PLAY_CSS = `
   .lp-howto ol { margin: 6px 0 0; padding-left: 20px; font-size: 14.5px; line-height: 1.45; }
   .lp-howto li { margin: 3px 0; }
   .lp-trial { border: 1.5px dashed var(--ds-rule2); border-radius: 6px; padding: 10px 12px; margin: 10px 0; }
-  .lp-trial-card { font: 700 17px/1.35 var(--ds-serif); text-align: center; margin: 6px 0 10px; }
+  .lp-trial-card { font: 700 17px/1.35 var(--ds-head); text-align: center; margin: 6px 0 10px; }
   .lp-game-hud { display: flex; align-items: center; gap: 8px; margin: -4px 0 2px; }
   .lp-game-score { font-size: 26px; font-weight: 700; color: var(--u-ink); min-width: 48px; }
   .lp-combo { font: 700 14px var(--ds-mono); color: #fff; background: var(--u); border-radius: 999px; padding: 2px 9px; animation: lp-combo .35s ease-out; }

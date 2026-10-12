@@ -15,7 +15,7 @@ import { CoinShower } from './ds-art.jsx';
 
 const LEAGUE_CSS = `
   .lg-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
-  .lg-hero h1 { font: 700 24px/1.15 var(--ds-serif); margin: 2px 0 4px; }
+  .lg-hero h1 { font: 700 24px/1.15 var(--ds-head); margin: 2px 0 4px; }
   .lg-place { font: 700 15px var(--ds-sans); color: var(--ds-ink); }
   .lg-when { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font: 700 13px var(--ds-sans); padding: 3px 10px; border-radius: 999px; background: var(--ds-card2); color: var(--ds-ink2); }
   .lg-goal { margin: 14px 0 0; padding: 12px 14px; border-radius: 8px; border: 1.5px solid var(--ds-rule2); background: var(--ds-card); }

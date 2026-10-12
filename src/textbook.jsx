@@ -59,7 +59,7 @@ export const TEXTBOOK_CSS = `
   .rv-badge.later b { display: block; width: 100%; padding: 3px 8px; background: var(--c-blue, #3E6FA8); color: #fff; font: 700 12px/1.2 var(--ds-sans, sans-serif); letter-spacing: .06em; text-transform: uppercase; text-align: center; }
   .rv-badge.later span { font: 700 14px/1.3 var(--ds-sans, sans-serif); color: var(--c-text, #222); margin-top: 4px; padding: 0 8px; white-space: nowrap; }
   .rv-badge.done { padding: 6px 14px; border: 3px double var(--c-teal, #2E7D5B); border-radius: 6px; color: var(--c-teal, #2E7D5B); background: color-mix(in srgb, var(--c-teal, #2E7D5B) 10%, var(--ds-card, #fff));
-    font: 800 18px/1 var(--ds-serif, Georgia, serif); letter-spacing: .12em; text-transform: uppercase; transform: rotate(-10deg); animation: rv-stamp .5s cubic-bezier(.2,1.5,.4,1) both; }
+    font: 800 18px/1 var(--ds-head, Georgia, serif); letter-spacing: .12em; text-transform: uppercase; transform: rotate(-10deg); animation: rv-stamp .5s cubic-bezier(.2,1.5,.4,1) both; }
   .rv-spark { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; border-radius: 50%; background: var(--ds-gold, #C9A227); animation: rv-spark .75s ease-out both; }
   .rv-spark:nth-child(even) { background: var(--c-teal, #2E7D5B); width: 7px; height: 7px; }
   @keyframes rv-pop { from { transform: translateY(-14px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -77,7 +77,7 @@ export const TEXTBOOK_CSS = `
   .tb-sticky-top { position: sticky; top: 0; z-index: 30; background: var(--ds-paper, var(--tb-bg, #fff)); margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--ds-rule, transparent); }
   .tb-body { font-size: 14.5px; line-height: 1.68; color: var(--c-text); }
   .tb-body p { margin: 0 0 12px; }
-  .tb-body h2 { font-family: 'PT Serif', Georgia, serif; font-size: 20px; font-weight: 700; color: var(--c-gold-soft); margin: 28px 0 10px; }
+  .tb-body h2 { font-family: var(--ds-head, 'PT Sans', sans-serif); font-size: 20px; font-weight: 700; color: var(--c-gold-soft); margin: 28px 0 10px; }
   .tb-body h3 { font-size: 15px; font-weight: 700; margin: 18px 0 8px; }
   .tb-body ul, .tb-body ol { margin: 0 0 12px; padding-left: 22px; }
   .tb-body li { margin-bottom: 4px; }
@@ -150,7 +150,7 @@ export const TEXTBOOK_CSS = `
   .tbl-continue { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer; padding: 14px 16px; margin: 0 0 12px; border-radius: 6px;
     background: var(--u); color: #fff; border: 1px solid color-mix(in srgb, var(--u) 70%, #000); border-bottom-width: 3px; font: inherit; }
   .tbl-continue small { display: block; font: 700 12px/1.2 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; opacity: .85; }
-  .tbl-continue b { display: block; font: 700 18px/1.25 var(--ds-serif); margin-top: 2px; }
+  .tbl-continue b { display: block; font: 700 18px/1.25 var(--ds-head); margin-top: 2px; }
   .tbl-stats { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; font-size: 13.5px; color: var(--ds-ink2); margin: 0 0 14px; }
   .tbl-stats b { color: var(--ds-ink); }
   .tbl-parts { display: grid; gap: 14px; }
