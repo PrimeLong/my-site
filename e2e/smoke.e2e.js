@@ -973,17 +973,23 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(page.getByTestId('stats-confidence')).toContainText('верно 2 из 4 (50%)');
   await expect(page.getByTestId('stats-confidence')).toContainText('неуверенные: верно 1 из 2');
   await toToc(page);
-  // «На сегодня» больше нет: вопрос на вспоминание — в конце раздела главы; ответ «совпало» проходит раздел
+  // «На сегодня» больше нет: «Вспомните» в конце раздела — вопросы с вариантами, писать ничего не нужно
   await toc.getByRole('button', { name: /Спрос и предложение/ }).click();
   const recall = page.getByTestId('chapter').getByTestId('tb-recall').first();
   await recall.scrollIntoViewIfNeeded();
-  // сначала свой ответ: без него эталон не открыть, кроме как через «Не помню»
-  await expect(recall.getByRole('button', { name: 'Сверить с ответом' })).toBeDisabled();
-  await expect(recall.getByRole('button', { name: 'Вспомнил' })).toHaveCount(0);
-  await recall.getByRole('textbox').fill('при росте цены покупают меньше, при прочих равных');
-  await recall.getByRole('button', { name: 'Сверить с ответом' }).click();
+  await expect(recall.getByRole('textbox')).toHaveCount(0);
+  const rightKeys = JSON.parse(await recall.getAttribute('data-answer'));
+  const parts = recall.getByTestId('tb-recall-part');
+  // ошибка: почему вариант неверен, разбор, «Ещё раз»
+  await parts.nth(0).locator(`[data-key]:not([data-key="${rightKeys[0]}"])`).first().click();
+  await expect(parts.nth(0).getByTestId('tb-recall-why')).toBeVisible();
+  for (let i = 1; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
   await expect(recall.getByTestId('tb-recall-answer')).toBeVisible();
-  await recall.getByRole('button', { name: 'Совпало', exact: true }).click();
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('вернётся на повторение');
+  await recall.getByTestId('tb-recall-again').click();
+  await expect(recall.getByTestId('tb-recall-answer')).toHaveCount(0);
+  // всё верно — раздел пройден
+  for (let i = 0; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);

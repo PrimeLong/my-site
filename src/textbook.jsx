@@ -58,6 +58,15 @@ export const TEXTBOOK_CSS = `
   .tb-table th, .tb-table td { border: 1px solid var(--c-border); padding: 6px 10px; text-align: left; vertical-align: top; }
   .tb-table th { color: var(--c-gold-soft); font-weight: 600; background: var(--c-panel-alt); }
   .tb-box { border: 1px solid var(--c-border); border-left-width: 3px; padding: 12px 14px 4px; margin: 16px 0; background: var(--c-panel-alt); }
+  .tb-recall-part { margin-bottom: 4px; }
+  .tb-recall-opts { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+  .tb-recall-opt { text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--c-border); border-left: 3px solid var(--c-border); border-radius: 4px; background: var(--c-panel); color: var(--c-text); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; }
+  @media (hover: hover) { .tb-recall-opt:hover:not(:disabled) { border-color: var(--c-gold); } }
+  .tb-recall-opt:disabled { cursor: default; }
+  .tb-recall-opt.right { border-color: var(--c-teal, #2E7D5B); background: color-mix(in srgb, var(--c-teal, #2E7D5B) 12%, var(--c-panel)); color: var(--c-text); }
+  .tb-recall-opt.wrong { border-color: var(--c-rust, #A4462A); border-style: dashed; background: color-mix(in srgb, var(--c-rust, #A4462A) 8%, var(--c-panel)); color: var(--c-text); }
+  .tb-recall-opt.dim { opacity: .62; }
+  .tb-recall-why { font-size: 13px; line-height: 1.5; color: var(--c-text); margin: -4px 0 10px; padding: 6px 10px; border-left: 3px solid var(--c-rust, #A4462A); background: color-mix(in srgb, var(--c-rust, #A4462A) 6%, transparent); }
   .tb-box-head { display: flex; align-items: center; gap: 7px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
   .tb-link { background: none; border: none; padding: 0; font: inherit; color: var(--c-gold-soft); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
   .tb-term { border-bottom: 1px dashed var(--c-gold); cursor: help; color: var(--c-gold-soft); }
@@ -302,58 +311,67 @@ function BoxView({ b, ctx }) {
   );
 }
 
-/* Вопрос на вспоминание в конце раздела: сначала короткий ответ своими словами, потом
-   эталон и честная сверка «совпало / не совпало». Без своего ответа эталон открывается только
-   через «Не помню» — это засчитывается как «не совпало»: вопрос вернётся через два дня,
-   раздел пока не пройден. */
-const MIN_RECALL = 12;
+/* «Вспомните» в конце раздела: вопросы с вариантами ответа — выбор проверяется сам, писать своими
+   словами не нужно (docs/mechanics.md, «Учебник: вспомните»). Варианты — в случайном порядке;
+   после выбора: верный подсвечен, у неверного — почему он неверен, и разбор учебника. Всё верно —
+   раздел пройден; ошибка — вопрос вернётся на повторение через два дня, можно «Ещё раз». */
+const shuffled = (n) => { const a = Array.from({ length: n }, (_, k) => k); for (let k = n - 1; k > 0; k -= 1) { const j = Math.floor(Math.random() * (k + 1)); [a[k], a[j]] = [a[j], a[k]]; } return a; };
 function RecallCard({ b, ctx, from }) {
   const rec = ctx.progress.problems[b.id];
-  const [text, setText] = useState('');
-  const [stage, setStage] = useState('write'); // write → check → done
-  const [said, setSaid] = useState(null);
-  const ready = text.replace(/\s+/g, '').length >= MIN_RECALL;
-  const mark = (ok) => {
-    Audio.play(ok ? 'stamp' : 'tick');
-    ctx.onAnswer(b.id, ok, {});
-    setSaid(ok); setStage('done');
+  const mix = () => b.parts.map((p) => shuffled(p.options.length));
+  const [order, setOrder] = useState(mix);
+  const [picks, setPicks] = useState({});
+  const done = b.parts.every((_, i) => picks[i] != null);
+  const ok = done && b.parts.every((p, i) => p.options[picks[i]].correct);
+  const pick = (i, k) => {
+    if (picks[i] != null) return;
+    const next = { ...picks, [i]: k };
+    setPicks(next);
+    const all = b.parts.every((_, j) => next[j] != null);
+    const good = all && b.parts.every((p, j) => p.options[next[j]].correct);
+    Audio.play(!b.parts[i].options[k].correct ? 'tick' : all && good ? 'stamp' : 'click');
+    if (all) ctx.onAnswer(b.id, good, {});
   };
   return (
-    <div className="tb-box" style={{ borderLeftColor: COLOR.blue }} data-testid="tb-recall" data-recall={b.id}>
+    <div className="tb-box" style={{ borderLeftColor: COLOR.blue }} data-testid="tb-recall" data-recall={b.id} data-answer={JSON.stringify(b.parts.map((p) => p.options.findIndex((o) => o.correct)))}>
       <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
         <div className="tb-box-head" style={{ color: COLOR.blue, marginBottom: 6 }}><Brain size={13} />{from ? `${from} · ` : ''}Вспомните</div>
-        {rec && said == null && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
-          {rec.ok ? 'совпало' : 'не совпало'}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
+        {rec && !done && <span className="tb-chip" style={{ color: rec.ok ? COLOR.teal : COLOR.rust, borderColor: rec.ok ? COLOR.teal : COLOR.rust }}>
+          {rec.ok ? 'отвечено верно' : 'была ошибка'}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}
       </div>
-      <Blocks blocks={b.question} ctx={ctx} />
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} disabled={stage !== 'write'}
-        aria-label="Ваш ответ на вопрос раздела" placeholder="Ответьте своими словами, одна-две фразы"
-        style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
-      {stage === 'write' && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-          <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} disabled={!ready}
-            onClick={() => { Audio.play('click'); setStage('check'); }}>Сверить с ответом</button>
-          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не помню</button>
-          {!ready && <span style={{ fontSize: 12, color: COLOR.faint }}>сначала свой ответ</span>}
-        </div>
-      )}
-      {stage !== 'write' && (
+      {b.parts.map((p, i) => {
+        const chosen = picks[i];
+        return (
+          <div key={i} className="tb-recall-part" data-testid="tb-recall-part" data-part={i}>
+            <Blocks blocks={p.question} ctx={ctx} />
+            <div className="tb-recall-opts" role="group" aria-label={`Варианты ответа${b.parts.length > 1 ? `, вопрос ${i + 1}` : ''}`}>
+              {order[i].map((k) => {
+                const o = p.options[k];
+                const st = chosen == null ? '' : o.correct ? 'right' : chosen === k ? 'wrong' : 'dim';
+                return (
+                  <button key={k} type="button" className={`tb-recall-opt ${st}`} data-key={k} aria-pressed={chosen === k} disabled={chosen != null} onClick={() => pick(i, k)}>
+                    {st === 'right' && <Check size={14} strokeWidth={3} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />}<Inline nodes={o.text} ctx={ctx} />
+                  </button>
+                );
+              })}
+            </div>
+            {chosen != null && !p.options[chosen].correct && (
+              <div className="tb-recall-why" data-testid="tb-recall-why"><b>Не то:</b> <Inline nodes={p.options[chosen].why} ctx={ctx} /></div>
+            )}
+          </div>
+        );
+      })}
+      {done && (
         <>
           <div style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: 8 }} data-testid="tb-recall-answer">
-            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 4 }}>Ответ учебника</div>
+            <div style={{ fontSize: 12, color: COLOR.faint, marginBottom: 4 }}>Разбор учебника</div>
             <Blocks blocks={b.answer} ctx={ctx} />
           </div>
-          {stage === 'check' ? (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-              <span style={{ fontSize: 13 }}>Ваш ответ говорит о том же?</span>
-              <button type="button" className="ems-btn primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(true)}>Совпало</button>
-              <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => mark(false)}>Не совпало</button>
-            </div>
-          ) : (
-            <div data-testid="tb-recall-verdict" style={{ fontSize: 13, marginBottom: 10, color: said ? COLOR.teal : COLOR.rust }}>
-              {said ? 'Раздел пройден.' : 'Вопрос вернётся на повторение через два дня. Перечитайте раздел — и дальше.'}
-            </div>
-          )}
+          <div data-testid="tb-recall-verdict" style={{ fontSize: 13, marginBottom: 10, color: ok ? COLOR.teal : COLOR.rust, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>{ok ? 'Верно. Раздел пройден.' : 'Есть ошибка — вопрос вернётся на повторение через два дня. Прочитайте разбор и раздел.'}</span>
+            {!ok && <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} data-testid="tb-recall-again"
+              onClick={() => { Audio.play('click'); setOrder(mix()); setPicks({}); }}>Ещё раз</button>}
+          </div>
         </>
       )}
     </div>

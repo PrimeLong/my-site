@@ -128,12 +128,19 @@ describe('разметка методики: цели, итоги, вопрос�
     expect(b[3].more[0].inline[0].v).toBe('Подробно.');
     expect(b[0].more).toBeUndefined();
   });
-  it('вопрос на вспоминание: вопрос и ответ; без ответа — ошибка', () => {
-    const [r] = parseBlocks(':::recall id=q1\nЧто такое X?\n---\nЭто Y.\n:::');
+  it('вопрос на вспоминание: вопросы с вариантами и разбор; без вариантов, без разбора или без «почему» — ошибка', () => {
+    const [r] = parseBlocks(':::recall id=q1\nЧто такое X?\n+ Y\n- Z | Потому что Z — другое\n- W | И W — тоже\nА Q?\n+ да\n- нет | Q есть\n- не знаю | Знаете: Q есть\n---\nЭто Y.\n:::');
     expect(r).toMatchObject({ type: 'recall', id: 'q1' });
-    expect(r.question[0].inline[0].v).toBe('Что такое X?');
+    expect(r.parts).toHaveLength(2);
+    expect(r.parts[0].question[0].inline[0].v).toBe('Что такое X?');
+    expect(r.parts[0].options.map((o) => [o.raw, o.correct])).toEqual([['Y', true], ['Z', false], ['W', false]]);
+    expect(r.parts[0].options[1].why[0].v).toBe('Потому что Z — другое');
+    expect(r.parts[1].options.filter((o) => o.correct)).toHaveLength(1);
     expect(r.answer[0].inline[0].v).toBe('Это Y.');
     expect(() => parseBlocks(':::recall id=q2\nвопрос\n:::')).toThrow();
+    expect(() => parseBlocks(':::recall id=q3\nвопрос\n---\nответ\n:::')).toThrow(/нет вариантов/);
+    expect(() => parseBlocks(':::recall id=q4\nвопрос\n+ а\n- б\n- в | почему\n---\nответ\n:::')).toThrow(/нет объяснения/);
+    expect(() => parseBlocks(':::recall id=q5\nвопрос\n+ а\n+ б | x\n- в | y\n---\nответ\n:::')).toThrow(/один верный/);
   });
   it('схема-цепочка: звенья с текстом «вверх» и «вниз» и подпись', () => {
     const [f] = parseBlocks(':::flow Ставка и цены\n- Ставка | растёт | падает\n- Кредит | дорожает | дешевеет\nПодпись.\n:::');
@@ -156,7 +163,7 @@ describe('разметка методики: цели, итоги, вопрос�
     expect(h.inline[0].v).toBe('Производная');
   });
   it('разделы: якорь, блоки до следующего заголовка, вопрос раздела и минуты', () => {
-    const secs = sectionsOf(parseBlocks('Вступление\n\n## Первый\nтекст\n:::recall id=r\nв\n---\nо\n:::\n## Второй {#two}\nещё'));
+    const secs = sectionsOf(parseBlocks('Вступление\n\n## Первый\nтекст\n:::recall id=r\nв\n+ а\n- б | п\n- г | п\n---\nо\n:::\n## Второй {#two}\nещё'));
     expect(secs.map((x) => [x.id, x.title, x.recall])).toEqual([['sec-1', 'Первый', 'r'], ['two', 'Второй', null]]);
     expect(secs[0].minutes).toBeGreaterThanOrEqual(1);
   });
