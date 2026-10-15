@@ -87,8 +87,20 @@ describe('уровень сложности', () => {
     expect(s.topics['sd-l1'].n).toBe(20);
     expect(s.topics['sd-l1'].ok / s.topics['sd-l1'].n).toBeCloseTo(0.75, 1);
     expect(dailyOf(s, T).c).toBe(30);
-    // серия дня не длиннее сегодняшних верных ответов (урок, начатый вчера, её не приносит)
-    expect(dailyOf(s, T).r).toBe(30);
+    // серия дня — по самим ответам: каждый четвёртый неверный, значит, лучшая серия — три
+    expect(dailyOf(s, T).r).toBe(3);
+  });
+  it('«верных подряд» — серия за день: переход в следующий урок её не обнуляет, ошибка обнуляет', () => {
+    let s = emptyLearn();
+    // 5 верных в одном уроке, 4 — в следующем: серия 9, а не 5
+    for (let k = 0; k < 5; k += 1) s = recordAttempt(s, 'choice', true, 1000, { lesson: 'sd-l1', now: T });
+    for (let k = 0; k < 4; k += 1) s = recordAttempt(s, 'tf', true, 1000, { lesson: 'sd-l3', now: T });
+    expect(dailyOf(s, T)).toMatchObject({ rc: 9, r: 9 });
+    s = recordAttempt(s, 'tf', false, 1000, { lesson: 'sd-l3', now: T });
+    s = recordAttempt(s, 'tf', true, 1000, { lesson: 'sd-l3', now: T });
+    expect(dailyOf(s, T)).toMatchObject({ rc: 1, r: 9 });
+    // назавтра серия с нуля
+    expect(dailyOf(s, T + 86400000)).toMatchObject({ rc: 0, r: 0 });
   });
   it('«по шагам»: в выборе ответа три варианта и разбор по шагам; «повышенный»: в практике задачи семинара и олимпиады', () => {
     let easyChoices = 0;

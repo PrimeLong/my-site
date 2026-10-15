@@ -720,7 +720,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       if (r.ok && run3 >= 1) setPulse((p) => p + 1);
       // встреченное упражнение: в повторение и проверки первыми пойдут те, что виделись реже
       const seenId = cur.of || cur.id;
-      update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null, run: r.ok ? run3 + 1 : 0 }), seenId));
+      update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null }), seenId));
       if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
       if (GAME_KINDS.includes(cur.kind) && answer) a.game = { right: answer.right, answered: answer.answered, ok: r.ok };
     }

@@ -88,7 +88,7 @@ export const startLesson = (s) => upd(s, { runs: { ...s.runs, started: s.runs.st
 
 /* Первая попытка в упражнении: тип, верно ли, сколько миллисекунд. lesson — урок, откуда
    упражнение (точность по темам), run — сколько верных подряд теперь (для задания дня). */
-export function recordAttempt(s, kind, ok, ms, { lesson = null, run = 0, now = Date.now() } = {}) {
+export function recordAttempt(s, kind, ok, ms, { lesson = null, now = Date.now() } = {}) {
   const t = s.types[kind] || { n: 0, ok: 0, ms: 0 };
   const cap = Math.max(0, Math.min(120000, Math.round(ms || 0)));
   const patch = { types: { ...s.types, [kind]: { n: t.n + 1, ok: t.ok + (ok ? 1 : 0), ms: t.ms + cap } } };
@@ -103,12 +103,15 @@ export function recordAttempt(s, kind, ok, ms, { lesson = null, run = 0, now = D
   patch.recent = `${s.recent || ''}${ok ? 1 : 0}`.slice(-MAX_RECENT);
   patch.recentAt = now;
   const day = dayOf(now); const d = dayEntry(s, day);
-  // серия считается только по сегодняшним ответам: урок, начатый вчера, не приносит в новый день «готовую» серию
-  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), r: Math.max(d.r, ok ? Math.min(run, d.c + 1) : 0) } };
+  /* серия верных подряд — за день, а не за урок (docs/mechanics.md): rc — текущая серия сегодня,
+     переход в следующий урок её не обнуляет; r — лучшая серия дня. run (серия урока) больше не нужен:
+     раньше девять подряд на стыке двух уроков засчитывались как семь */
+  const rc = ok ? d.rc + 1 : 0;
+  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), rc, r: Math.max(d.r, rc) } };
   return upd(s, patch);
 }
-const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'g', 'pr', 'h'];
-const dayEntry = (s, day) => ({ l: 0, p: 0, c: 0, s: 0, r: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
+const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
+const dayEntry = (s, day) => ({ l: 0, p: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
 export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
 
 // ответы при регистрации — из них цель дня и задания; меняются в профиле
