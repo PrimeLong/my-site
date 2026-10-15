@@ -47,7 +47,7 @@ const LEAGUE_CSS = `
   .lg-xpbar { height: 4px; border-radius: 2px; background: var(--ds-rule); margin-top: 4px; overflow: hidden; }
   .lg-xpbar span { display: block; height: 100%; background: var(--zone-bar, var(--ds-ink3)); opacity: .7; }
   .lg-xp { font: 700 14px var(--ds-mono); text-align: right; white-space: nowrap; }
-  .lg-xp small { display: block; font: 700 12px var(--ds-sans); color: var(--ds-gold-soft, #9a7413); }
+  .lg-xp small { display: block; font: 700 12px var(--ds-sans); color: var(--ds-gold, #9a6300); }
   .lg-reward { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; margin: 14px 0 0; padding: 12px; border-radius: 10px; border: 2px solid var(--ds-gold, #9a7413);
     background: color-mix(in srgb, var(--ds-gold, #9a7413) 10%, var(--ds-card)); }
   .lg-rules { margin-top: 16px; }
