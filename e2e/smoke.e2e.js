@@ -3152,6 +3152,35 @@ test('Путь: проверку пройденного юнита можно п
   expect(errors).toEqual([]);
 });
 
+test('повторение: трудную задачу можно убрать — уходит и из учебника, и из ошибок Пути', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3 * 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({
+      problems: { 'mb-rounds': { tries: 1, ok: false, box: 0, due: Date.now() - 1000, lastAt: at } },
+      learn: { mistakes: [{ id: 'auto:mb-rounds', at }, { id: 'sd-i1-who', at }] },
+    }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await openTasks(page);
+  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  await page.getByTestId('practice-review').click();
+  const review = page.getByTestId('review');
+  const item = review.locator('[data-testid=review-item][data-item="mb-rounds"]');
+  // ещё не отвечали — под карточкой «Не знаете, как решать? Убрать из повторения»
+  await item.getByTestId('review-drop').click();
+  await expect(item.getByTestId('review-badge')).toContainText('убрано');
+  await expect(item).toHaveCount(0);
+  await expect(review.getByTestId('review-tally')).toContainText('убрано: 1');
+  await expect(review.getByTestId('review-empty')).toBeVisible();
+  // одно повторение: ушла и ошибка той же задачи на Пути
+  await bookBack(page);
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ems-textbook-v1')));
+  expect(saved.problems['mb-rounds']).toMatchObject({ ok: false, due: null });
+  expect(errors).toEqual([]);
+});
+
 test('повторение: ошибку не снять тут же, карточка уходит «вернётся» или «выучено», Путь и учебник — одно повторение', async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {

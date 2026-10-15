@@ -1,7 +1,7 @@
 // Одно повторение на Путь и учебник (src/textbook/review-sync.js)
 import { describe, it, expect } from 'vitest';
-import { problemOfExercise, afterBookAnswer, afterPathAnswer } from '../review-sync.js';
-import { emptyProgress, recordAnswer, scheduleAfter } from '../progress.js';
+import { problemOfExercise, afterBookAnswer, afterPathAnswer, dropFromReview } from '../review-sync.js';
+import { emptyProgress, recordAnswer, scheduleAfter, reviewQueue, mergeTextbook } from '../progress.js';
 import { TEMPLATES } from '../variants.js';
 
 const DAY = 86400000;
@@ -36,5 +36,25 @@ describe('одно повторение на Путь и учебник', () => 
     p = afterPathAnswer(p, 'auto:pc-basic', t0 + 2 * DAY);
     expect(p.problems['pc-basic']).toMatchObject({ ok: true, box: 1, due: t0 + 7 * DAY });
     expect(afterPathAnswer(p, 'sd-i1-who', t0 + 9 * DAY)).toBe(p);
+  });
+  it('«Убрать из повторения» в учебнике: срок снят, задача не решена, с Пути уходит и она', () => {
+    const p0 = withMistake(recordAnswer(emptyProgress(), 'mb-rounds', false, t0), 'auto:mb-rounds');
+    const p = dropFromReview(p0, 'mb-rounds', t0 + 3 * DAY);
+    expect(p.problems['mb-rounds']).toMatchObject({ ok: false, due: null, box: null, lastAt: t0 + 3 * DAY });
+    expect(reviewQueue(p, t0 + 30 * DAY).due).toEqual([]);
+    expect(p.learn.mistakes).toEqual([]);
+    // на другом устройстве со старой копией убранная задача не воскресает в повторении учебника
+    expect(mergeTextbook(p0, p).problems['mb-rounds'].due).toBe(null);
+  });
+  it('«Убрать из повторения» на Пути: уходит ошибка и снимается срок у той же задачи учебника', () => {
+    const tpl = TEMPLATES.find((x) => x.source === 'mb-deposit');
+    const p0 = withMistake(recordAnswer(emptyProgress(), 'mb-deposit', false, t0), `var:${tpl.id}`);
+    const p = dropFromReview(p0, `var:${tpl.id}`, t0 + DAY);
+    expect(p.learn.mistakes).toEqual([]);
+    expect(p.problems['mb-deposit'].due).toBe(null);
+    // упражнение не из учебника — уходит только из ошибок Пути
+    const q = dropFromReview(withMistake(emptyProgress(), 'sd-i1-who'), 'sd-i1-who', t0);
+    expect(q.learn.mistakes).toEqual([]);
+    expect(q.problems).toEqual({});
   });
 });

@@ -22,7 +22,7 @@ import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
-import { afterBookAnswer } from './textbook/review-sync.js';
+import { afterBookAnswer, dropFromReview } from './textbook/review-sync.js';
 import { EXAMS, examSet, examTemplates, examResult, mixedSet, mixedChapters, weakTopics, journalWeeks, journalSummary } from './textbook/check.js';
 import { CircularFlow, BalanceSheets } from './textbook-diagrams.jsx';
 import { evalExpr, fmtResult, pressRoot } from './learn/calc.js';
@@ -51,6 +51,14 @@ export const TEXTBOOK_CSS = `
   .rv-item.leaving .rv-in { overflow: hidden; }
   .rv-item.later.leaving .rv-in > :first-child { animation: rv-later .55s cubic-bezier(.5,0,.75,0) forwards; }
   .rv-item.done.leaving .rv-in > :first-child { animation: rv-done .6s ease-in forwards; }
+  .rv-item.dropped.leaving .rv-in > :first-child { animation: rv-dropped .5s ease-in forwards; }
+  @keyframes rv-dropped { to { transform: translateX(-60%); opacity: 0; } }
+  .rv-badge.later.dropped { border-color: var(--c-faint, #777); }
+  .rv-badge.later.dropped b { background: var(--c-muted, #666); }
+  .rv-acts { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .rv-skip { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin: -6px 2px 14px; font-size: 13px; color: var(--c-muted); }
+  .rv-drop { background: none; border: none; padding: 4px 2px; font: 700 13px/1.3 var(--ds-sans, sans-serif); color: var(--c-muted); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .rv-drop:hover { color: var(--c-text); }
   @keyframes rv-later { to { transform: translateX(70%) rotate(3deg); opacity: 0; } }
   @keyframes rv-done { to { transform: translateY(-18px) scale(.94); opacity: 0; filter: blur(3px); } }
   .rv-badge { position: absolute; top: 18px; right: 14px; z-index: 3; pointer-events: none; }
@@ -1431,7 +1439,9 @@ const itemName = (id) => {
    - верно в свой день — ярлык-календарь «через 5 дней» (или 12), карточка уезжает вправо: ещё вернётся;
    - верно на последнем шаге расписания — печать «Выучено», искры, карточка растворяется: ушла насовсем;
    - ошибка — карточка остаётся с разбором; «Понятно» уносит её с ярлыком «через 2 дня». Ответ тут
-     же заново после ошибки повторение не снимает (scheduleAfter: ответ до срока ничего не меняет). */
+     же заново после ошибки повторение не снимает (scheduleAfter: ответ до срока ничего не меняет);
+   - «Убрать из повторения» — трудную задачу, которую не знают как решать, можно убрать: карточка
+     уходит влево с ярлыком «убрано», срок снимается и в учебнике, и на Пути. */
 const REVIEW_PAUSE = 1300; // успеть увидеть «Верно»
 const REVIEW_MARK = 950; // ярлык или печать на карточке
 const REVIEW_LEAVE = 650; // уход и схлопывание места
@@ -1440,8 +1450,9 @@ function ReviewItem({ id, ctx, onGone, children }) {
   const rec = ctx.progress.problems[id];
   const [start] = useState(() => (rec ? rec.lastAt || 0 : 0));
   const [phase, setPhase] = useState('open');
+  const [dropped, setDropped] = useState(false);
   const answered = !!rec && (rec.lastAt || 0) > start;
-  const outcome = !answered ? null : rec.due == null ? 'done' : rec.ok ? 'later' : 'wrong';
+  const outcome = dropped ? 'dropped' : !answered ? null : rec.due == null ? 'done' : rec.ok ? 'later' : 'wrong';
   const days = rec && rec.due ? daysUntil(rec.due) : '';
   const go = React.useCallback(() => {
     setPhase('mark');
@@ -1453,8 +1464,10 @@ function ReviewItem({ id, ctx, onGone, children }) {
     const t = setTimeout(go, REVIEW_PAUSE);
     return () => clearTimeout(t);
   }, [outcome, phase, go]);
+  React.useEffect(() => { if (dropped && phase === 'open') go(); }, [dropped, phase, go]);
   if (phase === 'gone') return null;
-  const kind = outcome === 'done' ? 'done' : 'later';
+  const kind = outcome === 'done' ? 'done' : outcome === 'dropped' ? 'dropped' : 'later';
+  const drop = () => { Audio.play('paper'); ctx.onDrop(id); setDropped(true); };
   return (
     <div className={`rv-item ${kind}${phase === 'leaving' ? ' leaving' : ''}`} data-testid="review-item" data-item={id} data-phase={phase} data-outcome={outcome || undefined}>
       <div className="rv-in">
@@ -1462,12 +1475,23 @@ function ReviewItem({ id, ctx, onGone, children }) {
         {outcome === 'wrong' && phase === 'open' && (
           <div className="rv-wrong">
             <span>Ошибка засчитана: вопрос вернётся {days}. Ответ сейчас, после разбора, повторение не снимет.</span>
-            <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} data-testid="review-dismiss" onClick={() => { Audio.play('paper'); go(); }}>Понятно</button>
+            <span className="rv-acts">
+              <button type="button" className="rv-drop" data-testid="review-drop" onClick={drop}>Убрать из повторения</button>
+              <button type="button" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }} data-testid="review-dismiss" onClick={() => { Audio.play('paper'); go(); }}>Понятно</button>
+            </span>
+          </div>
+        )}
+        {!outcome && phase === 'open' && (
+          <div className="rv-skip">
+            <span>Не знаете, как решать?</span>
+            <button type="button" className="rv-drop" data-testid="review-drop" onClick={drop}>Убрать из повторения</button>
           </div>
         )}
         {phase !== 'open' && (kind === 'done'
           ? <div className="rv-badge done" data-testid="review-badge" aria-live="polite">Выучено{SPARKS.map(([dx, dy], k) => <i key={k} className="rv-spark" style={{ '--dx': `${dx}px`, '--dy': `${dy}px`, animationDelay: `${k * 30}ms` }} aria-hidden="true" />)}</div>
-          : <div className="rv-badge later" data-testid="review-badge" aria-live="polite"><b>вернётся</b><span>{days}</span></div>)}
+          : kind === 'dropped'
+            ? <div className="rv-badge later dropped" data-testid="review-badge" aria-live="polite"><b>убрано</b><span>из повторения</span></div>
+            : <div className="rv-badge later" data-testid="review-badge" aria-live="polite"><b>вернётся</b><span>{days}</span></div>)}
       </div>
     </div>
   );
@@ -1481,7 +1505,8 @@ function ReviewPanel({ ctx, due }) {
   const onGone = React.useCallback((id, outcome) => setGone((g) => ({ ...g, [id]: outcome })), []);
   const left = due.filter((id) => !gone[id]);
   const learned = Object.values(gone).filter((x) => x === 'done').length;
-  const moved = Object.values(gone).length - learned;
+  const removed = Object.values(gone).filter((x) => x === 'dropped').length;
+  const moved = Object.values(gone).length - learned - removed;
   const rctx = { ...ctx, inReview: true };
   return (
     <div className="ems-panel" style={{ padding: 14, marginBottom: 16 }} data-testid="review">
@@ -1489,10 +1514,11 @@ function ReviewPanel({ ctx, due }) {
       <div style={{ fontSize: 12.5, color: COLOR.muted, lineHeight: 1.5, marginBottom: 6 }}>
         Задачи с неверным ответом и вопросы разделов, где ответ не совпал, возвращаются через 2 дня; верно на повторении — следующий раз через 5, потом через 12 дней, и вопрос уходит из списка. Те же задачи на Пути — одно повторение: решили там — уходят и отсюда.
       </div>
-      {(learned > 0 || moved > 0) && (
+      {(learned > 0 || moved > 0 || removed > 0) && (
         <div className="rv-tally" data-testid="review-tally">
           {learned > 0 && <span><Check size={13} strokeWidth={3} aria-hidden="true" /> выучено: {learned}</span>}
           {moved > 0 && <span>отложено до следующего раза: {moved}</span>}
+          {removed > 0 && <span>убрано: {removed}</span>}
         </div>
       )}
       {due.length === 0 && <div style={{ fontSize: 13 }}>Сегодня повторять нечего.</div>}
@@ -2094,6 +2120,8 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
       return afterBookAnswer(recordAnswer(p, id, ok, now, opts), id, ok, why);
     }),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
+    // «Убрать из повторения»: срок снят и в учебнике, и на Пути (docs/mechanics.md)
+    onDrop: (id) => update((p) => dropFromReview(p, id)),
     reportFlag,
   };
   // «На сегодня» больше нет: старые ссылки на него ведут в повторение

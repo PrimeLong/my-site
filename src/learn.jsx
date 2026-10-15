@@ -26,13 +26,13 @@ import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
-import { afterPathAnswer } from './textbook/review-sync.js';
+import { afterPathAnswer, dropFromReview } from './textbook/review-sync.js';
 import {
   UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
-  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
+  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
   goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, policyActive, fixMonth } from './learn/rewards.js';
@@ -188,6 +188,8 @@ const CSS = `
   .ln-news-label { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; }
   .ln-news-btns { display: flex; gap: 6px; flex-shrink: 0; }
   .ln-news-btns .ds-chip { margin: 0; min-width: 46px; padding: 8px 0; }
+  .ln-hard-note { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-top: 6px; font-size: 13.5px; }
+  .ln-hard-note .ln-how { margin-top: 0; }
   .ln-calc-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 10px; }
   .ln-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 320px; margin: 0 auto; }
   @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
@@ -676,6 +678,18 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   // вступительный тест — в цвете юнита, который сейчас проверяется; алмазный уровень — в своём
   const color = diamond ? DIAMOND_COLOR : unitColor(lesson ? lesson.unitId : run.unitId || (cur && cur.placeUnit) || 'scarcity');
 
+  // «Убрать из повторения» после ошибки в трудной задаче: из ошибок Пути и из повторения учебника,
+  // повтор в конце урока тоже снимается
+  const [dropped, setDropped] = useState(false);
+  useEffect(() => { setDropped(false); }, [pos]);
+  const dropHard = () => {
+    if (!cur) return;
+    Audio.play('paper');
+    update((p) => dropFromReview(p, cur.of || cur.id), { whole: true });
+    setQueue((q) => q.filter((x, i) => i <= pos || (x.orig || x.uid) !== orig));
+    acc.current.solved.add(orig);
+    setDropped(true);
+  };
   const doCheck = (given) => {
     const answer = given !== undefined ? given : resp;
     if (!cur || fb || (given === undefined && !ready(cur, answer))) return;
@@ -713,8 +727,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       setRun3(0);
       Audio.play('down'); vibrate([30, 40, 30]);
       if (run.mode === 'lesson') update((s) => addMistake(s, cur.of || cur.id));
-      // повтор в конце урока — не та же задача: новые числа или похожий вопрос на ту же мысль
-      if (retryable && !cur.noRetry) {
+      // повтор в конце урока — не та же задача: новые числа или похожий вопрос на ту же мысль;
+      // трудная задача (семинарская, олимпиадная) возвращается один раз, а не до победного
+      if (retryable && !cur.noRetry && !(cur.hard && cur.retry)) {
         a.retries += 1;
         const copy = retryOf(cur, Math.random, queue.map((q) => q.of || q.id));
         setQueue((q) => [...q, { ...copy, uid: `${cur.uid}r${a.retries}`, orig, retry: true }]);
@@ -836,7 +851,14 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           how ? <div className="tb-body" style={{ fontSize: 15, marginTop: 6, color: 'inherit' }} data-testid="ex-how"><Blocks blocks={inst.explain} ctx={noopCtx} /></div>
             : <button type="button" className="ln-how" data-testid="ex-how-open" onClick={() => { Audio.play('paper'); setHow(true); }}>Как решать</button>
         )}
-        {!fb.ok && retryable && !inst.noRetry && <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 4 }}>{feed ? 'Вопрос вернётся в конце урока.' : 'Задача вернётся в конце урока.'}</div>}
+        {!fb.ok && retryable && !inst.noRetry && !inst.hard && <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 4 }}>{feed ? 'Вопрос вернётся в конце урока.' : 'Задача вернётся в конце урока.'}</div>}
+        {/* трудная задача: вернётся один раз; не знаете, как решать, — можно убрать из повторения (docs/mechanics.md) */}
+        {!fb.ok && retryable && inst.hard && (
+          <div className="ln-hard-note" data-testid="hard-note">
+            <span className="ds-sub">{dropped ? 'Убрано из повторения. Решить её можно в учебнике.' : inst.retry ? 'В этом уроке задача больше не вернётся.' : 'Задача вернётся в конце урока — один раз.'}</span>
+            {!dropped && <button type="button" className="ln-how" data-testid="drop-review" onClick={dropHard}>Убрать из повторения</button>}
+          </div>
+        )}
         <Button variant={fb.ok ? 'ok' : 'warm'} wide onClick={next} autoFocus style={{ marginTop: 12 }}>Дальше</Button>
       </div>
     </AnswerBar>
