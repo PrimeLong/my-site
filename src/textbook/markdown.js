@@ -587,7 +587,7 @@ function parseExercise(kind, attrs, body) {
      keep — «Держи инфляцию» (src/learn/keep.js): заголовки «- текст >> +2» — на сколько пунктов
      новость толкает инфляцию; ученик двигает ставку, чтобы вернуть инфляцию в коридор цели. */
 const ROUND_KINDS = ['swipe', 'rush', 'keep'];
-export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'] };
+export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'], costs: ['fc', 'vc'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
   if (!attrs.id) throw new Error(`У игры ${kind} нет id`);

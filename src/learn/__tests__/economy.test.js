@@ -12,9 +12,9 @@ const maxPrice = () => Math.ceil(Math.max(...ALL.map((o) => o.crowns)) * RATE_MA
 
 describe('цены лавки — от заработка курса', () => {
   const inc = courseIncome();
-  it('заработок курса считается из уроков Пути (сейчас 74) и складывается из частей', () => {
+  it('заработок курса считается из уроков Пути (сейчас 84) и складывается из частей', () => {
     expect(PATH_LESSONS).toBe(LESSONS.length);
-    expect(PATH_LESSONS).toBe(74);
+    expect(PATH_LESSONS).toBe(84);
     const { total, days, ...parts } = inc;
     expect(total).toBe(Object.values(parts).reduce((a, b) => a + b, 0));
     expect(parts.lessons).toBe(PATH_LESSONS * COIN.lesson);

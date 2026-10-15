@@ -37,6 +37,13 @@ export const STATS_CSS = `
   .st-goal span { position: absolute; right: 0; bottom: 2px; font: 12px/1 var(--ds-sans, sans-serif); color: var(--ds-ink3, var(--c-faint, #777)); background: var(--ds-card, var(--c-panel, #fff)); padding: 0 0 0 4px; }
   .st-col { flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 0; border: 0; background: none; cursor: pointer; position: relative; }
   .st-col i { display: block; width: 100%; max-width: 24px; border-radius: 4px 4px 0 0; background: color-mix(in srgb, var(--st-tone, var(--u, #4D7C0F)) 42%, var(--ds-card, var(--c-panel, #fff))); transition: height .5s ease; }
+  .st-col i { animation: st-grow .6s cubic-bezier(.3,.9,.4,1) both; animation-delay: calc(var(--i, 0) * 14ms); transform-origin: 50% 100%; }
+  @keyframes st-grow { from { transform: scaleY(0) } to { transform: scaleY(1) } }
+  .st-meter-fill { animation: st-fill .9s cubic-bezier(.3,.8,.4,1) both; transform-origin: 0 50%; }
+  @keyframes st-fill { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+  .st-tile { transition: transform .15s ease; }
+  .st-tile:hover { transform: translateY(-2px); }
+  @media (prefers-reduced-motion: reduce) { .st-col i, .st-meter-fill { animation: none; } .st-tile { transition: none; } }
   .st-col.met i { background: var(--st-tone, var(--u, #4D7C0F)); }
   .st-col.none i { height: 3px !important; background: var(--ds-rule2, var(--c-border, #ccc)); border-radius: 2px; }
   .st-col.future i { height: 3px !important; background: transparent; border-bottom: 1px dashed transparent; }
@@ -113,7 +120,7 @@ export function DayBars({ days, goal = null, tone, testid }) {
           return (
             <button key={d.key} type="button" className={`st-col ${cls}${d.today ? ' today' : ''}${sel === k ? ' sel' : ''}`} data-minutes={d.minutes} aria-label={label}
               onMouseEnter={() => setSel(k)} onFocus={() => setSel(k)} onClick={() => pick(k)} disabled={d.future}>
-              <i style={{ height: `${Math.max(3, (d.minutes / top) * 100)}%` }} />
+              <i style={{ height: `${Math.max(3, (d.minutes / top) * 100)}%`, '--i': k }} />
             </button>
           );
         })}

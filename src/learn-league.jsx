@@ -39,6 +39,10 @@ const LEAGUE_CSS = `
   .lg-row:first-child { border-top: none; }
   .lg-row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--zone, transparent); }
   .lg-row.me { background: var(--ds-sel); color: var(--ds-sel-ink); }
+  .lg-row { animation: lg-in .35s ease-out both; animation-delay: calc(min(var(--i, 0), 20) * 22ms); }
+  .lg-row.me { animation: lg-in .35s ease-out both, lg-glow 1.6s ease-out .6s 1; animation-delay: calc(min(var(--i, 0), 20) * 22ms), .7s; }
+  @keyframes lg-in { from { opacity: 0; transform: translateX(-8px) } to { opacity: 1; transform: none } }
+  @keyframes lg-glow { 0% { box-shadow: inset 0 0 0 0 var(--u) } 30% { box-shadow: inset 0 0 0 2px var(--u) } 100% { box-shadow: inset 0 0 0 0 transparent } }
   .lg-row.me .lg-name { font-weight: 800; }
   .lg-no { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--ds-mono); color: var(--ds-ink2); }
   .lg-no.medal { color: #fff; box-shadow: inset 0 0 0 2px rgba(255,255,255,.4); }
@@ -261,7 +265,7 @@ export function LeagueView({ learn, update, now = Date.now() }) {
               <div className={`lg-zone-head ${z.id}`}><Icon size={15} aria-hidden="true" /><span>{z.title}</span><span>{z.range}</span></div>
               <ol className="lg-rows" start={z.rows[0] ? z.rows[0].place : 1}>
                 {z.rows.map((r) => (
-                  <li key={r.id} className={`lg-row${r.me ? ' me' : ''}`} style={{ '--zone': ZONE_COLOR[r.zone], '--zone-bar': r.zone === 'down' ? 'var(--ds-bad)' : r.zone === 'up' ? 'var(--ds-ok)' : 'var(--ds-ink3)' }}
+                  <li key={r.id} className={`lg-row${r.me ? ' me' : ''}`} style={{ '--i': r.place, '--zone': ZONE_COLOR[r.zone], '--zone-bar': r.zone === 'down' ? 'var(--ds-bad)' : r.zone === 'up' ? 'var(--ds-ok)' : 'var(--ds-ink3)' }}
                     data-testid="league-row" data-me={r.me ? 'true' : undefined} data-zone={r.zone} data-place={r.place}>
                     <span className={`lg-no${r.place <= 3 ? ' medal' : ''}`} style={r.place <= 3 ? { background: MEDAL[r.place - 1] } : undefined}>{r.place}</span>
                     <span className="lg-ava" style={{ background: r.me ? 'var(--u)' : r.color }} aria-hidden="true">{r.name.charAt(0)}</span>

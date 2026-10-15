@@ -342,10 +342,23 @@ for (const theme of ['light', 'dark']) {
       await shot(page, '42-placement-result', theme, { wait: 1500 });
       await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
       await openMore(page, 'profile');
+      await page.getByTestId('prof-settings-open').click();
       await page.getByTestId('prof-program').scrollIntoViewIfNeeded();
       await shot(page, '43-profile-program', theme);
-      await page.getByTestId('achievements').scrollIntoViewIfNeeded();
+      await page.getByTestId('prof-notify').scrollIntoViewIfNeeded();
+      await shot(page, '43b-settings-notify', theme);
+      await page.getByTestId('settings').locator('[data-nav="back"]').click();
+      await page.getByTestId('prof-seals-all').click();
       await shot(page, '44-achievements', theme);
+      await page.locator('[data-testid=ach]').first().click();
+      await shot(page, '44b-achievement-sheet', theme);
+      await page.getByTestId('item-sheet').getByRole('button', { name: 'Хорошо' }).click();
+      await page.getByTestId('collection').locator('[data-nav="back"]').click();
+      await page.getByTestId('prof-bell').click();
+      await shot(page, '44c-notifications', theme);
+      await page.getByTestId('notifications').locator('[data-nav="back"]').click();
+      await openMore(page, 'news');
+      await shot(page, '44d-news', theme, { wait: 900 });
       expect(errors).toEqual([]);
     });
 
@@ -375,6 +388,7 @@ for (const theme of ['light', 'dark']) {
       await page.getByRole('button', { name: 'Продолжить' }).click();
       await exitLesson(page);
       await openMore(page, 'profile');
+      await page.getByTestId('prof-settings-open').click();
       await page.getByTestId('prof-reports').click();
       await shot(page, '50-reports', theme);
       // юнит 1: «История» Гриши и калькулятор в расчёте
@@ -492,7 +506,7 @@ for (const theme of ['light', 'dark']) {
       test.setTimeout(120_000);
       const errors = await setup(page, { theme });
       await page.goto('/', { waitUntil: 'networkidle' });
-      const tab = (id) => (id === 'world' || id === 'profile' ? openMore(page, id) : page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click());
+      const tab = (id) => (id === 'world' || id === 'profile' || id === 'news' ? openMore(page, id) : page.getByTestId('bottom-nav').locator(`[data-tab="${id}"]`).click());
       await page.getByTestId('tasks-card').click();
       await shot(page, '26-tasks', theme);
       await tab('league');
@@ -500,6 +514,8 @@ for (const theme of ['light', 'dark']) {
       await tab('profile');
       await shot(page, '27-profile', theme);
       await shot(page, '28-profile-full', theme, { full: true });
+      await page.getByTestId('prof-settings-open').click();
+      await shot(page, '28b-settings', theme);
       await page.getByTestId('prof-account').click();
       await shot(page, '29-account', theme);
       await page.getByRole('button', { name: 'Закрыть' }).click();

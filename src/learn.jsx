@@ -11,14 +11,13 @@
    Навигация: у каждого экрана один «назад» (data-nav="back"), переходы помечены
    data-nav-target — e2e проверяет, что на одном экране нет двух путей в одно место.
    Карта экранов — src/learn/screens.js. */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
-  Snowflake, ArrowDownToLine, ArrowUpToLine, UserRound, ShieldCheck, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown,
-  Star, CalendarDays,
+  Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown,
 } from 'lucide-react';
-import { StatHero, StatTile, Meter, DayBars, STATS_CSS } from './learn-stats.jsx';
+import { STATS_CSS } from './learn-stats.jsx';
 import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
 import { track } from './lib/client.js';
@@ -33,20 +32,20 @@ import {
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
-  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
-  goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
+  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak,
+  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
-import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, policyActive, fixMonth } from './learn/rewards.js';
+import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
-import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
-  REWARD_CSS, WalletStat, QuestsCard, MonthCard, TasksEntry, ShopView, ChestSheet, MorningStreak, Achievements, GainsList, ProgramCard, PlacementCard,
+  REWARD_CSS, WalletStat, QuestsCard, MonthCard, TasksEntry, ShopView, ChestSheet, MorningStreak, GainsList, PlacementCard,
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText, termFormula } from './learn/terms.js';
 import { LeagueView } from './learn-league.jsx';
+import { NOTIFY_CSS, useNotify, useToasts, useBrowserReminders, NotifyCenter, NotifyToast, BellButton } from './learn-notify.jsx';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
@@ -57,13 +56,10 @@ import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
 import { inCrowns, sceneInCrowns } from './learn/money.js';
 import { ReportFlag, QuoteReport, ReportsView, AnalyticsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
-import { reportsMe } from './lib/client.js';
-import { loadAccount } from './account.jsx';
-import { DsRoot, Button, IconButton, Card, MenuCard, Heading, Toggle, AnswerBar, Sheet, TopBar } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette, Chest, PostStamp, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide } from './ds-art.jsx';
-import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId, learnDark, setLearnDark, learnMusic, setLearnMusic, learnSfx, setLearnSfx } from './ds-tokens.js';
+import { DsRoot, Button, IconButton, Card, MenuCard, Heading, AnswerBar, Sheet, TopBar } from './ds.jsx';
+import { ArtStyle, Guilloche, Rosette, Chest, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide } from './ds-art.jsx';
+import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, innerBorderPath, RIVER, curveTo } from './lib/mapgeo.js';
-import { ProfileModal } from './account.jsx';
 import { plural } from './lib/plural.js';
 
 export { SCREENS } from './learn/screens.js';
@@ -113,6 +109,19 @@ const CSS = `
   .ln-mini-title { line-height: 1.2; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ln-bill-mini > * { flex-shrink: 0; }
   .ln-bill-mini { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
+  /* юнит только что свернулся после сундука: строка «впечатывается», по ней пробегает блик */
+  .ln-just-folded .ln-bill-mini { position: relative; overflow: hidden; animation: ln-mini-in .55s cubic-bezier(.3,1.4,.5,1) both; }
+  .ln-just-folded .ln-bill-mini::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(105deg, transparent 30%, color-mix(in srgb, var(--ds-gold-soft) 55%, transparent) 48%, transparent 66%) no-repeat; background-size: 250% 100%;
+    animation: ln-sheen 1.3s ease-out .25s both; }
+  @keyframes ln-mini-in { 0% { transform: scale(1.06); opacity: 0 } 100% { transform: none; opacity: 1 } }
+  @keyframes ln-sheen { from { background-position: 130% 0 } to { background-position: -40% 0 } }
+  .ln-unit-body { overflow-anchor: none; transform-origin: 50% 0; }
+  /* смена вкладки: экран мягко проявляется */
+  /* только прозрачность: сдвиг (transform) сделал бы вкладку рамкой для fixed-слоёв внутри — шторки и
+     страницы поверх профиля встали бы не по экрану, а по вкладке */
+  .ln-tab { animation: ln-tab-in .3s ease-out; }
+  @keyframes ln-tab-in { from { opacity: 0 } to { opacity: 1 } }
   /* плашка уровня наверху Пути: стрелки к соседним уровням, касание — список уровней */
   .ln-switch { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 6px; margin: 4px -4px 8px; padding: 6px 4px;
     background: color-mix(in srgb, var(--ds-paper) 92%, transparent); backdrop-filter: blur(6px); }
@@ -151,6 +160,8 @@ const CSS = `
   /* остановка Пути — объёмная монета: снизу кромка темнее, нажатие опускает её */
   .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 3px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
     display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 0 var(--ds-rule2); margin-bottom: 5px; transition: transform .08s, box-shadow .08s; }
+  .ln-token:not(.locked):hover { transform: translateY(-2px); }
+  .ln-token:not(.locked):hover > svg { animation: ds-wiggle .5s ease-in-out; }
   .ln-token:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ds-rule2); }
   .ln-token.done { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 82%, #fff); box-shadow: 0 5px 0 color-mix(in srgb, var(--u) 68%, #000); }
   .ln-token.done:active { box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 68%, #000); }
@@ -168,7 +179,12 @@ const CSS = `
   .ln-seal.diamond { background: #B3123F; color: #fff; }
   .ln-pin { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 700 12px/1 var(--ds-sans); letter-spacing: .08em; text-transform: uppercase;
     color: #fff; background: var(--u); padding: 6px 10px 5px; border-radius: 10px; box-shadow: 0 2px 0 color-mix(in srgb, var(--u) 68%, #000); }
-  .ln-pin.rec { background: var(--ds-gold); color: var(--ds-card); }
+  .ln-pin.rec { background: var(--ds-gold); color: var(--ds-card); animation: ln-bob 2.8s ease-in-out infinite; }
+  @keyframes ln-bob { 0%, 100% { transform: translateX(-50%) translateY(0) } 50% { transform: translateX(-50%) translateY(-3px) } }
+  /* счётчики наверху Пути: изменилось число — оно коротко подпрыгивает */
+  .ln-bump { display: inline-block; animation: ln-bump .45s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes ln-bump { 0% { transform: scale(1) } 35% { transform: scale(1.3); color: var(--u-ink) } 100% { transform: scale(1) } }
+  .ln-stat { transition: border-color .2s, background-color .2s; }
   .ln-pin.rec::after { border-top-color: var(--ds-gold); }
   .ln-chest { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: inherit; cursor: pointer; font: 700 13.5px/1.25 var(--ds-head); }
   .ln-chest-art { display: inline-flex; filter: drop-shadow(0 2px 2px var(--ds-shade)); transition: transform .15s; }
@@ -1366,7 +1382,7 @@ const SEEN_KEY = 'ems-learn-open-seen';
 const readSeen = () => { try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null'); return Array.isArray(v) ? new Set(v) : null; } catch { return null; } };
 const writeSeen = (set) => { try { localStorage.setItem(SEEN_KEY, JSON.stringify([...set])); } catch { /* приватный режим */ } };
 
-function TopStats({ learn }) {
+function TopStats({ learn, bell = null }) {
   const st = streak(learn); const g = goalToday(learn);
   const totalXp = Object.values(learn.xp).reduce((a, b) => a + b, 0);
   return (
@@ -1377,12 +1393,13 @@ function TopStats({ learn }) {
         title={st.today ? 'Серия продлена сегодня' : st.days ? 'Сегодня ещё не занимались: один урок — и серия продлится' : 'Серия дней'}>
         <span className="ln-flame-wrap"><Flame size={17} color={st.today ? 'var(--ds-bad)' : 'var(--ds-ink3)'} fill={st.today ? 'color-mix(in srgb, var(--ds-bad) 35%, transparent)' : 'none'} aria-hidden="true" />
           {st.today && <i className="ln-flame-ok" aria-hidden="true"><Check size={9} strokeWidth={4} /></i>}</span>
-        <span className="ds-sr">Серия, дней: </span><span data-testid="streak">{st.days}</span><small aria-hidden="true">дн.</small>
+        <span className="ds-sr">Серия, дней: </span><span data-testid="streak" key={st.days} className="ln-bump">{st.days}</span><small aria-hidden="true">дн.</small>
         <span className="ds-sr">{st.today ? ', сегодня продлена' : st.days ? ', сегодня ещё не продлена' : ''}</span>
       </span>
-      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" /><span className="ds-sr">Опыт: </span>{totalXp}<small aria-hidden="true">опыт</small></span>
+      <span className="ln-stat" title="Опыт"><Sparkles size={16} color="var(--u-ink)" aria-hidden="true" /><span className="ds-sr">Опыт: </span><span key={totalXp} className="ln-bump">{totalXp}</span><small aria-hidden="true">опыт</small></span>
       <WalletStat learn={learn} />
-      <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" /><span className="ds-sr">Цель дня, минут занятий: </span>{Math.min(g.done, g.goal)}/{g.goal}<small aria-hidden="true">мин</small></span>
+      <span className="ln-stat" title={`Цель дня — ${g.goal} минут занятий`} data-testid="goal" style={{ color: g.done >= g.goal ? 'var(--ds-ok)' : undefined }}><Target size={17} aria-hidden="true" /><span className="ds-sr">Цель дня, минут занятий: </span><span key={Math.min(g.done, g.goal)} className="ln-bump">{Math.min(g.done, g.goal)}</span>/{g.goal}<small aria-hidden="true">мин</small></span>
+      {bell}
     </div>
   );
 }
@@ -1757,7 +1774,22 @@ function LevelPicker({ levels, sel, focus, onSel, onTest, onClose }) {
    закрывается) — пока не сменился текущий уровень; jump — уровень, который откроет сдаваемый тест. */
 let pathMem = { level: null, cur: null, jump: null };
 
-function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0 }) {
+/* Свёртка пройденного юнита после сундука: тело юнита (модель и дорога) плавно сжимается в ноль,
+   соседи снизу подъезжают — без скачка прокрутки. */
+function Collapse({ closing, children }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !closing) return;
+    el.style.maxHeight = `${el.scrollHeight}px`; el.style.overflow = 'hidden';
+    void el.offsetHeight;
+    el.style.transition = 'max-height .62s cubic-bezier(.4,0,.2,1), opacity .4s ease, transform .62s ease';
+    el.style.maxHeight = '0px'; el.style.opacity = '0'; el.style.transform = 'scale(.97)';
+  }, [closing]);
+  return <div ref={ref} className="ln-unit-body">{children}</div>;
+}
+
+function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTasks, visible, homeTick = 0, folded: foldReq = null, bell = null }) {
   const states = pathState(learn);
   const rec = recommend(learn, states);
   const recTitle = rec ? LESSON_BY_ID[rec.lessonId].title : null;
@@ -1827,6 +1859,22 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     const el = focusLesson(rootRef.current);
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
   }, []);
+  /* Сундук открыт (docs/mechanics.md, «Навигация»): Путь подводит шапку юнита к верху экрана, дорога
+     юнита сворачивается, юнит становится строкой — и Путь сам едет к рекомендованному уроку. */
+  const [folding, setFolding] = useState(null);
+  const [justFolded, setJustFolded] = useState(null);
+  useEffect(() => {
+    if (!foldReq || !foldReq.n) return undefined;
+    const unit = foldReq.unit;
+    const head = document.getElementById(`unit-${unit}`);
+    if (reduced || !head) { setScrollTo((x) => ({ n: x.n + 1, unit: null })); return undefined; }
+    setFolding(unit);
+    head.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const t1 = setTimeout(() => setFolding((f) => (f === unit ? `${unit}:closing` : f)), 420);
+    const t2 = setTimeout(() => { setFolding(null); setJustFolded(unit); setScrollTo((x) => ({ n: x.n + 1, unit: null })); }, 1100);
+    const t3 = setTimeout(() => setJustFolded(null), 2600);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [foldReq && foldReq.n]); // eslint-disable-line react-hooks/exhaustive-deps
   // повторное касание вкладки «Путь» — снова текущий уровень и рекомендованный урок, где бы ни был экран
   useEffect(() => {
     if (!homeTick) return;
@@ -1841,7 +1889,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   return (
     <div ref={rootRef} className={`ln-wrap${wide ? ' ln-path-wide' : ''}`} data-testid="path" data-layout={wide ? 'columns' : 'column'}>
       <div className="ln-path-main">
-      <TopStats learn={learn} />
+      <TopStats learn={learn} bell={bell} />
       {!wide && <TasksEntry learn={learn} onOpen={onTasks} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <Mascot mood={hello} size={44} />
@@ -1861,9 +1909,11 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
         }} />}
       {selRow && <div className="ds-sub ln-level-text" data-testid="path-level" data-level={sel}>{selRow.lv.text}</div>}
       {shown.map(({ u, no, st, pl }) => {
-        const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id];
+        const isFolding = !!folding && folding.split(':')[0] === u.id;
+        const folded = st.complete && hasClaim(learn, chestKey(u.id)) && !unfolded[u.id] && !isFolding;
         return (
-        <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} style={{ '--u': pl.color, scrollMarginTop: 64 }}>
+        <section key={u.id} id={`unit-${u.id}`} data-testid="path-unit" data-unit={u.id} data-folded={String(folded)} data-folding={isFolding ? 'true' : undefined}
+          className={justFolded === u.id ? 'ln-just-folded' : undefined} style={{ '--u': pl.color, scrollMarginTop: 64 }}>
           {/* шапка юнита — как купюра своего достоинства: гильош, номер, место и здание;
               пройденный и свёрнутый — одной строкой */}
           {folded ? (
@@ -1905,9 +1955,13 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
           )}
           {/* живая модель юнита: собирается урок за уроком — главный видимый прогресс юнита; на
               телефоне — свёрнутой строкой, у свёрнутого юнита её нет */}
-          {hasModel(u.id) && !wide && !folded && <ModelFold unitId={u.id} learn={learn} />}
-          {!folded && <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
-            chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />}
+          {!folded && (
+            <Collapse closing={isFolding && folding.endsWith(':closing')}>
+              {hasModel(u.id) && !wide && <ModelFold unitId={u.id} learn={learn} />}
+              <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
+                chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />
+            </Collapse>
+          )}
         </section>
         );
       })}
@@ -1977,116 +2031,13 @@ function TasksView({ learn, onStart, onOpenBook, onBack }) {
 }
 
 /* ------------------------------ ПРОФИЛЬ ------------------------------
-   Личные рекорды, альбом марок (пройденный юнит — марка с его зданием), цель дня,
-   статистика, учебник, аккаунт и настройки: тёмная тема, музыка, звуки ответов. */
-/* Четыре недели занятий: минуты по дням столбиками (цель — линия, сегодня — отметка), под ними
-   три плитки — минуты, уроки, дни с занятиями — и точность с первого раза полосой.
-   Без разбивки по типам упражнений: она мало что говорит ученику. */
-function StudyWeeks({ learn }) {
-  const w = studyWeeks(learn);
-  const goal = goalToday(learn).goal;
-  return (
-    <Card style={{ margin: '12px 0' }} data-testid="prof-stats">
-      <div className="ds-h3" style={{ marginBottom: 2 }}>Последние четыре недели</div>
-      <div className="ds-sub" style={{ fontSize: 13.5, marginBottom: 4 }}>Минуты занятий по дням. Нажмите на столбик — день, минуты и уроки.</div>
-      <DayBars days={w.days.map((d) => ({ key: d.day, minutes: d.minutes, lessons: d.lessons, today: d.today, future: d.future }))} goal={goal} testid="prof-calendar" />
-      <div className="st-grid three" style={{ marginTop: 14 }}>
-        <StatTile icon={Clock} label="Минут" value={w.minutes} testid="prof-minutes" sub={w.active ? `≈ ${Math.round(w.minutes / w.active)} в день` : 'пока нет'} />
-        <StatTile icon={BookOpen} label="Уроков" value={w.lessons} testid="prof-lessons" sub="пройдено" />
-        <StatTile icon={CalendarDays} label="Дней" value={w.active} sub="с занятиями из 28" />
-      </div>
-      <Meter label="Верно с первого раза" share={w.accuracy} testid="prof-accuracy-meter"
-        text={<b data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b>}
-        note={w.accuracy == null ? 'Посчитаем после пяти ответов.' : `${w.right} из ${w.tried} ${plural(w.tried, 'первого ответа', 'первых ответов', 'первых ответов')} за четыре недели — повтор задачи не считается.`} />
-    </Card>
-  );
-}
+   Профиль, коллекции и настройки — src/learn-profile.jsx; уведомления и новости — src/learn-notify.jsx. */
 
-function ProfileView({ learn, update, onOpenBook, onThemeChange, onStart, onReports, onAnalytics = () => {} }) {
-  // владельцы (OWNER_LOGINS на сервере) видят сообщения об ошибках
-  const [owner, setOwner] = useState(false);
-  useEffect(() => {
-    const a = loadAccount();
-    if (!a) return undefined;
-    let alive = true;
-    reportsMe(a.token).then((r) => { if (alive) setOwner(!!r.owner); }).catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  const st = streak(learn); const stats = learnStats(learn);
-  const bw = bestWeek(learn);
-  const [dark, setDark] = useState(learnDark);
-  const [music, setMusic] = useState(learnMusic);
-  const [sfx, setSfx] = useState(learnSfx);
-  const [account, setAccount] = useState(false);
-  const [privacy, setPrivacy] = useState(false);
-  const states = pathState(learn);
-  const arrow = <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />;
-  const lessonsDone = Object.keys(learn.lessons).filter((id) => lessonDone(learn, id)).length;
-  return (
-    <div className="ln-wrap" data-testid="learn-profile">
-      {account && <div data-testid="account" style={{ display: 'contents' }}><ProfileModal onClose={() => setAccount(false)} onSwitched={() => setAccount(false)} /></div>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-        <Mascot mood={st.days >= 3 ? 'joy' : 'hello'} size={52} />
-        <Heading eyebrow="Профиль" title="Личные рекорды" sub="Без лиг и соревнований — только ваш путь." />
-      </div>
-      <Card style={{ margin: '12px 0' }} data-testid="prof-records">
-        <div className="ds-h3" style={{ marginBottom: 2 }}>Рекорды</div>
-        <StatHero icon={Flame} tone="#D9822B" value={st.days} testid="prof-streak" label={`${plural(st.days, 'день', 'дня', 'дней')} подряд — серия сейчас`}
-          sub={`Рекорд — ${longestStreak(learn)} дн.${st.freezesUsed.length ? ` · прощено пропусков: ${st.freezesUsed.length}` : ''}`} />
-        <div className="st-grid four">
-          <StatTile icon={Star} tone="#B8860B" label="Всего опыта" value={stats.totalXp} />
-          <StatTile icon={Trophy} tone="#9A6300" label="Лучшая неделя" value={bw.xp ? bw.xp : '—'} sub={bw.xp ? 'опыта' : 'ещё впереди'} />
-          <StatTile icon={Coins} tone="#8A6416" label="Монет" value={balance(learn)} testid="prof-coins" sub="в кошельке" />
-          <StatTile icon={ShieldCheck} tone="#2E5F8A" label="Страховка серии" value={policyActive(learn) ? 'есть' : ownedFreezes(learn) ? ownedFreezes(learn) : 'нет'}
-            sub={policyActive(learn) ? 'полис действует' : ownedFreezes(learn) ? 'старых полисов' : 'в лавке'} />
-        </div>
-        <div className="ds-faint" style={{ fontSize: 13, marginTop: 8 }}>Один пропущенный день в неделю серию не обнуляет, второй — прощает «Страховка серии» из лавки.</div>
-      </Card>
-      <ProgramCard learn={learn} update={update} onPlacement={() => onStart({ mode: 'placement' })} />
-
-      <Card style={{ margin: '12px 0' }} data-testid="prof-album">
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-          <div className="ds-h3">Альбом</div><span className="ds-faint ds-num" style={{ fontSize: 12.5 }}>печатей: {lessonsDone}</span>
-        </div>
-        <div className="ds-sub" style={{ fontSize: 13.5, margin: '2px 0 10px' }}>Пройденный юнит — марка с его зданием, каждый урок — печать.</div>
-        <div className="ln-album">
-          {states.map((s, k) => {
-            const pl = placeOf(s.course.id);
-            return (
-              <PostStamp key={s.course.id} color={pl.color} value={k + 1} caption={pl.place} dim={!s.complete} testid="album-stamp">
-                <Engraving kind={pl.building} alive={s.complete} size={78} color={pl.color} />
-              </PostStamp>
-            );
-          })}
-        </div>
-        <div className="ds-h3" style={{ margin: '16px 0 4px' }}>Печати</div>
-        <div className="ds-sub" style={{ fontSize: 13.5, margin: '0 0 10px' }}>Достижения — оттиски печатей; за каждую — монеты.</div>
-        <Achievements learn={learn} />
-      </Card>
-      <StudyWeeks learn={learn} />
-      <MenuCard icon={Target} tone="var(--ds-ok)" title="Мой прогресс в учебнике" data-testid="prof-book-stats" data-nav-target="book:stats" right={arrow} text="Разделы, точность, слабые темы и журнал занятий" onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'stats' }); }} />
-      {owner && <MenuCard icon={Flag} tone="var(--ds-bad)" title="Сообщения об ошибках" data-testid="prof-reports" data-nav-target="reports" right={arrow}
-        text="Что заметили ученики: новые и разобранные, «скопировать всё», разбор пачкой по id" onClick={() => { Audio.play('paper'); onReports(); }} />}
-      {owner && <MenuCard icon={Target} tone="var(--u-ink)" title="Аналитика" data-testid="prof-analytics" data-nav-target="analytics" right={arrow}
-        text="Воронка за 30 дней и 20 самых трудных упражнений — без персональных данных" onClick={() => { Audio.play('paper'); onAnalytics(); }} />}
-      <MenuCard icon={UserRound} tone="#65408F" title="Аккаунт" data-testid="prof-account" data-nav-target="account" right={arrow} text="Имя, значок, пароль, выход; скачать или удалить свои данные" onClick={() => setAccount(true)} />
-      <MenuCard icon={ShieldCheck} tone="var(--ds-ink2)" title={PRIVACY_TITLE} data-testid="prof-privacy" right={arrow} text="Что хранится, где, зачем и сколько" onClick={() => { Audio.play('paper'); setPrivacy(true); }} />
-      {privacy && <PrivacyPage onClose={() => setPrivacy(false)} />}
-      <Card style={{ margin: '12px 0' }} data-testid="prof-settings">
-        <div className="ds-h3" style={{ marginBottom: 4 }}>Настройки</div>
-        {[
-          ['Тёмная тема', dark, (v) => { setLearnDark(v); setDark(v); onThemeChange(); }, 'prof-dark'],
-          ['Музыка в обучении', music, (v) => { setLearnMusic(v); setMusic(v); onThemeChange(); }, 'prof-music'],
-          ['Звуки ответов', sfx, (v) => { setLearnSfx(v); setSfx(v); onThemeChange(); if (v) Audio.play('coin'); }, 'prof-sfx'],
-        ].map(([label, on, set, testid]) => (
-          <div key={testid} className="ds-row" style={{ alignItems: 'center' }}>
-            <span>{label}</span><Toggle on={on} label={label} onChange={set} data-testid={testid} />
-          </div>
-        ))}
-      </Card>
-    </div>
-  );
-}
+// профиль с настройками и лента новостей — свои ленивые чанки: нужны не при каждом открытии
+const ProfileView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.ProfileView })));
+const SettingsView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.SettingsView })));
+const NewsView = React.lazy(() => import('./learn-news.jsx'));
+const Lazy = ({ children }) => <React.Suspense fallback={<div className="ds-sub" style={{ padding: 24, textAlign: 'center' }}>Загрузка…</div>}>{children}</React.Suspense>;
 
 /* ------------------------------ ВКЛАДКИ ------------------------------
    Корень экранов обучения. Учебник — подэкран поверх вкладки (или поверх итогов урока):
@@ -2107,7 +2058,7 @@ function GuestSave({ learn, afterLesson = false }) {
   );
 }
 
-export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, pathHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {} }) {
+export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, pathHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {}, onTab = () => {} }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
   const [sheet, setSheet] = useState(null);
@@ -2118,6 +2069,14 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   // «Задания» — экран поверх Пути (карточка наверху Пути)
   const [tasks, setTasks] = useState(false);
   const [chest, setChest] = useState(null);
+  // сундук открыт — пройденный юнит сворачивается, Путь едет к рекомендованному уроку
+  const [folded, setFolded] = useState({ n: 0, unit: null });
+  // настройки (шестерёнка в профиле) и центр уведомлений (колокольчик на Пути и в профиле)
+  const [settings, setSettings] = useState(false);
+  const [bell, setBell] = useState(false);
+  // куда вести после смены вкладки из уведомления: задания поверх Пути, сад или копилка в лавке
+  const afterTab = useRef(null);
+  const [shopFocus, setShopFocus] = useState({ n: 0, to: null });
   // утренний экран серии: один раз в день, при первом открытии Пути, если серия уже идёт
   const [morning, setMorning] = useState(() => {
     if (tab !== 'path') return false;
@@ -2125,12 +2084,20 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     let seen = null; try { seen = localStorage.getItem(MORNING_KEY); localStorage.setItem(MORNING_KEY, today); } catch { /* приватный режим */ }
     return seen !== today && streak(loadProgress().learn).days >= 1;
   });
+  const notify = useNotify(learn);
+  const [toast, toastDone] = useToasts(notify, !!run || !!sheet || !!chest || morning || bell);
+  useBrowserReminders(notify);
   const openBook = (page, resume = false) => { setBook({ page, resume }); setBookKey((k) => k + 1); window.scrollTo(0, 0); };
-  // смена вкладки закрывает подэкраны
-  useEffect(() => { setBook(null); setSheet(null); setChest(null); setReports(false); setAnalytics(false); setTasks(false); }, [tab]);
+  // смена вкладки закрывает подэкраны; переход из уведомления может открыть нужный сразу
+  useEffect(() => {
+    setBook(null); setSheet(null); setChest(null); setReports(false); setAnalytics(false); setTasks(false); setSettings(false); setBell(false);
+    const go = afterTab.current; afterTab.current = null;
+    if (go && go.tasks) setTasks(true);
+    if (go && go.chest) setChest(go.chest);
+  }, [tab]);
   // нажата вкладка внизу, пока открыт учебник поверх (в том числе та же самая) — закрываем его
-  useEffect(() => { if (closeTick) { setBook(null); setSheet(null); } }, [closeTick]);
-  useEffect(() => { if (pathHome) setTasks(false); }, [pathHome]);
+  useEffect(() => { if (closeTick) { setBook(null); setSheet(null); setSettings(false); setBell(false); } }, [closeTick]);
+  useEffect(() => { if (pathHome) { setTasks(false); setBell(false); } }, [pathHome]);
   // учебник поверх вкладки — нижняя панель отмечает «Учебник»
   useEffect(() => { onBookOver(!!book && !run); }, [book, run]); // eslint-disable-line react-hooks/exhaustive-deps
   // вернулись из Лаборатории или партии, открытой из учебника, — снова в учебник, на то же место
@@ -2140,6 +2107,23 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   // гость: после выбора цели — сразу первый урок Пути, без карточки урока
   useEffect(() => { if (firstLesson) { onFirstLesson(); start({ mode: 'lesson', lessonId: LESSONS[0].id }); } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstLesson]);
+  /* Касание уведомления (в центре или на плашке): туда, где можно действовать. Та же вкладка —
+     сразу, другая — после её открытия (смена вкладки закрывает подэкраны). */
+  const goNotify = (n) => {
+    notify.markOne(n.id);
+    setBell(false);
+    const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news' }[n.go] || 'path';
+    const extra = n.go === 'tasks' ? { tasks: true } : n.id.startsWith('chest:') ? { chest: n.id.slice(6) } : null;
+    if (n.go === 'garden' || n.go === 'piggy') setShopFocus((f) => ({ n: f.n + 1, to: n.go }));
+    if (want === tab) {
+      if (extra && extra.tasks) setTasks(true);
+      if (extra && extra.chest) setChest(extra.chest);
+      if (want !== 'shop') window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    afterTab.current = extra;
+    onTab(want);
+  };
   // «Сообщить об ошибке» в учебнике: на странице (вверху) и у каждой задачи
   const bookReports = {
     reportSlot: (cur) => {
@@ -2153,31 +2137,39 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   // наряд из лавки — на всех Инфлях обучения: в уроке, на итогах, на Пути и в профиле
   const outfitKey = JSON.stringify(outfitOf(learn));
   const outfit = useMemo(() => JSON.parse(outfitKey), [outfitKey]);
+  const over = !!run || !!sheet || !!book || !!chest || morning || reports || analytics || settings || bell;
   return (
     <OutfitContext.Provider value={outfit}>
     <DsRoot theme={dsThemeId()} accent={accent} page className="ln-root">
       <ArtStyle />
-      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS + STATS_CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS + STATS_CSS + NOTIFY_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />
         </div>
       )}
       {/* пока идёт урок или открыт учебник, экран под ними недоступен ни с клавиатуры, ни для чтения с экрана */}
-      <div inert={!!run || !!sheet || !!book || !!chest || morning || reports || analytics} style={book || reports || analytics ? { display: 'none' } : undefined}>
+      <div inert={over} style={book || reports || analytics ? { display: 'none' } : undefined} className="ln-tab" key={tab}>
         {tab === 'path' && !tasks && guest && <GuestSave learn={learn} />}
         {tab === 'path' && !tasks && <PathView learn={learn} update={update} onLesson={setSheet} onStart={start} onOpenBook={openBook} onChest={setChest}
-          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!run && !sheet && !book && !chest && !morning} homeTick={pathHome} />}
+          onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!over} homeTick={pathHome} folded={folded}
+          bell={<BellButton count={notify.unread.length} onClick={() => setBell(true)} />} />}
         {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
         {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
-        {tab === 'shop' && <ShopView learn={learn} update={update} />}
+        {tab === 'shop' && <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />}
         {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
-        {tab === 'profile' && <ProfileView learn={learn} update={update} onOpenBook={openBook} onThemeChange={onThemeChange} onStart={start}
-          onReports={() => { setReports(true); window.scrollTo(0, 0); }} onAnalytics={() => { setAnalytics(true); window.scrollTo(0, 0); }} />}
+        {tab === 'news' && <Lazy><NewsView /></Lazy>}
+        {tab === 'profile' && <Lazy><ProfileView learn={learn} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length} /></Lazy>}
       </div>
+      {settings && !reports && !analytics && <Lazy><SettingsView learn={learn} update={update} notify={notify} onBack={() => setSettings(false)} onThemeChange={onThemeChange}
+        onPlacement={() => { setSettings(false); start({ mode: 'placement' }); }}
+        onReports={() => { setReports(true); window.scrollTo(0, 0); }} onAnalytics={() => { setAnalytics(true); window.scrollTo(0, 0); }} /></Lazy>}
+      {bell && <NotifyCenter notify={notify} onClose={() => setBell(false)} onGo={goNotify} />}
+      {toast && <NotifyToast n={toast} onGo={(n) => { toastDone(); goNotify(n); }} onClose={toastDone} />}
       {reports && <ReportsView onBack={() => { Audio.play('paper'); setReports(false); }} />}
       {analytics && <AnalyticsView onBack={() => { Audio.play('paper'); setAnalytics(false); }} />}
-      {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update} onClose={() => setChest(null)} />}
+      {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update}
+        onClose={(opened) => { setChest(null); if (opened) setFolded((f) => ({ n: f.n + 1, unit: chest })); }} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}

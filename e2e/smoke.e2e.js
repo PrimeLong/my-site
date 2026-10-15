@@ -27,7 +27,7 @@ async function gotoApp(page, path = '/', tab = 'world') {
 /* вкладки нижней панели; Мир и Профиль — под «⋯»: касание открывает выбор из двух */
 async function openTab(page, tab) {
   const nav = page.getByTestId('bottom-nav');
-  if (tab === 'world' || tab === 'profile') {
+  if (tab === 'world' || tab === 'profile' || tab === 'news') {
     await nav.locator('[data-tab="more"]').click();
     await nav.getByTestId('more-menu').locator(`[data-tab="${tab}"]`).click();
     return;
@@ -525,8 +525,9 @@ test('вход: первый запуск — приветствие, цель, 
   expect(await page.evaluate(() => localStorage.getItem('ems-guest'))).toBeNull();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ems-onboarding')))).toEqual({ goal: 'exam', minutes: 10, knows: false });
 
-  // аккаунт — в профиле; выход возвращает на приветствие
+  // аккаунт — в профиле, под шестерёнкой; выход возвращает на приветствие
   await openTab(page, 'profile');
+  await page.getByTestId('prof-settings-open').click();
   await page.getByTestId('prof-account').click();
   const prof = page.getByRole('dialog', { name: 'Профиль' });
   await expect(prof.getByText('Кварталов по сети')).toBeVisible();
@@ -546,6 +547,7 @@ test('вход: первый запуск — приветствие, цель, 
 
   // забыли пароль: логин, код и новый пароль → новый код → Путь
   await openTab(page, 'profile');
+  await page.getByTestId('prof-settings-open').click();
   await page.getByTestId('prof-account').click();
   await page.getByRole('dialog', { name: 'Профиль' }).getByRole('button', { name: 'Выйти' }).click();
   await page.getByRole('button', { name: 'У меня уже есть аккаунт' }).click();
@@ -1444,8 +1446,8 @@ async function passCards(page) {
 }
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
-const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer' };
-const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle' };
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer', ct: 'costs' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle', costs: 'middle' };
 // на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита ещё нет на экране
 async function showUnit(page, id) {
   const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
@@ -1936,6 +1938,46 @@ test('путь: юнит «Инфляция» — каждый урок прох
   await expect(page.getByTestId('chapter')).toContainText('Базовый уровень');
   await expect(page.getByTestId('chapter')).toContainText('потребительскую корзину');
   await expectNoSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test('путь: юнит «Пекарня» (издержки) — каждый урок проходится, игра — кривые издержек на графике', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const units = { sc: ['i1', 'l1', 'l2', 'i2', 'l3', 'l4', 'l5', 'l6', 'w', 's1', 'radio', 'g', 'rev', 'sum'], sd: ['i1', 'l1', 'w', 'i2', 'l3', 's1', 'l-radio', 'g', 'rev', 'sum'] };
+    for (const u of ['el', 'mf', 'mb', 'in', 'cs']) units[u] = ['i1', 'l1', 'i2', 'l2', 'w', 's1', 'radio', 'g', 'rev', 'sum'];
+    const ids = Object.entries(units).flatMap(([u, ls]) => ls.map((l) => `${u}-${l}`));
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'costs');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['ct-i1', 'ct-l1', 'ct-i2', 'ct-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  // «Слова»: на карточке постоянных издержек — пример
+  await startLesson(page, 'ct-w');
+  await expect(page.getByTestId('word-def')).toContainText('Пример:');
+  await playLesson(page);
+  await finish();
+  // «История»: пекарня Гриши — мука дорожает
+  await startLesson(page, 'ct-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'grisha');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'ct-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('мука');
+  await playLesson(page);
+  await finish();
+  // игра: постоянные или переменные — кривые средних и предельных издержек на графике
+  await startLesson(page, 'ct-g');
+  await expect(page.getByTestId('ex').getByTestId('game-chart')).toHaveAttribute('data-chart', 'costs');
+  await playLesson(page);
+  await finish();
+  for (const id of ['ct-rev', 'ct-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
   expect(errors).toEqual([]);
 });
 
@@ -2441,8 +2483,9 @@ test('сообщить об ошибке: флажок на упражнении
   expect(sent[1]).toMatchObject({ reason: 'unclear', context: { screen: 'textbook', quote } });
   await page.getByRole('button', { name: 'Продолжить' }).click();
 
-  // владелец: список сообщений, фильтр и «скопировать всё»
+  // владелец: список сообщений, фильтр и «скопировать всё» — в настройках профиля
   await openTab(page, 'profile');
+  await page.getByTestId('prof-settings-open').click();
   await page.getByTestId('prof-reports').click();
   const view = page.getByTestId('reports');
   await expect(view.getByTestId('report-item')).toHaveCount(2);
@@ -2455,7 +2498,7 @@ test('сообщить об ошибке: флажок на упражнении
   await view.locator('[data-filter="done"]').click();
   await expect(view.getByTestId('reports-empty')).toBeVisible();
   await view.getByRole('button', { name: 'Назад' }).click();
-  await expect(page.getByTestId('learn-profile')).toBeVisible();
+  await expect(page.getByTestId('settings')).toBeVisible();
   // аналитика без персональных данных: в событиях нет ни логина, ни сессии
   expect(events.some((e) => e.event === 'lesson_start' && e.lesson === 'sc-i1')).toBe(true);
   expect(events.some((e) => e.event === 'ex_first_try_fail' && e.exercise)).toBe(true);
@@ -2465,7 +2508,7 @@ test('сообщить об ошибке: флажок на упражнении
   await expect(an.getByTestId('analytics-funnel').locator('[data-event]')).toHaveCount(2);
   await expect(an.getByTestId('analytics-hardest')).toContainText('sd-q2 — верно с первой попытки 25% (3 из 12)');
   await an.getByRole('button', { name: 'Назад' }).click();
-  await expect(page.getByTestId('learn-profile')).toBeVisible();
+  await expect(page.getByTestId('settings')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -2567,19 +2610,32 @@ test('вход: программа — вступительный тест, су
   await expect(shop.getByTestId('policy-take')).toBeVisible();
   await expectNoSidewaysScroll(page);
 
-  // профиль: программа с ответами регистрации и печати-достижения
+  // профиль: программа с ответами регистрации — в настройках под шестерёнкой
   await openTab(page, 'profile');
+  await page.getByTestId('prof-settings-open').click();
   const prog = page.getByTestId('prof-program');
   await expect(prog.getByRole('group', { name: 'Цель' }).getByRole('button', { name: 'Олимпиада' })).toHaveAttribute('aria-pressed', 'true');
   await expect(prog.getByRole('group', { name: 'Минут в день' }).getByRole('button', { name: /15 мин/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('settings').locator('[data-nav="back"]').click();
+  // печати: в профиле — короткий ряд, «Все» — весь список
+  await expect(page.getByTestId('prof-seals').getByTestId('ach-mini')).toHaveCount(4);
+  await page.getByTestId('prof-seals-all').click();
   // печать «Знаток» — только за проверку юнита без ошибок, вступительный тест её не даёт
   await expect(page.locator('[data-testid=ach][data-ach="ace"]')).toHaveAttribute('data-got', 'false');
   await expect(page.locator('[data-testid=ach][data-ach="shop"]')).toHaveAttribute('data-got', 'true');
-  // полученная печать — цветная, без мелкого текста по кругу; неполученная — отдельно, с замком и «как получить»
+  // полученная печать — цветная, без мелкого текста по кругу; неполученная — отдельно, с замком; под ней — только название
   await expect(page.locator('[data-testid=ach][data-ach="shop"] svg[data-got="true"]')).toHaveCount(1);
   await expect(page.locator('[data-testid=ach][data-ach="ace"] svg[data-got="false"]')).toHaveCount(1);
-  await expect(page.locator('.rw-stamps-locked [data-ach="ace"]')).toContainText('Сдайте проверку юнита без единой ошибки');
+  await expect(page.locator('.rw-stamps-locked [data-ach="ace"]')).toHaveText('Знаток');
   await expect(page.getByTestId('achievements').locator('textPath')).toHaveCount(0);
+  // касание — печать крупно: «как получить» у неполученной, дата у полученной
+  await page.locator('[data-testid=ach][data-ach="ace"]').click();
+  await expect(page.getByTestId('item-how')).toContainText('Сдайте проверку юнита без единой ошибки');
+  await page.getByTestId('item-sheet').getByRole('button', { name: 'Хорошо' }).click();
+  await page.locator('[data-testid=ach][data-ach="shop"]').click();
+  await expect(page.getByTestId('item-date')).toContainText(/Получена \d+ [а-я]+ \d{4}/);
+  await page.getByTestId('item-sheet').getByRole('button', { name: 'Хорошо' }).click();
+  await page.getByTestId('collection').locator('[data-nav="back"]').click();
 
   // назавтра: утренний экран серии — один раз в день. Состояние пишется до загрузки страницы:
   // правка из page.evaluate могла быть затёрта сохранением, которое приложение успевало сделать
@@ -2627,7 +2683,8 @@ async function expectScreen(page, name, seen) {
   expect(backs, `«${scr.title}»: кнопок «назад»`).toBe(scr.root ? 0 : 1);
   seen.add(name);
 }
-const clickBack = (page) => page.locator('[data-nav="back"]').filter({ visible: true }).click();
+// «назад» верхнего слоя: под шторкой и страницей поверх экран недоступен (inert) — его «назад» не в счёт
+const clickBack = (page) => page.locator('[data-nav="back"]:not([inert] *)').filter({ visible: true }).click();
 
 test('навигация: у каждого экрана один «назад» туда, откуда пришли, и нет двух путей в одно место', async ({ page }) => {
   await withTestFlag(page);
@@ -2713,12 +2770,43 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'book', seen);
   await clickBack(page);
   await expectScreen(page, 'profile', seen);
+  // Профиль → шестерёнка → настройки → аккаунт → назад в настройки → назад в профиль
+  await page.getByTestId('prof-settings-open').click();
+  await expectScreen(page, 'settings', seen);
   await page.getByTestId('prof-account').click();
   await expectScreen(page, 'account', seen);
   // в аккаунте нет счётчика, который стыдит
   await expect(page.getByTestId('account')).not.toContainText('Выходов из партий');
   await clickBack(page);
+  await expectScreen(page, 'settings', seen);
+  await clickBack(page);
   await expectScreen(page, 'profile', seen);
+  // Профиль → «Все» у печатей → весь список → печать крупно → назад в список → назад в профиль
+  await page.getByTestId('prof-seals-all').click();
+  await expectScreen(page, 'collection', seen);
+  await page.getByTestId('collection').locator('[data-testid=ach]').first().click();
+  await expectScreen(page, 'item', seen);
+  await clickBack(page);
+  await expectScreen(page, 'collection', seen);
+  await clickBack(page);
+  await expectScreen(page, 'profile', seen);
+  // марка из короткого ряда альбома — сразу крупно; колокольчик — уведомления; назад — в профиль
+  await page.getByTestId('album-stamp').first().click();
+  await expectScreen(page, 'item', seen);
+  await clickBack(page);
+  await expectScreen(page, 'profile', seen);
+  await page.getByTestId('prof-bell').click();
+  await expectScreen(page, 'notifications', seen);
+  await clickBack(page);
+  await expectScreen(page, 'profile', seen);
+  // Новости — вкладка под «⋯»; колокольчик на Пути — те же уведомления, «назад» — на Путь
+  await openTab(page, 'news');
+  await expectScreen(page, 'news', seen);
+  await openTab(page, 'path');
+  await page.getByTestId('bell').click();
+  await expectScreen(page, 'notifications', seen);
+  await clickBack(page);
+  await expectScreen(page, 'path', seen);
   // Мир — корень без «назад»; профиль игрока — только во вкладке «Профиль»
   await openTab(page, 'world');
   await expectScreen(page, 'world', seen);
@@ -3342,7 +3430,7 @@ test('Путь: тест уровня — сдан, и Путь сразу на 
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // Путь — сразу на «Среднем»: прошлых уровней на экране нет
   await expect(path.getByTestId('level-switch')).toHaveAttribute('data-level', 'middle');
-  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['consumer']);
+  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['consumer', 'costs']);
   await expect(pathNode(page, 'cs-i1')).toHaveAttribute('data-state', 'open');
   await path.getByTestId('level-switch-open').click();
   expect(await picker.getByTestId('level-pick').evaluateAll((els) => els.map((e) => `${e.dataset.level}:${e.dataset.state}`)))
