@@ -2965,12 +2965,27 @@ test('новые глаголы: «Откройте сами», живая мо�
   await expect(piggy.getByTestId('piggy-real')).toContainText(/\d+% годовых — в жизни так не бывает/);
   await piggy.getByTestId('piggy-put').click();
   // вклад — под ставку этой недели
-  await expect(shop.getByTestId('shop-msg')).toContainText(/В копилке 100 монет под \d+(,\d)?% в день\. Через 7 дней станет 1[0-2]\d\./);
+  await expect(shop.getByTestId('shop-msg')).toContainText(/Срочный вклад: 100 монет под \d+(,\d)?% в день\. Через 7 дней станет 1[0-2]\d\./);
+  await expect(piggy.getByTestId('piggy-kind')).toContainText('срочный');
+  await expect(piggy.getByTestId('piggy-add-form')).toHaveCount(0);
   await expect(piggy.getByTestId('piggy-rate')).toHaveText(await piggy.getByTestId('rate-week-value').innerText() + ' в день');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before - 100));
   await expect(piggy.getByTestId('piggy-state')).toContainText('День 0 из 7');
   await piggy.getByTestId('piggy-take').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('проценты не успели набежать');
+  await expect(shop.getByTestId('shop-balance')).toContainText(String(before));
+  // пополняемый вклад: ставка ниже, докладывать можно в любой день
+  await piggy.getByTestId('piggy-kind-topup').click();
+  await piggy.getByTestId('piggy-amount').fill('50');
+  await piggy.getByTestId('piggy-put').click();
+  await expect(shop.getByTestId('shop-msg')).toContainText('Пополняемый вклад: 50 монет');
+  await expect(piggy.getByTestId('piggy-kind')).toContainText('пополняемый');
+  await piggy.getByTestId('piggy-add-form').locator('input').fill('20');
+  await piggy.getByTestId('piggy-add').click();
+  await expect(shop.getByTestId('shop-msg')).toContainText('Пополнено на 20 монет');
+  await expect(piggy.getByTestId('piggy-amount-in')).toHaveText('70');
+  await expect(shop.getByTestId('shop-balance')).toContainText(String(before - 70));
+  await piggy.getByTestId('piggy-take').click();
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before));
   // вклад, пролежавший неделю: забрать с процентами
   await page.evaluate(() => {

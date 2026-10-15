@@ -181,8 +181,13 @@ export const outfitOf = (s) => { const w = s.wear || {}; return { head: w.head |
    вырастают до 1148, а не до 1140, как при простых 20 монетах в день. Забрать раньше срока можно,
    но процент сгорает — вернётся вложенное. Вклад один за раз. piggy — вклады { время вклада:
    монеты }, piggyOut — забранные { время вклада: сколько выдано }: ключи времени не пересекаются,
-   и слияние устройств — просто объединение. */
-export const PIGGY = { rate: 0.02, days: 7, min: 10 };
+   и слияние устройств — просто объединение.
+   Два вида вклада (docs/mechanics.md, «Копилка и сад»): срочный — без пополнений, по ставке недели;
+   пополняемый (piggyTop { время вклада: 1 }) — ставка на 0,5 п. п. ниже, докладывать можно до конца
+   срока (piggyAdd { время пополнения: «вклад:монеты» }); каждое пополнение растёт со своего дня. */
+export const PIGGY = { rate: 0.02, days: 7, min: 10, addMin: 5, topupCut: 0.005, topupFloor: 0.005 };
+// ставка пополняемого вклада: на 0,5 п. п. ниже ставки недели, но не ниже 0,5% в день
+export const topupRate = (rate) => Math.max(PIGGY.topupFloor, Math.round((rate - PIGGY.topupCut) * 10000) / 10000);
 const DAY_MS = 86400000;
 /* СТАВКА НЕДЕЛИ (docs/mechanics.md, «Копилка и сад»): центральный банк меняет её по понедельникам
    не больше чем на шаг — по кругу 2 → 2,5 → 3 → 3 → 2,5 → 2 → 1,5 → 1 → 1 → 1,5%. Вклад держит
@@ -195,29 +200,59 @@ const weekNo = (day) => Math.round(new Date(`${weekOf(day)}T12:00:00`).getTime()
 export const rateStep = (day) => RATE_CYCLE[((weekNo(day) % RATE_CYCLE.length) + RATE_CYCLE.length) % RATE_CYCLE.length];
 export const weekRate = (day) => RATE_STEPS[rateStep(day)];
 export const weekDemand = (day) => DEMAND_STEPS[rateStep(day)];
-const depositRate = (at) => weekRate(dayOf(at));
-const deposits = (s) => Object.entries(s.piggy || {}).map(([at, amount]) => ({ at: Number(at), amount, out: (s.piggyOut || {})[at] || 0 }));
+const isTopup = (s, at) => !!(s.piggyTop || {})[at];
+const depositRate = (at, topup = false) => (topup ? topupRate(weekRate(dayOf(at))) : weekRate(dayOf(at)));
+// пополнения вклада: [{ at, n }] по времени
+const addsOf = (s, depAt) => Object.entries(s.piggyAdd || {}).map(([at, v]) => { const [d, n] = String(v).split(':').map(Number); return { at: Number(at), dep: d, n }; })
+  .filter((x) => x.dep === depAt && x.n > 0).sort((a, b) => a.at - b.at);
+// amount — всё вложенное (первый взнос и пополнения)
+const deposits = (s) => Object.entries(s.piggy || {}).map(([at, first]) => {
+  const t = Number(at); const adds = addsOf(s, t);
+  return { at: t, first, adds, amount: first + adds.reduce((a, x) => a + x.n, 0), out: (s.piggyOut || {})[at] || 0, topup: isTopup(s, t) };
+});
 export function piggyLocked(s) { return deposits(s).filter((d) => !d.out).reduce((a, d) => a + d.amount, 0); }
 export function piggyGain(s) { return deposits(s).filter((d) => d.out).reduce((a, d) => a + Math.max(0, d.out - d.amount), 0); }
 // сколько стоит вклад через days дней под ставку rate: монеты — целые, дробь копится, но выдаётся по целой части
 export const piggyValue = (amount, days, rate = PIGGY.rate) => Math.floor(amount * (1 + rate) ** Math.min(days, PIGGY.days) + 1e-9);
 export const piggyCurve = (amount, rate = PIGGY.rate) => Array.from({ length: PIGGY.days + 1 }, (_, d) => ({ day: d, value: amount * (1 + rate) ** d }));
 // открытый вклад: сколько дней лежит, сколько стоит сейчас, сколько дадут, если забрать сейчас
+// стоимость вклада к моменту t: каждая часть (первый взнос и пополнения) растёт со своего дня до конца срока
+const partsValue = (dep, rate, t) => {
+  const end = Math.min(t, dep.at + PIGGY.days * DAY_MS);
+  const parts = [{ at: dep.at, n: dep.first }, ...dep.adds];
+  return Math.floor(parts.reduce((a, p) => a + p.n * (1 + rate) ** Math.max(0, Math.min(PIGGY.days, Math.floor((end - p.at) / DAY_MS))), 0) + 1e-9);
+};
 export function piggyState(s, now = Date.now()) {
   const open = deposits(s).filter((d) => !d.out).sort((a, b) => b.at - a.at)[0];
   if (!open) return null;
   const days = Math.min(PIGGY.days, Math.max(0, Math.floor((now - open.at) / DAY_MS)));
   const ripe = days >= PIGGY.days;
-  const rate = depositRate(open.at);
-  return { at: open.at, amount: open.amount, rate, days, ripe, value: piggyValue(open.amount, days, rate), final: piggyValue(open.amount, PIGGY.days, rate), payout: ripe ? piggyValue(open.amount, PIGGY.days, rate) : open.amount,
-    ripeAt: open.at + PIGGY.days * DAY_MS };
+  const rate = depositRate(open.at, open.topup);
+  const ripeAt = open.at + PIGGY.days * DAY_MS;
+  const final = partsValue(open, rate, ripeAt);
+  return { at: open.at, amount: open.amount, topup: open.topup, adds: open.adds.length, rate, days, ripe, value: partsValue(open, rate, now), final, payout: ripe ? final : open.amount,
+    ripeAt, canAdd: open.topup && !ripe };
 }
-export function piggyPut(s, amount, now = Date.now()) {
+export function piggyPut(s, amount, now = Date.now(), { topup = false } = {}) {
   const n = Math.floor(amount);
   if (piggyState(s, now)) return { s, ok: false, reason: 'В копилке уже лежит вклад — сначала заберите его' };
   if (n < PIGGY.min) return { s, ok: false, reason: `Положить можно от ${PIGGY.min} монет` };
   if (balance(s) < n) return { s, ok: false, reason: `Не хватает ${n - balance(s)} ${coinsWord(n - balance(s))}` };
-  return { s: { ...s, piggy: { ...s.piggy, [now]: n } }, ok: true, amount: n, rate: depositRate(now) };
+  const t = { ...s, piggy: { ...s.piggy, [now]: n } };
+  if (topup) t.piggyTop = { ...s.piggyTop, [now]: 1 };
+  return { s: t, ok: true, amount: n, rate: depositRate(now, topup), topup };
+}
+// пополнить открытый пополняемый вклад: до конца срока, от PIGGY.addMin монет
+export function piggyAdd(s, amount, now = Date.now()) {
+  const st = piggyState(s, now);
+  const n = Math.floor(amount);
+  if (!st) return { s, ok: false, reason: 'Копилка пуста' };
+  if (!st.topup) return { s, ok: false, reason: 'Этот вклад без пополнений' };
+  if (st.ripe) return { s, ok: false, reason: 'Срок вклада вышел — заберите его' };
+  if (n < PIGGY.addMin) return { s, ok: false, reason: `Пополнить можно от ${PIGGY.addMin} монет` };
+  if (balance(s) < n) return { s, ok: false, reason: `Не хватает ${n - balance(s)} ${coinsWord(n - balance(s))}` };
+  let at = now; while ((s.piggyAdd || {})[at] || (s.piggy || {})[at]) at += 1;
+  return { s: { ...s, piggyAdd: { ...s.piggyAdd, [at]: `${st.at}:${n}` } }, ok: true, amount: n };
 }
 export function piggyTake(s, now = Date.now()) {
   const st = piggyState(s, now);
