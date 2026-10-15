@@ -3396,6 +3396,26 @@ test('узкий телефон 320 px: Путь без бокового скр�
   expect(errors).toEqual([]);
 });
 
+test('урок на ПК: увеличен, только если окно высокое — под шаг не меньше места, чем на телефоне', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'увеличение урока — только на ПК');
+  await withTestFlag(page);
+  await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sc-i1');
+  const look = () => page.evaluate(() => { const b = document.querySelector('.ln-overlay .ln-body'); return { zoom: Number(getComputedStyle(b).zoom), h: b.getBoundingClientRect().height / Number(getComputedStyle(b).zoom) }; });
+  // ноутбук 1920×1080 с масштабом Windows 125 %: окно 1536×730 — без увеличения, шрифт и так крупнее
+  await page.setViewportSize({ width: 1536, height: 730 });
+  let v = await look();
+  expect(v.zoom).toBe(1);
+  expect(v.h).toBeGreaterThan(540);
+  // высокое окно — урок крупнее целиком, а под шаг по-прежнему не меньше, чем на телефоне
+  for (const [width, height, zoom] of [[1440, 950, 1.2], [1920, 1080, 1.32]]) {
+    await page.setViewportSize({ width, height });
+    v = await look();
+    expect(v.zoom).toBe(zoom);
+    expect(v.h).toBeGreaterThan(540);
+  }
+});
+
 test('ПК от 1024 px: Путь в две колонки, у главы учебника оглавление сбоку', async ({ page, isMobile }) => {
   await withTestFlag(page);
   // юнит 1 пройден — на Пути «Рынок» с живой моделью
