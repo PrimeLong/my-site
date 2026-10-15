@@ -965,10 +965,10 @@ test('учебник: оглавление, формулы KaTeX, график �
 
   await toToc(page);
   await expect(page.getByTestId('tb-stats')).toContainText('Глав прочитано: 1 из 16');
-  // уверенные ответы — на странице «Мой прогресс»: два из четырёх верны (включая задачу в несколько шагов),
-  // неуверенный — верен; у задачи на графике вместо уверенности прогноз, в счёт она не идёт
+  // уверенные ответы — на странице «Мой прогресс»: два из трёх верны (включая задачу в несколько шагов; ответ
+  // без отметки в счёт не идёт), неуверенный — верен; у задачи на графике вместо уверенности прогноз
   await page.getByTestId('tb-stats-link').click();
-  await expect(page.getByTestId('stats-confidence')).toContainText('верно 2 из 4 (50%)');
+  await expect(page.getByTestId('stats-confidence')).toContainText('верно 2 из 3 (67%)');
   await expect(page.getByTestId('stats-confidence')).toContainText('неуверенные: верно 1 из 2');
   await toToc(page);
   // «На сегодня» больше нет: «Вспомните» в конце раздела — вопросы с вариантами, писать ничего не нужно
@@ -2143,8 +2143,9 @@ test('юнит 1 «Ограниченность и выбор»: все виды
   await ex.getByTestId('calc-open').click();
   // условие и калькулятор целиком — на одном экране урока: от начала условия до «В ответ» не выше области урока
   expect(await ex.evaluate((el) => {
+    // на ПК урок увеличен (zoom): высоту области меряем так же, как и прямоугольники, — на экране
     const body = el.closest('.ln-body'); const p = el.querySelector('.ln-prompt').getBoundingClientRect(); const u = el.querySelector('[data-testid=calc-use]').getBoundingClientRect();
-    return u.bottom - p.top <= body.clientHeight;
+    return u.bottom - p.top <= body.getBoundingClientRect().height;
   })).toBe(true);
   for (const k of ['1', '0', '0', '÷', '5', '0']) await ex.locator(`[data-calc="${k}"]`).click();
   await expect(ex.getByTestId('calc-value')).toHaveText('= 2');

@@ -137,7 +137,7 @@ export const TEXTBOOK_CSS = `
   .tb-prob-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   .tb-prob-title { font: 700 16px/1.2 var(--ds-head, sans-serif); color: var(--c-text); }
   .tb-prob-from { font: 400 13px var(--ds-sans, sans-serif); color: var(--c-muted); }
-  .tb-lv { font: 700 11.5px/1 var(--ds-sans, sans-serif); letter-spacing: .05em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; color: #fff; background: #4D7C0F; }
+  .tb-lv { font: 700 12px/1 var(--ds-sans, sans-serif); letter-spacing: .05em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; color: #fff; background: #4D7C0F; }
   .tb-lv[data-level="2"] { background: #9A6300; } .tb-lv[data-level="3"] { background: #B3123F; }
   .tb-prob-meta { font: 13px var(--ds-sans, sans-serif); color: var(--c-muted); }
   .tb-prob-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
