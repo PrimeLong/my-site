@@ -2358,6 +2358,16 @@ test('сообщить об ошибке: флажок на упражнении
   await expect(sheet.locator('[data-reason] .rp-radio')).toHaveCount(await sheet.locator('[data-reason]').count());
   expect(await sheet.locator('[data-reason="accept"] .rp-radio').evaluate((el) => getComputedStyle(el, '::after').content)).not.toBe('none');
   expect(await sheet.locator('[data-reason="typo"] .rp-radio').evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none');
+  // нажатие на нижнюю причину не сдвигает верхние: шторка прижата к низу, а размеры кнопки при нажатии не меняются
+  const reasons = sheet.locator('[data-reason]');
+  const firstTop = async () => (await reasons.first().boundingBox()).y;
+  const before = await firstTop();
+  const last = await reasons.last().boundingBox();
+  await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2);
+  await page.mouse.down();
+  expect(Math.abs((await firstTop()) - before)).toBeLessThan(0.5);
+  await page.mouse.up();
+  await sheet.locator('[data-reason="accept"]').click();
   await sheet.getByLabel(/Комментарий/).fill('мне кажется, мой ответ верный');
   await sheet.getByTestId('report-send').click();
   await expect(page.getByTestId('report-thanks')).toContainText('Спасибо! Посмотрим');

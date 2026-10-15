@@ -78,12 +78,15 @@ export const DS_CSS = `
 
   /* варианты ответа, плитки, клавиши */
   .ds-opt { display: block; width: 100%; text-align: left; padding: 13px 16px; margin: 8px 0; font: 16px/1.45 var(--ds-sans); color: var(--ds-ink);
-    background: var(--ds-card); border: 2px solid var(--ds-rule2); border-bottom-width: 4px; border-radius: 14px; cursor: pointer; transition: border-color .12s, background .12s, transform .06s; }
+    background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 14px; cursor: pointer; transition: border-color .12s, background .12s, transform .06s, box-shadow .06s;
+    --edge: var(--ds-rule2); box-shadow: 0 3px 0 var(--edge); }
+  /* нажатие только сдвигает плитку и прячет кромку — размеры не меняются, соседи не прыгают
+     (раньше утоньшалась нижняя рамка: в шторке, прижатой к низу, от этого «проседали» кнопки выше) */
   .ds-opt:hover:not(:disabled) { background: color-mix(in srgb, var(--u) 4%, var(--ds-card)); }
-  .ds-opt:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 2px; margin-bottom: 10px; }
-  .ds-opt[aria-pressed="true"], .ds-opt[aria-checked="true"] { border-color: color-mix(in srgb, var(--u) 75%, var(--ds-card)); background: color-mix(in srgb, var(--u) 11%, var(--ds-card)); color: var(--ds-ink); }
-  .ds-opt.right { border-color: var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ink); }
-  .ds-opt.wrong { border-color: var(--ds-sel-rule); background: color-mix(in srgb, var(--ds-sel-rule) 12%, var(--ds-card)); color: var(--ds-ink); }
+  .ds-opt:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--edge); }
+  .ds-opt[aria-pressed="true"], .ds-opt[aria-checked="true"] { --edge: color-mix(in srgb, var(--u) 75%, var(--ds-card)); border-color: var(--edge); background: color-mix(in srgb, var(--u) 11%, var(--ds-card)); color: var(--ds-ink); }
+  .ds-opt.right { --edge: var(--ds-ok); border-color: var(--ds-ok); background: var(--ds-ok-bg); color: var(--ds-ink); }
+  .ds-opt.wrong { --edge: var(--ds-sel-rule); border-color: var(--ds-sel-rule); background: color-mix(in srgb, var(--ds-sel-rule) 12%, var(--ds-card)); color: var(--ds-ink); }
   /* верно/неверно видно не только по цвету: значок справа (вместо пунктирной рамки) */
   .ds-opt.right, .ds-opt.wrong { position: relative; padding-right: 40px; }
   .ds-opt.right::after, .ds-opt.wrong::after { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font: 700 18px/1 var(--ds-sans); }
@@ -91,11 +94,13 @@ export const DS_CSS = `
   .ds-opt.wrong::after { content: '✕'; color: var(--ds-sel-ink); }
   .ds-opt:disabled { cursor: default; }
   .ds-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; padding: 8px 13px; margin: 4px; font: 15px/1.3 var(--ds-sans); color: var(--ds-ink);
-    background: var(--ds-card); border: 2px solid var(--ds-rule2); border-bottom-width: 3px; border-radius: 12px; cursor: pointer; }
-  .ds-chip[aria-pressed="true"] { border-color: color-mix(in srgb, var(--u) 75%, var(--ds-card)); background: color-mix(in srgb, var(--u) 11%, var(--ds-card)); color: var(--ds-ink); }
-  .ds-chip.right { border-color: var(--ds-ok); }
-  .ds-key { padding: 13px 0; font: 20px var(--ds-mono); color: var(--ds-ink); background: var(--ds-card); border: 2px solid var(--ds-rule2); border-bottom-width: 4px; border-radius: 12px; cursor: pointer; }
-  .ds-key:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 1px; }
+    background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 12px; cursor: pointer; --edge: var(--ds-rule2); box-shadow: 0 2px 0 var(--edge); transition: transform .06s, box-shadow .06s; }
+  .ds-chip:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 var(--edge); }
+  .ds-chip[aria-pressed="true"] { --edge: color-mix(in srgb, var(--u) 75%, var(--ds-card)); border-color: var(--edge); background: color-mix(in srgb, var(--u) 11%, var(--ds-card)); color: var(--ds-ink); }
+  .ds-chip.right { --edge: var(--ds-ok); border-color: var(--ds-ok); }
+  .ds-key { padding: 13px 0; font: 20px var(--ds-mono); color: var(--ds-ink); background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 12px; cursor: pointer;
+    box-shadow: 0 3px 0 var(--ds-rule2); transition: transform .06s, box-shadow .06s; }
+  .ds-key:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--ds-rule2); }
 
   /* поля и переключатели */
   .ds-field { width: 100%; padding: 12px 14px; font: 16px var(--ds-sans); color: var(--ds-ink); background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 12px; }
