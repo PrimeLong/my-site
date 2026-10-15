@@ -618,10 +618,10 @@ const RETRY_TEXT = {
 // итог урока с игрой: засчитана — с цифрами; нет — сколько не хватило и что это значит
 const gameResultText = (result) => {
   const g = result.game;
-  if (!g) return result.accuracy >= 100 ? 'Игра засчитана.' : 'Игра не засчитана.';
+  if (!g) return result.accuracy >= 100 ? 'Игра засчитана.' : 'Урок пройден, игра — без зачёта.';
   const wrong = g.answered - g.right;
   if (g.ok) return `Игра засчитана: верных ${g.right}, ошибок ${wrong}.`;
-  return `Урок пройден, но игра не засчитана: не хватило ${gameLeft(g.right, g.answered)} (верных ${g.right}, ошибок ${wrong}). Нужно, чтобы верных было на ${GAME_PASS} больше, чем ошибок. Засчитанная игра даёт урок без помарок и алмаз.`;
+  return `Урок пройден, игра — без зачёта: не хватило ${gameLeft(g.right, g.answered)} (верных ${g.right}, ошибок ${wrong}). Нужно, чтобы верных было на ${GAME_PASS} больше, чем ошибок. Засчитанная игра даёт урок без помарок и алмаз.`;
 };
 // итог мини-игры для плашки
 const gameLine = (inst, r) => (r ? `Верно ${r.right} из ${r.answered} · ${r.score} очков${r.record ? ' — новый рекорд!' : ''}` : '');
@@ -879,13 +879,15 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const kindName = cur ? KIND_LABEL[cur.kind] : '';
   // плашка ответа в нижней панели — одна на все виды уроков: её видно без прокрутки
   const verdictBar = inst && fb && !fb.empty ? (
-    <AnswerBar ok={fb.ok} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Засчитано' : 'Не засчитано') : inst.kind === 'open' ? 'Ответ записан' : null}
+    <AnswerBar ok={fb.ok} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Игра засчитана' : 'Игра без зачёта') : inst.kind === 'open' ? 'Ответ записан' : null}
       say={GAME_KINDS.includes(inst.kind) || inst.kind === 'open' ? null : fb.say} className={fb.ok ? 'ds-flash' : ''} key={`fb${anim.k}`}>
       <div style={{ marginTop: 10 }} data-testid="ex-feedback" data-ok={String(fb.ok)}>
         {inst.kind === 'open' && inst.explain && (
           <div className="tb-body" style={{ fontSize: 15, color: 'inherit' }} data-testid="open-review"><b>Разбор.</b> <Blocks blocks={inst.explain} ctx={noopCtx} /></div>
         )}
-        {GAME_KINDS.includes(inst.kind) && <div style={{ fontSize: 15 }} data-testid="game-result">{gameLine(inst, resp)}{!fb.ok && ` Нужно: ${answerText(inst)}.`}</div>}
+        {GAME_KINDS.includes(inst.kind) && <div style={{ fontSize: 15 }} data-testid="game-result">{gameLine(inst, resp)}{!fb.ok && ` Для зачёта нужно: ${answerText(inst)}.`}</div>}
+        {/* «не засчитано» читалось как «урок не засчитан» — а урок с игрой пройден в любом случае (docs/mechanics.md) */}
+        {GAME_KINDS.includes(inst.kind) && !fb.ok && run.mode === 'lesson' && <div style={{ fontSize: 15, marginTop: 4 }} data-testid="game-lesson-note">Урок это не отменяет — он будет пройден, только без алмаза.</div>}
         {!fb.ok && !GAME_KINDS.includes(inst.kind) && <div style={{ fontSize: 15 }}>Правильно: <b>{answerText(inst)}</b></div>}
         {!fb.ok && fb.why && <div style={{ fontSize: 15, marginTop: 4, lineHeight: 1.5 }} data-testid="ex-why"><Inline nodes={fb.why} ctx={noopCtx} /></div>}
         {!fb.ok && !fb.why && inst.explain && !inst.steps && <div className="tb-body" style={{ fontSize: 15, marginTop: 4, color: 'inherit' }}><Blocks blocks={inst.explain} ctx={noopCtx} /></div>}

@@ -625,7 +625,7 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
             <div style={{ fontSize: 16 }}>очков · верно {r.right} из {r.answered} · лучшая серия {r.bestRun}</div>
             {(() => { const left = gameLeft(r.right, r.answered); const wrong = r.answered - r.right; return (
               <div className={`lp-verdict${left ? '' : ' ok'}`} data-testid="game-verdict" data-ok={String(!left)}>
-                {left ? `Не хватило ${left}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Засчитано: верных ${r.right}, ошибок ${wrong}`}
+                {left ? `Зачёта нет, не хватило ${left}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Игра засчитана: верных ${r.right}, ошибок ${wrong}`}
               </div>
             ); })()}
             {r.record && <div className="ds-badge" style={{ marginTop: 6 }} data-testid="game-record">Новый рекорд!</div>}
@@ -784,7 +784,7 @@ export function KeepRound({ inst, onDone, locked, result = null, best = 0, intro
           <div style={{ fontSize: 16 }}>очков · раундов в коридоре {r.right} из {r.answered} · лучшая серия {r.bestRun}</div>
           {(() => { const l = gameLeft(r.right, r.answered); const wrong = r.answered - r.right; return (
             <div className={`lp-verdict${l ? '' : ' ok'}`} data-testid="game-verdict" data-ok={String(!l)}>
-              {l ? `Не хватило ${l}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Засчитано: верных ${r.right}, ошибок ${wrong}`}
+              {l ? `Зачёта нет, не хватило ${l}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Игра засчитана: верных ${r.right}, ошибок ${wrong}`}
             </div>
           ); })()}
           {r.record && <div className="ds-badge" style={{ marginTop: 6 }} data-testid="game-record">Новый рекорд!</div>}

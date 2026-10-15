@@ -1776,7 +1776,7 @@ test('путь: юнит «Спрос и предложение» — кажды
   const { kinds: gk, retries } = await playLesson(page, { wrongAt: [0] });
   expect([...gk]).toEqual(['rush']);
   expect(retries).toBe(0);
-  await expect(page.getByTestId('lesson-result')).toContainText('Урок пройден, но игра не засчитана: не хватило');
+  await expect(page.getByTestId('lesson-result')).toContainText('Урок пройден, игра — без зачёта: не хватило');
   await finish();
 
   // «Повторение» и «Итоги юнита»: пункты-карточки, потом тест юнита
@@ -2214,7 +2214,7 @@ test('мини-игра: одна игра на минуту — очки с м�
   await page.clock.fastForward(61_000);
   await expect(ex.getByTestId('game-final')).toContainText('140');
   await expect(ex.getByTestId('game-final')).toContainText('верно 10 из 11');
-  await expect(ex.getByTestId('game-verdict')).toHaveText('Засчитано: верных 10, ошибок 1');
+  await expect(ex.getByTestId('game-verdict')).toHaveText('Игра засчитана: верных 10, ошибок 1');
   await expect(page.getByTestId('game-result')).toContainText('Верно 10 из 11 · 140 очков');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -2229,8 +2229,10 @@ test('мини-игра: одна игра на минуту — очки с м�
   await expect(ex.getByTestId('game-pass')).toHaveText('до зачёта: 5');
   await page.clock.fastForward(61_000);
   await expect(ex.getByTestId('game-final')).toContainText('верно 3 из 3');
-  await expect(ex.getByTestId('game-verdict')).toContainText('Не хватило 5');
+  await expect(ex.getByTestId('game-verdict')).toContainText('Зачёта нет, не хватило 5');
   await expect(page.getByTestId('game-result')).toContainText('верных минус ошибок — не меньше 8');
+  // плашка не говорит «не засчитано»: урок с игрой будет пройден в любом случае
+  await expect(page.getByTestId('game-lesson-note')).toContainText('Урок это не отменяет');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
   expect(errors).toEqual([]);
 });
