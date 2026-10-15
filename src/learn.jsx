@@ -1362,10 +1362,10 @@ function Atlas({ states, sel = [], onPick }) {
       </div>
       <svg viewBox={`${MAP_BOX.x} ${MAP_BOX.y} ${MAP_BOX.w} ${MAP_BOX.h}`} width="100%" role="img" aria-label="Карта Инфляции: места юнитов на дороге" style={{ display: 'block', borderRadius: 4 }}>
         <defs>
-          <pattern id="ln-sea" width="16" height="12" patternUnits="userSpaceOnUse"><path d="M0,8 q4,-4 8,0 t8,0" fill="none" stroke="#5F82B3" strokeWidth="1.1" opacity=".45" /></pattern>
+          <pattern id="ln-sea" width="28" height="18" patternUnits="userSpaceOnUse"><path d="M0,10 q7,-5 14,0 t14,0" fill="none" stroke="#5F82B3" strokeWidth="1" opacity=".22" /></pattern>
         </defs>
         {/* море — голубоватая тушь с волнами, суша — бумага */}
-        <rect x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} fill="color-mix(in srgb, #5F82B3 13%, var(--ds-card))" />
+        <rect x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} fill="color-mix(in srgb, #5F82B3 8%, var(--ds-card))" />
         <rect x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} fill="url(#ln-sea)" />
         <path d={countryPath} fill="var(--ds-paper)" stroke="var(--ds-ink2)" strokeWidth="2.6" />
         <path d={innerBorderPath} fill="none" stroke="var(--ds-rule2)" strokeWidth="1.6" strokeDasharray="6 6" />
@@ -1383,12 +1383,13 @@ function Atlas({ states, sel = [], onPick }) {
           return (
             <g key={u.id} style={{ '--u': pl.color, cursor: 'pointer' }} data-testid="atlas-place" data-unit={u.id} data-alive={String(alive)} data-selected={String(sel.includes(u.id))}
               onClick={() => onPick(u.id)} role="button" aria-label={`${pl.place}: к юниту`} aria-current={sel.includes(u.id) ? 'true' : undefined}>
-              {here && <circle cx={x} cy={y - 26} r="58" fill="none" stroke="var(--ds-gold)" strokeWidth="3.5" strokeDasharray="5 6" />}
-              {/* юнит, который сейчас на экране Пути, — в сплошном кольце своего цвета */}
-              {sel.includes(u.id) && <circle cx={x} cy={y - 26} r="53" fill="none" stroke="var(--u)" strokeWidth="5" />}
-              <circle cx={x} cy={y - 26} r="50" fill="var(--ds-card)" opacity=".85" />
+              {/* спокойно: места уровня на экране — тонкое кольцо приглушённого цвета юнита, текущее — пунктир цвета юнита
+                  (жалоба «карта вырвиглазная»: пять толстых ярких колец подряд кричали) */}
+              {here && <circle cx={x} cy={y - 26} r="57" fill="none" stroke="color-mix(in srgb, var(--u) 70%, var(--ds-card))" strokeWidth="2.5" strokeDasharray="5 6" />}
+              {sel.includes(u.id) && <circle cx={x} cy={y - 26} r="51" fill="none" stroke="color-mix(in srgb, var(--u) 45%, var(--ds-card))" strokeWidth="2.5" />}
+              <circle cx={x} cy={y - 26} r="49" fill="var(--ds-card)" opacity=".8" />
               <EngravingG kind={pl.building} alive={alive} x={x - 54} y={y - 72} scale={0.9} color={pl.color} />
-              <text x={x} y={y + 30} textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="7" paintOrder="stroke">{pl.place}</text>
+              <text x={x} y={y + 28} textAnchor="middle" fontSize="23" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="6" paintOrder="stroke">{pl.place}</text>
             </g>
           );
         })}
