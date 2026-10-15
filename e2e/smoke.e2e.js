@@ -1283,6 +1283,26 @@ test('учебник: прогресс уходит в профиль и при�
   expect(errors).toEqual([]);
 });
 
+test('урок, пройденный на другом устройстве, появляется сам — при возвращении на вкладку, без перезагрузки', async ({ page }) => {
+  await page.clock.install();
+  let other = false;
+  const api = (req) => {
+    let body = {}; try { body = JSON.parse(req.postData() || '{}'); } catch { /* GET */ }
+    if (body.action !== 'progress') return '{}';
+    const tb = body.progress.textbook || {};
+    // на телефоне тем временем пройден первый урок
+    const learn = other ? { ...(tb.learn || {}), lessons: { ...((tb.learn || {}).lessons || {}), 'sc-i1': { at: Date.now() - 60000, runs: 1, best: 90 } } } : tb.learn;
+    return JSON.stringify({ profile: { ...body.progress, textbook: { ...tb, learn } } });
+  };
+  const { errors } = await openApp(page, '/', api, { tab: 'path' });
+  await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'open');
+  other = true;
+  await page.clock.fastForward(30000);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(pathNode(page, 'sc-i1')).toHaveAttribute('data-state', 'done');
+  expect(errors).toEqual([]);
+});
+
 test('задача на 10 минут: цель на экране, прогноз записывается, в конце разбор', async ({ page, isMobile }) => {
   test.skip(isMobile, 'восемь кварталов подряд — достаточно одного экрана');
   test.setTimeout(120_000);

@@ -299,6 +299,22 @@ function useLearn() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { timer.current = null; syncProfile(playerId).catch(() => {}); }, 2000);
   };
+  /* тихая синхронизация (docs/mechanics.md): вернулись на вкладку (разблокировали телефон, пришли
+     домой к компьютеру) и раз в минуту, пока вкладка открыта, — забираем общий прогресс профиля.
+     Пройденный на телефоне урок появляется на компьютере сам, без перезагрузки. Не чаще раза в 20 с. */
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    let last = Date.now(); let alive = true;
+    const pull = () => {
+      if (document.hidden || Date.now() - last < 20000) return;
+      last = Date.now();
+      syncProfile(playerId).then((pf) => { if (alive && pf) setProgress(loadProgress()); }).catch(() => {});
+    };
+    const id = setInterval(pull, 60000);
+    document.addEventListener('visibilitychange', pull);
+    window.addEventListener('focus', pull);
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', pull); window.removeEventListener('focus', pull); };
+  }, [playerId]);
   // учебник записал прогресс (ответ снял ошибку с повторения Пути) — перечитываем
   useEffect(() => {
     const reload = (e) => { if (e.detail) setProgress((p) => (p === e.detail ? p : e.detail)); };
