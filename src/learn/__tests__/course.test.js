@@ -17,13 +17,13 @@ import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-s
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, money-banks, inflation), Средний (consumer)
-const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, money-banks, inflation), Средний (consumer, costs)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — семь юнитов по уровням: от Начального к Среднему', () => {
+it('на Пути уроками — восемь юнитов по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
   // юниты идут по уровням; внутри уровня — по порядку глав учебника
   const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
@@ -325,6 +325,29 @@ describe('упражнения: ровно один верный ответ', ()
     const m = instantiate(Object.values(EXERCISES).find((e) => e.kind === 'match'), seeded(3));
     expect(ready(m, { [m.left[0].key]: m.right[0].key })).toBe(false);
     expect(ready(m, Object.fromEntries(m.left.map((l) => [l.key, l.key])))).toBe(true);
+  });
+});
+
+/* Верный ответ не угадывается по длине (docs/mechanics.md, «Варианты ответа»): раньше в каждом
+   втором вопросе верный вариант был самым длинным — с пояснением, а неверные — голыми словами, и
+   правило «бери самый длинный» проходило почти весь Путь. Неверные варианты — правдоподобные
+   заблуждения той же длины, со своим «потому что». */
+describe('варианты ответа: верный не выделяется длиной', () => {
+  const plain = (o) => String(o.raw || '').replace(/\$[^$]*\$/g, 'xx').replace(/[*_`]/g, '').trim().length;
+  // написанные руками выбор ответа и пропуск (не числа из ловушек задач и не «какой это термин?»)
+  const list = Object.values(EXERCISES).filter((e) => (e.kind === 'choice' || e.kind === 'gap') && !String(e.id).startsWith('auto:') && !String(e.id).includes(':which:'));
+  const stat = list.map((e) => {
+    const lens = e.options.map(plain); const ci = e.options.findIndex((o) => o.correct);
+    const others = lens.filter((_, k) => k !== ci);
+    return { id: e.id, right: lens[ci], wrong: Math.max(...others), longest: others.every((x) => x < lens[ci]), shortest: others.every((x) => x > lens[ci]) };
+  });
+  it('верный вариант не длиннее самого длинного неверного больше чем на четверть', () => {
+    expect(list.length).toBeGreaterThan(100);
+    expect(stat.filter((x) => x.right > x.wrong * 1.25 + 3).map((x) => `${x.id}: ${x.right} против ${x.wrong}`)).toEqual([]);
+  });
+  it('«самый длинный» и «самый короткий» угадывают не чаще случайного выбора', () => {
+    expect(stat.filter((x) => x.longest).length / stat.length).toBeLessThan(0.15);
+    expect(stat.filter((x) => x.shortest).length / stat.length).toBeLessThan(0.34);
   });
 });
 
@@ -652,6 +675,7 @@ describe('мини-игра: одна на урок, карточки двига
         if (g.chart === 'budget') expect(it.side, `${it.raw}: ${it.effect}`).toBe(['out', 'in'].includes(it.effect) ? 'left' : 'right');
         // эластичность: неэластичный — влево, эластичный — вправо
         if (g.chart === 'elastic') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'in' ? 'left' : 'right');
+        if (g.chart === 'costs') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'fc' ? 'left' : 'right');
       });
       // эффект виден на графике: каждая сторона и оба направления встречаются
       const effs = new Set(g.items.map((it) => it.effect));
@@ -694,7 +718,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mb-i1', 'mb-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'ct-i1', 'ct-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mb-i1', 'mb-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });

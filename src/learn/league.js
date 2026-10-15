@@ -4,9 +4,9 @@
    последние пять опускаются, остальные остаются; в Бронзовой опускаться некуда, в Алмазной —
    подниматься. Первые три места получают монеты.
 
-   Соперники — ученики-боты: имя, ритм занятий и опыт за неделю задаёт зерно (неделя, лига,
-   место в группе), так что таблица одна и та же на всех устройствах и растёт в течение недели
-   по дням, как у живых учеников. Ученики, разрешившие показывать своё имя (api/account.js,
+   Соперники — ученики-боты: имя, привычку, уроки по дням и часам задаёт зерно (неделя, лига,
+   номер соперника, день), так что таблица одна и та же на всех устройствах и растёт в течение
+   недели скачками — урок за уроком, с пропущенными днями, как у живых учеников: места меняются. Ученики, разрешившие показывать своё имя (api/account.js,
    leaguePublic), могут появиться под именем бота — с выдуманным опытом; на экране об этом
    сказано честно.
 
@@ -50,8 +50,24 @@ const LAST = 'АБВГДЕЖЗИКЛМНОПРСТУФХЧШЯ';
 const NICKS = ['Белка', 'Совушка', 'Эконом', 'Кофеман', 'Пончик', 'Капучино', 'Звёздочка', 'Ёжик', 'Монетка', 'Калькулятор', 'Сырник', 'Барсик', 'Лимон', 'Чайка'];
 const COLORS = ['#86461F', '#4B692C', '#7A3B4E', '#2F5D8C', '#9A4524', '#5E5A24', '#86446A', '#735030', '#4B5B2D', '#6E3226'];
 
-/* Соперник: имя, цвет значка и опыт за неделю. Ритм — в какие дни он занимается и сколько:
-   у кого-то каждый день понемногу, у кого-то рывок в выходные, кто-то почти бросил. */
+/* Соперник: имя, цвет значка и уроки по дням. Живые ученики занимаются неровно: сегодня два урока,
+   завтра ни одного, в субботу рывок; урок даёт опыт сразу, а не размазанно по часам. Поэтому у
+   каждого соперника своя привычка (каждый день, по выходным, как придётся, почти бросил) и свой
+   «запал» на эту неделю, а каждый день — свой бросок: занимался ли, сколько уроков и в какие часы,
+   насколько удачно (опыт урока — от 12 до 32, как у живого ученика с ошибками и без). Так места
+   в таблице меняются по ходу недели: Надя, бывшая второй, пропустила день — и её обогнали.
+   Всё задаётся зерном (неделя, лига, номер соперника, день) — на всех устройствах одинаково. */
+const HABITS = [
+  // доля соперников с такой привычкой; вероятность занятий по дням (пн … сб); уроков за раз
+  { id: 'daily', share: 0.34, p: [0.85, 0.85, 0.8, 0.85, 0.75, 0.6], lessons: [1, 2] },
+  { id: 'weekend', share: 0.18, p: [0.25, 0.2, 0.25, 0.3, 0.55, 0.9], lessons: [2, 4] },
+  { id: 'casual', share: 0.32, p: [0.5, 0.45, 0.5, 0.45, 0.45, 0.5], lessons: [1, 3] },
+  { id: 'fading', share: 0.08, p: [0.8, 0.55, 0.35, 0.2, 0.12, 0.08], lessons: [1, 2] },
+  { id: 'idle', share: 0.08, p: [0.12, 0.08, 0.08, 0.08, 0.06, 0.1], lessons: [1, 1] },
+];
+// сколько уроков в среднем за неделю даёт привычка — чтобы привести лигу к её медиане опыта
+const habitWeek = (h) => h.p.reduce((a, x) => a + x, 0) * ((h.lessons[0] + h.lessons[1]) / 2);
+const LESSON_XP = 22;
 function rivals(week, league, realNames = []) {
   const r = rng(`${week}:${league}`);
   const lg = LEAGUE_BY_ID[league];
@@ -69,28 +85,45 @@ function rivals(week, league, realNames = []) {
   const real = realNames.filter((n) => typeof n === 'string' && n.trim()).slice();
   const realSlots = new Set();
   while (realSlots.size < Math.min(6, real.length)) realSlots.add(Math.floor(rr() * (GROUP - 1)));
+  // типичный ученик лиги делает за неделю столько уроков, чтобы набрать её медиану
+  const typical = HABITS.reduce((a, h) => a + h.share * habitWeek(h), 0);
   return Array.from({ length: GROUP - 1 }, (_, k) => {
-    const style = r();
-    // почти бросил — 8%, обычный — по медиане лиги с разбросом
-    const total = style < 0.08 ? Math.round(r() * 20) : Math.round(lg.median * Math.exp((r() + r() + r() - 1.5) * 0.9));
-    const days = Array.from({ length: LEAGUE_DAYS }, (_, d) => (style < 0.3 ? (d >= 4 ? 3 : 0.3) : style < 0.55 ? (r() < 0.75 ? 1 : 0) : 0.6 + r()));
-    const sum = days.reduce((a, x) => a + x, 0) || 1;
+    let roll = r(); let habit = HABITS[HABITS.length - 1];
+    for (const h of HABITS) { if (roll < h.share) { habit = h; break; } roll -= h.share; }
+    // запал недели: кто-то в ударе, кто-то занят — множитель числа уроков, от ~0.45 до ~2.2
+    const drive = ((lg.median * 0.88) / (typical * LESSON_XP)) * Math.exp((r() + r() + r() - 1.5) * 0.75);
     let name = pickName();
+    const color = COLORS[Math.floor(r() * COLORS.length)];
     if (realSlots.has(k) && real.length) { const j = Math.floor(rr() * real.length); name = real.splice(j, 1)[0]; }
-    return { id: `b${k}`, name, color: COLORS[Math.floor(r() * COLORS.length)], total, share: days.map((x) => x / sum), bot: true };
+    // уроки по дням: [час, опыт]; у каждого дня своё зерно — один день не тянет за собой другие
+    const days = Array.from({ length: LEAGUE_DAYS }, (_, d) => {
+      const dr = rng(`${week}:${league}:${k}:${d}`);
+      if (dr() >= Math.min(0.97, habit.p[d] * Math.min(1.25, 0.75 + drive * 0.25))) return [];
+      const [lo, hi] = habit.lessons;
+      const n = Math.max(1, Math.round((lo + dr() * (hi - lo)) * drive));
+      // час первого урока: утро, после школы или вечер; следующие — подряд с паузами
+      let h = [7.5, 15, 19][Math.floor(dr() * 3)] + dr() * 3.5;
+      return Array.from({ length: Math.min(n, 9) }, () => {
+        const at = Math.min(23.5, h); h += 0.15 + dr() * (dr() < 0.3 ? 4 : 0.6);
+        return [Math.round(at * 100) / 100, 12 + Math.round(dr() * 20)];
+      });
+    });
+    const total = days.reduce((a, list) => a + list.reduce((x, [, xp]) => x + xp, 0), 0);
+    return { id: `b${k}`, name, color, total, days, habit: habit.id, bot: true };
   });
 }
-/* Опыт соперника к моменту now: прошедшие дни целиком, сегодняшний — по часам. В будущее и в
-   прошлое недели не заглядывает: после субботы — весь итог. */
+/* Опыт соперника к моменту now: прошедшие дни целиком, сегодня — уроки, час которых уже прошёл.
+   В будущее и в прошлое недели не заглядывает: после субботы — весь итог. */
 function rivalXp(rv, week, now) {
   const today = dayOf(now);
+  const hour = new Date(now).getHours() + new Date(now).getMinutes() / 60;
   let xp = 0;
   for (let d = 0; d < LEAGUE_DAYS; d += 1) {
     const day = addDays(week, d);
-    if (day < today) xp += rv.total * rv.share[d];
-    else if (day === today) { const h = new Date(now).getHours() + new Date(now).getMinutes() / 60; xp += rv.total * rv.share[d] * Math.min(1, Math.max(0, (h - 7) / 15)); }
+    if (day > today) break;
+    rv.days[d].forEach(([h, gain]) => { if (day < today || h <= hour) xp += gain; });
   }
-  return Math.round(xp);
+  return xp;
 }
 // опыт недели лиги — понедельник … суббота; воскресенье — перерыв
 export const weekXp = (learn, week) => Array.from({ length: LEAGUE_DAYS }, (_, d) => (learn.xp || {})[addDays(week, d)] || 0).reduce((a, x) => a + x, 0);

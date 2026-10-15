@@ -17,8 +17,9 @@ export const SCREENS = {
   bookTab: { root: true, title: 'Учебник', testid: 'book-tab' },
   league: { root: true, title: 'Лиги', testid: 'league' },
   shop: { root: true, title: 'Лавка', testid: 'shop' },
-  // Мир и Профиль — под вкладкой «⋯»: выбор из двух
+  // Мир, Новости и Профиль — под вкладкой «⋯»: выбор из трёх
   world: { root: true, title: 'Мир', testid: 'world' },
+  news: { root: true, title: 'Новости', testid: 'news' },
   profile: { root: true, title: 'Профиль', testid: 'learn-profile' },
   // поверх вкладок
   // «Задания» — не вкладка, а экран поверх Пути: карточка наверху Пути
@@ -27,13 +28,19 @@ export const SCREENS = {
   lesson: { from: ['lessonCard', 'path', 'tasks'], back: 'origin', title: 'Урок', testid: 'lesson' },
   bookPage: { from: ['bookTab'], back: 'bookTab', title: 'Страница учебника', testid: 'book-tab' },
   book: { from: ['path', 'tasks', 'profile', 'lesson', 'lessonCard'], back: 'origin', title: 'Учебник поверх экрана', testid: 'learn-book' },
-  account: { from: ['profile'], back: 'profile', title: 'Аккаунт', testid: 'account' },
+  // профиль: шестерёнка — настройки (всё техническое), «Все» у коллекции — весь список, марка — шторка
+  settings: { from: ['profile'], back: 'profile', title: 'Настройки', testid: 'settings' },
+  collection: { from: ['profile'], back: 'profile', title: 'Коллекция: альбом, печати, марки месяцев', testid: 'collection' },
+  item: { from: ['profile', 'collection'], back: 'origin', title: 'Марка или печать крупно', testid: 'item-sheet' },
+  // колокольчик на Пути и в профиле: уведомления; касание уведомления ведёт туда, где действовать
+  notifications: { from: ['path', 'profile'], back: 'origin', title: 'Уведомления', testid: 'notifications' },
+  account: { from: ['settings'], back: 'settings', title: 'Аккаунт', testid: 'account' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
   // плашка уровня наверху Пути → список уровней: перейти в открытый или сдать тест уровня
   levelPicker: { from: ['path'], back: 'path', title: 'Уровни Пути', testid: 'level-picker' },
   // только у владельцев (OWNER_LOGINS): список сообщений об ошибках
-  reports: { from: ['profile'], back: 'profile', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },
+  reports: { from: ['settings'], back: 'settings', owner: true, title: 'Сообщения об ошибках', testid: 'reports' },
   // и аналитика без персональных данных: воронка и трудные упражнения (api/events.js)
-  analytics: { from: ['profile'], back: 'profile', owner: true, title: 'Аналитика', testid: 'analytics' },
+  analytics: { from: ['settings'], back: 'settings', owner: true, title: 'Аналитика', testid: 'analytics' },
 };
 export const TABS = Object.keys(SCREENS).filter((k) => SCREENS[k].root && !SCREENS[k].gate);

@@ -26,7 +26,13 @@ import {
 
 export const REWARD_CSS = `
   .rw-bar { height: 6px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
-  .rw-bar > i { display: block; height: 100%; background: var(--u); border-radius: 3px; transition: width .3s ease-out; }
+  .rw-bar > i { display: block; height: 100%; background: var(--u); border-radius: 3px; transition: width .3s ease-out; animation: rw-fill .8s cubic-bezier(.3,.8,.4,1) both; transform-origin: 0 50%; }
+  @keyframes rw-fill { from { transform: scaleX(0) } to { transform: scaleX(1) } }
+  .rw-quest { animation: rw-in .35s ease-out both; }
+  .rw-quest:nth-of-type(2) { animation-delay: .05s; } .rw-quest:nth-of-type(3) { animation-delay: .1s; } .rw-quest:nth-of-type(4) { animation-delay: .15s; }
+  @keyframes rw-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+  .rw-ico.ok { animation: rw-ok .45s cubic-bezier(.3,1.6,.5,1) both; }
+  @keyframes rw-ok { 0% { transform: scale(.6) } 100% { transform: scale(1) } }
   .rw-bar.ok > i { background: var(--ds-ok); }
   .rw-quest { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 0; border-top: 1px dotted var(--ds-rule2); }
   .rw-quest:first-of-type { border-top: none; }
@@ -40,6 +46,8 @@ export const REWARD_CSS = `
   .rw-item { border: 1px solid var(--ds-rule2); border-radius: 4px; background: var(--ds-card); padding: 10px 10px 12px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px;
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule); }
   .rw-item[data-on="true"] { box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--u); }
+  .rw-item { transition: transform .15s ease; }
+  .rw-item:hover { transform: translateY(-2px); }
   /* гардероб — примерочная: Инфля в зеркале, вкладки по местам, плитки купленных вещей */
   .rw-ward { display: grid; grid-template-columns: 1fr; gap: 12px; }
   @media (min-width: 520px) { .rw-ward { grid-template-columns: 170px minmax(0, 1fr); align-items: start; } }
@@ -122,7 +130,7 @@ export const REWARD_CSS = `
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
-  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"] { animation: none; } .rw-bar > i { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok { animation: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
 const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem };
@@ -398,12 +406,18 @@ function Wardrobe({ learn, wear, onWear }) {
     </Card>
   );
 }
-export function ShopView({ learn, update, now = Date.now() }) {
+export function ShopView({ learn, update, now = Date.now(), focus = null }) {
   const day = dayOf(now);
   const rate = rateOn(day); const prev = rateOn(addDays(day, -1));
   const [msg, setMsg] = useState(null);
   // «Лавка · Сад»: сад — в той же вкладке, переключателем вверху
-  const [view, setView] = useState('shop');
+  const [view, setView] = useState(focus === 'garden' ? 'garden' : 'shop');
+  // из уведомления «вклад созрел» — сразу к копилке
+  useEffect(() => {
+    if (focus !== 'piggy') return undefined;
+    const t = setTimeout(() => { const el = document.querySelector('[data-testid="shop-piggy"]'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 120);
+    return () => clearTimeout(t);
+  }, [focus]);
   const b = balance(learn);
   const wear = outfitOf(learn);
   const today = shopDay(learn, day);
@@ -636,9 +650,11 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
   const [opened, setOpened] = useState(false);
   const was = hasClaim(learn, chestKey(unitId));
   const open = () => { Audio.play('register'); update((s) => openChest(s, unitId), { settle: true }); setOpened(true); };
+  // закрытие сообщает, открыли ли сундук сейчас: тогда Путь свернёт пройденный юнит и поедет дальше
+  const close = () => onClose(opened);
   return (
-    <Sheet label={`Сундук: ${place}`} onClose={onClose} testid="chest-sheet">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -8, marginRight: -8 }}><IconButton label="Закрыть" icon={X} data-nav="back" onClick={onClose} size={22} /></div>
+    <Sheet label={`Сундук: ${place}`} onClose={close} testid="chest-sheet">
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -8, marginRight: -8 }}><IconButton label="Закрыть" icon={X} data-nav="back" onClick={close} size={22} /></div>
       <div style={{ textAlign: 'center' }}>
         {opened && <CoinShower seed={n} n={18} />}
         <div className="ds-eyebrow">Сундук юнита · {place}</div>
@@ -647,7 +663,7 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
         </div>
         {opened ? (
           <><div className="ds-h2" data-testid="chest-coins">+{n} {coinsWord(n)}</div><div className="ds-sub" style={{ fontSize: 14.5, margin: '4px 0 14px' }}>Место на карте ваше — монеты в кошельке.</div>
-            <Button wide onClick={onClose}>Забрать</Button></>
+            <Button wide data-testid="chest-take" onClick={close}>Забрать</Button></>
         ) : was ? (
           <div className="ds-sub" style={{ fontSize: 15 }}>Сундук уже открыт — монеты в кошельке.</div>
         ) : (

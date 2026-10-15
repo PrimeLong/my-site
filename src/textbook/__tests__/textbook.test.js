@@ -344,6 +344,19 @@ describe('структура готовых глав', () => {
     });
     expect(actions('is-lm').map((a) => a.kind).sort()).toEqual(['drill', 'drill', 'lab', 'lab']);
   });
+  /* «Вспомните»: верный вариант не угадывается по длине. Раньше он был самым длинным в 92 вопросах
+     из 98 — с пояснением, а неверные — короткими словами. Пояснение живёт в разборе после «---». */
+  it('«Вспомните»: верный вариант не самый длинный — длина не подсказывает ответ', () => {
+    const len = (o) => String(o.raw).replace(/\$[^$]*\$/g, 'xx').replace(/\*\*/g, '').trim().length;
+    const parts = Object.values(CHAPTER_BLOCKS).flatMap((b) => collectBlocks(b, (x) => x.type === 'recall')).flatMap((r) => r.parts.map((pt) => ({ id: r.id, pt })));
+    expect(parts.length).toBeGreaterThan(80);
+    const stat = parts.map(({ id, pt }) => {
+      const right = len(pt.options.find((o) => o.correct)); const wrong = pt.options.filter((o) => !o.correct).map(len);
+      return { id, right, wrong: Math.max(...wrong), longest: wrong.every((w) => w < right) };
+    });
+    expect(stat.filter((x) => x.right > x.wrong * 1.25 + 3).map((x) => `${x.id}: ${x.right} против ${x.wrong}`)).toEqual([]);
+    expect(stat.filter((x) => x.longest).length / stat.length).toBeLessThan(0.15);
+  });
   it('id задач и вопросов на вспоминание уникальны во всём учебнике', () => {
     const ids = Object.values(CHAPTER_BLOCKS).flatMap((b) => collectBlocks(b, (x) => x.type === 'problem' || x.type === 'recall').map((p) => p.id));
     ids.forEach((id) => expect(id, 'у задачи нет id').toBeTruthy());

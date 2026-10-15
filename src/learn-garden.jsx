@@ -121,6 +121,16 @@ const GARDEN_CSS = `
   @keyframes gd-spin { to { transform: rotate(360deg); } }
   @keyframes gd-twinkle { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
   @keyframes gd-shine { to { background-position: 200% 0; } }
+  /* тёмная тема: ночная лужайка, таблички — цвета карточки, а не белые (иначе светлый текст на белом) */
+  .ds-dark .gd-yard { border-color: #2F4A2A; background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(140,190,110,.10), transparent 70%), linear-gradient(#1C2A1D, #17241A); }
+  .ds-dark .gd-sign { background: var(--ds-card); box-shadow: 0 2px 0 #2F4A2A, 0 4px 10px rgba(0,0,0,.3); }
+  .ds-dark .gd-bar { background: #2B3A2C; }
+  .ds-dark .gd-water { color: #8FB3E0; } .ds-dark .gd-water.low { color: #F0A878; }
+  .ds-dark .gd-packet-water { color: #8FB3E0; }
+  .ds-dark .gd-bed.empty .gd-soil { color: #A9C98A; }
+  .ds-dark .gd-bed.empty .gd-soil::before { border-color: #4E6E3C; }
+  .ds-dark .gd-bed.empty:hover .gd-soil::before { border-color: #A9C98A; }
+  .ds-dark .gd-soil::before { box-shadow: inset 0 -5px 8px rgba(0,0,0,.3), 0 3px 0 rgba(0,0,0,.35); }
   @media (prefers-reduced-motion: reduce) { .gd-sway, .gd-bed.ripe .gd-art, .gd-aura::before, .gd-aura::after, .gd-packet-band, .gd-rain i { animation: none !important; } }
   @media (min-width: 720px) { .gd-herb, .gd-beds { grid-template-columns: repeat(6, minmax(0, 1fr)); } .gd-yard { padding: 18px 18px 16px; } .gd-beds { gap: 12px 14px; } }
 `;

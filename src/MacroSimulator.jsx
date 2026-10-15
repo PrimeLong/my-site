@@ -8,7 +8,7 @@ import {
   AlertTriangle, Bot, Target, Volume2, VolumeX, Music, Flag, Dices, Clock, Trophy, Lock, Share2,
   GraduationCap, FlaskConical, BookOpenText, Crown, Gavel, Hammer, Play, Calendar, BookOpen, Vote, Layers,
   Award, BarChart3, Medal, Handshake, HeartHandshake, LifeBuoy, Ban, DoorOpen, Factory, Wheat, Save,
-  Route, UserRound, Map as MapIcon, ShoppingBag, Ellipsis,
+  Route, UserRound, Map as MapIcon, ShoppingBag, Ellipsis, Newspaper,
 } from 'lucide-react';
 import {
   CONFIG, ROLES, DIFFICULTIES, GOALS, SCENARIOS, CB_PERSONAS, MOF_PERSONAS, POLITICAL_REGIME_INFO,
@@ -20,10 +20,11 @@ import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
 import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
 import { checkReturn } from './lib/retention.js';
-import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
+import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume, worldThemeId, setWorldTheme } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
+import { LATEST_NEWS, readNewsSeen } from './learn/news.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, accountKidsMode, EMBLEMS } from './account.jsx';
 
@@ -1163,18 +1164,21 @@ function MenuTicker() {
    собственный «назад». */
 const MORE_TABS = [
   { id: 'world', icon: MapIcon, label: 'Мир', text: 'Игра: партия, Лаборатория, Своё дело' },
-  { id: 'profile', icon: UserRound, label: 'Профиль', text: 'Серия, печати, настройки, аккаунт' },
+  { id: 'news', icon: Newspaper, label: 'Новости', text: 'Что нового в Инфляции' },
+  { id: 'profile', icon: UserRound, label: 'Профиль', text: 'Серия, марки, печати, настройки' },
 ];
 function BottomNav({ tab, onTab, onReselect = null }) {
   const learning = tab !== 'world';
   const [menu, setMenu] = useState(false);
   const inMore = MORE_TABS.find((t) => t.id === tab);
+  // свежий выпуск «Что нового» ещё не открывали — точка на «⋯» и плашка «новое» у «Новостей»
+  const newsNew = !readNewsSeen()[LATEST_NEWS.id];
   const tabs = [
     { id: 'path', icon: Route, label: 'Путь' },
     { id: 'book', icon: BookOpenText, label: 'Учебник' },
     { id: 'league', icon: Trophy, label: 'Лиги' },
     { id: 'shop', icon: ShoppingBag, label: 'Лавка' },
-    { id: 'more', icon: Ellipsis, label: inMore ? inMore.label : 'Ещё', menu: true, open: menu },
+    { id: 'more', icon: Ellipsis, label: inMore ? inMore.label : 'Ещё', menu: true, open: menu, dot: newsNew && tab !== 'news' },
   ];
   useEffect(() => {
     if (!menu) return undefined;
@@ -1200,7 +1204,7 @@ function BottomNav({ tab, onTab, onReselect = null }) {
               return (
                 <button key={t.id} type="button" role="menuitem" data-tab={t.id} aria-current={on ? 'page' : undefined} data-nav-target={on ? undefined : `tab:${t.id}`}
                   onClick={() => { setMenu(false); if (on) { if (onReselect) onReselect(t.id); return; } Audio.play('tab'); onTab(t.id); }}>
-                  <Icon size={22} aria-hidden="true" /><span>{t.label}<small>{t.text}</small></span>
+                  <Icon size={22} aria-hidden="true" /><span>{t.label}{t.id === 'news' && newsNew && <span className="ds-new">новое</span>}<small>{t.text}</small></span>
                 </button>
               );
             })}
@@ -2009,7 +2013,8 @@ export default function MacroSimulator() {
   const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : loadAutosave()));
   const [setup, setSetup] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : (loadAutosave() || {}).setup || null));
   const [nonce, setNonce] = useState(0);
-  const [theme, setThemeState] = useState('chamber');
+  // оформление «Мира» — сохранённое на устройстве или по ночной теме из настроек (ds-tokens.js)
+  const [theme, setThemeState] = useState(worldThemeId);
   const [network, setNetwork] = useState(null);
   // 'menu' — главная страница; 'setup' — анкета новой одиночной партии;
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
@@ -2102,7 +2107,9 @@ export default function MacroSimulator() {
     if (!learning && Audio.opts.volume !== worldVolume()) Audio.setVolume(worldVolume());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learning, learnTick]);
-  const setTheme = (id) => { applyTheme(id); setThemeState(id); };
+  const setTheme = (id) => { setWorldTheme(id); applyTheme(id); setThemeState(id); };
+  // ночную тему переключили в настройках — «Мир» тоже следует ей (если там не выбрано своё той же яркости)
+  React.useEffect(() => { setThemeState(worldThemeId()); }, [learnTick]);
   const startLoaded = (data) => { setGameFromBook(false); setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
   const backToBook = () => { setReopenBook(true); setView('menu'); };
@@ -2201,7 +2208,7 @@ export default function MacroSimulator() {
             <div className="ems-root">
               <GlobalStyle />
               <Suspense fallback={<GameFallback />}>
-                <LearnTab tab={tab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
+                <LearnTab tab={tab} onTab={setTab} reopenBook={reopenBook} onBookReopened={() => setReopenBook(false)} onThemeChange={() => setLearnTick((k) => k + 1)}
                   onBookOver={setBookOver} closeTick={closeTick} bookHome={bookHome} pathHome={pathHome} guest={guest} firstLesson={firstLesson} onFirstLesson={() => setFirstLesson(false)}
                   bookHandlers={{
                     onOpenLab: (init) => { setFromBook(true); setLabInit(init); setLabLever(init.lever); setView('lab'); },
@@ -2227,7 +2234,9 @@ export default function MacroSimulator() {
                  Путь — к рекомендованному уроку, лавка и профиль — наверх */
               if (t === 'book' && !bookOver) setBookHome((k) => k + 1);
               if (t === 'path') setPathHome((k) => k + 1);
-              if ((t === 'shop' || t === 'profile' || t === 'league') && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+              if ((t === 'shop' || t === 'profile' || t === 'league' || t === 'news') && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+              // профиль: повторное касание закрывает и страницы поверх него — настройки, уведомления
+              if (t === 'profile') setCloseTick((k) => k + 1);
             }} />
         </div>
       );

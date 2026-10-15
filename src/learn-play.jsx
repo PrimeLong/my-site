@@ -327,13 +327,16 @@ const EFFECT_LABEL = {
 };
 const BUDGET_LABEL = { out: 'Доход вырос', in: 'Доход упал', ox: 'Товар X дешевле', ix: 'Товар X дороже', oy: 'Товар Y дешевле', iy: 'Товар Y дороже' };
 const ELASTIC_LABEL = { in: 'Неэластичный: выручка растёт', el: 'Эластичный: выручка падает' };
-const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : EFFECT_LABEL[eff]);
+const COSTS_LABEL = { fc: 'Постоянные: поднялись только средние', vc: 'Переменные: поднялись все три кривые' };
+const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : chart === 'costs' ? COSTS_LABEL[eff] : EFFECT_LABEL[eff]);
 const BUDGET0 = { I: 100, px: 1.25, py: 1.25 };
 const MARKET_STEP = 16;
 // состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
 function applyEffect(chart, st, eff) {
   // эластичность: крутая или пологая кривая спроса через одну точку
   if (chart === 'elastic') return { e: eff === 'in' ? 0.4 : eff === 'el' ? 2.5 : st.e };
+  // издержки: постоянная трата поднимает только средние общие, переменная — все три кривые
+  if (chart === 'costs') return { fc: eff === 'fc' ? 1 : eff ? 0 : st.fc, vc: eff === 'vc' ? 1 : eff ? 0 : st.vc };
   if (chart === 'market') {
     const d = { D: st.D * 0.6, S: st.S * 0.6 };
     if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
@@ -359,7 +362,7 @@ function applyEffect(chart, st, eff) {
   if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
   return { rx, ry, t };
 }
-const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : { rx: 100, ry: 100, t: 0.5 });
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : chart === 'costs' ? { fc: 0, vc: 0 } : { rx: 100, ry: 100, t: 0.5 });
 // плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
 function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
@@ -432,6 +435,37 @@ function ElasticGameChart({ st }) {
       <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: up ? 'var(--ds-ok)' : 'var(--ds-bad)', fontWeight: 700, stroke: 'var(--ds-paper)', strokeWidth: 5, paintOrder: 'stroke', strokeLinejoin: 'round' }}>
         выручка при +10% цены: {up ? '↑' : '↓'} {Math.round(r1)}
       </text>
+    </svg>
+  );
+}
+/* Издержки игры: средние общие (ATC), средние переменные (AVC) и предельные (MC) пекарни; пунктир —
+   с чего начинали. Постоянная трата поднимает только ATC, переменная — все три кривые: так видно,
+   почему аренда не меняет цену ещё одной партии. fc и vc — доля сдвига от 0 до 1 (плавный переход). */
+function CostsGameChart({ st }) {
+  const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
+  const QM = 8; const PM = 60;
+  const sx = (q) => L + (q / QM) * (W - L - R); const sy = (p) => H - B - (Math.max(0, Math.min(p, PM)) / PM) * (H - B - T);
+  const curve = (f) => { const pts = []; for (let k = 0; k <= 40; k += 1) { const q = 0.6 + (k / 40) * (QM - 0.6); pts.push(`${sx(q).toFixed(1)},${sy(f(q)).toFixed(1)}`); } return `M${pts.join('L')}`; };
+  const fc = 30 + 25 * (st.fc || 0); const v = 6 * (st.vc || 0);
+  const avc = (q, dv) => 14 - 3 * q + 0.5 * q * q + dv;
+  const mc = (q, dv) => 14 - 6 * q + 1.5 * q * q + dv;
+  const atc = (q, f, dv) => f / q + avc(q, dv);
+  return (
+    <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img"
+      aria-label={st.fc > 0.5 ? 'Постоянные издержки выросли: поднялись только средние общие' : st.vc > 0.5 ? 'Переменные издержки выросли: поднялись все три кривые' : 'Кривые издержек пекарни'}
+      data-testid="game-chart" data-chart="costs" data-state={JSON.stringify({ fc: Math.round((st.fc || 0) * 100) / 100, vc: Math.round((st.vc || 0) * 100) / 100 })}>
+      <path d={curve((q) => atc(q, 30, 0))} fill="none" stroke="var(--ds-ink3)" strokeWidth="1.5" strokeDasharray="4 4" />
+      <path d={curve((q) => mc(q, 0))} fill="none" stroke="var(--ds-ink3)" strokeWidth="1.5" strokeDasharray="4 4" opacity=".7" />
+      <path d={curve((q) => avc(q, v))} fill="none" stroke="var(--ds-ok)" strokeWidth="2.5" data-testid="costs-avc" />
+      <path d={curve((q) => mc(q, v))} fill="none" stroke="var(--ds-bad)" strokeWidth="2.5" data-testid="costs-mc" />
+      <path d={curve((q) => atc(q, fc, v))} fill="none" stroke="var(--u)" strokeWidth="3.5" strokeLinecap="round" data-testid="costs-atc" />
+      <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <text x={W - R} y={H - 8} textAnchor="end" className="lp-ax">Q</text>
+      <text x={L - 6} y={T + 8} textAnchor="end" className="lp-ax">C</text>
+      {[['ATC', atc(7.2, fc, v), 'var(--u)'], ['AVC', avc(7.2, v), 'var(--ds-ok)'], ['MC', mc(6.1, v), 'var(--ds-bad)']].map(([t, y, c], k) => (
+        <text key={t} x={k === 2 ? sx(6.1) - 4 : sx(7.6)} y={sy(y) - 4} textAnchor="end" className="lp-ax" style={{ fill: c, fontWeight: 700, stroke: 'var(--ds-paper)', strokeWidth: 4, paintOrder: 'stroke' }}>{t}</text>
+      ))}
     </svg>
   );
 }
@@ -546,7 +580,8 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
   const chart = inst.chart === 'market'
     ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок в игре: спрос и предложение" /><PriceTicker prices={prices} /></>
-    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : inst.chart === 'elastic' ? <ElasticGameChart st={shown} /> : null;
+    : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : inst.chart === 'elastic' ? <ElasticGameChart st={shown} />
+      : inst.chart === 'costs' ? <CostsGameChart st={shown} /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (

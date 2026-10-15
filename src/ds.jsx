@@ -56,8 +56,13 @@ export const DS_CSS = `
   .ds-btn--small { min-height: 38px; padding: 7px 16px; font-size: 13.5px; border-radius: 12px; box-shadow: 0 3px 0 var(--edge); margin-bottom: 3px; }
   .ds-btn--small:active:not(:disabled) { transform: translateY(3px); }
   .ds-btn--secondary.ds-btn--small { box-shadow: inset 0 0 0 2px var(--ds-rule2), 0 3px 0 var(--ds-rule2); }
+  /* тихая кнопка остаётся тихой и маленькой: без объёмной кромки */
+  .ds-btn--ghost.ds-btn--small { box-shadow: none; margin-bottom: 0; }
+  .ds-btn--ghost.ds-btn--small:active:not(:disabled) { transform: none; opacity: .75; }
   .ds-icon-btn { background: none; border: none; color: var(--ds-ink2); width: 42px; height: 42px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
   .ds-icon-btn:hover { background: var(--ds-card2); }
+  .ds-icon-btn { transition: background-color .15s, transform .1s; }
+  .ds-icon-btn:active { transform: scale(.9); }
 
   /* карточка-документ, панель, строки */
   /* текст только для чтения с экрана: подписи к значкам и числам */
@@ -66,6 +71,9 @@ export const DS_CSS = `
     box-shadow: 0 2px 0 var(--ds-rule), 0 6px 18px -10px var(--ds-shade); }
   .ds-card--flat { box-shadow: 0 2px 0 var(--ds-rule); }
   .ds-card--button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; margin: 10px 0; }
+  .ds-card--button { transition: transform .15s ease, box-shadow .15s ease, border-color .15s; }
+  .ds-card--button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 0 var(--ds-rule), 0 10px 22px -12px var(--ds-shade); }
+  .ds-card--button:hover:not(:disabled) > span:first-child { animation: ds-wiggle .5s ease-in-out; }
   .ds-card--button:active:not(:disabled) { transform: translateY(1px); }
   .ds-card--button:disabled { opacity: .6; cursor: default; }
   .ds-panel { background: var(--ds-card2); border-radius: 14px; padding: 12px 14px; }
@@ -96,6 +104,7 @@ export const DS_CSS = `
   .ds-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 44px; padding: 8px 13px; margin: 4px; font: 15px/1.3 var(--ds-sans); color: var(--ds-ink);
     background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 12px; cursor: pointer; --edge: var(--ds-rule2); box-shadow: 0 2px 0 var(--edge); transition: transform .06s, box-shadow .06s; }
   .ds-chip:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 0 0 var(--edge); }
+  .ds-chip[aria-pressed="true"], .ds-opt[aria-pressed="true"], .ds-opt[aria-checked="true"] { animation: ds-pop .26s cubic-bezier(.3,1.6,.5,1); }
   .ds-chip[aria-pressed="true"] { --edge: color-mix(in srgb, var(--u) 75%, var(--ds-card)); border-color: var(--edge); background: color-mix(in srgb, var(--u) 11%, var(--ds-card)); color: var(--ds-ink); }
   .ds-chip.right { --edge: var(--ds-ok); border-color: var(--ds-ok); }
   .ds-key { padding: 13px 0; font: 20px var(--ds-mono); color: var(--ds-ink); background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 12px; cursor: pointer;
@@ -108,7 +117,10 @@ export const DS_CSS = `
   .ds-label { display: block; font: 700 13px/1.3 var(--ds-sans); letter-spacing: .04em; color: var(--ds-ink2); margin-bottom: 14px; }
   .ds-label > input { margin-top: 6px; }
   .ds-toggle { width: 48px; height: 28px; border-radius: 14px; border: 1px solid var(--ds-rule2); background: var(--ds-card2); position: relative; cursor: pointer; flex-shrink: 0; }
-  .ds-toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--ds-card); border: 1px solid var(--ds-rule2); transition: left .15s; }
+  .ds-toggle { transition: background-color .2s ease, border-color .2s ease; }
+  .ds-toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--ds-card); border: 1px solid var(--ds-rule2); transition: left .28s cubic-bezier(.3,1.5,.5,1), width .15s; }
+  .ds-toggle:active::after { width: 24px; }
+  .ds-toggle[aria-checked="true"]:active::after { left: 19px; }
   .ds-toggle[aria-checked="true"] { background: var(--u); border-color: var(--u); }
   .ds-toggle[aria-checked="true"]::after { left: 23px; }
 
@@ -127,7 +139,7 @@ export const DS_CSS = `
   .ds-answer.bad .ds-answer-say { color: var(--ds-sel-ink); }
 
   /* шторка снизу, верхняя панель, нижняя панель вкладок */
-  .ds-sheet-back { position: fixed; inset: 0; z-index: 320; background: rgba(28,20,8,.48); display: flex; align-items: flex-end; justify-content: center; }
+  .ds-sheet-back { position: fixed; inset: 0; z-index: 320; background: rgba(28,20,8,.48); display: flex; align-items: flex-end; justify-content: center; animation: ds-fade .2s ease-out; }
   .ds-sheet { width: 100%; max-width: 560px; background: var(--ds-card); border-radius: 24px 24px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
     box-shadow: 0 -10px 30px rgba(60,30,0,.18); }
   .ds-topbar { display: flex; align-items: center; gap: 8px; min-height: 52px; }
@@ -149,10 +161,25 @@ export const DS_CSS = `
   .ds-nav .ds-more button[aria-current="page"] { color: var(--u-ink); }
   .ds-nav .ds-more button[aria-current="page"]::before { display: none; }
   .ds-nav .ds-more small { display: block; font: 400 12.5px var(--ds-sans); color: var(--ds-ink3); }
+  .ds-nav .ds-more button > span { text-align: left; }
+  .ds-nav .ds-more { animation: ds-more-in .2s cubic-bezier(.2,1.2,.4,1) both; transform-origin: 90% 100%; }
+  .ds-nav .ds-more button { animation: ds-rise .25s ease-out both; }
+  .ds-nav .ds-more button:nth-child(2) { animation-delay: .04s; } .ds-nav .ds-more button:nth-child(3) { animation-delay: .08s; }
+  @keyframes ds-more-in { from { opacity: 0; transform: translateY(8px) scale(.94) } to { opacity: 1; transform: none } }
+  /* новое за вкладкой: точка на значке и плашка в меню «⋯» */
+  .ds-nav-dot { position: absolute; top: 7px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%; background: var(--ds-bad-btn); box-shadow: 0 0 0 2px var(--ds-card); }
+  .ds-new { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--ds-bad-btn); color: #fff; font: 700 12px/1.3 var(--ds-sans); letter-spacing: .04em; vertical-align: 1px; }
+  /* значок вкладки чуть подпрыгивает, когда её выбрали */
+  .ds-nav button[aria-current="page"] > svg { animation: ds-tab-hop .32s cubic-bezier(.3,1.6,.5,1) both; }
+  @keyframes ds-tab-hop { 0% { transform: translateY(0) scale(1) } 45% { transform: translateY(-3px) scale(1.1) } 100% { transform: none } }
+  .ds-nav button:active > svg { transform: scale(.88); }
 
   /* короткие анимации по делу */
   @keyframes ds-shake { 0%, 100% { transform: translateX(0) } 25% { transform: translateX(-6px) } 50% { transform: translateX(5px) } 75% { transform: translateX(-3px) } }
   @keyframes ds-rise { 0% { transform: translateY(14px); opacity: 0 } 100% { transform: translateY(0); opacity: 1 } }
+  @keyframes ds-fade { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes ds-pop { 0% { transform: scale(1) } 45% { transform: scale(1.045) } 100% { transform: scale(1) } }
+  @keyframes ds-wiggle { 0%, 100% { transform: rotate(0) } 30% { transform: rotate(-8deg) scale(1.06) } 65% { transform: rotate(5deg) } }
   @keyframes ds-stamp { 0% { transform: scale(1.7) rotate(-14deg); opacity: 0 } 60% { transform: scale(.94) rotate(-4deg); opacity: 1 } 100% { transform: scale(1) rotate(-4deg); opacity: 1 } }
   @keyframes ds-flash { 0% { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--ds-ok) 22%, transparent) } 100% { box-shadow: inset 0 0 0 999px transparent } }
   .ds-shake { animation: ds-shake .36s ease-in-out 1; }
@@ -267,7 +294,7 @@ export function Tabs({ tabs, active, onTab, onReselect = null, label = 'Разд
             <button key={t.id} type="button" aria-current={on ? 'page' : undefined} data-tab={t.id} data-nav-target={on || t.menu ? undefined : `tab:${t.id}`}
               aria-haspopup={t.menu ? 'menu' : undefined} aria-expanded={t.menu ? !!t.open : undefined}
               onClick={() => { if (!on) onTab(t.id); else if (onReselect) onReselect(t.id); }}>
-              <Icon size={22} strokeWidth={on ? 2.2 : 1.7} aria-hidden="true" /><span>{t.label}</span>
+              <Icon size={22} strokeWidth={on ? 2.2 : 1.7} aria-hidden="true" /><span>{t.label}</span>{t.dot && <i className="ds-nav-dot" aria-hidden="true" />}
             </button>
           );
         })}
