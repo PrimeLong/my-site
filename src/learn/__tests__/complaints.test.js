@@ -322,3 +322,33 @@ describe('жалобы из выгрузки: общая КПВ (mv54yu3v)', () 
     expect(md.slice(how, how + 2500)).toMatch(/\(8; 32\)/);
   });
 });
+
+describe('жалобы из выгрузки: деньги и банки (mv7qpv8v, mv7hyox2, mv67fhfm)', () => {
+  const md = async () => (await import('node:fs')).readFileSync(new URL('../../textbook/chapters/money-banks.md', import.meta.url), 'utf8');
+  it('до задачи mb-barter в главе объяснено, сколько цен при бартере: n(n − 1)/2', async () => {
+    const t = await md();
+    const at = t.indexOf('цен при бартере} = \\frac{n(n-1)}{2}');
+    expect(at).toBeGreaterThan(0);
+    expect(at).toBeLessThan(t.indexOf(':::problem id=mb-barter'));
+    expect(t.slice(at, at + 400)).toMatch(/45 цен/);
+  });
+  it('у реальной ставки объяснены все буквы: i, π и r', async () => {
+    const { formulaSymbols } = await import('../../textbook/symbols.js');
+    const syms = formulaSymbols('r \\approx i - \\pi', 'money-banks');
+    expect(syms.map((s) => s.key)).toEqual(['r', 'i', '\\pi']);
+    syms.forEach((s) => expect(s.text, s.key).toBeTruthy());
+    expect(await md()).toMatch(/где \$i\$ — номинальная ставка/);
+  });
+  it('первый шаг юнита: понятно, кто что предлагает и почему обмен не состоится', () => {
+    const step = LESSONS.find((l) => l.id === 'mb-i1').idea;
+    expect(texts(step.text).join('')).toMatch(/предлагает Маше за него круассаны/);
+  });
+});
+
+describe('жалобы из выгрузки: налог на газировку и внешний эффект (mv5ytwzf)', () => {
+  it('ясно, что внешний эффект — счёт за лечение для тех, кто не покупал, а не зубы самого покупателя', () => {
+    const e = EXERCISES['mf-radio-pigou'];
+    expect(texts(e.prompt).join('')).toMatch(/платят и те, кто газировку не пьёт/);
+    expect(texts(e.explain).join('')).toMatch(/зубы самого покупателя — не внешний эффект/);
+  });
+});
