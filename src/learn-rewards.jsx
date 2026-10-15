@@ -11,7 +11,9 @@ import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
-import { ShopSwitch, GardenView, RateWeek } from './learn-garden.jsx';
+import { ShopSwitch, RateWeek } from './learn-rate.jsx';
+// сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
+const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ default: m.GardenView })));
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
   chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
@@ -414,7 +416,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
     <div className="ln-wrap" data-testid="shop" data-view={view}>
       <div>
         <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} />
-        {view === 'garden' ? <GardenView learn={learn} update={update} /> : <>
+        {view === 'garden' ? <React.Suspense fallback={<div className="ds-sub" style={{ padding: 20 }}>Сад загружается…</div>}><GardenView learn={learn} update={update} /></React.Suspense> : <>
         <Heading eyebrow="Лавка" title="Лавка Инфли" sub="Монеты — за уроки, серию и задания. Цены в кронах, платите по курсу дня." />
         <Card style={{ margin: '10px 0 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

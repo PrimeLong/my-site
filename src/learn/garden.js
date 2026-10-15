@@ -27,11 +27,11 @@ export const WATER_FROM_HOURS = 24;
 export const WATER_SINCE = Date.UTC(2026, 9, 12, 12);
 // редкость: подпись и цвет плашки (тёплая палитра docs/world.md)
 export const RARITY = {
-  common: { title: 'обычное', color: '#4B692C' },
-  uncommon: { title: 'необычное', color: '#7A5616' },
-  rare: { title: 'редкое', color: '#86461F' },
-  epic: { title: 'очень редкое', color: '#86446A' },
-  legend: { title: 'легендарное', color: '#8A2F45' },
+  common: { title: 'обычное', color: '#4D7C0F' },
+  uncommon: { title: 'необычное', color: '#9A6300' },
+  rare: { title: 'редкое', color: '#C2490B' },
+  epic: { title: 'очень редкое', color: '#B0198F' },
+  legend: { title: 'легендарное', color: '#B3123F' },
 };
 export const RARITY_ORDER = Object.keys(RARITY);
 // цена — в кронах, платят монетами по курсу дня; hours — сколько растёт до цветения
