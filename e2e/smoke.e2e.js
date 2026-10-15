@@ -861,10 +861,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await prob.getByRole('button', { name: /^Подсказка/ }).click();
   await expect(prob.getByTestId('tb-hints')).toContainText('приравняйте');
   await prob.getByRole('textbox').fill('29');
-  // перед ответом — оценка уверенности
-  await prob.getByRole('button', { name: 'Проверить' }).click();
-  await expect(prob.getByTestId('tb-verdict')).toContainText('уверены ли вы');
-  await prob.getByRole('button', { name: 'Уверен', exact: true }).click();
+  // уверенность — по желанию: без отметки ответ всё равно проверяется
   await prob.getByRole('button', { name: 'Проверить' }).click();
   await expect(prob.getByTestId('tb-verdict')).toContainText('Пока неверно');
   // единицу из подписи можно дописать к ответу
@@ -1291,7 +1288,7 @@ test('урок, пройденный на другом устройстве, п�
     if (body.action !== 'progress') return '{}';
     const tb = body.progress.textbook || {};
     // на телефоне тем временем пройден первый урок
-    const learn = other ? { ...(tb.learn || {}), lessons: { ...((tb.learn || {}).lessons || {}), 'sc-i1': { at: Date.now() - 60000, runs: 1, best: 90 } } } : tb.learn;
+    const learn = other ? { ...tb.learn, lessons: { ...tb.learn?.lessons, 'sc-i1': { at: Date.now() - 60000, runs: 1, best: 90 } } } : tb.learn;
     return JSON.stringify({ profile: { ...body.progress, textbook: { ...tb, learn } } });
   };
   const { errors } = await openApp(page, '/', api, { tab: 'path' });

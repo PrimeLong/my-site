@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Lightbulb } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -131,8 +131,32 @@ export const TEXTBOOK_CSS = `
   .tb-calc-keys button { font: 600 15px/1 var(--ds-mono, monospace); padding: 9px 0; border: 1px solid var(--c-border); border-radius: 3px; background: var(--c-panel, #fff); color: inherit; cursor: pointer; }
   .tb-calc-keys button.op { color: var(--c-gold, #9C7218); }
   .tb-calc-keys button.tb-calc-use { grid-column: span 3; font: 600 12.5px/1.2 var(--ds-sans, sans-serif); padding: 6px; }
-  .tb-pick { font-size: 12px; padding: 4px 10px; border: 1px solid var(--c-border); border-radius: 12px; background: none; color: var(--c-muted); cursor: pointer; font-family: inherit; }
-  .tb-pick[aria-pressed="true"] { border-color: var(--c-gold); color: var(--c-gold-soft); background: var(--c-panel); }
+  /* карточка задачи (docs/mechanics.md, «Учебник: карточка задачи»): одно главное действие — «Проверить»,
+     уверенность — короткий переключатель по желанию, подсказка/решение/калькулятор — тихая панель внизу */
+  .tb-prob { background: var(--c-panel); border: 2px solid var(--c-hairline); border-radius: 18px; padding: 14px 16px; box-shadow: 0 2px 0 var(--c-hairline); }
+  .tb-prob-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .tb-prob-title { font: 700 16px/1.2 var(--ds-head, sans-serif); color: var(--c-text); }
+  .tb-prob-from { font: 400 13px var(--ds-sans, sans-serif); color: var(--c-muted); }
+  .tb-lv { font: 700 11.5px/1 var(--ds-sans, sans-serif); letter-spacing: .05em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; color: #fff; background: #4D7C0F; }
+  .tb-lv[data-level="2"] { background: #9A6300; } .tb-lv[data-level="3"] { background: #B3123F; }
+  .tb-prob-meta { font: 13px var(--ds-sans, sans-serif); color: var(--c-muted); }
+  .tb-prob-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
+  .tb-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 10px; background: none; color: var(--c-muted); cursor: pointer; }
+  .tb-icon:hover { background: var(--c-panel-alt); color: var(--c-text); }
+  .tb-fields { display: flex; gap: 10px 16px; flex-wrap: wrap; align-items: center; margin: 10px 0 2px; }
+  .tb-field { display: flex; gap: 6px; align-items: center; font-size: 14px; color: var(--c-muted); }
+  .tb-field b { font: 700 15px var(--ds-sans, sans-serif); color: var(--c-text); min-width: 1.4em; }
+  .tb-input { padding: 10px 12px; font: 16px var(--ds-sans, sans-serif); background: var(--c-panel); border: 2px solid var(--c-border-strong, var(--c-border)); border-radius: 12px; color: var(--c-text); }
+  .tb-input:focus { outline: none; border-color: var(--u, var(--c-gold)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--u, var(--c-gold)) 18%, transparent); }
+  .tb-check-row { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-top: 12px; }
+  .tb-sure { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 2px solid var(--c-hairline); border-radius: 999px; }
+  .tb-sure > span { font: 13px var(--ds-sans, sans-serif); color: var(--c-muted); padding: 0 6px 0 8px; }
+  .tb-pick { font: 700 13px var(--ds-sans, sans-serif); padding: 6px 12px; border: none; border-radius: 999px; background: none; color: var(--c-muted); cursor: pointer; }
+  .tb-pick[aria-pressed="true"] { background: color-mix(in srgb, var(--u, var(--c-gold)) 15%, var(--c-panel)); color: var(--c-text); }
+  .ln-textbook .ems-btn.primary.tb-check { padding: 10px 22px; font-size: 15px; border-radius: 12px; }
+  .tb-tools { display: flex; gap: 4px 16px; flex-wrap: wrap; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--c-hairline); }
+  .tb-tool { display: inline-flex; align-items: center; gap: 6px; padding: 6px 2px; border: none; background: none; font: 700 13.5px var(--ds-sans, sans-serif); color: var(--c-muted); cursor: pointer; }
+  .tb-tool:hover, .tb-tool[aria-expanded="true"] { color: var(--c-text); }
   .tb-guess { margin: 4px 0 10px; }
   .tb-guess-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
   .tb-guess-name { font-size: 13px; min-width: 9.5em; color: var(--c-text); }
@@ -799,22 +823,26 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
     );
   }
   return (
-    <div id={`problem-${block.id}`} className={`ems-panel${rec && rec.ok ? ' tb-solved' : ''}`} style={{ padding: 14, margin: '12px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-solved={rec && rec.ok ? 'true' : undefined}>
-      <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
-        <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
-        <span style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {block.news && <span className="tb-chip">по газете</span>}
-          {LEVELS[block.level] && <span className="tb-chip" data-testid="tb-level">{LEVELS[block.level]}</span>}
-          {block.parts && block.parts.length > 1 && <span className="tb-chip">{block.parts.length} {block.parts.length < 5 ? 'пункта' : 'пунктов'}</span>}
-          {status && (rec.ok
-            ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
-            : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>)}
+    <div id={`problem-${block.id}`} className={`tb-prob${rec && rec.ok ? ' tb-solved' : ''}`} style={{ margin: '14px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-solved={rec && rec.ok ? 'true' : undefined}>
+      <div className="tb-prob-head">
+        <span className="tb-prob-title">{KIND_LABEL[block.kind] || 'Задача'} {no}</span>
+        {LEVELS[block.level] && <span className="tb-lv" data-level={block.level} data-testid="tb-level">{LEVELS[block.level]}</span>}
+        {block.parts && block.parts.length > 1 && <span className="tb-prob-meta">{block.parts.length} {block.parts.length < 5 ? 'пункта' : 'пунктов'}</span>}
+        {block.news && <span className="tb-prob-meta">по газете</span>}
+        {from && <span className="tb-prob-from">{from}</span>}
+        <span className="tb-prob-acts">
+          {ctx.reportFlag && <span data-testid="tb-report">{ctx.reportFlag(() => problemContext(block, given, answerText))}</span>}
           {canCollapse && (
-            <button type="button" className="tb-chip tb-collapse" aria-expanded="true" data-testid="tb-problem-collapse"
-              onClick={collapse}><ChevronUp size={12} style={{ verticalAlign: -2 }} aria-hidden="true" /> Свернуть</button>
+            <button type="button" className="tb-icon" aria-expanded="true" aria-label="Свернуть задачу" title="Свернуть задачу" data-testid="tb-problem-collapse"
+              onClick={collapse}><ChevronUp size={18} aria-hidden="true" /></button>
           )}
         </span>
       </div>
+      {status && (
+        <div style={{ marginBottom: 6 }}>{rec.ok
+          ? <span className="tb-solved-chip" data-testid="tb-solved-chip"><Check size={12} strokeWidth={3} style={{ verticalAlign: -2 }} aria-hidden="true" /> Решена{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>
+          : <span className="tb-chip" style={{ color: COLOR.rust, borderColor: COLOR.rust }}>{status}{rec.due ? ` · повтор ${daysUntil(rec.due)}` : ''}</span>}</div>
+      )}
       {block.news && (
         <div className="tb-news" data-testid="tb-news">
           <div className="ems-mono tb-news-mast">ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div>
@@ -847,18 +875,17 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
           ))}
         </div>
       )}
-      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="tb-tools">
         {hintsShown < hints.length && (
-          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }}
-            onClick={() => { Audio.play('click'); setHintsShown((n) => n + 1); }}>Подсказка{hints.length > 1 ? ` ${hintsShown + 1} из ${hints.length}` : ''}</button>
+          <button type="button" className="tb-tool"
+            onClick={() => { Audio.play('click'); setHintsShown((n) => n + 1); }}><Lightbulb size={15} aria-hidden="true" />Подсказка{hints.length > 1 ? ` ${hintsShown + 1} из ${hints.length}` : ''}</button>
         )}
-        <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded={!!open}
-          onClick={() => { Audio.play('click'); if (!open && onSolutionOpen) onSolutionOpen(); setSolMode(!open); }}>{open ? 'Скрыть решение' : 'Решение'}</button>
+        <button type="button" className="tb-tool" aria-expanded={!!open}
+          onClick={() => { Audio.play('click'); if (!open && onSolutionOpen) onSolutionOpen(); setSolMode(!open); }}><BookOpen size={15} aria-hidden="true" />{open ? 'Скрыть решение' : 'Решение'}</button>
         {canCollapse && (
-          <button type="button" className="ems-btn" style={{ padding: '6px 12px', fontSize: 12.5 }} aria-expanded="true" data-testid="tb-problem-collapse-bottom"
-            onClick={collapse}><ChevronUp size={13} style={{ verticalAlign: -2, marginRight: 3 }} aria-hidden="true" />Свернуть задачу</button>
+          <button type="button" className="tb-tool" style={{ marginLeft: 'auto' }} aria-expanded="true" data-testid="tb-problem-collapse-bottom"
+            onClick={collapse}><ChevronUp size={15} aria-hidden="true" />Свернуть</button>
         )}
-        {ctx.reportFlag && <span style={{ marginLeft: 'auto' }} data-testid="tb-report">{ctx.reportFlag(() => problemContext(block, given, answerText))}</span>}
       </div>
       {open && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.gold, marginBottom: 0 }}>
@@ -878,10 +905,11 @@ const withUnit = (block) => block.parts.map(partText).join('; ');
 
 /* Уверенность — до ответа: «уверен» или «не уверен». В прогрессе потом видно, насколько
    уверенные ответы оказываются верными. */
+// по желанию (docs/mechanics.md): не отметили — ответ всё равно проверяется
 function SurePick({ value, onChange, disabled = false }) {
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', margin: '8px 0' }} role="group" aria-label="Уверенность в ответе">
-      <span style={{ fontSize: 12, color: COLOR.faint }}>Уверенность:</span>
+    <div className="tb-sure" role="group" aria-label="Уверенность в ответе — по желанию">
+      <span>Уверены?</span>
       {[[true, 'Уверен'], [false, 'Не уверен']].map(([v, label]) => (
         <button key={label} type="button" className="tb-pick" aria-pressed={value === v} disabled={disabled}
           onClick={() => { Audio.play('tick'); onChange(v); }}>{label}</button>
@@ -889,7 +917,6 @@ function SurePick({ value, onChange, disabled = false }) {
     </div>
   );
 }
-const NEED_SURE = 'Сначала отметьте, уверены ли вы в ответе.';
 // что будет с повторением после верного ответа — словами (см. scheduleAfter)
 function okText(ctx, id, head, sawSolution) {
   const s = scheduleAfter(ctx.progress.problems[id], true, Date.now(), { sawSolution });
@@ -944,8 +971,8 @@ function CalcToggle({ onUse, labels = null, target = 0, onTarget = null }) {
   const multi = labels && labels.length > 1;
   return (
     <>
-      <button type="button" className="ems-btn" style={{ padding: '7px 12px', fontSize: 13 }} aria-expanded={open} data-testid="tb-calc-open"
-        onClick={() => { Audio.play('click'); setOpen((x) => !x); }}><Calculator size={14} style={{ verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />Калькулятор</button>
+      <button type="button" className="tb-tool" aria-expanded={open} data-testid="tb-calc-open"
+        onClick={() => { Audio.play('click'); setOpen((x) => !x); }}><Calculator size={15} aria-hidden="true" />Калькулятор</button>
       {open && (
         <div style={{ flexBasis: '100%' }}>
           {multi && onTarget && (
@@ -976,7 +1003,6 @@ function NumberProblem({ block, no, ctx, from }) {
   const submit = () => {
     const rs = parts.map((pt, k) => checkAnswer(inputs[k], pt.answer, pt.tol, pt.unit));
     if (rs.some((r) => r.value == null)) { setVerdict({ bad: true, text: multi ? 'Заполните все шаги числами: например, 25, −0,5 или 2/3.' : 'Введите число: например, 25, −0,5 или 2/3.' }); return; }
-    if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
     const ok = rs.every((r) => r.ok);
     Audio.play(ok ? 'stamp' : 'tick');
     // какие пункты сошлись, а какие нет: «верно/неверно» здесь не пишем — выбора «верно или неверно» в задаче нет
@@ -984,7 +1010,7 @@ function NumberProblem({ block, no, ctx, from }) {
     const good = parts.filter((pt, k) => rs[k].ok).map((pt) => pt.label);
     const marks = multi ? ` ${good.length ? `Сошлось: ${good.join(' ')}. ` : ''}Не сошлось: ${bad.join(' ')} — разберите ${bad.length > 1 ? 'эти пункты' : 'этот пункт'} в решении.` : '';
     const text = ok ? okText(ctx, block.id, `Верно: ${withUnit(block)}`, saw) : `${multi ? `Ответ засчитывается, когда сходятся все пункты.${marks}` : 'Пока неверно.'} ${WRONG.replace(/^Пока неверно\. /, '').replace(/ — загляните в решение\./, '.')}`;
-    ctx.onAnswer(block.id, ok, { sawSolution: saw, confident: sure });
+    ctx.onAnswer(block.id, ok, { sawSolution: saw, ...(sure == null ? {} : { confident: sure }) });
     const traps = ok ? [] : matchTraps(block, inputs).map((tr) => ({ label: multi ? parts[tr.part].label : '', text: tr.text }));
     setVerdict({ ok, text, traps });
     setSure(null);
@@ -1006,20 +1032,20 @@ function NumberProblem({ block, no, ctx, from }) {
     <ProblemFrame block={block} no={no} ctx={ctx} from={from} verdict={verdict} answerText={`ответ ${withUnit(block)}`} onSolutionOpen={() => setSaw(true)}
       given={parts.map((pt, k) => `${pt.label ? `${pt.label} ` : ''}${inputs[k]}`).join('; ')}>
       <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
-        <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="tb-fields">
           {parts.map((pt, k) => (
-            <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: COLOR.muted }}>
-              {pt.label && <span className="ems-mono" style={{ color: COLOR.text }}>{pt.label}</span>}
-              <input value={inputs[k]} onChange={(e) => setAt(k, e.target.value)} inputMode="decimal" onFocus={() => setFocus(k)}
+            <label key={k} className="tb-field">
+              {pt.label && <b>{pt.label}</b>}
+              <input className="tb-input" value={inputs[k]} onChange={(e) => setAt(k, e.target.value)} inputMode="decimal" onFocus={() => setFocus(k)}
                 aria-label={multi ? `Задача ${no}, шаг ${pt.label}` : `Ответ к задаче ${no}`}
-                placeholder="ответ числом" style={{ ...inputStyle(), width: multi ? 120 : 150 }} />
+                placeholder="число" style={{ width: multi ? 112 : 150 }} />
               {pt.unit && <span>{pt.unit}</span>}
             </label>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="tb-check-row">
+          <button type="submit" className="ems-btn primary tb-check">Проверить</button>
           <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />
-          <button type="submit" className="ems-btn primary" style={{ padding: '7px 14px', fontSize: 13 }}>Проверить</button>
           <CalcToggle onUse={useCalc} labels={multi ? parts.map((pt) => pt.label) : null} target={target} onTarget={setFocus} />
         </div>
       </form>
@@ -1041,11 +1067,10 @@ function TrueFalseProblem({ block, no, ctx, from }) {
   const finish = (ok, text) => {
     Audio.play(ok ? 'stamp' : 'tick');
     const t = ok ? okText(ctx, block.id, text, saw) : text;
-    ctx.onAnswer(block.id, ok, { sawSolution: saw, confident: sure }); setStage('done'); setVerdict({ ok, reveal: true, text: t });
+    ctx.onAnswer(block.id, ok, { sawSolution: saw, ...(sure == null ? {} : { confident: sure }) }); setStage('done'); setVerdict({ ok, reveal: true, text: t });
   };
   const pick = (v) => {
     if (!ready) return;
-    if (sure == null) { setVerdict({ bad: true, text: NEED_SURE }); return; }
     if (v !== block.answer) {
       finish(false, `Утверждение ${block.answer ? 'верно' : 'неверно'}. ${WRONG}`);
       setVerdict((vd) => ({ ...vd, traps: (block.traps || []).filter((tr) => tr.value === v) }));
@@ -1059,13 +1084,13 @@ function TrueFalseProblem({ block, no, ctx, from }) {
       onSolutionOpen={() => { if (stage === 'write') setSaw(true); }} given={why}>
       <textarea value={why} onChange={(e) => setWhy(e.target.value)} rows={2} aria-label={`Объяснение к задаче ${no}`} disabled={stage !== 'write'}
         placeholder="Почему? Одна-две фразы"
-        style={{ ...inputStyle(), width: '100%', fontSize: 13, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
-      {stage === 'write' && <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />}
+        className="tb-input" style={{ width: '100%', fontSize: 14.5, resize: 'vertical', marginBottom: 8, fontFamily: 'inherit' }} />
       {stage === 'write' && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="tb-check-row" style={{ marginTop: 4 }}>
           <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} disabled={!ready} onClick={() => pick(true)}>Верно</button>
           <button type="button" className="ems-btn primary" style={{ padding: '7px 16px', fontSize: 13 }} disabled={!ready} onClick={() => pick(false)}>Неверно</button>
           {!ready && <span style={{ fontSize: 12, color: COLOR.faint }}>сначала объяснение</span>}
+          <SurePick value={sure} onChange={(v) => { setSure(v); setVerdict(null); }} />
         </div>
       )}
       {stage !== 'write' && (
@@ -1619,19 +1644,19 @@ function ExamPage({ id, ctx }) {
         const row = result && result.rows.find((r) => r.id === pid);
         const multi = b.parts.length > 1;
         return (
-          <div key={pid} className="ems-panel" style={{ padding: 14, margin: '12px 0' }} data-testid="exam-problem" data-problem={pid}>
+          <div key={pid} className="tb-prob" style={{ margin: '14px 0' }} data-testid="exam-problem" data-problem={pid}>
             <div className="row-between" style={{ alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
-              <span className="ems-serif" style={{ fontSize: 14, color: COLOR.goldSoft }}>Задача {i + 1}</span>
+              <span className="tb-prob-title">Задача {i + 1}</span>
               {row && <span className="tb-chip" style={{ color: row.ok ? COLOR.teal : COLOR.rust, borderColor: row.ok ? COLOR.teal : COLOR.rust }}>{row.ok ? 'верно' : 'неверно'}</span>}
             </div>
             <div className="tb-body"><Blocks blocks={b.statement} ctx={ctx} /></div>
-            <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="tb-fields">
               {b.parts.map((pt, k) => (
-                <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: COLOR.muted }}>
-                  {pt.label && <span className="ems-mono" style={{ color: COLOR.text }}>{pt.label}</span>}
-                  <input value={(answers[pid] || [])[k] || ''} onChange={(e) => setAt(pid, k, e.target.value)} inputMode="decimal" disabled={!!result}
+                <label key={k} className="tb-field">
+                  {pt.label && <b>{pt.label}</b>}
+                  <input className="tb-input" value={(answers[pid] || [])[k] || ''} onChange={(e) => setAt(pid, k, e.target.value)} inputMode="decimal" disabled={!!result}
                     aria-label={multi ? `Проверка, задача ${i + 1}, шаг ${pt.label}` : `Проверка, ответ к задаче ${i + 1}`}
-                    placeholder="ответ числом" style={{ ...inputStyle(), width: multi ? 120 : 150 }} />
+                    placeholder="число" style={{ width: multi ? 112 : 150 }} />
                   {pt.unit && <span>{pt.unit}</span>}
                 </label>
               ))}

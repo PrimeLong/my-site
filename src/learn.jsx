@@ -2142,7 +2142,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       // флажок страницы — про теорию; выделенный в тексте кусок приложится цитатой
       return <><ReportFlag context={context} reasons={THEORY_REASONS} /><QuoteReport context={context} /></>;
     },
-    reportFlag: (context) => <ReportFlag context={context} label="Сообщить об ошибке" withText />,
+    reportFlag: (context) => <ReportFlag context={context} label="Сообщить об ошибке" />,
   };
   const accent = placeOf((pathState(learn).find((s) => s.current) || pathState(learn)[0] || { course: { id: 'supply-demand' } }).course.id).color;
   // наряд из лавки — на всех Инфлях обучения: в уроке, на итогах, на Пути и в профиле
