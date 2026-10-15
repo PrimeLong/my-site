@@ -1952,7 +1952,8 @@ test('лавка → сад: урожай с редкостью — продат
   // собрать — урожай с редкостью, грядка свободна, ромашка в гербарии
   await garden.getByTestId('garden-harvest').click();
   const result = garden.getByTestId('garden-result');
-  await expect(result).toContainText('Новое растение в гербарии');
+  // редкость выпадает от времени посадки: у легендарного и небывалого заголовок — сама редкость
+  await expect(result).toContainText(/Новое растение в гербарии|(Легендарный|Небывалый) урожай!/i);
   await expect(result.locator('[data-grade]').first()).toBeVisible();
   await expect(garden.locator('[data-testid=herb-item][data-plant="chamomile"]')).toHaveAttribute('data-kept', '1');
   await expect(garden.locator('[data-testid=herb-item][data-plant="orchid"]')).toHaveAttribute('data-got', 'false');
@@ -2981,7 +2982,7 @@ test('новые глаголы: «Откройте сами», живая мо�
   await openTab(page, 'shop');
   await expect(page.getByTestId('shop-piggy').getByTestId('piggy-state')).toContainText('срок вышел');
   await page.getByTestId('shop-piggy').getByTestId('piggy-take').click();
-  await expect(page.getByTestId('shop-msg')).toContainText(/Забрано 1[0-2]\d монет — с процентами за неделю\./);
+  await expect(page.getByTestId('shop-msg')).toContainText(/Забрано 1[0-2]\d монет[аы]? — с процентами за неделю\./);
   expect(errors).toEqual([]);
 });
 
