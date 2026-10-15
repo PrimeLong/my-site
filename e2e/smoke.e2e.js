@@ -3175,6 +3175,20 @@ test('Путь: проверку пройденного юнита можно п
   expect(errors).toEqual([]);
 });
 
+test('время урока — только когда ученик на месте: три часа паузы не попадают в «Время»', async ({ page }) => {
+  await page.clock.install();
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sc-i1');
+  // ученик ушёл: вкладка открыта, но три часа ни касания
+  await page.clock.fastForward(3 * 3600 * 1000);
+  await playLesson(page);
+  await expect(page.getByTestId('lesson-result')).toBeVisible();
+  const [mm] = (await page.getByTestId('result-time').locator('.v').innerText()).split(':').map(Number);
+  expect(mm).toBeLessThan(10);
+  expect(errors).toEqual([]);
+});
+
 test('«Слушай» можно пропустить с билета урока: следующий урок открыт, пропущенный — с отметкой', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;

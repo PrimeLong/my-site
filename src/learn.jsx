@@ -27,6 +27,7 @@ import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbo
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
 import { afterPathAnswer, dropFromReview } from './textbook/review-sync.js';
+import { activeClock, tickClock, actClock } from './learn/active-time.js';
 import {
   UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
@@ -670,9 +671,24 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const feed = !!lesson && (lesson.kind === 'story' || lesson.kind === 'listen');
   const [history, setHistory] = useState(rs ? rs.history || [] : []);
   const [pulse, setPulse] = useState(0);
+  /* время урока — только активное: вкладка видна и ученик недавно что-то делал (src/learn/active-time.js);
+     itemStart — отметка этих часов на начале задания */
+  const clock = useRef(activeClock(Date.now(), rs ? rs.elapsed || 0 : 0));
+  const visibleNow = () => typeof document === 'undefined' || !document.hidden;
+  const activeNow = () => { clock.current = tickClock(clock.current, Date.now(), visibleNow()); return clock.current.ms; };
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const act = () => { clock.current = actClock(clock.current, Date.now(), visibleNow()); };
+    const vis = () => { clock.current = tickClock(clock.current, Date.now(), visibleNow()); };
+    const id = setInterval(vis, 1000);
+    const evs = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    evs.forEach((e) => window.addEventListener(e, act, { passive: true, capture: true }));
+    document.addEventListener('visibilitychange', vis);
+    return () => { clearInterval(id); evs.forEach((e) => window.removeEventListener(e, act, { capture: true })); document.removeEventListener('visibilitychange', vis); };
+  }, []);
   const acc = useRef({
     first: rs ? rs.first : {}, hinted: rs ? rs.hinted : {}, solved: new Set(rs ? rs.solved : []),
-    start: Date.now() - (rs ? rs.elapsed || 0 : 0), itemStart: Date.now(), retries: rs ? rs.retries : 0,
+    itemStart: clock.current.ms, retries: rs ? rs.retries : 0,
   });
   const [started, setStarted] = useState(!!rs);
   /* урок — слой поверх страницы: пока он открыт, страница под ним не прокручивается и не
@@ -711,7 +727,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // урок начат — с первого ответа
     if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
     const firstTime = !(orig in a.first);
-    const ms = Date.now() - a.itemStart;
+    const ms = activeNow() - a.itemStart;
     if (firstTime) {
       a.first[orig] = r.ok;
       // аналитика без персональных данных: верно ли с первой попытки — по упражнению (api/events.js)
@@ -761,7 +777,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // вступительный тест может закончиться раньше — точность по заданным вопросам
     const asked = run.mode === 'placement' ? Object.keys(a.first).length : total;
     const accuracy = asked ? (firstOk / asked) * 100 : 0;
-    const ms = Date.now() - a.start;
+    const ms = activeNow();
     const now = Date.now();
     let xp = 0; let pass = null; let opened = null;
     const done = { accuracy, now, seconds: ms / 1000, kind: lesson ? lesson.kind : null, mode: run.mode };
@@ -809,7 +825,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // вступительный тест: пятёрка юнита провалена — дальше спрашивать незачем
     if (run.mode === 'placement' && cur && placementFailed(plan.items, acc.current.first, cur.placeUnit)) { finish(); return; }
     setPos(pos + 1); setResp(null); setFb(null); setSel(null); setTerm(null); setCalcOpen(false); setHow(false);
-    acc.current.itemStart = Date.now();
+    acc.current.itemStart = activeNow();
     if (cardFor(queue[pos + 1])) setStage('card');
   };
   const openTerm = (id) => {
@@ -826,7 +842,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       const at = fb && !fb.empty ? pos + 1 : pos;
       saveResume(run.lessonId, {
         plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
-        first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: Date.now() - a.start,
+        first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
         cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history,
       });
       if (at >= queue.length) dropResume(run.lessonId);
@@ -913,12 +929,12 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
         const go = () => {
           Audio.play('paper');
           if (!last) { setCardIdx(cardIdx + 1); return; }
-          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
         const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
         // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
         if (c.flash) {
-          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work'); };
+          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work'); };
           return (
             <WordDeck key={cur.uid} cards={list} onDone={done}
               body={(inner) => (
@@ -1044,7 +1060,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           Audio.play('paper');
           setHistory((h) => [...h, { type: 'msg', key: `m:${cur.uid}:${idx}`, card: liveCard }]);
           if (!last) { setCardIdx(cardIdx + 1); return; }
-          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
         return (
           <>
