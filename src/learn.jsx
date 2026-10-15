@@ -204,6 +204,15 @@ const CSS = `
   .ln-foot.fb { padding: 0; border-top: none; }
   .ln-kind { margin-bottom: 8px; }
   .ln-prompt { margin-bottom: 12px; }
+  /* урок на ПК — крупнее: на большом экране колонка телефона в 560 px терялась посередине. Весь урок
+     (шапка, текст, графики, кнопки, плашка ответа) масштабируется целиком — пропорции те же */
+  @media (min-width: 1000px) {
+    .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.2; }
+    .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
+    .ln-body .ds-opt { font-size: 18px; line-height: 1.4; padding: 15px 18px; }
+    .ln-body .ds-h1 { font-size: 30px !important; }
+  }
+  @media (min-width: 1400px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.32; } }
   /* урок на телефоне — крупнее: экран почти пустой, а читать и попадать пальцем должно быть легко */
   @media (max-width: 600px) {
     .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
