@@ -3406,6 +3406,18 @@ test('ПК от 1024 px: Путь в две колонки, у главы уче
     await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'elasticity');
     await expect(toc.locator('[aria-current="page"]')).toContainText('Эластичность');
     expect(await noScroll()).toBe(true);
+    // крупный текст: боковая панель не уходит за низ экрана, «В этой главе» докручивается до конца
+    const plus = page.getByRole('button', { name: 'Крупнее текст' });
+    while (await plus.isEnabled()) await plus.click();
+    const aside = page.locator('.tb-ch-aside');
+    // страницу прокрутили вниз — панель закреплена у верха и целиком на экране
+    await page.evaluate(() => window.scrollTo(0, 1500));
+    await page.waitForTimeout(200);
+    await aside.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    const last = page.getByTestId('tb-sections').locator('li').last();
+    await expect(last).toBeInViewport();
+    const ab = await aside.boundingBox();
+    expect(ab.y + ab.height).toBeLessThanOrEqual(900 + 1);
   }
   expect(errors).toEqual([]);
 });

@@ -194,7 +194,9 @@ export const TEXTBOOK_CSS = `
     .ln-textbook.wide { max-width: 1240px !important; }
     .ln-textbook.wide .tbl-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
     .ln-textbook.wide .tb-ch-grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 36px; align-items: start; }
-    .ln-textbook.wide .tb-ch-aside { position: sticky; top: 64px; max-height: calc(100vh - 160px); overflow: auto; }
+    /* учебник с увеличенным текстом масштабируется (zoom): высоту панели делим на масштаб, иначе она
+       уходила за низ экрана и «В этой главе» нельзя было докрутить до конца */
+    .ln-textbook.wide .tb-ch-aside { position: sticky; top: calc(64px / var(--tb-zoom, 1)); max-height: calc((100vh - 96px) / var(--tb-zoom, 1)); overflow: auto; overscroll-behavior: contain; }
     .ln-textbook.wide .tb-ch-main { max-width: 860px; }
     .ln-textbook.wide .tb-body { font-size: 16px; }
   }
@@ -2133,7 +2135,7 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     <>
       <style>{TEXTBOOK_CSS + STATS_CSS}</style>
       {!(embedded && cur.kind === 'toc') && <ReaderBar scale={scale} setScale={setScale} />}
-      <div style={{ zoom: scale }} data-testid="tb-content">
+      <div style={{ zoom: scale, '--tb-zoom': scale }} data-testid="tb-content">
         {cur.kind === 'toc' && <TocPage ctx={ctx} />}
         {cur.kind === 'review' && <ReviewPage ctx={ctx} />}
         {cur.kind === 'exam' && <ExamPage key={cur.id} id={cur.id} ctx={ctx} />}
