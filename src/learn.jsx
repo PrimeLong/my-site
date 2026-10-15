@@ -182,6 +182,12 @@ const CSS = `
      встряска после ошибки и свайп карточки двигают его вбок (без overflow-x: hidden из-за
      overflow-y: auto появлялся горизонтальный ползунок), а появление шага — не сдвигом вниз
      (сдвиг на 14 px на миг давал вертикальный), а проявлением */
+  /* «Газета»: подпись слева переносится, три кнопки справа — всегда в одну строку (жалоба mv79vr3e: съезжали на 360 px) */
+  .ln-news-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; padding: 6px 0; border-bottom: 1px dashed var(--ds-rule2); }
+  .ln-news-row:last-child { border-bottom: none; }
+  .ln-news-label { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; }
+  .ln-news-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .ln-news-btns .ds-chip { margin: 0; min-width: 46px; padding: 8px 0; }
   .ln-calc-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 10px; }
   .ln-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 320px; margin: 0 auto; }
   @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
@@ -426,9 +432,9 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
           <div className="tb-news" style={{ marginTop: 0 }}><div className="ems-mono tb-news-mast">ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div><div className="ems-serif tb-news-head">{inst.headline}</div></div>
           <div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           {inst.vars.map((v) => (
-            <div key={v.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '6px 0' }}>
-              <span style={{ fontSize: 15 }}>{v.label}</span>
-              <span>
+            <div key={v.key} className="ln-news-row">
+              <span className="ln-news-label">{v.label}</span>
+              <span className="ln-news-btns">
                 {[['+', '↑'], ['-', '↓'], ['0', '—']].map(([d, l]) => (
                   <button key={d} type="button" className={`ds-chip ${fb && inst.expect[v.key] === d ? 'right' : ''}`} aria-pressed={r[v.key] === d} data-var={v.key} data-dir={d}
                     aria-label={`${v.label}: ${({ '+': 'вверх', '-': 'вниз', 0: 'не изменится' })[d]}`} disabled={locked}
