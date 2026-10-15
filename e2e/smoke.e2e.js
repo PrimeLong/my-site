@@ -3152,6 +3152,31 @@ test('Путь: проверку пройденного юнита можно п
   expect(errors).toEqual([]);
 });
 
+test('«Слушай» можно пропустить с билета урока: следующий урок открыт, пропущенный — с отметкой', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum',
+      'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await showUnit(page, 'supply-demand');
+  await expect(pathNode(page, 'sd-g')).toHaveAttribute('data-state', 'locked');
+  await pathNode(page, 'sd-l-radio').click();
+  const sheet = page.getByTestId('lesson-sheet');
+  await sheet.getByTestId('lesson-skip').click();
+  await expect(sheet).toHaveCount(0);
+  await expect(pathNode(page, 'sd-l-radio')).toHaveAttribute('data-skipped', 'true');
+  await expect(pathNode(page, 'sd-g')).toHaveAttribute('data-state', 'open');
+  // на билете пропущенного — «Начать» и пояснение, кнопки пропуска больше нет
+  await pathNode(page, 'sd-l-radio').click();
+  await expect(sheet.getByTestId('lesson-skipped-note')).toBeVisible();
+  await expect(sheet.getByTestId('lesson-skip')).toHaveCount(0);
+  await expect(sheet.getByTestId('lesson-start')).toHaveText(/^Начать/);
+  expect(errors).toEqual([]);
+});
+
 test('повторение: трудную задачу можно убрать — уходит и из учебника, и из ошибок Пути', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('ems-textbook-v1')) return;

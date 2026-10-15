@@ -37,7 +37,7 @@ export const emptyLearn = () => ({
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
   profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
   topics: {}, recent: '', recentAt: 0, daily: {},
-  coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
+  coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
   seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, garden: {}, harvest: {}, water: {},
 });
@@ -153,6 +153,8 @@ export const recordBest = (s, gameId, score) => ((s.best || {})[gameId] >= score
 // ошибки уходят в практику, верный ответ в практике их убирает
 export const addMistake = (s, id, now = Date.now()) => upd(s, { mistakes: [...s.mistakes.filter((m) => m.id !== id), { id, at: now }].slice(-MAX_MISTAKES) });
 export const resolveMistake = (s, id) => upd(s, { mistakes: s.mistakes.filter((m) => m.id !== id) });
+// «Слушай» пропущен с билета урока: следующий урок открыт, сам урок не пройден (docs/mechanics.md)
+export const skipLesson = (s, id, now = Date.now()) => ((s.skipped || {})[id] ? s : upd(s, { skipped: { ...s.skipped, [id]: now } }));
 /* Подсказка ничем не наказывается: ни опытом, ни плашкой. Единственное невидимое следствие —
    упражнение, решённое с подсказкой, попадает в «Повторение» раньше остальных (сразу после
    ошибок). Решено потом без подсказки — снимается с этого списка. */
@@ -457,7 +459,7 @@ function normalizeProgram(r) {
     coins: dayMap(r.coins, 1e6), spent: dayMap(r.spent, 1e6), freezeBuy: dayMap(r.freezeBuy, MAX_FREEZES * 5),
     frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
     policyAt: cnt(r.policyAt, 1e14), policyOff: cnt(r.policyOff, 1e14), policyLapse: cnt(r.policyLapse, 1e14), premiums: dayMap(r.premiums, PREMIUM * 10), monthPlan: monthPlanMap(r.monthPlan),
-    claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
+    claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)), skipped: tsMap(r.skipped, 60),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
     piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
@@ -479,7 +481,7 @@ function mergeProgram(x, y) {
     topics, daily,
     recent: laterRecent ? y.recent : x.recent, recentAt: Math.max(x.recentAt, y.recentAt),
     coins: maxMap(x.coins, y.coins), spent: maxMap(x.spent, y.spent), freezeBuy: maxMap(x.freezeBuy, y.freezeBuy),
-    frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned),
+    frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned), skipped: minTs(x.skipped, y.skipped),
     policyAt: Math.max(x.policyAt, y.policyAt), policyOff: Math.max(x.policyOff, y.policyOff), policyLapse: Math.max(x.policyLapse, y.policyLapse), premiums: maxMap(x.premiums, y.premiums), monthPlan: mergeMonthPlan(x.monthPlan, y.monthPlan),
     seen: maxMap(x.seen, y.seen), best: maxMap(x.best, y.best), boost: Math.max(x.boost, y.boost),
     piggy: maxMap(x.piggy, y.piggy), piggyOut: maxMap(x.piggyOut, y.piggyOut),

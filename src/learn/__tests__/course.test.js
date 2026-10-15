@@ -895,3 +895,29 @@ describe('тест уровня', () => {
     expect(start.passMistakes).toBe(1);
   });
 });
+
+describe('«Слушай» можно пропустить с билета урока', () => {
+  it('пропущенный «Слушай» открывает следующий урок, но не пройден: юнит не завершён, после прохождения отметка не нужна', async () => {
+    const { skipLesson } = await import('../../textbook/learn-state.js');
+    const unit = UNIT_BY_ID['supply-demand'];
+    const k = unit.lessons.findIndex((l) => l.kind === 'listen');
+    const listen = unit.lessons[k]; const next = unit.lessons[k + 1];
+    const at = 1e12;
+    let s = emptyLearn();
+    // всё до «Слушай» пройдено
+    [...UNIT_BY_ID.scarcity.lessons, ...unit.lessons.slice(0, k)].forEach((l) => { s = finishLesson(s, l.id, { xp: 10, accuracy: 100, now: at }); });
+    const before = pathState(s).find((x) => x.course.id === 'supply-demand');
+    expect(before.lessons.find((l) => l.id === next.id).open).toBe(false);
+    s = skipLesson(s, listen.id, at + 1);
+    const st = pathState(s).find((x) => x.course.id === 'supply-demand');
+    const L = st.lessons.find((l) => l.id === listen.id);
+    expect(L).toMatchObject({ open: true, done: false, skipped: true });
+    expect(st.lessons.find((l) => l.id === next.id).open).toBe(true);
+    expect(st.current.id).toBe(next.id);
+    expect(st.complete).toBe(false);
+    // отметка переживает слияние устройств; пройденный урок — уже не «пропущен»
+    expect(mergeLearn(s, emptyLearn()).skipped[listen.id]).toBe(at + 1);
+    s = finishLesson(s, listen.id, { xp: 10, accuracy: 100, now: at + 2 });
+    expect(pathState(s).find((x) => x.course.id === 'supply-demand').lessons.find((l) => l.id === listen.id).skipped).toBeUndefined();
+  });
+});

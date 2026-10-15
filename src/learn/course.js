@@ -844,10 +844,12 @@ export function pathState(learn) {
       const entry = learn.lessons[l.id];
       const done = !!(entry && entry.runs > 0);
       const open = done || prevDone || tested;
-      prevDone = done || tested;
-      return { id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond) };
+      // пропущенный «Слушай» открывает следующий урок, но сам остаётся не пройденным
+      const skipped = !done && open && !!(learn.skipped || {})[l.id];
+      prevDone = done || tested || skipped;
+      return { id: l.id, no: l.no, title: l.title, done, open, diamond: !!(done && entry.diamond), ...(skipped ? { skipped: true } : {}) };
     });
-    const current = lessons.find((l) => l.open && !l.done) || null;
+    const current = lessons.find((l) => l.open && !l.done && !l.skipped) || lessons.find((l) => l.open && !l.done) || null;
     return { course: u, lessons, current, complete: lessons.every((l) => l.done), tested };
   });
 }
