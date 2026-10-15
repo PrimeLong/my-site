@@ -34,7 +34,8 @@ const LEAGUE_CSS = `
   .lg-zone-head span:last-child { margin-left: auto; font: 400 12.5px var(--ds-sans); text-transform: none; letter-spacing: 0; color: var(--ds-ink3); }
   .lg-zone-head.up { color: var(--ds-ok); } .lg-zone-head.down { color: var(--ds-bad); } .lg-zone-head.stay { color: var(--ds-ink2); }
   .lg-rows { list-style: none; margin: 0; padding: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--ds-rule2); }
-  .lg-row { display: grid; grid-template-columns: 30px 30px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 10px 7px 8px; background: var(--ds-card); border-top: 1px solid var(--ds-rule); position: relative; }
+  /* колонка опыта одной ширины во всех строках: иначе дорожка полоски была разной длины и 94 выглядело дальше 97 */
+  .lg-row { display: grid; grid-template-columns: 30px 30px minmax(0, 1fr) 80px; gap: 8px; align-items: center; padding: 7px 10px 7px 8px; background: var(--ds-card); border-top: 1px solid var(--ds-rule); position: relative; }
   .lg-row:first-child { border-top: none; }
   .lg-row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--zone, transparent); }
   .lg-row.me { background: var(--ds-sel); color: var(--ds-sel-ink); }
@@ -46,7 +47,7 @@ const LEAGUE_CSS = `
   .lg-xpbar { height: 4px; border-radius: 2px; background: var(--ds-rule); margin-top: 4px; overflow: hidden; }
   .lg-xpbar span { display: block; height: 100%; background: var(--zone-bar, var(--ds-ink3)); opacity: .7; }
   .lg-xp { font: 700 14px var(--ds-mono); text-align: right; white-space: nowrap; }
-  .lg-xp small { display: block; font: 700 12px var(--ds-sans); color: var(--ds-gold-soft, #9a7413); }
+  .lg-xp small { display: block; font: 700 12px var(--ds-sans); color: var(--ds-gold, #9a6300); }
   .lg-reward { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; margin: 14px 0 0; padding: 12px; border-radius: 10px; border: 2px solid var(--ds-gold, #9a7413);
     background: color-mix(in srgb, var(--ds-gold, #9a7413) 10%, var(--ds-card)); }
   .lg-rules { margin-top: 16px; }

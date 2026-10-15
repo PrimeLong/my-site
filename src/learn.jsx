@@ -26,13 +26,14 @@ import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
-import { afterPathAnswer } from './textbook/review-sync.js';
+import { afterPathAnswer, dropFromReview } from './textbook/review-sync.js';
+import { activeClock, tickClock, actClock } from './learn/active-time.js';
 import {
   UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, check, ready, answerText, unitFor, pathState,
   buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
 } from './learn/course.js';
 import {
-  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
+  startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak, longestStreak, bestWeek,
   goalToday, missedYesterday, learnStats, studyWeeks, XP, applyFreezes, setPlacement, ownedFreezes, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, balance, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, policyActive, fixMonth } from './learn/rewards.js';
@@ -154,6 +155,8 @@ const CSS = `
   .ln-token.done { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 82%, #fff); box-shadow: 0 5px 0 color-mix(in srgb, var(--u) 68%, #000); }
   .ln-token.done:active { box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 68%, #000); }
   .ln-token.locked { border-style: dashed; color: var(--ds-ink3); box-shadow: none; background: var(--ds-card2); }
+  /* пропущенный «Слушай»: открыт, но не пройден — пунктир цвета юнита */
+  .ln-token.skipped { border-style: dashed; border-color: color-mix(in srgb, var(--u) 60%, var(--ds-rule2)); color: var(--u-ink); }
   .ln-token.cur { border-color: var(--u); border-width: 3px; color: var(--u-ink); box-shadow: 0 5px 0 color-mix(in srgb, var(--u) 45%, var(--ds-rule2)); }
   .ln-token.cur::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--u) 55%, transparent); animation: ds-ring 1.8s ease-out infinite; pointer-events: none; }
   /* пройдено — золотая отметка (не красная: красный читается как ошибка) */
@@ -176,12 +179,21 @@ const CSS = `
   .ln-pin::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: var(--u); }
   .ln-stop-title { background: none; border: none; padding: 2px 4px; font: 700 13.5px/1.25 var(--ds-head); max-width: 170px; text-align: center; cursor: pointer; color: var(--ds-ink); }
   .ln-stop-title.locked { color: var(--ds-ink3); }
+  .ln-skip-tag { font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
   .ln-overlay { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; }
   .ln-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; max-width: 592px; width: 100%; margin: 0 auto; }
   /* прокрутка урока — только по вертикали и только когда содержимое правда длиннее экрана:
      встряска после ошибки и свайп карточки двигают его вбок (без overflow-x: hidden из-за
      overflow-y: auto появлялся горизонтальный ползунок), а появление шага — не сдвигом вниз
      (сдвиг на 14 px на миг давал вертикальный), а проявлением */
+  /* «Газета»: подпись слева переносится, три кнопки справа — всегда в одну строку (жалоба mv79vr3e: съезжали на 360 px) */
+  .ln-news-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; padding: 6px 0; border-bottom: 1px dashed var(--ds-rule2); }
+  .ln-news-row:last-child { border-bottom: none; }
+  .ln-news-label { flex: 1; min-width: 0; font-size: 15px; line-height: 1.35; }
+  .ln-news-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .ln-news-btns .ds-chip { margin: 0; min-width: 46px; padding: 8px 0; }
+  .ln-hard-note { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin-top: 6px; font-size: 13.5px; }
+  .ln-hard-note .ln-how { margin-top: 0; }
   .ln-calc-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 10px; }
   .ln-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 320px; margin: 0 auto; }
   @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
@@ -193,6 +205,15 @@ const CSS = `
   .ln-foot.fb { padding: 0; border-top: none; }
   .ln-kind { margin-bottom: 8px; }
   .ln-prompt { margin-bottom: 12px; }
+  /* урок на ПК — крупнее: на большом экране колонка телефона в 560 px терялась посередине. Весь урок
+     (шапка, текст, графики, кнопки, плашка ответа) масштабируется целиком — пропорции те же */
+  @media (min-width: 1000px) {
+    .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.2; }
+    .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
+    .ln-body .ds-opt { font-size: 18px; line-height: 1.4; padding: 15px 18px; }
+    .ln-body .ds-h1 { font-size: 30px !important; }
+  }
+  @media (min-width: 1400px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.32; } }
   /* урок на телефоне — крупнее: экран почти пустой, а читать и попадать пальцем должно быть легко */
   @media (max-width: 600px) {
     .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
@@ -278,6 +299,22 @@ function useLearn() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { timer.current = null; syncProfile(playerId).catch(() => {}); }, 2000);
   };
+  /* тихая синхронизация (docs/mechanics.md): вернулись на вкладку (разблокировали телефон, пришли
+     домой к компьютеру) и раз в минуту, пока вкладка открыта, — забираем общий прогресс профиля.
+     Пройденный на телефоне урок появляется на компьютере сам, без перезагрузки. Не чаще раза в 20 с. */
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    let last = Date.now(); let alive = true;
+    const pull = () => {
+      if (document.hidden || Date.now() - last < 20000) return;
+      last = Date.now();
+      syncProfile(playerId).then((pf) => { if (alive && pf) setProgress(loadProgress()); }).catch(() => {});
+    };
+    const id = setInterval(pull, 60000);
+    document.addEventListener('visibilitychange', pull);
+    window.addEventListener('focus', pull);
+    return () => { alive = false; clearInterval(id); document.removeEventListener('visibilitychange', pull); window.removeEventListener('focus', pull); };
+  }, [playerId]);
   // учебник записал прогресс (ответ снял ошибку с повторения Пути) — перечитываем
   useEffect(() => {
     const reload = (e) => { if (e.detail) setProgress((p) => (p === e.detail ? p : e.detail)); };
@@ -426,9 +463,9 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
           <div className="tb-news" style={{ marginTop: 0 }}><div className="ems-mono tb-news-mast">ЭКОНОМИЧЕСКІЙ ВѢСТНИКЪ</div><div className="ems-serif tb-news-head">{inst.headline}</div></div>
           <div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>
           {inst.vars.map((v) => (
-            <div key={v.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, margin: '6px 0' }}>
-              <span style={{ fontSize: 15 }}>{v.label}</span>
-              <span>
+            <div key={v.key} className="ln-news-row">
+              <span className="ln-news-label">{v.label}</span>
+              <span className="ln-news-btns">
                 {[['+', '↑'], ['-', '↓'], ['0', '—']].map(([d, l]) => (
                   <button key={d} type="button" className={`ds-chip ${fb && inst.expect[v.key] === d ? 'right' : ''}`} aria-pressed={r[v.key] === d} data-var={v.key} data-dir={d}
                     aria-label={`${v.label}: ${({ '+': 'вверх', '-': 'вниз', 0: 'не изменится' })[d]}`} disabled={locked}
@@ -650,9 +687,24 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const feed = !!lesson && (lesson.kind === 'story' || lesson.kind === 'listen');
   const [history, setHistory] = useState(rs ? rs.history || [] : []);
   const [pulse, setPulse] = useState(0);
+  /* время урока — только активное: вкладка видна и ученик недавно что-то делал (src/learn/active-time.js);
+     itemStart — отметка этих часов на начале задания */
+  const clock = useRef(activeClock(Date.now(), rs ? rs.elapsed || 0 : 0));
+  const visibleNow = () => typeof document === 'undefined' || !document.hidden;
+  const activeNow = () => { clock.current = tickClock(clock.current, Date.now(), visibleNow()); return clock.current.ms; };
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const act = () => { clock.current = actClock(clock.current, Date.now(), visibleNow()); };
+    const vis = () => { clock.current = tickClock(clock.current, Date.now(), visibleNow()); };
+    const id = setInterval(vis, 1000);
+    const evs = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'];
+    evs.forEach((e) => window.addEventListener(e, act, { passive: true, capture: true }));
+    document.addEventListener('visibilitychange', vis);
+    return () => { clearInterval(id); evs.forEach((e) => window.removeEventListener(e, act, { capture: true })); document.removeEventListener('visibilitychange', vis); };
+  }, []);
   const acc = useRef({
     first: rs ? rs.first : {}, hinted: rs ? rs.hinted : {}, solved: new Set(rs ? rs.solved : []),
-    start: Date.now() - (rs ? rs.elapsed || 0 : 0), itemStart: Date.now(), retries: rs ? rs.retries : 0,
+    itemStart: clock.current.ms, retries: rs ? rs.retries : 0,
   });
   const [started, setStarted] = useState(!!rs);
   /* урок — слой поверх страницы: пока он открыт, страница под ним не прокручивается и не
@@ -670,6 +722,18 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   // вступительный тест — в цвете юнита, который сейчас проверяется; алмазный уровень — в своём
   const color = diamond ? DIAMOND_COLOR : unitColor(lesson ? lesson.unitId : run.unitId || (cur && cur.placeUnit) || 'scarcity');
 
+  // «Убрать из повторения» после ошибки в трудной задаче: из ошибок Пути и из повторения учебника,
+  // повтор в конце урока тоже снимается
+  const [dropped, setDropped] = useState(false);
+  useEffect(() => { setDropped(false); }, [pos]);
+  const dropHard = () => {
+    if (!cur) return;
+    Audio.play('paper');
+    update((p) => dropFromReview(p, cur.of || cur.id), { whole: true });
+    setQueue((q) => q.filter((x, i) => i <= pos || (x.orig || x.uid) !== orig));
+    acc.current.solved.add(orig);
+    setDropped(true);
+  };
   const doCheck = (given) => {
     const answer = given !== undefined ? given : resp;
     if (!cur || fb || (given === undefined && !ready(cur, answer))) return;
@@ -679,7 +743,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // урок начат — с первого ответа
     if (!started) { setStarted(true); update(startLesson); if (run.mode === 'lesson') track('lesson_start', { lesson: run.lessonId }); }
     const firstTime = !(orig in a.first);
-    const ms = Date.now() - a.itemStart;
+    const ms = activeNow() - a.itemStart;
     if (firstTime) {
       a.first[orig] = r.ok;
       // аналитика без персональных данных: верно ли с первой попытки — по упражнению (api/events.js)
@@ -688,7 +752,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       if (r.ok && run3 >= 1) setPulse((p) => p + 1);
       // встреченное упражнение: в повторение и проверки первыми пойдут те, что виделись реже
       const seenId = cur.of || cur.id;
-      update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null, run: r.ok ? run3 + 1 : 0 }), seenId));
+      update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null }), seenId));
       if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
       if (GAME_KINDS.includes(cur.kind) && answer) a.game = { right: answer.right, answered: answer.answered, ok: r.ok };
     }
@@ -707,8 +771,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       setRun3(0);
       Audio.play('down'); vibrate([30, 40, 30]);
       if (run.mode === 'lesson') update((s) => addMistake(s, cur.of || cur.id));
-      // повтор в конце урока — не та же задача: новые числа или похожий вопрос на ту же мысль
-      if (retryable && !cur.noRetry) {
+      // повтор в конце урока — не та же задача: новые числа или похожий вопрос на ту же мысль;
+      // трудная задача (семинарская, олимпиадная) возвращается один раз, а не до победного
+      if (retryable && !cur.noRetry && !(cur.hard && cur.retry)) {
         a.retries += 1;
         const copy = retryOf(cur, Math.random, queue.map((q) => q.of || q.id));
         setQueue((q) => [...q, { ...copy, uid: `${cur.uid}r${a.retries}`, orig, retry: true }]);
@@ -728,7 +793,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // вступительный тест может закончиться раньше — точность по заданным вопросам
     const asked = run.mode === 'placement' ? Object.keys(a.first).length : total;
     const accuracy = asked ? (firstOk / asked) * 100 : 0;
-    const ms = Date.now() - a.start;
+    const ms = activeNow();
     const now = Date.now();
     let xp = 0; let pass = null; let opened = null;
     const done = { accuracy, now, seconds: ms / 1000, kind: lesson ? lesson.kind : null, mode: run.mode };
@@ -776,7 +841,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     // вступительный тест: пятёрка юнита провалена — дальше спрашивать незачем
     if (run.mode === 'placement' && cur && placementFailed(plan.items, acc.current.first, cur.placeUnit)) { finish(); return; }
     setPos(pos + 1); setResp(null); setFb(null); setSel(null); setTerm(null); setCalcOpen(false); setHow(false);
-    acc.current.itemStart = Date.now();
+    acc.current.itemStart = activeNow();
     if (cardFor(queue[pos + 1])) setStage('card');
   };
   const openTerm = (id) => {
@@ -793,7 +858,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       const at = fb && !fb.empty ? pos + 1 : pos;
       saveResume(run.lessonId, {
         plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
-        first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: Date.now() - a.start,
+        first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
         cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history,
       });
       if (at >= queue.length) dropResume(run.lessonId);
@@ -830,7 +895,14 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           how ? <div className="tb-body" style={{ fontSize: 15, marginTop: 6, color: 'inherit' }} data-testid="ex-how"><Blocks blocks={inst.explain} ctx={noopCtx} /></div>
             : <button type="button" className="ln-how" data-testid="ex-how-open" onClick={() => { Audio.play('paper'); setHow(true); }}>Как решать</button>
         )}
-        {!fb.ok && retryable && !inst.noRetry && <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 4 }}>{feed ? 'Вопрос вернётся в конце урока.' : 'Задача вернётся в конце урока.'}</div>}
+        {!fb.ok && retryable && !inst.noRetry && !inst.hard && <div className="ds-sub" style={{ fontSize: 13.5, marginTop: 4 }}>{feed ? 'Вопрос вернётся в конце урока.' : 'Задача вернётся в конце урока.'}</div>}
+        {/* трудная задача: вернётся один раз; не знаете, как решать, — можно убрать из повторения (docs/mechanics.md) */}
+        {!fb.ok && retryable && inst.hard && (
+          <div className="ln-hard-note" data-testid="hard-note">
+            <span className="ds-sub">{dropped ? 'Убрано из повторения. Решить её можно в учебнике.' : inst.retry ? 'В этом уроке задача больше не вернётся.' : 'Задача вернётся в конце урока — один раз.'}</span>
+            {!dropped && <button type="button" className="ln-how" data-testid="drop-review" onClick={dropHard}>Убрать из повторения</button>}
+          </div>
+        )}
         <Button variant={fb.ok ? 'ok' : 'warm'} wide onClick={next} autoFocus style={{ marginTop: 12 }}>Дальше</Button>
       </div>
     </AnswerBar>
@@ -873,12 +945,12 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
         const go = () => {
           Audio.play('paper');
           if (!last) { setCardIdx(cardIdx + 1); return; }
-          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
         const picture = c.chart ? <MiniChart type={c.chart} attrs={c.attrs} /> : c.pic ? <Pic name={c.pic} /> : null;
         // «Слова» — колода со своими кнопками: вспомнить, открыть, «Знаю» / «Ещё раз»
         if (c.flash) {
-          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work'); };
+          const done = () => { cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work'); };
           return (
             <WordDeck key={cur.uid} cards={list} onDone={done}
               body={(inner) => (
@@ -1004,7 +1076,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           Audio.play('paper');
           setHistory((h) => [...h, { type: 'msg', key: `m:${cur.uid}:${idx}`, card: liveCard }]);
           if (!last) { setCardIdx(cardIdx + 1); return; }
-          cardsSeen.current.add(cur.uid); acc.current.itemStart = Date.now(); setCardIdx(0); setStage('work');
+          cardsSeen.current.add(cur.uid); acc.current.itemStart = activeNow(); setCardIdx(0); setStage('work');
         };
         return (
           <>
@@ -1193,7 +1265,7 @@ const bareTitle = (t) => { const x = String(t).replace(/^Знакомство:\s
 const THEORY_KEY = 'ems-learn-theory-known';
 const readKnown = () => { try { const v = JSON.parse(localStorage.getItem(THEORY_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
 const addKnown = (id) => { try { localStorage.setItem(THEORY_KEY, JSON.stringify([...new Set([...readKnown(), id])].slice(-200))); } catch { /* приватный режим */ } };
-function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
+function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook, onSkip = null }) {
   const lesson = LESSON_BY_ID[l.id];
   // уроку нужна теория из учебника, которой ученик ещё не видел — спросим перед стартом
   const [theory] = useState(() => (l.open && !l.done && !getResume(l.id) ? theoryNotice(lesson, learn, loadProgress(), readKnown()) : null));
@@ -1225,6 +1297,7 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
       </div>
 
       <div style={{ marginTop: 16 }}>
+        {l.skipped && <div className="ds-sub" style={{ fontSize: 14, textAlign: 'center', marginBottom: 10 }} data-testid="lesson-skipped-note">Урок пропущен: следующие уже открыты. Вернитесь, когда сможете слушать, — или пройдите текстом: «Не могу слушать» внутри урока.</div>}
         {!l.open ? (
           <div className="ds-sub" style={{ fontSize: 15, textAlign: 'center' }} data-testid="lesson-sheet-locked">
             <Lock size={15} style={{ verticalAlign: -2, marginRight: 4 }} aria-hidden="true" />Откроется после предыдущего урока — или сдайте проверку юнита.
@@ -1246,9 +1319,11 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
             </div>
           </div>
         ) : resume || !l.done ? (
-          <Button wide data-testid="lesson-start" onClick={() => { Audio.prime(); Audio.play('click'); onStart({ mode: 'lesson', lessonId: l.id, resume }); }}>
-            {resume ? 'Продолжить' : 'Начать'}
-          </Button>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <Button wide data-testid="lesson-start" onClick={() => { Audio.prime(); Audio.play('click'); onStart({ mode: 'lesson', lessonId: l.id, resume }); }}>
+              {resume ? 'Продолжить' : 'Начать'}
+            </Button>
+          </div>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {(() => {
@@ -1270,6 +1345,10 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook }) {
               {weak && ' Тема пока даётся трудно — сначала стоит повторить.'}
             </div>
           </div>
+        )}
+        {/* «Слушай» можно пропустить, не заходя в урок: следующий урок откроется (docs/mechanics.md) */}
+        {lesson.kind === 'listen' && l.open && !l.done && !l.skipped && onSkip && (
+          <Button wide variant="ghost" data-testid="lesson-skip" style={{ marginTop: 8 }} onClick={() => onSkip(l.id)}>Не могу слушать сейчас — пропустить</Button>
         )}
         {resume && <div className="ds-faint" style={{ fontSize: 13, textAlign: 'center', marginTop: 8 }}>Урок сохранён с того места, где вы вышли.</div>}
       </div>
@@ -1324,10 +1403,10 @@ function Atlas({ states, sel = [], onPick }) {
       </div>
       <svg viewBox={`${MAP_BOX.x} ${MAP_BOX.y} ${MAP_BOX.w} ${MAP_BOX.h}`} width="100%" role="img" aria-label="Карта Инфляции: места юнитов на дороге" style={{ display: 'block', borderRadius: 4 }}>
         <defs>
-          <pattern id="ln-sea" width="16" height="12" patternUnits="userSpaceOnUse"><path d="M0,8 q4,-4 8,0 t8,0" fill="none" stroke="#5F82B3" strokeWidth="1.1" opacity=".45" /></pattern>
+          <pattern id="ln-sea" width="28" height="18" patternUnits="userSpaceOnUse"><path d="M0,10 q7,-5 14,0 t14,0" fill="none" stroke="#5F82B3" strokeWidth="1" opacity=".22" /></pattern>
         </defs>
         {/* море — голубоватая тушь с волнами, суша — бумага */}
-        <rect x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} fill="color-mix(in srgb, #5F82B3 13%, var(--ds-card))" />
+        <rect x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} fill="color-mix(in srgb, #5F82B3 8%, var(--ds-card))" />
         <rect x={MAP_BOX.x} y={MAP_BOX.y} width={MAP_BOX.w} height={MAP_BOX.h} fill="url(#ln-sea)" />
         <path d={countryPath} fill="var(--ds-paper)" stroke="var(--ds-ink2)" strokeWidth="2.6" />
         <path d={innerBorderPath} fill="none" stroke="var(--ds-rule2)" strokeWidth="1.6" strokeDasharray="6 6" />
@@ -1345,12 +1424,13 @@ function Atlas({ states, sel = [], onPick }) {
           return (
             <g key={u.id} style={{ '--u': pl.color, cursor: 'pointer' }} data-testid="atlas-place" data-unit={u.id} data-alive={String(alive)} data-selected={String(sel.includes(u.id))}
               onClick={() => onPick(u.id)} role="button" aria-label={`${pl.place}: к юниту`} aria-current={sel.includes(u.id) ? 'true' : undefined}>
-              {here && <circle cx={x} cy={y - 26} r="58" fill="none" stroke="var(--ds-gold)" strokeWidth="3.5" strokeDasharray="5 6" />}
-              {/* юнит, который сейчас на экране Пути, — в сплошном кольце своего цвета */}
-              {sel.includes(u.id) && <circle cx={x} cy={y - 26} r="53" fill="none" stroke="var(--u)" strokeWidth="5" />}
-              <circle cx={x} cy={y - 26} r="50" fill="var(--ds-card)" opacity=".85" />
+              {/* спокойно: места уровня на экране — тонкое кольцо приглушённого цвета юнита, текущее — пунктир цвета юнита
+                  (жалоба «карта вырвиглазная»: пять толстых ярких колец подряд кричали) */}
+              {here && <circle cx={x} cy={y - 26} r="57" fill="none" stroke="color-mix(in srgb, var(--u) 70%, var(--ds-card))" strokeWidth="2.5" strokeDasharray="5 6" />}
+              {sel.includes(u.id) && <circle cx={x} cy={y - 26} r="51" fill="none" stroke="color-mix(in srgb, var(--u) 45%, var(--ds-card))" strokeWidth="2.5" />}
+              <circle cx={x} cy={y - 26} r="49" fill="var(--ds-card)" opacity=".8" />
               <EngravingG kind={pl.building} alive={alive} x={x - 54} y={y - 72} scale={0.9} color={pl.color} />
-              <text x={x} y={y + 30} textAnchor="middle" fontSize="28" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="7" paintOrder="stroke">{pl.place}</text>
+              <text x={x} y={y + 28} textAnchor="middle" fontSize="23" fontWeight="700" fill="var(--ds-ink)" stroke="var(--ds-paper)" strokeWidth="6" paintOrder="stroke">{pl.place}</text>
             </g>
           );
         })}
@@ -1450,7 +1530,7 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
         const lesson = LESSON_BY_ID[l.id];
         const unlocking = !reduced && visible && l.open && !l.done && !seen.has(l.id);
         const KindIcon = KIND_ICON[lesson.kind] || Dumbbell;
-        const cls = l.done ? `done${l.diamond ? ' diamond' : ''}` : l.open ? '' : 'locked';
+        const cls = l.done ? `done${l.diamond ? ' diamond' : ''}` : l.skipped ? 'skipped' : l.open ? '' : 'locked';
         return (
           <div key={l.id} className="ln-stop" style={{ left: pts[i][0], top: pts[i][1] - 31 }}>
             {/* отметка: прерванный урок — «продолжить»; программа советует — «рекомендуем сейчас» */}
@@ -1460,8 +1540,8 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
               </span>
             )}
             <button type="button" className={`ln-token ${cls} ${isCur ? 'cur' : ''}`} data-testid="path-lesson" data-lesson={l.id} data-kind={lesson.kind} data-rec={isRec ? 'true' : undefined}
-              data-state={l.done ? 'done' : l.open ? 'open' : 'locked'} data-diamond={l.diamond ? 'true' : undefined} data-nav-target={`lesson:${l.id}`}
-              aria-label={`${LESSON_KIND[lesson.kind]} ${l.no}: ${l.title}${l.diamond ? ', взят на алмазном уровне' : l.done ? ', пройден' : l.open ? '' : ', закрыт'}`}
+              data-state={l.done ? 'done' : l.open ? 'open' : 'locked'} data-diamond={l.diamond ? 'true' : undefined} data-skipped={l.skipped ? 'true' : undefined} data-nav-target={`lesson:${l.id}`}
+              aria-label={`${LESSON_KIND[lesson.kind]} ${l.no}: ${l.title}${l.diamond ? ', взят на алмазном уровне' : l.done ? ', пройден' : l.skipped ? ', пропущен' : l.open ? '' : ', закрыт'}`}
               onClick={() => { Audio.prime(); Audio.play('click'); onLesson(l); }}>
               {l.done ? <><KindIcon size={26} /><span className={`ln-seal ${l.diamond ? 'diamond' : ''}`} aria-hidden="true">{l.diamond ? <Gem size={13} strokeWidth={2.6} /> : <Check size={13} strokeWidth={3.2} />}</span></>
                 : unlocking ? (
@@ -1476,7 +1556,7 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
                 узкого телефона, страница становится шире, и нижняя панель обрезается */}
             <button type="button" className={`ln-stop-title ${l.open ? '' : 'locked'}`} tabIndex={-1} aria-hidden="true" data-testid="path-lesson-title" data-lesson={l.id}
               style={{ transform: titleShift(pts[i][0], W) ? `translateX(${titleShift(pts[i][0], W)}px)` : undefined }}
-              onClick={() => { Audio.play('click'); onLesson(l); }}>{l.title}</button>
+              onClick={() => { Audio.play('click'); onLesson(l); }}>{l.title}{l.skipped && <span className="ln-skip-tag"> · пропущен</span>}</button>
           </div>
         );
       })}
@@ -2062,7 +2142,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       // флажок страницы — про теорию; выделенный в тексте кусок приложится цитатой
       return <><ReportFlag context={context} reasons={THEORY_REASONS} /><QuoteReport context={context} /></>;
     },
-    reportFlag: (context) => <ReportFlag context={context} label="Сообщить об ошибке" withText />,
+    reportFlag: (context) => <ReportFlag context={context} label="Сообщить об ошибке" />,
   };
   const accent = placeOf((pathState(learn).find((s) => s.current) || pathState(learn)[0] || { course: { id: 'supply-demand' } }).course.id).color;
   // наряд из лавки — на всех Инфлях обучения: в уроке, на итогах, на Пути и в профиле
@@ -2094,7 +2174,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {analytics && <AnalyticsView onBack={() => { Audio.play('paper'); setAnalytics(false); }} />}
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update} onClose={() => setChest(null)} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
-      {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook} />}
+      {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
+        onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}
         onClose={() => setRun(null)} onOpenBook={(page) => openBook(page)} />}
     </DsRoot>

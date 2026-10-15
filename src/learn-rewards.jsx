@@ -11,10 +11,12 @@ import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
-import { ShopSwitch, GardenView, RateWeek } from './learn-garden.jsx';
+import { ShopSwitch, RateWeek } from './learn-rate.jsx';
+// сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
+const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ default: m.GardenView })));
 import {
   balance, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, OUTFIT_BY_ID, SLOT_LABEL, shopDay, boostActive, DEAL_OFF, questsFor, QUEST_ICON, monthChallenge, monthStamps, policyInfo, takePolicy, cancelPolicy, PREMIUM,
-  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyCurve, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
+  chestCoins, chestKey, hasClaim, openChest, achievementsOf, coinsWord, plural, greetingAt, COIN, PIGGY, piggyState, piggyPut, piggyTake, piggyAdd, topupRate, piggyCurve, piggyValue, forgone, REAL_RATE, realCurve, weekRate,
   goalCoins,
 } from './learn/rewards.js';
 import { skillLevel, LEVEL_NAME, LEVEL_TEXT } from './learn/program.js';
@@ -70,6 +72,13 @@ export const REWARD_CSS = `
   .rw-book-days i { height: 8px; border-radius: 4px; background: var(--ds-rule); }
   .rw-book-days i.on { background: var(--u); }
   .rw-presets { display: flex; gap: 6px; margin: 2px 0 4px; }
+  /* вид вклада: срочный или пополняемый — две плитки со ставкой */
+  .rw-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 10px; }
+  .rw-kinds button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 11px; text-align: left; border: 2px solid var(--ds-rule2); border-radius: 14px; background: var(--ds-card); color: var(--ds-ink); font: 700 14px/1.25 var(--ds-sans); cursor: pointer; box-shadow: 0 3px 0 var(--ds-rule2); }
+  .rw-kinds button small { font: 400 12.5px/1.3 var(--ds-sans); color: var(--ds-ink2); }
+  .rw-kinds button b { font: 700 15px var(--ds-mono); color: var(--u-ink); }
+  .rw-kinds button[aria-pressed="true"] { border-color: var(--u); background: color-mix(in srgb, var(--u) 10%, var(--ds-card)); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 60%, var(--ds-card)); }
+  .rw-add { margin: 4px 0 10px; padding: 10px 12px; border-radius: 14px; background: var(--ds-card2); }
   .rw-presets button { flex: 1; min-height: 36px; border: 1.5px solid var(--ds-rule2); border-radius: 999px; background: var(--ds-card2); font: 700 13.5px var(--ds-sans); color: var(--ds-ink2); cursor: pointer; }
   .rw-book .ds-btn { margin-top: 8px; }
   .rw-real { margin-top: 10px; padding-top: 8px; border-top: 1px dotted var(--ds-rule2); }
@@ -414,7 +423,7 @@ export function ShopView({ learn, update, now = Date.now() }) {
     <div className="ln-wrap" data-testid="shop" data-view={view}>
       <div>
         <ShopSwitch view={view} onView={(v) => { Audio.play('paper'); setView(v); setMsg(null); }} learn={learn} />
-        {view === 'garden' ? <GardenView learn={learn} update={update} /> : <>
+        {view === 'garden' ? <React.Suspense fallback={<div className="ds-sub" style={{ padding: 20 }}>Сад загружается…</div>}><GardenView learn={learn} update={update} /></React.Suspense> : <>
         <Heading eyebrow="Лавка" title="Лавка Инфли" sub="Монеты — за уроки, серию и задания. Цены в кронах, платите по курсу дня." />
         <Card style={{ margin: '10px 0 14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -532,13 +541,24 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
   const day = dayOf(now);
   const rateNow = weekRate(day);
   const [amount, setAmount] = useState(() => Math.max(PIGGY.min, Math.min(100, Math.floor(b / 2))));
+  // вид вклада: срочный (без пополнений, ставка недели) или пополняемый (ставка ниже) — docs/mechanics.md
+  const [topup, setTopup] = useState(false);
+  const [addAmt, setAddAmt] = useState(() => Math.max(PIGGY.addMin, Math.min(50, Math.floor(b / 4))));
   const can = b >= PIGGY.min;
   const n = Math.max(PIGGY.min, Math.min(amount, b));
+  const rateFor = topup ? topupRate(rateNow) : rateNow;
   const put = () => {
-    const r = piggyPut(learn, n, now);
+    const r = piggyPut(learn, n, now, { topup });
     if (!r.ok) { Audio.play('down'); onMsg({ ok: false, text: r.reason }); return; }
     Audio.play('register'); update(() => r.s, { settle: true });
-    onMsg({ ok: true, text: `В копилке ${r.amount} ${coinsWord(r.amount)} под ${fmtPct(r.rate)} в день. Через ${PIGGY.days} дней станет ${piggyValue(r.amount, PIGGY.days, r.rate)}.` });
+    onMsg({ ok: true, text: `${r.topup ? 'Пополняемый вклад' : 'Срочный вклад'}: ${r.amount} ${coinsWord(r.amount)} под ${fmtPct(r.rate)} в день. Через ${PIGGY.days} дней станет ${piggyValue(r.amount, PIGGY.days, r.rate)}${r.topup ? ' — и больше, если пополнять' : ''}.` });
+  };
+  const addN = Math.max(PIGGY.addMin, Math.min(addAmt, b));
+  const add = () => {
+    const r = piggyAdd(learn, addN, now);
+    if (!r.ok) { Audio.play('down'); onMsg({ ok: false, text: r.reason }); return; }
+    Audio.play('register'); update(() => r.s, { settle: true });
+    onMsg({ ok: true, text: `Пополнено на ${r.amount} ${coinsWord(r.amount)}: эти монеты растут с сегодняшнего дня до конца срока.` });
   };
   const take = () => {
     const r = piggyTake(learn, now);
@@ -555,33 +575,50 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
           <div style={{ flex: 1 }}>
             <div className="ds-eyebrow">Сберкнижка</div>
             <div className="ds-h3">Копилка Инфли</div>
-            <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>Надёжно: процент известен заранее и не зависит от удачи. Деньги заперты на {PIGGY.days} дней — раньше срока процент сгорит.</div>
+            <div className="ds-sub" style={{ fontSize: 13, lineHeight: 1.35 }}>Надёжно: процент известен заранее и не зависит от удачи. Деньги заперты на {PIGGY.days} дней — раньше срока процент сгорит. Срочный вклад — ставка выше; пополняемый — ниже, зато докладывать можно в любой день.</div>
           </div>
         </div>
         <RateWeek day={day} focus="piggy" />
         {st ? (
           <div className="rw-book" data-testid="piggy-open">
-            <div className="rw-book-row"><span>Положено</span><b className="ds-num">{st.amount}</b></div>
+            <div className="rw-book-row"><span>Вклад</span><b data-testid="piggy-kind">{st.topup ? 'пополняемый' : 'срочный, без пополнений'}</b></div>
+            <div className="rw-book-row"><span>Положено{st.adds ? ` (с пополнениями: ${st.adds})` : ''}</span><b className="ds-num" data-testid="piggy-amount-in">{st.amount}</b></div>
             <div className="rw-book-row"><span>Ставка вклада</span><b className="ds-num" data-testid="piggy-rate">{fmtPct(st.rate)} в день</b></div>
             <div className="rw-book-days" aria-hidden="true">{Array.from({ length: PIGGY.days }, (_, k) => <i key={k} className={k < st.days ? 'on' : ''} />)}</div>
             <PiggyChart amount={st.amount} rate={st.rate} day={st.days} />
             <div style={{ fontSize: 14.5, margin: '2px 0 8px' }} data-testid="piggy-state">
               День {st.days} из {PIGGY.days}: сейчас <b className="ds-num">{st.value}</b>{st.ripe ? ' — срок вышел, можно забирать.' : `, через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')} — ${st.final}.`}
             </div>
+            {st.canAdd && (b >= PIGGY.addMin ? (
+              <div className="rw-add" data-testid="piggy-add-form">
+                <label className="rw-book-row" htmlFor="piggy-add-amount"><span>Пополнить</span><b className="ds-num">{addN} {coinsWord(addN)}</b></label>
+                <input id="piggy-add-amount" type="range" min={PIGGY.addMin} max={Math.max(PIGGY.addMin, b)} step={1} value={addN} style={{ width: '100%', accentColor: 'var(--u)' }}
+                  onChange={(e) => { Audio.play('tick'); setAddAmt(Number(e.target.value)); }} />
+                <Button small wide variant="secondary" data-testid="piggy-add" onClick={add}>Пополнить на {addN} {coinsWord(addN)}</Button>
+              </div>
+            ) : <div className="ds-sub" style={{ fontSize: 13, margin: '0 0 8px' }}>Пополнить можно от {PIGGY.addMin} монет.</div>)}
             <Button small wide={st.ripe} variant={st.ripe ? 'primary' : 'ghost'} data-testid="piggy-take" onClick={take}>
               {st.ripe ? `Забрать ${st.payout} ${coinsWord(st.payout)}` : `Забрать раньше: только ${st.payout}`}
             </Button>
           </div>
         ) : can ? (
           <div className="rw-book" data-testid="piggy-form">
+            <div className="rw-kinds" role="group" aria-label="Вид вклада">
+              <button type="button" aria-pressed={!topup} data-testid="piggy-kind-fixed" onClick={() => { Audio.play('tick'); setTopup(false); }}>
+                Срочный<b>{fmtPct(rateNow)} в день</b><small>без пополнений</small>
+              </button>
+              <button type="button" aria-pressed={topup} data-testid="piggy-kind-topup" onClick={() => { Audio.play('tick'); setTopup(true); }}>
+                Пополняемый<b>{fmtPct(topupRate(rateNow))} в день</b><small>докладывать в любой день</small>
+              </button>
+            </div>
             <label className="rw-book-row" htmlFor="piggy-amount"><span>Положить</span><b className="ds-num">{n} {coinsWord(n)}</b></label>
             <input id="piggy-amount" type="range" min={PIGGY.min} max={Math.max(PIGGY.min, b)} step={1} value={n} data-testid="piggy-amount" style={{ width: '100%', accentColor: 'var(--u)' }}
               onChange={(e) => { Audio.play('tick'); setAmount(Number(e.target.value)); }} />
             <div className="rw-presets" role="group" aria-label="Сколько положить">
               {PRESETS.map(([label, k]) => <button key={label} type="button" onClick={() => { Audio.play('tick'); setAmount(Math.max(PIGGY.min, Math.floor(b * k))); }}>{label}</button>)}
             </div>
-            <PiggyChart amount={n} rate={rateNow} />
-            <div className="rw-book-row"><span>Через {PIGGY.days} дней</span><b className="ds-num" data-testid="piggy-final">{piggyValue(n, PIGGY.days, rateNow)} <small>(+{piggyValue(n, PIGGY.days, rateNow) - n})</small></b></div>
+            <PiggyChart amount={n} rate={rateFor} />
+            <div className="rw-book-row"><span>Через {PIGGY.days} дней</span><b className="ds-num" data-testid="piggy-final">{piggyValue(n, PIGGY.days, rateFor)} <small>(+{piggyValue(n, PIGGY.days, rateFor) - n})</small></b></div>
             <Button small wide data-testid="piggy-put" onClick={put}>Положить {n} {coinsWord(n)}</Button>
           </div>
         ) : (

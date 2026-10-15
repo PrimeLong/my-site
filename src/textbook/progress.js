@@ -189,6 +189,15 @@ export function recordAnswer(p, problemId, correct, now = Date.now(), opts = {})
   return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok, box, due, lastAt: now, ...conf } } };
 }
 
+/* «Убрать из повторения» (docs/mechanics.md): трудную задачу ученик не знает, как решать, и
+   решать сейчас не будет. Срок снимается, «решённой» задача не становится; время отметки —
+   как у ответа, чтобы на другом устройстве победила эта запись. */
+export function dismissReview(p, problemId, now = Date.now()) {
+  const prev = p.problems[problemId];
+  if (!prev || prev.due == null) return p;
+  return { ...p, problems: { ...p.problems, [problemId]: { ...prev, box: null, due: null, lastAt: now } } };
+}
+
 // точность уверенных и неуверенных ответов по списку задач
 export function confidenceStats(p, ids) {
   const out = { sure: { n: 0, ok: 0 }, unsure: { n: 0, ok: 0 } };

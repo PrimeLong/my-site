@@ -37,9 +37,9 @@ export const emptyLearn = () => ({
   runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
   profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
   topics: {}, recent: '', recentAt: 0, daily: {},
-  coins: {}, spent: {}, claimed: {}, owned: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
+  coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
   policyAt: 0, policyOff: 0, policyLapse: 0, premiums: {}, monthPlan: {},
-  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, garden: {}, harvest: {}, water: {},
+  seen: {}, best: {}, boost: 0, piggy: {}, piggyOut: {}, piggyTop: {}, piggyAdd: {}, garden: {}, harvest: {}, water: {},
 });
 export const PROFILE_GOALS = ['exam', 'olymp', 'uni', 'self'];
 export const PROFILE_MINUTES = [5, 10, 15, 20];
@@ -88,7 +88,7 @@ export const startLesson = (s) => upd(s, { runs: { ...s.runs, started: s.runs.st
 
 /* Первая попытка в упражнении: тип, верно ли, сколько миллисекунд. lesson — урок, откуда
    упражнение (точность по темам), run — сколько верных подряд теперь (для задания дня). */
-export function recordAttempt(s, kind, ok, ms, { lesson = null, run = 0, now = Date.now() } = {}) {
+export function recordAttempt(s, kind, ok, ms, { lesson = null, now = Date.now() } = {}) {
   const t = s.types[kind] || { n: 0, ok: 0, ms: 0 };
   const cap = Math.max(0, Math.min(120000, Math.round(ms || 0)));
   const patch = { types: { ...s.types, [kind]: { n: t.n + 1, ok: t.ok + (ok ? 1 : 0), ms: t.ms + cap } } };
@@ -103,12 +103,15 @@ export function recordAttempt(s, kind, ok, ms, { lesson = null, run = 0, now = D
   patch.recent = `${s.recent || ''}${ok ? 1 : 0}`.slice(-MAX_RECENT);
   patch.recentAt = now;
   const day = dayOf(now); const d = dayEntry(s, day);
-  // серия считается только по сегодняшним ответам: урок, начатый вчера, не приносит в новый день «готовую» серию
-  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), r: Math.max(d.r, ok ? Math.min(run, d.c + 1) : 0) } };
+  /* серия верных подряд — за день, а не за урок (docs/mechanics.md): rc — текущая серия сегодня,
+     переход в следующий урок её не обнуляет; r — лучшая серия дня. run (серия урока) больше не нужен:
+     раньше девять подряд на стыке двух уроков засчитывались как семь */
+  const rc = ok ? d.rc + 1 : 0;
+  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), rc, r: Math.max(d.r, rc) } };
   return upd(s, patch);
 }
-const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'g', 'pr', 'h'];
-const dayEntry = (s, day) => ({ l: 0, p: 0, c: 0, s: 0, r: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
+const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
+const dayEntry = (s, day) => ({ l: 0, p: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
 export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
 
 // ответы при регистрации — из них цель дня и задания; меняются в профиле
@@ -153,6 +156,8 @@ export const recordBest = (s, gameId, score) => ((s.best || {})[gameId] >= score
 // ошибки уходят в практику, верный ответ в практике их убирает
 export const addMistake = (s, id, now = Date.now()) => upd(s, { mistakes: [...s.mistakes.filter((m) => m.id !== id), { id, at: now }].slice(-MAX_MISTAKES) });
 export const resolveMistake = (s, id) => upd(s, { mistakes: s.mistakes.filter((m) => m.id !== id) });
+// «Слушай» пропущен с билета урока: следующий урок открыт, сам урок не пройден (docs/mechanics.md)
+export const skipLesson = (s, id, now = Date.now()) => ((s.skipped || {})[id] ? s : upd(s, { skipped: { ...s.skipped, [id]: now } }));
 /* Подсказка ничем не наказывается: ни опытом, ни плашкой. Единственное невидимое следствие —
    упражнение, решённое с подсказкой, попадает в «Повторение» раньше остальных (сразу после
    ошибок). Решено потом без подсказки — снимается с этого списка. */
@@ -410,6 +415,9 @@ const piggyMap = (v) => {
   Object.keys(obj(v)).filter((k) => /^\d{10,15}$/.test(k)).sort().slice(-40).forEach((k) => { const x = cnt(v[k], 1e6); if (x) out[k] = x; });
   return out;
 };
+// пополняемые вклады (время вклада → 1) и пополнения (время → «вклад:монеты»)
+const piggyTopMap = (v) => { const out = {}; Object.keys(obj(v)).filter((k) => /^\d{10,15}$/.test(k)).sort().slice(-40).forEach((k) => { if (v[k]) out[k] = 1; }); return out; };
+const piggyAddMap = (v) => { const out = {}; Object.keys(obj(v)).filter((k) => /^\d{10,15}$/.test(k) && /^\d{10,15}:\d{1,7}$/.test(String(v[k]))).sort().slice(-200).forEach((k) => { out[k] = String(v[k]); }); return out; };
 // сад: ключ — время посадки (мс); посадка — «растение@грядка», сбор — когда собрали; храним последние двести
 const TIME_KEY = /^\d{10,15}$/;
 const gardenMap = (v) => {
@@ -457,10 +465,10 @@ function normalizeProgram(r) {
     coins: dayMap(r.coins, 1e6), spent: dayMap(r.spent, 1e6), freezeBuy: dayMap(r.freezeBuy, MAX_FREEZES * 5),
     frozen: Object.fromEntries(Object.keys(obj(r.frozen)).filter(isDay).sort().slice(-MAX_DAYS).map((k) => [k, 1])),
     policyAt: cnt(r.policyAt, 1e14), policyOff: cnt(r.policyOff, 1e14), policyLapse: cnt(r.policyLapse, 1e14), premiums: dayMap(r.premiums, PREMIUM * 10), monthPlan: monthPlanMap(r.monthPlan),
-    claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)),
+    claimed: claimedMap(r.claimed), owned: renamed(tsMap(r.owned, 60)), skipped: tsMap(r.skipped, 60),
     wear: { ...Object.fromEntries(SLOTS.map((sl) => [sl, okKey(w[sl]) ? RENAMED[w[sl]] || w[sl] : null])), at: cnt(w.at, 1e14) },
     seen: countMap(r.seen, MAX_SEEN, 9999), best: countMap(r.best, MAX_BEST, 1e6), boost: cnt(r.boost, 1e14),
-    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
+    piggy: piggyMap(r.piggy), piggyOut: piggyMap(r.piggyOut), piggyTop: piggyTopMap(r.piggyTop), piggyAdd: piggyAddMap(r.piggyAdd), garden: gardenMap(r.garden), harvest: harvestMap(r.harvest), water: waterMap(r.water),
   };
 }
 // слияние полей программы: ответы и наряд — более поздние, счётчики дня — по максимуму, награды и покупки — объединение
@@ -479,10 +487,10 @@ function mergeProgram(x, y) {
     topics, daily,
     recent: laterRecent ? y.recent : x.recent, recentAt: Math.max(x.recentAt, y.recentAt),
     coins: maxMap(x.coins, y.coins), spent: maxMap(x.spent, y.spent), freezeBuy: maxMap(x.freezeBuy, y.freezeBuy),
-    frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned),
+    frozen: { ...x.frozen, ...y.frozen }, claimed: minTs(x.claimed, y.claimed), owned: minTs(x.owned, y.owned), skipped: minTs(x.skipped, y.skipped),
     policyAt: Math.max(x.policyAt, y.policyAt), policyOff: Math.max(x.policyOff, y.policyOff), policyLapse: Math.max(x.policyLapse, y.policyLapse), premiums: maxMap(x.premiums, y.premiums), monthPlan: mergeMonthPlan(x.monthPlan, y.monthPlan),
     seen: maxMap(x.seen, y.seen), best: maxMap(x.best, y.best), boost: Math.max(x.boost, y.boost),
-    piggy: maxMap(x.piggy, y.piggy), piggyOut: maxMap(x.piggyOut, y.piggyOut),
+    piggy: maxMap(x.piggy, y.piggy), piggyOut: maxMap(x.piggyOut, y.piggyOut), piggyTop: { ...x.piggyTop, ...y.piggyTop }, piggyAdd: { ...x.piggyAdd, ...y.piggyAdd },
     // посадки с одним временем одинаковы; при расхождении побеждает меньшая строка — слияние симметрично
     garden: Object.fromEntries([...new Set([...Object.keys(x.garden), ...Object.keys(y.garden)])].map((k) => [k, [x.garden[k], y.garden[k]].filter(Boolean).sort()[0]])),
     harvest: minTs(x.harvest, y.harvest),

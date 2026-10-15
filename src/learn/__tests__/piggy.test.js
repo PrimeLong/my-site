@@ -121,3 +121,43 @@ describe('предвосхищение: Инфля вспоминает меха
     expect(CALLBACKS.find((c) => c.id === 'compound').text(saver)).toMatch(/^2 недели назад .* сложный процент/);
   });
 });
+
+describe('копилка: срочный вклад или пополняемый', () => {
+  it('пополняемый — ставка на 0,5 п. п. ниже (не ниже 0,5%), срочный пополнить нельзя', async () => {
+    const { topupRate, piggyAdd } = await import('../rewards.js');
+    expect(topupRate(0.02)).toBe(0.015);
+    expect(topupRate(0.01)).toBe(0.005);
+    expect(topupRate(0.005)).toBe(0.005);
+    const fixed = piggyPut(rich(), 100, T0);
+    expect(piggyAdd(fixed.s, 20, T0 + DAY)).toMatchObject({ ok: false, reason: 'Этот вклад без пополнений' });
+    const top = piggyPut(rich(), 100, T0, { topup: true });
+    expect(top.rate).toBe(topupRate(weekRate(dayOf(T0))));
+    expect(piggyState(top.s, T0)).toMatchObject({ topup: true, canAdd: true });
+  });
+  it('пополнение растёт со своего дня до конца срока; раньше срока процент сгорает, вложенное — целиком', async () => {
+    const { piggyAdd } = await import('../rewards.js');
+    let s = piggyPut(rich(500), 100, T0, { topup: true }).s;
+    const rate = piggyState(s, T0).rate;
+    expect(piggyAdd(s, 3, T0 + DAY).ok).toBe(false);
+    s = piggyAdd(s, 50, T0 + 5 * DAY).s;
+    expect(balance(s)).toBe(350);
+    const st = piggyState(s, T0 + 5 * DAY);
+    expect(st.amount).toBe(150);
+    // первый взнос — 7 дней, пополнение — только 2
+    expect(st.final).toBe(Math.floor(100 * (1 + rate) ** 7 + 50 * (1 + rate) ** 2 + 1e-9));
+    const early = piggyTake(s, T0 + 6 * DAY);
+    expect(early.payout).toBe(150);
+    const late = piggyTake(s, T0 + 7 * DAY + 1);
+    expect(late.payout).toBe(st.final);
+    expect(balance(late.s)).toBe(350 + st.final);
+    // срок вышел — пополнить уже нельзя
+    expect(piggyAdd(s, 20, T0 + 7 * DAY + 1).ok).toBe(false);
+  });
+  it('вид вклада и пополнения переживают слияние устройств', async () => {
+    const { piggyAdd } = await import('../rewards.js');
+    let s = piggyPut(rich(500), 100, T0, { topup: true }).s;
+    s = piggyAdd(s, 40, T0 + DAY).s;
+    const m = mergeLearn(normalizeLearn(s), emptyLearn());
+    expect(piggyState(m, T0 + 2 * DAY)).toMatchObject({ topup: true, amount: 140, adds: 1 });
+  });
+});
