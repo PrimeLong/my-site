@@ -34,7 +34,8 @@ const LEAGUE_CSS = `
   .lg-zone-head span:last-child { margin-left: auto; font: 400 12.5px var(--ds-sans); text-transform: none; letter-spacing: 0; color: var(--ds-ink3); }
   .lg-zone-head.up { color: var(--ds-ok); } .lg-zone-head.down { color: var(--ds-bad); } .lg-zone-head.stay { color: var(--ds-ink2); }
   .lg-rows { list-style: none; margin: 0; padding: 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--ds-rule2); }
-  .lg-row { display: grid; grid-template-columns: 30px 30px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 7px 10px 7px 8px; background: var(--ds-card); border-top: 1px solid var(--ds-rule); position: relative; }
+  /* колонка опыта одной ширины во всех строках: иначе дорожка полоски была разной длины и 94 выглядело дальше 97 */
+  .lg-row { display: grid; grid-template-columns: 30px 30px minmax(0, 1fr) 80px; gap: 8px; align-items: center; padding: 7px 10px 7px 8px; background: var(--ds-card); border-top: 1px solid var(--ds-rule); position: relative; }
   .lg-row:first-child { border-top: none; }
   .lg-row::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--zone, transparent); }
   .lg-row.me { background: var(--ds-sel); color: var(--ds-sel-ink); }

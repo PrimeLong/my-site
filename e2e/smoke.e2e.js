@@ -2021,6 +2021,13 @@ test('лиги: отдельная вкладка — медаль, что ну�
   await expect(lg.locator('[data-testid=league-zone][data-zone="stay"]')).toContainText('Остаётесь в лиге');
   await expect(lg.locator('[data-testid=league-zone][data-zone="up"] [data-testid=league-row]')).toHaveCount(5);
   await expect(lg.locator('[data-testid=league-row][data-me="true"]')).toHaveCount(1);
+  // полоски опыта: дорожка одной длины во всех строках, и больше опыта — длиннее полоска
+  const bars = await lg.getByTestId('league-row').evaluateAll((rows) => rows.map((r) => {
+    const track = r.querySelector('.lg-xpbar'); const fill = track.firstElementChild;
+    return { xp: Number(r.querySelector('.lg-xp').firstChild.textContent), track: Math.round(track.getBoundingClientRect().width), fill: fill.getBoundingClientRect().width };
+  }));
+  expect(new Set(bars.map((b) => b.track)).size).toBe(1);
+  bars.forEach((b, k) => { if (k > 0 && b.xp < bars[k - 1].xp) expect(b.fill).toBeLessThanOrEqual(bars[k - 1].fill + 0.5); });
   // награда за первое место в Бронзовой — 50 монет: окно вручения, один раз
   await expect(lg.getByTestId('league-reward')).toContainText('1-е место в Бронзовой лиге');
   await lg.getByTestId('league-claim').click();
