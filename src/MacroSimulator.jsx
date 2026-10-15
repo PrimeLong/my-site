@@ -20,7 +20,7 @@ import { InflatiaMark } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
 import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
 import { checkReturn } from './lib/retention.js';
-import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume } from './ds-tokens.js';
+import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, worldMusic, setWorldMusic, worldSfx, setWorldSfx, worldVolume, setWorldVolume, worldThemeId, setWorldTheme } from './ds-tokens.js';
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
@@ -2009,7 +2009,8 @@ export default function MacroSimulator() {
   const [loaded, setLoaded] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : loadAutosave()));
   const [setup, setSetup] = useState(() => (roomCodeFromUrl() || resumeTycoon ? null : (loadAutosave() || {}).setup || null));
   const [nonce, setNonce] = useState(0);
-  const [theme, setThemeState] = useState('chamber');
+  // оформление «Мира» — сохранённое на устройстве или по ночной теме из настроек (ds-tokens.js)
+  const [theme, setThemeState] = useState(worldThemeId);
   const [network, setNetwork] = useState(null);
   // 'menu' — главная страница; 'setup' — анкета новой одиночной партии;
   // 'network' — лобби подключения на двоих. Ссылка-приглашение (?room=)
@@ -2102,7 +2103,9 @@ export default function MacroSimulator() {
     if (!learning && Audio.opts.volume !== worldVolume()) Audio.setVolume(worldVolume());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learning, learnTick]);
-  const setTheme = (id) => { applyTheme(id); setThemeState(id); };
+  const setTheme = (id) => { setWorldTheme(id); applyTheme(id); setThemeState(id); };
+  // ночную тему переключили в настройках — «Мир» тоже следует ей (если там не выбрано своё той же яркости)
+  React.useEffect(() => { setThemeState(worldThemeId()); }, [learnTick]);
   const startLoaded = (data) => { setGameFromBook(false); setLoaded(data); setSetup(data.setup); setNonce((n) => n + 1); };
   const goMenu = () => setView('menu');
   const backToBook = () => { setReopenBook(true); setView('menu'); };

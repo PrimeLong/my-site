@@ -328,6 +328,29 @@ describe('упражнения: ровно один верный ответ', ()
   });
 });
 
+/* Верный ответ не угадывается по длине (docs/mechanics.md, «Варианты ответа»): раньше в каждом
+   втором вопросе верный вариант был самым длинным — с пояснением, а неверные — голыми словами, и
+   правило «бери самый длинный» проходило почти весь Путь. Неверные варианты — правдоподобные
+   заблуждения той же длины, со своим «потому что». */
+describe('варианты ответа: верный не выделяется длиной', () => {
+  const plain = (o) => String(o.raw || '').replace(/\$[^$]*\$/g, 'xx').replace(/[*_`]/g, '').trim().length;
+  // написанные руками выбор ответа и пропуск (не числа из ловушек задач и не «какой это термин?»)
+  const list = Object.values(EXERCISES).filter((e) => (e.kind === 'choice' || e.kind === 'gap') && !String(e.id).startsWith('auto:') && !String(e.id).includes(':which:'));
+  const stat = list.map((e) => {
+    const lens = e.options.map(plain); const ci = e.options.findIndex((o) => o.correct);
+    const others = lens.filter((_, k) => k !== ci);
+    return { id: e.id, right: lens[ci], wrong: Math.max(...others), longest: others.every((x) => x < lens[ci]), shortest: others.every((x) => x > lens[ci]) };
+  });
+  it('верный вариант не длиннее самого длинного неверного больше чем на четверть', () => {
+    expect(list.length).toBeGreaterThan(100);
+    expect(stat.filter((x) => x.right > x.wrong * 1.25 + 3).map((x) => `${x.id}: ${x.right} против ${x.wrong}`)).toEqual([]);
+  });
+  it('«самый длинный» и «самый короткий» угадывают не чаще случайного выбора', () => {
+    expect(stat.filter((x) => x.longest).length / stat.length).toBeLessThan(0.15);
+    expect(stat.filter((x) => x.shortest).length / stat.length).toBeLessThan(0.34);
+  });
+});
+
 describe('расчёт: рядом с полем — единица измерения из разметки главы', () => {
   const ids = new Set([...UNITS.map((u) => u.id), ...LESSONS.map((l) => l.id)]);
   const blockOf = (unitId, id) => collectBlocks(CHAPTER_BLOCKS[unitId], (b) => b.type === 'ex' && b.id === id)[0];

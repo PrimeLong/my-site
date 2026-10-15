@@ -22,6 +22,27 @@ describe('лига: таблица недели', () => {
     // имена соперников в группе не повторяются
     expect(new Set(a.map((r) => r.name)).size).toBe(GROUP);
   });
+  it('места соперников меняются по ходу недели: кто-то пропустил день — его обогнали', () => {
+    // за неделю в каждой лиге лидер меняется, а у второго места — не один и тот же соперник с понедельника по субботу
+    let leaders = 0; let seconds = 0;
+    ['bronze', 'silver', 'gold', 'sapphire'].forEach((lg) => {
+      const top = []; const second = [];
+      for (let d = 0; d < 6; d += 1) for (const h of [10, 14, 18, 22]) {
+        const t = standings(emptyLearn(), MON, lg, at(addDays(MON, d), h)).filter((r) => !r.me && r.xp > 0);
+        if (t[0]) top.push(t[0].name); if (t[1]) second.push(t[1].name);
+      }
+      leaders += new Set(top).size; seconds += new Set(second).size;
+    });
+    expect(leaders).toBeGreaterThan(8);
+    expect(seconds).toBeGreaterThan(10);
+    // опыт растёт уроками: в течение дня у соперника он не дробится по часам, а прибавляется скачками от 12
+    const a = standings(emptyLearn(), MON, 'gold', at(addDays(MON, 2), 11)); const b = standings(emptyLearn(), MON, 'gold', at(addDays(MON, 2), 20));
+    const gains = b.filter((r) => !r.me).map((r) => r.xp - a.find((x) => x.id === r.id).xp).filter((g) => g > 0);
+    expect(gains.length).toBeGreaterThan(0);
+    gains.forEach((g) => expect(g).toBeGreaterThanOrEqual(12));
+    // и кто-то в этот день не занимался вовсе
+    expect(gains.length).toBeLessThan(GROUP - 1);
+  });
   it('в старших лигах соперники набирают больше', () => {
     const avg = (lg) => { let t = 0; for (let k = 0; k < 20; k += 1) { const w = addDays(MON, 7 * k); t += standings(emptyLearn(), w, lg, at(addDays(w, 9))).filter((r) => !r.me).reduce((x, r) => x + r.xp, 0); } return t; };
     expect(avg('diamond')).toBeGreaterThan(avg('gold'));

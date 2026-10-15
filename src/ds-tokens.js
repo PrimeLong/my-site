@@ -115,7 +115,22 @@ const store = {
   set: (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* приватный режим */ } },
 };
 export const learnDark = () => store.get('ems-learn-dark') === '1';
-export const setLearnDark = (on) => store.set('ems-learn-dark', on ? '1' : null);
+/* Оформление «Мира» запоминается на устройстве (ems-world-theme). Пока его не выбирали, «Мир»
+   следует ночной теме из настроек: тёмная — «Ночная канцелярия», светлая — «Дневная». Смена
+   темы в настройках переводит и «Мир», если выбранное там оформление другой яркости. */
+const WORLD_LIGHT = ['chamber'];
+const WORLD_IDS = ['ink', 'slate', 'chamber', 'contrast'];
+export const worldThemeId = () => {
+  const id = store.get('ems-world-theme');
+  if (WORLD_IDS.includes(id)) return id;
+  return learnDark() ? 'ink' : 'chamber';
+};
+export const setWorldTheme = (id) => store.set('ems-world-theme', WORLD_IDS.includes(id) ? id : null);
+export const setLearnDark = (on) => {
+  store.set('ems-learn-dark', on ? '1' : null);
+  const w = store.get('ems-world-theme');
+  if (w && WORLD_LIGHT.includes(w) === !!on) store.set('ems-world-theme', null);
+};
 export const learnThemeId = () => (learnDark() ? 'learnDark' : 'learn');
 export const dsThemeId = () => (learnDark() ? 'ink' : 'paper');
 export const learnMusic = () => store.get('ems-learn-music') === '1';

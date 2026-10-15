@@ -18,7 +18,7 @@ const MAX_HINTED = 60;
    placement — вступительный тест: когда пройден и какие юниты открыл;
    topics — точность по урокам (первые попытки, окно ~20 последних): слабые темы;
    recent — последние 30 первых попыток строкой «1»/«0»: уровень сложности;
-   daily — счётчики дня для заданий дня: уроки, без ошибок, верные, секунды, серия, игры, практика;
+   daily — счётчики дня для заданий дня: уроки, без ошибок, верные, первые попытки (a), секунды, серия, игры, практика;
    coins/spent — монеты по дням (заработано/потрачено), claimed — полученные награды (ключ → когда):
    одна награда не выдаётся дважды и на двух устройствах; owned — купленные вещи, wear — наряд Инфли;
    freezeBuy — старые разовые полисы «Страховки серии» по дням, frozen — дни, которые они спасли;
@@ -107,11 +107,11 @@ export function recordAttempt(s, kind, ok, ms, { lesson = null, now = Date.now()
      переход в следующий урок её не обнуляет; r — лучшая серия дня. run (серия урока) больше не нужен:
      раньше девять подряд на стыке двух уроков засчитывались как семь */
   const rc = ok ? d.rc + 1 : 0;
-  patch.daily = { ...s.daily, [day]: { ...d, c: d.c + (ok ? 1 : 0), rc, r: Math.max(d.r, rc) } };
+  patch.daily = { ...s.daily, [day]: { ...d, a: d.a + 1, c: d.c + (ok ? 1 : 0), rc, r: Math.max(d.r, rc) } };
   return upd(s, patch);
 }
-const DAILY_FIELDS = ['l', 'p', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
-const dayEntry = (s, day) => ({ l: 0, p: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
+const DAILY_FIELDS = ['l', 'p', 'a', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
+const dayEntry = (s, day) => ({ l: 0, p: 0, a: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
 export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
 
 // ответы при регистрации — из них цель дня и задания; меняются в профиле
@@ -300,7 +300,11 @@ export const missedYesterday = (s, now = Date.now()) => {
 
 /* ------------------------------ СТАТИСТИКА ДЛЯ ПРОФИЛЯ ------------------------------ */
 /* «Мои четыре недели»: календарь минут по дням (с понедельника, сегодня — последняя клетка),
-   сколько минут и уроков за это время и точность первых ответов (последние 30). */
+   сколько минут и уроков за это время и точность первых ответов за те же четыре недели.
+   Раньше точность бралась по последним 30 ответам: каждая ошибка двигала её на 3%, а старые
+   ответы выпадали из окна — число «скакало», будто прогресс не сохраняется. Теперь это доля
+   верных с первого раза среди всех первых попыток за 28 дней (daily.a и daily.c); дни, записанные
+   до появления счётчика попыток, не считаются — пока таких ответов меньше пяти, берём старое окно. */
 export function studyWeeks(s, now = Date.now()) {
   const today = dayOf(now);
   const start = addDays(weekOf(today), -21);
@@ -310,12 +314,17 @@ export function studyWeeks(s, now = Date.now()) {
   });
   const past = days.filter((d) => !d.future);
   const r = s.recent || '';
+  let tried = 0; let right = 0;
+  past.forEach((d) => { const e = dayEntry(s, d.day); if (e.a > 0) { tried += e.a; right += Math.min(e.c, e.a); } });
+  const windowed = tried >= 5;
   return {
     days,
     minutes: past.reduce((a, d) => a + d.minutes, 0),
     lessons: past.reduce((a, d) => a + d.lessons, 0),
     active: past.filter((d) => d.lessons > 0 || d.minutes > 0).length,
-    accuracy: r.length >= 5 ? [...r].filter((c) => c === '1').length / r.length : null,
+    accuracy: windowed ? right / tried : r.length >= 5 ? [...r].filter((c) => c === '1').length / r.length : null,
+    // сколько первых попыток легло в точность: подпись «N из M»
+    tried: windowed ? tried : r.length, right: windowed ? right : [...r].filter((c) => c === '1').length,
   };
 }
 

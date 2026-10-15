@@ -1997,7 +1997,7 @@ function StudyWeeks({ learn }) {
       </div>
       <Meter label="Верно с первого раза" share={w.accuracy} testid="prof-accuracy-meter"
         text={<b data-testid="prof-accuracy">{w.accuracy == null ? '—' : `${Math.round(w.accuracy * 100)}%`}</b>}
-        note={w.accuracy == null ? 'Посчитаем после пяти ответов.' : 'По последним ответам в уроках.'} />
+        note={w.accuracy == null ? 'Посчитаем после пяти ответов.' : `${w.right} из ${w.tried} ${plural(w.tried, 'первого ответа', 'первых ответов', 'первых ответов')} за четыре недели — повтор задачи не считается.`} />
     </Card>
   );
 }
