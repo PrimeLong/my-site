@@ -167,6 +167,37 @@ export async function delSession(token) {
   return true;
 }
 
+/* Несколько профилей одной командой (список друзей): логин → профиль или null. */
+export async function getUsers(logins) {
+  if (!logins.length) return {};
+  const vals = redis ? await redis.mget(...logins.map((l) => `user:${l}`)) : logins.map((l) => mem.get(`user:${l}`) || null);
+  return Object.fromEntries(logins.map((l, i) => [l, vals[i] || null]));
+}
+/* Карточка игрока для друзей (api/_lib/friends.js): card:<логин>. Живёт, пока жив профиль: заходит
+   игрок — карточка обновляется. */
+export async function getCards(logins) {
+  if (!logins.length) return {};
+  const vals = redis ? await redis.mget(...logins.map((l) => `card:${l}`)) : logins.map((l) => mem.get(`card:${l}`) || null);
+  return Object.fromEntries(logins.map((l, i) => [l, vals[i] || null]));
+}
+export async function setCard(login, card) {
+  if (redis) return redis.set(`card:${login}`, card, { ex: SOLO_TTL });
+  mem.set(`card:${login}`, card);
+  return true;
+}
+/* Забег с другом: race:<id>; живёт месяц — дольше не нужен ни для итогов, ни для наград. */
+const RACE_TTL = 60 * 60 * 24 * 31;
+export async function getRaces(ids) {
+  if (!ids.length) return [];
+  const vals = redis ? await redis.mget(...ids.map((id) => `race:${id}`)) : ids.map((id) => mem.get(`race:${id}`) || null);
+  return vals.filter(Boolean);
+}
+export async function setRace(race) {
+  if (redis) return redis.set(`race:${race.id}`, race, { ex: RACE_TTL });
+  mem.set(`race:${race.id}`, race);
+  return true;
+}
+
 /* Счётчик попыток в окне ttl секунд (лимит регистраций и восстановлений с одного
    адреса). Возвращает число попыток в текущем окне, включая эту. */
 export async function hit(key, ttlSeconds) {
@@ -246,13 +277,13 @@ export async function getLeagueNames() {
   return { ...mem.get('league-names') };
 }
 
-/* Удаление аккаунта («Удалить аккаунт и все данные» в профиле): профиль, прогресс,
+/* Удаление аккаунта («Удалить аккаунт и все данные» в профиле): профиль, карточка для друзей, прогресс,
    сохранения, рекорды, имя в лигах, строки вызова дня за последний месяц и сообщения об ошибках.
    Сессии отдельно не ищем: без пользователя они больше не открывают профиль и сами
    истекают через полгода. */
 const lastDays = (n) => Array.from({ length: n }, (_, k) => new Date(Date.now() - k * 86400000).toISOString().slice(0, 10));
 export async function deleteUserData({ login, playerId }) {
-  const keys = [`user:${login}`, ...(playerId ? [`profile:${playerId}`, `solo:${playerId}`, `tycoon:${playerId}`] : [])];
+  const keys = [`user:${login}`, `card:${login}`, ...(playerId ? [`profile:${playerId}`, `solo:${playerId}`, `tycoon:${playerId}`] : [])];
   if (redis) {
     await redis.del(...keys);
     await redis.hdel('records:tycoon', login);

@@ -133,3 +133,28 @@ describe('лига: перерыв в воскресенье', () => {
     expect(st.toSafe).toBe(fifteenth.xp - st.me.xp + 1);
   });
 });
+
+describe('лига: новичок не попадает в идущую неделю', () => {
+  const MON2 = '2026-10-19'; // понедельник после начала правила
+  it('пришёл в четверг — ждёт понедельника: опыт этой недели в лигу не идёт, уведомлений лиги нет', () => {
+    const thu = addDays(MON2, 3);
+    const s = { ...emptyLearn(), profile: { ...emptyLearn().profile, at: at(thu, 9) }, xp: { [thu]: 120 } };
+    const st = leagueState(s, at(thu, 18));
+    expect(st.waiting).toBe(true);
+    expect(st.joined).toBe(false);
+    expect(st.startsOn).toBe(addDays(MON2, 7));
+    expect(st.table.find((r) => r.me).xp).toBe(0);
+    // с понедельника — в лиге, первая неделя в истории — следующая
+    const next = { ...s, xp: { ...s.xp, [addDays(MON2, 7)]: 40 } };
+    const later = leagueState(next, at(addDays(MON2, 7), 18));
+    expect(later.waiting).toBe(false);
+    expect(later.joined).toBe(true);
+    expect(leagueState(next, at(addDays(MON2, 14), 18)).history.map((h) => h.week)).toEqual([addDays(MON2, 7)]);
+  });
+  it('пришёл в понедельник — сразу в лиге; пришедших до правила не пересчитываем', () => {
+    const s = { ...emptyLearn(), profile: { ...emptyLearn().profile, at: at(MON2, 9) }, xp: { [MON2]: 60 } };
+    expect(leagueState(s, at(MON2, 18))).toMatchObject({ waiting: false, joined: true });
+    const old = withXp({ [addDays(MON, 3)]: 60 });
+    expect(leagueState(old, at(addDays(MON, 3), 18))).toMatchObject({ waiting: false, joined: true });
+  });
+});

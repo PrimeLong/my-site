@@ -442,6 +442,12 @@ const accountApi = (req) => {
   if (body && body.action === 'login') return JSON.stringify({ token: 'sess', profile });
   if (body && body.action === 'me') return JSON.stringify({ profile });
   if (body && body.action === 'update') return JSON.stringify({ profile: { ...profile, emblem: body.emblem || 'star' } });
+  // один друг, бывший в сети вчера, — для экранов «Друзья» и «Профиль друга»
+  if (body && body.action === 'friends') {
+    const at = Date.now() - 86400000;
+    return JSON.stringify({ me: 'tester', friends: [{ login: 'boris', name: 'Борис', emblem: 'crown', since: at,
+      card: { at, wear: {}, streak: 3, xp: 120, level: 'start', league: 'bronze', seals: ['first'], album: 1, months: [], xpDays: {}, events: [] } }], incoming: [], outgoing: [], races: [] });
+  }
   return '{}';
 };
 /* Гостевой старт: после цели — сразу первый урок без аккаунта. Выйти из урока и с Пути
@@ -470,7 +476,7 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('welcome-try-say')).toContainText('закон спроса');
   const hello = page.getByTestId('welcome');
   await expect(hello).toBeVisible();
-  await expect(hello.getByTestId('mascot')).toHaveAttribute('data-mood', 'wave');
+  await expect(hello.getByTestId('mascot').first()).toHaveAttribute('data-mood', 'wave');
   await expectGateOnly(page);
   // у первого экрана «назад» нет, у остальных — один
   await expect(page.locator('[data-nav="back"]')).toHaveCount(0);
@@ -999,7 +1005,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall2.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);
-  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[aria-label="разделы 1/4"]')).toHaveCount(1);
+  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[data-testid=tb-ch-sections][data-done="1"][data-total="4"]')).toHaveCount(1);
   // ни «На сегодня», ни «Оглавления» на страницах: один «назад» вверху
   await expect(page.getByTestId('today-card')).toHaveCount(0);
 
@@ -2798,6 +2804,15 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'profile', seen);
   await page.getByTestId('prof-bell').click();
   await expectScreen(page, 'notifications', seen);
+  await clickBack(page);
+  await expectScreen(page, 'profile', seen);
+  // Профиль → «Друзья» → профиль друга → назад в список → назад в профиль
+  await page.getByTestId('prof-friends').click();
+  await expectScreen(page, 'friends', seen);
+  await page.getByTestId('friend-row').first().click();
+  await expectScreen(page, 'friend', seen);
+  await clickBack(page);
+  await expectScreen(page, 'friends', seen);
   await clickBack(page);
   await expectScreen(page, 'profile', seen);
   // Новости — вкладка под «⋯»; колокольчик на Пути — те же уведомления, «назад» — на Путь

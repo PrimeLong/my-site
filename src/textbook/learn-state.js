@@ -12,13 +12,14 @@ const MAX_DAYS = 400;
 const MAX_KEYS = 300;
 const MAX_MISTAKES = 60;
 const MAX_HINTED = 60;
+const MAX_SOLVED = 200;
 
 /* Этап 3 — персональная программа и награды:
    profile — ответы при регистрации (цель, минут в день, есть ли знания);
    placement — вступительный тест: когда пройден и какие юниты открыл;
    topics — точность по урокам (первые попытки, окно ~20 последних): слабые темы;
    recent — последние 30 первых попыток строкой «1»/«0»: уровень сложности;
-   daily — счётчики дня для заданий дня: уроки, без ошибок, верные, первые попытки (a), секунды, серия, игры, практика;
+   daily — счётчики дня для заданий дня: уроки (l), из них новые (n), без ошибок, верные, первые попытки (a), секунды, серия, игры, практика;
    coins/spent — монеты по дням (заработано/потрачено), claimed — полученные награды (ключ → когда):
    одна награда не выдаётся дважды и на двух устройствах; owned — купленные вещи, wear — наряд Инфли;
    freezeBuy — старые разовые полисы «Страховки серии» по дням, frozen — дни, которые они спасли;
@@ -30,11 +31,14 @@ const MAX_HINTED = 60;
    best — рекорды мини-игр (очки); lessons[id].diamond — когда урок взят на алмазном уровне;
    boost — до какого времени действует купленный «двойной опыт»;
    piggy / piggyOut — вклады в копилку Инфли { время вклада: монеты } и забранные { время вклада: выдано };
+   solved / unhint — когда ошибка снята (решена в практике, убрана из повторения) и когда упражнение
+   решено без подсказки { упражнение: время }: без этих отметок слияние с профилем на сервере
+   (объединение списков) возвращало решённые ошибки обратно — «Повторить ошибки» не пустело;
    garden / harvest — сад Инфли: посадки { время посадки: 'растение@грядка' } и собранные { время посадки: когда собрали };
    water — поливы { время полива: время посадки }. */
 export const emptyLearn = () => ({
   lessons: {}, units: {}, goal: 1, goalAt: 0, xp: {}, done: {}, types: {},
-  runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [],
+  runs: { started: 0, finished: 0, abandoned: 0 }, quits: {}, quitAt: {}, mistakes: [], hinted: [], solved: {}, unhint: {},
   profile: { goal: null, minutes: null, knows: false, at: 0 }, placement: { at: 0, opened: [] },
   topics: {}, recent: '', recentAt: 0, daily: {},
   coins: {}, spent: {}, claimed: {}, owned: {}, skipped: {}, wear: { head: null, face: null, neck: null, hand: null, frame: null, at: 0 }, freezeBuy: {}, frozen: {},
@@ -110,8 +114,8 @@ export function recordAttempt(s, kind, ok, ms, { lesson = null, now = Date.now()
   patch.daily = { ...s.daily, [day]: { ...d, a: d.a + 1, c: d.c + (ok ? 1 : 0), rc, r: Math.max(d.r, rc) } };
   return upd(s, patch);
 }
-const DAILY_FIELDS = ['l', 'p', 'a', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
-const dayEntry = (s, day) => ({ l: 0, p: 0, a: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
+const DAILY_FIELDS = ['l', 'n', 'p', 'a', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
+const dayEntry = (s, day) => ({ l: 0, n: 0, p: 0, a: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
 export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
 
 // ответы при регистрации — из них цель дня и задания; меняются в профиле
@@ -153,16 +157,32 @@ export function recordSeen(s, id) {
 // рекорд мини-игры: остаётся лучший счёт
 export const recordBest = (s, gameId, score) => ((s.best || {})[gameId] >= score ? s : upd(s, { best: { ...s.best, [gameId]: Math.max(0, Math.round(score)) } }));
 
-// ошибки уходят в практику, верный ответ в практике их убирает
+// ошибки уходят в практику, верный ответ в практике их убирает — с отметкой, когда снята:
+// слияние с сервером объединяет списки, и без отметки решённая ошибка вернулась бы
 export const addMistake = (s, id, now = Date.now()) => upd(s, { mistakes: [...s.mistakes.filter((m) => m.id !== id), { id, at: now }].slice(-MAX_MISTAKES) });
-export const resolveMistake = (s, id) => upd(s, { mistakes: s.mistakes.filter((m) => m.id !== id) });
+export const resolveMistake = (s, id, now = Date.now()) => dropMistakes(s, (m) => m.id === id, now);
+/* Снять ошибки (и пометки «с подсказкой») по условию — с отметками времени, чтобы снятое не
+   вернулось при слиянии с другим устройством. Нужна и повторению учебника (review-sync.js). */
+export function dropMistakes(s, pred, now = Date.now()) {
+  const mistakes = s.mistakes || []; const hinted = s.hinted || [];
+  const gone = mistakes.filter(pred); const goneH = hinted.filter(pred);
+  if (!gone.length && !goneH.length) return s;
+  return upd(s, {
+    mistakes: mistakes.filter((m) => !pred(m)), hinted: hinted.filter((m) => !pred(m)),
+    solved: { ...s.solved, ...Object.fromEntries(gone.map((m) => [m.id, Math.max(now, m.at + 1)])) },
+    unhint: { ...s.unhint, ...Object.fromEntries(goneH.map((m) => [m.id, Math.max(now, m.at + 1)])) },
+  });
+}
 // «Слушай» пропущен с билета урока: следующий урок открыт, сам урок не пройден (docs/mechanics.md)
 export const skipLesson = (s, id, now = Date.now()) => ((s.skipped || {})[id] ? s : upd(s, { skipped: { ...s.skipped, [id]: now } }));
 /* Подсказка ничем не наказывается: ни опытом, ни плашкой. Единственное невидимое следствие —
    упражнение, решённое с подсказкой, попадает в «Повторение» раньше остальных (сразу после
    ошибок). Решено потом без подсказки — снимается с этого списка. */
 export const addHinted = (s, id, now = Date.now()) => upd(s, { hinted: [...(s.hinted || []).filter((m) => m.id !== id), { id, at: now }].slice(-MAX_HINTED) });
-export const clearHinted = (s, id) => ((s.hinted || []).some((m) => m.id === id) ? upd(s, { hinted: s.hinted.filter((m) => m.id !== id) }) : s);
+export const clearHinted = (s, id, now = Date.now()) => {
+  const m = (s.hinted || []).find((x) => x.id === id);
+  return m ? upd(s, { hinted: s.hinted.filter((x) => x.id !== id), unhint: { ...s.unhint, [id]: Math.max(now, m.at + 1) } }) : s;
+};
 
 /* Опыт за урок: 2 за каждое упражнение, решённое верно с первой попытки (и новое, и
    повторение, с подсказкой или без), плюс 5 за то, что урок доведён до конца. Урок, который
@@ -180,14 +200,17 @@ export const DIAMOND_ACCURACY = 80;
 export function finishLesson(s, lessonId, { xp, accuracy, now = Date.now(), count = true, seconds = 0, kind = null, mode = 'lesson', diamond = false }) {
   const day = dayOf(now);
   const prev = s.lessons[lessonId];
+  // урок впервые пройден сейчас: старые записи вступительного теста (runs: 0) не в счёт —
+  // иначе у них оставалась давняя дата, и задание «Пройти новый урок» не засчитывалось
+  const fresh = !!lessonId && !(prev && prev.runs > 0);
   const gem = (prev && prev.diamond) || (diamond && accuracy >= DIAMOND_ACCURACY ? now : 0);
-  const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: prev ? prev.at : now, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
+  const lessons = lessonId ? { ...s.lessons, [lessonId]: { at: fresh ? now : prev.at, runs: (prev ? prev.runs : 0) + 1, best: Math.max(prev ? prev.best : 0, Math.round(accuracy)), ...(gem ? { diamond: gem } : {}) } } : s.lessons;
   const d = dayEntry(s, day);
   const hour = new Date(now).getHours();
   // в сегодняшние минуты — только время после полуночи: урок, начатый вчера, не делает новый день наполовину выполненным
   const sinceMidnight = (now - new Date(new Date(now).setHours(0, 0, 0, 0)).getTime()) / 1000;
   const entry = {
-    ...d, l: d.l + (lessonId ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.round(Math.min(900, seconds, sinceMidnight))),
+    ...d, l: d.l + (lessonId ? 1 : 0), n: d.n + (fresh ? 1 : 0), p: d.p + (lessonId && accuracy >= 100 ? 1 : 0), s: d.s + Math.max(0, Math.round(Math.min(900, seconds, sinceMidnight))),
     g: d.g + (kind === 'game' ? 1 : 0), pr: d.pr + (mode === 'practice' ? 1 : 0), h: d.h | (hour < 8 ? 1 : 0) | (hour >= 22 ? 2 : 0),
   };
   return upd(s, {
@@ -357,14 +380,19 @@ const monthPlanMap = (v) => {
   const out = {};
   Object.keys(obj(v)).filter((k) => /^\d{4}-\d{2}$/.test(k)).sort().slice(-24).forEach((k) => {
     const p = obj(v[k]); const target = cnt(p.target, 1e5);
-    if (target > 0) out[k] = { target, why: typeof p.why === 'string' ? p.why.slice(0, 200) : '', at: cnt(p.at, 1e14) };
+    if (target > 0) out[k] = { target, why: typeof p.why === 'string' ? p.why.slice(0, 200) : '', at: cnt(p.at, 1e14),
+      ...(typeof p.kind === 'string' && /^[a-z]{2,12}$/.test(p.kind) ? { kind: p.kind } : {}), ...(p.v === 2 ? { v: 2 } : {}) };
   });
   return out;
 };
-// одно и то же испытание на двух устройствах: остаётся закреплённое раньше
+// одно и то же испытание на двух устройствах: остаётся закреплённое раньше (план новых правил — важнее старого)
 const mergeMonthPlan = (a, b) => {
   const out = { ...a };
-  Object.entries(b).forEach(([k, p]) => { const c = out[k]; out[k] = !c || p.at < c.at || (p.at === c.at && p.target < c.target) ? p : c; });
+  Object.entries(b).forEach(([k, p]) => {
+    const c = out[k];
+    const pv = p.v || 0; const cv = c ? c.v || 0 : -1;
+    out[k] = !c || pv > cv || (pv === cv && (p.at < c.at || (p.at === c.at && (p.target < c.target || (p.target === c.target && String(p.kind || '') < String(c.kind || '')))))) ? p : c;
+  });
   return out;
 };
 const dayMap = (v, hi) => {
@@ -389,14 +417,19 @@ export function normalizeLearn(raw) {
   const smallMap = (v) => { const out = {}; Object.keys(obj(v)).filter(okKey).slice(0, 40).forEach((k) => { const x = cnt(v[k]); if (x) out[k] = x; }); return out; };
   const runs = obj(r.runs);
   const started = cnt(runs.started);
+  // отметки снятия: последние двести по времени
+  const recentTs = (v) => Object.fromEntries(Object.entries(tsMap(v, 5000)).sort((a, b) => a[1] - b[1]).slice(-MAX_SOLVED));
+  const solved = recentTs(r.solved); const unhint = recentTs(r.unhint);
   return {
     lessons, units, types,
     goal: GOALS.includes(r.goal) ? r.goal : e.goal, goalAt: cnt(r.goalAt, 1e14),
     xp: dayMap(r.xp, 1e6), done: dayMap(r.done, 1000),
     runs: { started, finished: Math.min(started || cnt(runs.finished), cnt(runs.finished)), abandoned: cnt(runs.abandoned) },
     quits: smallMap(r.quits), quitAt: smallMap(r.quitAt),
-    mistakes: (Array.isArray(r.mistakes) ? r.mistakes : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_MISTAKES),
-    hinted: (Array.isArray(r.hinted) ? r.hinted : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).slice(-MAX_HINTED),
+    // снятое после ошибки не возвращается: ошибка в списке, только если сделана позже отметки
+    mistakes: (Array.isArray(r.mistakes) ? r.mistakes : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).filter((m) => m.at > (solved[m.id] || 0)).slice(-MAX_MISTAKES),
+    hinted: (Array.isArray(r.hinted) ? r.hinted : []).filter((m) => m && okKey(m.id)).map((m) => ({ id: m.id, at: cnt(m.at, 1e14) })).filter((m) => m.at > (unhint[m.id] || 0)).slice(-MAX_HINTED),
+    solved, unhint,
     ...normalizeProgram(r),
   };
 }
@@ -534,6 +567,7 @@ export function mergeLearn(a, b) {
     quits: maxMap(x.quits, y.quits), quitAt: maxMap(x.quitAt, y.quitAt),
     mistakes: Object.entries(byId).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
     hinted: Object.entries(hintById).map(([id, at]) => ({ id, at })).sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1)),
+    solved: maxMap(x.solved, y.solved), unhint: maxMap(x.unhint, y.unhint),
     ...mergeProgram(x, y),
   });
 }

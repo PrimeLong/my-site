@@ -12,7 +12,11 @@
 
    Состояния лиги в профиле нет: она выводится из опыта по дням (learn.xp) — неделя за неделей
    от первой недели с опытом, поэтому два устройства всегда согласны. Неделя без опыта — вне
-   лиги: лига не меняется. Награда — через claimed (ключ lg:<понедельник>), дважды не выдаётся. */
+   лиги: лига не меняется. Награда — через claimed (ключ lg:<понедельник>), дважды не выдаётся.
+
+   Новичок не попадает в идущую неделю: соперники набирают опыт с понедельника, а он пришёл в
+   четверг — его первая неделя лиги начинается с ближайшего понедельника (пришёл в понедельник —
+   с этой недели). До тех пор на вкладке — «Ваша лига начнётся в понедельник». */
 import { dayOf, addDays, weekOf } from '../textbook/learn-state.js';
 import { earn, hasClaim } from './rewards.js';
 
@@ -35,6 +39,22 @@ export const PLACE_COINS = [50, 30, 20];
 export const LEAGUE_DAYS = 6;
 export const isBreakDay = (now = Date.now()) => { const day = dayOf(now); return day === addDays(weekOf(day), LEAGUE_DAYS); };
 const MAX_WEEKS = 104;
+/* С какого дня действует правило «новичок ждёт понедельника»: у тех, кто пришёл раньше, история
+   лиги не пересчитывается (иначе первая неделя выпала бы и сдвинула все переходы между лигами). */
+export const LEAGUE_WAIT_FROM = '2026-10-17';
+// первый день ученика: регистрация или самое раннее занятие
+const firstDayOf = (learn) => {
+  const days = [...Object.keys(learn.done || {}), ...Object.keys(learn.xp || {})].sort();
+  const reg = learn.profile && learn.profile.at ? dayOf(learn.profile.at) : null;
+  return [days[0], reg].filter(Boolean).sort()[0] || null;
+};
+// понедельник первой недели лиги ученика (null — ещё ничего не известно: лига с первой недели с опытом)
+export function leagueStart(learn) {
+  const first = firstDayOf(learn);
+  if (!first) return null;
+  const w = weekOf(first);
+  return first < LEAGUE_WAIT_FROM || first === w ? w : addDays(w, 7);
+}
 
 // генератор с зерном из строки: одна и та же неделя и лига — одни и те же соперники
 function rng(seed) {
@@ -152,10 +172,14 @@ export function leagueState(learn, now = Date.now(), realNames = []) {
   const thisWeek = weekOf(dayOf(now));
   const rest = isBreakDay(now);
   const days = Object.keys(learn.xp || {}).filter((d) => (learn.xp[d] || 0) > 0).sort();
+  const start = leagueStart(learn);
+  // пришёл посреди недели — ждёт понедельника: в идущую неделю лиги не попадает
+  const waiting = !!start && thisWeek < start;
   let league = 'bronze';
   const history = [];
   if (days.length) {
     let w = weekOf(days[0]);
+    if (start && w < start) w = start;
     const oldest = addDays(thisWeek, -7 * MAX_WEEKS);
     if (w < oldest) w = oldest;
     for (; w < thisWeek || (rest && w === thisWeek); w = addDays(w, 7)) {
@@ -172,7 +196,8 @@ export function leagueState(learn, now = Date.now(), realNames = []) {
   // в перерыв на экране — итог этой недели в той лиге, где её играли
   const restWeek = rest && history.length && history[history.length - 1].week === thisWeek ? history[history.length - 1] : null;
   const shown = restWeek ? restWeek.league : league;
-  const table = standings(learn, thisWeek, shown, now, realNames);
+  // ждущий понедельника в таблице идущей недели не стоит: его опыт этой недели в лигу не идёт
+  const table = standings(waiting ? { ...learn, xp: {} } : learn, thisWeek, shown, now, realNames);
   const me = table.find((row) => row.me);
   const others = table.filter((row) => !row.me);
   // сколько опыта до зоны повышения (до пятого места) — 0, если уже там
@@ -181,7 +206,8 @@ export function leagueState(learn, now = Date.now(), realNames = []) {
   const toSafe = rest || me.zone !== 'down' ? 0 : Math.max(1, others[GROUP - DEMOTE - 1].xp - me.xp + 1);
   // дней до итогов, считая сегодняшний: в понедельник — 6, в субботу — 1, в воскресенье (перерыв) — 0
   const daysLeft = rest ? 0 : LEAGUE_DAYS - Array.from({ length: LEAGUE_DAYS }, (_, d) => addDays(thisWeek, d)).indexOf(dayOf(now));
-  return { league: shown, next: league, rest, week: thisWeek, table, me, toPromote, toSafe, daysLeft, history, joined: weekXp(learn, thisWeek) > 0 };
+  return { league: shown, next: league, rest: rest && !waiting, week: thisWeek, table, me, toPromote, toSafe, daysLeft, history,
+    joined: !waiting && weekXp(learn, thisWeek) > 0, waiting, startsOn: waiting ? start : null };
 }
 // невыданные награды прошлых недель
 export const pendingRewards = (learn, now = Date.now()) => leagueState(learn, now).history.filter((h) => h.coins > 0 && !hasClaim(learn, `lg:${h.week}`));

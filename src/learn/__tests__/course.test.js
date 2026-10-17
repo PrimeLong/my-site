@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
-  UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
+  UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, practiceIds, canPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
   GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, gameLeft, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
@@ -524,6 +524,10 @@ describe('юнит «Спрос и предложение»: все виды у�
   it('проверка юнита и практика ошибок не берут раунды мини-игр', () => {
     for (let s = 1; s <= N; s += 1) buildUnitCheck(PILOT, seeded(s)).items.forEach((i) => expect(GAME_KINDS).not.toContain(i.kind));
     expect(buildPractice(['sd-g-market', 'sd-e2-petrol']).items.map((i) => i.of || i.id)).toEqual(['sd-e2-petrol']);
+    // ошибка в мини-игре в «Повторить ошибки» не считается: решить её там негде
+    const learn = addMistake(addMistake(emptyLearn(), 'sd-g-market', 1), 'sd-e2-petrol', 2);
+    expect(practiceIds(learn)).toEqual(['sd-e2-petrol']);
+    expect(canPractice('нет-такого')).toBe(false);
   });
 });
 
@@ -646,6 +650,20 @@ describe('мотивация: опыт, серия с заморозкой, ре
     expect(mergeLearn(a, b)).toEqual(mergeLearn(b, a));
     expect(normalizeLearn({ goal: 99, xp: { bad: 5, '2026-09-30': -3 }, types: { calc: { n: 2, ok: 9 } } })).toMatchObject({ goal: 1, xp: {}, types: { calc: { n: 2, ok: 2 } } });
     expect(dayOf(at(2026, 9, 30))).toBe('2026-09-30');
+  });
+  it('решённая ошибка не возвращается при слиянии с сервером, новая ошибка той же задачи — возвращается', () => {
+    // на сервере — профиль с ошибкой; на телефоне её решили в практике
+    const server = addMistake(addHinted(emptyLearn(), 'h1', 5), 'm1', 10);
+    let phone = resolveMistake(server, 'm1', 20);
+    phone = clearHinted(phone, 'h1', 21);
+    expect(phone.mistakes).toEqual([]);
+    // сервер объединяет списки — ошибка не должна ожить ни в одну сторону
+    expect(mergeLearn(server, phone).mistakes).toEqual([]);
+    expect(mergeLearn(phone, server).hinted).toEqual([]);
+    expect(mergeLearn(mergeLearn(server, phone), server).mistakes).toEqual([]);
+    // ошиблись в той же задаче позже — снова в повторении
+    const again = addMistake(mergeLearn(server, phone), 'm1', 30);
+    expect(mergeLearn(again, server).mistakes.map((m) => m.id)).toEqual(['m1']);
   });
 });
 

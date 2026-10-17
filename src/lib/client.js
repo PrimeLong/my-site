@@ -147,6 +147,15 @@ export const accountRecoveryNew = (token, password) => post({ action: 'recovery_
 export const accountExport = (token) => post({ action: 'export', token }, ACCOUNT_API);
 export const accountDelete = (token, password) => post({ action: 'delete', token, password }, ACCOUNT_API);
 export const accountLeagueNames = (token) => post({ action: 'league-names', token }, ACCOUNT_API);
+// друзья и забеги (api/account.js): карточка для друзей, список, заявки, приглашения
+export const accountCard = (token, card) => post({ action: 'card', token, card }, ACCOUNT_API);
+export const accountFriends = (token) => post({ action: 'friends', token }, ACCOUNT_API);
+export const accountFriendAdd = (token, login) => post({ action: 'friend-add', token, login }, ACCOUNT_API);
+export const accountFriendAnswer = (token, login, accept) => post({ action: 'friend-answer', token, login, accept }, ACCOUNT_API);
+export const accountFriendCancel = (token, login) => post({ action: 'friend-cancel', token, login }, ACCOUNT_API);
+export const accountFriendRemove = (token, login) => post({ action: 'friend-remove', token, login }, ACCOUNT_API);
+export const accountRaceInvite = (token, login) => post({ action: 'race-invite', token, login }, ACCOUNT_API);
+export const accountRaceAnswer = (token, id, accept, day) => post({ action: 'race-answer', token, id, accept, day }, ACCOUNT_API);
 
 /* Таблица рекордов «Своего дела» (api/records.js): записаться можно только из профиля. */
 const RECORDS_API = '/api/records';

@@ -9,6 +9,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft, ChevronRight, Settings, Flame, Star, Trophy, Coins, ShieldCheck, Clock, BookOpen, CalendarDays, Target, Flag, UserRound, Lock, Check, Footprints, Landmark,
   Shapes, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Bell, Palette, X, Award,
+  Snowflake, Heart, Flower2, Umbrella, Sprout, Sun, Waves, Wheat, Leaf, CloudRain, TreePine, UserPlus,
 } from 'lucide-react';
 import { Card, Button, IconButton, TopBar, Toggle, MenuCard, Heading, Sheet } from './ds.jsx';
 import { Medal, Engraving, CountUp } from './ds-art.jsx';
@@ -17,7 +18,7 @@ import { Mascot } from './mascot.jsx';
 import { Audio } from './MacroSimulator.jsx';
 import { streak, longestStreak, bestWeek, learnStats, studyWeeks, goalToday, ownedFreezes } from './textbook/learn-state.js';
 import { balance, policyActive, coinsWord, plural } from './learn/rewards.js';
-import { albumItems, sealItems, monthItems, shelfOrder, fullDate } from './learn/collections.js';
+import { albumItems, sealItems, monthItems, monthsByYear, shelfOrder, fullDate } from './learn/collections.js';
 import { NOTIFY_KINDS, REMIND_HOURS } from './learn/notify.js';
 import { ProgramCard } from './learn-rewards.jsx';
 import { BellButton, browserNotifySupported } from './learn-notify.jsx';
@@ -71,6 +72,22 @@ export const PROFILE_CSS = `
   .pf-stamp[data-got="false"] { --u: var(--ds-rule2); }
   .pf-stamp[data-got="false"] > span > * { opacity: .42; filter: grayscale(1); }
   .pf-month { position: relative; }
+  .pf-friends { display: flex; align-items: center; gap: 12px; width: 100%; margin: 12px 0 0; padding: 10px 14px; }
+  .pf-friends-stack { display: flex; align-items: center; min-width: 52px; }
+  .pf-friends-stack > span { margin-left: -12px; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--ds-card2); box-shadow: 0 0 0 2px var(--ds-card); animation: pf-in .4s ease-out both; animation-delay: calc(var(--k, 0) * 80ms); }
+  .pf-friends-stack > span:first-child { margin-left: 0; }
+  .pf-friends-plus { color: var(--u-ink); background: color-mix(in srgb, var(--u) 12%, var(--ds-card)) !important; }
+  /* марка месяца: у каждого месяца свой цвет и рисунок; пропущенный месяц — блёклый, нынешний — пунктиром с прогрессом */
+  .pf-mstamp > span { position: relative; background: var(--u); border-color: color-mix(in srgb, var(--u) 70%, #000); }
+  .pf-mstamp > span svg { display: block; }
+  .pf-mstamp[data-state="current"] > span { background: var(--ds-card); border-style: dashed; }
+  .pf-mstamp[data-state="current"] > span > * { opacity: 1; filter: none; }
+  .pf-mstamp[data-state="missed"] > span { background: var(--ds-card2); }
+  .pf-mstamp[data-state="got"] { animation: pf-shine 4s ease-in-out infinite; }
+  @keyframes pf-shine { 0%, 80%, 100% { filter: drop-shadow(0 1px 1px var(--ds-shade)) } 90% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--u) 60%, transparent)) } }
+  .pf-year { display: flex; align-items: baseline; gap: 10px; margin: 18px 0 8px; }
+  .pf-year b { font: 700 22px var(--ds-head); }
+  .pf-year span { color: var(--ds-ink2); font-size: 14px; }
   /* крупная марка в шторке: «оттиск» — падает с небольшим поворотом */
   .pf-big { display: flex; justify-content: center; margin: 4px 0 10px; animation: pf-press .5s cubic-bezier(.3,1.5,.5,1) both; }
   @keyframes pf-press { 0% { transform: scale(1.5) rotate(-10deg); opacity: 0 } 60% { transform: scale(.95) rotate(2deg); opacity: 1 } 100% { transform: none } }
@@ -92,18 +109,46 @@ export const PROFILE_CSS = `
   .pf-hours { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
   .pf-hours .ds-chip { margin: 0; min-width: 58px; }
   .pf-version { text-align: center; font: 12px var(--ds-mono); color: var(--ds-ink3); margin: 18px 0 4px; }
-  @media (prefers-reduced-motion: reduce) { .pf-item, .pf-more, .pf-big, .pf-track i { animation: none !important; } .pf-gear svg, .pf-all svg { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .pf-item, .pf-more, .pf-big, .pf-track i, .pf-mstamp { animation: none !important; } .pf-gear svg, .pf-all svg { transition: none !important; } }
 `;
 
-const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem };
+const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
 const KIND = {
   album: { title: 'Альбом', page: 'Альбом марок', sub: 'Пройденный юнит — марка с его зданием.', word: ['марка', 'марки', 'марок'], testid: 'album-page' },
   seal: { title: 'Печати', page: 'Печати', sub: 'Достижения — оттиски печатей; за каждую — монеты.', word: ['печать', 'печати', 'печатей'], testid: 'achievements' },
-  month: { title: 'Марки месяцев', page: 'Марки месяцев', sub: 'Выполненное испытание месяца — марка с его названием.', word: ['марка', 'марки', 'марок'], testid: 'months-page' },
+  month: { title: 'Марки месяцев', page: 'Марки месяцев', sub: 'У каждого месяца — своя марка: выполните испытание месяца, пока он идёт.', word: ['марка', 'марки', 'марок'], testid: 'months-page' },
 };
+
+/* Марка месяца — почтовая марка с зубцами: сокращение месяца сверху, рисунок месяца, год внизу.
+   Подписи — внутри рисунка (масштабируются вместе с ним). */
+const MONTH_ART = [
+  [Snowflake, '#2F6E9E'], [Heart, '#A33A5E'], [Flower2, '#8A4FA0'], [Umbrella, '#2E6B8A'], [Sprout, '#4B7A1E'], [Sun, '#C27A12'],
+  [Waves, '#1F7A8C'], [Wheat, '#A5701A'], [BookOpen, '#8A5A2B'], [Leaf, '#B4531A'], [CloudRain, '#5A6E8C'], [TreePine, '#2E6B4A'],
+];
+const MONTH_ABBR = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'];
+function MonthStamp({ it, big = false }) {
+  const [Icon, color] = MONTH_ART[it.month - 1];
+  const state = it.got ? 'got' : it.current ? 'current' : 'missed';
+  const ink = state === 'got' ? '#fff' : state === 'current' ? color : 'var(--ds-ink3)';
+  const share = it.progress ? Math.min(1, it.progress.have / Math.max(1, it.progress.total)) : 0;
+  return (
+    <span className={`pf-stamp pf-mstamp${big ? ' big' : ''}`} style={state === 'missed' ? undefined : { '--u': color }} data-got={String(it.got)} data-state={state}>
+      <span>
+        <svg viewBox="0 0 54 50" width={big ? 156 : 54} height={big ? 122 : 50} role="img" aria-label={`${it.title} ${it.year}: ${state === 'got' ? 'получена' : state === 'current' ? 'испытание идёт' : 'не получена'}`}>
+          <text x="27" y="11" textAnchor="middle" fontSize="8" fontWeight="700" letterSpacing=".8" fill={ink} fontFamily="var(--ds-head)">{MONTH_ABBR[it.month - 1]}</text>
+          <Icon x={17} y={14} width={20} height={20} color={ink} strokeWidth={state === 'got' ? 2.2 : 1.8} />
+          {state === 'current' ? (
+            <g><rect x="11" y="40" width="32" height="3.5" rx="1.75" fill="var(--ds-rule)" /><rect x="11" y="40" width={Math.max(2, 32 * share)} height="3.5" rx="1.75" fill={color} /></g>
+          ) : <text x="27" y="45" textAnchor="middle" fontSize="6.5" fontWeight="700" fill={ink} opacity=".9" fontFamily="var(--ds-mono)">{it.year}</text>}
+        </svg>
+      </span>
+    </span>
+  );
+}
 
 // рисунок марки любого вида: здание юнита, печать или марка месяца
 function Art({ it, big = false }) {
+  if (it.kind === 'month' && it.month) return <MonthStamp it={it} big={big} />;
   if (it.kind === 'album') {
     if (big) {
       return (
@@ -128,7 +173,7 @@ function Art({ it, big = false }) {
 function Item({ it, i, onOpen, testid }) {
   return (
     <button type="button" className="pf-item" style={{ '--i': i }} data-testid={testid} data-ach={it.kind === 'seal' ? it.id : undefined} data-item={it.id} data-got={String(it.got)}
-      aria-label={`${it.title}${it.got ? '' : ' — ещё не получена'}. Подробнее`} onClick={() => { Audio.play('paper'); onOpen(it); }}>
+      aria-label={`${it.full || it.title}${it.got ? '' : it.current ? ' — испытание идёт' : it.missed ? ' — не получена' : ' — ещё не получена'}. Подробнее`} onClick={() => { Audio.play('paper'); onOpen(it); }}>
       <span className="pf-art"><Art it={it} /></span>
       <b>{it.title}</b>
     </button>
@@ -141,7 +186,7 @@ export function ItemSheet({ it, onClose }) {
   return (
     <Sheet label={it.title} onClose={onClose} testid="item-sheet">
       <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '-8px -8px 0 0' }}><IconButton label="Закрыть" icon={X} data-nav="back" onClick={onClose} size={22} /></div>
-      <div className="ds-eyebrow" style={{ textAlign: 'center' }}>{k.title}{it.kind === 'album' ? ` · юнит ${it.no}` : ''}</div>
+      <div className="ds-eyebrow" style={{ textAlign: 'center' }}>{it.kind === 'month' && it.year ? `Марка месяца · ${it.year}` : k.title}{it.kind === 'album' ? ` · юнит ${it.no}` : ''}</div>
       <div className="pf-big" key={it.id}><Art it={it} big /></div>
       <div className="pf-sheet-title">{it.title}</div>
       <div className="pf-sheet-text" data-testid="item-text">{it.text}</div>
@@ -149,7 +194,7 @@ export function ItemSheet({ it, onClose }) {
         {it.got ? (
           <div className="pf-fact" data-testid="item-date"><CalendarDays size={20} aria-hidden="true" /><span>{it.at ? <>Получена <b>{fullDate(it.at)}</b></> : 'Получена'}</span></div>
         ) : (
-          <div className="pf-fact" data-testid="item-how"><Lock size={20} aria-hidden="true" /><span><b>Ещё не получена.</b> {it.how}</span></div>
+          <div className="pf-fact" data-testid="item-how"><Lock size={20} aria-hidden="true" /><span><b>{it.current ? 'Испытание идёт.' : it.missed ? 'Не получена.' : 'Ещё не получена.'}</b> {it.how}</span></div>
         )}
         {it.progress && !it.got && (
           <div className="pf-track" style={{ margin: '0 4px' }} role="progressbar" aria-valuemin={0} aria-valuemax={it.progress.total} aria-valuenow={it.progress.have} aria-label="Сколько уже сделано">
@@ -213,6 +258,12 @@ export function CollectionPage({ kind, items, onBack }) {
           <span className="ds-sub">из {items.length} {plural(items.length, k.word[0], k.word[1], k.word[2])}</span>
         </div>
         <div className="pf-track"><i style={{ width: `${Math.round((got.length / Math.max(1, items.length)) * 100)}%` }} /></div>
+        {kind === 'month' ? monthsByYear(items).map((g) => (
+          <section key={g.year} data-testid="collection-year" data-year={g.year}>
+            <div className="pf-year"><b>{g.year}</b><span>{g.items.filter((x) => x.got).length} из {g.items.length} {plural(g.items.length, 'марки', 'марок', 'марок')}</span></div>
+            <div className="pf-grid">{g.items.map((it, i) => <Item key={it.id} it={it} i={i} onOpen={setOpen} testid="collection-item" />)}</div>
+          </section>
+        )) : <>
         {got.length > 0 ? (
           <div className="pf-grid" data-testid="collection-got">{got.map((it, i) => <Item key={it.id} it={it} i={i} onOpen={setOpen} testid={kind === 'seal' ? 'ach' : 'collection-item'} />)}</div>
         ) : <div className="ds-sub" style={{ fontSize: 14.5, margin: '8px 0' }}>Пока ни одной — первая уже близко.</div>}
@@ -222,6 +273,7 @@ export function CollectionPage({ kind, items, onBack }) {
             <div className="pf-grid rw-stamps-locked" data-testid="collection-locked">{rest.map((it, i) => <Item key={it.id} it={it} i={i + got.length} onOpen={setOpen} testid={kind === 'seal' ? 'ach' : 'collection-item'} />)}</div>
           </>
         )}
+        </>}
       </div>
     </div>
     {open && <ItemSheet it={open} onClose={() => setOpen(null)} />}
@@ -251,7 +303,30 @@ export function StudyWeeks({ learn }) {
   );
 }
 
-export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 0 }) {
+/* Друзья в профиле: Инфли друзей стопкой, сколько друзей и заявок; касание — страница «Друзья»
+   (src/learn-friends.jsx). Без аккаунта — приглашение его завести. */
+function FriendsEntry({ friends, guest, onOpen }) {
+  const list = (friends && friends.friends) || [];
+  const incoming = ((friends && friends.incoming) || []).length;
+  const n = list.length;
+  return (
+    <button type="button" className="ds-card ds-card--button pf-friends" data-testid="prof-friends" data-nav-target="friends" onClick={onOpen}
+      aria-label={guest ? 'Друзья — после регистрации' : `Друзья: ${n}${incoming ? `, заявок: ${incoming}` : ''}. Открыть`}>
+      <span className="pf-friends-stack" aria-hidden="true">
+        {list.slice(0, 3).map((f, k) => <span key={f.login} style={{ '--k': k }}><Mascot mood="hello" size={34} outfit={(f.card && f.card.wear) || {}} /></span>)}
+        {!n && <span className="pf-friends-plus"><UserPlus size={20} /></span>}
+      </span>
+      <span style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 16 }}>Друзья <b className="ds-num" data-testid="prof-friends-count">{n}</b>
+          {incoming > 0 && <span className="fr-badge" data-testid="prof-friends-incoming">+{incoming}</span>}</span>
+        <span className="ds-sub" style={{ display: 'block', fontSize: 13.5 }}>{guest ? 'Создайте аккаунт — и добавляйте друзей' : n ? 'Их успехи, профили и забеги' : 'Добавить друга по логину'}</span>
+      </span>
+      <ChevronRight size={20} color="var(--ds-ink3)" aria-hidden="true" />
+    </button>
+  );
+}
+
+export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 0, friends = null, guest = false, onFriends = () => {} }) {
   const st = streak(learn); const stats = learnStats(learn);
   const bw = bestWeek(learn);
   const [page, setPage] = useState(null); // null | 'album' | 'seal' | 'month'
@@ -277,6 +352,7 @@ export function ProfileView({ learn, onOpenBook, onSettings, onNotify, unread = 
           </button>
         </div>
       </div>
+      <FriendsEntry friends={friends} guest={guest} onOpen={onFriends} />
       <Card style={{ margin: '12px 0' }} data-testid="prof-records">
         <div className="ds-h3" style={{ marginBottom: 2 }}>Рекорды</div>
         <StatHero icon={Flame} tone="#D9822B" value={st.days} testid="prof-streak" label={`${plural(st.days, 'день', 'дня', 'дней')} подряд — серия сейчас`}

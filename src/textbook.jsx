@@ -9,7 +9,8 @@ import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, R
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
-import { useWide } from './ds-art.jsx';
+import { useWide, Engraving, Guilloche } from './ds-art.jsx';
+import { placeOf } from './ds-tokens.js';
 import { LEVERS, SCENARIOS } from './lib/engine.js';
 import { LAB_LEVERS } from './lib/lab.js';
 import { DRILLS, drillSetup } from './lib/drills.js';
@@ -202,6 +203,38 @@ export const TEXTBOOK_CSS = `
   .tbl-planned-list { list-style: none; margin: 0; padding: 0 14px 12px; display: grid; gap: 8px; }
   .tbl-planned-list li { display: grid; gap: 2px; font: 13px/1.4 var(--ds-sans); color: var(--ds-ink3); }
   .tbl-planned-list b { color: var(--ds-ink2); font-weight: 600; }
+  /* обложка главы */
+  .tb-cover { --u-ink: color-mix(in srgb, var(--u) 72%, #000); }
+  .ds-dark .tb-cover { --u-ink: color-mix(in srgb, var(--u) 40%, #fff); }
+  .tb-cover { position: relative; overflow: hidden; margin: 2px 0 16px; border-radius: 18px; background: color-mix(in srgb, var(--u) 10%, var(--ds-card));
+    border: 1.5px solid color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); animation: tb-cover-in .45s cubic-bezier(.3,.8,.4,1) both; }
+  .tb-cover-band { display: block; background: var(--u); }
+  .tb-cover-in { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 16px 12px; }
+  .tb-cover-eyebrow { font: 700 12px/1.3 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--u-ink); }
+  .tb-cover-title { font: 700 24px/1.2 var(--ds-head); color: var(--ds-ink); margin: 4px 0 8px; letter-spacing: -.01em; }
+  .tb-cover-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+  .tb-cover-meta span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--ds-card); color: var(--ds-ink2); border: 1px solid var(--ds-rule); }
+  .tb-cover-meta b { color: var(--ds-ink); }
+  .tb-cover-meta .ok { color: var(--ds-ok-ink); border-color: color-mix(in srgb, var(--ds-ok) 40%, var(--ds-rule)); }
+  .tb-cover-art { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%; background: var(--ds-card); box-shadow: 0 0 0 4px color-mix(in srgb, var(--u) 18%, transparent); }
+  .tb-cover-bar { height: 5px; background: color-mix(in srgb, var(--u) 15%, var(--ds-rule)); }
+  .tb-cover-bar i { display: block; height: 100%; background: var(--u); animation: tb-bar 1s cubic-bezier(.3,.8,.4,1) both; transform-origin: 0 50%; }
+  @keyframes tb-cover-in { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+  @keyframes tb-bar { from { transform: scaleX(0) } }
+  @media (max-width: 380px) { .tb-cover-art { width: 72px; height: 72px; } .tb-cover-art svg { width: 68px; height: 68px; } .tb-cover-title { font-size: 21px; } }
+  @media (prefers-reduced-motion: reduce) { .tb-cover, .tb-cover-bar i { animation: none; } }
+  .tbl-ch-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; font: 13px/1.3 var(--ds-sans); color: var(--ds-ink2); }
+  .tbl-ch-meta b { color: var(--ds-ink); font-weight: 700; }
+  .tbl-ch-ring { position: relative; width: 38px; height: 38px; justify-self: end; }
+  .tbl-ch-ring svg { display: block; transform: rotate(-90deg); }
+  .tbl-ch-ring circle { fill: none; stroke-width: 4; }
+  .tbl-ch-ring .bg { stroke: var(--ds-rule); }
+  .tbl-ch-ring .fg { stroke: var(--u); stroke-linecap: round; animation: tbl-ring .9s cubic-bezier(.3,.8,.4,1) both; }
+  .tbl-ch-ring[data-full="true"] .fg { stroke: var(--ds-ok); }
+  .tbl-ch-ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 12px/1 var(--ds-mono); color: var(--ds-ink); }
+  .tbl-ch-ring small { font-size: 12px; font-weight: 400; color: var(--ds-ink3); }
+  @keyframes tbl-ring { from { stroke-dashoffset: var(--len) } }
+  @media (prefers-reduced-motion: reduce) { .tbl-ch-ring .fg { animation: none; } }
   .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .tbl-ch-bar i { display: block; height: 100%; background: var(--ds-ok); }
   .tbl-more { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
@@ -1285,6 +1318,34 @@ function ChapterToc({ current, ctx }) {
   );
 }
 
+/* Обложка главы в обучении: карточка цвета юнита — гильош сверху, номер и уровень, название,
+   гравюра здания юнита и прогресс (разделы, задачи). Раньше заголовок висел на подсветке страницы,
+   которая гасла к низу длинной главы полосами; теперь фон учебника ровный, а цвет — у обложки. */
+function ChapterCover({ id, ctx, lvl, read }) {
+  const ch = CHAPTER_BY_ID[id];
+  const pl = placeOf(id);
+  const sp = sectionProgress(ctx.progress, id);
+  const sc = chapterScore(ctx.progress, problemsOf(id));
+  return (
+    <header className="tb-cover" style={{ '--u': pl.color }} data-testid="chapter-cover">
+      <Guilloche height={18} lines={6} period={26} color="color-mix(in srgb, var(--u) 75%, #fff)" opacity={0.55} className="tb-cover-band" />
+      <div className="tb-cover-in">
+        <div style={{ minWidth: 0 }}>
+          <div className="tb-cover-eyebrow">Глава {chapterNo(id)}{lvl ? ` · ${lvl.title} уровень` : ''}</div>
+          <h1 className="tb-cover-title">{ch.title}</h1>
+          <div className="tb-cover-meta">
+            {sp.total > 0 && <span><b>{sp.done}</b> из {sp.total} {plural(sp.total, 'раздела', 'разделов', 'разделов')}</span>}
+            {sc.total > 0 && <span><b>{sc.solved}</b> из {sc.total} {plural(sc.total, 'задачи', 'задач', 'задач')}</span>}
+            {read && <span className="ok"><Check size={13} aria-hidden="true" /> прочитана</span>}
+          </div>
+        </div>
+        <span className="tb-cover-art" aria-hidden="true"><Engraving kind={pl.building} alive={read || sp.done > 0} size={92} color={pl.color} label={pl.place} /></span>
+      </div>
+      {sp.total > 0 && <div className="tb-cover-bar" aria-hidden="true"><i style={{ width: `${(sp.done / sp.total) * 100}%` }} /></div>}
+    </header>
+  );
+}
+
 function ChapterPage({ id, ctx }) {
   const wide = useWide();
   const ch = CHAPTER_BY_ID[id];
@@ -1297,10 +1358,12 @@ function ChapterPage({ id, ctx }) {
   return (
     <div data-testid="chapter" data-chapter={id}>
       <PageNav ctx={ctx} />
-      <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-        Глава {chapterNo(id)} · {lvl ? `${lvl.title} уровень` : PARTS.find((p) => p.id === ch.part).title}
-      </div>
-      <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
+      {ctx.embedded ? <ChapterCover id={id} ctx={ctx} lvl={lvl} read={read} /> : (<>
+        <div style={{ fontSize: 12, color: COLOR.faint, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+          Глава {chapterNo(id)} · {lvl ? `${lvl.title} уровень` : PARTS.find((p) => p.id === ch.part).title}
+        </div>
+        <h1 className="ems-serif" style={{ fontSize: 26, color: COLOR.goldSoft, margin: '4px 0 14px', fontWeight: 700 }}>{ch.title}</h1>
+      </>)}
       {blocks ? (
         <div className="tb-ch-grid">
           <aside className="tb-ch-aside">
@@ -1885,11 +1948,26 @@ function LearnToc({ ctx }) {
               n += 1;
               const readMark = !!ctx.progress.read[c.id];
               const sp = sectionProgress(ctx.progress, c.id);
+              // сколько задач главы решено — видно прямо в оглавлении, без захода в главу
+              const sc = chapterScore(ctx.progress, problemsOf(c.id));
+              const share = sc.total ? sc.solved / sc.total : 0;
+              const R = 15; const L = 2 * Math.PI * R;
               return (
                 <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} data-chapter={c.id} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
                   <span className={`tbl-no${readMark ? ' done' : ''}`} aria-label={readMark ? 'прочитана' : undefined}>{readMark ? <Check size={14} aria-hidden="true" /> : n}</span>
-                  <span className="tbl-ch-title">{c.title}</span>
-                  {sp.total > 0 ? <span className="tbl-ch-bar" title={`разделы ${sp.done}/${sp.total}`} aria-label={`разделы ${sp.done}/${sp.total}`}><i style={{ width: `${(sp.done / sp.total) * 100}%` }} /></span> : <span />}
+                  <span style={{ minWidth: 0 }}>
+                    <span className="tbl-ch-title" style={{ display: 'block' }}>{c.title}</span>
+                    <span className="tbl-ch-meta" data-testid="tb-ch-meta">
+                      {sc.total > 0 && <span data-testid="tb-ch-tasks" data-solved={sc.solved} data-total={sc.total}>Задачи: <b>{sc.solved}</b> из {sc.total}</span>}
+                      {sp.total > 0 && <span data-testid="tb-ch-sections" data-done={sp.done} data-total={sp.total}>Разделы: <b>{sp.done}</b> из {sp.total}</span>}
+                    </span>
+                  </span>
+                  {sc.total > 0 ? (
+                    <span className="tbl-ch-ring" data-full={String(sc.solved === sc.total)} aria-hidden="true">
+                      <svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r={R} className="bg" /><circle cx="19" cy="19" r={R} className="fg" strokeDasharray={L} strokeDashoffset={L * (1 - share)} style={{ '--len': L }} /></svg>
+                      <b>{Math.round(share * 100)}<small>%</small></b>
+                    </span>
+                  ) : <span />}
                 </button>
               );
             })}

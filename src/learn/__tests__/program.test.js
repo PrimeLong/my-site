@@ -6,7 +6,7 @@ import { skillLevel, weakLessons, recommend, courseCtx, lessonOpts, theoryNotice
 import { evalExpr, fmtResult, pressRoot } from '../calc.js';
 import {
   balance, earn, courseIncome, runCoins, rateOn, rateHistory, priceOf, buy, setWear, outfitOf, FREEZE, BOOST, OUTFITS, shopDay, SHOWCASE_SIZE, DEAL_OFF, boostActive, questsFor, openChest, chestCoins, chestKey,
-  settle, monthChallenge, achievementsOf, hash01, COIN, goalCoins,
+  settle, monthChallenge, fixMonth, achievementsOf, hash01, COIN, goalCoins,
 } from '../rewards.js';
 import {
   emptyLearn, recordAttempt, finishLesson, setProfile, setPlacement, passUnit, normalizeLearn, mergeLearn, streak, applyFreezes, ownedFreezes,
@@ -382,9 +382,10 @@ describe('задания дня, сундук, печати, испытание 
     expect(m.have).toBe(0);
     for (let d = 1; d <= 28; d += 1) {
       const day = `2026-09-${String(d).padStart(2, '0')}`;
-      for (let k = 0; k < 2; k += 1) s = finishLesson(s, `sc-i${k + 1}`, { xp: 10, accuracy: 100, now: at(day), seconds: 900 });
+      for (let k = 0; k < 4; k += 1) s = finishLesson(s, `sc-i${k + 1}`, { xp: 10, accuracy: 100, now: at(day), seconds: 900 });
+      s = { ...s, claimed: { ...s.claimed, [`q:${day}:all`]: at(day) } };
     }
-    s = { ...s, xp: { ...s.xp, '2026-09-01': 600 } };
+    s = { ...s, xp: { ...s.xp, '2026-09-01': 2000 } };
     expect(monthChallenge(s, T).done).toBe(true);
     const r = settle(s, courseCtx(s), T);
     expect(r.gains.map((g) => g.key)).toContain('m:2026-09');
@@ -406,40 +407,52 @@ describe('правки: печать «Без помарок», испытани
     s = finishLesson(s, 'sc-l1', { xp: 10, accuracy: 100, now: T });
     expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).toContain('a:perfect');
   });
-  it('испытание месяца персональное: от цели в минутах и прошлого месяца, без «заниматься 2 дня»', () => {
-    // нижние планки высокие: испытание месяца — трудное, не «3 урока без ошибок»
-    const FLOOR = { minutes: 150, lessons: 15, perfect: 8, xp: 300 };
+  it('испытание месяца персональное и трудное: от цели в минутах и прошлого месяца, без «заниматься 2 дня»', () => {
+    // нижние планки высокие: испытание месяца — трудное, не «8 уроков без ошибок»
+    const FLOOR = { minutes: 300, lessons: 30, perfect: 15, xp: 700, days: 22, quests: 12 };
+    const VOLUME = ['minutes', 'lessons', 'perfect', 'xp'];
     const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29'));
     const m = monthChallenge(late, at('2026-09-29'));
     expect(m.daysLeft).toBe(2);
-    expect(Object.keys(FLOOR)).toContain(m.id);
-    // пришёл в конце месяца — цель не ниже нижней планки
-    expect(m.target).toBe(FLOOR[m.id]);
+    // пришёл в конце месяца — не испытание постоянства на два дня, а объёмное, с планкой не меньше половины
+    expect(VOLUME).toContain(m.id);
+    expect(m.target).toBeGreaterThanOrEqual(FLOOR[m.id] / 2);
     expect(m.need).toBe(m.target - m.have);
     expect(m.title).toContain(String(m.target));
     expect(m.why).toContain('10 минут');
-    // за весь месяц: больше минут в цели — больше испытание
-    for (const day of ['2026-09-29', '2026-10-15', '2026-11-15', '2026-12-15']) {
+    // за весь месяц: не ниже планки; больше минут в цели — больше испытание (постоянство — то же для всех)
+    const seen = new Set();
+    for (const day of ['2026-09-15', '2026-10-15', '2026-11-15', '2026-12-15', '2027-01-15', '2027-02-15', '2027-03-15', '2027-04-15']) {
       const five = setProfile(emptyLearn(), { minutes: 5 }, at('2026-07-01'));
       const twenty = setProfile(emptyLearn(), { minutes: 20 }, at('2026-07-01'));
       const a = monthChallenge(five, at(day)); const b = monthChallenge(twenty, at(day));
+      seen.add(a.id);
       expect(a.target).toBeGreaterThanOrEqual(FLOOR[a.id]);
-      expect(b.target).toBeGreaterThan(a.target);
+      if (VOLUME.includes(a.id)) expect(b.target).toBeGreaterThan(a.target); else expect(b.target).toBe(a.target);
     }
-    // в прошлом месяце сделано много — теперь чуть больше прошлого
+    expect(seen.size).toBeGreaterThan(2);
+    // в прошлом месяце сделано много — теперь больше прошлого
     let busy = setProfile(emptyLearn(), { minutes: 5 }, at('2026-07-01'));
     for (let d = 1; d <= 31; d += 1) {
       const day = `2026-08-${String(d).padStart(2, '0')}`;
-      for (let k = 0; k < 3; k += 1) busy = finishLesson(busy, `sc-i${k + 1}`, { xp: 30, accuracy: 100, now: at(day), seconds: 900 });
+      for (let k = 0; k < 4; k += 1) busy = finishLesson(busy, `sc-i${k + 1}`, { xp: 60, accuracy: 100, now: at(day), seconds: 900 });
     }
     const calm = monthChallenge(setProfile(emptyLearn(), { minutes: 5 }, at('2026-07-01')), at('2026-09-29'));
     const hard = monthChallenge(busy, at('2026-09-29'));
     expect(hard.target).toBeGreaterThan(calm.target);
     expect(hard.why).toContain('В прошлом месяце');
-    // «чуть больше» — правда: цель строго больше прошлого месяца (раньше бывало «в прошлом — 5», а цель 3)
+    // «чуть больше» — правда: цель строго больше прошлого месяца
     const [, before, now] = hard.why.match(/В прошлом месяце — (\d+), теперь (\d+)/).map(Number);
     expect(now).toBe(hard.target);
     expect(hard.target).toBeGreaterThan(before);
+  });
+  it('план испытания прежних правил считается заново, пока марка не получена; полученный — остаётся', () => {
+    const s = { ...setProfile(emptyLearn(), { minutes: 10 }, at('2026-07-01')), monthPlan: { '2026-10': { target: 8, why: 'старое', at: at('2026-10-01') } } };
+    const m = monthChallenge(s, at('2026-10-10'));
+    expect(m.target).toBeGreaterThan(8);
+    expect(fixMonth(s, at('2026-10-10')).monthPlan['2026-10']).toMatchObject({ v: 2, kind: m.id, target: m.target });
+    const got = { ...s, claimed: { 'm:2026-10': at('2026-10-05') } };
+    expect(monthChallenge(got, at('2026-10-10')).target).toBe(8);
   });
   it('калькулятор: скобки, приоритет, унарный минус, степень, запятая; неполное и деление на ноль — ничего', () => {
     expect(evalExpr('100/50')).toBe(2);

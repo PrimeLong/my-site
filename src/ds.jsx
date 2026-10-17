@@ -16,8 +16,9 @@ export const DS_CSS = `
   /* цвет юнита как текст — чуть темнее самого цвета: на светлых подложках контраст не ниже 4,5:1 */
   .ds.ds-dark { --u-ink: color-mix(in srgb, var(--u) 42%, #fff); }
   .ds *, .ds *::before, .ds *::after { box-sizing: border-box; }
-  .ds-page { min-height: 100vh; background-color: var(--ds-paper);
-    background-image: radial-gradient(ellipse 120% 55% at 50% 0%, color-mix(in srgb, var(--u) 9%, var(--ds-card)), transparent 72%); }
+  /* фон страницы — ровная бумага: подсветка сверху растягивалась на всю высоту длинной страницы
+     (глава учебника) и гасла к низу видимыми полосами */
+  .ds-page { min-height: 100vh; background-color: var(--ds-paper); }
   .ds :focus-visible { outline: 3px solid var(--ds-sel-rule); outline-offset: 2px; }
 
   /* типографика */

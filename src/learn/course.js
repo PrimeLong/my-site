@@ -73,7 +73,15 @@ export const shiftButton = (chart, key) => {
 export const shiftChoices = (chart) => Object.keys(SHIFT_CURVES[chart]).flatMap((k) => [`${k}+`, `${k}-`]);
 
 const fmt = (x) => String(Math.round(x * 100) / 100).replace('.', ',').replace('-', '−');
-const withUnit = (x, unit) => `${fmt(x)}${unit ? ` ${unit}` : ''}`;
+/* единица-существительное согласуется с числом: «3 пирога», но «12 пирогов» и «0,33 пирога»
+   (в задачах учебника она записана одной формой — для ответа) */
+const NOUN_FORMS = [['пирог', 'пирога', 'пирогов'], ['станок', 'станка', 'станков'], ['раз', 'раза', 'раз'], ['фирма', 'фирмы', 'фирм'], ['цена', 'цены', 'цен'], ['квартира', 'квартиры', 'квартир']];
+const agreeUnit = (x, unit) => {
+  const forms = NOUN_FORMS.find((f) => f.includes(unit));
+  if (!forms) return unit;
+  return Number.isInteger(x) ? plural(Math.abs(x), forms[0], forms[1], forms[2]) : forms[1];
+};
+const withUnit = (x, unit) => `${fmt(x)}${unit ? ` ${agreeUnit(x, unit)}` : ''}`;
 const text = (s) => parseInline(s);
 
 /* ------------------------------ ЮНИТЫ И УРОКИ ------------------------------ */
@@ -99,7 +107,11 @@ function fromProblemRaw(pid) {
     }
     return { ...base, kind: 'calc', answer: pt.answer, tol: pt.tol, unit: pt.unit, traps: [] };
   }
-  if (b.kind === 'truefalse') return { ...base, kind: 'tf', answer: b.answer, wrongWhy: (b.traps || []).map((t) => t.text)[0] || null };
+  // «Верно или неверно? Объясните.» — на Пути объяснять нечем: две кнопки, разбор — после ответа
+  if (b.kind === 'truefalse') {
+    const prompt = JSON.parse(JSON.stringify(b.statement), (k, v) => (k === 'v' && typeof v === 'string' ? v.replace(/\s*Объясните(?: почему)?[.!]?/g, '') : v));
+    return { ...base, prompt, kind: 'tf', answer: b.answer, wrongWhy: (b.traps || []).map((t) => t.text)[0] || null };
+  }
   if (b.kind === 'graph' && SHIFT_CURVES[b.chart]) {
     const curves = SHIFT_CURVES[b.chart];
     const [control, value] = Object.entries(b.reference)[0];
@@ -784,11 +796,25 @@ function buildDiamond(lessonId, rand, opts) {
 /* Практика: ошибки прошлых уроков (по id упражнения), не больше двенадцати. Если ошибок
    мало — добираем до восьми упражнениями из слабых тем (weak — уроки, по порядку слабости). */
 export const PRACTICE_MIN = 8;
+export const PRACTICE_MAX = 12;
+/* Что из ошибок можно решить в практике: упражнения уроков (кроме мини-игр и открытых
+   вопросов) и задачи семинарского уровня из уроков. Ошибки, которых в практике нет, на
+   «Повторить ошибки» не считаются — иначе счётчик не пустел бы никогда. */
+function practiceEntry(id) {
+  const e = EXERCISES[id];
+  if (e) return reviewable(e) ? e : null;
+  try {
+    if (String(id).startsWith('var:')) { const t = TEMPLATE_BY_ID[id.slice(4)]; return t ? hardEntry(t.chapter, id) : null; }
+    return PROBLEMS[id] ? hardEntry(PROBLEMS[id].chapter, id) : null;
+  } catch { return null; }
+}
+export const canPractice = (id) => !!practiceEntry(id);
+export const practiceIds = (learn) => (learn.mistakes || []).map((m) => m.id).filter(canPractice);
 export function buildPractice(mistakeIds, rand = Math.random, { weak = [] } = {}) {
-  const exs = mistakeIds.map((id) => EXERCISES[id]).filter((e) => e && reviewable(e));
+  const exs = mistakeIds.map(practiceEntry).filter(Boolean);
   // ошибка возвращается похожей задачей или с новыми числами — ответ не запомнить
   const avoidMistakes = new Set(exs.map((e) => e.id));
-  const items = shuffle(exs, rand).slice(0, 12).map((e) => freshCopy(e, rand, { practice: true }, { avoid: avoidMistakes, sibling: true }));
+  const items = shuffle(exs, rand).slice(0, PRACTICE_MAX).map((e) => (e.level >= 2 ? { ...hardInstance(e, rand), practice: true } : freshCopy(e, rand, { practice: true }, { avoid: avoidMistakes, sibling: true })));
   const have = new Set(exs.map((e) => e.id));
   for (const lessonId of weak) {
     if (items.length >= PRACTICE_MIN) break;
