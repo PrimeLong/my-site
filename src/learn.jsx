@@ -46,6 +46,8 @@ import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText, termFormula } from './learn/terms.js';
 import { LeagueView } from './learn-league.jsx';
 import { NOTIFY_CSS, useNotify, useToasts, useBrowserReminders, NotifyCenter, NotifyToast, BellButton } from './learn-notify.jsx';
+import { HALLOWEEN_CSS, HalloweenCard, Pumpkin, Bat } from './learn-halloween.jsx';
+import { halloweenOn } from './learn/halloween.js';
 import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
@@ -1500,6 +1502,9 @@ function Prop({ kind, x, y, alive, no, scale = 1, flip = false }) {
         <circle cx="-1" cy="6" r="7" fill={fill} fillOpacity=".2" stroke={ink} strokeWidth="1.2" />
         <line x1="-16" y1="22" x2="16" y2="22" stroke={ink} strokeWidth="1.2" opacity=".6" />
       </>}
+      {/* Хеллоуин: тыква у дороги (у пройденной остановки — с зажжённой рожицей) и летучая мышь над деревом */}
+      {kind === 'pumpkin' && <g transform="translate(-17 -6)" opacity={alive ? 1 : 0.7}>{alive ? <Pumpkin size={34} /> : <Pumpkin size={34} lit={false} />}</g>}
+      {kind === 'bat' && <g transform="translate(-12 -6)"><g className="hw-wing"><Bat size={24} color={alive ? 'var(--ds-ink)' : 'var(--ds-ink3)'} /></g></g>}
       {kind === 'mile' && <>
         <path d="M-9 22 V2 q0 -9 9 -9 q9 0 9 9 V22 Z" fill="var(--ds-card)" stroke={ink} strokeWidth="1.6" />
         <text x="0" y="12" textAnchor="middle" fontSize="10" fontWeight="700" fill={ink} fontFamily="var(--ds-head)">{no}</text>
@@ -1513,7 +1518,7 @@ function Prop({ kind, x, y, alive, no, scale = 1, flip = false }) {
    остановки пусто, иногда дерево с кустом; верстовой столб — изредка, с номером урока. */
 const hashOf = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 const rng = (seed) => { let x = seed || 1; return () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return ((x >>> 0) % 10000) / 10000; }; };
-function propsFor(id, i, W, y, left) {
+function propsFor(id, i, W, y, left, spooky = false) {
   const r = rng(hashOf(id));
   if (r() < 0.18) return [];
   const pick = r();
@@ -1523,9 +1528,13 @@ function propsFor(id, i, W, y, left) {
   const out = [main];
   // у дерева иногда куст рядом — пара, а не одиночка
   if (kind === 'tree' && r() < 0.45) out.push({ kind: 'bush', x: main.x + (left ? 1 : -1) * (14 + r() * 10), y: main.y + 8 + r() * 6, scale: 0.55 + r() * 0.2, flip: r() < 0.5 });
-  return out;
+  // Хеллоуин (src/learn/halloween.js): кусты — тыквы, над деревом иногда летучая мышь; места те же
+  if (!spooky) return out;
+  const bat = r() < 0.5;
+  return out.flatMap((p) => (p.kind === 'bush' ? [{ ...p, kind: 'pumpkin', flip: false, scale: p.scale * 0.8 }]
+    : p.kind === 'tree' && bat ? [p, { kind: 'bat', x: p.x + 10, y: p.y - 34 * p.scale, scale: 0.8, flip: false }] : [p]));
 }
-function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, chest = null, onChest }) {
+function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, chest = null, onChest, spooky = false }) {
   const W = 300;
   // пройденный юнит — в конце дороги сундук
   const n = st.lessons.length + (chest ? 1 : 0);
@@ -1543,7 +1552,7 @@ function Route({ st, seen, reduced, visible, resumes, onLesson, rec = null, ches
           // на другой стороне дороги от остановки; у остановки посередине — по очереди слева и справа
           const z = ZIG[i % ZIG.length];
           const left = z > 0 || (z === 0 && i % 8 === 0);
-          return propsFor(l.id, i, W, pts[i][1] - 4, left).map((pp, k) => <Prop key={`${l.id}:${k}`} {...pp} alive={l.done} no={l.no} />);
+          return propsFor(l.id, i, W, pts[i][1] - 4, left, spooky).map((pp, k) => <Prop key={`${l.id}:${k}`} {...pp} alive={l.done} no={l.no} />);
         })}
       </svg>
       {st.lessons.map((l, i) => {
@@ -1891,6 +1900,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
       <div className="ln-path-main">
       <TopStats learn={learn} bell={bell} />
       {!wide && <TasksEntry learn={learn} onOpen={onTasks} />}
+      {!wide && <HalloweenCard learn={learn} update={update} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <Mascot mood={hello} size={44} />
         <div className="ds-sub" style={{ fontSize: 15, lineHeight: 1.4 }}>
@@ -1958,7 +1968,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
           {!folded && (
             <Collapse closing={isFolding && folding.endsWith(':closing')}>
               {hasModel(u.id) && !wide && <ModelFold unitId={u.id} learn={learn} />}
-              <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null}
+              <Route st={st} seen={seen} reduced={reduced} visible={visible} resumes={resumes} onLesson={onLesson} rec={rec ? rec.lessonId : null} spooky={halloweenOn(dayOf(Date.now()))}
                 chest={st.complete ? { unitId: u.id, opened: hasClaim(learn, chestKey(u.id)) } : null} onChest={onChest} />
             </Collapse>
           )}
@@ -1989,6 +1999,7 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
       {wide && (
         <aside className="ln-path-side" data-testid="path-side" aria-label="Задания дня и живая модель">
           <TasksEntry learn={learn} onOpen={onTasks} />
+          <HalloweenCard learn={learn} update={update} />
           <QuestsCard learn={learn} testid="side-quests" />
           {sideModel && <ModelFold unitId={sideModel} learn={learn} side />}
         </aside>
@@ -2142,7 +2153,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     <OutfitContext.Provider value={outfit}>
     <DsRoot theme={dsThemeId()} accent={accent} page className="ln-root">
       <ArtStyle />
-      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS + STATS_CSS + NOTIFY_CSS}</style>
+      <style>{TEXTBOOK_CSS + CSS + PLAY_CSS + REWARD_CSS + REPORT_CSS + MODEL_CSS + STATS_CSS + NOTIFY_CSS + HALLOWEEN_CSS}</style>
       {book && (
         <div className="ln-book" data-testid="learn-book">
           <TextbookScreen key={bookKey} startPage={book.page} resume={book.resume} onExit={() => setBook(null)} {...bookHandlers} {...bookReports} />

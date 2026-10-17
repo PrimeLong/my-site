@@ -5,11 +5,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   X, Wallet, ShieldCheck, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap, ListChecks, ChevronRight,
+  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap, ListChecks, ChevronRight, Ghost,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
+import { halloween, seasonLeftText, WEB_FRAME } from './learn/halloween.js';
 import { Rosette, Medal, CoinShower, CountUp, Guilloche, Chest } from './ds-art.jsx';
 import { ShopSwitch, RateWeek } from './learn-rate.jsx';
 // сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
@@ -92,11 +93,14 @@ export const REWARD_CSS = `
   .rw-real { margin-top: 10px; padding-top: 8px; border-top: 1px dotted var(--ds-rule2); }
   .rw-real summary { cursor: pointer; font: 700 14px var(--ds-sans); color: var(--u-ink); }
   .rw-piggy-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
-  .rw-dot { width: 34px; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 12px var(--ds-sans); color: var(--ds-ink3); }
-  .rw-dot i { width: 26px; height: 26px; border-radius: 50%; border: 1.5px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
-  .rw-dot.done i { border: none; background: var(--ds-bad); color: #fff; }
-  .rw-dot.frozen i { border: none; background: #3E6FA8; color: #fff; }
+  .rw-dot { width: 36px; display: flex; flex-direction: column; align-items: center; gap: 5px; font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
+  .rw-dot i { width: 32px; height: 32px; border-radius: 50%; border: 2px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
+  .rw-dot.done i { border: none; color: #fff; background: linear-gradient(180deg, #FF9A2E, #E2530E); box-shadow: 0 2px 0 #B23E08; animation: rw-dot-pop .5s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(1.2s + var(--i, 0) * 70ms); }
+  .rw-dot.frozen i { border: none; background: #3E6FA8; color: #fff; box-shadow: 0 2px 0 #2B4F7A; animation: rw-dot-pop .5s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(1.2s + var(--i, 0) * 70ms); }
   .rw-dot.today { color: var(--ds-ink); }
+  .rw-dot.today:not(.done) i { border-color: #E2530E; animation: rw-today 1.6s ease-in-out 1.6s infinite; }
+  @keyframes rw-dot-pop { 0% { transform: scale(0) } 100% { transform: scale(1) } }
+  @keyframes rw-today { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #E2530E 40%, transparent) } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, #E2530E 0%, transparent) } }
   .rw-stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px 6px; justify-items: center; }
   .rw-stamp { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
   /* ещё не полученная печать: блёклый серый оттиск, а подпись читается полным контрастом */
@@ -104,11 +108,30 @@ export const REWARD_CSS = `
   .rw-stamp[data-got="false"] span { color: var(--ds-ink3); }
   .rw-stamp b { font: 700 12px/1.2 var(--ds-head); }
   .rw-stamp span { font: 12px/1.25 var(--ds-sans); color: var(--ds-ink2); }
-  .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
-  .rw-morning-in { flex: 1; max-width: 460px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  .rw-big { font: 700 64px/1 var(--ds-head); color: var(--ds-bad); }
-  .rw-flame { animation: rw-flame .9s ease-out 1 both; }
-  @keyframes rw-flame { 0% { transform: scale(.4); opacity: 0 } 60% { transform: scale(1.12); opacity: 1 } 100% { transform: scale(1) } }
+  /* утренний экран серии: огонёк разгорается, число дней падает на место, неделя заполняется огоньками */
+  .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; overflow: hidden; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
+  .rw-morning::before { content: ''; position: absolute; left: 50%; top: 38%; width: 520px; height: 520px; margin: -260px 0 0 -260px; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, color-mix(in srgb, #FF8A2A 26%, transparent) 0%, transparent 62%); animation: rw-glow 3.2s ease-in-out .6s infinite both; }
+  @keyframes rw-glow { 0%, 100% { transform: scale(.92); opacity: .75 } 50% { transform: scale(1.05); opacity: 1 } }
+  .rw-morning-in { position: relative; flex: 1; max-width: 460px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .rw-fire { position: relative; width: 132px; height: 160px; margin: 6px 0 -6px; }
+  .rw-fire svg { overflow: visible; }
+  .rw-fire .ignite { transform-box: fill-box; transform-origin: 50% 100%; animation: rw-ignite .8s cubic-bezier(.3,1.6,.5,1) both; }
+  @keyframes rw-ignite { 0% { transform: scale(.15, .05); opacity: 0 } 45% { opacity: 1 } 100% { transform: none } }
+  .rw-fire .lick { transform-box: fill-box; transform-origin: 50% 100%; animation: rw-lick 1.7s ease-in-out .8s infinite; }
+  .rw-fire .lick.l2 { animation-duration: 1.25s; animation-delay: .9s; }
+  .rw-fire .lick.l3 { animation-duration: .95s; animation-delay: 1s; }
+  @keyframes rw-lick { 0%, 100% { transform: none } 25% { transform: scale(.97, 1.05) skewX(-2.5deg) } 50% { transform: scale(1.03, .97) } 75% { transform: scale(.98, 1.04) skewX(2.5deg) } }
+  .rw-fire .ember { transform-box: fill-box; transform-origin: center; opacity: 0; animation: rw-ember 2.4s ease-out infinite; }
+  @keyframes rw-ember { 0% { opacity: 0; transform: translate(0, 0) scale(1) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate(var(--dx, 0px), -70px) scale(.3) } }
+  .rw-days { display: flex; justify-content: center; font: 800 100px/1 var(--ds-head); font-variant-numeric: tabular-nums; color: #E2530E; letter-spacing: -.02em; text-shadow: 0 3px 0 color-mix(in srgb, #E2530E 22%, transparent); }
+  .rw-days span { display: inline-block; animation: rw-digit .6s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(.55s + var(--i, 0) * 90ms); }
+  @keyframes rw-digit { 0% { transform: translateY(-60px) scale(.5); opacity: 0 } 60% { opacity: 1 } 100% { transform: none; opacity: 1 } }
+  .rw-days-label { font: 700 24px/1.2 var(--ds-head); color: var(--ds-ink); margin-top: 6px; animation: rw-up .45s ease-out .85s both; }
+  .rw-days-sub { font-size: 16px; color: var(--ds-ink2); margin: 8px 0 22px; animation: rw-up .45s ease-out .95s both; }
+  @keyframes rw-up { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+  .rw-dots { display: flex; justify-content: center; gap: 8px; }
+  .rw-week { padding: 14px 12px 12px; border-radius: 18px; background: var(--ds-card); border: 2px solid var(--ds-rule); box-shadow: 0 3px 0 var(--ds-rule); animation: rw-up .45s ease-out 1.05s both; }
   /* сундук при открытии чуть подпрыгивает и пружинит — без поворота и крена */
   .rw-chest-open { animation: rw-chest-pop .5s ease-out 1 both; transform-origin: 50% 90%; }
   @keyframes rw-chest-pop { 0% { transform: none; } 30% { transform: scale(1.08, .92); } 60% { transform: scale(.96, 1.05) translateY(-4px); } 100% { transform: none; } }
@@ -118,6 +141,8 @@ export const REWARD_CSS = `
   .rw-rate-box, .rw-piggy-chart { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .rw-item { position: relative; }
   .rw-deal { position: absolute; top: -8px; right: -6px; transform: rotate(6deg); background: var(--ds-bad-btn); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .04em; padding: 3px 7px; border-radius: 2px; box-shadow: 0 1px 2px var(--ds-shade); }
+  .rw-rare.rw-season { background: linear-gradient(135deg, #3B2D52, #7B3FA0); }
+  .rw-hw { margin: 4px -6px 6px; padding: 10px 6px 2px; border-radius: 18px; background: linear-gradient(180deg, color-mix(in srgb, #7B3FA0 10%, transparent), transparent 70%); }
   .rw-rare { position: absolute; top: -9px; left: -6px; transform: rotate(-6deg); display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #B3123F, #9B2C8F); color: #fff; font: 700 12px var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 8px; box-shadow: 0 1px 3px var(--ds-shade); }
   /* редкая вещь: золотистая карточка, по ней пробегает блик, Инфля в ней крупнее */
   .rw-item[data-rare="true"] { border-color: #C9A43A;
@@ -130,6 +155,7 @@ export const REWARD_CSS = `
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
+  @media (prefers-reduced-motion: reduce) { .rw-morning::before, .rw-fire *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-week, .rw-dot i { animation: none !important; } .rw-fire .ember { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok { animation: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
@@ -296,19 +322,24 @@ function RateChart({ hist }) {
 // до полуночи — когда обновится витрина
 const untilMidnight = (now) => { const d = new Date(now); const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - now; const hh = Math.floor(m / 3600000); const mm = Math.floor((m % 3600000) / 60000); return `${hh} ч ${mm} мин`; };
 // карточка вещи: Инфля в ней, цена по курсу (со скидкой — старая зачёркнута), купить / надеть
-function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false }) {
+function ShopItem({ o, learn, day, wear, b, onBuy, onToggle, deal = false, goal = false, hw = null }) {
   const owned = !!(learn.owned || {})[o.id]; const on = wear[o.slot] === o.id;
   const price = priceOf(o.id, day, learn); const full = priceOf(o.id, day);
   return (
-    <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare ? 'true' : undefined}>
+    <div className="rw-item" data-testid="shop-item" data-item={o.id} data-owned={String(owned)} data-on={String(on)} data-deal={deal ? 'true' : undefined} data-rare={o.rare && !o.season ? 'true' : undefined} data-season={o.season || undefined}>
       {deal && !owned && <span className="rw-deal" data-testid="shop-deal">−{Math.round(DEAL_OFF * 100)}%</span>}
-      {o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
+      {o.season ? <span className="rw-rare rw-season"><Ghost size={11} aria-hidden="true" />хеллоуин</span> : o.rare && <span className="rw-rare"><Gem size={11} aria-hidden="true" />редкое</span>}
       <Mascot mood="hello" size={o.rare ? 62 : 50} outfit={{ [o.slot]: o.id }} label={`Инфля: ${o.title}`} />
       <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25 }}>{o.title}</div>
       {o.note && <div className="rw-note">{o.note}</div>}
       {owned
         ? <Button small variant={on ? 'secondary' : 'primary'} onClick={() => onToggle(o)}>{on ? 'Снять' : 'Надеть'}</Button>
-        : <>
+        : o.reward ? <>
+          {/* награда события: не продаётся — собирается тыквами за уроки */}
+          <div className="rw-forgone" data-testid="shop-reward">Не продаётся: {hw ? `тыкв ${hw.pumpkins} из ${hw.goal}` : 'награда за 13 тыкв'}</div>
+          {hw && <div className="rw-goal" role="progressbar" aria-label="Собрано тыкв" aria-valuemin={0} aria-valuemax={hw.goal} aria-valuenow={hw.pumpkins}><i style={{ width: `${(hw.pumpkins / hw.goal) * 100}%` }} /></div>}
+          <div className="ds-sub" style={{ fontSize: 12.5 }}>{hw && hw.ready ? 'Заберите её на Пути' : 'Каждый урок — тыква'}</div>
+        </> : <>
           <div className="rw-price">{price < full && <s>{full}</s>}{price} <span style={{ fontWeight: 400 }}>мон.</span><small>{o.crowns} кр.</small></div>
           {/* цена отказа: чего стоит вещь, кроме монет */}
           <div className="rw-forgone" data-testid="shop-forgone" title={`Цена отказа: ${forgone(price).text} или +${forgone(price).week} в копилке за неделю`}>{forgone(price).text} · копилка дала бы +{forgone(price).week}</div>
@@ -460,6 +491,17 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
         </Card>
         {msg && <div role="status" data-testid="shop-msg" style={{ margin: '0 0 12px', fontSize: 14.5, color: msg.ok ? 'var(--ds-ok)' : 'var(--ds-bad)' }}>{msg.text}</div>}
 
+        {today.season.length > 0 && (() => {
+          const hw = halloween(learn, now);
+          return (
+            <div className="rw-hw" data-testid="shop-halloween">
+              <Heading level={3} title="Хеллоуинская витрина" sub={`Только на Хеллоуин — ${seasonLeftText(hw)}, потом через год. Купленное остаётся навсегда.`} />
+              <div className="rw-items" style={{ margin: '10px 0 16px' }}>
+                {[...today.season, WEB_FRAME].map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} goal={OUTFIT_BY_ID[id].rare} hw={hw} {...itemProps} />)}
+              </div>
+            </div>
+          );
+        })()}
         <Heading level={3} title="Витрина дня" sub={`Обновится через ${untilMidnight(now)}. На одну вещь — скидка дня ${Math.round(DEAL_OFF * 100)}%.`} />
         <div className="rw-items" style={{ margin: '10px 0 16px' }} data-testid="shop-showcase">
           {today.showcase.map((id) => <ShopItem key={id} o={OUTFIT_BY_ID[id]} deal={id === today.deal} {...itemProps} />)}
@@ -675,34 +717,59 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
 }
 
 /* ------------------------------ УТРЕННИЙ ЭКРАН СЕРИИ ------------------------------
-   Один раз в день, при первом открытии: «Вы на N дней подряд», неделя и страховка серии. */
+   Один раз в день, при первом открытии: огонёк разгорается, число дней падает на место, неделя
+   заполняется огоньками. Без мелкого текста — только число, «дней подряд» и что делать сегодня. */
 const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+// искры над огнём: смещение по горизонтали, задержка, место
+const EMBERS = [[-16, 0, 44], [12, 0.5, 60], [-6, 1.1, 54], [20, 1.6, 70], [-22, 2, 50], [4, 0.8, 64]];
+/* Огонёк серии: три языка пламени (внешний, средний, сердцевина) колышутся каждый в своём темпе,
+   над ним поднимаются искры; при появлении — разгорается снизу вверх. */
+export function StreakFlame({ size = 132 }) {
+  const id = `fl${React.useId().replace(/:/g, '')}`;
+  return (
+    <div className="rw-fire" style={{ width: size, height: size * 160 / 132 }} aria-hidden="true">
+      <svg viewBox="0 0 120 146" width={size} height={size * 160 / 132}>
+        <defs>
+          <linearGradient id={`${id}a`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#D9380F" /><stop offset=".55" stopColor="#F2661A" /><stop offset="1" stopColor="#FF9E3A" /></linearGradient>
+          <linearGradient id={`${id}b`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#FF9A22" /><stop offset="1" stopColor="#FFD25A" /></linearGradient>
+          <linearGradient id={`${id}c`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#FFE9A6" /><stop offset="1" stopColor="#FFFCEE" /></linearGradient>
+        </defs>
+        <ellipse cx="60" cy="140" rx="34" ry="5" fill="#E2530E" opacity=".18" />
+        <g className="ignite">
+          <path className="lick" fill={`url(#${id}a)`} d="M60 4 C 66 30, 99 46, 99 92 C 99 123, 81 142, 60 142 C 39 142, 21 123, 21 92 C 21 70, 33 58, 39 43 C 42 57, 47 63, 52 65 C 49 43, 53 22, 60 4 Z" />
+          <path className="lick l2" fill={`url(#${id}b)`} d="M60 40 C 66 58, 86 70, 86 100 C 86 122, 74 136, 60 136 C 46 136, 34 122, 34 100 C 34 86, 42 78, 46 69 C 48 81, 52 85, 56 87 C 54 71, 56 56, 60 40 Z" />
+          <path className="lick l3" fill={`url(#${id}c)`} d="M60 76 C 66 89, 76 97, 76 112 C 76 124, 69 132, 60 132 C 51 132, 44 124, 44 112 C 44 101, 52 93, 60 76 Z" />
+        </g>
+        {EMBERS.map(([dx, d, x], k) => <circle key={k} className="ember" cx={x} cy={40 + (k % 3) * 6} r={k % 2 ? 2.2 : 1.6} fill={k % 2 ? '#FFB13B' : '#FF7A1F'} style={{ '--dx': `${dx}px`, animationDelay: `${1 + d}s` }} />)}
+      </svg>
+    </div>
+  );
+}
 export function MorningStreak({ learn, onClose, now = Date.now() }) {
   const st = streak(learn, now);
   const hello = greetingAt(new Date(now).getHours());
-  const pol = policyInfo(learn, now);
+  const label = `${plural(st.days, 'день', 'дня', 'дней')} подряд`;
   return (
     <div className="rw-morning" data-testid="morning" role="dialog" aria-label="Серия дней">
       <div className="rw-morning-in">
-        <Guilloche height={22} />
-        <div className="ds-eyebrow" style={{ marginTop: 18 }}>{hello}</div>
-        <div className="rw-flame" style={{ margin: '14px 0 4px' }}><Flame size={72} color="var(--ds-bad)" fill="color-mix(in srgb, var(--ds-bad) 25%, transparent)" aria-hidden="true" /></div>
-        <div className="rw-big" data-testid="morning-days"><CountUp value={st.days} /></div>
-        <h1 className="ds-h1" style={{ margin: '6px 0 4px' }}>{`Вы на ${st.days} ${plural(st.days, 'день', 'дня', 'дней')} подряд`}</h1>
-        <div className="ds-sub" style={{ fontSize: 15.5, marginBottom: 18 }}>{st.today ? 'Сегодня уже занимались — серия продлена.' : 'Один урок сегодня — и серия продолжится.'}</div>
-        <div className="rw-dots" data-testid="morning-week">
-          {weekDots(learn, now).map((d) => (
-            <div key={d.day} className={`rw-dot ${d.done ? 'done' : d.frozen ? 'frozen' : ''} ${d.today ? 'today' : ''}`}>
-              <i>{d.done ? <Flame size={14} aria-hidden="true" /> : d.frozen ? <ShieldCheck size={14} aria-hidden="true" /> : null}</i>{DOW[d.dow]}
-            </div>
-          ))}
+        <div className="ds-eyebrow">{hello}</div>
+        <StreakFlame />
+        <div className="rw-days" data-testid="morning-days" data-value={st.days} role="img" aria-label={`${st.days} ${label}`}>
+          {String(st.days).split('').map((c, k) => <span key={k} style={{ '--i': k }} aria-hidden="true">{c}</span>)}
         </div>
-        <div className="ds-faint" style={{ fontSize: 13, marginTop: 14 }}>
-          <ShieldCheck size={13} style={{ verticalAlign: -2 }} aria-hidden="true" /> {pol.active ? `Страховка серии действует: в эту неделю прощается ещё один пропуск. Взнос — ${pol.premium} ${coinsWord(pol.premium)} в неделю.` : 'Один пропуск в неделю серию не рвёт. Страховка серии в лавке прощает ещё один.'}
+        <div className="rw-days-label">{label}</div>
+        <div className="rw-days-sub">{st.today ? 'Сегодня уже занимались — серия продлена.' : 'Один урок сегодня — и огонёк горит дальше.'}</div>
+        <div className="rw-week">
+          <div className="rw-dots" data-testid="morning-week">
+            {weekDots(learn, now).map((d, k) => (
+              <div key={d.day} className={`rw-dot ${d.done ? 'done' : d.frozen ? 'frozen' : ''} ${d.today ? 'today' : ''}`}>
+                <i style={{ '--i': k }}>{d.done ? <Flame size={17} aria-hidden="true" /> : d.frozen ? <ShieldCheck size={16} aria-hidden="true" /> : null}</i>{DOW[d.dow]}
+              </div>
+            ))}
+          </div>
         </div>
-        <Guilloche height={22} style={{ marginTop: 18 }} />
       </div>
-      <div style={{ maxWidth: 460, width: '100%', margin: '0 auto' }}><Button wide autoFocus data-testid="morning-go" onClick={() => { Audio.play('paper'); onClose(); }}>В путь</Button></div>
+      <div style={{ position: 'relative', maxWidth: 460, width: '100%', margin: '0 auto' }}><Button wide autoFocus data-testid="morning-go" onClick={() => { Audio.play('paper'); onClose(); }}>{st.today ? 'В путь' : 'Продолжить серию'}</Button></div>
     </div>
   );
 }

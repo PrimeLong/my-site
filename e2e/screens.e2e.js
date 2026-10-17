@@ -300,7 +300,7 @@ for (const theme of ['light', 'dark']) {
       } });
       await page.goto('/', { waitUntil: 'networkidle' });
       await expect(page.getByTestId('morning')).toBeVisible();
-      await shot(page, '35-morning', theme, { wait: 1200 });
+      await shot(page, '35-morning', theme, { wait: 2600 });
       await page.getByTestId('morning-go').click();
       await expect(page.getByTestId('placement-card')).toBeVisible();
       await shot(page, '36-path', theme);

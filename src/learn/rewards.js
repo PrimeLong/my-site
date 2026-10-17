@@ -6,6 +6,7 @@
 import { dayOf, addDays, streak, longestStreak, dailyOf, DIAMOND_ACCURACY, goalMinutes, goalToday, PREMIUM, policyActive, weekOf } from '../textbook/learn-state.js';
 import { plural } from '../lib/plural.js';
 import { LESSONS, UNITS } from './course.js';
+import { halloweenOn, WEB_FRAME } from './halloween.js';
 export { plural };
 
 // детерминированная «случайность» из строки: FNV-1a → [0, 1)
@@ -127,7 +128,18 @@ export const OUTFITS = [
   { id: 'frame-guilloche', slot: 'frame', title: 'Рамка-гильош', crowns: 60 },
   { id: 'frame-gold', slot: 'frame', title: 'Золотой багет', crowns: 190 },
   { id: 'frame-diamond', slot: 'frame', title: 'Алмазная огранка', note: 'Грани медленно плывут по кругу', crowns: 1050, rare: true },
+  /* ХЕЛЛОУИН (src/learn/halloween.js): продаются только в сезон, с 16 октября по 2 ноября, — своей
+     витриной, не на витрине дня; купленное остаётся навсегда. «Паутину» не купить: она — награда
+     за 13 тыкв. */
+  { id: 'horns', slot: 'head', title: 'Рожки чертёнка', crowns: 90, season: 'halloween' },
+  { id: 'witch', slot: 'head', title: 'Шляпа ведьмы', crowns: 160, season: 'halloween' },
+  { id: 'batmask', slot: 'face', title: 'Маска летучей мыши', crowns: 120, season: 'halloween' },
+  { id: 'cape', slot: 'neck', title: 'Воротник графа', crowns: 210, season: 'halloween' },
+  { id: 'lantern', slot: 'hand', title: 'Тыква-фонарь', note: 'Огонёк внутри мерцает', crowns: 600, rare: true, season: 'halloween' },
+  { id: WEB_FRAME, slot: 'frame', title: 'Паутина', note: 'Паучок качается на нитке', crowns: 650, rare: true, season: 'halloween', reward: true },
 ];
+// хеллоуинская витрина: всё сезонное, кроме награды
+export const SEASON_ITEMS = OUTFITS.filter((o) => o.season === 'halloween' && !o.reward).map((o) => o.id);
 export const OUTFIT_BY_ID = Object.fromEntries(OUTFITS.map((o) => [o.id, o]));
 export const SLOT_LABEL = { head: 'Голова', face: 'Лицо', neck: 'Шея', hand: 'В руке', frame: 'Рамка' };
 export const SHOWCASE_SIZE = 6;
@@ -140,9 +152,9 @@ const itemOf = (id) => (id === FREEZE.id ? FREEZE : id === BOOST.id ? BOOST : OU
 export function shopDay(s, day) {
   const owned = {};
   Object.entries((s && s.owned) || {}).forEach(([id, at]) => { if (!(typeof at === 'number' && at > 0 && dayOf(at) === day)) owned[id] = at; });
-  const order = OUTFITS.filter((o) => !o.rare).map((o) => ({ o, k: hash01(`shop:${day}:${o.id}`) })).sort((a, b) => a.k - b.k).map((x) => x.o.id);
+  const order = OUTFITS.filter((o) => !o.rare && !o.season).map((o) => ({ o, k: hash01(`shop:${day}:${o.id}`) })).sort((a, b) => a.k - b.k).map((x) => x.o.id);
   const showcase = order.filter((id) => !owned[id]).slice(0, SHOWCASE_SIZE);
-  return { showcase, deal: showcase[0] || null, rare: OUTFITS.filter((o) => o.rare).map((o) => o.id) };
+  return { showcase, deal: showcase[0] || null, rare: OUTFITS.filter((o) => o.rare && !o.season).map((o) => o.id), season: halloweenOn(day) ? SEASON_ITEMS : [] };
 }
 export const crownsOf = (id) => itemOf(id).crowns;
 // цена в монетах: по курсу дня; вещь со скидкой дня — на 30% дешевле
@@ -161,7 +173,9 @@ export function buy(s, id, now = Date.now()) {
   if (id === BOOST.id && boostActive(s, now)) return { s, ok: false, reason: 'Двойной опыт уже действует' };
   const outfit = id !== FREEZE.id && id !== BOOST.id;
   if (outfit && (s.owned || {})[id]) return { s, ok: false, reason: 'Уже куплено' };
-  if (outfit && !item.rare && !shopDay(s, day).showcase.includes(id)) return { s, ok: false, reason: 'Сегодня этого нет на витрине — загляните завтра' };
+  if (outfit && item.reward) return { s, ok: false, reason: 'Эту рамку не купить: она — награда за 13 тыкв на Хеллоуин' };
+  if (outfit && item.season && !halloweenOn(day)) return { s, ok: false, reason: 'Хеллоуинские вещи продаются только на Хеллоуин — с 16 октября по 2 ноября' };
+  if (outfit && !item.rare && !item.season && !shopDay(s, day).showcase.includes(id)) return { s, ok: false, reason: 'Сегодня этого нет на витрине — загляните завтра' };
   if (balance(s) < price) return { s, ok: false, reason: `Не хватает ${price - balance(s)} ${coinsWord(price - balance(s))}` };
   let t = { ...s, spent: { ...s.spent, [day]: ((s.spent || {})[day] || 0) + price } };
   if (id === BOOST.id) t = { ...t, boost: now + BOOST.minutes * 60000 };
