@@ -260,13 +260,14 @@ export function Field({ label, ...rest }) {
 }
 // плашка ответа: отметка, заголовок и пояснение
 // say — фраза Инфли (src/learn/voice.js) вместо штампа «Верно» / «Не совсем»
-export function AnswerBar({ ok, stamp, say = null, children, className, ...rest }) {
+// plain — без печати: в переписке «Истории» штамп смотрится чужеродно, там — просто заголовок
+export function AnswerBar({ ok, stamp, say = null, plain = false, children, className, ...rest }) {
   return (
     <div className={cx('ds-answer', ok ? 'ok' : 'bad', className)} {...rest}>
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
         {say && !stamp
           ? <span className="ds-answer-say" data-testid="infla-say">{say}</span>
-          : <span className="ds-answer-stamp">{stamp || (ok ? 'Верно' : 'Не совсем')}</span>}
+          : <span className={plain ? 'ds-answer-say' : 'ds-answer-stamp'}>{stamp || (ok ? 'Верно' : 'Не совсем')}</span>}
         {children}
       </div>
     </div>

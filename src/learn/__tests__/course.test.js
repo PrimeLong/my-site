@@ -299,6 +299,8 @@ describe('упражнения: ровно один верный ответ', ()
           // открытый вопрос: короткая отписка не принимается, продуманный ответ — засчитан; разбор есть всегда
           expect(ready(inst, 'да')).toBe(false);
           expect(check(inst, 'Я бы ввёл студенческую карту, потому что…').ok).toBe(true);
+          // пропуск — не ошибка: разбор откроется и так
+          expect(check(inst, { skip: true })).toMatchObject({ ok: true, skipped: true });
           expect(inst.explain && inst.explain.length).toBeTruthy();
           break;
         }

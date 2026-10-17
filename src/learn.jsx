@@ -15,7 +15,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import {
   X, ArrowLeft, Flame, Coins, Target, Lock, Check, Gem, ChevronLeft, Calculator, BookOpenText, BookOpen, Trophy, Timer, Delete, ChevronRight, RotateCcw, Sparkles, Dumbbell,
   Clock, Scale, Hourglass, Ticket, TrendingUp, CircleCheck, Medal, ArrowLeftRight, Handshake, Coffee, Wallet, Link, Utensils, Boxes, Users,
-  Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown,
+  Snowflake, ArrowDownToLine, ArrowUpToLine, Languages, MessageCircle, Headphones, Gamepad2, Repeat, Flag, Croissant, Landmark, Radio, MapPin, ArrowUp, ChevronDown, SkipForward,
 } from 'lucide-react';
 import { STATS_CSS } from './learn-stats.jsx';
 import { askSave } from './lib/guest.js';
@@ -237,6 +237,8 @@ const CSS = `
   .ln-calc-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 12px; margin: 8px 0 10px; }
   .ln-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 320px; margin: 0 auto; }
   @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
+  .ln-skip { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; padding: 9px 8px; background: none; border: none; cursor: pointer; font: 700 14.5px var(--ds-sans); color: var(--ds-ink2); }
+  .ln-skip:hover { color: var(--u-ink); }
   .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 14px 16px 24px; }
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
@@ -283,11 +285,6 @@ const CSS = `
   .ln-key-tex { font-size: 19px; text-align: center; margin-top: 4px; overflow-x: auto; overflow-y: hidden; }
   .ln-legend { margin-top: 12px; padding: 8px 12px; border-left: 4px solid var(--u); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); font-size: 14.5px; line-height: 1.55; border-radius: 4px 12px 12px 4px; }
   .ln-how { background: none; border: none; padding: 4px 0; margin-top: 6px; font: 700 14px var(--ds-sans); color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
-  .ln-verdict { margin-top: 10px; padding: 10px 12px; border-radius: 4px 12px 12px 4px; border-left: 4px solid; }
-  .ln-verdict.ok { background: var(--ds-ok-bg); border-color: var(--ds-ok); }
-  .ln-verdict.bad { background: color-mix(in srgb, var(--ds-sel-rule) 14%, var(--ds-card)); border-color: var(--ds-sel-rule); }
-  .ln-verdict.ok .ds-answer-stamp { color: var(--ds-ok-ink); font-size: 13px; }
-  .ln-verdict.bad .ds-answer-stamp { color: var(--ds-sel-ink); font-size: 13px; }
   .ln-book { min-height: 100vh; margin: -12px -16px 0; }
   /* кнопки учебника-справочника — те же, что у дизайн-системы: объёмные, со скруглением */
   .ln-textbook .ems-btn { font: 700 13.5px/1.25 var(--ds-sans); border: 2px solid var(--ds-rule2); border-bottom-width: 4px; border-radius: 12px; background: var(--ds-card);
@@ -419,13 +416,39 @@ const fillBlank = (blocks, word) => {
   return fill(blocks);
 };
 
+/* Открытый вопрос можно пропустить: писать ответ — не обязанность, а разбор всё равно откроется.
+   Пропуск ошибкой не считается — у открытого вопроса неверного ответа нет. */
+function OpenSkip({ onSkip }) {
+  return (
+    <button type="button" className="ln-skip" data-testid="open-skip" onClick={() => { Audio.play('paper'); onSkip(); }}>
+      <SkipForward size={15} aria-hidden="true" /> Пропустить и посмотреть разбор
+    </button>
+  );
+}
+/* Калькулятор у выбора с числовыми вариантами: «Выбрать ответ» отмечает БЛИЖАЙШИЙ вариант, если
+   он отличается от результата не больше чем на 1% (округление); 6050 не превращается в 6000, хотя
+   и они близки. Подходящего варианта нет — так и сказано: ответ не выбирается за ученика. */
+function ChoiceCalc({ options, numOf, onPick }) {
+  const [miss, setMiss] = useState(null);
+  return (
+    <>
+      <CalcPad useLabel="Выбрать ответ" onUse={(v) => {
+        const x = Number(v.replace(',', '.'));
+        const near = options.map((o) => ({ o, d: Math.abs(numOf(o) - x) })).sort((a, b) => a.d - b.d)[0];
+        if (near && near.d <= 0.01 * Math.max(1, Math.abs(x))) { setMiss(null); onPick(near.o.key); } else setMiss(v);
+      }} />
+      {miss != null && <div className="ds-sub" style={{ fontSize: 14, textAlign: 'center', marginTop: 6 }} role="status" data-testid="calc-miss">Варианта {miss} среди ответов нет — проверьте расчёт.</div>}
+    </>
+  );
+}
 function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit = () => {} }) {
   const pick = (v) => { if (!locked) { Audio.play('tick'); setResp(v); } };
   const optClass = (key, correct) => (!fb ? '' : correct ? 'right' : key === resp && !fb.ok ? 'wrong' : '');
   switch (inst.kind) {
     case 'choice': {
       // варианты — числа: задача на расчёт, и калькулятор нужен так же, как в «Расчёте»
-      const numOf = (o) => { const m = String(o.raw).replace('−', '-').match(/^-?\d+(?:[.,]\d+)?/); return m ? Number(m[0].replace(',', '.')) : null; };
+      // «6 050 крон» — одно число: пробелы между разрядами (и неразрывные) не разрывают его
+      const numOf = (o) => { const m = String(o.raw).replace('−', '-').replace(/(\d)[ \u00A0\u202F\u2009](?=\d{3}\b)/g, '$1').match(/^-?\d+(?:[.,]\d+)?/); return m ? Number(m[0].replace(',', '.')) : null; };
       const numeric = inst.options.every((o) => numOf(o) != null);
       return (
         <div>
@@ -439,11 +462,7 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
           )}
           {numeric && inst._calc && !locked && (
             <div style={{ marginBottom: 12 }}>
-              <CalcPad useLabel="Выбрать ответ" onUse={(v) => {
-                const x = Number(v.replace(',', '.'));
-                const hit = inst.options.find((o) => Math.abs(numOf(o) - x) <= 0.011 * Math.max(1, Math.abs(x)));
-                if (hit) { pick(hit.key); inst._setCalc(false); }
-              }} />
+              <ChoiceCalc options={inst.options} numOf={numOf} onPick={(key) => { pick(key); inst._setCalc(false); }} />
             </div>
           )}
           {inst.options.map((o) => (
@@ -832,7 +851,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     setAnim((x) => ({ k: x.k + 1, kind: r.ok ? 'flash' : 'shake' }));
     wrongRun.current = r.ok ? 0 : wrongRun.current + 1;
     const say = pickPhrase(situation({ ok: r.ok, streak: r.ok && firstTime ? run3 + 1 : 0, hinted: !!a.hinted[orig], retry: !!cur.retry, wrongRun: wrongRun.current }), said.current);
-    setFb({ ok: r.ok, why: r.why, say });
+    setFb({ ok: r.ok, why: r.why, say, skipped: !!r.skipped });
   };
   const finish = () => {
     const a = acc.current;
@@ -936,7 +955,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const kindName = cur ? KIND_LABEL[cur.kind] : '';
   // плашка ответа в нижней панели — одна на все виды уроков: её видно без прокрутки
   const verdictBar = inst && fb && !fb.empty ? (
-    <AnswerBar ok={fb.ok} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Игра засчитана' : 'Игра без зачёта') : inst.kind === 'open' ? 'Ответ записан' : null}
+    <AnswerBar ok={fb.ok} plain={feed} stamp={GAME_KINDS.includes(inst.kind) ? (fb.ok ? 'Игра засчитана' : 'Игра без зачёта') : inst.kind === 'open' ? (fb.skipped ? 'Вопрос пропущен' : 'Ответ записан') : null}
       say={GAME_KINDS.includes(inst.kind) || inst.kind === 'open' ? null : fb.say} className={fb.ok ? 'ds-flash' : ''} key={`fb${anim.k}`}>
       <div style={{ marginTop: 10 }} data-testid="ex-feedback" data-ok={String(fb.ok)}>
         {inst.kind === 'open' && inst.explain && (
@@ -1110,6 +1129,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
               <div className="ln-inner">
                 {fb && fb.empty && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>Введите число: например, 25 или −0,5.</div>}
                 {!GAME_KINDS.includes(inst.kind) && !SELF_CHECK.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>{inst.kind === 'open' ? 'Ответить' : 'Проверить'}</Button>}
+                {inst && inst.kind === 'open' && <OpenSkip onSkip={() => doCheck({ skip: true })} />}
               </div>
             )}
           </div>
@@ -1157,6 +1177,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                     : <>
                       {fb && fb.empty && <div style={{ fontSize: 14, color: 'var(--ds-bad)', marginBottom: 8 }}>Введите число: например, 25 или −0,5.</div>}
                       {inst && !GAME_KINDS.includes(inst.kind) && !SELF_CHECK.includes(inst.kind) && <Button wide disabled={!ready(inst, resp)} onClick={() => doCheck()}>{inst.kind === 'open' ? 'Ответить' : 'Проверить'}</Button>}
+                {inst && inst.kind === 'open' && <OpenSkip onSkip={() => doCheck({ skip: true })} />}
                     </>}
                 </div>
               )}
@@ -1246,22 +1267,40 @@ const stepContext = (card, lesson, where) => ({
   screen: 'step', lesson: lesson ? lesson.id : '', unit: lesson ? lesson.unitId : '', kind: lesson ? lesson.kind : '',
   step: `${where}${card && card.id ? ` · ${card.id}` : ''}${card && card.title ? ` · ${card.title}` : ''}`, prompt: flatText(card && card.text).slice(0, 1500),
 });
-/* Отвеченный вопрос в ленте (история, архив эфира): условие, выбор ученика и короткая
-   отметка — верно или что было правильно. Живой вопрос получает плашку в нижней панели. */
-function FeedVerdict({ inst, fb }) {
-  return (
-    <div className={`ln-verdict ${fb.ok ? 'ok' : 'bad'}`} data-ok={String(fb.ok)}>
-      <span className="ds-answer-stamp">{fb.say || (fb.ok ? 'Верно' : 'Не совсем')}</span>
-      {!fb.ok && <span style={{ fontSize: 14.5, marginLeft: 8 }}>Правильно: <b>{answerText(inst)}</b></span>}
-    </div>
-  );
+/* Отвеченный вопрос в ленте (история, архив эфира) — как реплика в переписке: условие мелко, ответ
+   ученика — пузырём справа, с галочкой или крестиком, а если неверно — под ним верный. Без печатей
+   «Верно. Звенит как надо»: в разговоре героев штамп выглядел чужеродно. Варианты, которые не
+   выбраны, в ленте не нужны — лента остаётся читаемой историей. */
+function answerOf(inst, resp) {
+  if (resp && resp.skip) return null;
+  switch (inst.kind) {
+    case 'choice': case 'gap': case 'shift': {
+      const o = (inst.options || []).find((x) => x.key === resp);
+      return o ? <Inline nodes={o.text} ctx={noopCtx} /> : null;
+    }
+    case 'tf': return resp === true || resp === 'true' ? 'Верно' : resp === false || resp === 'false' ? 'Неверно' : null;
+    case 'calc': return resp ? `${String(resp).replace('-', '−')}${inst.unit ? ` ${unitFor(inst, resp)}` : ''}` : null;
+    case 'open': return String(resp || '').trim() || null;
+    default: return null;
+  }
 }
 function FeedAnswer({ h }) {
-  const inst = { ...h.inst, _sel: null, _setSel: () => {}, _resp: { current: h.resp } };
+  const { inst, resp, fb } = h;
+  const skipped = !!(resp && resp.skip);
+  const mine = answerOf(inst, resp);
+  const tone = skipped ? 'skip' : fb.ok ? 'ok' : 'bad';
+  const who = skipped ? 'Вопрос пропущен' : inst.kind === 'open' ? 'Ваш ответ' : fb.ok ? 'Ваш ответ · верно' : 'Ваш ответ · не совсем';
   return (
-    <div data-kind={inst.kind}>
-      <ExerciseView inst={inst} resp={h.resp} setResp={() => {}} locked fb={h.fb} />
-      <FeedVerdict inst={inst} fb={h.fb} />
+    <div className="fd-qa" data-kind={inst.kind}>
+      <div className="fd-qa-q tb-body"><Blocks blocks={inst.prompt} ctx={noopCtx} /></div>
+      <div className={`fd-qa-a ${tone}`} data-ok={String(fb.ok)} data-testid="feed-answer">
+        <span className="fd-qa-ic" aria-hidden="true">{skipped ? <SkipForward size={13} /> : fb.ok ? <Check size={15} strokeWidth={3} /> : <X size={15} strokeWidth={3} />}</span>
+        <span className="fd-qa-txt">
+          <span className="fd-qa-who">{who}</span>
+          {skipped ? 'Можно вернуться к нему, пройдя урок ещё раз.' : mine || (fb.ok ? answerText(inst) : 'не совпал с верным')}
+        </span>
+      </div>
+      {!fb.ok && <div className="fd-qa-right">Правильно: <b>{answerText(inst)}</b></div>}
     </div>
   );
 }

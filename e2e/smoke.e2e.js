@@ -1336,7 +1336,7 @@ test('задача на 10 минут: цель на экране, прогно�
 
 /* ------------------------------ ПУТЬ УРОКОВ ------------------------------
    Правильный ответ упражнения приложение отдаёт в data-answer только при флаге теста. */
-async function answerExercise(page, { wrong = false } = {}) {
+async function answerExercise(page, { wrong = false, skipOpen = false } = {}) {
   const ex = page.getByTestId('ex');
   const kind = await ex.getAttribute('data-kind');
   const ans = JSON.parse(await ex.getAttribute('data-answer'));
@@ -1383,8 +1383,9 @@ async function answerExercise(page, { wrong = false } = {}) {
   } else if (kind === 'keep') {
     await playKeep(page, { wrong });
   } else if (kind === 'open') {
-    // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор
-    await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
+    // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор; или пропускаем — разбор откроется и так
+    if (skipOpen) await page.getByTestId('open-skip').click();
+    else await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
   } else if (kind === 'domino') {
     // «Домино»: звенья по порядку; ошибка — ложная карточка роняет домино, дальше — с верного места
     const dom = ex.getByTestId('domino');
@@ -1393,13 +1394,14 @@ async function answerExercise(page, { wrong = false } = {}) {
     for (const k of ans.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
   }
   // мини-игра и «Домино» проверяются сами, когда доиграны
-  if (!['swipe', 'rush', 'keep', 'domino'].includes(kind)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
+  if (!['swipe', 'rush', 'keep', 'domino'].includes(kind) && !(kind === 'open' && skipOpen)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
   await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
+  if (kind === 'open' && skipOpen) { await expect(page.getByTestId('lesson-foot')).toContainText('Вопрос пропущен'); await expect(page.getByTestId('open-review')).toBeVisible(); }
   return kind;
 }
 // пройти урок до экрана итогов; wrongAt — номера упражнений, где ошибиться нарочно
-async function playLesson(page, { wrongAt = [] } = {}) {
+async function playLesson(page, { wrongAt = [], skipOpen = false } = {}) {
   const kinds = new Set();
   let retries = 0;
   let cards = 0;
@@ -1408,7 +1410,7 @@ async function playLesson(page, { wrongAt = [] } = {}) {
     // карточки перед упражнением: шаг, слово (перевернуть), пункт итогов — прочитать и дальше
     cards += await passCards(page);
     if (await page.getByTestId('ex-retry').isVisible()) retries += 1;
-    kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i) }));
+    kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i), skipOpen }));
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   await expect(page.getByTestId('lesson-result')).toBeVisible();
@@ -2310,6 +2312,10 @@ test('лента «История»: сообщения по одному, во�
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(feed.getByTestId('feed-q')).toHaveCount(1);
   await expect(feed.getByTestId('feed-msg')).toHaveCount(msgs);
+  // отвеченный вопрос — репликой: ответ ученика с галочкой, без печати и без невыбранных вариантов
+  await expect(feed.getByTestId('feed-q').getByTestId('feed-answer')).toHaveAttribute('data-ok', 'true');
+  await expect(feed.locator('.ds-answer-stamp')).toHaveCount(0);
+  await expect(feed.getByTestId('feed-q').locator('.ds-opt')).toHaveCount(0);
   // дальше — новые сообщения после вопроса; лента сама доехала до низа — новое сообщение видно целиком
   await expect(page.getByTestId('lesson-card')).toBeVisible();
   await expect.poll(() => page.locator('.ln-body').evaluate((sc) => {
@@ -2328,7 +2334,9 @@ test('лента «История»: сообщения по одному, во�
   await answerExercise(page);
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(feed.getByTestId('feed-q')).toHaveCount(2);
-  await playLesson(page);
+  // письменный вопрос в конце истории можно пропустить
+  const { kinds } = await playLesson(page, { skipOpen: true });
+  expect(kinds.has('open')).toBe(true);
   expect(errors).toEqual([]);
 });
 

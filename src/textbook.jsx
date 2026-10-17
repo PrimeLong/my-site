@@ -169,6 +169,14 @@ export const TEXTBOOK_CSS = `
   .tb-bar { height: 4px; background: var(--c-hairline); border-radius: 2px; overflow: hidden; }
   .tb-bar > span { display: block; height: 100%; background: var(--c-teal); }
   /* разделы главы: строка = номер, название, минуты; на телефоне ничего не «плывёт» */
+  /* место, куда привела ссылка: полоса подсветки и метка «Вам сюда», через пару секунд гаснут */
+  .tb-target { position: relative; animation: tb-target 3.4s ease-out; border-radius: 4px; }
+  .tb-target::before { content: 'Вам сюда'; position: absolute; left: 0; top: -22px; font: 700 11px/1 var(--ds-sans, system-ui); letter-spacing: .08em; text-transform: uppercase;
+    color: #fff; background: var(--u, #B4532A); padding: 4px 7px; border-radius: 3px; animation: tb-target-tag 3.4s ease-out forwards; pointer-events: none; }
+  @keyframes tb-target { 0%, 55% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--u, #B4532A) 22%, transparent); background: color-mix(in srgb, var(--u, #B4532A) 12%, transparent); }
+    100% { box-shadow: 0 0 0 6px transparent; background: transparent; } }
+  @keyframes tb-target-tag { 0% { opacity: 0; transform: translateY(4px); } 8%, 70% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .tb-target { animation-duration: .01s; outline: 2px solid var(--u, #B4532A); } .tb-target::before { animation: none; opacity: 1; } }
   .tb-secnav { border: 1px solid var(--c-border); background: var(--c-panel-alt); padding: 10px 12px 6px; margin: 0 0 16px; }
   .tb-secnav-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--c-muted); margin-bottom: 6px; }
   .tb-secnav-head [data-testid="tb-section-progress"] { text-transform: none; letter-spacing: 0; }
@@ -1240,7 +1248,18 @@ function PageNav({ ctx }) {
   );
 }
 
-const scrollToId = (id, smooth = true) => { const el = document.getElementById(id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' }); return !!el; };
+const scrollToId = (id, smooth = true) => { const el = document.getElementById(id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' }); return el; };
+/* Куда смотреть: место, к которому привела ссылка (раздел, задача, карточка), на пару секунд
+   подсвечивается полосой и меткой «Вам сюда» — иначе после прыжка в середину главы непонятно,
+   что именно открыли. */
+const markTarget = (el) => {
+  if (!el || !el.classList) return;
+  el.classList.remove('tb-target');
+  void el.offsetWidth; // перезапуск анимации, если то же место открыли снова
+  el.classList.add('tb-target');
+  clearTimeout(el._tbTarget);
+  el._tbTarget = setTimeout(() => el.classList.remove('tb-target'), 3600);
+};
 /* «Задачи» главы — прокрутка не к началу сборника, а к задаче, которую ученик сейчас решает:
    начатой и ещё не решённой, иначе к первой нетронутой. Её нет на экране (уровень свёрнут) — к
    началу раздела. */
@@ -1275,7 +1294,7 @@ function SectionNav({ sections, ctx }) {
           const ok = probs ? probs.length > 0 && solvedN === probs.length : x.recall && sectionDone(ctx.progress, x);
           return (
             <li key={x.id}>
-              <button type="button" className="tb-secnav-row" data-testid="tb-secnav-row" onClick={() => scrollToSection(x, ctx.chapter, ctx.progress)}>
+              <button type="button" className="tb-secnav-row" data-testid="tb-secnav-row" onClick={() => markTarget(scrollToSection(x, ctx.chapter, ctx.progress))}>
                 <span className={`tb-secnav-no${ok ? ' done' : ''}`} aria-hidden="true">{ok ? <Check size={12} /> : k + 1}</span>
                 <span>{x.title}</span>
                 {probs ? <span className="tb-secnav-min" data-testid="tb-secnav-solved" style={solvedN ? { color: COLOR.teal, fontWeight: 700 } : undefined}>решено {solvedN} из {probs.length}</span>
@@ -2175,7 +2194,11 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     if (!page.anchor || typeof document === 'undefined') return undefined;
     let n = 0; let raf = 0;
     const sec = page.kind === 'chapter' ? (CHAPTER_SECTIONS[page.id] || []).find((x) => x.id === page.anchor) : null;
-    const tick = () => { n += 1; if (!(sec ? scrollToSection(sec, page.id, progress, false) : scrollToId(page.anchor, false)) && !scrollToId(`card-${page.anchor}`, false) && n < 30) raf = requestAnimationFrame(tick); };
+    const tick = () => {
+      n += 1;
+      const el = (sec ? scrollToSection(sec, page.id, progress, false) : scrollToId(page.anchor, false)) || scrollToId(`card-${page.anchor}`, false);
+      if (el) markTarget(el); else if (n < 30) raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [page]);

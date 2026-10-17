@@ -289,7 +289,7 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
         const tpl = TEMPLATE_BY_ID[ex.variant];
         const v = tpl.gen(seeded(Math.floor(rand() * 2 ** 31) + 1));
         const pt = v.parts[0];
-        return { ...base, variant: ex.variant, source: tpl.source, prompt: parseBlocks(v.statement), explain: parseBlocks(v.solution), answer: pt.answer, tol: pt.tol != null ? pt.tol : null, unit: pt.unit || '',
+        return { ...base, variant: ex.variant, source: tpl.source, prompt: parseBlocks(v.statement), explain: parseBlocks(v.solution), answer: pt.answer, tol: pt.tol != null ? pt.tol : null, unit: pt.unit || '', ...(pt.units ? { units: pt.units } : {}),
           traps: v.traps.filter((t) => t.part === 0).map((t) => ({ value: t.value, why: text(t.text) })) };
       }
       // расчёт с параметрами: в повторах (renumber) — те же условия с новыми числами
@@ -377,7 +377,8 @@ export function check(inst, resp) {
     }
     case 'swipe': case 'rush': case 'keep': return { ok: gameOk(inst, resp), why: null };
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
-    case 'open': return { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
+    // пропуск — не ошибка: у открытого вопроса неверного ответа нет, разбор откроется и так
+    case 'open': return resp && resp.skip ? { ok: true, why: null, skipped: true } : { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
     case 'domino': {
       const falls = resp && resp.falls ? resp.falls.length : 0;
       const ok = !!(resp && resp.done) && falls === 0;

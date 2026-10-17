@@ -17,7 +17,7 @@ import { Guilloche } from './ds-art.jsx';
 import { useReducedMotion } from './ds-art.jsx';
 import { Portrait } from './learn-play.jsx';
 import { CAST, DEFAULT_VOICE } from './learn/cast.js';
-import { voiceFor, VOICE_CAPTION } from './learn/voices.js';
+import { voiceFor, VOICE_CAPTION, speechText } from './learn/voices.js';
 import { plainText } from './textbook/content.js';
 
 export const FEED_CSS = `
@@ -50,6 +50,26 @@ export const FEED_CSS = `
   .fd-q { border-left: 3px solid var(--u); padding: 2px 0 2px 12px; }
   .fd-q-label { margin-bottom: 6px; }
   .fd-new { animation: ds-rise .25s ease-out 1 both; }
+  .fd-tail { height: 46vh; flex-shrink: 0; }
+  /* отвеченный вопрос — как реплика в переписке: условие мелко, ответ ученика пузырём справа */
+  .fd-q.done { border-left-color: var(--ds-rule2); }
+  .fd-q.done .fd-q-label { color: var(--ds-ink3); }
+  .fd-qa { display: grid; gap: 8px; }
+  .fd-qa-q { font-size: 15px; line-height: 1.45; color: var(--ds-ink2); }
+  .fd-qa-q p { margin: 0 0 4px; }
+  .fd-qa-a { justify-self: end; max-width: 88%; display: flex; gap: 9px; align-items: flex-start; padding: 8px 13px 9px 10px; border-radius: 14px 4px 14px 14px;
+    border: 1.5px solid var(--ds-rule2); background: var(--ds-card); font-size: 15.5px; line-height: 1.4; animation: fd-reply .3s ease-out both; }
+  .fd-qa-a.ok { border-color: color-mix(in srgb, var(--ds-ok) 50%, transparent); background: var(--ds-ok-bg); }
+  .fd-qa-a.bad { border-color: color-mix(in srgb, var(--ds-bad) 45%, transparent); background: color-mix(in srgb, var(--ds-bad) 7%, var(--ds-card)); }
+  .fd-qa-ic { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; color: #fff; background: var(--ds-ok); margin-top: 1px; }
+  .fd-qa-a.bad .fd-qa-ic { background: var(--ds-bad); }
+  .fd-qa-a.skip .fd-qa-ic { background: var(--ds-ink3); }
+  .fd-qa-who { display: block; font: 700 12px/1.3 var(--ds-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ds-ink3); margin-bottom: 1px; }
+  .fd-qa-a.ok .fd-qa-who { color: var(--ds-ok-ink); }
+  .fd-qa-a.bad .fd-qa-who { color: var(--ds-bad); }
+  .fd-qa-txt { min-width: 0; overflow-wrap: anywhere; }
+  .fd-qa-right { justify-self: end; max-width: 88%; font-size: 14.5px; line-height: 1.4; color: var(--ds-ink2); text-align: right; }
+  @keyframes fd-reply { from { opacity: 0; transform: translateX(10px) scale(.97); } to { opacity: 1; transform: none; } }
   /* радиоприёмник «Слушай» */
   .fd-set { position: relative; border: 1px solid var(--ds-rule2); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card));
     box-shadow: inset 0 0 0 3px var(--ds-card), inset 0 0 0 4px var(--ds-rule), 0 2px 4px var(--ds-shade); padding: 12px 14px 12px; }
@@ -72,7 +92,7 @@ export const FEED_CSS = `
   .fd-set .fd-hidden { margin-top: 10px; }
   .fd-archive { border-top: 1px solid var(--ds-rule2); padding-top: 6px; }
   .fd-archive-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; padding: 8px 0; font: 700 14px var(--ds-sans); color: var(--ds-ink2); cursor: pointer; text-align: left; }
-  @media (prefers-reduced-motion: reduce) { .fd-new { animation: none; } .fd-bubble { transition: none; } .fd-set .fd-eq i, .fd-onair::before { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .fd-new, .fd-qa-a { animation: none; } .fd-bubble { transition: none; } .fd-set .fd-eq i, .fd-onair::before { animation: none !important; } }
 `;
 
 /* Голос: одна озвучка на ленту. speak(key, text, who) читает сообщение голосом героя
@@ -127,10 +147,15 @@ function useSpeech() {
     }
     try {
       const s = window.speechSynthesis; s.cancel();
-      const u = new SpeechSynthesisUtterance(text);
+      const { say, map } = speechText(text);
+      const u = new SpeechSynthesisUtterance(say);
       const v = voiceFor(who, voices);
       u.voice = v.voice; u.lang = v.voice.lang; u.rate = v.rate; u.pitch = v.pitch;
-      u.onboundary = (e) => { const k = starts.findIndex((p, i) => e.charIndex >= p && (i === starts.length - 1 || e.charIndex < starts[i + 1])); if (k >= 0) setNow({ key, at: k }); };
+      u.onboundary = (e) => {
+        const at = map[Math.min(e.charIndex, map.length - 1)];
+        const k = starts.findIndex((p, i) => at >= p && (i === starts.length - 1 || at < starts[i + 1]));
+        if (k >= 0) setNow({ key, at: k });
+      };
       u.onend = () => setNow((n) => (n.key === key ? { key: null, at: -1 } : n));
       u.onerror = () => { setNow({ key: null, at: -1 }); setBroken(true); };
       setNow({ key, at: 0 }); s.speak(u);
@@ -259,10 +284,12 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
   const lastRef = useRef(null);
   const last = entries[entries.length - 1];
   const lastKey = last ? last.key : null;
-  /* Новое сообщение или вопрос — лента едет вниз до конца, чтобы его было видно целиком; но
-     если оно выше экрана — только до его начала: верх не уезжает. Прокрутка только вниз. Пока
-     последний шаг растёт (дорисовался график, под вопросом появился разбор) — догоняем его же.
-     Новое сообщение эфира — сразу читается голосом. */
+  /* Чтение сверху вниз, как в книге: новое сообщение или вопрос встаёт в верхнюю часть экрана,
+     над ним — хвост прошлого для связи, под ним — свободное место (хвост ленты .fd-tail), а не
+     прижимается к нижней кромке. Сколько прошлого оставить над новым: до трети экрана, но так,
+     чтобы новое поместилось целиком. Пока последний шаг растёт (дорисовалась формула, под вопросом
+     появился разбор, выросла нижняя панель) — догоняем: низ шага в кадре, верх не уезжает за край.
+     Прокрутка только вниз. Новое сообщение эфира — сразу читается голосом. */
   useEffect(() => {
     if (!last) return undefined;
     if (mode === 'listen') {
@@ -271,16 +298,25 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
     }
     const el = lastRef.current;
     if (!el) return undefined;
+    const sc = el.closest('.ln-body');
+    let first = true;
     const follow = () => {
-      const sc = el.closest('.ln-body');
       if (!sc) { if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); return; }
-      const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - 12;
-      const target = Math.min(sc.scrollHeight - sc.clientHeight, top);
+      const view = sc.clientHeight;
+      const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+      const h = el.offsetHeight;
+      let target;
+      if (first) {
+        const lead = Math.max(12, Math.min(view * 0.3, view - h - 24));
+        target = top - lead;
+      } else target = Math.min(top - 12, top + h + 24 - view);
+      first = false;
+      target = Math.min(target, sc.scrollHeight - view);
       if (target > sc.scrollTop + 1) sc.scrollTo({ top: target, behavior: reduced ? 'auto' : 'smooth' });
     };
     follow();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(follow) : null;
-    if (ro) ro.observe(el);
+    if (ro) { ro.observe(el); if (sc) ro.observe(sc); }
     return () => { if (ro) ro.disconnect(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastKey]);
@@ -319,9 +355,11 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
         <div key={e.key} ref={e === last ? lastRef : undefined} style={{ scrollMarginTop: 12, scrollMarginBottom: 12 }}>
           {e.kind === 'msg'
             ? <Message entry={e} mode={mode} speech={speech} picture={picture(e.card)} skipTitle={skipTitle} flag={flagFor(e)} />
-            : <div className={`fd-q ${e.live ? 'fd-new' : ''}`} data-testid={e.live ? undefined : 'feed-q'}><div className="ds-eyebrow fd-q-label" style={{ display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>Вопрос</span>{e.flag}</div>{e.node}</div>}
+            : <div className={`fd-q ${e.live ? 'fd-new' : 'done'}`} data-testid={e.live ? undefined : 'feed-q'}><div className="ds-eyebrow fd-q-label" style={{ display: 'flex', alignItems: 'center' }}><span style={{ flex: 1 }}>Вопрос</span>{e.flag}</div>{e.node}</div>}
         </div>
       ))}
+      {/* место под последним шагом: новое можно читать в верхней части экрана */}
+      <div className="fd-tail" aria-hidden="true" />
     </div>
   );
 }

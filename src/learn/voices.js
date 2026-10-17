@@ -33,3 +33,25 @@ export function voiceFor(who, voices = []) {
   const pool = same.length ? same : ru;
   return { voice: pool[p.pick % pool.length], rate: p.rate, pitch: p.pitch };
 }
+
+/* Текст для голоса: пробел внутри числа («10 000», в том числе неразрывный и узкий) голос читает
+   как два числа — «десять» и «ноль ноль ноль»; «кр.» — как «кр точка». Для озвучки разряды
+   склеиваются, «кр.» становится «крон»; map — номер символа озвученного текста → номер символа
+   исходного, чтобы подсветка слов шла по исходному тексту. */
+const GROUP_SPACE = /[ \u00A0\u202F\u2009]/;
+export function speechText(text) {
+  let say = ''; const map = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (GROUP_SPACE.test(c) && /\d/.test(text[i - 1] || '') && /^\d{3}(?!\d)/.test(text.slice(i + 1, i + 5))) continue;
+    if (text.startsWith('кр.', i) && !/[а-яё]/i.test(text[i - 1] || '')) {
+      // точка «кр.» в конце предложения остаётся точкой
+      const end = /^\s*($|[A-ZА-ЯЁ«])/.test(text.slice(i + 3));
+      for (const ch of end ? 'крон.' : 'крон') { say += ch; map.push(i); }
+      i += 2; continue;
+    }
+    say += c; map.push(i);
+  }
+  map.push(text.length);
+  return { say, map };
+}
