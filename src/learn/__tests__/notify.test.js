@@ -98,7 +98,8 @@ describe('уведомления: лига и новости', () => {
       expect(n.items.length).toBeGreaterThan(2);
       n.items.forEach((it) => { expect(it.icon).toBeTruthy(); expect(it.title).toBeTruthy(); expect(it.text.length).toBeGreaterThan(20); });
       // без технических слов: ученику не нужны «чанки», «кэш» и «API»
-      expect(JSON.stringify(n)).not.toMatch(/чанк|кэш|API|e2e|рефактор|баг|localStorage|компонент/i);
+      // «баг» — отдельным словом: «золотой багет» — это рамка, а не ошибка
+      expect(JSON.stringify(n)).not.toMatch(/чанк|кэш|API|e2e|рефактор|(^|[^а-яё])баг([^а-яё]|$)|localStorage|компонент/i);
     });
     expect(newsDate('2026-10-15', '2026-10-20')).toBe('15 октября');
     expect(newsDate('2025-12-31', '2026-10-20')).toBe('31 декабря 2025');

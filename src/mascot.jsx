@@ -42,11 +42,13 @@ const CSS = `
   @keyframes infla-swing { 0%, 100% { transform: rotate(-9deg) } 50% { transform: rotate(9deg) } }
   @keyframes infla-spark { 0%, 62%, 100% { opacity: 0; transform: scale(.3) } 76% { opacity: 1; transform: scale(1.25) } 88% { opacity: .6; transform: scale(.8) } }
   @keyframes infla-spin { to { transform: rotate(360deg) } }
+  @keyframes infla-flicker { 0%, 100% { opacity: 1 } 18% { opacity: .72 } 30% { opacity: .95 } 52% { opacity: .66 } 70% { opacity: 1 } 84% { opacity: .82 } }
+  .infla-flicker { animation: infla-flicker 1.9s ease-in-out infinite; }
   .infla-balloon { transform-box: fill-box; transform-origin: 50% 100%; animation: infla-breathe 4.2s ease-in-out infinite; }
   .infla-swing { transform-box: fill-box; transform-origin: 50% 0; animation: infla-swing 2.6s ease-in-out infinite; }
   .infla-spark { transform-box: fill-box; transform-origin: center; animation: infla-spark 2.4s ease-in-out infinite; opacity: 0; }
   .infla-spin { transform-box: view-box; transform-origin: 32px 25px; animation: infla-spin 24s linear infinite; }
-  @media (prefers-reduced-motion: reduce) { .infla-bob, .infla-hop, .infla-eyes, .infla-hand, .infla-sway, .infla-balloon, .infla-swing, .infla-spin { animation: none; } .infla-spark { animation: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .infla-bob, .infla-hop, .infla-eyes, .infla-hand, .infla-sway, .infla-balloon, .infla-swing, .infla-spin, .infla-flicker { animation: none; } .infla-spark { animation: none; opacity: 1; } }
 `;
 
 /* Наряды из лавки (src/learn/rewards.js): голова, лицо, шея. Рисуются поверх монеты тушью и
@@ -86,13 +88,159 @@ const OUTFIT = {
   </g>,
   // шар «Инфляция» на нитке: то надувается, то сдувается — как цены
   balloon: <g stroke={INK} strokeLinejoin="round"><path d="M54.5 41 Q51 33 56 26 Q60 20 57 15.5" fill="none" strokeWidth=".9" /><circle cx="54.5" cy="42" r="3.2" fill="#E8C766" strokeWidth="1" /><g className="infla-balloon"><ellipse cx="57" cy="3.5" rx="9.5" ry="11" fill="#C8442F" strokeWidth="1.1" /><path d="M55.4 14.3 L57 16 L58.6 14.3 Z" fill="#A0372A" strokeWidth=".8" /><path d="M51 -2 Q52.5 -5.5 56 -6" fill="none" stroke="#FFD9CC" strokeWidth="1.8" strokeLinecap="round" /><text x="57" y="7.8" textAnchor="middle" fontSize="11" fontWeight="700" fontFamily="sans-serif" fill="#FFF3E6" stroke="none">%</text></g></g>,
-  // рамки — кольцо вокруг монеты
-  'frame-guilloche': <g fill="none"><circle cx="32" cy="25" r="28.5" stroke="#5A4E80" strokeWidth="1.2" /><circle cx="32" cy="25" r="26.6" stroke="#5A4E80" strokeWidth="1" strokeDasharray="1.6 1.4" /><circle cx="32" cy="25" r="30.4" stroke="#5A4E80" strokeWidth=".8" strokeDasharray="4 2 1 2" /></g>,
-  'frame-gold': <g fill="none"><circle cx="32" cy="25" r="29.5" stroke="#B88A1A" strokeWidth="3.4" /><circle cx="32" cy="25" r="29.5" stroke="#FBE7A1" strokeWidth="1" strokeDasharray="2 3" /><circle cx="32" cy="25" r="27" stroke="#94700F" strokeWidth=".8" /></g>,
-  'frame-diamond': <g><circle cx="32" cy="25" r="29.5" fill="none" stroke="#2E8FB8" strokeWidth="2.6" /><g className="infla-spin">{Array.from({ length: 12 }, (_, k) => { const a = (k / 12) * Math.PI * 2; const x = 32 + Math.cos(a) * 29.5; const y = 25 + Math.sin(a) * 29.5; return <path key={k} d={`M${x} ${y - 2.6} L${x + 2} ${y} L${x} ${y + 2.6} L${x - 2} ${y} Z`} fill="#BFE9F7" stroke="#1D6A8E" strokeWidth=".7" />; })}</g>{spark(32, -4.5, 0, 3)}{spark(61.5, 25, .8, 3)}{spark(2.5, 25, 1.6, 3)}</g>,
 };
+/* ХЕЛЛОУИН (src/learn/halloween.js): продаются только в сезон, носятся всегда */
+const NIGHT = '#2B2238';
+Object.assign(OUTFIT, {
+  // рожки чертёнка: два загнутых рожка с бликом
+  horns: <g stroke={INK} strokeWidth="1" strokeLinejoin="round">
+    <path d="M21.5 7 Q13 0 16.5 -9.5 Q19 -2.5 27 3 Z" fill="#C8382A" /><path d="M42.5 7 Q51 0 47.5 -9.5 Q45 -2.5 37 3 Z" fill="#C8382A" />
+    <path d="M17.6 -5.6 Q17.2 -1 21 2.6 M46.4 -5.6 Q46.8 -1 43 2.6" fill="none" stroke="#FFB4A6" strokeWidth=".9" strokeLinecap="round" />
+  </g>,
+  // шляпа ведьмы: широкие поля, конус с заломом, фиолетовая лента и золотая пряжка
+  witch: <g stroke={INK} strokeWidth="1.1" strokeLinejoin="round">
+    <path d="M19.5 8.5 Q25 -4 29.5 -14 Q33 -22 43.5 -21 Q37 -17.5 36.4 -9 Q37.4 0 45.5 8.5 Z" fill={NIGHT} />
+    <ellipse cx="32" cy="9.6" rx="22.5" ry="3.6" fill={NIGHT} />
+    <path d="M21.4 3 Q32 6 43.2 3 L44.4 6.2 Q32 9.4 20.4 6.2 Z" fill="#7B3FA0" />
+    <rect x="29.3" y="3.2" width="5.4" height="4.6" rx=".6" fill="none" stroke="#E3B53C" strokeWidth="1.3" />
+    <path d="M30.5 -12 Q33 -18 39 -19.6" fill="none" stroke="#5E4A7A" strokeWidth=".9" strokeLinecap="round" />
+  </g>,
+  // маска летучей мыши: крылья с острыми кончиками, прорези для глаз — глаза видно
+  batmask: <g>
+    <path fillRule="evenodd" fill={NIGHT} stroke={INK} strokeWidth=".9" strokeLinejoin="round"
+      d="M12.5 24.5 L8.5 14.5 L15 18.4 L18.6 15.3 Q26 14.6 32 18.6 Q38 14.6 45.4 15.3 L49 18.4 L55.5 14.5 L51.5 24.5 Q46 30 39.5 27.8 Q35 26.6 32 24.6 Q29 26.6 24.5 27.8 Q18 30 12.5 24.5 Z M20.3 23 a4.2 3.5 0 1 0 8.4 0 a4.2 3.5 0 1 0 -8.4 0 Z M35.3 23 a4.2 3.5 0 1 0 8.4 0 a4.2 3.5 0 1 0 -8.4 0 Z" />
+    <path d="M17 18.6 Q22 17 27 18.4" fill="none" stroke="#7E6C9E" strokeWidth=".8" strokeLinecap="round" />
+  </g>,
+  // воротник графа: стоячий чёрный воротник с красной подкладкой и застёжка с камнем
+  cape: <g stroke={INK} strokeWidth="1" strokeLinejoin="round">
+    {[false, true].map((m) => (
+      <g key={String(m)} transform={m ? 'translate(64 0) scale(-1 1)' : undefined}>
+        <path d="M30.5 49.6 Q17 50.4 10 38.5 L3 28.5 L5.8 45.4 Q15 56.5 30.5 52.6 Z" fill="#1E1A24" />
+        <path d="M28.6 50.1 Q18 50 11.6 40.6 L7.6 35 L8.8 44 Q16.4 52.4 28.6 51.4 Z" fill="#B3122E" stroke="none" />
+      </g>
+    ))}
+    <circle cx="32" cy="51" r="2.7" fill="#E3B53C" /><circle cx="32" cy="51" r="1.2" fill="#B3122E" strokeWidth=".5" />
+  </g>,
+  // тыква-фонарь: резная рожица светится изнутри и мерцает
+  lantern: <g stroke={INK} strokeLinejoin="round">
+    <circle className="infla-flicker" cx="55" cy="30" r="11" fill="#FFB13B" opacity=".25" stroke="none" />
+    <path d="M51.4 41.6 Q55 46.5 58.6 41.6" fill="none" strokeWidth="1.1" />
+    <circle cx="55" cy="44.4" r="3" fill="#E8C766" strokeWidth="1" />
+    <path d="M55 21.6 Q54.2 18.6 56.4 16.6" fill="none" stroke="#4D7C0F" strokeWidth="2" strokeLinecap="round" />
+    <ellipse cx="55" cy="30.5" rx="8.6" ry="7.6" fill="#E8701E" strokeWidth="1.1" />
+    <path d="M55 23 Q51 30.5 55 38 M55 23 Q59 30.5 55 38 M49 25.4 Q46.6 30.5 49 35.6 M61 25.4 Q63.4 30.5 61 35.6" fill="none" stroke="#B4500F" strokeWidth=".7" />
+    <g className="infla-flicker" fill="#FFE07A" stroke="#7A3A08" strokeWidth=".5">
+      <path d="M50.4 29 L52.6 25.8 L54 29 Z" /><path d="M56 29 L57.4 25.8 L59.6 29 Z" />
+      <path d="M49.8 32 L51.6 33.6 L53.2 32.2 L55 34 L56.8 32.2 L58.4 33.6 L60.2 32 Q58.6 36 55 36.2 Q51.4 36 49.8 32 Z" />
+    </g>
+  </g>,
+});
 OUTFIT.goldbar = OUTFIT.balloon; // старое имя шара: наряд с ним рисуется до первого сохранения
-export const OUTFIT_IDS = Object.keys(OUTFIT);
+
+/* РАМКИ — медальон вокруг монеты: сплошное кольцо под монетой, без просвета, с узором. Рисуются
+   первыми — узелок и нитка шарика ложатся поверх рамки. g — префикс id градиентов этой Инфли:
+   у каждой картинки свои, чтобы спрятанная копия не гасила градиент соседней. */
+const C = { x: 32, y: 25 };
+const polar = (r, a) => [C.x + Math.cos(a) * r, C.y + Math.sin(a) * r];
+const f2 = (x) => Math.round(x * 100) / 100;
+// гильош: замкнутая волна r(θ) = r0 + amp·sin(n·θ + φ) — как сетка на банкноте
+const wave = (r0, amp, n, ph) => {
+  const pts = Array.from({ length: n * 12 + 1 }, (_, k) => { const a = (k / (n * 12)) * Math.PI * 2; return polar(r0 + amp * Math.sin(n * a + ph), a); });
+  return `M${pts.map(([x, y]) => `${f2(x)} ${f2(y)}`).join(' L')} Z`;
+};
+const GUILLOCHE = [0, 1, 2].map((k) => wave(27.6, 2.2, 14, (k * 2 * Math.PI) / 3));
+const GUILLOCHE_FINE = [0, 1].map((k) => wave(27.6, 1.1, 28, k * Math.PI));
+const at = (n, r, off = 0) => Array.from({ length: n }, (_, k) => polar(r, off + (k / n) * Math.PI * 2));
+// бриллиант сверху: восьмиугольник, площадка и грани к углам
+const gem = (x, y, s, key) => {
+  const o = Array.from({ length: 8 }, (_, k) => { const a = (k / 8) * Math.PI * 2 + Math.PI / 8; return [x + Math.cos(a) * s, y + Math.sin(a) * s]; });
+  const t = o.map(([px, py]) => [x + (px - x) * 0.45, y + (py - y) * 0.45]);
+  const poly = (ps) => ps.map(([px, py]) => `${f2(px)},${f2(py)}`).join(' ');
+  return (
+    <g key={key}>
+      <polygon points={poly(o)} fill="#8FDCF5" stroke="#1D6A8E" strokeWidth=".45" />
+      {o.map((p, k) => <polygon key={k} points={poly([p, o[(k + 1) % 8], t[(k + 1) % 8], t[k]])} fill={k % 2 ? '#D9F6FF' : '#5FC2E8'} opacity=".9" />)}
+      <polygon points={poly(t)} fill="#F4FDFF" stroke="#7CCBE6" strokeWidth=".3" />
+    </g>
+  );
+};
+const FRAMES = {
+  // гильош: сиреневый медальон с сеткой волн, как на банкноте
+  'frame-guilloche': () => (
+    <g>
+      <circle cx={C.x} cy={C.y} r="31.2" fill="#ECE6F7" />
+      <g fill="none" stroke="#6A5C99" strokeWidth=".5">{GUILLOCHE.map((d, k) => <path key={k} d={d} />)}</g>
+      <g fill="none" stroke="#9C8FC7" strokeWidth=".35">{GUILLOCHE_FINE.map((d, k) => <path key={k} d={d} />)}</g>
+      <circle cx={C.x} cy={C.y} r="31.2" fill="none" stroke="#4B3F75" strokeWidth="1.2" />
+      <circle cx={C.x} cy={C.y} r="30" fill="none" stroke="#4B3F75" strokeWidth=".45" />
+      <circle cx={C.x} cy={C.y} r="24.4" fill="none" stroke="#4B3F75" strokeWidth=".8" />
+    </g>
+  ),
+  // золотой багет: литое кольцо со светом слева сверху, профиль-бортик, жемчужный ряд и четыре розетки с гранатом
+  'frame-gold': (g) => (
+    <g>
+      <defs>
+        <linearGradient id={`${g}-gold`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FFF3C2" /><stop offset=".35" stopColor="#E6B744" /><stop offset=".7" stopColor="#B88A1A" /><stop offset="1" stopColor="#7A5508" />
+        </linearGradient>
+      </defs>
+      <circle cx={C.x} cy={C.y} r="31.6" fill={`url(#${g}-gold)`} stroke="#5E4208" strokeWidth=".9" />
+      <circle cx={C.x} cy={C.y} r="29.4" fill="none" stroke="#7A5508" strokeWidth=".7" />
+      <circle cx={C.x} cy={C.y} r="29.95" fill="none" stroke="#FFF1B8" strokeWidth=".5" opacity=".85" />
+      <circle cx={C.x} cy={C.y} r="25.3" fill="none" stroke="#7A5508" strokeWidth=".8" />
+      {at(32, 27.1).filter((_, k) => k % 8 !== 4).map(([x, y], k) => <circle key={k} cx={f2(x)} cy={f2(y)} r="1" fill="#FFF6D6" stroke="#8C6410" strokeWidth=".35" />)}
+      {at(4, 27.4, Math.PI / 4).map(([x, y], k) => (
+        <g key={k}>
+          <path d={`M${f2(x)} ${f2(y - 3)} Q${f2(x + 1)} ${f2(y - 1)} ${f2(x + 3)} ${f2(y)} Q${f2(x + 1)} ${f2(y + 1)} ${f2(x)} ${f2(y + 3)} Q${f2(x - 1)} ${f2(y + 1)} ${f2(x - 3)} ${f2(y)} Q${f2(x - 1)} ${f2(y - 1)} ${f2(x)} ${f2(y - 3)} Z`} fill="#FFF3C2" stroke="#5E4208" strokeWidth=".55" />
+          <circle cx={f2(x)} cy={f2(y)} r="1.05" fill="#A0372A" stroke="#5E4208" strokeWidth=".3" />
+        </g>
+      ))}
+    </g>
+  ),
+  // алмазная огранка: платиновое кольцо в ледяном свечении, по нему медленно плывут бриллианты
+  'frame-diamond': (g) => (
+    <g>
+      <defs>
+        <radialGradient id={`${g}-halo`} cx="50%" cy="50%" r="50%"><stop offset=".6" stopColor="#BDEBFF" stopOpacity=".75" /><stop offset="1" stopColor="#BDEBFF" stopOpacity="0" /></radialGradient>
+        <linearGradient id={`${g}-plat`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FBFEFF" /><stop offset=".3" stopColor="#B7C9D6" /><stop offset=".55" stopColor="#EEF6FB" /><stop offset=".8" stopColor="#8EA4B5" /><stop offset="1" stopColor="#D5E3EC" />
+        </linearGradient>
+      </defs>
+      <circle cx={C.x} cy={C.y} r="35" fill={`url(#${g}-halo)`} />
+      <circle cx={C.x} cy={C.y} r="31.4" fill={`url(#${g}-plat)`} stroke="#4F6B80" strokeWidth=".9" />
+      <circle cx={C.x} cy={C.y} r="25.2" fill="none" stroke="#6C8799" strokeWidth=".6" />
+      <circle cx={C.x} cy={C.y} r="30.3" fill="none" stroke="#6C8799" strokeWidth=".6" />
+      <g className="infla-spin">{at(12, 27.75).map(([x, y], k) => gem(x, y, 2.85, k))}</g>
+      {spark(32, -4.5, 0, 3)}{spark(61.5, 25, .8, 3)}{spark(2.5, 25, 1.6, 3)}
+    </g>
+  ),
+  // паутина (награда Хеллоуина): ночной медальон, серебряная сеть и паучок, который качается на нитке
+  'frame-web': (g) => (
+    <g>
+      <defs>
+        <radialGradient id={`${g}-night`} cx="50%" cy="45%" r="55%"><stop offset=".55" stopColor="#4A3A63" /><stop offset="1" stopColor="#241C33" /></radialGradient>
+      </defs>
+      <circle cx={C.x} cy={C.y} r="31.6" fill={`url(#${g}-night)`} stroke="#18121F" strokeWidth=".9" />
+      <g fill="none" stroke="#DCD5EA" strokeWidth=".55" opacity=".9">
+        {at(16, 31.2).map(([x, y], k) => <path key={k} d={`M${C.x} ${C.y} L${f2(x)} ${f2(y)}`} />)}
+        {[25.6, 28.2, 30.6].map((r) => {
+          const pts = at(16, r);
+          return <path key={r} d={`M${pts.map(([x, y], k) => { const [nx, ny] = pts[(k + 1) % 16]; const mx = (x + nx) / 2; const my = (y + ny) / 2; const cx = C.x + (mx - C.x) * 0.95; const cy = C.y + (my - C.y) * 0.95; return `${k ? '' : `${f2(x)} ${f2(y)} `}Q${f2(cx)} ${f2(cy)} ${f2(nx)} ${f2(ny)}`; }).join(' ')}`} />;
+        })}
+      </g>
+      <g className="infla-swing">
+        <path d="M52.5 -4 L52.5 9" stroke="#DCD5EA" strokeWidth=".55" />
+        <g stroke="#120E18" strokeWidth=".8" strokeLinecap="round" fill="none">
+          <path d="M50.6 10.4 L47.4 8.4 M50.4 11.6 L46.8 11.4 M50.6 12.8 L47.4 14.8 M54.4 10.4 L57.6 8.4 M54.6 11.6 L58.2 11.4 M54.4 12.8 L57.6 14.8" />
+        </g>
+        <ellipse cx="52.5" cy="11.8" rx="2.6" ry="3" fill="#120E18" /><circle cx="52.5" cy="8.9" r="1.6" fill="#120E18" />
+        <circle cx="51.9" cy="8.6" r=".42" fill="#fff" /><circle cx="53.1" cy="8.6" r=".42" fill="#fff" />
+      </g>
+      {spark(9, 5, .4, 1.8)}{spark(57, 44, 1.4, 1.6)}
+    </g>
+  ),
+};
+export const OUTFIT_IDS = [...Object.keys(OUTFIT), ...Object.keys(FRAMES)];
 /* Наряд ученика для всех Инфль внутри обучения (урок, итоги, Путь, профиль): его задаёт корень
    обучения, а явный outfit (витрина лавки) — важнее. */
 export const OutfitContext = React.createContext(null);
@@ -118,9 +266,9 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
             <stop offset="0" stopColor="#FBE7A1" /><stop offset="0.5" stopColor="#D9B23A" /><stop offset="1" stopColor="#94700F" />
           </radialGradient>
         </defs>
+        {wear.frame && FRAMES[wear.frame] && <g data-outfit={wear.frame}>{FRAMES[wear.frame](gid)}</g>}
         <path d="M32 50.2 C 28.8 53.6, 35.6 56.4, 31.8 60.4 C 30.6 61.6, 31.4 62.6, 32.6 63.4" fill="none" stroke="#D9B23A" strokeWidth="1.8" strokeLinecap="round" />
         <path d="M29.3 51.6 L32 47.6 L34.7 51.6 Q32 52.6 29.3 51.6 Z" fill="#A9841A" stroke="#3A2A08" strokeWidth="0.9" strokeLinejoin="round" />
-        {wear.frame && OUTFIT[wear.frame] && <g data-outfit={wear.frame}>{OUTFIT[wear.frame]}</g>}
         <ellipse cx="32" cy="25" rx="22" ry="23.2" fill={`url(#${gid})`} stroke="#3A2A08" strokeWidth="1.6" />
         <ellipse cx="32" cy="25" rx="18.2" ry="19.3" fill="none" stroke="#5A4210" strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="1.2 2" />
         <path d="M17.4 18.6 C 18.6 13.6, 22.4 9.8, 27 8.8" fill="none" stroke="#FFF7DC" strokeOpacity="0.75" strokeWidth="2.4" strokeLinecap="round" />

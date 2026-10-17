@@ -14,6 +14,7 @@ import {
   Bell, BellRing, ArrowLeft, ChevronRight, CheckCheck, X, Flame, Map as MapIcon, Target, Trophy, TrendingDown, ArrowDown, ArrowUp, Hourglass, Sprout, Droplet, PiggyBank,
   Package, Repeat, CalendarDays, ShieldCheck, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
   Gauge, Store, Anchor, Shirt, WandSparkles, Settings,
+  Ghost,
 } from 'lucide-react';
 import { IconButton, TopBar } from './ds.jsx';
 import { Mascot } from './mascot.jsx';
@@ -113,6 +114,7 @@ const ICON = {
   sprout: Sprout, droplet: Droplet, piggy: PiggyBank, chest: Package, repeat: Repeat, calendar: CalendarDays, shield: ShieldCheck, newspaper: Newspaper,
   sparkles: Sparkles, croissant: Croissant, stamp: Stamp, scale: Scale, moon: Moon, palette: Palette, devices: MonitorSmartphone, headphones: Headphones, book: BookOpen,
   landmark: Landmark, chart: BarChart3, gauge: Gauge, store: Store, anchor: Anchor, shirt: Shirt, wand: WandSparkles, bell: Bell, settings: Settings,
+  pumpkin: Ghost, ghost: Ghost, fire: Flame,
 };
 export const NIcon = ({ name, size = 20, ...rest }) => { const I = ICON[name] || Bell; return <I size={size} aria-hidden="true" {...rest} />; };
 

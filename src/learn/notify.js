@@ -13,6 +13,7 @@ import { piggyState, monthChallenge, hasClaim, chestKey, coinsWord, plural } fro
 import { pathState } from './course.js';
 import { placeOf } from '../ds-tokens.js';
 import { NEWS } from './news.js';
+import { halloween } from './halloween.js';
 
 const HOUR = 3600 * 1000;
 // виды уведомлений: подпись в настройках и включено ли по умолчанию
@@ -161,6 +162,22 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
   if ((learn.policyLapse || 0) > 0 && now - learn.policyLapse < 7 * 24 * HOUR && (learn.policyLapse > (learn.policyAt || 0))) {
     add({ id: `lapse:${learn.policyLapse}`, kind: 'path', icon: 'shield', tone: '#2E5F8A', at: learn.policyLapse, go: 'shop',
       title: 'Страховка серии прекращена', text: 'Не хватило монет на взнос. Оформить заново можно в лавке.' });
+  }
+
+  // Хеллоуин (src/learn/halloween.js): начало сезона, корзина полна, последний день
+  const hw = halloween(learn, now);
+  if (hw.on && !hw.claimed) {
+    const year = hw.key.slice(3);
+    if (hw.ready) {
+      add({ id: `hw-ready:${year}`, kind: 'path', icon: 'pumpkin', tone: '#B4500F', at: now - 60 * 1000, go: 'path', toast: true, push: true,
+        title: `${hw.goal} тыкв собраны!`, text: 'Заберите рамку «Паутина» — карточка Хеллоуина на Пути.' });
+    } else if (hw.lastDay) {
+      add({ id: `hw-last:${year}`, kind: 'path', icon: 'pumpkin', tone: '#7B3FA0', at: at(day, 10), go: 'path', push: true,
+        title: 'Последний день Хеллоуина', text: `Тыкв: ${hw.pumpkins} из ${hw.goal}. Завтра хеллоуинская витрина закроется до следующего года.` });
+    } else {
+      add({ id: `hw-start:${year}`, kind: 'path', icon: 'pumpkin', tone: '#7B3FA0', at: Math.min(now - 60 * 1000, at(hw.from, 9)), go: 'path', toast: true,
+        title: 'Хеллоуин в Инфляции', text: `До 2 ноября: каждый урок — тыква, ${hw.goal} тыкв — рамка «Паутина». В лавке — хеллоуинская витрина.` });
+    }
   }
 
   // новости: выпуски не раньше первого дня ученика

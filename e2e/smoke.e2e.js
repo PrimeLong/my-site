@@ -2652,7 +2652,8 @@ test('вход: программа — вступительный тест, су
   await page.reload({ waitUntil: 'networkidle' });
   const morning = page.getByTestId('morning');
   await expect(morning).toBeVisible();
-  await expect(morning).toContainText('Вы на 1 день подряд');
+  await expect(morning.getByTestId('morning-days')).toHaveAttribute('data-value', '1');
+  await expect(morning).toContainText('день подряд');
   await expect(morning.getByTestId('morning-week').locator('.rw-dot')).toHaveCount(7);
   await page.getByTestId('morning-go').click();
   await expect(morning).toHaveCount(0);
@@ -2868,8 +2869,10 @@ test('анимации выключены, если в системе «умен
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const anim = (loc, pseudo = null) => loc.evaluate((el, p) => getComputedStyle(el, p).animationName, pseudo);
   await expect(page.getByTestId('morning')).toBeVisible();
-  expect(await anim(page.locator('.rw-flame'))).toBe('none');
-  await expect(page.getByTestId('morning-days').locator('[data-value]')).toHaveText('1');
+  // огонёк серии не разгорается, цифры не падают — сразу на месте
+  expect(await anim(page.locator('.rw-fire .ignite'))).toBe('none');
+  expect(await anim(page.locator('.rw-days span').first())).toBe('none');
+  await expect(page.getByTestId('morning-days')).toHaveAttribute('data-value', '1');
   await page.getByTestId('morning-go').click();
   await expect(page.getByTestId('path')).toBeVisible();
   expect(await anim(pathNode(page, 'sc-i1'))).toBe('none');
