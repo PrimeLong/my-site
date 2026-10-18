@@ -3716,6 +3716,72 @@ test('новости: выпуск раскрывается и сворачив�
   expect(errors).toEqual([]);
 });
 
+test('церемонии: юнит пройден — «Новая марка», «Марка месяца» и «Новая печать» по очереди; показанное не повторяется', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-celebrate-test', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    // юнит 1 пройден час назад, печать «Место на карте» и марка этого месяца — ещё не праздновали
+    localStorage.setItem('ems-celebrated', '{}');
+    const at = Date.now() - 3600000; const d = new Date();
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])), claimed: { 'a:unit': at, [`m:${ym}`]: at } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const scene = page.getByTestId('celebrate');
+  // почтовая марка юнита со зданием; касание по сцене — сразу финал
+  await expect(scene).toHaveAttribute('aria-label', 'Новая марка в альбоме: Мастерская');
+  await expect(scene.getByTestId('celebrate-stamp')).toBeVisible();
+  await expect(scene.getByTestId('celebrate-stamp').getByTestId('engraving')).toHaveAttribute('data-alive', 'true');
+  await scene.click({ position: { x: 8, y: 8 } });
+  await expect(scene.getByTestId('celebrate-done')).toBeVisible();
+  await scene.getByTestId('celebrate-done').click();
+  // марка месяца — с монетами испытания
+  await expect(scene).toHaveAttribute('aria-label', /^Марка месяца: /);
+  await expect(scene.getByTestId('celebrate-coins')).toHaveAttribute('data-value', '100');
+  await scene.getByTestId('celebrate-done').click();
+  // печать — сургуч и знак; Enter — «Дальше»
+  await expect(scene).toHaveAttribute('aria-label', 'Новая печать: Место на карте');
+  await expect(scene.getByTestId('celebrate-seal')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(scene).toHaveCount(0);
+  await expect(page.getByTestId('path')).toBeVisible();
+  // перезагрузка — показанное не повторяется
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(page.getByTestId('path')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.getByTestId('celebrate')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('церемонии: первое открытие не празднует уже полученное; печать за первую покупку — сценой сразу, «Все печати» ведёт в профиль', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    localStorage.setItem('ems-celebrate-test', '1');
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3600000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 } }, claimed: { 'a:first': at }, coins: { '2026-01-01': 500 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await expect(page.getByTestId('path')).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.getByTestId('celebrate')).toHaveCount(0);
+  // покупка в лавке выдаёт печать «Первая покупка» — сцена сразу
+  await openTab(page, 'shop');
+  await page.getByTestId('shop-showcase').getByTestId('shop-item').getByRole('button', { name: 'Купить' }).first().click();
+  const scene = page.getByTestId('celebrate');
+  await expect(scene).toHaveAttribute('aria-label', 'Новая печать: Первая покупка');
+  await scene.click({ position: { x: 8, y: 8 } });
+  await scene.getByTestId('celebrate-go').click();
+  // та же покупка выдала и «Пятьсот монет» (заработано 500) — следующая сцена, уже над профилем; Esc — закрыть
+  await expect(scene).toHaveAttribute('aria-label', 'Новая печать: Пятьсот монет');
+  await page.keyboard.press('Escape');
+  await expect(scene).toHaveCount(0);
+  await expect(page.getByTestId('learn-profile')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('ПК от 1024 px: Путь в две колонки, у главы учебника оглавление сбоку', async ({ page, isMobile }) => {
   await withTestFlag(page);
   // юнит 1 пройден — на Пути «Рынок» с живой моделью

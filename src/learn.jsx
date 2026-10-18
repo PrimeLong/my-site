@@ -42,6 +42,7 @@ import {
   REWARD_CSS, WalletStat, QuestsCard, MonthCard, TasksEntry, ShopView, ChestSheet, MorningStreak, GainsList, PlacementCard,
 } from './learn-rewards.jsx';
 import { saveResume, dropResume, getResume, takeExpiredResumes, resumeIds } from './learn/resume.js';
+import { pendingMoments, baselineSeen, nextBatch } from './learn/celebrate.js';
 import { Mascot, OutfitContext } from './mascot.jsx';
 import { markTerms, termTitle, termText, termFormula, isWorldTerm } from './learn/terms.js';
 import { LeagueView } from './learn-league.jsx';
@@ -2185,6 +2186,34 @@ const ProfileView = React.lazy(() => import('./learn-profile.jsx').then((m) => (
 const SettingsView = React.lazy(() => import('./learn-profile.jsx').then((m) => ({ default: m.SettingsView })));
 const NewsView = React.lazy(() => import('./learn-news.jsx'));
 const Lazy = ({ children }) => <React.Suspense fallback={<BrandLoader compact text="Открываем" />}>{children}</React.Suspense>;
+const Celebration = React.lazy(() => import('./learn-celebrate.jsx'));
+/* Церемонии (src/learn/celebrate.js): что из полученного ещё не праздновали. Показанное помнит
+   устройство; первое знакомство — всё уже полученное как показанное. Автотест (Playwright,
+   navigator.webdriver) — без сцен, если тест сам их не включил (ems-celebrate-test): сцена во весь
+   экран перехватывала бы касания остальных проверок. */
+const CELEBRATED_KEY = 'ems-celebrated';
+function useCelebrations(learn) {
+  const [seen, setSeen] = useState(() => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.webdriver && localStorage.getItem('ems-celebrate-test') !== '1') return null;
+      const raw = localStorage.getItem(CELEBRATED_KEY);
+      if (raw) return JSON.parse(raw) || {};
+      const base = baselineSeen(learn);
+      localStorage.setItem(CELEBRATED_KEY, JSON.stringify(base));
+      return base;
+    } catch { return null; }
+  });
+  const pending = useMemo(() => (seen ? pendingMoments(learn, seen) : []), [learn, seen]);
+  const mark = (keys) => setSeen((m) => {
+    const next = { ...m };
+    keys.forEach((k) => { next[k] = Date.now(); });
+    try { localStorage.setItem(CELEBRATED_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
+    return next;
+  });
+  // больше трёх подряд — лишние без сцен
+  useEffect(() => { const { skip } = nextBatch(pending); if (skip.length) mark(skip.map((m) => m.key)); }, [pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [pending[0] || null, (m) => mark([m.key])];
+}
 
 /* ------------------------------ ВКЛАДКИ ------------------------------
    Корень экранов обучения. Учебник — подэкран поверх вкладки (или поверх итогов урока):
@@ -2242,7 +2271,10 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
     return seen !== today && streak(loadProgress().learn).days >= 1;
   });
   const notify = useNotify(learn);
-  const [toast, toastDone] = useToasts(notify, !!run || !!sheet || !!chest || morning || bell);
+  // церемония — когда ученик не занят: не в уроке, не в карточке урока, сундуке или утреннем экране
+  const [moment, celebrated] = useCelebrations(learn);
+  const celebrate = moment && !run && !sheet && !chest && !morning ? moment : null;
+  const [toast, toastDone] = useToasts(notify, !!run || !!sheet || !!chest || morning || bell || !!celebrate);
   useBrowserReminders(notify);
   const openBook = (page, resume = false) => { setBook({ page, resume }); setBookKey((k) => k + 1); window.scrollTo(0, 0); };
   // смена вкладки закрывает подэкраны; переход из уведомления может открыть нужный сразу
@@ -2334,6 +2366,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update}
         onClose={(opened) => { setChest(null); if (opened) setFolded((f) => ({ n: f.n + 1, unit: chest })); }} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
+      {celebrate && <React.Suspense fallback={null}><Celebration moment={celebrate} learn={learn} onDone={() => celebrated(celebrate)}
+        onGo={() => { celebrated(celebrate); onTab('profile'); }} /></React.Suspense>}
       {sheet && <LessonSheet l={sheet} learn={learn} weak={weakLessons(learn).some((w) => w.id === sheet.id)} onStart={start} onClose={() => setSheet(null)} onOpenBook={openBook}
         onSkip={(id) => { Audio.play('paper'); update((s) => skipLesson(s, id)); setSheet(null); }} />}
       {run && <Runner key={JSON.stringify({ ...run, resume: !!run.resume })} run={run} learn={learn} update={update} hidden={!!book} guest={guest}

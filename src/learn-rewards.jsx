@@ -4,9 +4,10 @@
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  X, Wallet, ShieldCheck, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap, Flag,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap, ListChecks, ChevronRight, Ghost, Crown, Lock, Plus,
+  X, Wallet, ShieldCheck, CalendarDays, Check, Flame, GraduationCap, Timer, Map as MapIcon, Target, Coins, TrendingUp, TrendingDown, Minus, Gem, Zap,
+  ListChecks, ChevronRight, Ghost, Crown, Lock, Plus,
 } from 'lucide-react';
+import { ACH_ICON } from './award-art.js';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
@@ -223,7 +224,6 @@ export const REWARD_CSS = `
   @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in circle, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
-const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
 const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame, spark: Zap };
 const fmtRate = (r) => r.toFixed(2).replace('.', ',');
 const Bar = ({ have, target, ok }) => <div className={`rw-bar ${ok ? 'ok' : ''}`} role="presentation"><i style={{ width: `${Math.round((Math.min(have, target) / target) * 100)}%` }} /></div>;
