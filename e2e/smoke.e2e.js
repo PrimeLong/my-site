@@ -3925,26 +3925,26 @@ test('первый экран партии: компас ставки, Тейл�
   expect(errors).toEqual([]);
 });
 
-test('уголок для фокуса: после четырёх уроков — знакомство, каналы, тетрис, кружок, любой угол; скрыть и вернуть в настройках', async ({ page, isMobile }) => {
+test('антистресс: после четырёх уроков — знакомство, каналы и меню, растягивание, кружок, любой угол; скрыть и вернуть в настройках', async ({ page, isMobile }) => {
   await withTestFlag(page);
   await page.addInitScript(() => {
-    localStorage.setItem('ems-focus-test', '1');
+    localStorage.setItem('ems-antistress-test', '1');
     if (localStorage.getItem('ems-textbook-v1')) return;
     const at = Date.now() - 86400000;
     localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(['sc-i1', 'sc-l1', 'sc-l2'].map((id) => [id, { at, runs: 1, best: 90 }])) } }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
-  const corner = page.getByTestId('focus');
+  const box = page.getByTestId('antistress');
   const exit = async () => {
     await page.getByRole('button', { name: 'Выйти из урока' }).click();
     await expect(page.getByTestId('lesson')).toHaveCount(0);
   };
-  // три урока — уголка ещё нет
+  // три урока — окошка ещё нет
   await startLesson(page, 'sc-i2');
   await page.waitForTimeout(900);
-  await expect(corner).toHaveCount(0);
+  await expect(box).toHaveCount(0);
   await exit();
-  // четвёртый пройден (середина первого юнита) — в следующем уроке уголок и знакомство
+  // четвёртый пройден (середина первого юнита) — в следующем уроке окошко и знакомство
   await page.evaluate(() => {
     const s = JSON.parse(localStorage.getItem('ems-textbook-v1'));
     s.learn.lessons['sc-i2'] = { at: Date.now() - 3600000, runs: 1, best: 90 };
@@ -3953,89 +3953,138 @@ test('уголок для фокуса: после четырёх уроков �
   await page.reload({ waitUntil: 'networkidle' });
   await startLesson(page, 'sc-l3');
   if (isMobile) {
-    // телефон: полей у урока нет — и уголка нет
+    // телефон: полей у урока нет — и окошка нет
     await page.waitForTimeout(900);
-    await expect(corner).toHaveCount(0);
+    await expect(box).toHaveCount(0);
     expect(errors).toEqual([]);
     return;
   }
-  const intro = page.getByTestId('focus-intro');
+  const intro = page.getByTestId('antistress-intro');
   await expect(intro).toBeVisible();
-  await expect(intro).toContainText('Уголок для фокуса');
-  await expect(corner).toHaveAttribute('data-corner', 'br');
-  await expect(corner).toHaveAttribute('data-channel', 'ring');
+  await expect(intro).toContainText('Антистресс');
+  await expect(intro).not.toContainText(/фокус|стрим/i);
+  await expect(box).toHaveAttribute('data-corner', 'br');
+  await expect(box).toHaveAttribute('data-channel', 'ring');
   // окошко — на поле справа от урока, не на нём
-  const box = await corner.boundingBox();
   const col = await page.getByTestId('lesson').locator('.ln-body > .ln-inner').boundingBox();
   const vp = page.viewportSize();
-  expect(box.x).toBeGreaterThan(col.x + col.width);
-  expect(box.x + box.width).toBeLessThanOrEqual(vp.width - 8);
-  expect(box.y + box.height).toBeLessThanOrEqual(vp.height - 8);
+  const b0 = await box.boundingBox();
+  expect(b0.x).toBeGreaterThan(col.x + col.width);
+  expect(b0.x + b0.width).toBeLessThanOrEqual(vp.width - 8);
+  expect(b0.y + b0.height).toBeLessThanOrEqual(vp.height - 8);
   // Enter закрывает знакомство и не уходит уроку; второй раз его нет
   await page.keyboard.press('Enter');
   await expect(intro).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('ems-focus-intro'))).toBe('1');
+  expect(await page.evaluate(() => localStorage.getItem('ems-antistress-intro'))).toBe('1');
   // канал живой: кадр за кадром картинка меняется
-  const frame = () => page.getByTestId('focus-canvas').evaluate((c) => c.toDataURL());
+  const frame = () => page.getByTestId('antistress-canvas').evaluate((c) => c.toDataURL());
   const before = await frame();
   await expect.poll(frame).not.toBe(before);
-  // каналы по кругу
-  await page.getByTestId('focus-next').click();
-  await expect(corner).toHaveAttribute('data-channel', 'wave');
-  await expect(page.getByTestId('focus-name')).toHaveText('Маятники');
-  await page.getByTestId('focus-next').click();
-  await expect(corner).toHaveAttribute('data-channel', 'tetris');
-  await expect(corner).toHaveAttribute('data-player', 'bot');
-  // тетрис играет сам; кнопка или стрелка, пока мышь над окошком, — фигура ваша, урок стрелку не получает
-  await corner.hover();
-  await page.getByTestId('focus-left').click();
-  await expect(corner).toHaveAttribute('data-player', 'you');
-  await page.keyboard.press('ArrowRight');
-  await expect(corner).toHaveAttribute('data-player', 'you');
+  // стрелки — по кругу; название открывает меню всех каналов
+  await page.getByTestId('antistress-next').click();
+  await expect(box).toHaveAttribute('data-channel', 'rings');
+  await expect(page.getByTestId('antistress-name')).toHaveText('Сквозь кольца');
+  await page.getByTestId('antistress-name').click();
+  const menu = page.getByTestId('antistress-menu');
+  await expect(menu.getByTestId('antistress-pick')).toHaveCount(8);
+  await menu.locator('[data-channel="sand"]').click();
+  await expect(menu).toHaveCount(0);
+  await expect(box).toHaveAttribute('data-channel', 'sand');
+  // песок: зажали мышь на экране — сыплется оттуда, окошко при этом не едет
+  const canvas = page.getByTestId('antistress-canvas');
+  const cb = await canvas.boundingBox();
+  // самая яркая точка около мыши: тёмный фон — около 120, песчинка — больше 300
+  const sandAt = () => canvas.evaluate((c) => {
+    const s = Math.round(c.width / 232 * 8); const d = c.getContext('2d').getImageData(Math.round(c.width * 0.2) - s, Math.round(c.height * 0.25) - s, 2 * s, 2 * s).data;
+    let max = 0;
+    for (let i = 0; i < d.length; i += 4) max = Math.max(max, d[i] + d[i + 1] + d[i + 2]);
+    return max;
+  });
+  expect(await sandAt()).toBeLessThan(250);
+  await page.mouse.move(cb.x + cb.width * 0.2, cb.y + cb.height * 0.25);
+  await page.mouse.down();
+  await expect.poll(sandAt).toBeGreaterThan(300);
+  await expect(box).toHaveAttribute('data-player', 'you');
+  await page.mouse.up();
+  await expect(box).toHaveAttribute('data-corner', 'br');
+  // поп-ит: сам себя не жмёт первые секунды; пупырку нажали — она ваша
+  await page.getByTestId('antistress-next').click();
+  await expect(box).toHaveAttribute('data-channel', 'pop');
+  await expect(box).toHaveAttribute('data-player', 'bot');
+  const k = cb.width / 232;
+  await page.mouse.click(cb.x + 43.9 * k, cb.y + 34.5 * k);
+  await expect(box).toHaveAttribute('data-player', 'you');
+  // змейка: играет бот, кнопка — и змейка ваша, урок стрелку не получает
+  await page.getByTestId('antistress-next').click();
+  await page.getByTestId('antistress-next').click();
+  await expect(box).toHaveAttribute('data-channel', 'snake');
+  await expect(box).toHaveAttribute('data-player', 'bot');
+  await box.hover();
+  await page.getByTestId('antistress-pad-up').click();
+  await expect(box).toHaveAttribute('data-player', 'you');
+  // тетрис — тоже можно перехватить
+  await page.getByTestId('antistress-prev').click();
+  await expect(box).toHaveAttribute('data-channel', 'tetris');
+  await box.hover();
+  await page.keyboard.press('ArrowLeft');
+  await expect(box).toHaveAttribute('data-player', 'you');
   // пауза и снова
-  await page.getByTestId('focus-play').click();
-  await expect(corner).toHaveAttribute('data-playing', 'false');
-  await page.getByTestId('focus-play').click();
-  await expect(corner).toHaveAttribute('data-playing', 'true');
-  // ○ — живой кружок; нажатие разворачивает
-  await page.getByTestId('focus-min').click();
-  await expect(corner).toHaveAttribute('data-min', 'true');
-  await expect.poll(async () => (await corner.boundingBox()).width).toBeLessThan(70);
-  await page.getByTestId('focus-expand').click();
-  await expect(corner).toHaveAttribute('data-min', 'false');
-  await expect.poll(async () => (await corner.boundingBox()).width).toBeGreaterThan(200);
-  // перетащили — окошко встаёт в ближайший угол и помнит его; черновик на полях при этом не рисует
-  const b = await corner.boundingBox();
-  await page.mouse.move(b.x + b.width / 2, b.y + 14);
+  await page.getByTestId('antistress-play').click();
+  await expect(box).toHaveAttribute('data-playing', 'false');
+  await page.getByTestId('antistress-play').click();
+  await expect(box).toHaveAttribute('data-playing', 'true');
+  // растянуть за внутренний уголок: окошко растёт к уроку, прижатый угол стоит, на урок не заходит
+  const grip = await page.getByTestId('antistress-grip').boundingBox();
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 400, grip.y - 400, { steps: 8 });
+  await page.mouse.up();
+  const b1 = await box.boundingBox();
+  expect(b1.width).toBeGreaterThan(b0.width * 1.15);
+  expect(Math.round(b1.x + b1.width)).toBe(Math.round(b0.x + b0.width));
+  expect(b1.x).toBeGreaterThan(col.x + col.width);
+  expect(b1.height).toBeLessThanOrEqual(vp.height * 0.62 + 1);
+  expect(Number(await page.evaluate(() => localStorage.getItem('ems-antistress-size')))).toBeGreaterThan(1.1);
+  // ○ — живой кружок; нажатие разворачивает в прежнем размере
+  await page.getByTestId('antistress-min').click();
+  await expect(box).toHaveAttribute('data-min', 'true');
+  await expect.poll(async () => (await box.boundingBox()).width).toBeLessThan(70);
+  await page.getByTestId('antistress-expand').click();
+  await expect(box).toHaveAttribute('data-min', 'false');
+  await expect.poll(async () => Math.round((await box.boundingBox()).width)).toBe(Math.round(b1.width));
+  // перетащили за название — окошко встаёт в ближайший угол и помнит его, меню не открылось; черновик при этом не рисует
+  const b = await box.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + 18);
   await page.mouse.down();
   await page.mouse.move(300, 200, { steps: 10 });
   await page.mouse.up();
-  await expect(corner).toHaveAttribute('data-corner', 'tl');
-  await expect.poll(async () => Math.round((await corner.boundingBox()).x)).toBe(16);
-  expect(await page.evaluate(() => localStorage.getItem('ems-focus-corner'))).toBe('tl');
+  await expect(box).toHaveAttribute('data-corner', 'tl');
+  await expect(page.getByTestId('antistress-menu')).toHaveCount(0);
+  await expect.poll(async () => Math.round((await box.boundingBox()).x)).toBe(16);
+  expect(await page.evaluate(() => localStorage.getItem('ems-antistress-corner'))).toBe('tl');
   await expect(page.getByTestId('sketch-canvas')).toHaveAttribute('data-strokes', '0');
   // × — скрыт, «Вернуть» — на месте
-  await page.getByTestId('focus-hide').click();
-  await expect(corner).toHaveCount(0);
-  await expect(page.getByTestId('focus-snack')).toContainText('вернуть можно в настройках');
-  await page.getByTestId('focus-restore').click();
-  await expect(corner).toHaveAttribute('data-channel', 'tetris');
-  await page.getByTestId('focus-hide').click();
-  await expect(page.getByTestId('focus-snack')).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('ems-focus'))).toBe('off');
+  await page.getByTestId('antistress-hide').click();
+  await expect(box).toHaveCount(0);
+  await expect(page.getByTestId('antistress-snack')).toContainText('вернуть можно в настройках');
+  await page.getByTestId('antistress-restore').click();
+  await expect(box).toHaveAttribute('data-channel', 'tetris');
+  await page.getByTestId('antistress-hide').click();
+  await expect(page.getByTestId('antistress-snack')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('ems-antistress'))).toBe('off');
   await exit();
   // скрыт — в уроке его нет; включили в настройках — снова есть, без знакомства, в своём углу
   await openTab(page, 'profile');
   await page.getByTestId('prof-settings-open').click();
-  const toggle = page.getByTestId('prof-focus');
+  const toggle = page.getByTestId('prof-antistress');
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await page.getByTestId('settings').locator('[data-nav="back"]').click();
   await openTab(page, 'path');
   await startLesson(page, 'sc-l3');
-  await expect(corner).toBeVisible();
-  await expect(corner).toHaveAttribute('data-corner', 'tl');
+  await expect(box).toBeVisible();
+  await expect(box).toHaveAttribute('data-corner', 'tl');
   await page.waitForTimeout(900);
   await expect(intro).toHaveCount(0);
   expect(errors).toEqual([]);
