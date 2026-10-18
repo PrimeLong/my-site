@@ -10,6 +10,11 @@ import utilsBundle from 'playwright-core/lib/utilsBundle';
 
 const { PNG } = utilsBundle;
 
+/* Текст — без субпиксельного (LCD) сглаживания: в одних окружениях Chromium красит края букв
+   цветными полосками, в других — серыми, и эталоны, снятые на одной машине, расходились с CI
+   на всех строках текста. Серое сглаживание одинаково везде. */
+test.use({ launchOptions: { ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}), args: ['--disable-lcd-text'] } });
+
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 const NOW = new Date('2026-10-05T10:00:00');
 const SHOT = { animations: 'disabled', caret: 'hide', maxDiffPixelRatio: 0.02 };
