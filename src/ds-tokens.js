@@ -80,7 +80,7 @@ export function tokenVars(t, accent) {
   return {
     '--ds-paper': t.paper, '--ds-card': t.card, '--ds-card2': t.card2, '--ds-ink': t.ink, '--ds-ink2': t.ink2, '--ds-ink3': t.ink3,
     '--ds-rule': t.rule, '--ds-rule2': t.rule2, '--ds-ok': t.ok, '--ds-ok-ink': t.okInk, '--ds-ok-bg': t.okBg,
-    '--ds-bad': t.bad, '--ds-bad-ink': t.badInk, '--ds-bad-bg': t.badBg, '--ds-ok-btn': t.okBtn || t.ok, '--ds-bad-btn': t.badBtn || t.bad, '--ds-gold': t.gold, '--ds-gold-soft': t.goldSoft,
+    '--ds-bad': t.bad, '--ds-bad-ink': t.badInk, '--ds-bad-bg': t.badBg, '--ds-ok-btn': t.okBtn || t.ok, '--ds-bad-btn': t.badBtn || t.bad, '--ds-gold': t.gold, '--ds-gold-soft': t.goldSoft, '--ds-blue': t.blue || t.selRule,
     '--ds-sel': t.sel, '--ds-sel-ink': t.selInk, '--ds-sel-rule': t.selRule, '--ds-warm-btn': t.warmBtn || t.selInk, '--ds-shade': t.shade, '--u': accent || t.accent,
     // заголовки и кнопки — PT Sans; засечки — только у газеты «Вестник» (--ds-news)
     '--ds-head': DS_FONT.sans, '--ds-news': DS_FONT.serif, '--ds-sans': DS_FONT.sans, '--ds-mono': DS_FONT.mono,
