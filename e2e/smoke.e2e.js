@@ -1380,8 +1380,8 @@ async function answerExercise(page, { wrong = false, skipOpen = false } = {}) {
     await svg.click({ position: { x: ((pl.x0 + (q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (pr / pl.pMax) * pl.h) / pl.vh) * box.height } });
   } else if (kind === 'swipe' || kind === 'rush') {
     await playRound(page, () => wrong);
-  } else if (kind === 'keep') {
-    await playKeep(page, { wrong });
+  } else if (kind === 'wallet') {
+    await playWallet(page, { wrong });
   } else if (kind === 'open') {
     // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор; или пропускаем — разбор откроется и так
     if (skipOpen) await page.getByTestId('open-skip').click();
@@ -1394,7 +1394,7 @@ async function answerExercise(page, { wrong = false, skipOpen = false } = {}) {
     for (const k of ans.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
   }
   // мини-игра и «Домино» проверяются сами, когда доиграны
-  if (!['swipe', 'rush', 'keep', 'domino'].includes(kind) && !(kind === 'open' && skipOpen)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
+  if (!['swipe', 'rush', 'wallet', 'domino'].includes(kind) && !(kind === 'open' && skipOpen)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
   await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
   if (kind === 'open' && skipOpen) { await expect(page.getByTestId('lesson-foot')).toContainText('Вопрос пропущен'); await expect(page.getByTestId('open-review')).toBeVisible(); }
@@ -1886,7 +1886,7 @@ test('путь: юнит «Банк» (деньги и банки) — кажд�
   expect(errors).toEqual([]);
 });
 
-test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+test('путь: юнит «Инфляция» — каждый урок проходится, игра «Сбереги кошелёк» засчитывается', async ({ page }) => {
   test.setTimeout(300_000);
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -1914,26 +1914,33 @@ test('путь: юнит «Инфляция» — каждый урок прох
   await expect(page.getByTestId('listen-text')).toContainText('корзина');
   await playLesson(page);
   await finish();
-  // «Держи инфляцию»: шкала с коридором, график, ставка; по подсказкам — зачёт
+  // «Сбереги кошелёк»: кошелёк и чашки, газета с прогнозом, шкала «прогноз — ставка», три решения
   await startLesson(page, 'in-g');
   const ex = page.getByTestId('ex');
-  await expect(ex.getByTestId('game')).toHaveAttribute('data-kind', 'keep');
-  await expect(ex.getByTestId('keep-gauge')).toBeVisible();
-  await page.evaluate(() => { window.__INFLATIA_GAME_SPEED__ = 4; });
+  await expect(ex.getByTestId('game')).toHaveAttribute('data-kind', 'wallet');
+  await expect(ex.getByTestId('game-howto')).toBeVisible();
+  await expect(ex.getByTestId('wallet-cups')).toHaveAttribute('data-cups', '100');
+  await page.evaluate(() => { window.__INFLATIA_GAME_SPEED__ = 6; });
   await ex.getByTestId('game-start').click();
-  await expect(ex.getByTestId('keep-rate')).toContainText('8%');
-  await expect(ex.getByTestId('keep-spark')).toBeVisible();
-  // стрелки клавиатуры двигают ставку
-  await page.keyboard.press('ArrowUp');
-  await expect(ex.getByTestId('keep-rate')).toContainText('9%');
-  await page.keyboard.press('ArrowDown');
-  await expect(ex.getByTestId('keep-rate')).toContainText('8%');
-  const final = ex.getByTestId('game-final');
-  while (!(await final.count())) {
-    const hint = await ex.getByTestId('game-card').getAttribute('data-hint', { timeout: 500 }).catch(() => null);
-    if (hint === 'up' || hint === 'down') await ex.locator(`button[data-side="${hint}"]`).click({ timeout: 500 }).catch(() => {});
-    else await page.waitForTimeout(80);
+  await expect(ex.getByTestId('wallet-news')).not.toBeEmpty();
+  await expect(ex.getByTestId('wallet-scale')).toBeVisible();
+  await expect(ex.getByTestId('wallet-opt')).toHaveCount(3);
+  // первый год — наличными: лучшим он не бывает, кошелёк тот же, чашек меньше; разбор — полосками
+  await ex.locator('[data-testid=wallet-opt][data-opt="cash"]').click();
+  await expect(ex.getByTestId('wallet-verdict')).toHaveAttribute('data-ok', 'false');
+  await expect(ex.getByTestId('wallet-sum')).toHaveText('10\u00A0000');
+  expect(Number(await ex.getByTestId('wallet-cups').getAttribute('data-cups'))).toBeLessThan(100);
+  await expect(ex.getByTestId('wallet-bars')).toBeVisible();
+  await ex.getByTestId('wallet-next').click();
+  // дальше — лучший выбор: 4 из 5, зачёт
+  for (let k = 2; k <= 5; k += 1) {
+    const year = ex.getByTestId('wallet-year');
+    await expect(year).toHaveAttribute('data-year', String(k));
+    await ex.locator(`[data-testid=wallet-opt][data-opt="${await year.getAttribute('data-best')}"]`).click();
+    await expect(ex.getByTestId('wallet-verdict')).toHaveAttribute('data-ok', 'true');
+    await ex.getByTestId('wallet-next').click();
   }
+  await expect(ex.getByTestId('wallet-path')).toBeVisible();
   await expect(ex.getByTestId('game-verdict')).toHaveAttribute('data-ok', 'true');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -2155,22 +2162,22 @@ async function playRound(page, wrong = () => false, { seconds = 6, max = Infinit
   return kind;
 }
 
-/* «Держи инфляцию»: в тесте игровое время идёт вчетверо быстрее (window.__INFLATIA_GAME_SPEED__) —
-   минута игры за 15 секунд. Ставку двигаем по подсказке data-hint (куда нужно сейчас); wrong — не
-   трогать ставку вовсе: сильные новости тогда проваливаются. Проверка — сама по окончании игры. */
-async function playKeep(page, { wrong = false, speed = 4 } = {}) {
+/* «Сбереги кошелёк»: пять лет — в каждом выбрать, где держать деньги; лучший вариант игра отдаёт
+   в data-best только при флаге теста. wrong — каждый год «наличными дома» (лучшим он не бывает). */
+async function playWallet(page, { wrong = false, speed = 6 } = {}) {
   const ex = page.getByTestId('ex');
   await page.evaluate((sp) => { window.__INFLATIA_GAME_SPEED__ = sp; }, speed);
   await ex.getByTestId('game-start').click();
-  const card = ex.getByTestId('game-card');
-  const final = ex.getByTestId('game-final');
-  while (!(await final.count())) {
-    const hint = await card.getAttribute('data-hint', { timeout: 500 }).catch(() => null);
-    if (!wrong && (hint === 'up' || hint === 'down')) await ex.locator(`button[data-side="${hint}"]`).click({ timeout: 500 }).catch(() => {});
-    else await page.waitForTimeout(80);
+  for (let k = 1; k <= 5; k += 1) {
+    const year = ex.getByTestId('wallet-year');
+    await expect(year).toHaveAttribute('data-year', String(k));
+    const best = await year.getAttribute('data-best');
+    await ex.locator(`[data-testid=wallet-opt][data-opt="${wrong ? 'cash' : best}"]`).click();
+    await expect(ex.getByTestId('wallet-verdict')).toHaveAttribute('data-ok', String(!wrong));
+    await ex.getByTestId('wallet-next').click();
   }
-  await expect(final).toBeVisible();
-  return 'keep';
+  await expect(ex.getByTestId('game-final')).toBeVisible();
+  return 'wallet';
 }
 
 test('юнит 1 «Ограниченность и выбор»: все виды уроков, калькулятор в расчёте, повтор после ошибки — другой задачей', async ({ page }) => {

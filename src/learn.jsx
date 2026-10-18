@@ -29,7 +29,7 @@ import { afterPathAnswer, dropFromReview } from './textbook/review-sync.js';
 import { activeClock, tickClock, actClock } from './learn/active-time.js';
 import {
   UNITS, LESSONS, LEVELS, LEVEL_BY_ID, levelOf, levelUnits, LESSON_BY_ID, KIND_LABEL, SHIFT_CURVES, LESSON_KIND, GAME_KINDS, SELF_CHECK, OPEN_MIN, buildLesson, buildUnitCheck, buildLevelCheck, buildPractice, practiceIds, canPractice, PRACTICE_MAX, check, ready, answerText, unitFor, pathState,
-  buildPlacement, placementOpened, placementFailed, retryOf, gameLeft, GAME_PASS,
+  buildPlacement, placementOpened, placementFailed, retryOf, gameNeed, gameRule,
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak,
@@ -49,7 +49,7 @@ import { NOTIFY_CSS, useNotify, useToasts, useBrowserReminders, NotifyCenter, No
 import { HALLOWEEN_CSS, HalloweenCard, Pumpkin, Bat } from './learn-halloween.jsx';
 import { halloweenOn } from './learn/halloween.js';
 import {
-  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
+  PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, WalletRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
 import { DiscoverDay, MarketModel, ModelThumb, MODEL_CSS, DOMINO_CSS, DominoEx } from './learn-model.jsx';
@@ -311,7 +311,7 @@ const testAnswer = (inst) => {
     case 'news': return JSON.stringify(inst.expect);
     case 'tiles': return JSON.stringify(inst.solution);
     case 'curve': case 'price': case 'point': return JSON.stringify(inst.answer);
-    case 'swipe': case 'rush': case 'keep': return JSON.stringify('game');
+    case 'swipe': case 'rush': case 'wallet': return JSON.stringify('game');
     case 'open': return JSON.stringify('open');
     case 'domino': return JSON.stringify(inst.chain);
     default: return undefined;
@@ -650,11 +650,11 @@ function ExerciseView({ inst, resp, setResp, locked, fb, ctx = noopCtx, onSubmit
       // цепочка собрана — задание уходит на проверку само
       return <DominoEx inst={inst} resp={resp} setResp={(v) => !locked && setResp(v)} locked={locked} fb={fb} onSubmit={onSubmit}
         prompt={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>} />;
-    case 'keep':
+    case 'wallet':
       return (
         <div>
           <div className="ds-h2" style={{ marginBottom: 6 }}>{inst.title}</div>
-          <KeepRound inst={inst} locked={locked} result={resp} best={inst._best || 0} intro={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>}
+          <WalletRound inst={inst} locked={locked} result={resp} best={inst._best || 0} intro={<div className="ln-prompt ds-text tb-body"><Blocks blocks={inst.prompt} ctx={ctx} /></div>}
             onDone={(r) => { setResp(r); onSubmit(r); }} />
         </div>
       );
@@ -682,11 +682,19 @@ const gameResultText = (result) => {
   const g = result.game;
   if (!g) return result.accuracy >= 100 ? 'Игра засчитана.' : 'Урок пройден, игра — без зачёта.';
   const wrong = g.answered - g.right;
+  if (g.kind === 'wallet') {
+    if (g.ok) return `Игра засчитана: лучший выбор в ${g.right} ${plural(g.right, 'году', 'годах', 'годах')} из ${g.answered}.`;
+    return `Урок пройден, игра — без зачёта: лучший выбор в ${g.right} ${plural(g.right, 'году', 'годах', 'годах')} из ${g.answered}, а нужно ${gameRule('wallet')}. Засчитанная игра даёт урок без помарок и алмаз.`;
+  }
   if (g.ok) return `Игра засчитана: верных ${g.right}, ошибок ${wrong}.`;
-  return `Урок пройден, игра — без зачёта: не хватило ${gameLeft(g.right, g.answered)} (верных ${g.right}, ошибок ${wrong}). Нужно, чтобы верных было на ${GAME_PASS} больше, чем ошибок. Засчитанная игра даёт урок без помарок и алмаз.`;
+  return `Урок пройден, игра — без зачёта: не хватило ${gameNeed(g.kind, g.right, g.answered)} (верных ${g.right}, ошибок ${wrong}). Нужно, чтобы ${gameRule(g.kind)}. Засчитанная игра даёт урок без помарок и алмаз.`;
 };
 // итог мини-игры для плашки
-const gameLine = (inst, r) => (r ? `Верно ${r.right} из ${r.answered} · ${r.score} очков${r.record ? ' — новый рекорд!' : ''}` : '');
+const gameLine = (inst, r) => {
+  if (!r) return '';
+  if (inst.kind === 'wallet') return `Лучший выбор в ${r.right} ${plural(r.right, 'году', 'годах', 'годах')} из ${r.answered} · через ${r.answered} лет — ${r.cups} ${plural(r.cups, 'чашка', 'чашки', 'чашек')}${r.record ? ' — новый рекорд!' : ''}`;
+  return `Верно ${r.right} из ${r.answered} · ${r.score} очков${r.record ? ' — новый рекорд!' : ''}`;
+};
 
 // день, когда после урока последний раз предлагали забег с другом (не чаще раза в день)
 const RACE_OFFER_KEY = 'ems-race-offer';
@@ -819,7 +827,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       const seenId = cur.of || cur.id;
       update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null }), seenId));
       if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
-      if (GAME_KINDS.includes(cur.kind) && answer) a.game = { right: answer.right, answered: answer.answered, ok: r.ok };
+      if (GAME_KINDS.includes(cur.kind) && answer) a.game = { kind: cur.kind, right: answer.right, answered: answer.answered, ok: r.ok };
     }
     if (r.ok) {
       a.solved.add(orig);

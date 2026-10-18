@@ -7,6 +7,7 @@ import {
   GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, gameLeft, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
 } from '../course.js';
 import { CAST } from '../cast.js';
+import { WALLET, bestOf, gapOf } from '../wallet.js';
 import { placeOf } from '../../ds-tokens.js';
 import { collectMath, collectBlocks } from '../../textbook/markdown.js';
 import { CHAPTER_BLOCKS } from '../../textbook/content.js';
@@ -145,11 +146,11 @@ describe.each(PATH)('юнит %s', (unitId) => {
       expect(Object.values(cards).flat().length).toBe(l.inner.filter((c) => !c.diamond).length);
     });
   });
-  it('урок укладывается в 3–5 минут по оценке времени (уроки из шагов — от двух минут, мини-игра — ровно минута)', () => {
+  it('урок укладывается в 3–5 минут по оценке времени (уроки из шагов — от двух минут, мини-игра на время — ровно минута, «Сбереги кошелёк» — две)', () => {
     unit.lessons.forEach((l) => {
       for (let s = 1; s <= N; s += 1) {
-        const { seconds } = buildLesson(l.id, seeded(s));
-        if (l.kind === 'game') { expect(seconds, l.id).toBe(60); continue; }
+        const { seconds, items } = buildLesson(l.id, seeded(s));
+        if (l.kind === 'game') { expect(seconds, l.id).toBe(items[0].kind === 'wallet' ? 120 : 60); continue; }
         expect(seconds, `${l.id}: ${seconds} с`).toBeGreaterThanOrEqual(STEPPED.includes(l.kind) ? 120 : 180);
         expect(seconds, `${l.id}: ${seconds} с`).toBeLessThanOrEqual(300);
       }
@@ -284,15 +285,14 @@ describe('упражнения: ровно один верный ответ', ()
           expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
           break;
         }
-        case 'keep': {
-          // «Держи инфляцию»: новости толкают цены в обе стороны, толчок — от 1 до 4 пунктов; зачёт — как у всех игр
-          inst.items.forEach((it) => { expect(Number.isFinite(it.effect)).toBe(true); expect(Math.abs(it.effect)).toBeGreaterThanOrEqual(1); expect(Math.abs(it.effect)).toBeLessThanOrEqual(4); });
-          expect(inst.items.some((it) => it.effect > 0) && inst.items.some((it) => it.effect < 0), ex.id).toBe(true);
-          expect(new Set(inst.items.map((x) => x.raw)).size).toBe(inst.items.length);
-          expect(inst.items.length, ex.id).toBeGreaterThanOrEqual(12);
-          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS, done: true }).ok).toBe(true);
-          expect(check(inst, { right: GAME_PASS, answered: GAME_PASS + 1, done: true }).ok).toBe(false);
-          expect(check(inst, { right: 10, answered: 10 }).ok, 'игра не окончена').toBe(false);
+        case 'wallet': {
+          // «Сбереги кошелёк»: пять лет, в каждом — новость своего уровня, решение видно по прогнозу; зачёт — лучший выбор в 4 годах из 5
+          expect(inst.years).toHaveLength(WALLET.years);
+          inst.years.forEach((y) => { expect(bestOf(y.pi, y.r)).toBe(y.best); expect(gapOf(y.pi, y.r)).toBeGreaterThanOrEqual(WALLET.margin - 1e-9); expect(y.text).toBeTruthy(); });
+          expect(new Set(inst.years.map((y) => y.raw)).size).toBe(inst.years.length);
+          expect(check(inst, { right: WALLET.pass, answered: WALLET.years, done: true }).ok).toBe(true);
+          expect(check(inst, { right: WALLET.pass - 1, answered: WALLET.years, done: true }).ok).toBe(false);
+          expect(check(inst, { right: 5, answered: 5 }).ok, 'игра не окончена').toBe(false);
           break;
         }
         case 'open': {
@@ -388,9 +388,9 @@ describe.each(PATH)('юнит %s: полноценный — все восемь
     const game = buildLesson(g.id, seeded(4)).items;
     expect(game.length).toBe(1);
     expect(GAME_KINDS).toContain(game[0].kind);
-    // у «Держи инфляцию» свой живой график — шкала и линия инфляции, без кривых рынка
-    expect(game[0].chart || game[0].kind === 'keep').toBeTruthy();
-    game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
+    // у «Сбереги кошелёк» своя сцена — кошелёк, шкала инфляции и чашки, без кривых рынка
+    expect(game[0].chart || game[0].kind === 'wallet').toBeTruthy();
+    if (game[0].kind !== 'wallet') game[0].items.forEach((it) => expect(it.effect, it.raw).toBeTruthy());
     const [st] = of('story');
     // шаг без героя — голос рассказчика; первый шаг — герой, героев не меньше трёх
     st.inner.forEach((c) => expect(!c.idea.who || CAST[c.idea.who], c.idea.id).toBeTruthy());
@@ -674,7 +674,7 @@ describe('мотивация: опыт, серия с заморозкой, ре
    с верной стороной: на рынке рост спроса или падение предложения поднимает цену; на КПВ
    сдвиг кривой — «сдвиг», точка по кривой — «движение». */
 describe('мини-игра: одна на урок, карточки двигают график', () => {
-  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind) && e.kind !== 'keep');
+  const games = Object.values(EXERCISES).filter((e) => GAME_KINDS.includes(e.kind) && e.kind !== 'wallet');
   it('в каждом юните Пути — ровно одна игра, на минуту', () => {
     PATH.forEach((id) => {
       const g = UNIT_BY_ID[id].lessons.filter((l) => l.kind === 'game');

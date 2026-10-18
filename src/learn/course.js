@@ -14,15 +14,16 @@ import { GLOSSARY } from '../textbook/glossary.js';
 import { CAST } from './cast.js';
 import { pathBlocks } from './money.js';
 import { plural } from '../lib/plural.js';
+import { walletYears, WALLET } from './wallet.js';
 
 // сколько секунд на упражнение: одно касание — около десяти, расчёт и сборка — дольше
-export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, keep: 60, open: 30, domino: 35 };
+export const SECONDS = { choice: 12, gap: 12, tf: 10, shift: 12, news: 16, match: 22, sort: 22, calc: 28, tiles: 20, curve: 15, price: 18, point: 15, swipe: 60, rush: 60, wallet: 120, open: 30, domino: 35 };
 export const IDEA_SECONDS = 25;
 export const KIND_LABEL = {
   choice: 'Выбор ответа', gap: 'Заполните пропуск', tf: 'Верно или неверно', shift: 'Куда сдвинется?',
   news: 'Газета', match: 'Сопоставьте пары', sort: 'Разложите по корзинам', calc: 'Быстрый расчёт',
   tiles: 'Соберите определение', curve: 'Сдвиньте кривую', price: 'Найдите цену', point: 'Отметьте равновесие',
-  swipe: 'Мини-игра', rush: 'Мини-игра на время', keep: 'Держи инфляцию', open: 'Как бы вы поступили?', domino: 'Домино',
+  swipe: 'Мини-игра', rush: 'Мини-игра на время', wallet: 'Сбереги кошелёк', open: 'Как бы вы поступили?', domino: 'Домино',
 };
 /* «Домино»: ученик сам выкладывает цепочку причин; неверное звено роняет домино с этого места,
    разбор — и он продолжает с верного места. Проверяется само, когда цепочка собрана: засчитано,
@@ -32,7 +33,7 @@ export const SELF_CHECK = ['domino'];
    не идёт ни в ошибки, ни в повторение, ни в проверку юнита. */
 export const OPEN_MIN = 15;
 // мини-игры: у них свой счёт внутри, в проверку юнита и повторение они не идут
-export const GAME_KINDS = ['swipe', 'rush', 'keep'];
+export const GAME_KINDS = ['swipe', 'rush', 'wallet'];
 /* Мини-игра урока — одна, на минуту (на алмазном уровне — 45 секунд): карточки идут по кругу,
    пока не кончится время; засчитана — чистый счёт от восьми: верных минус ошибок
    (docs/mechanics.md, «Мини-игра — зачёт»). */
@@ -318,9 +319,9 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
       const decoys = ex.decoys.map((d, k) => ({ key: `f${k}`, text: d.text, raw: d.raw, why: d.why, link: null }));
       return { ...base, headline: ex.headline, scene: ex.scene, chain: links.map((l) => l.key), deck: shuffle([...links, ...decoys], rand) };
     }
-    case 'keep':
-      return { ...base, title: ex.title, seconds: extra.seconds || ex.seconds || SECONDS.keep,
-        items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, effect: it.effect })), rand) };
+    // «Сбереги кошелёк»: пять лет — новость, прогноз и ставка — подбираются под этот экземпляр
+    case 'wallet':
+      return { ...base, title: ex.title, years: walletYears(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, level: it.level })), rand) };
     case 'swipe': case 'rush':
       return { ...base, title: ex.title, labels: ex.labels, seconds: extra.seconds || ex.seconds || SECONDS[ex.kind], chart: ex.chart || null, ...(ex.market ? { market: ex.market } : {}),
         items: shuffle(ex.items.map((it, k) => ({ key: `g${k}`, text: it.text, raw: it.raw, side: it.side, effect: it.effect || null })), rand) };
@@ -375,7 +376,7 @@ export function check(inst, resp) {
       const ok = !!resp && Math.abs(resp.q - inst.answer.q) <= ax.qMax * 0.06 && Math.abs(resp.p - inst.answer.p) <= ax.pMax * 0.06;
       return { ok, why: ok ? null : text('Равновесие — там, где кривые пересекаются: объём спроса равен объёму предложения.') };
     }
-    case 'swipe': case 'rush': case 'keep': return { ok: gameOk(inst, resp), why: null };
+    case 'swipe': case 'rush': case 'wallet': return { ok: gameOk(inst, resp), why: null };
     // открытый вопрос: любой продуманный ответ засчитан, дальше — разбор
     // пропуск — не ошибка: у открытого вопроса неверного ответа нет, разбор откроется и так
     case 'open': return resp && resp.skip ? { ok: true, why: null, skipped: true } : { ok: String(resp || '').trim().length >= OPEN_MIN, why: null };
@@ -387,11 +388,15 @@ export function check(inst, resp) {
     default: return { ok: false, why: null };
   }
 }
-// мини-игра засчитана: верных минус ошибок — не меньше восьми
+// мини-игра засчитана: верных минус ошибок — не меньше восьми; в «Сбереги кошелёк» — лучший выбор хотя бы в четырёх годах из пяти
 export function gameOk(inst, resp) {
   if (!resp || !resp.done) return false;
-  return gameLeft(resp.right, resp.answered) === 0;
+  return gameNeed(inst.kind, resp.right, resp.answered) === 0;
 }
+// сколько ещё нужно до зачёта игры этого вида (0 — зачёт есть)
+export const gameNeed = (kind, right, answered) => (kind === 'wallet' ? Math.max(0, WALLET.pass - right) : gameLeft(right, answered));
+// правило зачёта игры словами
+export const gameRule = (kind) => (kind === 'wallet' ? `лучший выбор — хотя бы в ${WALLET.pass} годах из ${WALLET.years}` : `верных на ${GAME_PASS} больше, чем ошибок`);
 /* Очки игры: за верный ответ — 10 × множитель серии (каждые три верных подряд — ещё +1, не
    больше ×4); ошибка серию обнуляет. */
 export const comboOf = (streakNow) => Math.min(4, 1 + Math.floor(streakNow / 3));
@@ -411,7 +416,7 @@ export function ready(inst, resp) {
     case 'tiles': return Array.isArray(resp) && resp.length > 0;
     case 'curve': return !!(resp.D || resp.S);
     case 'point': return Number.isFinite(resp.q) && Number.isFinite(resp.p);
-    case 'swipe': case 'rush': case 'keep': return !!resp.done;
+    case 'swipe': case 'rush': case 'wallet': return !!resp.done;
     case 'open': return String(resp).trim().length >= OPEN_MIN;
     case 'domino': return !!resp.done;
     default: return true;
@@ -453,7 +458,8 @@ export function answerText(inst) {
     case 'curve': return shiftLabel('supply-demand', inst.answer);
     case 'price': return `цена ${fmt(inst.answer)}`;
     case 'point': return `объём ${fmt(inst.answer.q)}, цена ${fmt(inst.answer.p)}`;
-    case 'swipe': case 'rush': case 'keep': return `верных минус ошибок — не меньше ${GAME_PASS}`;
+    case 'swipe': case 'rush': return `верных минус ошибок — не меньше ${GAME_PASS}`;
+    case 'wallet': return gameRule('wallet');
     case 'open': return 'свой ответ — пара продуманных предложений';
     case 'domino': return inst.chain.map((k) => plain(inst.deck.find((c) => c.key === k).text)).join(' → ');
     default: return '';

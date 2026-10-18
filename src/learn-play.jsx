@@ -7,11 +7,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Coffee, Croissant, Landmark, ScrollText, RotateCcw, Play, Timer, Delete, Trophy, GraduationCap, Radio, Feather, Check,
+  Banknote, ShoppingBasket, Thermometer, X,
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
 import { equilibrium, marketAxes, qd, qs, gameScore, comboOf, gameLeft, GAME_PASS } from './learn/course.js';
-import { KEEP, keepStart, keepNews, keepRate, keepStep, keepHint, inBand } from './learn/keep.js';
+import { WALLET, WALLET_OPTIONS, FORECAST, walletPath, walletResult, realPct } from './learn/wallet.js';
+import { plural } from './lib/plural.js';
 import { CAST } from './learn/cast.js';
 import { useReducedMotion } from './ds-art.jsx';
 import { Button } from './ds.jsx';
@@ -101,11 +103,85 @@ export const PLAY_CSS = `
   .lp-game-final { flex-direction: column; gap: 2px; min-height: 0; margin-top: 8px; }
   .lp-pass { display: inline-flex; align-items: center; gap: 3px; font: 700 13px var(--ds-sans); padding: 2px 8px; border-radius: 10px; border: 1px dashed var(--ds-rule2); color: var(--ds-ink2); }
   .lp-pass.ok { border-style: solid; border-color: var(--ds-ok); color: var(--ds-ok); background: color-mix(in srgb, var(--ds-ok) 10%, transparent); }
-  .lp-keep-ctrl { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
-  .lp-keep-rate { text-align: center; min-width: 74px; line-height: 1.1; }
-  .lp-keep-rate small { display: block; font: 12px var(--ds-sans); color: var(--ds-ink3); }
-  .lp-keep-rate b { font-size: 24px; color: var(--u-ink); }
-  .lp-keep-why { font: 13.5px/1.35 var(--ds-sans); color: var(--ds-ink2); }
+  /* «Сбереги кошелёк» */
+  .lw-years { display: flex; gap: 6px; justify-content: center; margin: 0 0 8px; }
+  .lw-years i { width: 30px; height: 7px; border-radius: 99px; background: var(--ds-rule); transition: background .3s; }
+  .lw-years i.now { background: var(--u); }
+  .lw-years i.ok { background: var(--ds-ok); }
+  .lw-years i.bad { background: var(--ds-bad); }
+  .lw-purse { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .lw-purse > div { border: 1px solid var(--ds-rule2); border-radius: 10px; background: var(--ds-card); padding: 6px 4px 5px; text-align: center; transition: border-color .3s, background .3s; }
+  .lw-purse > div.hot { border-color: var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 7%, var(--ds-card)); }
+  .lw-purse small { display: block; font: 600 12px var(--ds-sans); color: var(--ds-ink3); }
+  .lw-purse b { display: block; font: 700 21px/1.15 var(--ds-mono); color: var(--ds-ink); }
+  .lw-cups-wrap { position: relative; max-width: 320px; margin: 8px auto 2px; }
+  .lw-cups { display: block; width: 100%; }
+  .lw-cup { transition: opacity .35s; }
+  .lw-cup .b { fill: var(--u); transition: fill .35s; }
+  .lw-cup .h { fill: none; stroke: var(--u); stroke-width: 1.3; stroke-linecap: round; transition: stroke .35s; }
+  .lw-cup.off .b { fill: var(--ds-rule2); }
+  .lw-cup.off .h { stroke: var(--ds-rule2); }
+  .lw-cup.off { opacity: .55; }
+  .lw-more { position: absolute; right: -4px; top: -10px; font: 700 12px var(--ds-mono); color: #fff; background: var(--ds-ok); border-radius: 999px; padding: 1px 7px; }
+  .lw-paper { border: 1px solid var(--ds-rule2); background: var(--ds-card); padding: 8px 12px 10px; margin: 10px 0 4px; box-shadow: 0 2px 0 var(--ds-shade); animation: lw-paper .35s ease-out both; }
+  @keyframes lw-paper { from { opacity: 0; transform: translateY(8px) rotate(-.6deg); } to { opacity: 1; transform: none; } }
+  .lw-mast { font: 700 12px var(--ds-news); letter-spacing: .2em; text-transform: uppercase; border-bottom: 3px double var(--ds-ink2); padding-bottom: 4px; margin-bottom: 6px; color: var(--ds-ink2); text-align: center; }
+  .lw-head { font: 700 18px/1.28 var(--ds-news); text-align: center; }
+  .lw-fore { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 7px; font: 700 14.5px var(--ds-sans); color: var(--ds-bad); text-align: center; }
+  .lw-scale { display: block; max-width: 380px; margin: 2px auto 0; overflow: visible; }
+  .lw-scale .lw-band { fill: color-mix(in srgb, var(--ds-bad) 30%, transparent); stroke: var(--ds-bad); stroke-width: 1; }
+  .lw-tick { font: 600 12px var(--ds-mono); fill: var(--ds-ink3); }
+  .lw-rate { fill: #3E6FA8; }
+  .lw-rate-t { font: 700 12px var(--ds-sans); fill: #345E92; }
+  .ds-dark .lw-rate-t { fill: #8FB3E0; }
+  .lw-pi line { stroke: var(--ds-ink); }
+  .lw-pi text { font: 700 12px var(--ds-sans); fill: var(--ds-ink); }
+  .lw-opts { display: grid; gap: 7px; margin-top: 10px; }
+  .lw-opt { display: flex; align-items: center; gap: 11px; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--ds-rule2); border-bottom-width: 3px;
+    background: var(--ds-card); cursor: pointer; color: var(--ds-ink); transition: transform .12s, border-color .15s; animation: lw-opt .3s ease-out both; }
+  .lw-opt:nth-child(2) { animation-delay: .05s; } .lw-opt:nth-child(3) { animation-delay: .1s; }
+  @keyframes lw-opt { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .lw-opt:hover { border-color: var(--u); }
+  .lw-opt:active { transform: scale(.98); }
+  .lw-opt:focus-visible { outline: 3px solid var(--u); outline-offset: 2px; }
+  .lw-opt .ic { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--ds-card2); color: var(--u-ink); flex-shrink: 0; }
+  .lw-opt b { display: block; font: 700 15.5px var(--ds-sans); }
+  .lw-opt .h { display: block; font-size: 13.5px; line-height: 1.3; color: var(--ds-ink3); margin-top: 1px; }
+  .lw-verdict { margin-top: 10px; border-radius: 12px; padding: 10px 12px 12px; border: 1.5px solid; animation: lw-paper .3s ease-out both; }
+  .lw-verdict.ok { border-color: color-mix(in srgb, var(--ds-ok) 55%, transparent); background: var(--ds-ok-bg); }
+  .lw-verdict.bad { border-color: color-mix(in srgb, var(--ds-sel-rule) 70%, transparent); background: color-mix(in srgb, var(--ds-sel-rule) 10%, var(--ds-card)); }
+  .lw-verdict-head { display: flex; align-items: center; gap: 6px; font: 700 16px var(--ds-head); }
+  .lw-verdict.ok .lw-verdict-head { color: var(--ds-ok-ink); }
+  .lw-verdict.bad .lw-verdict-head { color: var(--ds-sel-ink); }
+  .lw-verdict-text { font-size: 14.5px; line-height: 1.45; margin: 4px 0 8px; color: var(--ds-ink2); }
+  .lw-bars { display: grid; gap: 5px; }
+  .lw-bar-row { display: grid; grid-template-columns: 6.2em 1fr 4.2em; align-items: center; gap: 8px; font-size: 13.5px; }
+  .lw-bar-name { display: inline-flex; align-items: center; gap: 3px; color: var(--ds-ink2); }
+  .lw-bar-row.best .lw-bar-name { color: var(--ds-ok-ink); font-weight: 700; }
+  .lw-bar-row.picked .lw-bar-name { text-decoration: underline; text-underline-offset: 3px; }
+  .lw-bar-track { position: relative; height: 12px; border-radius: 99px; background: var(--ds-card2); }
+  .lw-bar-track::before { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1.5px; background: var(--ds-ink3); }
+  .lw-bar-track i { position: absolute; top: 0; bottom: 0; border-radius: 99px; animation: lw-bar .6s ease-out both; }
+  .lw-bar-track i.up { background: var(--ds-ok); }
+  .lw-bar-track i.down { background: var(--ds-bad); }
+  @keyframes lw-bar { from { clip-path: inset(0 50% 0 50%); } to { clip-path: inset(0 0 0 0); } }
+  .lw-bar-row b { font: 700 13.5px var(--ds-mono); text-align: right; }
+  .lw-final { align-items: stretch !important; text-align: center; }
+  .lw-final-num { font-size: 16px; }
+  .lw-final-num b { font-size: 38px; color: var(--u-ink); }
+  .lw-path { display: block; max-width: 380px; margin: 4px auto 0; }
+  .lw-path-100 { stroke: var(--ds-rule2); stroke-dasharray: 4 4; }
+  .lw-path-cash { fill: none; stroke: var(--ds-ink3); stroke-width: 2; stroke-dasharray: 5 4; }
+  .lw-path-best { fill: none; stroke: var(--ds-ok); stroke-width: 2; stroke-dasharray: 2 3; }
+  .lw-path-mine { fill: none; stroke: var(--u); stroke-width: 3.2; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 600; stroke-dashoffset: 600; animation: lm-draw 1.2s ease-out forwards; }
+  @keyframes lm-draw { to { stroke-dashoffset: 0; } }
+  .lw-path-dot { fill: var(--u); stroke: var(--ds-card); stroke-width: 1.5; }
+  .lw-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; margin: 2px 0 4px; }
+  .lw-legend span::before { content: ''; display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .lw-legend .mine::before { background: var(--u); }
+  .lw-legend .best::before { background: var(--ds-ok); }
+  .lw-legend .cash::before { background: var(--ds-ink3); }
+  @media (prefers-reduced-motion: reduce) { .lw-paper, .lw-opt, .lw-verdict, .lw-bar-track i, .lw-path-mine { animation: none !important; stroke-dashoffset: 0; } }
   .lp-verdict { margin-top: 6px; font: 700 14.5px var(--ds-sans); color: var(--ds-bad); text-align: center; }
   .lp-verdict.ok { color: var(--ds-ok); }
   .lp-side { margin: 0; text-align: center; font-weight: 700; min-height: 52px; }
@@ -670,158 +746,233 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
     </div>
   );
 }
-/* ------------------------------ «ДЕРЖИ ИНФЛЯЦИЮ» ------------------------------
-   Своя мини-игра центробанка (src/learn/keep.js): новости толкают инфляцию, ученик двигает
-   ставку кнопками или стрелками ↑ ↓, чтобы вернуть её в коридор 3–5%. Шкала с коридором и
-   живой график показывают, куда идут цены; разбор раунда — после него. */
-const fmtPct = (x) => `${x.toFixed(1).replace('.', ',').replace('-', '−')}%`;
-function KeepGauge({ infl, rate }) {
-  const lo = 0; const hi = 12; const X = (v) => 8 + ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * 284;
-  const ok = inBand(infl, KEEP.slack);
+/* ------------------------------ «СБЕРЕГИ КОШЕЛЁК» ------------------------------
+   Мини-игра юнита «Инфляция» (src/learn/wallet.js): пять лет, в каждом — полоса «Вестника» с
+   новостью и прогнозом инфляции, шкала, где рядом прогноз и ставка банка, и три решения:
+   наличными дома, во вклад, купить впрок. Год проигрывается на глазах: стрелка инфляции идёт по
+   шкале, ценник чашки растёт, кошелёк пересчитывается, а чашки, на которые его хватает, гаснут
+   или прибавляются. Разбор года — полоски реального итога трёх вариантов. В конце — путь
+   сбережений по годам против «всё время наличными». */
+const WALLET_OPT = {
+  cash: { icon: Banknote, title: 'Наличными дома', hint: () => 'Крон останется столько же' },
+  deposit: { icon: Landmark, title: 'Во вклад', hint: (y) => `Банк добавит ${y.r}% к сумме` },
+  stock: { icon: ShoppingBasket, title: 'Купить впрок', hint: () => 'Кофе и крупы: дорожают вместе с ценами, но 3% в год портится' },
+};
+const OPT_NAME = { cash: 'держать наличными', deposit: 'положить во вклад', stock: 'купить впрок' };
+const BAR_NAME = { cash: 'Наличные', deposit: 'Вклад', stock: 'Запас' };
+const signPct = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${String(Math.abs(v)).replace('.', ',')}%`;
+const kr = (v) => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+// шкала года: полоса прогноза инфляции, отметка ставки банка и, после хода, — сколько вышло
+function RateScale({ year, pi = null }) {
+  const [lo, hi] = FORECAST[year.level];
+  const X = (v) => 12 + (Math.max(0, Math.min(25, v)) / 25) * 276;
   return (
-    <svg viewBox="0 0 300 64" width="100%" role="img" aria-label={`Инфляция ${fmtPct(infl)}, коридор 3–5%, ставка ${rate}%`} data-testid="keep-gauge" data-infl={infl.toFixed(2)} style={{ display: 'block' }}>
-      <rect x="8" y="26" width="284" height="14" rx="7" fill="var(--ds-rule)" />
-      <rect x={X(KEEP.target - KEEP.band)} y="26" width={X(KEEP.target + KEEP.band) - X(KEEP.target - KEEP.band)} height="14" fill="color-mix(in srgb, var(--ds-ok) 35%, transparent)" />
-      <line x1={X(KEEP.target)} x2={X(KEEP.target)} y1="22" y2="44" stroke="var(--ds-ok)" strokeWidth="2" />
-      {[0, 2, 4, 6, 8, 10, 12].map((v) => <text key={v} x={X(v)} y="58" textAnchor="middle" fontSize="10" fill="var(--ds-ink3)">{v}%</text>)}
-      <g style={{ transform: `translateX(${X(infl)}px)`, transition: 'transform .25s linear' }}>
-        <path d="M0,24 l-7,-11 h14 Z" fill={ok ? 'var(--ds-ok)' : 'var(--ds-bad)'} />
-        <text x="0" y="10" textAnchor="middle" fontSize="12" fontWeight="700" fill={ok ? 'var(--ds-ok)' : 'var(--ds-bad)'}>{fmtPct(infl)}</text>
+    <svg viewBox="0 0 300 66" width="100%" className="lw-scale" role="img" data-testid="wallet-scale"
+      aria-label={`Прогноз инфляции ${lo}–${hi}%, вклад ${year.r}%${pi != null ? `, вышло ${pi}%` : ''}`}>
+      <line x1="12" x2="288" y1="30" y2="30" stroke="var(--ds-rule2)" strokeWidth="6" strokeLinecap="round" />
+      <rect x={X(lo)} y="24" width={Math.max(6, X(hi) - X(lo))} height="12" rx="6" className="lw-band" />
+      {/* деления — там, где их не закрывает подпись ставки */}
+      {[0, 5, 10, 15, 20, 25].filter((v) => Math.abs(X(v) - X(year.r)) > 34).map((v) => <text key={v} x={X(v)} y="60" textAnchor="middle" className="lw-tick">{v}%</text>)}
+      <g style={{ transform: `translateX(${X(year.r)}px)` }} data-testid="wallet-rate-mark">
+        <path d="M0,38 l-6,9 h12 Z" className="lw-rate" />
+        <text x="0" y="60" textAnchor="middle" className="lw-rate-t">вклад {year.r}%</text>
       </g>
+      {pi != null && (
+        <g style={{ transform: `translateX(${X(pi)}px)` }} className="lw-pi">
+          <line x1="0" x2="0" y1="18" y2="42" strokeWidth="3" />
+          <text x="0" y="13" textAnchor="middle">вышло {String(Math.round(pi * 10) / 10).replace('.', ',')}%</text>
+        </g>
+      )}
     </svg>
   );
 }
-function KeepSpark({ history }) {
-  const lo = 0; const hi = 10; const W = 300; const H = 90;
-  const Y = (v) => H - 4 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * (H - 8);
-  const pts = history.map((v, i) => `${(i / Math.max(1, 59)) * W},${Y(v).toFixed(1)}`).join(' ');
+// чашки, на которые хватает сбережений: 100 мест сеткой 20 × 5; сверх сотни — бейдж «+N»
+// чашка на блюдце: корпус, ручка справа, блюдце снизу — узнаётся и в 12 пикселях
+const CUP_BODY = 'M1.4,2.6 h7.6 l-.9,5.6 a1.3,1.3 0 0 1 -1.3,1.1 h-3.2 a1.3,1.3 0 0 1 -1.3,-1.1 Z';
+const CUP_HANDLE = 'M8.8,3.9 h1.2 a1.6,1.6 0 0 1 0,3.2 h-1.6';
+function Cups({ n }) {
+  const on = Math.max(0, Math.min(100, Math.round(n)));
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Инфляция за последние секунды" data-testid="keep-spark" style={{ display: 'block' }}>
-      <rect x="0" y={Y(KEEP.target + KEEP.band)} width={W} height={Y(KEEP.target - KEEP.band) - Y(KEEP.target + KEEP.band)} fill="color-mix(in srgb, var(--ds-ok) 14%, transparent)" />
-      <line x1="0" x2={W} y1={Y(KEEP.target)} y2={Y(KEEP.target)} stroke="var(--ds-ok)" strokeDasharray="4 4" strokeWidth="1" />
-      <polyline points={pts} fill="none" stroke="var(--u-ink)" strokeWidth="2.2" strokeLinejoin="round" />
+    <div className="lw-cups-wrap">
+      <svg viewBox="0 0 280 72" className="lw-cups" role="img" aria-label={`Хватает на ${Math.round(n)} чашек`} data-testid="wallet-cups" data-cups={Math.round(n)}>
+        {Array.from({ length: 100 }, (_, i) => (
+          <g key={i} transform={`translate(${(i % 20) * 14},${Math.floor(i / 20) * 14 + 1})`} className={`lw-cup${i < on ? '' : ' off'}`}>
+            <path d={CUP_BODY} className="b" /><path d={CUP_HANDLE} className="h" /><path d="M0.4,11 h9.8" className="h" />
+          </g>
+        ))}
+      </svg>
+      {n > 100.5 && <span className="lw-more">+{Math.round(n) - 100}</span>}
+    </div>
+  );
+}
+// разбор года: реальный итог трёх вариантов полосками от нуля; лучший — с галочкой
+function YearBars({ year, picked }) {
+  const vals = WALLET_OPTIONS.map((o) => ({ o, v: realPct(o, year.pi, year.r) }));
+  const max = Math.max(4, ...vals.map((x) => Math.abs(x.v)));
+  return (
+    <div className="lw-bars" data-testid="wallet-bars">
+      {vals.map(({ o, v }) => (
+        <div key={o} className={`lw-bar-row${o === year.best ? ' best' : ''}${o === picked ? ' picked' : ''}`}>
+          <span className="lw-bar-name">{o === year.best && <Check size={13} strokeWidth={3} aria-hidden="true" />}{BAR_NAME[o]}</span>
+          <span className="lw-bar-track"><i className={v >= 0 ? 'up' : 'down'} style={{ width: `${(Math.abs(v) / max) * 50}%`, [v >= 0 ? 'left' : 'right']: '50%' }} /></span>
+          <b className="ds-num">{signPct(v)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+// путь сбережений по годам: ваш против «всё время наличными»
+function WalletPathChart({ years, choices }) {
+  const mine = walletPath(years, choices).map((p) => p.cups);
+  const cash = walletPath(years, years.map(() => 'cash')).map((p) => p.cups);
+  const best = walletPath(years, years.map((y) => y.best)).map((p) => p.cups);
+  const top = Math.max(110, ...mine, ...best); const bot = Math.min(60, ...cash);
+  const W = 300; const H = 130; const X = (k) => 34 + (k / years.length) * (W - 46); const Y = (v) => 10 + ((top - v) / (top - bot)) * (H - 34);
+  const line = (arr) => arr.map((v, k) => `${k ? 'L' : 'M'}${X(k).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="lw-path" role="img" aria-label={`Чашек по годам: ${mine.map((v) => Math.round(v)).join(', ')}`} data-testid="wallet-path">
+      <line x1="34" x2={W - 12} y1={Y(100)} y2={Y(100)} className="lw-path-100" />
+      <text x="30" y={Y(100) + 4} textAnchor="end" className="lw-tick">100</text>
+      <path d={line(cash)} className="lw-path-cash" />
+      <path d={line(best)} className="lw-path-best" />
+      <path d={line(mine)} className="lw-path-mine" />
+      {mine.map((v, k) => <circle key={k} cx={X(k)} cy={Y(v)} r="3.6" className="lw-path-dot" />)}
+      {years.map((y, k) => <text key={k} x={X(k + 1)} y={H - 6} textAnchor="middle" className="lw-tick">{choices[k] === y.best ? '✓' : '✗'} {k + 1}</text>)}
     </svg>
   );
 }
-const KEEP_NEED = { up: 'ставку нужно было поднять', down: 'ставку нужно было снизить', hold: 'слабая новость: ставку можно было не трогать' };
-export function KeepRound({ inst, onDone, locked, result = null, best = 0, intro = null }) {
+export function WalletRound({ inst, onDone, locked, result = null, best = 0, intro = null }) {
+  const reduced = useReducedMotion();
+  const years = inst.years;
   const [phase, setPhase] = useState(locked ? 'over' : 'ready');
-  const [st, setSt] = useState(keepStart);
-  // ref — источник правды: тик таймера и клик по кнопке не затирают друг друга
-  const stRef = useRef(st);
-  const put = (s) => { stRef.current = s; setSt(s); };
-  const deck = useRef(inst.items.slice());
-  const idx = useRef(0);
-  const t0 = useRef(0);
-  const nextAt = useRef(0);
+  const [k, setK] = useState(0);
+  const [choices, setChoices] = useState(result && result.choices ? result.choices : []);
+  const [t, setT] = useState(1);
   const done = useRef(false);
-  const seconds = testing() && window.__INFLATIA_GAME_SECONDS__ ? Number(window.__INFLATIA_GAME_SECONDS__) : inst.seconds;
-  // в тестах игру можно ускорить: игровое время идёт в speed раз быстрее настоящего
+  // в тестах год можно проиграть быстрее
   const speed = testing() && window.__INFLATIA_GAME_SPEED__ ? Number(window.__INFLATIA_GAME_SPEED__) : 1;
-  const now = () => (Date.now() - t0.current) * speed;
-  const deal = (s, at) => {
-    const item = deck.current[idx.current % deck.current.length];
-    idx.current += 1;
-    if (idx.current % deck.current.length === 0) deck.current = shuffleList(inst.items);
-    return keepNews(s, item, at);
+  const path = walletPath(years, choices);
+  const year = years[Math.min(k, years.length - 1)];
+  const pick = (o) => {
+    if (phase !== 'pick') return;
+    Audio.play('paper');
+    setChoices((c) => [...c.slice(0, k), o]);
+    setPhase('reveal');
   };
-  const finish = () => {
-    if (done.current) return; done.current = true;
-    const a = stRef.current.answers; const sc = gameScore(a);
-    setPhase('over');
-    onDone({ right: a.filter(Boolean).length, answered: a.length, score: sc.score, bestRun: sc.bestRun, record: sc.score > best && sc.score > 0, done: true });
-  };
+  // год идёт около полутора секунд: стрелка инфляции, ценник, кошелёк, чашки
   useEffect(() => {
-    if (phase !== 'play') return undefined;
-    const id = setInterval(() => {
-      const t = now();
-      let s = keepStep(stRef.current, t);
-      const was = stRef.current.news;
-      if (s.news && s.news.done && !(was && was.done)) { Audio.play(s.news.ok ? 'coin' : 'down'); nextAt.current = t + KEEP.gapMs + (s.news.ok ? 0 : 400); }
-      if (s.news && s.news.done && t >= nextAt.current) s = deal(s, t);
-      put(s);
-    }, KEEP.tickMs / speed);
-    return () => clearInterval(id);
+    if (phase !== 'reveal') return undefined;
+    if (reduced) { setT(1); return undefined; }
+    let raf = 0; const t0 = performance.now(); const ms = 1500 / speed;
+    const step = (now) => { const v = Math.min(1, (now - t0) / ms); setT(v); if (v < 1) raf = requestAnimationFrame(step); };
+    setT(0); raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
-  const move = (dir) => { if (phase !== 'play' || done.current) return; Audio.play('tick'); put(keepRate(stRef.current, dir)); };
-  useEffect(() => {
-    if (phase !== 'play') return undefined;
-    const key = (e) => { if (e.key === 'ArrowUp') { e.preventDefault(); move('up'); } else if (e.key === 'ArrowDown') { e.preventDefault(); move('down'); } };
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
-  });
-  const begin = () => { Audio.play('click'); t0.current = Date.now(); done.current = false; put(deal(keepStart(), 0)); setPhase('play'); };
-  const answers = st.answers;
-  const { score, bestRun } = gameScore(answers);
-  const run = (() => { let n = 0; for (let k = answers.length - 1; k >= 0 && answers[k]; k -= 1) n += 1; return n; })();
-  const combo = comboOf(run);
-  const left = gameLeft(answers.filter(Boolean).length, answers.length);
-  const news = st.news;
-  const item = news ? inst.items.find((x) => x.key === news.key) : null;
-  const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
+  }, [phase, k]);
+  const revealed = phase === 'reveal' && t >= 1;
+  useEffect(() => { if (revealed) Audio.play(choices[k] === year.best ? 'coin' : 'down'); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed]);
+  const finish = (all) => {
+    if (done.current) return; done.current = true;
+    const res = walletResult(years, all);
+    setPhase('over');
+    onDone({ ...res, done: true, choices: all, bestRun: res.right, record: res.score > best && res.score > 0 });
+  };
+  const next = () => {
+    Audio.play('click');
+    if (k + 1 >= years.length) { finish(choices); return; }
+    setK(k + 1); setPhase('pick');
+  };
+  const ease = 1 - (1 - t) ** 3;
+  const from = path[k]; const to = path[Math.min(k + 1, path.length - 1)];
+  const lerp = (a, b) => a + (b - a) * (phase === 'reveal' ? ease : 0);
+  const now = phase === 'reveal' ? { wallet: lerp(from.wallet, to.wallet), cup: lerp(from.cup, to.cup), cups: lerp(from.cups, to.cups) } : path[Math.min(k, path.length - 1)];
+  const r = result || (phase === 'over' ? { ...walletResult(years, choices), record: false } : null);
+  const strip = (
+    <div className="lw-years" aria-label="Годы">
+      {years.map((y, i) => <i key={i} className={i < choices.length && (i < k || revealed || phase === 'over') ? (choices[i] === y.best ? 'ok' : 'bad') : i === k && phase !== 'over' ? 'now' : ''} />)}
+    </div>
+  );
   return (
-    <div data-testid="game" data-phase={phase} data-kind="keep" className="lp-game">
+    <div data-testid="game" data-phase={phase} data-kind="wallet" className="lp-game lw">
       {phase === 'ready' && (
         <>
           {intro}
           <div className="lp-howto" data-testid="game-howto">
             <div className="ds-eyebrow">Как играть</div>
             <ol>
-              <li>Вы — центробанк. Цель — инфляция в коридоре от 3 до 5%.</li>
-              <li>Появляется новость: она толкает цены вверх или вниз.</li>
-              <li>Цены разгоняются — повысьте ставку, замедляются — снизьте: кнопками или стрелками ↑ ↓. Один шаг — один процентный пункт.</li>
-              <li>Вернули инфляцию в коридор за шесть секунд — раунд засчитан. Перестарались — она уйдёт за коридор с другой стороны. Слабая новость может не требовать ничего: не дёргайте ставку зря.</li>
+              <li>Каждый год «Вестник» даёт новость и прогноз: на сколько вырастут цены.</li>
+              <li>Банк предлагает вклад. Сравните ставку с прогнозом — на шкале они рядом.</li>
+              <li>Решите, где держать деньги год: наличными дома, во вкладе или купить впрок.</li>
+              <li>Цель — чтобы сбережений хватало на столько же чашек. Зачёт — лучший выбор хотя бы в {WALLET.pass} годах из {WALLET.years}.</li>
             </ol>
           </div>
-          <KeepGauge infl={KEEP.target} rate={KEEP.rate0} />
+          <div className="lw-purse">
+            <div><small>кошелёк</small><b className="ds-num">{kr(WALLET.start)}</b><small>крон</small></div>
+            <div><small>чашка</small><b className="ds-num">{WALLET.cup}</b><small>крон</small></div>
+            <div><small>хватит на</small><b className="ds-num">100</b><small>чашек</small></div>
+          </div>
+          <Cups n={100} />
           <div className="lp-game-rules ds-sub">
-            <span><Timer size={14} aria-hidden="true" /> {seconds} секунд</span>
-            <span>зачёт — когда верных раундов на {GAME_PASS} больше, чем ошибок</span>
-            {best > 0 && <span data-testid="game-best"><Trophy size={14} aria-hidden="true" /> рекорд: {best}</span>}
+            <span><Timer size={14} aria-hidden="true" /> {WALLET.years} лет, без спешки</span>
+            {best > 0 && <span data-testid="game-best"><Trophy size={14} aria-hidden="true" /> рекорд: {best} чашек</span>}
           </div>
           <div style={{ textAlign: 'center', marginTop: 10 }}>
-            <button type="button" className="ds-btn" data-testid="game-start" onClick={begin}><Play size={16} style={{ verticalAlign: -3 }} /> Старт</button>
+            <button type="button" className="ds-btn" data-testid="game-start" onClick={() => { Audio.play('click'); setPhase('pick'); }}><Play size={16} style={{ verticalAlign: -3 }} /> Начать</button>
           </div>
         </>
       )}
-      {phase === 'play' && (
-        <>
-          <TimerBar seconds={seconds / speed} running={!locked} onEnd={finish} />
-          <div className="lp-game-hud">
-            <span className="ds-num lp-game-score" data-testid="game-score">{score}</span>
-            {combo > 1 && <span className="lp-combo" key={`c${combo}`} data-testid="game-combo">×{combo}</span>}
-            <span style={{ flex: 1 }} />
-            <span className={`lp-pass${left ? '' : ' ok'}`} data-testid="game-pass" data-left={left}>{left ? `до зачёта: ${left}` : <><Check size={13} strokeWidth={3} aria-hidden="true" /> зачёт есть</>}</span>
+      {(phase === 'pick' || phase === 'reveal') && (
+        <div className="lw-year" key={k} data-testid="wallet-year" data-year={k + 1} data-best={testing() ? year.best : undefined}>
+          {strip}
+          <div className="lw-purse" aria-live="polite">
+            <div><small>кошелёк</small><b className="ds-num" data-testid="wallet-sum">{kr(now.wallet)}</b><small>крон</small></div>
+            <div className={phase === 'reveal' ? 'hot' : ''}><small>чашка</small><b className="ds-num" data-testid="wallet-cup">{kr(now.cup)}</b><small>крон</small></div>
+            <div><small>хватит на</small><b className="ds-num">{Math.round(now.cups)}</b><small>чашек</small></div>
           </div>
-          <KeepGauge infl={st.infl} rate={st.rate} />
-          <KeepSpark history={st.history} />
-          <div className={`lp-card lp-game-card ${news && news.done ? (news.ok ? 'ok' : 'bad') : ''}`} data-testid="game-card" data-hint={testing() ? keepHint(st) : undefined}
-            key={news ? `${news.key}:${answers.length}` : 'none'} style={{ flexDirection: 'column', gap: 4 }}>
-            {item && <Inline nodes={item.text} />}
-            {news && news.done && (
-              <span className="lp-keep-why" data-testid="keep-why" data-ok={String(news.ok)}>
-                {news.ok ? 'В коридоре.' : 'Мимо коридора.'} Давление на цены {news.effect > 0 ? `+${news.effect}` : `−${-news.effect}`} п. п. — {KEEP_NEED[news.need]}.
-              </span>
-            )}
+          <Cups n={now.cups} />
+          <div className="lw-paper">
+            <div className="lw-mast">Вестник Инфляции · год {k + 1} из {years.length}</div>
+            <div className="lw-head" data-testid="wallet-news"><Inline nodes={year.text} /></div>
+            <div className="lw-fore"><Thermometer size={16} aria-hidden="true" />Прогноз: цены за год вырастут на {FORECAST[year.level][0]}–{FORECAST[year.level][1]}%</div>
           </div>
-          <div className="lp-keep-ctrl">
-            <button type="button" className="ds-opt lp-side" data-side="down" onClick={() => move('down')}><ArrowDown size={16} style={{ verticalAlign: -3 }} /> Снизить</button>
-            <div className="lp-keep-rate" data-testid="keep-rate" aria-live="polite"><small>ставка</small><b className="ds-num">{st.rate}%</b></div>
-            <button type="button" className="ds-opt lp-side" data-side="up" onClick={() => move('up')}>Повысить <ArrowUp size={16} style={{ verticalAlign: -3 }} /></button>
-          </div>
-        </>
+          <RateScale year={year} pi={phase === 'reveal' ? year.pi * ease : null} />
+          {phase === 'pick' && (
+            <div className="lw-opts" role="group" aria-label="Где держать деньги год">
+              {WALLET_OPTIONS.map((o) => {
+                const O = WALLET_OPT[o]; const Icon = O.icon;
+                return (
+                  <button key={o} type="button" className="lw-opt" data-testid="wallet-opt" data-opt={o} onClick={() => pick(o)}>
+                    <span className="ic"><Icon size={20} aria-hidden="true" /></span>
+                    <span><b>{o === 'deposit' ? `Во вклад под ${year.r}%` : O.title}</b><span className="h">{O.hint(year)}</span></span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {revealed && (
+            <div className={`lw-verdict ${choices[k] === year.best ? 'ok' : 'bad'}`} data-testid="wallet-verdict" data-ok={String(choices[k] === year.best)}>
+              <div className="lw-verdict-head">
+                {choices[k] === year.best ? <><Check size={17} strokeWidth={3} aria-hidden="true" />Лучший выбор в этом году</> : <><X size={17} strokeWidth={3} aria-hidden="true" />Лучше было {OPT_NAME[year.best]}</>}
+              </div>
+              <div className="lw-verdict-text">
+                Цены выросли на {year.pi}%. Вклад: ≈ {year.r} − {year.pi} = {signPct(year.r - year.pi)} реально. Запас теряет только порчу — 3%. Наличные — столько, сколько выросли цены.
+              </div>
+              <YearBars year={year} picked={choices[k]} />
+              <Button wide data-testid="wallet-next" onClick={next} style={{ marginTop: 10 }}>{k + 1 >= years.length ? 'Итоги' : 'Следующий год'}</Button>
+            </div>
+          )}
+        </div>
       )}
       {phase === 'over' && r && (
-        <div className="lp-card lp-game-final" data-testid="game-final">
-          <div className="ds-eyebrow">Время!</div>
-          <div className="ds-num" style={{ fontSize: 34, fontWeight: 700, color: 'var(--u-ink)' }}>{r.score}</div>
-          <div style={{ fontSize: 16 }}>очков · раундов в коридоре {r.right} из {r.answered} · лучшая серия {r.bestRun}</div>
-          {(() => { const l = gameLeft(r.right, r.answered); const wrong = r.answered - r.right; return (
-            <div className={`lp-verdict${l ? '' : ' ok'}`} data-testid="game-verdict" data-ok={String(!l)}>
-              {l ? `Зачёта нет, не хватило ${l}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Игра засчитана: верных ${r.right}, ошибок ${wrong}`}
-            </div>
-          ); })()}
+        <div className="lp-card lp-game-final lw-final" data-testid="game-final">
+          <div className="ds-eyebrow">Через {years.length} лет</div>
+          <div className="lw-final-num"><b className="ds-num">{r.cups}</b> {plural(r.cups, 'чашка', 'чашки', 'чашек')}<span className="ds-sub"> вместо 100 в начале</span></div>
+          {(r.choices || choices).length === years.length && <WalletPathChart years={years} choices={r.choices || choices} />}
+          <div className="lw-legend ds-sub"><span className="mine">ваш путь</span><span className="best">лучший выбор</span><span className="cash">всё время наличными</span></div>
+          <div className={`lp-verdict${r.right >= WALLET.pass ? ' ok' : ''}`} data-testid="game-verdict" data-ok={String(r.right >= WALLET.pass)}>
+            {r.right >= WALLET.pass ? `Игра засчитана: лучший выбор в ${r.right} ${plural(r.right, 'году', 'годах', 'годах')} из ${years.length}` : `Зачёта нет: лучший выбор в ${r.right} ${plural(r.right, 'году', 'годах', 'годах')} из ${years.length} — нужно хотя бы ${WALLET.pass}`}
+          </div>
           {r.record && <div className="ds-badge" style={{ marginTop: 6 }} data-testid="game-record">Новый рекорд!</div>}
         </div>
       )}
