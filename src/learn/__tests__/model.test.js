@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DAY, dayResult, hiddenDemand, distinctPrices, lineShown, discoverDone, fitDemand,
   MODEL_PARTS, MODEL_NEWS, MODEL_DEFAULT, BASE, modelParts, modelProgress, modelReadout, partsOfLesson, VERBS, lessonVerbs,
+  modelStory, FACTOR_STEPS, FACTOR_WORDS, CEILING_STEPS, ELASTIC_STEPS,
 } from '../model.js';
 import { KIND_LABEL } from '../course.js';
 import { UNIT_BY_ID, LESSON_BY_ID, LESSONS, buildLesson } from '../course.js';
@@ -143,5 +144,39 @@ describe('глаголы учёбы (docs/mechanics.md)', () => {
       expect(v.verbs.length, `${l.id}: ${v.verbs.join(', ')}`).toBeGreaterThanOrEqual(2);
       expect(v.model, `${l.id}: нет шага с моделью`).toBe(true);
     });
+  });
+});
+
+/* «Что произошло» — строка под графиком: причины, какая кривая куда ушла и итог против исходного
+   рынка (20 кр. и 60 чашек). */
+describe('живая модель: что произошло', () => {
+  const ALL = new Set(['demand', 'income', 'tea', 'supply', 'grain', 'ceiling', 'news', 'trace', 'board', 'seal', 'elastic']);
+  const S = (x = {}) => ({ ...MODEL_DEFAULT, ...x });
+  it('без сдвигов — равновесие и что это', () => {
+    expect(modelStory(S(), ALL)).toEqual({ text: 'Равновесие: 20 кр. и 60 чашек в день — здесь спрос встречает предложение.', changed: false });
+  });
+  it('доходы выше — спрос вправо, цена и чашки растут', () => {
+    const { text, changed } = modelStory(S({ income: 1 }), ALL);
+    expect(changed).toBe(true);
+    expect(text).toMatch(/^Доходы выше → спрос сдвинулся вправо → цена выросла: 21,9 кр\., чашек больше: 69 в день\.$/);
+  });
+  it('зерно дороже — предложение влево', () => {
+    expect(modelStory(S({ grain: 2 }), ALL).text).toMatch(/^Зерно дороже → предложение сдвинулось влево → цена выросла: 23 кр\., чашек меньше: 51 в день\.$/);
+  });
+  it('потолок ниже равновесия — дефицит', () => {
+    expect(modelStory(S({ ceiling: 14 }), ALL).text).toBe('Потолок 14 кр. ниже равновесия (20 кр.): хотят 78, продают 30 — дефицит 48 чашек.');
+  });
+  it('потолок выше цены рынка ничего не меняет', () => {
+    expect(modelStory(S({ tea: -2, ceiling: 18 }), ALL).text).toContain('Потолок 18 кр. не ниже цены рынка — он ничего не меняет');
+  });
+  it('без предложения — объём спроса при выбранной цене', () => {
+    expect(modelStory(S({ price: 30 }), new Set(['demand'])).text).toBe('При цене 30 кр. купят 30 чашек в день.');
+    expect(modelStory(S({ price: 30, income: 1 }), new Set(['demand', 'income'])).text).toBe('Доходы выше → спрос сдвинулся вправо. При цене 30 кр. купят 45 чашек в день.');
+  });
+  it('шаги факторов — пять положений, потолок — ниже исходного равновесия', () => {
+    expect(FACTOR_STEPS).toHaveLength(5);
+    Object.values(FACTOR_WORDS).forEach((w) => expect(w).toHaveLength(5));
+    CEILING_STEPS.filter((c) => c != null).forEach((c) => expect(c).toBeLessThan(20));
+    expect(ELASTIC_STEPS.map((e) => e.v)).toContain(MODEL_DEFAULT.elastic);
   });
 });

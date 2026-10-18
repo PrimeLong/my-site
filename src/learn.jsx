@@ -52,8 +52,8 @@ import {
   PLAY_CSS, CurveEx, PriceEx, PointEx, TilesEx, TimerBar, GameRound, KeepRound, WordDeck, Calculator as CalcPad,
 } from './learn-play.jsx';
 import { Feed, FEED_CSS } from './learn-feed.jsx';
-import { DiscoverDay, MarketModel, MODEL_CSS, DOMINO_CSS, DominoEx } from './learn-model.jsx';
-import { hasModel, partsOfLesson, modelProgress } from './learn/model.js';
+import { DiscoverDay, MarketModel, ModelThumb, MODEL_CSS, DOMINO_CSS, DominoEx } from './learn-model.jsx';
+import { hasModel, partsOfLesson, modelProgress, modelParts } from './learn/model.js';
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
 import { inCrowns, sceneInCrowns } from './learn/money.js';
@@ -1731,7 +1731,7 @@ function ModelFold({ unitId, learn, side = false }) {
   if (open) {
     return (
       <Card style={{ marginTop: gap }} data-testid="model-open">
-        <MarketModel unitId={unitId} learn={learn} compact />
+        <MarketModel unitId={unitId} learn={learn} />
         <Button variant="ghost" small icon={ChevronDown} data-testid="model-fold-close" style={{ marginTop: 6 }} onClick={() => { Audio.play('paper'); setOpen(false); }}>Свернуть модель</Button>
       </Card>
     );
@@ -1739,10 +1739,14 @@ function ModelFold({ unitId, learn, side = false }) {
   return (
     <Card style={{ marginTop: gap, padding: 0 }}>
       <button type="button" className="ln-fold-row" data-testid="model-fold" data-open={prog.open} aria-expanded="false" onClick={() => { Audio.play('paper'); setOpen(true); }}>
-        <Coffee size={20} color="var(--u-ink)" aria-hidden="true" />
+        <ModelThumb empty={!prog.open} supply={modelParts(unitId, learn).some((x) => x.id === 'supply' && x.open)} />
         <span style={{ flex: 1, minWidth: 0 }}>
           <span className="ds-eyebrow" style={{ display: 'block' }}>Живая модель юнита</span>
-          <span style={{ font: '700 15px var(--ds-head)' }}>{prog.open ? `Рынок капучино: ${prog.open} из ${prog.total} деталей` : 'Соберётся по ходу юнита'}</span>
+          <span style={{ font: '700 15px var(--ds-head)', display: 'block' }}>{prog.open ? 'Рынок капучино — покрутите' : 'Соберётся по ходу юнита'}</span>
+          <span className="ln-fold-prog">
+            <span className="ln-fold-bar" aria-hidden="true"><i style={{ width: `${(prog.open / Math.max(1, prog.total)) * 100}%` }} /></span>
+            <span className="ds-sub" style={{ fontSize: 12.5 }}>{prog.open} из {prog.total} {plural(prog.total, 'детали', 'деталей', 'деталей')}</span>
+          </span>
         </span>
         <ChevronRight size={18} color="var(--ds-ink3)" aria-hidden="true" />
       </button>

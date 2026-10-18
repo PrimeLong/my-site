@@ -3032,12 +3032,19 @@ test('новые глаголы: «Откройте сами», живая мо�
   // модель на Пути: деталь открыта, на карте счётчика модели нет (лишний шум); закрытые — «откроется в уроке …»
   await expect(model).toHaveAttribute('data-open', '1');
   await expect(path.getByTestId('atlas-model')).toHaveCount(0);
-  await model.getByTestId('model-toggle').click();
   await expect(model.locator('[data-part="demand"]')).toHaveAttribute('data-open', 'true');
-  await expect(model.locator('[data-part="income"]')).toContainText('Откроется в уроке «Спрос: закон и сдвиги»');
-  await expect(model.locator('[data-part="elastic"]')).toContainText('юнит «Эластичность»');
+  await model.locator('[data-part="income"]').click();
+  await expect(model.getByTestId('model-part-note')).toContainText('Откроется в уроке «Спрос: закон и сдвиги»');
+  await model.locator('[data-part="elastic"]').click();
+  await expect(model.getByTestId('model-part-note')).toContainText('юнит «Эластичность»');
   await model.getByTestId('model-price').fill('30');
   await expect(model.getByTestId('model-readout')).toContainText('При цене 30 кр. купят 30');
+  await expect(model.getByTestId('model-stats')).toContainText('30');
+  // ничего не трогали — «Вернуть как было» не нужна; сдвинули цену — появилась
+  await expect(model.getByTestId('model-reset')).toBeVisible();
+  await model.getByTestId('model-reset').click();
+  await expect(model.getByTestId('model-readout')).toContainText('При цене 20 кр. купят 60');
+  await expect(model.getByTestId('model-reset')).toHaveCount(0);
 
   // «Домино» в практике — всегда: неверная карточка роняет домино с разбором, задание не засчитано
   await startLesson(page, 'sd-l1');
