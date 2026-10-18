@@ -65,9 +65,9 @@ const CSS = `
   .ds-dark .wl-cup { color: #F2B27A; }
   @keyframes wl-steam { 0%, 100% { transform: rotate(0) } 50% { transform: rotate(-4deg) } }
   .wl-tag { position: relative; flex: none; white-space: nowrap; display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 8px; background: var(--ds-card); border: 1.5px dashed var(--ds-rule2); font: 700 15px var(--ds-mono); }
-  .wl-tag s { color: var(--ds-ink3); font-weight: 400; animation: wl-strike .4s ease-out 1.6s both; }
+  .wl-tag s { color: var(--ds-ink2); font-weight: 400; animation: wl-strike .4s ease-out 1.6s both; }
   .wl-tag b { color: var(--ds-bad-ink, #9B2C1F); animation: wl-price .55s cubic-bezier(.3,1.6,.5,1) 1.8s both; }
-  @keyframes wl-strike { from { text-decoration-color: transparent; opacity: 1 } to { text-decoration-color: currentColor; opacity: .7 } }
+  @keyframes wl-strike { from { text-decoration-color: transparent; } to { text-decoration-color: currentColor; } }
   @keyframes wl-price { from { opacity: 0; transform: translateY(-8px) scale(1.4) } to { opacity: 1; transform: none } }
   .wl-scene-note { font-size: 13px; color: var(--ds-ink2); line-height: 1.3; }
   .wl-q { font-size: 16px; line-height: 1.45; margin-bottom: 10px; font-weight: 600; }

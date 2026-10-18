@@ -530,6 +530,10 @@ describe('юнит «Спрос и предложение»: все виды у�
     const learn = addMistake(addMistake(emptyLearn(), 'sd-g-market', 1), 'sd-e2-petrol', 2);
     expect(practiceIds(learn)).toEqual(['sd-e2-petrol']);
     expect(canPractice('нет-такого')).toBe(false);
+    // трудная задача главы в ошибках — auto:<задача>: однострочная решается в практике, многошаговая — только в учебнике
+    expect(canPractice('auto:mb-qty-growth')).toBe(true);
+    expect(canPractice('auto:mb-rounds')).toBe(false);
+    expect(buildPractice(['auto:mb-qty-growth'], seeded(2)).items.map((i) => i.of || i.id)).toContain('auto:mb-qty-growth');
   });
 });
 

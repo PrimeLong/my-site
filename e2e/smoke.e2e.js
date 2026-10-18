@@ -3370,12 +3370,13 @@ test('повторение: трудную задачу можно убрать 
     const at = Date.now() - 3 * 86400000;
     localStorage.setItem('ems-textbook-v1', JSON.stringify({
       problems: { 'mb-rounds': { tries: 1, ok: false, box: 0, due: Date.now() - 1000, lastAt: at } },
-      learn: { mistakes: [{ id: 'auto:mb-rounds', at }, { id: 'sd-i1-who', at }] },
+      learn: { mistakes: [{ id: 'auto:mb-rounds', at }, { id: 'auto:sc-oc', at }] },
     }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await openTasks(page);
-  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  // многошаговая задача решается только в учебнике — в «Повторить ошибки» её не считаем
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   await page.getByTestId('practice-review').click();
   const review = page.getByTestId('review');
   const item = review.locator('[data-testid=review-item][data-item="mb-rounds"]');
@@ -3390,6 +3391,7 @@ test('повторение: трудную задачу можно убрать 
   await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ems-textbook-v1')));
   expect(saved.problems['mb-rounds']).toMatchObject({ ok: false, due: null });
+  expect(saved.learn.mistakes.map((m) => m.id)).toEqual(['auto:sc-oc']);
   expect(errors).toEqual([]);
 });
 
@@ -3408,7 +3410,8 @@ test('повторение: ошибку не снять тут же, карто
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await openTasks(page);
-  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  // pc-basic — многошаговая: решается в учебнике, в «Повторить ошибки» её нет
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   await page.getByTestId('practice-review').click();
   const review = page.getByTestId('review');
   await expect(review.getByTestId('review-item')).toHaveCount(2);
@@ -3441,9 +3444,11 @@ test('повторение: ошибку не снять тут же, карто
   await expect(review.getByTestId('review-tally')).toContainText('выучено: 1');
   await expect(review.getByTestId('review-tally')).toContainText('отложено до следующего раза: 1');
   await expect(review.getByTestId('review-empty')).toBeVisible();
-  // одно повторение: решённая в учебнике задача ушла и из ошибок Пути, нерешённая — осталась
+  // одно повторение: решённая в учебнике задача ушла и из ошибок Пути, нерешённая — осталась (в учебнике)
   await bookBack(page);
-  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
+  await expect(page.getByTestId('practice-mistakes')).toContainText('Ошибок нет');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ems-textbook-v1')));
+  expect(saved.learn.mistakes.map((m) => m.id)).toEqual(['auto:pc-basic']);
   expect(errors).toEqual([]);
 });
 

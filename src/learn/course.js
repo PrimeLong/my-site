@@ -812,7 +812,9 @@ function practiceEntry(id) {
   if (e) return reviewable(e) ? e : null;
   try {
     if (String(id).startsWith('var:')) { const t = TEMPLATE_BY_ID[id.slice(4)]; return t ? hardEntry(t.chapter, id) : null; }
-    return PROBLEMS[id] ? hardEntry(PROBLEMS[id].chapter, id) : null;
+    // трудная задача из главы записывается в ошибки как auto:<задача>; многошаговая в упражнение не годится
+    const pid = String(id).replace(/^auto:/, '');
+    return PROBLEMS[pid] ? hardEntry(PROBLEMS[pid].chapter, pid) : null;
   } catch { return null; }
 }
 export const canPractice = (id) => !!practiceEntry(id);
