@@ -3551,7 +3551,7 @@ test('урок на ПК: увеличен, только если окно вы�
   }
 });
 
-test('урок на ПК: на полях — черновик (кисть, ластик, «Стереть всё»), сам урок нажимается как раньше', async ({ page, isMobile }) => {
+test('урок на ПК: черновик на полях — включается кнопкой; ручка, маркер, ластик, отмена, «Стереть всё»', async ({ page, isMobile }) => {
   await withTestFlag(page);
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await startLesson(page, 'sc-i1');
@@ -3559,10 +3559,11 @@ test('урок на ПК: на полях — черновик (кисть, ла
   if (isMobile) {
     // телефон: полей у урока нет — и черновика нет
     await expect(canvas).toHaveCount(0);
+    await expect(page.getByTestId('sketch-dock')).toHaveCount(0);
     return;
   }
-  await expect(page.getByTestId('sketch-hint')).toBeVisible();
-  await expect(page.getByTestId('sketch-bar')).toHaveCount(0);
+  const lesson = page.getByTestId('lesson');
+  const toggle = page.getByTestId('sketch-toggle');
   // непрозрачность холста в точке окна: есть ли там чернила
   const inkAt = (x, y) => page.evaluate(([px, py]) => {
     const c = document.querySelector('[data-testid=sketch-canvas]');
@@ -3574,42 +3575,72 @@ test('урок на ПК: на полях — черновик (кисть, ла
     for (const p of pts.slice(1)) await page.mouse.move(...p, { steps: 8 });
     await page.mouse.up();
   };
-  // левое поле: линия — на холсте чернила, внизу появилась панель, подсказка ушла
+  // режим выключен: обычный курсор, поле не рисует; кнопка «Черновик» и подсказка «Новое»
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByTestId('sketch-callout')).toBeVisible();
+  await expect(lesson).not.toHaveAttribute('data-sketch', /./);
+  await draw([[80, 300], [240, 300]]);
+  await expect(canvas).toHaveAttribute('data-strokes', '0');
+  // включили: сетка на полях, курсор-ручка, выбор запомнен на устройстве
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByTestId('sketch-callout')).toHaveCount(0);
+  await expect(page.getByTestId('sketch-grid')).toHaveClass(/on/);
+  await expect(lesson).toHaveAttribute('data-sketch', 'pen');
+  expect(await page.evaluate(() => localStorage.getItem('ems-sketch-on'))).toBe('1');
+  // левое поле: линия ручкой
   await draw([[80, 300], [240, 300]]);
   await expect(canvas).toHaveAttribute('data-strokes', '1');
-  await expect(page.getByTestId('sketch-bar')).toBeVisible();
-  await expect(page.getByTestId('sketch-hint')).toHaveCount(0);
   expect(await inkAt(160, 300)).toBeGreaterThan(200);
   expect(await inkAt(160, 330)).toBe(0);
   // протянуть мышью по тексту урока — не рисует: это урок, а не поле
   const card = await page.getByTestId('lesson-card').boundingBox();
   await draw([[card.x + 40, card.y + 60], [card.x + 200, card.y + 60]]);
   await expect(canvas).toHaveAttribute('data-strokes', '1');
-  // кисть цветом юнита, потом ластик поперёк первой линии
+  // маркер цвета юнита, толстый: полупрозрачная полоса
+  await page.getByTestId('sketch-marker').click();
   await page.getByTestId('sketch-color-unit').click();
-  await expect(page.getByTestId('sketch-pen')).toHaveAttribute('aria-pressed', 'true');
-  await draw([[80, 400], [240, 400]]);
+  await page.getByTestId('sketch-size-l').click();
+  await expect(page.getByTestId('sketch-marker')).toHaveAttribute('aria-pressed', 'true');
+  await expect(lesson).toHaveAttribute('data-sketch', 'marker');
+  await draw([[80, 420], [240, 420]]);
+  await expect(canvas).toHaveAttribute('data-strokes', '2');
+  const marker = await inkAt(160, 420);
+  expect(marker).toBeGreaterThan(40);
+  expect(marker).toBeLessThan(160);
+  // ластик поперёк линии ручки; у ластика цветов нет — только толщина
   await page.getByTestId('sketch-eraser').click();
-  await expect(page.getByTestId('sketch-eraser')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('sketch-color-ink')).toHaveCount(0);
   await draw([[160, 260], [160, 340]]);
   await expect(canvas).toHaveAttribute('data-strokes', '3');
   expect(await inkAt(160, 300)).toBe(0);
   expect(await inkAt(100, 300)).toBeGreaterThan(200);
-  // Ctrl+Z отменяет последний штрих — ластик: линия снова целая
-  await page.keyboard.press('Control+z');
+  // «Отменить» и Ctrl+Z убирают последний штрих: линия снова целая, потом нет и маркера
+  await page.getByTestId('sketch-undo').click();
   await expect(canvas).toHaveAttribute('data-strokes', '2');
   expect(await inkAt(160, 300)).toBeGreaterThan(200);
-  // «Стереть всё» — холст чист, а «Вернуть» возвращает стёртое
+  await page.keyboard.press('Control+z');
+  await expect(canvas).toHaveAttribute('data-strokes', '1');
+  expect(await inkAt(160, 420)).toBe(0);
+  // «Стереть всё» — холст чист, «Вернуть» возвращает стёртое
   await page.getByTestId('sketch-clear').click();
   await expect(canvas).toHaveAttribute('data-strokes', '0');
   expect(await inkAt(160, 300)).toBe(0);
   await page.getByTestId('sketch-restore').click();
-  await expect(canvas).toHaveAttribute('data-strokes', '2');
-  expect(await inkAt(160, 400)).toBeGreaterThan(200);
+  await expect(canvas).toHaveAttribute('data-strokes', '1');
+  expect(await inkAt(160, 300)).toBeGreaterThan(200);
+  // выключили: записи видны, но поле больше не рисует и курсор обычный
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await expect(lesson).not.toHaveAttribute('data-sketch', /./);
+  await draw([[80, 500], [240, 500]]);
+  await expect(canvas).toHaveAttribute('data-strokes', '1');
+  expect(await inkAt(160, 300)).toBeGreaterThan(200);
+  expect(await page.evaluate(() => localStorage.getItem('ems-sketch-on'))).toBe(null);
   // урок идёт как обычно, черновик остаётся до конца урока
   await page.getByRole('button', { name: 'Понятно' }).click();
   await expect(page.getByTestId('ex')).toBeVisible();
-  await expect(canvas).toHaveAttribute('data-strokes', '2');
+  await expect(canvas).toHaveAttribute('data-strokes', '1');
   expect(errors).toEqual([]);
 });
 
