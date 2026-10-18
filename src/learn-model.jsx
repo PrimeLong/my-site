@@ -4,17 +4,21 @@
    Подача — как у всего обучения: бумага, тушь, гравюра, PT Serif; фигурки — тушью, без
    мультяшности. Движение короткое (около полутора секунд) и не мешает читать; при «уменьшить
    движение» — без анимации, только смена состояний. */
-import React, { useEffect, useMemo, useState } from 'react';
-import { Lock, RotateCcw, Newspaper } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Lock, RotateCcw, Newspaper, Check, Coffee, TrendingDown, Wallet, Leaf, Factory, Wheat, ArrowDownToLine, Spline, LayoutGrid, BadgeCheck, Gauge,
+  ChevronsDown, ChevronDown, Minus, ChevronUp, ChevronsUp,
+} from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
 import { Mascot } from './mascot.jsx';
-import { useReducedMotion, Stamp } from './ds-art.jsx';
+import { useReducedMotion } from './ds-art.jsx';
 import { Button } from './ds.jsx';
 import { plural } from './lib/plural.js';
 import {
   DAY, dayResult, distinctPrices, lineShown, discoverDone, fitDemand,
-  MODEL_AXES, MODEL_NEWS, MODEL_DEFAULT, modelParts, modelProgress, modelReadout, mqd, mqs, BASE,
+  MODEL_AXES, MODEL_NEWS, MODEL_DEFAULT, modelParts, modelProgress, modelReadout, modelEquilibrium, modelStory, mqd, mqs, BASE, BASE_EQ,
+  FACTOR_STEPS, FACTOR_WORDS, CEILING_STEPS, ELASTIC_STEPS,
 } from './learn/model.js';
 
 export const MODEL_CSS = `
@@ -30,20 +34,86 @@ export const MODEL_CSS = `
   .lm-say { display: flex; gap: 10px; align-items: center; border: 1px solid var(--u); border-radius: 6px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); padding: 10px 12px; margin: 8px 0; font-size: 15.5px; line-height: 1.4; }
   .lm-line { stroke-dasharray: 420; stroke-dashoffset: 420; animation: lm-draw 1.1s ease-out forwards; }
   @keyframes lm-draw { to { stroke-dashoffset: 0; } }
-  .lm-parts { display: grid; gap: 8px; margin-top: 8px; }
-  .lm-part { border: 1px solid var(--ds-rule2); border-radius: 5px; padding: 8px 10px; background: var(--ds-card); }
-  .lm-part.locked { border-style: dashed; background: none; color: var(--ds-ink3); }
-  .lm-part-head { display: flex; align-items: baseline; gap: 8px; font: 700 14.5px var(--ds-head); }
-  .lm-part-text { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink2); margin-top: 2px; }
-  .lm-part.locked .lm-part-text { color: var(--ds-ink3); }
-  .lm-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--ds-ink3); margin-top: -4px; }
-  .lm-pips { display: inline-flex; gap: 3px; vertical-align: middle; }
-  .lm-pips i { width: 9px; height: 9px; border-radius: 2px; border: 1.5px solid var(--u); }
-  .lm-pips i.on { background: var(--u); }
-  .lm-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; margin: 4px 0; }
-  .lm-board div { border: 1px solid var(--ds-rule2); border-radius: 3px; padding: 4px 2px; background: var(--ds-card2); }
-  .lm-board b { display: block; font: 700 17px var(--ds-mono); color: var(--u-ink); }
-  .lm-board span { font-size: 12px; color: var(--ds-ink3); }
+  /* живая модель */
+  .lm { position: relative; }
+  .lm-head { display: flex; align-items: flex-start; gap: 10px; }
+  .lm-title { font: 700 19px/1.25 var(--ds-head); margin-top: 2px; }
+  .lm-badge { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 3px 9px 3px 7px; border-radius: 999px; font: 700 12.5px var(--ds-sans);
+    color: var(--ds-ok-ink); background: var(--ds-ok-bg); border: 1px solid color-mix(in srgb, var(--ds-ok) 45%, transparent); }
+  .lm-ring { position: relative; width: 50px; height: 50px; flex-shrink: 0; }
+  .lm-ring svg { transform: rotate(-90deg); display: block; }
+  .lm-ring circle { fill: none; stroke-width: 3.5; }
+  .lm-ring .bg { stroke: var(--ds-rule); }
+  .lm-ring .fg { stroke: var(--u); stroke-linecap: round; transition: stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1); }
+  .lm-ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 14px var(--ds-mono); color: var(--u-ink); letter-spacing: -.06em; }
+  .lm-ring small { font-size: 12px; color: var(--ds-ink3); font-weight: 600; }
+  .lm-stage { margin: 10px 0 2px; border-radius: 10px; background: color-mix(in srgb, var(--ds-card2) 55%, var(--ds-card)); border: 1px solid var(--ds-rule); padding: 4px 4px 0; }
+  .lm-stage .lm-chart { max-width: 420px; margin: 0 auto; }
+  .lm-guide { fill: none; stroke: var(--ds-ink3); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: .8; }
+  .lm-curve-name { font: 700 14px var(--ds-head) !important; }
+  .lm-tag rect { fill: var(--ds-ink); }
+  .lm-tag text { font: 700 11px var(--ds-mono) !important; fill: var(--ds-paper) !important; }
+  .lm-short { font: 700 11.5px var(--ds-sans) !important; fill: var(--ds-bad) !important; }
+  .lm-pulse { opacity: .16; transform-box: fill-box; transform-origin: center; animation: lm-pulse 2.2s ease-in-out infinite; }
+  @keyframes lm-pulse { 0%, 100% { transform: scale(.7); opacity: .22; } 50% { transform: scale(1.15); opacity: .08; } }
+  .lm-board { display: grid; gap: 6px; text-align: center; margin: 8px 0 6px; }
+  .lm-board > div { border: 1px solid var(--ds-rule2); border-radius: 8px; padding: 6px 4px 7px; background: var(--ds-card); display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .lm-board-label { font: 600 12px var(--ds-sans); color: var(--ds-ink3); }
+  .lm-board b { font: 700 21px/1.15 var(--ds-mono); color: var(--ds-ink); }
+  .lm-board .bad b { color: var(--ds-bad); }
+  .lm-delta { font: 700 12px var(--ds-mono); border-radius: 999px; padding: 1px 6px; }
+  .lm-delta.up { color: var(--ds-ok-ink); background: var(--ds-ok-bg); }
+  .lm-delta.down { color: var(--ds-bad); background: color-mix(in srgb, var(--ds-bad) 10%, var(--ds-card)); }
+  .lm-story { font-size: 15px; line-height: 1.45; padding: 9px 12px; border-radius: 8px; background: var(--ds-card2); color: var(--ds-ink2); margin-bottom: 10px; }
+  .lm-story.on { background: color-mix(in srgb, var(--u) 9%, var(--ds-card)); color: var(--ds-ink); border-left: 3px solid var(--u); padding-left: 10px; }
+  .lm-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 7px; }
+  .lm-tile { position: relative; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 7px 9px; text-align: left; cursor: pointer; border-radius: 10px;
+    border: 1.5px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink); transition: border-color .15s, background .15s, transform .12s; }
+  .lm-tile:active { transform: scale(.97); }
+  .lm-tile.on { border-color: var(--u); background: color-mix(in srgb, var(--u) 8%, var(--ds-card)); box-shadow: 0 2px 0 color-mix(in srgb, var(--u) 35%, transparent); }
+  .lm-tile.changed::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--u); }
+  .lm-tile-ic { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--ds-card2); color: var(--u-ink); }
+  .lm-tile.on .lm-tile-ic { background: var(--u); color: #fff; }
+  .lm-tile-txt { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+  .lm-tile-txt b { font: 700 13.5px var(--ds-sans); }
+  .lm-tile-txt span { font-size: 12.5px; color: var(--ds-ink3); margin-top: 2px; }
+  .lm-tile.changed .lm-tile-txt span { color: var(--u-ink); font-weight: 700; }
+  .lm-panel { margin-top: 8px; padding: 10px 12px 12px; border-radius: 10px; border: 1.5px solid var(--u); background: var(--ds-card); animation: lm-panel .22s ease-out both; }
+  @keyframes lm-panel { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .lm-panel-text { font-size: 14.5px; line-height: 1.4; color: var(--ds-ink2); margin-bottom: 9px; }
+  .lm-caption { font-size: 13.5px; color: var(--ds-ink3); margin-top: 7px; text-align: center; }
+  .lm-caption b { color: var(--ds-ink); }
+  .lm-steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; border: 1.5px solid var(--ds-rule2); border-radius: 10px; overflow: hidden; background: var(--ds-card2); }
+  .lm-steps button { min-height: 42px; border: none; border-left: 1px solid var(--ds-rule2); background: none; color: var(--ds-ink2); font: 700 14px var(--ds-mono); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s, color .15s; }
+  .lm-steps button:first-child { border-left: none; }
+  .lm-steps button[aria-checked="true"] { background: var(--u); color: #fff; }
+  .lm-steps button:focus-visible, .lm-tile:focus-visible, .lm-chip:focus-visible, .lm-news-btn:focus-visible, .lm-switch:focus-visible { outline: 3px solid var(--ds-focus, var(--u)); outline-offset: 2px; }
+  .lm-price .lm-scale { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: var(--ds-ink3); }
+  .lm-price .lm-scale b { font-size: 16px; color: var(--u-ink); }
+  .lm-news-list { display: grid; gap: 6px; }
+  .lm-news-btn { display: flex; align-items: center; gap: 8px; text-align: left; padding: 9px 11px; border-radius: 8px; border: 1.5px solid var(--ds-rule2); background: var(--ds-card); cursor: pointer;
+    font: 600 14px/1.3 var(--ds-news, var(--ds-head)); color: var(--ds-ink); }
+  .lm-news-btn[aria-pressed="true"] { border-color: var(--u); background: color-mix(in srgb, var(--u) 9%, var(--ds-card)); }
+  .lm-switch { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 4px 0; cursor: pointer; font: 600 14.5px var(--ds-sans); color: var(--ds-ink); }
+  .lm-switch .knob { position: relative; width: 40px; height: 24px; border-radius: 999px; background: var(--ds-rule2); transition: background .2s; flex-shrink: 0; }
+  .lm-switch .knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s; }
+  .lm-switch[aria-checked="true"] .knob { background: var(--u); }
+  .lm-switch[aria-checked="true"] .knob::after { transform: translateX(16px); }
+  .lm-chips-wrap { margin-top: 12px; }
+  .lm-chips-head { font: 700 12px var(--ds-sans); letter-spacing: .08em; text-transform: uppercase; color: var(--ds-ink3); margin-bottom: 6px; }
+  .lm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .lm-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 5px 11px; border-radius: 999px; border: 1px dashed var(--ds-rule2); background: none; cursor: pointer;
+    font: 600 13px var(--ds-sans); color: var(--ds-ink3); }
+  .lm-chip.got { border-style: solid; color: var(--ds-ok-ink); background: var(--ds-ok-bg); border-color: color-mix(in srgb, var(--ds-ok) 40%, transparent); }
+  .lm-chip.on { border-color: var(--u); color: var(--ds-ink); }
+  .lm-chip-note { margin-top: 7px; font-size: 14px; line-height: 1.4; color: var(--ds-ink2); padding: 8px 11px; border-radius: 8px; background: var(--ds-card2); animation: lm-panel .2s ease-out both; }
+  .lm-empty { display: flex; gap: 12px; align-items: center; margin: 10px 0 4px; }
+  .lm-ghost { width: 120px; flex-shrink: 0; }
+  .lm-thumb { flex-shrink: 0; border-radius: 6px; background: var(--ds-card2); }
+  .ln-fold-prog { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+  .ln-fold-bar { display: block; flex: 1; height: 5px; border-radius: 99px; background: var(--ds-rule); overflow: hidden; max-width: 140px; }
+  .ln-fold-bar i { display: block; height: 100%; background: var(--u); border-radius: 99px; }
+  @media (prefers-reduced-motion: reduce) { .lm-pulse, .lm-panel, .lm-chip-note { animation: none !important; } .lm-ring .fg { transition: none; } }
   @media (prefers-reduced-motion: reduce) { .lm-line { animation: none !important; stroke-dashoffset: 0 !important; } }
 `;
 
@@ -233,156 +303,333 @@ export function DiscoverDay({ card, onDone, body, foot }) {
 }
 
 /* ------------------------------ ЖИВАЯ МОДЕЛЬ ------------------------------
-   Рынок капучино у «Торговой» в текущем состоянии юнита: улица, график, табло и детали.
-   Открытые детали крутятся ползунками, закрытые — силуэтом «откроется в уроке …». compact —
-   на Пути: улица, график и полоска деталей, ползунки — по кнопке. */
-const SCALE3 = { income: ['ниже', 'как обычно', 'выше'], tea: ['дешевле', 'как обычно', 'дороже'], grain: ['дешевле', 'как обычно', 'дороже'] };
-function Slider({ id, value, min, max, step = 1, onChange, scale, label }) {
+   Рынок капучино у «Торговой» в текущем состоянии юнита — игрушка, которую хочется крутить.
+   Сверху — график: кривые и точка равновесия плавно перетекают, у точки — ярлык «цена · чашки».
+   Под ним — табло (цена, чашки, выручка — с изменением к исходному рынку) и одна строка «что
+   произошло». Ниже — плитки открытых факторов: касание выбирает фактор, под плитками — его
+   переключатель на пять положений (потолок — «нет» или цена, новости — заголовки «Вестника»).
+   Детали без управления и закрытые — строкой значков: касание говорит, что это и в каком уроке
+   откроется. */
+const PART_ICON = { demand: TrendingDown, income: Wallet, tea: Leaf, supply: Factory, grain: Wheat, ceiling: ArrowDownToLine, news: Newspaper, trace: Spline, board: LayoutGrid, seal: BadgeCheck, elastic: Gauge };
+const CONTROL = new Set(['income', 'tea', 'grain', 'ceiling', 'news', 'trace', 'elastic']);
+const isControl = (id, open) => CONTROL.has(id) || (id === 'demand' && !open.has('supply'));
+const D_INK = '#3E6FA8'; const S_INK = '#C0602A';
+const r1 = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+
+// плавный переход чисел: кривые и точка равновесия перетекают за ~0,4 с; «уменьшить движение» — сразу
+function useTween(target, ms = 420) {
+  const reduced = useReducedMotion();
+  const [val, setVal] = useState(target);
+  const cur = useRef(target);
+  const key = JSON.stringify(target);
+  useEffect(() => {
+    if (reduced) { cur.current = target; setVal(target); return undefined; }
+    const from = cur.current; const t0 = performance.now(); let raf = 0;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms); const e = 1 - (1 - k) ** 3;
+      const v = {};
+      Object.keys(target).forEach((f) => { const a = from[f]; const b = target[f]; v[f] = a == null || b == null ? b : a + (b - a) * e; });
+      cur.current = v; setVal(v);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, reduced]);
+  return val;
+}
+
+// ярлык у точки: «20 кр. · 60 чашек» — тёмная плашка, справа от точки (у правого края — слева)
+function PointTag({ x, y, text, right, testid }) {
+  const w = text.length * 6.4 + 14;
+  const left = x + 10 + w > right;
+  const tx = left ? x - 10 - w : x + 10;
   return (
-    <div>
-      <input type="range" className="lm-range" min={min} max={max} step={step} value={value} aria-label={label} data-testid={`model-${id}`}
-        onChange={(e) => { Audio.play('tick'); onChange(Number(e.target.value)); }} />
-      {scale && <div className="lm-scale">{scale.map((s) => <span key={s}>{s}</span>)}</div>}
-    </div>
+    <g data-testid={testid} className="lm-tag">
+      <rect x={tx} y={y - 21} width={w} height={17} rx="8.5" />
+      <text x={tx + w / 2} y={y - 9} textAnchor="middle">{text}</text>
+    </g>
   );
 }
-export function ModelChart({ r, open, st }) {
-  const { m } = r; const { qMax, pMax } = MODEL_AXES;
+function LiveChart({ r, open, trace }) {
+  const { qMax, pMax } = MODEL_AXES;
+  const t = useTween({ a: r.m.a, b: r.m.b, dA: r.m.dA, dC: r.m.dC, price: r.mode === 'demand' ? r.p : null, ceil: r.mode === 'ceiling' ? r.p : null });
+  const m = { a: t.a, b: t.b, c: BASE.c, d: BASE.d, dA: t.dA, dC: t.dC };
   const base = { ...BASE, dA: 0, dC: 0 };
-  const trace = open.has('trace') && st.trace !== false;
+  const supply = open.has('supply');
+  const eq = supply ? modelEquilibrium(m) : null;
+  const moved = Math.abs(r.m.dA) + Math.abs(r.m.dC) > 0.01 || r.m.b !== BASE.b;
   return (
     <Frame qMax={qMax} pMax={pMax} qStep={20} pStep={10} label="Рынок капучино у «Торговой»" testid="model-chart">
-      {({ x, y }) => (
-        <>
-          {trace && <path d={linePts((p) => mqd(base, p), qMax, pMax, x, y)} stroke="#3E6FA8" strokeOpacity=".4" strokeWidth="2.2" strokeDasharray="5 5" fill="none" />}
-          {trace && open.has('supply') && <path d={linePts((p) => mqs(base, p), qMax, pMax, x, y)} stroke="#C0602A" strokeOpacity=".4" strokeWidth="2.2" strokeDasharray="5 5" fill="none" />}
-          <path d={linePts((p) => mqd(m, p), qMax, pMax, x, y)} stroke="#3E6FA8" strokeWidth="3.5" fill="none" strokeLinecap="round" data-curve-line="D" />
-          {open.has('supply') && <path d={linePts((p) => mqs(m, p), qMax, pMax, x, y)} stroke="#C0602A" strokeWidth="3.5" fill="none" strokeLinecap="round" data-curve-line="S" />}
-          {r.mode === 'demand' && (
-            <g data-testid="model-price-line">
-              <line x1={L} x2={L + PWc} y1={y(r.p)} y2={y(r.p)} stroke="var(--u)" strokeWidth="1.6" strokeDasharray="4 4" />
-              <circle cx={x(r.qd)} cy={y(r.p)} r="5.5" fill="#3E6FA8" />
-            </g>
-          )}
-          {r.mode === 'ceiling' && (
-            <g data-testid="model-ceiling">
-              <line x1={L} x2={L + PWc} y1={y(r.p)} y2={y(r.p)} stroke="var(--ds-bad)" strokeWidth="2" strokeDasharray="5 4" />
-              <line x1={x(r.qs)} x2={x(r.qd)} y1={y(r.p)} y2={y(r.p)} stroke="var(--ds-bad)" strokeWidth="6" opacity=".6" strokeLinecap="round" />
-              <text x={L + PWc - 2} y={y(r.p) - 5} textAnchor="end" style={{ fill: 'var(--ds-bad)' }}>потолок</text>
-            </g>
-          )}
-          {r.eq && <circle cx={x(r.eq.q)} cy={y(r.eq.p)} r="5.5" fill="var(--ds-ink)" opacity={r.mode === 'ceiling' ? 0.35 : 1} data-testid="model-eq" />}
-          {trace && r.eq && open.has('supply') && (() => { const e0 = { p: 20, q: 60 }; return Math.abs(r.eq.p - 20) + Math.abs(r.eq.q - 60) > 1 ? <circle cx={x(e0.q)} cy={y(e0.p)} r="4" fill="none" stroke="var(--ds-ink3)" strokeWidth="1.5" /> : null; })()}
-          <text x={x(Math.min(qMax - 8, Math.max(4, mqd(m, 6)))) + 4} y={y(6) - 6} style={{ fill: '#3E6FA8' }}>D</text>
-          {open.has('supply') && <text x={x(Math.min(qMax - 10, Math.max(4, mqs(m, 34)))) + 6} y={y(34) + 4} style={{ fill: '#C0602A' }}>S</text>}
-        </>
-      )}
+      {({ x, y, base: yb }) => {
+        const right = L + PWc;
+        const guides = (q, p) => <path d={`M${L},${y(p)} H${x(q)} V${yb}`} className="lm-guide" />;
+        return (
+          <>
+            {trace && moved && <path d={linePts((p) => mqd(base, p), qMax, pMax, x, y)} stroke={D_INK} strokeOpacity=".35" strokeWidth="2.2" strokeDasharray="5 5" fill="none" />}
+            {trace && moved && supply && <path d={linePts((p) => mqs(base, p), qMax, pMax, x, y)} stroke={S_INK} strokeOpacity=".35" strokeWidth="2.2" strokeDasharray="5 5" fill="none" />}
+            <path d={linePts((p) => mqd(m, p), qMax, pMax, x, y)} stroke={D_INK} strokeWidth="3.5" fill="none" strokeLinecap="round" data-curve-line="D" />
+            {supply && <path d={linePts((p) => mqs(m, p), qMax, pMax, x, y)} stroke={S_INK} strokeWidth="3.5" fill="none" strokeLinecap="round" data-curve-line="S" />}
+            <text x={x(Math.min(qMax - 8, Math.max(4, mqd(m, 5)))) + 5} y={y(5) - 5} className="lm-curve-name" style={{ fill: D_INK }}>D</text>
+            {supply && <text x={x(Math.min(qMax - 10, Math.max(4, mqs(m, 30)))) + 4} y={y(30) + 18} className="lm-curve-name" style={{ fill: S_INK }}>S</text>}
+            {r.mode === 'demand' && t.price != null && (() => {
+              const q = Math.max(0, mqd(m, t.price));
+              return (
+                <g data-testid="model-price-line">
+                  {guides(q, t.price)}
+                  <circle cx={x(q)} cy={y(t.price)} r="11" className="lm-pulse" style={{ fill: D_INK }} />
+                  <circle cx={x(q)} cy={y(t.price)} r="6" fill={D_INK} stroke="var(--ds-card)" strokeWidth="2" />
+                  <PointTag x={x(q)} y={y(t.price)} right={right} text={`${r1(r.p)} кр. · ${Math.round(r.qd)} чаш.`} />
+                </g>
+              );
+            })()}
+            {r.mode === 'ceiling' && t.ceil != null && (() => {
+              const qd = Math.max(0, mqd(m, t.ceil)); const qs = Math.max(0, mqs(m, t.ceil));
+              return (
+                <g data-testid="model-ceiling">
+                  <line x1={L} x2={right} y1={y(t.ceil)} y2={y(t.ceil)} stroke="var(--ds-bad)" strokeWidth="2" strokeDasharray="6 4" />
+                  <line x1={x(qs)} x2={x(qd)} y1={y(t.ceil)} y2={y(t.ceil)} stroke="var(--ds-bad)" strokeWidth="7" opacity=".55" strokeLinecap="round" />
+                  <text x={(x(qs) + x(qd)) / 2} y={y(t.ceil) + 19} textAnchor="middle" className="lm-short">дефицит {Math.round(r.shortage)}</text>
+                  <text x={right - 2} y={y(t.ceil) - 6} textAnchor="end" className="lm-short">потолок {r.p} кр.</text>
+                </g>
+              );
+            })()}
+            {eq && trace && moved && r.mode === 'equilibrium' && Math.hypot(x(eq.q) - x(BASE_EQ.q), y(eq.p) - y(BASE_EQ.p)) > 14 && (
+              <g className="lm-shift" data-testid="model-shift">
+                <circle cx={x(BASE_EQ.q)} cy={y(BASE_EQ.p)} r="4.5" fill="var(--ds-card)" stroke="var(--ds-ink3)" strokeWidth="1.6" />
+                <line x1={x(BASE_EQ.q)} y1={y(BASE_EQ.p)} x2={x(eq.q)} y2={y(eq.p)} stroke="var(--ds-ink3)" strokeWidth="1.6" strokeDasharray="3 3" />
+              </g>
+            )}
+            {eq && (
+              <g data-testid="model-eq" opacity={r.mode === 'ceiling' ? 0.35 : 1}>
+                {r.mode === 'equilibrium' && guides(eq.q, eq.p)}
+                {r.mode === 'equilibrium' && <circle cx={x(eq.q)} cy={y(eq.p)} r="12" className="lm-pulse" style={{ fill: 'var(--ds-ink)' }} />}
+                <circle cx={x(eq.q)} cy={y(eq.p)} r="6.5" fill="var(--ds-ink)" stroke="var(--ds-card)" strokeWidth="2" />
+                {r.mode === 'equilibrium' && <PointTag x={x(eq.q)} y={y(eq.p)} right={right} text={`${r1(r.eq.p)} кр. · ${Math.round(r.eq.q)} чаш.`} testid="model-eq-tag" />}
+              </g>
+            )}
+          </>
+        );
+      }}
     </Frame>
   );
 }
-const r1 = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
-export function MarketModel({ unitId, learn, compact = false, testid = 'unit-model' }) {
+
+// табло: числа крупно, рядом — изменение к исходному рынку (20 кр., 60 чашек, выручка 1200)
+function Delta({ d, digits = 1 }) {
+  if (Math.abs(d) < (digits ? 0.05 : 0.5)) return null;
+  const v = digits ? r1(Math.abs(d)) : Math.round(Math.abs(d));
+  return <span className={`lm-delta ${d > 0 ? 'up' : 'down'}`}>{d > 0 ? '▲' : '▼'}{v}</span>;
+}
+function Board({ r, open }) {
+  const p = r.mode === 'demand' ? r.p : r.mode === 'ceiling' ? r.p : r.eq.p;
+  const q = r.mode === 'demand' ? r.qd : r.sold;
+  const cells = [
+    { k: 'p', label: 'цена, кр.', v: r1(p), d: <Delta d={p - BASE_EQ.p} /> },
+    { k: 'q', label: r.mode === 'ceiling' ? 'продают чашек' : 'чашек в день', v: Math.round(q), d: <Delta d={q - BASE_EQ.q} digits={0} /> },
+  ];
+  if (r.mode === 'ceiling') cells.push({ k: 's', label: 'не хватило', v: Math.round(r.shortage), bad: true });
+  if (open.has('board')) cells.push({ k: 'rev', label: 'выручка, кр.', v: Math.round(p * q), d: <Delta d={p * q - BASE_EQ.p * BASE_EQ.q} digits={0} /> });
+  return (
+    <div className="lm-board" style={{ gridTemplateColumns: `repeat(${cells.length}, 1fr)` }} data-testid={open.has('board') ? 'model-board' : 'model-stats'}>
+      {cells.map((c) => (
+        <div key={c.k} className={c.bad ? 'bad' : ''}>
+          <span className="lm-board-label">{c.label}</span>
+          <b className="ds-num">{c.v}</b>{c.d}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// переключатель на несколько положений: radiogroup, выбранное — залито
+function Steps({ id, label, options, value, onPick }) {
+  return (
+    <div className="lm-steps" role="radiogroup" aria-label={label} data-testid={`model-${id}`}>
+      {options.map((o) => {
+        const Icon = o.icon;
+        return (
+          <button key={String(o.v)} type="button" role="radio" aria-checked={o.v === value} aria-label={o.title} title={o.title} data-v={o.v == null ? 'none' : o.v}
+            onClick={() => { if (o.v !== value) { Audio.play('tick'); onPick(o.v); } }}>
+            {Icon ? <Icon size={18} aria-hidden="true" /> : o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+const STEP_ICON = [ChevronsDown, ChevronDown, Minus, ChevronUp, ChevronsUp];
+const factorOptions = (id) => FACTOR_STEPS.map((v, k) => ({ v, icon: STEP_ICON[k], title: FACTOR_WORDS[id][k] }));
+const ceilingOptions = CEILING_STEPS.map((v) => ({ v, label: v == null ? 'нет' : `${v}`, title: v == null ? 'без потолка' : `потолок ${v} кр.` }));
+const elasticOptions = ELASTIC_STEPS.map((e, k) => ({ v: e.v, label: ['1', '2', '3', '4', '5'][k], title: e.word }));
+
+// подпись состояния на плитке
+function stateWord(id, st, news) {
+  switch (id) {
+    case 'demand': return `цена ${st.price} кр.`;
+    case 'income': case 'tea': case 'grain': return FACTOR_WORDS[id][st[id] + 2];
+    case 'ceiling': return st.ceiling == null ? 'нет' : `${st.ceiling} кр.`;
+    case 'news': { const n = MODEL_NEWS.find((x) => x.id === news); return n ? n.title : 'новостей нет'; }
+    case 'trace': return st.trace !== false ? 'виден' : 'скрыт';
+    case 'elastic': return (ELASTIC_STEPS.find((e) => e.v === st.elastic) || ELASTIC_STEPS[2]).word;
+    default: return '';
+  }
+}
+const changedPart = (id, st, news) => (id === 'demand' ? st.price !== MODEL_DEFAULT.price : id === 'news' ? !!news : id === 'trace' ? false
+  : id === 'ceiling' ? st.ceiling != null : st[id] !== MODEL_DEFAULT[id]);
+
+// кольцо прогресса деталей: «6/10»
+function PartsRing({ open, total }) {
+  const R = 21; const C = 2 * Math.PI * R;
+  return (
+    <span className="lm-ring" data-testid="model-progress" role="img" aria-label={`Собрано деталей: ${open} из ${total}`}>
+      <svg width="50" height="50" viewBox="0 0 50 50" aria-hidden="true">
+        <circle cx="25" cy="25" r={R} className="bg" />
+        <circle cx="25" cy="25" r={R} className="fg" strokeDasharray={C} strokeDashoffset={C * (1 - (total ? open / total : 0))} />
+      </svg>
+      <b aria-hidden="true">{open}<small>/{total}</small></b>
+    </span>
+  );
+}
+
+export function MarketModel({ unitId, learn, testid = 'unit-model' }) {
   const parts = useMemo(() => modelParts(unitId, learn), [unitId, learn]);
   const prog = modelProgress(unitId, learn);
   const open = useMemo(() => new Set(parts.filter((p) => p.open).map((p) => p.id)), [parts]);
   const [st, setSt] = useState(MODEL_DEFAULT);
-  const [controls, setControls] = useState(!compact);
   const [news, setNews] = useState(null);
+  const tiles = parts.filter((p) => p.open && isControl(p.id, open));
+  const chips = parts.filter((p) => !p.open || !isControl(p.id, open));
+  const [sel, setSel] = useState(null);
+  const [chip, setChip] = useState(null);
+  const cur = tiles.find((p) => p.id === sel) || tiles[0] || null;
   const set = (patch) => setSt((s) => ({ ...s, ...patch }));
   const r = modelReadout(st, open);
-  const sold = r.mode === 'demand' ? r.qd : r.sold;
-  const queue = Math.round(sold / 8);
-  const short = r.mode === 'ceiling' ? Math.round(r.shortage / 8) : 0;
+  const story = modelStory(st, open);
   const assembled = open.has('seal');
+  const touched = tiles.some((p) => changedPart(p.id, st, news));
   const control = (p) => {
     switch (p.id) {
-      case 'demand': return open.has('supply')
-        ? <div className="lm-part-text">Цену теперь находит рынок — там, где спрос встречает предложение.</div>
-        : <Slider id="price" label="Цена чашки" value={st.price} min={10} max={35} onChange={(v) => set({ price: v })} scale={['10 кр.', '35 кр.']} />;
-      case 'income': case 'tea': case 'grain': return <Slider id={p.id} label={p.title} value={st[p.id]} min={-2} max={2} onChange={(v) => set({ [p.id]: v })} scale={SCALE3[p.id]} />;
-      case 'ceiling': return (
-        <div>
-          <label style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input type="checkbox" checked={st.ceiling != null} data-testid="model-ceiling-on" onChange={(e) => { Audio.play('tick'); set({ ceiling: e.target.checked ? 15 : null }); }} /> Ввести потолок{st.ceiling != null ? `: ${st.ceiling} кр.` : ''}
-          </label>
-          {st.ceiling != null && <Slider id="ceiling" label="Потолок цены" value={st.ceiling} min={10} max={30} onChange={(v) => set({ ceiling: v })} scale={['10 кр.', '30 кр.']} />}
+      case 'demand': return (
+        <div className="lm-price">
+          <input type="range" className="lm-range" min={10} max={35} step={1} value={st.price} aria-label="Цена чашки" data-testid="model-price"
+            onChange={(e) => { Audio.play('tick'); set({ price: Number(e.target.value) }); }} />
+          <div className="lm-scale"><span>10 кр.</span><b className="ds-num">{st.price} кр.</b><span>35 кр.</span></div>
         </div>
       );
+      case 'income': case 'tea': case 'grain': return <Steps id={p.id} label={p.title} options={factorOptions(p.id)} value={st[p.id]} onPick={(v) => set({ [p.id]: v })} />;
+      case 'ceiling': return <Steps id="ceiling" label="Потолок цены" options={ceilingOptions} value={st.ceiling} onPick={(v) => set({ ceiling: v })} />;
+      case 'elastic': return <Steps id="elastic" label="Чувствительность покупателей к цене" options={elasticOptions} value={st.elastic} onPick={(v) => set({ elastic: v })} />;
       case 'news': return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+        <div className="lm-news-list">
           {MODEL_NEWS.map((n) => (
-            <button key={n.id} type="button" className="ds-chip" style={{ margin: 0, fontSize: 13.5, padding: '6px 9px' }} aria-pressed={news === n.id} data-testid={`model-news-${n.id}`}
+            <button key={n.id} type="button" className="lm-news-btn" aria-pressed={news === n.id} data-testid={`model-news-${n.id}`}
               onClick={() => { Audio.play('paper'); setNews(n.id); setSt({ ...MODEL_DEFAULT, trace: st.trace, elastic: st.elastic, ...n.set }); }}>
-              <Newspaper size={14} aria-hidden="true" /> {n.title}
+              <Newspaper size={15} aria-hidden="true" /><span>{n.title}</span>
             </button>
           ))}
         </div>
       );
       case 'trace': return (
-        <label style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input type="checkbox" checked={st.trace !== false} onChange={(e) => set({ trace: e.target.checked })} /> Пунктиром — рынок без сдвигов
-        </label>
+        <button type="button" role="switch" aria-checked={st.trace !== false} className="lm-switch" data-testid="model-trace" onClick={() => { Audio.play('tick'); set({ trace: st.trace === false }); }}>
+          <span className="knob" aria-hidden="true" />Пунктиром — рынок без сдвигов
+        </button>
       );
-      case 'elastic': return <Slider id="elastic" label="Чувствительность покупателей" value={st.elastic} min={1} max={6} step={0.5} onChange={(v) => set({ elastic: v })} scale={['слабо реагируют', 'сильно']} />;
       default: return null;
     }
   };
+  const caption = (p) => (p.id === 'demand' ? null : p.id === 'trace' || p.id === 'news' ? null : <div className="lm-caption">Сейчас: <b>{stateWord(p.id, st, news)}</b></div>);
   return (
-    <div data-testid={testid} data-open={prog.open} data-total={prog.total} data-assembled={String(assembled)}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+    <div className="lm" data-testid={testid} data-open={prog.open} data-total={prog.total} data-assembled={String(assembled)}>
+      <div className="lm-head">
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="ds-eyebrow">Живая модель юнита</div>
-          <div className="ds-h3">Рынок капучино у «Торговой»</div>
+          <div className="lm-title">Рынок капучино у «Торговой»</div>
+          {assembled && <span className="lm-badge" data-testid="model-seal"><BadgeCheck size={14} aria-hidden="true" />Модель собрана</span>}
         </div>
-        <span className="ds-sub" style={{ fontSize: 13 }} data-testid="model-progress">
-          <span className="lm-pips" aria-hidden="true">{parts.filter((p) => !p.outside).map((p) => <i key={p.id} className={p.open ? 'on' : ''} />)}</span> {prog.open} из {prog.total}
-        </span>
+        <PartsRing open={prog.open} total={prog.total} />
       </div>
       {prog.open === 0 ? (
-        <div className="ds-sub" style={{ fontSize: 14, margin: '8px 0' }} data-testid="model-empty">Модель соберётся по ходу юнита: каждый урок добавит деталь. Первая — в уроке «{parts[0].where}».</div>
+        <div className="lm-empty">
+          <svg viewBox="0 0 200 120" className="lm-ghost" aria-hidden="true">
+            <path d="M24,10 V104 H190" fill="none" stroke="var(--ds-rule2)" strokeWidth="2" />
+            <path d="M34,18 L176,98" fill="none" stroke={D_INK} strokeOpacity=".28" strokeWidth="4" strokeDasharray="7 7" strokeLinecap="round" />
+            <path d="M34,92 L176,24" fill="none" stroke={S_INK} strokeOpacity=".28" strokeWidth="4" strokeDasharray="7 7" strokeLinecap="round" />
+            <circle cx="105" cy="58" r="7" fill="var(--ds-ink3)" opacity=".35" />
+          </svg>
+          <div className="ds-sub" style={{ fontSize: 14.5, lineHeight: 1.45 }} data-testid="model-empty">Модель соберётся по ходу юнита: каждый урок добавит деталь. Первая — в уроке «{parts[0].where}».</div>
+        </div>
       ) : (
         <>
-          <Street queue={queue} short={short} cafes={open.has('supply') ? 3 : 1} price={Math.round(r.p)} label={`Улица: продают ${Math.round(sold)} чашек в день по ${r1(r.p)} кр.`} />
-          <ModelChart r={r} open={open} st={st} />
-          <div className="lm-read" data-testid="model-readout">
-            {r.mode === 'demand' ? <>При цене <b>{r.p} кр.</b> купят <b>{Math.round(r.qd)}</b> чашек в день</>
-              : r.mode === 'ceiling' ? <>Потолок <b>{r.p} кр.</b>: хотят <b>{Math.round(r.qd)}</b>, продают <b>{Math.round(r.qs)}</b> — <b style={{ color: 'var(--ds-bad)' }}>дефицит {Math.round(r.shortage)}</b></>
-                : <>Равновесие: <b>{r1(r.eq.p)} кр.</b> и <b>{Math.round(r.eq.q)}</b> чашек в день</>}
-          </div>
-          {open.has('board') && r.mode !== 'demand' && (
-            <div className="lm-board" data-testid="model-board">
-              <div><b>{r1(r.p)}</b><span>цена, кр.</span></div>
-              <div><b>{Math.round(r.sold)}</b><span>чашек в день</span></div>
-              <div><b>{Math.round(r.p * r.sold)}</b><span>выручка, кр.</span></div>
+          <div className="lm-stage"><LiveChart r={r} open={open} trace={open.has('trace') && st.trace !== false} /></div>
+          <Board r={r} open={open} />
+          <div className={`lm-story ${story.changed ? 'on' : ''}`} data-testid="model-readout" aria-live="polite">{story.text}</div>
+          {tiles.length > 0 && (
+            <div className="lm-tiles" data-testid="model-parts">
+              {tiles.map((p) => {
+                const Icon = PART_ICON[p.id] || Coffee;
+                const on = cur && cur.id === p.id;
+                return (
+                  <button key={p.id} type="button" className={`lm-tile ${on ? 'on' : ''} ${changedPart(p.id, st, news) ? 'changed' : ''}`} aria-pressed={on}
+                    data-testid="model-part" data-part={p.id} data-open="true" onClick={() => { Audio.play('paper'); setSel(p.id); }}>
+                    <span className="lm-tile-ic"><Icon size={17} aria-hidden="true" /></span>
+                    <span className="lm-tile-txt"><b>{p.id === 'demand' ? 'Цена чашки' : p.title}</b><span>{stateWord(p.id, st, news)}</span></span>
+                  </button>
+                );
+              })}
             </div>
           )}
-          {assembled && <div style={{ display: 'flex', justifyContent: 'center' }} data-testid="model-seal"><Stamp text="МОДЕЛЬ СОБРАНА" size={84} color="var(--u-ink)" rotate={-6} /></div>}
-          {compact && (
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4 }}>
-              <Button variant="ghost" small data-testid="model-toggle" aria-expanded={controls} onClick={() => { Audio.play('paper'); setControls((v) => !v); }}>
-                {controls ? 'Свернуть детали' : 'Крутить модель'}
-              </Button>
+          {cur && (
+            <div className="lm-panel" key={cur.id} data-testid="model-panel" data-panel={cur.id}>
+              <div className="lm-panel-text">{cur.id === 'demand' ? 'Поставьте цену — модель покажет, сколько чашек купят по такой цене.' : cur.text}</div>
+              {control(cur)}
+              {caption(cur)}
             </div>
           )}
         </>
       )}
-      {controls && (
-        <div className="lm-parts" data-testid="model-parts">
-          {parts.map((p) => (
-            <div key={p.id} className={`lm-part ${p.open ? '' : 'locked'}`} data-testid="model-part" data-part={p.id} data-open={String(p.open)}>
-              <div className="lm-part-head">{!p.open && <Lock size={13} aria-hidden="true" />}{p.title}</div>
-              {p.open ? <>{p.id !== 'demand' || !open.has('supply') ? <div className="lm-part-text">{p.text}</div> : null}{control(p)}</>
-                : <div className="lm-part-text">Откроется в уроке «{p.where}»{p.outside ? ` — юнит «${p.outside}»` : ''}.</div>}
-            </div>
-          ))}
-          {prog.open > 0 && (
-            <Button variant="ghost" small icon={RotateCcw} style={{ justifySelf: 'center' }} data-testid="model-reset" onClick={() => { Audio.play('paper'); setNews(null); setSt(MODEL_DEFAULT); }}>
-              Вернуть как было
-            </Button>
-          )}
+      {chips.length > 0 && (
+        <div className="lm-chips-wrap">
+          <div className="lm-chips-head">Детали модели</div>
+          <div className="lm-chips">
+            {chips.map((p) => {
+              const Icon = p.open ? Check : Lock;
+              return (
+                <button key={p.id} type="button" className={`lm-chip ${p.open ? 'got' : ''} ${chip === p.id ? 'on' : ''}`} aria-expanded={chip === p.id}
+                  data-testid="model-part" data-part={p.id} data-open={String(p.open)} onClick={() => { Audio.play('tick'); setChip(chip === p.id ? null : p.id); }}>
+                  <Icon size={13} aria-hidden="true" />{p.title}
+                </button>
+              );
+            })}
+          </div>
+          {chip && (() => {
+            const p = parts.find((x) => x.id === chip);
+            return (
+              <div className="lm-chip-note" data-testid="model-part-note" data-note={p.id}>
+                {p.open ? p.text : <>Откроется в уроке «{p.where}»{p.outside ? ` — юнит «${p.outside}»` : ''}.</>}
+              </div>
+            );
+          })()}
         </div>
       )}
+      {touched && (
+        <Button variant="ghost" small icon={RotateCcw} style={{ marginTop: 8 }} data-testid="model-reset" onClick={() => { Audio.play('paper'); setNews(null); setSt(MODEL_DEFAULT); }}>
+          Вернуть как было
+        </Button>
+      )}
     </div>
+  );
+}
+
+/* Миниатюра модели для свёрнутой строки на Пути: кривые и точка — без чисел */
+export function ModelThumb({ supply = true, empty = false }) {
+  return (
+    <svg className="lm-thumb" viewBox="0 0 64 44" width="64" height="44" aria-hidden="true">
+      <path d="M6,4 V38 H60" fill="none" stroke="var(--ds-rule2)" strokeWidth="1.5" />
+      <path d="M10,8 L56,36" fill="none" stroke={D_INK} strokeWidth="3" strokeLinecap="round" strokeOpacity={empty ? 0.3 : 1} strokeDasharray={empty ? '4 4' : undefined} />
+      {supply && <path d="M10,34 L56,10" fill="none" stroke={S_INK} strokeWidth="3" strokeLinecap="round" strokeOpacity={empty ? 0.3 : 1} strokeDasharray={empty ? '4 4' : undefined} />}
+      {!empty && supply && <circle cx="33" cy="22" r="3.6" fill="var(--ds-ink)" stroke="var(--ds-card)" strokeWidth="1.2" />}
+    </svg>
   );
 }
 

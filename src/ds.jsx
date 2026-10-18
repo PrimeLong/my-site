@@ -16,8 +16,9 @@ export const DS_CSS = `
   /* цвет юнита как текст — чуть темнее самого цвета: на светлых подложках контраст не ниже 4,5:1 */
   .ds.ds-dark { --u-ink: color-mix(in srgb, var(--u) 42%, #fff); }
   .ds *, .ds *::before, .ds *::after { box-sizing: border-box; }
-  .ds-page { min-height: 100vh; background-color: var(--ds-paper);
-    background-image: radial-gradient(ellipse 120% 55% at 50% 0%, color-mix(in srgb, var(--u) 9%, var(--ds-card)), transparent 72%); }
+  /* фон страницы — ровная бумага: подсветка сверху растягивалась на всю высоту длинной страницы
+     (глава учебника) и гасла к низу видимыми полосами */
+  .ds-page { min-height: 100vh; background-color: var(--ds-paper); }
   .ds :focus-visible { outline: 3px solid var(--ds-sel-rule); outline-offset: 2px; }
 
   /* типографика */
@@ -259,13 +260,14 @@ export function Field({ label, ...rest }) {
 }
 // плашка ответа: отметка, заголовок и пояснение
 // say — фраза Инфли (src/learn/voice.js) вместо штампа «Верно» / «Не совсем»
-export function AnswerBar({ ok, stamp, say = null, children, className, ...rest }) {
+// plain — без печати: в переписке «Истории» штамп смотрится чужеродно, там — просто заголовок
+export function AnswerBar({ ok, stamp, say = null, plain = false, children, className, ...rest }) {
   return (
     <div className={cx('ds-answer', ok ? 'ok' : 'bad', className)} {...rest}>
       <div style={{ maxWidth: 560, margin: '0 auto' }}>
         {say && !stamp
           ? <span className="ds-answer-say" data-testid="infla-say">{say}</span>
-          : <span className="ds-answer-stamp">{stamp || (ok ? 'Верно' : 'Не совсем')}</span>}
+          : <span className={plain ? 'ds-answer-say' : 'ds-answer-stamp'}>{stamp || (ok ? 'Верно' : 'Не совсем')}</span>}
         {children}
       </div>
     </div>

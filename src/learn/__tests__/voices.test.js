@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { voiceFor, HERO_VOICE, VOICE_CAPTION } from '../voices.js';
+import { voiceFor, HERO_VOICE, VOICE_CAPTION, speechText } from '../voices.js';
 import { CAST } from '../cast.js';
 
 /* Голоса героев: у каждого свой темп и высота, а при нескольких русских голосах — свой голос. */
@@ -33,4 +33,29 @@ describe('голоса героев', () => {
     expect(voiceFor('oleg', [...BROWSER].reverse()).voice.name).toBe(voiceFor('oleg', BROWSER).voice.name);
   });
   it('подпись под эфиром', () => { expect(VOICE_CAPTION).toBe('голос синтезирован браузером'); });
+});
+
+/* Озвучка чисел: «10 000» голос читал как «10» и «000» — разряды склеиваются; «кр.» — «крон».
+   Подсветка слов идёт по исходному тексту: каждый символ озвучки помнит, откуда он. */
+describe('текст для голоса', () => {
+  it('склеивает разряды с обычным, неразрывным и узким пробелом', () => {
+    expect(speechText('корзина подорожала с 10 000 до 10 700 крон').say).toBe('корзина подорожала с 10000 до 10700 крон');
+    expect(speechText('бюджет 1 250 000 крон').say).toBe('бюджет 1250000 крон');
+  });
+  it('не склеивает разные числа и годы с числами', () => {
+    expect(speechText('с 10 до 12').say).toBe('с 10 до 12');
+    expect(speechText('в 2026 году 15 человек').say).toBe('в 2026 году 15 человек');
+  });
+  it('«кр.» читается как «крон», точка в конце предложения остаётся', () => {
+    expect(speechText('Чашка — 100 кр. в день').say).toBe('Чашка — 100 крон в день');
+    expect(speechText('Чашка стоит 100 кр. Дорого.').say).toBe('Чашка стоит 100 крон. Дорого.');
+    expect(speechText('покупки — 300 кр.').say).toBe('покупки — 300 крон.');
+  });
+  it('карта символов ведёт обратно в исходный текст', () => {
+    const text = 'с 10 000 крон';
+    const { say, map } = speechText(text);
+    expect(map).toHaveLength(say.length + 1);
+    // «крон» в озвучке начинается там же, где в исходном тексте
+    expect(map[say.indexOf('крон')]).toBe(text.indexOf('крон'));
+  });
 });

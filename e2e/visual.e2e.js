@@ -5,6 +5,16 @@
    Обновить эталоны после намеренной правки вида:
    npx playwright test e2e/visual.e2e.js --project=phone --update-snapshots */
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import utilsBundle from 'playwright-core/lib/utilsBundle';
+
+const { PNG } = utilsBundle;
+
+/* Текст рисуется одинаково на любой машине. Chromium берёт сглаживание и привязку букв к пикселю
+   из настроек шрифтов системы: на CI края букв были цветными (LCD) и буквы стояли по целым
+   пикселям, локально — серые края и дробные позиции; эталоны расходились на всех строках текста.
+   Серое сглаживание и буквы по целым пикселям — везде. */
+test.use({ launchOptions: { ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}), args: ['--disable-lcd-text', '--disable-font-subpixel-positioning'] } });
 
 const ACCOUNT = { token: 't', login: 'tester', name: 'Тест', emblem: 'star', kidsMode: false };
 const NOW = new Date('2026-10-05T10:00:00');
@@ -27,6 +37,61 @@ async function prepare(page, { account = true } = {}) {
   }, { acc: account, a: ACCOUNT });
   return errors;
 }
+/* Снимок не совпал — в ошибке сказано, где: полосы строк с отличиями и элементы под ними. На CI
+   картинки расхождений лежат в артефакте, а причина нужна прямо в логе. */
+async function match(page, name, opts = SHOT) {
+  try {
+    await expect(page).toHaveScreenshot(name, opts);
+  } catch (e) {
+    let base = null;
+    try { base = PNG.sync.read(readFileSync(test.info().snapshotPath(name))); } catch { /* эталона нет */ }
+    const now = PNG.sync.read(await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' }));
+    if (base && base.width === now.width && base.height === now.height) {
+      const bands = [];
+      for (let y = 0; y < base.height; y += 1) {
+        let hit = false;
+        for (let x = 0; x < base.width && !hit; x += 1) {
+          const i = (y * base.width + x) * 4;
+          hit = Math.abs(base.data[i] - now.data[i]) + Math.abs(base.data[i + 1] - now.data[i + 1]) + Math.abs(base.data[i + 2] - now.data[i + 2]) > 60;
+        }
+        if (!hit) continue;
+        const b = bands[bands.length - 1];
+        if (b && y - b[1] <= 3) b[1] = y; else bands.push([y, y]);
+      }
+      const where = await page.evaluate((list) => list.map(([a, b]) => {
+        const name = (el) => {
+          if (!el) return '—';
+          const cls = String(el.className && el.className.baseVal != null ? el.className.baseVal : el.className || '').split(' ')[0];
+          return `${el.tagName.toLowerCase()}${el.dataset && el.dataset.testid ? `[${el.dataset.testid}]` : ''}${cls ? `.${cls}` : ''} «${(el.textContent || '').trim().slice(0, 24)}»`;
+        };
+        // у длинной полосы — и её начало: там обычно то, что сдвинуло всё ниже
+        const ys = b - a > 120 ? [a + 4, (a + b) / 2] : [(a + b) / 2];
+        return `${a}–${b}: ${ys.map((y) => [60, 206, 350].map((x) => name(document.elementFromPoint(x, y))).join(' | ')).join(' ‖ ')}`;
+      }), bands.slice(0, 14));
+      // насколько сильны отличия: слабые — сглаживание текста, сильные — другой цвет или сдвиг
+      const hist = [0, 0, 0]; const samples = [];
+      for (let k = 0; k < base.data.length; k += 4) {
+        const d = Math.max(Math.abs(base.data[k] - now.data[k]), Math.abs(base.data[k + 1] - now.data[k + 1]), Math.abs(base.data[k + 2] - now.data[k + 2]));
+        if (d > 20) hist[d < 60 ? 0 : d < 140 ? 1 : 2] += 1;
+        if (d > 60 && samples.length < 6 && (!samples.length || k / 4 - samples[samples.length - 1].i > base.width * 20)) {
+          const i = k / 4; const x = i % base.width; const y = Math.floor(i / base.width);
+          samples.push({ i, x, y, was: base.data.slice(k, k + 3).join(','), is: now.data.slice(k, k + 3).join(',') });
+        }
+      }
+      const css = await page.evaluate((pts) => pts.map(({ x, y }) => {
+        const el = document.elementFromPoint(x, y); if (!el) return '—';
+        const c = getComputedStyle(el);
+        return `${el.tagName.toLowerCase()} color ${c.color} bg ${c.backgroundColor} font ${c.fontWeight} ${c.fontSize} ${c.fontFamily.split(',')[0]} opacity ${c.opacity}`;
+      }), samples);
+      const fonts = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family} ${f.weight}`).join(', '));
+      e.message += `\n${name}: прокрутка ${await page.evaluate(() => Math.round(window.scrollY))}, полосы отличий (y — элементы):\n  ${where.join('\n  ')}`
+        + `\n  сила отличий (пикселей): слабые ${hist[0]}, средние ${hist[1]}, сильные ${hist[2]}`
+        + `\n  ${samples.map((p, k) => `(${p.x},${p.y}) было ${p.was} → стало ${p.is}: ${css[k]}`).join('\n  ')}`
+        + `\n  шрифты: ${fonts}`;
+    }
+    throw e;
+  }
+}
 // Мир и Профиль — под вкладкой «⋯»
 async function tab(page, id) {
   if (id === 'world' || id === 'profile') {
@@ -44,7 +109,7 @@ test.describe('визуальные эталоны', () => {
     const errors = await prepare(page, { account: false });
     await page.goto('/', { waitUntil: 'networkidle' });
     await expect(page.getByTestId('welcome')).toBeVisible();
-    await expect(page).toHaveScreenshot('01-welcome.png', SHOT);
+    await match(page, '01-welcome.png');
     expect(errors).toEqual([]);
   });
 
@@ -52,25 +117,25 @@ test.describe('визуальные эталоны', () => {
     const errors = await prepare(page);
     await page.goto('/', { waitUntil: 'networkidle' });
     await expect(page.getByTestId('path')).toBeVisible();
-    await expect(page).toHaveScreenshot('02-path.png', SHOT);
+    await match(page, '02-path.png');
     await page.getByTestId('tasks-card').click();
     await expect(page.getByTestId('tasks')).toBeVisible();
-    await expect(page).toHaveScreenshot('03-tasks.png', SHOT);
+    await match(page, '03-tasks.png');
     await page.locator('[data-nav="back"]').filter({ visible: true }).click();
     await page.locator('[data-testid=path-lesson][data-lesson="sc-i1"]').click();
     await expect(page.getByTestId('lesson-sheet')).toBeVisible();
-    await expect(page).toHaveScreenshot('04-lesson-sheet.png', SHOT);
+    await match(page, '04-lesson-sheet.png');
     await page.getByTestId('lesson-start').click();
     await expect(page.getByTestId('lesson')).toBeVisible();
-    await expect(page).toHaveScreenshot('05-lesson-step.png', SHOT);
+    await match(page, '05-lesson-step.png');
     await page.getByRole('button', { name: 'Выйти из урока' }).click();
     await expect(page.getByTestId('lesson')).toHaveCount(0);
     await tab(page, 'shop');
     await expect(page.getByTestId('shop')).toBeVisible();
-    await expect(page).toHaveScreenshot('06-shop.png', SHOT);
+    await match(page, '06-shop.png');
     await tab(page, 'profile');
     await expect(page.getByTestId('learn-profile')).toBeVisible();
-    await expect(page).toHaveScreenshot('07-profile.png', SHOT);
+    await match(page, '07-profile.png');
     expect(errors).toEqual([]);
   });
 
@@ -79,10 +144,10 @@ test.describe('визуальные эталоны', () => {
     await page.goto('/', { waitUntil: 'networkidle' });
     await tab(page, 'book');
     await expect(page.getByTestId('textbook')).toBeVisible();
-    await expect(page).toHaveScreenshot('08-book-toc.png', SHOT);
+    await match(page, '08-book-toc.png');
     await page.getByTestId('textbook').getByRole('button', { name: /Спрос и предложение/ }).click();
     await expect(page.getByTestId('chapter')).toBeVisible();
-    await expect(page).toHaveScreenshot('09-chapter.png', SHOT);
+    await match(page, '09-chapter.png');
     expect(errors).toEqual([]);
   });
 
@@ -92,7 +157,7 @@ test.describe('визуальные эталоны', () => {
     await tab(page, 'world');
     await expect(page.getByTestId('world')).toBeVisible();
     // бегущая строка с курсами — живая, её прячем
-    await expect(page).toHaveScreenshot('10-world.png', { ...SHOT, mask: [page.locator('.menu-ticker')] });
+    await match(page, '10-world.png', { ...SHOT, mask: [page.locator('.menu-ticker')] });
     expect(errors).toEqual([]);
   });
 });

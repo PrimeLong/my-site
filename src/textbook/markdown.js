@@ -584,9 +584,10 @@ function parseExercise(kind, attrs, body) {
    на эластичности (chart=elastic) — in / el (спрос неэластичный: кривая крутая, выручка от
    подорожания растёт; эластичный: кривая пологая, выручка падает).
    Текст до пунктов — условие игры.
-     keep — «Держи инфляцию» (src/learn/keep.js): заголовки «- текст >> +2» — на сколько пунктов
-     новость толкает инфляцию; ученик двигает ставку, чтобы вернуть инфляцию в коридор цели. */
-const ROUND_KINDS = ['swipe', 'rush', 'keep'];
+     wallet — «Сбереги кошелёк» (src/learn/wallet.js): новости «- текст >> high|mid|low» — какую
+     инфляцию сулит новость; игра сама подбирает к каждой прогноз и ставку банка. */
+const ROUND_KINDS = ['swipe', 'rush', 'wallet'];
+const WALLET_LEVELS = ['high', 'mid', 'low'];
 export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'], costs: ['fc', 'vc'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
@@ -595,14 +596,15 @@ function parseRound(kind, attrs, body) {
   if (chart && !ROUND_EFFECTS[chart]) throw new Error(`В игре ${attrs.id} неизвестный график ${chart}`);
   const item = (l) => /^-\s/.test(l.trim());
   const g = { type: 'round', kind, id: attrs.id, title: attrs.title || '', chart, ...(chart === 'market' ? { market: market(attrs) } : {}), prompt: parseBlocks(body.filter((l) => !item(l)).join('\n')), seconds: attrs.seconds ? Number(attrs.seconds) : null };
-  if (kind === 'keep') {
+  if (kind === 'wallet') {
     g.items = body.filter(item).map((l) => {
       const [t, tail = ''] = l.trim().slice(2).split(/\s>>\s/);
-      const effect = Number(tail.trim().replace('−', '-'));
-      if (!Number.isFinite(effect) || effect === 0 || Math.abs(effect) > 4) throw new Error(`В игре ${attrs.id}: у «${t}» толчок должен быть числом от −4 до +4, не нулём`);
-      return { raw: t.trim(), text: parseInline(t.trim()), effect };
+      const level = tail.trim();
+      if (!WALLET_LEVELS.includes(level)) throw new Error(`В игре ${attrs.id}: у «${t}» уровень инфляции — ${WALLET_LEVELS.join(', ')}`);
+      return { raw: t.trim(), text: parseInline(t.trim()), level };
     });
-    if (g.items.length < 3) throw new Error(`В игре ${attrs.id} меньше трёх пунктов`);
+    // в одной игре до трёх лет одного уровня — новостей каждого уровня нужно не меньше трёх
+    WALLET_LEVELS.forEach((lv) => { if (g.items.filter((it) => it.level === lv).length < 3) throw new Error(`В игре ${attrs.id} меньше трёх новостей уровня ${lv}`); });
     return g;
   }
   const sides = kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];

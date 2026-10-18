@@ -3,7 +3,7 @@
    карточкой, «Забрать» открывает окно вручения; лестница всех семи лиг; таблица группы,
    разделённая на три зоны: повышение, «остаётесь в лиге», понижение. В воскресенье — перерыв. */
 import React, { useEffect, useState } from 'react';
-import { ArrowUp, ArrowDown, Minus, ChevronDown, Lock, Coffee, X } from 'lucide-react';
+import { ArrowUp, ArrowDown, Minus, ChevronDown, Lock, Coffee, X, Hourglass } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, Card, Sheet, IconButton } from './ds.jsx';
 import { LEAGUE_BY_ID, LEAGUES, PROMOTE, GROUP, DEMOTE, PLACE_COINS, leagueState, claimLeague, pendingRewards } from './learn/league.js';
@@ -11,6 +11,7 @@ import { coinsWord, plural } from './learn/rewards.js';
 import { loadAccount, accountKidsMode } from './account.jsx';
 import { accountLeagueNames } from './lib/client.js';
 import { dayOf } from './textbook/learn-state.js';
+import { newsDate } from './learn/news.js';
 import { CoinShower } from './ds-art.jsx';
 
 const LEAGUE_CSS = `
@@ -58,6 +59,14 @@ const LEAGUE_CSS = `
   .lg-rules summary { cursor: pointer; font: 700 15px var(--ds-sans); padding: 6px 0; }
   .lg-rules ul { margin: 6px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.5; }
   .lg-rest { display: flex; gap: 10px; align-items: center; }
+  /* ждём понедельника: песочные часы покачиваются, места группы — пустые кружки, которые «занимаются» по очереди */
+  .lg-wait { border-color: color-mix(in srgb, var(--u) 50%, var(--ds-rule2)); background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); }
+  .lg-wait-ico { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--u-ink); background: color-mix(in srgb, var(--u) 14%, var(--ds-card)); animation: lg-tilt 2.6s ease-in-out infinite; }
+  @keyframes lg-tilt { 0%, 70%, 100% { transform: rotate(0) } 80% { transform: rotate(180deg) } }
+  .lg-wait-seats { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; max-width: 260px; margin: 4px auto 10px; }
+  .lg-wait-seats i { aspect-ratio: 1; border-radius: 50%; border: 1.5px dashed var(--ds-rule2); animation: lg-seat 3s ease-in-out infinite; animation-delay: calc(var(--i) * 120ms); }
+  @keyframes lg-seat { 0%, 60%, 100% { background: transparent } 30% { background: color-mix(in srgb, var(--u) 30%, transparent); border-color: transparent } }
+  @media (prefers-reduced-motion: reduce) { .lg-wait-ico, .lg-wait-seats i { animation: none; } }
 `;
 const NAMES_KEY = 'ems-league-names';
 /* Имена учеников, разрешивших показ в лигах: раз в день с сервера, хранятся на устройстве.
@@ -142,6 +151,18 @@ function RewardSheet({ got, onClose }) {
 // что нужно сейчас — одной карточкой: до повышения, удержаться, выбраться из понижения
 function GoalCard({ st }) {
   const lg = LEAGUE_BY_ID[st.league];
+  // пришли посреди недели: соперники набирают опыт с понедельника — начнём честно, с нуля
+  if (st.waiting) {
+    return (
+      <div className="lg-goal lg-wait" data-testid="league-goal" data-kind="wait">
+        <div className="lg-rest"><span className="lg-wait-ico" aria-hidden="true"><Hourglass size={20} /></span>
+          <div><b>Ваша первая неделя лиги — с понедельника, {newsDate(st.startsOn)}</b>
+            <div style={{ fontSize: 14, marginTop: 2 }}>Эта неделя уже идёт: соперники набирают опыт с понедельника. Чтобы всё было честно, вы начнёте вместе со всеми — в группе из {GROUP} учеников Бронзовой лиги. А пока проходите уроки на Пути — серия, задания дня и копилка уже работают.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (st.rest) {
     const h = st.history[st.history.length - 1];
     const moved = h && h.week === st.week ? h : null;
@@ -216,10 +237,11 @@ export function LeagueView({ learn, update, now = Date.now() }) {
           <div className="ds-eyebrow">Лига недели</div>
           <h1 data-testid="league-title">{lg.title} лига</h1>
           <div className="lg-place" data-testid="league-status">
-            {st.joined ? <>{placeWord(st.me.place)} из {GROUP} · {st.me.xp} опыта</> : 'Вы ещё не в лиге на этой неделе'}
+            {st.waiting ? 'Старт — в понедельник' : st.joined ? <>{placeWord(st.me.place)} из {GROUP} · {st.me.xp} опыта</> : 'Вы ещё не в лиге на этой неделе'}
           </div>
           <div className="lg-when" data-testid="league-when">
-            {st.rest ? <><Coffee size={14} aria-hidden="true" /> Перерыв до понедельника</> : <>{st.daysLeft} {plural(st.daysLeft, 'день', 'дня', 'дней')} до итогов</>}
+            {st.waiting ? <><Hourglass size={14} aria-hidden="true" /> {newsDate(st.startsOn)} — первая неделя</>
+              : st.rest ? <><Coffee size={14} aria-hidden="true" /> Перерыв до понедельника</> : <>{st.daysLeft} {plural(st.daysLeft, 'день', 'дня', 'дней')} до итогов</>}
           </div>
         </div>
       </div>
@@ -256,6 +278,12 @@ export function LeagueView({ learn, update, now = Date.now() }) {
         })}
       </div>
 
+      {st.waiting ? (
+        <Card flat style={{ marginTop: 14, textAlign: 'center', fontSize: 14.5 }} data-testid="league-wait-table">
+          <div className="lg-wait-seats" aria-hidden="true">{Array.from({ length: GROUP }, (_, k) => <i key={k} style={{ '--i': k }} />)}</div>
+          Группа из {GROUP} учеников соберётся в понедельник.
+        </Card>
+      ) : (<>
       <h2 className="ds-h2" style={{ fontSize: 18, margin: '14px 0 0' }}>{st.rest ? 'Итоги недели' : 'Ваша группа'}</h2>
       <div data-testid="league-table">
         {zones.map((z) => {
@@ -281,6 +309,7 @@ export function LeagueView({ learn, update, now = Date.now() }) {
           );
         })}
       </div>
+      </>)}
 
       <div className="lg-rules">
         <Button small variant="ghost" icon={ChevronDown} aria-expanded={rules} onClick={() => setRules((x) => !x)} data-testid="league-rules-toggle">Как устроены лиги</Button>
@@ -289,6 +318,7 @@ export function LeagueView({ learn, update, now = Date.now() }) {
             <li>Неделя лиги — с понедельника по субботу, место — по опыту за эти дни. Воскресенье — перерыв: итоги и награда.</li>
             <li>По итогам первые {PROMOTE} поднимаются в следующую лигу, последние {DEMOTE} опускаются, остальные остаются.</li>
             <li>1–3 место: {PLACE_COINS.join(', ')} монет. Неделя без уроков лигу не меняет.</li>
+            <li>Новичок начинает с ближайшего понедельника: в уже идущую неделю не попадают.</li>
           </ul>
         )}
       </div>

@@ -25,3 +25,47 @@ export function InflatiaMark({ size = 48, title = 'Инфляция' }) {
     </svg>
   );
 }
+
+/* Заставка загрузки — в стиле знака: монета-шарик надувается, покачивается на нитке, вокруг
+   медленно вращается розетка, как водяной знак купюры; под ней — подпись и три точки. Появляется
+   с задержкой: быстрая загрузка не мигает заставкой. Без движения — при «уменьшить движение». */
+const LOADER_CSS = `
+  .bl { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; animation: bl-in .3s ease-out .18s both; }
+  .bl-stage { position: relative; width: 132px; height: 132px; display: grid; place-items: center; }
+  .bl-ring { position: absolute; inset: 0; animation: bl-spin 14s linear infinite; }
+  .bl-coin { position: relative; animation: bl-inflate .9s cubic-bezier(.3,1.5,.5,1) .2s both, bl-bob 2.6s ease-in-out 1.1s infinite; transform-origin: 50% 80%; }
+  .bl-shadow { position: absolute; bottom: 4px; width: 46px; height: 7px; border-radius: 50%; background: currentColor; opacity: .12; animation: bl-shadow 2.6s ease-in-out 1.1s infinite; }
+  .bl-text { font: 600 14px/1.3 'PT Sans', sans-serif; letter-spacing: .04em; opacity: .8; display: flex; align-items: baseline; gap: 2px; }
+  .bl-dots i { display: inline-block; width: 4px; height: 4px; margin-left: 3px; border-radius: 50%; background: currentColor; animation: bl-dot 1.2s ease-in-out infinite; }
+  .bl-dots i:nth-child(2) { animation-delay: .15s; } .bl-dots i:nth-child(3) { animation-delay: .3s; }
+  @keyframes bl-in { from { opacity: 0 } }
+  @keyframes bl-spin { to { transform: rotate(360deg) } }
+  @keyframes bl-inflate { 0% { transform: scale(.45) translateY(18px); opacity: 0 } 60% { transform: scale(1.06) translateY(-4px); opacity: 1 } 100% { transform: none } }
+  @keyframes bl-bob { 0%, 100% { transform: translateY(0) rotate(-2deg) } 50% { transform: translateY(-7px) rotate(2deg) } }
+  @keyframes bl-shadow { 0%, 100% { transform: scaleX(1); opacity: .12 } 50% { transform: scaleX(.8); opacity: .07 } }
+  @keyframes bl-dot { 0%, 80%, 100% { transform: translateY(0); opacity: .35 } 40% { transform: translateY(-4px); opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .bl, .bl-ring, .bl-coin, .bl-shadow, .bl-dots i { animation: none !important; } }
+`;
+// розетка: два слоя лепестков-петель, как гильош на банкноте
+const ROSETTE = Array.from({ length: 18 }, (_, k) => {
+  const a = (k / 18) * Math.PI * 2;
+  const x = 66 + Math.cos(a) * 44; const y = 66 + Math.sin(a) * 44;
+  return `M66 66 Q ${(66 + Math.cos(a + 0.5) * 70).toFixed(1)} ${(66 + Math.sin(a + 0.5) * 70).toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}`;
+}).join(' ');
+export function BrandLoader({ text = 'Надуваем Инфлю', background, color, compact = false }) {
+  return (
+    <div className="bl" role="status" aria-live="polite" style={{ background, color, ...(compact ? { minHeight: '45vh' } : {}) }} data-testid="brand-loader">
+      <style>{LOADER_CSS}</style>
+      <div className="bl-stage" aria-hidden="true">
+        <svg className="bl-ring" viewBox="0 0 132 132" width="132" height="132">
+          <circle cx="66" cy="66" r="60" fill="none" stroke="#C9A43A" strokeOpacity=".45" strokeWidth="1.2" strokeDasharray="2 4" />
+          <path d={ROSETTE} fill="none" stroke="#C9A43A" strokeOpacity=".35" strokeWidth="1" />
+          <circle cx="66" cy="66" r="50" fill="none" stroke="#C9A43A" strokeOpacity=".3" strokeWidth=".8" />
+        </svg>
+        <span className="bl-shadow" />
+        <span className="bl-coin"><InflatiaMark size={76} title={null} /></span>
+      </div>
+      <div className="bl-text">{text}<span className="bl-dots"><i /><i /><i /></span></div>
+    </div>
+  );
+}

@@ -121,6 +121,53 @@ export function modelReadout(st, open) {
   return { m, mode: 'equilibrium', eq, p: eq.p, qd: eq.q, qs: eq.q, sold: eq.q, shortage: 0 };
 }
 
+/* Положения факторов: пять шагов от «намного ниже» до «намного выше» (−2…+2). Потолок —
+   «нет» или цена ниже исходного равновесия; чувствительность покупателей — наклон спроса. */
+export const FACTOR_STEPS = [-2, -1, 0, 1, 2];
+export const FACTOR_WORDS = {
+  income: ['намного ниже', 'ниже', 'как обычно', 'выше', 'намного выше'],
+  tea: ['намного дешевле', 'дешевле', 'как обычно', 'дороже', 'намного дороже'],
+  grain: ['намного дешевле', 'дешевле', 'как обычно', 'дороже', 'намного дороже'],
+};
+export const CEILING_STEPS = [null, 18, 16, 14, 12];
+export const ELASTIC_STEPS = [
+  { v: 1, word: 'почти не реагируют' }, { v: 2, word: 'слабо реагируют' }, { v: 3, word: 'как обычно' },
+  { v: 4.5, word: 'сильно реагируют' }, { v: 6, word: 'очень сильно реагируют' },
+];
+export const BASE_EQ = { p: 20, q: 60 };
+const r1 = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+
+/* Что произошло — одной строкой, человеческим языком: причины («доходы выше, чай дороже»), какая
+   кривая и куда ушла, и итог — цена и чашки против исходного рынка (20 кр. и 60 чашек). Строку
+   читает и экран модели, и тесты. */
+export function modelStory(st, open) {
+  const r = modelReadout(st, open);
+  const on = (id) => open.has(id);
+  const causes = [];
+  if (on('income') && st.income) causes.push(`доходы ${st.income > 0 ? 'выше' : 'ниже'}`);
+  if (on('tea') && st.tea) causes.push(`чай ${st.tea > 0 ? 'дороже' : 'дешевле'}`);
+  if (on('news') && st.taste) causes.push(st.taste > 0 ? 'кофе в моде' : 'кофе разлюбили');
+  if (on('grain') && st.grain) causes.push(`зерно ${st.grain > 0 ? 'дороже' : 'дешевле'}`);
+  if (on('elastic') && st.elastic !== 3) causes.push(`покупатели ${st.elastic > 3 ? 'чувствительнее' : 'спокойнее'} к цене`);
+  const moves = [];
+  if (r.m.dA) moves.push(`спрос сдвинулся ${r.m.dA > 0 ? 'вправо' : 'влево'}`);
+  if (r.m.dC) moves.push(`предложение сдвинулось ${r.m.dC > 0 ? 'вправо' : 'влево'}`);
+  if (on('elastic') && st.elastic !== 3 && !r.m.dA) moves.push(`спрос стал ${st.elastic > 3 ? 'положе' : 'круче'}`);
+  const head = causes.length ? `${causes.join(', ').replace(/^./, (c) => c.toUpperCase())}${moves.length ? ` → ${moves.join(', ')}` : ''}` : '';
+  let tail;
+  if (r.mode === 'demand') tail = `При цене ${r1(r.p)} кр. купят ${Math.round(r.qd)} чашек в день`;
+  else if (r.mode === 'ceiling') tail = `Потолок ${r.p} кр. ниже равновесия (${r1(r.eq.p)} кр.): хотят ${Math.round(r.qd)}, продают ${Math.round(r.qs)} — дефицит ${Math.round(r.shortage)} чашек`;
+  else {
+    const dp = r.eq.p - BASE_EQ.p; const dq = r.eq.q - BASE_EQ.q;
+    tail = Math.abs(dp) < 0.05 && Math.abs(dq) < 0.5
+      ? `Равновесие: ${r1(r.eq.p)} кр. и ${Math.round(r.eq.q)} чашек в день — здесь спрос встречает предложение`
+      : `цена ${dp > 0.05 ? 'выросла' : dp < -0.05 ? 'упала' : 'не изменилась'}: ${r1(r.eq.p)} кр., чашек ${dq > 0.5 ? 'больше' : dq < -0.5 ? 'меньше' : 'столько же'}: ${Math.round(r.eq.q)} в день`;
+    if (open.has('ceiling') && st.ceiling != null) tail += `. Потолок ${st.ceiling} кр. не ниже цены рынка — он ничего не меняет`;
+  }
+  const text = head ? `${head}${r.mode === 'equilibrium' && !tail.startsWith('Равновесие') ? ' → ' : '. '}${tail}.` : `${tail.replace(/^./, (c) => c.toUpperCase())}.`;
+  return { text, changed: causes.length > 0 || (r.mode === 'ceiling') };
+}
+
 /* ------------------------------ ГЛАГОЛЫ УЧЁБЫ ------------------------------
    Что ученик делает в задании (docs/mechanics.md): ответить, исследовать, предсказывать, строить,
    решать, объяснять. model — шаг, где он что-то делает с моделью (кривой, рынком, цепочкой), а не
@@ -130,7 +177,7 @@ export const VERBS = {
   choice: { verb: 'ответить' }, gap: { verb: 'ответить' }, tf: { verb: 'ответить' }, match: { verb: 'ответить' }, sort: { verb: 'ответить' },
   calc: { verb: 'ответить' }, shift: { verb: 'предсказывать' }, news: { verb: 'предсказывать' }, tiles: { verb: 'строить' },
   curve: { verb: 'строить', model: true }, point: { verb: 'строить', model: true }, price: { verb: 'исследовать', model: true },
-  swipe: { verb: 'предсказывать', model: true }, rush: { verb: 'предсказывать', model: true }, keep: { verb: 'решать', model: true },
+  swipe: { verb: 'предсказывать', model: true }, rush: { verb: 'предсказывать', model: true }, wallet: { verb: 'решать', model: true },
   open: { verb: 'объяснять' }, domino: { verb: 'строить', model: true }, discover: { verb: 'исследовать', model: true },
 };
 // глаголы урока: его шаги «Откройте сами» и свои упражнения (практика берёт «Домино» всегда)

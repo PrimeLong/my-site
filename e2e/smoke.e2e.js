@@ -442,6 +442,12 @@ const accountApi = (req) => {
   if (body && body.action === 'login') return JSON.stringify({ token: 'sess', profile });
   if (body && body.action === 'me') return JSON.stringify({ profile });
   if (body && body.action === 'update') return JSON.stringify({ profile: { ...profile, emblem: body.emblem || 'star' } });
+  // один друг, бывший в сети вчера, — для экранов «Друзья» и «Профиль друга»
+  if (body && body.action === 'friends') {
+    const at = Date.now() - 86400000;
+    return JSON.stringify({ me: 'tester', friends: [{ login: 'boris', name: 'Борис', emblem: 'crown', since: at,
+      card: { at, wear: {}, streak: 3, xp: 120, level: 'start', league: 'bronze', seals: ['first'], album: 1, months: [], xpDays: {}, events: [] } }], incoming: [], outgoing: [], races: [] });
+  }
   return '{}';
 };
 /* Гостевой старт: после цели — сразу первый урок без аккаунта. Выйти из урока и с Пути
@@ -470,7 +476,7 @@ test('вход: первый запуск — приветствие, цель, 
   await expect(page.getByTestId('welcome-try-say')).toContainText('закон спроса');
   const hello = page.getByTestId('welcome');
   await expect(hello).toBeVisible();
-  await expect(hello.getByTestId('mascot')).toHaveAttribute('data-mood', 'wave');
+  await expect(hello.getByTestId('mascot').first()).toHaveAttribute('data-mood', 'wave');
   await expectGateOnly(page);
   // у первого экрана «назад» нет, у остальных — один
   await expect(page.locator('[data-nav="back"]')).toHaveCount(0);
@@ -999,7 +1005,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall2.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);
-  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[aria-label="разделы 1/4"]')).toHaveCount(1);
+  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[data-testid=tb-ch-sections][data-done="1"][data-total="4"]')).toHaveCount(1);
   // ни «На сегодня», ни «Оглавления» на страницах: один «назад» вверху
   await expect(page.getByTestId('today-card')).toHaveCount(0);
 
@@ -1330,7 +1336,7 @@ test('задача на 10 минут: цель на экране, прогно�
 
 /* ------------------------------ ПУТЬ УРОКОВ ------------------------------
    Правильный ответ упражнения приложение отдаёт в data-answer только при флаге теста. */
-async function answerExercise(page, { wrong = false } = {}) {
+async function answerExercise(page, { wrong = false, skipOpen = false } = {}) {
   const ex = page.getByTestId('ex');
   const kind = await ex.getAttribute('data-kind');
   const ans = JSON.parse(await ex.getAttribute('data-answer'));
@@ -1374,11 +1380,12 @@ async function answerExercise(page, { wrong = false } = {}) {
     await svg.click({ position: { x: ((pl.x0 + (q / pl.qMax) * pl.w) / pl.vw) * box.width, y: ((pl.y0 + pl.h - (pr / pl.pMax) * pl.h) / pl.vh) * box.height } });
   } else if (kind === 'swipe' || kind === 'rush') {
     await playRound(page, () => wrong);
-  } else if (kind === 'keep') {
-    await playKeep(page, { wrong });
+  } else if (kind === 'wallet') {
+    await playWallet(page, { wrong });
   } else if (kind === 'open') {
-    // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор
-    await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
+    // открытый вопрос: неверного ответа нет — пишем свой и читаем разбор; или пропускаем — разбор откроется и так
+    if (skipOpen) await page.getByTestId('open-skip').click();
+    else await ex.getByTestId('open-answer').fill('Я бы не вводил потолок, а помог студентам адресно.');
   } else if (kind === 'domino') {
     // «Домино»: звенья по порядку; ошибка — ложная карточка роняет домино, дальше — с верного места
     const dom = ex.getByTestId('domino');
@@ -1387,13 +1394,14 @@ async function answerExercise(page, { wrong = false } = {}) {
     for (const k of ans.slice(1)) await dom.locator(`[data-key="${k}"]`).click();
   }
   // мини-игра и «Домино» проверяются сами, когда доиграны
-  if (!['swipe', 'rush', 'keep', 'domino'].includes(kind)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
+  if (!['swipe', 'rush', 'wallet', 'domino'].includes(kind) && !(kind === 'open' && skipOpen)) await page.getByRole('button', { name: kind === 'open' ? 'Ответить' : 'Проверить' }).click();
   const fb = page.getByTestId('ex-feedback');
   await expect(fb).toHaveAttribute('data-ok', String(!wrong || kind === 'open'));
+  if (kind === 'open' && skipOpen) { await expect(page.getByTestId('lesson-foot')).toContainText('Вопрос пропущен'); await expect(page.getByTestId('open-review')).toBeVisible(); }
   return kind;
 }
 // пройти урок до экрана итогов; wrongAt — номера упражнений, где ошибиться нарочно
-async function playLesson(page, { wrongAt = [] } = {}) {
+async function playLesson(page, { wrongAt = [], skipOpen = false } = {}) {
   const kinds = new Set();
   let retries = 0;
   let cards = 0;
@@ -1402,7 +1410,7 @@ async function playLesson(page, { wrongAt = [] } = {}) {
     // карточки перед упражнением: шаг, слово (перевернуть), пункт итогов — прочитать и дальше
     cards += await passCards(page);
     if (await page.getByTestId('ex-retry').isVisible()) retries += 1;
-    kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i) }));
+    kinds.add(await answerExercise(page, { wrong: wrongAt.includes(i), skipOpen }));
     await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   }
   await expect(page.getByTestId('lesson-result')).toBeVisible();
@@ -1595,6 +1603,8 @@ test('путь: карточка урока, «Знакомство» шагам
 });
 
 test('путь: выход после первого ответа — урок продолжается с того же места; брошенный за сутки — в статистике', async ({ page }) => {
+  // урок «Практика» играется целиком дважды — дольше минуты под нагрузкой
+  test.setTimeout(120_000);
   await withTestFlag(page);
   // уроки юнита 2 до второй «Практики» уже пройдены (прогресс кладётся один раз — перезагрузка его не стирает)
   await page.addInitScript(() => {
@@ -1878,7 +1888,7 @@ test('путь: юнит «Банк» (деньги и банки) — кажд�
   expect(errors).toEqual([]);
 });
 
-test('путь: юнит «Инфляция» — каждый урок проходится, игра «Держи инфляцию» засчитывается', async ({ page }) => {
+test('путь: юнит «Инфляция» — каждый урок проходится, игра «Сбереги кошелёк» засчитывается', async ({ page }) => {
   test.setTimeout(300_000);
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -1906,26 +1916,33 @@ test('путь: юнит «Инфляция» — каждый урок прох
   await expect(page.getByTestId('listen-text')).toContainText('корзина');
   await playLesson(page);
   await finish();
-  // «Держи инфляцию»: шкала с коридором, график, ставка; по подсказкам — зачёт
+  // «Сбереги кошелёк»: кошелёк и чашки, газета с прогнозом, шкала «прогноз — ставка», три решения
   await startLesson(page, 'in-g');
   const ex = page.getByTestId('ex');
-  await expect(ex.getByTestId('game')).toHaveAttribute('data-kind', 'keep');
-  await expect(ex.getByTestId('keep-gauge')).toBeVisible();
-  await page.evaluate(() => { window.__INFLATIA_GAME_SPEED__ = 4; });
+  await expect(ex.getByTestId('game')).toHaveAttribute('data-kind', 'wallet');
+  await expect(ex.getByTestId('game-howto')).toBeVisible();
+  await expect(ex.getByTestId('wallet-cups')).toHaveAttribute('data-cups', '100');
+  await page.evaluate(() => { window.__INFLATIA_GAME_SPEED__ = 6; });
   await ex.getByTestId('game-start').click();
-  await expect(ex.getByTestId('keep-rate')).toContainText('8%');
-  await expect(ex.getByTestId('keep-spark')).toBeVisible();
-  // стрелки клавиатуры двигают ставку
-  await page.keyboard.press('ArrowUp');
-  await expect(ex.getByTestId('keep-rate')).toContainText('9%');
-  await page.keyboard.press('ArrowDown');
-  await expect(ex.getByTestId('keep-rate')).toContainText('8%');
-  const final = ex.getByTestId('game-final');
-  while (!(await final.count())) {
-    const hint = await ex.getByTestId('game-card').getAttribute('data-hint', { timeout: 500 }).catch(() => null);
-    if (hint === 'up' || hint === 'down') await ex.locator(`button[data-side="${hint}"]`).click({ timeout: 500 }).catch(() => {});
-    else await page.waitForTimeout(80);
+  await expect(ex.getByTestId('wallet-news')).not.toBeEmpty();
+  await expect(ex.getByTestId('wallet-scale')).toBeVisible();
+  await expect(ex.getByTestId('wallet-opt')).toHaveCount(3);
+  // первый год — наличными: лучшим он не бывает, кошелёк тот же, чашек меньше; разбор — полосками
+  await ex.locator('[data-testid=wallet-opt][data-opt="cash"]').click();
+  await expect(ex.getByTestId('wallet-verdict')).toHaveAttribute('data-ok', 'false');
+  await expect(ex.getByTestId('wallet-sum')).toHaveText('10\u00A0000');
+  expect(Number(await ex.getByTestId('wallet-cups').getAttribute('data-cups'))).toBeLessThan(100);
+  await expect(ex.getByTestId('wallet-bars')).toBeVisible();
+  await ex.getByTestId('wallet-next').click();
+  // дальше — лучший выбор: 4 из 5, зачёт
+  for (let k = 2; k <= 5; k += 1) {
+    const year = ex.getByTestId('wallet-year');
+    await expect(year).toHaveAttribute('data-year', String(k));
+    await ex.locator(`[data-testid=wallet-opt][data-opt="${await year.getAttribute('data-best')}"]`).click();
+    await expect(ex.getByTestId('wallet-verdict')).toHaveAttribute('data-ok', 'true');
+    await ex.getByTestId('wallet-next').click();
   }
+  await expect(ex.getByTestId('wallet-path')).toBeVisible();
   await expect(ex.getByTestId('game-verdict')).toHaveAttribute('data-ok', 'true');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'true');
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
@@ -2147,22 +2164,22 @@ async function playRound(page, wrong = () => false, { seconds = 6, max = Infinit
   return kind;
 }
 
-/* «Держи инфляцию»: в тесте игровое время идёт вчетверо быстрее (window.__INFLATIA_GAME_SPEED__) —
-   минута игры за 15 секунд. Ставку двигаем по подсказке data-hint (куда нужно сейчас); wrong — не
-   трогать ставку вовсе: сильные новости тогда проваливаются. Проверка — сама по окончании игры. */
-async function playKeep(page, { wrong = false, speed = 4 } = {}) {
+/* «Сбереги кошелёк»: пять лет — в каждом выбрать, где держать деньги; лучший вариант игра отдаёт
+   в data-best только при флаге теста. wrong — каждый год «наличными дома» (лучшим он не бывает). */
+async function playWallet(page, { wrong = false, speed = 6 } = {}) {
   const ex = page.getByTestId('ex');
   await page.evaluate((sp) => { window.__INFLATIA_GAME_SPEED__ = sp; }, speed);
   await ex.getByTestId('game-start').click();
-  const card = ex.getByTestId('game-card');
-  const final = ex.getByTestId('game-final');
-  while (!(await final.count())) {
-    const hint = await card.getAttribute('data-hint', { timeout: 500 }).catch(() => null);
-    if (!wrong && (hint === 'up' || hint === 'down')) await ex.locator(`button[data-side="${hint}"]`).click({ timeout: 500 }).catch(() => {});
-    else await page.waitForTimeout(80);
+  for (let k = 1; k <= 5; k += 1) {
+    const year = ex.getByTestId('wallet-year');
+    await expect(year).toHaveAttribute('data-year', String(k));
+    const best = await year.getAttribute('data-best');
+    await ex.locator(`[data-testid=wallet-opt][data-opt="${wrong ? 'cash' : best}"]`).click();
+    await expect(ex.getByTestId('wallet-verdict')).toHaveAttribute('data-ok', String(!wrong));
+    await ex.getByTestId('wallet-next').click();
   }
-  await expect(final).toBeVisible();
-  return 'keep';
+  await expect(ex.getByTestId('game-final')).toBeVisible();
+  return 'wallet';
 }
 
 test('юнит 1 «Ограниченность и выбор»: все виды уроков, калькулятор в расчёте, повтор после ошибки — другой задачей', async ({ page }) => {
@@ -2304,6 +2321,10 @@ test('лента «История»: сообщения по одному, во�
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(feed.getByTestId('feed-q')).toHaveCount(1);
   await expect(feed.getByTestId('feed-msg')).toHaveCount(msgs);
+  // отвеченный вопрос — репликой: ответ ученика с галочкой, без печати и без невыбранных вариантов
+  await expect(feed.getByTestId('feed-q').getByTestId('feed-answer')).toHaveAttribute('data-ok', 'true');
+  await expect(feed.locator('.ds-answer-stamp')).toHaveCount(0);
+  await expect(feed.getByTestId('feed-q').locator('.ds-opt')).toHaveCount(0);
   // дальше — новые сообщения после вопроса; лента сама доехала до низа — новое сообщение видно целиком
   await expect(page.getByTestId('lesson-card')).toBeVisible();
   await expect.poll(() => page.locator('.ln-body').evaluate((sc) => {
@@ -2322,7 +2343,9 @@ test('лента «История»: сообщения по одному, во�
   await answerExercise(page);
   await page.getByRole('button', { name: 'Дальше', exact: true }).click();
   await expect(feed.getByTestId('feed-q')).toHaveCount(2);
-  await playLesson(page);
+  // письменный вопрос в конце истории можно пропустить
+  const { kinds } = await playLesson(page, { skipOpen: true });
+  expect(kinds.has('open')).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -2800,6 +2823,15 @@ test('навигация: у каждого экрана один «назад»
   await expectScreen(page, 'notifications', seen);
   await clickBack(page);
   await expectScreen(page, 'profile', seen);
+  // Профиль → «Друзья» → профиль друга → назад в список → назад в профиль
+  await page.getByTestId('prof-friends').click();
+  await expectScreen(page, 'friends', seen);
+  await page.getByTestId('friend-row').first().click();
+  await expectScreen(page, 'friend', seen);
+  await clickBack(page);
+  await expectScreen(page, 'friends', seen);
+  await clickBack(page);
+  await expectScreen(page, 'profile', seen);
   // Новости — вкладка под «⋯»; колокольчик на Пути — те же уведомления, «назад» — на Путь
   await openTab(page, 'news');
   await expectScreen(page, 'news', seen);
@@ -3009,12 +3041,19 @@ test('новые глаголы: «Откройте сами», живая мо�
   // модель на Пути: деталь открыта, на карте счётчика модели нет (лишний шум); закрытые — «откроется в уроке …»
   await expect(model).toHaveAttribute('data-open', '1');
   await expect(path.getByTestId('atlas-model')).toHaveCount(0);
-  await model.getByTestId('model-toggle').click();
   await expect(model.locator('[data-part="demand"]')).toHaveAttribute('data-open', 'true');
-  await expect(model.locator('[data-part="income"]')).toContainText('Откроется в уроке «Спрос: закон и сдвиги»');
-  await expect(model.locator('[data-part="elastic"]')).toContainText('юнит «Эластичность»');
+  await model.locator('[data-part="income"]').click();
+  await expect(model.getByTestId('model-part-note')).toContainText('Откроется в уроке «Спрос: закон и сдвиги»');
+  await model.locator('[data-part="elastic"]').click();
+  await expect(model.getByTestId('model-part-note')).toContainText('юнит «Эластичность»');
   await model.getByTestId('model-price').fill('30');
   await expect(model.getByTestId('model-readout')).toContainText('При цене 30 кр. купят 30');
+  await expect(model.getByTestId('model-stats')).toContainText('30');
+  // ничего не трогали — «Вернуть как было» не нужна; сдвинули цену — появилась
+  await expect(model.getByTestId('model-reset')).toBeVisible();
+  await model.getByTestId('model-reset').click();
+  await expect(model.getByTestId('model-readout')).toContainText('При цене 20 кр. купят 60');
+  await expect(model.getByTestId('model-reset')).toHaveCount(0);
 
   // «Домино» в практике — всегда: неверная карточка роняет домино с разбором, задание не засчитано
   await startLesson(page, 'sd-l1');
@@ -3331,12 +3370,13 @@ test('повторение: трудную задачу можно убрать 
     const at = Date.now() - 3 * 86400000;
     localStorage.setItem('ems-textbook-v1', JSON.stringify({
       problems: { 'mb-rounds': { tries: 1, ok: false, box: 0, due: Date.now() - 1000, lastAt: at } },
-      learn: { mistakes: [{ id: 'auto:mb-rounds', at }, { id: 'sd-i1-who', at }] },
+      learn: { mistakes: [{ id: 'auto:mb-rounds', at }, { id: 'auto:sc-oc', at }] },
     }));
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await openTasks(page);
-  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  // многошаговая задача решается только в учебнике — в «Повторить ошибки» её не считаем
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   await page.getByTestId('practice-review').click();
   const review = page.getByTestId('review');
   const item = review.locator('[data-testid=review-item][data-item="mb-rounds"]');
@@ -3351,6 +3391,7 @@ test('повторение: трудную задачу можно убрать 
   await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ems-textbook-v1')));
   expect(saved.problems['mb-rounds']).toMatchObject({ ok: false, due: null });
+  expect(saved.learn.mistakes.map((m) => m.id)).toEqual(['auto:sc-oc']);
   expect(errors).toEqual([]);
 });
 
@@ -3369,7 +3410,8 @@ test('повторение: ошибку не снять тут же, карто
   });
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   await openTasks(page);
-  await expect(page.getByTestId('practice-mistakes')).toContainText('2 упражнения');
+  // pc-basic — многошаговая: решается в учебнике, в «Повторить ошибки» её нет
+  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
   await page.getByTestId('practice-review').click();
   const review = page.getByTestId('review');
   await expect(review.getByTestId('review-item')).toHaveCount(2);
@@ -3402,9 +3444,11 @@ test('повторение: ошибку не снять тут же, карто
   await expect(review.getByTestId('review-tally')).toContainText('выучено: 1');
   await expect(review.getByTestId('review-tally')).toContainText('отложено до следующего раза: 1');
   await expect(review.getByTestId('review-empty')).toBeVisible();
-  // одно повторение: решённая в учебнике задача ушла и из ошибок Пути, нерешённая — осталась
+  // одно повторение: решённая в учебнике задача ушла и из ошибок Пути, нерешённая — осталась (в учебнике)
   await bookBack(page);
-  await expect(page.getByTestId('practice-mistakes')).toContainText('1 упражнение');
+  await expect(page.getByTestId('practice-mistakes')).toContainText('Ошибок нет');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ems-textbook-v1')));
+  expect(saved.learn.mistakes.map((m) => m.id)).toEqual(['auto:pc-basic']);
   expect(errors).toEqual([]);
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pilotUnits, instantiate } from '../course.js';
-import { findTerms, markTerms, termsIn, TERM_FORMS, termText } from '../terms.js';
+import { findTerms, markTerms, termsIn, TERM_FORMS, termText, termTitle, isWorldTerm } from '../terms.js';
 import { GLOSSARY } from '../../textbook/glossary.js';
 import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
@@ -21,9 +21,18 @@ describe('термины: формы слов', () => {
     expect(findTerms('Спросили у продавца')).toEqual([]);
     expect(findTerms('объём спроса упал').map((f) => f.text)).toEqual(['спроса']);
   });
-  it('у каждого термина с формами есть определение в словаре', () => {
-    Object.keys(TERM_FORMS).forEach((id) => expect(GLOSSARY[id], id).toBeTruthy());
+  it('у каждого термина с формами есть определение в словаре (у слов мира — своё)', () => {
+    Object.keys(TERM_FORMS).filter((id) => !isWorldTerm(id)).forEach((id) => expect(GLOSSARY[id], id).toBeTruthy());
     Object.keys(TERM_FORMS).forEach((id) => expect(termText(id).length, id).toBeGreaterThan(20));
+  });
+  it('«кр.» и «кроны» — слово мира: нажимается один раз на текст, в термины урока не идёт', () => {
+    expect(findTerms('Подработка за 1500 кр. или кино за 800 кр.').map((f) => f.id)).toEqual(['krona', 'krona']);
+    expect(findTerms('цены в кронах, тысяча крон').map((f) => f.text)).toEqual(['кронах', 'крон']);
+    expect(findTerms('кронштейн и корона')).toEqual([]);
+    const marked = markTerms([{ t: 'text', v: 'Подработка за 1500 кр. или кино за 800 кр.' }]);
+    expect(marked.filter((n) => n.t === 'term').map((n) => n.id)).toEqual(['krona']);
+    expect(termsIn([{ t: 'text', v: 'смена за 2000 кр.' }]).size).toBe(0);
+    expect(termTitle('krona')).toBe('Крона (кр.)');
   });
   it('разметка не теряет текст и не трогает формулы', () => {
     const nodes = [{ t: 'text', v: 'Спрос и предложение: ' }, { t: 'math', v: 'Q_D = a - bP' }, { t: 'b', c: [{ t: 'text', v: ' равновесие' }] }];

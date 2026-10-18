@@ -27,14 +27,30 @@ export function albumItems(learn) {
 }
 // печати: полученные — с датой и монетами, неполученные — «как получить»
 export const sealItems = (learn) => achievementsOf(learn).map((a) => ({ id: a.id, kind: 'seal', title: a.title, text: a.text, how: a.how, got: a.got, at: a.at, coins: a.coins, icon: a.icon }));
-/* марки месяцев: полученные — по месяцам; испытание этого месяца, пока не выполнено, — ещё не
-   полученная марка с прогрессом */
+/* Марки месяцев: у каждого месяца — своя марка. Испытания месяца появились в сентябре 2026, поэтому
+   коллекция — все месяцы с сентября 2026 по нынешний, без «ещё не полученных» из будущего: полученные
+   яркие, пропущенные блёклые, нынешний — с прогрессом. В полном списке — разделы по годам. */
+export const MONTHS_FROM = '2026-09';
+const MONTH_NAMES = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const nextMonth = (ym) => { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; };
 export function monthItems(learn, now = Date.now()) {
-  const got = monthStamps(learn).map((m) => ({ id: m.key, kind: 'month', title: m.name, text: 'Испытание месяца выполнено.', got: true, at: (learn.claimed || {})[m.key] || 0 }));
   const cur = monthChallenge(learn, now);
-  if (!cur.claimed) got.push({ id: cur.key, kind: 'month', title: cur.name, text: cur.title, got: false, at: 0, coins: cur.coins,
-    progress: { have: cur.have, total: cur.target }, how: `${cur.title}. Осталось ${cur.need} ${cur.unit}, дней — ${cur.daysLeft}.` });
-  return got;
+  const claimed = new Set(monthStamps(learn).map((m) => m.key));
+  const out = [];
+  for (let ym = MONTHS_FROM; ym <= cur.month; ym = nextMonth(ym)) {
+    const [y, m] = ym.split('-').map(Number);
+    const key = `m:${ym}`; const got = claimed.has(key); const now_ = ym === cur.month;
+    const base = { id: key, kind: 'month', year: y, month: m, title: MONTH_NAMES[m - 1], full: `${MONTH_NAMES[m - 1].toLowerCase()} ${y}`, got, at: got ? (learn.claimed || {})[key] || 0 : 0, coins: cur.coins };
+    if (got) out.push({ ...base, text: `Испытание месяца — ${base.full} — выполнено.` });
+    else if (now_) out.push({ ...base, current: true, text: cur.title, progress: { have: cur.have, total: cur.target }, how: `${cur.title}. Осталось ${cur.need} ${cur.unit}, дней — ${cur.daysLeft}.` });
+    else out.push({ ...base, missed: true, text: `Испытание месяца — ${base.full}.`, how: 'Этот месяц прошёл без марки: испытание не выполнено. Марки следующих месяцев ещё впереди.' });
+  }
+  return out;
+}
+// марки месяцев по годам: свежий год первым, внутри — по порядку месяцев
+export function monthsByYear(items) {
+  const years = [...new Set(items.map((x) => x.year))].sort((a, b) => b - a);
+  return years.map((y) => ({ year: y, items: items.filter((x) => x.year === y).sort((a, b) => a.month - b.month) }));
 }
 /* Порядок в коротком ряду профиля: недавно полученные первыми, потом ближайшие к получению
    (больше доля прогресса), потом остальные по порядку. В полном списке — полученные по дате,

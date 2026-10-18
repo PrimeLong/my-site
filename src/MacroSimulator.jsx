@@ -16,7 +16,7 @@ import {
 } from './lib/catalog.js';
 // звуковой движок подгружается по первому клику — в стартовом файле только обёртка
 import { Audio } from './audio/lazy.js';
-import { InflatiaMark } from './logo.jsx';
+import { InflatiaMark, BrandLoader } from './logo.jsx';
 import { AuthModal, ProfileModal, ProfileChip, useAccount, loadAccount, emblemIcon, accountKidsMode, refreshAccount } from './account.jsx';
 import { isGuest, GUEST_START, GUEST_SAVE } from './lib/guest.js';
 import { checkReturn } from './lib/retention.js';
@@ -24,7 +24,7 @@ import { DS_THEMES, appColors, learnThemeId, dsThemeId, learnMusic, learnSfx, wo
 import { DsRoot, Tabs, Button } from './ds.jsx';
 import { loadProgress as loadTextbookProgress, saveProgress as saveTextbookProgress, mergeTextbook, TEXTBOOK_PROGRESS_KEY } from './textbook/progress.js';
 import { BookLinkContext } from './booklink-context.js';
-import { LATEST_NEWS, readNewsSeen } from './learn/news.js';
+import { LATEST_NEWS, readNewsSeen, newsForLearner, learnerSince } from './learn/news.js';
 // профиль игрока живёт в src/account.jsx; сетевой экран и партия берут его отсюда
 export { AuthModal, useAccount, emblemIcon, forgetAccount, loadAccount, accountKidsMode, EMBLEMS } from './account.jsx';
 
@@ -944,21 +944,14 @@ const GameScreen = React.lazy(() => loadGame().then((m) => ({ default: m.GameScr
 // подгрузить экран партии заранее (при наведении на «Новая партия», на экране настройки)
 export function preloadGame() { loadGame().catch(() => {}); }
 
-function GameFallback() {
-  return (
-    <div style={{ minHeight: '100vh', background: COLOR.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLOR.muted, fontSize: 13 }}>
-      Готовим кабинет…
-    </div>
-  );
+// пока грузится чанк — заставка в стиле знака: монета-шарик надувается (src/logo.jsx)
+function GameFallback({ text }) {
+  return <BrandLoader text={text} background={COLOR.bg} color={COLOR.text} />;
 }
 
-// пока грузится сетевой чанк — тот же фон и тон, что у остальных заглушек
+// пока грузится сетевой чанк — та же заставка
 function NetworkFallback() {
-  return (
-    <div style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: COLOR.bg, color: COLOR.muted, fontSize: 13 }}>
-      Подключаем сетевую партию…
-    </div>
-  );
+  return <GameFallback text="Подключаем сетевую партию" />;
 }
 
 /* ============================ ВЫЗОВ ДНЯ ============================
@@ -1171,8 +1164,10 @@ function BottomNav({ tab, onTab, onReselect = null }) {
   const learning = tab !== 'world';
   const [menu, setMenu] = useState(false);
   const inMore = MORE_TABS.find((t) => t.id === tab);
-  // свежий выпуск «Что нового» ещё не открывали — точка на «⋯» и плашка «новое» у «Новостей»
-  const newsNew = !readNewsSeen()[LATEST_NEWS.id];
+  // свежий выпуск «Что нового» ещё не открывали — точка на «⋯» и плашка «новое» у «Новостей»;
+  // выпуск, вышедший до первого дня ученика, — не новость: новичку новое всё
+  const newsNew = React.useMemo(() => !readNewsSeen()[LATEST_NEWS.id] && newsForLearner(LATEST_NEWS, learnerSince(loadTextbookProgress().learn)), // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, menu]);
   const tabs = [
     { id: 'path', icon: Route, label: 'Путь' },
     { id: 'book', icon: BookOpenText, label: 'Учебник' },
@@ -2177,11 +2172,7 @@ export default function MacroSimulator() {
       }
       if (view === 'tutorial') {
         return (
-          <Suspense fallback={(
-            <div style={{ minHeight: '100vh', background: COLOR.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLOR.muted, fontSize: 13 }}>
-              Загрузка обучения…
-            </div>
-          )}>
+          <Suspense fallback={<GameFallback text="Открываем обучение" />}>
             <TutorialHub key={theme}
               onBack={goMenu}
               onStartRealGame={() => setView('setup')}

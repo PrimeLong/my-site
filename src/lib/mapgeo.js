@@ -110,7 +110,10 @@ const edgesOfKind = (kinds) => EDGES.filter((e) => kinds.includes(e[2]))
 const coastPath = edgesOfKind(['coast']);
 const nationalBorderPath = edgesOfKind(['north', 'west', 'southwest']);
 const innerBorderPath = edgesOfKind(['inner']);
-const countryPath = ringPath(['A', 'J1', 'H', 'J4', 'F1', 'F2', 'F3', 'J10', 'E', 'D', 'C', 'K']);
+const COUNTRY_RING = ['A', 'J1', 'H', 'J4', 'F1', 'F2', 'F3', 'J10', 'E', 'D', 'C', 'K'];
+const countryPath = ringPath(COUNTRY_RING);
+// контур страны точками (ломаная по изломанным рёбрам): для проверки «точка на суше»
+const countryPoints = COUNTRY_RING.flatMap((a, i) => edgePts(a, COUNTRY_RING[(i + 1) % COUNTRY_RING.length]).slice(0, -1));
 
 // река Велья: из Рудногорских гор через Кузнецк и Велеград — в Янтарный залив
 const RIVER = [[604, 150], [584, 206], [560, 256], [528, 300], [500, 344], [496, 372], [548, 398], [612, 408], [664, 420], [698, 426]];
@@ -118,4 +121,4 @@ const TRIBUTARY = [[236, 478], [318, 446], [406, 404], [470, 380], [496, 372]];
 // областные центры (названия — из MAP_REGIONS) и райцентры помельче
 const CITY_AT = { capital: [496, 372], industry: [604, 302], mining: [742, 204], port: [676, 446], finance: [652, 578], agri: [262, 588], periphery: [352, 176] };
 
-export { VIEW_W, VIEW_H, VIEW_TOP, NODES, EDGES, REGION_RING, hash01, roughen, edgePts, curveTo, mv, ringPath, REGION_PATH, edgesOfKind, coastPath, nationalBorderPath, innerBorderPath, countryPath, RIVER, TRIBUTARY, CITY_AT };
+export { VIEW_W, VIEW_H, VIEW_TOP, NODES, EDGES, REGION_RING, hash01, roughen, edgePts, curveTo, mv, ringPath, REGION_PATH, edgesOfKind, coastPath, nationalBorderPath, innerBorderPath, countryPath, countryPoints, RIVER, TRIBUTARY, CITY_AT };

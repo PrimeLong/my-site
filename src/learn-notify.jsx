@@ -14,13 +14,15 @@ import {
   Bell, BellRing, ArrowLeft, ChevronRight, CheckCheck, X, Flame, Map as MapIcon, Target, Trophy, TrendingDown, ArrowDown, ArrowUp, Hourglass, Sprout, Droplet, PiggyBank,
   Package, Repeat, CalendarDays, ShieldCheck, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
   Gauge, Store, Anchor, Shirt, WandSparkles, Settings,
-  Ghost,
+  Ghost, Users, Flag, UserPlus, Gem,
+  Wallet, MessageCircle,
 } from 'lucide-react';
 import { IconButton, TopBar } from './ds.jsx';
 import { Mascot } from './mascot.jsx';
 import { Audio } from './MacroSimulator.jsx';
 import { notificationsOf, unreadOf, readSeen, markSeen, readPrefs, writePrefs, firstDayOf, agoText, readPushed, markPushed } from './learn/notify.js';
 import { leagueState, LEAGUE_BY_ID } from './learn/league.js';
+import { useFriends } from './lib/friends-store.js';
 
 export const NOTIFY_CSS = `
   /* колокольчик: квадратная кнопка рядом со счётчиками; новое — точка-счётчик и лёгкое покачивание */
@@ -94,6 +96,11 @@ export const NOTIFY_CSS = `
   @keyframes nw-float { 0%, 100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-3px) rotate(-4deg) } }
   .nw-lead { padding: 12px 16px 4px; font: 15px/1.5 var(--ds-sans); color: var(--ds-ink); }
   .nw-items { padding: 4px 16px 6px; }
+  /* свёрнутый выпуск: названия пунктов плотным списком */
+  .nw-items.short .nw-item { grid-template-columns: 28px minmax(0, 1fr); align-items: center; padding: 6px 0; border-top: none; }
+  .nw-items.short .nw-item-ico { width: 28px; height: 28px; border-radius: 9px; }
+  .nw-items.short .nw-item b { font-size: 14.5px; font-weight: 600; }
+  .nw-item-text { display: block; animation: nt-in .25s ease-out both; }
   .nw-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 12px; padding: 10px 0; border-top: 1px dotted var(--ds-rule2); animation: nt-in .3s ease-out both; animation-delay: calc(min(var(--i, 0), 3) * 30ms); }
   .nw-item:first-child { border-top: none; }
   .nw-item-ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: var(--t); background: color-mix(in srgb, var(--t) 13%, var(--ds-card)); }
@@ -114,7 +121,7 @@ const ICON = {
   sprout: Sprout, droplet: Droplet, piggy: PiggyBank, chest: Package, repeat: Repeat, calendar: CalendarDays, shield: ShieldCheck, newspaper: Newspaper,
   sparkles: Sparkles, croissant: Croissant, stamp: Stamp, scale: Scale, moon: Moon, palette: Palette, devices: MonitorSmartphone, headphones: Headphones, book: BookOpen,
   landmark: Landmark, chart: BarChart3, gauge: Gauge, store: Store, anchor: Anchor, shirt: Shirt, wand: WandSparkles, bell: Bell, settings: Settings,
-  pumpkin: Ghost, ghost: Ghost, fire: Flame,
+  pumpkin: Ghost, ghost: Ghost, fire: Flame, users: Users, flag: Flag, 'user-plus': UserPlus, gem: Gem, wallet: Wallet, message: MessageCircle,
 };
 export const NIcon = ({ name, size = 20, ...rest }) => { const I = ICON[name] || Bell; return <I size={size} aria-hidden="true" {...rest} />; };
 
@@ -133,7 +140,9 @@ export function useNotify(learn) {
   useEffect(() => { setNow(Date.now()); }, [learn]);
   const [prefs, setPrefsState] = useState(readPrefs);
   const [seen, setSeen] = useState(readSeen);
-  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn) }), [learn, now, prefs]);
+  // друзья: заявки и забеги (src/lib/friends-store.js) — тоже уведомления
+  const friends = useFriends();
+  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends }), [learn, now, prefs, friends]);
   const unread = useMemo(() => unreadOf(list, seen), [list, seen]);
   const leaguePlace = useMemo(() => {
     if (!Object.values(learn.xp || {}).some((x) => x > 0)) return null;

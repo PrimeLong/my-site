@@ -10,10 +10,11 @@ import { streak, goalToday, dayOf, addDays } from '../textbook/learn-state.js';
 import { leagueState, pendingRewards, standings, LEAGUE_BY_ID } from './league.js';
 import { gardenPlots, growth, PLANT_BY_ID } from './garden.js';
 import { piggyState, monthChallenge, hasClaim, chestKey, coinsWord, plural } from './rewards.js';
-import { pathState } from './course.js';
+import { pathState, practiceIds } from './course.js';
 import { placeOf } from '../ds-tokens.js';
-import { NEWS } from './news.js';
+import { NEWS, newsForLearner, learnerSince } from './news.js';
 import { halloween } from './halloween.js';
+import { raceView, raceClaimed } from './friends.js';
 
 const HOUR = 3600 * 1000;
 // виды уведомлений: подпись в настройках и включено ли по умолчанию
@@ -23,10 +24,11 @@ export const NOTIFY_KINDS = [
   { id: 'garden', title: 'Сад и копилка', text: 'Урожай созрел, грядке нужна вода, вклад готов' },
   { id: 'path', title: 'Путь и задания', text: 'Сундук не открыт, ошибки ждут повторения, испытание месяца' },
   { id: 'news', title: 'Новости', text: 'Вышел новый выпуск «Что нового»' },
+  { id: 'friends', title: 'Друзья', text: 'Заявки в друзья, приглашения на забег, итоги забега' },
 ];
 // часы напоминания о серии: с этого часа колокольчик (и браузер, если разрешено) напомнит
 export const REMIND_HOURS = [9, 13, 17, 19, 21];
-export const DEFAULT_PREFS = { streak: true, league: true, garden: true, path: true, news: true, browser: false, remindAt: 19 };
+export const DEFAULT_PREFS = { streak: true, league: true, garden: true, path: true, news: true, friends: true, browser: false, remindAt: 19 };
 
 const store = {
   get: (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v && typeof v === 'object' ? v : d; } catch { return d; } },
@@ -143,7 +145,7 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
     add({ id: `chest:${s.course.id}`, kind: 'path', icon: 'chest', tone: placeOf(s.course.id).color, at: now - 5 * 60 * 1000, go: 'path', toast: true,
       title: `Сундук «${placeOf(s.course.id).place}» ждёт`, text: 'Юнит пройден — внутри монеты.' });
   });
-  const mist = (learn.mistakes || []).length;
+  const mist = practiceIds(learn).length;
   if (mist >= 3 && hour >= 12) {
     add({ id: `mistakes:${day}`, kind: 'path', icon: 'repeat', tone: '#BF3A2B', at: at(day, 12), go: 'tasks',
       title: 'Ошибки ждут повторения', text: `${mist} ${plural(mist, 'упражнение', 'упражнения', 'упражнений')} из прошлых уроков — повторите в «Заданиях».` });
@@ -180,13 +182,34 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
     }
   }
 
-  // новости: выпуски не раньше первого дня ученика
+  // новости: только выпуск, вышедший после первого дня ученика — новичку прошлое обновление не новость
   const since = opts.since || null;
   // только свежий выпуск: прошлые — в самой ленте
   const fresh = NEWS[0];
-  if (!since || fresh.date >= since) {
+  if (newsForLearner(fresh, since)) {
     add({ id: `news:${fresh.id}`, kind: 'news', icon: 'newspaper', tone: fresh.color, at: Math.min(now - 60 * 1000, at(fresh.date, 9)), go: 'news', toast: true,
       title: 'Что нового в Инфляции', text: fresh.title });
+  }
+
+  // друзья (opts.friends — ответ сервера, src/lib/friends-store.js): заявки, приглашения на забег, итоги
+  const fr = opts.friends;
+  if (fr) {
+    (fr.incoming || []).forEach((f) => add({ id: `fr-req:${f.login}:${f.at}`, kind: 'friends', icon: 'user-plus', tone: '#2F5D8C', at: Math.min(now, f.at), go: 'friends', toast: true, push: true,
+      title: 'Заявка в друзья', text: `${f.name} (@${f.login}) хочет дружить — примите в «Друзьях» профиля.` }));
+    const byLogin = Object.fromEntries((fr.friends || []).map((f) => [f.login, f]));
+    (fr.races || []).forEach((r) => {
+      const v = raceView(r, learn, byLogin[r.other], now);
+      if (v.status === 'incoming') {
+        add({ id: `race-inv:${r.id}`, kind: 'friends', icon: 'flag', tone: '#BF3A2B', at: Math.min(now, r.at), go: 'path', toast: true, push: true,
+          title: `${v.name} зовёт на забег`, text: `Три дня — кто наберёт больше опыта. Ответить — ещё ${v.hoursLeft} ${plural(v.hoursLeft, 'час', 'часа', 'часов')}.` });
+      } else if (v.status === 'active' && r.mine && r.acceptedAt) {
+        add({ id: `race-go:${r.id}`, kind: 'friends', icon: 'flag', tone: '#BF3A2B', at: Math.min(now, r.acceptedAt), go: 'path', toast: true,
+          title: 'Забег начался', text: `${v.name} принял приглашение: три дня, кто больше опыта.` });
+      } else if (v.status === 'finished' && !raceClaimed(learn, v)) {
+        add({ id: `race-end:${r.id}`, kind: 'friends', icon: 'trophy', tone: '#9A7413', at: at(addDays(v.end, 1), 0), go: 'path', toast: true, push: true,
+          title: v.result === 'won' ? 'Забег выигран!' : v.result === 'tie' ? 'Забег: ничья' : 'Забег окончен', text: `Вы — ${v.my} опыта, ${v.name} — ${v.their}. Награда — на Пути.` });
+      }
+    });
   }
 
   return out.filter((n) => n.at <= now + 60 * 1000).sort((a, b) => b.at - a.at);
@@ -194,14 +217,8 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
 // непрочитанные — те, которых нет в seen
 export const unreadOf = (list, seen) => list.filter((n) => !seen[n.id]);
 
-// первый день ученика: регистрация или самое раннее занятие — новости до него не «новые»
-export function firstDayOf(learn) {
-  const days = [...Object.keys(learn.done || {}), ...Object.keys(learn.xp || {})].sort();
-  const reg = learn.profile && learn.profile.at ? dayOf(learn.profile.at) : null;
-  const d = [days[0], reg].filter(Boolean).sort()[0] || null;
-  // выпуск недели до первого дня тоже интересен: показываем новости за 7 дней до начала
-  return d ? addDays(d, -7) : null;
-}
+// первый день ученика: регистрация или самое раннее занятие (нет ничего — сегодня); выпуски этого дня и раньше — не новость
+export const firstDayOf = (learn, now = Date.now()) => learnerSince(learn, now);
 
 // «только что», «12 мин назад», «3 ч назад», «вчера», «15 октября»
 const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];

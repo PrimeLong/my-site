@@ -6,7 +6,9 @@
    профилем на любое устройство — playerId профиля становится playerId устройства.
    Почты нет, поэтому забытый пароль восстанавливается кодом, который показывается
    при регистрации один раз (и выдаётся заново в профиле по паролю). */
-import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData, setLeagueName, getLeagueNames } from './_lib/store.js';
+import { getUser, setUser, setSession, delSession, hasKv, hit, getProfile, getSoloSlots, getTycoonSlots, getRecords, getReports, deleteUserData, setLeagueName, getLeagueNames,
+  getUsers, getCards, setCard, getRaces, setRace } from './_lib/store.js';
+import { cleanCard, raceStatus, raceOpen, validDay, MAX_FRIENDS, MAX_PENDING, RACE } from './_lib/friends.js';
 import { isRude, RUDE_NAME } from '../src/lib/moderation.js';
 import { validBirthYear, isKid, needsParent } from '../src/lib/age.js';
 import {
@@ -186,6 +188,93 @@ async function handleRequest(req, res) {
     for (let i = all.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
     return res.status(200).json({ names: all.slice(0, 30) });
   }
+  /* ------------------------------ ДРУЗЬЯ И ЗАБЕГИ ------------------------------
+     Друзья — по точному логину и с согласия второй стороны (заявка → принять/отклонить); поиска
+     по всем ученикам нет. Друг видит только карточку: имя, значок и то, что собрал клиент
+     (api/_lib/friends.js). user.friends { логин: с какого времени }, fin / fout — входящие и
+     исходящие заявки, races — id забегов. */
+  if (action === 'card') {
+    if (await hit(`card:${user.login}`, 60) > 20) return res.status(429).json({ error: 'Слишком часто' });
+    await setCard(user.login, { ...cleanCard(body.card), at: Date.now() });
+    return res.status(200).json({ ok: true });
+  }
+  if (action === 'friends') return res.status(200).json(await friendsView(user));
+  if (action === 'friend-add') {
+    const to = cleanLogin(body.login);
+    if (!LOGIN_RE.test(to)) return res.status(400).json({ error: 'Логин: латинские буквы, цифры и «_», от 3 до 20' });
+    if (to === user.login) return res.status(400).json({ error: 'Это ваш собственный логин' });
+    if (await hit(`fadd:${user.login}`, 3600) > 30) return res.status(429).json({ error: 'Слишком много заявок — попробуйте через час' });
+    const other = await getUser(to);
+    if (!other) return res.status(404).json({ error: 'Ученика с таким логином нет' });
+    const me = links(user); const them = links(other);
+    if (me.friends[to]) return res.status(200).json({ status: 'friends', ...(await friendsView(user)) });
+    if (Object.keys(me.friends).length >= MAX_FRIENDS || Object.keys(them.friends).length >= MAX_FRIENDS) return res.status(400).json({ error: `Друзей — не больше ${MAX_FRIENDS}` });
+    const now = Date.now();
+    // встречная заявка — сразу друзья
+    if (me.fin[to] || them.fout[user.login]) {
+      const u = await save(user, { friends: { ...me.friends, [to]: now }, fin: without(me.fin, to), fout: without(me.fout, to) });
+      await save(other, { friends: { ...them.friends, [user.login]: now }, fin: without(them.fin, user.login), fout: without(them.fout, user.login) });
+      return res.status(200).json({ status: 'friends', ...(await friendsView(u)) });
+    }
+    if (Object.keys(me.fout).length >= MAX_PENDING || Object.keys(them.fin).length >= MAX_PENDING) return res.status(400).json({ error: 'Слишком много заявок ждут ответа' });
+    const u = await save(user, { fout: { ...me.fout, [to]: now } });
+    await save(other, { fin: { ...them.fin, [user.login]: now } });
+    return res.status(200).json({ status: 'sent', ...(await friendsView(u)) });
+  }
+  if (action === 'friend-answer' || action === 'friend-cancel' || action === 'friend-remove') {
+    const who = cleanLogin(body.login);
+    const other = LOGIN_RE.test(who) ? await getUser(who) : null;
+    const me = links(user); const them = other ? links(other) : null;
+    const now = Date.now();
+    let mine = {}; let theirs = {};
+    if (action === 'friend-answer') {
+      if (!me.fin[who]) return res.status(404).json({ error: 'Заявки нет' });
+      const yes = body.accept === true && !!other;
+      mine = { fin: without(me.fin, who), ...(yes ? { friends: { ...me.friends, [who]: now } } : {}) };
+      if (them) theirs = { fout: without(them.fout, user.login), ...(yes ? { friends: { ...them.friends, [user.login]: now } } : {}) };
+    } else if (action === 'friend-cancel') {
+      mine = { fout: without(me.fout, who) };
+      if (them) theirs = { fin: without(them.fin, user.login) };
+    } else {
+      mine = { friends: without(me.friends, who) };
+      if (them) theirs = { friends: without(them.friends, user.login) };
+      // забег с бывшим другом, ещё не начатый, отменяется
+      const races = await getRaces(me.races);
+      for (const r of races.filter((x) => [x.from, x.to].includes(who) && raceStatus(x, now) === 'pending')) await setRace({ ...r, status: 'cancelled' });
+    }
+    const u = await save(user, mine);
+    if (other) await save(other, theirs);
+    return res.status(200).json(await friendsView(u));
+  }
+  if (action === 'race-invite') {
+    const to = cleanLogin(body.login);
+    const me = links(user);
+    if (!me.friends[to]) return res.status(400).json({ error: 'Позвать на забег можно только друга' });
+    const other = await getUser(to);
+    if (!other) return res.status(404).json({ error: 'Ученика с таким логином нет' });
+    const now = Date.now();
+    const races = await getRaces(me.races);
+    if (races.some((r) => [r.from, r.to].includes(to) && raceOpen(r, now))) return res.status(400).json({ error: 'С этим другом забег уже идёт или ждёт ответа' });
+    if (races.filter((r) => r.from === user.login && raceStatus(r, now) === 'pending').length >= RACE.maxOpen) return res.status(400).json({ error: 'Подождите ответа на прошлые приглашения' });
+    if (await hit(`race:${user.login}`, 86400) > 10) return res.status(429).json({ error: 'Сегодня приглашений уже достаточно' });
+    const race = { id: randomUUID().replace(/-/g, '').slice(0, 16), from: user.login, to, at: now, status: 'pending', days: RACE.days };
+    await setRace(race);
+    const u = await save(user, { races: [race.id, ...me.races].slice(0, RACE.keep) });
+    const them = links(other);
+    await save(other, { races: [race.id, ...them.races].slice(0, RACE.keep) });
+    return res.status(200).json(await friendsView(u));
+  }
+  if (action === 'race-answer') {
+    const me = links(user);
+    const [race] = typeof body.id === 'string' && me.races.includes(body.id) ? await getRaces([body.id]) : [];
+    if (!race || race.to !== user.login) return res.status(404).json({ error: 'Приглашения нет' });
+    const st = raceStatus(race);
+    if (st !== 'pending') return res.status(400).json({ error: st === 'expired' ? 'Сутки на ответ уже прошли' : 'На приглашение уже ответили' });
+    // день старта — местный день того, кто принял: с него идут три дня забега
+    const start = validDay(body.day) ? body.day : new Date().toISOString().slice(0, 10);
+    await setRace(body.accept === true ? { ...race, status: 'active', acceptedAt: Date.now(), start } : { ...race, status: 'declined', answeredAt: Date.now() });
+    return res.status(200).json(await friendsView(user));
+  }
   if (action === 'password') {
     if (!checkPassword(body.oldPassword, user)) return res.status(403).json({ error: 'Старый пароль не подходит' });
     if (typeof body.newPassword !== 'string' || body.newPassword.length < 6) return res.status(400).json({ error: 'Новый пароль — не короче 6 символов' });
@@ -213,6 +302,7 @@ async function handleRequest(req, res) {
       account: { ...publicProfile(user), consentAt: user.consentAt || null, pdConsentAt: user.pdConsentAt || null,
         parentConsentAt: user.parentConsentAt || null, parentName: user.parentName || null },
       progress: pid ? await getProfile(pid) : null,
+      friends: Object.keys(links(user).friends), card: (await getCards([user.login]))[user.login] || null,
       saves: pid ? { solo: await getSoloSlots(pid), tycoon: await getTycoonSlots(pid) } : null,
       records: rec ? { tycoon: typeof rec === 'string' ? JSON.parse(rec) : rec } : {},
       reports: (await getReports()).filter((r) => r.login === user.login),
@@ -229,6 +319,37 @@ async function handleRequest(req, res) {
     return res.status(200).json({ ok: true });
   }
   return res.status(400).json({ error: 'Неизвестное действие' });
+}
+
+// связи профиля — с пустыми значениями по умолчанию
+function links(u) {
+  const m = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  return { friends: m(u.friends), fin: m(u.fin), fout: m(u.fout), races: Array.isArray(u.races) ? u.races.filter((x) => typeof x === 'string').slice(0, RACE.keep) : [] };
+}
+const without = (map, key) => { const out = { ...map }; delete out[key]; return out; };
+// перечитываем профиль перед записью: между чтением и записью он мог поменяться (вход, другая заявка)
+async function save(user, patch) {
+  const fresh = (await getUser(user.login)) || user;
+  const next = { ...fresh, ...patch };
+  await setUser(user.login, next);
+  return next;
+}
+const friendOut = (login, u, card) => ({ login, name: u.name || login, emblem: u.emblem || 'star', card: card || null });
+/* Что видит ученик: друзья с карточками, заявки, забеги. Удалённые профили выпадают сами. */
+async function friendsView(user) {
+  const me = links(user);
+  const now = Date.now();
+  const races = (await getRaces(me.races)).map((r) => ({ ...r, status: raceStatus(r, now) })).filter((r) => r.status !== 'cancelled');
+  const logins = [...new Set([...Object.keys(me.friends), ...Object.keys(me.fin), ...Object.keys(me.fout), ...races.flatMap((r) => [r.from, r.to])])].filter((l) => l !== user.login);
+  const users = await getUsers(logins);
+  const cards = await getCards(Object.keys(me.friends).filter((l) => users[l]));
+  return {
+    me: user.login,
+    friends: Object.entries(me.friends).filter(([l]) => users[l]).map(([l, since]) => ({ ...friendOut(l, users[l], cards[l]), since })).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    incoming: Object.entries(me.fin).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l]), at })).sort((a, b) => b.at - a.at),
+    outgoing: Object.entries(me.fout).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l]), at })).sort((a, b) => b.at - a.at),
+    races: races.filter((r) => users[r.from === user.login ? r.to : r.from]).map((r) => ({ ...r, other: r.from === user.login ? r.to : r.from, mine: r.from === user.login })),
+  };
 }
 
 export default async function handler(req, res) {

@@ -35,6 +35,9 @@ export const SCREENS = {
   // колокольчик на Пути и в профиле: уведомления; касание уведомления ведёт туда, где действовать
   notifications: { from: ['path', 'profile'], back: 'origin', title: 'Уведомления', testid: 'notifications' },
   account: { from: ['settings'], back: 'settings', title: 'Аккаунт', testid: 'account' },
+  // друзья: строка в профиле → страница «Друзья»; друг из списка или из «Новостей» → его профиль
+  friends: { from: ['profile'], back: 'profile', title: 'Друзья', testid: 'friends' },
+  friend: { from: ['friends', 'news'], back: 'origin', title: 'Профиль друга', testid: 'friend' },
   chest: { from: ['path'], back: 'path', title: 'Сундук юнита', testid: 'chest-sheet' },
   // плашка уровня наверху Пути → список уровней: перейти в открытый или сдать тест уровня
   levelPicker: { from: ['path'], back: 'path', title: 'Уровни Пути', testid: 'level-picker' },

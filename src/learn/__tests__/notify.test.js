@@ -2,7 +2,7 @@
    список выводится из прогресса и времени — пройденное уходит само, одно событие — один id. */
 import { describe, it, expect } from 'vitest';
 import { notificationsOf, unreadOf, agoText, firstDayOf } from '../notify.js';
-import { albumItems, sealItems, monthItems, shelfOrder, fullDate } from '../collections.js';
+import { albumItems, sealItems, monthItems, monthsByYear, shelfOrder, fullDate } from '../collections.js';
 import { NEWS, unreadNews, newsDate } from '../news.js';
 import { emptyLearn, addDays, dayOf } from '../../textbook/learn-state.js';
 import { LESSONS, UNITS } from '../course.js';
@@ -66,11 +66,15 @@ describe('уведомления: лига и новости', () => {
     expect(up).toHaveLength(1);
     expect(up[0].go).toBe('league');
   });
-  it('новость — только свежий выпуск, и только если он не старше первого дня ученика', () => {
+  it('новость — только свежий выпуск и только вышедший после первого дня ученика: новичку прошлое обновление не новость', () => {
     const s = learner();
-    const news = notificationsOf(s, at(NEWS[0].date, 18)).filter((n) => n.kind === 'news');
+    const news = notificationsOf(s, at(NEWS[0].date, 18), { since: addDays(NEWS[0].date, -1) }).filter((n) => n.kind === 'news');
     expect(news.map((n) => n.id)).toEqual([`news:${NEWS[0].id}`]);
+    // пришёл в день выпуска или позже — уведомления нет
+    expect(notificationsOf(s, at(NEWS[0].date, 18), { since: NEWS[0].date }).some((n) => n.kind === 'news')).toBe(false);
     expect(notificationsOf(s, at(NEWS[0].date, 18), { since: addDays(NEWS[0].date, 1) }).some((n) => n.kind === 'news')).toBe(false);
+    expect(unreadNews({}, NEWS[0].date).map((n) => n.id)).not.toContain(NEWS[0].id);
+    expect(unreadNews({}, addDays(NEWS[0].date, -1)).map((n) => n.id)).toContain(NEWS[0].id);
   });
   it('непрочитанные — те, что ещё не открывали; список отсортирован от свежего', () => {
     const s = learner({ lessons: done(unitIds('scarcity'), at(addDays(TODAY, -1))) });
@@ -105,10 +109,10 @@ describe('уведомления: лига и новости', () => {
     expect(newsDate('2025-12-31', '2026-10-20')).toBe('31 декабря 2025');
     expect(unreadNews({ [NEWS[0].id]: 1 }).map((n) => n.id)).not.toContain(NEWS[0].id);
   });
-  it('первый день ученика — минус неделя: свежий выпуск недели до регистрации тоже «новый»', () => {
+  it('первый день ученика — регистрация или первое занятие; совсем новый — сегодня', () => {
     const s = learner();
-    expect(firstDayOf(s)).toBe(addDays(dayOf(s.profile.at), -7));
-    expect(firstDayOf(emptyLearn())).toBeNull();
+    expect(firstDayOf(s)).toBe(dayOf(s.profile.at));
+    expect(firstDayOf(emptyLearn(), at(TODAY, 10))).toBe(TODAY);
   });
 });
 
@@ -130,9 +134,17 @@ describe('коллекции профиля', () => {
     expect(seals.find((x) => x.id === 'first')).toMatchObject({ got: true, at: at(TODAY, 9) });
     expect(seals.find((x) => x.id === 'ace')).toMatchObject({ got: false });
     const months = monthItems(s, at(TODAY, 12));
-    expect(months[0]).toMatchObject({ id: 'm:2026-09', got: true, title: 'сентябрь 2026' });
-    expect(months[months.length - 1]).toMatchObject({ id: 'm:2026-10', got: false });
-    expect(months[months.length - 1].progress.total).toBeGreaterThan(0);
+    // все месяцы с появления испытаний (сентябрь 2026) по нынешний — их два; будущих нет
+    expect(months.map((m) => m.id)).toEqual(['m:2026-09', 'm:2026-10']);
+    expect(months[0]).toMatchObject({ got: true, title: 'Сентябрь', year: 2026 });
+    expect(months[1]).toMatchObject({ got: false, current: true });
+    expect(months[1].progress.total).toBeGreaterThan(0);
+    // по годам: раздел 2026 с двумя марками; пропущенный месяц — блёклый, без прогресса
+    expect(monthsByYear(months)).toEqual([{ year: 2026, items: months }]);
+    const later = monthItems(emptyLearn(), at('2027-01-10', 12));
+    expect(later.map((m) => m.id)).toEqual(['m:2026-09', 'm:2026-10', 'm:2026-11', 'm:2026-12', 'm:2027-01']);
+    expect(later[0]).toMatchObject({ missed: true, got: false });
+    expect(monthsByYear(later).map((g) => [g.year, g.items.length])).toEqual([[2027, 1], [2026, 4]]);
   });
   it('короткий ряд: сначала недавно полученные, потом ближайшие к получению', () => {
     const items = [

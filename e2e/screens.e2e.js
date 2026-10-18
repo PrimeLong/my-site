@@ -467,8 +467,11 @@ for (const theme of ['light', 'dark']) {
       const model = page.locator('[data-testid=unit-model]').first();
       await model.scrollIntoViewIfNeeded();
       await shot(page, '58-unit-model', theme);
-      await model.getByTestId('model-toggle').click();
-      await model.getByTestId('model-parts').scrollIntoViewIfNeeded();
+      // фактор выбран и сдвинут, закрытая деталь говорит, где откроется
+      await model.locator('[data-part="income"]').click();
+      await model.getByTestId('model-income').locator('[data-v="2"]').click();
+      await model.locator('[data-part="grain"]').click();
+      await model.getByTestId('model-part-note').scrollIntoViewIfNeeded();
       await shot(page, '58a-unit-model-parts', theme);
       // «Домино» — в практике «Предложение и равновесие»
       await openLesson(page, 'sd-l3');
