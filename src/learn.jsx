@@ -67,8 +67,8 @@ import { levelRegions } from './learn/levelmap.js';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, FriendFeed, racesToShow } from './learn-friends.jsx';
 import { Sketch, SKETCH_CSS, SKETCH_QUERY } from './learn-sketch.jsx';
-import { FocusCorner, focusHidden, focusBlocked } from './learn-focus.jsx';
-import { focusUnlocked } from './learn/focus.js';
+import { Antistress, antistressHidden, antistressBlocked } from './learn-antistress.jsx';
+import { antistressUnlocked } from './learn/antistress.js';
 import { useFriends, pushCard, friendsState } from './lib/friends-store.js';
 import { buildCard, raceOffer } from './learn/friends.js';
 import { plural } from './lib/plural.js';
@@ -723,8 +723,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const lesson = run.lessonId ? LESSON_BY_ID[run.lessonId] : null;
   // ПК с мышью: на полях урока можно писать черновик (learn-sketch.jsx)
   const sketch = useMedia(SKETCH_QUERY);
-  // там же — уголок для фокуса, с середины первого юнита; решается при входе в урок (learn-focus.jsx)
-  const [focus] = useState(() => focusUnlocked(learn) && !focusHidden() && !focusBlocked());
+  // там же — антистресс, с середины первого юнита; решается при входе в урок (learn-antistress.jsx)
+  const [antistress] = useState(() => antistressUnlocked(learn) && !antistressHidden() && !antistressBlocked());
   // пройден ли урок раньше — на момент начала (после финиша он уже в прогрессе); был ли уже алмаз
   const [replay] = useState(() => run.mode === 'lesson' && lessonDone(learn, run.lessonId));
   const diamond = !!plan.diamond;
@@ -1277,7 +1277,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       )}
       {/* черновик — последним: холст всё равно под уроком, а панель в порядке Tab — после кнопок урока */}
       {sketch && <Sketch />}
-      {sketch && focus && <FocusCorner paused={!!hidden} />}
+      {sketch && antistress && <Antistress paused={!!hidden} />}
     </DsRoot>
   );
 }

@@ -26,8 +26,8 @@ import { ProfileModal, loadAccount } from './account.jsx';
 import { reportsMe } from './lib/client.js';
 import { PrivacyPage, PRIVACY_TITLE } from './privacy.jsx';
 import { BUILD } from './learn-report.jsx';
-import { focusHidden, setFocusShown } from './learn-focus.jsx';
-import { focusUnlocked } from './learn/focus.js';
+import { antistressHidden, setAntistressShown } from './learn-antistress.jsx';
+import { antistressUnlocked } from './learn/antistress.js';
 
 export const PROFILE_CSS = `
   .pf-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
@@ -410,8 +410,8 @@ export function SettingsView({ learn, update, notify, onBack, onThemeChange, onP
   const [dark, setDark] = useState(learnDark);
   const [music, setMusic] = useState(learnMusic);
   const [sfx, setSfx] = useState(learnSfx);
-  const [focusOn, setFocusOn] = useState(() => !focusHidden());
-  const focusOpen = focusUnlocked(learn);
+  const [calmOn, setCalmOn] = useState(() => !antistressHidden());
+  const calmOpen = antistressUnlocked(learn);
   const [account, setAccount] = useState(false);
   const [privacy, setPrivacy] = useState(false);
   const [perm, setPerm] = useState(() => (browserNotifySupported() ? Notification.permission : 'unsupported'));
@@ -439,9 +439,9 @@ export function SettingsView({ learn, update, notify, onBack, onThemeChange, onP
           <SetRow title="Тёмная тема" note="Для обучения и «Мира»" on={dark} testid="prof-dark" onChange={(v) => { setLearnDark(v); setDark(v); onThemeChange(); }} />
           <SetRow title="Музыка в обучении" on={music} testid="prof-music" onChange={(v) => { setLearnMusic(v); setMusic(v); onThemeChange(); }} />
           <SetRow title="Звуки ответов" on={sfx} testid="prof-sfx" onChange={(v) => { setLearnSfx(v); setSfx(v); onThemeChange(); if (v) Audio.play('coin'); }} />
-          <SetRow title="Уголок для фокуса" testid="prof-focus" on={focusOpen && focusOn} disabled={!focusOpen} onChange={(v) => { Audio.play('tick'); setFocusShown(v); setFocusOn(v); }}
-            note={focusOpen ? 'Окошко в углу урока на компьютере: шарик в кольце, маятники или тетрис — смотреть краем глаза, пока читаете'
-              : 'Откроется после четырёх уроков: окошко в углу урока на компьютере, чтобы легче держать внимание'} />
+          <SetRow title="Антистресс" testid="prof-antistress" on={calmOpen && calmOn} disabled={!calmOpen} onChange={(v) => { Audio.play('tick'); setAntistressShown(v); setCalmOn(v); }}
+            note={calmOpen ? 'Окошко в углу урока на компьютере: шарик в кольцах, битва цветов, маятники, песок, поп-ит, тетрис и змейка'
+              : 'Откроется после четырёх уроков: окошко в углу урока на компьютере'} />
         </SetGroup>
 
         <ProgramCard learn={learn} update={update} onPlacement={onPlacement} />
