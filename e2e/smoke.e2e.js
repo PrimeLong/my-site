@@ -3134,6 +3134,8 @@ test('новые глаголы: «Откройте сами», живая мо�
   await piggy.getByTestId('piggy-add').click();
   await expect(shop.getByTestId('shop-msg')).toContainText('Пополнено на 20 монет');
   await expect(piggy.getByTestId('piggy-amount-in')).toHaveText('70');
+  // пополнение на графике — ступенька с подписью
+  await expect(piggy.getByTestId('piggy-step')).toHaveText('+20');
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before - 70));
   await piggy.getByTestId('piggy-take').click();
   await expect(shop.getByTestId('shop-balance')).toContainText(String(before));
@@ -3641,6 +3643,76 @@ test('урок на ПК: черновик на полях — включает�
   await page.getByRole('button', { name: 'Понятно' }).click();
   await expect(page.getByTestId('ex')).toBeVisible();
   await expect(canvas).toHaveAttribute('data-strokes', '1');
+  expect(errors).toEqual([]);
+});
+
+test('копилка: график вклада — подписи не налезают друг на друга, «сейчас» — плашкой над графиком, пополнения — ступеньками', async ({ page }) => {
+  await withTestFlag(page);
+  const D = 86400000;
+  for (const [days, adds] of [[1, []], [5, []], [6, [[2, 60], [4, 300]]]]) {
+    await page.addInitScript(({ days, adds, D }) => {
+      const at = Date.now() - days * D - 3600000;
+      const learn = { lessons: { 'sc-i1': { at: Date.now() - D, runs: 1, best: 90 } }, coins: { '2026-01-01': 900 }, piggy: { [at]: 100 } };
+      if (adds.length) { learn.piggyTop = { [at]: 1 }; learn.piggyAdd = Object.fromEntries(adds.map(([d, n]) => [at + d * D, `${at}:${n}`])); }
+      localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn }));
+    }, { days, adds, D });
+    await openApp(page, '/', '{}', { tab: 'shop' });
+    const chart = page.getByTestId('shop-piggy').getByTestId('piggy-chart');
+    await expect(chart).toBeVisible();
+    await expect(chart.getByTestId('piggy-now')).toHaveCount(1);
+    // подписи графика попарно не пересекаются
+    const boxes = await chart.evaluate((svg) => [...svg.querySelectorAll('text')].map((t) => { const r = t.getBoundingClientRect(); return { t: t.textContent, l: r.left, r: r.right, top: r.top, b: r.bottom }; }));
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        const a = boxes[i]; const b = boxes[j];
+        const cross = a.l < b.r - 1 && b.l < a.r - 1 && a.top < b.b - 1 && b.top < a.b - 1;
+        expect(cross, `«${a.t}» налезает на «${b.t}» (день ${days})`).toBe(false);
+      }
+    }
+    if (adds.length) await expect(chart.getByTestId('piggy-step')).toHaveText(['+60', '+300']);
+  }
+});
+
+test('новости: выпуск раскрывается и сворачивается плавно, после «Свернуть» — снова на экране и не прозрачный; на ПК поля ленты — черновик', async ({ page, isMobile }) => {
+  await withTestFlag(page);
+  // ученик с первого дня раньше выпусков — свежие выпуски с плашкой «Новое»
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('ems-textbook-v1')) localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { done: { '2026-09-20': 1 }, xp: { '2026-09-20': 10 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await openTab(page, 'news');
+  const issue = page.locator('[data-testid=news-issue][data-new=true]').first();
+  await expect(issue).toBeVisible();
+  // высота — по вёрстке: карточка ещё может доигрывать появление с лёгким масштабом
+  const short = await issue.evaluate((el) => el.offsetHeight);
+  await issue.getByTestId('news-more').click();
+  await expect(issue).toHaveAttribute('data-open', 'true');
+  await expect.poll(() => issue.evaluate((el) => el.offsetHeight)).toBeGreaterThan(short + 100);
+  await issue.getByTestId('news-more').scrollIntoViewIfNeeded();
+  await issue.getByTestId('news-more').click();
+  await expect(issue).toHaveAttribute('data-open', 'false');
+  // свернулся — снова короткий, его начало на экране; прозрачности и висящих анимаций появления нет
+  await expect.poll(() => issue.evaluate((el) => el.offsetHeight)).toBe(short);
+  await expect.poll(() => issue.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
+  const look = await issue.evaluate((el) => ({
+    opacity: [el, ...el.querySelectorAll('*')].map((e) => Number(getComputedStyle(e).opacity)).filter((o) => o < 0.9).length,
+    held: el.getAnimations({ subtree: true }).filter((a) => a.playState === 'finished').length,
+  }));
+  expect(look).toEqual({ opacity: 0, held: 0 });
+  if (!isMobile) {
+    // поля по бокам ленты — черновик: включить, провести линию слева
+    const canvas = page.getByTestId('sketch-canvas');
+    await page.getByTestId('sketch-toggle').click();
+    await expect(page.getByTestId('sketch-toggle')).toHaveAttribute('aria-checked', 'true');
+    await page.mouse.move(80, 300); await page.mouse.down(); await page.mouse.move(260, 320, { steps: 10 }); await page.mouse.up();
+    await expect(canvas).toHaveAttribute('data-strokes', '1');
+    // кнопки ленты работают как раньше
+    await page.getByTestId('news-more').first().click();
+    await expect(page.getByTestId('news-issue').first()).toHaveAttribute('data-open', 'true');
+    await expect(canvas).toHaveAttribute('data-strokes', '1');
+  } else {
+    await expect(page.getByTestId('sketch-canvas')).toHaveCount(0);
+  }
   expect(errors).toEqual([]);
 });
 

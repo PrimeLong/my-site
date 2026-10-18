@@ -134,6 +134,27 @@ describe('копилка: срочный вклад или пополняемы�
     expect(top.rate).toBe(topupRate(weekRate(dayOf(T0))));
     expect(piggyState(top.s, T0)).toMatchObject({ topup: true, canAdd: true });
   });
+  it('путь вклада для графика: пополнение — ступенька в свой день, до него — только первый взнос; конец пути — итог вклада', async () => {
+    const { piggyAdd } = await import('../rewards.js');
+    let s = piggyPut(rich(900), 100, T0, { topup: true }).s;
+    const rate = piggyState(s, T0).rate;
+    s = piggyAdd(s, 60, T0 + 2 * DAY + 3600000).s;
+    s = piggyAdd(s, 300, T0 + 4 * DAY + 3600000).s;
+    const st = piggyState(s, T0 + 6 * DAY);
+    expect(st.path).toHaveLength(PIGGY.days + 1);
+    expect(st.path[0]).toBe(100);
+    // до пополнения в день 2 — только первый взнос со своим процентом
+    expect(st.path[2]).toBe(Math.floor(100 * (1 + rate) ** 2 + 1e-9));
+    // пополнение видно со следующей точки, растёт со своего дня
+    expect(st.path[3]).toBe(Math.floor(100 * (1 + rate) ** 3 + 60 * (1 + rate) ** 0 + 1e-9));
+    expect(st.path[st.path.length - 1]).toBe(st.final);
+    for (let d = 1; d <= PIGGY.days; d += 1) expect(st.path[d]).toBeGreaterThanOrEqual(st.path[d - 1]);
+    expect(st.steps).toEqual([{ day: 3, n: 60 }, { day: 5, n: 300 }]);
+    // срочный вклад без пополнений — ровная кривая сложного процента
+    const plain = piggyState(piggyPut(rich(), 100, T0).s, T0 + DAY);
+    expect(plain.steps).toEqual([]);
+    expect(plain.path).toEqual(Array.from({ length: PIGGY.days + 1 }, (_, d) => piggyValue(100, d, plain.rate)));
+  });
   it('пополнение растёт со своего дня до конца срока; раньше срока процент сгорает, вложенное — целиком', async () => {
     const { piggyAdd } = await import('../rewards.js');
     let s = piggyPut(rich(500), 100, T0, { topup: true }).s;

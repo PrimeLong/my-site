@@ -65,7 +65,7 @@ import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { levelRegions } from './learn/levelmap.js';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, FriendFeed, racesToShow } from './learn-friends.jsx';
-import { LessonSketch, SKETCH_CSS, SKETCH_QUERY } from './learn-sketch.jsx';
+import { Sketch, SKETCH_CSS, SKETCH_QUERY } from './learn-sketch.jsx';
 import { useFriends, pushCard, friendsState } from './lib/friends-store.js';
 import { buildCard, raceOffer } from './learn/friends.js';
 import { plural } from './lib/plural.js';
@@ -1271,7 +1271,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
         </div></div>
       )}
       {/* черновик — последним: холст всё равно под уроком, а панель в порядке Tab — после кнопок урока */}
-      {sketch && <LessonSketch />}
+      {sketch && <Sketch />}
     </DsRoot>
   );
 }

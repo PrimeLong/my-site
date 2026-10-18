@@ -1,15 +1,17 @@
-/* ЧЕРНОВИК НА ПОЛЯХ УРОКА — холсты под уроком и док инструментов (docs/mechanics.md, «Урок на ПК»).
-   Только на ПК с мышью и широким окном. Кнопка «Черновик» внизу слева включает и выключает режим,
+/* ЧЕРНОВИК НА ПОЛЯХ — холсты и док инструментов (docs/mechanics.md, «Урок на ПК»): в уроке и в
+   ленте новостей. Только на ПК с мышью и широким окном. Кнопка «Черновик» внизу слева включает и выключает режим,
    выбор запоминается на устройстве. Выключен — обычный курсор, поля не рисуют, записи видны.
    Включён — на полях проступает сетка точек, курсор показывает инструмент, из кнопки выезжает
    панель: ручка, маркер, ластик, «Отменить», «Стереть всё», а над ней — цвета и толщина.
    Нажатие на сам урок (текст, варианты, кнопки) работает как раньше — рисует только поле.
-   Холсты лежат под уроком: запись видна на полях и не закрывает задание. Готовые штрихи — на
-   основном холсте; штрих, который ведут прямо сейчас, — на живом: маркер полупрозрачный, и
+   В уроке холсты лежат под уроком: запись видна на полях и не закрывает задание. Лента новостей —
+   страница с прокруткой: холсты закреплены на экране, запись хранится в координатах страницы и
+   едет вместе с ней, а колонку новостей холст обходит — запись её не закрывает. Готовые штрихи —
+   на основном холсте; штрих, который ведут прямо сейчас, — на живом: маркер полупрозрачный, и
    нарисованный кусками он темнел бы на стыках. */
 import React, { useEffect, useRef, useState } from 'react';
 import { PenLine, Highlighter, Eraser, Undo2, Trash2, RotateCcw } from 'lucide-react';
-import { SKETCH, SKETCH_TOOLS, SKETCH_SIZES, SKETCH_COLORS, strokeWidth, toLocal, addPoint, segmentsOf, pieceAt, pushStroke, restoreStrokes } from './learn/sketch.js';
+import { SKETCH, SKETCH_TOOLS, SKETCH_SIZES, SKETCH_COLORS, strokeWidth, addPoint, segmentsOf, pieceAt, pushStroke, restoreStrokes } from './learn/sketch.js';
 import { useReducedMotion } from './ds-art.jsx';
 import { Audio } from './MacroSimulator.jsx';
 
@@ -21,6 +23,12 @@ const TRIED_KEY = 'ems-sketch-tried';
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const store = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* нет хранилища */ } };
 const TOOLS = [{ id: 'pen', icon: PenLine }, { id: 'marker', icon: Highlighter }, { id: 'eraser', icon: Eraser }];
+/* Где рисовать. Урок — свой слой поверх приложения: поле — сам слой и его тело (.ln-body) вне
+   колонки. Лента новостей — страница: поле — сама страница (.ln-root) и вкладка (.ln-tab) вне колонки. */
+const MODES = {
+  lesson: { host: (el) => el.parentElement, field: 'ln-body', col: ':scope > .ln-body > .ln-inner, :scope > .ln-foot .ln-inner', hint: 'Новое: пишите на полях урока' },
+  page: { host: (el) => el.closest('.ln-root'), field: 'ln-tab', col: ':scope > .ln-tab > .ln-wrap', hint: 'Новое: пишите на полях' },
+};
 
 // курсор из SVG; у ручки кончик — текущего цвета, у маркера и ластика — круг их толщины
 const svgCursor = (svg, x, y) => `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${x} ${y}, crosshair`;
@@ -37,14 +45,22 @@ const ringCursor = (d, fill) => {
 export const SKETCH_CSS = `
   .sk-grid { position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .45s ease;
     background-image: radial-gradient(circle, color-mix(in srgb, var(--ds-ink) 22%, transparent) 1.1px, transparent 1.7px); background-size: 22px 22px; background-position: 11px 11px;
-    -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--l, 35%) - 80px), transparent calc(var(--l, 35%) - 18px), transparent calc(var(--r, 65%) + 18px), #000 calc(var(--r, 65%) + 80px));
-    mask-image: linear-gradient(90deg, #000 calc(var(--l, 35%) - 80px), transparent calc(var(--l, 35%) - 18px), transparent calc(var(--r, 65%) + 18px), #000 calc(var(--r, 65%) + 80px)); }
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--sk-l, 35%) - 80px), transparent calc(var(--sk-l, 35%) - 18px), transparent calc(var(--sk-r, 65%) + 18px), #000 calc(var(--sk-r, 65%) + 80px));
+    mask-image: linear-gradient(90deg, #000 calc(var(--sk-l, 35%) - 80px), transparent calc(var(--sk-l, 35%) - 18px), transparent calc(var(--sk-r, 65%) + 18px), #000 calc(var(--sk-r, 65%) + 80px)); }
   .sk-grid.on { opacity: 1; }
   .sk-canvas { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none; transition: opacity .26s ease, filter .26s ease; }
   .sk-canvas.wipe { opacity: 0; filter: blur(6px); }
   .ln-overlay[data-sketch], .ln-overlay[data-sketch] > .ln-body { cursor: var(--sk-cursor, crosshair); }
   .ln-overlay[data-sketch] > :not(.ln-body), .ln-overlay[data-sketch] > .ln-body > * { cursor: auto; }
   .ln-overlay[data-sketching] * { cursor: inherit !important; user-select: none; }
+  /* лента новостей: холсты закреплены на экране поверх страницы, колонка новостей вырезана — запись её не закрывает */
+  .sk-page.sk-grid, .sk-page.sk-canvas { position: fixed; z-index: 4; }
+  .sk-page.sk-canvas { clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, calc(var(--sk-l, 35%) - 12px) 0, calc(var(--sk-l, 35%) - 12px) 100%,
+    calc(var(--sk-r, 65%) + 12px) 100%, calc(var(--sk-r, 65%) + 12px) 0, calc(var(--sk-l, 35%) - 12px) 0); }
+  .sk-dock.sk-page { position: fixed; z-index: 90; bottom: calc(var(--sk-bottom, 16px) + env(safe-area-inset-bottom)); }
+  .ln-root[data-sketch], .ln-root[data-sketch] > .ln-tab { cursor: var(--sk-cursor, crosshair); }
+  .ln-root[data-sketch] > :not(.ln-tab), .ln-root[data-sketch] > .ln-tab > * { cursor: auto; }
+  .ln-root[data-sketching] * { cursor: inherit !important; user-select: none; }
 
   .sk-dock { position: absolute; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
   .sk-glass { border: 1px solid color-mix(in srgb, var(--ds-rule2) 75%, transparent); background: color-mix(in srgb, var(--ds-card) 76%, transparent);
@@ -109,11 +125,11 @@ export const SKETCH_CSS = `
   }
 `;
 
-// поле урока — сам слой урока и его тело вне колонки; полоса прокрутки тела — не поле
-function onMargin(e, root) {
+// поле — сам слой (страница) и его тело вне колонки; полоса прокрутки тела — не поле
+function onMargin(e, root, field) {
   const t = e.target;
   if (t === root) return true;
-  if (!(t instanceof Element) || t.parentElement !== root || !t.classList.contains('ln-body')) return false;
+  if (!(t instanceof Element) || t.parentElement !== root || !t.classList.contains(field)) return false;
   const r = t.getBoundingClientRect();
   const k = t.offsetWidth ? r.width / t.offsetWidth : 1;
   return e.clientX < r.left + t.clientWidth * k;
@@ -155,16 +171,28 @@ function drawStroke(ctx, s, color, alpha) {
   }
   ctx.restore();
 }
-// холст — по размеру слоя урока и плотности экрана; x — от середины слоя
-function fit(c, w, h, dpr) {
-  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+/* Рамка холста: размер, середина колонки (x точек — от неё: при смене ширины окна запись остаётся
+   на том же месте у колонки), прокрутка страницы (y точек — от верха страницы) и где холст в окне. */
+function frameOf(mode, r) {
+  const box = r.getBoundingClientRect();
+  if (mode === 'page') return { w: window.innerWidth, h: window.innerHeight, cx: box.left + box.width / 2, sy: window.scrollY, ox: 0, oy: 0 };
+  return { w: r.clientWidth, h: r.clientHeight, cx: r.clientWidth / 2, sy: 0, ox: box.left, oy: box.top };
+}
+function wipeCanvas(c) {
   const ctx = c.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, (w / 2) * dpr, 0);
-  ctx.clearRect(-w / 2, 0, w, h);
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height); ctx.restore();
+  return ctx;
+}
+function fit(c, f, dpr) {
+  if (c.width !== Math.round(f.w * dpr) || c.height !== Math.round(f.h * dpr)) { c.width = Math.round(f.w * dpr); c.height = Math.round(f.h * dpr); }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, f.cx * dpr, -f.sy * dpr);
+  wipeCanvas(c);
   return ctx;
 }
 
-export function LessonSketch() {
+export function Sketch({ mode = 'lesson' }) {
+  const M = MODES[mode];
   const mainRef = useRef(null);
   const liveRef = useRef(null);
   const gridRef = useRef(null);
@@ -180,37 +208,34 @@ export function LessonSketch() {
   const [cleared, setCleared] = useState(null);
   const [wiping, setWiping] = useState(false);
   const [tried, setTried] = useState(() => stored(TRIED_KEY) === '1');
+  const [navH, setNavH] = useState(0);
   const reduced = useReducedMotion();
   const pick = useRef(null);
   pick.current = { on, tool, color, size };
-  const rootOf = () => mainRef.current && mainRef.current.parentElement;
+  const rootOf = () => mainRef.current && M.host(mainRef.current);
 
   const drawLive = () => {
     frame.current = 0;
     const L = live.current; const r = rootOf();
     if (!L || !r) return;
-    const ctx = liveRef.current.getContext('2d');
-    ctx.clearRect(-r.clientWidth / 2, 0, r.clientWidth, r.clientHeight);
-    drawStroke(ctx, L.s, L.ink, markerAlpha(r));
+    drawStroke(wipeCanvas(liveRef.current), L.s, L.ink, markerAlpha(r));
   };
-  // сетка — только на полях: колонку урока она обходит с мягким краем
+  // сетка и (на странице) холсты — только на полях: колонку они обходят
   const measure = (r) => {
-    const g = gridRef.current;
-    if (!g) return;
-    const col = r.querySelector(':scope > .ln-body > .ln-inner') || r.querySelector(':scope > .ln-foot .ln-inner');
-    const box = r.getBoundingClientRect();
+    const col = r.querySelector(M.col);
     if (!col) return;
+    const dx = mode === 'page' ? 0 : r.getBoundingClientRect().left;
     const b = col.getBoundingClientRect();
-    g.style.setProperty('--l', `${Math.round(b.left - box.left)}px`);
-    g.style.setProperty('--r', `${Math.round(b.right - box.left)}px`);
+    r.style.setProperty('--sk-l', `${Math.round(b.left - dx)}px`);
+    r.style.setProperty('--sk-r', `${Math.round(b.right - dx)}px`);
   };
   // весь черновик заново: окно сменило размер или тему, отмена, «Стереть всё»
   const paint = () => {
     const r = rootOf();
     if (!r || !r.clientWidth) return;
-    const w = r.clientWidth; const h = r.clientHeight; const dpr = window.devicePixelRatio || 1;
-    const ctx = fit(mainRef.current, w, h, dpr);
-    fit(liveRef.current, w, h, dpr);
+    const f = frameOf(mode, r); const dpr = window.devicePixelRatio || 1;
+    const ctx = fit(mainRef.current, f, dpr);
+    fit(liveRef.current, f, dpr);
     const ink = inks(r); const alpha = markerAlpha(r);
     for (const s of strokes.current) drawStroke(ctx, s, ink[s.color], alpha);
     if (live.current && live.current.s.tool !== 'eraser') drawLive();
@@ -225,7 +250,7 @@ export function LessonSketch() {
   useEffect(() => {
     const r = rootOf();
     if (!r) return undefined;
-    const at = (e) => { const b = r.getBoundingClientRect(); return { ...toLocal(e.clientX - b.left, e.clientY - b.top, r.clientWidth), t: e.timeStamp }; };
+    const at = (e) => { const f = frameOf(mode, r); return { x: e.clientX - f.ox - f.cx, y: e.clientY - f.oy + f.sy, t: e.timeStamp }; };
     // ластик стирает на лету прямо на основном холсте
     const erase = (k) => {
       const L = live.current; const ctx = mainRef.current.getContext('2d');
@@ -236,7 +261,7 @@ export function LessonSketch() {
     const schedule = () => { if (!frame.current) frame.current = requestAnimationFrame(drawLive); };
     const down = (e) => {
       const p = pick.current;
-      if (!p.on || e.button !== 0 || e.pointerType === 'touch' || live.current || !onMargin(e, r)) return;
+      if (!p.on || e.button !== 0 || e.pointerType === 'touch' || live.current || !onMargin(e, r, M.field)) return;
       e.preventDefault();
       paint();
       const s = { tool: p.tool, color: p.color, size: p.size, points: [] };
@@ -267,7 +292,7 @@ export function LessonSketch() {
       const full = strokes.current.length >= SKETCH.maxStrokes;
       strokes.current = pushStroke(strokes.current, L.s);
       // готовый штрих — на основной холст, живой слой — чистый; черновик переполнен — старейший штрих ушёл, холст заново
-      liveRef.current.getContext('2d').clearRect(-r.clientWidth / 2, 0, r.clientWidth, r.clientHeight);
+      wipeCanvas(liveRef.current);
       if (full) paint(); else drawStroke(mainRef.current.getContext('2d'), L.s, L.ink, markerAlpha(r));
       setCount(strokes.current.length); setCleared(null);
     };
@@ -288,7 +313,20 @@ export function LessonSketch() {
     if (ro) ro.observe(r);
     const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => paint()) : null;
     if (mo) mo.observe(r, { attributes: true, attributeFilter: ['class', 'data-ds-theme'] });
+    // страница прокручивается — холст на экране перерисовывает запись на новом месте; док — над нижней панелью
+    let scrollFrame = 0;
+    const onScroll = () => { if (!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; paint(); }); };
+    const nav = () => { const n = document.querySelector('[data-testid="bottom-nav"]'); setNavH(n ? Math.round(n.getBoundingClientRect().height) : 0); };
+    if (mode === 'page') {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+      nav(); window.addEventListener('resize', nav);
+    }
     return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('resize', nav);
+      cancelAnimationFrame(scrollFrame);
       r.removeEventListener('pointerdown', down);
       r.removeEventListener('pointermove', move);
       r.removeEventListener('pointerup', up);
@@ -299,6 +337,7 @@ export function LessonSketch() {
       cancelAnimationFrame(frame.current);
       clearTimeout(wipeTimer.current);
       delete r.dataset.sketching;
+      r.style.removeProperty('--sk-l'); r.style.removeProperty('--sk-r');
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -309,7 +348,7 @@ export function LessonSketch() {
     const ink = inks(r)[color];
     r.dataset.sketch = tool;
     r.style.setProperty('--sk-cursor', tool === 'pen' ? penCursor(ink) : ringCursor(strokeWidth(tool, size), tool === 'marker' ? ink : null));
-    const g = gridRef.current; if (g) measure(r);
+    measure(r);
     return () => { delete r.dataset.sketch; r.style.removeProperty('--sk-cursor'); };
   }, [on, tool, color, size]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -358,12 +397,13 @@ export function LessonSketch() {
   const sizes = SKETCH_TOOLS[tool].sizes;
   const dotOf = (px) => Math.max(5, Math.min(18, tool === 'pen' ? px * 2.4 : px * 0.62));
   const snack = on && !!cleared && !count;
+  const page = mode === 'page' ? 'sk-page' : '';
   return (
     <>
-      <div ref={gridRef} className={`sk-grid ${on ? 'on' : ''}`} aria-hidden="true" data-testid="sketch-grid" />
-      <canvas ref={mainRef} className={`sk-canvas ${wiping ? 'wipe' : ''}`} aria-hidden="true" data-testid="sketch-canvas" data-strokes={count} />
-      <canvas ref={liveRef} className="sk-canvas" aria-hidden="true" />
-      <div className={`sk-dock ${on ? 'on' : ''}`} data-testid="sketch-dock" data-on={String(on)}>
+      <div ref={gridRef} className={`sk-grid ${on ? 'on' : ''} ${page}`} aria-hidden="true" data-testid="sketch-grid" />
+      <canvas ref={mainRef} className={`sk-canvas ${wiping ? 'wipe' : ''} ${page}`} aria-hidden="true" data-testid="sketch-canvas" data-strokes={count} />
+      <canvas ref={liveRef} className={`sk-canvas ${page}`} aria-hidden="true" />
+      <div className={`sk-dock ${on ? 'on' : ''} ${page}`} data-testid="sketch-dock" data-on={String(on)} style={mode === 'page' ? { '--sk-bottom': `${navH + 16}px` } : undefined}>
         {snack ? (
           <div className="sk-snack sk-glass" role="status" data-testid="sketch-snack">
             Черновик стёрт
@@ -391,7 +431,7 @@ export function LessonSketch() {
             <span className="sk-toggle-icon" aria-hidden="true"><PenLine size={18} /></span><span className="sk-toggle-label" aria-hidden="true">Черновик</span>
             <span className="sk-switch" aria-hidden="true" />
           </button>
-          {!tried && !on && <div className="sk-callout" data-testid="sketch-callout">Новое: пишите на полях урока</div>}
+          {!tried && !on && <div className="sk-callout" data-testid="sketch-callout">{M.hint}</div>}
           <div className="sk-tools" inert={!on}>
             <span className="sk-sep" aria-hidden="true" />
             <div className="sk-group" style={{ '--i': toolIdx }}>
