@@ -7,10 +7,9 @@
    получена (или как получить), сколько монет принесла. Данные — src/learn/collections.js. */
 import React, { useEffect, useState } from 'react';
 import {
-  ArrowLeft, ChevronRight, Settings, Flame, Star, Trophy, Coins, ShieldCheck, Clock, BookOpen, CalendarDays, Target, Flag, UserRound, Lock, Check, Footprints, Landmark,
-  Shapes, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Bell, Palette, X, Award,
-  Snowflake, Heart, Flower2, Umbrella, Sprout, Sun, Waves, Wheat, Leaf, CloudRain, TreePine, UserPlus,
+  ArrowLeft, ChevronRight, Settings, Flame, Star, Trophy, Coins, ShieldCheck, Clock, BookOpen, CalendarDays, Target, Flag, UserRound, Lock, Bell, Palette, X, Award, UserPlus,
 } from 'lucide-react';
+import { ACH_ICON, MONTH_ART, MONTH_ABBR } from './award-art.js';
 import { Card, Button, IconButton, TopBar, Toggle, MenuCard, Heading, Sheet } from './ds.jsx';
 import { Medal, Engraving, CountUp } from './ds-art.jsx';
 import { StatHero, StatTile, Meter, DayBars } from './learn-stats.jsx';
@@ -112,7 +111,6 @@ export const PROFILE_CSS = `
   @media (prefers-reduced-motion: reduce) { .pf-item, .pf-more, .pf-big, .pf-track i, .pf-mstamp { animation: none !important; } .pf-gear svg, .pf-all svg { transition: none !important; } }
 `;
 
-const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
 const KIND = {
   album: { title: 'Альбом', page: 'Альбом марок', sub: 'Пройденный юнит — марка с его зданием.', word: ['марка', 'марки', 'марок'], testid: 'album-page' },
   seal: { title: 'Печати', page: 'Печати', sub: 'Достижения — оттиски печатей; за каждую — монеты.', word: ['печать', 'печати', 'печатей'], testid: 'achievements' },
@@ -121,11 +119,6 @@ const KIND = {
 
 /* Марка месяца — почтовая марка с зубцами: сокращение месяца сверху, рисунок месяца, год внизу.
    Подписи — внутри рисунка (масштабируются вместе с ним). */
-const MONTH_ART = [
-  [Snowflake, '#2F6E9E'], [Heart, '#A33A5E'], [Flower2, '#8A4FA0'], [Umbrella, '#2E6B8A'], [Sprout, '#4B7A1E'], [Sun, '#C27A12'],
-  [Waves, '#1F7A8C'], [Wheat, '#A5701A'], [BookOpen, '#8A5A2B'], [Leaf, '#B4531A'], [CloudRain, '#5A6E8C'], [TreePine, '#2E6B4A'],
-];
-const MONTH_ABBR = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'];
 function MonthStamp({ it, big = false }) {
   const [Icon, color] = MONTH_ART[it.month - 1];
   const state = it.got ? 'got' : it.current ? 'current' : 'missed';

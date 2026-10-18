@@ -4,9 +4,10 @@
    src/ds-art.jsx); расчёты — в чистых модулях src/learn/rewards.js и src/learn/program.js. */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  X, Wallet, ShieldCheck, Shirt, Sunrise, Moon, PiggyBank, CalendarDays, Footprints, Check, Flame, Landmark, Shapes, GraduationCap, Flag,
-  ScrollText, Timer, Map as MapIcon, Target, Coins, ShoppingBag, TrendingUp, TrendingDown, Minus, Gem, Zap, ListChecks, ChevronRight, Ghost, Crown, Lock, Plus,
+  X, Wallet, ShieldCheck, CalendarDays, Check, Flame, GraduationCap, Timer, Map as MapIcon, Target, Coins, TrendingUp, TrendingDown, Minus, Gem, Zap,
+  ListChecks, ChevronRight, Ghost, Crown, Lock, Plus,
 } from 'lucide-react';
+import { ACH_ICON } from './award-art.js';
 import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
@@ -91,7 +92,8 @@ export const REWARD_CSS = `
   .rw-price small { font: 12px var(--ds-sans); color: var(--ds-ink3); margin-left: 4px; }
   .rw-dots { display: flex; justify-content: center; gap: 8px; }
   .rw-forgone { font-size: 12px; line-height: 1.25; color: var(--ds-ink3); }
-  .rw-piggy-chart { width: 100%; display: block; margin: 6px 0 2px; }
+  /* на ПК график не растягивается во всю карточку: подписи остаются размером с текст */
+  .rw-piggy-chart { width: 100%; max-width: 460px; display: block; margin: 6px auto 2px; overflow: visible; }
   .rw-book { border: 1px solid var(--ds-rule2); border-radius: 14px; background: var(--ds-card); padding: 10px 12px 12px; }
   .rw-book-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font: 14.5px var(--ds-sans); padding: 3px 0; border-bottom: 1px dotted var(--ds-rule2); }
   .rw-book-row b { font-size: 16px; } .rw-book-row small { font: 12.5px var(--ds-mono); color: var(--ds-ok); }
@@ -115,18 +117,26 @@ export const REWARD_CSS = `
   .rw-book-sum .fin { background: color-mix(in srgb, var(--ds-ok) 12%, var(--ds-card)); }
   .rw-book-sum .fin b { color: var(--ds-ok-ink); }
   .rw-grow .axis { stroke: var(--ds-rule2); stroke-width: 1; }
-  .rw-grow .area { fill: color-mix(in srgb, var(--u) 14%, transparent); stroke: none; }
-  .rw-grow .main { fill: none; stroke: var(--u); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 400; animation: rw-draw .9s ease-out both; }
-  .rw-grow .other { fill: none; stroke: var(--ds-ink3); stroke-width: 1.8; stroke-dasharray: 4 4; }
-  .rw-grow .dot { fill: var(--ds-card); stroke: var(--u); stroke-width: 1.8; }
+  /* график вклада оживает по очереди: заливка проявляется, линия рисуется, точки выскакивают по дням */
+  .rw-grow .area { fill: color-mix(in srgb, var(--u) 14%, transparent); stroke: none; animation: rw-area .9s ease-out .15s backwards; }
+  .rw-grow .main { fill: none; stroke: var(--u); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 1; animation: rw-draw .9s ease-out backwards; }
+  .rw-grow .other { fill: none; stroke: var(--ds-ink3); stroke-width: 1.8; stroke-dasharray: 4 4; animation: rw-area .6s ease-out .5s backwards; }
+  .rw-grow .dot { fill: var(--ds-card); stroke: var(--u); stroke-width: 1.8; transform-box: fill-box; transform-origin: center;
+    animation: rw-pop .35s cubic-bezier(.3, 1.6, .5, 1) backwards; animation-delay: calc(var(--i) * 90ms + .2s); }
   .rw-grow .dot.past { fill: var(--u); }
   .rw-grow .now line { stroke: var(--u-ink); stroke-width: 1; stroke-dasharray: 2 3; }
-  .rw-grow .now circle { fill: var(--u); stroke: var(--ds-card); stroke-width: 2.5; animation: rw-pulse 1.6s ease-in-out infinite; }
-  .rw-grow text { font: 700 12px var(--ds-sans); fill: var(--ds-ink2); }
-  .rw-grow text.end { font: 700 14px var(--ds-mono); fill: var(--ds-ink); }
+  .rw-grow .now rect { fill: var(--u); }
+  .rw-grow .now text { font: 700 11px var(--ds-sans); fill: #fff; letter-spacing: .02em; }
+  .rw-grow .now { animation: rw-drop .45s cubic-bezier(.3, 1.4, .5, 1) .7s backwards; }
+  .rw-grow .now circle { fill: var(--u); stroke: var(--ds-card); stroke-width: 2.5; transform-box: fill-box; transform-origin: center; animation: rw-beat 1.6s ease-in-out infinite; }
+  .rw-grow text { font: 600 11.5px var(--ds-sans); fill: var(--ds-ink2); }
+  .rw-grow text.end { font: 700 14px var(--ds-mono); fill: var(--ds-ink); animation: rw-area .4s ease-out .9s backwards; }
   .rw-grow text.other-t { font-size: 12px; fill: var(--ds-ink3); }
-  .rw-grow text.now-t { fill: var(--u-ink); }
-  @keyframes rw-draw { from { stroke-dashoffset: 400 } to { stroke-dashoffset: 0 } }
+  .rw-grow text.step { font: 700 11px var(--ds-mono); fill: var(--ds-ok-ink); animation: rw-area .4s ease-out 1s backwards; }
+  @keyframes rw-draw { from { stroke-dashoffset: 1 } to { stroke-dashoffset: 0 } }
+  @keyframes rw-area { from { opacity: 0 } }
+  @keyframes rw-drop { from { opacity: 0; transform: translateY(-8px) } }
+  @keyframes rw-beat { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.25) } }
   .rw-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ds-ink2); margin: -2px 0 6px; }
   .rw-legend span::before { content: ''; display: inline-block; width: 16px; height: 0; margin-right: 6px; vertical-align: middle; border-top: 3px solid var(--u); }
   .rw-legend .o::before { border-top: 2px dashed var(--ds-ink3); }
@@ -146,7 +156,8 @@ export const REWARD_CSS = `
   .rw-book .ds-btn { margin-top: 8px; }
   .rw-real { margin-top: 10px; padding-top: 8px; border-top: 1px dotted var(--ds-rule2); }
   .rw-real summary { cursor: pointer; font: 700 14px var(--ds-sans); color: var(--u-ink); }
-  .rw-piggy-chart text { font: 700 12px var(--ds-mono); fill: var(--ds-ink2); }
+  .rw-piggy-chart text { font: 600 11.5px var(--ds-sans); fill: var(--ds-ink2); }
+  .rw-piggy-chart text.num { font: 700 12px var(--ds-mono); }
   .rw-dot { width: 36px; display: flex; flex-direction: column; align-items: center; gap: 5px; font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
   .rw-dot i { width: 32px; height: 32px; border-radius: 50%; border: 2px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
   .rw-dot.done i { border: none; color: #fff; background: linear-gradient(180deg, #FF9A2E, #E2530E); box-shadow: 0 2px 0 #B23E08; animation: rw-dot-pop .5s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(1.2s + var(--i, 0) * 70ms); }
@@ -210,10 +221,9 @@ export const REWARD_CSS = `
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
   @media (prefers-reduced-motion: reduce) { .rw-morning::before, .rw-fire *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-week, .rw-dot i { animation: none !important; } .rw-fire .ember { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in circle, .rw-grow .main, .rw-grow .now circle { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in circle, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
-const ACH_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
 const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame, spark: Zap };
 const fmtRate = (r) => r.toFixed(2).replace('.', ',');
 const Bar = ({ have, target, ok }) => <div className={`rw-bar ${ok ? 'ok' : ''}`} role="presentation"><i style={{ width: `${Math.round((Math.min(have, target) / target) * 100)}%` }} /></div>;
@@ -611,44 +621,49 @@ export function ShopView({ learn, update, now = Date.now(), focus = null }) {
    выше прошлого не на одно и то же число, а на процент от уже накопленного. Забрать раньше —
    процент сгорит. Ставка и что она значит для сада — плашка «Ставка недели» сверху. */
 const fmtPct = (r) => `${String(Math.round(r * 1000) / 10).replace('.', ',')}%`;
-/* Рост вклада за неделю — кривой, на ОБЩЕЙ шкале для обоих видов вклада. Раньше «ступеньки» каждый
-   раз растягивались на всю высоту под выбранную ставку, и пополняемый (ставка ниже) выглядел не хуже
-   срочного; подписи «д1, д2» были непонятны. Теперь: выбранный вклад — яркая линия с заливкой,
-   другой вид — пунктир рядом, подписи — «сегодня» и «через 7 дней». day — открытый вклад: точка
-   «сейчас»; final — итог открытого вклада (с пополнениями). */
-function PiggyChart({ amount, rate, other = null, day = null, final = null }) {
-  const W = 300; const H = 118; const L = 12; const R = 52; const T = 16; const B = 22;
-  const end = final != null ? final : amount * (1 + rate) ** PIGGY.days;
-  const val = (r, d) => (final != null ? end / (1 + r) ** (PIGGY.days - d) : amount * (1 + r) ** d);
-  const otherEnd = other != null ? amount * (1 + other) ** PIGGY.days : null;
-  const base = Math.min(val(rate, 0), amount);
+/* Рост вклада за неделю — на ОБЩЕЙ шкале для обоих видов вклада: выбранный вклад — яркая линия
+   с заливкой, другой вид — пунктир рядом. Открытый вклад — его настоящий путь по дням (path):
+   пополнение — ступенька вверх с подписью «+N», точка «сейчас» и плашка «сейчас» над графиком.
+   Подписи снизу — только «начало»/«сегодня» и «через 7 дней»: «сейчас» наверху их не задевает. */
+function PiggyChart({ amount, rate, other = null, day = null, path = null, steps = [] }) {
+  const W = 300; const H = 134; const L = 10; const R = 48; const T = 28; const B = 24; const N = PIGGY.days;
+  const curve = (r) => Array.from({ length: N + 1 }, (_, d) => amount * (1 + r) ** d);
+  const vals = path || curve(rate);
+  const otherVals = other != null ? curve(other) : null;
+  const end = vals[N]; const otherEnd = otherVals ? otherVals[N] : null;
+  const base = Math.min(vals[0], otherVals ? otherVals[0] : vals[0]);
   const top = Math.max(end, otherEnd || 0);
-  const x = (d) => L + (d / PIGGY.days) * (W - L - R);
+  const x = (d) => L + (d / N) * (W - L - R);
   const y = (v) => H - B - ((v - base) / Math.max(1e-9, top - base)) * (H - T - B);
-  const pts = (r) => Array.from({ length: PIGGY.days + 1 }, (_, d) => [x(d), y(val(r, d))]);
-  const line = (list) => list.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ');
-  const main = pts(rate);
-  const area = `${x(0)},${H - B} ${line(main)} ${x(PIGGY.days)},${H - B}`;
+  const line = (list) => list.map((v, d) => `${x(d).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const area = `${x(0)},${H - B} ${line(vals)} ${x(N)},${H - B}`;
   const endY = y(end); const otherY = otherEnd != null ? y(otherEnd) : null;
   // подписи концов не налезают друг на друга
   const gap = otherY != null && Math.abs(otherY - endY) < 14 ? (otherY > endY ? 14 - (otherY - endY) : -(14 - (endY - otherY))) : 0;
+  const live = day != null && day < N;
+  const nowX = live ? Math.min(W - R - 26, Math.max(L + 26, x(day))) : 0;
   return (
     <svg className="rw-piggy-chart rw-grow" viewBox={`0 0 ${W} ${H}`} role="img" data-testid="piggy-chart"
       aria-label={`${amount} под ${fmtPct(rate)} в день: через неделю ${Math.floor(end + 1e-9)}${otherEnd != null ? `; другой вид вклада — ${Math.floor(otherEnd + 1e-9)}` : ''}`}>
       <line x1={L} x2={W - R} y1={H - B} y2={H - B} className="axis" />
-      {Array.from({ length: PIGGY.days + 1 }, (_, d) => <line key={d} x1={x(d)} x2={x(d)} y1={H - B} y2={H - B + 4} className="axis" />)}
-      {otherEnd != null && <polyline points={line(pts(other))} className="other" />}
+      {vals.map((_, d) => <line key={d} x1={x(d)} x2={x(d)} y1={H - B} y2={H - B + 4} className="axis" />)}
+      {otherVals && <polyline points={line(otherVals)} className="other" />}
       <polygon points={area} className="area" />
-      <polyline points={line(main)} className="main" />
-      {main.map(([a, b], d) => <circle key={d} cx={a} cy={b} r={d === PIGGY.days ? 4.2 : 2.4} className={`dot${day != null && d <= day ? ' past' : ''}`} />)}
-      {day != null && day < PIGGY.days && (
-        <g className="now"><line x1={x(day)} x2={x(day)} y1={T - 6} y2={H - B} /><circle cx={x(day)} cy={y(val(rate, day))} r="5.5" /></g>
+      <polyline points={line(vals)} className="main" pathLength="1" />
+      {vals.map((v, d) => <circle key={d} cx={x(d)} cy={y(v)} r={d === N ? 4.4 : 2.6} className={`dot${day != null && d <= day ? ' past' : ''}`} style={{ '--i': d }} />)}
+      {steps.map((st) => <text key={st.day} x={x(st.day)} y={y(vals[st.day]) - 9} textAnchor="middle" className="step" data-testid="piggy-step">+{st.n}</text>)}
+      {live && (
+        <g className="now" data-testid="piggy-now">
+          <line x1={x(day)} x2={x(day)} y1={T - 6} y2={H - B} />
+          <rect x={nowX - 24} y={2} width={48} height={18} rx={9} />
+          <text x={nowX} y={15} textAnchor="middle">сейчас</text>
+          <circle cx={x(day)} cy={y(vals[day])} r="5.5" />
+        </g>
       )}
-      <text x={x(PIGGY.days) + 8} y={endY + 4} className="end">{Math.floor(end + 1e-9)}</text>
-      {otherEnd != null && <text x={x(PIGGY.days) + 8} y={otherY + 4 + gap} className="end other-t">{Math.floor(otherEnd + 1e-9)}</text>}
-      <text x={x(0)} y={H - 5} textAnchor="start">{final != null ? 'начало' : 'сегодня'}</text>
-      {day != null && day > 0 && day < PIGGY.days && <text x={x(day)} y={H - 5} textAnchor="middle" className="now-t">сейчас</text>}
-      <text x={x(PIGGY.days)} y={H - 5} textAnchor="end">через {PIGGY.days} дней</text>
+      <text x={x(N) + 8} y={endY + 5} className="end num">{Math.floor(end + 1e-9)}</text>
+      {otherEnd != null && <text x={x(N) + 8} y={otherY + 5 + gap} className="end other-t num">{Math.floor(otherEnd + 1e-9)}</text>}
+      <text x={x(0)} y={H - 6} textAnchor="start">{path ? 'начало' : 'сегодня'}</text>
+      <text x={x(N)} y={H - 6} textAnchor="end">через {N} дней</text>
     </svg>
   );
 }
@@ -668,8 +683,8 @@ function RealRate({ rate }) {
       <svg className="rw-piggy-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`1000 крон под ${Math.round(REAL_RATE * 100)}% годовых: через 10 лет ${top}`}>
         <polyline points={pts.map((p, i) => `${x(i)},${y(p.value)}`).join(' ')} fill="none" stroke="var(--u-ink)" strokeWidth="1.6" />
         {pts.map((p, i) => <circle key={p.year} cx={x(i)} cy={y(p.value)} r={i === 0 || i === pts.length - 1 ? 2.6 : 1.4} fill="var(--u-ink)" />)}
-        <text x={x(0)} y={y(1000) - 5} textAnchor="start">1000</text>
-        <text x={x(pts.length - 1)} y={y(top) - 5} textAnchor="end">{top}</text>
+        <text x={x(0)} y={y(1000) - 7} textAnchor="start" className="num">1000</text>
+        <text x={x(pts.length - 1)} y={y(top) - 7} textAnchor="end" className="num">{top}</text>
         <text x={x(0)} y={H - 2} textAnchor="start">сейчас</text>
         <text x={x(pts.length - 1)} y={H - 2} textAnchor="end">через 10 лет</text>
       </svg>
@@ -751,7 +766,7 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
               <div className="fin"><small>{st.ripe ? 'Готово' : `Через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')}`}</small><b className="ds-num">{st.final}</b></div>
             </div>
             <div className="rw-book-days" aria-hidden="true">{Array.from({ length: PIGGY.days }, (_, k) => <i key={k} className={k < st.days ? 'on' : k === st.days ? 'cur' : ''} style={{ '--i': k }} />)}</div>
-            <PiggyChart amount={st.amount} rate={st.rate} day={st.days} final={st.final} />
+            <PiggyChart amount={st.amount} rate={st.rate} day={st.days} path={st.path} steps={st.steps} />
             <div style={{ fontSize: 14.5, margin: '2px 0 8px' }} data-testid="piggy-state">
               День {st.days} из {PIGGY.days}: сейчас <b className="ds-num">{st.value}</b>{st.ripe ? ' — срок вышел, можно забирать.' : `, через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')} — ${st.final}.`}
             </div>

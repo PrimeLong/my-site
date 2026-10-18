@@ -243,6 +243,18 @@ const partsValue = (dep, rate, t) => {
   const parts = [{ at: dep.at, n: dep.first }, ...dep.adds];
   return Math.floor(parts.reduce((a, p) => a + p.n * (1 + rate) ** Math.max(0, Math.min(PIGGY.days, Math.floor((end - p.at) / DAY_MS))), 0) + 1e-9);
 };
+/* Путь вклада по дням для графика: в день d — только части, положенные к этому дню (пополнение —
+   ступенька вверх), каждая растёт со своего дня; дальше сегодняшнего — без будущих пополнений.
+   steps — в какой день на графике видно пополнение и на сколько. */
+const pathOf = (dep, rate) => Array.from({ length: PIGGY.days + 1 }, (_, d) => {
+  const t = dep.at + d * DAY_MS;
+  return partsValue({ ...dep, adds: dep.adds.filter((x) => x.at <= t) }, rate, t);
+});
+const stepsOf = (dep) => {
+  const by = {};
+  dep.adds.forEach((x) => { const d = Math.min(PIGGY.days, Math.ceil((x.at - dep.at) / DAY_MS)); by[d] = (by[d] || 0) + x.n; });
+  return Object.entries(by).map(([d, n]) => ({ day: Number(d), n })).sort((a, b) => a.day - b.day);
+};
 export function piggyState(s, now = Date.now()) {
   const open = deposits(s).filter((d) => !d.out).sort((a, b) => b.at - a.at)[0];
   if (!open) return null;
@@ -252,7 +264,7 @@ export function piggyState(s, now = Date.now()) {
   const ripeAt = open.at + PIGGY.days * DAY_MS;
   const final = partsValue(open, rate, ripeAt);
   return { at: open.at, amount: open.amount, topup: open.topup, adds: open.adds.length, rate, days, ripe, value: partsValue(open, rate, now), final, payout: ripe ? final : open.amount,
-    ripeAt, canAdd: open.topup && !ripe };
+    ripeAt, canAdd: open.topup && !ripe, path: pathOf(open, rate), steps: stepsOf(open) };
 }
 export function piggyPut(s, amount, now = Date.now(), { topup = false } = {}) {
   const n = Math.floor(amount);

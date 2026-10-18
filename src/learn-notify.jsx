@@ -82,14 +82,23 @@ export const NOTIFY_CSS = `
 
   /* лента новостей: выпуск — карточка с цветной шапкой; пункты — со значками */
   .nw-hero { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
-  .nw-issue { position: relative; overflow: hidden; padding: 0; margin: 0 0 14px; animation: nt-in .3s ease-out both; animation-delay: calc(min(var(--i, 0), 2) * 50ms); }
+  /* выпуск влетает пружинкой; анимации появления — только «до» (backwards): кончившись, они не держат
+     прозрачность и сдвиг на карточке, и раскрытие, наведение и сворачивание ничем не перебиваются */
+  .nw-issue { position: relative; overflow: hidden; padding: 0; margin: 0 0 14px; animation: nw-in .5s cubic-bezier(.2, .9, .3, 1.15) backwards; animation-delay: calc(min(var(--i, 0), 3) * 70ms);
+    transition: transform .25s cubic-bezier(.2, .9, .3, 1), box-shadow .25s; }
+  @keyframes nw-in { from { opacity: 0; transform: translateY(18px) scale(.97) } }
+  @media (hover: hover) { .nw-issue:hover { transform: translateY(-3px); box-shadow: 0 6px 0 var(--ds-rule), 0 18px 32px -18px var(--ds-shade); } }
   /* шапка выпуска — цвет выпуска, притемнённый: белый текст на ней читается с контрастом не ниже 4,5:1 */
   .nw-head { position: relative; padding: 14px 16px 12px; color: #fff; background: color-mix(in srgb, var(--t) 90%, #000);
-    background-image: radial-gradient(circle at 92% -20%, rgba(255,255,255,.28), transparent 45%), repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 10px, transparent 10px 20px); }
+    background-image: radial-gradient(circle at 92% -20%, rgba(255,255,255,.28), transparent 45%), repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 10px, transparent 10px 20px);
+    background-size: auto, 28.28px 28.28px; animation: nw-stripes 14s linear infinite; }
+  /* полоски шапки медленно плывут — на ширину одной полоски, без рывка */
+  @keyframes nw-stripes { to { background-position: 0 0, 28.28px 0 } }
   .nw-head .ds-h2 { color: #fff; margin-top: 2px; font-size: 21px; }
   .nw-date { display: inline-flex; align-items: center; gap: 6px; font: 700 12px/1 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase; opacity: .92; }
   .nw-new { display: inline-block; margin-left: 8px; padding: 3px 8px; border-radius: 999px; background: #fff; color: #1F1A16; font: 700 12px/1 var(--ds-sans); letter-spacing: .06em;
-    animation: nt-pop .3s cubic-bezier(.3,1.6,.5,1) both; }
+    animation: nt-pop .4s cubic-bezier(.3,1.6,.5,1) .2s backwards, nw-breathe 2.4s ease-out 1s infinite; }
+  @keyframes nw-breathe { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.75) } 70%, 100% { box-shadow: 0 0 0 7px rgba(255,255,255,0) } }
   .nw-head-ico { position: absolute; right: 14px; top: 12px; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.18);
     box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); animation: nw-float 4s ease-in-out infinite; }
   .nw-head > div:first-child { padding-right: 58px; }
@@ -100,19 +109,25 @@ export const NOTIFY_CSS = `
   .nw-items.short .nw-item { grid-template-columns: 28px minmax(0, 1fr); align-items: center; padding: 6px 0; border-top: none; }
   .nw-items.short .nw-item-ico { width: 28px; height: 28px; border-radius: 9px; }
   .nw-items.short .nw-item b { font-size: 14.5px; font-weight: 600; }
-  .nw-item-text { display: block; animation: nt-in .25s ease-out both; }
-  .nw-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 12px; padding: 10px 0; border-top: 1px dotted var(--ds-rule2); animation: nt-in .3s ease-out both; animation-delay: calc(min(var(--i, 0), 3) * 30ms); }
+  .nw-item-text { display: block; animation: nt-in .3s ease-out backwards; animation-delay: calc(min(var(--i, 0), 8) * 35ms + 60ms); }
+  .nw-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 12px; padding: 10px 0; border-top: 1px dotted var(--ds-rule2); animation: nt-in .3s ease-out backwards; animation-delay: calc(min(var(--i, 0), 8) * 35ms); }
+  .nw-items.open .nw-item-ico { animation: nw-ico .45s cubic-bezier(.3, 1.6, .5, 1) backwards; animation-delay: calc(min(var(--i, 0), 8) * 35ms + 80ms); }
+  @keyframes nw-ico { from { transform: scale(.3) rotate(-25deg); opacity: 0 } }
+  .nw-item-ico { transition: transform .25s cubic-bezier(.3, 1.5, .5, 1); }
+  .nw-item:hover .nw-item-ico { transform: scale(1.1) rotate(-8deg); }
   .nw-item:first-child { border-top: none; }
   .nw-item-ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: var(--t); background: color-mix(in srgb, var(--t) 13%, var(--ds-card)); }
   .ds-dark .nw-item-ico { color: color-mix(in srgb, var(--t) 45%, #fff); }
   .nw-item b { display: block; font: 700 15px/1.3 var(--ds-head); }
   .nw-item span { font: 14px/1.45 var(--ds-sans); color: var(--ds-ink2); }
   .nw-more { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 10px; border: none; border-top: 1px dotted var(--ds-rule2); background: none;
-    font: 700 14px var(--ds-sans); color: var(--u-ink); cursor: pointer; }
-  .nw-more svg { transition: transform .2s; }
+    font: 700 14px var(--ds-sans); color: var(--u-ink); cursor: pointer; transition: background .2s, letter-spacing .25s; }
+  .nw-more:hover { background: color-mix(in srgb, var(--t) 7%, transparent); }
+  .nw-more svg { transition: transform .35s cubic-bezier(.3, 1.5, .5, 1); }
+  .nw-more:hover:not([aria-expanded="true"]) svg { transform: translateY(2px); }
   .nw-more[aria-expanded="true"] svg { transform: rotate(180deg); }
   @media (max-width: 360px) { .nt-bell { width: 34px; } }
-  @media (prefers-reduced-motion: reduce) { .nt-bell svg, .nt-bell b, .nt-page, .nt-page-in, .nt-item, .nt-toast, .nt-toast-bar i, .nw-issue, .nw-item, .nw-head-ico, .nw-new { animation: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .nt-bell svg, .nt-bell b, .nt-page, .nt-page-in, .nt-item, .nt-toast, .nt-toast-bar i, .nw-issue, .nw-item, .nw-item-text, .nw-item-ico, .nw-head, .nw-head-ico, .nw-new { animation: none !important; } .nw-issue, .nw-item-ico { transition: none; } }
 `;
 
 // значки уведомлений и новостей: имя → компонент
