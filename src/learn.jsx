@@ -1985,8 +1985,17 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     if (el && el.scrollIntoView) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: lesson ? 'center' : 'start' });
   }, [scrollTo]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const el = focusLesson(rootRef.current);
-    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
+    const center = () => {
+      const el = focusLesson(rootRef.current);
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'auto', block: 'center' });
+      return window.scrollY;
+    };
+    const at = center();
+    /* Шрифты догрузились после первой прокрутки — строки над уроком перенеслись иначе, и урок
+       уехал от середины. Поставить его заново, если ученик ещё не листал сам. */
+    let alive = true;
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (alive && Math.abs(window.scrollY - at) < 2) center(); });
+    return () => { alive = false; };
   }, []);
   /* Сундук открыт (docs/mechanics.md, «Навигация»): Путь подводит шапку юнита к верху экрана, дорога
      юнита сворачивается, юнит становится строкой — и Путь сам едет к рекомендованному уроку. */
