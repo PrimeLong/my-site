@@ -69,7 +69,7 @@ async function match(page, name, opts = SHOT) {
         if (d > 20) hist[d < 60 ? 0 : d < 140 ? 1 : 2] += 1;
         if (d > 60 && samples.length < 6 && (!samples.length || k / 4 - samples[samples.length - 1].i > base.width * 20)) {
           const i = k / 4; const x = i % base.width; const y = Math.floor(i / base.width);
-          samples.push({ i, x, y, was: [...base.data.slice(k, k + 3)].join(','), is: [...now.data.slice(k, k + 3)].join(',') });
+          samples.push({ i, x, y, was: base.data.slice(k, k + 3).join(','), is: now.data.slice(k, k + 3).join(',') });
         }
       }
       const css = await page.evaluate((pts) => pts.map(({ x, y }) => {
