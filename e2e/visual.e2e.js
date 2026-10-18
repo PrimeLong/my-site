@@ -62,7 +62,26 @@ async function match(page, name, opts = SHOT) {
         const ys = b - a > 120 ? [a + 4, (a + b) / 2] : [(a + b) / 2];
         return `${a}–${b}: ${ys.map((y) => [60, 206, 350].map((x) => name(document.elementFromPoint(x, y))).join(' | ')).join(' ‖ ')}`;
       }), bands.slice(0, 14));
-      e.message += `\n${name}: прокрутка ${await page.evaluate(() => Math.round(window.scrollY))}, полосы отличий (y — элементы):\n  ${where.join('\n  ')}`;
+      // насколько сильны отличия: слабые — сглаживание текста, сильные — другой цвет или сдвиг
+      const hist = [0, 0, 0]; const samples = [];
+      for (let k = 0; k < base.data.length; k += 4) {
+        const d = Math.max(Math.abs(base.data[k] - now.data[k]), Math.abs(base.data[k + 1] - now.data[k + 1]), Math.abs(base.data[k + 2] - now.data[k + 2]));
+        if (d > 20) hist[d < 60 ? 0 : d < 140 ? 1 : 2] += 1;
+        if (d > 60 && samples.length < 6 && (!samples.length || k / 4 - samples[samples.length - 1].i > base.width * 20)) {
+          const i = k / 4; const x = i % base.width; const y = Math.floor(i / base.width);
+          samples.push({ i, x, y, was: [...base.data.slice(k, k + 3)].join(','), is: [...now.data.slice(k, k + 3)].join(',') });
+        }
+      }
+      const css = await page.evaluate((pts) => pts.map(({ x, y }) => {
+        const el = document.elementFromPoint(x, y); if (!el) return '—';
+        const c = getComputedStyle(el);
+        return `${el.tagName.toLowerCase()} color ${c.color} bg ${c.backgroundColor} font ${c.fontWeight} ${c.fontSize} ${c.fontFamily.split(',')[0]} opacity ${c.opacity}`;
+      }), samples);
+      const fonts = await page.evaluate(() => [...document.fonts].filter((f) => f.status === 'loaded').map((f) => `${f.family} ${f.weight}`).join(', '));
+      e.message += `\n${name}: прокрутка ${await page.evaluate(() => Math.round(window.scrollY))}, полосы отличий (y — элементы):\n  ${where.join('\n  ')}`
+        + `\n  сила отличий (пикселей): слабые ${hist[0]}, средние ${hist[1]}, сильные ${hist[2]}`
+        + `\n  ${samples.map((p, k) => `(${p.x},${p.y}) было ${p.was} → стало ${p.is}: ${css[k]}`).join('\n  ')}`
+        + `\n  шрифты: ${fonts}`;
     }
     throw e;
   }
