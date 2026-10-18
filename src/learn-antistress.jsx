@@ -1,6 +1,7 @@
 /* АНТИСТРЕСС — окошко в углу урока на ПК (docs/mechanics.md, «Антистресс»). Маленький экран, на
    который приятно поглядывать краем глаза, пока читаешь урок: шарик в кольце, сквозь кольца, битва
-   цветов, маятники, песок, поп-ит, тетрис и змейка (каналы — learn-antistress-channels.js). Окошко
+   цветов, маятники, лава-лампа, стая, песок, поп-ит, тетрис и змейка (каналы —
+   learn-antistress-channels.js). Окошко
    перетаскивается в любой угол и тянется за внутренний уголок — но только по полю рядом с уроком и
    не выше 62 % окна: учиться оно не мешает. ○ сворачивает его в живой кружок, × скрывает (вернуть —
    сразу или в настройках). Открывается после четырёх уроков, в первый раз — со знакомством: урок
@@ -8,7 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronLeft, ChevronRight, Pause, Play, X, Circle, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, RotateCw, ArrowDownToLine,
-  Move, MoveDiagonal2, Sparkles, Orbit, Target, Swords, Waves, Hourglass, Grid3x3, Blocks, Worm,
+  Move, MoveDiagonal2, Sparkles, Orbit, Target, Swords, Waves, Lamp, Fish, Hourglass, Grid3x3, Blocks, Worm,
 } from 'lucide-react';
 import { CHANNELS, W, H, paintChannel } from './learn-antistress-channels.js';
 import { Button } from './ds.jsx';
@@ -30,7 +31,7 @@ export const antistressBlocked = () => typeof navigator !== 'undefined' && !!nav
    внизу — над доком черновика. Крупнее, чем в 1,8 раза, окошко не бывает. */
 const FRAME = { x: 12, y: 42 }; const BUBBLE = 58; const EDGE = 16; const DOCK = 124; const K_MAX = 1.8;
 const CORNERS = ['tl', 'tr', 'bl', 'br'];
-const ICONS = { ring: Orbit, rings: Target, battle: Swords, wave: Waves, sand: Hourglass, pop: Grid3x3, tetris: Blocks, snake: Worm };
+const ICONS = { ring: Orbit, rings: Target, battle: Swords, wave: Waves, lava: Lamp, flock: Fish, sand: Hourglass, pop: Grid3x3, tetris: Blocks, snake: Worm };
 const PAD_ICONS = { left: ArrowLeft, right: ArrowRight, up: ArrowUp, down: ArrowDown, turn: RotateCw };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function spot(corner, vp, w, h) {
@@ -89,10 +90,10 @@ export const ANTISTRESS_CSS = `
   .ast-pad button:hover { background: rgba(255, 255, 255, .18); }
   .ast-pad button:active { transform: scale(.88); }
   /* меню каналов поверх экрана */
-  .ast-menu { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; align-content: center; gap: 5px; padding: 8px; cursor: default;
+  .ast-menu { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; align-content: center; gap: 4px; padding: 6px; cursor: default;
     background: rgba(15, 13, 22, .82); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: ast-fade .2s ease backwards; }
-  .ast-menu button { height: 30px; display: flex; align-items: center; gap: 7px; padding: 0 9px; border-radius: 9px; cursor: pointer; text-align: left;
-    border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .88); font: 600 12px var(--ds-sans);
+  .ast-menu button { height: 26px; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 8px; cursor: pointer; text-align: left; white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .06); color: rgba(255, 255, 255, .88); font: 600 11.5px var(--ds-sans);
     animation: ast-name .3s cubic-bezier(.2, .9, .3, 1.2) backwards; transition: background .15s; }
   .ast-menu button:hover { background: rgba(255, 255, 255, .14); }
   .ast-menu button[aria-current="true"] { background: color-mix(in srgb, var(--u) 55%, transparent); border-color: transparent; color: #fff; }
@@ -170,7 +171,6 @@ export function Antistress({ paused = false }) {
   const sim = useRef(null);
   const dragged = useRef(false);
   const over = useRef(false);
-  const font = useRef('monospace');
   const C = CHANNELS[ch];
   const shown = phase === 'on' || phase === 'bye';
   const live = phase === 'on' && play && !paused;
@@ -179,7 +179,7 @@ export function Antistress({ paused = false }) {
   const paint = () => {
     const cv = canvas.current; const s = sim.current;
     if (!cv || !s) return;
-    paintChannel(cv.getContext('2d'), s, font.current);
+    paintChannel(cv.getContext('2d'), s);
     const who = s.player ? s.player() : null;
     if (who && shell.current && shell.current.dataset.player !== who) shell.current.dataset.player = who;
   };
@@ -197,14 +197,13 @@ export function Antistress({ paused = false }) {
     const t = stored(KEY.intro) ? 0 : setTimeout(() => setIntro(true), 700);
     return () => { window.removeEventListener('resize', resize); clearTimeout(t); };
   }, []);
-  // экран: чёткий при любом увеличении; шрифт подписей — моноширинный шрифт приложения
+  // экран: чёткий при любом увеличении
   useEffect(() => {
     const cv = canvas.current;
     if (!cv) return;
     const d = (window.devicePixelRatio || 1) * k;
     cv.width = Math.round(W * d); cv.height = Math.round(H * d);
     cv.getContext('2d').setTransform(d, 0, 0, d, 0, 0);
-    font.current = getComputedStyle(cv).getPropertyValue('--ds-mono').trim() || 'monospace';
     paint();
   }, [shown, k]); // eslint-disable-line react-hooks/exhaustive-deps
   // канал: свой мир с нуля и сразу первый кадр
@@ -305,6 +304,13 @@ export function Antistress({ paused = false }) {
       setCorner(next); store(KEY.corner, next); setDrag(null);
     });
   };
+  // мышь просто над экраном — каналу, который её чувствует (рыбки шарахаются)
+  const onHover = (e) => {
+    if (!C.hover || min || menu || !sim.current || !sim.current.pointer) return;
+    if (e.type === 'pointerleave') { sim.current.pointer('leave'); return; }
+    const r = screen.current.getBoundingClientRect();
+    sim.current.pointer('hover', (e.clientX - r.left) / k, (e.clientY - r.top) / k);
+  };
   // растягивание за внутренний уголок: прижатый угол стоит, окошко растёт к уроку, но не дальше поля
   const onGrip = (e) => {
     if (e.button !== 0 || intro) return;
@@ -366,7 +372,8 @@ export function Antistress({ paused = false }) {
           <button type="button" className="ast-btn ast-tour" aria-label="Свернуть в кружок" title="Свернуть в кружок" data-testid="antistress-min" onClick={() => fold(true)}><Circle size={13} strokeWidth={2.6} aria-hidden="true" /></button>
           <button type="button" className="ast-btn ast-tour" aria-label="Скрыть антистресс" title="Скрыть — вернуть можно в настройках" data-testid="antistress-hide" onClick={hide}><X size={16} aria-hidden="true" /></button>
         </div>
-        <div ref={screen} className="ast-screen" style={{ ...screenAt, cursor: C.touch && !min ? (C.id === 'sand' ? 'crosshair' : 'pointer') : undefined }}>
+        <div ref={screen} className="ast-screen" style={{ ...screenAt, cursor: C.touch && !min ? (C.id === 'sand' ? 'crosshair' : 'pointer') : undefined }}
+          onPointerMove={onHover} onPointerLeave={onHover}>
           <canvas ref={canvas} aria-hidden="true" data-testid="antistress-canvas" />
           <span key={ch} className="ast-tune" aria-hidden="true" />
           {!play && !min && <span className="ast-pause" aria-hidden="true"><Play size={30} fill="currentColor" /></span>}
@@ -400,7 +407,7 @@ export function Antistress({ paused = false }) {
           <div className="ast-card" style={cardAt}>
             <span className="ast-new"><Sparkles size={13} aria-hidden="true" />Новое</span>
             <h2 id="ast-intro-title">Антистресс</h2>
-            <p>Маленькое окошко, на которое приятно поглядывать, пока читаете урок. Шарик в кольцах, битва цветов, маятники и песок — просто смотреть; поп-ит, тетрис и змейка — можно и поиграть.</p>
+            <p>Маленькое окошко, на которое приятно поглядывать, пока читаете урок. Кольца, битва цветов, маятники, лава-лампа и стая — просто смотреть; песок, поп-ит, тетрис и змейка — можно и поиграть.</p>
             <ul>
               <li><span className="ast-key"><ChevronLeft size={15} aria-hidden="true" /><ChevronRight size={15} aria-hidden="true" /></span><span><b>Каналы</b> — стрелками или нажмите на название</span></li>
               <li><span className="ast-key"><MoveDiagonal2 size={14} aria-hidden="true" /></span><span>Потяните за <b>уголок</b> — окошко станет больше</span></li>

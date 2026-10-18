@@ -3986,7 +3986,7 @@ test('антистресс: после четырёх уроков — знак�
   await expect(page.getByTestId('antistress-name')).toHaveText('Сквозь кольца');
   await page.getByTestId('antistress-name').click();
   const menu = page.getByTestId('antistress-menu');
-  await expect(menu.getByTestId('antistress-pick')).toHaveCount(8);
+  await expect(menu.getByTestId('antistress-pick')).toHaveCount(10);
   await menu.locator('[data-channel="sand"]').click();
   await expect(menu).toHaveCount(0);
   await expect(box).toHaveAttribute('data-channel', 'sand');
@@ -4007,12 +4007,11 @@ test('антистресс: после четырёх уроков — знак�
   await expect(box).toHaveAttribute('data-player', 'you');
   await page.mouse.up();
   await expect(box).toHaveAttribute('data-corner', 'br');
-  // поп-ит: сам себя не жмёт первые секунды; пупырку нажали — она ваша
+  // поп-ит: сам себя не жмёт первые секунды; пупырку в середине нажали — она ваша
   await page.getByTestId('antistress-next').click();
   await expect(box).toHaveAttribute('data-channel', 'pop');
   await expect(box).toHaveAttribute('data-player', 'bot');
-  const k = cb.width / 232;
-  await page.mouse.click(cb.x + 43.9 * k, cb.y + 34.5 * k);
+  await page.mouse.click(cb.x + cb.width / 2, cb.y + (cb.height / 164) * 83);
   await expect(box).toHaveAttribute('data-player', 'you');
   // змейка: играет бот, кнопка — и змейка ваша, урок стрелку не получает
   await page.getByTestId('antistress-next').click();

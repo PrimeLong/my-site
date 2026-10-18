@@ -440,7 +440,7 @@ export function SettingsView({ learn, update, notify, onBack, onThemeChange, onP
           <SetRow title="Музыка в обучении" on={music} testid="prof-music" onChange={(v) => { setLearnMusic(v); setMusic(v); onThemeChange(); }} />
           <SetRow title="Звуки ответов" on={sfx} testid="prof-sfx" onChange={(v) => { setLearnSfx(v); setSfx(v); onThemeChange(); if (v) Audio.play('coin'); }} />
           <SetRow title="Антистресс" testid="prof-antistress" on={calmOpen && calmOn} disabled={!calmOpen} onChange={(v) => { Audio.play('tick'); setAntistressShown(v); setCalmOn(v); }}
-            note={calmOpen ? 'Окошко в углу урока на компьютере: шарик в кольцах, битва цветов, маятники, песок, поп-ит, тетрис и змейка'
+            note={calmOpen ? 'Окошко в углу урока на компьютере: кольца, битва цветов, маятники, лава-лампа, стая, песок, поп-ит, тетрис и змейка'
               : 'Откроется после четырёх уроков: окошко в углу урока на компьютере'} />
         </SetGroup>
 
