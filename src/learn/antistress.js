@@ -1,8 +1,9 @@
 /* АНТИСТРЕСС (docs/mechanics.md, «Антистресс»). Маленькое окошко в углу урока на ПК: на него приятно
-   поглядывать краем глаза, пока читаешь урок, а в паре каналов — и поиграть. Каналы: шарик в кольце,
-   сквозь кольца, битва цветов, маятниковая волна, песок, поп-ит, тетрис и змейка, которые играют
-   сами (их можно перехватить). Открывается с середины первого юнита — после четырёх пройденных уроков, в первый
-   раз — со знакомством. Здесь — физика и игры без DOM. */
+   поглядывать краем глаза, пока читаешь урок, а в паре каналов — и поиграть. Открывается с середины
+   первого юнита — после четырёх пройденных уроков, в первый раз — со знакомством. Здесь — физика и
+   игры без DOM: шарик в кольце, сквозь кольца, битва цветов, маятниковая волна, песок, тетрис и
+   змейка, которые играют сами (их можно перехватить); картинка и остальные каналы —
+   learn-antistress-channels.js. */
 
 export const ANTISTRESS = { unlock: 4 };
 // пройдено уроков — не меньше четырёх: середина первого юнита
@@ -278,29 +279,31 @@ export function snakeBot(s) {
 }
 
 /* ------------------------------ БИТВА ЦВЕТОВ ------------------------------
-   Поле из квадратиков поделено между четырьмя цветами, у каждого — по два бойца. Вокруг бойца
-   крутится меч: клетки, по которым он проводит, становятся цвета бойца. Бойцы бродят и заходят на
-   чужую землю — каждый выбирает себе чужую клетку и идёт к ней. Задел мечом чужого бойца — тот
-   переходит на твою сторону. Раз в несколько секунд у цвета с заметной территорией появляется
-   подкрепление. Остался один цвет — победа; затянулось дольше 2,5 минуты — побеждает тот, у кого
-   больше земли. И заново. */
-export const BATTLE = { cols: 46, rows: 32, cell: 5, teams: 4, start: 2, r: 3.4, sword: 11, speed: 30, spin: 4.2, aim: 2.5, spawn: 5, share: 0.15, cap: 4, safe: 0.8, limit: 150 };
-const fighter = (x, y, team, rand, safe = 0) => {
-  const a = rand() * Math.PI * 2;
-  return { x, y, vx: Math.cos(a) * BATTLE.speed, vy: Math.sin(a) * BATTLE.speed, a, w: BATTLE.spin * (rand() < 0.5 ? -1 : 1), team, safe, goal: null, goalT: 0 };
-};
+   Поле из квадратиков поделено между восемью цветами (области — по ближайшей из восьми точек), у
+   каждого цвета — один боец. Боец ходит только по своей земле: в чужую клетку он не заходит, а
+   отскакивает от неё, как от стенки, — и тянется к ближайшему чужому бойцу, так что бьются у границ. За границу достаёт только его меч — он крутится вокруг и
+   перекрашивает клетки, по которым проводит, поэтому земля цвета растёт там, где у границы ходит
+   боец. Задел мечом чужого бойца — тот переходит на твою сторону (и, оказавшись на чужой теперь
+   земле, вырезает себе островок мечом). Новых бойцов нет. Все бойцы одного цвета — победа;
+   затянулось дольше трёх минут — побеждает тот, у кого больше земли. И заново. */
+export const BATTLE = { cols: 46, rows: 32, cell: 5, teams: 8, r: 3.4, sword: 12, speed: 42, spin: 4.2, seek: 1.2, safe: 0.8, limit: 180 };
 export function newBattle(rand) {
-  const { cols, rows, cell } = BATTLE;
+  const { cols, rows, cell, teams } = BATTLE;
+  // точки-столицы: сетка 4 × 2 со сдвигом, область цвета — клетки, ближайшие к его точке
+  const seeds = Array.from({ length: teams }, (_, i) => [((i % 4) + 0.5 + (rand() - 0.5) * 0.5) * (cols / 4), (Math.floor(i / 4) + 0.5 + (rand() - 0.5) * 0.5) * (rows / 2)]);
   const cells = new Uint8Array(cols * rows);
-  for (let y = 0; y < rows; y += 1) for (let x = 0; x < cols; x += 1) cells[y * cols + x] = (x < cols / 2 ? 0 : 1) + (y < rows / 2 ? 0 : 2);
-  const fighters = [];
-  for (let team = 0; team < BATTLE.teams; team += 1) {
-    for (let k = 0; k < BATTLE.start; k += 1) {
-      const qx = team % 2 ? cols / 2 : 0; const qy = team > 1 ? rows / 2 : 0;
-      fighters.push(fighter((qx + cols / 4 + (k ? 5 : -5)) * cell, (qy + rows / 4 + (k ? 3 : -3)) * cell, team, rand));
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      let best = 0; let bd = Infinity;
+      seeds.forEach(([sx, sy], i) => { const d = (x + 0.5 - sx) ** 2 + (y + 0.5 - sy) ** 2; if (d < bd) { bd = d; best = i; } });
+      cells[y * cols + x] = best;
     }
   }
-  return { cells, fighters, t: 0, spawnT: 0, winner: -1, turns: 0 };
+  const fighters = seeds.map(([sx, sy], team) => {
+    const a = rand() * Math.PI * 2;
+    return { x: sx * cell, y: sy * cell, vx: Math.cos(a) * BATTLE.speed, vy: Math.sin(a) * BATTLE.speed, a: rand() * Math.PI * 2, w: BATTLE.spin * (rand() < 0.5 ? -1 : 1), team, safe: 0 };
+  });
+  return { cells, fighters, t: 0, winner: -1, turns: 0 };
 }
 export const battleShare = (s) => {
   const n = Array(BATTLE.teams).fill(0);
@@ -314,40 +317,34 @@ const toSegment = (px, py, ax, ay, bx, by) => {
   return Math.hypot(px - ax - k * dx, py - ay - k * dy);
 };
 export const swordTip = (f) => [f.x + Math.cos(f.a) * BATTLE.sword, f.y + Math.sin(f.a) * BATTLE.sword];
-// чужая клетка поблизости: из нескольких случайных — ближайшая
-function enemyCell(s, f, rand) {
-  const { cols, cell } = BATTLE;
-  let best = null; let bd = Infinity;
-  for (let k = 0; k < 24; k += 1) {
-    const i = Math.floor(rand() * s.cells.length);
-    if (s.cells[i] === f.team) continue;
-    const x = (i % cols + 0.5) * cell; const y = (Math.floor(i / cols) + 0.5) * cell;
-    const d = Math.hypot(x - f.x, y - f.y);
-    if (d < bd) { bd = d; best = [x, y]; }
-  }
-  return best;
+// чья клетка под точкой (−1 — за краем поля)
+export function battleCellAt(s, x, y) {
+  const { cols, rows, cell } = BATTLE;
+  const cx = Math.floor(x / cell); const cy = Math.floor(y / cell);
+  return cx < 0 || cy < 0 || cx >= cols || cy >= rows ? -1 : s.cells[cy * cols + cx];
 }
-/* Шаг битвы (на месте): двигает бойцов и мечи, красит клетки, переманивает задетых, даёт
-   подкрепление. Возвращает события: painted — номера перекрашенных клеток, turned — кто перешёл. */
+/* Шаг битвы (на месте): двигает бойцов и мечи, красит клетки, переманивает задетых. Возвращает
+   события: painted — номера перекрашенных клеток, turned — кто перешёл. */
 export function stepBattle(s, dt, rand) {
   const { cols, rows, cell, r } = BATTLE;
-  const W = cols * cell; const H = rows * cell;
   const painted = []; const turned = [];
   s.t += dt;
   if (s.winner >= 0) return { painted, turned };
   for (const f of s.fighters) {
-    f.goalT -= dt;
-    if (f.goalT <= 0) { f.goal = enemyCell(s, f, rand); f.goalT = BATTLE.aim * (0.6 + rand() * 0.8); }
-    let ang = Math.atan2(f.vy, f.vx) + (rand() - 0.5) * 3 * dt;
-    if (f.goal) {
-      const want = Math.atan2(f.goal[1] - f.y, f.goal[0] - f.x);
-      const diff = ((want - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      ang += Math.max(-1.6 * dt, Math.min(1.6 * dt, diff));
+    // бродит, понемногу меняя курс и подтягиваясь к ближайшему чужому — у границы с ним и бьются
+    let ang = Math.atan2(f.vy, f.vx) + (rand() - 0.5) * 2.4 * dt;
+    let foe = null; let near = Infinity;
+    for (const g of s.fighters) { if (g.team === f.team) continue; const d = Math.hypot(g.x - f.x, g.y - f.y); if (d < near) { near = d; foe = g; } }
+    if (foe) {
+      const diff = ((Math.atan2(foe.y - f.y, foe.x - f.x) - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      ang += Math.max(-BATTLE.seek * dt, Math.min(BATTLE.seek * dt, diff));
     }
     f.vx = Math.cos(ang) * BATTLE.speed; f.vy = Math.sin(ang) * BATTLE.speed;
-    f.x += f.vx * dt; f.y += f.vy * dt;
-    if (f.x < r) { f.x = r; f.vx = Math.abs(f.vx); } else if (f.x > W - r) { f.x = W - r; f.vx = -Math.abs(f.vx); }
-    if (f.y < r) { f.y = r; f.vy = Math.abs(f.vy); } else if (f.y > H - r) { f.y = H - r; f.vy = -Math.abs(f.vy); }
+    const home = battleCellAt(s, f.x, f.y) === f.team;
+    // своя земля — граница: следующий шаг передним краем в чужую клетку или за поле — отскок
+    const blocked = (x, y) => { const c = battleCellAt(s, x, y); return c < 0 || (home && c !== f.team); };
+    if (blocked(f.x + f.vx * dt + Math.sign(f.vx) * r, f.y)) f.vx = -f.vx; else f.x += f.vx * dt;
+    if (blocked(f.x, f.y + f.vy * dt + Math.sign(f.vy) * r)) f.vy = -f.vy; else f.y += f.vy * dt;
     f.a += f.w * dt; f.safe = Math.max(0, f.safe - dt);
     // меч красит клетки под собой — от бойца до острия
     for (let k = 0; k <= 8; k += 1) {
@@ -363,23 +360,7 @@ export function stepBattle(s, dt, rand) {
     const [tx, ty] = swordTip(f);
     for (const g of s.fighters) {
       if (g === f || g.team === f.team || g.safe > 0 || f.safe > 0) continue;
-      if (toSegment(g.x, g.y, f.x, f.y, tx, ty) < r + 1) { g.team = f.team; g.safe = BATTLE.safe; g.goalT = 0; turned.push(g); s.turns += 1; }
-    }
-  }
-  // подкрепление: цвету, у которого есть бойцы и заметная территория, — новый боец на своей клетке
-  s.spawnT += dt;
-  if (s.spawnT >= BATTLE.spawn) {
-    s.spawnT = 0;
-    const share = battleShare(s);
-    for (let team = 0; team < BATTLE.teams; team += 1) {
-      const mine = s.fighters.filter((f) => f.team === team).length;
-      if (!mine || mine >= BATTLE.cap || share[team] < BATTLE.share) continue;
-      for (let k = 0; k < 40; k += 1) {
-        const i = Math.floor(rand() * s.cells.length);
-        if (s.cells[i] !== team) continue;
-        s.fighters.push({ ...fighter((i % cols + 0.5) * cell, (Math.floor(i / cols) + 0.5) * cell, team, rand, BATTLE.safe), born: s.t });
-        break;
-      }
+      if (toSegment(g.x, g.y, f.x, f.y, tx, ty) < r + 1) { g.team = f.team; g.safe = BATTLE.safe; turned.push(g); s.turns += 1; }
     }
   }
   if (new Set(s.fighters.map((f) => f.team)).size === 1) s.winner = s.fighters[0].team;

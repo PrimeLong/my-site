@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ANTISTRESS, antistressUnlocked, RING, RINGS, newRings, stepRings, ringsGap, SAND, stepSand, drainSand,
-  SNAKE, SNAKE_DIRS, newSnake, snakeMove, snakeBot, snakeWon, BATTLE, newBattle, stepBattle, battleShare, swordTip, newBall, stepBall, gapAt, PEND, pendulumAngle, pendulumAlign,
+  SNAKE, SNAKE_DIRS, newSnake, snakeMove, snakeBot, snakeWon, BATTLE, newBattle, stepBattle, battleShare, swordTip, battleCellAt, newBall, stepBall, gapAt, PEND, pendulumAngle, pendulumAlign,
   TET, PIECES, shapeCells, emptyBoard, fits, spawn, shift, turn, fall, lock, clearLines, bag, bestMove,
 } from '../antistress.js';
 import { emptyLearn } from '../../textbook/learn-state.js';
@@ -203,37 +203,53 @@ describe('змейка', () => {
 });
 
 describe('битва цветов', () => {
-  it('начало: четыре равные четверти, по два бойца у каждого цвета', () => {
+  it('начало: восемь цветов, у каждого своя область и один боец на ней', () => {
     const s = newBattle(seeded(1));
-    battleShare(s).forEach((v) => expect(v).toBeCloseTo(0.25, 6));
-    expect(s.fighters.map((f) => f.team).sort()).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
+    const share = battleShare(s);
+    expect(share).toHaveLength(BATTLE.teams);
+    share.forEach((v) => expect(v).toBeGreaterThan(0.05));
+    expect(s.fighters.map((f) => f.team)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    s.fighters.forEach((f) => expect(battleCellAt(s, f.x, f.y)).toBe(f.team));
   });
-  it('меч красит клетки в цвет бойца; задетый мечом переходит на сторону владельца', () => {
+  it('боец не заходит на чужую землю — отскакивает от границы, а меч за неё достаёт', () => {
+    const rand = seeded(3);
+    const s = newBattle(rand);
+    // поле пополам: слева цвет 0, справа цвет 1; боец бежит вправо, к границе
+    s.cells.fill(0);
+    for (let y = 0; y < BATTLE.rows; y += 1) for (let x = 23; x < BATTLE.cols; x += 1) s.cells[y * BATTLE.cols + x] = 1;
+    // меч смотрит назад, на свою землю: граница стоит, и боец её не переходит
+    const f = { ...s.fighters[0], x: 100, y: 80, vx: BATTLE.speed, vy: 0, a: Math.PI, w: 0, team: 0 };
+    s.fighters = [f, { ...s.fighters[1], x: 220, y: 20, team: 1, w: 0, a: 0 }];
+    let crossed = false;
+    for (let k = 0; k < 120; k += 1) { stepBattle(s, 1 / 60, rand); if (f.x > 23 * BATTLE.cell) crossed = true; }
+    expect(crossed).toBe(false);
+    expect(battleShare(s)[0]).toBeCloseTo(0.5, 6);
+    // меч повернули к границе — он отрезает от чужой земли полосу
+    f.x = 23 * BATTLE.cell - 4; f.a = 0;
+    stepBattle(s, 1 / 60, rand);
+    expect(battleShare(s)[0]).toBeGreaterThan(0.5);
+  });
+  it('задетый мечом переходит на сторону владельца меча', () => {
     const rand = seeded(2);
     const s = newBattle(rand);
-    const [f, g] = [s.fighters[0], s.fighters[2]];
-    // меч смотрит вправо; чужая клетка под клинком — после шага она цвета бойца
+    const [f, g] = [s.fighters[0], s.fighters[1]];
     f.x = 62; f.y = 42; f.a = 0; f.w = 0;
     const [tx, ty] = swordTip(f);
     expect([tx, ty]).toEqual([62 + BATTLE.sword, 42]);
-    const under = Math.floor(42 / BATTLE.cell) * BATTLE.cols + Math.floor(66 / BATTLE.cell);
-    s.cells[under] = 3;
-    // чужой боец у острия, его меч смотрит в другую сторону
-    g.x = f.x + BATTLE.sword - 2; g.y = f.y; g.a = 0; g.w = 0; g.safe = 0;
+    g.x = f.x + BATTLE.sword - 2; g.y = f.y; g.a = Math.PI / 2; g.w = 0; g.safe = 0;
     const { turned } = stepBattle(s, 1 / 240, rand);
-    expect(s.cells[under]).toBe(f.team);
     expect(turned).toContain(g);
     expect(g.team).toBe(f.team);
+    expect(s.cells[Math.floor(42 / BATTLE.cell) * BATTLE.cols + Math.floor(66 / BATTLE.cell)]).toBe(f.team);
   });
-  it('битва кончается победой одного цвета — не позже чем через 2,5 минуты', () => {
+  it('новых бойцов не бывает; битва кончается победой — не позже чем через три минуты', () => {
     const rand = seeded(5);
     const s = newBattle(rand);
     while (s.winner < 0 && s.t < BATTLE.limit + 1) {
       stepBattle(s, 1 / 60, rand);
-      expect(s.cells.every((c) => c < BATTLE.teams)).toBe(true);
+      expect(s.fighters).toHaveLength(BATTLE.teams);
     }
     expect(s.winner).toBeGreaterThanOrEqual(0);
     expect(s.turns).toBeGreaterThan(0);
-    expect(s.fighters.length).toBeGreaterThan(BATTLE.teams * BATTLE.start);
   });
 });

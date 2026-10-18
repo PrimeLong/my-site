@@ -993,6 +993,17 @@ export function createAudioEngine(options = {}) {
     alarm: () => { const t = now(); [0, 0.22, 0.44].forEach((d) => { tone(233, t + d, 0.18, 0.06, 'square'); tone(175, t + d + 0.09, 0.18, 0.05, 'square'); }); },
     news: () => { const t = now(); tone(1500, t, 0.04, 0.025, 'sine'); tone(2100, t + 0.05, 0.05, 0.02, 'sine'); },
     coin: () => { const t = now(); tone(988, t, 0.09, 0.035, 'triangle'); tone(1319, t + 0.05, 0.16, 0.03, 'triangle'); },
+    // поп-ит: пупырка лопается — короткий «бульк» вниз по высоте и мягкий шлепок; высота каждый раз чуть другая
+    pop: () => {
+      const t = now(); const f = 480 + Math.random() * 300;
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * 0.32, t + 0.07);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      o.connect(g); g.connect(sfxOut || sfxBus); o.start(t); o.stop(t + 0.12);
+      noiseHit(t, 0.035, 0.05, 'bandpass', 1600 + Math.random() * 900, 1.4, sfxOut || sfxBus);
+    },
+    // поп-ит переворачивается: шорох силикона и мягкий щелчок
+    flip: () => { const t = now(); noiseHit(t, 0.22, 0.05, 'bandpass', 900, 0.8, sfxOut || sfxBus); tone(330, t + 0.12, 0.12, 0.03, 'triangle'); },
     // касса в конце урока: щелчок ящика, звонок и ссыпающиеся монеты
     register: () => {
       const t = now();
@@ -1178,7 +1189,7 @@ export async function renderStingerOffline(id, { sampleRate = 22050 } = {}) {
 }
 
 /* Отрендерить звук интерфейса — для замера громкости звуков ответов. */
-export const SFX_NAMES = ['coin', 'down', 'up', 'register', 'tick', 'click', 'tab', 'paper', 'stamp', 'news', 'alarm'];
+export const SFX_NAMES = ['coin', 'down', 'up', 'register', 'tick', 'click', 'tab', 'paper', 'stamp', 'news', 'alarm', 'pop', 'flip'];
 export async function renderSfxOffline(name, { sampleRate = 22050, sfxGain = false } = {}) {
   const OAC = typeof window !== 'undefined' && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
   if (!OAC) return null;
