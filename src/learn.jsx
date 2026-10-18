@@ -59,12 +59,13 @@ import { symbolsOf } from './textbook/symbols.js';
 import { inCrowns, sceneInCrowns } from './learn/money.js';
 import { ReportFlag, QuoteReport, ReportsView, AnalyticsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, AnswerBar, Sheet, TopBar } from './ds.jsx';
-import { ArtStyle, Guilloche, Rosette, Chest, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide } from './ds-art.jsx';
+import { ArtStyle, Guilloche, Rosette, Chest, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide, useMedia } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { levelRegions } from './learn/levelmap.js';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, FriendFeed, racesToShow } from './learn-friends.jsx';
+import { LessonSketch, SKETCH_CSS, SKETCH_QUERY } from './learn-sketch.jsx';
 import { useFriends, pushCard, friendsState } from './lib/friends-store.js';
 import { buildCard, raceOffer } from './learn/friends.js';
 import { plural } from './lib/plural.js';
@@ -717,6 +718,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   const rs = run.resume || null;
   const [plan] = useState(() => (rs ? rs.plan : newPlan(run, learn)));
   const lesson = run.lessonId ? LESSON_BY_ID[run.lessonId] : null;
+  // ПК с мышью: на полях урока можно писать черновик (learn-sketch.jsx)
+  const sketch = useMedia(SKETCH_QUERY);
   // пройден ли урок раньше — на момент начала (после финиша он уже в прогрессе); был ли уже алмаз
   const [replay] = useState(() => run.mode === 'lesson' && lessonDone(learn, run.lessonId));
   const diamond = !!plan.diamond;
@@ -1003,7 +1006,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   return (
     <DsRoot theme={dsThemeId()} accent={color} className="ln-overlay" data-testid="lesson" data-mode={run.mode} data-diamond={diamond ? 'true' : undefined} role="dialog" aria-label={title}
       style={{ display: hidden ? 'none' : undefined }}>
-      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS + MODEL_CSS + DOMINO_CSS}</style>
+      <ArtStyle /><style>{CSS + PLAY_CSS + FEED_CSS + REPORT_CSS + MODEL_CSS + DOMINO_CSS + (sketch ? SKETCH_CSS : '')}</style>
       <div className="ln-head">
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
         <ProgressChart answers={log} total={total} pulse={pulse} />
@@ -1267,6 +1270,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           </div>
         </div></div>
       )}
+      {/* черновик — последним: холст всё равно под уроком, а панель в порядке Tab — после кнопок урока */}
+      {sketch && <LessonSketch />}
     </DsRoot>
   );
 }
