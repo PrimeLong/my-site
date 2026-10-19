@@ -270,59 +270,154 @@ function waveChannel() {
   };
 }
 
-/* Лава-лампа: тёплые капли (метаболы — сумма полей от каждой капли, где поле выше порога — лава).
-   У дна над нагревателем — лужа; капля внизу греется и всплывает, наверху остывает и тонет, по пути
-   капли сливаются и делятся.
-   Цвет лампы медленно меняется. Картинка считается в мелкой сетке и мягко растягивается. */
+/* Лава-лампа: настоящая лампа посреди тёмной комнаты — металлическая крышка и подставка, стеклянная
+   колба с прозрачной цветной жидкостью, внутри — много воска. Воск — метаболы (сумма полей капель, где
+   поле выше порога — воск), но рисуется не картинкой из точек, а гладким контуром: границу находят
+   «марширующими квадратами» с интерполяцией и заливают одним путём в полном разрешении экрана, сверху —
+   объём (свет снизу, блики на каплях, тёмная кромка). У дна над нагревателем — большая лужа: капля
+   внизу греется и всплывает, наверху остывает и медленно тонет, по пути капли сливаются и делятся.
+   Цвета лампы раз в минуту плавно меняются. */
+const LAMPS = [
+  { wax: [255, 92, 52], liquid: [74, 20, 96], glow: '255, 120, 80' },
+  { wax: [255, 200, 48], liquid: [24, 44, 128], glow: '255, 210, 90' },
+  { wax: [255, 84, 160], liquid: [16, 70, 100], glow: '255, 110, 170' },
+  { wax: [110, 232, 104], liquid: [74, 20, 78], glow: '140, 240, 130' },
+];
+// поле капли — компактное: (1 − d²/R²)², R = r·√2; на пороге 0,25 одинокая капля ровно радиуса r
+const LAVA = { top: 26, bottom: 128, cell: 2, thr: 0.25, reach: Math.SQRT2 };
 function lavaChannel(rand) {
-  const gw = 116; const gh = 82; const sx = W / gw; const sy = H / gh;
-  const { img, px, off, octx } = pixels(gw, gh);
-  const blobs = Array.from({ length: 9 }, (_, i) => ({ x: W * (0.15 + rand() * 0.7), y: H * (0.15 + (i / 8) * 0.75), r: 8 + rand() * 7, vy: 0, heat: i / 8, ph: rand() * TAU, sp: 0.25 + rand() * 0.3 }));
-  // у дна — неподвижная лужа над нагревателем: капли из неё отрываются и в неё же падают
-  const pool = [{ x: W * 0.32, y: H + 8, r: 24 }, { x: W * 0.68, y: H + 10, r: 24 }, { x: W * 0.5, y: H + 4, r: 20 }];
+  const cx = W / 2; const { top, bottom, cell, thr, reach } = LAVA;
+  // колба: квадратичная кривая от горлышка (полуширина 13) через пузо к дну (полуширина 24)
+  const glass = (t) => [(1 - t) ** 2 * 13 + 2 * (1 - t) * t * 40 + t * t * 24, (1 - t) ** 2 * top + 2 * (1 - t) * t * 96 + t * t * bottom];
+  const half = new Float32Array(H + 1);
+  for (let k = 0; k <= 200; k += 1) { const [hw, y] = glass(k / 200); half[Math.round(y)] = hw; }
+  for (let y = top; y <= bottom; y += 1) if (!half[y]) half[y] = half[y - 1];
+  const blobs = Array.from({ length: 6 }, (_, i) => ({ x: cx + (rand() - 0.5) * 14, y: top + 14 + (i / 5) * 72, r: 9.5 + rand() * 4, vy: 0, heat: i / 5, ph: rand() * TAU, s: 1 }));
+  const pool = [{ x: cx - 13, y: bottom - 1, r0: 13, ph: 0 }, { x: cx, y: bottom + 1, r0: 16, ph: 2 }, { x: cx + 13, y: bottom - 1, r0: 13, ph: 4 }].map((q) => ({ ...q, r: q.r0, s: 1 }));
   const all = [...blobs, ...pool];
-  let t = 0; let hue = rand() * 360;
+  // сетка поля: шаг 2 единицы — контур между узлами интерполируется, так что края гладкие
+  const gx0 = cx - 42; const gy0 = top - 2; const nx = Math.ceil(84 / cell) + 1; const ny = Math.ceil((bottom + 4 - gy0) / cell) + 1;
+  const field = new Float32Array(nx * ny);
+  let t = rand() * 60;
+  const outline = (ctx) => {
+    ctx.beginPath(); ctx.moveTo(cx - 13, top);
+    ctx.quadraticCurveTo(cx - 40, 96, cx - 24, bottom); ctx.lineTo(cx + 24, bottom);
+    ctx.quadraticCurveTo(cx + 40, 96, cx + 13, top); ctx.closePath();
+  };
+  const metal = (ctx, x0, x1) => {
+    const g = ctx.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0, '#3a3d48'); g.addColorStop(0.35, '#c9ccd6'); g.addColorStop(0.55, '#f2f3f7'); g.addColorStop(1, '#4a4e5a');
+    return g;
+  };
+  // воск одним путём: в каждой клетке — многоугольник её «внутренней» части (углы выше порога и
+  // точки пересечения порога на рёбрах); соседние куски сходятся по общим рёбрам без щелей
+  const waxPath = () => {
+    for (let j = 0; j < ny; j += 1) {
+      const y = gy0 + j * cell;
+      for (let i = 0; i < nx; i += 1) {
+        const x = gx0 + i * cell; let f = 0;
+        for (let k = 0; k < all.length; k += 1) {
+          // капля в движении вытягивается по вертикали (s > 1), объём тот же
+          const q = all[k]; const R2 = (q.r * reach) ** 2; const d2 = ((x - q.x) * q.s) ** 2 + ((y - q.y) / q.s) ** 2;
+          if (d2 < R2) f += (1 - d2 / R2) ** 2;
+        }
+        field[j * nx + i] = f;
+      }
+    }
+    const path = new Path2D(); const edge = new Path2D();
+    for (let j = 0; j < ny - 1; j += 1) {
+      for (let i = 0; i < nx - 1; i += 1) {
+        const c = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
+        const v = c.map(([a, b]) => field[b * nx + a]);
+        const ins = v.map((q) => q >= thr);
+        if (!ins.some(Boolean)) continue;
+        const poly = []; const cross = [];
+        for (let k = 0; k < 4; k += 1) {
+          const k2 = (k + 1) % 4;
+          if (ins[k]) poly.push([gx0 + c[k][0] * cell, gy0 + c[k][1] * cell]);
+          if (ins[k] !== ins[k2]) {
+            const u = (thr - v[k]) / (v[k2] - v[k]);
+            const pt = [gx0 + (c[k][0] + (c[k2][0] - c[k][0]) * u) * cell, gy0 + (c[k][1] + (c[k2][1] - c[k][1]) * u) * cell];
+            poly.push(pt); cross.push(pt);
+          }
+        }
+        path.moveTo(poly[0][0], poly[0][1]);
+        for (let k = 1; k < poly.length; k += 1) path.lineTo(poly[k][0], poly[k][1]);
+        path.closePath();
+        // граница воска — только отрезки между точками пересечения порога (у «седла» их два)
+        for (let k = 0; k + 1 < cross.length; k += 2) { edge.moveTo(cross[k][0], cross[k][1]); edge.lineTo(cross[k + 1][0], cross[k + 1][1]); }
+      }
+    }
+    return { path, edge };
+  };
   return {
     step(dt) {
-      t += dt; hue = (hue + dt * 3) % 360;
+      t += dt;
       blobs.forEach((b) => {
-        if (b.y > H * 0.8) b.heat = Math.min(1, b.heat + dt * 0.4);
-        else if (b.y < H * 0.22) b.heat = Math.max(0, b.heat - dt * 0.4);
-        b.vy = clamp((b.vy + (0.5 - b.heat) * 70 * dt) * (1 - 0.8 * dt), -32, 32);
-        b.y = clamp(b.y + b.vy * dt, b.r * 0.5, H + b.r * 0.3);
-        b.x = clamp(b.x + Math.sin(t * b.sp + b.ph) * 7 * dt, b.r * 0.6, W - b.r * 0.6);
+        if (b.y > bottom - 18) b.heat = Math.min(1, b.heat + dt * 0.28);
+        else if (b.y < top + 24) b.heat = Math.max(0, b.heat - dt * 0.28);
+        b.vy = clamp((b.vy + (0.5 - b.heat) * 36 * dt) * (1 - 0.9 * dt), -14, 14);
+        b.y = clamp(b.y + b.vy * dt, top + b.r * 0.7, bottom + 2);
+        const hw = half[Math.round(clamp(b.y, top, bottom))] - b.r * 0.55;
+        b.x = clamp(b.x + Math.sin(t * 0.35 + b.ph) * 4 * dt, cx - Math.max(0, hw), cx + Math.max(0, hw));
+        b.s += (1 + Math.min(0.45, Math.abs(b.vy) / 22) - b.s) * Math.min(1, dt * 3);
       });
+      // лужа над нагревателем дышит
+      pool.forEach((q) => { q.r = q.r0 + Math.sin(t * 0.7 + q.ph) * 1.4; });
     },
     draw(ctx) {
-      const bg = ctx.createLinearGradient(0, 0, 0, H);
-      bg.addColorStop(0, `hsl(${hue + 250}, 45%, 9%)`); bg.addColorStop(1, `hsl(${hue + 300}, 50%, 14%)`);
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      const glow = ctx.createRadialGradient(W / 2, H + 10, 4, W / 2, H + 10, H * 0.9);
-      glow.addColorStop(0, `hsla(${hue}, 95%, 60%, .45)`); glow.addColorStop(1, `hsla(${hue}, 95%, 60%, 0)`);
-      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-      const low = hsl(hue, 0.95, 0.56); const top = hsl((hue + 38) % 360, 0.95, 0.62);
-      for (let gy = 0; gy < gh; gy += 1) {
-        const y = (gy + 0.5) * sy; const v = gy / (gh - 1);
-        const cr = top[0] + (low[0] - top[0]) * v; const cg = top[1] + (low[1] - top[1]) * v; const cb = top[2] + (low[2] - top[2]) * v;
-        for (let gx = 0; gx < gw; gx += 1) {
-          const x = (gx + 0.5) * sx;
-          let f = 0;
-          for (let k = 0; k < all.length; k += 1) { const b = all[k]; f += (b.r * b.r) / ((x - b.x) ** 2 + (y - b.y) ** 2 + 1); }
-          const i = gy * gw + gx;
-          if (f < 0.6) { px[i] = 0; continue; }
-          // край капли мягкий, сердцевина светлее; вокруг — слабое свечение
-          const a = Math.max(smooth(0.82, 1.02, f), smooth(0.6, 1, f) * 0.18);
-          const core = smooth(1.1, 3, f) * 0.4;
-          px[i] = rgba(cr + (255 - cr) * core, cg + (255 - cg) * core, cb + (255 - cb) * core, a * 255);
-        }
-      }
-      octx.putImageData(img, 0, 0);
-      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(off, 0, 0, W, H);
+      // лампа сменяет цвета раз в минуту — плавно, через смешивание соседних наборов
+      const phase = (t / 60) % LAMPS.length; const a = LAMPS[Math.floor(phase)]; const b2 = LAMPS[(Math.floor(phase) + 1) % LAMPS.length];
+      const mixK = smooth(0.85, 1, phase % 1);
+      const mix = (u, v) => u.map((q, i) => Math.round(q + (v[i] - q) * mixK));
+      const wax = mix(a.wax, b2.wax); const liquid = mix(a.liquid, b2.liquid);
+      const tint = (k) => `rgb(${wax.map((q) => Math.round(k >= 0 ? q + (255 - q) * k : q * (1 + k))).join(', ')})`;
+      // комната и свет от лампы
+      ctx.fillStyle = '#0c0a12'; ctx.fillRect(0, 0, W, H);
+      const room = ctx.createRadialGradient(cx, 84, 6, cx, 84, 125);
+      room.addColorStop(0, `rgba(${wax.join(', ')}, .34)`); room.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = room; ctx.fillRect(0, 0, W, H);
+      // колба: жидкость светится сильнее у нагревателя
+      ctx.save(); outline(ctx); ctx.clip();
+      const liq = ctx.createLinearGradient(0, top, 0, bottom);
+      liq.addColorStop(0, `rgb(${liquid.map((q) => Math.round(q * 0.7)).join(', ')})`); liq.addColorStop(1, `rgb(${liquid.map((q) => Math.min(255, q + 70)).join(', ')})`);
+      ctx.fillStyle = liq; ctx.fillRect(cx - 44, top, 88, bottom - top);
+      // воск: сначала мягкое свечение в жидкость, потом сам воск — снизу светлее (нагреватель), к верху гуще
+      const { path, edge } = waxPath();
+      ctx.save(); ctx.shadowColor = `rgba(${wax.join(', ')}, .75)`; ctx.shadowBlur = 9;
+      const body = ctx.createLinearGradient(0, top, 0, bottom + 4);
+      body.addColorStop(0, tint(-0.28)); body.addColorStop(0.55, tint(0)); body.addColorStop(1, tint(0.42));
+      ctx.fillStyle = body; ctx.fill(path); ctx.restore();
+      // объём: блики на каждой капле и кромка темнее середины
+      ctx.save(); ctx.clip(path);
+      blobs.forEach((q) => {
+        const hx = q.x - q.r * 0.38; const hy = q.y - q.r * 0.42;
+        const hl = ctx.createRadialGradient(hx, hy, 0, hx, hy, q.r * 0.8);
+        hl.addColorStop(0, 'rgba(255, 255, 255, .3)'); hl.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = hl; ctx.fillRect(q.x - q.r * 1.4, q.y - q.r * 1.4, q.r * 2.8, q.r * 2.8);
+      });
+      ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(${wax.map((q) => Math.round(q * 0.6)).join(', ')}, .5)`; ctx.stroke(edge);
+      ctx.restore();
+      // нагреватель: горячее пятно у дна
+      const heat = ctx.createRadialGradient(cx, bottom + 2, 1, cx, bottom + 2, 26);
+      heat.addColorStop(0, 'rgba(255, 245, 220, .55)'); heat.addColorStop(1, 'rgba(255, 245, 220, 0)');
+      ctx.fillStyle = heat; ctx.fillRect(cx - 30, bottom - 26, 60, 30);
       // блик на стекле
-      const shine = ctx.createLinearGradient(W * 0.08, 0, W * 0.38, 0);
-      shine.addColorStop(0, 'rgba(255, 255, 255, 0)'); shine.addColorStop(0.5, 'rgba(255, 255, 255, .05)'); shine.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = shine; ctx.fillRect(W * 0.08, 0, W * 0.3, H);
+      const shine = ctx.createLinearGradient(cx - 30, 0, cx - 10, 0);
+      shine.addColorStop(0, 'rgba(255, 255, 255, 0)'); shine.addColorStop(0.5, 'rgba(255, 255, 255, .2)'); shine.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = shine; ctx.fillRect(cx - 30, top + 6, 20, bottom - top - 12);
+      ctx.restore();
+      outline(ctx); ctx.strokeStyle = 'rgba(255, 255, 255, .25)'; ctx.lineWidth = 1; ctx.stroke();
+      // крышка и подставка — металл
+      ctx.fillStyle = metal(ctx, cx - 15, cx + 15);
+      ctx.beginPath(); ctx.moveTo(cx - 14, top + 1); ctx.lineTo(cx - 6, 9); ctx.quadraticCurveTo(cx, 6, cx + 6, 9); ctx.lineTo(cx + 14, top + 1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = metal(ctx, cx - 36, cx + 36);
+      ctx.beginPath(); ctx.moveTo(cx - 25, bottom - 1); ctx.lineTo(cx - 35, 156); ctx.quadraticCurveTo(cx, 160, cx + 35, 156); ctx.lineTo(cx + 25, bottom - 1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(0, 0, 0, .35)'; ctx.fillRect(cx - 25, bottom - 1, 50, 2.5);
+      // пол: отражение света под лампой
+      const floor = ctx.createRadialGradient(cx, 159, 2, cx, 159, 64);
+      floor.addColorStop(0, `rgba(${wax.join(', ')}, .25)`); floor.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = floor; ctx.fillRect(0, 152, W, 12);
     },
   };
 }
@@ -709,8 +804,8 @@ function tetrisChannel(rand) {
 }
 
 /* Змейка: бот ищет путь к еде и не загоняет себя в угол; стрелками или кнопками змейку можно взять
-   себе, 4 секунды без нажатий — снова бот. Ползёт плавно: между ходами тело скользит из клетки в
-   клетку. Врезалась — рассыпается и начинает заново; выросла до победы — вспышка и тоже заново. */
+   себе, 4 секунды без нажатий — снова бот. Ползёт плавно: голова и хвост скользят из клетки в клетку,
+   изгибы стоят в клетках. Врезалась — рассыпается и начинает заново; выросла до победы — вспышка и тоже заново. */
 function snakeChannel(rand) {
   const c = 9; const bw = SNAKE.w * c; const bh = SNAKE.h * c; const ox = (W - bw) / 2; const oy = (H - bh) / 2;
   let s = newSnake(rand); let prev = s.body; let t = 0; let acc = 0; let input = -99; let want = null; let end = 0;
@@ -737,17 +832,18 @@ function snakeChannel(rand) {
       ctx.fillStyle = 'rgba(255, 255, 255, .07)';
       for (let y = 0; y < SNAKE.h; y += 1) for (let x = 0; x < SNAKE.w; x += 1) ctx.fillRect(ox + x * c + c / 2 - 0.5, oy + y * c + c / 2 - 0.5, 1, 1);
       if (s.food) { const [fx, fy] = mid(s.food); glowDot(ctx, fx, fy, 3.2 + Math.sin(t * 6) * 0.5, 45); }
-      // плавно: каждая часть тела — между своей прошлой клеткой и нынешней
+      /* Плавно, но без срезанных углов: изгибы тела стоят точно в клетках, движутся только голова
+         (из прошлой клетки в новую) и кончик хвоста (из освободившейся клетки к нынешней). */
       const p = end ? 1 : clamp(acc / every(), 0, 1);
-      const pts = s.body.map((cur, i) => {
-        const a = mid(prev[Math.min(i, prev.length - 1)]); const b = mid(cur);
-        return [a[0] + (b[0] - a[0]) * p, a[1] + (b[1] - a[1]) * p];
-      });
-      const n = pts.length; const fade = s.dead ? Math.max(0, 1 - end / 1.2) : 1;
+      const lerp = (a, b) => [a[0] + (b[0] - a[0]) * p, a[1] + (b[1] - a[1]) * p];
+      const cells = s.body.map(mid);
+      const n = cells.length;
+      const pts = [lerp(n > 1 ? cells[1] : cells[0], cells[0]), ...cells.slice(1), lerp(mid(prev[prev.length - 1]), cells[n - 1])];
+      const fade = s.dead ? Math.max(0, 1 - end / 1.2) : 1;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = c * 0.7;
-      for (let i = n - 1; i > 0; i -= 1) {
+      for (let i = pts.length - 1; i > 0; i -= 1) {
         const shake = s.dead ? Math.sin(i * 7 + end * 40) * end * 4 : 0;
-        ctx.strokeStyle = `hsla(${150 + (i / Math.max(1, n - 1)) * 140}, 75%, 66%, ${fade})`;
+        ctx.strokeStyle = `hsla(${150 + (i / Math.max(1, pts.length - 1)) * 140}, 75%, 66%, ${fade})`;
         ctx.beginPath(); ctx.moveTo(pts[i][0] + shake, pts[i][1]); ctx.lineTo(pts[i - 1][0] + shake, pts[i - 1][1]); ctx.stroke();
       }
       const [hx, hy] = pts[0];

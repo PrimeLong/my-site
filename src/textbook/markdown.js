@@ -588,7 +588,7 @@ function parseExercise(kind, attrs, body) {
      инфляцию сулит новость; игра сама подбирает к каждой прогноз и ставку банка. */
 const ROUND_KINDS = ['swipe', 'rush', 'wallet'];
 const WALLET_LEVELS = ['high', 'mid', 'low'];
-export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'], costs: ['fc', 'vc'] };
+export const ROUND_EFFECTS = { market: ['D+', 'D-', 'S+', 'S-'], ppf: ['out', 'in', 'ox', 'oy', 'ix', 'iy', 'x', 'y'], budget: ['out', 'in', 'ox', 'ix', 'oy', 'iy'], elastic: ['in', 'el'], costs: ['fc', 'vc'], power: ['pt', 'mp'] };
 function parseRound(kind, attrs, body) {
   if (!ROUND_KINDS.includes(kind)) throw new Error(`Неизвестный раунд :::round ${kind}`);
   if (!attrs.id) throw new Error(`У игры ${kind} нет id`);

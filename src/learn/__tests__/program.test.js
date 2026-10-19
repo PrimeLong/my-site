@@ -174,8 +174,8 @@ describe('вступительный тест', () => {
     plan.items.forEach((it) => expect(['swipe', 'rush']).not.toContain(it.kind));
   });
   it('юнит открыт, если в пятёрке не больше одной ошибки; первая проваленная пятёрка останавливает', () => {
-    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs']);
-    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs']);
+    expect(placementOpened(plan.items, answer({}))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly']);
+    expect(placementOpened(plan.items, answer({ 'supply-demand': 1 }))).toEqual(['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly']);
     expect(placementOpened(plan.items, answer({ 'supply-demand': 2 }))).toEqual(['scarcity']);
     expect(placementOpened(plan.items, answer({ scarcity: 2 }))).toEqual([]);
     const first = answer({ scarcity: 2 });

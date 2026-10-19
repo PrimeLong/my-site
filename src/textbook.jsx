@@ -19,7 +19,9 @@ import { GAME_CARDS, LIMITS } from './textbook/appendix.js';
 import { PARTS, CHAPTERS, CHAPTER_BY_ID, APPENDICES, BOOKS, chapterNo, READY_CHAPTERS, PLANNED_CHAPTERS, TOC_LEVELS, chapterLevel } from './textbook/toc.js';
 import { TYCOON_TASKS } from './textbook/tycoon-tasks.js';
 import { CHAPTER_BLOCKS, APPENDIX_BLOCKS, CHAPTER_SECTIONS, PROBLEMS, RECALLS, problemsOf, keyFormulas } from './textbook/content.js';
-import { sectionDone, sectionProgress, dueItems } from './textbook/study.js';
+import { sectionDone, sectionProgress, dueItems, chapterRead, chapterShare } from './textbook/study.js';
+import { COIN, bookFirstTry, earn } from './learn/rewards.js';
+import { emptyLearn } from './textbook/learn-state.js';
 import { CHARTS, chartDefaults, checkGraph, captionVars } from './textbook/charts.js';
 import { actionOf, parseInline, checkAnswer, matchTraps, LEVELS } from './textbook/markdown.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, markRead, unmarkRead, recordAnswer, scheduleAfter, reviewQueue, chapterScore, setLast, daysUntil, confidenceStats, addStudyMinute } from './textbook/progress.js';
@@ -221,6 +223,8 @@ export const TEXTBOOK_CSS = `
   .tb-cover-eyebrow { font: 700 12px/1.3 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--u-ink); }
   .tb-cover-title { font: 700 24px/1.2 var(--ds-head); color: var(--ds-ink); margin: 4px 0 8px; letter-spacing: -.01em; }
   .tb-cover-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+  .tb-read-auto { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; font-weight: 700; font-size: 13px;
+    color: var(--ds-ok-ink, #147A45); background: color-mix(in srgb, var(--ds-ok, #147A45) 12%, transparent); }
   .tb-cover-meta span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--ds-card); color: var(--ds-ink2); border: 1px solid var(--ds-rule); }
   .tb-cover-meta b { color: var(--ds-ink); }
   .tb-cover-meta .ok { color: var(--ds-ok-ink); border-color: color-mix(in srgb, var(--ds-ok) 40%, var(--ds-rule)); }
@@ -734,14 +738,24 @@ export function ChartSvg({ scene }) {
         ))}
       </g>
       {(scene.polys || []).map((g, i) => {
-        // подпись области — в её центре, но целиком внутри графика; у крошечных областей её нет
+        /* подпись области — целиком внутри неё: от центра вниз ищем строку, где область шире
+           надписи (у треугольника под линией — ближе к основанию); не нашлась — подписи нет */
+        if (!g.label) return null;
         const P = g.points.map((pt) => [sx(pt.x), sy(pt.y)]);
-        const area = Math.abs(P.reduce((a, [x, y], k) => { const [x2, y2] = P[(k + 1) % P.length]; return a + x * y2 - x2 * y; }, 0)) / 2;
-        if (!g.label || area < 900) return null;
-        const w = g.label.length * 6.4;
-        const cx = Math.min(W - M.r - w / 2 - 2, Math.max(M.l + w / 2 + 4, P.reduce((a, [x]) => a + x, 0) / P.length));
-        const cy = P.reduce((a, [, y]) => a + y, 0) / P.length;
-        return <text key={`pl${i}`} x={cx} y={cy + 4} fontSize={12} {...halo} fill={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} textAnchor="middle">{g.label}</text>;
+        const w = g.label.length * 6.4 + 10;
+        const chord = (y) => {
+          const xs = [];
+          P.forEach(([xa, ya], k) => { const [xb, yb] = P[(k + 1) % P.length]; if ((ya - y) * (yb - y) <= 0 && ya !== yb) xs.push(xa + ((y - ya) / (yb - ya)) * (xb - xa)); });
+          return xs.length < 2 ? null : [Math.max(M.l + 2, Math.min(...xs)), Math.min(W - M.r - 2, Math.max(...xs))];
+        };
+        const cy0 = P.reduce((a, [, y]) => a + y, 0) / P.length; const bottom = Math.min(H - M.b, Math.max(...P.map(([, y]) => y)));
+        let at = null;
+        for (let y = cy0; y <= bottom - 8 && !at; y += 4) {
+          const c1 = chord(y - 9); const c2 = chord(y + 3);
+          if (c1 && c2) { const lo = Math.max(c1[0], c2[0]); const hi = Math.min(c1[1], c2[1]); if (hi - lo >= w) at = { x: (lo + hi) / 2, y }; }
+        }
+        if (!at) return null;
+        return <text key={`pl${i}`} x={at.x} y={at.y} fontSize={12} {...halo} fill={(CURVE_COLOR[g.tone] || CURVE_COLOR.rust)()} textAnchor="middle">{g.label}</text>;
       })}
       {scene.curves.filter((c) => c.label && !c.ghost).map((c) => {
         const at = labelAt(c.points, c.labelPos);
@@ -960,6 +974,11 @@ function SurePick({ value, onChange, disabled = false }) {
 }
 // что будет с повторением после верного ответа — словами (см. scheduleAfter)
 function okText(ctx, id, head, sawSolution) {
+  // решено с первой попытки — монеты; пишем об этом в конце
+  const coins = PROBLEMS[id] && bookFirstTry(ctx.progress.problems[id], true, sawSolution) ? ` +${COIN.book} монеты в кошелёк — за решение с первой попытки.` : '';
+  return okSchedule(ctx, id, head, sawSolution) + coins;
+}
+function okSchedule(ctx, id, head, sawSolution) {
   const s = scheduleAfter(ctx.progress.problems[id], true, Date.now(), { sawSolution });
   if (s.why === 'solution') return `${endDot(head)} Решение было открыто, поэтому задача вернётся на повторение через два дня — попробуйте тогда сами.`;
   if (s.why === 'early') {
@@ -1324,7 +1343,7 @@ function ChapterToc({ current, ctx }) {
                 <li key={c.id}>
                   <button type="button" className="tb-chtoc-row" aria-current={on ? 'page' : undefined} data-status={c.status}
                     onClick={() => { if (on) return; Audio.play('paper'); ctx.go({ kind: 'chapter', id: c.id }); }}>
-                    <span className={`tb-secnav-no${ctx.progress.read[c.id] ? ' done' : ''}`} aria-hidden="true">{ctx.progress.read[c.id] ? <Check size={12} /> : n}</span>
+                    <span className={`tb-secnav-no${chapterRead(ctx.progress, c.id) ? ' done' : ''}`} aria-hidden="true">{chapterRead(ctx.progress, c.id) ? <Check size={12} /> : n}</span>
                     <span>{c.title}</span>
                   </button>
                 </li>
@@ -1373,7 +1392,10 @@ function ChapterPage({ id, ctx }) {
   const idx = READY_CHAPTERS.findIndex((c) => c.id === id);
   const prev = idx > 0 ? READY_CHAPTERS[idx - 1] : null; const next = idx >= 0 ? READY_CHAPTERS[idx + 1] : null;
   const lvl = chapterLevel(id);
-  const read = !!ctx.progress.read[id];
+  const read = chapterRead(ctx.progress, id);
+  // все разделы пройдены — глава прочитана сама; вручную отмечают главу, только пока разделы не пройдены
+  const secs = sectionProgress(ctx.progress, id);
+  const auto = secs.total > 0 && secs.done === secs.total;
   return (
     <div data-testid="chapter" data-chapter={id}>
       <PageNav ctx={ctx} />
@@ -1415,10 +1437,14 @@ function ChapterPage({ id, ctx }) {
       )}
       {blocks && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '18px 0' }}>
-          <button type="button" className={`ems-btn${read ? '' : ' primary'}`} style={{ padding: '8px 14px', fontSize: 13 }} aria-pressed={read}
-            onClick={() => { Audio.play(read ? 'click' : 'stamp'); ctx.setRead(id, !read); }}>
-            {read ? <><Check size={13} style={{ verticalAlign: -2 }} /> Глава прочитана</> : 'Отметить главу прочитанной'}
-          </button>
+          {auto ? (
+            <span className="tb-read-auto" data-testid="tb-read-auto"><Check size={14} aria-hidden="true" /> Глава прочитана — все разделы пройдены</span>
+          ) : (
+            <button type="button" className={`ems-btn${read ? '' : ' primary'}`} style={{ padding: '8px 14px', fontSize: 13 }} aria-pressed={read}
+              onClick={() => { Audio.play(read ? 'click' : 'stamp'); ctx.setRead(id, !read); }}>
+              {read ? <><Check size={13} style={{ verticalAlign: -2 }} /> Глава прочитана</> : 'Отметить главу прочитанной'}
+            </button>
+          )}
         </div>
       )}
       <div className="row-between" style={{ flexWrap: 'wrap', marginTop: 8 }}>
@@ -1850,7 +1876,7 @@ function StatsPage({ ctx }) {
   const ids = Object.keys(PROBLEMS);
   const solved = ids.filter((id) => (ctx.progress.problems[id] || {}).ok).length;
   const due = dueItems(ctx.progress).length;
-  const read = ready.filter((c) => ctx.progress.read[c.id]).length;
+  const read = ready.filter((c) => chapterRead(ctx.progress, c.id)).length;
   return (
     <div data-testid="stats">
       <PageNav ctx={ctx} />
@@ -1937,7 +1963,7 @@ function PlannedList() {
 
 function LearnToc({ ctx }) {
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
-  const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
+  const readCount = ready.filter((c) => chapterRead(ctx.progress, c.id)).length;
   const allProblems = Object.keys(PROBLEMS);
   const solved = allProblems.filter((id) => ctx.progress.problems[id] && ctx.progress.problems[id].ok).length;
   const due = dueItems(ctx.progress).length;
@@ -1965,11 +1991,11 @@ function LearnToc({ ctx }) {
             <div className="tbl-level-text">{lv.text}</div>
             {lv.chapters.map((c) => {
               n += 1;
-              const readMark = !!ctx.progress.read[c.id];
+              const readMark = chapterRead(ctx.progress, c.id);
               const sp = sectionProgress(ctx.progress, c.id);
-              // сколько задач главы решено — видно прямо в оглавлении, без захода в главу
+              // процент — путь по главе: пройденные разделы (прочитанная глава — 100%); задачи — отдельной строкой
               const sc = chapterScore(ctx.progress, problemsOf(c.id));
-              const share = sc.total ? sc.solved / sc.total : 0;
+              const share = chapterShare(ctx.progress, c.id);
               const R = 15; const L = 2 * Math.PI * R;
               return (
                 <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} data-chapter={c.id} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
@@ -1981,8 +2007,8 @@ function LearnToc({ ctx }) {
                       {sp.total > 0 && <span data-testid="tb-ch-sections" data-done={sp.done} data-total={sp.total}>Разделы: <b>{sp.done}</b> из {sp.total}</span>}
                     </span>
                   </span>
-                  {sc.total > 0 ? (
-                    <span className="tbl-ch-ring" data-full={String(sc.solved === sc.total)} aria-hidden="true">
+                  {sp.total > 0 || readMark ? (
+                    <span className="tbl-ch-ring" data-full={String(share >= 1)} data-share={Math.round(share * 100)} aria-hidden="true">
                       <svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r={R} className="bg" /><circle cx="19" cy="19" r={R} className="fg" strokeDasharray={L} strokeDashoffset={L * (1 - share)} style={{ '--len': L }} /></svg>
                       <b>{Math.round(share * 100)}<small>%</small></b>
                     </span>
@@ -2014,7 +2040,7 @@ function LearnToc({ ctx }) {
 function TocPage({ ctx }) {
   if (ctx.embedded) return <LearnToc ctx={ctx} />;
   const ready = CHAPTERS.filter((c) => c.status === 'ready');
-  const readCount = ready.filter((c) => ctx.progress.read[c.id]).length;
+  const readCount = ready.filter((c) => chapterRead(ctx.progress, c.id)).length;
   const allProblems = Object.keys(PROBLEMS);
   const solved = allProblems.filter((id) => ctx.progress.problems[id] && ctx.progress.problems[id].ok).length;
   const secs = ready.reduce((acc, c) => { const sp = sectionProgress(ctx.progress, c.id); return { done: acc.done + sp.done, total: acc.total + sp.total }; }, { done: 0, total: 0 });
@@ -2044,7 +2070,7 @@ function TocPage({ ctx }) {
             n += 1;
             const probs = problemsOf(c.id);
             const sc = chapterScore(ctx.progress, probs);
-            const readMark = !!ctx.progress.read[c.id];
+            const readMark = chapterRead(ctx.progress, c.id);
             const sp = sectionProgress(ctx.progress, c.id);
             return (
               <button key={c.id} type="button" className="tb-toc-row" data-status={c.status} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
@@ -2244,8 +2270,15 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     // ответ в учебнике; засчитанный — снимает ту же задачу и с повторения Пути (review-sync.js)
     onAnswer: (id, ok, opts) => update((p) => {
       const now = Date.now();
-      const { why } = scheduleAfter(p.problems[id], ok, now, opts);
-      return afterBookAnswer(recordAnswer(p, id, ok, now, opts), id, ok, why);
+      const prev = p.problems[id];
+      const { why } = scheduleAfter(prev, ok, now, opts);
+      let next = afterBookAnswer(recordAnswer(p, id, ok, now, opts), id, ok, why);
+      // задача главы решена с первой попытки — немного монет в кошелёк Пути (rewards.js, bookFirstTry)
+      if (PROBLEMS[id] && bookFirstTry(prev, ok, opts && opts.sawSolution)) next = { ...next, learn: earn(next.learn || emptyLearn(), COIN.book, null, now) };
+      // пройден последний раздел главы — глава прочитана сама, кнопку нажимать не нужно
+      const rc = RECALLS[id];
+      if (rc && ok && !next.read[rc.chapter] && chapterRead(next, rc.chapter)) next = markRead(next, rc.chapter, now);
+      return next;
     }),
     setRead: (id, on) => update((p) => (on ? markRead(p, id) : unmarkRead(p, id))),
     // «Убрать из повторения»: срок снят и в учебнике, и на Пути (docs/mechanics.md)

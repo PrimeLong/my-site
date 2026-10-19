@@ -716,7 +716,8 @@ const budgetChart = {
   measure: (A, v) => { const p = budgetParams(A); return { xMax: v.I / v.px, yMax: v.I / p.py, slope: v.px / p.py }; },
   build: (A, v) => {
     const p = budgetParams(A);
-    const max = Math.ceil(Math.max((p.I * 1.6) / (p.px * 0.5), (p.I * 1.6) / p.py) * 0.72 / 10) * 10;
+    // max=… — свой размах осей (шагу с движением, где линия уходит дальше ползунков)
+    const max = num(A, 'max', Math.ceil(Math.max((p.I * 1.6) / (p.px * 0.5), (p.I * 1.6) / p.py) * 0.72 / 10) * 10);
     const seg = (I, px) => [{ x: 0, y: I / p.py }, { x: I / px, y: 0 }];
     const moved = v.I !== p.I || Math.abs(v.px - p.px) > 1e-9;
     return {
@@ -776,6 +777,37 @@ const choiceChart = {
         { label: 'MRS в точке A', value: r2(mrs) },
         { label: 'Отношение цен p_x/p_y', value: r2(ratio) },
         { label: 'Совет', value: hint },
+      ],
+    };
+  },
+};
+
+/* ---------------- КАРТА БЕЗРАЗЛИЧИЯ ----------------
+   Три кривые безразличия U = √(xy): по средней ползунок ведёт набор от A к B — полезность та
+   же, человеку всё равно; кривая дальше от начала координат — наборы лучше. Без бюджета и цен:
+   шаг про вкусы, а не про деньги. */
+const indiffChart = {
+  title: 'Кривые безразличия',
+  controls: () => [{ id: 'x', label: 'Набор на средней кривой: X', min: 10, max: 40, step: 1, def: 10, fmt: (v) => `${v}` }],
+  measure: (A, v) => ({ x: v.x, y: 400 / v.x }),
+  build: (A, v) => {
+    const max = 60;
+    const curve = (u) => Array.from({ length: 70 }, (_, i) => { const x = max * (0.04 + 0.96 * i / 69); return { x, y: (u * u) / x }; });
+    return {
+      xDomain: [0, max], yDomain: [0, max], xLabel: 'X', yLabel: 'Y',
+      curves: [
+        { id: 'U1', label: 'хуже', labelPos: 0.3, points: curve(12), color: 'teal', dashed: true },
+        { id: 'U2', label: 'всё равно', labelPos: 0.43, points: curve(20), color: 'teal' },
+        { id: 'U3', label: 'лучше', labelPos: 0.3, points: curve(30), color: 'teal', dashed: true },
+      ],
+      points: [
+        { x: 10, y: 40, label: 'A', small: true },
+        { x: 40, y: 10, label: 'B', small: true },
+        { x: v.x, y: 400 / v.x, label: '', guide: true },
+      ],
+      readout: [
+        { label: 'Набор', value: `X = ${r1(v.x)}, Y = ${r1(400 / v.x)}` },
+        { label: 'Полезность', value: 'как у A и B' },
       ],
     };
   },
@@ -1119,6 +1151,7 @@ revenueCurve.measureNames = { P: 'цена', R: 'выручка' };
 lrac.measureNames = { lrac: 'долгосрочные средние издержки', sracMinQ: 'выпуск при минимуме SRAC', sracMin: 'минимум SRAC' };
 budgetChart.measureNames = { xMax: 'максимум X', yMax: 'максимум Y', slope: 'цена X в единицах Y' };
 choiceChart.measureNames = { U: 'полезность', mrs: 'MRS' };
+indiffChart.measureNames = { x: 'покупки X', y: 'покупки Y' };
 demandChart.measureNames = { Q: 'объём спроса' };
 crossChart.measureNames = { Y: 'выпуск' };
 extChart.measureNames = { Q: 'выпуск', dwl: 'безвозвратные потери' };
@@ -1251,7 +1284,7 @@ phillipsChart.measureNames = { pi: 'инфляция', u: 'безработиц�
 taylorChart.measureNames = { i: 'ставка', real: 'реальная ставка' };
 solowChart.measureNames = { k: 'капитал на работника', y: 'выпуск на работника', c: 'потребление на работника', i: 'инвестиции на работника' };
 
-export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, demand: demandChart, 'market-demand': marketDemandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
+export const CHARTS = { 'supply-demand': supplyDemand, elasticity, 'elastic-compare': elasticCompare, revenue: revenueCurve, 'is-lm': isLm, 'ad-as': adAs, costs, monopoly: monopolyChart, cournot: cournotChart, ppf, consumer, tax, lrac, budget: budgetChart, choice: choiceChart, indiff: indiffChart, demand: demandChart, 'market-demand': marketDemandChart, cross: crossChart, externality: extChart, 'trade-ppf': tradeChart, gdp: gdpChart, inflation: inflationChart, money: moneyChart, phillips: phillipsChart, taylor: taylorChart, solow: solowChart };
 /* Переменные подписи: {{имя}} в тексте подписи заменяется числом из модели графика при
    текущих ползунках — величины measure и свои vars графика; с приставкой d_ — при исходных. */
 const fmtVar = (x) => (typeof x === 'number' ? (Number.isInteger(Math.round(x * 100) / 100) ? String(Math.round(x)) : r1(x)).replace('-', '−') : String(x));

@@ -19,9 +19,17 @@ export const HALLOWEEN_CSS = `
   .hw-moon::after { content: ''; position: absolute; width: 9px; height: 9px; border-radius: 50%; left: 22px; top: 12px; background: rgba(176, 140, 60, .35); box-shadow: -10px 12px 0 -2px rgba(176, 140, 60, .3); }
   .hw-star { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: #FFF6E5; animation: hw-twinkle 2.6s ease-in-out infinite; }
   @keyframes hw-twinkle { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
-  .hw-bat { position: absolute; animation: hw-fly 9s linear infinite; }
+  /* летучая мышь пролетает карточку насквозь: от левого края за правый (в процентах ширины карточки), появляясь
+     и исчезая за краями — а не обрываясь посередине; летит поверх надписей, как и положено мыши */
+  .hw-bat { position: absolute; z-index: 1; left: -40px; animation: hw-fly 9s linear infinite; }
   .hw-bat svg { animation: hw-flap .34s ease-in-out infinite alternate; transform-origin: 50% 60%; }
-  @keyframes hw-fly { 0% { transform: translate(-40px, 30px) } 50% { transform: translate(var(--fx, 160px), -6px) } 100% { transform: translate(calc(var(--fx, 160px) * 2.2), 26px) } }
+  @keyframes hw-fly {
+    0% { left: -40px; transform: translateY(30px); opacity: 0 }
+    5% { opacity: 1 }
+    50% { transform: translateY(-6px) }
+    95% { opacity: 1 }
+    100% { left: calc(100% + 16px); transform: translateY(26px); opacity: 0 }
+  }
   @keyframes hw-flap { from { transform: scaleY(1) } to { transform: scaleY(.45) } }
   .hw-top { position: relative; display: flex; align-items: center; gap: 12px; padding-right: 50px; }
   .hw-eyebrow { font: 700 12px var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; color: #FFC46B; }
@@ -96,8 +104,8 @@ export function HalloweenCard({ learn, update, now = Date.now() }) {
       <div className="hw-sky" aria-hidden="true">
         <span className="hw-moon" />
         {STARS.map(([x, y], k) => <span key={k} className="hw-star" style={{ left: `${x}%`, top: `${y}%`, animationDelay: `${k * 0.37}s` }} />)}
-        <span className="hw-bat" style={{ top: 18, left: 0, '--fx': '150px' }}><Bat size={24} color="#120D19" /></span>
-        <span className="hw-bat" style={{ top: 46, left: 0, '--fx': '120px', animationDelay: '-4s', animationDuration: '11s' }}><Bat size={16} color="#120D19" /></span>
+        <span className="hw-bat" style={{ top: 18 }}><Bat size={24} color="#120D19" /></span>
+        <span className="hw-bat" style={{ top: 46, animationDelay: '-4s', animationDuration: '11s' }}><Bat size={16} color="#120D19" /></span>
       </div>
       <div className="hw-top">
         <Mascot mood={h.claimed ? 'party' : 'joy'} size={58} outfit={{ head: 'witch', ...(h.claimed || h.ready ? { frame: WEB_FRAME } : {}) }} label="Инфля в шляпе ведьмы" />

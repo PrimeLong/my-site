@@ -33,7 +33,7 @@ import {
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak,
-  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY,
+  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
@@ -189,7 +189,7 @@ const CSS = `
   .ln-token { position: relative; width: 62px; height: 62px; border-radius: 50%; border: 3px solid var(--ds-rule2); background: var(--ds-card); color: var(--ds-ink2); cursor: pointer;
     display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 0 var(--ds-rule2); margin-bottom: 5px; transition: transform .08s, box-shadow .08s; }
   .ln-token:not(.locked):hover { transform: translateY(-2px); }
-  .ln-token:not(.locked):hover > svg { animation: ds-wiggle .5s ease-in-out; }
+  .ln-token:not(.locked):hover > svg { animation: ds-wiggle .5s ease-in-out .25s; }
   .ln-token:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ds-rule2); }
   .ln-token.done { background: var(--u); color: #fff; border-color: color-mix(in srgb, var(--u) 82%, #fff); box-shadow: 0 5px 0 color-mix(in srgb, var(--u) 68%, #000); }
   .ln-token.done:active { box-shadow: 0 1px 0 color-mix(in srgb, var(--u) 68%, #000); }
@@ -226,6 +226,27 @@ const CSS = `
   .ln-skip-tag { font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
   .ln-overlay { position: fixed; inset: 0; z-index: 300; display: flex; flex-direction: column; }
   .ln-head { display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top)) 14px 4px; max-width: 592px; width: 100%; margin: 0 auto; }
+  /* огонёк серии верных ответов подряд */
+  .ln-fire { position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 3px; height: 28px; padding: 0 10px 0 7px; border-radius: 999px;
+    background: linear-gradient(135deg, #FFB547, #FF6A3D); color: #fff; font: 800 14px var(--ds-head); box-shadow: 0 3px 0 #C2410C, 0 8px 16px -8px rgba(255, 106, 61, .8);
+    animation: ln-fire-in .45s cubic-bezier(.3, 1.6, .5, 1) both; }
+  .ln-fire b { display: inline-block; min-width: 1ch; text-align: center; animation: ln-fire-bump .35s cubic-bezier(.3, 1.8, .5, 1); }
+  .ln-fire-ic { animation: ln-flicker 1.2s ease-in-out infinite; transform-origin: 50% 90%; }
+  .ln-fire.big { animation: ln-fire-big .6s cubic-bezier(.3, 1.6, .5, 1); }
+  .ln-fire.out { background: linear-gradient(135deg, #B9B2A6, #8E877C); box-shadow: 0 3px 0 #6F695F; animation: ln-fire-out .9s ease-in forwards; }
+  .ln-fire.out .ln-fire-ic { animation: none; }
+  .ln-fire-plus { position: absolute; right: -6px; top: -4px; font: 800 12px var(--ds-head); color: #E8701E; text-shadow: 0 1px 0 var(--ds-paper); pointer-events: none; animation: ln-plus .9s ease-out forwards; }
+  .ln-fire-sparks i { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: #FFC24B; pointer-events: none; animation: ln-spark .7s ease-out forwards; }
+  @keyframes ln-fire-in { from { transform: scale(.3); opacity: 0 } }
+  @keyframes ln-fire-bump { 0% { transform: scale(1.7) } 100% { transform: scale(1) } }
+  @keyframes ln-flicker { 0%, 100% { transform: scale(1) rotate(-4deg) } 50% { transform: scale(1.14) rotate(5deg) } }
+  @keyframes ln-fire-big { 0% { transform: scale(1) } 40% { transform: scale(1.3) } 100% { transform: scale(1) } }
+  @keyframes ln-fire-out { 0% { transform: none; opacity: 1 } 30% { transform: rotate(-7deg) } 60% { transform: rotate(5deg); opacity: .8 } 100% { transform: scale(.6); opacity: 0 } }
+  @keyframes ln-plus { 0% { transform: translateY(0); opacity: 0 } 15% { opacity: 1 } 100% { transform: translateY(-22px); opacity: 0 } }
+  @keyframes ln-spark { from { transform: rotate(var(--a)) translateX(4px); opacity: 1 } to { transform: rotate(var(--a)) translateX(28px); opacity: 0 } }
+  .ln-xp-bonus { display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; font: 700 12px var(--ds-sans); color: #C2490B; }
+  .ds.ds-dark .ln-xp-bonus { color: #FFB27A; }
+  @media (prefers-reduced-motion: reduce) { .ln-fire, .ln-fire b, .ln-fire-ic, .ln-fire-plus, .ln-fire-sparks i { animation: none !important; } .ln-fire-plus, .ln-fire-sparks { display: none; } }
   /* прокрутка урока — только по вертикали и только когда содержимое правда длиннее экрана:
      встряска после ошибки и свайп карточки двигают его вбок (без overflow-x: hidden из-за
      overflow-y: auto появлялся горизонтальный ползунок), а появление шага — не сдвигом вниз
@@ -383,10 +404,39 @@ function useLearn() {
 export const KIND_ICON = { intro: BookOpen, practice: Dumbbell, words: Languages, story: MessageCircle, listen: Headphones, game: Gamepad2, review: Repeat, summary: Flag };
 
 /* ------------------------------ ГРАФИК И КАРТИНКА ШАГА ------------------------------ */
+/* Шаг с движением: anim="px=3" — график сам переходит от исходного положения к новому, держит
+   его и возвращается, по кругу; прежняя линия остаётся бледной. Без анимаций — сразу новое. */
+const parseAnim = (s) => Object.fromEntries(String(s).split(/[\s,]+/).filter(Boolean).map((kv) => { const [k, x] = kv.split('='); return [k, Number(x)]; }));
+const ANIM = { hold: 900, go: 1300, stay: 2600, back: 900 };
+const easeIO = (x) => (x < 0.5 ? 2 * x * x : 1 - ((-2 * x + 2) ** 2) / 2);
+function useAnimValues(type, attrs) {
+  const reduced = useReducedMotion();
+  const anim = attrs && attrs.anim;
+  const [k, setK] = useState(0);
+  useEffect(() => {
+    if (!anim || reduced) return undefined;
+    let raf = 0; let last = 0; const t0 = performance.now();
+    const cyc = ANIM.hold + ANIM.go + ANIM.stay + ANIM.back;
+    const loop = (now) => {
+      raf = requestAnimationFrame(loop);
+      if (now - last < 33) return;
+      last = now;
+      const e = (now - t0) % cyc;
+      setK(e < ANIM.hold ? 0 : e < ANIM.hold + ANIM.go ? easeIO((e - ANIM.hold) / ANIM.go)
+        : e < cyc - ANIM.back ? 1 : 1 - easeIO((e - cyc + ANIM.back) / ANIM.back));
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [anim, reduced]);
+  if (!anim) return null;
+  const to = parseAnim(anim); const t = reduced ? 1 : k;
+  return Object.fromEntries(Object.entries(chartDefaults(type, attrs)).map(([id, x]) => [id, id in to ? x + (to[id] - x) * t : x]));
+}
 function MiniChart({ type, attrs, values = null }) {
   const def = CHARTS[type];
+  const moving = useAnimValues(type, attrs);
   if (!def) return null;
-  const v = { ...chartDefaults(type, attrs), ...values };
+  const v = { ...chartDefaults(type, attrs), ...moving, ...values };
   // на Пути деньги — в кронах (src/learn/money.js)
   return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={sceneInCrowns(def.build(attrs, v))} /></div>;
 }
@@ -717,6 +767,31 @@ function newPlan(run, learn) {
   if (run.mode === 'placement') return { items: buildPlacement().items, cards: {} };
   return { items: buildPractice(practiceIds(learn), Math.random, { weak: weakLessons(learn).map((w) => w.id) }).items, cards: {} };
 }
+/* Серия верных ответов подряд — огонёк в шапке урока. С третьего верного подряд: «🔥 3», каждый новый
+   верный ответ раздувает число и выпускает «+1» (опыт за серию); на 5, 10, 15… — вспышка искр.
+   Ошибка — огонёк сереет, качается и гаснет. plus — показывать «+1» (на повторе урока опыт почти не идёт). */
+function StreakFlame({ n, plus = true }) {
+  const [gone, setGone] = useState(0);
+  const prev = useRef(n);
+  useEffect(() => {
+    const was = prev.current; prev.current = n;
+    if (was >= XP.streakFrom && n === 0) { setGone(was); const t = setTimeout(() => setGone(0), 900); return () => clearTimeout(t); }
+    return undefined;
+  }, [n]);
+  const on = n >= XP.streakFrom;
+  if (!on && !gone) return null;
+  const shown = on ? n : gone;
+  const milestone = on && n % 5 === 0;
+  return (
+    <span className={`ln-fire${on ? '' : ' out'}${milestone ? ' big' : ''}`} data-testid="lesson-streak" data-streak={shown} role="status" aria-label={`Серия: ${shown} верных подряд`}>
+      <Flame size={15} className="ln-fire-ic" aria-hidden="true" />
+      <b key={shown}>{shown}</b>
+      {on && plus && <span key={`p${n}`} className="ln-fire-plus" aria-hidden="true">+1</span>}
+      {milestone && <span key={`s${n}`} className="ln-fire-sparks" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} style={{ '--a': `${i * 45}deg` }} />)}</span>}
+    </span>
+  );
+}
+
 function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false }) {
   const rs = run.resume || null;
   const [plan] = useState(() => (rs ? rs.plan : newPlan(run, learn)));
@@ -785,7 +860,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   }, []);
   const acc = useRef({
     first: rs ? rs.first : {}, hinted: rs ? rs.hinted : {}, solved: new Set(rs ? rs.solved : []),
-    itemStart: clock.current.ms, retries: rs ? rs.retries : 0,
+    itemStart: clock.current.ms, retries: rs ? rs.retries : 0, bonus: rs ? rs.bonus || 0 : 0,
   });
   const [started, setStarted] = useState(!!rs);
   /* урок — слой поверх страницы: пока он открыт, страница под ним не прокручивается и не
@@ -834,7 +909,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       // встреченное упражнение: в повторение и проверки первыми пойдут те, что виделись реже
       const seenId = cur.of || cur.id;
       update((s) => recordSeen(recordAttempt(s, cur.kind, r.ok, ms, { lesson: cur.lesson || null }), seenId));
-      if (GAME_KINDS.includes(cur.kind) && answer && answer.score) update((s) => recordBest(s, cur.id, answer.score));
+      if (GAME_KINDS.includes(cur.kind) && answer && answer.score) { update((s) => recordBest(s, cur.id, answer.score)); a.bonus += gameXp(answer.score); }
       if (GAME_KINDS.includes(cur.kind) && answer) a.game = { kind: cur.kind, right: answer.right, answered: answer.answered, ok: r.ok };
     }
     if (r.ok) {
@@ -847,7 +922,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       update((s) => (a.hinted[orig] ? addHinted(s, baseId) : clearHinted(s, baseId)));
       // та же задача ждёт повторения в учебнике — это и есть её повторение (review-sync.js)
       if (!a.hinted[orig]) update((p) => afterPathAnswer(p, baseId), { whole: true });
-      if (firstTime) setRun3((n) => n + 1);
+      // серия: с третьего верного подряд каждый — ещё +1 опыта (огонёк в шапке показывает «+1»)
+      if (firstTime) { a.bonus += streakBonus(run3 + 1); setRun3((n) => n + 1); }
       Audio.play('coin'); vibrate(15);
     } else {
       setRun3(0);
@@ -884,12 +960,12 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     let apply;
     if (run.mode === 'lesson') {
       track('lesson_done', { lesson: run.lessonId, ms });
-      xp = lessonXp({ firstTry: firstOk, replay, diamond });
+      xp = lessonXp({ firstTry: firstOk, replay, diamond, bonus: a.bonus });
       apply = (s) => finishLesson(s, run.lessonId, { xp, ...done, diamond });
       dropResume(run.lessonId);
     } else if (run.mode === 'check') {
       pass = mistakes <= plan.passMistakes;
-      xp = firstOk * XP.correct;
+      xp = firstOk * XP.correct + a.bonus;
       const ids = run.levelId ? levelUnits(run.levelId).map((u) => u.id) : [run.unitId];
       apply = (s) => { const t = finishLesson(s, null, { xp, ...done }); return pass ? ids.reduce((x, id) => passUnit(x, id, { ace: mistakes === 0, now }), t) : t; };
     } else if (run.mode === 'placement') {
@@ -897,7 +973,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       opened = placementOpened(plan.items, a.first);
       apply = (s) => setPlacement(opened.reduce((t, u) => passUnit(t, u, { now }), s), opened, now);
     } else {
-      xp = firstOk * XP.correct;
+      xp = firstOk * XP.correct + a.bonus;
       apply = (s) => finishLesson(s, null, { xp, ...done });
     }
     // купленный в лавке «двойной опыт»: пока действует, опыт за урок, практику и проверку — вдвое
@@ -922,7 +998,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       raceFriends = raceOffer(friendsState(), preview.s, now, offered);
       if (raceFriends) { try { localStorage.setItem(RACE_OFFER_KEY, dayOf(now)); } catch { /* приватный режим */ } }
     }
-    setResult({ xp, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted, streakUp, game: a.game || null, raceFriends });
+    // из него — за серии и мини-игру (на повторе урока опыт — десятая часть, разбивку не показываем)
+    const bonus = run.mode === 'lesson' && replay && !diamond ? 0 : a.bonus * (boosted ? 2 : 1);
+    setResult({ xp, bonus, accuracy, ms, pass, mistakes, coins: key && hasClaim(learn, key) ? 0 : coins, gains: preview.gains, opened, boosted, streakUp, game: a.game || null, raceFriends });
     setStage('done');
   };
   const next = () => {
@@ -951,7 +1029,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       saveResume(run.lessonId, {
         plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
         first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
-        cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history,
+        cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history, bonus: a.bonus,
       });
       if (at >= queue.length) dropResume(run.lessonId);
     }
@@ -1016,6 +1094,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
         {stage !== 'done' && <IconButton label="Выйти из урока" icon={X} data-nav="back" onClick={exit} />}
         <ProgressChart answers={log} total={total} pulse={pulse} />
         {/* Инфля надувается с каждым верным ответом подряд и мягко сдувается после ошибки */}
+        <StreakFlame n={run3} plus={!(run.mode === 'lesson' && replay && !diamond)} />
         <InflaMeter streak={run3} mood={fb && !fb.empty ? (fb.ok ? 'joy' : 'cheer') : 'hello'} size={34} />
       </div>
 
@@ -1250,7 +1329,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
               </div>
               {result.streakUp > 0 && <StreakBurst days={result.streakUp} />}
               <div className="ln-tickets">
-                <div data-testid="result-xp"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div></div>
+                <div data-testid="result-xp" data-bonus={result.bonus || 0}><div className="ds-eyebrow" style={{ fontSize: 12 }}>Опыт{result.boosted ? ' ×2' : ''}</div><div className="v"><CountUp value={result.xp} prefix="+" /></div>
+                  {result.bonus > 0 && <div className="ln-xp-bonus"><Flame size={12} aria-hidden="true" />+{result.bonus} {result.game ? 'за игру и серии' : 'за серии'}</div>}</div>
                 <div data-testid="result-acc"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Точность</div><div className="v">{Math.round(result.accuracy)}%</div></div>
                 <div data-testid="result-time"><div className="ds-eyebrow" style={{ fontSize: 12 }}>Время</div><div className="v">{mmss(result.ms)}</div></div>
               </div>
@@ -1393,8 +1473,10 @@ function LessonSheet({ l, learn, weak = false, onStart, onClose, onOpenBook, onS
   const lesson = LESSON_BY_ID[l.id];
   // уроку нужна теория из учебника, которой ученик ещё не видел — спросим перед стартом
   const [theory] = useState(() => (l.open && !l.done && !getResume(l.id) ? theoryNotice(lesson, learn, loadProgress(), readKnown()) : null));
-  const [info] = useState(() => { const p = buildLesson(l.id); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: p.items.length * XP.correct + XP.finish }; });
-  const [gemInfo] = useState(() => { if (!l.done) return null; const p = buildLesson(l.id, Math.random, { diamond: true }); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: Math.round((p.items.length * XP.correct + XP.finish) * XP.diamond) }; });
+  // до скольких опыта: все ответы верны и подряд (за серию — больше), мини-игры — на максимум
+  const games = (p) => p.items.filter((it) => GAME_KINDS.includes(it.kind)).length;
+  const [info] = useState(() => { const p = buildLesson(l.id); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: maxLessonXp(p.items.length, games(p)) }; });
+  const [gemInfo] = useState(() => { if (!l.done) return null; const p = buildLesson(l.id, Math.random, { diamond: true }); return { min: Math.max(2, Math.round(p.seconds / 60)), xp: Math.round(maxLessonXp(p.items.length, games(p)) * XP.diamond) }; });
   const resume = l.open ? getResume(l.id) : null;
   const Icon = KIND_ICON[lesson.kind] || Dumbbell;
   const pl = placeOf(lesson.unitId);
@@ -1912,7 +1994,7 @@ function LevelPicker({ levels, sel, focus, onSel, onTest, onClose }) {
 
 /* Выбранный уровень Пути помнится и после ухода на другую вкладку (экран Пути при этом
    закрывается) — пока не сменился текущий уровень; jump — уровень, который откроет сдаваемый тест. */
-let pathMem = { level: null, cur: null, jump: null };
+let pathMem = { level: null, cur: null, jump: null, folded: 0 };
 
 /* Свёртка пройденного юнита после сундука: тело юнита (модель и дорога) плавно сжимается в ноль,
    соседи снизу подъезжают — без скачка прокрутки. */
@@ -2013,7 +2095,10 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
   const [folding, setFolding] = useState(null);
   const [justFolded, setJustFolded] = useState(null);
   useEffect(() => {
-    if (!foldReq || !foldReq.n) return undefined;
+    // запрос на сворачивание — разовый: Путь пересоздаётся при каждом возвращении на вкладку, и без
+    // отметки «уже свернули» пройденный юнит разворачивался и сворачивался заново при каждом входе
+    if (!foldReq || !foldReq.n || pathMem.folded === foldReq.n) return undefined;
+    pathMem = { ...pathMem, folded: foldReq.n };
     const unit = foldReq.unit;
     const head = document.getElementById(`unit-${unit}`);
     if (reduced || !head) { setScrollTo((x) => ({ n: x.n + 1, unit: null })); return undefined; }
@@ -2369,7 +2454,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
       {reports && <ReportsView onBack={() => { Audio.play('paper'); setReports(false); }} />}
       {analytics && <AnalyticsView onBack={() => { Audio.play('paper'); setAnalytics(false); }} />}
       {chest && <ChestSheet unitId={chest} place={placeOf(chest).place} learn={learn} update={update}
-        onClose={(opened) => { setChest(null); if (opened) setFolded((f) => ({ n: f.n + 1, unit: chest })); }} />}
+        onClose={(opened) => { setChest(null); if (opened) setFolded({ n: Date.now(), unit: chest }); }} />}
       {morning && !run && <MorningStreak learn={learn} onClose={() => setMorning(false)} />}
       {celebrate && <React.Suspense fallback={null}><Celebration moment={celebrate} learn={learn} onDone={() => celebrated(celebrate)}
         onGo={() => { celebrated(celebrate); onTab('profile'); }} /></React.Suspense>}

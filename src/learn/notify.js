@@ -7,7 +7,7 @@
    (ems-notify-pushed). Модуль чистый, кроме этих трёх ключей: его читают колокольчик, центр
    уведомлений, всплывающая плашка и напоминания в браузере (src/learn-notify.jsx), и тесты. */
 import { streak, goalToday, dayOf, addDays } from '../textbook/learn-state.js';
-import { leagueState, pendingRewards, standings, LEAGUE_BY_ID } from './league.js';
+import { leagueState, pendingRewards, standings, LEAGUE_BY_ID, LESSON_XP } from './league.js';
 import { gardenPlots, growth, PLANT_BY_ID } from './garden.js';
 import { piggyState, monthChallenge, hasClaim, chestKey, coinsWord, plural } from './rewards.js';
 import { pathState, practiceIds } from './course.js';
@@ -100,14 +100,21 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
           title: 'Итоги недели лиги', text: `${place(last.place)} в ${lg.title.replace(/ая$/, 'ой')} лиге. ${last.move === 'up' ? `Новая неделя — в ${to.title.replace(/ая$/, 'ой')}.` : last.move === 'down' ? `Новая неделя — в ${to.title.replace(/ая$/, 'ой')}.` : 'Остаётесь в лиге.'}` });
       }
     } else if (ls.joined) {
-      // обогнали за последние часы: соперники набрали опыт, а вы — нет
+      /* Обогнали за последние часы: соперники набрали опыт, а вы — нет. Только если вы сами за эти часы
+         не занимались (сразу после своего урока «обогнали» не бывает — ваш опыт уже другой) и не чаще
+         раза в день. Сколько опыта нужно, чтобы вернуть место, — честно: обогнать того, кто на нём сейчас. */
       const before = Math.max(at(week, 0), now - 4 * HOUR);
+      const lastRun = Math.max(0, ...Object.values(learn.lessons || {}).map((l) => (l && l.at) || 0));
       const prev = standings(learn, week, ls.league, before);
       const was = prev.find((r) => r.me).place;
-      if (ls.me.place > was) {
+      if (ls.me.place > was && lastRun < before) {
         const by = ls.table.filter((r) => !r.me && r.place < ls.me.place && prev.find((p) => p.id === r.id).place > was);
-        add({ id: `lg-down:${week}:${ls.me.place}`, kind: 'league', icon: 'trending-down', tone: '#C2490B', at: now - HOUR, go: 'league', toast: true, push: true,
-          title: `Вас обогнали — ${place(ls.me.place)}`, text: `${by.length ? `Вперёд ${by.length > 1 ? 'вышли' : 'вышел соперник'}: ${by.slice(0, 2).map((r) => r.name).join(' и ')}. ` : ''}Один урок — и место можно вернуть.` });
+        const holder = ls.table.find((r) => r.place === was);
+        const gap = Math.max(1, holder.xp - ls.me.xp + 1);
+        const runs = Math.ceil(gap / LESSON_XP);
+        add({ id: `lg-down:${week}:${day}`, kind: 'league', icon: 'trending-down', tone: '#C2490B', at: now - HOUR, go: 'league', toast: true, push: true,
+          title: `Вас обогнали — ${place(ls.me.place)}`,
+          text: `${by.length ? `Вперёд ${by.length > 1 ? 'вышли' : 'вышел соперник'}: ${by.slice(0, 2).map((r) => r.name).join(' и ')}. ` : ''}До ${was}-го места — ${gap} опыта: ${runs <= 1 ? 'хватит одного урока' : `это примерно ${runs} ${plural(runs, 'урок', 'урока', 'уроков')}`}.` });
       }
       if (ls.me.zone === 'down') {
         add({ id: `lg-zone-down:${week}:${day}`, kind: 'league', icon: 'arrow-down', tone: '#BF3A2B', at: at(day, 9), go: 'league',

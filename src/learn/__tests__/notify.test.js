@@ -154,3 +154,22 @@ describe('коллекции профиля', () => {
     expect(shelfOrder(items).map((x) => x.id)).toEqual(['c', 'a', 'd', 'b', 'e']);
   });
 });
+
+describe('уведомления: лига — «Вас обогнали»', () => {
+  it('только если сами за эти часы не занимались, не чаще раза в день и с честным разрывом в опыте', () => {
+    // в понедельник набрал 30 опыта и больше не занимался — соперники постепенно обгоняют
+    const s = learner({ xp: { [addDays(TODAY, -2)]: 30 } });
+    let hit = null; let ts = 0;
+    for (let h = 0; h < 96 && !hit; h += 1) {
+      ts = at(TODAY, 0) + h * 3600 * 1000;
+      hit = notificationsOf(s, ts).find((n) => n.id.startsWith('lg-down:'));
+    }
+    expect(hit).toBeTruthy();
+    expect(hit.id.endsWith(`:${dayOf(ts)}`)).toBe(true);
+    expect(hit.text).toMatch(/До \d+-го места — \d+ опыта: (хватит одного урока|это примерно \d+ урок)/);
+    expect(hit.text).not.toContain('Один урок — и место можно вернуть');
+    // только что был урок — «обогнали» не приходит
+    const busy = { ...s, lessons: { ...s.lessons, [LESSONS[1].id]: { at: ts - 30 * 60 * 1000, runs: 1, best: 90 } } };
+    expect(notificationsOf(busy, ts).some((n) => n.id.startsWith('lg-down:'))).toBe(false);
+  });
+});
