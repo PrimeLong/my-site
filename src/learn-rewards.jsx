@@ -51,7 +51,8 @@ export const REWARD_CSS = `
   .rw-goalbox { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; margin: 0 -2px 12px;
     border-radius: 14px; background: color-mix(in srgb, var(--u) 9%, var(--ds-card)); animation: rw-in .35s ease-out both; }
   .rw-ring { position: relative; width: 52px; height: 52px; }
-  .rw-ring svg { display: block; transform: rotate(-90deg); }
+  /* поворот — только кольцу прогресса (дуга начинается сверху), не галочке внутри */
+  .rw-ring > svg { display: block; transform: rotate(-90deg); }
   .rw-ring circle { fill: none; stroke-width: 6; }
   .rw-ring .bg { stroke: var(--ds-rule); }
   .rw-ring .fg { stroke: var(--u); stroke-linecap: round; transition: stroke-dashoffset .6s cubic-bezier(.3,.8,.4,1); animation: rw-ring 1s cubic-bezier(.3,.8,.4,1) both; }
@@ -158,6 +159,9 @@ export const REWARD_CSS = `
   .rw-real summary { cursor: pointer; font: 700 14px var(--ds-sans); color: var(--u-ink); }
   .rw-piggy-chart text { font: 600 11.5px var(--ds-sans); fill: var(--ds-ink2); }
   .rw-piggy-chart text.num { font: 700 12px var(--ds-mono); }
+  .rw-piggy-chart text.end { paint-order: stroke; stroke: var(--ds-card); stroke-width: 4px; stroke-linejoin: round; }
+  .rw-book-dayline { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; font: 600 13.5px var(--ds-sans); color: var(--ds-ink2); }
+  .rw-book-dayline b { color: var(--ds-ink); }
   .rw-dot { width: 36px; display: flex; flex-direction: column; align-items: center; gap: 5px; font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
   .rw-dot i { width: 32px; height: 32px; border-radius: 50%; border: 2px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
   .rw-dot.done i { border: none; color: #fff; background: linear-gradient(180deg, #FF9A2E, #E2530E); box-shadow: 0 2px 0 #B23E08; animation: rw-dot-pop .5s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(1.2s + var(--i, 0) * 70ms); }
@@ -624,9 +628,11 @@ const fmtPct = (r) => `${String(Math.round(r * 1000) / 10).replace('.', ',')}%`;
 /* Рост вклада за неделю — на ОБЩЕЙ шкале для обоих видов вклада: выбранный вклад — яркая линия
    с заливкой, другой вид — пунктир рядом. Открытый вклад — его настоящий путь по дням (path):
    пополнение — ступенька вверх с подписью «+N», точка «сейчас» и плашка «сейчас» над графиком.
-   Подписи снизу — только «начало»/«сегодня» и «через 7 дней»: «сейчас» наверху их не задевает. */
+   Подписи снизу — только «начало»/«сегодня» и «через 7 дней»: «сейчас» наверху их не задевает. Итог —
+   над концом линии, внутри графика (а не справа от него: длинное число съедало поле, и справа был
+   большой пустой отступ); итог другого вида — под концом пунктира. */
 function PiggyChart({ amount, rate, other = null, day = null, path = null, steps = [] }) {
-  const W = 300; const H = 134; const L = 10; const R = 48; const T = 28; const B = 24; const N = PIGGY.days;
+  const W = 300; const H = 134; const L = 10; const R = 10; const T = 28; const B = 24; const N = PIGGY.days;
   const curve = (r) => Array.from({ length: N + 1 }, (_, d) => amount * (1 + r) ** d);
   const vals = path || curve(rate);
   const otherVals = other != null ? curve(other) : null;
@@ -638,10 +644,14 @@ function PiggyChart({ amount, rate, other = null, day = null, path = null, steps
   const line = (list) => list.map((v, d) => `${x(d).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const area = `${x(0)},${H - B} ${line(vals)} ${x(N)},${H - B}`;
   const endY = y(end); const otherY = otherEnd != null ? y(otherEnd) : null;
-  // подписи концов не налезают друг на друга
-  const gap = otherY != null && Math.abs(otherY - endY) < 14 ? (otherY > endY ? 14 - (otherY - endY) : -(14 - (endY - otherY))) : 0;
+  // итог — над концом линии; итог другого вида — под концом пунктира (но не ниже оси)
+  const endLabelY = endY - 10;
+  const otherLabelY = otherY != null ? Math.min(otherY + 16, H - B - 4) : null;
   const live = day != null && day < N;
-  const nowX = live ? Math.min(W - R - 26, Math.max(L + 26, x(day))) : 0;
+  // плашка «сейчас» у правого края не наезжает на итог над концом линии: сдвигается левее него
+  const endW = String(Math.floor(end + 1e-9)).length * 7.5 + 4;
+  const nowMax = endLabelY < T + 4 ? x(N) - 4 - endW - 28 : W - R - 26;
+  const nowX = live ? Math.min(nowMax, Math.max(L + 26, x(day))) : 0;
   return (
     <svg className="rw-piggy-chart rw-grow" viewBox={`0 0 ${W} ${H}`} role="img" data-testid="piggy-chart"
       aria-label={`${amount} под ${fmtPct(rate)} в день: через неделю ${Math.floor(end + 1e-9)}${otherEnd != null ? `; другой вид вклада — ${Math.floor(otherEnd + 1e-9)}` : ''}`}>
@@ -660,8 +670,8 @@ function PiggyChart({ amount, rate, other = null, day = null, path = null, steps
           <circle cx={x(day)} cy={y(vals[day])} r="5.5" />
         </g>
       )}
-      <text x={x(N) + 8} y={endY + 5} className="end num">{Math.floor(end + 1e-9)}</text>
-      {otherEnd != null && <text x={x(N) + 8} y={otherY + 5 + gap} className="end other-t num">{Math.floor(otherEnd + 1e-9)}</text>}
+      <text x={x(N) - 4} y={endLabelY} textAnchor="end" className="end num">{Math.floor(end + 1e-9)}</text>
+      {otherEnd != null && <text x={x(N) - 4} y={otherLabelY} textAnchor="end" className="end other-t num">{Math.floor(otherEnd + 1e-9)}</text>}
       <text x={x(0)} y={H - 6} textAnchor="start">{path ? 'начало' : 'сегодня'}</text>
       <text x={x(N)} y={H - 6} textAnchor="end">через {N} дней</text>
     </svg>
@@ -765,11 +775,12 @@ function PiggyCard({ learn, update, now, b, onMsg }) {
               <div><small>Сейчас</small><b className="ds-num">{st.value}</b></div>
               <div className="fin"><small>{st.ripe ? 'Готово' : `Через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')}`}</small><b className="ds-num">{st.final}</b></div>
             </div>
+            <div className="rw-book-dayline" data-testid="piggy-state">
+              <b>День {st.days} из {PIGGY.days}</b>
+              <span>{st.ripe ? 'срок вышел — можно забирать' : `ещё ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')}`}</span>
+            </div>
             <div className="rw-book-days" aria-hidden="true">{Array.from({ length: PIGGY.days }, (_, k) => <i key={k} className={k < st.days ? 'on' : k === st.days ? 'cur' : ''} style={{ '--i': k }} />)}</div>
             <PiggyChart amount={st.amount} rate={st.rate} day={st.days} path={st.path} steps={st.steps} />
-            <div style={{ fontSize: 14.5, margin: '2px 0 8px' }} data-testid="piggy-state">
-              День {st.days} из {PIGGY.days}: сейчас <b className="ds-num">{st.value}</b>{st.ripe ? ' — срок вышел, можно забирать.' : `, через ${PIGGY.days - st.days} ${plural(PIGGY.days - st.days, 'день', 'дня', 'дней')} — ${st.final}.`}
-            </div>
             {st.canAdd && (b >= PIGGY.addMin ? (
               <div className="rw-add" data-testid="piggy-add-form">
                 <label className="rw-book-row" htmlFor="piggy-add-amount"><span>Пополнить</span><b className="ds-num">{addN} {coinsWord(addN)}</b></label>

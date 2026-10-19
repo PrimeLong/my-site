@@ -36,6 +36,9 @@ const CSS = `
   @keyframes infla-sway { 0%, 100% { transform: rotate(-3deg) } 50% { transform: rotate(3deg) } }
   .infla-eyes { transform-box: fill-box; transform-origin: center; animation: infla-blink 4.2s ease-in-out infinite; }
   .infla-hand { transform-box: fill-box; transform-origin: 20% 90%; animation: infla-wave 1.1s ease-in-out infinite; }
+  /* правая рука занята вещью из лавки — машет левой (зеркально), иначе выходит «третья рука» */
+  @keyframes infla-wave-l { 0%, 100% { transform: rotate(0) } 25% { transform: rotate(28deg) } 75% { transform: rotate(-18deg) } }
+  .infla-hand.left { transform-origin: 80% 90%; animation-name: infla-wave-l; }
   .infla-sway { animation: infla-sway 3.6s ease-in-out infinite; }
   /* редкие вещи лавки — живые: шар дышит, орден качается, камни вспыхивают, огранка плывёт */
   @keyframes infla-breathe { 0%, 100% { transform: scale(.78) } 50% { transform: scale(1.12) } }
@@ -274,12 +277,17 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
         <path d="M17.4 18.6 C 18.6 13.6, 22.4 9.8, 27 8.8" fill="none" stroke="#FFF7DC" strokeOpacity="0.75" strokeWidth="2.4" strokeLinecap="round" />
         {(m === 'joy' || m === 'party' || m === 'hello') && <><ellipse cx="20" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /><ellipse cx="44" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /></>}
         {m === 'sleep' ? EYES[m](ink) : <g className="infla-eyes">{EYES[m](ink)}</g>}
-        {m === 'wave' && (
+        {m === 'wave' && (wear.hand && OUTFIT[wear.hand] ? (
+          <g className="infla-hand left">
+            <path d="M12 34 Q7 30 6 24" fill="none" stroke="#3A2A08" strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="5.5" cy="21.5" r="4" fill="#E8C766" stroke="#3A2A08" strokeWidth="1.2" />
+          </g>
+        ) : (
           <g className="infla-hand">
             <path d="M52 34 Q57 30 58 24" fill="none" stroke="#3A2A08" strokeWidth="1.6" strokeLinecap="round" />
             <circle cx="58.5" cy="21.5" r="4" fill="#E8C766" stroke="#3A2A08" strokeWidth="1.2" />
           </g>
-        )}
+        ))}
         {MOUTH[m](ink)}
         {m === 'party' && <>
           <path d="M26 3.5 L32 -4 L38 3.5 Z" fill="#4FA38F" stroke="#3A2A08" strokeWidth="0.8" transform="translate(0 4)" />

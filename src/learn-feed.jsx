@@ -288,8 +288,10 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
      над ним — хвост прошлого для связи, под ним — свободное место (хвост ленты .fd-tail), а не
      прижимается к нижней кромке. Сколько прошлого оставить над новым: до трети экрана, но так,
      чтобы новое поместилось целиком. Пока последний шаг растёт (дорисовалась формула, под вопросом
-     появился разбор, выросла нижняя панель) — догоняем: низ шага в кадре, верх не уезжает за край.
-     Прокрутка только вниз. Новое сообщение эфира — сразу читается голосом. */
+     появился разбор) — догоняем: низ шага в кадре, верх не уезжает за край. Выросла нижняя панель
+     (ответили — внизу разбор и «Дальше») — низ шага в кадре всегда: на телефоне высокий вопрос иначе
+     прятал под панелью свой низ (ползунок, варианты). Прокрутка только вниз. Новое сообщение эфира —
+     сразу читается голосом. */
   useEffect(() => {
     if (!last) return undefined;
     if (mode === 'listen') {
@@ -299,23 +301,28 @@ export function Feed({ mode, title, entries, picture, skipTitle = null, flagFor 
     const el = lastRef.current;
     if (!el) return undefined;
     const sc = el.closest('.ln-body');
-    let first = true;
+    let first = true; let lastH = -1; let lastView = -1;
     const follow = () => {
       if (!sc) { if (el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); return; }
       const view = sc.clientHeight;
       const top = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
       const h = el.offsetHeight;
+      // наблюдатель размеров сразу зовёт нас ещё раз — ничего не изменилось, не перебиваем начатую прокрутку
+      if (!first && h === lastH && view === lastView) return;
+      const footGrew = !first && view < lastView;
+      lastH = h; lastView = view;
       let target;
       if (first) {
         const lead = Math.max(12, Math.min(view * 0.3, view - h - 24));
         target = top - lead;
-      } else target = Math.min(top - 12, top + h + 24 - view);
+      } else if (footGrew) target = top + h + 24 - view;
+      else target = Math.min(top - 12, top + h + 24 - view);
       first = false;
       target = Math.min(target, sc.scrollHeight - view);
       if (target > sc.scrollTop + 1) sc.scrollTo({ top: target, behavior: reduced ? 'auto' : 'smooth' });
     };
     follow();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(follow) : null;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => follow()) : null;
     if (ro) { ro.observe(el); if (sc) ro.observe(sc); }
     return () => { if (ro) ro.disconnect(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps

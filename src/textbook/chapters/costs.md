@@ -147,7 +147,7 @@ $MC = \Delta TC / \Delta Q = {=w}/{=q} = {=w/q}$ {|w/q|крона|кроны|к�
 Решают по предельным: следующий круассан стоит 8 крон, приносит 9 — партию печь выгодно.
 :::
 
-:::idea id=ct-l1 title="Постоянные, переменные, средние" pic=croissant auto="costs-tf-rent" variants="v-costs-types" hard="costs-mc costs-tf-rent"
+:::idea id=ct-l1 title="Постоянные, переменные, средние" pic=croissant auto="costs-tf-rent" variants="v-costs-types" hard="costs-mc var:v-costs-fc"
 Постоянные и переменные издержки, общие и средние, предельные издержки и убывающая отдача.
 :::
 

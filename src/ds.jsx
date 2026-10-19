@@ -39,10 +39,11 @@ export const DS_CSS = `
     box-shadow: 0 4px 0 var(--edge); margin-bottom: 4px;
     transition: transform .08s ease, box-shadow .08s ease, filter .15s; }
   .ds-btn:hover:not(:disabled) { filter: brightness(1.06) saturate(1.05); }
-  /* основная кнопка: при наведении по ней пробегает блик (в покое он за краем кнопки и не виден) */
+  /* основная кнопка: при наведении по ней пробегает блик (в покое он за краем кнопки и не виден). Блик —
+     только если мышь задержалась на кнопке: провели мимо или туда-сюда — кнопка не мигает */
   .ds-btn:not(.ds-btn--ghost):not(.ds-btn--secondary)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
     background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .3) 50%, transparent 65%) no-repeat; background-size: 250% 100%; background-position: 130% 0; }
-  @media (hover: hover) { .ds-btn:not(.ds-btn--ghost):not(.ds-btn--secondary):not(:disabled):hover::after { animation: ds-shine .75s ease-out; } }
+  @media (hover: hover) { .ds-btn:not(.ds-btn--ghost):not(.ds-btn--secondary):not(:disabled):hover::after { animation: ds-shine .75s ease-out .35s backwards; } }
   @keyframes ds-shine { from { background-position: 130% 0 } to { background-position: -30% 0 } }
   .ds-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 0 0 var(--edge); }
   /* «Мир» в тёмной теме: основная кнопка — светлое золото, на нём белый текст не читается — тёмная тушь */
@@ -79,7 +80,7 @@ export const DS_CSS = `
   .ds-card--button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; margin: 10px 0; }
   .ds-card--button { transition: transform .15s ease, box-shadow .15s ease, border-color .15s; }
   .ds-card--button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 0 var(--ds-rule), 0 10px 22px -12px var(--ds-shade); }
-  .ds-card--button:hover:not(:disabled) > span:first-child { animation: ds-wiggle .5s ease-in-out; }
+  .ds-card--button:hover:not(:disabled) > span:first-child { animation: ds-wiggle .5s ease-in-out .25s; }
   .ds-card--button:active:not(:disabled) { transform: translateY(1px); }
   .ds-card--button:disabled { opacity: .6; cursor: default; }
   .ds-panel { background: var(--ds-card2); border-radius: 14px; padding: 12px 14px; }

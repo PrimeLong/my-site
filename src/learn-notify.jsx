@@ -272,8 +272,10 @@ export function useToasts(notify, busy) {
         title: `Вы поднялись на ${lp.place}-е место`, text: `${lg.title} лига: ${was.place - lp.place > 1 ? `сразу на ${was.place - lp.place} ${was.place - lp.place < 5 ? 'места' : 'мест'} выше` : 'на одно место выше'}.` }]);
     }
   }, [notify.leaguePlace]); // eslint-disable-line react-hooks/exhaustive-deps
-  const cur = !busy && queue.length ? queue[0] : null;
-  const done = () => setQueue((q) => q.slice(1));
+  // пока плашка ждала конца урока, уведомление могло уйти из списка (место уже вернули) — такое не показываем
+  const live = queue.filter((n) => n.id.startsWith('lg-up:') || notify.list.some((x) => x.id === n.id));
+  const cur = !busy && live.length ? live[0] : null;
+  const done = () => setQueue((q) => q.filter((n) => n !== cur && live.includes(n)));
   return [cur, done];
 }
 

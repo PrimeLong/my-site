@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Inline } from './textbook.jsx';
-import { equilibrium, marketAxes, qd, qs, gameScore, comboOf, gameLeft, GAME_PASS } from './learn/course.js';
+import { equilibrium, marketAxes, qd, qs, gameScore, comboOf, gameLeft, timeBonus, GAME_PASS, GAME_TIME_BONUS } from './learn/course.js';
 import { WALLET, WALLET_OPTIONS, FORECAST, walletPath, walletResult, realPct } from './learn/wallet.js';
 import { plural } from './lib/plural.js';
 import { CAST } from './learn/cast.js';
@@ -404,7 +404,8 @@ const EFFECT_LABEL = {
 const BUDGET_LABEL = { out: 'Доход вырос', in: 'Доход упал', ox: 'Товар X дешевле', ix: 'Товар X дороже', oy: 'Товар Y дешевле', iy: 'Товар Y дороже' };
 const ELASTIC_LABEL = { in: 'Неэластичный: выручка растёт', el: 'Эластичный: выручка падает' };
 const COSTS_LABEL = { fc: 'Постоянные: поднялись только средние', vc: 'Переменные: поднялись все три кривые' };
-const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : chart === 'costs' ? COSTS_LABEL[eff] : EFFECT_LABEL[eff]);
+const POWER_LABEL = { pt: 'Ценополучатель: цена с рынка, P = MC', mp: 'Власть над ценой: цена выше MC' };
+const effectLabel = (chart, eff) => (chart === 'budget' ? BUDGET_LABEL[eff] : chart === 'elastic' ? ELASTIC_LABEL[eff] : chart === 'costs' ? COSTS_LABEL[eff] : chart === 'power' ? POWER_LABEL[eff] : EFFECT_LABEL[eff]);
 const BUDGET0 = { I: 100, px: 1.25, py: 1.25 };
 const MARKET_STEP = 16;
 // состояние графика после карточки: сдвиги понемногу забываются, чтобы график не уезжал за край
@@ -413,6 +414,8 @@ function applyEffect(chart, st, eff) {
   if (chart === 'elastic') return { e: eff === 'in' ? 0.4 : eff === 'el' ? 2.5 : st.e };
   // издержки: постоянная трата поднимает только средние общие, переменная — все три кривые
   if (chart === 'costs') return { fc: eff === 'fc' ? 1 : eff ? 0 : st.fc, vc: eff === 'vc' ? 1 : eff ? 0 : st.vc };
+  // рыночная власть: спрос на товар фирмы — горизонтальный у ценополучателя, падающий у монополиста
+  if (chart === 'power') return { m: eff === 'mp' ? 1 : eff === 'pt' ? 0 : st.m };
   if (chart === 'market') {
     const d = { D: st.D * 0.6, S: st.S * 0.6 };
     if (eff) d[eff[0]] = clampN(d[eff[0]] + (eff[1] === '+' ? MARKET_STEP : -MARKET_STEP), -32, 32);
@@ -438,7 +441,7 @@ function applyEffect(chart, st, eff) {
   if (eff === 'y') t = clampN(t + 0.16, 0.08, 0.92);
   return { rx, ry, t };
 }
-const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : chart === 'costs' ? { fc: 0, vc: 0 } : { rx: 100, ry: 100, t: 0.5 });
+const startState = (chart) => (chart === 'market' ? { D: 0, S: 0 } : chart === 'budget' ? { ...BUDGET0 } : chart === 'elastic' ? { e: 1 } : chart === 'costs' ? { fc: 0, vc: 0 } : chart === 'power' ? { m: 0.5 } : { rx: 100, ry: 100, t: 0.5 });
 // плавный переход к новому состоянию графика (при «уменьшить движение» — сразу)
 function useTween(target, ms = 420) {
   const reduced = useReducedMotion();
@@ -545,6 +548,44 @@ function CostsGameChart({ st }) {
     </svg>
   );
 }
+/* Рыночная власть: спрос на товар фирмы. У ценополучателя он горизонтален на уровне рыночной цены —
+   фирма продаёт там, где цена равна MC. У монополиста спрос падает, предельная выручка MR ниже
+   него, выпуск — где MR = MC, а цена со спроса выше MC: между ними — наценка. m — от 0 к 1. */
+function PowerGameChart({ st }) {
+  const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
+  const QM = 12; const PM = 64;
+  const sx = (q) => L + (Math.max(0, Math.min(q, QM)) / QM) * (W - L - R); const sy = (p) => H - B - (Math.max(0, Math.min(p, PM)) / PM) * (H - B - T);
+  const m = Math.max(0, Math.min(1, st.m));
+  const mc = (q) => 10 + 2.5 * q;
+  const dem = (q) => (1 - m) * 30 + m * (60 - 5 * q);
+  const mr = (q) => (1 - m) * 30 + m * (60 - 10 * q);
+  const line = (f, q0, q1) => `M${sx(q0).toFixed(1)},${sy(f(q0)).toFixed(1)}L${sx(q1).toFixed(1)},${sy(f(q1)).toFixed(1)}`;
+  const q = 8 - 4 * m; const p = 30 + 10 * m; const markup = Math.round(p - mc(q));
+  const halo = { stroke: 'var(--ds-paper)', strokeWidth: 4, paintOrder: 'stroke', strokeLinejoin: 'round' };
+  return (
+    <svg className="lp-chart lp-game-chart" viewBox={`0 0 ${W} ${H}`} role="img"
+      aria-label={m > 0.5 ? `Власть над ценой: цена ${Math.round(p)} выше предельных издержек на ${markup}` : 'Ценополучатель: цена с рынка равна предельным издержкам'}
+      data-testid="game-chart" data-chart="power" data-state={JSON.stringify({ m: Math.round(m * 100) / 100, markup })}>
+      <rect x={sx(0)} y={sy(p)} width={sx(q) - sx(0)} height={Math.max(0, sy(mc(q)) - sy(p))} fill="var(--u)" opacity={0.14 * m} />
+      <path d={line(mc, 0, 9.6)} fill="none" stroke="var(--ds-ok)" strokeWidth="2.5" />
+      <path d={line(mr, 0, Math.min(QM, 6))} fill="none" stroke="var(--ds-ink3)" strokeWidth="2" strokeDasharray="5 4" opacity={m} />
+      <path d={line(dem, 0, QM)} fill="none" stroke="var(--u)" strokeWidth="4" strokeLinecap="round" data-testid="power-demand" />
+      <line x1={sx(q)} y1={sy(p)} x2={sx(q)} y2={sy(0)} stroke="var(--ds-ink3)" strokeDasharray="3 3" />
+      <line x1={sx(q) + 7} y1={sy(p)} x2={sx(q) + 7} y2={sy(mc(q))} stroke="var(--u)" strokeWidth="2" opacity={m} />
+      <circle cx={sx(q)} cy={sy(p)} r="5" fill="var(--u)" />
+      <circle cx={sx(q)} cy={sy(mc(q))} r="3.5" fill="var(--ds-ok)" opacity={m} />
+      <line x1={L} y1={H - B} x2={W - R} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <line x1={L} y1={T} x2={L} y2={H - B} stroke="var(--ds-ink2)" strokeWidth="1.5" />
+      <text x={W - R} y={H - 8} textAnchor="end" className="lp-ax">Q</text>
+      <text x={L - 6} y={T + 8} textAnchor="end" className="lp-ax">P</text>
+      <text x={sx(1.2)} y={sy(mc(1.2)) - 7} className="lp-ax" style={{ fill: 'var(--ds-ok)', fontWeight: 700, ...halo }}>MC</text>
+      <text x={sx(1)} y={sy(dem(1)) - 8} className="lp-ax" style={{ fill: 'var(--u-ink)', fontWeight: 700, ...halo }}>спрос</text>
+      {m > 0.15 && <text x={sx(Math.min(QM, 5.6)) + 4} y={sy(mr(5.6)) + 12} className="lp-ax" style={{ opacity: m, ...halo }}>MR</text>}
+      {m > 0.15 && <text x={sx(q) + 12} y={(sy(p) + sy(mc(q))) / 2 + 4} className="lp-ax" style={{ opacity: m, fill: 'var(--u-ink)', fontWeight: 700, ...halo }}>наценка +{markup}</text>}
+      <text x={W - R - 4} y={T + 14} textAnchor="end" className="lp-ax" style={{ fill: m > 0.5 ? 'var(--u-ink)' : 'var(--ds-ok)', fontWeight: 700, ...halo }}>{m > 0.5 ? 'цена выше MC' : 'цена = MC'}</text>
+    </svg>
+  );
+}
 // КПВ игры: четверть эллипса с концами rx (хлеб) и ry (станки); пунктир — с чего начинали
 function PpfGameChart({ st }) {
   const W = 300; const H = 200; const L = 34; const B = 26; const T = 10; const R = 12;
@@ -587,8 +628,12 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const reduced = useReducedMotion();
   const sides = inst.kind === 'swipe' ? ['left', 'right'] : ['up', 'down'];
   const [phase, setPhase] = useState(locked ? 'over' : 'ready');
-  // колода по кругу: кончилась — перемешиваем заново, первой не идёт только что показанная
-  const deck = useRef(inst.items.slice());
+  /* колода — каждая новость один раз (пробная — в самом конце): разобрали всё раньше времени —
+     игра кончается, а секунды в запасе идут в очки */
+  const sample = inst.items.find((x) => x.effect) || inst.items[0];
+  const deck = useRef([...inst.items.filter((x) => x !== sample), sample]);
+  const t0 = useRef(0);
+  const [bonus, setBonus] = useState(0);
   const [idx, setIdx] = useState(0);
   const [st, setSt] = useState(() => startState(inst.chart));
   const [prices, setPrices] = useState(() => (inst.market ? [equilibrium(inst.market).p] : []));
@@ -606,14 +651,16 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const run = (() => { let n = 0; for (let k = answers.length - 1; k >= 0 && answers[k]; k -= 1) n += 1; return n; })();
   const combo = comboOf(run);
   const seconds = testing() && window.__INFLATIA_GAME_SECONDS__ ? Number(window.__INFLATIA_GAME_SECONDS__) : inst.seconds;
-  const finish = () => {
+  const finish = (early = false) => {
     if (done.current) return; done.current = true;
     const a = ans.current; const sc = gameScore(a);
-    setPhase('over');
-    onDone({ right: a.filter(Boolean).length, answered: a.length, score: sc.score, bestRun: sc.bestRun, record: sc.score > best && sc.score > 0, timeout: true, done: true });
+    const tb = early ? timeBonus(seconds - (Date.now() - t0.current) / 1000) : 0;
+    const total = sc.score + tb;
+    setBonus(tb); setPhase('over');
+    onDone({ right: a.filter(Boolean).length, answered: a.length, score: total, timeBonus: tb, bestRun: sc.bestRun, record: total > best && total > 0, timeout: !early, done: true });
   };
   const decide = (side) => {
-    if (phase !== 'play' || locked || done.current || !item) return;
+    if (phase !== 'play' || locked || done.current || !item || ans.current.length >= deck.current.length) return;
     const ok = side === item.side;
     Audio.play(ok ? 'coin' : 'down');
     const next = [...ans.current, ok]; ans.current = next; setAnswers(next);
@@ -625,11 +672,8 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
       setSt(ns); setTag({ k: next.length, text: effectLabel(inst.chart, item.effect) });
       if (inst.market) setPrices((p) => [...p, equilibrium({ ...inst.market, dA: ns.D, dC: ns.S }).p].slice(-24));
     }
-    if ((idx + 1) % deck.current.length === 0) {
-      const last = item; let d = shuffleList(inst.items);
-      for (let t = 0; t < 5 && d[0] === last; t += 1) d = shuffleList(inst.items);
-      deck.current = d; setIdx(0);
-    } else setIdx(idx + 1);
+    if (idx + 1 >= deck.current.length) setTimeout(() => finish(true), 280);
+    else setIdx(idx + 1);
   };
   useEffect(() => {
     if (phase !== 'play') return undefined;
@@ -642,7 +686,6 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
   const up = () => { if (start.current == null) return; const d = dx; start.current = null; if (Math.abs(d) > 80) decide(d > 0 ? 'right' : 'left'); else setDx(0); };
   /* Пробный ход: один заголовок без таймера и без очков — ответ с объяснением, график показывает
      сдвиг. Перед стартом график возвращается на место. */
-  const sample = inst.items.find((x) => x.effect) || inst.items[0];
   const [trial, setTrial] = useState(null);
   const tryIt = (side) => {
     if (trial) return;
@@ -651,13 +694,13 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
     setTrial({ ok });
     if (sample.effect) setSt(applyEffect(inst.chart, startState(inst.chart), sample.effect));
   };
-  const begin = () => { Audio.play('click'); setSt(startState(inst.chart)); setPhase('play'); };
+  const begin = () => { Audio.play('click'); setSt(startState(inst.chart)); t0.current = Date.now(); setPhase('play'); };
   const sideHint = inst.kind === 'swipe' ? `кнопки внизу, стрелки ← → или смахните карточку` : 'кнопки внизу или стрелки ↑ ↓ на клавиатуре';
-  const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score, bestRun, record: false } : null);
+  const r = result || (phase === 'over' ? { right: answers.filter(Boolean).length, answered: answers.length, score: score + bonus, timeBonus: bonus, bestRun, record: false } : null);
   const chart = inst.chart === 'market'
     ? <><MarketChart m={inst.market} shift={{ D: shown.D || 0, S: shown.S || 0 }} ghost eq label="Рынок в игре: спрос и предложение" /><PriceTicker prices={prices} /></>
     : inst.chart === 'ppf' ? <PpfGameChart st={shown} /> : inst.chart === 'budget' ? <BudgetGameChart st={shown} /> : inst.chart === 'elastic' ? <ElasticGameChart st={shown} />
-      : inst.chart === 'costs' ? <CostsGameChart st={shown} /> : null;
+      : inst.chart === 'costs' ? <CostsGameChart st={shown} /> : inst.chart === 'power' ? <PowerGameChart st={shown} /> : null;
   return (
     <div data-testid="game" data-phase={phase} className="lp-game">
       {phase === 'ready' && (
@@ -666,9 +709,9 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
           <div className="lp-howto" data-testid="game-howto">
             <div className="ds-eyebrow">Как играть</div>
             <ol>
-              <li>Появляется заголовок новости.</li>
+              <li>Появляется заголовок новости — каждая по одному разу, всего {inst.items.length}.</li>
               <li>Решите: {inst.labels[sides[0]].toLowerCase()} или {inst.labels[sides[1]].toLowerCase()}? Отвечайте — {sideHint}.</li>
-              <li>График покажет, что сдвинулось. Три верных подряд — очки ×2, дальше ещё больше; ошибка обнуляет серию.</li>
+              <li>График покажет, что сдвинулось. Три верных подряд — очки ×2, дальше ещё больше; ошибка обнуляет серию. Разобрали все раньше времени — секунды в запасе тоже идут в очки, а очки — в опыт урока.</li>
             </ol>
           </div>
           {chart}
@@ -731,9 +774,10 @@ export function GameRound({ inst, onDone, locked, result = null, best = 0, intro
         <>
           {chart}
           <div className="lp-card lp-game-final" data-testid="game-final">
-            <div className="ds-eyebrow">Время!</div>
+            <div className="ds-eyebrow">{r.timeBonus ? 'Все новости разобраны!' : 'Время!'}</div>
             <div className="ds-num" style={{ fontSize: 34, fontWeight: 700, color: 'var(--u-ink)' }}>{r.score}</div>
             <div style={{ fontSize: 16 }}>очков · верно {r.right} из {r.answered} · лучшая серия {r.bestRun}</div>
+            {r.timeBonus > 0 && <div className="ds-sub" data-testid="game-time-bonus">в том числе +{r.timeBonus} за {r.timeBonus / GAME_TIME_BONUS} {plural(r.timeBonus / GAME_TIME_BONUS, 'секунду', 'секунды', 'секунд')} в запасе</div>}
             {(() => { const left = gameLeft(r.right, r.answered); const wrong = r.answered - r.right; return (
               <div className={`lp-verdict${left ? '' : ' ok'}`} data-testid="game-verdict" data-ok={String(!left)}>
                 {left ? `Зачёта нет, не хватило ${left}: верных ${r.right}, ошибок ${wrong} — нужно, чтобы верных было на ${GAME_PASS} больше` : `Игра засчитана: верных ${r.right}, ошибок ${wrong}`}
@@ -979,12 +1023,6 @@ export function WalletRound({ inst, onDone, locked, result = null, best = 0, int
     </div>
   );
 }
-function shuffleList(list) {
-  const a = list.slice();
-  for (let i = a.length - 1; i > 0; i -= 1) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
-}
-
 /* ------------------------------ КАРТОЧКИ ВИДОВ УРОКОВ ------------------------------ */
 const CAST_ICON = { coffee: Coffee, croissant: Croissant, landmark: Landmark, 'scroll-text': ScrollText, graduation: GraduationCap, radio: Radio, feather: Feather };
 // причёски: у каждого героя своя

@@ -6,7 +6,14 @@
    Серия дней — дни, когда пройден хотя бы один урок. Один пропуск в календарную неделю
    «замораживается» и серию не обнуляет. Без наказаний: пропуск просто не считается днём серии. */
 const DAY = 24 * 3600 * 1000;
-export const XP = { correct: 2, finish: 5, replayShare: 0.1, diamond: 1.5 };
+export const XP = { correct: 2, finish: 5, replayShare: 0.1, diamond: 1.5, streakFrom: 3, gameMax: 20, gameRate: 40 };
+/* Серия верных ответов подряд (с первой попытки): начиная с третьего в серии, каждый ответ — ещё +1
+   опыта. Мини-игра: её очки (там серия умножает очки ×2…×4) идут в опыт — очко опыта за 40 очков игры,
+   не больше 20. n — длина серии вместе с этим ответом. */
+export const streakBonus = (n) => (n >= XP.streakFrom ? 1 : 0);
+export const gameXp = (score) => Math.min(XP.gameMax, Math.round(Math.max(0, score || 0) / XP.gameRate));
+// сколько опыта можно взять за урок: все ответы верны с первой попытки и подряд, мини-игры — на максимум
+export const maxLessonXp = (items, games = 0) => items * XP.correct + XP.finish + Math.max(0, items - XP.streakFrom + 1) + games * XP.gameMax;
 export const GOALS = [1, 2, 3, 5];
 const MAX_DAYS = 400;
 const MAX_KEYS = 300;
@@ -188,8 +195,8 @@ export const clearHinted = (s, id, now = Date.now()) => {
    повторение, с подсказкой или без), плюс 5 за то, что урок доведён до конца. Урок, который
    уже был пройден, даёт десятую часть — повторять лёгкое ради опыта незачем. Алмазный
    уровень — не лёгкое: полтора полного опыта, сколько бы раз его ни проходили. */
-export function lessonXp({ firstTry, replay, diamond = false }) {
-  const full = firstTry * XP.correct + XP.finish;
+export function lessonXp({ firstTry, replay, diamond = false, bonus = 0 }) {
+  const full = firstTry * XP.correct + XP.finish + bonus;
   if (diamond) return Math.round(full * XP.diamond);
   return replay ? Math.max(1, Math.round(full * XP.replayShare)) : full;
 }

@@ -87,7 +87,7 @@ const HABITS = [
 ];
 // сколько уроков в среднем за неделю даёт привычка — чтобы привести лигу к её медиане опыта
 const habitWeek = (h) => h.p.reduce((a, x) => a + x, 0) * ((h.lessons[0] + h.lessons[1]) / 2);
-const LESSON_XP = 22;
+export const LESSON_XP = 22;
 function rivals(week, league, realNames = []) {
   const r = rng(`${week}:${league}`);
   const lg = LEAGUE_BY_ID[league];

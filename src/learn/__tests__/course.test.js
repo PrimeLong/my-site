@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import katex from 'katex';
 import {
   UNITS, UNIT_BY_ID, LESSONS, EXERCISES, pilotUnits, buildLesson, buildUnitCheck, buildPractice, practiceIds, canPractice, instantiate, check, ready, answerText, estimate, pathState, SECONDS, KIND_LABEL, STEP_PICS,
-  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, gameLeft, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD,
+  GAME_KINDS, LESSON_KIND, LEVELS, levelOf, flashCards, equilibrium, marketAxes, qd, qs, gameOk, gameLeft, freshCopy, retryOf, gameScore, comboOf, GAME_PASS, DIAMOND_HARD, promptSaysContext, firstPart,
 } from '../course.js';
 import { CAST } from '../cast.js';
 import { WALLET, bestOf, gapOf } from '../wallet.js';
@@ -14,17 +14,17 @@ import { CHAPTER_BLOCKS } from '../../textbook/content.js';
 import { plainText } from '../../textbook/content.js';
 import { seeded } from '../../textbook/variants.js';
 import { parseBlocks, ROUND_EFFECTS } from '../../textbook/markdown.js';
-import { recordSeen, recordBest, DIAMOND_ACCURACY } from '../../textbook/learn-state.js';
+import { recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp } from '../../textbook/learn-state.js';
 import { runCoins, runKey, COIN } from '../rewards.js';
 import { XP, addHinted, clearHinted, emptyLearn, finishLesson, passUnit, lessonXp, streak, longestStreak, bestWeek, recordAttempt, abandonLesson, startLesson, learnStats, normalizeLearn, mergeLearn, addMistake, resolveMistake, dayOf, setGoal, goalToday, missedYesterday } from '../../textbook/learn-state.js';
 
-// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, money-banks, inflation), Средний (consumer, costs)
-const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs'];
+// Путь идёт по уровням: Начальный (scarcity), Базовый (supply-demand, elasticity, market-failures, money-banks, inflation), Средний (consumer, costs, competition-monopoly)
+const PATH = ['scarcity', 'supply-demand', 'elasticity', 'market-failures', 'money-banks', 'inflation', 'consumer', 'costs', 'competition-monopoly'];
 const PILOT = 'supply-demand';
 const plain = (nodes) => plainText(nodes || []);
 const N = 30;
 
-it('на Пути уроками — восемь юнитов по уровням: от Начального к Среднему', () => {
+it('на Пути уроками — девять юнитов по уровням: от Начального к Среднему', () => {
   expect(pilotUnits().map((u) => u.id)).toEqual(PATH);
   // юниты идут по уровням; внутри уровня — по порядку глав учебника
   const ranks = UNITS.map((u) => LEVELS.findIndex((l) => l.id === u.level));
@@ -700,6 +700,8 @@ describe('мини-игра: одна на урок, карточки двига
         // эластичность: неэластичный — влево, эластичный — вправо
         if (g.chart === 'elastic') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'in' ? 'left' : 'right');
         if (g.chart === 'costs') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'fc' ? 'left' : 'right');
+        // рыночная власть: ценополучатель — влево, власть над ценой — вправо
+        if (g.chart === 'power') expect(it.side, `${it.raw}: ${it.effect}`).toBe(it.effect === 'pt' ? 'left' : 'right');
       });
       // эффект виден на графике: каждая сторона и оба направления встречаются
       const effs = new Set(g.items.map((it) => it.effect));
@@ -742,7 +744,7 @@ describe('алмазный уровень', () => {
   });
   it('«Знакомство» с алмазными шагами: шаги и вопросы после них есть только на алмазном уровне', () => {
     const deep = lessons.filter((l) => l.inner.some((c) => c.diamond));
-    expect(deep.map((l) => l.id).sort()).toEqual(['cs-i1', 'cs-i2', 'ct-i1', 'ct-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mb-i1', 'mb-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
+    expect(deep.map((l) => l.id).sort()).toEqual(['cm-i1', 'cm-i2', 'cs-i1', 'cs-i2', 'ct-i1', 'ct-i2', 'el-i1', 'el-i2', 'in-i1', 'in-i2', 'mb-i1', 'mb-i2', 'mf-i1', 'mf-i2', 'sc-i1', 'sc-i2', 'sd-i1', 'sd-i2']);
     deep.forEach((l) => {
       const plainIds = buildLesson(l.id, seeded(1)).items.map((it) => it.id);
       const gemPlan = buildLesson(l.id, seeded(1), { diamond: true });
@@ -788,6 +790,19 @@ describe('алмазный уровень', () => {
     expect(mergeLearn(s, other).lessons['sd-i1'].diamond).toBe(3e12);
     expect(mergeLearn(other, s)).toEqual(mergeLearn(s, other));
     expect(pathState(s)[1].lessons.find((l) => l.id === 'sd-i1').diamond).toBe(true);
+  });
+  it('серия и мини-игра: с третьего верного подряд — +1 опыта за ответ; очки игры — в опыт (40 очков — 1, не больше 20)', () => {
+    expect([1, 2, 3, 4, 10].map(streakBonus)).toEqual([0, 0, 1, 1, 1]);
+    // 10 верных подряд: бонус — с 3-го по 10-й, 8 опыта сверху
+    const bonus = Array.from({ length: 10 }, (_, i) => streakBonus(i + 1)).reduce((a, b) => a + b, 0);
+    expect(bonus).toBe(8);
+    expect(lessonXp({ firstTry: 10, bonus })).toBe(10 * XP.correct + XP.finish + 8);
+    expect(gameXp(0)).toBe(0);
+    expect(gameXp(660)).toBe(17);
+    expect(gameXp(5000)).toBe(XP.gameMax);
+    // карточка урока обещает максимум: все подряд и игра на максимум
+    expect(maxLessonXp(10)).toBe(10 * XP.correct + XP.finish + 8);
+    expect(maxLessonXp(1, 1)).toBe(XP.correct + XP.finish + XP.gameMax);
   });
   it('награда: опыт ×1,5; монеты — 25 за первый алмаз (+10 без ошибок), потом по 5; ниже 80% — ничего', () => {
     expect(lessonXp({ firstTry: 10, replay: true, diamond: true })).toBe(Math.round((10 * XP.correct + XP.finish) * 1.5));
@@ -849,7 +864,9 @@ describe('«Слушай»: вопрос без пересказа, вне эф�
       const air = instantiate(EXERCISES[e.id], seeded(1));
       expect(JSON.stringify(air.prompt)).not.toContain(JSON.stringify(e.context).slice(1, -1));
       const out = instantiate(EXERCISES[e.id], seeded(1), { review: true });
-      expect(out.prompt[0]).toEqual({ type: 'p', inline: e.context });
+      // вопрос и сам называет все числа эфира — второй строкой их не повторяем
+      if (promptSaysContext(EXERCISES[e.id])) expect(out.prompt).toEqual(air.prompt);
+      else expect(out.prompt[0]).toEqual({ type: 'p', inline: e.context });
     }));
   });
   it('у вопросов «Слушай», которые без эфира непонятны, есть context', () => {
@@ -907,7 +924,9 @@ describe('«История» вне урока', () => {
       const step = l.inner.filter((c) => c.at <= k).pop();
       expect(e.context, e.id).toEqual(step.idea.text);
       const out = instantiate(EXERCISES[e.id], seeded(1), { check: true });
-      expect(out.prompt[0], e.id).toEqual({ type: 'p', inline: step.idea.text });
+      // вопрос сам называет все числа шага — шаг вторым абзацем не повторяем
+      if (promptSaysContext(EXERCISES[e.id])) expect(out.prompt).toEqual(EXERCISES[e.id].prompt);
+      else expect(out.prompt[0], e.id).toEqual({ type: 'p', inline: step.idea.text });
       // в самом уроке шаг на экране — условие без повтора
       expect(instantiate(EXERCISES[e.id], seeded(1)).prompt[0]).not.toEqual({ type: 'p', inline: step.idea.text });
     })));
@@ -968,4 +987,27 @@ describe('«Слушай» можно пропустить с билета ур�
     s = finishLesson(s, listen.id, { xp: 10, accuracy: 100, now: at + 2 });
     expect(pathState(s).find((x) => x.course.id === 'supply-demand').lessons.find((l) => l.id === listen.id).skipped).toBeUndefined();
   });
+});
+
+/* Задача учебника, которая уже есть в уроке обычным шагом (auto="…"), не приходит второй раз
+   той же задачей с плашкой «семинар» — ни сильному ученику, ни на алмазном уровне (жалоба mvde42co). */
+describe('семинарская задача не повторяет шаг урока', () => {
+  it('в уроке одно упражнение — один раз', () => {
+    PATH.forEach((unitId) => UNIT_BY_ID[unitId].lessons.forEach((l) => [1, 2, 3, 4, 5].forEach((s) => {
+      [{ level: 'hard' }, { diamond: true }].forEach((opts) => {
+        const ids = buildLesson(l.id, seeded(s), opts).items.map((it) => it.id);
+        expect(ids.filter((id, k) => ids.indexOf(id) !== k), `${l.id} ${JSON.stringify(opts)}`).toEqual([]);
+      });
+    })));
+  });
+});
+
+// вариант из нескольких пунктов на Пути — один вопрос: без «б)» и без буквы «а)»
+it('вариант с пунктами на Пути спрашивает только первый пункт', () => {
+  const it0 = instantiate(EXERCISES['var:v-costs-types'], seeded(2));
+  const txt = plain(it0.prompt.flatMap((b) => b.inline || []));
+  expect(txt).toContain('Чему равны переменные издержки?');
+  expect(txt).not.toMatch(/а\)|б\)|средние общие/);
+  expect(plain((it0.explain || []).flatMap((b) => b.inline || []))).not.toMatch(/б\)|ATC/);
+  expect(firstPart('Условие.\n\nа) Первый?\n\nб) Второй?', 2)).toBe('Условие.\n\nПервый?');
 });

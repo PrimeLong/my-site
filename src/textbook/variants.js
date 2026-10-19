@@ -279,6 +279,33 @@ T.push({ id: 'v-el-arc', chapter: 'elasticity', level: 1, source: 'el-arc', gen:
     check: ([x]) => near(x, ((k.Q1 - k.Q2) / (k.P2 - k.P1)) * ((k.P1 + k.P2) / (k.Q1 + k.Q2))),
   };
 } });
+// обратная задача на дуговую эластичность: по эластичности найти новое количество (усложнение
+// «Практики» Пути: в уроке задача el-arc уже есть обычным шагом, второй раз её «семинаром» не даём)
+T.push({ id: 'v-el-back', chapter: 'elasticity', level: 2, source: 'el-arc', gen: (rand) => {
+  const k = draw(rand, () => {
+    const mq = pick(rand, [60, 80, 100, 120, 140, 160, 180, 200]); const dQ = mq * pick(rand, [0.1, 0.2, 0.3]);
+    const mp = pick(rand, [10, 20, 30, 40]); const dP = mp * pick(rand, [0.2, 0.4]);
+    return { P1: mp - dP / 2, P2: mp + dP / 2, Q1: mq + dQ / 2, Q2: mq - dQ / 2, mq, mp };
+  }, ({ P1, P2, Q1, Q2 }) => {
+    const e = ((Q1 - Q2) / (Q1 + Q2)) / ((P2 - P1) / (P1 + P2));
+    return differs(Q1 * (1 - e * (P2 - P1) / P1), Q2, DEC);
+  });
+  const e = ((k.Q1 - k.Q2) / (k.Q1 + k.Q2)) / ((k.P2 - k.P1) / (k.P1 + k.P2));
+  const rp = (k.P2 - k.P1) / k.mp; const rq = e * rp;
+  const naive = k.Q1 * (1 - e * (k.P2 - k.P1) / k.P1);
+  return {
+    statement: `При цене ${k.P1} руб. кафе продаёт ${k.Q1} порций в день. Модуль дуговой эластичности спроса между ценами ${k.P1} и ${k.P2} руб. равен $${m(e)}$. Сколько порций в день кафе продаст при цене ${k.P2} руб.?`,
+    parts: [{ answer: k.Q2, tol: DEC, pos: true }],
+    traps: [
+      { part: 0, value: naive, text: 'Проценты посчитаны от начальных значений. Дуговая эластичность считает их от средних: средней цены и среднего количества.' },
+      { part: 0, value: k.Q1 + (k.Q1 - k.Q2), text: 'Цена выросла — покупки падают, а не растут.' },
+    ],
+    solution: `1. Изменение цены от средней: $(${k.P2} - ${k.P1})/${k.mp} = ${m(rp)}$.\n`
+      + `2. Покупки меняются на $${m(e)} \\cdot ${m(rp)} = ${m(rq)}$ от среднего количества — вниз: цена выросла.\n`
+      + `3. $\\dfrac{${k.Q1} - Q_2}{(${k.Q1} + Q_2)/2} = ${m(rq)}$, откуда $Q_2 = ${k.Q1} \\cdot \\dfrac{2 - ${m(rq)}}{2 + ${m(rq)}} = ${k.Q2}$.`,
+    check: ([x]) => near(((k.Q1 - x) / (k.Q1 + x)) / ((k.P2 - k.P1) / (k.P1 + k.P2)), e),
+  };
+} });
 // цена, при которой выручка максимальна (жалоба: одна и та же задача в повторах — теперь с новыми числами)
 T.push({ id: 'v-el-rmax', chapter: 'elasticity', level: 1, source: 'el-revenue-max', gen: (rand) => {
   const b = pick(rand, [3, 4, 5]); const top = ri(rand, 10, 40) * 2; const a = b * top; const P = top / 2;
@@ -324,6 +351,24 @@ T.push({ id: 'v-el-pt1', chapter: 'elasticity', level: 2, source: 'el-point', ge
   };
 } });
 
+// постоянные издержки из средних: средние общие минус средние переменные — это средние постоянные
+// (усложнение «Практики» Пути: в уроке задача costs-tf-rent уже есть обычным шагом)
+T.push({ id: 'v-costs-fc', chapter: 'costs', level: 2, source: 'costs-from-avg', gen: (rand) => {
+  const k = draw(rand, () => ({ Q: ri(rand, 20, 200, 10), afc: ri(rand, 2, 30), avc: ri(rand, 5, 60) }), ({ afc, avc }) => afc !== avc);
+  const atc = k.afc + k.avc; const F = k.afc * k.Q;
+  return {
+    statement: `При выпуске ${k.Q} круассанов в день средние общие издержки пекарни — ${atc} руб., средние переменные — ${k.avc} руб. Сколько рублей в день пекарня тратит на постоянные издержки?`,
+    parts: [{ answer: F, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: atc * k.Q, text: 'Это все издержки: средние общие, умноженные на выпуск. Постоянные — разница средних, умноженная на выпуск.' },
+      { part: 0, value: k.avc * k.Q, text: 'Это переменные издержки: средние переменные, умноженные на выпуск.' },
+      { part: 0, value: k.afc, text: 'Это постоянные издержки на один круассан. За день — умножьте на выпуск.' },
+    ],
+    solution: `1. Средние общие — это средние постоянные плюс средние переменные, поэтому средние постоянные: $${atc} - ${k.avc} = ${k.afc}$ руб. на круассан.\n`
+      + `2. Постоянные издержки — на весь выпуск: $${k.afc} \\cdot ${k.Q} = ${F}$ руб. в день.`,
+    check: ([x]) => near(x / k.Q + k.avc, atc),
+  };
+} });
 // издержки: переменные и средние
 T.push({ id: 'v-costs-types', chapter: 'costs', level: 1, source: 'costs-types', gen: (rand) => {
   const k = { F: ri(rand, 100, 800, 50), v: ri(rand, 5, 40), w: pick(rand, [0.5, 1, 2]), Q: ri(rand, 5, 30) };
@@ -381,6 +426,23 @@ T.push({ id: 'v-mon-price', chapter: 'competition-monopoly', level: 2, source: '
   };
 } });
 
+// безвозвратные потери монополии одним ответом (усложнение «Практики» Пути)
+T.push({ id: 'v-mon-dwl1', chapter: 'competition-monopoly', level: 2, source: 'mon-dwl', gen: (rand) => {
+  const b = pick(rand, [1, 2]); const c = ri(rand, 10, 60, 5); const Q = ri(rand, 10, 40, 2); const a = c + 2 * b * Q; const P = a - b * Q;
+  const dwl = (b * Q * Q) / 2;
+  return {
+    statement: `Спрос на продукцию монополиста $P = ${a} - ${b === 1 ? '' : b}Q$, предельные издержки постоянны и равны ${c}. Найдите безвозвратные потери монополии.`,
+    parts: [{ answer: dwl, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: b * Q * Q, text: 'Это прибыль монополиста (или потери без ½). Прибыль — перераспределение от покупателей, а потери — треугольник: $\\tfrac12 \\cdot (P - MC) \\cdot (Q_c - Q_m)$.' },
+      { part: 0, value: (P - c) * 2 * Q / 2 + dwl, text: 'Взяли лишнее: потери — только треугольник между спросом и MC от монопольного до конкурентного выпуска.' },
+    ],
+    solution: `1. $MR = ${a} - ${2 * b}Q = ${c}$, монополист выпускает $Q_m = ${Q}$ по цене $${a} - ${b} \\cdot ${Q} = ${P}$.\n`
+      + `2. При конкуренции $P = MC = ${c}$: $Q_c = (${a} - ${c})/${b} = ${2 * Q}$.\n`
+      + `3. Потери — треугольник: $\\tfrac12 \\cdot (${P} - ${c}) \\cdot (${2 * Q} - ${Q}) = ${dwl}$.`,
+    check: ([x]) => { const qm = (a - c) / (2 * b); const qc = (a - c) / b; return near(x, 0.5 * ((a - b * qm) - c) * (qc - qm)); },
+  };
+} });
 // Курно, симметричный
 T.push({ id: 'v-olig-cournot', chapter: 'oligopoly', level: 1, source: 'olig-cournot-price', gen: (rand) => {
   const c = ri(rand, 5, 40); const q = ri(rand, 10, 40); const a = c + 3 * q; const P = a - 2 * q;

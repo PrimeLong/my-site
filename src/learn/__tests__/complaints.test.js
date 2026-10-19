@@ -210,7 +210,8 @@ describe('жалобы из выгрузки: новые числа в повт�
       }
       expect(answers.size, e.id).toBeGreaterThan(2);
     });
-  });
+  // задач с параметрами всё больше: под нагрузкой полного прогона пяти секунд не хватает
+  }, 30000);
   it('алмазный повтор «Налог и излишек»: задача о потерях каждый раз с новыми числами, ответ сходится с условием', async () => {
     const { buildLesson } = await import('../course.js');
     const { seeded } = await import('../../textbook/variants.js');

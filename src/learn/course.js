@@ -42,6 +42,9 @@ export const gameNet = (right, answered) => right - (answered - right);
 // сколько ещё чистых верных нужно до зачёта (0 — зачёт есть)
 export const gameLeft = (right, answered) => Math.max(0, GAME_PASS - gameNet(right, answered));
 export const GAME_SECONDS = 60;
+// каждая новость в игре — один раз; разобрали колоду раньше времени — секунды в запасе идут в очки
+export const GAME_TIME_BONUS = 5;
+export const timeBonus = (secondsLeft) => Math.max(0, Math.floor(secondsLeft)) * GAME_TIME_BONUS;
 export const DIAMOND_GAME_SECONDS = 45;
 /* Рынок из упражнений с графиком: Q_D = a − bP + dA, Q_S = c + dP + dC. Равновесие — где
    объёмы равны: P* = (a + dA − c − dC) / (b + d). */
@@ -271,8 +274,20 @@ function shuffle(list, rand) {
   return a;
 }
 let uidSeq = 0;
-// вопрос из «Слушай» вне эфира (повторение, практика, проверка, повтор после ошибки): сначала — что прозвучало
-const outOfAir = (ex, extra) => !!(ex.context && (extra.review || extra.practice || extra.check || extra.weak || extra.outside));
+/* Вариант из нескольких пунктов на Пути спрашивает только первый: пункты «б)», «в)…» и их разбор
+   убираем, у «а)» снимаем букву — иначе ученик видит два вопроса, а проверяется один. */
+export const firstPart = (text, parts = 1) => (parts < 2 ? text : String(text).split('\n\n')
+  .filter((para) => !/^[б-е]\)\s/.test(para.trim())).map((para) => para.replace(/^(\s*)а\)\s*/, '$1')).join('\n\n'));
+/* Вопрос из «Слушай» вне эфира (повторение, практика, проверка, повтор после ошибки): сначала — что
+   прозвучало. Но если вопрос и сам называет все числа эфира — не повторяем их второй строкой подряд. */
+const nums = (t) => new Set(JSON.stringify(t || '').match(/\d+(?:[.,]\d+)?/g) || []);
+export const promptSaysContext = (ex) => {
+  const c = nums(ex.context);
+  const p = nums(ex.prompt);
+  return c.size > 0 && [...c].every((n) => p.has(n));
+};
+const outOfAir = (ex, extra) => !!(ex.context && (extra.review || extra.practice || extra.check || extra.weak || extra.outside))
+  && !promptSaysContext(ex);
 export function instantiate(ex, rand = Math.random, extra = {}) {
   const prompt = outOfAir(ex, extra) ? [{ type: 'p', inline: ex.context }, ...ex.prompt] : ex.prompt;
   const base = { uid: `u${uidSeq += 1}`, id: ex.id, kind: ex.kind, lesson: ex.lesson, unitId: ex.unitId, prompt, explain: ex.explain || null, seconds: SECONDS[ex.kind], ...extra };
@@ -290,7 +305,7 @@ export function instantiate(ex, rand = Math.random, extra = {}) {
         const tpl = TEMPLATE_BY_ID[ex.variant];
         const v = tpl.gen(seeded(Math.floor(rand() * 2 ** 31) + 1));
         const pt = v.parts[0];
-        return { ...base, variant: ex.variant, source: tpl.source, prompt: parseBlocks(v.statement), explain: parseBlocks(v.solution), answer: pt.answer, tol: pt.tol != null ? pt.tol : null, unit: pt.unit || '', ...(pt.units ? { units: pt.units } : {}),
+        return { ...base, variant: ex.variant, source: tpl.source, prompt: parseBlocks(firstPart(v.statement, v.parts.length)), explain: parseBlocks(firstPart(v.solution, v.parts.length)), answer: pt.answer, tol: pt.tol != null ? pt.tol : null, unit: pt.unit || '', ...(pt.units ? { units: pt.units } : {}),
           traps: v.traps.filter((t) => t.part === 0).map((t) => ({ value: t.value, why: text(t.text) })) };
       }
       // расчёт с параметрами: в повторах (renumber) — те же условия с новыми числами
@@ -697,7 +712,9 @@ function buildLessonBase(lessonId, rand, { mistakes = [], hinted = [], level = '
   // сильному ученику — задачи семинарского и олимпиадного уровня вместо последних своих
   if (level === 'hard') {
     const { variants, autos } = hardPool(unit.id, lesson.no);
-    const hard = shuffle([...variants, ...autos], rand).slice(0, HARD_IN_PRACTICE);
+    // задача учебника, которая уже есть в уроке обычным шагом, второй раз «семинаром» не приходит (жалоба mvde42co)
+    const taken = new Set(items.map((it) => it.id));
+    const hard = shuffle([...variants, ...autos].filter((e) => !taken.has(e.id)), rand).slice(0, HARD_IN_PRACTICE);
     hard.forEach((e) => {
       const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].review && !items[i].hard && !SELF_CHECK.includes(items[i].kind));
       const it = hardInstance(e, rand);
@@ -757,7 +774,7 @@ function buildDiamond(lessonId, rand, opts) {
     // алмазный повтор — расчёты с параметрами приходят с новыми числами
     const items = lesson.exercises.map((e) => instantiate(EXERCISES[e.id], rand, { renumber: true }));
     const deep = lesson.inner.some((c) => c.diamond);
-    if (!deep) hardItems(unitId, 2, rand, new Set(), lesson.no).forEach((it) => items.push(it));
+    if (!deep) hardItems(unitId, 2, rand, new Set(items.map((it) => it.id)), lesson.no).forEach((it) => items.push(it));
     // «Откройте сами» на повторе не нужен: кривую ученик уже нашёл
     const inner = lesson.inner.filter((c) => !c.discover);
     // карточки собираются до того, как mark скопирует упражнения: uid у копий тот же
@@ -773,7 +790,7 @@ function buildDiamond(lessonId, rand, opts) {
   }
   if (lesson.kind === 'review' || lesson.kind === 'summary') {
     const p = buildLessonBase(lessonId, rand, opts);
-    const hard = hardItems(unitId, 3, rand);
+    const hard = hardItems(unitId, 3, rand, new Set(p.items.map((it) => it.id)));
     const keep = Math.max(1, p.items.length - hard.length);
     const items = p.items.slice(0, keep).concat(hard);
     // задачи посложнее бывают и короткими («верно или неверно»): урок не короче трёх минут
@@ -786,11 +803,13 @@ function buildDiamond(lessonId, rand, opts) {
   const own = shuffle(all, rand).slice(0, PRACTICE_OWN);
   const easy = own.findIndex((e) => SECONDS[e.kind] <= 12);
   if (easy > 0) own.unshift(own.splice(easy, 1)[0]);
-  const items = own.map((e) => freshCopy(e, rand, {}, { sibling: false }));
-  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set(), lesson.no);
+  // задача учебника с новыми числами — это её шаблон: если шаблон уже есть в уроке, второй копии не будет
+  const items = own.map((e) => freshCopy(e, rand, {}, { sibling: false })).filter((it, k, list) => list.findIndex((x) => x.id === it.id) === k);
+  const hard = hardItems(unitId, DIAMOND_HARD, rand, new Set([...all.map((e) => e.id), ...items.map((it) => it.id)]), lesson.no);
   hard.forEach((it, k) => { const at = items.length - 1 - k; if (at > 0 && items.length >= 8) items.splice(at, 1, it); else items.push(it); });
   // короткий урок добираем до трёх минут повторением прошлых уроков юнита (реже виденное — первым)
-  const prev = bySeen(UNIT_BY_ID[unitId].lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(basic), opts.seen || {}, rand);
+  const prev = bySeen(UNIT_BY_ID[unitId].lessons.filter((l) => l.no < lesson.no).flatMap((l) => l.exercises.map((e) => EXERCISES[e.id])).filter(basic)
+    .filter((e) => !items.some((it) => it.id === e.id)), opts.seen || {}, rand);
   while (estimate(items) < 180 && prev.length) items.splice(1 + Math.floor(rand() * items.length), 0, freshCopy(prev.shift(), rand, { review: true }, { sibling: false }));
   while (estimate(items) > LESSON_MAX_SECONDS && items.length > 8) {
     const k = items.map((it, i) => i).reverse().find((i) => i > 0 && !items[i].hard);

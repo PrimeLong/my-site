@@ -13,6 +13,19 @@ export function sectionProgress(p, chapterId) {
   return { done: secs.filter((s) => sectionDone(p, s)).length, total: secs.length };
 }
 
+/* Глава прочитана: отмечена вручную или пройдены все её разделы — нажимать «Глава прочитана», когда
+   все разделы позади, не нужно. share — доля пути по главе (по разделам; прочитанная — целиком). */
+export function chapterRead(p, chapterId) {
+  if ((p.read || {})[chapterId]) return true;
+  const sp = sectionProgress(p, chapterId);
+  return sp.total > 0 && sp.done === sp.total;
+}
+export function chapterShare(p, chapterId) {
+  if (chapterRead(p, chapterId)) return 1;
+  const sp = sectionProgress(p, chapterId);
+  return sp.total ? sp.done / sp.total : 0;
+}
+
 // следующий раздел: с главы, где остановились, дальше по порядку и по кругу
 export const nextSection = (p) => nextSectionIn(p, studySections);
 

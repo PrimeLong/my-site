@@ -184,7 +184,7 @@ $$E_d = -\frac{bP}{Q} = -\frac{bP}{a - bP}.$$
 Спрос $Q = 100 - 2P$. Двигайте цену: закрашенный прямоугольник — выручка, цена × количество. На красном участке прямой спрос эластичен, на зелёном — неэластичен.
 :::
 
-:::idea id=el-l1 title="Считаем эластичность" chart=elasticity a=100 b=2 p=20 auto="el-arc" variants="v-el-arc" hard="var:v-el-pt1 el-arc"
+:::idea id=el-l1 title="Считаем эластичность" chart=elasticity a=100 b=2 p=20 auto="el-arc" variants="v-el-arc" hard="var:v-el-pt1 var:v-el-back"
 Проценты, средняя точка и прямая спроса — эластичность на числах.
 :::
 

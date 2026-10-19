@@ -30,7 +30,10 @@ export const coinsWord = (n) => plural(Math.abs(n), 'монета', 'монет�
 /* ------------------------------ МОНЕТЫ ------------------------------ */
 /* За урок впервые — 10 (без ошибок — ещё 5), повтор — 2, практика — 5, сданная проверка
    юнита — 20. Алмазный уровень (от 80% верных): впервые — 25 (без ошибок — ещё 10), потом — 5. */
-export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, diamond: 25, diamondPerfect: 10, diamondReplay: 5, goal: 10, allQuests: 10 };
+export const COIN = { lesson: 10, perfect: 5, replay: 2, practice: 5, check: 20, diamond: 25, diamondPerfect: 10, diamondReplay: 5, goal: 10, allQuests: 10, book: 3 };
+/* Задача учебника решена с первой попытки (без подсмотренного решения) — немного монет в кошелёк Пути.
+   Первая попытка у задачи одна, поэтому и награда — один раз. prev — запись задачи до ответа. */
+export const bookFirstTry = (prev, ok, sawSolution = false) => !!ok && !sawSolution && !(prev && prev.tries);
 // цель дня — столько монет, сколько минут в цели (10 минут — COIN.goal)
 export const goalCoins = (minutes) => Math.round((minutes * COIN.goal) / 10);
 export const earned = (s) => sum(s.coins);

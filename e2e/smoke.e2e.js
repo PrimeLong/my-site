@@ -1405,7 +1405,7 @@ async function playLesson(page, { wrongAt = [], skipOpen = false } = {}) {
   const kinds = new Set();
   let retries = 0;
   let cards = 0;
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 70; i += 1) {
     if (await page.getByTestId('lesson-result').isVisible()) break;
     // карточки перед упражнением: шаг, слово (перевернуть), пункт итогов — прочитать и дальше
     cards += await passCards(page);
@@ -1454,8 +1454,8 @@ async function passCards(page) {
 }
 
 const pathNode = (page, id) => page.getByTestId('path').getByTestId('path-lesson').and(page.locator(`[data-lesson="${id}"]`));
-const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer', ct: 'costs' };
-const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle', costs: 'middle' };
+const UNIT_OF = { sc: 'scarcity', sd: 'supply-demand', el: 'elasticity', mf: 'market-failures', mb: 'money-banks', in: 'inflation', cs: 'consumer', ct: 'costs', cm: 'competition-monopoly' };
+const LEVEL_OF = { scarcity: 'start', 'supply-demand': 'basic', elasticity: 'basic', 'market-failures': 'basic', 'money-banks': 'basic', inflation: 'basic', consumer: 'middle', costs: 'middle', 'competition-monopoly': 'middle' };
 // на Пути юниты одного уровня: уровень нужного юнита — через плашку и список уровней, если юнита ещё нет на экране
 async function showUnit(page, id) {
   const unit = page.getByTestId('path').locator(`[data-testid="path-unit"][data-unit="${id}"]`);
@@ -1998,6 +1998,45 @@ test('путь: юнит «Пекарня» (издержки) — каждый 
   expect(errors).toEqual([]);
 });
 
+test('путь: юнит «Биржа» (конкуренция и монополия) — каждый урок проходится, игра — спрос на товар фирмы и наценка', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    const at = Date.now() - 86400000;
+    const units = { sc: ['i1', 'l1', 'l2', 'i2', 'l3', 'l4', 'l5', 'l6', 'w', 's1', 'radio', 'g', 'rev', 'sum'], sd: ['i1', 'l1', 'w', 'i2', 'l3', 's1', 'l-radio', 'g', 'rev', 'sum'] };
+    for (const u of ['el', 'mf', 'mb', 'in', 'cs', 'ct']) units[u] = ['i1', 'l1', 'i2', 'l2', 'w', 's1', 'radio', 'g', 'rev', 'sum'];
+    const ids = Object.entries(units).flatMap(([u, ls]) => ls.map((l) => `${u}-${l}`));
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  const unit = await showUnit(page, 'competition-monopoly');
+  await expect(unit.getByTestId('path-lesson')).toHaveCount(10);
+  expect(await unit.getByTestId('path-lesson').evaluateAll((els) => els.map((e) => e.dataset.kind)))
+    .toEqual(['intro', 'practice', 'intro', 'practice', 'words', 'story', 'listen', 'game', 'review', 'summary']);
+  const finish = async () => { await expect(page.getByTestId('lesson-result')).toBeVisible(); await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click(); await expect(page.getByTestId('lesson')).toHaveCount(0); };
+  for (const id of ['cm-i1', 'cm-l1', 'cm-i2', 'cm-l2']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  await startLesson(page, 'cm-w');
+  await expect(page.getByTestId('word-def')).toContainText('Пример:');
+  await playLesson(page);
+  await finish();
+  // «История»: одна мельница на область — Гриша и монополия «Колоса»
+  await startLesson(page, 'cm-s1');
+  await expect(page.getByTestId('lesson-card').getByTestId('portrait')).toHaveAttribute('data-who', 'grisha');
+  await playLesson(page);
+  await finish();
+  await startLesson(page, 'cm-radio');
+  await expect(page.getByTestId('listen-text')).toContainText('бирже');
+  await playLesson(page);
+  await finish();
+  // игра: ценополучатель или власть над ценой — спрос на товар фирмы и наценка на графике
+  await startLesson(page, 'cm-g');
+  await expect(page.getByTestId('ex').getByTestId('game-chart')).toHaveAttribute('data-chart', 'power');
+  await playLesson(page);
+  await finish();
+  for (const id of ['cm-rev', 'cm-sum']) { await startLesson(page, id); await playLesson(page); await finish(); }
+  expect(errors).toEqual([]);
+});
+
 test('лавка → сад: урожай с редкостью — продать или оставить, семена садятся за монеты, растение растёт без приложения', async ({ page }) => {
   await withTestFlag(page);
   await page.addInitScript(() => {
@@ -2145,9 +2184,9 @@ const unitDone = (page) => page.addInitScript(() => {
   const ids = ['sc-i1', 'sc-l1', 'sc-l2', 'sc-i2', 'sc-l3', 'sc-l4', 'sc-l5', 'sc-l6', 'sc-w', 'sc-s1', 'sc-radio', 'sc-g', 'sc-rev', 'sc-sum', 'sd-i1', 'sd-l1', 'sd-w', 'sd-i2', 'sd-l3', 'sd-s1', 'sd-l-radio', 'sd-g', 'sd-rev', 'sd-sum'];
   localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(ids.map((id) => [id, { at, runs: 1, best: 90 }])) } }));
 });
-/* Мини-игра на время: в тесте игра короче (window.__INFLATIA_GAME_SECONDS__), карточки — по
-   кругу, пока не выйдет время; wrong(i) — ошибиться на i-й. max — сколько карточек ответить
-   (дальше — ждать конца времени). Проверка — сама по окончании игры. */
+/* Мини-игра на время: в тесте игра короче (window.__INFLATIA_GAME_SECONDS__), каждая карточка —
+   один раз, пока не кончится колода или время; wrong(i) — ошибиться на i-й. max — сколько карточек
+   ответить (дальше — ждать конца времени). Проверка — сама по окончании игры. */
 async function playRound(page, wrong = () => false, { seconds = 6, max = Infinity } = {}) {
   const ex = page.getByTestId('ex');
   const kind = await ex.getAttribute('data-kind');
@@ -2293,6 +2332,29 @@ test('мини-игра: одна игра на минуту — очки с м�
   // плашка не говорит «не засчитано»: урок с игрой будет пройден в любом случае
   await expect(page.getByTestId('game-lesson-note')).toContainText('Урок это не отменяет');
   await expect(page.getByTestId('ex-feedback')).toHaveAttribute('data-ok', 'false');
+  expect(errors).toEqual([]);
+});
+
+test('мини-игра: каждая новость — один раз; колода разобрана раньше времени — секунды в запасе идут в очки', async ({ page }) => {
+  await withTestFlag(page);
+  await unitDone(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await startLesson(page, 'sd-g');
+  const ex = page.getByTestId('ex');
+  await expect(ex.getByTestId('game-howto')).toContainText('каждая по одному разу, всего 16');
+  await ex.getByTestId('game-start').click();
+  const card = ex.getByTestId('game-card');
+  const seen = [];
+  for (let i = 0; i < 16; i += 1) {
+    seen.push(await card.innerText());
+    await ex.locator(`button[data-side="${await card.getAttribute('data-answer')}"]`).click();
+  }
+  expect(new Set(seen).size).toBe(16);
+  await expect(ex.getByTestId('game-final')).toContainText('Все новости разобраны!');
+  await expect(ex.getByTestId('game-final')).toContainText('верно 16 из 16');
+  await expect(ex.getByTestId('game-time-bonus')).toContainText('в запасе');
+  // 16 верных подряд — 460 очков, сверху — бонус за секунды
+  expect(Number(await ex.locator('.lp-game-final .ds-num').innerText())).toBeGreaterThan(460);
   expect(errors).toEqual([]);
 });
 
@@ -3479,7 +3541,7 @@ test('Путь: тест уровня — сдан, и Путь сразу на 
   await page.getByTestId('lesson-result').getByRole('button', { name: 'Дальше', exact: true }).click();
   // Путь — сразу на «Среднем»: прошлых уровней на экране нет
   await expect(path.getByTestId('level-switch')).toHaveAttribute('data-level', 'middle');
-  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['consumer', 'costs']);
+  expect(await path.getByTestId('path-unit').evaluateAll((els) => els.map((e) => e.dataset.unit))).toEqual(['consumer', 'costs', 'competition-monopoly']);
   await expect(pathNode(page, 'cs-i1')).toHaveAttribute('data-state', 'open');
   await path.getByTestId('level-switch-open').click();
   expect(await picker.getByTestId('level-pick').evaluateAll((els) => els.map((e) => `${e.dataset.level}:${e.dataset.state}`)))
