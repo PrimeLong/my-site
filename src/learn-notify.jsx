@@ -15,12 +15,12 @@ import {
   Package, Repeat, CalendarDays, ShieldCheck, Newspaper, Sparkles, Croissant, Stamp, Scale, Moon, Palette, MonitorSmartphone, Headphones, BookOpen, Landmark, BarChart3,
   Gauge, Store, Anchor, Shirt, WandSparkles, Settings,
   Ghost, Users, Flag, UserPlus, Gem,
-  Wallet, MessageCircle,
+  Wallet, MessageCircle, Lamp, Coins, TrendingUp, Gamepad2,
 } from 'lucide-react';
 import { IconButton, TopBar } from './ds.jsx';
 import { Mascot } from './mascot.jsx';
 import { Audio } from './MacroSimulator.jsx';
-import { notificationsOf, unreadOf, readSeen, markSeen, readPrefs, writePrefs, firstDayOf, agoText, readPushed, markPushed } from './learn/notify.js';
+import { notificationsOf, unreadOf, readSeen, markSeen, readPrefs, writePrefs, firstDayOf, agoText, readPushed, markPushed, readToasted, markToasted } from './learn/notify.js';
 import { leagueState, LEAGUE_BY_ID } from './learn/league.js';
 import { useFriends } from './lib/friends-store.js';
 
@@ -137,6 +137,7 @@ const ICON = {
   sparkles: Sparkles, croissant: Croissant, stamp: Stamp, scale: Scale, moon: Moon, palette: Palette, devices: MonitorSmartphone, headphones: Headphones, book: BookOpen,
   landmark: Landmark, chart: BarChart3, gauge: Gauge, store: Store, anchor: Anchor, shirt: Shirt, wand: WandSparkles, bell: Bell, settings: Settings,
   pumpkin: Ghost, ghost: Ghost, fire: Flame, users: Users, flag: Flag, 'user-plus': UserPlus, gem: Gem, wallet: Wallet, message: MessageCircle,
+  lamp: Lamp, coins: Coins, 'trending-up': TrendingUp, game: Gamepad2,
 };
 export const NIcon = ({ name, size = 20, ...rest }) => { const I = ICON[name] || Bell; return <I size={size} aria-hidden="true" {...rest} />; };
 
@@ -257,7 +258,8 @@ export function useToasts(notify, busy) {
   useEffect(() => {
     const ids = notify.list.map((n) => n.id);
     if (known.current === null) { known.current = new Set(ids); return; }
-    const fresh = notify.list.filter((n) => n.toast && !known.current.has(n.id) && !notify.seen[n.id]);
+    const toasted = readToasted();
+    const fresh = notify.list.filter((n) => n.toast && !known.current.has(n.id) && !notify.seen[n.id] && !toasted[n.id]);
     ids.forEach((id) => known.current.add(id));
     if (fresh.length) setQueue((q) => [...q, ...fresh.filter((n) => !q.some((x) => x.id === n.id))]);
   }, [notify.list]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -266,7 +268,7 @@ export function useToasts(notify, busy) {
     if (!lp) { place.current = null; return; }
     const was = place.current;
     place.current = lp;
-    if (was && was.week === lp.week && was.league === lp.league && lp.place < was.place) {
+    if (was && was.week === lp.week && was.league === lp.league && lp.place < was.place && !readToasted()[`lg-up:${lp.week}:${lp.place}`]) {
       const lg = LEAGUE_BY_ID[lp.league];
       setQueue((q) => [...q, { id: `lg-up:${lp.week}:${lp.place}`, kind: 'league', icon: 'arrow-up', tone: '#147A45', go: 'league', at: Date.now(),
         title: `Вы поднялись на ${lp.place}-е место`, text: `${lg.title} лига: ${was.place - lp.place > 1 ? `сразу на ${was.place - lp.place} ${was.place - lp.place < 5 ? 'места' : 'мест'} выше` : 'на одно место выше'}.` }]);
@@ -275,6 +277,8 @@ export function useToasts(notify, busy) {
   // пока плашка ждала конца урока, уведомление могло уйти из списка (место уже вернули) — такое не показываем
   const live = queue.filter((n) => n.id.startsWith('lg-up:') || notify.list.some((x) => x.id === n.id));
   const cur = !busy && live.length ? live[0] : null;
+  // показали — запомнили: та же плашка больше не всплывёт, прочитана она или нет
+  useEffect(() => { if (cur) markToasted(cur.id); }, [cur && cur.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = () => setQueue((q) => q.filter((n) => n !== cur && live.includes(n)));
   return [cur, done];
 }

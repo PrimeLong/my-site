@@ -7,11 +7,11 @@
    «скопировать всё» — чтобы отдать их на исправление одним куском. */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Flag, ArrowLeft, Check, Copy, RotateCcw, X, Trash2 } from 'lucide-react';
+import { Flag, ArrowLeft, Check, CheckCheck, Copy, RotateCcw, X, Trash2 } from 'lucide-react';
 import { Audio } from './MacroSimulator.jsx';
 import { Button, IconButton, Card, Sheet, TopBar, Heading } from './ds.jsx';
 import { loadAccount } from './account.jsx';
-import { sendReport, listReports, setReportStatus, setReportsStatus, purgeDoneReports, deleteReport, eventsReport } from './lib/client.js';
+import { sendReport, listReports, setReportStatus, setReportsStatus, purgeDoneReports, markAllReportsDone, deleteReport } from './lib/client.js';
 import { isRude, RUDE_MESSAGE } from './lib/moderation.js';
 
 export const REASONS = [
@@ -201,47 +201,6 @@ export function reportText(r) {
   return lines.join('\n');
 }
 
-/* Аналитика для владельцев (api/events.js): воронка за 30 дней и 20 самых трудных упражнений —
-   только счётчики, без логинов и адресов. */
-export function AnalyticsView({ onBack }) {
-  const account = loadAccount();
-  const [data, setData] = useState(null);
-  const [err, setErr] = useState('');
-  useEffect(() => { eventsReport(account && account.token).then(setData).catch((e) => setErr(e.message)); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const top = data ? Math.max(1, ...data.funnel.map((f) => f.count)) : 1;
-  return (
-    <div className="rw-page" data-testid="analytics" role="dialog" aria-label="Аналитика">
-      <div className="rw-page-in">
-        <TopBar back={<IconButton label="Назад" icon={ArrowLeft} data-nav="back" onClick={onBack} />} title="Аналитика" />
-        <div className="ds-sub" style={{ fontSize: 14, margin: '8px 0 12px' }}>Только счётчики: без логинов, имён и адресов. Данные — за последние 30 дней.</div>
-        {err && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14 }}>{err}</div>}
-        <Card style={{ marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Воронка</div>
-          {!data ? <div className="ds-sub">Загружаем…</div> : (
-            <div data-testid="analytics-funnel" style={{ display: 'grid', gap: 6 }}>
-              {data.funnel.map((f) => (
-                <div key={f.event} data-event={f.event} style={{ fontSize: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{f.label}</span><b className="ds-num">{f.count}</b></div>
-                  <div style={{ height: 6, background: 'var(--ds-card2)', marginTop: 3 }}><div style={{ height: '100%', width: `${(f.count / top) * 100}%`, background: 'var(--u)' }} /></div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-        <Card>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>20 самых трудных упражнений</div>
-          {!data ? <div className="ds-sub">Загружаем…</div> : !data.hardest.length ? <div className="ds-sub" data-testid="analytics-empty">Пока мало ответов: в список попадают упражнения, где ответили хотя бы 5 раз.</div> : (
-            <ol data-testid="analytics-hardest" style={{ margin: 0, paddingLeft: 22, fontSize: 14, display: 'grid', gap: 4 }}>
-              {data.hardest.map((x) => <li key={x.id}><span className="ds-num">{x.id}</span> — верно с первой попытки {Math.round(x.share * 100)}% ({x.correct} из {x.total})</li>)}
-            </ol>
-          )}
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 export function ReportsView({ onBack }) {
   const account = loadAccount();
   const [status, setStatus] = useState('new');
@@ -264,6 +223,13 @@ export function ReportsView({ onBack }) {
       setBatchMsg(`Отмечено разобранными: ${r.changed}${r.missing.length ? ` · не нашлись: ${r.missing.join(', ')}` : ''}${r.ambiguous && r.ambiguous.length ? ` · вставьте id целиком: ${r.ambiguous.join(', ')}` : ''}`);
       setIds(''); load();
     } catch (e) { setErr(e.message); }
+  };
+  // все новые — в разобранные одним нажатием (с подтверждением): то, что пришло после загрузки списка, не трогаем
+  const [allAsk, setAllAsk] = useState(false);
+  const markAll = async () => {
+    Audio.play('tick'); setAllAsk(false); setBatchMsg('');
+    const upto = data && data.reports.length ? Math.max(...data.reports.map((r) => r.at)) : Date.now();
+    try { const r = await markAllReportsDone(account.token, upto); setBatchMsg(`Отмечено разобранными: ${r.changed}`); load(); } catch (e) { setErr(e.message); }
   };
   const purge = async () => {
     Audio.play('tick'); setPurgeAsk(false);
@@ -292,6 +258,13 @@ export function ReportsView({ onBack }) {
           <textarea id="rp-ids" className="rp-ids" rows={2} value={ids} onChange={(e) => setIds(e.target.value)} placeholder="id через пробел или с новой строки: munzqbpt muotbjnx …" data-testid="reports-ids" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
             <Button small variant="secondary" icon={Check} disabled={!ids.trim()} onClick={markMany} data-testid="reports-mark-many">Отметить разобранными</Button>
+            {status === 'new' && data && data.counts && data.counts.new > 0 && (allAsk
+              ? <>
+                  <span style={{ fontSize: 14 }}>Отметить разобранными все новые ({data.counts.new})?</span>
+                  <Button small variant="primary" icon={CheckCheck} onClick={markAll} data-testid="reports-all-yes">Да, все</Button>
+                  <Button small variant="ghost" onClick={() => setAllAsk(false)}>Отмена</Button>
+                </>
+              : <Button small variant="ghost" icon={CheckCheck} onClick={() => setAllAsk(true)} data-testid="reports-all">Отметить всё разобранным · {data.counts.new}</Button>)}
             {status === 'done' && data && data.counts && data.counts.done > 0 && (purgeAsk
               ? <>
                   <span style={{ fontSize: 14 }}>Удалить все разобранные ({data.counts.done})? Вернуть не выйдет.</span>

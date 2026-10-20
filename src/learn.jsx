@@ -58,7 +58,8 @@ import { hasModel, partsOfLesson, modelProgress, modelParts } from './learn/mode
 import { callbackFor } from './learn/callbacks.js';
 import { symbolsOf } from './textbook/symbols.js';
 import { inCrowns, sceneInCrowns } from './learn/money.js';
-import { ReportFlag, QuoteReport, ReportsView, AnalyticsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
+import { ReportFlag, QuoteReport, ReportsView, REPORT_CSS, THEORY_REASONS, exerciseContext, flatText } from './learn-report.jsx';
+import { AnalyticsView } from './learn-analytics.jsx';
 import { DsRoot, Button, IconButton, Card, MenuCard, Heading, AnswerBar, Sheet, TopBar } from './ds.jsx';
 import { ArtStyle, Guilloche, Rosette, Chest, Engraving, EngravingG, ProgressChart, InflaMeter, CoinShower, CountUp, useReducedMotion, useWide, useMedia } from './ds-art.jsx';
 import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
@@ -835,7 +836,9 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     el.classList.remove('ds-shake'); void el.offsetWidth; el.classList.add('ds-shake');
   }, [anim]);
   useEffect(() => { if (shakeRef.current) shakeRef.current.classList.remove('ds-shake'); }, [pos]);
-  const [run3, setRun3] = useState(rs ? rs.streak || 0 : 0);
+  /* серия верных подряд не обнуляется между уроками: начинаем с сегодняшней серии дня (daily.rc в
+     learn-state — её ведёт recordAttempt на каждой первой попытке, она же синхронизируется между устройствами) */
+  const [run3, setRun3] = useState(() => { const d = (learn.daily || {})[dayOf(Date.now())]; return d && d.rc ? d.rc : rs ? rs.streak || 0 : 0; });
   // линия графика прогресса: первые попытки по порядку; pulse — короткая вспышка на верном ответе серии
   const [log, setLog] = useState(rs ? rs.log || [] : []);
   /* «Слушай» и «История» — лента: прошлые сообщения и отвеченные вопросы остаются в ней
@@ -1178,10 +1181,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
                 </Card>
               ) : (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Mascot mood="think" size={46} />
-                    <h2 className="ds-h1" style={{ flex: 1, fontSize: 25 }}>{heading}</h2>
-                  </div>
+                  {/* Инфля уже в шапке урока — вторая рядом с заголовком шага лишняя */}
+                  <h2 className="ds-h1" style={{ fontSize: 25 }}>{heading}</h2>
                   <div className="ds-text" style={{ marginTop: 14 }}><Inline nodes={c.text} ctx={noopCtx} /></div>
                   {c.remember && <StepRemember tex={c.remember} />}
                   <StepLegend nodes={c.remember ? [...c.text, { t: 'math', v: c.remember }] : c.text} unitId={unitId} />
@@ -2109,9 +2110,14 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
     const t3 = setTimeout(() => setJustFolded(null), 2600);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [foldReq && foldReq.n]); // eslint-disable-line react-hooks/exhaustive-deps
-  // повторное касание вкладки «Путь» — снова текущий уровень и рекомендованный урок, где бы ни был экран
+  /* повторное касание вкладки «Путь» — снова текущий уровень и рекомендованный урок, где бы ни был экран.
+     Считается только новое касание: Путь пересоздаётся при каждом возвращении на вкладку, и старый
+     счётчик при этом сбрасывал выбранный уровень (сыграл алмазный урок на прошлом уровне, зашёл в лавку —
+     и снова на текущем) */
+  const homeSeen = useRef(homeTick);
   useEffect(() => {
-    if (!homeTick) return;
+    if (homeTick === homeSeen.current) return;
+    homeSeen.current = homeTick;
     setChosen(null); setPicker(null); setScrollTo((x) => ({ n: x.n + 1, unit: null }));
   }, [homeTick]);
   // строящиеся юниты выбранного уровня — строкой внизу; будущих уровней на Пути не видно

@@ -100,6 +100,15 @@ export const TEXTBOOK_CSS = `
   .tb-table th, .tb-table td { border: 1px solid var(--c-border); padding: 6px 10px; text-align: left; vertical-align: top; }
   .tb-table th { color: var(--c-gold-soft); font-weight: 600; background: var(--c-panel-alt); }
   .tb-box { border: 1px solid var(--c-border); border-left-width: 3px; padding: 12px 14px 4px; margin: 16px 0; background: var(--c-panel-alt); }
+  .tb-ask { border: 1px dashed var(--c-gold); border-radius: 10px; padding: 12px 14px; margin: 16px 0; background: color-mix(in srgb, var(--c-gold) 6%, transparent); }
+  .tb-ask-q { display: flex; gap: 8px; align-items: center; font-weight: 700; color: var(--c-text); }
+  .tb-ask-q svg { color: var(--c-gold-soft); flex: none; }
+  .tb-ask-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .tb-ask-btns .ems-btn { padding: 7px 14px; font-size: 13.5px; }
+  .tb-ask[data-state="ask"], .tb-ask[data-open="true"] { border-style: solid; }
+  .tb-ask-body { margin-top: 8px; animation: tb-ask-in .25s ease-out; }
+  @keyframes tb-ask-in { from { opacity: 0; transform: translateY(-4px) } to { opacity: 1; transform: none } }
+  @media (prefers-reduced-motion: reduce) { .tb-ask-body { animation: none; } }
   .tb-recall-part { margin-bottom: 4px; }
   .tb-recall-opts { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
   .tb-recall-opt { text-align: left; padding: 10px 12px; min-height: 44px; border: 1px solid var(--c-border); border-left: 3px solid var(--c-border); border-radius: 4px; background: var(--c-panel); color: var(--c-text); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; }
@@ -421,15 +430,49 @@ function BoxView({ b, ctx }) {
   );
 }
 
+/* «Знаете ли вы…?» (:::ask): то, что в школе проходят не все (производная), — вопросом. «Нет, объясните» —
+   объяснение с примером раскрывается; «Знаю» — сворачивается в строку «Освежить в памяти». Ответ
+   запоминается на устройстве: та же вставка в другой главе уже знает, что ответили. */
+const ASK_KEY = 'ems-tb-ask';
+function AskBox({ b, ctx }) {
+  const [state, setState] = useState(() => (readJSON(ASK_KEY, {}) || {})[b.id] || null);
+  const [open, setOpen] = useState(state === 'learn');
+  const answer = (v) => { Audio.play('click'); setState(v); setOpen(v === 'learn'); writeJSON(ASK_KEY, { ...readJSON(ASK_KEY, {}), [b.id]: v }); };
+  return (
+    <div className="tb-ask" data-testid="tb-ask" data-ask={b.id} data-state={state || 'ask'} data-open={String(open)}>
+      <div className="tb-ask-q"><Lightbulb size={16} aria-hidden="true" /><span>{b.ask}</span></div>
+      {!state && (
+        <div className="tb-ask-btns">
+          <button type="button" className="ems-btn" data-testid="tb-ask-learn" onClick={() => answer('learn')}>Нет, объясните</button>
+          <button type="button" className="ems-btn" data-testid="tb-ask-know" onClick={() => answer('know')}>Знаю</button>
+        </div>
+      )}
+      {state && !open && (
+        <button type="button" className="tb-link" style={{ fontSize: 13 }} data-testid="tb-ask-open" aria-expanded="false" onClick={() => { Audio.play('click'); setOpen(true); }}>
+          {state === 'know' ? 'Освежить в памяти' : 'Показать объяснение'} <ChevronDown size={12} style={{ verticalAlign: -2 }} />
+        </button>
+      )}
+      {open && (
+        <div className="tb-ask-body" data-testid="tb-ask-body">
+          <Blocks blocks={b.children} ctx={ctx} />
+          <button type="button" className="tb-link" style={{ fontSize: 13, marginBottom: 6 }} aria-expanded="true" onClick={() => { Audio.play('click'); setOpen(false); }}>
+            Свернуть <ChevronDown size={12} style={{ verticalAlign: -2, transform: 'rotate(180deg)' }} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* «Вспомните» в конце раздела: вопросы с вариантами ответа — выбор проверяется сам, писать своими
    словами не нужно (docs/mechanics.md, «Учебник: вспомните»). Варианты — в случайном порядке;
    после выбора: верный подсвечен, у неверного — почему он неверен, и разбор учебника. Всё верно —
    раздел пройден; ошибка — вопрос вернётся на повторение через два дня, можно «Ещё раз». */
-// вердикт «Вспомните»: после ошибки верный ответ тут же раздел не засчитывает — вопрос вернётся в свой день
+// вердикт «Вспомните»: после ошибки верный ответ раздел засчитывает, а вопрос вернётся на повторение в свой день
 function recallVerdict(ok, s) {
-  if (!ok) return 'Есть ошибка — вопрос вернётся на повторение через два дня. Прочитайте разбор и раздел.';
+  if (!ok) return 'Есть ошибка — вопрос вернётся на повторение через два дня. Прочитайте разбор и ответьте ещё раз.';
   if (!s || s.why === 'clean') return 'Верно. Раздел пройден.';
-  if (s.why === 'early') return s.wasOk ? `Верно. Повторение остаётся по плану — ${daysUntil(s.due)}.` : `Верно — но в этот раз была ошибка, поэтому вопрос вернётся ${daysUntil(s.due)}. Тогда ответьте с первого раза, и раздел засчитается.`;
+  if (s.why === 'early') return s.wasOk ? `Верно. Повторение остаётся по плану — ${daysUntil(s.due)}.` : `Верно. Раздел пройден, а вопрос вернётся на повторение ${daysUntil(s.due)} — чтобы закрепить.`;
   if (s.why === 'advance') return `Верно. Следующее повторение — ${daysUntil(s.due)}.`;
   if (s.why === 'done') return 'Верно. Вопрос ушёл из повторения.';
   return 'Верно.';
@@ -608,6 +651,7 @@ export function Blocks({ blocks: raw, ctx, top = false, startNo = 0 }) {
         </div>
       );
       case 'box': return <BoxView key={i} b={b} ctx={ctx} />;
+      case 'ask': return <AskBox key={b.id} b={b} ctx={ctx} />;
       case 'recall': return <RecallCard key={b.id} b={b} ctx={ctx} />;
       case 'flow': return <FlowView key={i} b={b} ctx={ctx} />;
       case 'chart': return <ChartBox key={i} type={b.chart} attrs={b.attrs} caption={b.caption} ctx={ctx} />;
@@ -2272,7 +2316,8 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
       const now = Date.now();
       const prev = p.problems[id];
       const { why } = scheduleAfter(prev, ok, now, opts);
-      let next = afterBookAnswer(recordAnswer(p, id, ok, now, opts), id, ok, why);
+      // «Вспомните»: верный ответ сразу после ошибки засчитывает раздел (повторение остаётся по плану)
+      let next = afterBookAnswer(recordAnswer(p, id, ok, now, RECALLS[id] ? { ...opts, settle: true } : opts), id, ok, why);
       // задача главы решена с первой попытки — немного монет в кошелёк Пути (rewards.js, bookFirstTry)
       if (PROBLEMS[id] && bookFirstTry(prev, ok, opts && opts.sawSolution)) next = { ...next, learn: earn(next.learn || emptyLearn(), COIN.book, null, now) };
       // пройден последний раздел главы — глава прочитана сама, кнопку нажимать не нужно

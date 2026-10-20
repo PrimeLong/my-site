@@ -1066,6 +1066,12 @@ describe('уверенность и разделы', () => {
     expect(nextSection(q).section.id).toBe(n0.section.id);
     expect(dueItems(q, 1000 + 2 * DAY)).toContain(n0.section.recall);
     expect(RECALLS[n0.section.recall].chapter).toBe(first);
+    // ошибся и тут же ответил верно (как «Вспомните» в учебнике — settle): раздел пройден, повторение — в свой срок
+    const r = recordAnswer(q, n0.section.recall, true, 2000, { settle: true });
+    expect(sectionDone(r, n0.section)).toBe(true);
+    expect(dueItems(r, 1000 + 2 * DAY)).toContain(n0.section.recall);
+    // обычная задача так не засчитывается: решённой она станет в день повторения
+    expect(recordAnswer(q, n0.section.recall, true, 2000).problems[n0.section.recall].ok).toBe(false);
   });
 });
 

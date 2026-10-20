@@ -184,8 +184,10 @@ export function recordAnswer(p, problemId, correct, now = Date.now(), opts = {})
   if (opts.confident === true) { c.cn += 1; if (correct) c.cok += 1; }
   if (opts.confident === false) { c.un += 1; if (correct) c.uok += 1; }
   const conf = c.cn || c.un ? c : {};
-  // верно до срока после ошибки — не «решена»: повтор остаётся, и засчитают его в свой день
-  const ok = why === 'early' ? !!prev.ok : !!correct;
+  /* верно до срока после ошибки — не «решена»: повтор остаётся, и засчитают его в свой день. Кроме
+     «Вспомните» (settle): ошибся и тут же ответил верно — раздел пройден, а вопрос всё равно вернётся
+     на повторение в свой срок */
+  const ok = why === 'early' && !opts.settle ? !!prev.ok : !!correct;
   return { ...p, problems: { ...p.problems, [problemId]: { tries: prev.tries + 1, ok, box, due, lastAt: now, ...conf } } };
 }
 
