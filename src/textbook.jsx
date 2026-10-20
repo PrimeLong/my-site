@@ -246,14 +246,16 @@ export const TEXTBOOK_CSS = `
   @media (prefers-reduced-motion: reduce) { .tb-cover, .tb-cover-bar i { animation: none; } }
   .tbl-ch-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; font: 13px/1.3 var(--ds-sans); color: var(--ds-ink2); }
   .tbl-ch-meta b { color: var(--ds-ink); font-weight: 700; }
-  .tbl-ch-ring { position: relative; width: 38px; height: 38px; justify-self: end; }
-  .tbl-ch-ring svg { display: block; transform: rotate(-90deg); }
+  .tbl-ch-ring { position: relative; width: 42px; height: 42px; justify-self: end; }
+  .tbl-ch-ring > svg { display: block; transform: rotate(-90deg); }
   .tbl-ch-ring circle { fill: none; stroke-width: 4; }
   .tbl-ch-ring .bg { stroke: var(--ds-rule); }
   .tbl-ch-ring .fg { stroke: var(--u); stroke-linecap: round; animation: tbl-ring .9s cubic-bezier(.3,.8,.4,1) both; }
   .tbl-ch-ring[data-full="true"] .fg { stroke: var(--ds-ok); }
-  .tbl-ch-ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 12px/1 var(--ds-mono); color: var(--ds-ink); }
-  .tbl-ch-ring small { font-size: 12px; font-weight: 400; color: var(--ds-ink3); }
+  /* число — в кольце целиком: узкие цифры шрифта текста и маленький знак процента (моноширинное «100%» вылезало) */
+  .tbl-ch-ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 12px/1 var(--ds-sans); font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--ds-ink); }
+  .tbl-ch-ring small { font-size: 8.5px; font-weight: 700; margin-left: 1px; color: var(--ds-ink3); }
+  .tbl-ch-ring[data-full="true"] b { color: var(--ds-ok); }
   @keyframes tbl-ring { from { stroke-dashoffset: var(--len) } }
   @media (prefers-reduced-motion: reduce) { .tbl-ch-ring .fg { animation: none; } }
   .tbl-ch-bar { height: 5px; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
@@ -2040,7 +2042,7 @@ function LearnToc({ ctx }) {
               // процент — путь по главе: пройденные разделы (прочитанная глава — 100%); задачи — отдельной строкой
               const sc = chapterScore(ctx.progress, problemsOf(c.id));
               const share = chapterShare(ctx.progress, c.id);
-              const R = 15; const L = 2 * Math.PI * R;
+              const R = 17; const L = 2 * Math.PI * R;
               return (
                 <button key={c.id} type="button" className="tbl-ch tb-toc-row" data-status={c.status} data-chapter={c.id} onClick={() => { Audio.play('click'); ctx.go({ kind: 'chapter', id: c.id }); }}>
                   <span className={`tbl-no${readMark ? ' done' : ''}`} aria-label={readMark ? 'прочитана' : undefined}>{readMark ? <Check size={14} aria-hidden="true" /> : n}</span>
@@ -2053,8 +2055,8 @@ function LearnToc({ ctx }) {
                   </span>
                   {sp.total > 0 || readMark ? (
                     <span className="tbl-ch-ring" data-full={String(share >= 1)} data-share={Math.round(share * 100)} aria-hidden="true">
-                      <svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r={R} className="bg" /><circle cx="19" cy="19" r={R} className="fg" strokeDasharray={L} strokeDashoffset={L * (1 - share)} style={{ '--len': L }} /></svg>
-                      <b>{Math.round(share * 100)}<small>%</small></b>
+                      <svg width="42" height="42" viewBox="0 0 42 42"><circle cx="21" cy="21" r={R} className="bg" /><circle cx="21" cy="21" r={R} className="fg" strokeDasharray={L} strokeDashoffset={L * (1 - share)} style={{ '--len': L }} /></svg>
+                      <b>{share >= 1 ? <Check size={17} strokeWidth={3} /> : <>{Math.round(share * 100)}<small>%</small></>}</b>
                     </span>
                   ) : <span />}
                 </button>
