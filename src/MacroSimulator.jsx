@@ -2223,7 +2223,10 @@ export default function MacroSimulator() {
             onReselect={(t) => {
               /* повторное касание вкладки — как «назад» к её началу: учебник — в оглавление,
                  Путь — к рекомендованному уроку, лавка и профиль — наверх */
-              if (t === 'book' && !bookOver) setBookHome((k) => k + 1);
+              if (t === 'book') setBookHome((k) => k + 1);
+              // учебник поверх другой вкладки («Мой прогресс» из профиля): внизу горит «Учебник», и касание
+              // по нему — тоже «на главную учебника», а не пустое нажатие
+              if (t === 'book' && bookOver) { setBookOver(false); setCloseTick((k) => k + 1); setTab('book'); }
               if (t === 'path') setPathHome((k) => k + 1);
               if ((t === 'shop' || t === 'profile' || t === 'league' || t === 'news') && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
               // профиль: повторное касание закрывает и страницы поверх него — настройки, уведомления

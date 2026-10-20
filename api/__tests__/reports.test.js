@@ -94,6 +94,24 @@ describe('сообщения об ошибках', () => {
     expect(all).toContain(c);
   });
 
+  it('«Отметить всё разобранным»: все новые разом, кроме пришедших после загрузки списка', async () => {
+    const tick = () => new Promise((r) => { setTimeout(r, 3); });
+    const a = (await send(userToken, { comment: 'одно' })).data.id;
+    await tick();
+    const b = (await send(userToken, { comment: 'другое' })).data.id;
+    const seen = (await call(reportsHandler, { action: 'list', session: ownerToken, status: 'new' })).data.reports;
+    const upto = Math.max(...seen.map((x) => x.at));
+    await tick();
+    const late = (await send(userToken, { comment: 'пришло позже' })).data.id;
+    expect((await call(reportsHandler, { action: 'done-all', session: userToken, upto })).status).toBe(403);
+    const r = await call(reportsHandler, { action: 'done-all', session: ownerToken, upto });
+    expect(r.data.changed).toBeGreaterThanOrEqual(2);
+    const left = (await call(reportsHandler, { action: 'list', session: ownerToken, status: 'new' })).data.reports.map((x) => x.id);
+    expect(left).toEqual([late]);
+    const done = (await call(reportsHandler, { action: 'list', session: ownerToken, status: 'done' })).data.reports.map((x) => x.id);
+    expect(done).toEqual(expect.arrayContaining([a, b]));
+  });
+
   it('логин и имя с грубыми словами не регистрируются', async () => {
     expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: uniq('ok'), password: 'secret1', name: 'Pidoras' })).status).toBe(400);
     expect((await call(accountHandler, { action: 'register', consentPage: true, consentPd: true, birthYear: 1990, login: `fuck${n++}`, password: 'secret1', name: 'Анна' })).status).toBe(400);

@@ -314,6 +314,18 @@ export async function bumpCounters(keys, ttlSeconds = COUNTER_TTL) {
   keys.forEach((k) => mem.set(`cnt:${k}`, (mem.get(`cnt:${k}`) || 0) + 1));
   return true;
 }
+// счётчик-сумма (например, минуты уроков): прибавить n, а не единицу
+export async function addCounters(pairs, ttlSeconds = COUNTER_TTL) {
+  if (redis) {
+    for (const [k, n] of pairs) {
+      const v = await redis.incrby(`cnt:${k}`, n);
+      if (v === n && ttlSeconds) await redis.expire(`cnt:${k}`, ttlSeconds);
+    }
+    return true;
+  }
+  pairs.forEach(([k, n]) => mem.set(`cnt:${k}`, (mem.get(`cnt:${k}`) || 0) + n));
+  return true;
+}
 export async function readCounters(keys) {
   if (!keys.length) return {};
   if (redis) {

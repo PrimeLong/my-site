@@ -18,6 +18,8 @@ import { Audio } from './MacroSimulator.jsx';
 /* Поля у колонки урока шире дока при любом увеличении урока — от 1280 px (у 1260 px и урока ×1,2
    поле 294 px, док — 286 px); и мышь или перо, а не палец. */
 export const SKETCH_QUERY = '(min-width: 1280px) and (hover: hover) and (pointer: fine)';
+// учебник шире урока (1240 px с оглавлением главы): поля для записей остаются от 1500 px
+export const SKETCH_BOOK_QUERY = '(min-width: 1500px) and (hover: hover) and (pointer: fine)';
 const ON_KEY = 'ems-sketch-on';
 const TRIED_KEY = 'ems-sketch-tried';
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -27,7 +29,10 @@ const TOOLS = [{ id: 'pen', icon: PenLine }, { id: 'marker', icon: Highlighter }
    колонки. Лента новостей — страница: поле — сама страница (.ln-root) и вкладка (.ln-tab) вне колонки. */
 const MODES = {
   lesson: { host: (el) => el.parentElement, field: 'ln-body', col: ':scope > .ln-body > .ln-inner, :scope > .ln-foot .ln-inner', hint: 'Новое: пишите на полях урока' },
-  page: { host: (el) => el.closest('.ln-root'), field: 'ln-tab', col: ':scope > .ln-tab > .ln-wrap', hint: 'Новое: пишите на полях' },
+  page: { page: true, host: (el) => el.closest('.ln-root'), field: 'ln-tab', col: ':scope > .ln-tab > .ln-wrap', hint: 'Новое: пишите на полях' },
+  /* учебник — та же страница, но колонка — весь учебник (.ln-textbook с оглавлением главы), а поле —
+     и вкладка, и обёртка учебника (.ln-book) по бокам от него (отчёт: «вот тут как никогда нужно рисование») */
+  book: { page: true, host: (el) => el.closest('.ln-root'), fieldSel: '.ln-root > .ln-tab, .ln-root > .ln-tab > .ln-book', col: ':scope > .ln-tab > .ln-book > .ln-textbook', hint: 'Новое: пишите на полях учебника' },
 };
 
 // курсор из SVG; у ручки кончик — текущего цвета, у маркера и ластика — круг их толщины
@@ -61,6 +66,8 @@ export const SKETCH_CSS = `
   .ln-root[data-sketch], .ln-root[data-sketch] > .ln-tab { cursor: var(--sk-cursor, crosshair); }
   .ln-root[data-sketch] > :not(.ln-tab), .ln-root[data-sketch] > .ln-tab > * { cursor: auto; }
   .ln-root[data-sketching] * { cursor: inherit !important; user-select: none; }
+  .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book { cursor: var(--sk-cursor, crosshair); }
+  .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > * { cursor: auto; }
 
   .sk-dock { position: absolute; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
   .sk-glass { border: 1px solid color-mix(in srgb, var(--ds-rule2) 75%, transparent); background: color-mix(in srgb, var(--ds-card) 76%, transparent);
@@ -126,10 +133,11 @@ export const SKETCH_CSS = `
 `;
 
 // поле — сам слой (страница) и его тело вне колонки; полоса прокрутки тела — не поле
-function onMargin(e, root, field) {
+function onMargin(e, root, M) {
   const t = e.target;
   if (t === root) return true;
-  if (!(t instanceof Element) || t.parentElement !== root || !t.classList.contains(field)) return false;
+  if (!(t instanceof Element) || !root.contains(t)) return false;
+  if (!(M.fieldSel ? t.matches(M.fieldSel) : t.parentElement === root && t.classList.contains(M.field))) return false;
   const r = t.getBoundingClientRect();
   const k = t.offsetWidth ? r.width / t.offsetWidth : 1;
   return e.clientX < r.left + t.clientWidth * k;
@@ -175,7 +183,7 @@ function drawStroke(ctx, s, color, alpha) {
    на том же месте у колонки), прокрутка страницы (y точек — от верха страницы) и где холст в окне. */
 function frameOf(mode, r) {
   const box = r.getBoundingClientRect();
-  if (mode === 'page') return { w: window.innerWidth, h: window.innerHeight, cx: box.left + box.width / 2, sy: window.scrollY, ox: 0, oy: 0 };
+  if (MODES[mode].page) return { w: window.innerWidth, h: window.innerHeight, cx: box.left + box.width / 2, sy: window.scrollY, ox: 0, oy: 0 };
   return { w: r.clientWidth, h: r.clientHeight, cx: r.clientWidth / 2, sy: 0, ox: box.left, oy: box.top };
 }
 function wipeCanvas(c) {
@@ -224,7 +232,7 @@ export function Sketch({ mode = 'lesson' }) {
   const measure = (r) => {
     const col = r.querySelector(M.col);
     if (!col) return;
-    const dx = mode === 'page' ? 0 : r.getBoundingClientRect().left;
+    const dx = M.page ? 0 : r.getBoundingClientRect().left;
     const b = col.getBoundingClientRect();
     r.style.setProperty('--sk-l', `${Math.round(b.left - dx)}px`);
     r.style.setProperty('--sk-r', `${Math.round(b.right - dx)}px`);
@@ -261,7 +269,7 @@ export function Sketch({ mode = 'lesson' }) {
     const schedule = () => { if (!frame.current) frame.current = requestAnimationFrame(drawLive); };
     const down = (e) => {
       const p = pick.current;
-      if (!p.on || e.button !== 0 || e.pointerType === 'touch' || live.current || !onMargin(e, r, M.field)) return;
+      if (!p.on || e.button !== 0 || e.pointerType === 'touch' || live.current || !onMargin(e, r, M)) return;
       e.preventDefault();
       paint();
       const s = { tool: p.tool, color: p.color, size: p.size, points: [] };
@@ -317,7 +325,7 @@ export function Sketch({ mode = 'lesson' }) {
     let scrollFrame = 0;
     const onScroll = () => { if (!scrollFrame) scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; paint(); }); };
     const nav = () => { const n = document.querySelector('[data-testid="bottom-nav"]'); setNavH(n ? Math.round(n.getBoundingClientRect().height) : 0); };
-    if (mode === 'page') {
+    if (M.page) {
       window.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', onScroll);
       nav(); window.addEventListener('resize', nav);
@@ -346,10 +354,10 @@ export function Sketch({ mode = 'lesson' }) {
     const r = rootOf();
     if (!r || !on) return undefined;
     const ink = inks(r)[color];
-    r.dataset.sketch = tool;
+    r.dataset.sketch = tool; r.dataset.sketchMode = mode;
     r.style.setProperty('--sk-cursor', tool === 'pen' ? penCursor(ink) : ringCursor(strokeWidth(tool, size), tool === 'marker' ? ink : null));
     measure(r);
-    return () => { delete r.dataset.sketch; r.style.removeProperty('--sk-cursor'); };
+    return () => { delete r.dataset.sketch; delete r.dataset.sketchMode; r.style.removeProperty('--sk-cursor'); };
   }, [on, tool, color, size]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // «Вернуть» после «Стереть всё» — пять секунд
@@ -397,13 +405,13 @@ export function Sketch({ mode = 'lesson' }) {
   const sizes = SKETCH_TOOLS[tool].sizes;
   const dotOf = (px) => Math.max(5, Math.min(18, tool === 'pen' ? px * 2.4 : px * 0.62));
   const snack = on && !!cleared && !count;
-  const page = mode === 'page' ? 'sk-page' : '';
+  const page = M.page ? 'sk-page' : '';
   return (
     <>
       <div ref={gridRef} className={`sk-grid ${on ? 'on' : ''} ${page}`} aria-hidden="true" data-testid="sketch-grid" />
       <canvas ref={mainRef} className={`sk-canvas ${wiping ? 'wipe' : ''} ${page}`} aria-hidden="true" data-testid="sketch-canvas" data-strokes={count} />
       <canvas ref={liveRef} className={`sk-canvas ${page}`} aria-hidden="true" />
-      <div className={`sk-dock ${on ? 'on' : ''} ${page}`} data-testid="sketch-dock" data-on={String(on)} style={mode === 'page' ? { '--sk-bottom': `${navH + 16}px` } : undefined}>
+      <div className={`sk-dock ${on ? 'on' : ''} ${page}`} data-testid="sketch-dock" data-on={String(on)} style={M.page ? { '--sk-bottom': `${navH + 16}px` } : undefined}>
         {snack ? (
           <div className="sk-snack sk-glass" role="status" data-testid="sketch-snack">
             Черновик стёрт

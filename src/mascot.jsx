@@ -114,15 +114,17 @@ Object.assign(OUTFIT, {
       d="M12.5 24.5 L8.5 14.5 L15 18.4 L18.6 15.3 Q26 14.6 32 18.6 Q38 14.6 45.4 15.3 L49 18.4 L55.5 14.5 L51.5 24.5 Q46 30 39.5 27.8 Q35 26.6 32 24.6 Q29 26.6 24.5 27.8 Q18 30 12.5 24.5 Z M20.3 23 a4.2 3.5 0 1 0 8.4 0 a4.2 3.5 0 1 0 -8.4 0 Z M35.3 23 a4.2 3.5 0 1 0 8.4 0 a4.2 3.5 0 1 0 -8.4 0 Z" />
     <path d="M17 18.6 Q22 17 27 18.4" fill="none" stroke="#7E6C9E" strokeWidth=".8" strokeLinecap="round" />
   </g>,
-  // воротник графа: стоячий чёрный воротник с красной подкладкой и застёжка с камнем
+  /* воротник графа: стоячий чёрный воротник с красной подкладкой и застёжка с камнем. Внутренний край
+     идёт ровно по краю монеты (дуга с её радиусами), так что воротник обнимает Инфлю снизу и встаёт
+     за ней углами, а не висит рядом крыльями (жалоба: «летает и не примыкает») */
   cape: <g stroke={INK} strokeWidth="1" strokeLinejoin="round">
     {[false, true].map((m) => (
       <g key={String(m)} transform={m ? 'translate(64 0) scale(-1 1)' : undefined}>
-        <path d="M30.5 49.6 Q17 50.4 10 38.5 L3 28.5 L5.8 45.4 Q15 56.5 30.5 52.6 Z" fill="#1E1A24" />
-        <path d="M28.6 50.1 Q18 50 11.6 40.6 L7.6 35 L8.8 44 Q16.4 52.4 28.6 51.4 Z" fill="#B3122E" stroke="none" />
+        <path d="M31 48.18 L31 51 C22 53.6 9.4 49.2 6.2 36 L3.4 12.6 Q8.4 14.4 11.03 18 A22 23.2 0 0 0 31 48.18 Z" fill="#1E1A24" />
+        <path d="M30.6 48.15 C23 51.2 11.4 48.2 8.7 37 L6.5 19.6 Q8.7 20 10.33 21 A22 23.2 0 0 0 30.6 48.15 Z" fill="#B3122E" stroke="none" />
       </g>
     ))}
-    <circle cx="32" cy="51" r="2.7" fill="#E3B53C" /><circle cx="32" cy="51" r="1.2" fill="#B3122E" strokeWidth=".5" />
+    <circle cx="32" cy="50.6" r="2.7" fill="#E3B53C" /><circle cx="32" cy="50.6" r="1.2" fill="#B3122E" strokeWidth=".5" />
   </g>,
   // тыква-фонарь: резная рожица светится изнутри и мерцает
   lantern: <g stroke={INK} strokeLinejoin="round">
@@ -275,6 +277,8 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
         <ellipse cx="32" cy="25" rx="22" ry="23.2" fill={`url(#${gid})`} stroke="#3A2A08" strokeWidth="1.6" />
         <ellipse cx="32" cy="25" rx="18.2" ry="19.3" fill="none" stroke="#5A4210" strokeOpacity="0.45" strokeWidth="1.2" strokeDasharray="1.2 2" />
         <path d="M17.4 18.6 C 18.6 13.6, 22.4 9.8, 27 8.8" fill="none" stroke="#FFF7DC" strokeOpacity="0.75" strokeWidth="2.4" strokeLinecap="round" />
+        {/* шея — сразу за монетой: стоячий воротник встаёт по бокам, и машущая рука должна быть поверх него */}
+        {wear.neck && OUTFIT[wear.neck] && <g data-outfit={wear.neck}>{OUTFIT[wear.neck]}</g>}
         {(m === 'joy' || m === 'party' || m === 'hello') && <><ellipse cx="20" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /><ellipse cx="44" cy="29.5" rx="2.6" ry="1.6" fill="#E07A5F" opacity="0.45" /></>}
         {m === 'sleep' ? EYES[m](ink) : <g className="infla-eyes">{EYES[m](ink)}</g>}
         {m === 'wave' && (wear.hand && OUTFIT[wear.hand] ? (
@@ -293,7 +297,7 @@ export function Mascot({ mood = 'hello', size = 56, label, outfit = null }) {
           <path d="M26 3.5 L32 -4 L38 3.5 Z" fill="#4FA38F" stroke="#3A2A08" strokeWidth="0.8" transform="translate(0 4)" />
           {[[8, 12, '#E07A5F'], [56, 10, '#6FA8DC'], [5, 34, '#4FA38F'], [59, 32, '#E07A5F'], [12, 4, '#D9B23A']].map(([x, y, c], i) => <rect key={i} x={x} y={y} width="3" height="3" fill={c} transform={`rotate(${i * 37} ${x + 1.5} ${y + 1.5})`} />)}
         </>}
-        {['neck', 'face', 'head', 'hand'].map((sl) => (wear[sl] && OUTFIT[wear[sl]] ? <g key={sl} data-outfit={wear[sl]}>{OUTFIT[wear[sl]]}</g> : null))}
+        {['face', 'head', 'hand'].map((sl) => (wear[sl] && OUTFIT[wear[sl]] ? <g key={sl} data-outfit={wear[sl]}>{OUTFIT[wear[sl]]}</g> : null))}
         {m === 'sleep' && <text x="46" y="9" fontSize="9" fill="#9FB3C8" fontFamily="sans-serif">z z</text>}
         {m === 'think' && <><circle cx="52" cy="9" r="1.6" fill="#9FB3C8" /><circle cx="56.5" cy="4.5" r="2.4" fill="#9FB3C8" /></>}
         {m === 'cheer' && <path d="M52 30 l2 -4 l2 4 l4 1 l-3 3 l1 4 l-4 -2 l-4 2 l1 -4 l-3 -3 z" fill="#FBE7A1" stroke="#94700F" strokeWidth="0.6" />}

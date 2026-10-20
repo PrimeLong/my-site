@@ -45,6 +45,13 @@ export function markSeen(ids, now = Date.now()) {
   store.set('ems-notify-seen', Object.fromEntries(keep));
   return Object.fromEntries(keep);
 }
+/* Плашки сверху: каждое событие всплывает один раз за всё время на этом устройстве — даже если его не
+   успели прочитать, а приложение перерисовалось (вышли из урока, вернулись на вкладку). */
+export const readToasted = () => store.get('ems-notify-toasted', {});
+export function markToasted(id, now = Date.now()) {
+  const t = { ...readToasted(), [id]: now };
+  store.set('ems-notify-toasted', Object.fromEntries(Object.entries(t).sort((a, b) => b[1] - a[1]).slice(0, 200)));
+}
 export const readPushed = () => store.get('ems-notify-pushed', {});
 export function markPushed(id, now = Date.now()) {
   const p = { ...readPushed(), [id]: now };
@@ -104,7 +111,9 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
          не занимались (сразу после своего урока «обогнали» не бывает — ваш опыт уже другой) и не чаще
          раза в день. Сколько опыта нужно, чтобы вернуть место, — честно: обогнать того, кто на нём сейчас. */
       const before = Math.max(at(week, 0), now - 4 * HOUR);
-      const lastRun = Math.max(0, ...Object.values(learn.lessons || {}).map((l) => (l && l.at) || 0));
+      // когда занимались в последний раз: lessons[].at — время ПЕРВОГО прохождения урока (повтор его не
+      // меняет), поэтому ещё и время последнего ответа (recentAt) — иначе «обогнали» после повтора урока
+      const lastRun = Math.max(0, learn.recentAt || 0, ...Object.values(learn.lessons || {}).map((l) => (l && l.at) || 0));
       const prev = standings(learn, week, ls.league, before);
       const was = prev.find((r) => r.me).place;
       if (ls.me.place > was && lastRun < before) {

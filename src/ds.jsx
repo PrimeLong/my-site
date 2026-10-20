@@ -39,11 +39,12 @@ export const DS_CSS = `
     box-shadow: 0 4px 0 var(--edge); margin-bottom: 4px;
     transition: transform .08s ease, box-shadow .08s ease, filter .15s; }
   .ds-btn:hover:not(:disabled) { filter: brightness(1.06) saturate(1.05); }
-  /* основная кнопка: при наведении по ней пробегает блик (в покое он за краем кнопки и не виден). Блик —
-     только если мышь задержалась на кнопке: провели мимо или туда-сюда — кнопка не мигает */
+  /* основная кнопка: при наведении по ней пробегает блик (в покое он за краем кнопки и не виден). Запускает
+     его installShine ниже: только если мышь задержалась на кнопке, и, раз начавшись, блик доходит до
+     конца — даже если мышь тут же ушла; провели мимо или туда-сюда — кнопка не мигает */
   .ds-btn:not(.ds-btn--ghost):not(.ds-btn--secondary)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
     background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .3) 50%, transparent 65%) no-repeat; background-size: 250% 100%; background-position: 130% 0; }
-  @media (hover: hover) { .ds-btn:not(.ds-btn--ghost):not(.ds-btn--secondary):not(:disabled):hover::after { animation: ds-shine .75s ease-out .35s backwards; } }
+  .ds-btn.ds-shining::after { animation: ds-shine .75s ease-out; }
   @keyframes ds-shine { from { background-position: 130% 0 } to { background-position: -30% 0 } }
   .ds-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 0 0 var(--edge); }
   /* «Мир» в тёмной теме: основная кнопка — светлое золото, на нём белый текст не читается — тёмная тушь */
@@ -207,7 +208,50 @@ export const DS_CSS = `
   }
 `;
 
-export function DsStyle() { return <style>{DS_CSS}</style>; }
+/* Блик на основных кнопках — по наведению мыши. Задержка SHINE.wait: провели мышью мимо — блика нет.
+   Блик начался — доигрывает до конца (класс снимается по окончании анимации, а не когда мышь ушла);
+   после него — пауза SHINE.rest, чтобы кнопка не мигала, если водить мышью туда-сюда. */
+const SHINE = { wait: 220, run: 750, rest: 900 };
+const SHINE_SEL = '.ds-btn:not(.ds-btn--ghost):not(.ds-btn--secondary):not(:disabled)';
+let shineOn = false;
+export function installShine(doc = typeof document !== 'undefined' ? document : null) {
+  if (shineOn || !doc) return;
+  shineOn = true;
+  const st = new WeakMap();
+  doc.addEventListener('pointerover', (e) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    const btn = e.target && e.target.closest ? e.target.closest(SHINE_SEL) : null;
+    if (!btn) return;
+    const s = st.get(btn) || {};
+    if (s.timer || btn.classList.contains('ds-shining') || (s.until && Date.now() < s.until)) return;
+    s.timer = setTimeout(() => {
+      s.timer = null;
+      if (!btn.isConnected || !btn.matches(':hover')) return;
+      btn.classList.add('ds-shining');
+      // на случай, если анимации нет (меньше движения) и её конец не наступит
+      s.done = setTimeout(() => { btn.classList.remove('ds-shining'); s.until = Date.now() + SHINE.rest; }, SHINE.run + 80);
+    }, SHINE.wait);
+    st.set(btn, s);
+  });
+  doc.addEventListener('pointerout', (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest(SHINE_SEL) : null;
+    if (!btn || (e.relatedTarget && btn.contains(e.relatedTarget))) return;
+    // ушли раньше, чем блик начался, — его не будет; начавшийся доиграет сам
+    const s = st.get(btn);
+    if (s && s.timer) { clearTimeout(s.timer); s.timer = null; }
+  });
+  doc.addEventListener('animationend', (e) => {
+    if (e.animationName !== 'ds-shine' || !e.target.classList) return;
+    e.target.classList.remove('ds-shining');
+    const s = st.get(e.target);
+    if (s) { clearTimeout(s.done); s.until = Date.now() + SHINE.rest; }
+  });
+}
+
+export function DsStyle() {
+  React.useEffect(() => { installShine(); }, []);
+  return <style>{DS_CSS}</style>;
+}
 
 /* Корень экрана: тема (paper | ink) или игровая тема «Мира» (world = COLOR),
    цвет юнита (accent). page — во весь экран с фоном бумаги. */

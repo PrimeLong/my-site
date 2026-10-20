@@ -1,7 +1,7 @@
 /* Уведомления и коллекции профиля (docs/mechanics.md, «Новости и уведомления», «Профиль»):
    список выводится из прогресса и времени — пройденное уходит само, одно событие — один id. */
 import { describe, it, expect } from 'vitest';
-import { notificationsOf, unreadOf, agoText, firstDayOf } from '../notify.js';
+import { notificationsOf, unreadOf, agoText, firstDayOf, readToasted, markToasted } from '../notify.js';
 import { albumItems, sealItems, monthItems, monthsByYear, shelfOrder, fullDate } from '../collections.js';
 import { NEWS, unreadNews, newsDate } from '../news.js';
 import { emptyLearn, addDays, dayOf } from '../../textbook/learn-state.js';
@@ -171,5 +171,17 @@ describe('уведомления: лига — «Вас обогнали»', () 
     // только что был урок — «обогнали» не приходит
     const busy = { ...s, lessons: { ...s.lessons, [LESSONS[1].id]: { at: ts - 30 * 60 * 1000, runs: 1, best: 90 } } };
     expect(notificationsOf(busy, ts).some((n) => n.id.startsWith('lg-down:'))).toBe(false);
+    // повторил давно пройденный урок: дата прохождения старая, но ответы свежие — тоже не «обогнали»
+    const replay = { ...s, recentAt: ts - 20 * 60 * 1000 };
+    expect(notificationsOf(replay, ts).some((n) => n.id.startsWith('lg-down:'))).toBe(false);
+  });
+  it('плашка сверху — один раз за событие: показанное запоминается на устройстве', () => {
+    const m = new Map();
+    globalThis.localStorage = { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+    expect(readToasted()['lg-down:2026-W42:2026-10-20']).toBeUndefined();
+    markToasted('lg-down:2026-W42:2026-10-20', 1000);
+    expect(readToasted()['lg-down:2026-W42:2026-10-20']).toBe(1000);
+    for (let i = 0; i < 250; i += 1) markToasted(`x${i}`, 2000 + i);
+    expect(Object.keys(readToasted())).toHaveLength(200);
   });
 });

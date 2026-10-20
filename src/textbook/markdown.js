@@ -271,6 +271,11 @@ export function parseBlocks(text) {
           blocks.push({ ...base, kind: 'graph', chart, attrs: chartAttrs, expect: split(expect).map((t) => { const [key, dir] = t.split(':'); return { key, dir }; }),
             still: split(still), controls: controls ? split(controls) : null, reference: ref, traps: trapLines.map((tr) => ({ control: tr.key, text: tr.text })) });
         }
+      } else if (name === 'ask') {
+        /* «Знаете ли вы…?» (жалоба: производную в школе проходят не все): вопрос с двумя кнопками,
+           объяснение — по «Нет, объясните»; ответ запоминается (src/textbook.jsx, AskBox) */
+        if (!attrs.id || !attrs.question) throw new Error('У :::ask нужны id и question');
+        blocks.push({ type: 'ask', id: attrs.id, ask: attrs.question, children: parseBlocks(body.join('\n')) });
       } else if (BOX_KINDS.includes(name)) {
         // «+++» — дальше подробности, они раскрываются по кнопке «Подробнее»
         const cut = body.findIndex((l) => l.trim() === '+++');

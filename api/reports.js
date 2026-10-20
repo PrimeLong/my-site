@@ -4,7 +4,7 @@
    варианта, ответ ученика и правильный ответ, версия сборки, экран, устройство.
    Читают и разбирают сообщения только владельцы — логины из переменной окружения
    OWNER_LOGINS (через запятую). Разбор и пачкой: «status-many» отмечает разобранными
-   сообщения по списку id, «purge-done» удаляет все разобранные. */
+   сообщения по списку id, «done-all» — все новые разом, «purge-done» удаляет все разобранные. */
 import { getReports, setReport, setReports, deleteReport, deleteReports, hit, hasKv } from './_lib/store.js';
 import { isRude, RUDE_MESSAGE } from '../src/lib/moderation.js';
 import { userBySession } from './_lib/accounts.js';
@@ -116,6 +116,15 @@ async function handleRequest(req, res) {
     });
     await setReports([...picked.values()].map((r) => ({ ...r, status: done ? 'done' : 'new', doneBy: done ? user.login : null, doneAt: done ? Date.now() : null })));
     return res.status(200).json({ changed: picked.size, missing, ambiguous });
+  }
+  /* «Отметить всё разобранным»: все новые — в разобранные. upto — время самого свежего сообщения
+     в списке, который видел владелец: пришедшее после него остаётся новым, его ещё не читали. */
+  if (action === 'done-all') {
+    const upto = Number.isFinite(Number(body.upto)) && body.upto != null ? Number(body.upto) : Infinity;
+    const now = Date.now();
+    const fresh = (await getReports()).filter((r) => r.status !== 'done' && r.at <= upto);
+    await setReports(fresh.map((r) => ({ ...r, status: 'done', doneBy: user.login, doneAt: now })));
+    return res.status(200).json({ changed: fresh.length });
   }
   // удалить все разобранные: исправленное больше не нужно хранить
   if (action === 'purge-done') {

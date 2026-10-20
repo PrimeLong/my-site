@@ -1004,10 +1004,10 @@ describe('семинарская задача не повторяет шаг у�
 
 // вариант из нескольких пунктов на Пути — один вопрос: без «б)» и без буквы «а)»
 it('вариант с пунктами на Пути спрашивает только первый пункт', () => {
-  const it0 = instantiate(EXERCISES['var:v-costs-types'], seeded(2));
+  const it0 = instantiate(EXERCISES['var:v-pc-basic'], seeded(2));
   const txt = plain(it0.prompt.flatMap((b) => b.inline || []));
-  expect(txt).toContain('Чему равны переменные издержки?');
-  expect(txt).not.toMatch(/а\)|б\)|средние общие/);
-  expect(plain((it0.explain || []).flatMap((b) => b.inline || []))).not.toMatch(/б\)|ATC/);
+  expect(txt).toContain('Сколько единиц выгодно производить?');
+  expect(txt).not.toMatch(/а\)|б\)|прибыль/);
+  expect(plain((it0.explain || []).flatMap((b) => b.inline || []))).not.toMatch(/б\)/);
   expect(firstPart('Условие.\n\nа) Первый?\n\nб) Второй?', 2)).toBe('Условие.\n\nПервый?');
 });

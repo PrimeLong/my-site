@@ -178,6 +178,7 @@ export const setReportStatus = (session, id, status) => post({ action: 'status',
 export const deleteReport = (session, id) => post({ action: 'delete', session, id }, REPORTS_API);
 // пачкой: отметить разобранными по списку id (строка или массив) и удалить все разобранные
 export const setReportsStatus = (session, ids, status) => post({ action: 'status-many', session, ids, status }, REPORTS_API);
+export const markAllReportsDone = (session, upto) => post({ action: 'done-all', session, upto }, REPORTS_API);
 export const purgeDoneReports = (session) => post({ action: 'purge-done', session }, REPORTS_API);
 // «Это ошибка фильтра»: имя не прошло проверку на грубые слова — без аккаунта
 export const reportFilter = (login, name, screen) => post({ action: 'filter', login, name, screen }, REPORTS_API);

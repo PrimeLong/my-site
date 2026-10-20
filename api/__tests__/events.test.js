@@ -48,6 +48,17 @@ describe('отчёт для владельцев', () => {
     expect(r.data.hardest[0]).toMatchObject({ id: 'hard-one', total: 6, correct: 1 });
     expect(r.data.hardest.map((x) => x.id)).not.toContain('rare-one'); // меньше 5 ответов — не в списке
     expect(r.data.hardest.length).toBeLessThanOrEqual(20);
+    // по дням — 30 строк от старых к свежим; сводка за неделю; уроки с долей дошедших и минутами
+    expect(r.data.daily).toHaveLength(30);
+    expect(r.data.daily[29].day).toBe(new Date().toISOString().slice(0, 10));
+    expect(r.data.daily[29].ex_first_try_fail).toBeGreaterThanOrEqual(6);
+    expect(r.data.totals.accuracy.now).toBeGreaterThan(0);
+    await ev({ event: 'lesson_start', lesson: 'zz-l1' });
+    await ev({ event: 'lesson_start', lesson: 'zz-l1' });
+    await ev({ event: 'lesson_done', lesson: 'zz-l1', ms: 240000 });
+    const r2 = await ev({ action: 'report', session: reg.data.token });
+    expect(r2.data.lessons.find((x) => x.id === 'zz-l1')).toEqual({ id: 'zz-l1', start: 2, done: 1, finish: 0.5, minutes: 4 });
+    expect(typeof r2.data.reports.fresh).toBe('number');
     delete process.env.OWNER_LOGINS;
   });
 });

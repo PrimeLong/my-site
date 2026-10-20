@@ -107,7 +107,9 @@ export const REWARD_CSS = `
   .rw-pig { flex: none; overflow: visible; }
   .rw-pig-coin { animation: rw-coin-drop .7s cubic-bezier(.5,0,.8,.5) both; }
   @keyframes rw-coin-drop { 0% { transform: translateY(-18px); opacity: 0 } 25% { opacity: 1 } 85% { transform: translateY(12px); opacity: 1 } 100% { transform: translateY(14px); opacity: 0 } }
-  .rw-pig-in circle { animation: rw-pop .4s cubic-bezier(.3,1.6,.5,1) both; animation-delay: calc(var(--i) * 80ms + .2s); transform-box: fill-box; transform-origin: center; }
+  .rw-pig-in .spark { animation: rw-pop .4s cubic-bezier(.3,1.6,.5,1) both; animation-delay: calc(var(--i) * 90ms + .45s); transform-box: fill-box; transform-origin: center; }
+  .rw-pig-peek { animation: rw-peek .5s .25s cubic-bezier(.3,1.5,.5,1) both; }
+  @keyframes rw-peek { from { transform: translateY(8px) } }
   @keyframes rw-pop { from { transform: scale(0) } }
   .rw-book-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; font: 700 14px var(--ds-sans); }
   .rw-book-kind { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); color: var(--u-ink); }
@@ -225,7 +227,7 @@ export const REWARD_CSS = `
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
   @media (prefers-reduced-motion: reduce) { .rw-morning::before, .rw-fire *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-week, .rw-dot i { animation: none !important; } .rw-fire .ember { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in circle, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in .spark, .rw-pig-peek, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
 const Q_ICON = { timer: Timer, map: MapIcon, check: Check, target: Target, coins: Coins, flame: Flame, spark: Zap };
@@ -702,20 +704,37 @@ function RealRate({ rate }) {
   );
 }
 const PRESETS = [['¼', 0.25], ['½', 0.5], ['Всё', 1]];
-/* Копилка-свинка: монета падает в прорезь, когда кладёте; пока вклад лежит — внутри видны монеты. */
+/* Копилка-свинка: монета падает в прорезь, когда кладёте; пока вклад лежит — монета выглядывает из
+   прорези и рядом искорки. Свинка розовая и улыбается (жалоба: прежняя, зелёная и с хвостом-клином,
+   выглядела страшно), цвета свои — не цвет юнита. */
+const PIG = { body: '#F8BACA', far: '#EE9CB0', ear: '#F4A7BA', snout: '#F49AB0', line: '#A84E68', ink: '#5A2434' };
 function PiggyArt({ full = false, drop = 0 }) {
+  const clip = `pig${React.useId().replace(/:/g, '')}`;
+  const leg = (x, fill) => <rect x={x} y="44" width="7.5" height="15" rx="3.4" fill={fill} stroke={PIG.line} strokeWidth="2" />;
+  const ear = (d) => <path d={d} fill={PIG.ear} stroke={PIG.line} strokeWidth="2" strokeLinejoin="round" />;
   return (
     <svg className="rw-pig" viewBox="0 0 80 64" width="80" height="64" aria-hidden="true">
-      {drop > 0 && <g key={drop} className="rw-pig-coin"><circle cx="40" cy="6" r="6" fill="#E3B23C" stroke="#8A6416" strokeWidth="1.4" /><circle cx="40" cy="6" r="3" fill="none" stroke="#8A6416" strokeWidth="1" /></g>}
-      <ellipse cx="40" cy="60" rx="24" ry="3" fill="#000" opacity=".08" />
-      <path d="M14 34c0-12 11-20 26-20s26 8 26 20-11 20-26 20c-4 0-8-.6-11-1.8L24 57h-6l1-7c-3-4-5-9-5-16Z" fill="color-mix(in srgb, var(--u) 22%, var(--ds-card))" stroke="var(--u-ink)" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M58 22l6-7 1 9" fill="color-mix(in srgb, var(--u) 22%, var(--ds-card))" stroke="var(--u-ink)" strokeWidth="2" strokeLinejoin="round" />
-      <ellipse cx="66" cy="36" rx="4.5" ry="5.5" fill="color-mix(in srgb, var(--u) 35%, var(--ds-card))" stroke="var(--u-ink)" strokeWidth="2" />
-      <circle cx="65" cy="35" r="1" fill="var(--u-ink)" /><circle cx="67.5" cy="37" r="1" fill="var(--u-ink)" />
-      <circle cx="56" cy="29" r="2" fill="var(--u-ink)" />
-      <rect x="33" y="15.5" width="14" height="3" rx="1.5" fill="var(--u-ink)" />
-      <path d="M38 52v6M50 52v6" stroke="var(--u-ink)" strokeWidth="3" strokeLinecap="round" />
-      {full && <g className="rw-pig-in">{[[30, 40], [38, 43], [46, 40], [34, 34], [42, 36]].map(([cx, cy], k) => <circle key={k} cx={cx} cy={cy} r="4" fill="#E3B23C" stroke="#8A6416" strokeWidth="1" style={{ '--i': k }} />)}</g>}
+      <defs><clipPath id={clip}><rect x="20" y="-20" width="40" height="38.4" /></clipPath></defs>
+      {drop > 0 && <g key={drop} className="rw-pig-coin"><circle cx="37.5" cy="6" r="6" fill="#E3B23C" stroke="#8A6416" strokeWidth="1.4" /><circle cx="37.5" cy="6" r="3" fill="none" stroke="#8A6416" strokeWidth="1" /></g>}
+      <ellipse cx="39" cy="60" rx="23" ry="2.6" fill="#000" opacity=".08" />
+      <path d="M14.5 33.5c-3.2-.6-5.6 1.2-5 3.6.5 2 3.4 2.2 4-.1.5-2-1.6-3-3.1-1.9" fill="none" stroke={PIG.line} strokeWidth="2" strokeLinecap="round" />
+      {leg(26, PIG.far)}{leg(48, PIG.far)}{leg(19, PIG.body)}{leg(41, PIG.body)}
+      {ear('M44 21.5c1-6.5 5.5-9.5 10.5-9 .3 5-2.2 9-6.5 11z')}
+      <ellipse cx="38" cy="35" rx="25" ry="17.5" fill={PIG.body} stroke={PIG.line} strokeWidth="2" />
+      <path d="M22 26c3-4 8-6.5 13-7" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" opacity=".6" />
+      {ear('M50 21c1.5-5.5 5-8 9-7.6.2 4.4-2 7.6-5.6 9.4z')}
+      <ellipse cx="63.5" cy="38" rx="5.6" ry="6.6" fill={PIG.snout} stroke={PIG.line} strokeWidth="2" />
+      <ellipse cx="62.4" cy="36" rx="1.1" ry="1.6" fill={PIG.line} /><ellipse cx="65.2" cy="38.6" rx="1.1" ry="1.6" fill={PIG.line} />
+      <path d="M50.5 31.5q2.6-3 5.2 0" fill="none" stroke={PIG.ink} strokeWidth="2" strokeLinecap="round" />
+      <ellipse cx="54" cy="40.5" rx="3.4" ry="2" fill="#EF6F8E" opacity=".45" />
+      <path d="M53 45q3 2 6 .2" fill="none" stroke={PIG.line} strokeWidth="1.6" strokeLinecap="round" />
+      <rect x="31" y="17" width="13" height="3.2" rx="1.6" fill={PIG.ink} />
+      {full && (
+        <g className="rw-pig-in">
+          <g clipPath={`url(#${clip})`}><g className="rw-pig-peek"><circle cx="37.5" cy="15" r="6" fill="#E3B23C" stroke="#8A6416" strokeWidth="1.4" /><circle cx="37.5" cy="15" r="3" fill="none" stroke="#8A6416" strokeWidth="1" /></g></g>
+          {[[27, 9, 1.6], [48.5, 7.5, 1.3], [52, 13.5, 1]].map(([cx, cy, r], k) => <circle key={k} className="spark" cx={cx} cy={cy} r={r} fill="#E3B23C" style={{ '--i': k }} />)}
+        </g>
+      )}
     </svg>
   );
 }

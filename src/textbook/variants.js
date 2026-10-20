@@ -369,6 +369,25 @@ T.push({ id: 'v-costs-fc', chapter: 'costs', level: 2, source: 'costs-from-avg',
     check: ([x]) => near(x / k.Q + k.avc, atc),
   };
 } });
+// предельные издержки по двум средним — без производной: общие издержки до и после, прирост на штуку
+// (усложнение «Практики» Пути вместо задачи с производной costs-mc: производных на Пути нет)
+T.push({ id: 'v-costs-mcavg', chapter: 'costs', level: 2, source: 'costs-from-avg', gen: (rand) => {
+  const k = draw(rand, () => ({ Q1: ri(rand, 50, 200, 10), dQ: ri(rand, 10, 50, 10), a1: ri(rand, 6, 20), mc: ri(rand, 3, 30) }),
+    ({ Q1, dQ, a1, mc }) => mc !== a1 && ((a1 * Q1 + mc * dQ) * 100) % (Q1 + dQ) === 0);
+  const Q2 = k.Q1 + k.dQ; const T1 = k.a1 * k.Q1; const T2 = T1 + k.mc * k.dQ; const a2 = T2 / Q2;
+  return {
+    statement: `Пекарня печёт ${k.Q1} круассанов в день, средние издержки круассана — ${m(k.a1)} руб. Если печь ${Q2}, средние издержки станут ${m(a2)} руб. Во что обходится каждый из ${k.dQ} дополнительных круассанов — каковы предельные издержки?`,
+    parts: [{ answer: k.mc, unit: 'руб.', pos: true }],
+    traps: [
+      { part: 0, value: a2, text: 'Это средние издержки при новом выпуске. Предельные — прирост общих издержек на каждый дополнительный круассан.' },
+      { part: 0, value: k.mc * k.dQ, text: `Это прирост общих издержек за все ${k.dQ} круассанов. На один — разделите на ${k.dQ}.` },
+    ].filter((t) => differs(t.value, k.mc, DEC)),
+    solution: `1. Общие издержки сейчас: $${m(k.a1)} \\cdot ${k.Q1} = ${T1}$ руб., при ${Q2} круассанах: $${m(a2)} \\cdot ${Q2} = ${T2}$ руб.\n`
+      + `2. Прирост: $${T2} - ${T1} = ${T2 - T1}$ руб. за ${k.dQ} круассанов.\n`
+      + `3. Предельные издержки: $${T2 - T1} / ${k.dQ} = ${k.mc}$ руб. на круассан.`,
+    check: ([x]) => near((a2 * Q2 - k.a1 * k.Q1) / k.dQ, x),
+  };
+} });
 // издержки: переменные и средние
 T.push({ id: 'v-costs-types', chapter: 'costs', level: 1, source: 'costs-types', gen: (rand) => {
   const k = { F: ri(rand, 100, 800, 50), v: ri(rand, 5, 40), w: pick(rand, [0.5, 1, 2]), Q: ri(rand, 5, 30) };
