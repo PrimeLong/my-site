@@ -1070,7 +1070,12 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(lrac.getByTestId('tb-readout')).toContainText('положительный эффект масштаба');
   await lrac.getByRole('slider').fill('60');
   await expect(lrac.getByTestId('tb-readout')).toContainText('минимально эффективный масштаб');
-  await page.getByRole('button', { name: 'приложение «Математика для экономиста»' }).click();
+  // производная — во вставке «Вы знаете, что такое производная?»: «Нет, объясните» раскрывает объяснение со ссылкой
+  const ask = page.getByTestId('chapter').locator('[data-testid=tb-ask][data-ask="derivative"]');
+  await expect(ask.getByTestId('tb-ask-body')).toHaveCount(0);
+  await ask.getByTestId('tb-ask-learn').click();
+  await expect(ask.getByTestId('tb-ask-body')).toContainText('Сначала без формул');
+  await ask.getByRole('button', { name: 'приложении «Математика для экономиста»' }).click();
   await expect(page.getByTestId('appendix')).toHaveAttribute('data-appendix', 'math');
   await expect(page.locator('#derivative')).toBeInViewport();
   await bookBack(page);

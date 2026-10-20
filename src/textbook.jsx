@@ -200,7 +200,7 @@ export const TEXTBOOK_CSS = `
      строка под ползунками не перескакивает с одной строки на две и кнопка под ней стоит на месте */
   .tb-ro { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 6px; margin-top: 12px; }
   .tb-ro > div { display: flex; flex-direction: column; justify-content: space-between; gap: 3px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c-text) 5%, transparent); min-width: 0; }
-  .tb-ro-l { font-size: 11.5px; line-height: 1.3; color: var(--c-muted); }
+  .tb-ro-l { font-size: 12px; line-height: 1.3; color: var(--c-muted); }
   .tb-ro b { font-size: 14px; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--c-text); }
   .tb-ro .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
@@ -284,7 +284,7 @@ export const TEXTBOOK_CSS = `
   .tbl-ch-ring[data-full="true"] .fg { stroke: var(--ds-ok); }
   /* число — в кольце целиком: узкие цифры шрифта текста и маленький знак процента (моноширинное «100%» вылезало) */
   .tbl-ch-ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font: 700 12px/1 var(--ds-sans); font-variant-numeric: tabular-nums; letter-spacing: -.02em; color: var(--ds-ink); }
-  .tbl-ch-ring small { font-size: 8.5px; font-weight: 700; margin-left: 1px; color: var(--ds-ink3); }
+  .tbl-ch-ring small { font-size: 12px; font-weight: 400; color: var(--ds-ink3); }
   .tbl-ch-ring[data-full="true"] b { color: var(--ds-ok); }
   @keyframes tbl-ring { from { stroke-dashoffset: var(--len) } }
   @media (prefers-reduced-motion: reduce) { .tbl-ch-ring .fg { animation: none; } }
