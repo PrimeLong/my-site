@@ -67,7 +67,7 @@ import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { levelRegions } from './learn/levelmap.js';
 import { BrandLoader } from './logo.jsx';
 import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, FriendFeed, racesToShow } from './learn-friends.jsx';
-import { Sketch, SKETCH_CSS, SKETCH_QUERY } from './learn-sketch.jsx';
+import { Sketch, SKETCH_CSS, SKETCH_QUERY, SKETCH_BOOK_QUERY } from './learn-sketch.jsx';
 import { Antistress, antistressHidden, antistressBlocked } from './learn-antistress.jsx';
 import { antistressUnlocked } from './learn/antistress.js';
 import { useFriends, pushCard, friendsState } from './lib/friends-store.js';
@@ -2333,6 +2333,7 @@ function GuestSave({ learn, afterLesson = false }) {
 export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReopened = () => {}, onThemeChange = () => {}, onBookOver = () => {}, closeTick = 0, bookHome = 0, pathHome = 0, guest = false, firstLesson = false, onFirstLesson = () => {}, onTab = () => {} }) {
   const [learn, update] = useLearn();
   const [run, setRun] = useState(null);
+  const sketchBook = useMedia(SKETCH_BOOK_QUERY);
   const [sheet, setSheet] = useState(null);
   const [book, setBook] = useState(null);
   const [bookKey, setBookKey] = useState(0);
@@ -2443,7 +2444,9 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
           onTasks={() => { setTasks(true); window.scrollTo(0, 0); }} visible={!over} homeTick={pathHome} folded={folded}
           bell={<BellButton count={notify.unread.length} onClick={() => setBell(true)} />} races={raceCards.length ? raceCards : null} />}
         {tab === 'path' && tasks && <TasksView learn={learn} onStart={start} onOpenBook={openBook} onBack={() => { Audio.play('paper'); setTasks(false); window.scrollTo(0, 0); }} />}
-        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} /></div>}
+        {tab === 'book' && <div className="ln-book" data-testid="book-tab"><TextbookScreen asTab homeTick={bookHome} {...bookHandlers} {...bookReports} />
+          {/* черновик на полях учебника — на широком экране с мышью; пока идёт урок, у урока свой */}
+          {sketchBook && !over && <><style>{SKETCH_CSS}</style><Sketch mode="book" /></>}</div>}
         {tab === 'shop' && <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />}
         {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
         {tab === 'news' && <Lazy><NewsView learn={learn} friendFeed={<FriendFeed data={friends} onOpen={(l) => setFriendLogin(l)} />} /></Lazy>}

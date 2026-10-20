@@ -3841,6 +3841,37 @@ test('новости: выпуск раскрывается и сворачив�
   expect(errors).toEqual([]);
 });
 
+// учебник на широком ПК: поля по бокам от учебника — черновик; сам учебник не рисуется (отчёт mvfapopm)
+test('учебник на широком ПК: черновик на полях, учебник не закрывает', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'черновик — только с мышью на широком экране');
+  await withTestFlag(page);
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await openTab(page, 'book');
+  // 1440 px: учебник занимает почти всю ширину — полей для записей нет
+  await expect(page.getByTestId('sketch-dock')).toHaveCount(0);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.getByTestId('textbook').getByRole('button', { name: /Инфляция/ }).first().click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'inflation');
+  const canvas = page.getByTestId('sketch-canvas');
+  await page.getByTestId('sketch-toggle').click();
+  await expect(page.getByTestId('sketch-toggle')).toHaveAttribute('aria-checked', 'true');
+  await page.mouse.move(120, 300); await page.mouse.down(); await page.mouse.move(280, 340, { steps: 10 }); await page.mouse.up();
+  await expect(canvas).toHaveAttribute('data-strokes', '1');
+  // справа от учебника — тоже поле
+  await page.mouse.move(1700, 400); await page.mouse.down(); await page.mouse.move(1820, 460, { steps: 8 }); await page.mouse.up();
+  await expect(canvas).toHaveAttribute('data-strokes', '2');
+  // по тексту главы — не рисует: учебник работает как обычно
+  const main = page.locator('.tb-ch-main');
+  const box = await main.boundingBox();
+  await page.mouse.move(box.x + 200, box.y + 60); await page.mouse.down(); await page.mouse.move(box.x + 400, box.y + 80, { steps: 8 }); await page.mouse.up();
+  await expect(canvas).toHaveAttribute('data-strokes', '2');
+  // оглавление главы сбоку от текста — внутри учебника: нажатие открывает главу, а не рисует
+  await page.getByTestId('tb-side-toc').getByRole('button', { name: /Деньги и банки/ }).click();
+  await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'money-banks');
+  await expect(canvas).toHaveAttribute('data-strokes', '2');
+  expect(errors).toEqual([]);
+});
+
 test('церемонии: юнит пройден — «Новая марка», «Марка месяца» и «Новая печать» по очереди; показанное не повторяется', async ({ page }) => {
   await withTestFlag(page);
   await page.addInitScript(() => {

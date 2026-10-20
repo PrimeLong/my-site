@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Lightbulb } from 'lucide-react';
+import { ArrowLeft, BookOpenText, BookOpen, Calculator, Gamepad2, Play, Check, RotateCcw, ChevronLeft, ChevronRight, Info, Target, ListChecks, TriangleAlert, Brain, ChevronDown, ChevronUp, ArrowDown, ArrowUp, Lightbulb, X } from 'lucide-react';
 import { COLOR, Audio, AudioControls, getPlayerId, syncProfile } from './MacroSimulator.jsx';
 import { TrainerPage } from './trainer.jsx';
 import { TopBar, IconButton } from './ds.jsx';
@@ -115,7 +115,8 @@ export const TEXTBOOK_CSS = `
   @media (hover: hover) { .tb-recall-opt:hover:not(:disabled) { border-color: var(--c-gold); } }
   .tb-recall-opt:disabled { cursor: default; }
   .tb-recall-opt.right { border-color: var(--c-teal, #2E7D5B); background: color-mix(in srgb, var(--c-teal, #2E7D5B) 12%, var(--c-panel)); color: var(--c-text); }
-  .tb-recall-opt.wrong { border-color: var(--c-rust, #A4462A); border-style: dashed; background: color-mix(in srgb, var(--c-rust, #A4462A) 8%, var(--c-panel)); color: var(--c-text); }
+  /* неверный — сплошная рамка и крестик: пунктир на толстой левой кромке рассыпался на рваные куски (жалоба mvgosm0p) */
+  .tb-recall-opt.wrong { border-color: var(--c-rust, #A4462A); background: color-mix(in srgb, var(--c-rust, #A4462A) 8%, var(--c-panel)); color: var(--c-text); }
   .tb-recall-opt.dim { opacity: .62; }
   .tb-recall-why { font-size: 13px; line-height: 1.5; color: var(--c-text); margin: -4px 0 10px; padding: 6px 10px; border-left: 3px solid var(--c-rust, #A4462A); background: color-mix(in srgb, var(--c-rust, #A4462A) 6%, transparent); }
   .tb-box-head { display: flex; align-items: center; gap: 7px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
@@ -146,6 +147,23 @@ export const TEXTBOOK_CSS = `
   /* карточка задачи (docs/mechanics.md, «Учебник: карточка задачи»): одно главное действие — «Проверить»,
      уверенность — короткий переключатель по желанию, подсказка/решение/калькулятор — тихая панель внизу */
   .tb-prob { background: var(--c-panel); border: 2px solid var(--c-hairline); border-radius: 18px; padding: 14px 16px; box-shadow: 0 2px 0 var(--c-hairline); }
+  /* задача решена верно: плашка с галочкой выпрыгивает, от неё разлетаются искры, рамка задачи коротко
+     светится — раньше был только серый текст (жалоба mvfaw0tz: «никакой анимации, когда верно решил») */
+  .tb-verdict { font-size: 13px; margin-top: 8px; }
+  .tb-verdict.ok { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; color: var(--c-text);
+    background: color-mix(in srgb, var(--c-teal, #2E7D5B) 13%, var(--c-panel)); animation: tb-win-in .35s cubic-bezier(.2,1.3,.4,1) both; }
+  .tb-win-badge { position: relative; flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--c-teal, #2E7D5B); color: #fff;
+    animation: tb-win-pop .55s .05s cubic-bezier(.3,1.7,.5,1) both; }
+  .tb-win-badge i { position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px; border-radius: 50%; background: var(--c); opacity: 0; pointer-events: none;
+    animation: tb-win-spark .9s .12s cubic-bezier(.2,.7,.4,1) both; }
+  .tb-win-badge i:nth-child(odd) { border-radius: 2px; }
+  @keyframes tb-win-in { from { opacity: 0; transform: translateY(5px) } }
+  @keyframes tb-win-pop { from { transform: scale(0) rotate(-40deg) } }
+  @keyframes tb-win-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateX(8px) scale(1) } 60% { opacity: 1 } 100% { opacity: 0; transform: rotate(var(--a)) translateX(36px) scale(.4) } }
+  .tb-prob.tb-win { animation: tb-win-glow 1.3s ease-out; }
+  @keyframes tb-win-glow { 0% { box-shadow: 0 2px 0 var(--c-hairline), 0 0 0 0 color-mix(in srgb, var(--c-teal, #2E7D5B) 50%, transparent) }
+    100% { box-shadow: 0 2px 0 var(--c-hairline), 0 0 0 16px transparent } }
+  @media (prefers-reduced-motion: reduce) { .tb-verdict.ok, .tb-win-badge, .tb-prob.tb-win { animation: none; } .tb-win-badge i { display: none; } }
   .tb-prob-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
   .tb-prob-title { font: 700 16px/1.2 var(--ds-head, sans-serif); color: var(--c-text); }
   .tb-prob-from { font: 400 13px var(--ds-sans, sans-serif); color: var(--c-muted); }
@@ -170,9 +188,21 @@ export const TEXTBOOK_CSS = `
   .tb-tool { display: inline-flex; align-items: center; gap: 6px; padding: 6px 2px; border: none; background: none; font: 700 13.5px var(--ds-sans, sans-serif); color: var(--c-muted); cursor: pointer; }
   .tb-tool:hover, .tb-tool[aria-expanded="true"] { color: var(--c-text); }
   .tb-guess { margin: 4px 0 10px; }
-  .tb-guess-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
-  .tb-guess-name { font-size: 13px; min-width: 9.5em; color: var(--c-text); }
-  @media (max-width: 560px) { .tb-guess-name { flex-basis: 100%; } .tb-guess-row { margin: 8px 0; } }
+  /* прогноз — таблицей: названия в одной колонке, «растёт / падает / не меняется» — ровными столбцами,
+     даже когда одно название длиннее других (жалоба mvfaw0tz) */
+  .tb-guess-grid { display: grid; grid-template-columns: max-content repeat(3, max-content); align-items: center; gap: 4px 6px; }
+  .tb-guess-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
+  .tb-guess-name { font-size: 13px; padding-right: 12px; color: var(--c-text); }
+  .tb-guess-row .tb-pick { text-align: left; }
+  .tb-guess-row .tb-pick { white-space: nowrap; }
+  @media (max-width: 560px) { .tb-guess-grid { grid-template-columns: repeat(3, max-content); row-gap: 0; } .tb-guess-name { grid-column: 1 / -1; padding-top: 6px; } .tb-guess-row .tb-pick { padding: 6px 10px; } }
+  /* итоги графика — плитками: число колонок зависит только от ширины, а не от длины чисел, поэтому
+     строка под ползунками не перескакивает с одной строки на две и кнопка под ней стоит на месте */
+  .tb-ro { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 6px; margin-top: 12px; }
+  .tb-ro > div { display: flex; flex-direction: column; justify-content: space-between; gap: 3px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c-text) 5%, transparent); min-width: 0; }
+  .tb-ro-l { font-size: 11.5px; line-height: 1.3; color: var(--c-muted); }
+  .tb-ro b { font-size: 14px; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--c-text); }
+  .tb-ro .sep { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .tb-flow-step { border: 1px solid var(--c-border); background: var(--c-panel); padding: 8px 12px; }
   .tb-news { background: #E8DFC6; color: #241C12; border: 1px solid #8C6B3E; padding: 8px 12px 10px; margin: 6px 0 10px; }
   .tb-news-mast { font-size: 12px; letter-spacing: .12em; color: #6B5A3E; border-bottom: 3px double #8C6B3E; padding-bottom: 4px; margin-bottom: 6px; }
@@ -517,7 +547,8 @@ function RecallCard({ b, ctx, from }) {
                 const st = chosen == null ? '' : o.correct ? 'right' : chosen === k ? 'wrong' : 'dim';
                 return (
                   <button key={k} type="button" className={`tb-recall-opt ${st}`} data-key={k} aria-pressed={chosen === k} disabled={chosen != null} onClick={() => pick(i, k)}>
-                    {st === 'right' && <Check size={14} strokeWidth={3} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />}<Inline nodes={o.text} ctx={ctx} />
+                    {st === 'right' && <Check size={14} strokeWidth={3} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />}
+                    {st === 'wrong' && <X size={14} strokeWidth={3} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4, color: 'var(--c-rust, #A4462A)' }} />}<Inline nodes={o.text} ctx={ctx} />
                   </button>
                 );
               })}
@@ -863,9 +894,9 @@ function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = 
           );
         })}
       </div>
-      <div data-testid="tb-readout" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', marginTop: 10, fontSize: 12.5 }}>
+      <div data-testid="tb-readout" className="tb-ro">
         {scene.readout.map((r) => (
-          <span key={r.label} style={{ color: COLOR.muted }}>{r.label}: <b className="ems-mono" style={{ color: COLOR.text }}>{r.value}</b></span>
+          <div key={r.label}><span className="tb-ro-l">{r.label}<span className="sep">: </span></span><b className="ems-mono">{r.value}</b></div>
         ))}
       </div>
       {caption && <div style={{ fontSize: 12.5, color: COLOR.muted, marginTop: 8, lineHeight: 1.55 }} data-testid="tb-caption"><Inline nodes={fillVars(caption, captionVars(type, attrs, values))} ctx={ctx} /></div>}
@@ -891,7 +922,10 @@ function flatProblem(x) {
   if (typeof x === 'object') return Object.entries(x).filter(([k]) => k !== 'id' && k !== 'type' && k !== 't').map(([, v]) => flatProblem(v)).filter(Boolean).join(' ');
   return '';
 }
+const WIN_SPARKS = ['#E3B53C', '#2E7D5B', '#C8442F', '#3E6FA8', '#E3B53C', '#2E7D5B', '#C8442F', '#3E6FA8'];
 function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onSolutionOpen, given = null }) {
+  // каждый новый верный ответ — заново: плашка пересоздаётся и анимация играет снова
+  const winKey = useMemo(() => Math.random(), [verdict]);
   const rec = ctx.progress.problems[block.id];
   // решение открыто по кнопке; после ответа, если задача его открывает, — само, пока его не скроют
   const [solMode, setSolMode] = useState(null);
@@ -924,7 +958,7 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
     );
   }
   return (
-    <div id={`problem-${block.id}`} className={`tb-prob${rec && rec.ok ? ' tb-solved' : ''}`} style={{ margin: '14px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-solved={rec && rec.ok ? 'true' : undefined}>
+    <div id={`problem-${block.id}`} className={`tb-prob${rec && rec.ok ? ' tb-solved' : ''}${verdict && verdict.ok ? ' tb-win' : ''}`} style={{ margin: '14px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-solved={rec && rec.ok ? 'true' : undefined}>
       <div className="tb-prob-head">
         <span className="tb-prob-title">{KIND_LABEL[block.kind] || 'Задача'} {no}</span>
         {LEVELS[block.level] && <span className="tb-lv" data-level={block.level} data-testid="tb-level">{LEVELS[block.level]}</span>}
@@ -952,10 +986,15 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
       )}
       <div className="tb-body"><Blocks blocks={statement} ctx={ctx} /></div>
       {children}
-      {verdict && (
-        <div data-testid="tb-verdict" style={{ fontSize: 13, marginTop: 8, color: verdict.bad ? COLOR.muted : verdict.ok ? COLOR.teal : COLOR.rust }}>
-          {verdict.ok && <Check size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}{verdict.text}
+      {verdict && verdict.ok && (
+        <div data-testid="tb-verdict" className="tb-verdict ok" key={winKey} role="status">
+          <span className="tb-win-badge" aria-hidden="true"><Check size={15} strokeWidth={3.2} />
+            {WIN_SPARKS.map((c, k) => <i key={k} style={{ '--a': `${k * 45 + 10}deg`, '--c': c }} />)}</span>
+          <span>{verdict.text.startsWith('Верно') ? <><b style={{ color: COLOR.teal }}>Верно</b>{verdict.text.slice(5)}</> : verdict.text}</span>
         </div>
+      )}
+      {verdict && !verdict.ok && (
+        <div data-testid="tb-verdict" className="tb-verdict" style={{ color: verdict.bad ? COLOR.muted : COLOR.rust }}>{verdict.text}</div>
       )}
       {verdict && verdict.traps && verdict.traps.length > 0 && (
         <div className="tb-box" style={{ borderLeftColor: COLOR.rust, margin: '8px 0 0' }} data-testid="tb-trap">
@@ -1231,6 +1270,7 @@ function GraphGuess({ rows, names, value, onChange }) {
   return (
     <div className="tb-guess" data-testid="tb-guess">
       <div style={{ fontSize: 12.5, color: COLOR.muted, marginBottom: 6 }}>Сначала прогноз: что станет с каждой величиной? Потом проверьте себя ползунком.</div>
+      <div className="tb-guess-grid">
       {rows.map((e) => {
         const name = names[e.key] || e.key;
         return (
@@ -1243,6 +1283,7 @@ function GraphGuess({ rows, names, value, onChange }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -2297,9 +2338,13 @@ export function TextbookScreen({ onBack, onExit = null, resume = false, startPag
     // «продолжить» — глава или приложение; оглавление и «на сегодня» место чтения не меняют
     update((p) => setLast(p, next.kind === 'chapter' || next.kind === 'appendix' ? { kind: next.kind, id: next.id } : p.last));
   };
-  // повторное нажатие на вкладку «Учебник» — на главную страницу учебника (оглавление), к началу
+  /* повторное нажатие на вкладку «Учебник» — на главную страницу учебника (оглавление), к началу.
+     Только новое нажатие: вкладка пересоздаётся при каждом заходе, и старый счётчик сбивал бы
+     возврат оглавления на место, где остановились */
+  const homeSeen = React.useRef(homeTick);
   React.useEffect(() => {
-    if (!homeTick) return;
+    if (homeTick === homeSeen.current) return;
+    homeSeen.current = homeTick;
     if (page.kind !== 'toc') { go({ kind: 'toc' }, { push: false }); setStack([]); }
     if (typeof window !== 'undefined' && window.scrollTo) requestAnimationFrame(() => window.scrollTo(0, 0));
   }, [homeTick]); // eslint-disable-line react-hooks/exhaustive-deps
