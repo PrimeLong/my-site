@@ -994,9 +994,10 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall.getByTestId('tb-recall-verdict')).toContainText('вернётся на повторение');
   await recall.getByTestId('tb-recall-again').click();
   await expect(recall.getByTestId('tb-recall-answer')).toHaveCount(0);
-  // тут же верно — но после ошибки раздел не засчитан: вопрос вернётся в свой день
+  // тут же верно — раздел засчитан, а вопрос остаётся в повторении: вернётся в свой день, чтобы закрепить
   for (let i = 0; i < rightKeys.length; i += 1) await parts.nth(i).locator(`[data-key="${rightKeys[i]}"]`).click();
-  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('в этот раз была ошибка');
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
+  await expect(recall.getByTestId('tb-recall-verdict')).toContainText('вернётся на повторение');
   // следующий раздел: всё верно с первого раза — раздел пройден
   const recall2 = page.getByTestId('chapter').getByTestId('tb-recall').nth(1);
   await recall2.scrollIntoViewIfNeeded();
@@ -1005,7 +1006,7 @@ test('учебник: оглавление, формулы KaTeX, график �
   await expect(recall2.getByTestId('tb-recall-verdict')).toContainText('Раздел пройден');
   await expectNoSidewaysScroll(page);
   await toToc(page);
-  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[data-testid=tb-ch-sections][data-done="1"][data-total="4"]')).toHaveCount(1);
+  await expect(toc.locator('.tb-toc-row', { hasText: 'Спрос и предложение' }).locator('[data-testid=tb-ch-sections][data-done="2"][data-total="4"]')).toHaveCount(1);
   // ни «На сегодня», ни «Оглавления» на страницах: один «назад» вверху
   await expect(page.getByTestId('today-card')).toHaveCount(0);
 
