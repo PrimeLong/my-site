@@ -155,7 +155,7 @@ export const accountFriendAnswer = (token, login, accept) => post({ action: 'fri
 export const accountFriendCancel = (token, login) => post({ action: 'friend-cancel', token, login }, ACCOUNT_API);
 export const accountFriendRemove = (token, login) => post({ action: 'friend-remove', token, login }, ACCOUNT_API);
 export const accountRaceInvite = (token, login) => post({ action: 'race-invite', token, login }, ACCOUNT_API);
-export const accountRaceAnswer = (token, id, accept, day) => post({ action: 'race-answer', token, id, accept, day }, ACCOUNT_API);
+export const accountRaceAnswer = (token, id, accept, day, base = 0) => post({ action: 'race-answer', token, id, accept, day, base }, ACCOUNT_API);
 
 /* Таблица рекордов «Своего дела» (api/records.js): записаться можно только из профиля. */
 const RECORDS_API = '/api/records';

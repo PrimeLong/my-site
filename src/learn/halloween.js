@@ -15,7 +15,13 @@ export const PUMPKIN_GOAL = 13;
 export const WEB_FRAME = 'frame-web';
 // день 'ГГГГ-ММ-ДД' внутри сезона своего года
 export const halloweenOn = (day) => { const md = day.slice(5); return md >= SEASON.from && md <= SEASON.to; };
-const seasonOf = (day) => { const y = day.slice(0, 4); return { from: `${y}-${SEASON.from}`, to: `${y}-${SEASON.to}`, key: `hw:${y}` }; };
+/* событие появилось 17 октября 2026 — тыквы считаются с этого дня: уроки, пройденные до выхода события,
+   не лежат в корзине заранее (жалоба). В следующие годы сезон с первого дня. */
+export const RELEASED = '2026-10-17';
+const seasonOf = (day) => {
+  const y = day.slice(0, 4); const from = `${y}-${SEASON.from}`;
+  return { from, count: from < RELEASED ? RELEASED : from, to: `${y}-${SEASON.to}`, key: `hw:${y}` };
+};
 const daysBetween = (a, b) => Math.round((new Date(`${b}T12:00:00`) - new Date(`${a}T12:00:00`)) / 86400000);
 
 /* Состояние сезона к моменту now: идёт ли, сколько тыкв собрано (не больше цели), можно ли
@@ -25,7 +31,7 @@ export function halloween(learn, now = Date.now()) {
   const day = dayOf(now);
   const s = seasonOf(day);
   const on = halloweenOn(day);
-  const got = Object.entries(learn.done || {}).filter(([d]) => d >= s.from && d <= s.to).reduce((a, [, n]) => a + (Number(n) || 0), 0);
+  const got = Object.entries(learn.done || {}).filter(([d]) => d >= s.count && d <= s.to).reduce((a, [, n]) => a + (Number(n) || 0), 0);
   const pumpkins = Math.min(PUMPKIN_GOAL, got);
   const claimed = !!(learn.claimed || {})[s.key];
   return {

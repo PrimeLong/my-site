@@ -91,7 +91,9 @@ export function raceView(race, learn, friend, now = Date.now()) {
   const days = Array.from({ length: race.days || RACE.days }, (_, k) => addDays(race.start, k));
   const end = days[days.length - 1];
   const sum = (map) => days.reduce((a, d) => a + ((map || {})[d] || 0), 0);
-  const my = sum(learn.xp); const their = sum(friend && friend.card ? friend.card.xpDays : {});
+  // опыт дня старта, набранный до принятия забега, не в счёт (baseMine/baseTheirs — с сервера)
+  const my = Math.max(0, sum(learn.xp) - (race.baseMine || 0));
+  const their = Math.max(0, sum(friend && friend.card ? friend.card.xpDays : {}) - (race.baseTheirs || 0));
   const finished = today > end;
   const result = !finished ? null : my > their ? 'won' : my < their ? 'lost' : 'tie';
   // какой сейчас день забега (0 — ещё не начался: друг в другом часовом поясе принял «завтра»)

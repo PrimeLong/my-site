@@ -219,7 +219,9 @@ export function RaceCard({ v, learn, update, myWear, compact = false }) {
   const [got, setGot] = useState(null);
   const answer = async (accept) => {
     setBusy(true); setErr(null);
-    try { await friendsApi.answerRace(v.id, accept, dayOf(Date.now())); Audio.play(accept ? 'up' : 'paper'); } catch (e) { setErr(e.message); }
+    // опыт, уже набранный сегодня, — точка отсчёта забега: в счёт идёт только то, что после принятия
+    const day = dayOf(Date.now());
+    try { await friendsApi.answerRace(v.id, accept, day, ((learn && learn.xp) || {})[day] || 0); Audio.play(accept ? 'up' : 'paper'); } catch (e) { setErr(e.message); }
     setBusy(false);
   };
   const take = () => { Audio.play('register'); const coins = raceCoins(v); update((s) => claimRace(s, v, Date.now()), { settle: true }); setGot(coins); };
