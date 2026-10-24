@@ -3100,8 +3100,10 @@ test('анимации выключены, если в системе «умен
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const anim = (loc, pseudo = null) => loc.evaluate((el, p) => getComputedStyle(el, p).animationName, pseudo);
   await expect(page.getByTestId('morning')).toBeVisible();
-  // огонёк серии не разгорается, цифры не падают — сразу на месте
-  expect(await anim(page.locator('.rw-fire .ignite'))).toBe('none');
+  // билет не выезжает, огонёк-гравюра не колышется, печать не проставляется, цифры не падают — сразу на месте
+  expect(await anim(page.locator('.rw-ticket'))).toBe('none');
+  expect(await anim(page.locator('.rw-flame'))).toBe('none');
+  expect(await anim(page.locator('.rw-flame path').first())).toBe('none');
   expect(await anim(page.locator('.rw-days span').first())).toBe('none');
   await expect(page.getByTestId('morning-days')).toHaveAttribute('data-value', '1');
   await page.getByTestId('morning-go').click();
@@ -3971,7 +3973,12 @@ test('учебник на широком ПК: черновик на полях,
   const box = await main.boundingBox();
   await page.mouse.move(box.x + 200, box.y + 60); await page.mouse.down(); await page.mouse.move(box.x + 400, box.y + 80, { steps: 8 }); await page.mouse.up();
   await expect(canvas).toHaveAttribute('data-strokes', '2');
-  // оглавление главы сбоку от текста — внутри учебника: нажатие открывает главу, а не рисует
+  // в режиме рисования оглавление сбоку плавно уходит — места для записей больше
+  await expect(page.getByTestId('tb-side-toc')).toBeHidden();
+  // черновик выключили — оглавление вернулось и работает: нажатие открывает главу, записи на полях целы
+  await page.getByTestId('sketch-toggle').click();
+  await expect(page.getByTestId('sketch-toggle')).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByTestId('tb-side-toc')).toBeVisible();
   await page.getByTestId('tb-side-toc').getByRole('button', { name: /Деньги и банки/ }).click();
   await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'money-banks');
   await expect(canvas).toHaveAttribute('data-strokes', '2');
