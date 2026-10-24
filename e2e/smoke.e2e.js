@@ -1754,6 +1754,57 @@ test('путь: после алмазного урока на прошлом у�
   expect(errors).toEqual([]);
 });
 
+// урок не теряется: закрыли или перезагрузили страницу — «Продолжить» с того же места. Серия — одна на день:
+// начатый раньше урок не возвращает серию, сбитую ошибкой в другом (жалоба на абуз)
+test('урок: после перезагрузки продолжается с того же места; начатый урок не воскрешает сбитую серию', async ({ page }) => {
+  test.setTimeout(150_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(['sc-i1', 'sc-l1', 'sc-l2'].map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  // серия дня — в сохранённом состоянии ученика
+  const rc = () => page.evaluate(() => {
+    const d = new Date(); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return ((JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.daily || {})[day] || {}).rc || 0;
+  });
+  const flame = page.getByTestId('lesson-streak');
+  const leaveLesson = async () => {
+    await page.getByRole('button', { name: 'Выйти из урока' }).click();
+    await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
+    await expect(page.getByTestId('lesson')).toHaveCount(0);
+  };
+  // первый урок: три верных подряд — огонёк «3»
+  await startLesson(page, 'sc-l1');
+  for (let k = 0; k < 3; k += 1) { await passCards(page); await answerExercise(page); await page.getByRole('button', { name: 'Дальше', exact: true }).click(); }
+  await passCards(page);
+  await expect(flame).toHaveAttribute('data-streak', '3');
+  expect(await rc()).toBe(3);
+  const ex = page.getByTestId('ex');
+  const here = [await ex.getAttribute('data-kind'), await ex.getAttribute('data-answer')];
+  // браузер закрыли посреди урока — после перезагрузки урок ждёт с того же места, с той же серией
+  await page.reload({ waitUntil: 'networkidle' });
+  await startLesson(page, 'sc-l1', /Продолжить/);
+  await passCards(page);
+  expect([await ex.getAttribute('data-kind'), await ex.getAttribute('data-answer')]).toEqual(here);
+  await expect(flame).toHaveAttribute('data-streak', '3');
+  // ушли в другой урок и ошиблись — серия дня гаснет
+  await leaveLesson();
+  await startLesson(page, 'sc-l2');
+  await passCards(page);
+  await answerExercise(page, { wrong: true });
+  expect(await rc()).toBe(0);
+  await leaveLesson();
+  // вернулись в первый урок — серия не воскресает из сохранённого урока
+  await startLesson(page, 'sc-l1', /Продолжить/);
+  await passCards(page);
+  await expect(flame).toHaveCount(0);
+  expect(await rc()).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('путь: юнит «Спрос и предложение» — каждый вид урока проходится на телефоне', async ({ page }) => {
   test.setTimeout(180_000);
   await withTestFlag(page);

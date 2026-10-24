@@ -33,7 +33,7 @@ import {
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak,
-  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp,
+  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp, syncStreak, streakNow,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
@@ -836,9 +836,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     el.classList.remove('ds-shake'); void el.offsetWidth; el.classList.add('ds-shake');
   }, [anim]);
   useEffect(() => { if (shakeRef.current) shakeRef.current.classList.remove('ds-shake'); }, [pos]);
-  /* серия верных подряд не обнуляется между уроками: начинаем с сегодняшней серии дня (daily.rc в
-     learn-state — её ведёт recordAttempt на каждой первой попытке, она же синхронизируется между устройствами) */
-  const [run3, setRun3] = useState(() => { const d = (learn.daily || {})[dayOf(Date.now())]; return d && d.rc ? d.rc : rs ? rs.streak || 0 : 0; });
+  /* серия верных подряд не обнуляется между уроками: урок начинается с сегодняшней серии дня (daily.rc в
+     learn-state) — и только с неё. Своей серии у сохранённого урока нет: иначе ошибся, открыл начатый
+     урок — и серия снова тут (жалоба). Каждое изменение огонька сразу пишется в rc (syncStreak). */
+  const [run3, setRun3Raw] = useState(() => streakNow(learn));
+  const setRun3 = (next) => { setRun3Raw(next); update((s) => syncStreak(s, next)); };
   // линия графика прогресса: первые попытки по порядку; pulse — короткая вспышка на верном ответе серии
   const [log, setLog] = useState(rs ? rs.log || [] : []);
   /* «Слушай» и «История» — лента: прошлые сообщения и отвеченные вопросы остаются в ней
@@ -926,7 +928,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       // та же задача ждёт повторения в учебнике — это и есть её повторение (review-sync.js)
       if (!a.hinted[orig]) update((p) => afterPathAnswer(p, baseId), { whole: true });
       // серия: с третьего верного подряд каждый — ещё +1 опыта (огонёк в шапке показывает «+1»)
-      if (firstTime) { a.bonus += streakBonus(run3 + 1); setRun3((n) => n + 1); }
+      if (firstTime) { a.bonus += streakBonus(run3 + 1); setRun3(run3 + 1); }
       Audio.play('coin'); vibrate(15);
     } else {
       setRun3(0);
@@ -1024,20 +1026,33 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   };
   const termCtx = useMemo(() => ({ ...noopCtx, onTerm: openTerm }), // eslint-disable-next-line react-hooks/exhaustive-deps
     [orig, fb]);
-  // выход после первого ответа: урок сохраняется целиком и продолжается с того же места
-  const leave = () => {
-    if (run.mode === 'lesson' && started && stage !== 'done') {
-      const a = acc.current;
-      const at = fb && !fb.empty ? pos + 1 : pos;
-      saveResume(run.lessonId, {
-        plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
-        first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
-        cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history, bonus: a.bonus,
-      });
-      if (at >= queue.length) dropResume(run.lessonId);
-    }
-    onClose();
+  /* урок после первого ответа сохраняется целиком и продолжается с того же места: при выходе
+     крестиком, после каждого ответа и когда страницу закрывают или прячут — закрытый браузер и
+     перезагрузка больше не теряют урок (жалоба: «случайно закрыл браузер — всё слетело») */
+  const snapshot = () => {
+    if (run.mode !== 'lesson' || !started || stage === 'done') return;
+    const a = acc.current;
+    const at = fb && !fb.empty ? pos + 1 : pos;
+    if (at >= queue.length) { dropResume(run.lessonId); return; }
+    saveResume(run.lessonId, {
+      plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
+      first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
+      cardsSeen: [...cardsSeen.current], log, kind: cur ? cur.kind : 'choice', history, bonus: a.bonus,
+    });
   };
+  const snapRef = useRef(snapshot);
+  snapRef.current = snapshot;
+  // после каждого ответа и шага — свежий снимок
+  useEffect(() => { snapRef.current(); }, [pos, fb, stage, queue.length, started]);
+  // страницу закрывают, перезагружают или уводят в фон (телефон) — снимок на самом свежем месте
+  useEffect(() => {
+    const save = () => snapRef.current();
+    const hidden = () => { if (document.visibilityState === 'hidden') save(); };
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('pagehide', save); document.removeEventListener('visibilitychange', hidden); };
+  }, []);
+  const leave = () => { snapshot(); onClose(); };
   // пустой план (упражнения ошибок убраны из курса) — сразу итог
   useEffect(() => { if (stage === 'work' && !cur && !result) finish(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, cur, result]);

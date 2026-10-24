@@ -121,6 +121,18 @@ export function recordAttempt(s, kind, ok, ms, { lesson = null, now = Date.now()
   patch.daily = { ...s.daily, [day]: { ...d, a: d.a + 1, c: d.c + (ok ? 1 : 0), rc, r: Math.max(d.r, rc) } };
   return upd(s, patch);
 }
+/* Серия верных ответов урока — одна на день: огонёк урока и rc дня всегда одно число. recordAttempt
+   ведёт её по первым попыткам; урок вызывает syncStreak на каждом изменении огонька — и ошибка в
+   повторе задачи в конце урока тоже гасит серию дня. Иначе огонёк и rc расходились: ошибся на повторе,
+   урок кончился — а следующий начинался с прежней серии (жалоба). */
+export function syncStreak(s, n, now = Date.now()) {
+  const day = dayOf(now); const d = dayEntry(s, day);
+  const rc = Math.max(0, Math.round(n || 0));
+  if (d.rc === rc && d.r >= rc) return s;
+  return upd(s, { daily: { ...s.daily, [day]: { ...d, rc, r: Math.max(d.r, rc) } } });
+}
+// серия, с которой начинается урок: сегодняшняя (вчерашняя к утру гаснет)
+export const streakNow = (s, now = Date.now()) => dayEntry(s, dayOf(now)).rc;
 const DAILY_FIELDS = ['l', 'n', 'p', 'a', 'c', 's', 'r', 'rc', 'g', 'pr', 'h'];
 const dayEntry = (s, day) => ({ l: 0, n: 0, p: 0, a: 0, c: 0, s: 0, r: 0, rc: 0, g: 0, pr: 0, h: 0, ...(s.daily || {})[day] });
 export const dailyOf = (s, now = Date.now()) => dayEntry(s, dayOf(now));
