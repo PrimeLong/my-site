@@ -3347,6 +3347,14 @@ test('учебник: калькулятор по полям а → б → в, �
   await done.getByTestId('tb-problem-collapse-bottom').click();
   await expect(done).toHaveAttribute('data-collapsed', 'true');
   await expect(done).toBeInViewport();
+  // и нерешённую можно свернуть — отложить на потом: строка говорит «не решена», без зелёной отметки
+  const todo = ch.locator(`[data-problem="${curId}"]`);
+  await todo.getByTestId('tb-problem-collapse').click();
+  await expect(todo).toHaveAttribute('data-collapsed', 'true');
+  await expect(todo).not.toHaveAttribute('data-solved', 'true');
+  await expect(todo).toContainText(/не решена|была ошибка/);
+  await todo.getByTestId('tb-problem-expand').click();
+  await expect(todo.getByRole('button', { name: /Проверить/ }).first()).toBeVisible();
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();
@@ -4183,11 +4191,11 @@ test('антистресс: после четырёх уроков — знак�
   await box.hover();
   await page.getByTestId('antistress-pad-up').click();
   await expect(box).toHaveAttribute('data-player', 'you');
-  // тетрис — тоже можно перехватить
+  // тетрис — тоже можно перехватить, и буквами WASD (здесь A — влево)
   await page.getByTestId('antistress-prev').click();
   await expect(box).toHaveAttribute('data-channel', 'tetris');
   await box.hover();
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('a');
   await expect(box).toHaveAttribute('data-player', 'you');
   // пауза и снова
   await page.getByTestId('antistress-play').click();

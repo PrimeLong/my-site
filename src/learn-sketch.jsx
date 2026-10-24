@@ -68,6 +68,19 @@ export const SKETCH_CSS = `
   .ln-root[data-sketching] * { cursor: inherit !important; user-select: none; }
   .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book { cursor: var(--sk-cursor, crosshair); }
   .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > * { cursor: auto; }
+  /* учебник: черновик включён — оглавление главы плавно уходит, учебник сужается до колонки текста,
+     и полям для записей достаётся вся освободившаяся ширина */
+  @media (min-width: 1024px) {
+    .ln-tab > .ln-book > .ln-textbook.wide { transition: max-width .45s cubic-bezier(.4, 0, .2, 1); }
+    .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-grid { transition: grid-template-columns .45s cubic-bezier(.4, 0, .2, 1), gap .45s cubic-bezier(.4, 0, .2, 1); }
+    .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-aside { min-width: 0; transition: opacity .3s ease, transform .3s ease, visibility 0s; }
+    .ln-root[data-sketch][data-sketch-mode="book"] > .ln-tab > .ln-book > .ln-textbook.wide { max-width: 920px !important; }
+    .ln-root[data-sketch][data-sketch-mode="book"] .ln-textbook.wide .tb-ch-grid { grid-template-columns: 0px minmax(0, 1fr); gap: 0; }
+    .ln-root[data-sketch][data-sketch-mode="book"] .ln-textbook.wide .tb-ch-aside { opacity: 0; transform: translateX(-24px); visibility: hidden; pointer-events: none;
+      transition: opacity .25s ease, transform .3s ease, visibility 0s .3s; }
+    .ln-root[data-sketch][data-sketch-mode="book"] .ln-textbook.wide .tb-ch-main { margin: 0 auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { .ln-tab > .ln-book > .ln-textbook.wide, .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-grid, .ln-tab > .ln-book > .ln-textbook.wide .tb-ch-aside { transition: none; } }
 
   .sk-dock { position: absolute; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 7; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
   .sk-glass { border: 1px solid color-mix(in srgb, var(--ds-rule2) 75%, transparent); background: color-mix(in srgb, var(--ds-card) 76%, transparent);
@@ -183,7 +196,10 @@ function drawStroke(ctx, s, color, alpha) {
    на том же месте у колонки), прокрутка страницы (y точек — от верха страницы) и где холст в окне. */
 function frameOf(mode, r) {
   const box = r.getBoundingClientRect();
-  if (MODES[mode].page) return { w: window.innerWidth, h: window.innerHeight, cx: box.left + box.width / 2, sy: window.scrollY, ox: 0, oy: 0 };
+  /* холст на странице закреплён на экране — его размер без полосы прокрутки (clientWidth), а не всё окно:
+     иначе растр шире холста на ширину полосы, запись сжимается и справа отстаёт от курсора */
+  const vp = document.documentElement;
+  if (MODES[mode].page) return { w: vp.clientWidth || window.innerWidth, h: vp.clientHeight || window.innerHeight, cx: box.left + box.width / 2, sy: window.scrollY, ox: 0, oy: 0 };
   return { w: r.clientWidth, h: r.clientHeight, cx: r.clientWidth / 2, sy: 0, ox: box.left, oy: box.top };
 }
 function wipeCanvas(c) {
@@ -319,6 +335,11 @@ export function Sketch({ mode = 'lesson' }) {
     // окно сменило размер или тему — черновик перерисовывается в новых размерах и цветах
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => paint()) : null;
     if (ro) ro.observe(r);
+    // колонка сменила ширину (учебник сузился под черновик) — поля и вырез холста заново
+    const col = r.querySelector(M.col);
+    if (ro && col) ro.observe(col);
+    const settled = (e) => { if (e.target === col && e.propertyName === 'max-width') paint(); };
+    r.addEventListener('transitionend', settled);
     const mo = typeof MutationObserver !== 'undefined' ? new MutationObserver(() => paint()) : null;
     if (mo) mo.observe(r, { attributes: true, attributeFilter: ['class', 'data-ds-theme'] });
     // страница прокручивается — холст на экране перерисовывает запись на новом месте; док — над нижней панелью
@@ -335,6 +356,7 @@ export function Sketch({ mode = 'lesson' }) {
       window.removeEventListener('resize', onScroll);
       window.removeEventListener('resize', nav);
       cancelAnimationFrame(scrollFrame);
+      r.removeEventListener('transitionend', settled);
       r.removeEventListener('pointerdown', down);
       r.removeEventListener('pointermove', move);
       r.removeEventListener('pointerup', up);

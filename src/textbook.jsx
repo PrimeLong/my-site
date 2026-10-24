@@ -47,6 +47,7 @@ export const TEXTBOOK_CSS = `
   /* решённая задача — видно издалека: зелёная кайма слева, лёгкий зелёный фон, плашка «Решена» */
   .tb-solved { border-left: 4px solid var(--c-teal, #2E7D5B) !important; background: color-mix(in srgb, var(--c-teal, #2E7D5B) 7%, var(--c-panel, #fff)) !important; }
   .tb-solved-mark { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--c-teal, #2E7D5B); color: #fff; }
+  .tb-todo-mark { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: 2px dashed var(--c-border); color: var(--c-muted); font: 700 12px/1 var(--ds-sans, sans-serif); }
   /* повторение: карточка уходит — «вернётся» (ярлык-календарь, вправо) или «выучено» (печать, искры, растворяется) */
   .rv-item { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .45s ease .2s; }
   .rv-item.leaving { grid-template-rows: 0fr; }
@@ -931,11 +932,13 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const [solMode, setSolMode] = useState(null);
   const [hintsShown, setHintsShown] = useState(0);
   /* задача, решённая раньше (и не пришедшая на повтор), свёрнута в строку «решена» — сборник не
-     приходится листать через уже сделанное; развернуть — по нажатию. Свернуть можно любую решённую
-     (и только что решённую) — кнопкой «Свернуть» вверху карточки и внизу, у «Решения»; свёрнутая
-     строка остаётся на виду. В повторении не сворачивают: карточка уходит сама (ReviewItem). */
+     приходится листать через уже сделанное; развернуть — по нажатию. Свернуть можно любую задачу, и
+     нерешённую тоже (отложить на потом) — кнопкой «Свернуть» вверху карточки и внизу, у «Решения»;
+     свёрнутая строка остаётся на виду и говорит, решена ли задача. В повторении не сворачивают:
+     карточка уходит сама (ReviewItem). */
   const [collapsed, setCollapsed] = useState(() => !ctx.inReview && !!(rec && rec.ok && !(rec.due && rec.due <= Date.now())));
-  const canCollapse = !ctx.inReview && !!(rec && rec.ok);
+  const canCollapse = !ctx.inReview;
+  const solved = !!(rec && rec.ok);
   const collapse = () => {
     Audio.play('click'); setCollapsed(true);
     setTimeout(() => { const el = document.getElementById(`problem-${block.id}`); if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' }); }, 0);
@@ -946,12 +949,14 @@ function ProblemFrame({ block, no, ctx, from, children, verdict, answerText, onS
   const open = solMode != null ? solMode : !!(verdict && verdict.reveal);
   if (collapsed) {
     return (
-      <div id={`problem-${block.id}`} className="ems-panel tb-solved" style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true" data-solved="true">
+      <div id={`problem-${block.id}`} className={`ems-panel${solved ? ' tb-solved' : ''}`} style={{ padding: '8px 14px', margin: '8px 0', scrollMarginTop: 64 }} data-testid="tb-problem" data-problem={block.id} data-kind={block.kind} data-collapsed="true" data-solved={solved ? 'true' : undefined}>
         <button type="button" className="tb-link" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', fontSize: 13.5, textDecoration: 'none' }} aria-expanded="false"
           data-testid="tb-problem-expand" onClick={() => { Audio.play('click'); setCollapsed(false); }}>
-          <span className="tb-solved-mark" aria-hidden="true"><Check size={15} strokeWidth={3} /></span>
+          {solved ? <span className="tb-solved-mark" aria-hidden="true"><Check size={15} strokeWidth={3} /></span>
+            : <span className="tb-todo-mark" aria-hidden="true">{no}</span>}
           <span style={{ flex: 1, color: COLOR.text }}><span className="ems-serif" style={{ color: COLOR.goldSoft }}>{from ? `${from} · ` : ''}{KIND_LABEL[block.kind] || 'Задача'} · {no}</span>
-            {' — '}<b style={{ color: COLOR.teal }}>решена</b>{rec.due ? <span style={{ color: COLOR.muted }}>, повтор {daysUntil(rec.due)}</span> : ''}</span>
+            {' — '}{solved ? <b style={{ color: COLOR.teal }}>решена</b> : <b style={{ color: rec ? COLOR.rust : COLOR.muted }}>{rec ? 'была ошибка' : 'не решена'}</b>}
+            {rec && rec.due ? <span style={{ color: COLOR.muted }}>, повтор {daysUntil(rec.due)}</span> : ''}</span>
           <ChevronDown size={14} aria-hidden="true" />
         </button>
       </div>
