@@ -400,35 +400,36 @@ export const achievementKey = (id) => `a:${id}`;
 /* ------------------------------ ИСПЫТАНИЕ МЕСЯЦА ------------------------------ */
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const inMonth = (map, month) => Object.entries(map || {}).filter(([k]) => k.startsWith(month));
-/* Испытание ПЕРСОНАЛЬНОЕ и трудное: цель считается от самого ученика, но с запасом.
+/* Испытание ПЕРСОНАЛЬНОЕ и посильное: цель считается от самого ученика.
    — Темп: цель дня в минутах → сколько это уроков, опыта, уроков без ошибок за день; за
-     месяц — почти каждый день (шесть дней из семи) и чуть выше обычного темпа. Испытание
-     месяца — не «отметиться», а постараться: «8 уроков без ошибок за месяц» было слишком легко.
+     месяц — обычный темп пять дней из семи. Прежнее «шесть дней из семи и выше темпа, +20% к
+     прошлому месяцу» было слишком трудным (жалоба: «задания месяца слишком сложные»): при цели
+     10 минут выходило под восемьдесят уроков.
    — Бывают и испытания постоянства: заниматься N дней месяца, выполнить все задания дня N раз.
-   — История: если в прошлом месяце сделано больше темпа — цель всегда БОЛЬШЕ прошлого
-     (+20%, не меньше чем на единицу шага), иначе «теперь чуть больше» было бы неправдой.
+   — История: если в прошлом месяце сделано больше темпа — цель чуть больше прошлого (+10%, не
+     меньше чем на единицу шага), иначе «теперь чуть больше» было бы неправдой.
    — Пришёл посреди месяца — темп и нижняя планка считаются по оставшимся дням.
    Цель закрепляется при первом показе (fixMonth) вместе с видом испытания; планы прежних
-   правил (без v: 2), пока марка не получена, считаются заново. */
+   правил (v меньше нынешней), пока марка не получена, считаются заново. */
 const quests = (s, m) => Object.keys(s.claimed || {}).filter((k) => k.startsWith(`q:${m}`) && k.endsWith(':all')).length;
 const MONTH_KINDS = [
-  { id: 'minutes', floor: 300, round: 10, pace: (m) => m * 1.15, title: (t) => `Заниматься ${t} минут в этом месяце`, unit: () => 'мин',
+  { id: 'minutes', floor: 200, round: 10, pace: (m) => m, title: (t) => `Заниматься ${t} минут в этом месяце`, unit: () => 'мин',
     have: (s, m) => Math.floor(inMonth(s.daily, m).reduce((a, [, d]) => a + (d.s || 0), 0) / 60) },
-  { id: 'lessons', floor: 30, round: 1, pace: (m) => m / 3.5, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
+  { id: 'lessons', floor: 18, round: 1, pace: (m) => m / 6, title: (t) => `Пройти ${t} ${plural(t, 'урок', 'урока', 'уроков')} в этом месяце`, unit: (n) => plural(n, 'урок', 'урока', 'уроков'),
     have: (s, m) => inMonth(s.done, m).reduce((a, [, v]) => a + v, 0) },
-  { id: 'perfect', floor: 15, round: 1, pace: (m) => m / 12, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без единой ошибки в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
+  { id: 'perfect', floor: 8, round: 1, pace: (m) => m / 25, title: (t) => `${t} ${plural(t, 'урок', 'урока', 'уроков')} без единой ошибки в этом месяце`, unit: (n) => `${plural(n, 'урок', 'урока', 'уроков')} без ошибок`,
     have: (s, m) => inMonth(s.daily, m).reduce((a, [, d]) => a + d.p, 0) },
-  { id: 'xp', floor: 700, round: 10, pace: (m) => m * 5, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
+  { id: 'xp', floor: 450, round: 10, pace: (m) => m * 3, title: (t) => `Набрать ${t} опыта в этом месяце`, unit: () => 'опыта',
     have: (s, m) => inMonth(s.xp, m).reduce((a, [, v]) => a + v, 0) },
-  { id: 'days', floor: 22, round: 1, pace: () => 1, steady: 'Испытание постоянства: почти каждый день месяца.', title: (t) => `Заниматься ${t} ${plural(t, 'день', 'дня', 'дней')} этого месяца`, unit: (n) => plural(n, 'день', 'дня', 'дней'),
+  { id: 'days', floor: 15, round: 1, pace: () => 1, steady: 'Испытание постоянства: больше половины дней месяца.', title: (t) => `Заниматься ${t} ${plural(t, 'день', 'дня', 'дней')} этого месяца`, unit: (n) => plural(n, 'день', 'дня', 'дней'),
     have: (s, m) => inMonth(s.done, m).filter(([, v]) => v > 0).length },
-  { id: 'quests', floor: 12, round: 1, pace: () => 0.6, steady: 'Испытание постоянства: все три задания дня — чаще, чем через день.', title: (t) => `Выполнить все задания дня ${t} ${plural(t, 'раз', 'раза', 'раз')} за месяц`, unit: (n) => plural(n, 'раз', 'раза', 'раз'),
+  { id: 'quests', floor: 8, round: 1, pace: () => 0.35, steady: 'Испытание постоянства: все три задания дня — два-три раза в неделю.', title: (t) => `Выполнить все задания дня ${t} ${plural(t, 'раз', 'раза', 'раз')} за месяц`, unit: (n) => plural(n, 'раз', 'раза', 'раз'),
     have: (s, m) => quests(s, m) },
 ];
 const KIND_BY_ID = Object.fromEntries(MONTH_KINDS.map((k) => [k.id, k]));
 export const MONTH_COINS = 100;
-const ACTIVE_SHARE = 6 / 7;
-const MONTH_PLAN_V = 2;
+const ACTIVE_SHARE = 5 / 7;
+const MONTH_PLAN_V = 3;
 // первый день ученика: регистрация или самое раннее занятие
 const firstDay = (s) => {
   const days = [...Object.keys(s.done || {}), ...Object.keys(s.xp || {})].sort();
@@ -457,8 +458,8 @@ export function monthChallenge(s, now = Date.now()) {
   const floor = up(kind.floor * Math.max(0.5, Math.min(1, span / last)));
   // дней в месяце больше не станет: испытание постоянства не выше оставшихся дней
   const cap = kind.steady ? span : Infinity;
-  // прошлый месяц выше темпа — цель строго больше прошлого: +20%, минимум на один шаг
-  const grown = before > byPace ? Math.max(up(before * 1.2), before + kind.round) : 0;
+  // прошлый месяц выше темпа — цель чуть больше прошлого: +10%, минимум на один шаг
+  const grown = before > byPace ? Math.max(up(before * 1.1), before + kind.round) : 0;
   const fromHistory = grown <= cap ? grown : 0;
   // цель месяца закреплена при первом показе (fixMonth): поменяли цель дня — испытание то же
   const target = plan ? plan.target : Math.min(cap, Math.max(floor, up(byPace), fromHistory));
@@ -469,8 +470,8 @@ export function monthChallenge(s, now = Date.now()) {
   // почему именно столько — чтобы цель читалась как своя, а не взятая с потолка
   const why = plan && plan.why ? plan.why : fromHistory && target === fromHistory ? `В прошлом месяце — ${before}, теперь ${target}: чуть больше.`
     : kind.steady ? kind.steady
-      : target === floor && up(byPace) < floor ? `По вашей цели — ${mins} минут в день, но испытание месяца — с запасом: больше обычного темпа.`
-        : `По вашей цели — ${mins} минут в день, почти каждый день и чуть больше обычного.`;
+      : target === floor && up(byPace) < floor ? `По вашей цели — ${mins} минут в день: испытание чуть больше обычного темпа.`
+        : `По вашей цели — ${mins} минут в день, пять дней в неделю.`;
   return { month, name: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`, id: kind.id, title: kind.title(target), have, target, need: Math.max(0, target - have), unit: kind.unit(Math.max(0, target - have)),
     done: have >= target, claimed: hasClaim(s, key), key, coins: MONTH_COINS, daysLeft, why };
 }

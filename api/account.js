@@ -253,6 +253,7 @@ async function handleRequest(req, res) {
     const other = await getUser(to);
     if (!other) return res.status(404).json({ error: 'Ученика с таким логином нет' });
     const now = Date.now();
+    if (Number(me.friends[to]) > now - RACE.friendMs) return res.status(400).json({ error: 'Позвать на забег можно через сутки дружбы' });
     const races = await getRaces(me.races);
     if (races.some((r) => [r.from, r.to].includes(to) && raceOpen(r, now))) return res.status(400).json({ error: 'С этим другом забег уже идёт или ждёт ответа' });
     if (races.filter((r) => r.from === user.login && raceStatus(r, now) === 'pending').length >= RACE.maxOpen) return res.status(400).json({ error: 'Подождите ответа на прошлые приглашения' });

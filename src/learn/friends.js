@@ -13,7 +13,14 @@ import { pathState, levelOf, LEVEL_BY_ID } from './course.js';
 import { placeOf } from '../ds-tokens.js';
 
 const DAY_MS = 86400000;
-export const RACE = { days: 3, acceptHours: 24, win: 40, tie: 25, lose: 15, onlineDays: 7 };
+export const RACE = { days: 3, acceptHours: 24, win: 40, tie: 25, lose: 15, onlineDays: 7, friendHours: 24 };
+/* звать на забег можно друга, с которым дружите хотя бы сутки: только что добавленного — странно
+   (жалоба), забег — между знакомыми. friendSince — когда стали друзьями (since с сервера) */
+export const raceReadyIn = (f, now = Date.now()) => {
+  const since = f && Number(f.since);
+  if (!since) return 0;
+  return Math.max(0, Math.ceil((since + RACE.friendHours * 3600000 - now) / 3600000));
+};
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 
 /* Знаменательные события: пройденный юнит, серия (3, 7, 14, 30… дней), печать, марка месяца,
@@ -76,7 +83,7 @@ export function seenText(f, now = Date.now()) {
   return `в сети ${d} ${plural(d, 'день', 'дня', 'дней')} назад`;
 }
 // позвать на забег можно друга, который был в сети за последние семь дней
-export const raceable = (friends = [], now = Date.now()) => friends.filter((f) => lastSeenDays(f, now) <= RACE.onlineDays);
+export const raceable = (friends = [], now = Date.now()) => friends.filter((f) => lastSeenDays(f, now) <= RACE.onlineDays && raceReadyIn(f, now) === 0);
 
 /* Забег глазами ученика: статус, дни, опыт обоих (свой — из прогресса, друга — из карточки).
    finished — день после трёх дней забега уже наступил. */
