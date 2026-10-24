@@ -45,6 +45,17 @@ describe('шарик в кольце', () => {
     expect(b.r).toBeLessThanOrEqual(RING.rMax);
     expect(b.gap).toBeGreaterThan(RING.gap);
   });
+  it('шарик вылетает, только когда целиком помещается в прорезь; раунд — не дольше минуты', () => {
+    [3, 7, 11, 19, 23].forEach((seed) => {
+      const rand = seeded(seed);
+      let b = newBall(rand); let t = 0; let prev = b;
+      while (!b.out && t < 600) { prev = b; b = stepBall(b, 1 / 60, rand); t += 1 / 60; }
+      expect(b.out, `seed ${seed}`).toBe(true);
+      // в момент вылета дуга прорези длиннее диаметра шарика
+      expect(prev.gap * RING.r, `seed ${seed}`).toBeGreaterThan(2 * b.r);
+      expect(t, `seed ${seed}`).toBeLessThan(60);
+    });
+  });
   it('прорезь вращается с постоянной скоростью', () => {
     const d = gapAt(1) - gapAt(0);
     expect(d).toBeCloseTo(RING.spin, 6);

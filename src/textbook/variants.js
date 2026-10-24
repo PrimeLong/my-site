@@ -376,15 +376,16 @@ T.push({ id: 'v-costs-mcavg', chapter: 'costs', level: 2, source: 'costs-from-av
     ({ Q1, dQ, a1, mc }) => mc !== a1 && ((a1 * Q1 + mc * dQ) * 100) % (Q1 + dQ) === 0);
   const Q2 = k.Q1 + k.dQ; const T1 = k.a1 * k.Q1; const T2 = T1 + k.mc * k.dQ; const a2 = T2 / Q2;
   return {
-    statement: `Пекарня печёт ${k.Q1} круассанов в день, средние издержки круассана — ${m(k.a1)} руб. Если печь ${Q2}, средние издержки станут ${m(a2)} руб. Во что обходится каждый из ${k.dQ} дополнительных круассанов — каковы предельные издержки?`,
+    statement: `Пекарня печёт ${k.Q1} круассанов в день, средние издержки круассана — ${m(k.a1)} руб. Если печь ${Q2}, средние издержки станут ${m(a2)} руб. Во что обходится каждый из ${k.dQ} дополнительных круассанов? Это и есть предельные издержки.`,
     parts: [{ answer: k.mc, unit: 'руб.', pos: true }],
     traps: [
       { part: 0, value: a2, text: 'Это средние издержки при новом выпуске. Предельные — прирост общих издержек на каждый дополнительный круассан.' },
       { part: 0, value: k.mc * k.dQ, text: `Это прирост общих издержек за все ${k.dQ} круассанов. На один — разделите на ${k.dQ}.` },
     ].filter((t) => differs(t.value, k.mc, DEC)),
-    solution: `1. Общие издержки сейчас: $${m(k.a1)} \\cdot ${k.Q1} = ${T1}$ руб., при ${Q2} круассанах: $${m(a2)} \\cdot ${Q2} = ${T2}$ руб.\n`
-      + `2. Прирост: $${T2} - ${T1} = ${T2 - T1}$ руб. за ${k.dQ} круассанов.\n`
-      + `3. Предельные издержки: $${T2 - T1} / ${k.dQ} = ${k.mc}$ руб. на круассан.`,
+    solution: `Средние издержки сами не говорят, во что обходятся новые круассаны: средние — это общие издержки, поделённые на все круассаны сразу. Поэтому идём через общие издержки: средние × количество.\n\n`
+      + `1. Общие издержки сейчас: $${m(k.a1)} \\cdot ${k.Q1} = ${T1}$ руб., при ${Q2} круассанах: $${m(a2)} \\cdot ${Q2} = ${T2}$ руб.\n`
+      + `2. Дополнительные ${k.dQ} круассанов добавили к общим издержкам $${T2} - ${T1} = ${T2 - T1}$ руб.\n`
+      + `3. На один дополнительный круассан: $${T2 - T1} / ${k.dQ} = ${k.mc}$ руб. — это и есть предельные издержки.`,
     check: ([x]) => near((a2 * Q2 - k.a1 * k.Q1) / k.dQ, x),
   };
 } });
@@ -798,9 +799,13 @@ export const templatesOf = (chapterId) => T.filter((t) => t.chapter === chapterI
 /* Вариант как блок задачи — такой же, как задачи глав: его рисует тот же NumberProblem.
    Ловушку, совпавшую с верным ответом, выбрасываем (тесты следят, чтобы таких не было). */
 const LABELS = ['а)', 'б)', 'в)', 'г)'];
+/* «{,}» — десятичная запятая для формулы (KaTeX); в обычном тексте вне $…$ она осталась бы со
+   скобками — «7{,}75» (отчёт mvit3sko). Вне формул — просто запятая. */
+const textCommas = (s) => String(s).split(/(\$\$[\s\S]*?\$\$|\$[^$]*\$)/).map((seg, i) => (i % 2 ? seg : seg.replace(/\{,\}/g, ','))).join('');
 export function makeVariant(tplId, seed) {
   const tpl = TEMPLATE_BY_ID[tplId];
-  const v = tpl.gen(seeded(seed));
+  const raw = tpl.gen(seeded(seed));
+  const v = { ...raw, statement: textCommas(raw.statement), solution: textCommas(raw.solution), traps: raw.traps.map((tr) => ({ ...tr, text: textCommas(tr.text) })) };
   const parts = v.parts.map((pt, k) => ({ label: v.parts.length > 1 ? LABELS[k] : '', answer: pt.answer, tol: pt.tol != null ? pt.tol : null, unit: pt.unit || '' }));
   const traps = v.traps.filter((tr) => differs(tr.value, parts[tr.part].answer, parts[tr.part].tol || 0))
     .map((tr) => ({ part: tr.part, value: tr.value, text: parseInline(tr.text) }));

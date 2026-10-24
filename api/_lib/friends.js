@@ -6,7 +6,8 @@
 export const MAX_FRIENDS = 100;
 export const MAX_PENDING = 50;
 // забег: сутки на принятие, три дня гонки, не больше трёх своих приглашений, ждущих ответа
-export const RACE = { acceptMs: 24 * 3600 * 1000, days: 3, maxOpen: 3, keep: 20 };
+// friendMs — сколько нужно дружить, чтобы позвать на забег (совпадает с RACE.friendHours клиента)
+export const RACE = { acceptMs: 24 * 3600 * 1000, days: 3, maxOpen: 3, keep: 20, friendMs: 24 * 3600 * 1000 };
 export const SLOTS = ['head', 'face', 'neck', 'hand', 'frame'];
 export const EVENT_KINDS = new Set(['unit', 'streak', 'seal', 'month', 'league', 'race']);
 

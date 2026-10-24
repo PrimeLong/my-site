@@ -872,9 +872,10 @@ export const CHANNELS = [
   { id: 'sand', title: 'Песок', make: sandChannel, touch: true },
   { id: 'pop', title: 'Поп-ит', make: popChannel, touch: true },
   { id: 'tetris', title: 'Тетрис', make: tetrisChannel,
-    keys: { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'turn', ArrowDown: 'down', ' ': 'down' },
-    pad: [[['left', 'Влево (←)'], ['turn', 'Повернуть (↑)']], [['right', 'Вправо (→)'], ['down', 'Бросить вниз (↓ или пробел)']]] },
+    // стрелки и WASD — по физической клавише (KeyA…), так что и в русской раскладке
+    keys: { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'turn', ArrowDown: 'down', ' ': 'down', KeyA: 'left', KeyD: 'right', KeyW: 'turn', KeyS: 'down' },
+    pad: [[['left', 'Влево (← или A)'], ['turn', 'Повернуть (↑ или W)']], [['right', 'Вправо (→ или D)'], ['down', 'Бросить вниз (↓, S или пробел)']]] },
   { id: 'snake', title: 'Змейка', make: snakeChannel,
-    keys: { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' },
-    pad: [[['left', 'Влево (←)'], ['up', 'Вверх (↑)']], [['down', 'Вниз (↓)'], ['right', 'Вправо (→)']]] },
+    keys: { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down' },
+    pad: [[['left', 'Влево (← или A)'], ['up', 'Вверх (↑ или W)']], [['down', 'Вниз (↓ или S)'], ['right', 'Вправо (→ или D)']]] },
 ];

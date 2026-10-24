@@ -225,12 +225,16 @@ export function Antistress({ paused = false }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [live, ch]); // eslint-disable-line react-hooks/exhaustive-deps
-  // игра со стрелок — пока мышь над окошком; уроку эти нажатия не достаются. Esc закрывает меню каналов
+  // игра со стрелок и WASD — пока мышь над окошком; уроку эти нажатия не достаются. Esc закрывает меню каналов
   useEffect(() => {
     if (phase !== 'on' || min || (!C.keys && !menu)) return undefined;
     const key = (e) => {
       if (menu && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); setMenu(false); return; }
-      const a = C.keys && C.keys[e.key];
+      // стрелки — по e.key; буквы WASD — по физической клавише (e.code): работают в любой раскладке,
+      // но не пока печатают ответ в поле
+      const el = document.activeElement;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      const a = C.keys && (C.keys[e.key] || (!typing && /^Key[WASD]$/.test(e.code) ? C.keys[e.code] : null));
       if (!a || !over.current || e.ctrlKey || e.metaKey || e.altKey) return;
       e.preventDefault(); e.stopImmediatePropagation();
       act(a);
@@ -407,7 +411,7 @@ export function Antistress({ paused = false }) {
           <div className="ast-card" style={cardAt}>
             <span className="ast-new"><Sparkles size={13} aria-hidden="true" />Новое</span>
             <h2 id="ast-intro-title">Антистресс</h2>
-            <p>Маленькое окошко, на которое приятно поглядывать, пока читаете урок. Кольца, битва цветов, маятники, лава-лампа и стая — просто смотреть; песок, поп-ит, тетрис и змейка — можно и поиграть.</p>
+            <p>Маленькое окошко, на которое приятно поглядывать, пока читаете урок. Кольца, битва цветов, маятники, лава-лампа и стая — просто смотреть; песок, поп-ит, тетрис и змейка — можно и поиграть: в тетрисе и змейке — стрелками или WASD, пока мышь над окошком.</p>
             <ul>
               <li><span className="ast-key"><ChevronLeft size={15} aria-hidden="true" /><ChevronRight size={15} aria-hidden="true" /></span><span><b>Каналы</b> — стрелками или нажмите на название</span></li>
               <li><span className="ast-key"><MoveDiagonal2 size={14} aria-hidden="true" /></span><span>Потяните за <b>уголок</b> — окошко станет больше</span></li>

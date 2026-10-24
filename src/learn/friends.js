@@ -13,7 +13,14 @@ import { pathState, levelOf, LEVEL_BY_ID } from './course.js';
 import { placeOf } from '../ds-tokens.js';
 
 const DAY_MS = 86400000;
-export const RACE = { days: 3, acceptHours: 24, win: 40, tie: 25, lose: 15, onlineDays: 7 };
+export const RACE = { days: 3, acceptHours: 24, win: 40, tie: 25, lose: 15, onlineDays: 7, friendHours: 24 };
+/* звать на забег можно друга, с которым дружите хотя бы сутки: только что добавленного — странно
+   (жалоба), забег — между знакомыми. friendSince — когда стали друзьями (since с сервера) */
+export const raceReadyIn = (f, now = Date.now()) => {
+  const since = f && Number(f.since);
+  if (!since) return 0;
+  return Math.max(0, Math.ceil((since + RACE.friendHours * 3600000 - now) / 3600000));
+};
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 
 /* Знаменательные события: пройденный юнит, серия (3, 7, 14, 30… дней), печать, марка месяца,
@@ -76,7 +83,7 @@ export function seenText(f, now = Date.now()) {
   return `в сети ${d} ${plural(d, 'день', 'дня', 'дней')} назад`;
 }
 // позвать на забег можно друга, который был в сети за последние семь дней
-export const raceable = (friends = [], now = Date.now()) => friends.filter((f) => lastSeenDays(f, now) <= RACE.onlineDays);
+export const raceable = (friends = [], now = Date.now()) => friends.filter((f) => lastSeenDays(f, now) <= RACE.onlineDays && raceReadyIn(f, now) === 0);
 
 /* Забег глазами ученика: статус, дни, опыт обоих (свой — из прогресса, друга — из карточки).
    finished — день после трёх дней забега уже наступил. */
@@ -91,7 +98,9 @@ export function raceView(race, learn, friend, now = Date.now()) {
   const days = Array.from({ length: race.days || RACE.days }, (_, k) => addDays(race.start, k));
   const end = days[days.length - 1];
   const sum = (map) => days.reduce((a, d) => a + ((map || {})[d] || 0), 0);
-  const my = sum(learn.xp); const their = sum(friend && friend.card ? friend.card.xpDays : {});
+  // опыт дня старта, набранный до принятия забега, не в счёт (baseMine/baseTheirs — с сервера)
+  const my = Math.max(0, sum(learn.xp) - (race.baseMine || 0));
+  const their = Math.max(0, sum(friend && friend.card ? friend.card.xpDays : {}) - (race.baseTheirs || 0));
   const finished = today > end;
   const result = !finished ? null : my > their ? 'won' : my < their ? 'lost' : 'tie';
   // какой сейчас день забега (0 — ещё не начался: друг в другом часовом поясе принял «завтра»)

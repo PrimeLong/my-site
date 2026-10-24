@@ -1754,6 +1754,57 @@ test('путь: после алмазного урока на прошлом у�
   expect(errors).toEqual([]);
 });
 
+// урок не теряется: закрыли или перезагрузили страницу — «Продолжить» с того же места. Серия — одна на день:
+// начатый раньше урок не возвращает серию, сбитую ошибкой в другом (жалоба на абуз)
+test('урок: после перезагрузки продолжается с того же места; начатый урок не воскрешает сбитую серию', async ({ page }) => {
+  test.setTimeout(150_000);
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 86400000;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: Object.fromEntries(['sc-i1', 'sc-l1', 'sc-l2'].map((id) => [id, { at, runs: 1, best: 90 }])) } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  // серия дня — в сохранённом состоянии ученика
+  const rc = () => page.evaluate(() => {
+    const d = new Date(); const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return ((JSON.parse(localStorage.getItem('ems-textbook-v1')).learn.daily || {})[day] || {}).rc || 0;
+  });
+  const flame = page.getByTestId('lesson-streak');
+  const leaveLesson = async () => {
+    await page.getByRole('button', { name: 'Выйти из урока' }).click();
+    await page.getByRole('dialog', { name: 'Выйти из урока?' }).getByRole('button', { name: 'Выйти', exact: true }).click();
+    await expect(page.getByTestId('lesson')).toHaveCount(0);
+  };
+  // первый урок: три верных подряд — огонёк «3»
+  await startLesson(page, 'sc-l1');
+  for (let k = 0; k < 3; k += 1) { await passCards(page); await answerExercise(page); await page.getByRole('button', { name: 'Дальше', exact: true }).click(); }
+  await passCards(page);
+  await expect(flame).toHaveAttribute('data-streak', '3');
+  expect(await rc()).toBe(3);
+  const ex = page.getByTestId('ex');
+  const here = [await ex.getAttribute('data-kind'), await ex.getAttribute('data-answer')];
+  // браузер закрыли посреди урока — после перезагрузки урок ждёт с того же места, с той же серией
+  await page.reload({ waitUntil: 'networkidle' });
+  await startLesson(page, 'sc-l1', /Продолжить/);
+  await passCards(page);
+  expect([await ex.getAttribute('data-kind'), await ex.getAttribute('data-answer')]).toEqual(here);
+  await expect(flame).toHaveAttribute('data-streak', '3');
+  // ушли в другой урок и ошиблись — серия дня гаснет
+  await leaveLesson();
+  await startLesson(page, 'sc-l2');
+  await passCards(page);
+  await answerExercise(page, { wrong: true });
+  expect(await rc()).toBe(0);
+  await leaveLesson();
+  // вернулись в первый урок — серия не воскресает из сохранённого урока
+  await startLesson(page, 'sc-l1', /Продолжить/);
+  await passCards(page);
+  await expect(flame).toHaveCount(0);
+  expect(await rc()).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('путь: юнит «Спрос и предложение» — каждый вид урока проходится на телефоне', async ({ page }) => {
   test.setTimeout(180_000);
   await withTestFlag(page);
@@ -2148,6 +2199,23 @@ test('лавка → сад: урожай с редкостью — продат
   await openTab(page, 'shop');
   await page.getByTestId('shop-switch').locator('[data-view="garden"]').click();
   await expect(page.locator('[data-testid=garden-plot][data-plant="sunflower"]')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// лиги по минутам: на вкладке — сколько минут уроков в день хватает, чтобы остаться и подняться
+test('лиги: темп лиги — «остаться хватит около 5 минут, подняться — около 8»', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-04T12:00:00'));
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    // утренний экран серии уже видели сегодня
+    localStorage.setItem('ems-learn-morning', '2026-11-04');
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, xp: { '2026-11-02': 20, '2026-11-03': 20 }, done: { '2026-11-02': 1, '2026-11-03': 1 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'league' });
+  await expect(page.getByTestId('league-pace')).toHaveText('В Бронзовой лиге остаться хватит около 5 минут уроков в день, подняться — около 8.');
+  await page.getByTestId('league-rules-toggle').click();
+  await expect(page.getByTestId('league-rules')).toContainText('в Серебряной — 10, в Золотой — 15');
   expect(errors).toEqual([]);
 });
 
@@ -3032,8 +3100,10 @@ test('анимации выключены, если в системе «умен
   const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
   const anim = (loc, pseudo = null) => loc.evaluate((el, p) => getComputedStyle(el, p).animationName, pseudo);
   await expect(page.getByTestId('morning')).toBeVisible();
-  // огонёк серии не разгорается, цифры не падают — сразу на месте
-  expect(await anim(page.locator('.rw-fire .ignite'))).toBe('none');
+  // билет не выезжает, огонёк-гравюра не колышется, печать не проставляется, цифры не падают — сразу на месте
+  expect(await anim(page.locator('.rw-ticket'))).toBe('none');
+  expect(await anim(page.locator('.rw-flame'))).toBe('none');
+  expect(await anim(page.locator('.rw-flame path').first())).toBe('none');
   expect(await anim(page.locator('.rw-days span').first())).toBe('none');
   await expect(page.getByTestId('morning-days')).toHaveAttribute('data-value', '1');
   await page.getByTestId('morning-go').click();
@@ -3347,6 +3417,14 @@ test('учебник: калькулятор по полям а → б → в, �
   await done.getByTestId('tb-problem-collapse-bottom').click();
   await expect(done).toHaveAttribute('data-collapsed', 'true');
   await expect(done).toBeInViewport();
+  // и нерешённую можно свернуть — отложить на потом: строка говорит «не решена», без зелёной отметки
+  const todo = ch.locator(`[data-problem="${curId}"]`);
+  await todo.getByTestId('tb-problem-collapse').click();
+  await expect(todo).toHaveAttribute('data-collapsed', 'true');
+  await expect(todo).not.toHaveAttribute('data-solved', 'true');
+  await expect(todo).toContainText(/не решена|была ошибка/);
+  await todo.getByTestId('tb-problem-expand').click();
+  await expect(todo.getByRole('button', { name: /Проверить/ }).first()).toBeVisible();
   // «назад» в верхней панели — из главы в оглавление
   await page.getByTestId('tb-topbar').locator('[data-nav="back"]').click();
   await expect(page.getByTestId('textbook')).toBeVisible();
@@ -3525,6 +3603,30 @@ test('повторение: трудную задачу можно убрать 
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('ems-textbook-v1')));
   expect(saved.problems['mb-rounds']).toMatchObject({ ok: false, due: null });
   expect(saved.learn.mistakes.map((m) => m.id)).toEqual(['auto:sc-oc']);
+  expect(errors).toEqual([]);
+});
+
+// напоминание о повторении учебника — от пяти задач, днём; касание открывает «Повторение» учебника
+test('уведомления: задачи учебника ждут повторения — напоминание от пяти задач, касание ведёт на «Повторение»', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-21T16:00:00'));
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3 * 86400000;
+    const ids = ['sc-inside', 'sc-oc', 'sc-hours', 'sc-ppf-cost', 'sc-terms', 'sc-gains'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({
+      problems: Object.fromEntries(ids.map((id) => [id, { tries: 1, ok: true, box: 1, due: Date.now() - 1000, lastAt: at }])),
+      learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 } }, done: { [new Date(at).toISOString().slice(0, 10)]: 1 } },
+    }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await page.getByTestId('bell').first().click();
+  const note = page.locator('[data-testid=notifications] [data-id^="book-review:"]');
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText('6 задач');
+  await note.click();
+  await expect(page.getByTestId('review')).toBeVisible();
+  await expect(page.getByTestId('review-item')).toHaveCount(6);
   expect(errors).toEqual([]);
 });
 
@@ -3871,7 +3973,12 @@ test('учебник на широком ПК: черновик на полях,
   const box = await main.boundingBox();
   await page.mouse.move(box.x + 200, box.y + 60); await page.mouse.down(); await page.mouse.move(box.x + 400, box.y + 80, { steps: 8 }); await page.mouse.up();
   await expect(canvas).toHaveAttribute('data-strokes', '2');
-  // оглавление главы сбоку от текста — внутри учебника: нажатие открывает главу, а не рисует
+  // в режиме рисования оглавление сбоку плавно уходит — места для записей больше
+  await expect(page.getByTestId('tb-side-toc')).toBeHidden();
+  // черновик выключили — оглавление вернулось и работает: нажатие открывает главу, записи на полях целы
+  await page.getByTestId('sketch-toggle').click();
+  await expect(page.getByTestId('sketch-toggle')).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByTestId('tb-side-toc')).toBeVisible();
   await page.getByTestId('tb-side-toc').getByRole('button', { name: /Деньги и банки/ }).click();
   await expect(page.getByTestId('chapter')).toHaveAttribute('data-chapter', 'money-banks');
   await expect(canvas).toHaveAttribute('data-strokes', '2');
@@ -4183,11 +4290,11 @@ test('антистресс: после четырёх уроков — знак�
   await box.hover();
   await page.getByTestId('antistress-pad-up').click();
   await expect(box).toHaveAttribute('data-player', 'you');
-  // тетрис — тоже можно перехватить
+  // тетрис — тоже можно перехватить, и буквами WASD (здесь A — влево)
   await page.getByTestId('antistress-prev').click();
   await expect(box).toHaveAttribute('data-channel', 'tetris');
   await box.hover();
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('a');
   await expect(box).toHaveAttribute('data-player', 'you');
   // пауза и снова
   await page.getByTestId('antistress-play').click();

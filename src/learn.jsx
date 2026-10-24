@@ -22,7 +22,7 @@ import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
 import { track } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
-import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
+import { Blocks, Inline, ChartSvg, ChartLegend, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
 import { afterPathAnswer, dropFromReview } from './textbook/review-sync.js';
@@ -33,7 +33,7 @@ import {
 } from './learn/course.js';
 import {
   startLesson, recordAttempt, abandonLesson, addMistake, resolveMistake, skipLesson, addHinted, clearHinted, finishLesson, passUnit, lessonDone, lessonXp, streak,
-  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp,
+  goalToday, missedYesterday, XP, applyFreezes, setPlacement, dayOf, recordSeen, recordBest, DIAMOND_ACCURACY, streakBonus, gameXp, maxLessonXp, syncStreak, streakNow,
 } from './textbook/learn-state.js';
 import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
@@ -66,7 +66,7 @@ import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { levelRegions } from './learn/levelmap.js';
 import { BrandLoader } from './logo.jsx';
-import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, FriendFeed, racesToShow } from './learn-friends.jsx';
+import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, racesToShow } from './learn-friends.jsx';
 import { Sketch, SKETCH_CSS, SKETCH_QUERY, SKETCH_BOOK_QUERY } from './learn-sketch.jsx';
 import { Antistress, antistressHidden, antistressBlocked } from './learn-antistress.jsx';
 import { antistressUnlocked } from './learn/antistress.js';
@@ -132,12 +132,34 @@ const CSS = `
   .ln-bill-in { display: flex; align-items: center; gap: 12px; padding: 12px 14px 10px; }
   .ln-bill-no { font: 700 30px/1 var(--ds-head); color: var(--u-ink); }
   .ln-bill-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
-  /* пройденный юнит свёрнут в одну строку: номер, место, алмазы, гайд и «уроки» */
-  .ln-mini-guide { width: 36px; height: 36px; }
-  .ln-bill-mini .ln-mini-fold { padding: 6px 4px; gap: 2px; }
-  .ln-mini-title { line-height: 1.2; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ln-bill-mini > * { flex-shrink: 0; }
-  .ln-bill-mini { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
+  /* пройденный юнит свёрнут в одну строку — билет с корешком: слева гравюра места с печатью «пройден»,
+     за перфорацией — «Юнит N · пройден», место, полоска уроков (алмазные — цветом алмаза) и стрелка;
+     вся середина раскрывает уроки, справа — гайд */
+  .ds-card.ln-bill-mini { position: relative; display: flex; align-items: stretch; gap: 0; padding: 0; min-height: 70px; margin: 10px 0 4px; overflow: hidden;
+    background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); border-color: color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
+  .ln-mini-stub { position: relative; flex: none; width: 70px; display: grid; place-items: center; background: color-mix(in srgb, var(--u) 13%, var(--ds-card));
+    border-right: 2px dashed color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); }
+  .ln-mini-stub::before, .ln-mini-stub::after { content: ''; position: absolute; right: -8px; width: 14px; height: 14px; border-radius: 50%; background: var(--ds-paper);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
+  .ln-mini-stub::before { top: -9px; } .ln-mini-stub::after { bottom: -9px; }
+  .ln-mini-seal { position: absolute; right: 7px; bottom: 6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: var(--ds-ok, #2E7D5B); box-shadow: 0 0 0 2px color-mix(in srgb, var(--u) 13%, var(--ds-card)); transform: rotate(-8deg); }
+  .ln-mini-main { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; column-gap: 8px; align-items: center;
+    padding: 8px 6px 8px 14px; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background .2s; }
+  .ln-mini-main:hover { background: color-mix(in srgb, var(--u) 7%, transparent); }
+  .ln-mini-main:focus-visible { outline: 3px solid var(--u); outline-offset: -3px; border-radius: 12px; }
+  .ln-mini-eyebrow { grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 700 12px/1.1 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; color: var(--u-ink); }
+  .ds-dark .ln-mini-eyebrow { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-mini-title { grid-column: 1; margin: 1px 0 3px; line-height: 1.15; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln-mini-meta { grid-column: 1; display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 12.5px/1 var(--ds-sans); color: var(--ds-ink2); white-space: nowrap; }
+  .ln-mini-strip { display: flex; gap: 2px; flex: 0 1 112px; min-width: 40px; }
+  .ln-mini-strip i { flex: 1; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--u) 55%, var(--ds-card)); }
+  .ln-mini-strip i[data-d] { background: ${DIAMOND_COLOR}; }
+  .ln-mini-open { grid-column: 2; grid-row: 1 / 4; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--u-ink);
+    background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); transition: transform .3s cubic-bezier(.3, 1.5, .5, 1), background .2s; }
+  .ds-dark .ln-mini-open { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-mini-main:hover .ln-mini-open { transform: translateY(2px); background: color-mix(in srgb, var(--u) 20%, var(--ds-card)); }
+  .ln-bill-mini .ln-mini-guide { width: 44px; height: auto; align-self: stretch; border-radius: 0; border-left: 1px dotted var(--ds-rule2); }
   /* юнит только что свернулся после сундука: строка «впечатывается», по ней пробегает блик */
   .ln-just-folded .ln-bill-mini { position: relative; overflow: hidden; animation: ln-mini-in .55s cubic-bezier(.3,1.4,.5,1) both; }
   .ln-just-folded .ln-bill-mini::after { content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -439,7 +461,8 @@ function MiniChart({ type, attrs, values = null }) {
   if (!def) return null;
   const v = { ...chartDefaults(type, attrs), ...moving, ...values };
   // на Пути деньги — в кронах (src/learn/money.js)
-  return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={sceneInCrowns(def.build(attrs, v))} /></div>;
+  // под графиком — ключ: что значит каждая линия, простыми словами
+  return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={sceneInCrowns(def.build(attrs, v))} />{def.legend && <ChartLegend items={def.legend(attrs, v)} />}</div>;
 }
 const PICS = {
   clock: Clock, scale: Scale, hourglass: Hourglass, ticket: Ticket, 'trending-up': TrendingUp, 'circle-check': CircleCheck, medal: Medal,
@@ -836,9 +859,11 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     el.classList.remove('ds-shake'); void el.offsetWidth; el.classList.add('ds-shake');
   }, [anim]);
   useEffect(() => { if (shakeRef.current) shakeRef.current.classList.remove('ds-shake'); }, [pos]);
-  /* серия верных подряд не обнуляется между уроками: начинаем с сегодняшней серии дня (daily.rc в
-     learn-state — её ведёт recordAttempt на каждой первой попытке, она же синхронизируется между устройствами) */
-  const [run3, setRun3] = useState(() => { const d = (learn.daily || {})[dayOf(Date.now())]; return d && d.rc ? d.rc : rs ? rs.streak || 0 : 0; });
+  /* серия верных подряд не обнуляется между уроками: урок начинается с сегодняшней серии дня (daily.rc в
+     learn-state) — и только с неё. Своей серии у сохранённого урока нет: иначе ошибся, открыл начатый
+     урок — и серия снова тут (жалоба). Каждое изменение огонька сразу пишется в rc (syncStreak). */
+  const [run3, setRun3Raw] = useState(() => streakNow(learn));
+  const setRun3 = (next) => { setRun3Raw(next); update((s) => syncStreak(s, next)); };
   // линия графика прогресса: первые попытки по порядку; pulse — короткая вспышка на верном ответе серии
   const [log, setLog] = useState(rs ? rs.log || [] : []);
   /* «Слушай» и «История» — лента: прошлые сообщения и отвеченные вопросы остаются в ней
@@ -926,7 +951,7 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
       // та же задача ждёт повторения в учебнике — это и есть её повторение (review-sync.js)
       if (!a.hinted[orig]) update((p) => afterPathAnswer(p, baseId), { whole: true });
       // серия: с третьего верного подряд каждый — ещё +1 опыта (огонёк в шапке показывает «+1»)
-      if (firstTime) { a.bonus += streakBonus(run3 + 1); setRun3((n) => n + 1); }
+      if (firstTime) { a.bonus += streakBonus(run3 + 1); setRun3(run3 + 1); }
       Audio.play('coin'); vibrate(15);
     } else {
       setRun3(0);
@@ -1024,20 +1049,33 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   };
   const termCtx = useMemo(() => ({ ...noopCtx, onTerm: openTerm }), // eslint-disable-next-line react-hooks/exhaustive-deps
     [orig, fb]);
-  // выход после первого ответа: урок сохраняется целиком и продолжается с того же места
-  const leave = () => {
-    if (run.mode === 'lesson' && started && stage !== 'done') {
-      const a = acc.current;
-      const at = fb && !fb.empty ? pos + 1 : pos;
-      saveResume(run.lessonId, {
-        plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
-        first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
-        cardsSeen: [...cardsSeen.current], streak: run3, log, kind: cur ? cur.kind : 'choice', history, bonus: a.bonus,
-      });
-      if (at >= queue.length) dropResume(run.lessonId);
-    }
-    onClose();
+  /* урок после первого ответа сохраняется целиком и продолжается с того же места: при выходе
+     крестиком, после каждого ответа и когда страницу закрывают или прячут — закрытый браузер и
+     перезагрузка больше не теряют урок (жалоба: «случайно закрыл браузер — всё слетело») */
+  const snapshot = () => {
+    if (run.mode !== 'lesson' || !started || stage === 'done') return;
+    const a = acc.current;
+    const at = fb && !fb.empty ? pos + 1 : pos;
+    if (at >= queue.length) { dropResume(run.lessonId); return; }
+    saveResume(run.lessonId, {
+      plan: { items: plan.items, cards: plan.cards, seconds: plan.seconds, diamond }, queue, pos: Math.min(at, queue.length - 1),
+      first: a.first, hinted: a.hinted, solved: [...a.solved], retries: a.retries, elapsed: activeNow(),
+      cardsSeen: [...cardsSeen.current], log, kind: cur ? cur.kind : 'choice', history, bonus: a.bonus,
+    });
   };
+  const snapRef = useRef(snapshot);
+  snapRef.current = snapshot;
+  // после каждого ответа и шага — свежий снимок
+  useEffect(() => { snapRef.current(); }, [pos, fb, stage, queue.length, started]);
+  // страницу закрывают, перезагружают или уводят в фон (телефон) — снимок на самом свежем месте
+  useEffect(() => {
+    const save = () => snapRef.current();
+    const hidden = () => { if (document.visibilityState === 'hidden') save(); };
+    window.addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', hidden);
+    return () => { window.removeEventListener('pagehide', save); document.removeEventListener('visibilitychange', hidden); };
+  }, []);
+  const leave = () => { snapshot(); onClose(); };
   // пустой план (упражнения ошибок убраны из курса) — сразу итог
   useEffect(() => { if (stage === 'work' && !cur && !result) finish(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, cur, result]);
@@ -1204,7 +1242,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           <div className="ln-body"><div className="ln-inner" ref={shakeRef} key={inst.uid}
             data-testid="ex" data-kind={inst.kind} data-answer={testAnswer(inst)}>
             <div className="ln-kind ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {kindName}{inst.review && <span className="ds-badge">повторение</span>}
+              {/* повтор ошибки — одна плашка: у повторённого задания из прошлых уроков «повторение» не дублируем */}
+              {kindName}{inst.review && !inst.retry && <span className="ds-badge">повторение</span>}
               {inst.retry && <span className="ds-badge ln-retry-badge" data-testid="retry-badge">повтор ошибки</span>}
               {inst.hard && <span className="ds-badge" data-testid="ex-hard">{inst.hard >= 3 ? 'олимпиада' : 'семинар'}</span>}
               {inst.weak && <span className="ds-badge">слабая тема</span>}
@@ -2160,15 +2199,23 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
               пройденный и свёрнутый — одной строкой */}
           {folded ? (
             <Card className="ln-bill-mini">
-              <span className="ln-unit-no" aria-hidden="true">{no}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="ds-h3 ln-mini-title" style={{ color: 'var(--u-ink)' }}>{pl.place}</div>
-                <div className="ds-sub" style={{ fontSize: 13, whiteSpace: 'nowrap' }} data-testid="unit-diamonds"><span className="ds-sr">Юнит {no}, </span>пройден · <Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}<span className="ds-sr"> алмазов</span></div>
-              </div>
+              {/* корешок билета: гравюра места с печатью «пройден», за перфорацией — название и уроки */}
+              <span className="ln-mini-stub" aria-hidden="true">
+                <Engraving kind={pl.building} alive size={50} color={pl.color} />
+                <span className="ln-mini-seal"><Check size={12} strokeWidth={3.2} /></span>
+              </span>
+              <button type="button" className="ln-mini-main" data-testid="unit-fold" aria-expanded="false"
+                aria-label={`Юнит ${no}, ${pl.place}, пройден. Показать уроки: ${st.lessons.length}`}
+                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>
+                <span className="ln-mini-eyebrow">Юнит {no} · пройден</span>
+                <span className="ds-h3 ln-mini-title">{pl.place}</span>
+                <span className="ln-mini-meta">
+                  <span className="ln-mini-strip" aria-hidden="true">{st.lessons.map((l) => <i key={l.id} data-d={l.diamond ? '1' : undefined} />)}</span>
+                  <span data-testid="unit-diamonds"><Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}</span>
+                </span>
+                <span className="ln-mini-open" aria-hidden="true"><ChevronDown size={18} /></span>
+              </button>
               <IconButton label="Гайд юнита" icon={BookOpenText} size={20} className="ln-mini-guide" data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }} />
-              <Button variant="ghost" small icon={ChevronRight} className="ln-mini-fold" data-testid="unit-fold" aria-expanded="false"
-                aria-label={`Показать уроки: ${st.lessons.length}`}
-                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>Уроки</Button>
             </Card>
           ) : (
           <Card className="ln-bill">
@@ -2399,6 +2446,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   const goNotify = (n) => {
     notify.markOne(n.id);
     setBell(false);
+    // повторение учебника — сразу страница «Повторение» учебника, поверх любой вкладки
+    if (n.go === 'book-review') { openBook({ kind: 'review' }); return; }
     const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news', friends: 'profile' }[n.go] || 'path';
     const extra = n.go === 'tasks' ? { tasks: true } : n.go === 'friends' ? { friends: true } : n.id.startsWith('chest:') ? { chest: n.id.slice(6) } : null;
     if (n.go === 'garden' || n.go === 'piggy') setShopFocus((f) => ({ n: f.n + 1, to: n.go }));
@@ -2449,7 +2498,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
           {sketchBook && !over && <><style>{SKETCH_CSS}</style><Sketch mode="book" /></>}</div>}
         {tab === 'shop' && <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />}
         {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
-        {tab === 'news' && <Lazy><NewsView learn={learn} friendFeed={<FriendFeed data={friends} onOpen={(l) => setFriendLogin(l)} />} /></Lazy>}
+        {tab === 'news' && <Lazy><NewsView learn={learn} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
         {tab === 'profile' && <Lazy><ProfileView learn={learn} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
           friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} /></Lazy>}
       </div>

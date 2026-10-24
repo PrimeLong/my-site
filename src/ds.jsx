@@ -175,7 +175,8 @@ export const DS_CSS = `
   .ds-nav .ds-more button:nth-child(2) { animation-delay: .04s; } .ds-nav .ds-more button:nth-child(3) { animation-delay: .08s; }
   @keyframes ds-more-in { from { opacity: 0; transform: translateY(8px) scale(.94) } to { opacity: 1; transform: none } }
   /* новое за вкладкой: точка на значке и плашка в меню «⋯» */
-  .ds-nav-dot { position: absolute; top: 7px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%; background: var(--ds-bad-btn); box-shadow: 0 0 0 2px var(--ds-card); }
+  /* точка — поверх значка: у детей кнопки position: relative, и без «button >» точка уезжала под подпись, в нижний угол */
+  .ds-nav button > .ds-nav-dot { position: absolute; top: 7px; left: calc(50% + 8px); width: 9px; height: 9px; border-radius: 50%; background: var(--ds-bad-btn); box-shadow: 0 0 0 2px var(--ds-card); }
   .ds-new { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--ds-bad-btn); color: #fff; font: 700 12px/1.3 var(--ds-sans); letter-spacing: .04em; vertical-align: 1px; }
   /* значок вкладки чуть подпрыгивает, когда её выбрали */
   .ds-nav button[aria-current="page"] > svg { animation: ds-tab-hop .32s cubic-bezier(.3,1.6,.5,1) both; }

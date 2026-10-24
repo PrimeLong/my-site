@@ -128,6 +128,7 @@ function useSpeech() {
   };
   const [now, setNow] = useState({ key: null, at: -1 });
   const timer = useRef(null);
+  const utter = useRef(null);
   useEffect(() => {
     const s = typeof window !== 'undefined' ? window.speechSynthesis : null;
     if (!s || !s.addEventListener) return undefined;
@@ -146,7 +147,11 @@ function useSpeech() {
       return;
     }
     try {
-      const s = window.speechSynthesis; s.cancel();
+      const s = window.speechSynthesis;
+      // Chrome: сразу после cancel() новая фраза иногда молча теряется, а «пауза» залипает — поэтому
+      // если что-то ещё звучало, начинаем чуть позже и будим синтезатор (resume)
+      const busy = s.speaking || s.pending;
+      s.cancel();
       const { say, map } = speechText(text);
       const u = new SpeechSynthesisUtterance(say);
       const v = voiceFor(who, voices);
@@ -157,8 +162,13 @@ function useSpeech() {
         if (k >= 0) setNow({ key, at: k });
       };
       u.onend = () => setNow((n) => (n.key === key ? { key: null, at: -1 } : n));
-      u.onerror = () => { setNow({ key: null, at: -1 }); setBroken(true); };
-      setNow({ key, at: 0 }); s.speak(u);
+      // «interrupted»/«canceled» — это мы сами оборвали прошлую фразу, голос в порядке
+      u.onerror = (e) => { setNow((n) => (n.key === key ? { key: null, at: -1 } : n)); if (!e || !/interrupt|cancel/i.test(e.error || '')) setBroken(true); };
+      // держим ссылку на фразу: иначе Chrome может собрать её сборщиком мусора посреди чтения, и onend не придёт
+      utter.current = u;
+      setNow({ key, at: 0 });
+      const go = () => { if (utter.current !== u) return; try { s.resume(); } catch { /* нет паузы */ } s.speak(u); };
+      if (busy) setTimeout(go, 80); else go();
     } catch { setBroken(true); }
   };
   return { voice, canVoice, muted, setMuted, now, speak };

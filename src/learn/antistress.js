@@ -16,7 +16,12 @@ const wrap = (a) => ((a % TAU) + TAU + Math.PI) % TAU - Math.PI;
    Шарик падает внутри вращающегося кольца с прорезью и отскакивает от стенки без потерь. С каждым
    ударом он чуть растёт, а прорезь, сперва закрытая, понемногу раскрывается — рано или поздно он вылетает, и раунд начинается
    заново. От каждого удара остаётся точка на кольце: от неё к шарику тянется нить. */
-export const RING = { r: 62, gap: 0, gapGrow: 0.008, spin: 0.85, g: 420, r0: 4.5, grow: 0.3, rMax: 16, vMin: 230, hits: 64 };
+export const RING = { r: 62, gap: 0, gapGrow: 0.012, spin: 0.85, g: 420, r0: 4.5, grow: 0.3, rMax: 16, vMin: 230, hits: 64 };
+/* проходит ли шарик радиуса r в прорезь шириной gap (радианы) на окружности радиуса R: только целиком —
+   угловая полуширина шарика плюс скругление края стенки (EDGE) меньше полуширины прорези. Раньше
+   хватало попасть в прорезь центром, и большой шарик проскакивал в щель меньше себя (жалоба). */
+const EDGE = 0.03;
+export const fitsGap = (off, r, R, gap) => Math.abs(off) + Math.asin(Math.min(1, r / R)) + EDGE < gap / 2;
 export function newBall(rand, round = 0) {
   return { x: (rand() - 0.5) * 20, y: -RING.r * 0.45, vx: (rand() - 0.5) * 180, vy: 0, r: RING.r0, gap: RING.gap, hits: [], k: 0, out: false, t: 0, round };
 }
@@ -30,8 +35,8 @@ export function stepBall(b, dt, rand) {
   const lim = RING.r - n.r;
   if (d < lim) return n;
   const ang = Math.atan2(n.y, n.x);
-  // центр шарика в прорези — вылетает: дальше только падение
-  if (Math.abs(wrap(ang - gapAt(n.t))) < n.gap / 2) return { ...n, out: true };
+  // шарик целиком в прорези — вылетает: дальше только падение; не помещается — бьётся о край, как о стенку
+  if (fitsGap(wrap(ang - gapAt(n.t)), n.r, RING.r, n.gap)) return { ...n, out: true };
   const nx = n.x / d; const ny = n.y / d;
   const dot = n.vx * nx + n.vy * ny;
   n.x = nx * lim; n.y = ny * lim;
@@ -71,7 +76,7 @@ export function stepRings(s, dt, rand) {
   const d = Math.hypot(n.x, n.y);
   const lim = ring.r - RINGS.r;
   if (d < lim) return { s: n, broke: -1 };
-  if (Math.abs(wrap(Math.atan2(n.y, n.x) - ringsGap(ring, n.t))) < RINGS.gap / 2) return { s: { ...n, cur: n.cur + 1 }, broke: n.cur };
+  if (fitsGap(wrap(Math.atan2(n.y, n.x) - ringsGap(ring, n.t)), RINGS.r, ring.r, RINGS.gap)) return { s: { ...n, cur: n.cur + 1 }, broke: n.cur };
   const nx = n.x / d; const ny = n.y / d;
   const dot = n.vx * nx + n.vy * ny;
   n.x = nx * lim; n.y = ny * lim;

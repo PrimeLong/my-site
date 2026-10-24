@@ -4,7 +4,7 @@
    предложение забега после урока и лента событий друзей в «Новостях». Данные — src/lib/friends-store.js,
    правила — src/learn/friends.js. */
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, UserPlus, Users, Check, X, ChevronRight, Copy, Flag, Flame, Sparkles, Trophy, Landmark, Stamp, CalendarDays, Award, Footprints, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Shapes } from 'lucide-react';
+import { ArrowLeft, UserPlus, Check, X, ChevronRight, Copy, Flag, Flame, Sparkles, Trophy, Landmark, Stamp, CalendarDays, Award, Footprints, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Shapes } from 'lucide-react';
 import { Button, Card, IconButton, TopBar, Sheet } from './ds.jsx';
 import { Medal, CoinShower } from './ds-art.jsx';
 import { Mascot } from './mascot.jsx';
@@ -15,7 +15,7 @@ import { friendsApi } from './lib/friends-store.js';
 import { ACHIEVEMENTS, coinsWord, plural } from './learn/rewards.js';
 import { LEAGUE_BY_ID } from './learn/league.js';
 import { dayOf, addDays } from './textbook/learn-state.js';
-import { eventText, EVENT_ICON, friendFeed, seenText, lastSeenDays, raceable, raceView, raceCoins, raceClaimed, claimRace, levelTitle, RACE } from './learn/friends.js';
+import { eventText, EVENT_ICON, friendFeed, seenText, lastSeenDays, raceable, raceReadyIn, raceView, raceCoins, raceClaimed, claimRace, levelTitle, RACE } from './learn/friends.js';
 import { agoText } from './learn/notify.js';
 
 export const FRIENDS_CSS = `
@@ -39,23 +39,36 @@ export const FRIENDS_CSS = `
   .fr-tile { padding: 10px 12px; border-radius: 14px; background: var(--ds-card2); display: flex; align-items: center; gap: 10px; animation: fr-in .4s ease-out both; animation-delay: calc(var(--i) * 60ms); }
   .fr-tile b { display: block; font: 700 18px/1.1 var(--ds-head); }
   .fr-tile small { display: block; font-size: 12.5px; color: var(--ds-ink2); }
-  .fr-seals { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 10px 6px; }
-  .fr-seal { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 12px/1.2 var(--ds-head); text-align: center; animation: fr-pop .45s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(min(var(--i), 12) * 50ms); }
+  /* печати друга — та же сетка, что в своём профиле (rw-stamps): ячейка не уже 92 px, подпись
+     переносится внутри неё и не вылезает к соседям и за край (жалоба «печати съехали») */
+  .fr-seals { margin-bottom: 4px; }
+  .fr-seal { min-width: 0; animation: fr-pop .45s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(min(var(--i), 12) * 50ms); }
+  .fr-seal b { overflow-wrap: anywhere; max-width: 100%; }
   .fr-ev { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 0; border-top: 1px dotted var(--ds-rule2); animation: fr-in .35s ease-out both; animation-delay: calc(min(var(--i, 0), 8) * 40ms); }
   .fr-ev:first-child { border-top: none; }
   .fr-ev-ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: var(--u-ink); background: color-mix(in srgb, var(--u) 13%, var(--ds-card)); }
   .fr-ev small { display: block; color: var(--ds-ink3); font-size: 12px; }
   .fr-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--ds-bad); color: #fff; font: 700 12px var(--ds-sans); }
-  /* забег: дорожка на двоих, Инфли бегут к флажку */
+  /* забег: две строки — кто, опыт и полоса до флажка, по полосе бежит Инфля в своём наряде */
   .fr-race { position: relative; overflow: hidden; }
-  .fr-track { position: relative; margin: 10px 0 6px; padding: 4px 0; border-radius: 14px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)) 0 18px, color-mix(in srgb, var(--u) 4%, var(--ds-card)) 18px 36px); }
-  .fr-lane { position: relative; height: 64px; border-bottom: 2px dashed color-mix(in srgb, var(--u) 30%, var(--ds-rule)); }
-  .fr-lane:last-child { border-bottom: none; }
-  .fr-runner { position: absolute; top: 2px; transform: translateX(-50%); transition: left 1s cubic-bezier(.3,.8,.4,1); display: flex; flex-direction: column; align-items: center; }
-  .fr-runner .fr-run { animation: fr-run .5s ease-in-out infinite alternate; }
-  .fr-runner .fr-tag { margin-top: -6px; padding: 1px 6px; border-radius: 999px; background: var(--ds-card); font: 700 12px var(--ds-sans); box-shadow: 0 1px 2px var(--ds-shade); white-space: nowrap; }
-  .fr-finish { position: absolute; right: 6px; top: 0; bottom: 0; width: 10px; background: repeating-linear-gradient(0deg, var(--ds-ink) 0 6px, var(--ds-card) 6px 12px); opacity: .55; border-radius: 3px; }
-  .fr-flag { position: absolute; right: 2px; top: -16px; color: var(--ds-bad); animation: fr-wave 1.2s ease-in-out infinite; transform-origin: 2px 22px; }
+  .fr-track { display: grid; gap: 4px; margin: 12px 0 8px; padding: 10px 12px; border-radius: 14px; background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); border: 1px solid var(--ds-rule); }
+  .fr-lane { display: grid; grid-template-columns: 78px minmax(0, 1fr); align-items: end; gap: 10px; min-height: 44px; }
+  .fr-who { display: flex; flex-direction: column; line-height: 1.15; padding-bottom: 2px; min-width: 0; }
+  .fr-who b { font: 700 14px var(--ds-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fr-who > span { font: 13px var(--ds-sans); font-variant-numeric: tabular-nums; color: var(--ds-ink2); }
+  .fr-lane.lead .fr-who b { color: var(--u-ink); }
+  .fr-road { position: relative; height: 44px; margin-right: 22px; }
+  .fr-road::before, .fr-fill { content: ''; position: absolute; left: 0; bottom: 6px; height: 8px; border-radius: 999px; }
+  .fr-road::before { right: 0; background: var(--ds-rule); }
+  .fr-fill { width: calc(var(--p) * 100%); background: color-mix(in srgb, var(--ds-ink3) 55%, var(--ds-rule)); transition: width 1s cubic-bezier(.3,.8,.4,1); }
+  .fr-lane.me .fr-fill { background: var(--u); }
+  .fr-runner { position: absolute; bottom: 9px; left: calc(var(--p) * 100%); transform: translateX(-50%); transition: left 1s cubic-bezier(.3,.8,.4,1); line-height: 0; }
+  .fr-runner .fr-run { display: inline-block; animation: fr-run .5s ease-in-out infinite alternate; }
+  .fr-goal { position: absolute; right: -20px; bottom: 2px; color: var(--ds-bad); fill: currentColor; animation: fr-wave 1.4s ease-in-out infinite; transform-origin: 2px 15px; }
+  .fr-race-state { font-size: 14px; }
+  .fr-race-ava { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--u) 10%, var(--ds-card)); flex: none; overflow: hidden; }
+  .fr-race-facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .fr-race-facts span { padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--u) 8%, var(--ds-card)); border: 1px solid var(--ds-rule); font: 600 13px var(--ds-sans); color: var(--ds-ink2); }
   .fr-race-head { display: flex; align-items: center; gap: 10px; }
   .fr-race-ico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--ds-bad) 14%, var(--ds-card)); color: var(--ds-bad); animation: fr-wave 2s ease-in-out infinite; }
   .fr-race-res { font: 700 22px/1.2 var(--ds-head); text-align: center; margin: 4px 0; animation: fr-pop .5s cubic-bezier(.3,1.5,.5,1) both; }
@@ -71,7 +84,7 @@ export const FRIENDS_CSS = `
   @keyframes fr-run { from { transform: translateY(0) rotate(-4deg) } to { transform: translateY(-5px) rotate(4deg) } }
   @keyframes fr-wave { 0%, 100% { transform: rotate(0) } 50% { transform: rotate(-10deg) } }
   @keyframes fr-dash { from { left: -60px } to { left: 105% } }
-  @media (prefers-reduced-motion: reduce) { .fr-row, .fr-tile, .fr-seal, .fr-ev, .fr-hero .fr-big, .fr-runner .fr-run, .fr-flag, .fr-race-ico, .fr-race-res, .fr-offer, .fr-dash > span { animation: none !important; } .fr-runner { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .fr-row, .fr-tile, .fr-seal, .fr-ev, .fr-hero .fr-big, .fr-runner .fr-run, .fr-goal, .fr-race-ico, .fr-race-res, .fr-offer, .fr-dash > span { animation: none !important; } .fr-runner, .fr-fill { transition: none; } }
 `;
 
 const SEAL_ICON = { footprints: Footprints, check: Check, flame: Flame, landmark: Landmark, shapes: Shapes, graduation: GraduationCap, scroll: ScrollText, shopping: ShoppingBag, shirt: Shirt, sunrise: Sunrise, moon: Moon, piggy: PiggyBank, calendar: CalendarDays, gem: Gem, flag: Flag };
@@ -148,7 +161,7 @@ export function FriendsPage({ data, onBack, onOpen }) {
             <Card style={{ padding: '4px 12px' }} data-testid="friend-requests">
               {incoming.map((f, i) => (
                 <div key={f.login} className="fr-row" style={{ '--i': i, cursor: 'default' }} data-testid="friend-request" data-login={f.login}>
-                  <span className="fr-ava"><Mascot mood="wave" size={44} outfit={{}} /></span>
+                  <span className="fr-ava"><Mascot mood="wave" size={44} outfit={(f.card && f.card.wear) || {}} /></span>
                   <span style={{ minWidth: 0 }}><span className="fr-name" style={{ display: 'block' }}>{f.name}</span><span className="fr-sub" style={{ display: 'block' }}>@{f.login} · хочет дружить</span></span>
                   <span style={{ display: 'flex', gap: 6 }}>
                     <IconButton label={`Принять заявку: ${f.name}`} icon={Check} data-testid="friend-accept" onClick={() => run(() => friendsApi.answer(f.login, true), `${f.name} теперь в друзьях`)} />
@@ -175,7 +188,7 @@ export function FriendsPage({ data, onBack, onOpen }) {
             <Card style={{ padding: '4px 12px' }}>
               {outgoing.map((f, i) => (
                 <div key={f.login} className="fr-row" style={{ '--i': i, cursor: 'default' }}>
-                  <span className="fr-ava"><Mascot mood="hello" size={44} outfit={{}} /></span>
+                  <span className="fr-ava"><Mascot mood="hello" size={44} outfit={(f.card && f.card.wear) || {}} /></span>
                   <span><span className="fr-name">{f.name}</span><span className="fr-sub" style={{ display: 'block' }}>@{f.login} · заявка {agoText(f.at, now)}</span></span>
                   <Button small variant="ghost" onClick={() => run(() => friendsApi.cancel(f.login))}>Отменить</Button>
                 </div>
@@ -188,23 +201,28 @@ export function FriendsPage({ data, onBack, onOpen }) {
   );
 }
 
-/* Дорожка забега: две Инфли в своих нарядах бегут к флажку; место на дорожке — доля опыта от
-   лидера. Пока забег не кончился — бегут, после — стоят. */
+/* Дорожка забега: две строки — кто, сколько опыта и полоса до финишного флажка; Инфля в своём наряде
+   бежит по полосе к флажку. Место на полосе — доля опыта от лидера. Пока забег идёт — бегут, после — стоят. */
 export function RaceTrack({ v, myWear }) {
   const top = Math.max(1, v.my || 0, v.their || 0);
-  const pos = (x) => 8 + ((x || 0) / top) * 74;
   const running = v.status === 'active';
-  const lane = (wear, x, tag, me) => (
-    <div className="fr-lane">
-      <span className="fr-runner" style={{ left: `${pos(x)}%` }}>
-        <span className={running ? 'fr-run' : ''} style={{ animationDelay: me ? '0s' : '.25s' }}><Mascot mood={running ? 'joy' : v.result === (me ? 'won' : 'lost') ? 'party' : 'hello'} size={38} outfit={wear} /></span>
-        <span className="fr-tag">{tag} · {x || 0}</span>
-      </span>
-    </div>
-  );
+  const lane = (wear, x, name, me) => {
+    const p = Math.max(0, Math.min(1, (x || 0) / top));
+    const lead = me ? v.lead > 0 : v.lead < 0;
+    const mood = running ? 'joy' : v.result === (me ? 'won' : 'lost') ? 'party' : 'hello';
+    return (
+      <div className={`fr-lane${lead ? ' lead' : ''}${me ? ' me' : ''}`}>
+        <span className="fr-who"><b>{name}</b><span>{x || 0} опыта</span></span>
+        <span className="fr-road" style={{ '--p': p }}>
+          <i className="fr-fill" />
+          <span className="fr-runner"><span className={running ? 'fr-run' : ''} style={{ animationDelay: me ? '0s' : '.25s' }}><Mascot mood={mood} size={30} outfit={wear} /></span></span>
+          <Flag className="fr-goal" size={15} aria-hidden="true" />
+        </span>
+      </div>
+    );
+  };
   return (
     <div className="fr-track" aria-hidden="true">
-      <span className="fr-finish" /><span className="fr-flag"><Flag size={20} fill="currentColor" /></span>
       {lane(myWear, v.my, 'Вы', true)}
       {lane(v.wear, v.their, v.name, false)}
     </div>
@@ -219,7 +237,9 @@ export function RaceCard({ v, learn, update, myWear, compact = false }) {
   const [got, setGot] = useState(null);
   const answer = async (accept) => {
     setBusy(true); setErr(null);
-    try { await friendsApi.answerRace(v.id, accept, dayOf(Date.now())); Audio.play(accept ? 'up' : 'paper'); } catch (e) { setErr(e.message); }
+    // опыт, уже набранный сегодня, — точка отсчёта забега: в счёт идёт только то, что после принятия
+    const day = dayOf(Date.now());
+    try { await friendsApi.answerRace(v.id, accept, day, ((learn && learn.xp) || {})[day] || 0); Audio.play(accept ? 'up' : 'paper'); } catch (e) { setErr(e.message); }
     setBusy(false);
   };
   const take = () => { Audio.play('register'); const coins = raceCoins(v); update((s) => claimRace(s, v, Date.now()), { settle: true }); setGot(coins); };
@@ -228,24 +248,32 @@ export function RaceCard({ v, learn, update, myWear, compact = false }) {
     <Card className="fr-race" style={{ margin: compact ? '10px 0' : '0 0 12px' }} data-testid="race-card" data-status={v.status}>
       {got != null && <CoinShower seed={got + 3} n={14} />}
       <div className="fr-race-head">
-        <span className="fr-race-ico"><Flag size={20} aria-hidden="true" /></span>
+        {v.status === 'incoming' || v.status === 'outgoing'
+          ? <span className="fr-race-ava"><Mascot mood={v.status === 'incoming' ? 'wave' : 'hello'} size={40} outfit={v.wear} /></span>
+          : <span className="fr-race-ico"><Flag size={20} aria-hidden="true" /></span>}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="ds-eyebrow">Забег с другом</div>
+          <div className="ds-eyebrow">Забег с другом{v.status === 'active' ? ` · ${v.dayNo ? `день ${v.dayNo} из ${v.days.length}` : 'начнётся завтра'}` : ''}</div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>
             {v.status === 'incoming' ? `${v.name} зовёт на забег` : v.status === 'outgoing' ? `Ждём ответа: ${v.name}` : v.status === 'finished' ? 'Забег окончен' : `Вы и ${v.name}`}
           </div>
         </div>
       </div>
-      {v.status === 'incoming' && (<>
-        <div className="ds-sub" style={{ fontSize: 14, margin: '8px 0' }}>{RACE.days} дня, считая сегодняшний: кто наберёт больше опыта. Победа — {RACE.win} монет и печать «Забег». Ответить — ещё {v.hoursLeft} {plural(v.hoursLeft, 'час', 'часа', 'часов')}.</div>
+      {(v.status === 'incoming' || v.status === 'outgoing') && (
+        <div className="fr-race-facts">
+          <span>{RACE.days} дня, кто больше опыта</span>
+          <span>победа: {RACE.win} монет</span>
+          <span>ответ: ещё {v.hoursLeft} ч</span>
+        </div>
+      )}
+      {v.status === 'incoming' && (
         <div style={{ display: 'flex', gap: 8 }}>
           <Button small wide disabled={busy} data-testid="race-accept" onClick={() => answer(true)}>Принять</Button>
           <Button small wide variant="ghost" disabled={busy} onClick={() => answer(false)}>Отказаться</Button>
         </div>
-      </>)}
-      {v.status === 'outgoing' && <div className="ds-sub" style={{ fontSize: 14, marginTop: 8 }}>У друга {v.hoursLeft} {plural(v.hoursLeft, 'час', 'часа', 'часов')}, чтобы принять. Начнётся с того дня, когда примет.</div>}
+      )}
+      {v.status === 'outgoing' && <div className="ds-sub" style={{ fontSize: 14 }}>Забег начнётся с того дня, когда {v.name} примет приглашение.</div>}
       {(v.status === 'active' || v.status === 'finished') && <RaceTrack v={v} myWear={myWear} />}
-      {v.status === 'active' && <div style={{ fontSize: 14 }} data-testid="race-state">{v.dayNo ? `День ${v.dayNo} из ${v.days.length}` : 'Начнётся завтра'} · <b>{lead}</b></div>}
+      {v.status === 'active' && <div className="fr-race-state" data-testid="race-state"><b>{lead}</b>{v.dayNo ? ` · до финиша ${v.daysLeft} ${plural(v.daysLeft, 'день', 'дня', 'дней')}` : ''}</div>}
       {v.status === 'finished' && (
         <div data-testid="race-result">
           <div className="fr-race-res">{v.result === 'won' ? 'Победа!' : v.result === 'tie' ? 'Ничья' : `Победа у ${v.name}`}</div>
@@ -348,12 +376,14 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
         </div>
         {race ? <RaceCard v={race} learn={learn} update={update} myWear={myWear} compact /> : canRace ? (
           <Button wide icon={Flag} disabled={busy} data-testid="friend-race" onClick={invite}>Позвать на забег</Button>
-        ) : <div className="ds-sub" style={{ fontSize: 13.5, textAlign: 'center' }}>Позвать на забег можно друга, который заходил за последние {RACE.onlineDays} дней.</div>}
+        ) : <div className="ds-sub" style={{ fontSize: 13.5, textAlign: 'center' }} data-testid="friend-race-later">{raceReadyIn(f, now) > 0
+          ? `Позвать на забег можно через сутки дружбы — ещё ${raceReadyIn(f, now)} ${plural(raceReadyIn(f, now), 'час', 'часа', 'часов')}.`
+          : `Позвать на забег можно друга, который заходил за последние ${RACE.onlineDays} дней.`}</div>}
         {msg && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14, marginTop: 6 }}>{msg}</div>}
         <div className="fr-group">Печати · {seals.length} из {ACHIEVEMENTS.length}</div>
         {seals.length ? (
-          <div className="fr-seals" data-testid="friend-seals">
-            {seals.map((a, i) => { const Icon = SEAL_ICON[a.icon] || Award; return <div key={a.id} className="fr-seal" style={{ '--i': i }}><Medal icon={<Icon size={20} />} size={56} label={a.title} />{a.title}</div>; })}
+          <div className="rw-stamps fr-seals" data-testid="friend-seals">
+            {seals.map((a, i) => { const Icon = SEAL_ICON[a.icon] || Award; return <div key={a.id} className="rw-stamp fr-seal" style={{ '--i': i }}><Medal icon={<Icon size={22} />} size={60} label={a.title} /><b>{a.title}</b></div>; })}
           </div>
         ) : <div className="ds-sub" style={{ fontSize: 14 }}>Печатей пока нет — всё впереди.</div>}
         <div className="fr-group">Недавно</div>
@@ -378,25 +408,6 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
       </Sheet>
     )}
   </>);
-}
-
-/* «Друзья» в «Новостях»: знаменательные события друзей за две недели. */
-export function FriendFeed({ data, onOpen }) {
-  const now = Date.now();
-  const feed = friendFeed((data && data.friends) || [], now);
-  if (!feed.length) return null;
-  return (
-    <Card style={{ margin: '0 0 14px', padding: '10px 12px 6px' }} data-testid="friend-feed">
-      <div className="ds-h3" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}><Users size={19} color="var(--u-ink)" aria-hidden="true" />Новости друзей</div>
-      {feed.slice(0, 8).map((e, i) => (
-        <button key={`${e.login}${e.k}${e.at}`} type="button" className="fr-ev" style={{ '--i': i, width: '100%', background: 'none', border: 'none', borderTop: i ? '1px dotted var(--ds-rule2)' : 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', font: 'inherit' }}
-          onClick={() => { Audio.play('paper'); onOpen(e.login); }}>
-          <span style={{ width: 34, display: 'grid', placeItems: 'center' }}><Mascot mood="joy" size={32} outfit={e.wear} /></span>
-          <span><b>{e.name}</b>: {eventText(e)}<small>{agoText(e.at, now)}</small></span>
-        </button>
-      ))}
-    </Card>
-  );
 }
 
 // счётчик в профиле: друзей и заявок

@@ -407,9 +407,15 @@ describe('правки: печать «Без помарок», испытани
     s = finishLesson(s, 'sc-l1', { xp: 10, accuracy: 100, now: T });
     expect(settle(s, courseCtx(s), T).gains.map((g) => g.key)).toContain('a:perfect');
   });
-  it('испытание месяца персональное и трудное: от цели в минутах и прошлого месяца, без «заниматься 2 дня»', () => {
-    // нижние планки высокие: испытание месяца — трудное, не «8 уроков без ошибок»
-    const FLOOR = { minutes: 300, lessons: 30, perfect: 15, xp: 700, days: 22, quests: 12 };
+  it('испытание месяца персональное и посильное: от цели в минутах и прошлого месяца, без «заниматься 2 дня»', () => {
+    // нижние планки — испытание, а не отметка; но и не «восемьдесят уроков» при цели 10 минут (жалоба: слишком трудно)
+    const FLOOR = { minutes: 200, lessons: 18, perfect: 8, xp: 450, days: 15, quests: 8 };
+    const CEIL = { minutes: 240, lessons: 40, perfect: 12, xp: 700, days: 23, quests: 10 };
+    for (const day of ['2026-10-15', '2026-11-15', '2026-12-15', '2027-01-15', '2027-02-15', '2027-03-15']) {
+      const ten = setProfile(emptyLearn(), { minutes: 10 }, at('2026-07-01'));
+      const c = monthChallenge(ten, at(day));
+      expect(c.target, `${day} ${c.id}`).toBeLessThanOrEqual(CEIL[c.id]);
+    }
     const VOLUME = ['minutes', 'lessons', 'perfect', 'xp'];
     const late = setProfile(emptyLearn(), { minutes: 10 }, at('2026-09-29'));
     const m = monthChallenge(late, at('2026-09-29'));
@@ -450,7 +456,7 @@ describe('правки: печать «Без помарок», испытани
     const s = { ...setProfile(emptyLearn(), { minutes: 10 }, at('2026-07-01')), monthPlan: { '2026-10': { target: 8, why: 'старое', at: at('2026-10-01') } } };
     const m = monthChallenge(s, at('2026-10-10'));
     expect(m.target).toBeGreaterThan(8);
-    expect(fixMonth(s, at('2026-10-10')).monthPlan['2026-10']).toMatchObject({ v: 2, kind: m.id, target: m.target });
+    expect(fixMonth(s, at('2026-10-10')).monthPlan['2026-10']).toMatchObject({ v: 3, kind: m.id, target: m.target });
     const got = { ...s, claimed: { 'm:2026-10': at('2026-10-05') } };
     expect(monthChallenge(got, at('2026-10-10')).target).toBe(8);
   });

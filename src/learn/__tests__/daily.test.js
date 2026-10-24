@@ -17,7 +17,7 @@ describe('приветствие утреннего экрана — по час
   });
 });
 
-import { emptyLearn, recordAttempt, studyWeeks, mergeLearn, normalizeLearn } from '../../textbook/learn-state.js';
+import { emptyLearn, recordAttempt, studyWeeks, mergeLearn, normalizeLearn, syncStreak, streakNow, dailyOf } from '../../textbook/learn-state.js';
 
 describe('«Верно с первого раза» — за четыре недели, а не по окну из 30 ответов', () => {
   const at = (d, h = 12) => new Date(2026, 9, d, h).getTime();
@@ -41,5 +41,23 @@ describe('«Верно с первого раза» — за четыре нед
   it('пока попыток за четыре недели меньше пяти — по старому окну последних ответов', () => {
     const s = { ...emptyLearn(), recent: '1110111' };
     expect(studyWeeks(s, at(7)).accuracy).toBeCloseTo(6 / 7);
+  });
+});
+
+describe('серия верных ответов — одна на день', () => {
+  const at = (d, h = 12) => new Date(2026, 9, d, h).getTime();
+  it('ошибка на повторе задачи гасит серию дня; урок начинает с сегодняшней, вчерашняя к утру гаснет', () => {
+    let s = emptyLearn();
+    for (let k = 0; k < 4; k += 1) s = recordAttempt(s, 'choice', true, 1000, { now: at(5) });
+    expect(streakNow(s, at(5))).toBe(4);
+    // повтор задачи в конце урока — не первая попытка: recordAttempt её не видит, урок гасит огонёк сам
+    s = syncStreak(s, 0, at(5));
+    expect(streakNow(s, at(5))).toBe(0);
+    expect(dailyOf(s, at(5)).r).toBe(4);
+    s = syncStreak(s, 2, at(5));
+    expect(streakNow(s, at(5))).toBe(2);
+    expect(streakNow(s, at(6))).toBe(0);
+    // ничего не изменилось — то же состояние
+    expect(syncStreak(s, 2, at(5))).toBe(s);
   });
 });

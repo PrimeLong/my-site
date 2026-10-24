@@ -253,6 +253,7 @@ async function handleRequest(req, res) {
     const other = await getUser(to);
     if (!other) return res.status(404).json({ error: 'Ученика с таким логином нет' });
     const now = Date.now();
+    if (Number(me.friends[to]) > now - RACE.friendMs) return res.status(400).json({ error: 'Позвать на забег можно через сутки дружбы' });
     const races = await getRaces(me.races);
     if (races.some((r) => [r.from, r.to].includes(to) && raceOpen(r, now))) return res.status(400).json({ error: 'С этим другом забег уже идёт или ждёт ответа' });
     if (races.filter((r) => r.from === user.login && raceStatus(r, now) === 'pending').length >= RACE.maxOpen) return res.status(400).json({ error: 'Подождите ответа на прошлые приглашения' });
@@ -272,7 +273,16 @@ async function handleRequest(req, res) {
     if (st !== 'pending') return res.status(400).json({ error: st === 'expired' ? 'Сутки на ответ уже прошли' : 'На приглашение уже ответили' });
     // день старта — местный день того, кто принял: с него идут три дня забега
     const start = validDay(body.day) ? body.day : new Date().toISOString().slice(0, 10);
-    await setRace(body.accept === true ? { ...race, status: 'active', acceptedAt: Date.now(), start } : { ...race, status: 'declined', answeredAt: Date.now() });
+    /* опыт, набранный в день старта до принятия, в забег не идёт: у принявшего — из его прогресса
+       (base), у пригласившего — из его карточки на этот день. Раньше утренний опыт уже стоял в счёте */
+    let base = null;
+    if (body.accept === true) {
+      const fromCard = (await getCards([race.from]))[race.from];
+      const theirs = fromCard && fromCard.xpDays ? Number(fromCard.xpDays[start]) || 0 : 0;
+      const mine = Number.isFinite(Number(body.base)) ? Math.max(0, Math.min(5000, Math.round(Number(body.base)))) : 0;
+      base = { [race.to]: mine, [race.from]: Math.max(0, Math.min(5000, Math.round(theirs))) };
+    }
+    await setRace(body.accept === true ? { ...race, status: 'active', acceptedAt: Date.now(), start, base } : { ...race, status: 'declined', answeredAt: Date.now() });
     return res.status(200).json(await friendsView(user));
   }
   if (action === 'password') {
@@ -342,13 +352,19 @@ async function friendsView(user) {
   const races = (await getRaces(me.races)).map((r) => ({ ...r, status: raceStatus(r, now) })).filter((r) => r.status !== 'cancelled');
   const logins = [...new Set([...Object.keys(me.friends), ...Object.keys(me.fin), ...Object.keys(me.fout), ...races.flatMap((r) => [r.from, r.to])])].filter((l) => l !== user.login);
   const users = await getUsers(logins);
-  const cards = await getCards(Object.keys(me.friends).filter((l) => users[l]));
+  const cards = await getCards([...Object.keys(me.friends), ...Object.keys(me.fin), ...Object.keys(me.fout)].filter((l) => users[l]));
+  // в заявках — только наряд Инфли (серия и опыт — когда станете друзьями): Инфля в заявке одета как у человека
+  const wearOnly = (l) => (cards[l] && cards[l].wear ? { wear: cards[l].wear } : null);
   return {
     me: user.login,
     friends: Object.entries(me.friends).filter(([l]) => users[l]).map(([l, since]) => ({ ...friendOut(l, users[l], cards[l]), since })).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
-    incoming: Object.entries(me.fin).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l]), at })).sort((a, b) => b.at - a.at),
-    outgoing: Object.entries(me.fout).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l]), at })).sort((a, b) => b.at - a.at),
-    races: races.filter((r) => users[r.from === user.login ? r.to : r.from]).map((r) => ({ ...r, other: r.from === user.login ? r.to : r.from, mine: r.from === user.login })),
+    incoming: Object.entries(me.fin).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l], wearOnly(l)), at })).sort((a, b) => b.at - a.at),
+    outgoing: Object.entries(me.fout).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l], wearOnly(l)), at })).sort((a, b) => b.at - a.at),
+    races: races.filter((r) => users[r.from === user.login ? r.to : r.from]).map((r) => {
+      const other = r.from === user.login ? r.to : r.from;
+      const base = r.base || {};
+      return { ...r, other, mine: r.from === user.login, baseMine: base[user.login] || 0, baseTheirs: base[other] || 0 };
+    }),
   };
 }
 

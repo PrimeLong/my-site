@@ -334,6 +334,8 @@ export function competitiveFirm(p, P) {
   return { Q, profit: P * Q - f.TC(Q), shut: false };
 }
 const costParams = (A) => ({ fc: num(A, 'fc', 100), a: num(A, 'a', 20), b: num(A, 'b', 6), c: num(A, 'c', 1) });
+// show="MC P" — на графике только эти линии (MC, ATC, AVC, P, profit): в шаге урока — ничего лишнего
+const costShow = (A) => (A.show ? String(A.show).split(/[\s,]+/).filter(Boolean) : null);
 const costs = {
   title: 'Издержки фирмы',
   controls: (A) => {
@@ -343,7 +345,20 @@ const costs = {
       { id: 'da', label: 'Цены сырья: прибавка к AVC', min: -10, max: 20, step: 1, def: 0, fmt: (v) => `${v > 0 ? '+' : ''}${v}` },
     ];
     if (A.price != null) ctl.unshift({ id: 'P', label: 'Рыночная цена P', min: 0, max: Math.round(num(A, 'price', 40) * 2.2), step: 1, def: num(A, 'price', 40), fmt: (v) => `${v}` });
+    // mark — выпуск, у которого отмечены точки на MC и ATC: в шаге урока он едет (anim="mark=…")
+    if (A.mark != null) ctl.push({ id: 'mark', label: 'Выпуск Q', min: 0.5, max: Math.ceil(costMinima(p).qAtc * 1.9), step: 0.5, def: num(A, 'mark', 2), fmt: (v) => r1(v) });
     return ctl;
+  },
+  /* ключ под графиком — что значит каждая линия, простыми словами (show — какие линии на графике) */
+  legend: (A, v) => {
+    const show = costShow(A);
+    const out = [
+      { id: 'MC', color: 'rust', text: 'MC — во сколько обходится ещё одна единица' },
+      { id: 'ATC', color: 'blue', text: 'ATC — средние издержки на единицу, все вместе' },
+      { id: 'AVC', color: 'teal', text: 'AVC — средние без постоянных (без аренды)' },
+    ];
+    if (v.P != null) out.push({ id: 'P', color: 'gold', dashed: true, text: 'P — цена на рынке' }, { id: 'profit', color: 'gold', box: true, text: 'прямоугольник — прибыль: (P − ATC) × Q' });
+    return out.filter((it) => !show || show.includes(it.id));
   },
   measure: (A, v) => {
     const p = { ...costParams(A), fc: v.fc, a: costParams(A).a + v.da };
@@ -372,6 +387,17 @@ const costs = {
       { label: 'Минимум AVC', value: `${r1(m.avcMin)} при Q = ${r1(m.qAvc)}` },
       { label: 'Минимум ATC', value: `${r1(m.atcMin)} при Q = ${r1(m.qAtc)}` },
     ];
+    // постоянные издержки или сырьё сдвинуты — прежние линии остаются бледными: видно, что сдвинулось
+    if (v.fc !== p0.fc || v.da) {
+      const f0 = costFns(p0);
+      curves.push({ id: 'ATC0', points: samp(f0.ATC, Math.max(0.3, p0.fc / yMax)), color: 'blue', ghost: true });
+      if (v.da) curves.push({ id: 'MC0', points: samp(f0.MC, 0), color: 'rust', ghost: true }, { id: 'AVC0', points: samp(f0.AVC, 0), color: 'teal', ghost: true });
+    }
+    // отмеченный выпуск: ещё одна единица (MC) и средние (ATC) при нём — пока MC ниже, ATC опускается
+    if (v.mark != null) {
+      const q = v.mark; const below = f.MC(q) < f.ATC(q);
+      points.push({ x: q, y: f.ATC(q), label: 'в среднем', color: 'blue', below: !below, guide: true }, { x: q, y: f.MC(q), label: 'ещё одна', color: 'rust', below });
+    }
     const rects = [];
     if (v.P != null) {
       const firm = competitiveFirm(p, v.P);
@@ -387,7 +413,15 @@ const costs = {
       );
       readout.push({ label: 'Решение', value: firm.shut ? 'цена ниже min AVC: закрыться, потерять FC' : firm.profit >= 0 ? 'работать с прибылью' : 'работать в убыток: он меньше FC' });
     }
-    return { xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'руб.', curves, points, rects, readout };
+    const show = costShow(A);
+    if (!show) return { xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'руб.', curves, points, rects, readout };
+    const shown = (id) => show.includes(id.replace(/0$/, ''));
+    return {
+      xDomain: [0, Qmax], yDomain: [0, yMax], xLabel: 'Q', yLabel: 'руб.', readout,
+      curves: curves.filter((c) => shown(c.id)),
+      points: points.filter((pt) => (pt.label === 'min AVC' ? shown('AVC') : pt.label === 'min ATC' || pt.label === 'в среднем' ? shown('ATC') : true)),
+      rects: show.includes('profit') ? rects : [],
+    };
   },
 };
 

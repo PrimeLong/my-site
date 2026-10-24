@@ -1,9 +1,9 @@
 /* Уведомления и коллекции профиля (docs/mechanics.md, «Новости и уведомления», «Профиль»):
    список выводится из прогресса и времени — пройденное уходит само, одно событие — один id. */
 import { describe, it, expect } from 'vitest';
-import { notificationsOf, unreadOf, agoText, firstDayOf, readToasted, markToasted } from '../notify.js';
+import { notificationsOf, unreadOf, agoText, firstDayOf, readToasted, markToasted, BOOK_REVIEW_MIN } from '../notify.js';
 import { albumItems, sealItems, monthItems, monthsByYear, shelfOrder, fullDate } from '../collections.js';
-import { NEWS, unreadNews, newsDate } from '../news.js';
+import { NEWS, unreadNews, newsDate, feedDays } from '../news.js';
 import { emptyLearn, addDays, dayOf } from '../../textbook/learn-state.js';
 import { LESSONS, UNITS } from '../course.js';
 
@@ -30,6 +30,20 @@ describe('уведомления: серия и напоминание', () => {
     expect(notificationsOf(today, at(TODAY, 20)).some((n) => n.id.startsWith('streak:'))).toBe(false);
     // выключенный вид не приходит
     expect(notificationsOf(s, at(TODAY, 20), { prefs: { streak: false } }).some((n) => n.kind === 'streak')).toBe(false);
+  });
+  it('учебник: напоминание о повторении — только когда задач набралось несколько, днём, и ведёт на «Повторение»', () => {
+    const s = learner();
+    const day = '2026-10-20';
+    const book = (due, h = 16) => notificationsOf(s, at(day, h), { bookDue: due }).filter((n) => n.id.startsWith('book-review'));
+    expect(BOOK_REVIEW_MIN).toBeGreaterThan(1);
+    expect(book(1)).toEqual([]);
+    expect(book(BOOK_REVIEW_MIN - 1)).toEqual([]);
+    const [n] = book(BOOK_REVIEW_MIN + 2);
+    expect(n).toMatchObject({ id: `book-review:${day}`, go: 'book-review', kind: 'path' });
+    expect(n.text).toMatch(new RegExp(`^${BOOK_REVIEW_MIN + 2} задач`));
+    // утром не дёргаем; выключили «Путь и задания» — тоже нет
+    expect(book(BOOK_REVIEW_MIN + 2, 10)).toEqual([]);
+    expect(notificationsOf(s, at(day, 16), { bookDue: 9, prefs: { path: false } }).some((x) => x.id.startsWith('book-review'))).toBe(false);
   });
   it('новичок без единого урока не получает напоминаний о серии', () => {
     expect(notificationsOf(emptyLearn(), at(TODAY, 22)).filter((n) => n.kind === 'streak')).toEqual([]);
@@ -92,6 +106,23 @@ describe('уведомления: лига и новости', () => {
     expect(agoText(now - 3 * 3600000, now)).toBe('3 ч назад');
     expect(agoText(at(addDays(TODAY, -1), 10), now)).toBe('вчера');
     expect(agoText(at('2026-10-02', 10), now)).toBe('2 октября');
+  });
+  it('лента одна: выпуски и успехи друзей по дням, свежий день сверху; события друга за день — одной записью', () => {
+    const t = (d, h) => new Date(`${d}T${String(h).padStart(2, '0')}:00:00`).getTime();
+    const news = [{ id: 'b', date: '2026-10-24' }, { id: 'a', date: '2026-10-20' }];
+    const evs = [
+      { k: 'unit', at: t('2026-10-24', 15), login: 'boris', name: 'Борис' },
+      { k: 'seal', at: t('2026-10-23', 18), login: 'alina', name: 'Алина' },
+      { k: 'streak', at: t('2026-10-23', 12), login: 'boris', name: 'Борис' },
+      { k: 'race', at: t('2026-10-23', 9), login: 'alina', name: 'Алина' },
+    ];
+    const days = feedDays(news, evs);
+    expect(days.map((d) => d.day)).toEqual(['2026-10-24', '2026-10-23', '2026-10-20']);
+    expect(days[0].issues.map((n) => n.id)).toEqual(['b']);
+    expect(days[0].friends.map((p) => p.login)).toEqual(['boris']);
+    expect(days[1].issues).toEqual([]);
+    expect(days[1].friends.map((p) => [p.login, p.evs.map((e) => e.k)])).toEqual([['alina', ['seal', 'race']], ['boris', ['streak']]]);
+    expect(days[2].friends).toEqual([]);
   });
   it('лента: у каждого выпуска дата, заголовок, вступление и пункты со значками; свежий — первым', () => {
     expect(NEWS.length).toBeGreaterThan(3);

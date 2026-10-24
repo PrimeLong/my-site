@@ -22,12 +22,14 @@ export const NOTIFY_KINDS = [
   { id: 'streak', title: 'Серия и цель дня', text: 'Напомнить, если сегодня ещё не занимались' },
   { id: 'league', title: 'Лига', text: 'Обогнали, зона повышения или понижения, итоги недели' },
   { id: 'garden', title: 'Сад и копилка', text: 'Урожай созрел, грядке нужна вода, вклад готов' },
-  { id: 'path', title: 'Путь и задания', text: 'Сундук не открыт, ошибки ждут повторения, испытание месяца' },
+  { id: 'path', title: 'Путь и задания', text: 'Сундук не открыт, ошибки и задачи учебника ждут повторения, испытание месяца' },
   { id: 'news', title: 'Новости', text: 'Вышел новый выпуск «Что нового»' },
   { id: 'friends', title: 'Друзья', text: 'Заявки в друзья, приглашения на забег, итоги забега' },
 ];
 // часы напоминания о серии: с этого часа колокольчик (и браузер, если разрешено) напомнит
 export const REMIND_HOURS = [9, 13, 17, 19, 21];
+// напоминание о повторении учебника — от стольких задач, которым подошёл срок
+export const BOOK_REVIEW_MIN = 5;
 export const DEFAULT_PREFS = { streak: true, league: true, garden: true, path: true, news: true, friends: true, browser: false, remindAt: 19 };
 
 const store = {
@@ -64,7 +66,7 @@ const place = (n) => `${n}-е место`;
 /* Уведомления к моменту now. opts.since — первый день ученика (новости до него не «новые»),
    opts.prefs — включённые виды. Каждое: id (одно и то же событие — один id), kind (вид для
    настроек), icon, tone (цвет значка), title, text, at (когда случилось), go (куда ведёт касание:
-   path | league | shop | garden | piggy | tasks | news), toast — показать плашкой, если появилось,
+   path | league | shop | garden | piggy | tasks | news | friends | book-review), toast — показать плашкой, если появилось,
    пока приложение открыто, push — можно отправить в браузер. */
 export function notificationsOf(learn, now = Date.now(), opts = {}) {
   const prefs = { ...DEFAULT_PREFS, ...opts.prefs };
@@ -165,6 +167,13 @@ export function notificationsOf(learn, now = Date.now(), opts = {}) {
   if (mist >= 3 && hour >= 12) {
     add({ id: `mistakes:${day}`, kind: 'path', icon: 'repeat', tone: '#BF3A2B', at: at(day, 12), go: 'tasks',
       title: 'Ошибки ждут повторения', text: `${mist} ${plural(mist, 'упражнение', 'упражнения', 'упражнений')} из прошлых уроков — повторите в «Заданиях».` });
+  }
+  /* учебник: задачи и вопросы, которым подошёл срок повторения (opts.bookDue — их число, считает экран
+     из прогресса учебника). Напоминаем, когда набралось хотя бы BOOK_REVIEW_MIN, — ради одной задачи не дёргаем */
+  const due = Math.max(0, Math.round(opts.bookDue || 0));
+  if (due >= BOOK_REVIEW_MIN && hour >= 15) {
+    add({ id: `book-review:${day}`, kind: 'path', icon: 'book', tone: '#3E6FA8', at: at(day, 15), go: 'book-review', toast: true, push: true,
+      title: 'Пора повторить учебник', text: `${due} ${plural(due, 'задача', 'задачи', 'задач')} из учебника — подошёл срок повторения. Это пара минут.` });
   }
   const m = monthChallenge(learn, now);
   if (m.claimed) {

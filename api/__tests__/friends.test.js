@@ -1,5 +1,5 @@
 // друзья и забеги: заявки по точному логину, карточка для друзей, приглашение на забег (docs/mechanics.md)
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import accountHandler from '../account.js';
 import { cleanCard, raceStatus, RACE } from '../_lib/friends.js';
 
@@ -20,11 +20,14 @@ describe('друзья: заявка и согласие', () => {
     const a = await reg('alina'); const b = await reg('boris'); const c = await reg('vera');
     expect((await acc({ action: 'friend-add', token: a.token, login: a.login })).status).toBe(400);
     expect((await acc({ action: 'friend-add', token: a.token, login: 'nobodyhere' })).status).toBe(404);
+    await acc({ action: 'card', token: a.token, card: { streak: 7, xp: 300, wear: { head: 'crown' } } });
     const sent = await acc({ action: 'friend-add', token: a.token, login: b.login.toUpperCase() });
     expect(sent.data.status).toBe('sent');
     expect(sent.data.outgoing.map((x) => x.login)).toEqual([b.login]);
     const bView = await acc({ action: 'friends', token: b.token });
     expect(bView.data.incoming.map((x) => x.login)).toEqual([a.login]);
+    // в заявке Инфля одета как у человека, но серии и опыта ещё не видно — только наряд
+    expect(bView.data.incoming[0].card).toEqual({ wear: expect.objectContaining({ head: 'crown' }) });
     expect(bView.data.friends).toEqual([]);
     const ok = await acc({ action: 'friend-answer', token: b.token, login: a.login, accept: true });
     expect(ok.data.friends.map((x) => x.login)).toEqual([a.login]);
@@ -59,6 +62,13 @@ describe('забег с другом', () => {
     await acc({ action: 'friend-add', token: a.token, login: b.login });
     await acc({ action: 'friend-answer', token: b.token, login: a.login, accept: true });
     expect((await acc({ action: 'race-invite', token: a.token, login: c.login })).status).toBe(400);
+    // только что подружились — звать на забег рано: через сутки
+    const fresh = await acc({ action: 'race-invite', token: a.token, login: b.login });
+    expect(fresh.status).toBe(400);
+    expect(fresh.data.error).toContain('сутки');
+    // прошли сутки дружбы
+    const real = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(real + RACE.friendMs + 60000);
     const inv = await acc({ action: 'race-invite', token: a.token, login: b.login });
     expect(inv.status).toBe(200);
     expect(inv.data.races).toHaveLength(1);
@@ -67,9 +77,11 @@ describe('забег с другом', () => {
     const id = inv.data.races[0].id;
     // ответить может только приглашённый
     expect((await acc({ action: 'race-answer', token: a.token, id, accept: true })).status).toBe(404);
-    const ok = await acc({ action: 'race-answer', token: b.token, id, accept: true, day: '2026-10-19' });
-    expect(ok.data.races[0]).toMatchObject({ status: 'active', start: '2026-10-19', mine: false, other: a.login });
+    // опыт, набранный в день старта до принятия, запоминается — в счёт забега он не идёт
+    const ok = await acc({ action: 'race-answer', token: b.token, id, accept: true, day: '2026-10-19', base: 35 });
+    expect(ok.data.races[0]).toMatchObject({ status: 'active', start: '2026-10-19', mine: false, other: a.login, baseMine: 35, baseTheirs: 0 });
     expect((await acc({ action: 'race-answer', token: b.token, id, accept: false })).status).toBe(400);
+    clock.mockRestore();
   });
   it('приглашение без ответа сутки — протухло; карточка чистится от мусора', () => {
     const now = Date.now();

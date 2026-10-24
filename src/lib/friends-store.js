@@ -46,7 +46,7 @@ export const friendsApi = {
   cancel: (login) => act((t) => accountFriendCancel(t, login)),
   remove: (login) => act((t) => accountFriendRemove(t, login)),
   invite: (login) => act((t) => accountRaceInvite(t, login)),
-  answerRace: (id, accept, day) => act((t) => accountRaceAnswer(t, id, accept, day)),
+  answerRace: (id, accept, day, base = 0) => act((t) => accountRaceAnswer(t, id, accept, day, base)),
   refresh: () => refreshFriends(true),
 };
 

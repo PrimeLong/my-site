@@ -56,6 +56,12 @@ export const ART_CSS = `
   .ds-level-n { font-size: 12.5px; font-weight: 700; color: var(--ds-ink2); min-width: 34px; text-align: right; }
   .ds-infla { display: inline-block; transform-origin: 50% 90%; transition: transform .45s cubic-bezier(.34,1.45,.5,1); }
   .ds-infla.deflate { transition: transform 1s cubic-bezier(.25,.8,.3,1); }
+  .ds-infla-stack { display: inline-grid; }
+  .ds-infla-stack > span { grid-area: 1 / 1; display: inline-block; transform-origin: 50% 90%; }
+  .ds-infla-out { animation: ds-infla-out .3s ease forwards; pointer-events: none; }
+  .ds-infla-in { animation: ds-infla-in .3s cubic-bezier(.3,1.3,.5,1) both; }
+  @keyframes ds-infla-out { to { opacity: 0; transform: translateY(1px) scale(.97); } }
+  @keyframes ds-infla-in { from { opacity: 0; transform: translateY(2px) scale(.96); } }
   .ds-clip { position: relative; background: #F7F1E1; color: #1F1C17; padding: 18px 18px 20px; font-family: var(--ds-news);
     clip-path: polygon(0 3%, 4% 0, 9% 2%, 15% 0, 22% 2.5%, 30% 0, 38% 2%, 47% 0, 55% 2.5%, 63% 0, 71% 2%, 79% 0, 87% 2.5%, 94% 0, 100% 2%,
       100% 97%, 95% 100%, 88% 97.5%, 80% 100%, 72% 98%, 64% 100%, 56% 97.5%, 48% 100%, 40% 98%, 31% 100%, 23% 97.5%, 15% 100%, 7% 98%, 0 100%); }
@@ -65,7 +71,7 @@ export const ART_CSS = `
   .ds-postage { display: inline-block; padding: 7px; background-color: var(--ds-card);
     background-image: radial-gradient(circle, var(--ds-paper) 3.2px, transparent 3.6px); background-size: 12px 12px; background-position: -6px -6px; filter: drop-shadow(0 1px 1px var(--ds-shade)); }
   .ds-postage-in { border: 1.5px solid var(--u); background: var(--ds-card); padding: 6px; text-align: center; position: relative; }
-  @media (prefers-reduced-motion: reduce) { .ds-smoke, .ds-pulse, .ds-unlock, .ds-appear, .ds-coins i { animation: none !important; } .ds-coins { display: none; } .ds-infla { transition: none !important; } }
+  @media (prefers-reduced-motion: reduce) { .ds-smoke, .ds-pulse, .ds-unlock, .ds-appear, .ds-coins i { animation: none !important; } .ds-coins { display: none; } .ds-infla { transition: none !important; } .ds-infla-out { display: none; } .ds-infla-in { animation: none; } }
 `;
 export const ArtStyle = () => <style>{ART_CSS}</style>;
 
@@ -438,10 +444,27 @@ export function InflaMeter({ streak = 0, mood = 'hello', size = 40 }) {
   useEffect(() => { prev.current = k; });
   const outfit = useContext(OutfitContext);
   const h = mascotHeight(size, outfit);
+  /* смена настроения — мягко: прежняя Инфля растворяется, новая проявляется на её месте (раньше радость
+     после ответа по «Дальше» резко, без перехода, сменялась обычным лицом) */
+  const [faces, setFaces] = useState(() => [{ mood, id: 0 }]);
+  useEffect(() => {
+    setFaces((f) => (f[f.length - 1].mood === mood ? f : [f[f.length - 1], { mood, id: f[f.length - 1].id + 1 }]));
+  }, [mood]);
+  useEffect(() => {
+    if (faces.length < 2) return undefined;
+    const t = setTimeout(() => setFaces((f) => f.slice(-1)), 320);
+    return () => clearTimeout(t);
+  }, [faces]);
   return (
     <span style={{ display: 'inline-flex', alignItems: 'flex-end', justifyContent: 'center', width: Math.ceil(size * INFLA_MAX) + 4, height: Math.ceil(h * INFLA_MAX) + 4, flexShrink: 0 }}>
-      <span className={`ds-infla ${deflate ? 'deflate' : ''}`} style={{ transform: `scale(${k})` }} data-testid="infla" data-scale={k.toFixed(2)}>
-        <Mascot mood={mood} size={size} />
+      <span className={`ds-infla ${deflate ? 'deflate' : ''}`} style={{ transform: `scale(${k})` }} data-testid="infla" data-scale={k.toFixed(2)} data-mood={mood}>
+        <span className="ds-infla-stack">
+          {faces.map((f, i) => (
+            <span key={f.id} className={faces.length < 2 ? '' : i === 0 ? 'ds-infla-out' : 'ds-infla-in'} aria-hidden={i < faces.length - 1 ? 'true' : undefined}>
+              <Mascot mood={f.mood} size={size} />
+            </span>
+          ))}
+        </span>
       </span>
     </span>
   );

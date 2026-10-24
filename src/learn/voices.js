@@ -39,10 +39,23 @@ export function voiceFor(who, voices = []) {
    склеиваются, «кр.» становится «крон»; map — номер символа озвученного текста → номер символа
    исходного, чтобы подсветка слов шла по исходному тексту. */
 const GROUP_SPACE = /[ \u00A0\u202F\u2009]/;
+/* Ударения, которые голос ставит неверно («бОтанов» вместо «батОнов»): слово целиком → то же
+   слово со знаком ударения (U+0301) после ударной гласной. Голос знак читает, а не произносит. */
+const STRESS = Object.fromEntries(['бато́н', 'бато́на', 'бато́ну', 'бато́ном', 'бато́не', 'бато́ны', 'бато́нов', 'бато́нам', 'бато́нами', 'бато́нах']
+  .map((w) => [w.replace('\u0301', ''), w]));
+const STRESS_RE = new RegExp(`^(${Object.keys(STRESS).sort((a, b) => b.length - a.length).join('|')})(?![а-яё])`, 'i');
 export function speechText(text) {
   let say = ''; const map = [];
   for (let i = 0; i < text.length; i += 1) {
     const c = text[i];
+    const sm = !/[а-яё]/i.test(text[i - 1] || '') && /[а-яё]/i.test(c) ? STRESS_RE.exec(text.slice(i, i + 12)) : null;
+    if (sm) {
+      // слово со знаком ударения: знак озвучивается вместе с предыдущей буквой (та же позиция в исходном)
+      const w = sm[1]; const lower = w.toLowerCase(); const st = STRESS[lower];
+      let k = 0;
+      for (const ch of st) { if (ch === '\u0301') { say += ch; map.push(i + k - 1); } else { say += w[k]; map.push(i + k); k += 1; } }
+      i += w.length - 1; continue;
+    }
     if (GROUP_SPACE.test(c) && /\d/.test(text[i - 1] || '') && /^\d{3}(?!\d)/.test(text.slice(i + 1, i + 5))) continue;
     if (text.startsWith('кр.', i) && !/[а-яё]/i.test(text[i - 1] || '')) {
       // точка «кр.» в конце предложения остаётся точкой

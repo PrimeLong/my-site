@@ -38,6 +38,9 @@ describe('забег с другом', () => {
     s = finishLesson(s, 'sc-l1', { xp: 25, accuracy: 100, now: NOW });
     const v = raceView(race, s, friend({ [addDays(DAY, -1)]: 30, [DAY]: 20, [addDays(DAY, -5)]: 999 }), NOW);
     expect(v).toMatchObject({ status: 'active', my: 65, their: 50, lead: 1, dayNo: 2, daysLeft: 2 });
+    // опыт дня старта до принятия забега — не в счёт: у обоих вычитается то, что было на момент принятия
+    const fair = raceView({ ...race, baseMine: 40, baseTheirs: 30 }, s, friend({ [addDays(DAY, -1)]: 30, [DAY]: 20 }), NOW);
+    expect(fair).toMatchObject({ my: 25, their: 20, lead: 1 });
   });
   it('после трёх дней — итог и награда один раз; победа даёт печать «Забег»', () => {
     const s = finishLesson(emptyLearn(), 'sc-i1', { xp: 40, accuracy: 100, now: at(addDays(DAY, -1)) });

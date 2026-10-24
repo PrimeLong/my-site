@@ -23,6 +23,7 @@ import { Audio } from './MacroSimulator.jsx';
 import { notificationsOf, unreadOf, readSeen, markSeen, readPrefs, writePrefs, firstDayOf, agoText, readPushed, markPushed, readToasted, markToasted } from './learn/notify.js';
 import { leagueState, LEAGUE_BY_ID } from './learn/league.js';
 import { useFriends } from './lib/friends-store.js';
+import { loadProgress, reviewQueue } from './textbook/progress.js';
 
 export const NOTIFY_CSS = `
   /* колокольчик: квадратная кнопка рядом со счётчиками; новое — точка-счётчик и лёгкое покачивание */
@@ -80,35 +81,42 @@ export const NOTIFY_CSS = `
   @keyframes nt-lift { to { opacity: 0; transform: translate(-50%, -110%) } }
   @keyframes nt-time { from { transform: scaleX(1) } to { transform: scaleX(0) } }
 
-  /* лента новостей: выпуск — карточка с цветной шапкой; пункты — со значками */
-  .nw-hero { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
-  /* выпуск влетает пружинкой; анимации появления — только «до» (backwards): кончившись, они не держат
-     прозрачность и сдвиг на карточке, и раскрытие, наведение и сворачивание ничем не перебиваются */
-  .nw-issue { position: relative; overflow: hidden; padding: 0; margin: 0 0 14px; animation: nw-in .5s cubic-bezier(.2, .9, .3, 1.15) backwards; animation-delay: calc(min(var(--i, 0), 3) * 70ms);
-    transition: transform .25s cubic-bezier(.2, .9, .3, 1), box-shadow .25s; }
+  /* лента новостей: один поток по дням. Слева — пунктирная нить ленты, на ней аватары записей:
+     значок выпуска в его цвете или Инфля друга. Выпуск — карточка с цветной кромкой, запись друга —
+     лёгкая плашка-кнопка со значками событий. */
+  .nw-hero { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
+  .nw-day { position: relative; padding-left: 56px; }
+  .nw-day::before { content: ''; position: absolute; left: 21px; top: 0; bottom: 0; width: 2px; background: repeating-linear-gradient(to bottom, var(--ds-rule2) 0 6px, transparent 6px 11px); }
+  .nw-feed > .nw-day:first-child::before { top: 18px; }
+  .nw-feed > .nw-day:last-child::before { bottom: auto; height: 40px; }
+  .nw-day-label { position: relative; display: flex; align-items: center; margin: 8px 0 12px -56px; font: 700 12px/1 var(--ds-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ds-ink2); }
+  .nw-day-label::before { content: ''; flex: none; width: 12px; height: 12px; margin: 0 22px 0 16px; border-radius: 50%; background: var(--ds-paper); box-shadow: 0 0 0 4px var(--ds-paper), inset 0 0 0 2.5px var(--ds-ink3); }
+  .nw-day-label::after { content: ''; flex: 1; height: 1px; margin-left: 12px; background: var(--ds-rule); }
+  .nw-day:first-child .nw-day-label { margin-top: 2px; }
+  /* запись влетает пружинкой, аватар — щелчком; анимации появления — только «до» (backwards): кончившись,
+     они не держат прозрачность и сдвиг, и раскрытие, наведение и сворачивание ничем не перебиваются */
+  .nw-post { position: relative; margin: 0 0 12px; animation: nw-in .5s cubic-bezier(.2, .9, .3, 1.15) backwards; animation-delay: calc(min(var(--i, 0), 6) * 60ms); }
   @keyframes nw-in { from { opacity: 0; transform: translateY(18px) scale(.97) } }
+  .nw-ava { position: absolute; left: -56px; top: 8px; z-index: 1; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+    box-shadow: 0 0 0 4px var(--ds-paper); animation: nw-ava .5s cubic-bezier(.3, 1.6, .5, 1) backwards; animation-delay: calc(min(var(--i, 0), 6) * 60ms + 120ms); }
+  @keyframes nw-ava { from { transform: scale(.4) rotate(-20deg); opacity: 0 } }
+  .nw-ava-issue { color: #fff; background: color-mix(in srgb, var(--t) 88%, #000); }
+  .nw-ava-friend { top: 2px; background: var(--ds-card); box-shadow: 0 0 0 4px var(--ds-paper), inset 0 0 0 2px var(--ds-rule); overflow: hidden; }
+  .ds-card.nw-issue { position: relative; overflow: hidden; padding: 0; margin: 0; border-top: 5px solid var(--t); transition: transform .25s cubic-bezier(.2, .9, .3, 1), box-shadow .25s; }
   @media (hover: hover) { .nw-issue:hover { transform: translateY(-3px); box-shadow: 0 6px 0 var(--ds-rule), 0 18px 32px -18px var(--ds-shade); } }
-  /* шапка выпуска — цвет выпуска, притемнённый: белый текст на ней читается с контрастом не ниже 4,5:1 */
-  .nw-head { position: relative; padding: 14px 16px 12px; color: #fff; background: color-mix(in srgb, var(--t) 90%, #000);
-    background-image: radial-gradient(circle at 92% -20%, rgba(255,255,255,.28), transparent 45%), repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 10px, transparent 10px 20px);
-    background-size: auto, 28.28px 28.28px; animation: nw-stripes 14s linear infinite; }
-  /* полоски шапки медленно плывут — на ширину одной полоски, без рывка */
-  @keyframes nw-stripes { to { background-position: 0 0, 28.28px 0 } }
-  .nw-head .ds-h2 { color: #fff; margin-top: 2px; font-size: 21px; }
-  .nw-date { display: inline-flex; align-items: center; gap: 6px; font: 700 12px/1 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase; opacity: .92; }
-  .nw-new { display: inline-block; margin-left: 8px; padding: 3px 8px; border-radius: 999px; background: #fff; color: #1F1A16; font: 700 12px/1 var(--ds-sans); letter-spacing: .06em;
+  /* подписи цветом выпуска — притемнённым: на карточке читаются с контрастом не ниже 4,5:1 */
+  .nw-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px 0; font: 700 12px/1.2 var(--ds-sans); letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--t) 72%, #000); }
+  .ds-dark .nw-meta { color: color-mix(in srgb, var(--t) 40%, #fff); }
+  .nw-new { display: inline-block; padding: 3px 8px; border-radius: 999px; background: color-mix(in srgb, var(--t) 85%, #000); color: #fff; font: 700 12px/1 var(--ds-sans); letter-spacing: .06em;
     animation: nt-pop .4s cubic-bezier(.3,1.6,.5,1) .2s backwards, nw-breathe 2.4s ease-out 1s infinite; }
-  @keyframes nw-breathe { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.75) } 70%, 100% { box-shadow: 0 0 0 7px rgba(255,255,255,0) } }
-  .nw-head-ico { position: absolute; right: 14px; top: 12px; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.18);
-    box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); animation: nw-float 4s ease-in-out infinite; }
-  .nw-head > div:first-child { padding-right: 58px; }
-  @keyframes nw-float { 0%, 100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-3px) rotate(-4deg) } }
-  .nw-lead { padding: 12px 16px 4px; font: 15px/1.5 var(--ds-sans); color: var(--ds-ink); }
+  @keyframes nw-breathe { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--t) 45%, transparent) } 70%, 100% { box-shadow: 0 0 0 7px transparent } }
+  .nw-issue .nw-title { margin: 6px 16px 0; font-size: 20px; line-height: 1.25; }
+  .nw-lead { padding: 6px 16px 4px; font: 15px/1.5 var(--ds-sans); color: var(--ds-ink); }
   .nw-items { padding: 4px 16px 6px; }
-  /* свёрнутый выпуск: названия пунктов плотным списком */
-  .nw-items.short .nw-item { grid-template-columns: 28px minmax(0, 1fr); align-items: center; padding: 6px 0; border-top: none; }
-  .nw-items.short .nw-item-ico { width: 28px; height: 28px; border-radius: 9px; }
-  .nw-items.short .nw-item b { font-size: 14.5px; font-weight: 600; }
+  .nw-items.short { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; padding-bottom: 12px; }
+  .nw-items.short .nw-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border: none; border-radius: 999px; background: color-mix(in srgb, var(--t) 9%, var(--ds-card)); }
+  .nw-items.short .nw-item-ico { width: 24px; height: 24px; border-radius: 50%; background: var(--ds-card); }
+  .nw-items.short .nw-item b { font: 600 13.5px/1.25 var(--ds-sans); }
   .nw-item-text { display: block; animation: nt-in .3s ease-out backwards; animation-delay: calc(min(var(--i, 0), 8) * 35ms + 60ms); }
   .nw-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 12px; padding: 10px 0; border-top: 1px dotted var(--ds-rule2); animation: nt-in .3s ease-out backwards; animation-delay: calc(min(var(--i, 0), 8) * 35ms); }
   .nw-items.open .nw-item-ico { animation: nw-ico .45s cubic-bezier(.3, 1.6, .5, 1) backwards; animation-delay: calc(min(var(--i, 0), 8) * 35ms + 80ms); }
@@ -126,8 +134,21 @@ export const NOTIFY_CSS = `
   .nw-more svg { transition: transform .35s cubic-bezier(.3, 1.5, .5, 1); }
   .nw-more:hover:not([aria-expanded="true"]) svg { transform: translateY(2px); }
   .nw-more[aria-expanded="true"] svg { transform: rotate(180deg); }
+  /* запись друга: имя и время, ниже — события дня значками */
+  .nw-friend { display: block; width: 100%; padding: 9px 14px 11px; border: 2px solid var(--ds-rule); border-radius: 16px; background: color-mix(in srgb, var(--ds-card) 60%, transparent);
+    text-align: left; font: inherit; color: inherit; cursor: pointer; transition: border-color .2s, background .2s, transform .25s cubic-bezier(.2, .9, .3, 1); }
+  @media (hover: hover) { .nw-friend:hover { border-color: color-mix(in srgb, var(--u) 45%, var(--ds-rule)); background: var(--ds-card); transform: translateX(3px); } }
+  .nw-friend:focus-visible { outline: 3px solid var(--u); outline-offset: 2px; }
+  .nw-who { display: flex; align-items: baseline; gap: 8px; font: 15px/1.3 var(--ds-sans); }
+  .nw-who b { font: 700 16px/1.25 var(--ds-head); }
+  .nw-who small { font-size: 12.5px; color: var(--ds-ink2); }
+  .nw-evs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  .nw-ev { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; border-radius: 999px; background: color-mix(in srgb, var(--u) 11%, var(--ds-card)); font: 600 13.5px/1.25 var(--ds-sans); color: var(--ds-ink); }
+  .nw-ev svg { flex: none; color: var(--u-ink); }
+  .ds-dark .nw-ev svg { color: color-mix(in srgb, var(--u) 50%, #fff); }
+  @media (max-width: 420px) { .nw-day { padding-left: 48px; } .nw-day-label { margin-left: -48px; } .nw-day-label::before { margin: 0 18px 0 14px; } .nw-day::before { left: 19px; } .nw-ava { left: -48px; width: 40px; height: 40px; } }
   @media (max-width: 360px) { .nt-bell { width: 34px; } }
-  @media (prefers-reduced-motion: reduce) { .nt-bell svg, .nt-bell b, .nt-page, .nt-page-in, .nt-item, .nt-toast, .nt-toast-bar i, .nw-issue, .nw-item, .nw-item-text, .nw-item-ico, .nw-head, .nw-head-ico, .nw-new { animation: none !important; } .nw-issue, .nw-item-ico { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .nt-bell svg, .nt-bell b, .nt-page, .nt-page-in, .nt-item, .nt-toast, .nt-toast-bar i, .nw-post, .nw-ava, .nw-item, .nw-item-text, .nw-item-ico, .nw-new { animation: none !important; } .nw-issue, .nw-item-ico, .nw-friend { transition: none; } }
 `;
 
 // значки уведомлений и новостей: имя → компонент
@@ -158,7 +179,9 @@ export function useNotify(learn) {
   const [seen, setSeen] = useState(readSeen);
   // друзья: заявки и забеги (src/lib/friends-store.js) — тоже уведомления
   const friends = useFriends();
-  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends }), [learn, now, prefs, friends]);
+  // учебник: сколько задач ждут повторения — прогресс учебника читаем на «сейчас» (раз в минуту и после уроков)
+  const bookDue = useMemo(() => { try { return reviewQueue(loadProgress(), now).due.length; } catch { return 0; } }, [now]);
+  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends, bookDue }), [learn, now, prefs, friends, bookDue]);
   const unread = useMemo(() => unreadOf(list, seen), [list, seen]);
   const leaguePlace = useMemo(() => {
     if (!Object.values(learn.xp || {}).some((x) => x > 0)) return null;
