@@ -4,7 +4,7 @@
    предложение забега после урока и лента событий друзей в «Новостях». Данные — src/lib/friends-store.js,
    правила — src/learn/friends.js. */
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, UserPlus, Users, Check, X, ChevronRight, Copy, Flag, Flame, Sparkles, Trophy, Landmark, Stamp, CalendarDays, Award, Footprints, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Shapes } from 'lucide-react';
+import { ArrowLeft, UserPlus, Check, X, ChevronRight, Copy, Flag, Flame, Sparkles, Trophy, Landmark, Stamp, CalendarDays, Award, Footprints, GraduationCap, ScrollText, ShoppingBag, Shirt, Sunrise, Moon, PiggyBank, Gem, Shapes } from 'lucide-react';
 import { Button, Card, IconButton, TopBar, Sheet } from './ds.jsx';
 import { Medal, CoinShower } from './ds-art.jsx';
 import { Mascot } from './mascot.jsx';
@@ -408,25 +408,6 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
       </Sheet>
     )}
   </>);
-}
-
-/* «Друзья» в «Новостях»: знаменательные события друзей за две недели. */
-export function FriendFeed({ data, onOpen }) {
-  const now = Date.now();
-  const feed = friendFeed((data && data.friends) || [], now);
-  if (!feed.length) return null;
-  return (
-    <Card style={{ margin: '0 0 14px', padding: '10px 12px 6px' }} data-testid="friend-feed">
-      <div className="ds-h3" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}><Users size={19} color="var(--u-ink)" aria-hidden="true" />Новости друзей</div>
-      {feed.slice(0, 8).map((e, i) => (
-        <button key={`${e.login}${e.k}${e.at}`} type="button" className="fr-ev" style={{ '--i': i, width: '100%', background: 'none', border: 'none', borderTop: i ? '1px dotted var(--ds-rule2)' : 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', font: 'inherit' }}
-          onClick={() => { Audio.play('paper'); onOpen(e.login); }}>
-          <span style={{ width: 34, display: 'grid', placeItems: 'center' }}><Mascot mood="joy" size={32} outfit={e.wear} /></span>
-          <span><b>{e.name}</b>: {eventText(e)}<small>{agoText(e.at, now)}</small></span>
-        </button>
-      ))}
-    </Card>
-  );
 }
 
 // счётчик в профиле: друзей и заявок

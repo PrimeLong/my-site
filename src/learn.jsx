@@ -66,7 +66,7 @@ import { placeOf, unitColor, DIAMOND_COLOR, dsThemeId } from './ds-tokens.js';
 import { countryPath, RIVER, curveTo } from './lib/mapgeo.js';
 import { levelRegions } from './learn/levelmap.js';
 import { BrandLoader } from './logo.jsx';
-import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, FriendFeed, racesToShow } from './learn-friends.jsx';
+import { FRIENDS_CSS, FriendsPage, FriendProfile, RaceCard, RaceOffer, racesToShow } from './learn-friends.jsx';
 import { Sketch, SKETCH_CSS, SKETCH_QUERY, SKETCH_BOOK_QUERY } from './learn-sketch.jsx';
 import { Antistress, antistressHidden, antistressBlocked } from './learn-antistress.jsx';
 import { antistressUnlocked } from './learn/antistress.js';
@@ -2464,7 +2464,7 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
           {sketchBook && !over && <><style>{SKETCH_CSS}</style><Sketch mode="book" /></>}</div>}
         {tab === 'shop' && <ShopView key={shopFocus.n} learn={learn} update={update} focus={shopFocus.to} />}
         {tab === 'league' && <div className="ln-wrap"><LeagueView learn={learn} update={update} /></div>}
-        {tab === 'news' && <Lazy><NewsView learn={learn} friendFeed={<FriendFeed data={friends} onOpen={(l) => setFriendLogin(l)} />} /></Lazy>}
+        {tab === 'news' && <Lazy><NewsView learn={learn} friends={friends} onFriend={(l) => setFriendLogin(l)} /></Lazy>}
         {tab === 'profile' && <Lazy><ProfileView learn={learn} onOpenBook={openBook} onSettings={() => setSettings(true)} onNotify={() => setBell(true)} unread={notify.unread.length}
           friends={friends} guest={guest} onFriends={() => { Audio.play('paper'); setFriendsPage(true); }} /></Lazy>}
       </div>
