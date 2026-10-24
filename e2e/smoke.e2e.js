@@ -2202,6 +2202,23 @@ test('лавка → сад: урожай с редкостью — продат
   expect(errors).toEqual([]);
 });
 
+// лиги по минутам: на вкладке — сколько минут уроков в день хватает, чтобы остаться и подняться
+test('лиги: темп лиги — «остаться хватит около 5 минут, подняться — около 8»', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-04T12:00:00'));
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    // утренний экран серии уже видели сегодня
+    localStorage.setItem('ems-learn-morning', '2026-11-04');
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, xp: { '2026-11-02': 20, '2026-11-03': 20 }, done: { '2026-11-02': 1, '2026-11-03': 1 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'league' });
+  await expect(page.getByTestId('league-pace')).toHaveText('В Бронзовой лиге остаться хватит около 5 минут уроков в день, подняться — около 8.');
+  await page.getByTestId('league-rules-toggle').click();
+  await expect(page.getByTestId('league-rules')).toContainText('в Серебряной — 10, в Золотой — 15');
+  expect(errors).toEqual([]);
+});
+
 test('лиги: отдельная вкладка — медаль, что нужно сейчас, все лиги, три зоны, награда — окном и один раз', async ({ page }) => {
   // среда: неделя лиги идёт (понедельник — суббота), в воскресенье — перерыв
   await page.clock.setFixedTime(new Date('2026-10-14T12:00:00'));
