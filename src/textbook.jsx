@@ -200,9 +200,9 @@ export const TEXTBOOK_CSS = `
   /* итоги графика — плитками: число колонок зависит только от ширины, а не от длины чисел, поэтому
      строка под ползунками не перескакивает с одной строки на две и кнопка под ней стоит на месте */
   /* ключ под графиком: образец линии и что она значит */
-  .tb-legend { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; line-height: 1.35; color: var(--ds-ink2, #6b6157); }
-  .tb-legend li { display: inline-flex; align-items: center; gap: 6px; }
-  .tb-legend svg { flex: none; }
+  .tb-chart-key { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; line-height: 1.35; color: var(--ds-ink2, #6b6157); }
+  .tb-chart-key li { display: inline-flex; align-items: center; gap: 6px; }
+  .tb-chart-key svg { flex: none; }
   .tb-ro { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 6px; margin-top: 12px; }
   .tb-ro > div { display: flex; flex-direction: column; justify-content: space-between; gap: 3px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c-text) 5%, transparent); min-width: 0; }
   .tb-ro-l { font-size: 12px; line-height: 1.3; color: var(--c-muted); }
@@ -860,7 +860,7 @@ export function ChartSvg({ scene }) {
 export function ChartLegend({ items }) {
   if (!items || !items.length) return null;
   return (
-    <ul className="tb-legend" data-testid="chart-legend">
+    <ul className="tb-chart-key" data-testid="chart-legend">
       {items.map((it) => {
         const c = (CURVE_COLOR[it.color] || CURVE_COLOR.gold)();
         return (

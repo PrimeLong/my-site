@@ -1242,7 +1242,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
           <div className="ln-body"><div className="ln-inner" ref={shakeRef} key={inst.uid}
             data-testid="ex" data-kind={inst.kind} data-answer={testAnswer(inst)}>
             <div className="ln-kind ds-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {kindName}{inst.review && <span className="ds-badge">повторение</span>}
+              {/* повтор ошибки — одна плашка: у повторённого задания из прошлых уроков «повторение» не дублируем */}
+              {kindName}{inst.review && !inst.retry && <span className="ds-badge">повторение</span>}
               {inst.retry && <span className="ds-badge ln-retry-badge" data-testid="retry-badge">повтор ошибки</span>}
               {inst.hard && <span className="ds-badge" data-testid="ex-hard">{inst.hard >= 3 ? 'олимпиада' : 'семинар'}</span>}
               {inst.weak && <span className="ds-badge">слабая тема</span>}
