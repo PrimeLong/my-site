@@ -2444,6 +2444,8 @@ export function LearnTab({ tab, bookHandlers = {}, reopenBook = false, onBookReo
   const goNotify = (n) => {
     notify.markOne(n.id);
     setBell(false);
+    // повторение учебника — сразу страница «Повторение» учебника, поверх любой вкладки
+    if (n.go === 'book-review') { openBook({ kind: 'review' }); return; }
     const want = { path: 'path', tasks: 'path', league: 'league', shop: 'shop', garden: 'shop', piggy: 'shop', news: 'news', friends: 'profile' }[n.go] || 'path';
     const extra = n.go === 'tasks' ? { tasks: true } : n.go === 'friends' ? { friends: true } : n.id.startsWith('chest:') ? { chest: n.id.slice(6) } : null;
     if (n.go === 'garden' || n.go === 'piggy') setShopFocus((f) => ({ n: f.n + 1, to: n.go }));

@@ -3587,6 +3587,30 @@ test('повторение: трудную задачу можно убрать 
   expect(errors).toEqual([]);
 });
 
+// напоминание о повторении учебника — от пяти задач, днём; касание открывает «Повторение» учебника
+test('уведомления: задачи учебника ждут повторения — напоминание от пяти задач, касание ведёт на «Повторение»', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-21T16:00:00'));
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    const at = Date.now() - 3 * 86400000;
+    const ids = ['sc-inside', 'sc-oc', 'sc-hours', 'sc-ppf-cost', 'sc-terms', 'sc-gains'];
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({
+      problems: Object.fromEntries(ids.map((id) => [id, { tries: 1, ok: true, box: 1, due: Date.now() - 1000, lastAt: at }])),
+      learn: { lessons: { 'sc-i1': { at, runs: 1, best: 90 } }, done: { [new Date(at).toISOString().slice(0, 10)]: 1 } },
+    }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'path' });
+  await page.getByTestId('bell').first().click();
+  const note = page.locator('[data-testid=notifications] [data-id^="book-review:"]');
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText('6 задач');
+  await note.click();
+  await expect(page.getByTestId('review')).toBeVisible();
+  await expect(page.getByTestId('review-item')).toHaveCount(6);
+  expect(errors).toEqual([]);
+});
+
 test('повторение: ошибку не снять тут же, карточка уходит «вернётся» или «выучено», Путь и учебник — одно повторение', async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {

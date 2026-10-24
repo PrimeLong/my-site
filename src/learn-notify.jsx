@@ -23,6 +23,7 @@ import { Audio } from './MacroSimulator.jsx';
 import { notificationsOf, unreadOf, readSeen, markSeen, readPrefs, writePrefs, firstDayOf, agoText, readPushed, markPushed, readToasted, markToasted } from './learn/notify.js';
 import { leagueState, LEAGUE_BY_ID } from './learn/league.js';
 import { useFriends } from './lib/friends-store.js';
+import { loadProgress, reviewQueue } from './textbook/progress.js';
 
 export const NOTIFY_CSS = `
   /* колокольчик: квадратная кнопка рядом со счётчиками; новое — точка-счётчик и лёгкое покачивание */
@@ -178,7 +179,9 @@ export function useNotify(learn) {
   const [seen, setSeen] = useState(readSeen);
   // друзья: заявки и забеги (src/lib/friends-store.js) — тоже уведомления
   const friends = useFriends();
-  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends }), [learn, now, prefs, friends]);
+  // учебник: сколько задач ждут повторения — прогресс учебника читаем на «сейчас» (раз в минуту и после уроков)
+  const bookDue = useMemo(() => { try { return reviewQueue(loadProgress(), now).due.length; } catch { return 0; } }, [now]);
+  const list = useMemo(() => notificationsOf(learn, now, { prefs, since: firstDayOf(learn, now), friends, bookDue }), [learn, now, prefs, friends, bookDue]);
   const unread = useMemo(() => unreadOf(list, seen), [list, seen]);
   const leaguePlace = useMemo(() => {
     if (!Object.values(learn.xp || {}).some((x) => x > 0)) return null;
