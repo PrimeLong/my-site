@@ -351,12 +351,14 @@ async function friendsView(user) {
   const races = (await getRaces(me.races)).map((r) => ({ ...r, status: raceStatus(r, now) })).filter((r) => r.status !== 'cancelled');
   const logins = [...new Set([...Object.keys(me.friends), ...Object.keys(me.fin), ...Object.keys(me.fout), ...races.flatMap((r) => [r.from, r.to])])].filter((l) => l !== user.login);
   const users = await getUsers(logins);
-  const cards = await getCards(Object.keys(me.friends).filter((l) => users[l]));
+  const cards = await getCards([...Object.keys(me.friends), ...Object.keys(me.fin), ...Object.keys(me.fout)].filter((l) => users[l]));
+  // в заявках — только наряд Инфли (серия и опыт — когда станете друзьями): Инфля в заявке одета как у человека
+  const wearOnly = (l) => (cards[l] && cards[l].wear ? { wear: cards[l].wear } : null);
   return {
     me: user.login,
     friends: Object.entries(me.friends).filter(([l]) => users[l]).map(([l, since]) => ({ ...friendOut(l, users[l], cards[l]), since })).sort((a, b) => a.name.localeCompare(b.name, 'ru')),
-    incoming: Object.entries(me.fin).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l]), at })).sort((a, b) => b.at - a.at),
-    outgoing: Object.entries(me.fout).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l]), at })).sort((a, b) => b.at - a.at),
+    incoming: Object.entries(me.fin).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l], wearOnly(l)), at })).sort((a, b) => b.at - a.at),
+    outgoing: Object.entries(me.fout).filter(([l]) => users[l]).map(([l, at]) => ({ ...friendOut(l, users[l], wearOnly(l)), at })).sort((a, b) => b.at - a.at),
     races: races.filter((r) => users[r.from === user.login ? r.to : r.from]).map((r) => {
       const other = r.from === user.login ? r.to : r.from;
       const base = r.base || {};

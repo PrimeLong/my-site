@@ -20,11 +20,14 @@ describe('друзья: заявка и согласие', () => {
     const a = await reg('alina'); const b = await reg('boris'); const c = await reg('vera');
     expect((await acc({ action: 'friend-add', token: a.token, login: a.login })).status).toBe(400);
     expect((await acc({ action: 'friend-add', token: a.token, login: 'nobodyhere' })).status).toBe(404);
+    await acc({ action: 'card', token: a.token, card: { streak: 7, xp: 300, wear: { head: 'crown' } } });
     const sent = await acc({ action: 'friend-add', token: a.token, login: b.login.toUpperCase() });
     expect(sent.data.status).toBe('sent');
     expect(sent.data.outgoing.map((x) => x.login)).toEqual([b.login]);
     const bView = await acc({ action: 'friends', token: b.token });
     expect(bView.data.incoming.map((x) => x.login)).toEqual([a.login]);
+    // в заявке Инфля одета как у человека, но серии и опыта ещё не видно — только наряд
+    expect(bView.data.incoming[0].card).toEqual({ wear: expect.objectContaining({ head: 'crown' }) });
     expect(bView.data.friends).toEqual([]);
     const ok = await acc({ action: 'friend-answer', token: b.token, login: a.login, accept: true });
     expect(ok.data.friends.map((x) => x.login)).toEqual([a.login]);

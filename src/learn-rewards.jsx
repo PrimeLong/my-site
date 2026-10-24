@@ -12,7 +12,7 @@ import { Audio } from './MacroSimulator.jsx';
 import { Mascot } from './mascot.jsx';
 import { Button, IconButton, Card, Heading, Row, Sheet } from './ds.jsx';
 import { halloween, seasonLeftText, WEB_FRAME } from './learn/halloween.js';
-import { Rosette, Medal, CoinShower, CountUp, Chest } from './ds-art.jsx';
+import { Rosette, Medal, CoinShower, CountUp, Chest, Guilloche } from './ds-art.jsx';
 import { ShopSwitch, RateWeek } from './learn-rate.jsx';
 // сад — отдельный ленивый чанк: грузится, только когда открыли «Сад»
 const GardenView = React.lazy(() => import('./learn-garden.jsx').then((m) => ({ default: m.GardenView })));
@@ -164,14 +164,18 @@ export const REWARD_CSS = `
   .rw-piggy-chart text.end { paint-order: stroke; stroke: var(--ds-card); stroke-width: 4px; stroke-linejoin: round; }
   .rw-book-dayline { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; font: 600 13.5px var(--ds-sans); color: var(--ds-ink2); }
   .rw-book-dayline b { color: var(--ds-ink); }
-  .rw-dot { width: 36px; display: flex; flex-direction: column; align-items: center; gap: 5px; font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
-  .rw-dot i { width: 32px; height: 32px; border-radius: 50%; border: 2px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; }
-  .rw-dot.done i { border: none; color: #fff; background: linear-gradient(180deg, #FF9A2E, #E2530E); box-shadow: 0 2px 0 #B23E08; animation: rw-dot-pop .5s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(1.2s + var(--i, 0) * 70ms); }
-  .rw-dot.frozen i { border: none; background: #3E6FA8; color: #fff; box-shadow: 0 2px 0 #2B4F7A; animation: rw-dot-pop .5s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(1.2s + var(--i, 0) * 70ms); }
+  .rw-dot { width: 38px; display: flex; flex-direction: column; align-items: center; gap: 5px; font: 700 12px var(--ds-sans); color: var(--ds-ink2); }
+  .rw-dot i { width: 34px; height: 34px; border-radius: 50%; border: 1.5px dashed var(--ds-rule2); display: flex; align-items: center; justify-content: center; color: var(--ds-ink3); }
+  /* день с уроком — оттиск: кольцо цветом огня, внутри огонёк чернилами; ставится как печать */
+  .rw-dot.done i { border: 2px solid var(--rw-fire, #C2531E); color: var(--rw-fire-ink, #8E3512); background: var(--rw-fire-tint, #FBE7D9);
+    box-shadow: inset 0 0 0 2px var(--ds-card), inset 0 0 0 3px color-mix(in srgb, var(--rw-fire, #C2531E) 45%, transparent);
+    animation: rw-dot-press .42s cubic-bezier(.3,1.4,.5,1) both; animation-delay: calc(1.1s + var(--i, 0) * 80ms); }
+  .rw-dot.frozen i { border: 2px solid #3E6FA8; color: #2B4F7A; background: color-mix(in srgb, #3E6FA8 12%, var(--ds-card));
+    animation: rw-dot-press .42s cubic-bezier(.3,1.4,.5,1) both; animation-delay: calc(1.1s + var(--i, 0) * 80ms); }
   .rw-dot.today { color: var(--ds-ink); }
-  .rw-dot.today:not(.done) i { border-color: #E2530E; animation: rw-today 1.6s ease-in-out 1.6s infinite; }
-  @keyframes rw-dot-pop { 0% { transform: scale(0) } 100% { transform: scale(1) } }
-  @keyframes rw-today { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, #E2530E 40%, transparent) } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, #E2530E 0%, transparent) } }
+  .rw-dot.today:not(.done) i { border: 2px dashed var(--rw-fire, #C2531E); animation: rw-today 1.8s ease-in-out 1.8s infinite; }
+  @keyframes rw-dot-press { 0% { transform: scale(1.5) rotate(-14deg); opacity: 0 } 60% { opacity: 1 } 100% { transform: none; opacity: 1 } }
+  @keyframes rw-today { 0%, 100% { transform: none } 50% { transform: scale(1.08) } }
   .rw-stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px 6px; justify-items: center; }
   .rw-stamp { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
   /* ещё не полученная печать: блёклый серый оттиск, а подпись читается полным контрастом */
@@ -179,30 +183,33 @@ export const REWARD_CSS = `
   .rw-stamp[data-got="false"] span { color: var(--ds-ink3); }
   .rw-stamp b { font: 700 12px/1.2 var(--ds-head); }
   .rw-stamp span { font: 12px/1.25 var(--ds-sans); color: var(--ds-ink2); }
-  /* утренний экран серии: огонёк разгорается, число дней падает на место, неделя заполняется огоньками */
-  .rw-morning { position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; overflow: hidden; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
-  .rw-morning::before { content: ''; position: absolute; left: 50%; top: 38%; width: 520px; height: 520px; margin: -260px 0 0 -260px; border-radius: 50%; pointer-events: none;
-    background: radial-gradient(circle, color-mix(in srgb, #FF8A2A 26%, transparent) 0%, transparent 62%); animation: rw-glow 3.2s ease-in-out .6s infinite both; }
-  @keyframes rw-glow { 0%, 100% { transform: scale(.92); opacity: .75 } 50% { transform: scale(1.05); opacity: 1 } }
-  .rw-morning-in { position: relative; flex: 1; max-width: 460px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  .rw-fire { position: relative; width: 132px; height: 160px; margin: 6px 0 -6px; }
-  .rw-fire svg { overflow: visible; }
-  .rw-fire .ignite { transform-box: fill-box; transform-origin: 50% 100%; animation: rw-ignite .8s cubic-bezier(.3,1.6,.5,1) both; }
-  @keyframes rw-ignite { 0% { transform: scale(.15, .05); opacity: 0 } 45% { opacity: 1 } 100% { transform: none } }
-  .rw-fire .lick { transform-box: fill-box; transform-origin: 50% 100%; animation: rw-lick 1.7s ease-in-out .8s infinite; }
-  .rw-fire .lick.l2 { animation-duration: 1.25s; animation-delay: .9s; }
-  .rw-fire .lick.l3 { animation-duration: .95s; animation-delay: 1s; }
-  @keyframes rw-lick { 0%, 100% { transform: none } 25% { transform: scale(.97, 1.05) skewX(-2.5deg) } 50% { transform: scale(1.03, .97) } 75% { transform: scale(.98, 1.04) skewX(2.5deg) } }
-  .rw-fire .ember { transform-box: fill-box; transform-origin: center; opacity: 0; animation: rw-ember 2.4s ease-out infinite; }
-  @keyframes rw-ember { 0% { opacity: 0; transform: translate(0, 0) scale(1) } 15% { opacity: 1 } 100% { opacity: 0; transform: translate(var(--dx, 0px), -70px) scale(.3) } }
-  .rw-days { display: flex; justify-content: center; font: 800 100px/1 var(--ds-head); font-variant-numeric: tabular-nums; color: #E2530E; letter-spacing: -.02em; text-shadow: 0 3px 0 color-mix(in srgb, #E2530E 22%, transparent); }
-  .rw-days span { display: inline-block; animation: rw-digit .6s cubic-bezier(.3,1.7,.5,1) both; animation-delay: calc(.55s + var(--i, 0) * 90ms); }
-  @keyframes rw-digit { 0% { transform: translateY(-60px) scale(.5); opacity: 0 } 60% { opacity: 1 } 100% { transform: none; opacity: 1 } }
-  .rw-days-label { font: 700 24px/1.2 var(--ds-head); color: var(--ds-ink); margin-top: 6px; animation: rw-up .45s ease-out .85s both; }
-  .rw-days-sub { font-size: 16px; color: var(--ds-ink2); margin: 8px 0 22px; animation: rw-up .45s ease-out .95s both; }
+  /* утренний экран серии — в языке сайта: бумажный билет с гильошной каймой, розетка-печать с огоньком,
+     нарисованным чернилами (контур и штриховка, как гравюра), цифра шрифтом заголовков и неделя —
+     оттисками печатей. Огонёк чуть дышит, розетка дорисовывается, оттиски дней ставятся по очереди */
+  .rw-morning { --rw-fire: #C2531E; --rw-fire-ink: #8E3512; --rw-fire-tint: color-mix(in srgb, #E27A3A 16%, var(--ds-card));
+    position: fixed; inset: 0; z-index: 320; display: flex; flex-direction: column; overflow: auto; background: var(--ds-paper); padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); }
+  .ds-dark .rw-morning, .rw-morning.ds-dark { --rw-fire: #F08A4B; --rw-fire-ink: #F3A877; --rw-fire-tint: color-mix(in srgb, #F08A4B 18%, var(--ds-card)); }
+  .rw-morning-in { position: relative; flex: 1; max-width: 420px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; align-items: stretch; justify-content: center; text-align: center; }
+  @media (min-width: 700px) { .rw-morning { justify-content: center; } .rw-morning-in { flex: 0 0 auto; } }
+  .rw-ticket { position: relative; background: var(--ds-card); border: 2px solid var(--ds-rule2); border-radius: 18px; box-shadow: 0 3px 0 var(--ds-rule), inset 0 0 0 5px var(--ds-card), inset 0 0 0 6px var(--ds-rule);
+    padding: 10px 6px; animation: rw-up .45s ease-out both; }
+  .rw-ticket-in { padding: 6px 18px 4px; display: flex; flex-direction: column; align-items: center; }
+  .rw-seal { position: relative; margin: 10px 0 2px; }
+  .rw-seal > span > svg path, .rw-seal > span > svg circle { stroke-dasharray: 900; stroke-dashoffset: 900; animation: rw-draw 1.6s ease-out .15s forwards; }
+  @keyframes rw-draw { to { stroke-dashoffset: 0; } }
+  .rw-flame { display: block; overflow: visible; }
+  .rw-flame .sway { transform-box: fill-box; transform-origin: 50% 100%; animation: rw-sway 3.2s ease-in-out 1s infinite; }
+  @keyframes rw-sway { 0%, 100% { transform: none } 30% { transform: skewX(-2.5deg) scaleY(1.03) } 65% { transform: skewX(2deg) scaleY(.98) } }
+  .rw-flame .rise { animation: rw-rise .7s cubic-bezier(.3,1.5,.5,1) .35s both; transform-box: fill-box; transform-origin: 50% 100%; }
+  @keyframes rw-rise { from { transform: scale(.4); opacity: 0 } }
+  .rw-days { display: flex; justify-content: center; font: 800 76px/1 var(--ds-head); font-variant-numeric: tabular-nums; color: var(--rw-fire-ink); letter-spacing: -.01em; margin-top: 4px; }
+  .rw-days span { display: inline-block; animation: rw-digit .5s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(.6s + var(--i, 0) * 90ms); }
+  @keyframes rw-digit { 0% { transform: translateY(-24px); opacity: 0 } 100% { transform: none; opacity: 1 } }
+  .rw-days-label { font: 700 13px/1.2 var(--ds-sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ds-ink2); margin-top: 6px; animation: rw-up .45s ease-out .8s both; }
+  .rw-days-sub { font-size: 15px; line-height: 1.45; color: var(--ds-ink2); margin: 12px 0 14px; max-width: 300px; animation: rw-up .45s ease-out .9s both; }
   @keyframes rw-up { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
-  .rw-dots { display: flex; justify-content: center; gap: 8px; }
-  .rw-week { padding: 14px 12px 12px; border-radius: 18px; background: var(--ds-card); border: 2px solid var(--ds-rule); box-shadow: 0 3px 0 var(--ds-rule); animation: rw-up .45s ease-out 1.05s both; }
+  .rw-week { width: 100%; border-top: 1px dashed var(--ds-rule2); padding: 14px 0 6px; }
+  .rw-dots { display: flex; justify-content: center; gap: 6px; }
   /* сундук при открытии чуть подпрыгивает и пружинит — без поворота и крена */
   .rw-chest-open { animation: rw-chest-pop .5s ease-out 1 both; transform-origin: 50% 90%; }
   @keyframes rw-chest-pop { 0% { transform: none; } 30% { transform: scale(1.08, .92); } 60% { transform: scale(.96, 1.05) translateY(-4px); } 100% { transform: none; } }
@@ -226,7 +233,7 @@ export const REWARD_CSS = `
   .rw-price s { color: var(--ds-ink3); font-weight: 400; margin-right: 4px; }
   .rw-goal { height: 5px; width: 100%; border-radius: 3px; background: var(--ds-rule); overflow: hidden; }
   .rw-goal > i { display: block; height: 100%; background: #8A2F45; }
-  @media (prefers-reduced-motion: reduce) { .rw-morning::before, .rw-fire *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-week, .rw-dot i { animation: none !important; } .rw-fire .ember { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .rw-ticket, .rw-seal svg *, .rw-flame *, .rw-days span, .rw-days-label, .rw-days-sub, .rw-dot i { animation: none !important; stroke-dashoffset: 0 !important; } }
   @media (prefers-reduced-motion: reduce) { .rw-flame, .rw-chest-open, .rw-item[data-rare="true"], .rw-bar > i, .rw-quest, .rw-ico.ok, .rw-goalbox, .rw-ring .fg, .rw-book-days i, .rw-pig-coin, .rw-pig-in .spark, .rw-pig-peek, .rw-grow .main, .rw-grow .now circle, .rw-grow .area, .rw-grow .other, .rw-grow .dot, .rw-grow .now, .rw-grow text { animation: none; } .rw-grow .main { stroke-dasharray: none; } .rw-bar > i, .rw-item { transition: none; } }
 `;
 
@@ -881,32 +888,34 @@ export function ChestSheet({ unitId, place, learn, update, onClose }) {
 }
 
 /* ------------------------------ УТРЕННИЙ ЭКРАН СЕРИИ ------------------------------
-   Один раз в день, при первом открытии: огонёк разгорается, число дней падает на место, неделя
-   заполняется огоньками. Без мелкого текста — только число, «дней подряд» и что делать сегодня. */
+   Один раз в день, при первом открытии — бумажный билет в стиле сайта: розетка-печать с огоньком-
+   гравюрой, число дней, «дней подряд», что делать сегодня и неделя оттисками печатей. Без мелкого текста. */
 const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-// искры над огнём: смещение по горизонтали, задержка, место
-const EMBERS = [[-16, 0, 44], [12, 0.5, 60], [-6, 1.1, 54], [20, 1.6, 70], [-22, 2, 50], [4, 0.8, 64]];
-/* Огонёк серии: три языка пламени (внешний, средний, сердцевина) колышутся каждый в своём темпе,
-   над ним поднимаются искры; при появлении — разгорается снизу вверх. */
-export function StreakFlame({ size = 132 }) {
+/* Огонёк серии — гравюра: контуры чернилами, штриховка внутри, сердцевина — светлой бумагой;
+   при появлении поднимается, потом чуть колышется. */
+const FLAME_OUT = 'M32 4 C 36 20, 54 30, 54 52 C 54 68, 44 76, 32 76 C 20 76, 10 68, 10 52 C 10 40, 17 33, 21 24 C 23 33, 26 37, 29 38 C 27 26, 28 14, 32 4 Z';
+const FLAME_MID = 'M32 32 C 36 43, 46 49, 46 59 C 46 69, 40 74, 32 74 C 24 74, 18 69, 18 59 C 18 52, 23 47, 25 42 C 27 49, 29 51, 31 52 C 30 45, 30 39, 32 32 Z';
+const FLAME_CORE = 'M32 53 C 35 59, 39 62, 39 66.5 C 39 70.5, 36 72.5, 32 72.5 C 28 72.5, 25 70.5, 25 66.5 C 25 62, 29 59, 32 53 Z';
+export function EngravedFlame({ size = 64 }) {
   const id = `fl${React.useId().replace(/:/g, '')}`;
+  const hatch = (step, from = -40, to = 110) => Array.from({ length: Math.ceil((to - from) / step) }, (_, k) => `M${from + k * step} 80 L${from + k * step + 60} 0`).join(' ');
   return (
-    <div className="rw-fire" style={{ width: size, height: size * 160 / 132 }} aria-hidden="true">
-      <svg viewBox="0 0 120 146" width={size} height={size * 160 / 132}>
-        <defs>
-          <linearGradient id={`${id}a`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#D9380F" /><stop offset=".55" stopColor="#F2661A" /><stop offset="1" stopColor="#FF9E3A" /></linearGradient>
-          <linearGradient id={`${id}b`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#FF9A22" /><stop offset="1" stopColor="#FFD25A" /></linearGradient>
-          <linearGradient id={`${id}c`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#FFE9A6" /><stop offset="1" stopColor="#FFFCEE" /></linearGradient>
-        </defs>
-        <ellipse cx="60" cy="140" rx="34" ry="5" fill="#E2530E" opacity=".18" />
-        <g className="ignite">
-          <path className="lick" fill={`url(#${id}a)`} d="M60 4 C 66 30, 99 46, 99 92 C 99 123, 81 142, 60 142 C 39 142, 21 123, 21 92 C 21 70, 33 58, 39 43 C 42 57, 47 63, 52 65 C 49 43, 53 22, 60 4 Z" />
-          <path className="lick l2" fill={`url(#${id}b)`} d="M60 40 C 66 58, 86 70, 86 100 C 86 122, 74 136, 60 136 C 46 136, 34 122, 34 100 C 34 86, 42 78, 46 69 C 48 81, 52 85, 56 87 C 54 71, 56 56, 60 40 Z" />
-          <path className="lick l3" fill={`url(#${id}c)`} d="M60 76 C 66 89, 76 97, 76 112 C 76 124, 69 132, 60 132 C 51 132, 44 124, 44 112 C 44 101, 52 93, 60 76 Z" />
-        </g>
-        {EMBERS.map(([dx, d, x], k) => <circle key={k} className="ember" cx={x} cy={40 + (k % 3) * 6} r={k % 2 ? 2.2 : 1.6} fill={k % 2 ? '#FFB13B' : '#FF7A1F'} style={{ '--dx': `${dx}px`, animationDelay: `${1 + d}s` }} />)}
-      </svg>
-    </div>
+    <svg className="rw-flame" viewBox="0 0 64 80" width={size} height={size * 1.25} aria-hidden="true">
+      <defs>
+        <clipPath id={`${id}o`}><path d={FLAME_OUT} /></clipPath>
+        <clipPath id={`${id}m`}><path d={FLAME_MID} /></clipPath>
+      </defs>
+      <ellipse cx="32" cy="77.5" rx="17" ry="2.2" fill="var(--rw-fire-ink)" opacity=".14" />
+      <g className="rise"><g className="sway">
+        <path d={FLAME_OUT} fill="var(--rw-fire-tint)" />
+        <path d={hatch(3.2)} stroke="var(--rw-fire)" strokeWidth=".9" opacity=".75" clipPath={`url(#${id}o)`} />
+        <path d={FLAME_MID} fill="var(--ds-card)" />
+        <path d={hatch(5.2)} stroke="var(--rw-fire)" strokeWidth=".7" opacity=".45" clipPath={`url(#${id}m)`} />
+        <path d={FLAME_CORE} fill="var(--ds-card)" stroke="var(--rw-fire-ink)" strokeWidth="1" />
+        <path d={FLAME_MID} fill="none" stroke="var(--rw-fire-ink)" strokeWidth="1.2" strokeLinejoin="round" />
+        <path d={FLAME_OUT} fill="none" stroke="var(--rw-fire-ink)" strokeWidth="1.8" strokeLinejoin="round" />
+      </g></g>
+    </svg>
   );
 }
 export function MorningStreak({ learn, onClose, now = Date.now() }) {
@@ -916,24 +925,30 @@ export function MorningStreak({ learn, onClose, now = Date.now() }) {
   return (
     <div className="rw-morning" data-testid="morning" role="dialog" aria-label="Серия дней">
       <div className="rw-morning-in">
-        <div className="ds-eyebrow">{hello}</div>
-        <StreakFlame />
-        <div className="rw-days" data-testid="morning-days" data-value={st.days} role="img" aria-label={`${st.days} ${label}`}>
-          {String(st.days).split('').map((c, k) => <span key={k} style={{ '--i': k }} aria-hidden="true">{c}</span>)}
-        </div>
-        <div className="rw-days-label">{label}</div>
-        <div className="rw-days-sub">{st.today ? 'Сегодня уже занимались — серия продлена.' : 'Один урок сегодня — и огонёк горит дальше.'}</div>
-        <div className="rw-week">
-          <div className="rw-dots" data-testid="morning-week">
-            {weekDots(learn, now).map((d, k) => (
-              <div key={d.day} className={`rw-dot ${d.done ? 'done' : d.frozen ? 'frozen' : ''} ${d.today ? 'today' : ''}`}>
-                <i style={{ '--i': k }}>{d.done ? <Flame size={17} aria-hidden="true" /> : d.frozen ? <ShieldCheck size={16} aria-hidden="true" /> : null}</i>{DOW[d.dow]}
+        <div className="rw-ticket">
+          <Guilloche height={20} color="var(--rw-fire)" opacity={0.4} />
+          <div className="rw-ticket-in">
+            <div className="ds-eyebrow" style={{ color: 'var(--rw-fire-ink)', marginTop: 8 }}>{hello}</div>
+            <div className="rw-seal"><Rosette size={146} color="var(--rw-fire)" opacity={0.32}><EngravedFlame size={76} /></Rosette></div>
+            <div className="rw-days" data-testid="morning-days" data-value={st.days} role="img" aria-label={`${st.days} ${label}`}>
+              {String(st.days).split('').map((c, k) => <span key={k} style={{ '--i': k }} aria-hidden="true">{c}</span>)}
+            </div>
+            <div className="rw-days-label">{label}</div>
+            <div className="rw-days-sub">{st.today ? 'Сегодня уже занимались — серия продлена.' : 'Один урок сегодня — и огонёк горит дальше.'}</div>
+            <div className="rw-week">
+              <div className="rw-dots" data-testid="morning-week">
+                {weekDots(learn, now).map((d, k) => (
+                  <div key={d.day} className={`rw-dot ${d.done ? 'done' : d.frozen ? 'frozen' : ''} ${d.today ? 'today' : ''}`}>
+                    <i style={{ '--i': k }}>{d.done ? <Flame size={16} strokeWidth={2.2} aria-hidden="true" /> : d.frozen ? <ShieldCheck size={15} aria-hidden="true" /> : null}</i>{DOW[d.dow]}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
+          <Guilloche height={20} color="var(--rw-fire)" opacity={0.4} />
         </div>
       </div>
-      <div style={{ position: 'relative', maxWidth: 460, width: '100%', margin: '0 auto' }}><Button wide autoFocus data-testid="morning-go" onClick={() => { Audio.play('paper'); onClose(); }}>{st.today ? 'В путь' : 'Продолжить серию'}</Button></div>
+      <div style={{ position: 'relative', maxWidth: 420, width: '100%', margin: '18px auto 0' }}><Button wide autoFocus data-testid="morning-go" onClick={() => { Audio.play('paper'); onClose(); }}>{st.today ? 'В путь' : 'Продолжить серию'}</Button></div>
     </div>
   );
 }

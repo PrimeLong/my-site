@@ -39,8 +39,11 @@ export const FRIENDS_CSS = `
   .fr-tile { padding: 10px 12px; border-radius: 14px; background: var(--ds-card2); display: flex; align-items: center; gap: 10px; animation: fr-in .4s ease-out both; animation-delay: calc(var(--i) * 60ms); }
   .fr-tile b { display: block; font: 700 18px/1.1 var(--ds-head); }
   .fr-tile small { display: block; font-size: 12.5px; color: var(--ds-ink2); }
-  .fr-seals { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 10px 6px; }
-  .fr-seal { display: flex; flex-direction: column; align-items: center; gap: 4px; font: 700 12px/1.2 var(--ds-head); text-align: center; animation: fr-pop .45s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(min(var(--i), 12) * 50ms); }
+  /* печати друга — та же сетка, что в своём профиле (rw-stamps): ячейка не уже 92 px, подпись
+     переносится внутри неё и не вылезает к соседям и за край (жалоба «печати съехали») */
+  .fr-seals { margin-bottom: 4px; }
+  .fr-seal { min-width: 0; animation: fr-pop .45s cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(min(var(--i), 12) * 50ms); }
+  .fr-seal b { overflow-wrap: anywhere; max-width: 100%; }
   .fr-ev { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 0; border-top: 1px dotted var(--ds-rule2); animation: fr-in .35s ease-out both; animation-delay: calc(min(var(--i, 0), 8) * 40ms); }
   .fr-ev:first-child { border-top: none; }
   .fr-ev-ico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: var(--u-ink); background: color-mix(in srgb, var(--u) 13%, var(--ds-card)); }
@@ -148,7 +151,7 @@ export function FriendsPage({ data, onBack, onOpen }) {
             <Card style={{ padding: '4px 12px' }} data-testid="friend-requests">
               {incoming.map((f, i) => (
                 <div key={f.login} className="fr-row" style={{ '--i': i, cursor: 'default' }} data-testid="friend-request" data-login={f.login}>
-                  <span className="fr-ava"><Mascot mood="wave" size={44} outfit={{}} /></span>
+                  <span className="fr-ava"><Mascot mood="wave" size={44} outfit={(f.card && f.card.wear) || {}} /></span>
                   <span style={{ minWidth: 0 }}><span className="fr-name" style={{ display: 'block' }}>{f.name}</span><span className="fr-sub" style={{ display: 'block' }}>@{f.login} · хочет дружить</span></span>
                   <span style={{ display: 'flex', gap: 6 }}>
                     <IconButton label={`Принять заявку: ${f.name}`} icon={Check} data-testid="friend-accept" onClick={() => run(() => friendsApi.answer(f.login, true), `${f.name} теперь в друзьях`)} />
@@ -175,7 +178,7 @@ export function FriendsPage({ data, onBack, onOpen }) {
             <Card style={{ padding: '4px 12px' }}>
               {outgoing.map((f, i) => (
                 <div key={f.login} className="fr-row" style={{ '--i': i, cursor: 'default' }}>
-                  <span className="fr-ava"><Mascot mood="hello" size={44} outfit={{}} /></span>
+                  <span className="fr-ava"><Mascot mood="hello" size={44} outfit={(f.card && f.card.wear) || {}} /></span>
                   <span><span className="fr-name">{f.name}</span><span className="fr-sub" style={{ display: 'block' }}>@{f.login} · заявка {agoText(f.at, now)}</span></span>
                   <Button small variant="ghost" onClick={() => run(() => friendsApi.cancel(f.login))}>Отменить</Button>
                 </div>
@@ -354,8 +357,8 @@ export function FriendProfile({ login, data, learn, update, myWear, onBack }) {
         {msg && <div role="alert" style={{ color: 'var(--ds-bad)', fontSize: 14, marginTop: 6 }}>{msg}</div>}
         <div className="fr-group">Печати · {seals.length} из {ACHIEVEMENTS.length}</div>
         {seals.length ? (
-          <div className="fr-seals" data-testid="friend-seals">
-            {seals.map((a, i) => { const Icon = SEAL_ICON[a.icon] || Award; return <div key={a.id} className="fr-seal" style={{ '--i': i }}><Medal icon={<Icon size={20} />} size={56} label={a.title} />{a.title}</div>; })}
+          <div className="rw-stamps fr-seals" data-testid="friend-seals">
+            {seals.map((a, i) => { const Icon = SEAL_ICON[a.icon] || Award; return <div key={a.id} className="rw-stamp fr-seal" style={{ '--i': i }}><Medal icon={<Icon size={22} />} size={60} label={a.title} /><b>{a.title}</b></div>; })}
           </div>
         ) : <div className="ds-sub" style={{ fontSize: 14 }}>Печатей пока нет — всё впереди.</div>}
         <div className="fr-group">Недавно</div>
