@@ -132,12 +132,34 @@ const CSS = `
   .ln-bill-in { display: flex; align-items: center; gap: 12px; padding: 12px 14px 10px; }
   .ln-bill-no { font: 700 30px/1 var(--ds-head); color: var(--u-ink); }
   .ln-bill-btns { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
-  /* пройденный юнит свёрнут в одну строку: номер, место, алмазы, гайд и «уроки» */
-  .ln-mini-guide { width: 36px; height: 36px; }
-  .ln-bill-mini .ln-mini-fold { padding: 6px 4px; gap: 2px; }
-  .ln-mini-title { line-height: 1.2; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ln-bill-mini > * { flex-shrink: 0; }
-  .ln-bill-mini { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; margin: 10px 0 4px; background: color-mix(in srgb, var(--u) 7%, var(--ds-card)); }
+  /* пройденный юнит свёрнут в одну строку — билет с корешком: слева гравюра места с печатью «пройден»,
+     за перфорацией — «Юнит N · пройден», место, полоска уроков (алмазные — цветом алмаза) и стрелка;
+     вся середина раскрывает уроки, справа — гайд */
+  .ds-card.ln-bill-mini { position: relative; display: flex; align-items: stretch; gap: 0; padding: 0; min-height: 70px; margin: 10px 0 4px; overflow: hidden;
+    background: color-mix(in srgb, var(--u) 6%, var(--ds-card)); border-color: color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
+  .ln-mini-stub { position: relative; flex: none; width: 70px; display: grid; place-items: center; background: color-mix(in srgb, var(--u) 13%, var(--ds-card));
+    border-right: 2px dashed color-mix(in srgb, var(--u) 30%, var(--ds-rule2)); }
+  .ln-mini-stub::before, .ln-mini-stub::after { content: ''; position: absolute; right: -8px; width: 14px; height: 14px; border-radius: 50%; background: var(--ds-paper);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
+  .ln-mini-stub::before { top: -9px; } .ln-mini-stub::after { bottom: -9px; }
+  .ln-mini-seal { position: absolute; right: 7px; bottom: 6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+    background: var(--ds-ok, #2E7D5B); box-shadow: 0 0 0 2px color-mix(in srgb, var(--u) 13%, var(--ds-card)); transform: rotate(-8deg); }
+  .ln-mini-main { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto; column-gap: 8px; align-items: center;
+    padding: 8px 6px 8px 14px; border: none; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background .2s; }
+  .ln-mini-main:hover { background: color-mix(in srgb, var(--u) 7%, transparent); }
+  .ln-mini-main:focus-visible { outline: 3px solid var(--u); outline-offset: -3px; border-radius: 12px; }
+  .ln-mini-eyebrow { grid-column: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 700 12px/1.1 var(--ds-sans); letter-spacing: .1em; text-transform: uppercase; color: var(--u-ink); }
+  .ds-dark .ln-mini-eyebrow { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-mini-title { grid-column: 1; margin: 1px 0 3px; line-height: 1.15; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln-mini-meta { grid-column: 1; display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 12.5px/1 var(--ds-sans); color: var(--ds-ink2); white-space: nowrap; }
+  .ln-mini-strip { display: flex; gap: 2px; flex: 0 1 112px; min-width: 40px; }
+  .ln-mini-strip i { flex: 1; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--u) 55%, var(--ds-card)); }
+  .ln-mini-strip i[data-d] { background: ${DIAMOND_COLOR}; }
+  .ln-mini-open { grid-column: 2; grid-row: 1 / 4; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--u-ink);
+    background: color-mix(in srgb, var(--u) 12%, var(--ds-card)); transition: transform .3s cubic-bezier(.3, 1.5, .5, 1), background .2s; }
+  .ds-dark .ln-mini-open { color: color-mix(in srgb, var(--u) 45%, #fff); }
+  .ln-mini-main:hover .ln-mini-open { transform: translateY(2px); background: color-mix(in srgb, var(--u) 20%, var(--ds-card)); }
+  .ln-bill-mini .ln-mini-guide { width: 44px; height: auto; align-self: stretch; border-radius: 0; border-left: 1px dotted var(--ds-rule2); }
   /* юнит только что свернулся после сундука: строка «впечатывается», по ней пробегает блик */
   .ln-just-folded .ln-bill-mini { position: relative; overflow: hidden; animation: ln-mini-in .55s cubic-bezier(.3,1.4,.5,1) both; }
   .ln-just-folded .ln-bill-mini::after { content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -2175,15 +2197,23 @@ function PathView({ learn, update, onLesson, onStart, onOpenBook, onChest, onTas
               пройденный и свёрнутый — одной строкой */}
           {folded ? (
             <Card className="ln-bill-mini">
-              <span className="ln-unit-no" aria-hidden="true">{no}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="ds-h3 ln-mini-title" style={{ color: 'var(--u-ink)' }}>{pl.place}</div>
-                <div className="ds-sub" style={{ fontSize: 13, whiteSpace: 'nowrap' }} data-testid="unit-diamonds"><span className="ds-sr">Юнит {no}, </span>пройден · <Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}<span className="ds-sr"> алмазов</span></div>
-              </div>
+              {/* корешок билета: гравюра места с печатью «пройден», за перфорацией — название и уроки */}
+              <span className="ln-mini-stub" aria-hidden="true">
+                <Engraving kind={pl.building} alive size={50} color={pl.color} />
+                <span className="ln-mini-seal"><Check size={12} strokeWidth={3.2} /></span>
+              </span>
+              <button type="button" className="ln-mini-main" data-testid="unit-fold" aria-expanded="false"
+                aria-label={`Юнит ${no}, ${pl.place}, пройден. Показать уроки: ${st.lessons.length}`}
+                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>
+                <span className="ln-mini-eyebrow">Юнит {no} · пройден</span>
+                <span className="ds-h3 ln-mini-title">{pl.place}</span>
+                <span className="ln-mini-meta">
+                  <span className="ln-mini-strip" aria-hidden="true">{st.lessons.map((l) => <i key={l.id} data-d={l.diamond ? '1' : undefined} />)}</span>
+                  <span data-testid="unit-diamonds"><Gem size={13} style={{ verticalAlign: -2, color: DIAMOND_COLOR }} aria-hidden="true" /> {st.lessons.filter((l) => l.diamond).length}/{st.lessons.length}</span>
+                </span>
+                <span className="ln-mini-open" aria-hidden="true"><ChevronDown size={18} /></span>
+              </button>
               <IconButton label="Гайд юнита" icon={BookOpenText} size={20} className="ln-mini-guide" data-testid="unit-guide" data-nav-target={`book:chapter:${u.id}`} onClick={() => { Audio.play('paper'); onOpenBook({ kind: 'chapter', id: u.id }); }} />
-              <Button variant="ghost" small icon={ChevronRight} className="ln-mini-fold" data-testid="unit-fold" aria-expanded="false"
-                aria-label={`Показать уроки: ${st.lessons.length}`}
-                onClick={() => { Audio.play('paper'); setUnfolded((m) => ({ ...m, [u.id]: true })); }}>Уроки</Button>
             </Card>
           ) : (
           <Card className="ln-bill">
