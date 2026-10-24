@@ -22,7 +22,7 @@ import { askSave } from './lib/guest.js';
 import { writeLearnLevel } from './lib/disclosure.js';
 import { track } from './lib/client.js';
 import { Audio, getPlayerId, syncProfile } from './MacroSimulator.jsx';
-import { Blocks, Inline, ChartSvg, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
+import { Blocks, Inline, ChartSvg, ChartLegend, TEXTBOOK_CSS, TextbookScreen } from './textbook.jsx';
 import { CHARTS, chartDefaults } from './textbook/charts.js';
 import { loadProgress, saveProgress, latestProgress, PROGRESS_EVENT, reviewQueue } from './textbook/progress.js';
 import { afterPathAnswer, dropFromReview } from './textbook/review-sync.js';
@@ -461,7 +461,8 @@ function MiniChart({ type, attrs, values = null }) {
   if (!def) return null;
   const v = { ...chartDefaults(type, attrs), ...moving, ...values };
   // на Пути деньги — в кронах (src/learn/money.js)
-  return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={sceneInCrowns(def.build(attrs, v))} /></div>;
+  // под графиком — ключ: что значит каждая линия, простыми словами
+  return <div style={{ maxWidth: 360, margin: '8px auto' }}><ChartSvg scene={sceneInCrowns(def.build(attrs, v))} />{def.legend && <ChartLegend items={def.legend(attrs, v)} />}</div>;
 }
 const PICS = {
   clock: Clock, scale: Scale, hourglass: Hourglass, ticket: Ticket, 'trending-up': TrendingUp, 'circle-check': CircleCheck, medal: Medal,

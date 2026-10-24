@@ -199,6 +199,10 @@ export const TEXTBOOK_CSS = `
   @media (max-width: 560px) { .tb-guess-grid { grid-template-columns: repeat(3, max-content); row-gap: 0; } .tb-guess-name { grid-column: 1 / -1; padding-top: 6px; } .tb-guess-row .tb-pick { padding: 6px 10px; } }
   /* итоги графика — плитками: число колонок зависит только от ширины, а не от длины чисел, поэтому
      строка под ползунками не перескакивает с одной строки на две и кнопка под ней стоит на месте */
+  /* ключ под графиком: образец линии и что она значит */
+  .tb-legend { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; line-height: 1.35; color: var(--ds-ink2, #6b6157); }
+  .tb-legend li { display: inline-flex; align-items: center; gap: 6px; }
+  .tb-legend svg { flex: none; }
   .tb-ro { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 6px; margin-top: 12px; }
   .tb-ro > div { display: flex; flex-direction: column; justify-content: space-between; gap: 3px; padding: 7px 10px; border-radius: 8px; background: color-mix(in srgb, var(--c-text) 5%, transparent); min-width: 0; }
   .tb-ro-l { font-size: 12px; line-height: 1.3; color: var(--c-muted); }
@@ -841,13 +845,35 @@ export function ChartSvg({ scene }) {
       })}
       {scene.points.filter(inside).map((p, i) => (
         <g key={`p${i}`}>
-          <circle cx={sx(p.x)} cy={sy(p.y)} r={p.small ? 3 : 5} fill={p.small ? COLOR.muted : COLOR.goldSoft} stroke={COLOR.bg} strokeWidth={1.5} />
+          <circle cx={sx(p.x)} cy={sy(p.y)} r={p.small ? 3 : 5} fill={p.color ? CURVE_COLOR[p.color]() : p.small ? COLOR.muted : COLOR.goldSoft} stroke={COLOR.bg} strokeWidth={1.5} />
           <text x={Math.min(sx(p.x) + 8, W - M.r - 2)} y={p.below ? sy(p.y) + 17 : sy(p.y) - 8} fontSize={p.small ? 11 : 12.5} {...halo} textAnchor={sx(p.x) > W - 70 ? 'end' : 'start'}
-            fill={p.small ? COLOR.muted : COLOR.goldSoft} fontWeight={p.small ? 400 : 700}>{p.label}</text>
+            fill={p.color ? CURVE_COLOR[p.color]() : p.small ? COLOR.muted : COLOR.goldSoft} fontWeight={p.small ? 400 : 700}>{p.label}</text>
         </g>
       ))}
     </svg>
     </div>
+  );
+}
+
+/* Ключ под графиком: что значит каждая линия, простыми словами (def.legend графика). Линия — образцом
+   своего цвета и штриха, область — квадратиком. */
+export function ChartLegend({ items }) {
+  if (!items || !items.length) return null;
+  return (
+    <ul className="tb-legend" data-testid="chart-legend">
+      {items.map((it) => {
+        const c = (CURVE_COLOR[it.color] || CURVE_COLOR.gold)();
+        return (
+          <li key={it.text}>
+            <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true">
+              {it.box ? <rect x="3" y="1" width="16" height="10" fill={c} fillOpacity={0.2} stroke={c} strokeOpacity={0.6} />
+                : <line x1="1" x2="21" y1="6" y2="6" stroke={c} strokeWidth={2.6} strokeDasharray={it.dashed ? '5 3' : undefined} />}
+            </svg>
+            <span>{it.text}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -871,6 +897,7 @@ function ChartBox({ type, attrs, caption, ctx, values: outer = null, onValues = 
         </button>
       </div>
       <ChartSvg scene={scene} />
+      {def.legend && <ChartLegend items={def.legend(attrs, values)} />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '8px 16px', marginTop: 8 }}>
         {controls.map((c) => {
           if (c.button) {
