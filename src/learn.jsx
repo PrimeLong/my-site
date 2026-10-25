@@ -38,7 +38,8 @@ import {
 } from './textbook/learn-state.js';
 import { courseGrade, gradeWord } from './learn/grade.js';
 import { READING_BY_UNIT, readingOpen, isRead } from './learn/reading.js';
-import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
+import { runCoins, runKey, earn, settle, chestKey, hasClaim, outfitOf, deskOf, boostActive, chargePremiums, fixMonth } from './learn/rewards.js';
+import { DeskDecor, tellAnswer } from './learn-decor.jsx';
 import { pickPhrase, situation, endKind } from './learn/voice.js';
 import { lessonOpts, weakLessons, recommend, courseCtx, theoryNotice } from './learn/program.js';
 import {
@@ -100,8 +101,9 @@ const CSS = `
   .ln-read-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .ln-read-title { font: italic 700 19px/1.2 var(--ds-news, 'PT Serif', Georgia, serif); }
   .ln-read-who { font-size: 13.5px; color: var(--ds-ink2); }
-  .ln-read-lead { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink3); margin-top: 2px; }
-  .ln-read.locked { opacity: .78; }
+  .ln-read-lead { font-size: 13.5px; line-height: 1.35; color: var(--ds-ink2); margin-top: 2px; }
+  /* закрытая книга: бледнеет корешок, а не текст — подписи остаются читаемыми (контраст 4,5:1) */
+  .ln-read.locked { background: transparent; }
   .ln-read.locked .ln-read-spine { filter: grayscale(.85); opacity: .6; }
   .ln-grade { display: block; margin: -4px 0 14px; padding: 12px 14px 10px; border-radius: 18px; border: 2px solid color-mix(in srgb, var(--u) 30%, var(--ds-rule));
     background: linear-gradient(135deg, color-mix(in srgb, var(--u) 9%, var(--ds-card)), var(--ds-card) 70%); box-shadow: 0 3px 0 color-mix(in srgb, var(--u) 22%, var(--ds-rule)); }
@@ -346,6 +348,7 @@ const CSS = `
   @media (max-width: 600px) { .ln-numpad .ds-key { padding: 10px 0; } }
   .ln-skip { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; padding: 9px 8px; background: none; border: none; cursor: pointer; font: 700 14.5px var(--ds-sans); color: var(--ds-ink2); }
   .ln-skip:hover { color: var(--u-ink); }
+  .ln-desk { max-width: 592px; width: 100%; margin: 0 auto; padding: 0 14px; flex: none; }
   .ln-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 14px 16px 24px; }
   .ln-body .ds-rise { animation-name: ln-appear; }
   @keyframes ln-appear { from { opacity: 0; } to { opacity: 1; } }
@@ -363,9 +366,9 @@ const CSS = `
     .ln-body .ds-opt { font-size: 18px; line-height: 1.4; padding: 15px 18px; }
     .ln-body .ds-h1 { font-size: 30px !important; }
   }
-  @media (min-width: 1000px) and (min-height: 836px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.1; } }
-  @media (min-width: 1200px) and (min-height: 912px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.2; } }
-  @media (min-width: 1400px) and (min-height: 1003px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.32; } }
+  @media (min-width: 1000px) and (min-height: 836px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.1; } .ln-overlay .ln-desk { max-width: calc(592px * 1.1); padding: 0 calc(14px * 1.1); } }
+  @media (min-width: 1200px) and (min-height: 912px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.2; } .ln-overlay .ln-desk { max-width: calc(592px * 1.2); padding: 0 calc(14px * 1.2); } }
+  @media (min-width: 1400px) and (min-height: 1003px) { .ln-overlay .ln-head, .ln-overlay .ln-body, .ln-overlay .ln-foot { zoom: 1.32; } .ln-overlay .ln-desk { max-width: calc(592px * 1.32); padding: 0 calc(14px * 1.32); } }
   /* урок на телефоне — крупнее: экран почти пустой, а читать и попадать пальцем должно быть легко */
   @media (max-width: 600px) {
     .ln-body .ds-text { font-size: 19px; line-height: 1.5; }
@@ -886,6 +889,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
   // пройден ли урок раньше — на момент начала (после финиша он уже в прогрессе); был ли уже алмаз
   const [replay] = useState(() => run.mode === 'lesson' && lessonDone(learn, run.lessonId));
   const diamond = !!plan.diamond;
+  // украшение урока из лавки (learn-decor.jsx); гость лавки не видел
+  const desk = guest ? null : deskOf(learn);
   const [gem] = useState(() => !!(run.lessonId && learn.lessons[run.lessonId] && learn.lessons[run.lessonId].diamond));
   const [queue, setQueue] = useState(() => (rs ? rs.queue : plan.items));
   const [pos, setPos] = useState(rs ? rs.pos : 0);
@@ -1037,6 +1042,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
     wrongRun.current = r.ok ? 0 : wrongRun.current + 1;
     const say = pickPhrase(situation({ ok: r.ok, streak: r.ok && firstTime ? run3 + 1 : 0, hinted: !!a.hinted[orig], retry: !!cur.retry, wrongRun: wrongRun.current }), said.current);
     setFb({ ok: r.ok, why: r.why, say, skipped: !!r.skipped });
+    // украшение урока отзывается на ответ
+    if (!r.skipped) tellAnswer(r.ok);
   };
   const finish = () => {
     const a = acc.current;
@@ -1210,6 +1217,8 @@ function Runner({ run, learn, update, onClose, onOpenBook, hidden, guest = false
         <StreakFlame n={run3} plus={!(run.mode === 'lesson' && replay && !diamond)} />
         <InflaMeter streak={run3} mood={fb && !fb.empty ? (fb.ok ? 'joy' : 'cheer') : 'hello'} size={34} />
       </div>
+      {/* украшение урока из лавки — живое, его можно трогать */}
+      {desk && stage !== 'done' && <div className="ln-desk"><DeskDecor id={desk} height={48} /></div>}
 
       {asking && (
         <Sheet label="Выйти из урока?" onClose={() => setAsking(false)}>

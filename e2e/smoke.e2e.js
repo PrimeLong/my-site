@@ -4266,7 +4266,7 @@ test('антистресс: после четырёх уроков — знак�
     await expect(page.getByTestId('lesson')).toHaveCount(0);
   };
   // три урока — окошка ещё нет
-  await startLesson(page, 'sc-i2');
+  await startLesson(page, 'sc-l1');
   await page.waitForTimeout(900);
   await expect(box).toHaveCount(0);
   await exit();
@@ -4622,5 +4622,59 @@ test('«Чтение»: книга под уроками юнита — посл
   await expect(page.getByTestId('reading-feedback')).toContainText('Нужные слова подчёркнуты');
   await page.getByTestId('reading-close').click();
   await expect(reading).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('украшения урока: своя витрина с живыми превью, покупка вешает вещицу в уроки, она отзывается на ответ', async ({ page }) => {
+  await withTestFlag(page);
+  await page.addInitScript(() => {
+    if (localStorage.getItem('ems-textbook-v1')) return;
+    localStorage.setItem('ems-textbook-v1', JSON.stringify({ learn: { lessons: { 'sc-i1': { at: Date.now() - 86400000, runs: 1, best: 90 } }, coins: { '2026-01-01': 5000 } } }));
+  });
+  const { errors } = await openApp(page, '/', '{}', { tab: 'shop' });
+  const desk = page.getByTestId('shop-desk');
+  await desk.scrollIntoViewIfNeeded();
+  await expect(desk.getByTestId('shop-item')).toHaveCount(3);
+  await expect(desk.getByTestId('decor-preview')).toHaveCount(3);
+  // на витрине ювелира и в гардеробе их нет
+  await expect(page.getByTestId('shop-rare').locator('[data-item^="desk-"]')).toHaveCount(0);
+  // превью живое: оттянуть крайний шарик колыбели — шарики качаются
+  const cradle = desk.locator('[data-testid=shop-item][data-item="desk-cradle"]');
+  const prev = cradle.getByTestId('decor-preview');
+  await expect(prev).toHaveAttribute('data-awake', 'false', { timeout: 5000 });
+  const box = await prev.boundingBox();
+  const cx = box.x + box.width / 2 - 2 * 14.6; const cy = box.y + 5 + (64 - 5 - 7 - 4);
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx - 30, cy - 10, { steps: 5 });
+  await expect(prev).toHaveAttribute('data-drag', 'true');
+  await page.mouse.up();
+  await expect(prev).toHaveAttribute('data-awake', 'true');
+  // покупка — сразу в уроках
+  await cradle.getByRole('button', { name: 'Купить' }).click();
+  await expect(page.getByTestId('shop-msg')).toContainText('висит в уроках');
+  await expect(cradle.getByTestId('desk-toggle')).toHaveText('Убрать из уроков');
+  await expect(page.getByTestId('shop-wardrobe').locator('[data-item^="desk-"]')).toHaveCount(0);
+  // в уроке — полоса с колыбелью под шапкой; ответ её будит
+  await openTab(page, 'path');
+  await startLesson(page, 'sc-l1');
+  const decor = page.getByTestId('lesson').getByTestId('lesson-decor');
+  await expect(decor).toHaveAttribute('data-decor', 'desk-cradle');
+  await expect(decor).toHaveAttribute('data-awake', 'false', { timeout: 5000 });
+  const width = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(width[0]).toBeLessThanOrEqual(width[1]);
+  while (!(await page.getByTestId('ex').count())) await page.getByTestId('lesson').locator('.ln-foot button').last().click();
+  await answerExercise(page);
+  await expect(decor).toHaveAttribute('data-awake', 'true');
+  // убрали в лавке — в уроке полосы нет
+  await page.getByTestId('lesson').locator('[data-nav="back"]').first().click();
+  const leave = page.getByRole('button', { name: 'Выйти', exact: true });
+  if (await leave.count()) await leave.click();
+  await openTab(page, 'shop');
+  await page.getByTestId('shop-desk').locator('[data-item="desk-cradle"]').getByTestId('desk-toggle').click();
+  await openTab(page, 'path');
+  await startLesson(page, 'sc-l1', /Начать|Продолжить|Повторить/);
+  await expect(page.getByTestId('lesson')).toBeVisible();
+  await expect(page.getByTestId('lesson-decor')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
